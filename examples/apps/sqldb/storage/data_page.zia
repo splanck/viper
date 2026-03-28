@@ -26,7 +26,7 @@ final SLOT_ENTRY_SIZE = 6;
 //   [17...]: Slot directory (grows forward)
 //   [...]: Row data (grows backward from end)
 
-entity DataPageManager {
+class DataPageManager {
     hide RowSerializer rowSer;
 
     expose func init() {

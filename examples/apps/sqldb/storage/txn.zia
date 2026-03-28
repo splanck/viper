@@ -26,7 +26,7 @@ final LOCK_RETRY_INTERVAL_MS = 10;
 // Lock modes: LOCK_SHARED (1) for reads, LOCK_EXCLUSIVE (2) for writes.
 // Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
 // Blocking: spins with SleepMs + timeout on conflict.
-entity TableLockManager {
+class TableLockManager {
     hide List[String] lockTableNames;
     hide List[Integer] lockSessionIds;
     hide List[Integer] lockModes;
@@ -213,7 +213,7 @@ final ROW_LOCK_RETRY_MS = 10;
 // Uses parallel lists to track lock ownership (tableName + rowIndex → sessionId → mode).
 // Lock modes: LOCK_SHARED (1) for FOR SHARE, LOCK_EXCLUSIVE (2) for FOR UPDATE.
 // Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
-entity RowLockManager {
+class RowLockManager {
     hide List[String] lockTableNames;
     hide List[Integer] lockRowIndices;
     hide List[Integer] lockSessionIds;
@@ -421,7 +421,7 @@ final LOCK_EXCLUSIVE = 2;  // Write lock (X)
 // TRANSACTION ENTITY
 //=============================================================================
 
-entity Transaction {
+class Transaction {
     expose Integer txnId;
     expose Integer state;
     expose Integer isolationLevel;
@@ -501,7 +501,7 @@ entity Transaction {
 // LOCK ENTITY
 //=============================================================================
 
-entity Lock {
+class Lock {
     expose Integer resourceType;   // 0=table, 1=page, 2=row
     expose Integer resourceId;     // ID of the locked resource
     expose Integer tableId;        // Table ID (for row locks)
@@ -576,7 +576,7 @@ entity Lock {
 // LOCK MANAGER
 //=============================================================================
 
-entity LockManager {
+class LockManager {
     expose List[Lock] activeLocks;
 
     expose func init() {
@@ -669,7 +669,7 @@ entity LockManager {
 // TRANSACTION MANAGER
 //=============================================================================
 
-entity TransactionManager {
+class TransactionManager {
     expose Integer nextTxnId;
     expose Integer timestampCounter;
     expose List[Transaction] activeTransactions;

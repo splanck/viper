@@ -81,7 +81,7 @@ TEST(ZiaProperties, GetterSynthesized) {
     const std::string source = R"(
 module Test;
 
-entity Circle {
+class Circle {
     expose Number radius;
 
     property area: Number {
@@ -121,7 +121,7 @@ TEST(ZiaProperties, GetterAndSetter) {
     const std::string source = R"(
 module Test;
 
-entity Temperature {
+class Temperature {
     expose Number celsius;
 
     property fahrenheit: Number {
@@ -163,7 +163,7 @@ TEST(ZiaProperties, MemberAccessUsesSynthesizedAccessors) {
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     hide Integer _count;
 
     expose func init() {
@@ -215,7 +215,7 @@ TEST(ZiaStatic, StaticMethodNoSelf) {
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     expose Integer value;
 
     static func create() -> Integer {
@@ -248,15 +248,15 @@ func start() {
 }
 
 /// @brief Test that static fields are excluded from instance layout.
-/// @details Static fields don't contribute to the entity's instance size,
-/// and are stored at module level. We verify the entity compiles successfully
+/// @details Static fields don't contribute to the class's instance size,
+/// and are stored at module level. We verify the class compiles successfully
 /// with a static field declaration.
 TEST(ZiaStatic, StaticFieldCompiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Config {
+class Config {
     expose Integer value;
     static Integer count = 0;
 }
@@ -286,7 +286,7 @@ TEST(ZiaStatic, NonStaticMethodHasSelf) {
     const std::string source = R"(
 module Test;
 
-entity Box {
+class Box {
     expose Integer width;
 
     func getWidth() -> Integer {

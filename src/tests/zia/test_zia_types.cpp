@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Unit tests for Zia type system (value types, entity types).
+// Unit tests for Zia type system (struct types, class types).
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +26,7 @@ TEST(ZiaTypes, ValueTypeDeclaration) {
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     Integer x;
     Integer y;
 }
@@ -50,13 +50,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test that entity types with new keyword work correctly.
+/// @brief Test that class types with new keyword work correctly.
 TEST(ZiaTypes, EntityTypeWithNew) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     expose Integer age;
     expose Integer score;
 
@@ -78,7 +78,7 @@ func start() {
     Viper.Terminal.SayInt(method_age);
 }
 )";
-    CompilerInput input{.source = source, .path = "entity.zia"};
+    CompilerInput input{.source = source, .path = "class.zia"};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
@@ -114,7 +114,7 @@ TEST(ZiaTypes, EntityAsParameter) {
     const std::string source = R"(
 module Test;
 
-entity Frog {
+class Frog {
     expose Integer x;
 }
 
@@ -161,7 +161,7 @@ TEST(ZiaTypes, ValueAsParameterName) {
     const std::string source = R"(
 module Test;
 
-entity Board {
+class Board {
     List[Integer] items;
 
     expose func init() {
@@ -195,7 +195,7 @@ TEST(ZiaTypes, BooleanFieldAlignment) {
     const std::string source = R"(
 module Test;
 
-entity Game {
+class Game {
     expose Integer score;
     expose Boolean running;
     expose Boolean paused;

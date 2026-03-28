@@ -122,18 +122,48 @@ OpenGL natively supports [-1,1], so no correction is needed.
 
 ```
 src/runtime/graphics/
-├── rt_canvas3d.h              Public API declarations (all 5 types)
-├── rt_canvas3d_internal.h     Internal struct definitions
-├── rt_canvas3d.c              Canvas3D lifecycle + vtable dispatch
-├── rt_mesh3d.c                Mesh3D (construction, generators, OBJ loader)
-├── rt_camera3d.c              Camera3D (projection, view, orbit, ray cast)
-├── rt_material3d.c            Material3D (color, texture, shininess)
-├── rt_light3d.c               Light3D (directional, point, ambient)
-├── vgfx3d_backend.h           Backend vtable interface
-├── vgfx3d_backend_sw.c        Software rasterizer backend
-├── vgfx3d_backend_metal.m     Metal GPU backend (macOS)
-├── vgfx3d_backend_d3d11.c     D3D11 GPU backend (Windows)
-└── vgfx3d_backend_opengl.c    OpenGL 3.3 GPU backend (Linux)
+├── Core Rendering
+│   ├── rt_canvas3d.h/c            Canvas3D lifecycle + vtable dispatch
+│   ├── rt_canvas3d_internal.h     Internal struct definitions
+│   ├── rt_mesh3d.c                Mesh3D (construction, generators, OBJ loader, Clear)
+│   ├── rt_camera3d.c              Camera3D (projection, view, orbit, FPS, ray cast)
+│   ├── rt_material3d.c            Material3D (color, texture, shininess, maps)
+│   └── rt_light3d.c               Light3D (directional, point, ambient)
+├── Scene Graph
+│   ├── rt_scene3d.c/h             Scene3D + SceneNode3D hierarchy, frustum culling, LOD
+│   ├── rt_transform3d.c           Transform3D (standalone TRS transform)
+│   └── vgfx3d_frustum.c/h        Frustum culling math
+├── Physics
+│   ├── rt_physics3d.c/h           Physics3DWorld + Body3D (AABB/sphere/capsule)
+│   └── rt_raycast3d.c/h           Ray3D + RayHit3D intersection tests
+├── Animation
+│   ├── rt_skeleton3d.c/h          Skeleton3D + Animation3D + AnimPlayer3D
+│   ├── rt_morphtarget3d.c         MorphTarget3D blend shapes
+│   └── vgfx3d_skinning.c/h       Vertex skinning math
+├── Rendering Backends
+│   ├── vgfx3d_backend.h           Backend vtable interface
+│   ├── vgfx3d_backend_sw.c        Software rasterizer (always available)
+│   ├── vgfx3d_backend_metal.m     Metal GPU backend (macOS)
+│   ├── vgfx3d_backend_d3d11.c     D3D11 GPU backend (Windows)
+│   └── vgfx3d_backend_opengl.c    OpenGL 3.3 GPU backend (Linux)
+├── Effects & Advanced
+│   ├── rt_particles3d.c/h         Particles3D emitter system
+│   ├── rt_postfx3d.c/h            PostFX3D (bloom, FXAA, tonemap, vignette, etc.)
+│   ├── rt_sprite3d.c/h            Sprite3D billboards (cached mesh/material)
+│   ├── rt_decal3d.c               Decal3D surface projections
+│   ├── rt_water3d.c               Water3D animated surface
+│   ├── rt_terrain3d.c             Terrain3D heightmap terrain
+│   ├── rt_instbatch3d.c           InstanceBatch3D instanced rendering
+│   ├── rt_cubemap3d.c             CubeMap3D environment/skybox
+│   ├── rt_rendertarget3d.c        RenderTarget3D offscreen rendering
+│   └── rt_texatlas3d.c            TextureAtlas3D texture arrays
+├── Navigation & Paths
+│   ├── rt_navmesh3d.c/h           NavMesh3D A* pathfinding
+│   └── rt_path3d.c                Path3D spline following
+├── Asset Loading
+│   └── rt_fbx_loader.c/h          FBX binary format loader
+└── Audio
+    └── rt_audio3d.c/h             Audio3D spatial audio
 ```
 
 ## Shader Architecture

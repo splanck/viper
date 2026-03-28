@@ -14,7 +14,7 @@ bind Fmt = Viper.Fmt;
 // SEQUENCE ENTITY
 //=============================================================================
 
-entity Sequence {
+class Sequence {
     expose String name;
     expose Integer currentValue;    // Current value (last returned by NEXTVAL)
     expose Integer startValue;      // START WITH value
@@ -132,7 +132,7 @@ entity Sequence {
 // Sentinel value for sequence errors (sequence exhausted, not yet called, etc.)
 final SEQ_ERROR_SENTINEL = 0 - 2147483647;
 
-entity SequenceManager {
+class SequenceManager {
     expose List[Sequence] sequences;
 
     expose func init() {

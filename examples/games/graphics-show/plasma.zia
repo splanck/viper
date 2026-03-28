@@ -45,7 +45,7 @@ func fastSin(x: Integer) -> Integer {
 }
 
 // Plasma renderer using a pixel buffer for speed
-entity PlasmaRenderer {
+class PlasmaRenderer {
     expose Pixels buffer;
     expose List[Integer] palette;
     expose Integer time;

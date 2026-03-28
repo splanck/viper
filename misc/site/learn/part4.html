@@ -70,7 +70,7 @@
         <li><a href="#mental-models-for-game-development">Mental Models for Game Development</a></li>
         <li><a href="#project-structure">Project Structure</a></li>
         <li><a href="#step-1-configuration">Step 1: Configuration</a></li>
-        <li><a href="#step-2-the-frog-player-entity">Step 2: The Frog (Player Entity)</a></li>
+        <li><a href="#step-2-the-frog-player-class">Step 2: The Frog (Player Entity)</a></li>
         <li><a href="#step-3-vehicles-road-hazards">Step 3: Vehicles (Road Hazards)</a></li>
         <li><a href="#step-4-platforms-river-objects">Step 4: Platforms (River Objects)</a></li>
         <li><a href="#step-5-game-state">Step 5: Game State</a></li>
@@ -855,12 +855,12 @@ module GameFramework;
 bind Viper.Graphics;
 bind Viper.Time;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 }
 
-entity GameObject {
+class GameObject {
     position: Vec2;
     size: Vec2;
     color: Color;
@@ -872,7 +872,7 @@ entity GameObject {
     }
 
     func update(dt: Number) {
-        // Override in child entities for custom behavior
+        // Override in child classes for custom behavior
     }
 
     func draw(canvas: Canvas) {
@@ -889,7 +889,7 @@ entity GameObject {
     }
 }
 
-entity Game {
+class Game {
     canvas: Canvas;
     objects: List[GameObject];
     running: Boolean;
@@ -960,7 +960,7 @@ func start() {
 <p>This framework provides:</p>
 <ul>
 <li><strong>Automatic timing</strong> with delta time</li>
-<li><strong>Object management</strong> for game entities</li>
+<li><strong>Object management</strong> for game classes</li>
 <li><strong>Collision detection</strong> between objects</li>
 <li><strong>Structured game loop</strong> separating concerns</li>
 </ul>
@@ -1636,7 +1636,7 @@ func applyDeadZoneSmooth(value: Number, threshold: Number) -&gt; Number {
 bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Math as Math;
 
-entity InputManager {
+class InputManager {
     func getMoveX() -&gt; Number {
         // Check keyboard first
         if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
@@ -1711,7 +1711,7 @@ while gameRunning {
 <pre><code data-lang="rust">
 bind Keyboard = Viper.Input.Keyboard;
 
-entity KeyMap {
+class KeyMap {
     hide bindings: Map[String, Integer];
 
     expose func init() {
@@ -1767,7 +1767,7 @@ func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
 <p>Professional games use <em>input buffering</em> to feel responsive. The idea: remember recent inputs and use them when they become valid.</p>
 <p>Imagine you&#x27;re playing a platformer. Your character is falling toward the ground. You press jump slightly before landing. Without buffering, the jump is ignored because you weren&#x27;t on the ground yet. With buffering, the game remembers you pressed jump and executes it the moment you land.</p>
 <pre><code data-lang="rust">
-entity InputBuffer {
+class InputBuffer {
     hide jumpBufferTime: Number;
     hide jumpBufferDuration: Number = 0.1;  // 100ms buffer window
 
@@ -1810,7 +1810,7 @@ while gameRunning {
 <h3 id="coyote-time">Coyote Time</h3>
 <p>A related technique is <em>coyote time</em> (named after cartoon coyotes who don&#x27;t fall until they look down). It&#x27;s the opposite of input buffering: instead of remembering inputs, you remember when the player was last grounded.</p>
 <pre><code data-lang="rust">
-entity CoyoteTime {
+class CoyoteTime {
     hide timeLeftGrounded: Number;
     hide coyoteDuration: Number = 0.1;  // 100ms grace period
     hide wasGrounded: Boolean = false;
@@ -1837,7 +1837,7 @@ entity CoyoteTime {
 <h3 id="debouncing">Debouncing</h3>
 <p>Some inputs shouldn&#x27;t repeat too quickly. <em>Debouncing</em> prevents rapid-fire activation:</p>
 <pre><code data-lang="rust">
-entity Debouncer {
+class Debouncer {
     hide cooldowns: Map[String, Number];
 
     expose func init() {
@@ -1889,7 +1889,7 @@ bind Viper.Graphics;
 bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Time;
 
-value Player {
+struct Player {
     x: Number;
     y: Number;
     vx: Number;
@@ -2095,7 +2095,7 @@ if Keyboard.IsPressed(KEY_SPACE) { jump(); }
 <p><strong>Better:</strong></p>
 <pre><code data-lang="rust">
 // Centralized input handling
-entity InputManager {
+class InputManager {
     func getMoveDirection() -&gt; Vec2 { ... }
     func isJumpPressed() -&gt; Boolean { ... }
 }
@@ -2299,7 +2299,7 @@ END IF
 <h1 id="chapter-21-building-a-game">Chapter 21: Building a Game</h1>
 <p>There is something magical about building a game. When you write a calculator or a file browser, it works and that is satisfying. But when you build a game, something different happens. You see a character move across the screen because you told it to. You watch a player narrowly avoid danger and feel your heart race, even though you built the danger yourself. You create a small world that responds to input, that challenges and rewards, that tells a story without words.</p>
 <p>This chapter is where everything comes together. We will build a complete game from scratch: Frogger, the classic arcade game where you guide a frog across a busy road and a dangerous river. This is not a toy example or a simplified demo. By the end of this chapter, you will have a playable game with multiple lives, scoring, progressive difficulty, and polish. More importantly, you will understand how games are structured and why they work the way they do.</p>
-<p>Every skill you have learned converges here. Variables store game state. Functions organize behavior. Collections manage groups of enemies. Decisions determine what happens when objects collide. Loops drive the game forward frame by frame. Values represent entities in your world. This is the payoff for all those chapters of learning fundamentals. You are about to see how those fundamentals combine into something people actually want to play.</p>
+<p>Every skill you have learned converges here. Variables store game state. Functions organize behavior. Collections manage groups of enemies. Decisions determine what happens when objects collide. Loops drive the game forward frame by frame. Values represent classes in your world. This is the payoff for all those chapters of learning fundamentals. You are about to see how those fundamentals combine into something people actually want to play.</p>
 <p>---</p>
 <h2 id="why-frogger">Why Frogger?</h2>
 <p>Frogger is a brilliant learning project. Released by Konami in 1981, it became an arcade sensation because its rules are immediately understandable yet create genuine challenge and tension.</p>
@@ -2330,11 +2330,11 @@ while game is running:
 <li><strong>Render</strong> reads the current state and draws it to the screen. It never changes anything, just translates data into pictures.</li>
 </ul>
 <p>This separation makes code easier to reason about. When something draws wrong, you know the bug is in rendering. When objects move incorrectly, you look at update logic. When controls feel wrong, you examine input handling.</p>
-<h3 id="entities-the-things-in-your-world">Entities: The Things in Your World</h3>
-<p>Games are full of things: players, enemies, obstacles, collectibles, projectiles, platforms. We call these entities. An entity is anything that exists in your game world and needs to be tracked.</p>
-<p>In Zia, we represent entities using values and sometimes entity types. Think of a value as a filled-out form describing something:</p>
+<h3 id="classes-the-things-in-your-world">Entities: The Things in Your World</h3>
+<p>Games are full of things: players, enemies, obstacles, collectibles, projectiles, platforms. We call these classes. An class is anything that exists in your game world and needs to be tracked.</p>
+<p>In Zia, we represent classes using values and sometimes class types. Think of a value as a filled-out form describing something:</p>
 <pre><code data-lang="rust">
-value Frog {
+struct Frog {
     x: Number;           // Position across the screen
     y: Number;           // Position up and down
     alive: Boolean;      // Is the frog currently alive?
@@ -2366,7 +2366,7 @@ Rectangle A overlaps Rectangle B when:
 <h2 id="mental-models-for-game-development">Mental Models for Game Development</h2>
 <p>Before we build, let us develop some mental pictures that will help you think about game code.</p>
 <h3 id="the-world-as-a-spreadsheet">The World as a Spreadsheet</h3>
-<p>Imagine a spreadsheet where each row is an entity and each column is a property. One row for the frog with columns for x, y, alive, cooldown. Many rows for vehicles, each with x, y, width, speed, color. Every frame, you read this spreadsheet, calculate new values, and write an updated spreadsheet. Rendering is looking at the spreadsheet and drawing what it describes.</p>
+<p>Imagine a spreadsheet where each row is a class and each column is a property. One row for the frog with columns for x, y, alive, cooldown. Many rows for vehicles, each with x, y, width, speed, color. Every frame, you read this spreadsheet, calculate new values, and write an updated spreadsheet. Rendering is looking at the spreadsheet and drawing what it describes.</p>
 <p>This is why state and rendering are separate. The spreadsheet is the truth. The screen is just a visualization.</p>
 <h3 id="time-as-slices">Time as Slices</h3>
 <p>Games do not simulate continuous time. They simulate discrete moments, typically 60 per second. Between moments, the game world is frozen. Your code runs, updates state, renders, and the world jumps to a new configuration. Like a movie, games are an illusion of motion created by showing many still images rapidly.</p>
@@ -2399,7 +2399,7 @@ frogger/
 <li><strong>config.zia</strong> holds all magic numbers in one place. Want to make the screen bigger? Change it there. Want to adjust scoring? One file.</li>
 <li><strong>frog.zia</strong> knows everything about how a frog works but nothing about cars, logs, or scoring.</li>
 <li><strong>vehicle.zia</strong> knows how cars and trucks move but nothing about frogs or platforms.</li>
-<li><strong>game.zia</strong> orchestrates everything, knowing about all entity types and how they interact.</li>
+<li><strong>game.zia</strong> orchestrates everything, knowing about all class types and how they interact.</li>
 <li><strong>renderer.zia</strong> only draws. It never changes game state.</li>
 </ul>
 <p>This separation means you can modify one aspect without breaking others. Adding a new vehicle type only touches vehicle.zia and game.zia, not the frog code or renderer.</p>
@@ -2449,7 +2449,7 @@ expose final STARTING_LIVES = 3;
 <p>Notice how every value has a comment explaining what it does. When you come back to this code in a month, you will thank yourself. Also notice the organization: screen setup, then zones, then timing, then scoring. Related values are grouped together.</p>
 <p>The <code>expose</code> keyword makes these constants accessible from other modules. The <code>final</code> keyword means they cannot be changed after being set. Together, they create public constants that any part of the game can reference.</p>
 <p>---</p>
-<h2 id="step-2-the-frog-player-entity">Step 2: The Frog (Player Entity)</h2>
+<h2 id="step-2-the-frog-player-class">Step 2: The Frog (Player Entity)</h2>
 <p>The frog is the heart of the game. It is what the player controls, what they identify with. Let us build it carefully.</p>
 <pre><code data-lang="rust">
 // frog.zia
@@ -2458,7 +2458,7 @@ module Frog;
 bind Config;
 
 // The Frog value represents everything we need to know about the player
-expose value Frog {
+expose struct Frog {
     // Pixel coordinates for smooth movement and drawing
     x: Number;
     y: Number;
@@ -2651,7 +2651,7 @@ module Platform;
 
 bind Config;
 
-expose value Platform {
+expose struct Platform {
     x: Number;
     y: Number;
     width: Number;
@@ -2707,7 +2707,7 @@ bind Frog;
 bind Vehicle;
 bind Platform;
 
-expose value GameState {
+expose struct GameState {
     frog: Frog.Frog;                    // The player
     vehicles: List[Vehicle.Vehicle];        // All cars and trucks
     platforms: List[Platform.Platform];     // All logs and turtles
@@ -2869,7 +2869,7 @@ expose func update(state: GameState, dt: Number) -&gt; GameState {
     return s;
 }
 </code></pre>
-<p>Notice the clear sequence: update entities, check interactions, handle consequences. Each step builds on the previous. We update positions first so collision checks use current positions. We check collisions before processing death so we have accurate death reasons. We handle level completion last because it resets so much state.</p>
+<p>Notice the clear sequence: update classes, check interactions, handle consequences. Each step builds on the previous. We update positions first so collision checks use current positions. We check collisions before processing death so we have accurate death reasons. We handle level completion last because it resets so much state.</p>
 <h3 id="collision-detection">Collision Detection</h3>
 <p>The collision system separates road and river logic:</p>
 <pre><code data-lang="rust">
@@ -3179,7 +3179,7 @@ func start() {
 <h2 id="what-we-built">What We Built</h2>
 <p>This complete game demonstrates professional game development concepts:</p>
 <p><strong>Modular architecture.</strong> Each file handles one responsibility. You can understand the frog without knowing about vehicles, or study rendering without understanding collision detection.</p>
-<p><strong>Clear data structures.</strong> Values represent entities with explicit fields. No magic, no hidden state. You can print any value and understand what it means.</p>
+<p><strong>Clear data structures.</strong> Values represent classes with explicit fields. No magic, no hidden state. You can print any value and understand what it means.</p>
 <p><strong>The game loop pattern.</strong> Input, update, render, repeat. This pattern works for any interactive application, from games to simulations to creative tools.</p>
 <p><strong>Collision detection.</strong> Point-in-rectangle checks determine interactions. Simple but effective for tile-based games.</p>
 <p><strong>State management.</strong> A single GameState value holds everything. Changes are explicit and traceable.</p>
@@ -3377,7 +3377,7 @@ var frogLeft = Sprite.Load(&quot;frog_left.png&quot;);
 var frogRight = Sprite.Load(&quot;frog_right.png&quot;);
 
 // Track facing direction
-value Frog {
+struct Frog {
     // ... existing fields ...
     facing: Direction;
 }
@@ -3419,7 +3419,7 @@ if state.score &gt; highScore {
 <h3 id="time-limit">Time Limit</h3>
 <p>Add urgency with a countdown timer:</p>
 <pre><code data-lang="rust">
-value GameState {
+struct GameState {
     // ... existing fields ...
     timeRemaining: Number;
 }
@@ -3441,7 +3441,7 @@ canvas.Text(500, Config.SCREEN_HEIGHT - 10,
 <h3 id="submerging-turtles">Submerging Turtles</h3>
 <p>In the original Frogger, turtles periodically submerge, creating temporary danger:</p>
 <pre><code data-lang="rust">
-value Platform {
+struct Platform {
     // ... existing fields ...
     isTurtle: Boolean;
     submergeTimer: Number;
@@ -3472,7 +3472,7 @@ if Platform.containsPoint(platform, frogX, frogY) {
 <h3 id="two-player-mode">Two-Player Mode</h3>
 <p>Add a second frog controlled by WASD, competing for score:</p>
 <pre><code data-lang="rust">
-value GameState {
+struct GameState {
     frog1: Frog;  // Arrow keys
     frog2: Frog;  // WASD keys
     score1: Integer;
@@ -3484,7 +3484,7 @@ value GameState {
 <h3 id="power-ups">Power-Ups</h3>
 <p>Add collectible items that appear occasionally:</p>
 <pre><code data-lang="rust">
-value PowerUp {
+struct PowerUp {
     x: Number;
     y: Number;
     kind: PowerUpKind;  // EXTRA_LIFE, SLOW_MOTION, INVINCIBILITY
@@ -3890,7 +3890,7 @@ bind Viper.Network;
 bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
-value Weather {
+struct Weather {
     temperature: Number;
     conditions: String;
     humidity: Number;
@@ -4107,7 +4107,7 @@ bind Viper.Collections;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity ChatServer {
+class ChatServer {
     // The server socket that accepts new connections
     hide server: TcpServer;
 
@@ -4242,7 +4242,7 @@ bind Thread = Viper.Threads.Thread;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity ChatClient {
+class ChatClient {
     hide socket: TcpSocket;
     hide username: String;
     hide running: Boolean;
@@ -4396,7 +4396,7 @@ bind Viper.Time;
 bind Convert = Viper.Core.Convert;
 
 // Player state that we&#x27;ll send frequently
-value PlayerState {
+struct PlayerState {
     id: Integer;
     x: Number;
     y: Number;
@@ -4405,7 +4405,7 @@ value PlayerState {
     timestamp: Integer;  // When this state was captured
 }
 
-entity GameNetwork {
+class GameNetwork {
     hide socket: UdpSocket;
     hide serverAddress: String;
     hide serverPort: Integer;
@@ -4474,7 +4474,7 @@ func unpackPlayerState(data: String) -&gt; PlayerState {
 bind Viper.Network;
 bind Viper.Terminal;
 
-entity WebSocketClient {
+class WebSocketClient {
     hide ws: WebSocket;
     hide connected: Boolean;
 
@@ -4916,7 +4916,7 @@ var contents = File.Read(&quot;/data/&quot; + filename);
 <pre><code data-lang="rust">
 bind Viper.Time;
 
-entity RateLimitedServer {
+class RateLimitedServer {
     // Track requests per IP address
     hide requestCounts: Map[String, Integer];
     hide lastReset: Integer;
@@ -5112,7 +5112,7 @@ bind Viper.Time;
 bind Viper.Terminal;
 
 // Data type for weather information
-value CityWeather {
+struct CityWeather {
     city: String;
     temperature: Number;
     conditions: String;
@@ -5121,8 +5121,8 @@ value CityWeather {
     lastUpdated: Integer;
 }
 
-// Service entity that handles weather API calls
-entity WeatherService {
+// Service class that handles weather API calls
+class WeatherService {
     hide apiKey: String;
     hide baseUrl: String;
     hide cache: Map[String, CityWeather];
@@ -5346,7 +5346,7 @@ UDP_CLOSE udp
 <h2 id="why-data-formats-matter">Why Data Formats Matter</h2>
 <p>Imagine you are building a game. Your player has a name, a level, health points, an inventory of items, and a position on the map:</p>
 <pre><code data-lang="rust">
-value Player {
+struct Player {
     name: String;
     level: Integer;
     health: Number;
@@ -5354,7 +5354,7 @@ value Player {
     position: Position;
 }
 
-value Position {
+struct Position {
     x: Number;
     y: Number;
 }
@@ -5377,7 +5377,7 @@ value Position {
 <li><strong>Different trips might need different packing.</strong> A weekend trip and a month-long journey require different approaches.</li>
 </ul>
 <h3 id="the-translation-metaphor">The Translation Metaphor</h3>
-<p>Think of serialization as translation between languages. Your program thinks in &quot;Zia&quot; --- it has entities, values, arrays, and functions. A JSON file thinks in &quot;JSON&quot; --- it has objects, arrays, strings, and numbers. An XML file thinks in &quot;XML&quot; --- it has elements, attributes, and text content.</p>
+<p>Think of serialization as translation between languages. Your program thinks in &quot;Zia&quot; --- it has classes, values, arrays, and functions. A JSON file thinks in &quot;JSON&quot; --- it has objects, arrays, strings, and numbers. An XML file thinks in &quot;XML&quot; --- it has elements, attributes, and text content.</p>
 <p>To save your player to JSON, you must translate from Zia to JSON:</p>
 <ul>
 <li>A <code>value</code> becomes a JSON object</li>
@@ -5463,7 +5463,7 @@ Email: alice@example.com
 <h3 id="the-philosophy-of-json">The Philosophy of JSON</h3>
 <p>JSON was designed to be simple. It has only a handful of concepts, all borrowed from common programming constructs:</p>
 <ul>
-<li>Objects (like dictionaries or entities)</li>
+<li>Objects (like dictionaries or classes)</li>
 <li>Arrays (ordered lists)</li>
 <li>Strings, numbers, booleans, and null</li>
 </ul>
@@ -5663,10 +5663,10 @@ Terminal.Say(jsonText);
 }
 </code></pre>
 <p>This is the same data, just formatted with indentation and newlines for human eyes.</p>
-<h3 id="converting-between-entities-and-json">Converting Between Entities and JSON</h3>
-<p>For clean code, add serialization methods to your entities:</p>
+<h3 id="converting-between-classes-and-json">Converting Between Entities and JSON</h3>
+<p>For clean code, add serialization methods to your classes:</p>
 <pre><code data-lang="rust">
-entity Player {
+class Player {
     name: String;
     level: Integer;
     health: Number;
@@ -5863,7 +5863,7 @@ row.Set(&quot;notes&quot;, &quot;Line 1\nLine 2&quot;); // Has newline, will be 
 <h2 id="step-by-step-traces-serialization-and-parsing-in-action">Step-by-Step Traces: Serialization and Parsing in Action</h2>
 <p>Understanding data formats deeply requires tracing through the process step by step. Let us do that for both serialization and parsing.</p>
 <h3 id="trace-serializing-a-player-to-json">Trace: Serializing a Player to JSON</h3>
-<p>We start with a Player entity in memory:</p>
+<p>We start with a Player class in memory:</p>
 <pre><code data-lang="rust">
 var player = Player();
 player.name = &quot;Hero&quot;;
@@ -6121,7 +6121,7 @@ bind Viper.Terminal;
 // Data Model
 // ============================================
 
-entity Contact {
+class Contact {
     name: String;
     phone: String;
     email: String;
@@ -6143,7 +6143,7 @@ entity Contact {
     }
 }
 
-entity ContactBook {
+class ContactBook {
     hide contacts: List[Contact];
     hide filename: String;
 
@@ -6323,7 +6323,7 @@ func start() {
 <p>This example demonstrates:</p>
 <ul>
 <li><strong>Entity-to-JSON serialization</strong> with <code>toJSON()</code> methods</li>
-<li><strong>JSON-to-entity parsing</strong> with <code>fromJSON()</code> methods</li>
+<li><strong>JSON-to-class parsing</strong> with <code>fromJSON()</code> methods</li>
 <li><strong>Automatic persistence</strong> that saves after every change</li>
 <li><strong>Graceful startup</strong> that loads existing data if available</li>
 <li><strong>Clean separation</strong> between data model and user interface</li>
@@ -6690,7 +6690,7 @@ final VERSION = 1;
 bind Viper.IO;
 bind Viper.Terminal;
 
-value GameSave {
+struct GameSave {
     version: Integer;
     playerName: String;
     level: Integer;
@@ -6775,7 +6775,7 @@ bind Json = Viper.Text.Json;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-entity Config {
+class Config {
     hide data: JSONValue;
     hide filename: String;
     hide dirty: Boolean;

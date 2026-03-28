@@ -32,7 +32,7 @@ namespace {
 enum class MethodReturnKind {
     ElementType, ///< Returns the collection's element type
     KeyType,     ///< Returns the map's key type
-    ValueType,   ///< Returns the map's value type
+    ValueType,   ///< Returns the map's struct type
     Integer,     ///< Returns Integer
     Boolean,     ///< Returns Boolean
     Void,        ///< Returns Void
@@ -76,7 +76,7 @@ const CollectionMethodInfo listMethods[] = {
 
 /// @brief Map methods and their return types.
 const CollectionMethodInfo mapMethods[] = {
-    // Methods returning value type
+    // Methods returning struct type
     {"get", MethodReturnKind::ValueType},
     {"getOr", MethodReturnKind::ValueType},
     // Methods returning Void
@@ -139,7 +139,7 @@ const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
 
 /// @brief Resolve a return type from a MethodReturnKind.
 /// @param kind The return kind.
-/// @param baseType The collection type (for element/key/value type resolution).
+/// @param baseType The collection type (for element/key/struct type resolution).
 /// @return The resolved type.
 TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType) {
     switch (kind) {
@@ -452,8 +452,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
-        if (currentSelfType_ && (currentSelfType_->kind == TypeKindSem::Entity ||
-                                 currentSelfType_->kind == TypeKindSem::Value)) {
+        if (currentSelfType_ && (currentSelfType_->kind == TypeKindSem::Class ||
+                                 currentSelfType_->kind == TypeKindSem::Struct)) {
             Symbol *local = currentScope_->lookupLocal(identExpr->name);
             if (!local || local->kind == Symbol::Kind::Method) {
                 std::string resolvedOwner;
@@ -570,7 +570,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     return types::list(types::unknown());
                 }
                 if (funcType->name == "Viper.Collections.Map") {
-                    // Return a Map type with unknown key/value types
+                    // Return a Map type with unknown key/struct types
                     return types::map(types::unknown(), types::unknown());
                 }
                 if (funcType->name == "Viper.Collections.Set") {
@@ -590,11 +590,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
         if (fieldExpr->base->kind == ExprKind::SuperExpr && currentSelfType_ &&
-            currentSelfType_->kind == TypeKindSem::Entity) {
-            auto entityIt = entityDecls_.find(currentSelfType_->name);
-            if (entityIt != entityDecls_.end() && !entityIt->second->baseClass.empty()) {
+            currentSelfType_->kind == TypeKindSem::Class) {
+            auto classIt = classDecls_.find(currentSelfType_->name);
+            if (classIt != classDecls_.end() && !classIt->second->baseClass.empty()) {
                 std::string resolvedOwner;
-                if (MethodDecl *method = resolveMethodOverload(entityIt->second->baseClass,
+                if (MethodDecl *method = resolveMethodOverload(classIt->second->baseClass,
                                                                fieldExpr->field,
                                                                argTypes,
                                                                expr->loc,
@@ -622,7 +622,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         };
 
         if (baseType &&
-            (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity ||
+            (baseType->kind == TypeKindSem::Struct || baseType->kind == TypeKindSem::Class ||
              baseType->kind == TypeKindSem::Interface)) {
             std::string resolvedOwner;
             if (MethodDecl *method =
@@ -926,7 +926,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     }
 
     // Could be a constructor call (Type(args))
-    if (calleeType->kind == TypeKindSem::Value || calleeType->kind == TypeKindSem::Entity) {
+    if (calleeType->kind == TypeKindSem::Struct || calleeType->kind == TypeKindSem::Class) {
         return calleeType;
     }
 

@@ -82,6 +82,14 @@ void *rt_mesh3d_new(void) {
     return m;
 }
 
+void rt_mesh3d_clear(void *obj) {
+    if (!obj)
+        return;
+    rt_mesh3d *m = (rt_mesh3d *)obj;
+    m->vertex_count = 0;
+    m->index_count = 0;
+}
+
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v) {
     if (!obj)

@@ -19,7 +19,7 @@
 /// - `getMembersOf(type)`   — fields + methods of a user-defined type, or
 ///                            delegates to getRuntimeMembers() for Ptr types
 /// - `getRuntimeMembers(cls)` — methods + properties from the RuntimeRegistry
-/// - `getTypeNames()`       — names of all entity/value/interface declarations
+/// - `getTypeNames()`       — names of all class/struct/interface declarations
 /// - `getBoundModuleNames()` — short aliases from `bind Alias = Namespace;`
 /// - `getModuleExports(mod)` — exported symbols of a bound file module
 ///
@@ -45,7 +45,7 @@ std::vector<Symbol> Sema::getGlobalSymbols() const {
         return result;
 
     // scopes_[0] is the global (module-level) scope created in Sema::analyze().
-    // It contains: top-level funcs, entity/value/interface ctors, bound runtime
+    // It contains: top-level funcs, class/struct/interface ctors, bound runtime
     // identifiers, and global variables.  Local variables inside function bodies
     // were popped off the scope stack when their blocks were analyzed.
     for (const auto &[name, sym] : scopes_[0]->getSymbols()) {
@@ -70,7 +70,7 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
 
     // For user-defined types, look up in fieldTypes_ and methodTypes_ using
     // "TypeName.memberName" key format (established by Sema_Decl.cpp).
-    if (type->kind != TypeKindSem::Entity && type->kind != TypeKindSem::Value &&
+    if (type->kind != TypeKindSem::Class && type->kind != TypeKindSem::Struct &&
         type->kind != TypeKindSem::Interface) {
         return result;
     }
@@ -148,7 +148,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
         result.push_back(sym);
     }
 
-    // Properties — represent as Field symbols with the property's value type.
+    // Properties — represent as Field symbols with the property's struct type.
     for (const auto &prop : rtClass->properties) {
         if (!prop.name)
             continue;
@@ -174,11 +174,11 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
 
 std::vector<std::string> Sema::getTypeNames() const {
     std::vector<std::string> names;
-    names.reserve(entityDecls_.size() + valueDecls_.size() + interfaceDecls_.size());
+    names.reserve(classDecls_.size() + structDecls_.size() + interfaceDecls_.size());
 
-    for (const auto &[name, _] : entityDecls_)
+    for (const auto &[name, _] : classDecls_)
         names.push_back(name);
-    for (const auto &[name, _] : valueDecls_)
+    for (const auto &[name, _] : structDecls_)
         names.push_back(name);
     for (const auto &[name, _] : interfaceDecls_)
         names.push_back(name);

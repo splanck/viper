@@ -24,7 +24,7 @@ bind Viper.Game.ParticleEmitter as PE;
 bind "./config";
 bind "./palette";
 
-entity ParticleSystem {
+class ParticleSystem {
     hide Palette pal;
     hide PE emitter;
 

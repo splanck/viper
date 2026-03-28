@@ -111,7 +111,7 @@ Sprite, tilemap, and camera support for 2D games:
 
 - `Sprite` — Animated sprites with multiple frames, collision detection, origin point
 - `Tilemap` — Tile-based level rendering with configurable tile size
-- `Camera` — Viewport scrolling, entity following, world/screen coordinate conversion
+- `Camera` — Viewport scrolling, class following, world/screen coordinate conversion
 - `Color` — RGB/HSL conversion, lerp, brighten/darken utilities
 
 #### I/O Additions (`Viper.IO.*`)

@@ -35,7 +35,7 @@ final ACT_SWITCH  = "switch_scene";
 // ============================================================================
 // Scene 1: Red Screen
 // ============================================================================
-entity RedScene implements IScene {
+class RedScene implements IScene {
     hide GameBase game;
     hide IScene nextScene;
     hide Boolean hasNext;
@@ -83,7 +83,7 @@ entity RedScene implements IScene {
 // ============================================================================
 // Scene 2: Blue Screen
 // ============================================================================
-entity BlueScene implements IScene {
+class BlueScene implements IScene {
     hide GameBase game;
     hide IScene nextScene;
     hide Boolean hasNext;
@@ -131,7 +131,7 @@ entity BlueScene implements IScene {
 // ============================================================================
 // TestGame — Extends GameBase
 // ============================================================================
-entity TestGame extends GameBase {
+class TestGame extends GameBase {
     expose RedScene redScene;
     expose BlueScene blueScene;
 

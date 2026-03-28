@@ -4085,7 +4085,7 @@ func testSimple() {
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
-    Say(report);  // Report entity should override toString() for display
+    Say(report);  // Report class should override toString() for display
 }
 </code></pre>
 <p>With simple inputs, you can trace through the code manually and spot where things go wrong.</p>
@@ -4632,7 +4632,7 @@ var ys = [20.3, 15.0, 25.5, 30.0];
 <h2 id="the-solution-grouping-data-with-structures">The Solution: Grouping Data with Structures</h2>
 <p>A <em>structure</em> (sometimes called a <em>struct</em>, <em>record</em>, or <em>value type</em>) lets you create a new type that bundles multiple pieces of data together. Here&#x27;s our point:</p>
 <pre><code data-lang="rust">
-value Point {
+struct Point {
     x: Number;
     y: Number;
 }
@@ -4688,14 +4688,14 @@ Table: Points
 |  -5.0  |  12.0  |  &lt;- another point
 +--------+--------+
 </code></pre>
-<p>The structure definition (<code>value Point { x: Number; y: Number; }</code>) defines the columns. Each actual <code>Point</code> value is one row.</p>
+<p>The structure definition (<code>struct Point { x: Number; y: Number; }</code>) defines the columns. Each actual <code>Point</code> value is one row.</p>
 <p>---</p>
 <h2 id="real-world-examples-why-grouping-matters">Real-World Examples: Why Grouping Matters</h2>
 <p>Before we dive into syntax details, let&#x27;s see why structures match how we think about the world.</p>
 <h3 id="a-person-has-multiple-attributes">A Person Has Multiple Attributes</h3>
 <p>In real life, you don&#x27;t think of a person as &quot;a name floating in space, plus an age floating somewhere else, plus an email living in another dimension.&quot; A person is a unified whole with various attributes. Alice is not three separate things — she&#x27;s one person who has a name (Alice), an age (30), and an email (alice@example.com).</p>
 <pre><code data-lang="rust">
-value Person {
+struct Person {
     name: String;
     age: Integer;
     email: String;
@@ -4707,7 +4707,7 @@ var alice = Person { name: &quot;Alice&quot;, age: 30, email: &quot;alice@exampl
 <h3 id="a-rectangle-is-defined-by-its-dimensions">A Rectangle Is Defined by Its Dimensions</h3>
 <p>A rectangle isn&#x27;t &quot;a width&quot; and &quot;a height.&quot; It&#x27;s a shape that has both properties:</p>
 <pre><code data-lang="rust">
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -4717,7 +4717,7 @@ var screen = Rectangle { width: 1920.0, height: 1080.0 };
 <h3 id="a-date-combines-year-month-and-day">A Date Combines Year, Month, and Day</h3>
 <p>January 15, 2024 isn&#x27;t three separate numbers. It&#x27;s a date — one conceptual unit:</p>
 <pre><code data-lang="rust">
-value Date {
+struct Date {
     year: Integer;
     month: Integer;
     day: Integer;
@@ -4728,7 +4728,7 @@ var birthday = Date { year: 1990, month: 7, day: 4 };
 <h3 id="a-color-mixes-red-green-and-blue">A Color Mixes Red, Green, and Blue</h3>
 <p>A color like &quot;coral&quot; isn&#x27;t separate red, green, and blue values. It&#x27;s one color composed of those components:</p>
 <pre><code data-lang="rust">
-value Color {
+struct Color {
     red: Integer;
     green: Integer;
     blue: Integer;
@@ -4742,7 +4742,7 @@ var coral = Color { red: 255, green: 127, blue: 80 };
 <h3 id="defining-a-structure">Defining a Structure</h3>
 <p>Use the <code>value</code> keyword to define a new structure type:</p>
 <pre><code data-lang="rust">
-value TypeName {
+struct TypeName {
     field1: Type1;
     field2: Type2;
     // ... more fields
@@ -4750,7 +4750,7 @@ value TypeName {
 </code></pre>
 <p>Each field has a name and a type. Fields are separated by semicolons.</p>
 <pre><code data-lang="rust">
-value Book {
+struct Book {
     title: String;
     author: String;
     pageCount: Integer;
@@ -4794,7 +4794,7 @@ myBook.pageCount = 475;  // Added an appendix
 <p>One of the most important concepts to understand about structures is <em>value semantics</em>. When you assign one structure variable to another, or pass a structure to a function, you create a <em>copy</em> of the entire structure. Changes to the copy don&#x27;t affect the original.</p>
 <h3 id="assignment-creates-a-copy">Assignment Creates a Copy</h3>
 <pre><code data-lang="rust">
-value Point {
+struct Point {
     x: Number;
     y: Number;
 }
@@ -4873,7 +4873,7 @@ Say(p.x);  // 15.0
 <p>So far, we&#x27;ve defined structures with data. But behavior is just as important. A <code>Rectangle</code> should know how to calculate its own area. A <code>Point</code> should know how to compute the distance to another point.</p>
 <p>You can define <em>methods</em> inside a structure — functions that operate on that structure&#x27;s data:</p>
 <pre><code data-lang="rust">
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 
@@ -4935,7 +4935,7 @@ var area = rect.area();
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -4965,7 +4965,7 @@ Say(mid.y);  // 2.0
 <h3 id="methods-can-modify-self">Methods Can Modify `self`</h3>
 <p>Methods can change the structure&#x27;s fields:</p>
 <pre><code data-lang="rust">
-value Counter {
+struct Counter {
     count: Integer;
 
     func increment() {
@@ -4998,7 +4998,7 @@ Say(c.count);  // 0
 <h3 id="methods-can-return-new-instances">Methods Can Return New Instances</h3>
 <p>A common pattern is methods that return a new structure rather than modifying the original:</p>
 <pre><code data-lang="rust">
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -5035,7 +5035,7 @@ Say(p.x);  // 2.0
 <h3 id="building-hierarchies">Building Hierarchies</h3>
 <p>Consider modeling an address:</p>
 <pre><code data-lang="rust">
-value Address {
+struct Address {
     street: String;
     city: String;
     state: String;
@@ -5044,7 +5044,7 @@ value Address {
 </code></pre>
 <p>Now a <code>Person</code> can include an <code>Address</code>:</p>
 <pre><code data-lang="rust">
-value Person {
+struct Person {
     name: String;
     age: Integer;
     home: Address;
@@ -5085,7 +5085,7 @@ Say(alice.home.zipCode);   // &quot;62701&quot;
 <pre><code data-lang="rust">
 bind Viper.Math as Math;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 
@@ -5100,7 +5100,7 @@ value Vec2 {
     }
 }
 
-value Health {
+struct Health {
     current: Integer;
     maximum: Integer;
 
@@ -5127,7 +5127,7 @@ value Health {
     }
 }
 
-value Player {
+struct Player {
     name: String;
     position: Vec2;
     health: Health;
@@ -5181,7 +5181,7 @@ hero.health.current = 50;
 <h3 id="factory-functions">Factory Functions</h3>
 <p>Create a function that returns a structure with default values:</p>
 <pre><code data-lang="rust">
-value Config {
+struct Config {
     volume: Integer;
     difficulty: String;
     fullscreen: Boolean;
@@ -5208,7 +5208,7 @@ mySettings.fullscreen = true;
 <h3 id="multiple-factory-functions">Multiple Factory Functions</h3>
 <p>You can have different functions for different scenarios:</p>
 <pre><code data-lang="rust">
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -5239,7 +5239,7 @@ var display = screen(&quot;1080p&quot;);
 <h3 id="initializer-methods">Initializer Methods</h3>
 <p>Some structures benefit from having an <code>init</code> method pattern:</p>
 <pre><code data-lang="rust">
-value Circle {
+struct Circle {
     centerX: Number;
     centerY: Number;
     radius: Number;
@@ -5268,7 +5268,7 @@ func unitCircle() -&gt; Circle {
 <p>Too many fields:</p>
 <pre><code data-lang="rust">
 // This is unwieldy
-value Person {
+struct Person {
     firstName: String;
     lastName: String;
     birthYear: Integer;
@@ -5287,13 +5287,13 @@ value Person {
 </code></pre>
 <p>Better with nesting:</p>
 <pre><code data-lang="rust">
-value Date {
+struct Date {
     year: Integer;
     month: Integer;
     day: Integer;
 }
 
-value Address {
+struct Address {
     street: String;
     city: String;
     state: String;
@@ -5301,13 +5301,13 @@ value Address {
     country: String;
 }
 
-value Phone {
+struct Phone {
     countryCode: String;
     areaCode: String;
     number: String;
 }
 
-value Person {
+struct Person {
     firstName: String;
     lastName: String;
     birthday: Date;
@@ -5344,7 +5344,7 @@ value Person {
 bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
-value Card {
+struct Card {
     suit: String;    // &quot;Hearts&quot;, &quot;Diamonds&quot;, &quot;Clubs&quot;, &quot;Spades&quot;
     rank: String;    // &quot;2&quot;-&quot;10&quot;, &quot;J&quot;, &quot;Q&quot;, &quot;K&quot;, &quot;A&quot;
 
@@ -5391,7 +5391,7 @@ func start() {
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -5413,7 +5413,7 @@ value Point {
     }
 }
 
-value Rectangle {
+struct Rectangle {
     topLeft: Point;
     width: Number;
     height: Number;
@@ -5468,7 +5468,7 @@ func start() {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-value Student {
+struct Student {
     name: String;
     grades: List[Integer];
 
@@ -5556,7 +5556,7 @@ func start() {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-value Item {
+struct Item {
     name: String;
     weight: Number;
     value: Integer;
@@ -5566,7 +5566,7 @@ value Item {
     }
 }
 
-value Inventory {
+struct Inventory {
     items: List[Item];
     maxWeight: Number;
 
@@ -5648,7 +5648,7 @@ module GameDemo;
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 
@@ -5677,7 +5677,7 @@ value Vec2 {
     }
 }
 
-value Stats {
+struct Stats {
     health: Integer;
     maxHealth: Integer;
     attack: Integer;
@@ -5711,7 +5711,7 @@ value Stats {
     }
 }
 
-value Player {
+struct Player {
     name: String;
     position: Vec2;
     stats: Stats;
@@ -5743,7 +5743,7 @@ value Player {
     }
 }
 
-value Enemy {
+struct Enemy {
     name: String;
     position: Vec2;
     stats: Stats;
@@ -5860,7 +5860,7 @@ func start() {
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -5919,7 +5919,7 @@ func pointFromAngle(angle: Number, distance: Number) -&gt; Point {
 </code></pre>
 <h3 id="default-configurations">Default Configurations</h3>
 <pre><code data-lang="rust">
-value Config {
+struct Config {
     volume: Integer;
     difficulty: String;
 }
@@ -5935,7 +5935,7 @@ func hardConfig() -&gt; Config {
 <h3 id="builder-pattern">Builder Pattern</h3>
 <p>For structures with many optional fields, build them step by step:</p>
 <pre><code data-lang="rust">
-value Character {
+struct Character {
     name: String;
     health: Integer;
     attack: Integer;
@@ -5980,7 +5980,7 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -&gt; Boolean {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-value Person {
+struct Person {
     name: String;
     age: Integer;
 
@@ -6051,7 +6051,7 @@ p2.x = 99.0;
 <p><strong>Core Concepts:</strong></p>
 <ul>
 <li>Structures bundle related data under a single name</li>
-<li>Define with <code>value TypeName { fields... }</code></li>
+<li>Define with <code>struct TypeName { fields... }</code></li>
 <li>Create instances with <code>TypeName { field: value, ... }</code></li>
 <li>Access fields with <code>instance.field</code></li>
 </ul>
@@ -6174,7 +6174,7 @@ func renderItems() { ... }
 
 // Physics stuff
 func checkCollision(a: Rect, b: Rect) -&gt; Boolean { ... }
-func applyGravity(entity: Entity) { ... }
+func applyGravity(class: Entity) { ... }
 
 // Rendering stuff
 func clearScreen() { ... }
@@ -6594,7 +6594,7 @@ export func chasePlayer() {
 // position.zia — Shared types
 module Position;
 
-export value Vec2 {
+export struct Vec2 {
     x: Number;
     y: Number;
 }
@@ -6706,7 +6706,7 @@ func shouldEvict() -&gt; Boolean { ... }  // Internal helper
 <pre><code data-lang="rust">
 module Vec2;
 
-export value Vec2 {
+export struct Vec2 {
     x: Number;
     y: Number;
 }
@@ -6751,13 +6751,13 @@ export func normalize(v: Vec2) -&gt; Vec2 {
     return Vec2 { x: v.x / mag, y: v.y / mag };
 }
 </code></pre>
-<p><strong>player.zia</strong> — Player entity</p>
+<p><strong>player.zia</strong> — Player class</p>
 <pre><code data-lang="rust">
 module Player;
 
 bind Vec2;
 
-export value Player {
+export struct Player {
     name: String;
     position: Vec2.Vec2;
     health: Integer;
@@ -6827,13 +6827,13 @@ export func addScore(player: Player, points: Integer) -&gt; Player {
     };
 }
 </code></pre>
-<p><strong>enemy.zia</strong> — Enemy entity</p>
+<p><strong>enemy.zia</strong> — Enemy class</p>
 <pre><code data-lang="rust">
 module Enemy;
 
 bind Vec2;
 
-export value Enemy {
+export struct Enemy {
     position: Vec2.Vec2;
     damage: Integer;
     speed: Number;

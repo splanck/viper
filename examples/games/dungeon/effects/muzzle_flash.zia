@@ -5,7 +5,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind "../config";
 
-entity MuzzleFlash {
+class MuzzleFlash {
     hide Particles3D particles;
     hide Float flashTimer;
 

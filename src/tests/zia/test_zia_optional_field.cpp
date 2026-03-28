@@ -26,12 +26,12 @@ using namespace il::support;
 
 namespace {
 
-/// @brief Test simple entity field access (sanity check).
+/// @brief Test simple class field access (sanity check).
 TEST(ZiaOptionalField, SimpleFieldAccess) {
     const std::string src = R"(
 module Test;
 
-entity MyNode {
+class MyNode {
     expose String myLabel;
 
     func init(l: String) {
@@ -66,7 +66,7 @@ TEST(ZiaOptionalField, OptionalFieldAssignment) {
     const std::string src = R"(
 module Test;
 
-entity Container {
+class Container {
     expose String val;
     expose Container? other;
 
@@ -103,7 +103,7 @@ TEST(ZiaOptionalField, FieldAccessAfterNullCheck) {
     const std::string src = R"(
 module Test;
 
-entity Data {
+class Data {
     expose String text;
     expose Data? link;
 

@@ -133,7 +133,7 @@ Consider this problematic code:
 
 ```rust
 // Bad: Everything mixed together
-entity UserManager {
+class UserManager {
     func registerUser(email: String, password: String) {
         // Validate email format
         if !email.Contains("@") || !email.Contains(".") {
@@ -181,7 +181,7 @@ Now consider the separated version:
 
 ```rust
 // Good: Separate concerns
-entity EmailValidator {
+class EmailValidator {
     func validate(email: String) -> ValidationResult {
         if !email.Contains("@") {
             return ValidationResult.invalid("Missing @ symbol");
@@ -193,7 +193,7 @@ entity EmailValidator {
     }
 }
 
-entity PasswordValidator {
+class PasswordValidator {
     func validate(password: String) -> ValidationResult {
         if password.Length < 8 {
             return ValidationResult.invalid("Must be at least 8 characters");
@@ -202,13 +202,13 @@ entity PasswordValidator {
     }
 }
 
-entity PasswordHasher {
+class PasswordHasher {
     func hash(password: String) -> String {
         return Crypto.sha256(password);
     }
 }
 
-entity UserRepository {
+class UserRepository {
     hide db: Database;
 
     expose func init(db: Database) {
@@ -223,7 +223,7 @@ entity UserRepository {
     }
 }
 
-entity WelcomeEmailSender {
+class WelcomeEmailSender {
     hide smtp: SMTPClient;
 
     expose func init(smtp: SMTPClient) {
@@ -239,7 +239,7 @@ entity WelcomeEmailSender {
     }
 }
 
-entity RegistrationService {
+class RegistrationService {
     hide emailValidator: EmailValidator;
     hide passwordValidator: PasswordValidator;
     hide hasher: PasswordHasher;
@@ -273,7 +273,7 @@ entity RegistrationService {
 }
 ```
 
-Each entity has one job. The `EmailValidator` only validates emails. The `PasswordHasher` only hashes passwords. The `UserRepository` only handles database operations.
+Each class has one job. The `EmailValidator` only validates emails. The `PasswordHasher` only hashes passwords. The `UserRepository` only handles database operations.
 
 This is more code, but consider the benefits:
 
@@ -294,7 +294,7 @@ If you can list multiple unrelated reasons, the component has too many responsib
 
 ```rust
 // Bad: Multiple reasons to change
-entity Report {
+class Report {
     func gatherData() { ... }      // Changes if data sources change
     func calculate() { ... }        // Changes if business rules change
     func formatHtml() { ... }       // Changes if HTML design changes
@@ -304,36 +304,36 @@ entity Report {
 }
 ```
 
-This entity changes if data sources change, business rules change, HTML design changes, PDF design changes, email system changes, or file storage changes. Six unrelated reasons.
+This class changes if data sources change, business rules change, HTML design changes, PDF design changes, email system changes, or file storage changes. Six unrelated reasons.
 
 ```rust
 // Good: Single responsibility each
-entity ReportDataGatherer {
+class ReportDataGatherer {
     func gather(sources: List[DataSource]) -> RawData { ... }
 }
 
-entity ReportCalculator {
+class ReportCalculator {
     func calculate(data: RawData) -> ReportResults { ... }
 }
 
-entity HtmlReportFormatter {
+class HtmlReportFormatter {
     func format(results: ReportResults) -> String { ... }
 }
 
-entity PdfReportFormatter {
+class PdfReportFormatter {
     func format(results: ReportResults) -> PdfDocument { ... }
 }
 
-entity ReportEmailer {
+class ReportEmailer {
     func send(report: String, recipients: List[String]) { ... }
 }
 
-entity ReportFileSaver {
+class ReportFileSaver {
     func save(report: String, path: String) { ... }
 }
 ```
 
-Now each entity has exactly one reason to change.
+Now each class has exactly one reason to change.
 
 ### Dependency Inversion
 
@@ -343,7 +343,7 @@ This principle sounds abstract. Let us make it concrete.
 
 ```rust
 // Bad: High-level depends on low-level
-entity OrderProcessor {
+class OrderProcessor {
     hide database: MySQLDatabase;  // Concrete dependency
     hide paymentGateway: StripePayment;  // Concrete dependency
     hide emailer: SendGridEmail;  // Concrete dependency
@@ -379,7 +379,7 @@ interface IEmailService {
     func send(to: String, subject: String, body: String);
 }
 
-entity OrderProcessor {
+class OrderProcessor {
     hide repository: IOrderRepository;
     hide payment: IPaymentGateway;
     hide email: IEmailService;
@@ -465,7 +465,7 @@ interface IBenefited {
 }
 
 // Payroll only needs what it uses
-entity PayrollCalculator {
+class PayrollCalculator {
     func calculatePay(employee: IIdentifiable & ICompensated) -> Number {
         return employee.getSalary() + employee.getBonus();
     }
@@ -493,7 +493,7 @@ The most common pattern organizes code into horizontal layers, each with a disti
 │           (Use cases, workflows, orchestration)              │
 ├─────────────────────────────────────────────────────────────┤
 │                      Domain Layer                            │
-│          (Business logic, entities, rules)                   │
+│          (Business logic, classes, rules)                   │
 ├─────────────────────────────────────────────────────────────┤
 │                   Infrastructure Layer                       │
 │         (Database, file system, external APIs)               │
@@ -531,7 +531,7 @@ project/
 │   └── SearchProductsUseCase.zia
 │
 ├── domain/
-│   ├── entities/
+│   ├── classes/
 │   │   ├── Order.zia
 │   │   ├── Product.zia
 │   │   └── Customer.zia
@@ -587,7 +587,7 @@ bind Convert = Viper.Core.Convert;
 bind Viper.Fmt as Fmt;
 
 // Model: Business logic and data
-entity TodoList {
+class TodoList {
     hide items: List[TodoItem];
     hide nextId: Integer;
 
@@ -626,7 +626,7 @@ entity TodoList {
 }
 
 // View: Display only
-entity TodoView {
+class TodoView {
     hide listElement: HTMLElement;
     hide inputElement: HTMLInputElement;
     hide countElement: HTMLElement;
@@ -670,7 +670,7 @@ entity TodoView {
 }
 
 // Controller: Coordinates model and view
-entity TodoController {
+class TodoController {
     hide model: TodoList;
     hide view: TodoView;
 
@@ -737,15 +737,15 @@ Clean architecture extends layered architecture with a strict dependency rule: d
                     Dependencies point inward →
 ```
 
-The innermost circle contains entities: core business objects and rules that would exist even without computers. A bank has accounts and transactions whether or not software exists.
+The innermost circle contains classes: core business objects and rules that would exist even without computers. A bank has accounts and transactions whether or not software exists.
 
-The next circle contains use cases: application-specific business rules. "Transfer money between accounts" is a use case. It orchestrates entities.
+The next circle contains use cases: application-specific business rules. "Transfer money between accounts" is a use case. It orchestrates classes.
 
 Interface adapters convert between use case formats and external formats. A controller converts HTTP requests into use case inputs. A presenter converts use case outputs into view models.
 
 The outermost circle contains frameworks and drivers: the web framework, database, UI toolkit. These are details that can be swapped without affecting inner circles.
 
-The key insight: inner circles know nothing about outer circles. Your entities do not know they are stored in a database. Your use cases do not know they are called from a web controller. This makes the core of your application portable and testable.
+The key insight: inner circles know nothing about outer circles. Your classes do not know they are stored in a database. Your use cases do not know they are called from a web controller. This makes the core of your application portable and testable.
 
 ### Repository Pattern
 
@@ -765,7 +765,7 @@ The repository looks like an in-memory collection. Code using it does not know o
 
 ```rust
 // Database implementation
-entity SqlProductRepository implements IProductRepository {
+class SqlProductRepository implements IProductRepository {
     hide db: Database;
 
     expose func init(db: Database) {
@@ -819,7 +819,7 @@ entity SqlProductRepository implements IProductRepository {
 }
 
 // In-memory implementation for testing
-entity InMemoryProductRepository implements IProductRepository {
+class InMemoryProductRepository implements IProductRepository {
     hide products: Map[String, Product];
 
     expose func init() {
@@ -860,7 +860,7 @@ With the repository pattern, you can:
 Service layer provides an API for business operations, coordinating multiple repositories and domain objects:
 
 ```rust
-entity OrderService {
+class OrderService {
     hide orderRepo: IOrderRepository;
     hide productRepo: IProductRepository;
     hide customerRepo: ICustomerRepository;
@@ -964,20 +964,20 @@ interface IDatabaseProvider {
     func getConnection() -> Connection;
 }
 
-entity MySqlProvider implements IDatabaseProvider { ... }
-entity PostgresProvider implements IDatabaseProvider { ... }
-entity SqliteProvider implements IDatabaseProvider { ... }
-entity OracleProvider implements IDatabaseProvider { ... }
-entity MongoProvider implements IDatabaseProvider { ... }
+class MySqlProvider implements IDatabaseProvider { ... }
+class PostgresProvider implements IDatabaseProvider { ... }
+class SqliteProvider implements IDatabaseProvider { ... }
+class OracleProvider implements IDatabaseProvider { ... }
+class MongoProvider implements IDatabaseProvider { ... }
 
-entity DatabaseFactory {
+class DatabaseFactory {
     func create(type: String) -> IDatabaseProvider {
         // Complex factory logic
     }
 }
 
 // Simpler: Just use what you need
-entity Database {
+class Database {
     hide connection: PostgresConnection;
 
     expose func init(connectionString: String) {
@@ -1011,7 +1011,7 @@ interface ICalculator {
     func add(a: Integer, b: Integer) -> Integer;
 }
 
-entity Calculator implements ICalculator {
+class Calculator implements ICalculator {
     func add(a: Integer, b: Integer) -> Integer {
         return a + b;
     }
@@ -1033,10 +1033,10 @@ interface IPaymentProcessor {
 }
 
 // Real implementation calls Stripe API
-entity StripePaymentProcessor implements IPaymentProcessor { ... }
+class StripePaymentProcessor implements IPaymentProcessor { ... }
 
 // Test implementation records calls without real charges
-entity MockPaymentProcessor implements IPaymentProcessor { ... }
+class MockPaymentProcessor implements IPaymentProcessor { ... }
 ```
 
 Here the abstraction pays for itself. You need different implementations for production and testing. The interface lets you swap them.
@@ -1102,7 +1102,7 @@ Components must communicate. How they communicate affects coupling, testability,
 The simplest approach: one component holds a reference to another and calls its methods.
 
 ```rust
-entity OrderProcessor {
+class OrderProcessor {
     hide emailService: EmailService;
 
     expose func init(emailService: EmailService) {
@@ -1124,7 +1124,7 @@ Cons: Tight coupling. OrderProcessor knows about EmailService.
 Instead of calling services directly, accept functions to call:
 
 ```rust
-entity OrderProcessor {
+class OrderProcessor {
     hide onOrderProcessed: func(Order);
 
     expose func init(onOrderProcessed: func(Order)) {
@@ -1152,7 +1152,7 @@ Cons: Control flow is less obvious. Callbacks can nest deeply.
 Components publish events without knowing who listens. Other components subscribe to events they care about.
 
 ```rust
-entity EventBus {
+class EventBus {
     hide subscribers: Map[String, [func(Event)]];
 
     expose func init() {
@@ -1187,7 +1187,7 @@ entity EventBus {
 }
 
 // Events are simple data
-value OrderPlacedEvent {
+struct OrderPlacedEvent {
     type: String = "order_placed";
     orderId: String;
     customerId: String;
@@ -1195,7 +1195,7 @@ value OrderPlacedEvent {
 }
 
 // Order service publishes
-entity OrderService {
+class OrderService {
     hide eventBus: EventBus;
 
     func placeOrder(order: Order) {
@@ -1209,7 +1209,7 @@ entity OrderService {
 }
 
 // Other services subscribe
-entity EmailService {
+class EmailService {
     func start(eventBus: EventBus) {
         eventBus.subscribe("order_placed", self.handleOrderPlaced);
     }
@@ -1220,7 +1220,7 @@ entity EmailService {
     }
 }
 
-entity InventoryService {
+class InventoryService {
     func start(eventBus: EventBus) {
         eventBus.subscribe("order_placed", self.handleOrderPlaced);
     }
@@ -1231,7 +1231,7 @@ entity InventoryService {
     }
 }
 
-entity AnalyticsService {
+class AnalyticsService {
     func start(eventBus: EventBus) {
         eventBus.subscribe("order_placed", self.handleOrderPlaced);
     }
@@ -1252,7 +1252,7 @@ Cons: Control flow is hard to trace. Events can create implicit dependencies. De
 For large systems, manually wiring dependencies becomes tedious. Dependency injection containers automate it:
 
 ```rust
-entity Container {
+class Container {
     hide registrations: Map[String, func() -> any];
     hide singletons: Map[String, any];
 
@@ -1435,7 +1435,7 @@ First, create domain objects to represent our concepts:
 
 ```rust
 // domain/Book.zia
-value Book {
+struct Book {
     isbn: String;
     title: String;
     author: String;
@@ -1443,7 +1443,7 @@ value Book {
 }
 
 // domain/Loan.zia
-value Loan {
+struct Loan {
     id: Integer;
     isbn: String;
     borrowerName: String;
@@ -1451,7 +1451,7 @@ value Loan {
 }
 ```
 
-Using `value` instead of `entity` because these are simple data holders without behavior yet.
+Using `struct` instead of `class` because these are simple data holders without behavior yet.
 
 ### Stage 3: Extract Repository
 
@@ -1459,7 +1459,7 @@ Move database code to a repository:
 
 ```rust
 // infrastructure/BookRepository.zia
-entity BookRepository {
+class BookRepository {
     hide db: Database;
 
     expose func init(db: Database) {
@@ -1509,7 +1509,7 @@ entity BookRepository {
 }
 
 // infrastructure/LoanRepository.zia
-entity LoanRepository {
+class LoanRepository {
     hide db: Database;
 
     expose func init(db: Database) {
@@ -1551,7 +1551,7 @@ Create a service for business operations:
 
 ```rust
 // application/LibraryService.zia
-entity LibraryService {
+class LibraryService {
     hide bookRepo: BookRepository;
     hide loanRepo: LoanRepository;
 
@@ -1775,7 +1775,7 @@ interface ILoanRepository {
 }
 
 // Update LibraryService to use interfaces
-entity LibraryService {
+class LibraryService {
     hide bookRepo: IBookRepository;
     hide loanRepo: ILoanRepository;
 
@@ -1791,7 +1791,7 @@ Now we can create in-memory implementations for testing:
 
 ```rust
 // tests/InMemoryBookRepository.zia
-entity InMemoryBookRepository implements IBookRepository {
+class InMemoryBookRepository implements IBookRepository {
     hide books: Map[String, Book];
 
     expose func init() {
@@ -1886,7 +1886,7 @@ We will use PostgreSQL.
 - Level 1: System context (your system and its users/external systems)
 - Level 2: Containers (applications, databases, services)
 - Level 3: Components (major pieces within a container)
-- Level 4: Code (class/entity diagrams for critical areas)
+- Level 4: Code (class/class diagrams for critical areas)
 
 **README files** in each directory explain that area:
 
@@ -1895,10 +1895,10 @@ We will use PostgreSQL.
 
 This directory contains use cases - the application-specific business rules.
 
-Each use case is a single entity that:
+Each use case is a single class that:
 - Accepts a request value
 - Validates inputs
-- Orchestrates domain entities
+- Orchestrates domain classes
 - Returns a result value
 
 Use cases should not know about HTTP, databases, or UI.
@@ -1949,7 +1949,7 @@ Flexibility nobody needs:
 
 ```rust
 // Supports 5 authentication methods, company uses 1
-entity AuthenticationStrategyFactory {
+class AuthenticationStrategyFactory {
     func create(type: String) -> IAuthenticationStrategy {
         if type == "oauth" { return OAuthStrategy(); }
         if type == "saml" { return SamlStrategy(); }
@@ -1986,7 +1986,7 @@ Using patterns that do not fit your problem:
 
 ```rust
 // Using event sourcing for a simple CRUD app
-entity UserEventStore {
+class UserEventStore {
     events: List[UserEvent];
 
     func apply(event: UserEvent) {
@@ -2042,7 +2042,7 @@ Every system should start as simple as possible:
 
 ```rust
 // Initial version: Just make it work
-entity App {
+class App {
     func handleRequest(request: Request) -> Response {
         if request.path == "/users" {
             return self.handleUsers(request);
@@ -2063,17 +2063,17 @@ When code becomes hard to change, add structure:
 
 ```rust
 // Growing: Extract services
-entity UserService {
+class UserService {
     func create(data: UserData) -> User { ... }
     func find(id: String) -> User? { ... }
 }
 
-entity OrderService {
+class OrderService {
     func create(data: OrderData) -> Order { ... }
     func find(id: String) -> Order? { ... }
 }
 
-entity App {
+class App {
     hide userService: UserService;
     hide orderService: OrderService;
 
@@ -2132,7 +2132,7 @@ interface IRepository[T] {
     func save(item: T);
 }
 
-entity UserService {
+class UserService {
     hide repo: IRepository[User];
 
     expose func init(repo: IRepository[User]) {
@@ -2234,7 +2234,7 @@ func processPayment(userId: String, amount: Number) {
 
 List at least five separate concerns in this function.
 
-**Exercise 28.2 (Refactoring)**: Refactor the function from Exercise 28.1 using separation of concerns. Create appropriate entities and interfaces.
+**Exercise 28.2 (Refactoring)**: Refactor the function from Exercise 28.1 using separation of concerns. Create appropriate classes and interfaces.
 
 **Exercise 28.3 (Repository Pattern)**: Implement a `TaskRepository` interface with methods for finding, saving, and deleting tasks. Create both a `SqlTaskRepository` and an `InMemoryTaskRepository` implementation.
 
@@ -2246,7 +2246,7 @@ List at least five separate concerns in this function.
 
 Show what files would exist in each layer.
 
-**Exercise 28.5 (Event Bus)**: Build a simple event bus entity that supports:
+**Exercise 28.5 (Event Bus)**: Build a simple event bus class that supports:
 - Subscribing to event types
 - Unsubscribing from event types
 - Publishing events to all subscribers
@@ -2286,7 +2286,7 @@ func main() {
 }
 ```
 
-Create: a `ShoppingCart` entity, an `Item` value, and separate UI handling functions.
+Create: a `ShoppingCart` class, an `Item` value, and separate UI handling functions.
 
 **Exercise 28.9 (Architecture Decision)**: You are building a new feature that needs to send notifications. You could:
 A) Add notification code directly in the existing service

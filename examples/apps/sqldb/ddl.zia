@@ -41,7 +41,7 @@ bind "./procedures";
 // DDL HANDLER ENTITY
 //=============================================================================
 
-entity DdlHandler {
+class DdlHandler {
     expose Executor exec;
 
     expose func init(executor: Executor) {

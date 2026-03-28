@@ -535,7 +535,7 @@ TEST(ZiaOperators, OptionalChaining) {
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 }
 

@@ -6,7 +6,7 @@ bind Viper.Math;
 bind Viper.Input;
 bind "../config";
 
-entity CameraController {
+class CameraController {
     hide Camera3D cam;
     hide Boolean sprinting;
 

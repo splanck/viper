@@ -17,7 +17,7 @@ bind Viper.Fmt;
 bind Viper.Time;
 
 // Ball entity with physics
-entity Ball {
+class Ball {
     expose Number x;
     expose Number y;
     expose Number vx;
@@ -131,7 +131,7 @@ entity Ball {
 }
 
 // Ball manager
-entity BallManager {
+class BallManager {
     expose List[Ball] balls;
     expose Number gravity;
 

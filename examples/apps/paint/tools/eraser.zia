@@ -7,7 +7,7 @@ bind "../colors";
 bind "../brush";
 
 // EraserTool - erases to background color with variable size
-entity EraserTool {
+class EraserTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X
     hide Integer lastY;         // Last mouse Y

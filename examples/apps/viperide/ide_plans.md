@@ -463,7 +463,7 @@ App
 ### 6.2 Zia Language Service
 
 #### 6.2.1 Syntax Highlighting
-- Keywords: `module`, `import`, `func`, `entity`, `value`, `var`, `final`, `if`, `else`, `while`, `for`, `return`, `new`
+- Keywords: `module`, `import`, `func`, `class`, `value`, `var`, `final`, `if`, `else`, `while`, `for`, `return`, `new`
 - Types: `Integer`, `Number`, `String`, `Boolean`, custom types
 - Literals: numbers, strings, booleans
 - Comments: `//` and `/* */`
@@ -485,7 +485,7 @@ App
 
 #### 6.2.4 Navigation
 - Go to function definition
-- Go to entity definition
+- Go to class definition
 - Go to imported module
 - Find all references
 
@@ -516,7 +516,7 @@ App
 Language support follows a plugin architecture:
 
 ```rust
-entity LanguageService {
+class LanguageService {
     String id;           // "zia", "basic", "il"
     String name;         // "Zia", "BASIC", "Viper IL"
     List[String] extensions;  // [".zia"], [".bas"], [".il"]
@@ -582,7 +582,7 @@ WorkspaceFolder
 
 Provide templates for new files:
 - Empty Zia module
-- Zia entity
+- Zia class
 - Zia main with entry point
 - BASIC program
 - BASIC class
@@ -1273,8 +1273,8 @@ demos/zia/viperide/
 | keyword | `func`, `if`, `return` | Purple |
 | keyword.control | `if`, `else`, `while` | Purple |
 | keyword.declaration | `var`, `final`, `func` | Purple |
-| entity.name.type | `Player`, `List` | Cyan |
-| entity.name.function | `start`, `update` | Yellow |
+| class.name.type | `Player`, `List` | Cyan |
+| class.name.function | `start`, `update` | Yellow |
 | variable | `count`, `name` | White |
 | string | `"hello"` | Green |
 | number | `42`, `3.14` | Orange |

@@ -25,7 +25,7 @@ Version 0.2.4 is a showcase and infrastructure release: a flagship demo game, ne
 
 ### Compiler & Codegen Fixes
 
-- **Zia sema: runtime property setter resolution** — Property assignments on runtime class instances (e.g., `ctrl.VY = value`) now correctly call the setter function via symbol lookup. Previously, only user-defined entity property setters were resolved; runtime class setters silently fell through to invalid direct memory writes. This fix also registers the property type from the setter's function signature, enabling automatic `Number → Integer` coercion for write-only properties.
+- **Zia sema: runtime property setter resolution** — Property assignments on runtime class instances (e.g., `ctrl.VY = value`) now correctly call the setter function via symbol lookup. Previously, only user-defined class property setters were resolved; runtime class setters silently fell through to invalid direct memory writes. This fix also registers the property type from the setter's function signature, enabling automatic `Number → Integer` coercion for write-only properties.
 - **AArch64: i1 parameter masking at function entry** — Boolean (`i1`) parameters received by Viper-generated functions are now masked with `AND 1` on load, matching the existing return-value masking. Prevents upper-bit garbage from corrupting boolean values.
 - **Native linker: `RtComponent::Game`** — Added the `Game` runtime component to the selective linking infrastructure. Game runtime classes moved from `collections/` to their own `game/` directory and static archive (`libviper_rt_game.a`) are now correctly linked by the AArch64 native linker.
 
@@ -74,3 +74,8 @@ Comprehensive documentation pass across all 2,668 source files with standardized
 - Native linker missing `libviper_rt_game.a` archive (symbol-not-found crash)
 - PlatformerController velocity desync after damage knockback, death bounce, enemy stomp
 - Sidescroller expansion systems (`updateNewSystems`) not wired into game loop
+- Sprite3D use-after-free: per-frame mesh/material allocation replaced with cached instances + GC temp buffer registration
+- Added `Mesh3D.Clear()` — reset vertex/index counts without freeing backing arrays (enables mesh reuse)
+- Physics3D sphere-sphere and AABB-sphere narrow-phase collision (replaces AABB-only approximation)
+- Physics3D character controller with slide-and-step movement (replaces trivial velocity-set)
+- Physics3D collision event queue: `CollisionCount`, `GetCollisionBodyA/B`, `GetCollisionNormal/Depth`

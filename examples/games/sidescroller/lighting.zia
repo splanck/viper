@@ -47,7 +47,7 @@ final DARK_UNDERWATER = 140;  // Underground lake — murky
 // =============================================================================
 // Lighting Entity — thin wrapper around Lighting2D runtime class
 // =============================================================================
-entity LightingSystem {
+class LightingSystem {
     expose func init() {}
     hide Palette pal;
     hide Lighting2D lit;

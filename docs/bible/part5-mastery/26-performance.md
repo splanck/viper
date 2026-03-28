@@ -675,7 +675,7 @@ func processExpensiveData(items: List[Item]) {
 For functions called repeatedly with the same arguments, remember results:
 
 ```rust
-entity FibonacciCalculator {
+class FibonacciCalculator {
     hide cache: Map[Integer, Integer];
 
     expose func init() {
@@ -778,7 +778,7 @@ Sometimes you can trade memory for speed, or vice versa.
 
 **Trade Memory for Speed (Caching):**
 ```rust
-entity ImageProcessor {
+class ImageProcessor {
     hide thumbnailCache: Map[String, Image];
 
     expose func getThumbnail(path: String) -> Image {
@@ -795,7 +795,7 @@ entity ImageProcessor {
 
 **Trade Speed for Memory (Lazy Loading):**
 ```rust
-entity Document {
+class Document {
     hide path: String;
     hide contentLoaded: Boolean;
     hide content: String;

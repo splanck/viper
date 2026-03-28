@@ -17,9 +17,9 @@
 /// The lowering process follows this order:
 ///
 /// 1. **Type Layout Computation**
-///    - Compute field offsets for value and entity types
+///    - Compute field offsets for value and class types
 ///    - Build method tables for dispatch
-///    - Assign class IDs to entity types
+///    - Assign class IDs to class types
 ///
 /// 2. **Declaration Lowering**
 ///    - Lower global variables to IL global slots
@@ -128,7 +128,7 @@ using LowerResult = ::il::frontends::common::ExprResult;
 
 /// @}
 
-// Type layout structures (FieldLayout, ValueTypeInfo, EntityTypeInfo,
+// Type layout structures (FieldLayout, StructTypeInfo, ClassTypeInfo,
 // InterfaceTypeInfo) are defined in LowererTypes.hpp.
 
 //===----------------------------------------------------------------------===//
@@ -159,8 +159,8 @@ using LowerResult = ::il::frontends::common::ExprResult;
 ///
 /// ## Value vs Reference Handling
 ///
-/// - Value types: Inline storage, copied on assignment
-/// - Entity types: Pointer storage, reference counted
+/// - Struct types: Inline storage, copied on assignment
+/// - Class types: Pointer storage, reference counted
 /// - Optionals of reference types: null pointer represents none
 ///
 /// @invariant sema_ must have successfully analyzed the input module.
@@ -272,26 +272,26 @@ class Lowerer {
     /// @details Uses unordered_set for O(1) lookup instead of O(log n).
     std::unordered_set<std::string> definedFunctions_;
 
-    /// @brief Value type layout information.
+    /// @brief Struct type layout information.
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
-    std::unordered_map<std::string, ValueTypeInfo> valueTypes_;
+    std::unordered_map<std::string, StructTypeInfo> structTypes_;
 
-    /// @brief Entity type layout information.
+    /// @brief Class type layout information.
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
-    std::unordered_map<std::string, EntityTypeInfo> entityTypes_;
+    std::unordered_map<std::string, ClassTypeInfo> classTypes_;
 
     /// @brief Counter for generating unique lambda function names.
     /// @details Per-instance (not static) to prevent name collisions when
     ///          multiple Lowerer instances run in the same process (e.g., LSP).
     int lambdaCounter_{0};
 
-    /// @brief Pending generic entity instantiations that need methods lowered.
+    /// @brief Pending generic class instantiations that need methods lowered.
     /// @details Populated during expression lowering when generic entities are
     /// constructed, and processed after all declarations are lowered.
-    std::vector<std::string> pendingEntityInstantiations_;
+    std::vector<std::string> pendingClassInstantiations_;
 
-    /// @brief Pending generic value type instantiations that need methods lowered.
-    std::vector<std::string> pendingValueInstantiations_;
+    /// @brief Pending generic struct type instantiations that need methods lowered.
+    std::vector<std::string> pendingStructInstantiations_;
 
     /// @brief Pending generic function instantiations that need to be lowered.
     /// @details Populated during call expression lowering when generic functions
@@ -313,11 +313,11 @@ class Lowerer {
     /// @brief Owned boxed or retained argument values that must be released on worker exit.
     std::vector<Value> asyncOwnedValues_;
 
-    /// @brief Current value type context (for self access).
-    const ValueTypeInfo *currentValueType_{nullptr};
+    /// @brief Current struct type context (for self access).
+    const StructTypeInfo *currentStructType_{nullptr};
 
-    /// @brief Current entity type context (for self access).
-    const EntityTypeInfo *currentEntityType_{nullptr};
+    /// @brief Current class type context (for self access).
+    const ClassTypeInfo *currentClassType_{nullptr};
 
     /// @brief Counter for assigning unique class IDs.
     int nextClassId_{1};
@@ -442,79 +442,79 @@ class Lowerer {
     /// @param decl The function declaration.
     void lowerFunctionDecl(FunctionDecl &decl);
 
-    /// @brief Get or create ValueTypeInfo for a type.
+    /// @brief Get or create StructTypeInfo for a type.
     /// @param typeName The type name (may be mangled for generics).
-    /// @return Pointer to ValueTypeInfo, or nullptr if not found.
+    /// @return Pointer to StructTypeInfo, or nullptr if not found.
     ///
     /// @details For instantiated generic types, lazily creates the info
     /// from the original generic declaration and substituted field types.
-    const ValueTypeInfo *getOrCreateValueTypeInfo(const std::string &typeName);
+    const StructTypeInfo *getOrCreateStructTypeInfo(const std::string &typeName);
 
-    /// @brief Get or create EntityTypeInfo for an entity type.
+    /// @brief Get or create ClassTypeInfo for an class type.
     /// @param typeName The type name (may be mangled for generics).
-    /// @return Pointer to EntityTypeInfo, or nullptr if not found.
+    /// @return Pointer to ClassTypeInfo, or nullptr if not found.
     ///
     /// @details For instantiated generic types, lazily creates the info
     /// from the original generic declaration and substituted field types.
-    const EntityTypeInfo *getOrCreateEntityTypeInfo(const std::string &typeName);
+    const ClassTypeInfo *getOrCreateClassTypeInfo(const std::string &typeName);
 
-    /// @brief Lower a value type declaration.
-    /// @param decl The value type declaration.
-    void lowerValueDecl(ValueDecl &decl);
+    /// @brief Lower a struct type declaration.
+    /// @param decl The struct type declaration.
+    void lowerStructDecl(StructDecl &decl);
 
-    /// @brief Lower an entity type declaration.
-    /// @param decl The entity type declaration.
-    void lowerEntityDecl(EntityDecl &decl);
+    /// @brief Lower an class type declaration.
+    /// @param decl The class type declaration.
+    void lowerClassDecl(ClassDecl &decl);
 
-    /// @brief Pre-pass: register all entity/value type layouts without lowering methods.
-    /// @details Ensures all type layouts are available in entityTypes_/valueTypes_
+    /// @brief Pre-pass: register all class/struct type layouts without lowering methods.
+    /// @details Ensures all type layouts are available in classTypes_/structTypes_
     ///          before any method bodies are lowered, fixing forward-reference issues
-    ///          where entity A's methods reference entity B declared later.
+    ///          where class A's methods reference class B declared later.
     void registerAllTypeLayouts(std::vector<DeclPtr> &declarations);
 
     /// @brief Pre-register all `final` constant declarations before the main lowering pass.
     /// @details Ensures that `final` constants are available in globalConstants_ before any
-    ///          entity/function method bodies are lowered, fixing forward-reference issues
-    ///          where an entity method references a `final` defined later in the same file.
+    ///          class/function method bodies are lowered, fixing forward-reference issues
+    ///          where an class method references a `final` defined later in the same file.
     void registerAllFinalConstants(std::vector<DeclPtr> &declarations);
 
-    /// @brief Register a single entity type's field layout without lowering methods.
-    /// @param decl The entity declaration.
-    void registerEntityLayout(EntityDecl &decl);
+    /// @brief Register a single class type's field layout without lowering methods.
+    /// @param decl The class declaration.
+    void registerClassLayout(ClassDecl &decl);
 
-    /// @brief Compute field offsets for an entity declaration's own fields.
-    /// @param decl The entity declaration.
-    /// @param info The entity type info to populate with field layouts.
+    /// @brief Compute field offsets for an class declaration's own fields.
+    /// @param decl The class declaration.
+    /// @param info The class type info to populate with field layouts.
     /// @param qualifiedName The fully qualified type name.
-    void computeEntityFieldLayout(EntityDecl &decl,
-                                  EntityTypeInfo &info,
+    void computeClassFieldLayout(ClassDecl &decl,
+                                  ClassTypeInfo &info,
                                   const std::string &qualifiedName);
 
-    /// @brief Build vtable entries from an entity declaration's methods and properties.
-    /// @param decl The entity declaration.
-    /// @param info The entity type info to populate with vtable slots.
+    /// @brief Build vtable entries from an class declaration's methods and properties.
+    /// @param decl The class declaration.
+    /// @param info The class type info to populate with vtable slots.
     /// @param qualifiedName The fully qualified type name.
-    void buildEntityVtable(EntityDecl &decl,
-                           EntityTypeInfo &info,
+    void buildClassVtable(ClassDecl &decl,
+                           ClassTypeInfo &info,
                            const std::string &qualifiedName);
 
-    /// @brief Copy inherited fields, totalSize, and vtable from parent entity.
-    /// @param info The child entity type info to populate.
-    /// @param parent The parent entity type info to copy from.
-    void inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &parent);
+    /// @brief Copy inherited fields, totalSize, and vtable from parent class.
+    /// @param info The child class type info to populate.
+    /// @param parent The parent class type info to copy from.
+    void inheritClassMembers(ClassTypeInfo &info, const ClassTypeInfo &parent);
 
-    /// @brief Register a single value type's field layout without lowering methods.
+    /// @brief Register a single struct type's field layout without lowering methods.
     /// @param decl The value declaration.
-    void registerValueLayout(ValueDecl &decl);
+    void registerStructLayout(StructDecl &decl);
 
     /// @brief Try to evaluate an initializer expression to a compile-time constant.
     /// @param init The expression to fold.
     /// @return The folded constant value, or nullopt if not foldable.
     static std::optional<il::core::Value> tryFoldNumericConstant(Expr *init);
 
-    /// @brief Emit vtable global for an entity type.
-    /// @param info The entity type info with vtable entries.
-    void emitVtable(const EntityTypeInfo &info);
+    /// @brief Emit vtable global for an class type.
+    /// @param info The class type info with vtable entries.
+    void emitVtable(const ClassTypeInfo &info);
 
     /// @brief Lower an interface declaration.
     /// @param decl The interface declaration.
@@ -527,7 +527,7 @@ class Lowerer {
     /// @brief Emit interface registration and itable binding for all interfaces.
     /// @details Emits a __zia_iface_init function that:
     ///   1. Registers each interface via rt_register_interface_direct
-    ///   2. For each implementing entity, allocates an itable, populates it
+    ///   2. For each implementing class, allocates an itable, populates it
     ///      with function pointers, and binds it via rt_bind_interface
     void emitItableInit();
 
@@ -557,11 +557,11 @@ class Lowerer {
     /// @brief Lower a method declaration within a type.
     /// @param decl The method declaration.
     /// @param typeName The enclosing type name.
-    /// @param isEntity True if this is an entity method.
-    void lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity = false);
+    /// @param isClass True if this is a class method.
+    void lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isClass = false);
 
     /// @brief Lower a property declaration by synthesizing get_/set_ methods.
-    void lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isEntity = false);
+    void lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isClass = false);
 
     /// @brief Lower a destructor declaration by emitting a __dtor function.
     /// @details Synthesizes `TypeName.__dtor(self: Ptr) -> Void` that runs user
@@ -715,7 +715,7 @@ class Lowerer {
     LowerResult lowerNew(NewExpr *expr);
 
     /// @brief Lower a struct-literal expression (`TypeName { field = val, ... }`).
-    /// @return LowerResult with pointer to the initialized value type on stack.
+    /// @return LowerResult with pointer to the initialized struct type on stack.
     LowerResult lowerStructLiteral(StructLiteralExpr *expr);
 
     /// @brief Lower a null coalesce expression.
@@ -915,16 +915,16 @@ class Lowerer {
     /// @param val The value to store.
     void emitFieldStore(const FieldLayout *field, Value selfPtr, Value val);
 
-    /// @brief Deep copy a value type (for copy-on-assign semantics).
-    /// @param info The value type info.
+    /// @brief Deep copy a struct type (for copy-on-assign semantics).
+    /// @param info The struct type info.
     /// @param sourcePtr Pointer to source value.
     /// @return Pointer to the new copy.
-    Value emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr);
+    Value emitStructTypeCopy(const StructTypeInfo &info, Value sourcePtr);
 
-    /// @brief Allocate stack space for a value type without initialization.
-    /// @param info The value type info.
+    /// @brief Allocate stack space for a struct type without initialization.
+    /// @param info The struct type info.
     /// @return Pointer to the allocated (zero-initialized) space.
-    Value emitValueTypeAlloc(const ValueTypeInfo &info);
+    Value emitStructTypeAlloc(const StructTypeInfo &info);
 
     /// @brief Lower a method call.
     /// @param method The method declaration.
@@ -938,13 +938,13 @@ class Lowerer {
                                 CallExpr *expr);
 
     /// @brief Lower a virtual method call using vtable dispatch.
-    /// @param entityInfo The entity type info with vtable.
+    /// @param entityInfo The class type info with vtable.
     /// @param slotKey The resolved dispatch slot key.
     /// @param method The resolved method declaration.
     /// @param selfValue The receiver value (self).
     /// @param expr The call expression for arguments.
     /// @return The call result.
-    LowerResult lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
+    LowerResult lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
                                        const std::string &slotKey,
                                        const std::string &ownerType,
                                        MethodDecl *method,
@@ -1004,18 +1004,18 @@ class Lowerer {
     /// @return The call result, or nullopt if not a built-in.
     std::optional<LowerResult> lowerBuiltinCall(const std::string &name, CallExpr *expr);
 
-    /// @brief Lower a value type construction call.
-    /// @param typeName The value type name.
+    /// @brief Lower a struct type construction call.
+    /// @param typeName The struct type name.
     /// @param expr The call expression with constructor arguments.
-    /// @return The constructed value, or nullopt if not a value type.
-    std::optional<LowerResult> lowerValueTypeConstruction(const std::string &typeName,
+    /// @return The constructed value, or nullopt if not a struct type.
+    std::optional<LowerResult> lowerStructTypeConstruction(const std::string &typeName,
                                                           CallExpr *expr);
 
-    /// @brief Lower an entity type construction call (Entity(args) syntax).
-    /// @param typeName The entity type name.
+    /// @brief Lower an class type construction call (Entity(args) syntax).
+    /// @param typeName The class type name.
     /// @param expr The call expression with constructor arguments.
-    /// @return The constructed entity pointer, or nullopt if not an entity type.
-    std::optional<LowerResult> lowerEntityTypeConstruction(const std::string &typeName,
+    /// @return The constructed class pointer, or nullopt if not an class type.
+    std::optional<LowerResult> lowerClassTypeConstruction(const std::string &typeName,
                                                            CallExpr *expr);
 
     /// @}
@@ -1037,10 +1037,10 @@ class Lowerer {
     /// @brief Box a value with semantic type context.
     /// @param val The value to box.
     /// @param ilType The IL type.
-    /// @param semanticType The semantic type for value type detection.
+    /// @param semanticType The semantic type for struct type detection.
     /// @return Boxed value (heap pointer).
     ///
-    /// @details For value types, heap-allocates a copy of the struct.
+    /// @details For struct types, heap-allocates a copy of the struct.
     /// For other types, falls back to standard emitBox() behavior.
     Value emitBoxValue(Value val, Type ilType, TypeRef semanticType);
 
@@ -1056,10 +1056,10 @@ class Lowerer {
     /// @brief Unbox a value with semantic type context.
     /// @param boxed The boxed pointer value.
     /// @param ilType The expected IL type.
-    /// @param semanticType The semantic type for value type detection.
+    /// @param semanticType The semantic type for struct type detection.
     /// @return The unboxed value with its type.
     ///
-    /// @details For value types, copies from heap to stack for copy semantics.
+    /// @details For struct types, copies from heap to stack for copy semantics.
     /// For other types, falls back to standard emitUnbox() behavior.
     LowerResult emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType);
 
@@ -1157,12 +1157,12 @@ class Lowerer {
     /// @brief Store a value to a mutable slot.
     /// @param name The variable name.
     /// @param value The value to store.
-    /// @param type The value type.
+    /// @param type The struct type.
     void storeToSlot(const std::string &name, Value value, Type type);
 
     /// @brief Load a value from a mutable slot.
     /// @param name The variable name.
-    /// @param type The value type.
+    /// @param type The struct type.
     /// @return The loaded value.
     Value loadFromSlot(const std::string &name, Type type);
 

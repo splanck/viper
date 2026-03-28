@@ -146,13 +146,13 @@ This approach simply doesn't work for real programs.
 A *structure* (sometimes called a *struct*, *record*, or *value type*) lets you create a new type that bundles multiple pieces of data together. Here's our point:
 
 ```rust
-value Point {
+struct Point {
     x: Number;
     y: Number;
 }
 ```
 
-This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `value` keyword tells Viper we're defining a structure.
+This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `struct` keyword tells Viper we're defining a structure.
 
 Now we can create points:
 
@@ -220,7 +220,7 @@ Table: Points
 +--------+--------+
 ```
 
-The structure definition (`value Point { x: Number; y: Number; }`) defines the columns. Each actual `Point` value is one row.
+The structure definition (`struct Point { x: Number; y: Number; }`) defines the columns. Each actual `Point` value is one row.
 
 ---
 
@@ -233,7 +233,7 @@ Before we dive into syntax details, let's see why structures match how we think 
 In real life, you don't think of a person as "a name floating in space, plus an age floating somewhere else, plus an email living in another dimension." A person is a unified whole with various attributes. Alice is not three separate things — she's one person who has a name (Alice), an age (30), and an email (alice@example.com).
 
 ```rust
-value Person {
+struct Person {
     name: String;
     age: Integer;
     email: String;
@@ -249,7 +249,7 @@ Now `alice` is one thing — a person — that you can store, pass around, and w
 A rectangle isn't "a width" and "a height." It's a shape that has both properties:
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -262,7 +262,7 @@ var screen = Rectangle { width: 1920.0, height: 1080.0 };
 January 15, 2024 isn't three separate numbers. It's a date — one conceptual unit:
 
 ```rust
-value Date {
+struct Date {
     year: Integer;
     month: Integer;
     day: Integer;
@@ -276,7 +276,7 @@ var birthday = Date { year: 1990, month: 7, day: 4 };
 A color like "coral" isn't separate red, green, and blue values. It's one color composed of those components:
 
 ```rust
-value Color {
+struct Color {
     red: Integer;
     green: Integer;
     blue: Integer;
@@ -293,10 +293,10 @@ The pattern is universal: whenever multiple pieces of data describe a single con
 
 ### Defining a Structure
 
-Use the `value` keyword to define a new structure type:
+Use the `struct` keyword to define a new structure type:
 
 ```rust
-value TypeName {
+struct TypeName {
     field1: Type1;
     field2: Type2;
     // ... more fields
@@ -306,7 +306,7 @@ value TypeName {
 Each field has a name and a type. Fields are separated by semicolons.
 
 ```rust
-value Book {
+struct Book {
     title: String;
     author: String;
     pageCount: Integer;
@@ -366,7 +366,7 @@ One of the most important concepts to understand about structures is *value sema
 ### Assignment Creates a Copy
 
 ```rust
-value Point {
+struct Point {
     x: Number;
     y: Number;
 }
@@ -461,7 +461,7 @@ So far, we've defined structures with data. But behavior is just as important. A
 You can define *methods* inside a structure — functions that operate on that structure's data:
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 
@@ -533,7 +533,7 @@ Methods can have parameters in addition to the implicit `self`:
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -566,7 +566,7 @@ Say(mid.y);  // 2.0
 Methods can change the structure's fields:
 
 ```rust
-value Counter {
+struct Counter {
     count: Integer;
 
     func increment() {
@@ -602,7 +602,7 @@ Say(c.count);  // 0
 A common pattern is methods that return a new structure rather than modifying the original:
 
 ```rust
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -646,7 +646,7 @@ Structures can contain other structures. This lets you build complex data models
 Consider modeling an address:
 
 ```rust
-value Address {
+struct Address {
     street: String;
     city: String;
     state: String;
@@ -657,7 +657,7 @@ value Address {
 Now a `Person` can include an `Address`:
 
 ```rust
-value Person {
+struct Person {
     name: String;
     age: Integer;
     home: Address;
@@ -702,7 +702,7 @@ Let's model a game with nested structures:
 ```rust
 bind Viper.Math as Math;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 
@@ -717,7 +717,7 @@ value Vec2 {
     }
 }
 
-value Health {
+struct Health {
     current: Integer;
     maximum: Integer;
 
@@ -744,7 +744,7 @@ value Health {
     }
 }
 
-value Player {
+struct Player {
     name: String;
     position: Vec2;
     health: Health;
@@ -809,7 +809,7 @@ When creating structures, you must provide values for all fields. But sometimes 
 Create a function that returns a structure with default values:
 
 ```rust
-value Config {
+struct Config {
     volume: Integer;
     difficulty: String;
     fullscreen: Boolean;
@@ -839,7 +839,7 @@ mySettings.fullscreen = true;
 You can have different functions for different scenarios:
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -873,7 +873,7 @@ var display = screen("1080p");
 Some structures benefit from having an `init` method pattern:
 
 ```rust
-value Circle {
+struct Circle {
     centerX: Number;
     centerY: Number;
     radius: Number;
@@ -911,7 +911,7 @@ func unitCircle() -> Circle {
 Too many fields:
 ```rust
 // This is unwieldy
-value Person {
+struct Person {
     firstName: String;
     lastName: String;
     birthYear: Integer;
@@ -931,13 +931,13 @@ value Person {
 
 Better with nesting:
 ```rust
-value Date {
+struct Date {
     year: Integer;
     month: Integer;
     day: Integer;
 }
 
-value Address {
+struct Address {
     street: String;
     city: String;
     state: String;
@@ -945,13 +945,13 @@ value Address {
     country: String;
 }
 
-value Phone {
+struct Phone {
     countryCode: String;
     areaCode: String;
     number: String;
 }
 
-value Person {
+struct Person {
     firstName: String;
     lastName: String;
     birthday: Date;
@@ -997,7 +997,7 @@ Let's see structures in action with several complete examples.
 bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
-value Card {
+struct Card {
     suit: String;    // "Hearts", "Diamonds", "Clubs", "Spades"
     rank: String;    // "2"-"10", "J", "Q", "K", "A"
 
@@ -1046,7 +1046,7 @@ func start() {
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -1068,7 +1068,7 @@ value Point {
     }
 }
 
-value Rectangle {
+struct Rectangle {
     topLeft: Point;
     width: Number;
     height: Number;
@@ -1125,7 +1125,7 @@ func start() {
 ```rust
 bind Viper.Terminal;
 
-value Student {
+struct Student {
     name: String;
     grades: List[Integer];
 
@@ -1215,7 +1215,7 @@ func start() {
 ```rust
 bind Viper.Terminal;
 
-value Item {
+struct Item {
     name: String;
     weight: Number;
     value: Integer;
@@ -1225,7 +1225,7 @@ value Item {
     }
 }
 
-value Inventory {
+struct Inventory {
     items: List[Item];
     maxWeight: Number;
 
@@ -1311,7 +1311,7 @@ module GameDemo;
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 
@@ -1340,7 +1340,7 @@ value Vec2 {
     }
 }
 
-value Stats {
+struct Stats {
     health: Integer;
     maxHealth: Integer;
     attack: Integer;
@@ -1374,7 +1374,7 @@ value Stats {
     }
 }
 
-value Player {
+struct Player {
     name: String;
     position: Vec2;
     stats: Stats;
@@ -1406,7 +1406,7 @@ value Player {
     }
 }
 
-value Enemy {
+struct Enemy {
     name: String;
     position: Vec2;
     stats: Stats;
@@ -1525,7 +1525,7 @@ This example demonstrates:
 bind Viper.Math as Math;
 bind Viper.Terminal;
 
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -1597,7 +1597,7 @@ func pointFromAngle(angle: Number, distance: Number) -> Point {
 ### Default Configurations
 
 ```rust
-value Config {
+struct Config {
     volume: Integer;
     difficulty: String;
 }
@@ -1616,7 +1616,7 @@ func hardConfig() -> Config {
 For structures with many optional fields, build them step by step:
 
 ```rust
-value Character {
+struct Character {
     name: String;
     health: Integer;
     attack: Integer;
@@ -1665,7 +1665,7 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
 ```rust
 bind Viper.Terminal;
 
-value Person {
+struct Person {
     name: String;
     age: Integer;
 
@@ -1757,7 +1757,7 @@ Structures are fundamental to organizing data in programs. Here's what you've le
 
 **Core Concepts:**
 - Structures bundle related data under a single name
-- Define with `value TypeName { fields... }`
+- Define with `struct TypeName { fields... }`
 - Create instances with `TypeName { field: value, ... }`
 - Access fields with `instance.field`
 

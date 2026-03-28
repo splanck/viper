@@ -11,7 +11,7 @@ bind "./config";
 bind "./palette";
 bind "./sprites";
 
-entity MenuSystem {
+class MenuSystem {
     hide ButtonGroup titleBG;
     hide ButtonGroup pauseBG;
     hide ButtonGroup gameOverBG;

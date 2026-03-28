@@ -125,8 +125,8 @@ TEST(ZiaTypeSoundness, AssignUnrelatedEntities) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Cat { expose Integer lives; }
-entity Dog { expose Integer age; }
+class Cat { expose Integer lives; }
+class Dog { expose Integer age; }
 /// @brief Start.
 func start() {
     Cat c = new Dog();
@@ -140,8 +140,8 @@ TEST(ZiaTypeSoundness, AssignEntityToValueType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-value Point { Integer x; Integer y; }
-entity Dog { expose Integer age; }
+struct Point { Integer x; Integer y; }
+class Dog { expose Integer age; }
 /// @brief Start.
 func start() {
     Point p = new Dog();
@@ -178,7 +178,7 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Dog { expose Integer age; }
+class Dog { expose Integer age; }
 /// @brief Pet dog.
 func petDog(Dog d) {
     Viper.Terminal.SayInt(d.age);
@@ -189,7 +189,7 @@ func start() {
 }
 )",
                                 sm);
-    // FIXED GAP-7: Integer argument for entity parameter is now rejected.
+    // FIXED GAP-7: Integer argument for class parameter is now rejected.
     EXPECT_FALSE(result.succeeded());
 }
 
@@ -233,7 +233,7 @@ TEST(ZiaTypeSoundness, GAP_MethodWrongArgType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Counter {
+class Counter {
     expose Integer count;
     expose func addAmount(Integer amount) {
         count = count + amount;
@@ -258,7 +258,7 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Dog { expose Integer age; }
+class Dog { expose Integer age; }
 /// @brief Start.
 func start() {
     Dog d = new Dog();
@@ -266,7 +266,7 @@ func start() {
 }
 )",
                                 sm);
-    // FIXED GAP-6: Missing field on entity is now caught at sema level.
+    // FIXED GAP-6: Missing field on class is now caught at sema level.
     EXPECT_FALSE(result.succeeded());
     EXPECT_TRUE(hasErrorContaining(result, "color") || hasErrorContaining(result, "member"));
 }
@@ -275,7 +275,7 @@ TEST(ZiaTypeSoundness, PrivateFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Secret {
+class Secret {
     Integer hidden;
     expose func getHidden() -> Integer { return hidden; }
 }
@@ -310,7 +310,7 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnValue) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-value Point { Integer x; Integer y; }
+struct Point { Integer x; Integer y; }
 /// @brief Start.
 func start() {
     Point p = Point(1, 2);
@@ -404,14 +404,14 @@ TEST(ZiaTypeSoundness, AssignIntegerToEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Foo { expose Integer val; }
+class Foo { expose Integer val; }
 /// @brief Start.
 func start() {
     Foo f = 42;
 }
 )",
                                 sm);
-    // Direct integer-to-entity assignment — must be rejected
+    // Direct integer-to-class assignment — must be rejected
     EXPECT_FALSE(result.succeeded());
 }
 
@@ -419,7 +419,7 @@ TEST(ZiaTypeSoundness, GAP_UncheckedAsCastIntToEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Foo { expose Integer val; }
+class Foo { expose Integer val; }
 /// @brief Start.
 func start() {
     Integer n = 12345;
@@ -436,7 +436,7 @@ TEST(ZiaTypeSoundness, GAP_AsCastEntityToInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Foo { expose Integer val; }
+class Foo { expose Integer val; }
 /// @brief Start.
 func start() {
     Foo f = new Foo();
@@ -557,7 +557,7 @@ TEST(ZiaTypeSoundness, GAP_NullOptionalFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Dog {
+class Dog {
     expose Integer age;
 }
 /// @brief Start.
@@ -577,7 +577,7 @@ TEST(ZiaTypeSoundness, GAP_NullOptionalMethodCall) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
-entity Dog {
+class Dog {
     expose Integer age;
     expose func bark() -> String { return "Woof"; }
 }

@@ -21,7 +21,7 @@ bind "../schema";
 //=============================================================================
 
 // Represents index metadata stored in schema pages (Phase 10)
-entity IndexMeta {
+class IndexMeta {
     expose Integer indexId;
     expose String indexName;
     expose String tableName;
@@ -44,7 +44,7 @@ entity IndexMeta {
 //=============================================================================
 
 // Represents table metadata stored in schema pages
-entity TableMeta {
+class TableMeta {
     expose Integer tableId;
     expose String tableName;
     expose Integer firstDataPage;  // First page containing table data
@@ -112,7 +112,7 @@ entity TableMeta {
 //   [5-12]: Next schema page ID (8 bytes)
 //   [13...]: Table metadata entries
 
-entity SchemaPageManager {
+class SchemaPageManager {
     hide ColumnSerializer colSer;
 
     expose func init() {

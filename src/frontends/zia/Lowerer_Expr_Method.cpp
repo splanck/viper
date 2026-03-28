@@ -9,7 +9,7 @@
 /// @brief Method call and type construction lowering for the Zia IL lowerer.
 ///
 /// @details This file handles method call dispatch (direct, virtual, interface),
-/// collection method calls (List, Map, Set), and value/entity type construction
+/// collection method calls (List, Map, Set), and value/class type construction
 /// via function-call syntax.
 ///
 //===----------------------------------------------------------------------===//
@@ -528,13 +528,13 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
 // Value Type Construction Helper
 //=============================================================================
 
-std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string &typeName,
+std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::string &typeName,
                                                                CallExpr *expr) {
-    const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
+    const StructTypeInfo *infoPtr = getOrCreateStructTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;
 
-    const ValueTypeInfo &info = *infoPtr;
+    const StructTypeInfo &info = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
@@ -554,10 +554,10 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
-    // BUG-010 fix: Check if the value type has an explicit init method
+    // BUG-010 fix: Check if the struct type has an explicit init method
     auto initIt = info.methodMap.find("init");
     if (initIt != info.methodMap.end()) {
-        // Call the explicit init method (like entity types do)
+        // Call the explicit init method (like class types do)
         std::string initName = sema_.loweredMethodName(typeName, initIt->second);
         if (initName.empty())
             initName = typeName + ".init";
@@ -600,13 +600,13 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 // Entity Type Construction Helper
 //=============================================================================
 
-std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::string &typeName,
+std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string &typeName,
                                                                 CallExpr *expr) {
-    const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
+    const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;
 
-    const EntityTypeInfo &info = *infoPtr;
+    const ClassTypeInfo &info = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
@@ -615,13 +615,13 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
         argValues.push_back(result.value);
     }
 
-    // Allocate heap memory for the entity using rt_obj_new_i64
+    // Allocate heap memory for the class using rt_obj_new_i64
     Value ptr = emitCallRet(Type(Type::Kind::Ptr),
                             "rt_obj_new_i64",
                             {Value::constInt(static_cast<int64_t>(info.classId)),
                              Value::constInt(static_cast<int64_t>(info.totalSize))});
 
-    // Check if the entity has an explicit init method
+    // Check if the class has an explicit init method
     auto initIt = info.methodMap.find("init");
     if (initIt != info.methodMap.end()) {
         // Call the explicit init method
@@ -682,15 +682,15 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
 
 /// @brief Lower a struct-literal expression: `TypeName { field = val, ... }`.
 /// @details Reorders the named fields by declaration order, then delegates to
-/// the same alloca+init logic used by lowerValueTypeConstruction.
+/// the same alloca+init logic used by lowerStructTypeConstruction.
 LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
     const std::string &typeName = expr->typeName;
-    const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
+    const StructTypeInfo *infoPtr = getOrCreateStructTypeInfo(typeName);
     if (!infoPtr) {
         // Fallback: treat as a zero-initialised value (unreachable after sema checks)
         return {Value::constInt(0), Type(Type::Kind::Ptr)};
     }
-    const ValueTypeInfo &info = *infoPtr;
+    const StructTypeInfo &info = *infoPtr;
 
     // Build a map from field name → lowered value for quick lookup.
     std::unordered_map<std::string, Value> fieldValues;
@@ -723,7 +723,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
-    // If an explicit init method exists, call it (same as lowerValueTypeConstruction).
+    // If an explicit init method exists, call it (same as lowerStructTypeConstruction).
     auto initIt = info.methodMap.find("init");
     if (initIt != info.methodMap.end()) {
         std::string initName = sema_.loweredMethodName(typeName, initIt->second);

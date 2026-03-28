@@ -155,7 +155,7 @@
 ### Phase 10: Disk-Based Index Integration
 **Status:** DONE
 
-- IndexMeta entity persisted in schema pages alongside TableMeta
+- IndexMeta class persisted in schema pages alongside TableMeta
 - CREATE INDEX creates both hash index (in-memory) and B-tree (on-disk) for persistent databases
 - DROP INDEX removes from both in-memory and persistent storage
 - INSERT maintains B-tree indexes alongside hash indexes
@@ -175,7 +175,7 @@
 - Describe message handler (ParameterDescription for statements, RowDescription for portals)
 - Execute message handler (portal execution with row limits and portal suspension)
 - Sync/Close/Flush message handling
-- PreparedStatement and Portal entity lifecycle management per-session
+- PreparedStatement and Portal class lifecycle management per-session
 - Error recovery (discard messages until Sync after ErrorResponse)
 - Type OID inference from query results (INTEGER→INT4, REAL→FLOAT8, TEXT→TEXT, BLOB→BYTEA)
 - Message parsing helpers for all extended query frontend messages
@@ -246,7 +246,7 @@ Implemented row-level locking for fine-grained concurrent access control.
 - ✅ SELECT ... FOR SHARE (shared row locks)
 - ✅ FOR UPDATE/SHARE NOWAIT (non-blocking, immediate error on conflict)
 - ✅ FOR UPDATE/SHARE SKIP LOCKED (skip locked rows instead of blocking)
-- ✅ RowLockManager entity with thread-safe monitor-based concurrency
+- ✅ RowLockManager class with thread-safe monitor-based concurrency
 - ✅ Lock conflict detection (S+S OK, S+X blocks, X+X blocks)
 - ✅ Lock release on COMMIT/ROLLBACK and after non-transactional statements
 - ✅ Lock timeout (5s default with 10ms retry interval)
@@ -283,7 +283,7 @@ Implemented full ARIES-style undo support for crash recovery and transaction abo
 Implemented snapshot isolation with row-level versioning. Readers never block writers.
 
 - ✅ Row versioning: xmin (creating txn ID), xmax (deleting/updating txn ID)
-- ✅ `isVisible(snapshotId, currentTxnId)` method on Row entity
+- ✅ `isVisible(snapshotId, currentTxnId)` method on Row class
 - ✅ Snapshot isolation: each transaction gets a snapshot at BEGIN time
 - ✅ INSERT stamps row.xmin with current transaction ID
 - ✅ DELETE stamps row.xmax with current transaction ID
@@ -311,7 +311,7 @@ Implemented SQL triggers with BEFORE/AFTER firing for INSERT/UPDATE/DELETE.
 - ✅ DROP TRIGGER, SHOW TRIGGERS
 - ✅ Recursive trigger prevention (MAX_TRIGGER_DEPTH = 16)
 - ✅ Trigger cleanup on DROP TABLE
-- ✅ TriggerManager entity with sorted retrieval
+- ✅ TriggerManager class with sorted retrieval
 
 **Files modified:** token.zia, lexer.zia, stmt.zia, executor.zia, ddl.zia, dml.zia
 **New files:** triggers.zia

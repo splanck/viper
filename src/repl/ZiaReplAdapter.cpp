@@ -144,7 +144,7 @@ bool ZiaReplAdapter::isFuncDef(const std::string &input) const {
 
 bool ZiaReplAdapter::isTypeDef(const std::string &input) const {
     size_t start = skipWhitespace(input);
-    return startsWithKeyword(input, start, "entity") || startsWithKeyword(input, start, "value") ||
+    return startsWithKeyword(input, start, "class") || startsWithKeyword(input, start, "struct") ||
            startsWithKeyword(input, start, "interface");
 }
 
@@ -197,8 +197,8 @@ bool ZiaReplAdapter::isLikelyExpression(const std::string &input) const {
     static const char *stmtKeywords[] = {"var",
                                          "let",
                                          "func",
-                                         "entity",
-                                         "value",
+                                         "class",
+                                         "struct",
                                          "interface",
                                          "if",
                                          "while",
@@ -246,10 +246,10 @@ std::string ZiaReplAdapter::extractFuncName(const std::string &input) const {
 
 std::string ZiaReplAdapter::extractTypeName(const std::string &input) const {
     size_t pos = 0;
-    if (input.find("entity ") != std::string::npos)
-        pos = input.find("entity ") + 7;
-    else if (input.find("value ") != std::string::npos)
-        pos = input.find("value ") + 6;
+    if (input.find("class ") != std::string::npos)
+        pos = input.find("class ") + 6;
+    else if (input.find("struct ") != std::string::npos)
+        pos = input.find("struct ") + 7;
     else if (input.find("interface ") != std::string::npos)
         pos = input.find("interface ") + 10;
     else

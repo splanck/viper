@@ -17,7 +17,7 @@ bind "./types";
 // JSON PARSER STATE
 //=============================================================================
 
-entity JsonParser {
+class JsonParser {
     hide String src;
     hide Integer pos;
     hide Integer len;

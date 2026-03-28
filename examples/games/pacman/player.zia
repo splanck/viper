@@ -19,7 +19,7 @@ bind "./maze";
 // PACMAN ENTITY - The player character
 // =============================================================================
 
-entity PacMan {
+class PacMan {
     hide Integer gridX;
     hide Integer gridY;
     hide Integer screenX;

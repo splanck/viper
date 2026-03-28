@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Zia entity types (OOP features).
+// Tests for Zia class types (OOP features).
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,13 +24,13 @@ namespace {
 // Basic Entity Definition
 //===----------------------------------------------------------------------===//
 
-/// @brief Test basic entity with fields.
+/// @brief Test basic class with fields.
 TEST(ZiaEntities, BasicFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 }
@@ -51,13 +51,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test entity with methods.
+/// @brief Test class with methods.
 TEST(ZiaEntities, BasicMethods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     expose Integer count;
 
     expose func increment() {
@@ -91,13 +91,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test entity with method parameters.
+/// @brief Test class with method parameters.
 TEST(ZiaEntities, MethodWithParameters) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Calculator {
+class Calculator {
     expose Integer result;
 
     expose func add(Integer a, Integer b) -> Integer {
@@ -133,13 +133,13 @@ func start() {
 // Visibility
 //===----------------------------------------------------------------------===//
 
-/// @brief Test expose visibility modifier on entity members.
+/// @brief Test expose visibility modifier on class members.
 TEST(ZiaEntities, Visibility) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity SecureData {
+class SecureData {
     expose Integer secretValue;
     expose Integer publicValue;
 
@@ -177,7 +177,7 @@ TEST(ZiaEntities, SelfReference) {
     const std::string source = R"(
 module Test;
 
-entity Node {
+class Node {
     expose Integer value;
     expose Node? next;
 
@@ -211,13 +211,13 @@ func start() {
 // Entity Inheritance
 //===----------------------------------------------------------------------===//
 
-/// @brief Test entity composition (alternative to inheritance).
+/// @brief Test class composition (alternative to inheritance).
 TEST(ZiaEntities, EntityComposition) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     expose String name;
 
     expose func speak() -> String {
@@ -225,7 +225,7 @@ entity Animal {
     }
 }
 
-entity Dog {
+class Dog {
     expose Animal animal;
     expose Integer age;
 
@@ -256,13 +256,13 @@ func start() {
 // Multiple Fields and Types
 //===----------------------------------------------------------------------===//
 
-/// @brief Test entity with various field types.
+/// @brief Test class with various field types.
 TEST(ZiaEntities, VariousFieldTypes) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Player {
+class Player {
     expose String name;
     expose Integer score;
     expose Integer health;
@@ -299,18 +299,18 @@ func start() {
 // Entity with List Fields
 //===----------------------------------------------------------------------===//
 
-/// @brief Test entity containing list of entities.
+/// @brief Test class containing list of entities.
 TEST(ZiaEntities, EntityLists) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Item {
+class Item {
     expose String name;
     expose Integer value;
 }
 
-entity Inventory {
+class Inventory {
     expose List[Item] items;
 
     expose func addItem(Item item) {
@@ -356,13 +356,13 @@ func start() {
 // Entity Initialization
 //===----------------------------------------------------------------------===//
 
-/// @brief Test entity field initialization with defaults.
+/// @brief Test class field initialization with defaults.
 TEST(ZiaEntities, FieldDefaults) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Config {
+class Config {
     expose Integer width = 800;
     expose Integer height = 600;
     expose String title = "Default Title";
@@ -395,7 +395,7 @@ TEST(ZiaEntities, ArrowReturnType) {
     const std::string source = R"(
 module Test;
 
-entity Math {
+class Math {
     expose func add(Integer a, Integer b) -> Integer {
         return a + b;
     }
@@ -425,7 +425,7 @@ TEST(ZiaEntities, ColonReturnType) {
     const std::string source = R"(
 module Test;
 
-entity Math {
+class Math {
     expose func add(Integer a, Integer b): Integer {
         return a + b;
     }
@@ -462,7 +462,7 @@ TEST(ZiaEntities, AsCastWithListElements) {
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     hide Integer age;
 
     expose func init(a: Integer) {
@@ -474,7 +474,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     hide String name;
 
     expose func setup(a: Integer, n: String) {
@@ -527,7 +527,7 @@ TEST(ZiaEntities, InheritanceOverridesAndDerivedSetup) {
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     hide Integer age;
 
     expose func init(a: Integer) {
@@ -543,7 +543,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     hide String name;
 
     expose func setup(a: Integer, n: String) {
@@ -588,7 +588,7 @@ func greet(n: Integer) -> String {
     return "hi " + toString(n);
 }
 
-entity Animal {
+class Animal {
     expose func speak() -> String {
         return "animal";
     }
@@ -598,7 +598,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     override expose func speak() -> String {
         return "dog";
     }
@@ -613,7 +613,7 @@ interface Formatter {
     func fmt(n: Integer) -> String;
 }
 
-entity Message implements Formatter {
+class Message implements Formatter {
     expose func fmt() -> String {
         return "m";
     }
@@ -650,17 +650,17 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test basic 'as' cast without list (direct entity cast).
+/// @brief Test basic 'as' cast without list (direct class cast).
 TEST(ZiaEntities, AsCastBasic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Base {
+class Base {
     expose Integer value;
 }
 
-entity Derived extends Base {
+class Derived extends Base {
     expose String name;
 }
 

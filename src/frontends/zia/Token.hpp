@@ -20,7 +20,7 @@
 /// 2. **Literals**: Numeric constants, strings, and identifiers
 /// 3. **String Interpolation**: Tokens for `"text ${expr} more"` syntax
 /// 4. **Keywords**: Reserved words organized by purpose:
-///    - Type definitions (value, entity, interface)
+///    - Type definitions (struct, class, interface)
 ///    - Modifiers (final, expose, hide, override, weak)
 ///    - Declarations (module, import, func, return, var, new)
 ///    - Control flow (if, else, match, while, for, guard, etc.)
@@ -31,7 +31,7 @@
 ///
 /// ## Token Lifetime
 ///
-/// Tokens are value types that own their string data. When a Token is copied,
+/// Tokens are struct types that own their string data. When a Token is copied,
 /// the string content is also copied. Tokens are typically produced by the
 /// Lexer and consumed by the Parser in a streaming fashion.
 ///
@@ -160,15 +160,15 @@ enum class TokenKind {
     /// @{
     //=========================================================================
 
-    /// @brief Value type declaration keyword.
+    /// @brief Struct type declaration keyword.
     /// @details Introduces a stack-allocated type with value semantics.
-    /// Syntax: `value Point { x: Integer; y: Integer; }`
-    KwValue,
+    /// Syntax: `struct Point { x: Integer; y: Integer; }`
+    KwStruct,
 
-    /// @brief Entity type declaration keyword.
+    /// @brief Class type declaration keyword.
     /// @details Introduces a heap-allocated reference type with identity.
-    /// Syntax: `entity Player { var name: String; func move() { ... } }`
-    KwEntity,
+    /// Syntax: `class Player { var name: String; func move() { ... } }`
+    KwClass,
 
     /// @brief Enum type declaration keyword.
     /// @details Introduces a set of named integer constants.
@@ -176,7 +176,7 @@ enum class TokenKind {
     KwEnum,
 
     /// @brief Interface declaration keyword.
-    /// @details Introduces a contract that entities can implement.
+    /// @details Introduces a contract that classes can implement.
     /// Syntax: `interface Drawable { func draw(); }`
     KwInterface,
 
@@ -214,7 +214,7 @@ enum class TokenKind {
     KwOverride,
 
     /// @brief Destructor declaration keyword.
-    /// @details Declares a destructor for entity cleanup.
+    /// @details Declares a destructor for class cleanup.
     /// Syntax: `deinit { cleanup code }`
     KwDeinit,
 
@@ -247,7 +247,7 @@ enum class TokenKind {
 
     //=========================================================================
     /// @name Declaration Keywords
-    /// @brief Keywords for introducing named entities.
+    /// @brief Keywords for introducing named declarations.
     /// @{
     //=========================================================================
 
@@ -258,7 +258,7 @@ enum class TokenKind {
 
     /// @brief Namespace block keyword.
     /// @details Groups declarations under a namespace for qualified access.
-    /// Syntax: `namespace MyLib { entity Foo { ... } }`
+    /// Syntax: `namespace MyLib { class Foo { ... } }`
     /// Access via: `MyLib.Foo`
     KwNamespace,
 
@@ -283,7 +283,7 @@ enum class TokenKind {
     KwVar,
 
     /// @brief Object instantiation keyword.
-    /// @details Creates a new instance of an entity type.
+    /// @details Creates a new instance of a class type.
     /// Syntax: `new Player("Alice")`
     KwNew,
 
@@ -379,13 +379,13 @@ enum class TokenKind {
     //=========================================================================
 
     /// @brief Base class specification keyword.
-    /// @details Indicates that an entity inherits from another.
-    /// Syntax: `entity Child extends Parent { ... }`
+    /// @details Indicates that a class inherits from another.
+    /// Syntax: `class Child extends Parent { ... }`
     KwExtends,
 
     /// @brief Interface implementation keyword.
-    /// @details Indicates that an entity implements an interface.
-    /// Syntax: `entity Shape implements Drawable { ... }`
+    /// @details Indicates that a class implements an interface.
+    /// Syntax: `class Shape implements Drawable { ... }`
     KwImplements,
 
     /// @brief Self-reference keyword.
@@ -769,7 +769,7 @@ struct Token {
     /// @brief Check if this token is any keyword.
     ///
     /// Keywords are reserved words that have special meaning in the language.
-    /// This includes type keywords (value, entity), control flow keywords
+    /// This includes type keywords (struct, class), control flow keywords
     /// (if, while, for), and literal keywords (true, false, null).
     ///
     /// @return true if this token is a keyword, false otherwise.

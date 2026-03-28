@@ -4,7 +4,7 @@
 module Test;
 
 // Simple entity with fields and methods
-entity Point {
+class Point {
     expose Number x;
     expose Number y;
 
@@ -28,7 +28,7 @@ entity Point {
 }
 
 // Entity with private fields
-entity Counter {
+class Counter {
     hide Integer count;
 
     expose func init() {
@@ -53,7 +53,7 @@ entity Counter {
 }
 
 // Entity demonstrating field access
-entity Circle {
+class Circle {
     expose Number radius;
 
     expose func init(r: Number) {

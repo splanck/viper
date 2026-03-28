@@ -46,7 +46,7 @@ func renderItems() { ... }
 
 // Physics stuff
 func checkCollision(a: Rect, b: Rect) -> Boolean { ... }
-func applyGravity(entity: Entity) { ... }
+func applyGravity(class: Entity) { ... }
 
 // Rendering stuff
 func clearScreen() { ... }
@@ -577,7 +577,7 @@ There are several strategies:
 // position.zia — Shared types
 module Position;
 
-export value Vec2 {
+export struct Vec2 {
     x: Number;
     y: Number;
 }
@@ -720,7 +720,7 @@ Let's refactor our game demo into proper modules:
 ```rust
 module Vec2;
 
-export value Vec2 {
+export struct Vec2 {
     x: Number;
     y: Number;
 }
@@ -766,13 +766,13 @@ export func normalize(v: Vec2) -> Vec2 {
 }
 ```
 
-**player.zia** — Player entity
+**player.zia** — Player class
 ```rust
 module Player;
 
 bind Vec2;
 
-export value Player {
+export struct Player {
     name: String;
     position: Vec2.Vec2;
     health: Integer;
@@ -843,13 +843,13 @@ export func addScore(player: Player, points: Integer) -> Player {
 }
 ```
 
-**enemy.zia** — Enemy entity
+**enemy.zia** — Enemy class
 ```rust
 module Enemy;
 
 bind Vec2;
 
-export value Enemy {
+export struct Enemy {
     position: Vec2.Vec2;
     damage: Integer;
     speed: Number;
@@ -1211,8 +1211,8 @@ bind Order;     // Customer needs Order
 ```rust
 // Good: Extract shared concept
 // types.zia
-export value OrderSummary { ... }
-export value CustomerInfo { ... }
+export struct OrderSummary { ... }
+export struct CustomerInfo { ... }
 
 // order.zia
 bind types;

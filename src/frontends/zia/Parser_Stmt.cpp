@@ -179,7 +179,7 @@ StmtPtr Parser::parseBlock() {
         if (check(TokenKind::KwFunc) ||
             (check(TokenKind::KwExpose) && check(TokenKind::KwFunc, 1)) ||
             (check(TokenKind::KwHide) && check(TokenKind::KwFunc, 1)) ||
-            check(TokenKind::KwEntity) || check(TokenKind::KwInterface)) {
+            check(TokenKind::KwClass) || check(TokenKind::KwInterface)) {
             error("unexpected declaration keyword in block - possible missing '}'");
             break;
         }

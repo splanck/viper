@@ -32,11 +32,13 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_clear(void *m);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_material3d_new(void);
@@ -51,6 +53,9 @@ typedef struct {
     double anchor[2];   /* pivot [0,1], default (0.5, 0.5) */
     int32_t frame_x, frame_y, frame_w, frame_h;
     int32_t tex_w, tex_h;
+    void *cached_mesh;     /* Reused each frame (billboard changes with camera) */
+    void *cached_material; /* Created once, reused until texture changes */
+    void *cached_texture;  /* Track texture for material invalidation */
 } rt_sprite3d;
 
 static void sprite3d_finalizer(void *obj) {
@@ -76,6 +81,9 @@ void *rt_sprite3d_new(void *texture) {
     s->frame_h = 0; /* 0 = use full texture */
     s->tex_w = 0;
     s->tex_h = 0;
+    s->cached_mesh = NULL;
+    s->cached_material = NULL;
+    s->cached_texture = NULL;
 
     /* Try to get texture dimensions */
     if (texture) {
@@ -176,58 +184,52 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
         v1 = (double)(s->frame_y + s->frame_h) / s->tex_h;
     }
 
-    /* Build billboard quad (4 vertices) */
-    void *mesh = rt_mesh3d_new();
+    /* Lazily create cached mesh and material (once, reused every frame) */
+    if (!s->cached_mesh)
+        s->cached_mesh = rt_mesh3d_new();
+    if (!s->cached_material || s->cached_texture != s->texture) {
+        s->cached_material = rt_material3d_new();
+        if (s->texture)
+            rt_material3d_set_texture(s->cached_material, s->texture);
+        rt_material3d_set_unlit(s->cached_material, 1);
+        s->cached_texture = s->texture;
+    }
+
+    /* Rebuild billboard quad each frame (orientation changes with camera).
+       Clear resets vertex/index counts without freeing the backing arrays. */
+    void *mesh = s->cached_mesh;
+    rt_mesh3d_clear(mesh);
+
     double nx = -(cam->view[8]), ny = -(cam->view[9]), nz = -(cam->view[10]); /* face camera */
 
     rt_mesh3d_add_vertex(mesh,
                          cx - rx * hw - ux * hh,
                          cy - ry * hw - uy * hh,
                          cz - rz * hw - uz * hh,
-                         nx,
-                         ny,
-                         nz,
-                         u0,
-                         v1);
+                         nx, ny, nz, u0, v1);
     rt_mesh3d_add_vertex(mesh,
                          cx + rx * hw - ux * hh,
                          cy + ry * hw - uy * hh,
                          cz + rz * hw - uz * hh,
-                         nx,
-                         ny,
-                         nz,
-                         u1,
-                         v1);
+                         nx, ny, nz, u1, v1);
     rt_mesh3d_add_vertex(mesh,
                          cx + rx * hw + ux * hh,
                          cy + ry * hw + uy * hh,
                          cz + rz * hw + uz * hh,
-                         nx,
-                         ny,
-                         nz,
-                         u1,
-                         v0);
+                         nx, ny, nz, u1, v0);
     rt_mesh3d_add_vertex(mesh,
                          cx - rx * hw + ux * hh,
                          cy - ry * hw + uy * hh,
                          cz - rz * hw + uz * hh,
-                         nx,
-                         ny,
-                         nz,
-                         u0,
-                         v0);
+                         nx, ny, nz, u0, v0);
     rt_mesh3d_add_triangle(mesh, 0, 1, 2);
     rt_mesh3d_add_triangle(mesh, 0, 2, 3);
 
-    /* Material with texture, unlit */
-    void *mat = rt_material3d_new();
-    if (s->texture)
-        rt_material3d_set_texture(mat, s->texture);
-    rt_material3d_set_unlit(mat, 1);
+    /* Register with canvas temp buffer list so GC doesn't collect mid-frame */
+    rt_canvas3d_add_temp_buffer(canvas, mesh);
+    rt_canvas3d_add_temp_buffer(canvas, s->cached_material);
 
-    extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
-
-    rt_canvas3d_draw_mesh(canvas, mesh, rt_mat4_identity(), mat);
+    rt_canvas3d_draw_mesh(canvas, mesh, rt_mat4_identity(), s->cached_material);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

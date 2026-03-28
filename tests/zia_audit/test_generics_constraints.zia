@@ -21,7 +21,7 @@ interface Identifiable {
 }
 
 // An entity implementing Identifiable
-entity User implements Identifiable {
+class User implements Identifiable {
     expose Integer id;
     expose String name;
 
@@ -36,7 +36,7 @@ entity User implements Identifiable {
 }
 
 // Another entity implementing Identifiable
-entity Product implements Identifiable {
+class Product implements Identifiable {
     expose Integer id;
     expose String title;
 

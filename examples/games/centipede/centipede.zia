@@ -19,7 +19,7 @@ bind Viper.Graphics;
 // SEGMENT ENTITY - Individual segment of the centipede
 // =============================================================================
 
-entity Segment {
+class Segment {
     hide Integer gridX;
     hide Integer gridY;
     hide Integer screenX;
@@ -169,7 +169,7 @@ entity Segment {
 // CENTIPEDE ENTITY - Collection of segments
 // =============================================================================
 
-entity Centipede {
+class Centipede {
     hide List[Segment] segments;
     hide Timer moveTimer;
     hide Integer moveDelay;

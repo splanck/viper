@@ -35,7 +35,7 @@ Full parsing and serialization for all common structured data formats:
 - `Csv` — RFC 4180-compliant CSV reader and writer
 - `Markdown` — Markdown-to-HTML converter
 - `Ini` — INI configuration file parsing
-- `Html` — HTML entity encoding and decoding
+- `Html` — HTML class encoding and decoding
 
 Example — parse JSON and query with JSONPath:
 
@@ -167,7 +167,7 @@ func max<T: Comparable>(a: T, b: T) -> T {
     return a > b ? a : b;
 }
 
-entity Pair<A, B> {
+class Pair<A, B> {
     A first;
     B second;
 }
@@ -744,7 +744,7 @@ Sprite, tilemap, and camera support for 2D games:
 
 - `Sprite` — Animated sprites with multiple frames, collision detection, origin point
 - `Tilemap` — Tile-based level rendering with configurable tile size
-- `Camera` — Viewport scrolling, entity following, world/screen coordinate conversion
+- `Camera` — Viewport scrolling, class following, world/screen coordinate conversion
 - `Color` — RGB/HSL conversion, lerp, brighten/darken utilities
 
 #### I/O Additions (`Viper.IO.*`)

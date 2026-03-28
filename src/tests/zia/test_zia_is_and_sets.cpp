@@ -64,11 +64,11 @@ TEST(ZiaIsExpr, BasicIsCheck) {
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     expose String name;
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     expose String breed;
 }
 
@@ -106,11 +106,11 @@ TEST(ZiaIsExpr, IsCheckBaseType) {
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     expose Integer id;
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     expose Integer age;
 }
 

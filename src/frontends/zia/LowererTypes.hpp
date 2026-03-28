@@ -39,7 +39,7 @@ struct FieldLayout {
     size_t size;
 };
 
-struct ValueTypeInfo {
+struct StructTypeInfo {
     std::string name;
     std::vector<FieldLayout> fields;
     std::vector<MethodDecl *> methods;
@@ -58,7 +58,7 @@ struct ValueTypeInfo {
     }
 };
 
-struct EntityTypeInfo {
+struct ClassTypeInfo {
     std::string name;
     std::string baseClass;
     std::vector<FieldLayout> fields;

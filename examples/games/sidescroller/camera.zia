@@ -27,7 +27,7 @@ bind "./config";
 bind "./palette";
 bind "./sprites";
 
-entity GameCamera {
+class GameCamera {
     hide Palette pal;
     expose Integer x;        // Camera world position (top-left pixel)
     expose Integer y;

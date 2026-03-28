@@ -8,7 +8,7 @@ final SHAPE_ROUND = 0;
 final SHAPE_SQUARE = 1;
 
 // BrushSettings entity - manages brush size, opacity, and shape
-entity BrushSettings {
+class BrushSettings {
     expose Integer size;        // Brush size in pixels (1-64)
     expose Integer opacity;     // Opacity percentage (0-100)
     expose Integer shape;       // Brush shape (SHAPE_ROUND or SHAPE_SQUARE)

@@ -290,6 +290,104 @@ static void test_character_step_height() {
  * Trigger3D tests
  *=========================================================================*/
 
+/*==========================================================================
+ * Sphere-sphere collision tests
+ *=========================================================================*/
+
+static void test_sphere_sphere_collision() {
+    /* Two spheres overlapping — should produce radial normal */
+    void *world = rt_world3d_new(0, 0, 0);
+    void *s1 = rt_body3d_new_sphere(1.0, 1.0);
+    void *s2 = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(s1, 0, 0, 0);
+    rt_body3d_set_position(s2, 1.5, 0, 0); /* overlap: sum_r=2 > dist=1.5 */
+    rt_world3d_add(world, s1);
+    rt_world3d_add(world, s2);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    /* After collision, s2 should have moved right (positive X) — radial pushout */
+    void *pos2 = rt_body3d_get_position(s2);
+    EXPECT_TRUE(rt_vec3_x(pos2) > 1.5, "sphere-sphere: s2 pushed right after collision");
+    /* Collision event should have been recorded with radial normal */
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "sphere-sphere: 1 collision event recorded");
+}
+
+static void test_sphere_sphere_no_overlap() {
+    /* Two spheres not overlapping — no collision */
+    void *world = rt_world3d_new(0, 0, 0);
+    void *s1 = rt_body3d_new_sphere(1.0, 1.0);
+    void *s2 = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(s1, 0, 0, 0);
+    rt_body3d_set_position(s2, 3.0, 0, 0); /* no overlap: sum_r=2 < dist=3 */
+    rt_world3d_add(world, s1);
+    rt_world3d_add(world, s2);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    /* Collision count should be 0 */
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 0,
+                "sphere-sphere: no collision when separated");
+}
+
+static void test_aabb_sphere_collision() {
+    /* AABB and sphere overlapping */
+    void *world = rt_world3d_new(0, 0, 0);
+    void *box = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *sph = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(box, 0, 0, 0);
+    rt_body3d_set_position(sph, 1.5, 0, 0); /* overlap: box extends to 1.0, sphere from 0.5 */
+    rt_world3d_add(world, box);
+    rt_world3d_add(world, sph);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "aabb-sphere: collision detected");
+}
+
+/*==========================================================================
+ * Collision event queue tests
+ *=========================================================================*/
+
+static void test_collision_event_count() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 0.5, 0, 0); /* overlapping */
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "collision event: 1 contact recorded");
+}
+
+static void test_collision_event_bodies() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 0.5, 0, 0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *body_a = rt_world3d_get_collision_body_a(world, 0);
+    void *body_b = rt_world3d_get_collision_body_b(world, 0);
+    EXPECT_TRUE(body_a == a, "collision event: body A matches");
+    EXPECT_TRUE(body_b == b, "collision event: body B matches");
+
+    void *normal = rt_world3d_get_collision_normal(world, 0);
+    EXPECT_TRUE(normal != nullptr, "collision event: normal is non-null");
+
+    double depth = rt_world3d_get_collision_depth(world, 0);
+    EXPECT_TRUE(depth > 0, "collision event: depth > 0");
+}
+
+/*==========================================================================
+ * Trigger3D tests
+ *=========================================================================*/
+
 static void test_trigger_create() {
     void *t = rt_trigger3d_new(-1, -1, -1, 1, 1, 1);
     EXPECT_TRUE(t != nullptr, "Trigger3D created");
@@ -415,6 +513,8 @@ int main() {
     test_character_position();
     test_character_step_height();
 
+    /* Sphere-sphere collision tests — declared below */
+
     /* Trigger3D */
     test_trigger_create();
     test_trigger_contains_inside();
@@ -423,6 +523,15 @@ int main() {
     test_trigger_exit_detection();
     test_trigger_multiple_bodies();
     test_trigger_set_bounds();
+
+    /* Sphere-sphere collision */
+    test_sphere_sphere_collision();
+    test_sphere_sphere_no_overlap();
+    test_aabb_sphere_collision();
+
+    /* Collision event queue */
+    test_collision_event_count();
+    test_collision_event_bodies();
 
     printf("Physics3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

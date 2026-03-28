@@ -111,7 +111,7 @@ if cam.IsDirty() {
 
 ## Viper.Game.Scene
 
-A hierarchical entity tree for organizing game objects. Entities can be nested into a
+A hierarchical object tree for organizing game objects. Objects can be nested into a
 parent-child structure; transforms propagate to children.
 
 **Type:** Instance (obj)
@@ -121,11 +121,11 @@ parent-child structure; transforms propagate to children.
 
 | Method | Signature | Description |
 |---|---|---|
-| `Add(entity)` | `none(obj)` | Add an entity to the root |
-| `Remove(entity)` | `none(obj)` | Remove an entity |
-| `FindByName(name)` | `obj(String)` | Find first entity with exact name match |
-| `Update(dt)` | `none(Integer)` | Propagate update tick to all entities |
-| `Draw(canvas, camera)` | `none(obj, obj)` | Draw all entities using camera transform |
+| `Add(obj)` | `none(obj)` | Add an object to the root |
+| `Remove(obj)` | `none(obj)` | Remove an object |
+| `FindByName(name)` | `obj(String)` | Find first object with exact name match |
+| `Update(dt)` | `none(Integer)` | Propagate update tick to all objects |
+| `Draw(canvas, camera)` | `none(obj, obj)` | Draw all objects using camera transform |
 
 ---
 

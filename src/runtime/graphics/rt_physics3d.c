@@ -69,11 +69,22 @@ typedef struct {
     double ground_normal[3];
 } rt_body3d;
 
+#define PH3D_MAX_CONTACTS 128
+
+typedef struct {
+    rt_body3d *body_a;
+    rt_body3d *body_b;
+    double normal[3];
+    double depth;
+} rt_contact3d;
+
 typedef struct {
     void *vptr;
     double gravity[3];
     rt_body3d *bodies[PH3D_MAX_BODIES];
     int32_t body_count;
+    rt_contact3d contacts[PH3D_MAX_CONTACTS];
+    int32_t contact_count;
 } rt_world3d;
 
 typedef struct {
@@ -117,28 +128,18 @@ static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
     }
 }
 
-/// @brief Test collision between two bodies. Returns 1 if colliding.
-/// Sets normal (A→B push direction) and depth.
-static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
-    /* Broad phase: AABB overlap test */
+/* --- Shape-specific narrow-phase collision tests ---
+ * Normal always points A→B (matches impulse convention: a.vel -= j*n). */
+
+static int test_aabb_aabb(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
     double amn[3], amx[3], bmn[3], bmx[3];
     body_aabb(a, amn, amx);
     body_aabb(b, bmn, bmx);
-    if (amn[0] > bmx[0] || amx[0] < bmn[0] || amn[1] > bmx[1] || amx[1] < bmn[1] ||
-        amn[2] > bmx[2] || amx[2] < bmn[2])
-        return 0;
-
-    /* Narrow phase: use AABB penetration for all shapes (simplified) */
-    /* Compute overlap per axis */
     double ox = (amx[0] < bmx[0] ? amx[0] - bmn[0] : bmx[0] - amn[0]);
     double oy = (amx[1] < bmx[1] ? amx[1] - bmn[1] : bmx[1] - amn[1]);
     double oz = (amx[2] < bmx[2] ? amx[2] - bmn[2] : bmx[2] - amn[2]);
     if (ox <= 0 || oy <= 0 || oz <= 0)
         return 0;
-
-    /* Push out on axis of minimum overlap.
-     * Normal points from A toward B — matches impulse formula convention
-     * where a.vel -= j*n pushes A away from B. */
     normal[0] = normal[1] = normal[2] = 0;
     if (ox <= oy && ox <= oz) {
         *depth = ox;
@@ -151,6 +152,103 @@ static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal
         normal[2] = (a->position[2] < b->position[2]) ? 1.0 : -1.0;
     }
     return 1;
+}
+
+static int test_sphere_sphere(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
+    double dx = b->position[0] - a->position[0];
+    double dy = b->position[1] - a->position[1];
+    double dz = b->position[2] - a->position[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    double sum_r = a->radius + b->radius;
+    if (dist_sq >= sum_r * sum_r)
+        return 0;
+    double dist = sqrt(dist_sq);
+    if (dist < 1e-12) {
+        /* Coincident centers — push along Y */
+        normal[0] = 0;
+        normal[1] = 1;
+        normal[2] = 0;
+        *depth = sum_r;
+    } else {
+        double inv_dist = 1.0 / dist;
+        normal[0] = dx * inv_dist;
+        normal[1] = dy * inv_dist;
+        normal[2] = dz * inv_dist;
+        *depth = sum_r - dist;
+    }
+    return 1;
+}
+
+static int test_aabb_sphere(const rt_body3d *aabb, const rt_body3d *sph, double *normal, double *depth) {
+    /* Find closest point on AABB to sphere center */
+    double closest[3];
+    double amn[3], amx[3];
+    body_aabb(aabb, amn, amx);
+    for (int i = 0; i < 3; i++) {
+        double v = sph->position[i];
+        if (v < amn[i])
+            v = amn[i];
+        if (v > amx[i])
+            v = amx[i];
+        closest[i] = v;
+    }
+    double dx = sph->position[0] - closest[0];
+    double dy = sph->position[1] - closest[1];
+    double dz = sph->position[2] - closest[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    if (dist_sq >= sph->radius * sph->radius)
+        return 0;
+    double dist = sqrt(dist_sq);
+    if (dist < 1e-12) {
+        /* Sphere center inside AABB — use AABB pushout */
+        return test_aabb_aabb(aabb, sph, normal, depth);
+    }
+    double inv_dist = 1.0 / dist;
+    /* Normal points from AABB toward sphere */
+    normal[0] = dx * inv_dist;
+    normal[1] = dy * inv_dist;
+    normal[2] = dz * inv_dist;
+    *depth = sph->radius - dist;
+    return 1;
+}
+
+/// @brief Test collision between two bodies. Returns 1 if colliding.
+/// Sets normal (A→B push direction) and depth.
+/// Uses shape-specific narrow phase for sphere and AABB-sphere pairs.
+static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
+    /* Broad phase: AABB overlap test */
+    double amn[3], amx[3], bmn[3], bmx[3];
+    body_aabb(a, amn, amx);
+    body_aabb(b, bmn, bmx);
+    if (amn[0] > bmx[0] || amx[0] < bmn[0] || amn[1] > bmx[1] || amx[1] < bmn[1] ||
+        amn[2] > bmx[2] || amx[2] < bmn[2])
+        return 0;
+
+    /* Narrow phase: shape-specific dispatch */
+    int sa = a->shape, sb = b->shape;
+
+    /* Sphere-sphere */
+    if ((sa == PH3D_SHAPE_SPHERE || sa == PH3D_SHAPE_CAPSULE) &&
+        (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE))
+        return test_sphere_sphere(a, b, normal, depth);
+
+    /* AABB-sphere (order: A=AABB, B=sphere) */
+    if (sa == PH3D_SHAPE_AABB && (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE))
+        return test_aabb_sphere(a, b, normal, depth);
+
+    /* Sphere-AABB (reversed — flip normal) */
+    if ((sa == PH3D_SHAPE_SPHERE || sa == PH3D_SHAPE_CAPSULE) && sb == PH3D_SHAPE_AABB) {
+        int hit = test_aabb_sphere(b, a, normal, depth);
+        if (hit) {
+            normal[0] = -normal[0];
+            normal[1] = -normal[1];
+            normal[2] = -normal[2];
+        }
+        return hit;
+    }
+
+    /* AABB-AABB fallback */
+    return test_aabb_aabb(a, b, normal, depth);
 }
 
 /// @brief Apply impulse-based collision response between two bodies.
@@ -231,6 +329,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->gravity[1] = gy;
     w->gravity[2] = gz;
     w->body_count = 0;
+    w->contact_count = 0;
     memset(w->bodies, 0, sizeof(w->bodies));
     rt_obj_set_finalizer(w, world3d_finalizer);
     return w;
@@ -259,7 +358,8 @@ void rt_world3d_step(void *obj, double dt) {
         b->is_grounded = 0;
     }
 
-    /* Phase 2: Collision detection + response */
+    /* Phase 2: Collision detection + response (with contact recording) */
+    w->contact_count = 0;
     for (int32_t i = 0; i < w->body_count; i++) {
         for (int32_t j = i + 1; j < w->body_count; j++) {
             rt_body3d *a = w->bodies[i], *b = w->bodies[j];
@@ -277,6 +377,17 @@ void rt_world3d_step(void *obj, double dt) {
             double normal[3], depth;
             if (!test_collision(a, b, normal, &depth))
                 continue;
+
+            /* Record contact for event queries */
+            if (w->contact_count < PH3D_MAX_CONTACTS) {
+                rt_contact3d *c = &w->contacts[w->contact_count++];
+                c->body_a = a;
+                c->body_b = b;
+                c->normal[0] = normal[0];
+                c->normal[1] = normal[1];
+                c->normal[2] = normal[2];
+                c->depth = depth;
+            }
 
             /* Trigger: detect overlap but don't resolve */
             if (a->is_trigger || b->is_trigger)
@@ -337,6 +448,51 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     w->gravity[0] = gx;
     w->gravity[1] = gy;
     w->gravity[2] = gz;
+}
+
+/*==========================================================================
+ * Collision event queries
+ *=========================================================================*/
+
+int64_t rt_world3d_get_collision_count(void *obj) {
+    return obj ? ((rt_world3d *)obj)->contact_count : 0;
+}
+
+void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
+    if (!obj)
+        return NULL;
+    rt_world3d *w = (rt_world3d *)obj;
+    if (index < 0 || index >= w->contact_count)
+        return NULL;
+    return w->contacts[index].body_a;
+}
+
+void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
+    if (!obj)
+        return NULL;
+    rt_world3d *w = (rt_world3d *)obj;
+    if (index < 0 || index >= w->contact_count)
+        return NULL;
+    return w->contacts[index].body_b;
+}
+
+void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
+    if (!obj)
+        return rt_vec3_new(0, 0, 0);
+    rt_world3d *w = (rt_world3d *)obj;
+    if (index < 0 || index >= w->contact_count)
+        return rt_vec3_new(0, 0, 0);
+    return rt_vec3_new(w->contacts[index].normal[0], w->contacts[index].normal[1],
+                       w->contacts[index].normal[2]);
+}
+
+double rt_world3d_get_collision_depth(void *obj, int64_t index) {
+    if (!obj)
+        return 0;
+    rt_world3d *w = (rt_world3d *)obj;
+    if (index < 0 || index >= w->contact_count)
+        return 0;
+    return w->contacts[index].depth;
 }
 
 /*==========================================================================
@@ -554,13 +710,79 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     double vy = rt_vec3_y(velocity_vec);
     double vz = rt_vec3_z(velocity_vec);
 
-    /* Simple movement: apply velocity directly (physics world handles collision) */
+    ctrl->was_grounded = ctrl->is_grounded;
+    ctrl->is_grounded = body->is_grounded;
+
+    /* Slide-and-step movement with up to 3 iterations.
+     * Each iteration: attempt move, on collision slide along surface. */
+    double remaining[3] = {vx * dt, vy * dt, vz * dt};
+    double original_y = body->position[0]; /* unused but keeps pattern */
+    (void)original_y;
+
+    for (int iter = 0; iter < 3; iter++) {
+        double move_len = sqrt(remaining[0] * remaining[0] + remaining[1] * remaining[1] +
+                               remaining[2] * remaining[2]);
+        if (move_len < 1e-6)
+            break;
+
+        /* Attempt full move */
+        body->position[0] += remaining[0];
+        body->position[1] += remaining[1];
+        body->position[2] += remaining[2];
+
+        /* Check collision against world bodies (if world is set) */
+        int collided = 0;
+        double best_normal[3] = {0, 0, 0};
+        double best_depth = 0;
+        if (ctrl->world) {
+            for (int32_t i = 0; i < ctrl->world->body_count; i++) {
+                rt_body3d *other = ctrl->world->bodies[i];
+                if (!other || other == body)
+                    continue;
+                if (!other->is_static)
+                    continue; /* character only collides with static geometry */
+
+                double normal[3], depth;
+                if (test_collision(body, other, normal, &depth)) {
+                    /* Slope limiting: reject movement up steep slopes */
+                    if (-normal[1] > ctrl->slope_limit_cos || normal[1] > ctrl->slope_limit_cos) {
+                        /* Walkable slope or ceiling — allow collision resolution */
+                    }
+                    if (depth > best_depth) {
+                        best_depth = depth;
+                        best_normal[0] = normal[0];
+                        best_normal[1] = normal[1];
+                        best_normal[2] = normal[2];
+                        collided = 1;
+                    }
+                    /* Ground detection */
+                    if (normal[1] < -0.7) {
+                        ctrl->is_grounded = 1;
+                    }
+                }
+            }
+        }
+
+        if (!collided)
+            break; /* No collision — move succeeded */
+
+        /* Push out of collision */
+        body->position[0] -= best_normal[0] * best_depth;
+        body->position[1] -= best_normal[1] * best_depth;
+        body->position[2] -= best_normal[2] * best_depth;
+
+        /* Slide: remove the component of remaining velocity along the collision normal */
+        double dot = remaining[0] * best_normal[0] + remaining[1] * best_normal[1] +
+                     remaining[2] * best_normal[2];
+        remaining[0] -= dot * best_normal[0];
+        remaining[1] -= dot * best_normal[1];
+        remaining[2] -= dot * best_normal[2];
+    }
+
+    /* Set velocity to match actual displacement (for physics world integration) */
     body->velocity[0] = vx;
     body->velocity[1] = vy;
     body->velocity[2] = vz;
-
-    ctrl->was_grounded = ctrl->is_grounded;
-    ctrl->is_grounded = body->is_grounded;
 }
 
 void rt_character3d_set_step_height(void *o, double h) {

@@ -691,7 +691,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
                 case TokenKind::Minus:
                 case TokenKind::Bang:
                 case TokenKind::Tilde:
-                case TokenKind::KwValue:
+                case TokenKind::KwStruct:
                     nextStartsExpr = true;
                     break;
                 default:

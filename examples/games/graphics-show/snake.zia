@@ -27,7 +27,7 @@ func initDirections() {
 }
 
 // Snake segment
-entity Segment {
+class Segment {
     expose Integer x;
     expose Integer y;
 
@@ -38,7 +38,7 @@ entity Segment {
 }
 
 // Food
-entity Food {
+class Food {
     expose Integer x;
     expose Integer y;
     expose Integer color;
@@ -67,7 +67,7 @@ entity Food {
 }
 
 // Snake
-entity Snake {
+class Snake {
     expose List[Segment] segments;
     expose Integer direction;
     expose Integer nextDirection;
@@ -197,7 +197,7 @@ entity Snake {
 }
 
 // Game state
-entity SnakeGame {
+class SnakeGame {
     expose Snake snake;
     expose Food food;
     expose Integer gridWidth;

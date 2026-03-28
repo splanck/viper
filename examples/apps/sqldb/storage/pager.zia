@@ -15,7 +15,7 @@ bind "./serializer";
 //=============================================================================
 
 // Represents a single page in memory
-entity Page {
+class Page {
     expose Integer pageId;
     expose Integer pageType;
     expose BinaryBuffer data;
@@ -76,7 +76,7 @@ entity Page {
 //=============================================================================
 
 // Manages page I/O for a database file
-entity Pager {
+class Pager {
     expose String filename;
     expose Integer pageCount;
     expose Integer freeListHead;

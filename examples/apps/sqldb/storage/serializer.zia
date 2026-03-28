@@ -14,7 +14,7 @@ bind "./page";
 //=============================================================================
 
 // Simple binary buffer for building serialized data
-entity BinaryBuffer {
+class BinaryBuffer {
     expose List[Integer] bytes;
     expose Integer position;
 
@@ -190,7 +190,7 @@ func hexDigit(n: Integer) -> String {
 // SQLVALUE SERIALIZER
 //=============================================================================
 
-entity ValueSerializer {
+class ValueSerializer {
     expose func init() {
         // No state needed
     }
@@ -337,7 +337,7 @@ entity ValueSerializer {
 // ROW SERIALIZER
 //=============================================================================
 
-entity RowSerializer {
+class RowSerializer {
     hide ValueSerializer valSer;
 
     expose func init() {
@@ -394,7 +394,7 @@ entity RowSerializer {
 // COLUMN SERIALIZER
 //=============================================================================
 
-entity ColumnSerializer {
+class ColumnSerializer {
     expose func init() {
         // No state needed
     }

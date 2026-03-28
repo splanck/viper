@@ -871,12 +871,12 @@ module GameFramework;
 bind Viper.Graphics;
 bind Viper.Time;
 
-value Vec2 {
+struct Vec2 {
     x: Number;
     y: Number;
 }
 
-entity GameObject {
+class GameObject {
     position: Vec2;
     size: Vec2;
     color: Color;
@@ -905,7 +905,7 @@ entity GameObject {
     }
 }
 
-entity Game {
+class Game {
     canvas: Canvas;
     objects: List[GameObject];
     running: Boolean;

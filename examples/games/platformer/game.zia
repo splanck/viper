@@ -38,7 +38,7 @@ bind "./enemies";
 bind "./hud";
 bind "./rendering";
 
-entity PlatformerGame extends GameBase {
+class PlatformerGame extends GameBase {
     // Scenes — implement IScene interface for update/draw/onEnter/onExit
     expose MenuScene menuScene;
     expose PlayScene playScene;

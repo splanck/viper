@@ -5,7 +5,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind "../config";
 
-entity Torch {
+class Torch {
     hide Float posX;
     hide Float posY;
     hide Float posZ;
@@ -91,7 +91,7 @@ entity Torch {
     }
 }
 
-entity TorchManager {
+class TorchManager {
     hide List[Torch] torches;
 
     expose func initManager() {

@@ -18,7 +18,7 @@ bind "./schema";
 // TABLE ENTITY
 //=============================================================================
 
-entity Table {
+class Table {
     expose String name;
     expose List[Column] columns;
     expose List[Row] rows;

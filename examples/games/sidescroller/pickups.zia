@@ -9,7 +9,7 @@ bind "./level";
 bind "./physics";
 bind "./sprites";
 
-entity PickupManager {
+class PickupManager {
     hide ObjectPool pool;
     hide List[Integer] ptype;
     hide List[Integer] px;       // world pixel x

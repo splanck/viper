@@ -6,7 +6,7 @@ bind Viper.Math;
 bind Viper.Input;
 bind "../config";
 
-entity Player {
+class Player {
     hide Integer health;
     hide Integer maxHealth;
     hide Float invulnTimer;

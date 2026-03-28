@@ -24,7 +24,7 @@ bind "../table";
 bind "../schema";
 
 // Entity that has a WALManager field — same pattern as StorageEngine
-entity TestEngine {
+class TestEngine {
     expose WALManager wal;
     expose Boolean isPersistent;
 

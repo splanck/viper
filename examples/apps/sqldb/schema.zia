@@ -21,7 +21,7 @@ final FK_RESTRICT = 3;    // Prevent the operation (same as NO ACTION for us)
 // COLUMN ENTITY
 //=============================================================================
 
-entity Column {
+class Column {
     expose String name;
     expose Integer typeCode;
     expose Boolean notNull;
@@ -139,7 +139,7 @@ func makeColumn(name: String, typeCode: Integer) -> Column {
 // ROW ENTITY
 //=============================================================================
 
-entity Row {
+class Row {
     expose List[SqlValue] values;
     expose Boolean deleted;
 

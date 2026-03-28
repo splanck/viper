@@ -91,8 +91,8 @@ This document is a comprehensive feature parity audit between the two Viper fron
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Reference type (heap) | **Full** (`entity`) | **Full** (`CLASS`) | Both use rt_alloc |
-| Value type (copy) | **Full** (`value`) | **Full** (`TYPE`) | BASIC TYPE is fields-only (no methods) |
+| Reference type (heap) | **Full** (`class`) | **Full** (`CLASS`) | Both use rt_alloc |
+| Value type (copy) | **Full** (`struct`) | **Full** (`TYPE`) | BASIC TYPE is fields-only (no methods) |
 | Constructor | **Full** (`func init()`) | **Full** (`SUB New()`) | |
 | Destructor | **Full** (`deinit`) | **Full** (`DESTRUCTOR`) | Both emit `__dtor_TypeName` function |
 | DELETE statement | None | **Full** (`DELETE obj`) | **Gap** — BASIC only |
@@ -215,7 +215,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Generic types | **Full** (`entity Stack[T]`) | None | Zia only |
+| Generic types | **Full** (`class Stack[T]`) | None | Zia only |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
 | Type constraints | **Full** (`[T: Comparable]`) | None | Zia only |
 | Generic instantiation | **Full** (name-mangling + cache) | None | Zia only |
@@ -357,7 +357,7 @@ All former P1 gaps have been resolved:
 ### P3 — Low friction (different syntax, same capability)
 
 8. **Different loop syntax** — `FOR i = 1 TO 10` vs `for (var i = 1; i <= 10; i = i + 1)`
-9. **Different class syntax** — `CLASS/END CLASS` vs `entity { }`
+9. **Different class syntax** — `CLASS/END CLASS` vs `class { }`
 10. **Different import syntax** — `USING` vs `bind`
 11. **Different null literal** — `NOTHING` vs `null`
 

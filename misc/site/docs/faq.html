@@ -132,7 +132,7 @@ func start() {
 <h3 id="10-what-are-entities-in-zia">10. What are entities in Zia?</h3>
 <p>Entities are Zia&#x27;s object-oriented construct, similar to classes:</p>
 <pre><code data-lang="rust">
-entity Counter {
+class Counter {
     expose Integer value;
 
     expose func init(start: Integer) {
@@ -144,7 +144,7 @@ entity Counter {
     }
 }
 </code></pre>
-<p>Use <code>expose</code> to make fields and methods visible outside the entity.</p>
+<p>Use <code>expose</code> to make fields and methods visible outside the class.</p>
 <h3 id="11-how-do-i-organize-multi-file-zia-projects">11. How do I organize multi-file Zia projects?</h3>
 <p>Use modules and binds:</p>
 <pre><code data-lang="rust">

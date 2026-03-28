@@ -32,7 +32,7 @@ bind "./storage/txn";
 //=============================================================================
 
 // Thread-safe: all public methods are protected by a Monitor lock.
-entity DatabaseServer {
+class DatabaseServer {
     // Map of database name to Database object
     // Since Zia doesn't have native Map, we use parallel lists
     expose List[String] dbNames;

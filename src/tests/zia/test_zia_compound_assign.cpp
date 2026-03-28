@@ -192,13 +192,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test compound assignment on entity fields.
+/// @brief Test compound assignment on class fields.
 TEST(ZiaCompoundAssign, FieldCompoundAssign) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     expose Integer count;
 
     expose func increment() {

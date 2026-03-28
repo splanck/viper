@@ -8,7 +8,7 @@
 // File: src/tests/unit/frontends/test_zia_sema.cpp
 // Purpose: Comprehensive unit tests for Zia semantic analysis, exercising
 //          type inference, method resolution, generics, optionals, error
-//          diagnostics, entity features, interfaces, coercion, scoping,
+//          diagnostics, class features, interfaces, coercion, scoping,
 //          and return-type consistency through full compilation.
 // Key invariants:
 //   - Each test compiles a self-contained Zia module via the Compiler API
@@ -163,13 +163,13 @@ func start() {
 // 4. Optional Unwrapping
 //===----------------------------------------------------------------------===//
 
-/// @brief Optional entity with coalesce operator should compile.
+/// @brief Optional class with coalesce operator should compile.
 TEST(ZiaSema, OptionalCoalesce) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
 
-entity Item {
+class Item {
     expose Integer value;
 }
 
@@ -234,14 +234,14 @@ func start() {
 // 6. Entity Field Access
 //===----------------------------------------------------------------------===//
 
-/// @brief Accessing exposed entity fields should compile. Accessing fields
+/// @brief Accessing exposed class fields should compile. Accessing fields
 ///        through method returns should also work.
 TEST(ZiaSema, EntityFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
 
-entity Player {
+class Player {
     expose Integer health;
     expose String name;
     expose Boolean alive;
@@ -273,7 +273,7 @@ TEST(ZiaSema, EntityMethodCalls) {
     auto result = compileSource(R"(
 module Test;
 
-entity Calculator {
+class Calculator {
     expose Integer accumulator;
 
     expose func add(Integer n) {
@@ -314,13 +314,13 @@ interface IGreeter {
     func greet(): String;
 }
 
-entity FormalGreeter implements IGreeter {
+class FormalGreeter implements IGreeter {
     expose func greet(): String {
         return "Good day.";
     }
 }
 
-entity CasualGreeter implements IGreeter {
+class CasualGreeter implements IGreeter {
     expose func greet(): String {
         return "Hey!";
     }
@@ -536,7 +536,7 @@ TEST(ZiaSema, EntityWithGenericField) {
     auto result = compileSource(R"(
 module Test;
 
-entity TodoList {
+class TodoList {
     expose List[String] items;
 
     expose func addItem(String item) {
@@ -583,13 +583,13 @@ func start() {
 // 18. Entity Inheritance Field Access
 //===----------------------------------------------------------------------===//
 
-/// @brief Derived entity should have access to base entity fields.
+/// @brief Derived class should have access to base class fields.
 TEST(ZiaSema, InheritanceFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
 
-entity Animal {
+class Animal {
     expose Integer age;
 
     expose func getAge() -> Integer {
@@ -597,7 +597,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     expose String breed;
 }
 

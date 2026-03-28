@@ -149,14 +149,14 @@ func start() {
     EXPECT_TRUE(hasDottedFunc);
 }
 
-/// @brief Test entity inside namespace.
+/// @brief Test class inside namespace.
 TEST(ZiaNamespaces, EntityInNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
 namespace MyLib {
-    entity Parser {
+    class Parser {
         Integer value;
 
         func init() {
@@ -188,7 +188,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     // Entity methods are named EntityName.method (namespace is not in the IL name).
-    // Verify the entity's method exists in the output module.
+    // Verify the class's method exists in the output module.
     bool hasEntityMethod = false;
     for (const auto &fn : result.module.functions) {
         if (fn.name.find("Parser") != std::string::npos &&
@@ -236,7 +236,7 @@ TEST(ZiaNamespaces, ValueTypeInNamespace) {
 module Test;
 
 namespace Geometry {
-    value Point {
+    struct Point {
         Integer x;
         Integer y;
     }

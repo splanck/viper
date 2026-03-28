@@ -70,7 +70,7 @@
 bind Viper.Terminal;
 bind Canvas = Viper.Canvas;
 
-entity Player {
+class Player {
     hide Integer x;
     hide Integer y;
     hide Integer health;
@@ -144,7 +144,7 @@ END CLASS</code></pre>
       <tbody>
         <tr><td>Variables</td><td><code>var x: Integer = 5</code></td><td><code>DIM x AS INTEGER = 5</code></td></tr>
         <tr><td>Functions</td><td><code>func add(a: Integer, b: Integer) -> Integer</code></td><td><code>FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER</code></td></tr>
-        <tr><td>Classes</td><td><code>entity Player { }</code></td><td><code>CLASS Player ... END CLASS</code></td></tr>
+        <tr><td>Classes</td><td><code>class Player { }</code></td><td><code>CLASS Player ... END CLASS</code></td></tr>
         <tr><td>Constructors</td><td><code>expose func init(...)</code></td><td><code>SUB New(...)</code></td></tr>
         <tr><td>For loops</td><td><code>for i in 0..10 { }</code></td><td><code>FOR i = 0 TO 9 ... NEXT</code></td></tr>
         <tr><td>Conditionals</td><td><code>if x > 0 { } else { }</code></td><td><code>IF x > 0 THEN ... ELSE ... END IF</code></td></tr>

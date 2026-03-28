@@ -6,7 +6,7 @@ bind "./_support";
 
 // Test: String interpolation with various expression types
 
-entity Person {
+class Person {
     expose String name;
     expose Integer age;
 

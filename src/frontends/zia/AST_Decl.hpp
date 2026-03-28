@@ -14,20 +14,20 @@
 ///
 ///   - ModuleDecl: The top-level container holding all declarations in a file.
 ///   - FuncDecl: Function definitions with name, parameters, return type, body.
-///   - EntityDecl: User-defined types (structs/classes) with fields and methods.
-///   - FieldDecl: Fields within an entity declaration.
+///   - ClassDecl/StructDecl: User-defined types (classes/structs) with fields and methods.
+///   - FieldDecl: Fields within an class declaration.
 ///   - ImportDecl: Import (`bind`) statements referencing other modules.
 ///   - ExternDecl: External function declarations (FFI).
 ///
 /// The parser creates declaration nodes by recognizing top-level keywords
-/// (`func`, `entity`, `bind`, `extern`). The semantic analyzer registers
+/// (`func`, `class`, `bind`, `extern`). The semantic analyzer registers
 /// declarations in the symbol table and checks for conflicts, completeness,
 /// and type correctness. The lowerer translates each declaration into the
 /// corresponding IL construct (il::Function, il::ExternFunction, etc.).
 ///
 /// @invariant Every Decl has a valid `kind` field matching its concrete type.
 /// @invariant ModuleDecl is always the root; it cannot be nested.
-/// @invariant Function and entity names are non-empty after successful parsing.
+/// @invariant Function and class names are non-empty after successful parsing.
 ///
 /// Ownership/Lifetime: Declarations are owned by their containing ModuleDecl
 /// via DeclPtr (std::unique_ptr<Decl>). The ModuleDecl itself is owned by
@@ -67,13 +67,13 @@ enum class DeclKind {
     /// @see BindDecl
     Bind,
 
-    /// @brief Value type declaration: copy-semantics struct.
-    /// @see ValueDecl
-    Value,
+    /// @brief Struct type declaration: copy-semantics struct.
+    /// @see StructDecl
+    Struct,
 
-    /// @brief Entity type declaration: reference-semantics class.
-    /// @see EntityDecl
-    Entity,
+    /// @brief Class type declaration: reference-semantics class.
+    /// @see ClassDecl
+    Class,
 
     /// @brief Interface declaration: abstract type contract.
     /// @see InterfaceDecl
@@ -107,7 +107,7 @@ enum class DeclKind {
     /// @see PropertyDecl
     Property,
 
-    /// @brief Destructor declaration: entity cleanup code.
+    /// @brief Destructor declaration: class cleanup code.
     /// @see DestructorDecl
     Destructor,
 
@@ -120,7 +120,7 @@ enum class DeclKind {
 /// @details Controls access to fields and methods from outside the type.
 enum class Visibility {
     /// @brief Private: only accessible within the type.
-    /// @details Default for entity fields to encourage encapsulation.
+    /// @details Default for class fields to encourage encapsulation.
     Private,
 
     /// @brief Public: accessible from anywhere.
@@ -236,12 +236,12 @@ struct FunctionDecl : Decl {
     FunctionDecl(SourceLoc l, std::string n) : Decl(DeclKind::Function, l), name(std::move(n)) {}
 };
 
-/// @brief Field declaration within a value or entity type.
+/// @brief Field declaration within a value or class type.
 /// @details Defines a member variable with type, visibility, and modifiers.
 ///
 /// ## Modifiers
 /// - `final`: Field cannot be reassigned after construction
-/// - `weak`: For entity types, creates a weak reference (no ref counting)
+/// - `weak`: For class types, creates a weak reference (no ref counting)
 /// - `expose`/`hide`: Controls visibility (public/private)
 struct FieldDecl : Decl {
     /// @brief Field name.
@@ -259,7 +259,7 @@ struct FieldDecl : Decl {
     /// @brief True if field cannot be reassigned.
     bool isFinal = false;
 
-    /// @brief True if this is a weak reference (entity types only).
+    /// @brief True if this is a weak reference (class types only).
     bool isWeak = false;
 
     /// @brief True if this is a static (type-level) field.
@@ -271,12 +271,12 @@ struct FieldDecl : Decl {
     FieldDecl(SourceLoc l, std::string n) : Decl(DeclKind::Field, l), name(std::move(n)) {}
 };
 
-/// @brief Method declaration within a value or entity type.
+/// @brief Method declaration within a value or class type.
 /// @details Defines a member function. Methods have access to `self`.
 ///
 /// ## Example
 /// ```
-/// entity Player {
+/// class Player {
 ///     func heal(amount: Integer) {
 ///         self.health = self.health + amount;
 ///     }
@@ -318,7 +318,7 @@ struct MethodDecl : Decl {
 ///
 /// ## Example
 /// ```
-/// entity Circle {
+/// class Circle {
 ///     expose radius: Number;
 ///     property area: Number {
 ///         get { return 3.14159 * self.radius * self.radius; }
@@ -353,15 +353,15 @@ struct PropertyDecl : Decl {
     PropertyDecl(SourceLoc l, std::string n) : Decl(DeclKind::Property, l), name(std::move(n)) {}
 };
 
-/// @brief Destructor declaration for entity types.
-/// @details Defines cleanup code that runs when an entity instance is destroyed.
-/// At most one destructor is allowed per entity. The lowerer synthesizes a
+/// @brief Destructor declaration for class types.
+/// @details Defines cleanup code that runs when a class instance is destroyed.
+/// At most one destructor is allowed per class. The lowerer synthesizes a
 /// `__dtor_TypeName` IL function that runs the user body, then releases
 /// reference-typed fields.
 ///
 /// ## Example
 /// ```
-/// entity Connection {
+/// class Connection {
 ///     expose String host;
 ///     deinit {
 ///         // cleanup resources
@@ -377,12 +377,12 @@ struct DestructorDecl : Decl {
     DestructorDecl(SourceLoc l) : Decl(DeclKind::Destructor, l) {}
 };
 
-/// @brief Constructor declaration for entity types.
-/// @details Defines how to initialize a new instance of an entity type.
+/// @brief Constructor declaration for class types.
+/// @details Defines how to initialize a new instance of an class type.
 ///
 /// ## Example
 /// ```
-/// entity Player {
+/// class Player {
 ///     new(name: String, health: Integer) {
 ///         self.name = name;
 ///         self.health = health;
@@ -431,20 +431,20 @@ struct GlobalVarDecl : Decl {
     GlobalVarDecl(SourceLoc l, std::string n) : Decl(DeclKind::GlobalVar, l), name(std::move(n)) {}
 };
 
-/// @brief Value type declaration (copy semantics).
-/// @details Defines a value type with copy-on-assignment semantics.
-/// Value types are passed by value and have no identity.
+/// @brief Struct type declaration (copy semantics).
+/// @details Defines a struct type with copy-on-assignment semantics.
+/// Struct types are passed by value and have no identity.
 ///
 /// ## Example
 /// ```
-/// value Point {
+/// struct Point {
 ///     expose x: Number;
 ///     expose y: Number;
 ///
 ///     func distance(other: Point) -> Number { ... }
 /// }
 /// ```
-struct ValueDecl : Decl {
+struct StructDecl : Decl {
     /// @brief Type name.
     std::string name;
 
@@ -457,19 +457,19 @@ struct ValueDecl : Decl {
     /// @brief Member declarations (fields and methods).
     std::vector<DeclPtr> members;
 
-    /// @brief Construct a value type declaration.
+    /// @brief Construct a struct type declaration.
     /// @param l Source location.
     /// @param n Type name.
-    ValueDecl(SourceLoc l, std::string n) : Decl(DeclKind::Value, l), name(std::move(n)) {}
+    StructDecl(SourceLoc l, std::string n) : Decl(DeclKind::Struct, l), name(std::move(n)) {}
 };
 
-/// @brief Entity type declaration (reference semantics).
-/// @details Defines an entity type with reference semantics and identity.
-/// Entity types are heap-allocated and passed by reference.
+/// @brief Class type declaration (reference semantics).
+/// @details Defines a class type with reference semantics and identity.
+/// Class types are heap-allocated and passed by reference.
 ///
 /// ## Example
 /// ```
-/// entity Player extends Character implements Moveable {
+/// class Player extends Character implements Moveable {
 ///     hide health: Integer;
 ///     expose name: String;
 ///
@@ -480,14 +480,14 @@ struct ValueDecl : Decl {
 ///     }
 /// }
 /// ```
-struct EntityDecl : Decl {
+struct ClassDecl : Decl {
     /// @brief Type name.
     std::string name;
 
     /// @brief Generic type parameter names.
     std::vector<std::string> genericParams;
 
-    /// @brief Parent entity name (empty = no inheritance).
+    /// @brief Parent class name (empty = no inheritance).
     std::string baseClass;
 
     /// @brief Implemented interface names.
@@ -496,14 +496,14 @@ struct EntityDecl : Decl {
     /// @brief Member declarations (fields, methods, constructor).
     std::vector<DeclPtr> members;
 
-    /// @brief Construct an entity type declaration.
+    /// @brief Construct a class type declaration.
     /// @param l Source location.
     /// @param n Type name.
-    EntityDecl(SourceLoc l, std::string n) : Decl(DeclKind::Entity, l), name(std::move(n)) {}
+    ClassDecl(SourceLoc l, std::string n) : Decl(DeclKind::Class, l), name(std::move(n)) {}
 };
 
 /// @brief Interface declaration (abstract type contract).
-/// @details Defines an interface that value and entity types can implement.
+/// @details Defines an interface that struct and class types can implement.
 /// Interfaces declare method signatures without implementations.
 ///
 /// ## Example
@@ -576,7 +576,7 @@ struct BindDecl : Decl {
 /// ## Example
 /// ```
 /// namespace MyLib {
-///     entity Parser { ... }
+///     class Parser { ... }
 ///     func parse(s: String) -> Result { ... }
 /// }
 ///
@@ -673,7 +673,7 @@ struct EnumDecl : Decl {
 ///
 /// bind Viper.Terminal as Term;
 ///
-/// entity Player { ... }
+/// class Player { ... }
 ///
 /// func main() { ... }
 /// ```

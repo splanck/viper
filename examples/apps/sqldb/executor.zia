@@ -72,7 +72,7 @@ final JOURNAL_INSERT = 1;   // Row inserted — undo: remove it
 final JOURNAL_DELETE = 2;   // Row soft-deleted — undo: undelete it
 final JOURNAL_UPDATE = 3;   // Row updated — undo: restore old values
 
-entity JournalEntry {
+class JournalEntry {
     expose Integer entryType;
     expose String tableName;
     expose Integer rowIndex;     // Row index at time of operation
@@ -109,7 +109,7 @@ entity JournalEntry {
 // EXECUTOR ENTITY
 //=============================================================================
 
-entity Executor {
+class Executor {
     // Multi-database server (Phase 1)
     expose DatabaseServer server;
 

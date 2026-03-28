@@ -68,8 +68,8 @@ All 18 bugs identified in the initial audit have been fixed:
 |-----|-------|-----------|-----|
 | BUG-005 | AUTOINCREMENT not working | PK NOT NULL check fired before auto-increment | Auto-increment now fires first; column-list INSERT maps columns by name |
 | BUG-006 | UNIQUE constraint not enforced | Entity field copy bug — `col.unique` not preserved | Use parser Column objects directly (`table.addColumn(stmtCol)`) |
-| BUG-007 | FOREIGN KEY not enforced | Same entity copy bug + silent accept on missing ref table | Same fix + explicit error on missing referenced table |
-| BUG-008 | DEFAULT values not applied | Same entity copy bug — `hasDefault`/`defaultValue` not preserved | Same fix; also added column-list INSERT to fill defaults for omitted columns |
+| BUG-007 | FOREIGN KEY not enforced | Same class copy bug + silent accept on missing ref table | Same fix + explicit error on missing referenced table |
+| BUG-008 | DEFAULT values not applied | Same class copy bug — `hasDefault`/`defaultValue` not preserved | Same fix; also added column-list INSERT to fill defaults for omitted columns |
 | BUG-009 | NOT operator returns 0 rows | NOT parsed at wrong precedence (in `parseUnaryExpr`) | Added `parseNotExpr()` between AND and comparison in precedence chain |
 | BUG-010 | BETWEEN/LIKE/IS NULL not filtering | Parser recognized tokens but executor had no evaluation logic | Added OP_IS, OP_LIKE with `matchLike()`, BETWEEN handled via AND of ≥/≤ |
 | BUG-011 | IN value-list parse error | Parser only handled `IN (SELECT ...)` not `IN (val1, val2)` | Added `parseInList()` helper; executor handles EXPR_FUNCTION with args |
@@ -187,7 +187,7 @@ All 18 bugs identified in the initial audit have been fixed:
 
 The key systemic fix was the `cloneValue()` helper using `String.Substring()` to create independent string allocations in result rows. This prevents the AArch64 codegen's string retain/release lifecycle from corrupting values during sort operations and list reassignment. Without this, shared string references between table storage and result rows would get freed prematurely when intermediate lists were garbage collected.
 
-The entity field copy bug (BUG-006/007/008) was particularly subtle — creating new Column entities and copying fields one-by-one would preserve `primaryKey` and `notNull` but silently drop `unique`, `hasDefault`, and `defaultValue`. The fix was to use the parser's Column objects directly via `table.addColumn(stmtCol)`.
+The class field copy bug (BUG-006/007/008) was particularly subtle — creating new Column entities and copying fields one-by-one would preserve `primaryKey` and `notNull` but silently drop `unique`, `hasDefault`, and `defaultValue`. The fix was to use the parser's Column objects directly via `table.addColumn(stmtCol)`.
 
 ---
 
@@ -378,13 +378,13 @@ The Viper runtime provides fully functional TCP networking APIs, verified via na
 **Full integration test passed:** A single-process test created a TCP server, connected a client, sent a query string, received it on the server side, sent a response back, and the client received it correctly. All operations worked flawlessly in native ARM64 mode.
 
 **Server infrastructure (sql_server.zia):**
-- `SqlServer` entity with `processQuery()`, `formatResult()`, session management
+- `SqlServer` class with `processQuery()`, `formatResult()`, session management
 - PostgreSQL-like wire protocol constants (MSG_QUERY=81, MSG_READY=90, etc.)
 - `READY` marker-based response delimiting
 - Default port: 5432
 
 **Client infrastructure (sql_client.zia):**
-- `SqlClient` entity with `connect()`, `execute()`, `executeAndPrint()`
+- `SqlClient` class with `connect()`, `execute()`, `executeAndPrint()`
 - Interactive REPL with `vipersql> ` prompt
 - Response reading with READY marker detection
 
@@ -492,7 +492,7 @@ Currently the only persistence mechanism is `SAVE`/`OPEN` which serializes to/fr
 
 The majority of P0 bugs share two root causes:
 
-1. **String retain/release lifecycle in AArch64 codegen** (STRESS-002, 003, 005): The native code generator's reference counting for heap-allocated strings doesn't correctly handle all paths where string references are shared across data structures, particularly during recursive entity method calls.
+1. **String retain/release lifecycle in AArch64 codegen** (STRESS-002, 003, 005): The native code generator's reference counting for heap-allocated strings doesn't correctly handle all paths where string references are shared across data structures, particularly during recursive class method calls.
 
 2. **Row list memory management after bulk deletion** (STRESS-001, 004): The in-memory table storage uses a List of Row entities. Soft-deleted rows left in the list caused SIGBUS when new inserts tried to access the list.
 
@@ -507,7 +507,7 @@ All 10 stress test bugs have been fixed and verified. The fixes are summarized b
 **Fix:** Added row compaction after DELETE — rebuilds the rows list without soft-deleted entries (`executor.zia:executeDelete`).
 
 ### STRESS-002: SIGSEGV on IN (SELECT ...) subquery (FIXED)
-**Root cause:** Native codegen corrupts string references during recursive entity method calls. The IN subquery was re-executed per row, accumulating corruption.
+**Root cause:** Native codegen corrupts string references during recursive class method calls. The IN subquery was re-executed per row, accumulating corruption.
 **Fix:** Created dedicated `evalInSubquery()` method with proper executor state save/restore and result caching. Subquery executes once, cached cloned values are reused for subsequent rows (`executor.zia:evalInSubquery`).
 
 ### STRESS-003: SIGILL on 3-level nested subqueries (FIXED)

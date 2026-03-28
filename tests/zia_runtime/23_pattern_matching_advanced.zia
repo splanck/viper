@@ -6,7 +6,7 @@ bind "./_support";
 
 // Test: Advanced pattern matching with bindings and various patterns
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 
@@ -16,7 +16,7 @@ entity Point {
     }
 }
 
-entity Box {
+class Box {
     expose Integer value;
 
     expose func init(v: Integer) {

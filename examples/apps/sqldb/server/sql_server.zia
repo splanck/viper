@@ -90,7 +90,7 @@ func stringToUpper(s: String) -> String {
 // CLIENT SESSION
 //=============================================================================
 
-entity ClientSession {
+class ClientSession {
     expose Integer sessionId;
     expose String clientHost;
     expose String username;
@@ -125,7 +125,7 @@ entity ClientSession {
 // QUERY RESULT
 //=============================================================================
 
-entity ServerQueryResult {
+class ServerQueryResult {
     expose Boolean success;
     expose String errorMessage;
     expose List[String] columnNames;
@@ -171,7 +171,7 @@ entity ServerQueryResult {
 // SQL SERVER
 //=============================================================================
 
-entity SqlServer {
+class SqlServer {
     expose Integer port;
     expose Boolean running;
     expose Integer nextSessionId;

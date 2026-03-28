@@ -42,11 +42,11 @@ void Lowerer::lowerDecl(Decl *decl) {
         case DeclKind::Function:
             lowerFunctionDecl(*static_cast<FunctionDecl *>(decl));
             break;
-        case DeclKind::Value:
-            lowerValueDecl(*static_cast<ValueDecl *>(decl));
+        case DeclKind::Struct:
+            lowerStructDecl(*static_cast<StructDecl *>(decl));
             break;
-        case DeclKind::Entity:
-            lowerEntityDecl(*static_cast<EntityDecl *>(decl));
+        case DeclKind::Class:
+            lowerClassDecl(*static_cast<ClassDecl *>(decl));
             break;
         case DeclKind::Interface:
             lowerInterfaceDecl(*static_cast<InterfaceDecl *>(decl));

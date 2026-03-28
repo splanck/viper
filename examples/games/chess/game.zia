@@ -30,7 +30,7 @@ bind "./ai";
 //   N (scancode 17)              — start new game
 //   Ctrl+Z (scancodes 224+29)   — undo last move (2 in PvC: AI + human)
 // ============================================================================
-entity ChessGame {
+class ChessGame {
     hide Canvas        canvas;
     hide Board         board;
     hide MoveGen       moveGen;

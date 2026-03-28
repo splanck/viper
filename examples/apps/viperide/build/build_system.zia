@@ -17,7 +17,7 @@ bind Sw = Viper.Time.Stopwatch;
 // Diagnostic format: "file.zia:line:col: error[code]: message"
 // ============================================================================
 
-entity BuildSystem {
+class BuildSystem {
     // Build state
     expose Boolean isBuilding;
     expose Boolean isRunning;
@@ -169,7 +169,7 @@ entity BuildSystem {
 }
 
 // Diagnostic — represents a compiler error or warning
-entity Diagnostic {
+class Diagnostic {
     expose String filePath;
     expose Integer line;
     expose Integer column;

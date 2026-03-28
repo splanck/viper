@@ -36,7 +36,7 @@ Compare this to designing your own solution from scratch. You might create somet
 
 ### A Shared Vocabulary
 
-Imagine explaining a solution: "Create an interface for the algorithm, then have different entities implement it. Store one of them in your main entity and delegate to it. You can swap implementations at runtime."
+Imagine explaining a solution: "Create an interface for the algorithm, then have different classes implement it. Store one of them in your main class and delegate to it. You can swap implementations at runtime."
 
 Or you could say: "Use the Strategy pattern."
 
@@ -124,7 +124,7 @@ The Singleton pattern provides a single instance and global access:
 ```rust
 bind Viper.Terminal;
 
-entity GameEngine {
+class GameEngine {
     // The single instance, hidden from outside
     hide static instance: GameEngine? = null;
 
@@ -183,7 +183,7 @@ No matter how many times you call `getInstance()`, you get the same engine. The 
 bind Viper.Terminal;
 bind File = Viper.IO.File;
 
-entity Config {
+class Config {
     hide static instance: Config? = null;
 
     // Configuration data
@@ -329,7 +329,7 @@ interface Enemy {
     func getName() -> String;
 }
 
-entity Goblin implements Enemy {
+class Goblin implements Enemy {
     x: Number;
     y: Number;
 
@@ -351,7 +351,7 @@ entity Goblin implements Enemy {
     }
 }
 
-entity Orc implements Enemy {
+class Orc implements Enemy {
     x: Number;
     y: Number;
 
@@ -373,7 +373,7 @@ entity Orc implements Enemy {
     }
 }
 
-entity Dragon implements Enemy {
+class Dragon implements Enemy {
     x: Number;
     y: Number;
 
@@ -396,7 +396,7 @@ entity Dragon implements Enemy {
 }
 
 // The Factory
-entity EnemyFactory {
+class EnemyFactory {
     static func create(type: String, x: Number, y: Number) -> Enemy {
         if type == "goblin" {
             return Goblin(x, y);
@@ -536,7 +536,7 @@ The Builder pattern constructs objects step by step:
 ```rust
 bind Viper.Terminal;
 
-entity Character {
+class Character {
     name: String;
     characterClass: String;
     health: Integer;
@@ -581,7 +581,7 @@ entity Character {
     }
 }
 
-entity CharacterBuilder {
+class CharacterBuilder {
     // All fields with defaults
     hide name: String = "Unnamed";
     hide characterClass: String = "Adventurer";
@@ -819,7 +819,7 @@ interface RouteStrategy {
     func getEstimatedTime(distance: Number) -> Number;
 }
 
-entity DrivingStrategy implements RouteStrategy {
+class DrivingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating driving route...");
         // Prefer highways, avoid pedestrian zones
@@ -836,7 +836,7 @@ entity DrivingStrategy implements RouteStrategy {
     }
 }
 
-entity WalkingStrategy implements RouteStrategy {
+class WalkingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating walking route...");
         // Use sidewalks, can cut through parks
@@ -852,7 +852,7 @@ entity WalkingStrategy implements RouteStrategy {
     }
 }
 
-entity BikingStrategy implements RouteStrategy {
+class BikingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating biking route...");
         // Use bike lanes, avoid steep hills
@@ -868,7 +868,7 @@ entity BikingStrategy implements RouteStrategy {
     }
 }
 
-entity TransitStrategy implements RouteStrategy {
+class TransitStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating transit route...");
         // Follow bus and train routes
@@ -885,7 +885,7 @@ entity TransitStrategy implements RouteStrategy {
 }
 
 // The Navigator uses whatever strategy is set
-entity Navigator {
+class Navigator {
     hide strategy: RouteStrategy;
 
     expose func init(strategy: RouteStrategy) {
@@ -957,9 +957,9 @@ func start() {
 
 **Algorithms are interchangeable**: Switch strategies without changing the Navigator.
 
-**Easy to add new strategies**: Create a new entity implementing the interface. No existing code changes.
+**Easy to add new strategies**: Create a new class implementing the interface. No existing code changes.
 
-**Algorithms are isolated**: Each strategy is a self-contained entity. Test them independently.
+**Algorithms are isolated**: Each strategy is a self-contained class. Test them independently.
 
 **No conditionals**: Instead of if-else chains based on mode, the strategy object handles behavior directly.
 
@@ -971,7 +971,7 @@ interface SortStrategy {
     func getName() -> String;
 }
 
-entity BubbleSort implements SortStrategy {
+class BubbleSort implements SortStrategy {
     func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation
         var result = items.copy();
@@ -991,7 +991,7 @@ entity BubbleSort implements SortStrategy {
     func getName() -> String { return "Bubble Sort"; }
 }
 
-entity QuickSort implements SortStrategy {
+class QuickSort implements SortStrategy {
     func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation (simplified)
         if items.Length <= 1 {
@@ -1004,7 +1004,7 @@ entity QuickSort implements SortStrategy {
     func getName() -> String { return "Quick Sort"; }
 }
 
-entity DataProcessor {
+class DataProcessor {
     hide sortStrategy: SortStrategy;
 
     expose func init(strategy: SortStrategy) {
@@ -1062,7 +1062,7 @@ interface Observer {
     func onUpdate(event: String, data: any);
 }
 
-entity Subject {
+class Subject {
     hide observers: List[Observer];
 
     expose func init() {
@@ -1100,7 +1100,7 @@ bind Viper.Math as Math;
 bind Viper.Time;
 
 // The subject: stock price
-entity StockPrice extends Subject {
+class StockPrice extends Subject {
     hide symbol: String;
     hide price: Number;
 
@@ -1133,7 +1133,7 @@ entity StockPrice extends Subject {
 }
 
 // Various observers
-entity PriceDisplay implements Observer {
+class PriceDisplay implements Observer {
     hide name: String;
 
     expose func init(name: String) {
@@ -1151,7 +1151,7 @@ entity PriceDisplay implements Observer {
     }
 }
 
-entity AlertSystem implements Observer {
+class AlertSystem implements Observer {
     hide threshold: Number;
 
     expose func init(threshold: Number) {
@@ -1170,7 +1170,7 @@ entity AlertSystem implements Observer {
     }
 }
 
-entity TradeLogger implements Observer {
+class TradeLogger implements Observer {
     hide logFile: String;
 
     expose func init(logFile: String) {
@@ -1187,7 +1187,7 @@ entity TradeLogger implements Observer {
     }
 }
 
-entity AutoTrader implements Observer {
+class AutoTrader implements Observer {
     hide buyThreshold: Number;
     hide sellThreshold: Number;
 
@@ -1255,7 +1255,7 @@ The `StockPrice` doesn't know what observers do. The observers don't know about 
 ### Observer in Game Events
 
 ```rust
-entity GameEventSystem extends Subject {
+class GameEventSystem extends Subject {
     // Singleton for global game events
     hide static instance: GameEventSystem? = null;
 
@@ -1290,7 +1290,7 @@ entity GameEventSystem extends Subject {
     }
 }
 
-entity ScoreManager implements Observer {
+class ScoreManager implements Observer {
     hide score: Integer = 0;
 
     func onUpdate(event: String, data: any) {
@@ -1307,7 +1307,7 @@ entity ScoreManager implements Observer {
     }
 }
 
-entity SoundManager implements Observer {
+class SoundManager implements Observer {
     func onUpdate(event: String, data: any) {
         if event == "player_died" {
             Say("Playing: death_sound.wav");
@@ -1319,7 +1319,7 @@ entity SoundManager implements Observer {
     }
 }
 
-entity AchievementSystem implements Observer {
+class AchievementSystem implements Observer {
     hide enemiesKilled: Integer = 0;
 
     func onUpdate(event: String, data: any) {
@@ -1381,7 +1381,7 @@ interface Command {
     func describe() -> String;
 }
 
-entity TextEditor {
+class TextEditor {
     hide content: String;
 
     expose func init() {
@@ -1410,7 +1410,7 @@ entity TextEditor {
 }
 
 // Insert text command
-entity InsertCommand implements Command {
+class InsertCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide text: String;
@@ -1435,7 +1435,7 @@ entity InsertCommand implements Command {
 }
 
 // Delete text command
-entity DeleteCommand implements Command {
+class DeleteCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide deletedText: String;  // Remember what was deleted for undo
@@ -1461,7 +1461,7 @@ entity DeleteCommand implements Command {
 }
 
 // Replace text command
-entity ReplaceCommand implements Command {
+class ReplaceCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide oldText: String;
@@ -1490,7 +1490,7 @@ entity ReplaceCommand implements Command {
 }
 
 // Command history manager
-entity CommandHistory {
+class CommandHistory {
     hide commands: List[Command];
     hide undoneCommands: List[Command];  // For redo
 
@@ -1584,7 +1584,7 @@ func start() {
 Commands can be grouped and replayed:
 
 ```rust
-entity MacroCommand implements Command {
+class MacroCommand implements Command {
     hide commands: List[Command];
     hide name: String;
 
@@ -1704,7 +1704,7 @@ interface VendingState {
     func getName() -> String;
 }
 
-entity IdleState implements VendingState {
+class IdleState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say("Inserted: $" + amount + ". Balance: $" + machine.getBalance());
@@ -1726,7 +1726,7 @@ entity IdleState implements VendingState {
     func getName() -> String { return "Idle"; }
 }
 
-entity HasMoneyState implements VendingState {
+class HasMoneyState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say("Added: $" + amount + ". Balance: $" + machine.getBalance());
@@ -1768,7 +1768,7 @@ entity HasMoneyState implements VendingState {
     func getName() -> String { return "Has Money"; }
 }
 
-entity DispensingState implements VendingState {
+class DispensingState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         Say("Please wait, dispensing in progress");
         // Could queue the coin for later
@@ -1810,7 +1810,7 @@ entity DispensingState implements VendingState {
     func getName() -> String { return "Dispensing"; }
 }
 
-entity OutOfStockState implements VendingState {
+class OutOfStockState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         Say("Sorry, machine is empty. Returning your $" + amount);
     }
@@ -1830,7 +1830,7 @@ entity OutOfStockState implements VendingState {
     func getName() -> String { return "Out of Stock"; }
 }
 
-entity VendingMachine {
+class VendingMachine {
     hide state: VendingState;
     hide balance: Integer;
     hide selectedItem: String?;
@@ -1987,24 +1987,24 @@ Structural patterns deal with how objects are composed — how you build larger 
 You run a coffee shop with a software ordering system. You start with simple coffee:
 
 ```rust
-entity Coffee {
+class Coffee {
     func cost() -> Number { return 2.00; }
     func description() -> String { return "Coffee"; }
 }
 ```
 
-But customers want options: milk, sugar, whipped cream, vanilla, caramel, oat milk, extra shot... You could create subentities:
+But customers want options: milk, sugar, whipped cream, vanilla, caramel, oat milk, extra shot... You could create subclasses:
 
 ```rust
-entity CoffeeWithMilk extends Coffee { ... }
-entity CoffeeWithSugar extends Coffee { ... }
-entity CoffeeWithMilkAndSugar extends Coffee { ... }
-entity CoffeeWithMilkAndVanilla extends Coffee { ... }
-entity CoffeeWithMilkAndSugarAndVanilla extends Coffee { ... }
+class CoffeeWithMilk extends Coffee { ... }
+class CoffeeWithSugar extends Coffee { ... }
+class CoffeeWithMilkAndSugar extends Coffee { ... }
+class CoffeeWithMilkAndVanilla extends Coffee { ... }
+class CoffeeWithMilkAndSugarAndVanilla extends Coffee { ... }
 // ... explosion of combinations
 ```
 
-With 10 options, you'd need hundreds of entities to cover all combinations. That's unmanageable.
+With 10 options, you'd need hundreds of classes to cover all combinations. That's unmanageable.
 
 ### Real-World Analogy
 
@@ -2023,28 +2023,28 @@ interface Beverage {
 }
 
 // Base beverages
-entity Espresso implements Beverage {
+class Espresso implements Beverage {
     func cost() -> Number { return 2.00; }
     func description() -> String { return "Espresso"; }
 }
 
-entity HouseBlend implements Beverage {
+class HouseBlend implements Beverage {
     func cost() -> Number { return 1.50; }
     func description() -> String { return "House Blend Coffee"; }
 }
 
-entity Decaf implements Beverage {
+class Decaf implements Beverage {
     func cost() -> Number { return 1.75; }
     func description() -> String { return "Decaf Coffee"; }
 }
 
-entity Tea implements Beverage {
+class Tea implements Beverage {
     func cost() -> Number { return 1.25; }
     func description() -> String { return "Tea"; }
 }
 
 // Abstract decorator
-entity BeverageDecorator implements Beverage {
+class BeverageDecorator implements Beverage {
     hide beverage: Beverage;
 
     expose func init(beverage: Beverage) {
@@ -2061,7 +2061,7 @@ entity BeverageDecorator implements Beverage {
 }
 
 // Concrete decorators
-entity Milk extends BeverageDecorator {
+class Milk extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -2075,7 +2075,7 @@ entity Milk extends BeverageDecorator {
     }
 }
 
-entity Sugar extends BeverageDecorator {
+class Sugar extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -2089,7 +2089,7 @@ entity Sugar extends BeverageDecorator {
     }
 }
 
-entity WhippedCream extends BeverageDecorator {
+class WhippedCream extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -2103,7 +2103,7 @@ entity WhippedCream extends BeverageDecorator {
     }
 }
 
-entity Vanilla extends BeverageDecorator {
+class Vanilla extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -2117,7 +2117,7 @@ entity Vanilla extends BeverageDecorator {
     }
 }
 
-entity ExtraShot extends BeverageDecorator {
+class ExtraShot extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -2188,7 +2188,7 @@ interface DataStream {
     func read() -> String;
 }
 
-entity FileStream implements DataStream {
+class FileStream implements DataStream {
     hide content: String = "";
 
     func write(data: String) {
@@ -2200,7 +2200,7 @@ entity FileStream implements DataStream {
     }
 }
 
-entity EncryptionDecorator implements DataStream {
+class EncryptionDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -2235,7 +2235,7 @@ entity EncryptionDecorator implements DataStream {
     }
 }
 
-entity CompressionDecorator implements DataStream {
+class CompressionDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -2263,7 +2263,7 @@ entity CompressionDecorator implements DataStream {
     }
 }
 
-entity LoggingDecorator implements DataStream {
+class LoggingDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -2311,13 +2311,13 @@ func start() {
 
 **Use when:**
 - You want to add responsibilities to objects dynamically
-- Subentity explosion would be impractical
+- Subclass explosion would be impractical
 - You need flexible combinations of features
 - You want to add/remove features at runtime
 
 **Don't use when:**
 - Combinations are fixed and known at compile time
-- You only have a few features (subentities might be simpler)
+- You only have a few features (subclasses might be simpler)
 - The wrapping overhead matters for performance
 
 ---
@@ -2339,7 +2339,7 @@ interface GameObserver {
     func onEvent(event: String, data: any);
 }
 
-entity GameEvents {
+class GameEvents {
     hide static instance: GameEvents? = null;
     hide observers: List[GameObserver];
 
@@ -2367,88 +2367,88 @@ entity GameEvents {
 
 // Strategy for AI behavior
 interface AIStrategy {
-    func decide(entity: GameEntity, world: World) -> String;
+    func decide(class: GameEntity, world: World) -> String;
 }
 
-entity AggressiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> String {
+class AggressiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -> String {
         var player = world.getPlayer();
-        if entity.distanceTo(player) < 100 {
+        if class.distanceTo(player) < 100 {
             return "attack";
         }
         return "chase";
     }
 }
 
-entity DefensiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> String {
+class DefensiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -> String {
         var player = world.getPlayer();
-        if entity.health < 30 {
+        if class.health < 30 {
             return "flee";
         }
-        if entity.distanceTo(player) < 50 {
+        if class.distanceTo(player) < 50 {
             return "attack";
         }
         return "patrol";
     }
 }
 
-entity PassiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> String {
+class PassiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -> String {
         return "wander";
     }
 }
 
-// State for entity condition
+// State for class condition
 interface EntityState {
-    func update(entity: GameEntity, world: World);
+    func update(class: GameEntity, world: World);
     func getName() -> String;
 }
 
-entity AliveState implements EntityState {
-    func update(entity: GameEntity, world: World) {
-        if entity.health <= 0 {
-            entity.setState(DeadState());
-            GameEvents.getInstance().emit("entity_died", { "entity": entity });
+class AliveState implements EntityState {
+    func update(class: GameEntity, world: World) {
+        if class.health <= 0 {
+            class.setState(DeadState());
+            GameEvents.getInstance().emit("class_died", { "class": class });
             return;
         }
 
         // Use AI strategy to decide action
-        var action = entity.ai.decide(entity, world);
-        entity.executeAction(action);
+        var action = class.ai.decide(class, world);
+        class.executeAction(action);
     }
 
     func getName() -> String { return "Alive"; }
 }
 
-entity DeadState implements EntityState {
-    func update(entity: GameEntity, world: World) {
-        // Dead entities don't update
+class DeadState implements EntityState {
+    func update(class: GameEntity, world: World) {
+        // Dead classes don't update
     }
 
     func getName() -> String { return "Dead"; }
 }
 
-entity StunnedState implements EntityState {
+class StunnedState implements EntityState {
     hide duration: Integer;
 
     expose func init(duration: Integer) {
         self.duration = duration;
     }
 
-    func update(entity: GameEntity, world: World) {
+    func update(class: GameEntity, world: World) {
         self.duration -= 1;
         if self.duration <= 0 {
-            entity.setState(AliveState());
+            class.setState(AliveState());
         }
-        // Stunned entities can't act
+        // Stunned classes can't act
     }
 
     func getName() -> String { return "Stunned"; }
 }
 
-// The game entity
-entity GameEntity {
+// The game class
+class GameEntity {
     name: String;
     health: Integer;
     x: Number;
@@ -2494,8 +2494,8 @@ entity GameEntity {
     }
 }
 
-// Factory for creating entities
-entity EntityFactory {
+// Factory for creating classes
+class EntityFactory {
     static func createGoblin(x: Number, y: Number) -> GameEntity {
         var goblin = GameEntity("Goblin", 30, AggressiveAI());
         goblin.x = x;
@@ -2521,16 +2521,16 @@ entity EntityFactory {
         if type == "goblin" { return EntityFactory.createGoblin(x, y); }
         if type == "orc" { return EntityFactory.createOrc(x, y); }
         if type == "slime" { return EntityFactory.createSlime(x, y); }
-        throw Error("Unknown entity type: " + type);
+        throw Error("Unknown class type: " + type);
     }
 }
 
 // Observer for scoring
-entity ScoreTracker implements GameObserver {
+class ScoreTracker implements GameObserver {
     hide score: Integer = 0;
 
     func onEvent(event: String, data: any) {
-        if event == "entity_died" {
+        if event == "class_died" {
             self.score += 100;
             Say("Score: " + self.score);
         }
@@ -2539,8 +2539,8 @@ entity ScoreTracker implements GameObserver {
 ```
 
 This system demonstrates:
-- **Factory**: Creates different entities with appropriate configurations
-- **Strategy**: Each entity has an AI strategy that can be swapped
+- **Factory**: Creates different classes with appropriate configurations
+- **Strategy**: Each class has an AI strategy that can be swapped
 - **State**: Entities have states (Alive, Dead, Stunned) that control behavior
 - **Observer**: Game events notify interested parties (score tracker)
 - **Singleton**: GameEvents provides global event system access
@@ -2632,7 +2632,7 @@ Design patterns are proven solutions to common problems:
 
 - **State**: Let objects change behavior when internal state changes. Replace conditional sprawl.
 
-- **Decorator**: Add behavior by wrapping objects. Avoid subentity explosion.
+- **Decorator**: Add behavior by wrapping objects. Avoid subclass explosion.
 
 Patterns are powerful, but use them wisely:
 - Apply patterns to solve real problems you actually have
@@ -2654,7 +2654,7 @@ Learning patterns gives you a vocabulary, speeds up design, and connects you to 
 
 **Exercise 18.4**: Implement a weather station using Observer. The WeatherStation subject should notify DisplayPanel, AlertSystem, and StatisticsTracker observers when temperature, humidity, or pressure changes.
 
-**Exercise 18.5**: Create a sorting system using Strategy. Implement at least three strategies (BubbleSort, QuickSort, MergeSort). A DataAnalyzer entity should use the strategy to sort data, with ability to switch strategies.
+**Exercise 18.5**: Create a sorting system using Strategy. Implement at least three strategies (BubbleSort, QuickSort, MergeSort). A DataAnalyzer class should use the strategy to sort data, with ability to switch strategies.
 
 **Exercise 18.6**: Build a text editor with Command pattern. Implement InsertCharacter, DeleteCharacter, and ReplaceText commands. Include CommandHistory with undo and redo functionality.
 
@@ -2668,7 +2668,7 @@ Learning patterns gives you a vocabulary, speeds up design, and connects you to 
 
 ---
 
-*We've completed Part III! You now understand object-oriented programming: entities, inheritance, interfaces, polymorphism, and common design patterns.*
+*We've completed Part III! You now understand object-oriented programming: classes, inheritance, interfaces, polymorphism, and common design patterns.*
 
 *Part IV puts everything together to build real applications: graphics, games, networking, and more.*
 

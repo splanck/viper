@@ -10,7 +10,7 @@ bind Seq = Viper.Collections.Seq;
 // All widget handles are exposed for the main event loop to poll.
 // ============================================================================
 
-entity AppShell {
+class AppShell {
     // Application
     expose GUI.App app;
 

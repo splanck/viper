@@ -65,7 +65,7 @@ final OP_NOT = 2;
 // EXPR ENTITY
 //=============================================================================
 
-entity Expr {
+class Expr {
     expose Integer kind;
 
     // For EXPR_LITERAL

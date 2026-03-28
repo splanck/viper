@@ -6,7 +6,7 @@ bind Viper.Math;
 bind "../config";
 bind "../world/textures";
 
-entity BloodSystem {
+class BloodSystem {
     hide Particles3D particles;
     hide List[Decal3D] decals;
     hide Pixels bloodTexture;

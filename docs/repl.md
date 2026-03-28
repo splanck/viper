@@ -127,7 +127,7 @@ Use `.save <file>` to save your session history to a custom file for later refer
 
 Press **Tab** to trigger context-aware completions powered by the Zia `CompletionEngine`. The REPL supports:
 
-- **Keywords**: `var`, `func`, `entity`, `if`, `while`, `for`, `return`, etc.
+- **Keywords**: `var`, `func`, `class`, `if`, `while`, `for`, `return`, etc.
 - **Session variables**: Variables you've declared in the current session
 - **Session functions**: Functions you've defined in the current session
 - **Runtime symbols**: Functions and types from bound runtime namespaces

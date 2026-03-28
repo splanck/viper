@@ -122,7 +122,7 @@ func readInt16BE(data: Bytes, offset: Integer) -> Integer {
 // MESSAGE BUFFER — Growable buffer for building PG messages
 //=============================================================================
 
-entity PgMsg {
+class PgMsg {
     expose Bytes buf;
     expose Integer pos;
     expose Integer cap;
@@ -196,7 +196,7 @@ entity PgMsg {
 // STARTUP MESSAGE PARSING
 //=============================================================================
 
-entity PgStartupInfo {
+class PgStartupInfo {
     expose Integer protocolVersion;
     expose String user;
     expose String database;
@@ -308,7 +308,7 @@ func pgReadStartup(client: Ptr) -> PgStartupInfo {
 // CLIENT MESSAGE READING
 //=============================================================================
 
-entity PgClientMsg {
+class PgClientMsg {
     expose Integer msgType;
     expose Bytes body;
     expose Boolean valid;
@@ -619,7 +619,7 @@ func pgSendRowDescriptionTyped(client: Ptr, columnNames: List[String], columnOid
 //=============================================================================
 
 // Parsed Parse message fields
-entity PgParseMsg {
+class PgParseMsg {
     expose String stmtName;
     expose String query;
     expose List[Integer] paramOids;
@@ -663,7 +663,7 @@ func pgParseParse(body: Bytes) -> PgParseMsg {
 }
 
 // Parsed Bind message fields
-entity PgBindMsg {
+class PgBindMsg {
     expose String portalName;
     expose String stmtName;
     expose List[String] paramValues;
@@ -737,7 +737,7 @@ func pgParseBind(body: Bytes) -> PgBindMsg {
 }
 
 // Parsed Describe message fields
-entity PgDescribeMsg {
+class PgDescribeMsg {
     expose Integer describeType;   // 83 = 'S' (Statement), 80 = 'P' (Portal)
     expose String name;
 
@@ -762,7 +762,7 @@ func pgParseDescribe(body: Bytes) -> PgDescribeMsg {
 }
 
 // Parsed Execute message fields
-entity PgExecuteMsg {
+class PgExecuteMsg {
     expose String portalName;
     expose Integer maxRows;
 
@@ -790,7 +790,7 @@ func pgParseExecute(body: Bytes) -> PgExecuteMsg {
 }
 
 // Parsed Close message fields
-entity PgCloseMsg {
+class PgCloseMsg {
     expose Integer closeType;     // 83 = 'S' (Statement), 80 = 'P' (Portal)
     expose String name;
 

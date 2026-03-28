@@ -33,7 +33,7 @@ bind Viper.Game.UI;
 bind "./config";
 bind "./palette";
 
-entity HUD {
+class HUD {
     // --- UI Widget instances ---
     hide Palette pal;
     hide Panel hudPanel;

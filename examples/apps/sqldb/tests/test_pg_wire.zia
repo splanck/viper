@@ -107,7 +107,7 @@ func sendTerminate(client: Ptr) {
 
 // Read a single PG server message (type + length + body)
 // Returns: [msgType, bodyLen] and sets bodyBuf
-entity PgResponse {
+class PgResponse {
     expose Integer msgType;
     expose Bytes body;
     expose Integer bodyLen;

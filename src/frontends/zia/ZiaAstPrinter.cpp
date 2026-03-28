@@ -1234,9 +1234,9 @@ static void printDecl(const Decl &decl, Printer &p) {
             }
             break;
         }
-        case DeclKind::Value: {
-            const auto &d = static_cast<const ValueDecl &>(decl);
-            p.line("ValueDecl \"" + d.name + "\" " + locStr(d.loc));
+        case DeclKind::Struct: {
+            const auto &d = static_cast<const StructDecl &>(decl);
+            p.line("StructDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
             printGenericParams(d.genericParams, p);
             printInterfaces(d.interfaces, p);
@@ -1244,9 +1244,9 @@ static void printDecl(const Decl &decl, Printer &p) {
             p.pop();
             break;
         }
-        case DeclKind::Entity: {
-            const auto &d = static_cast<const EntityDecl &>(decl);
-            std::string header = "EntityDecl \"" + d.name + "\"";
+        case DeclKind::Class: {
+            const auto &d = static_cast<const ClassDecl &>(decl);
+            std::string header = "ClassDecl \"" + d.name + "\"";
             if (!d.baseClass.empty())
                 header += " extends \"" + d.baseClass + "\"";
             header += " " + locStr(d.loc);

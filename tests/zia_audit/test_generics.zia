@@ -24,7 +24,7 @@ func checkStr(name: String, actual: String, expected: String) {
 }
 
 // Generic entity
-entity Container[T] {
+class Container[T] {
     expose T value;
 
     expose func init(v: T) {

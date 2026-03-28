@@ -122,7 +122,7 @@ Run it with:
 Entities are Zia's object-oriented construct, similar to classes:
 
 ```rust
-entity Counter {
+class Counter {
     expose Integer value;
 
     expose func init(start: Integer) {
@@ -135,7 +135,7 @@ entity Counter {
 }
 ```
 
-Use `expose` to make fields and methods visible outside the entity.
+Use `expose` to make fields and methods visible outside the class.
 
 ### 11. How do I organize multi-file Zia projects?
 

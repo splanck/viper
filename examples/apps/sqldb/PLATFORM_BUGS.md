@@ -133,7 +133,7 @@ These need to be fixed in the platform itself.
 - **Status**: FIXED
 - **Severity**: Medium
 - **Component**: Zia frontend — `Sema.cpp`
-- **Symptom**: Zia programs using `new FrozenSet(...)`, `new Stream(...)`, `new DateOnly(...)`, etc. fail with "can only be used with value, entity, or collection types". Any runtime class whose constructor is not named exactly `*New` is rejected.
+- **Symptom**: Zia programs using `new FrozenSet(...)`, `new Stream(...)`, `new DateOnly(...)`, etc. fail with "can only be used with value, class, or collection types". Any runtime class whose constructor is not named exactly `*New` is rejected.
 - **Root cause**: `analyzeNew()` and `lowerNew()` hardcoded the `.New` suffix for constructor lookup. Constructors named `*Open`, `*Create`, `*Parse`, `*FromSeq`, `*Today` were not found.
 - **Fix**: Changed `analyzeNew()`/`lowerNew()` to use actual constructor names from the RuntimeClass catalog instead of the hardcoded `.New` suffix.
 - **Verification**: All affected classes (FrozenSet, FrozenMap, Stream, DateOnly, etc.) can be constructed in Zia.
@@ -176,50 +176,50 @@ These need to be fixed in the platform itself.
 - **Severity**: Medium
 - **Component**: Zia frontend — IL code generation
 - **Symptom**: Functions with many local variables and control flow (e.g., WAL `recover()` implementation with 15+ locals across nested while/if) fail IL verification with `operand type mismatch: pointer type mismatch: operand 0 must be ptr` on `load` instructions. The generated IL has incorrect pointer types for some stack slots.
-- **Root cause**: Could not reproduce with standalone test cases. Functions with 17+ locals and complex nested while/if control flow compile and run correctly. The original failure may have been caused by interaction with BUG-FE-007 (calling non-existent entity methods), which has been fixed.
+- **Root cause**: Could not reproduce with standalone test cases. Functions with 17+ locals and complex nested while/if control flow compile and run correctly. The original failure may have been caused by interaction with BUG-FE-007 (calling non-existent class methods), which has been fixed.
 - **Regression test**: `test_zia_bugfixes.cpp:BugFE005_ManyLocalsComplexControlFlow`
 - **Found**: 2026-02-13
 - **Closed**: 2026-02-14
 
 ---
 
-## BUG-FE-006: Zia compiler generates wrong IL for List.add() through entity field chains
+## BUG-FE-006: Zia compiler generates wrong IL for List.add() through class field chains
 
 - **Status**: FIXED
 - **Severity**: Medium
 - **Component**: Zia frontend — call lowering, declaration lowering
-- **Symptom**: Calling `.add()` on a List accessed through an entity field chain (e.g., `result.committedTxns.add(value)`) fails with IL verification error: `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. Direct List locals and simple entity field Lists work fine.
-- **Root cause**: Entity declaration order in the lowerer's single-pass design. When entity A's methods reference entity B (declared later in the same file), `getOrCreateEntityTypeInfo("B")` returns `nullptr` because B hasn't been lowered yet. The `lowerField()` function falls through to return `{Value::constInt(0), Type(I64)}` — producing wrong IL types for non-integer fields (List, Entity, Ptr all got `i64` instead of `ptr`).
-- **Fix**: Two-pass entity/value type registration. Added a pre-pass (`registerAllTypeLayouts()`) in `Lowerer::lower()` that registers all entity and value type layouts (field offsets, sizes, types) BEFORE any method bodies are lowered. Modified `lowerEntityDecl()`/`lowerValueDecl()` to skip layout computation for already-registered types. Also improved the `lowerField()` fallthrough to use sema-informed types as a safety net instead of hardcoded `I64`.
-- **Verification**: All 1150 tests pass. Forward-reference entity field chain tests added.
+- **Symptom**: Calling `.add()` on a List accessed through an class field chain (e.g., `result.committedTxns.add(value)`) fails with IL verification error: `call arg type mismatch: @Viper.Collections.List.Push parameter 0 expects ptr but got i64`. Direct List locals and simple class field Lists work fine.
+- **Root cause**: Entity declaration order in the lowerer's single-pass design. When class A's methods reference class B (declared later in the same file), `getOrCreateEntityTypeInfo("B")` returns `nullptr` because B hasn't been lowered yet. The `lowerField()` function falls through to return `{Value::constInt(0), Type(I64)}` — producing wrong IL types for non-integer fields (List, Entity, Ptr all got `i64` instead of `ptr`).
+- **Fix**: Two-pass class/value type registration. Added a pre-pass (`registerAllTypeLayouts()`) in `Lowerer::lower()` that registers all class and value type layouts (field offsets, sizes, types) BEFORE any method bodies are lowered. Modified `lowerEntityDecl()`/`lowerValueDecl()` to skip layout computation for already-registered types. Also improved the `lowerField()` fallthrough to use sema-informed types as a safety net instead of hardcoded `I64`.
+- **Verification**: All 1150 tests pass. Forward-reference class field chain tests added.
 - **Regression test**: `test_zia_bugfixes.cpp:BugFE006_EntityFieldChainListAdd_ForwardRef`, `BugFE006_EntityFieldChainListAdd_NormalOrder`, `BugFE006_EntityFieldChainMultipleCollections`, `BugFE006_EntityFieldChainEntityField_ForwardRef`
 - **Found**: 2026-02-13
 - **Fixed**: 2026-02-14
 
 ---
 
-## BUG-FE-007: Zia entity field method dispatch produces null indirect callee
+## BUG-FE-007: Zia class field method dispatch produces null indirect callee
 
 - **Status**: FIXED
 - **Severity**: High
 - **Component**: Zia frontend — `Lowerer_Expr_Call.cpp`
-- **Symptom**: Calling a method on an entity field (e.g., `wal.enable()` where `wal` is a `WALManager` field) crashes at runtime with "Null indirect callee". The entity object is valid (fields are accessible), but method calls on it fail.
-- **Root cause**: The original code was calling a method that did not exist on the entity type (e.g., `enable()` when the actual method was `initWithDir()`). The Zia lowerer's `lowerCall()` found the entity type via `getOrCreateEntityTypeInfo()` but when `findMethod()` and `findVtableSlot()` both returned null, it fell through to the generic indirect call path. This path called `lowerField()` on the non-existent method name, which returned `{Value::constInt(0), Type(I64)}` — a null function pointer. The generated `call.indirect 0` then crashed at runtime.
-- **Fix**: Added proper error reporting to the lowerer. When an entity type is found but the method does not exist (and is not inherited from any parent), the lowerer now emits a compile-time error `"Entity type 'X' has no method 'Y'"` (code V3100) instead of silently generating a null indirect call. Also added a `DiagnosticEngine` reference to the Lowerer class to support proper error reporting.
-- **Verification**: (1) Non-existent entity method calls now produce clear compile errors. (2) Valid entity field method dispatch works correctly (e.g., `engine.wal.isEnabled()`, `engine.wal.initWithDir(path)`). (3) All 1149 tests pass.
+- **Symptom**: Calling a method on an class field (e.g., `wal.enable()` where `wal` is a `WALManager` field) crashes at runtime with "Null indirect callee". The class object is valid (fields are accessible), but method calls on it fail.
+- **Root cause**: The original code was calling a method that did not exist on the class type (e.g., `enable()` when the actual method was `initWithDir()`). The Zia lowerer's `lowerCall()` found the class type via `getOrCreateEntityTypeInfo()` but when `findMethod()` and `findVtableSlot()` both returned null, it fell through to the generic indirect call path. This path called `lowerField()` on the non-existent method name, which returned `{Value::constInt(0), Type(I64)}` — a null function pointer. The generated `call.indirect 0` then crashed at runtime.
+- **Fix**: Added proper error reporting to the lowerer. When an class type is found but the method does not exist (and is not inherited from any parent), the lowerer now emits a compile-time error `"Entity type 'X' has no method 'Y'"` (code V3100) instead of silently generating a null indirect call. Also added a `DiagnosticEngine` reference to the Lowerer class to support proper error reporting.
+- **Verification**: (1) Non-existent class method calls now produce clear compile errors. (2) Valid class field method dispatch works correctly (e.g., `engine.wal.isEnabled()`, `engine.wal.initWithDir(path)`). (3) All 1149 tests pass.
 - **Regression test**: `test_zia_bugfixes.cpp:BugFE007_NonExistentEntityMethodError`, `test_zia_bugfixes.cpp:BugFE007_ValidEntityFieldMethodDispatch`
 - **Found**: 2026-02-13
 - **Fixed**: 2026-02-14
 
 ---
 
-## BUG-VM-001: VM SIGSEGV on heavy entity allocation in long-running programs
+## BUG-VM-001: VM SIGSEGV on heavy class allocation in long-running programs
 
 - **Status**: HARDENED (defensive fixes applied)
 - **Severity**: High
 - **Component**: VM interpreter — memory management, runtime (C)
-- **Symptom**: Programs that create many entity objects (e.g., multiple Executor/StorageEngine instances across test functions) crash with SIGSEGV after a threshold of cumulative allocations. The crash point is non-deterministic but correlates with total allocation pressure — e.g., 3 rounds of 50-row INSERT+DELETE tests work, but adding a 4th round with 100 rows crashes.
-- **Root cause**: Multiple contributing factors: (1) GC tracking table silently fails when `realloc()` fails to grow the table, causing untracked objects and potential dangling references. (2) `rt_obj_new_i64()` returned NULL on allocation failure without any diagnostic, causing silent null-pointer dereferences downstream. (3) Entity reference counting may not properly release entity references when VM frames are torn down, leading to refcount leaks and eventual address space exhaustion.
+- **Symptom**: Programs that create many class objects (e.g., multiple Executor/StorageEngine instances across test functions) crash with SIGSEGV after a threshold of cumulative allocations. The crash point is non-deterministic but correlates with total allocation pressure — e.g., 3 rounds of 50-row INSERT+DELETE tests work, but adding a 4th round with 100 rows crashes.
+- **Root cause**: Multiple contributing factors: (1) GC tracking table silently fails when `realloc()` fails to grow the table, causing untracked objects and potential dangling references. (2) `rt_obj_new_i64()` returned NULL on allocation failure without any diagnostic, causing silent null-pointer dereferences downstream. (3) Entity reference counting may not properly release class references when VM frames are torn down, leading to refcount leaks and eventual address space exhaustion.
 - **Fix**: Defensive hardening: (1) `rt_gc_track()` now calls `rt_trap()` on realloc failure instead of silently returning — a failed GC track is a critical error that should not be ignored. (2) `rt_obj_new_i64()` now calls `rt_trap()` with a diagnostic message on allocation failure instead of returning NULL. These changes make memory management failures immediately visible rather than causing non-deterministic crashes later.
 - **Reproduction**: Run `test_storage_stress.zia` with original 100-row DELETE tests after the multi-database test — previously crashed during the 3rd or 4th test function.
 - **Workaround**: Build as native binary (`viper build`) which has a different memory management path and does not exhibit this limitation.

@@ -38,7 +38,7 @@ final TRIGGER_DELETE = 3;
 // CREATE TABLE STATEMENT
 //=============================================================================
 
-entity CreateTableStmt {
+class CreateTableStmt {
     expose String tableName;
     expose List[Column] columns;
     expose Boolean isTemporary;
@@ -115,7 +115,7 @@ entity CreateTableStmt {
 // INSERT STATEMENT
 //=============================================================================
 
-entity InsertStmt {
+class InsertStmt {
     expose String tableName;
     expose List[String] columnNames;  // Optional column list
     expose List[List[Expr]] valueRows;  // VALUES (...), (...)
@@ -209,7 +209,7 @@ entity InsertStmt {
 // SELECT STATEMENT
 //=============================================================================
 
-entity SelectStmt {
+class SelectStmt {
     expose List[Expr] columns;      // SELECT columns (or * for all)
     expose List[String] columnAliases; // Column aliases (AS ...)
     expose String tableName;        // FROM table (for backwards compat)
@@ -356,7 +356,7 @@ entity SelectStmt {
 // UPDATE STATEMENT
 //=============================================================================
 
-entity UpdateStmt {
+class UpdateStmt {
     expose String tableName;
     expose List[String] setColumns;     // Columns to update
     expose List[Expr] setValues;        // Values to set
@@ -410,7 +410,7 @@ entity UpdateStmt {
 // DELETE STATEMENT
 //=============================================================================
 
-entity DeleteStmt {
+class DeleteStmt {
     expose String tableName;
     expose Expr? whereClause;           // WHERE condition (optional)
     // DELETE...USING support (Phase 4)
@@ -446,7 +446,7 @@ entity DeleteStmt {
 // MERGE STATEMENT (Phase 73)
 //=============================================================================
 
-entity MergeStmt {
+class MergeStmt {
     expose String targetTable;      // MERGE INTO target
     expose String targetAlias;      // optional alias for target
     expose String sourceTable;      // USING source
@@ -482,7 +482,7 @@ entity MergeStmt {
 // CREATE INDEX STATEMENT
 //=============================================================================
 
-entity CreateIndexStmt {
+class CreateIndexStmt {
     expose String indexName;
     expose String tableName;
     expose List[String] columnNames;
@@ -530,7 +530,7 @@ entity CreateIndexStmt {
 // DROP INDEX STATEMENT
 //=============================================================================
 
-entity DropIndexStmt {
+class DropIndexStmt {
     expose String indexName;
 
     expose func init() {
@@ -546,7 +546,7 @@ entity DropIndexStmt {
 // CREATE TRIGGER STATEMENT (Phase 17)
 //=============================================================================
 
-entity CreateTriggerStmt {
+class CreateTriggerStmt {
     expose String triggerName;
     expose Integer timing;          // TRIGGER_BEFORE or TRIGGER_AFTER
     expose Integer event;           // TRIGGER_INSERT, TRIGGER_UPDATE, TRIGGER_DELETE

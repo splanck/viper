@@ -42,7 +42,7 @@ bind Viper.Terminal;
 
 var released: Boolean = false;
 
-entity Resource {
+class Resource {
     deinit {
         released = true;
         Say("deinit");

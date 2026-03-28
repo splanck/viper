@@ -7,7 +7,7 @@ bind Viper.Terminal;
 bind "../config";
 bind "./textures";
 
-entity LevelGeometry {
+class LevelGeometry {
     hide List[Mesh3D] wallMeshes;
     hide List[Mat4] wallXforms;
     hide Mesh3D floorMesh;

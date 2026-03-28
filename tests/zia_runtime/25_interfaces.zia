@@ -18,7 +18,7 @@ interface Describable {
 // Entities implementing interfaces
 //=============================================================================
 
-entity Person implements Describable {
+class Person implements Describable {
     expose String name;
     expose Integer age;
 
@@ -32,7 +32,7 @@ entity Person implements Describable {
     }
 }
 
-entity Product implements Describable {
+class Product implements Describable {
     expose String title;
     expose Integer price;
 
@@ -55,7 +55,7 @@ interface Shape {
     func name() -> String;
 }
 
-entity Rectangle implements Shape {
+class Rectangle implements Shape {
     expose Integer width;
     expose Integer height;
 
@@ -73,7 +73,7 @@ entity Rectangle implements Shape {
     }
 }
 
-entity Square implements Shape {
+class Square implements Shape {
     expose Integer side;
 
     expose func init(s: Integer) {

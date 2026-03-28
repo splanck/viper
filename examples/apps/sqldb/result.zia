@@ -17,7 +17,7 @@ bind "./schema";
 // QUERY RESULT ENTITY
 //=============================================================================
 
-entity QueryResult {
+class QueryResult {
     expose Boolean success;
     expose String message;
     expose List[String] columnNames;

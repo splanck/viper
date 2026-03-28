@@ -613,7 +613,7 @@ set(ZIA_LANG_TESTS
         11_recursion_factorial
         12_list_map_stats
         13_optional_chain
-        14_entity_methods
+        14_class_methods
         15_generics_annotations
         16_string_building
         18_numeric_algorithms
@@ -628,13 +628,13 @@ set(ZIA_LANG_TESTS
         27_type_coercion
         28_numeric_edge_cases
         29_control_flow_advanced
-        30_value_types
+        30_struct_types
         31_typed_catch_list_shorthand
         32_overloading_inheritance
         33_enum_runtime
         34_async_functions
         35_optional_primitive_narrowing
-        36_entity_properties
+        36_class_properties
         37_string_instance_methods
         38_deinit_bindings
 )

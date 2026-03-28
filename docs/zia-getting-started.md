@@ -9,7 +9,7 @@ last-verified: 2026-03-04
 Learn Zia by example. For a complete reference, see **[Zia Reference](zia-reference.md)**.
 
 > **What is Zia?**
-> A modern, statically-typed language with C-like syntax, first-class entities (reference types), value types,
+> A modern, statically-typed language with C-like syntax, first-class classes (reference types), struct types,
 > generics, and module bindings. It runs on Viper's VM and can be compiled to native code.
 
 ---
@@ -20,8 +20,8 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](zia-refere
 2. [Variables and Types](#2-variables-and-types)
 3. [Control Flow](#3-control-flow)
 4. [Functions](#4-functions)
-5. [Entity Types (Classes)](#5-entity-types-classes)
-6. [Value Types (Structs)](#6-value-types-structs)
+5. [Class Types](#5-class-types)
+6. [Struct Types](#6-struct-types)
 7. [Generic Collections](#7-generic-collections)
 8. [Modules and Bindings](#8-modules-and-bindings)
 9. [Working with the Runtime](#9-working-with-the-runtime)
@@ -243,14 +243,14 @@ For full details on mixed-language projects, see the
 
 ---
 
-## 5. Entity Types (Classes)
+## 5. Class Types
 
-Entities are reference types with identity, inheritance, and methods.
+Classes are reference types with identity, inheritance, and methods.
 
-### Defining an Entity
+### Defining a Class
 
 ```viper
-entity Player {
+class Player {
     String name;
     Integer health;
     Integer score;
@@ -285,13 +285,13 @@ entity Player {
 }
 ```
 
-### Using Entities
+### Using Classes
 
 ```viper
 bind Viper.Terminal;
 
 func start() {
-    // Create a new entity instance
+    // Create a new class instance
     var player = new Player();
     player.init("Alice");
 
@@ -306,21 +306,21 @@ func start() {
 
 **Key points:**
 
-- Use `new EntityName()` to create instances
+- Use `new ClassName()` to create instances
 - Fields are accessed with dot notation
 - `init()` is the conventional initializer method
 - Methods can access fields directly (implicit `self`)
 
 ---
 
-## 6. Value Types (Structs)
+## 6. Struct Types
 
-Value types have copy semantics — assignments create copies.
+Struct types have copy semantics — assignments create copies.
 
 ```viper
 bind Viper.Math;
 
-value Point {
+struct Point {
     Integer x;
     Integer y;
 
@@ -363,10 +363,10 @@ while i < numbers.size() {
 }
 ```
 
-### Entity Lists
+### Class Instance Lists
 
 ```viper
-// List of entity instances
+// List of class instances
 var players: List[Player] = new List[Player]();
 
 var p1 = new Player();
@@ -594,14 +594,14 @@ bind "./other";
 // Global variables
 var globalVar = 0;
 
-// Entity types
-entity MyEntity {
+// Class types
+class MyClass {
     Integer field;
     func method() { }
 }
 
-// Value types
-value MyValue {
+// Struct types
+struct MyStruct {
     Integer field;
 }
 

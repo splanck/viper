@@ -20,7 +20,7 @@ bind Viper.Math.Random;
 // FLEA ENTITY - Mushroom-dropping enemy
 // =============================================================================
 
-entity Flea {
+class Flea {
     hide Integer screenX;
     hide Integer screenY;
     hide Boolean active;

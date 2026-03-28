@@ -2,7 +2,7 @@ module TestEntitySimple;
 
 // Test: Simple entity
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 

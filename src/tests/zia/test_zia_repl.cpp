@@ -10,7 +10,7 @@
 //          Tests expression auto-print, variable persistence, function
 //          definition/redefinition, bind persistence, .type probing,
 //          error recovery, input classification, tab completion via
-//          CompletionEngine, multi-line eval, .il command, entity auto-print,
+//          CompletionEngine, multi-line eval, .il command, class auto-print,
 //          and history persistence.
 // Key invariants:
 //   - Failed compilations never corrupt session state.
@@ -430,7 +430,7 @@ TEST(ReplMultiLine, MultiLineFunctionDefAndCall) {
 
 TEST(ReplMultiLine, MultiLineEntityDef) {
     ZiaReplAdapter adapter;
-    std::string multiLine = "entity Point {\n    Integer x;\n    Integer y;\n"
+    std::string multiLine = "class Point {\n    Integer x;\n    Integer y;\n"
                             "    func init(px: Integer, py: Integer) {\n"
                             "        x = px;\n        y = py;\n    }\n"
                             "    func getX() -> Integer { return x; }\n}";
@@ -444,26 +444,26 @@ TEST(ReplMultiLine, MultiLineEntityDef) {
 
 TEST(ReplAutoPrint, EntityAutoprint) {
     ZiaReplAdapter adapter;
-    // Define a simple entity
+    // Define a simple class
     auto r1 =
-        adapter.eval("entity Dog {\n    String name;\n    func init(n: String) { name = n; }\n}");
+        adapter.eval("class Dog {\n    String name;\n    func init(n: String) { name = n; }\n}");
     EXPECT_TRUE(r1.success);
 
-    // Evaluating a new entity expression should auto-print.
+    // Evaluating a new class expression should auto-print.
     // Note: Entity pointers satisfy the Say(String) probe before the
-    // Obj.ToString() probe because both String and entity are Ptr in the IL.
+    // Obj.ToString() probe because both String and class types are Ptr in the IL.
     // The auto-print still works — the expression gets printed.
     auto r2 = adapter.eval("new Dog(\"Rex\")");
     EXPECT_TRUE(r2.success);
     // Auto-print should produce some output (the exact type may be String
-    // due to Say() accepting Ptr, which entity pointers also satisfy)
+    // due to Say() accepting Ptr, which class pointers also satisfy)
     EXPECT_TRUE(r2.resultType == ResultType::String || r2.resultType == ResultType::Object);
 }
 
 TEST(ReplAutoPrint, ObjectToStringExplicit) {
     ZiaReplAdapter adapter;
     // Obj.ToString works explicitly for objects
-    adapter.eval("entity Cat {\n    String name;\n    func init(n: String) { name = n; }\n}");
+    adapter.eval("class Cat {\n    String name;\n    func init(n: String) { name = n; }\n}");
     auto result = adapter.eval("Obj.ToString(new Cat(\"Whiskers\"))");
     EXPECT_TRUE(result.success);
     // Should match String probe since Obj.ToString returns a String

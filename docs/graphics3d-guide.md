@@ -6,7 +6,7 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Namespace:** `Viper.Graphics3D`
 
-**Runtime types:** Canvas3D, Mesh3D, Camera3D, Material3D, Light3D, RenderTarget3D, CubeMap3D, Scene3D, SceneNode3D, Skeleton3D, Animation3D, AnimPlayer3D, MorphTarget3D, Particles3D, PostFX3D, Ray3D, RayHit3D, Audio3D, FBX
+**Runtime types:** Canvas3D, Mesh3D, Camera3D, Material3D, Light3D, RenderTarget3D, CubeMap3D, Scene3D, SceneNode3D, Skeleton3D, Animation3D, AnimPlayer3D, AnimBlend3D, MorphTarget3D, Particles3D, PostFX3D, Ray3D, RayHit3D, Physics3DWorld, Physics3DBody, Character3D, Trigger3D, Transform3D, Sprite3D, Decal3D, Water3D, Terrain3D, InstanceBatch3D, NavMesh3D, Path3D, TextureAtlas3D, Audio3D, FBX
 
 ## Quick Start
 
@@ -138,6 +138,7 @@ Viper.Graphics3D.Mesh3D.AddTriangle(mesh, 0, 1, 2);  // CCW winding
 
 | Member | Description |
 |--------|-------------|
+| `Clear()` | Reset vertex/index counts to zero without freeing backing arrays (enables mesh reuse) |
 | `RecalcNormals()` | Auto-compute vertex normals from face geometry |
 | `Clone()` | Deep copy of mesh data |
 | `Transform(mat4)` | Transform all vertices in-place |
@@ -502,3 +503,247 @@ Mouse.Release()   // restores cursor
 ```
 
 When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. The cursor is hidden and warped to the window center each `Canvas3D.Poll()` call. Only active when the window has focus.
+
+---
+
+## Physics3D
+
+Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision shapes.
+Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
+AABB-sphere uses closest-point projection. Coulomb friction and Baumgarte positional correction.
+
+### Physics3DWorld
+
+| Member | Description |
+|--------|-------------|
+| `New(gx, gy, gz)` | Create world with gravity vector |
+| `Step(dt)` | Advance simulation by dt seconds |
+| `Add(body)` | Add body to world |
+| `Remove(body)` | Remove body from world |
+| `SetGravity(x, y, z)` | Update gravity |
+| `BodyCount` | Number of active bodies |
+| `CollisionCount` | Number of contacts from last Step (read after Step) |
+| `GetCollisionBodyA(index)` | Get first body in contact pair |
+| `GetCollisionBodyB(index)` | Get second body in contact pair |
+| `GetCollisionNormal(index)` | Get contact normal (Vec3, A→B direction) |
+| `GetCollisionDepth(index)` | Get penetration depth (Float) |
+
+### Physics3DBody
+
+**Constructors:** `NewAABB(sx, sy, sz, mass)`, `NewSphere(radius, mass)`, `NewCapsule(radius, height, mass)`. Mass=0 creates a static body.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Position` | Vec3 | World position (read-only; set via `SetPosition`) |
+| `Velocity` | Vec3 | Linear velocity (read-only; set via `SetVelocity`) |
+| `Restitution` | Float | Bounciness 0-1 |
+| `Friction` | Float | Surface friction |
+| `CollisionLayer` | Integer | Bitmask layer |
+| `CollisionMask` | Integer | Bitmask for which layers to collide with |
+| `Static` | Boolean | Immovable body (mass-independent) |
+| `Trigger` | Boolean | Overlap detection only, no physics response |
+| `Grounded` | Boolean | Touching ground surface |
+| `GroundNormal` | Vec3 | Surface normal of ground contact |
+| `Mass` | Float | Body mass |
+
+| Method | Description |
+|--------|-------------|
+| `SetPosition(x, y, z)` | Teleport body |
+| `SetVelocity(vx, vy, vz)` | Set linear velocity |
+| `ApplyForce(fx, fy, fz)` | Accumulate force (applied per step) |
+| `ApplyImpulse(ix, iy, iz)` | Instant velocity change |
+
+### Character3D
+
+Controller-based character movement with slide-and-step collision response. Attempts to move
+in the requested direction; on collision, slides along the surface (up to 3 iterations).
+Respects slope limiting and step height for stairs.
+
+| Member | Description |
+|--------|-------------|
+| `New(radius, height, mass)` | Create character controller |
+| `Move(direction_vec3, dt)` | Move with collision response |
+| `SetPosition(x, y, z)` | Teleport |
+| `SetSlopeLimit(degrees)` | Max climbable slope angle |
+| `StepHeight` | Float — max step-up height |
+| `Grounded` | Boolean — on ground |
+| `JustLanded` | Boolean — landed this frame |
+| `Position` | Vec3 — current position |
+
+### Trigger3D
+
+AABB zone for enter/exit detection.
+
+| Member | Description |
+|--------|-------------|
+| `New(x0, y0, z0, x1, y1, z1)` | Create AABB trigger zone |
+| `Contains(position_vec3)` | Point-in-zone test |
+| `Update(body)` | Check body against zone (call per frame per body) |
+| `SetBounds(x0, y0, z0, x1, y1, z1)` | Update zone bounds |
+| `EnterCount` | Bodies that entered since last check |
+| `ExitCount` | Bodies that exited since last check |
+
+---
+
+## Transform3D
+
+Standalone 3D transform (position, rotation, scale) with lazy matrix computation.
+
+| Member | Description |
+|--------|-------------|
+| `New()` | Create identity transform |
+| `SetPosition(x, y, z)` | Set position |
+| `SetEuler(pitch, yaw, roll)` | Set rotation from Euler angles (degrees) |
+| `SetScale(sx, sy, sz)` | Set scale |
+| `Translate(delta_vec3)` | Move relative |
+| `Rotate(axis_vec3, angle)` | Rotate around axis (radians) |
+| `LookAt(target_vec3, up_vec3)` | Orient toward target |
+| `Position` | Vec3 |
+| `Rotation` | Quat (read/write) |
+| `Scale` | Vec3 |
+| `Matrix` | Mat4 — computed world matrix |
+
+---
+
+## Sprite3D
+
+Camera-facing billboard sprite in 3D space. Useful for particles, foliage, and NPC labels.
+
+| Member | Description |
+|--------|-------------|
+| `New(texture)` | Create billboard from Pixels texture |
+| `SetPosition(x, y, z)` | World position |
+| `SetScale(width, height)` | Billboard size in world units |
+| `SetAnchor(ax, ay)` | Pivot point (0-1, default 0.5/0.5 = center) |
+| `SetFrame(x, y, w, h)` | Sprite sheet sub-rectangle (pixels) |
+
+Draw via `Canvas3D.DrawSprite3D(sprite, camera)`. Mesh and material are cached internally — no per-frame allocation.
+
+---
+
+## Decal3D
+
+Surface-projected quad for bullet holes, blood splatters, footprints.
+
+| Member | Description |
+|--------|-------------|
+| `New(position_vec3, normal_vec3, size, material)` | Create decal aligned to surface |
+| `SetLifetime(seconds)` | Auto-fade duration |
+| `Update(dt)` | Advance lifetime |
+| `Expired` | Boolean — true when lifetime reached |
+
+Draw via `Canvas3D.DrawDecal(decal)`.
+
+---
+
+## Water3D
+
+Animated water surface with sine-based waves.
+
+| Member | Description |
+|--------|-------------|
+| `New(width, depth)` | Create water plane |
+| `SetHeight(y)` | World Y position |
+| `SetWaveParams(speed, amplitude, frequency)` | Wave animation parameters |
+| `SetColor(r, g, b, a)` | Water tint (0-1 float RGBA) |
+| `Update(dt)` | Advance wave animation |
+
+Draw via `Canvas3D.DrawWater(water, camera)`.
+
+---
+
+## Terrain3D
+
+Heightmap-based terrain with chunked rendering.
+
+| Member | Description |
+|--------|-------------|
+| `New(widthSegments, depthSegments)` | Create terrain grid |
+| `SetHeightmap(pixels)` | Load height from red channel of Pixels |
+| `SetMaterial(material)` | Set surface material |
+| `SetScale(sx, sy, sz)` | Set terrain world size (Y = height scale) |
+| `GetHeightAt(x, z)` | Query height at world XZ position |
+| `GetNormalAt(x, z)` | Query surface normal at world XZ position |
+
+Draw via `Canvas3D.DrawTerrain(terrain)`.
+
+---
+
+## InstanceBatch3D
+
+Draw many copies of one mesh with different transforms in a single draw call.
+
+| Member | Description |
+|--------|-------------|
+| `New(mesh, material)` | Create batch for a mesh+material pair |
+| `Add(transform)` | Add instance with Mat4 transform |
+| `Remove(index)` | Remove instance by index |
+| `Set(index, transform)` | Update instance transform |
+| `Clear()` | Remove all instances |
+| `Count` | Number of instances |
+
+Draw via `Canvas3D.DrawInstanced(batch)`.
+
+---
+
+## NavMesh3D
+
+Navigation mesh with A* pathfinding for AI characters.
+
+| Member | Description |
+|--------|-------------|
+| `Build(mesh, walkableHeight, maxSlope)` | Constructor — build from Mesh3D geometry |
+| `FindPath(start_vec3, goal_vec3)` | Returns path as object (list of Vec3 waypoints) |
+| `SamplePosition(position_vec3)` | Snap position to nearest point on navmesh |
+| `IsWalkable(position_vec3)` | Check if position is on the navmesh |
+| `SetMaxSlope(degrees)` | Update walkability threshold |
+| `DebugDraw(canvas)` | Visualize navmesh wireframe |
+| `TriangleCount` | Number of triangles in mesh |
+
+---
+
+## Path3D
+
+Spline path for camera rails, patrol routes, and scripted movement.
+
+| Member | Description |
+|--------|-------------|
+| `New()` | Create empty path |
+| `AddPoint(position_vec3)` | Add control point |
+| `GetPositionAt(t)` | Sample position at parameter t (0-1) |
+| `GetDirectionAt(t)` | Sample tangent direction at t |
+| `Clear()` | Remove all points |
+| `Length` | Total path length |
+| `PointCount` | Number of control points |
+| `Looping` | Boolean (write-only) — connect last point to first |
+
+---
+
+## AnimBlend3D
+
+Weight-based animation blending for smooth transitions between clips.
+
+| Member | Description |
+|--------|-------------|
+| `New(skeleton)` | Create blender bound to a Skeleton3D |
+| `AddState(name, animation)` | Register animation clip (returns state index) |
+| `SetWeight(stateIdx, weight)` | Set blend weight (0-1) for a state |
+| `SetWeightByName(name, weight)` | Set blend weight by name |
+| `GetWeight(stateIdx)` | Query blend weight |
+| `SetSpeed(stateIdx, speed)` | Playback speed multiplier per state |
+| `Update(dt)` | Advance all active animations |
+| `StateCount` | Number of registered states |
+
+Draw blended mesh via `Canvas3D.DrawMeshBlended(mesh, transform, material, skeleton, blender)`.
+
+---
+
+## TextureAtlas3D
+
+Texture array for efficient multi-texture rendering.
+
+| Member | Description |
+|--------|-------------|
+| `New(width, height)` | Create atlas with layer dimensions |
+| `Add(pixels)` | Add texture layer (returns layer index) |
+| `GetTexture()` | Export combined atlas as single Pixels |

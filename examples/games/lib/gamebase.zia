@@ -41,14 +41,14 @@ final FX_FADE_IN  = 3;
 final FX_FADE_OUT = 4;
 
 // Null Object sentinel — avoids optional interface chaining issues.
-entity NullScene implements IScene {
+class NullScene implements IScene {
     expose func update(dt: Integer) { }
     expose func draw(canvas: Canvas) { }
     expose func onEnter() { }
     expose func onExit() { }
 }
 
-entity GameBase {
+class GameBase {
     hide Canvas canvas;
     hide Integer dt;
     hide Integer dtMax;

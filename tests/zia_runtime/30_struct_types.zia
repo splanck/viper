@@ -10,7 +10,7 @@ bind "./_support";
 // Value types (passed by value, copied on assignment)
 //=============================================================================
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 
@@ -41,7 +41,7 @@ value Point {
     }
 }
 
-value Rectangle {
+struct Rectangle {
     expose Integer width;
     expose Integer height;
 
@@ -67,7 +67,7 @@ value Rectangle {
     }
 }
 
-value Color {
+struct Color {
     expose Integer r;
     expose Integer g;
     expose Integer b;
@@ -96,7 +96,7 @@ value Color {
 // Reference type for comparison
 //=============================================================================
 
-entity PointRef {
+class PointRef {
     expose Integer x;
     expose Integer y;
 

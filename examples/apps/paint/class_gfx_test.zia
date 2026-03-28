@@ -2,7 +2,7 @@ module entity_gfx_test;
 
 bind Viper.Graphics;
 
-entity TestEntity {
+class TestEntity {
     expose Integer value;
     expose ptr canvas;
 

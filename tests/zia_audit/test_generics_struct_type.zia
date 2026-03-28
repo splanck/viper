@@ -1,6 +1,6 @@
 module TestGenericsValueType;
 
-value Wrapper[T] {
+struct Wrapper[T] {
     expose T inner;
 
     expose func init(v: T) {

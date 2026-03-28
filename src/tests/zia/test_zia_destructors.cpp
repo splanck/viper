@@ -81,7 +81,7 @@ TEST(ZiaDestructors, BasicDeinit) {
     const std::string source = R"(
 module Test;
 
-entity Connection {
+class Connection {
     expose String host;
 
     deinit {
@@ -121,7 +121,7 @@ TEST(ZiaDestructors, ReleasesStringFields) {
     const std::string source = R"(
 module Test;
 
-entity Logger {
+class Logger {
     expose String name;
     expose String path;
 
@@ -145,13 +145,13 @@ func start() {
     EXPECT_TRUE(hasCallee(result.module, "Logger.__dtor", "rt_str_release_maybe"));
 }
 
-/// @brief Test that entity without deinit does NOT produce __dtor function.
+/// @brief Test that class without deinit does NOT produce __dtor function.
 TEST(ZiaDestructors, NoDeinitNoDtor) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 }
@@ -176,7 +176,7 @@ TEST(ZiaDestructors, DeinitAccessesSelf) {
     const std::string source = R"(
 module Test;
 
-entity Resource {
+class Resource {
     expose Integer refCount;
 
     deinit {
@@ -211,7 +211,7 @@ TEST(ZiaDestructors, DeinitWithCtorAndMethods) {
     const std::string source = R"(
 module Test;
 
-entity Handle {
+class Handle {
     expose Integer id;
 
     func getId() -> Integer {
@@ -246,7 +246,7 @@ module Test;
 
 bind Viper.Memory;
 
-entity Resource {
+class Resource {
     deinit { }
 }
 

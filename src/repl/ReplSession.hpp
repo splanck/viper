@@ -53,7 +53,7 @@ enum class ResultType {
     Number,    ///< Expression auto-printed as Number.
     String,    ///< Expression auto-printed as String.
     Boolean,   ///< Expression auto-printed as Boolean.
-    Object,    ///< Expression auto-printed as Object (entity/value type).
+    Object,    ///< Expression auto-printed as Object (class/struct type).
 };
 
 /// @brief Result of evaluating a REPL input.

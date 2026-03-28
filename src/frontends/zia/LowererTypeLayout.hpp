@@ -35,52 +35,52 @@ class LowererTypeLayout {
     using Type = il::core::Type;
     LowererTypeLayout() = default;
 
-    ValueTypeInfo *findValueType(const std::string &name) {
-        auto it = valueTypes_.find(name);
-        return it != valueTypes_.end() ? &it->second : nullptr;
+    StructTypeInfo *findValueType(const std::string &name) {
+        auto it = structTypes_.find(name);
+        return it != structTypes_.end() ? &it->second : nullptr;
     }
 
-    const ValueTypeInfo *findValueType(const std::string &name) const {
-        auto it = valueTypes_.find(name);
-        return it != valueTypes_.end() ? &it->second : nullptr;
+    const StructTypeInfo *findValueType(const std::string &name) const {
+        auto it = structTypes_.find(name);
+        return it != structTypes_.end() ? &it->second : nullptr;
     }
 
     bool hasValueType(const std::string &name) const {
-        return valueTypes_.count(name) > 0;
+        return structTypes_.count(name) > 0;
     }
 
-    void registerValueType(const std::string &name, ValueTypeInfo info);
+    void registerValueType(const std::string &name, StructTypeInfo info);
 
-    std::unordered_map<std::string, ValueTypeInfo> &valueTypes() {
-        return valueTypes_;
+    std::unordered_map<std::string, StructTypeInfo> &valueTypes() {
+        return structTypes_;
     }
 
-    const std::unordered_map<std::string, ValueTypeInfo> &valueTypes() const {
-        return valueTypes_;
+    const std::unordered_map<std::string, StructTypeInfo> &valueTypes() const {
+        return structTypes_;
     }
 
-    EntityTypeInfo *findEntityType(const std::string &name) {
-        auto it = entityTypes_.find(name);
-        return it != entityTypes_.end() ? &it->second : nullptr;
+    ClassTypeInfo *findEntityType(const std::string &name) {
+        auto it = classTypes_.find(name);
+        return it != classTypes_.end() ? &it->second : nullptr;
     }
 
-    const EntityTypeInfo *findEntityType(const std::string &name) const {
-        auto it = entityTypes_.find(name);
-        return it != entityTypes_.end() ? &it->second : nullptr;
+    const ClassTypeInfo *findEntityType(const std::string &name) const {
+        auto it = classTypes_.find(name);
+        return it != classTypes_.end() ? &it->second : nullptr;
     }
 
     bool hasEntityType(const std::string &name) const {
-        return entityTypes_.count(name) > 0;
+        return classTypes_.count(name) > 0;
     }
 
-    void registerEntityType(const std::string &name, EntityTypeInfo info);
+    void registerEntityType(const std::string &name, ClassTypeInfo info);
 
-    std::unordered_map<std::string, EntityTypeInfo> &entityTypes() {
-        return entityTypes_;
+    std::unordered_map<std::string, ClassTypeInfo> &entityTypes() {
+        return classTypes_;
     }
 
-    const std::unordered_map<std::string, EntityTypeInfo> &entityTypes() const {
-        return entityTypes_;
+    const std::unordered_map<std::string, ClassTypeInfo> &entityTypes() const {
+        return classTypes_;
     }
 
     InterfaceTypeInfo *findInterfaceType(const std::string &name) {
@@ -160,8 +160,8 @@ class LowererTypeLayout {
     }
 
   private:
-    std::unordered_map<std::string, ValueTypeInfo> valueTypes_;
-    std::unordered_map<std::string, EntityTypeInfo> entityTypes_;
+    std::unordered_map<std::string, StructTypeInfo> structTypes_;
+    std::unordered_map<std::string, ClassTypeInfo> classTypes_;
     std::unordered_map<std::string, InterfaceTypeInfo> interfaceTypes_;
     int nextClassId_{1};
     int nextIfaceId_{1};

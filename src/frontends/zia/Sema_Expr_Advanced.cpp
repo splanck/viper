@@ -50,7 +50,7 @@ static bool extractDottedName(Expr *expr, std::string &out) {
 
 /// @brief Analyze an index expression (e.g., list[i], map["key"]).
 /// @param expr The index expression node.
-/// @return The element type for lists/strings, value type for maps.
+/// @return The element type for lists/strings, struct type for maps.
 /// @details Validates index type (integral for lists, string for maps).
 TypeRef Sema::analyzeIndex(IndexExpr *expr) {
     TypeRef baseType = analyzeExpr(expr->base.get());
@@ -228,9 +228,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return types::unknown();
     }
 
-    // Check if this is a field or method access on a value or entity type
+    // Check if this is a field or method access on a value or class type
     if (baseType &&
-        (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity)) {
+        (baseType->kind == TypeKindSem::Struct || baseType->kind == TypeKindSem::Class)) {
         std::string memberKey = baseType->name + "." + expr->field;
 
         // Check if accessing from inside or outside the type
@@ -286,7 +286,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
             return prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
         }
 
-        // Field/method not found on this entity or value type
+        // Field/method not found on this class or struct type
         error(expr->loc, "Type '" + baseType->name + "' has no member '" + expr->field + "'");
         return types::unknown();
     }
@@ -388,7 +388,7 @@ TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr) {
         //   var y = x!;  // redundant but valid
         // For non-nullable types (Integer, Number, Boolean, Byte), '!' is an error.
         if (operandType &&
-            (operandType->kind == TypeKindSem::Entity || operandType->kind == TypeKindSem::Value ||
+            (operandType->kind == TypeKindSem::Class || operandType->kind == TypeKindSem::Struct ||
              operandType->kind == TypeKindSem::Ptr || operandType->kind == TypeKindSem::String ||
              operandType->kind == TypeKindSem::Interface ||
              operandType->kind == TypeKindSem::List || operandType->kind == TypeKindSem::Map ||
@@ -422,7 +422,7 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
 
     TypeRef fieldType = types::unknown();
 
-    if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity) {
+    if (innerType->kind == TypeKindSem::Struct || innerType->kind == TypeKindSem::Class) {
         std::string memberKey = innerType->name + "." + expr->field;
         auto fieldIt = fieldTypes_.find(memberKey);
         if (fieldIt != fieldTypes_.end()) {
@@ -502,14 +502,14 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
     if (sourceType->isConvertibleTo(*targetType))
         return targetType;
 
-    // Allow entity-to-entity casts (downcasts and cross-casts for runtime checking)
-    if (sourceType->kind == TypeKindSem::Entity && targetType->kind == TypeKindSem::Entity)
+    // Allow class-to-class casts (downcasts and cross-casts for runtime checking)
+    if (sourceType->kind == TypeKindSem::Class && targetType->kind == TypeKindSem::Class)
         return targetType;
 
     // Allow Ptr <-> Entity/Value interop (both are pointers at IL level)
     if ((sourceType->kind == TypeKindSem::Ptr &&
-         (targetType->kind == TypeKindSem::Entity || targetType->kind == TypeKindSem::Value)) ||
-        ((sourceType->kind == TypeKindSem::Entity || sourceType->kind == TypeKindSem::Value) &&
+         (targetType->kind == TypeKindSem::Class || targetType->kind == TypeKindSem::Struct)) ||
+        ((sourceType->kind == TypeKindSem::Class || sourceType->kind == TypeKindSem::Struct) &&
          targetType->kind == TypeKindSem::Ptr))
         return targetType;
 
@@ -671,10 +671,10 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                 return false;
             }
 
-            if (!scrutineeType || (scrutineeType->kind != TypeKindSem::Value &&
-                                   scrutineeType->kind != TypeKindSem::Entity)) {
+            if (!scrutineeType || (scrutineeType->kind != TypeKindSem::Struct &&
+                                   scrutineeType->kind != TypeKindSem::Class)) {
                 error(pattern.literal ? pattern.literal->loc : SourceLoc{},
-                      "Constructor pattern requires value or entity scrutinee");
+                      "Constructor pattern requires struct or class scrutinee");
                 return false;
             }
 
@@ -686,9 +686,9 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
             }
 
             std::vector<TypeRef> fieldTypesVec;
-            if (scrutineeType->kind == TypeKindSem::Value) {
-                auto it = valueDecls_.find(scrutineeType->name);
-                if (it != valueDecls_.end()) {
+            if (scrutineeType->kind == TypeKindSem::Struct) {
+                auto it = structDecls_.find(scrutineeType->name);
+                if (it != structDecls_.end()) {
                     for (auto &member : it->second->members) {
                         if (member->kind == DeclKind::Field) {
                             auto *field = static_cast<FieldDecl *>(member.get());
@@ -698,8 +698,8 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                     }
                 }
             } else {
-                auto it = entityDecls_.find(scrutineeType->name);
-                if (it != entityDecls_.end()) {
+                auto it = classDecls_.find(scrutineeType->name);
+                if (it != classDecls_.end()) {
                     for (auto &member : it->second->members) {
                         if (member->kind == DeclKind::Field) {
                             auto *field = static_cast<FieldDecl *>(member.get());
@@ -827,8 +827,8 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 TypeRef Sema::analyzeNew(NewExpr *expr) {
     TypeRef type = resolveTypeNode(expr->type.get());
 
-    // Allow new for value/entity types and collection types (List, Set, Map)
-    bool allowed = type->kind == TypeKindSem::Value || type->kind == TypeKindSem::Entity ||
+    // Allow new for value/class types and collection types (List, Set, Map)
+    bool allowed = type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::Class ||
                    type->kind == TypeKindSem::List || type->kind == TypeKindSem::Set ||
                    type->kind == TypeKindSem::Map;
 
@@ -855,7 +855,7 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
     }
 
     if (!allowed) {
-        error(expr->loc, "'new' can only be used with value, entity, or collection types");
+        error(expr->loc, "'new' can only be used with struct, class, or collection types");
     }
 
     std::vector<TypeRef> argTypes;
@@ -866,8 +866,8 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
         argTypes.push_back(analyzeExpr(arg.value.get()));
     }
 
-    // For entity types, validate that arguments match an explicit init overload on the entity.
-    if (type->kind == TypeKindSem::Entity) {
+    // For class types, validate that arguments match an explicit init overload on the class.
+    if (type->kind == TypeKindSem::Class) {
         MethodDecl *initDecl = resolveMethodOverload(
             type->name, "init", argTypes, expr->loc, nullptr, /*includeInherited=*/true);
 
@@ -1013,18 +1013,18 @@ TypeRef Sema::analyzeBlockExpr(BlockExpr *expr) {
 
 /// @brief Analyze a struct-literal expression (`TypeName { field = val, ... }`).
 /// @param expr The struct-literal expression node.
-/// @return The value type named by the expression, or unknown on error.
+/// @return The struct type named by the expression, or unknown on error.
 TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
-    // Look up the type name and verify it is a value type.
+    // Look up the type name and verify it is a struct type.
     auto typeIt = typeRegistry_.find(expr->typeName);
     if (typeIt == typeRegistry_.end()) {
         error(expr->loc, "Unknown type '" + expr->typeName + "'");
         return types::unknown();
     }
     TypeRef valueType = typeIt->second;
-    if (!valueType || valueType->kind != TypeKindSem::Value) {
+    if (!valueType || valueType->kind != TypeKindSem::Struct) {
         error(expr->loc,
-              "'" + expr->typeName + "' is not a value type; struct literal requires a value type");
+              "'" + expr->typeName + "' is not a struct type; struct literal requires a struct type");
         return types::unknown();
     }
 

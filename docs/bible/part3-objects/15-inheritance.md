@@ -2,7 +2,7 @@
 
 A dog is an animal. A savings account is a bank account. A button is a UI element. In the real world, things often have "is-a" relationships - one thing is a specialized version of another. When we say "a dog is an animal," we mean that dogs share all the fundamental characteristics of animals (they breathe, they move, they eat) while also having their own unique traits (they bark, they fetch, they wag their tails).
 
-*Inheritance* lets you model these relationships in code. You create a base entity with common functionality, then create derived entities that extend or customize it. When used well, inheritance promotes code reuse, creates logical hierarchies, and makes your programs easier to understand and maintain. When misused, it can create tangled dependencies and rigid code that's hard to change.
+*Inheritance* lets you model these relationships in code. You create a base class with common functionality, then create derived classes that extend or customize it. When used well, inheritance promotes code reuse, creates logical hierarchies, and makes your programs easier to understand and maintain. When misused, it can create tangled dependencies and rigid code that's hard to change.
 
 This chapter will teach you not just *how* to use inheritance, but *when* to use it - and equally important, when not to.
 
@@ -15,7 +15,7 @@ Imagine building a game with different enemies. You start with a goblin:
 ```rust
 bind Viper.Terminal;
 
-entity Goblin {
+class Goblin {
     x: Number;
     y: Number;
     health: Integer;
@@ -51,7 +51,7 @@ Great! Now you need an orc:
 ```rust
 bind Viper.Terminal;
 
-entity Orc {
+class Orc {
     x: Number;
     y: Number;
     health: Integer;
@@ -82,9 +82,9 @@ entity Orc {
 }
 ```
 
-Do you see the problem? These entities are almost identical! The same fields, the same `move` method, the same `takeDamage` method. Only the initial values and attack power differ.
+Do you see the problem? These classes are almost identical! The same fields, the same `move` method, the same `takeDamage` method. Only the initial values and attack power differ.
 
-Now imagine you need to add dragons, skeletons, trolls, and giant spiders. Each one copies the same code. And when you discover a bug in `takeDamage` or want to add a new feature to movement, you have to change every single enemy entity. Miss one, and you have inconsistent behavior. This duplication is wasteful, error-prone, and a maintenance nightmare.
+Now imagine you need to add dragons, skeletons, trolls, and giant spiders. Each one copies the same code. And when you discover a bug in `takeDamage` or want to add a new feature to movement, you have to change every single enemy class. Miss one, and you have inconsistent behavior. This duplication is wasteful, error-prone, and a maintenance nightmare.
 
 There has to be a better way.
 
@@ -92,7 +92,7 @@ There has to be a better way.
 
 ## Understanding the "Is-A" Relationship
 
-Before we dive into the solution, let's think about what these entities have in common. A goblin, an orc, a dragon - they're all *enemies*. In fact, we could say:
+Before we dive into the solution, let's think about what these classes have in common. A goblin, an orc, a dragon - they're all *enemies*. In fact, we could say:
 
 - A Goblin *is an* Enemy
 - An Orc *is an* Enemy
@@ -106,12 +106,12 @@ This isn't just a programming trick - it reflects how we naturally categorize th
 
 ## Inheritance to the Rescue
 
-With inheritance, we extract the common parts into a *base entity*:
+With inheritance, we extract the common parts into a *base class*:
 
 ```rust
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     x: Number;
     y: Number;
     health: Integer;
@@ -147,7 +147,7 @@ Now we can create specialized enemies that *extend* this base:
 ```rust
 bind Viper.Terminal;
 
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 30, "Goblin");
     }
@@ -157,7 +157,7 @@ entity Goblin extends Enemy {
     }
 }
 
-entity Orc extends Enemy {
+class Orc extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 50, "Orc");
     }
@@ -167,7 +167,7 @@ entity Orc extends Enemy {
     }
 }
 
-entity Dragon extends Enemy {
+class Dragon extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 200, "Dragon");
     }
@@ -182,29 +182,29 @@ entity Dragon extends Enemy {
 }
 ```
 
-Look how much cleaner this is! Each specialized enemy only defines what makes it unique. The common functionality lives in one place (Enemy), so fixing a bug or adding a feature only requires changing one entity.
+Look how much cleaner this is! Each specialized enemy only defines what makes it unique. The common functionality lives in one place (Enemy), so fixing a bug or adding a feature only requires changing one class.
 
 ---
 
 ## The Parent-Child Relationship
 
-When one entity extends another, we create a *parent-child* relationship (also called a *superclass-subclass* relationship):
+When one class extends another, we create a *parent-child* relationship (also called a *superclass-subclass* relationship):
 
-**Parent entity (also called base entity or superclass):** The entity being inherited from. In our example, `Enemy` is the parent.
+**Parent class (also called base class or superclass):** The class being inherited from. In our example, `Enemy` is the parent.
 
-**Child entity (also called derived entity or subclass):** The entity that inherits. `Goblin`, `Orc`, and `Dragon` are children of `Enemy`.
+**Child class (also called derived class or subclass):** The class that inherits. `Goblin`, `Orc`, and `Dragon` are children of `Enemy`.
 
 The `extends` keyword establishes this relationship:
 
 ```rust
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     // Goblin is the child, Enemy is the parent
 }
 ```
 
 ### What Gets Inherited
 
-When an entity extends another, it automatically receives:
+When a class extends another, it automatically receives:
 
 1. **All fields from the parent** - A Goblin has `x`, `y`, `health`, and `name` even though we didn't declare them in Goblin.
 
@@ -236,9 +236,9 @@ The goblin can do everything an enemy can do, plus whatever specialized behavior
 
 ### What Gets Overridden
 
-A child entity can *override* methods from its parent - providing its own implementation that replaces the parent's. In our example, `Goblin` overrides `attack()` to return 5 instead of the parent's default of 1.
+A child class can *override* methods from its parent - providing its own implementation that replaces the parent's. In our example, `Goblin` overrides `attack()` to return 5 instead of the parent's default of 1.
 
-A child entity can also *add* new fields and methods that don't exist in the parent. The `Dragon` entity adds a `breatheFire()` method that only dragons have.
+A child class can also *add* new fields and methods that don't exist in the parent. The `Dragon` class adds a `breatheFire()` method that only dragons have.
 
 ```rust
 var dragon = Dragon(0.0, 0.0);
@@ -252,14 +252,14 @@ goblin.breatheFire();  // Error! Goblins can't breathe fire
 
 ## The `super` Keyword
 
-The `super` keyword is how child entities communicate with their parent. It has two important uses.
+The `super` keyword is how child classes communicate with their parent. It has two important uses.
 
 ### Calling the Parent Initializer
 
-When you create a child entity, you typically need to initialize the parent's fields. The `super()` call in an initializer invokes the parent's initializer:
+When you create a child class, you typically need to initialize the parent's fields. The `super()` call in an initializer invokes the parent's initializer:
 
 ```rust
-entity Enemy {
+class Enemy {
     x: Number;
     y: Number;
     health: Integer;
@@ -273,7 +273,7 @@ entity Enemy {
     }
 }
 
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 30, "Goblin");  // Call Enemy's initializer
     }
@@ -282,7 +282,7 @@ entity Goblin extends Enemy {
 
 Here, `Goblin`'s initializer takes only `x` and `y` (the goblin's position), then calls `super()` with those plus the goblin-specific values for health and name. This pattern is common - child initializers often have simpler signatures because some values are predetermined.
 
-Think of it like filling out a form. The parent entity says "I need these four pieces of information." The child entity says "I already know two of them, so I only need to ask for the other two."
+Think of it like filling out a form. The parent class says "I need these four pieces of information." The child class says "I already know two of them, so I only need to ask for the other two."
 
 ### Calling Parent Methods
 
@@ -291,7 +291,7 @@ Sometimes you want to *extend* the parent's behavior rather than completely repl
 ```rust
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     func describe() {
         Say("An enemy named " + self.name);
         Say("  Position: (" + self.x + ", " + self.y + ")");
@@ -299,7 +299,7 @@ entity Enemy {
     }
 }
 
-entity Dragon extends Enemy {
+class Dragon extends Enemy {
     fireBreaths: Integer;
 
     expose func init(x: Number, y: Number) {
@@ -329,7 +329,7 @@ This pattern - doing what the parent does, then adding more - is extremely commo
 
 ## Overriding Methods: When and Why
 
-*Overriding* is when a child entity provides its own implementation of a method that exists in the parent. The child's version *replaces* the parent's version (for instances of the child type).
+*Overriding* is when a child class provides its own implementation of a method that exists in the parent. The child's version *replaces* the parent's version (for instances of the child type).
 
 ### Why Override?
 
@@ -343,16 +343,16 @@ You override methods when the child needs different behavior than the parent pro
 
 ### The `override` Keyword
 
-In Viper, when you define a method in a child entity with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the `override` keyword to make your intentions explicit:
+In Viper, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the `override` keyword to make your intentions explicit:
 
 ```rust
-entity Enemy {
+class Enemy {
     func attack() -> Integer {
         return 1;
     }
 }
 
-entity Orc extends Enemy {
+class Orc extends Enemy {
     override func attack() -> Integer {
         return 10;
     }
@@ -372,13 +372,13 @@ Using `override` is good practice because:
 Without the `override` keyword, you might accidentally override a parent method:
 
 ```rust
-entity Vehicle {
+class Vehicle {
     func turn(degrees: Number) {
         // Rotate the vehicle
     }
 }
 
-entity Car extends Vehicle {
+class Car extends Vehicle {
     func turn(degrees: Number) {
         // Oops! We meant to add a new method for turn signals
         // But we accidentally overrode the steering!
@@ -392,12 +392,12 @@ Using `override` explicitly helps catch these mistakes. If you add `override` bu
 
 ## Inheritance Hierarchies
 
-Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of related entities:
+Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of related classes:
 
 ```rust
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     name: String;
 
     func breathe() {
@@ -409,7 +409,7 @@ entity Animal {
     }
 }
 
-entity Mammal extends Animal {
+class Mammal extends Animal {
     furColor: String;
 
     func nurse() {
@@ -417,7 +417,7 @@ entity Mammal extends Animal {
     }
 }
 
-entity Dog extends Mammal {
+class Dog extends Mammal {
     breed: String;
 
     expose func init(name: String, breed: String) {
@@ -469,7 +469,7 @@ Entity
 
 This eleven-level hierarchy has several problems:
 
-1. **Hard to understand** - To understand what an OrangeTabbyWithWhitePaws can do, you need to examine eleven different entity definitions.
+1. **Hard to understand** - To understand what an OrangeTabbyWithWhitePaws can do, you need to examine eleven different class definitions.
 
 2. **Fragile** - A change to any level might affect everything below it. Changing Carnivore could break your OrangeTabbyWithWhitePaws.
 
@@ -491,7 +491,7 @@ module Shapes;
 bind Viper.Terminal;
 bind Viper.Math;
 
-entity Shape {
+class Shape {
     x: Number;
     y: Number;
 
@@ -518,7 +518,7 @@ entity Shape {
     }
 }
 
-entity Rectangle extends Shape {
+class Rectangle extends Shape {
     width: Number;
     height: Number;
 
@@ -545,7 +545,7 @@ entity Rectangle extends Shape {
     }
 }
 
-entity Circle extends Shape {
+class Circle extends Shape {
     radius: Number;
 
     expose func init(x: Number, y: Number, radius: Number) {
@@ -574,7 +574,7 @@ entity Circle extends Shape {
     }
 }
 
-entity Square extends Rectangle {
+class Square extends Rectangle {
     expose func init(x: Number, y: Number, size: Number) {
         super(x, y, size, size);
     }
@@ -635,7 +635,7 @@ In this pattern, the parent defines the *structure* of an algorithm, but lets ch
 ```rust
 bind Viper.Terminal;
 
-entity Report {
+class Report {
     title: String;
 
     func generate() {
@@ -660,7 +660,7 @@ entity Report {
     }
 }
 
-entity SalesReport extends Report {
+class SalesReport extends Report {
     totalSales: Number;
     itemsSold: Integer;
 
@@ -677,7 +677,7 @@ entity SalesReport extends Report {
     }
 }
 
-entity InventoryReport extends Report {
+class InventoryReport extends Report {
     items: Integer;
     lowStock: Integer;
 
@@ -706,7 +706,7 @@ This pattern creates progressively more specific versions of a concept:
 ```rust
 bind Viper.Terminal;
 
-entity Account {
+class Account {
     balance: Number;
     accountNumber: String;
 
@@ -723,7 +723,7 @@ entity Account {
     }
 }
 
-entity SavingsAccount extends Account {
+class SavingsAccount extends Account {
     interestRate: Number;
 
     expose func init(accountNumber: String, initialDeposit: Number, rate: Number) {
@@ -748,7 +748,7 @@ entity SavingsAccount extends Account {
     }
 }
 
-entity CheckingAccount extends Account {
+class CheckingAccount extends Account {
     overdraftLimit: Number;
 
     expose func init(accountNumber: String, initialDeposit: Number, limit: Number) {
@@ -778,7 +778,7 @@ Each child specializes the parent for a particular use case. SavingsAccount adds
 
 ## Inheritance vs Composition: Knowing When to Choose
 
-Inheritance is a powerful tool, but it's not always the right tool. *Composition* - having one entity contain instances of other entities - is often a better choice.
+Inheritance is a powerful tool, but it's not always the right tool. *Composition* - having one class contain instances of other classes - is often a better choice.
 
 ### The "Is-A" vs "Has-A" Test
 
@@ -794,12 +794,12 @@ Use composition for "has-a" relationships:
 
 ```rust
 // WRONG: A car is not a type of engine!
-entity Car extends Engine {
+class Car extends Engine {
     // This makes no sense
 }
 
 // RIGHT: A car contains an engine
-entity Car {
+class Car {
     engine: Engine;
     transmission: Transmission;
     wheels: List[Wheel];
@@ -818,7 +818,7 @@ Even when "is-a" seems to apply, composition might still be better. Here are sig
 
 ```rust
 // If Rectangle only needs the position from Shape, not area/perimeter methods:
-entity Rectangle {
+class Rectangle {
     position: Point;  // Composition
     width: Number;
     height: Number;
@@ -830,7 +830,7 @@ entity Rectangle {
 Inheritance relationships are fixed at compile time. Composition relationships can change:
 
 ```rust
-entity Character {
+class Character {
     weapon: Weapon;  // Can swap weapons during the game
 
     func attack() {
@@ -847,14 +847,14 @@ With inheritance, a `SwordCharacter` is always a sword character. With compositi
 
 **3. You need functionality from multiple sources**
 
-Viper (like many languages) only allows inheriting from one parent. But you can compose as many entities as you want:
+Viper (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:
 
 ```rust
 // Can't do this:
-entity FlyingCar extends Car, Aircraft { }  // Error!
+class FlyingCar extends Car, Aircraft { }  // Error!
 
 // Do this instead:
-entity FlyingCar {
+class FlyingCar {
     carParts: CarMechanics;
     flightSystem: AircraftControls;
 
@@ -874,10 +874,10 @@ If you find yourself creating odd inheritance relationships to reuse code, that'
 
 ```rust
 // Awkward: A Window is not really a Rectangle in the UI sense
-entity Window extends Rectangle { }
+class Window extends Rectangle { }
 
 // Better: A Window has a rectangular frame
-entity Window {
+class Window {
     frame: Rectangle;
     title: String;
     content: View;
@@ -890,7 +890,7 @@ Should a Stack extend Array? After all, a stack uses array-like storage...
 
 ```rust
 // Tempting but WRONG
-entity Stack extends Array {
+class Stack extends Array {
     func push(item) {
         self.Push(item);
     }
@@ -905,7 +905,7 @@ This seems convenient, but now Stack inherits ALL of Array's methods. Users can 
 
 ```rust
 // RIGHT: Stack contains an array
-entity Stack {
+class Stack {
     items: List[any];
 
     expose func init() {
@@ -967,13 +967,13 @@ This seems obvious, but it's easy to violate. Consider:
 ```rust
 bind Viper.Terminal;
 
-entity Bird {
+class Bird {
     func fly() {
         Say("Flying through the air");
     }
 }
 
-entity Penguin extends Bird {
+class Penguin extends Bird {
     override func fly() {
         // Penguins can't fly!
         Say("Error: Penguins cannot fly");
@@ -1002,7 +1002,7 @@ The *fragile base class problem* occurs when changes to a parent class break chi
 ```rust
 bind Viper.Terminal;
 
-entity MediaPlayer {
+class MediaPlayer {
     func play() {
         self.preparePlayback();
         self.startPlayback();
@@ -1017,7 +1017,7 @@ entity MediaPlayer {
     }
 }
 
-entity VideoPlayer extends MediaPlayer {
+class VideoPlayer extends MediaPlayer {
     override func play() {
         self.loadVideo();
         super.play();
@@ -1032,7 +1032,7 @@ entity VideoPlayer extends MediaPlayer {
 This works fine. But what if someone modifies MediaPlayer?
 
 ```rust
-entity MediaPlayer {
+class MediaPlayer {
     func play() {
         // Changed: now calls preparePlayback differently
         self.startPlayback();  // Moved before prepare!
@@ -1064,7 +1064,7 @@ Different Viper language styles express inheritance differently:
 ```rust
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     name: String;
 
     func speak() {
@@ -1072,7 +1072,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     expose func init(name: String) {
         self.name = name;
     }
@@ -1142,8 +1142,8 @@ Here are practical guidelines for using inheritance effectively:
 
 Inheritance is a fundamental object-oriented concept that lets you model "is-a" relationships:
 
-- Use `extends` to create a child entity that inherits from a parent
-- Child entities automatically receive all fields and methods from the parent
+- Use `extends` to create a child class that inherits from a parent
+- Child classes automatically receive all fields and methods from the parent
 - Use `super()` to call the parent's initializer
 - Use `super.methodName()` to call the parent's version of a method
 - Override methods to provide specialized behavior for the child
@@ -1157,28 +1157,28 @@ Inheritance should be used thoughtfully:
 - Respect the Liskov Substitution Principle - children should be substitutable for parents
 - Be aware of the fragile base class problem
 
-Inheritance is powerful but easy to misuse. When you're unsure, composition is usually the safer choice. In the next chapter, we'll learn about interfaces, which provide another way to create relationships between entities - based on what they *can do* rather than what they *are*.
+Inheritance is powerful but easy to misuse. When you're unsure, composition is usually the safer choice. In the next chapter, we'll learn about interfaces, which provide another way to create relationships between classes - based on what they *can do* rather than what they *are*.
 
 ---
 
 ## Exercises
 
-**Exercise 15.1 - Vehicle Hierarchy**: Create a `Vehicle` entity with `speed` and `position` fields, and `move()` and `stop()` methods. Create `Car` and `Bicycle` child entities with different speed limits and movement behaviors.
+**Exercise 15.1 - Vehicle Hierarchy**: Create a `Vehicle` class with `speed` and `position` fields, and `move()` and `stop()` methods. Create `Car` and `Bicycle` child classes with different speed limits and movement behaviors.
 
-**Exercise 15.2 - Employee System**: Create an `Employee` base entity with `name`, `salary`, and `work()` method. Create `Manager` (has team members, can `holdMeeting()`) and `Developer` (has programming languages, can `writeCode()`) child entities with specialized `work()` implementations.
+**Exercise 15.2 - Employee System**: Create an `Employee` base class with `name`, `salary`, and `work()` method. Create `Manager` (has team members, can `holdMeeting()`) and `Developer` (has programming languages, can `writeCode()`) child classes with specialized `work()` implementations.
 
-**Exercise 15.3 - Bank Accounts**: Create a `BankAccount` base entity with `balance`, `deposit()`, and `withdraw()`. Create `SavingsAccount` (earns interest, has minimum balance) and `CheckingAccount` (allows overdraft up to a limit) with appropriate specializations.
+**Exercise 15.3 - Bank Accounts**: Create a `BankAccount` base class with `balance`, `deposit()`, and `withdraw()`. Create `SavingsAccount` (earns interest, has minimum balance) and `CheckingAccount` (allows overdraft up to a limit) with appropriate specializations.
 
-**Exercise 15.4 - Shape Extensions**: Extend the Shapes example with `Triangle` (given three side lengths) and `Ellipse` (given two radii) entities.
+**Exercise 15.4 - Shape Extensions**: Extend the Shapes example with `Triangle` (given three side lengths) and `Ellipse` (given two radii) classes.
 
-**Exercise 15.5 - Template Method**: Create a `Game` entity with a `play()` method that calls `setup()`, `playRound()` (in a loop), and `declareWinner()`. Create `TicTacToe` and `GuessTheNumber` games that override these methods.
+**Exercise 15.5 - Template Method**: Create a `Game` class with a `play()` method that calls `setup()`, `playRound()` (in a loop), and `declareWinner()`. Create `TicTacToe` and `GuessTheNumber` games that override these methods.
 
 **Exercise 15.6 - Composition Refactoring**: Take the following (bad) inheritance hierarchy and refactor it to use composition:
 ```rust
-entity Person { }
-entity Employee extends Person { }
-entity Manager extends Employee { }
-entity CEOWithCompanyCar extends Manager { }  // This is getting silly!
+class Person { }
+class Employee extends Person { }
+class Manager extends Employee { }
+class CEOWithCompanyCar extends Manager { }  // This is getting silly!
 ```
 
 **Exercise 15.7 (Challenge) - Game Enemy System**: Design and implement an enemy system for a game with:
@@ -1196,6 +1196,6 @@ entity CEOWithCompanyCar extends Manager { }  // This is getting silly!
 
 ---
 
-*Inheritance creates "is-a" relationships and lets child entities specialize their parents. But what if you want to define what something can do, without specifying how? What if you want a function that can work with any entity that has a certain capability? Next, we learn about interfaces - contracts that entities can fulfill, enabling powerful abstractions.*
+*Inheritance creates "is-a" relationships and lets child classes specialize their parents. But what if you want to define what something can do, without specifying how? What if you want a function that can work with any class that has a certain capability? Next, we learn about interfaces - contracts that classes can fulfill, enabling powerful abstractions.*
 
 *[Continue to Chapter 16: Interfaces](16-interfaces.md)*

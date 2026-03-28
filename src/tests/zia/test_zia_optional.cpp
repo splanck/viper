@@ -26,7 +26,7 @@ TEST(ZiaOptional, OptionalAndCoalesce) {
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     expose Integer age;
 
     expose func init(a: Integer) {
@@ -83,7 +83,7 @@ TEST(ZiaOptional, OptionalChainAndReturnWrap) {
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     expose Integer age;
 
     expose func init(a: Integer) {

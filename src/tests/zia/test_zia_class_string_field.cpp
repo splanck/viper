@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/tests/zia/test_zia_entity_string_field.cpp
-// Purpose: Regression test for BUG-ADV-001 — entity string field loads must
+// File: src/tests/zia/test_zia_class_string_field.cpp
+// Purpose: Regression test for BUG-ADV-001 — class string field loads must
 //          emit rt_str_retain_maybe to prevent use-after-free.
 // Key invariants:
 //   - Every Load of a Str-typed field must be followed by rt_str_retain_maybe
-//   - Applies to both value types and entity types
+//   - Applies to both struct types and class types
 // Ownership/Lifetime:
 //   - Test-scoped objects only
 // Links: examples/apps/sqldb/PLATFORM_BUGS_20260228.md (BUG-ADV-001)
@@ -86,7 +86,7 @@ TEST(ZiaEntityStringField, EntityFieldReadEmitsRetain) {
     const std::string source = R"(
 module Test;
 
-entity Wrapper {
+class Wrapper {
     expose String name;
 }
 
@@ -105,14 +105,14 @@ func start() {
     EXPECT_TRUE(retainCount >= 1);
 }
 
-/// @brief Verify retain is emitted when entity string field is used directly
+/// @brief Verify retain is emitted when class string field is used directly
 ///        in concatenation (the actual crash scenario from BUG-ADV-001).
 TEST(ZiaEntityStringField, FieldConcatEmitsRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Result {
+class Result {
     expose Boolean success;
     expose String message;
 }
@@ -145,7 +145,7 @@ TEST(ZiaEntityStringField, ValueTypeFieldReadEmitsRetain) {
     const std::string source = R"(
 module Test;
 
-value Pair {
+struct Pair {
     expose String key;
     expose String val;
 }
@@ -166,17 +166,17 @@ func start() {
     EXPECT_TRUE(retainCount >= 2);
 }
 
-/// @brief Nested entity string field access should also emit retain.
+/// @brief Nested class string field access should also emit retain.
 TEST(ZiaEntityStringField, NestedEntityFieldRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Inner {
+class Inner {
     expose String text;
 }
 
-entity Outer {
+class Outer {
     expose Inner inner;
 }
 
@@ -202,7 +202,7 @@ TEST(ZiaEntityStringField, NonStringFieldNoRetain) {
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     expose Integer count;
     expose Boolean active;
 }

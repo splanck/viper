@@ -9,7 +9,7 @@ bind "./level";
 bind "./sprites";
 bind "./particles";
 
-entity ProjectilePool {
+class ProjectilePool {
     hide ObjectPool pool;
     hide List[Integer] bx;       // position x (pixels)
     hide List[Integer] by;       // position y (pixels)

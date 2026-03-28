@@ -69,7 +69,7 @@ final GATE_GRAPPLE = 32;      // Need grapple (anchor point swings)
 // =============================================================================
 // Ability Manager Entity
 // =============================================================================
-entity AbilityManager {
+class AbilityManager {
     expose func init() {}
     hide Integer acquired;     // Bitmask of acquired abilities
     hide Integer justGotAbility; // Flag for acquisition animation

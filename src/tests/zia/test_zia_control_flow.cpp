@@ -199,13 +199,13 @@ func start() {
 }
 
 /// @brief Bug #28: Guard statement should work without parentheses.
-/// Swift-style guard syntax should be supported in entity methods.
+/// Swift-style guard syntax should be supported in class methods.
 TEST(ZiaControlFlow, GuardStatementWithoutParens) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Player {
+class Player {
     expose Integer state;
 
     expose func moveUp() {

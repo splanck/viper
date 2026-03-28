@@ -123,7 +123,7 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
 static const char *const zia_keywords[] = {
-    "func",  "expose", "hide",   "entity", "value",    "var",   "new",  "if", "else", "while",
+    "func",  "expose", "hide",   "class",  "struct",   "var",   "new",  "if", "else", "while",
     "for",   "in",     "return", "break",  "continue", "do",    "and",  "or", "not",  "true",
     "false", "null",   "module", "bind",   "self",     "match", "enum", NULL};
 

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Zia value types (structs).
+// Tests for Zia struct types (structs).
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,13 +24,13 @@ namespace {
 // Basic Value Types
 //===----------------------------------------------------------------------===//
 
-/// @brief Test basic value type with fields.
+/// @brief Test basic struct type with fields.
 TEST(ZiaValueTypes, BasicFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
@@ -51,13 +51,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test value type with methods.
+/// @brief Test struct type with methods.
 TEST(ZiaValueTypes, Methods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Vector2D {
+struct Vector2D {
     expose Integer x;
     expose Integer y;
 
@@ -88,13 +88,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test value type with default values.
+/// @brief Test struct type with default values.
 TEST(ZiaValueTypes, DefaultValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Config {
+struct Config {
     expose Integer width = 800;
     expose Integer height = 600;
     expose Boolean fullscreen = false;
@@ -119,13 +119,13 @@ func start() {
 // Value Type Semantics
 //===----------------------------------------------------------------------===//
 
-/// @brief Test value type copying.
+/// @brief Test struct type copying.
 TEST(ZiaValueTypes, Copying) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
@@ -151,13 +151,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test value type as function parameter.
+/// @brief Test struct type as function parameter.
 TEST(ZiaValueTypes, Parameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
@@ -182,13 +182,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test value type as return value.
+/// @brief Test struct type as return value.
 TEST(ZiaValueTypes, Return) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
@@ -218,18 +218,18 @@ func start() {
 // Nested Value Types
 //===----------------------------------------------------------------------===//
 
-/// @brief Test value type containing another value type.
+/// @brief Test struct type containing another struct type.
 TEST(ZiaValueTypes, Nested) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
 
-value Rectangle {
+struct Rectangle {
     expose Point topLeft;
     expose Point bottomRight;
 
@@ -265,13 +265,13 @@ func start() {
 // Value Type with Collections
 //===----------------------------------------------------------------------===//
 
-/// @brief Test value type containing list field.
+/// @brief Test struct type containing list field.
 TEST(ZiaValueTypes, WithList) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Polygon {
+struct Polygon {
     expose List[Integer] xCoords;
     expose List[Integer] yCoords;
 
@@ -306,18 +306,18 @@ func start() {
 // Value Type vs Entity
 //===----------------------------------------------------------------------===//
 
-/// @brief Test both value and entity types together.
+/// @brief Test both struct and class types together.
 TEST(ZiaValueTypes, MixedWithEntity) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-value Position {
+struct Position {
     expose Integer x;
     expose Integer y;
 }
 
-entity Player {
+class Player {
     expose String name;
     expose Position pos;
     expose Integer health;
@@ -359,7 +359,7 @@ func start() {
 /// This exercises the code path where emitBoxValue receives a Ptr that
 /// originated from a callee's stack frame. In native code (AArch64), the
 /// callee's frame is freed on return; the rt_box_value_type call that follows
-/// would reuse the same stack area, corrupting the value type fields before
+/// would reuse the same stack area, corrupting the struct type fields before
 /// they were read. The fix reads all fields into IL temporaries BEFORE calling
 /// rt_box_value_type, so the temporaries survive the call in callee-save
 /// registers or the current function's spill slots.
@@ -368,14 +368,14 @@ TEST(ZiaValueTypes, ReturnedValueTypeBoxedIntoList) {
     const std::string source = R"(
 module Test;
 
-value Move {
+struct Move {
     expose Integer from;
     expose Integer to;
     expose Integer kind;
     expose Boolean special;
 }
 
-entity MoveGen {
+class MoveGen {
     hide func makeMove(Integer f, Integer t, Integer k, Boolean sp) -> Move {
         return new Move(f, t, k, sp);
     }

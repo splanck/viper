@@ -44,7 +44,7 @@ final STAT_LONGEST_COMBO = 10;
 final STAT_CURRENT_COMBO = 11;
 final STAT_SPEEDRUN_BEST = 12;
 
-entity AchievementSystem {
+class AchievementSystem {
     expose func init() {}
     hide Palette pal;
     hide AchievementTracker tracker;

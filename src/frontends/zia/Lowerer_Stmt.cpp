@@ -131,13 +131,13 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
             ilType = Type(Type::Kind::F64);
         }
 
-        // Handle value type copy semantics - deep copy on assignment
+        // Handle struct type copy semantics - deep copy on assignment
         TypeRef initType = sema_.typeOf(stmt->initializer.get());
-        if (initType && initType->kind == TypeKindSem::Value) {
-            const ValueTypeInfo *info = getOrCreateValueTypeInfo(initType->name);
+        if (initType && initType->kind == TypeKindSem::Struct) {
+            const StructTypeInfo *info = getOrCreateStructTypeInfo(initType->name);
             if (info) {
-                // Deep copy the value type
-                initValue = emitValueTypeCopy(*info, initValue);
+                // Deep copy the struct type
+                initValue = emitStructTypeCopy(*info, initValue);
             }
         }
 
@@ -159,12 +159,12 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         // Default initialization
         ilType = mapType(varType);
 
-        // Special handling for value types - allocate proper stack space
-        if (varType && varType->kind == TypeKindSem::Value) {
-            const ValueTypeInfo *info = getOrCreateValueTypeInfo(varType->name);
+        // Special handling for struct types - allocate proper stack space
+        if (varType && varType->kind == TypeKindSem::Struct) {
+            const StructTypeInfo *info = getOrCreateStructTypeInfo(varType->name);
             if (info) {
-                // Allocate and zero-initialize the value type
-                initValue = emitValueTypeAlloc(*info);
+                // Allocate and zero-initialize the struct type
+                initValue = emitStructTypeAlloc(*info);
             } else {
                 // Fallback if type info not found
                 initValue = Value::null();
@@ -853,7 +853,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
         if (currentAsyncWorker_) {
             Type payloadIlType = mapType(currentReturnType_);
             Value futureValue = returnValue;
-            if (currentReturnType_ && (currentReturnType_->kind == TypeKindSem::Value ||
+            if (currentReturnType_ && (currentReturnType_->kind == TypeKindSem::Struct ||
                                        payloadIlType.kind != Type::Kind::Ptr)) {
                 futureValue = emitBoxValue(returnValue, payloadIlType, currentReturnType_);
             } else {

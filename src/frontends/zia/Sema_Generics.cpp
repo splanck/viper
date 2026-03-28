@@ -116,10 +116,10 @@ void Sema::registerGenericType(const std::string &name, Decl *decl) {
 
 std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
     switch (decl->kind) {
-        case DeclKind::Value:
-            return static_cast<const ValueDecl *>(decl)->genericParams;
-        case DeclKind::Entity:
-            return static_cast<const EntityDecl *>(decl)->genericParams;
+        case DeclKind::Struct:
+            return static_cast<const StructDecl *>(decl)->genericParams;
+        case DeclKind::Class:
+            return static_cast<const ClassDecl *>(decl)->genericParams;
         case DeclKind::Interface:
             return static_cast<const InterfaceDecl *>(decl)->genericParams;
         case DeclKind::Function:
@@ -132,17 +132,17 @@ std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
 TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName) {
     // Create the instantiated type based on declaration kind
     switch (decl->kind) {
-        case DeclKind::Value: {
-            auto *valueDecl = static_cast<ValueDecl *>(decl);
-            // Create the instantiated value type
-            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Value, mangledName);
+        case DeclKind::Struct: {
+            auto *structDecl = static_cast<StructDecl *>(decl);
+            // Create the instantiated struct type
+            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Struct, mangledName);
 
             // Register the instantiated type first so self-references work
             typeRegistry_[mangledName] = instantiated;
-            valueDecls_[mangledName] = valueDecl;
+            structDecls_[mangledName] = structDecl;
 
             // Analyze members with substitutions active
-            for (const auto &member : valueDecl->members) {
+            for (const auto &member : structDecl->members) {
                 if (member->kind == DeclKind::Field) {
                     auto *field = static_cast<FieldDecl *>(member.get());
                     TypeRef fieldType = resolveTypeNode(field->type.get());
@@ -170,18 +170,18 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
 
             return instantiated;
         }
-        case DeclKind::Entity: {
-            auto *entityDecl = static_cast<EntityDecl *>(decl);
-            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Entity, mangledName);
+        case DeclKind::Class: {
+            auto *classDecl = static_cast<ClassDecl *>(decl);
+            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Class, mangledName);
 
             typeRegistry_[mangledName] = instantiated;
-            entityDecls_[mangledName] = entityDecl;
-            for (const auto &iface : entityDecl->interfaces)
+            classDecls_[mangledName] = classDecl;
+            for (const auto &iface : classDecl->interfaces)
                 types::registerInterfaceImplementation(mangledName, iface);
-            if (!entityDecl->baseClass.empty())
-                types::registerEntityInheritance(mangledName, entityDecl->baseClass);
+            if (!classDecl->baseClass.empty())
+                types::registerClassInheritance(mangledName, classDecl->baseClass);
 
-            for (const auto &member : entityDecl->members) {
+            for (const auto &member : classDecl->members) {
                 if (member->kind == DeclKind::Field) {
                     auto *field = static_cast<FieldDecl *>(member.get());
                     TypeRef fieldType = resolveTypeNode(field->type.get());
@@ -286,19 +286,19 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     if (!type)
         return false;
 
-    // Check if the type is an entity type
-    if (type->kind == TypeKindSem::Entity) {
-        if (auto *entityDecl = lookupEntityDeclForType(type->name)) {
-            for (const auto &iface : entityDecl->interfaces) {
+    // Check if the type is an class type
+    if (type->kind == TypeKindSem::Class) {
+        if (auto *classDecl = lookupClassDeclForType(type->name)) {
+            for (const auto &iface : classDecl->interfaces) {
                 if (iface == interfaceName)
                     return true;
             }
         }
     }
-    // Check if the type is a value type
-    else if (type->kind == TypeKindSem::Value) {
-        if (auto *valueDecl = lookupValueDeclForType(type->name)) {
-            for (const auto &iface : valueDecl->interfaces) {
+    // Check if the type is a struct type
+    else if (type->kind == TypeKindSem::Struct) {
+        if (auto *structDecl = lookupStructDeclForType(type->name)) {
+            for (const auto &iface : structDecl->interfaces) {
                 if (iface == interfaceName)
                     return true;
             }

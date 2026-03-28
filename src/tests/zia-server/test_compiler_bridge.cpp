@@ -168,12 +168,12 @@ TEST(CompilerBridge, HoverOnGlobalFunction) {
     EXPECT_TRUE(result.find("func start") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnEntityTypeName) {
+TEST(CompilerBridge, HoverOnClassTypeName) {
     CompilerBridge bridge;
     // Line 10: "    var s: Ship = new Ship();" — cursor on 'Ship' type annotation at col 12
     std::string source = "module Test;\n"
                          "\n"
-                         "entity Ship {\n"
+                         "class Ship {\n"
                          "    hide Integer speed;\n"
                          "    expose func init() {\n"
                          "        speed = 0;\n"
@@ -185,15 +185,15 @@ TEST(CompilerBridge, HoverOnEntityTypeName) {
                          "}\n";
     auto result = bridge.hover(source, 11, 12, "test.zia");
     EXPECT_FALSE(result.empty());
-    EXPECT_TRUE(result.find("entity Ship") != std::string::npos);
+    EXPECT_TRUE(result.find("class Ship") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnEntityFieldInsideBody) {
+TEST(CompilerBridge, HoverOnClassFieldInsideBody) {
     CompilerBridge bridge;
     // Line 7: "        return speed;" — cursor on 'speed' at col 16
     std::string source = "module Test;\n"
                          "\n"
-                         "entity Ship {\n"
+                         "class Ship {\n"
                          "    hide Integer speed;\n"
                          "\n"
                          "    expose func getSpeed() -> Integer {\n"
@@ -214,7 +214,7 @@ TEST(CompilerBridge, HoverOnMethodViaDot) {
     // Line 14: "    var r = s.getSpeed();" — cursor on 'getSpeed' at col 17
     std::string source = "module Test;\n"                            // 1
                          "\n"                                        // 2
-                         "entity Ship {\n"                           // 3
+                         "class Ship {\n"                           // 3
                          "    hide Integer speed;\n"                 // 4
                          "    expose func init() {\n"                // 5
                          "        speed = 0;\n"                      // 6
@@ -240,7 +240,7 @@ TEST(CompilerBridge, HoverOnFieldViaDot) {
     // Line 11: "    s.speed = 10;" — 's' at col 5, '.' at 6, 'speed' starts at col 7
     std::string source = "module Test;\n"              // 1
                          "\n"                          // 2
-                         "entity Ship {\n"             // 3
+                         "class Ship {\n"             // 3
                          "    expose Integer speed;\n" // 4
                          "    expose func init() {\n"  // 5
                          "        speed = 0;\n"        // 6
@@ -364,7 +364,7 @@ TEST(CompilerBridge, SymbolsIncludesTypes) {
     CompilerBridge bridge;
     auto syms = bridge.symbols(R"(
 module Test;
-value Point {
+struct Point {
     var x: Integer;
     var y: Integer;
 }

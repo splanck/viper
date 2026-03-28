@@ -22,7 +22,7 @@ func initConstants() {
 }
 
 // Sparkle particle from explosion
-entity Sparkle {
+class Sparkle {
     expose Number x;
     expose Number y;
     expose Number vx;
@@ -87,7 +87,7 @@ entity Sparkle {
 }
 
 // Rocket that shoots upward before exploding
-entity Rocket {
+class Rocket {
     expose Number x;
     expose Number y;
     expose Number vx;
@@ -163,7 +163,7 @@ entity Rocket {
 }
 
 // Explosion containing many sparkles
-entity Explosion {
+class Explosion {
     expose List[Sparkle] sparkles;
     expose Integer pattern;  // 0=circle, 1=star, 2=ring, 3=willow
 
@@ -294,7 +294,7 @@ entity Explosion {
 }
 
 // Fireworks show manager
-entity FireworksShow {
+class FireworksShow {
     expose List[Rocket] rockets;
     expose List[Explosion] explosions;
     expose Integer launchTimer;

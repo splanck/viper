@@ -193,7 +193,7 @@ enum class ExprKind {
     /// @see NewExpr
     New,
 
-    /// @brief Struct-literal initialization for value types: `Point { x = 3, y = 4 }`.
+    /// @brief Struct-literal initialization for struct types: `Point { x = 3, y = 4 }`.
     /// @see StructLiteralExpr
     StructLiteral,
 
@@ -369,7 +369,7 @@ struct UnitLiteralExpr : Expr {
 };
 
 /// @brief Identifier expression: `foo`, `myVariable`.
-/// @details References a named entity: variable, parameter, function, or type.
+/// @details References a named symbol: variable, parameter, function, or type.
 /// The semantic analyzer resolves the name to its definition.
 struct IdentExpr : Expr {
     /// @brief The identifier name.
@@ -383,7 +383,7 @@ struct IdentExpr : Expr {
 
 /// @brief Self reference within methods: `self`.
 /// @details References the current object instance within a method.
-/// Only valid inside method bodies of value or entity types.
+/// Only valid inside method bodies of value or class types.
 struct SelfExpr : Expr {
     /// @brief Construct a self expression.
     /// @param l Source location.
@@ -392,8 +392,8 @@ struct SelfExpr : Expr {
 
 /// @brief Parent class reference: `super`.
 /// @details References the parent class for calling overridden methods
-/// or accessing inherited members. Only valid in entity types that
-/// extend another entity.
+/// or accessing inherited members. Only valid in class types that
+/// extend another class.
 struct SuperExprNode : Expr {
     /// @brief Construct a super expression.
     /// @param l Source location.
@@ -571,7 +571,7 @@ struct IndexExpr : Expr {
 };
 
 /// @brief Field access expression: `obj.field`.
-/// @details Accesses a field or property from a value or entity type.
+/// @details Accesses a field or property from a value or class type.
 /// Also used for accessing static members and module-level items.
 struct FieldExpr : Expr {
     /// @brief The object expression.
@@ -640,7 +640,7 @@ struct CoalesceExpr : Expr {
 /// Returns true if x is of type T, false otherwise.
 ///
 /// ## Usage
-/// Used with entity types to check for subtypes before casting:
+/// Used with class types to check for subtypes before casting:
 /// ```
 /// if (animal is Dog) {
 ///     var dog = animal as Dog;
@@ -664,8 +664,8 @@ struct IsExpr : Expr {
 
 /// @brief Type cast expression: `x as T`.
 /// @details Casts a value to a specific type. The cast may be:
-/// - Checked: For entity types, throws if the cast fails
-/// - Unchecked: For value types, assumes the programmer knows the type
+/// - Checked: For class types, throws if the cast fails
+/// - Unchecked: For struct types, assumes the programmer knows the type
 ///
 /// ## Example
 /// ```
@@ -777,8 +777,8 @@ struct AwaitExpr : Expr {
 };
 
 /// @brief Object instantiation expression: `new Foo(args)`.
-/// @details Creates a new instance of an entity type by invoking its
-/// constructor. Entity types are reference types with identity.
+/// @details Creates a new instance of an class type by invoking its
+/// constructor. Class types are reference types with identity.
 ///
 /// ## Example
 /// ```
@@ -874,7 +874,7 @@ struct MapEntry {
 
 /// @brief Map literal expression: `{"a": 1, "b": 2}`.
 /// @details Creates a new Map with the given key-value pairs.
-/// Key and value types are inferred from the entries or context.
+/// Key and struct types are inferred from the entries or context.
 struct MapLiteralExpr : Expr {
     /// @brief The map entries.
     std::vector<MapEntry> entries;
@@ -973,8 +973,8 @@ struct IfExpr : Expr {
           elseBranch(std::move(e)) {}
 };
 
-/// @brief Struct-literal initialization for value types.
-/// @details `Point { x = 3, y = 4 }` initializes a value type by field name.
+/// @brief Struct-literal initialization for struct types.
+/// @details `Point { x = 3, y = 4 }` initializes a struct type by field name.
 /// Each field may appear in any order; the lowerer reorders by declaration order.
 struct StructLiteralExpr : Expr {
     /// @brief One named-field initializer.
@@ -984,7 +984,7 @@ struct StructLiteralExpr : Expr {
         SourceLoc loc;    ///< Location of this field entry.
     };
 
-    /// @brief The value type name (e.g., "Point").
+    /// @brief The struct type name (e.g., "Point").
     std::string typeName;
 
     /// @brief Named field initializers (in source order).

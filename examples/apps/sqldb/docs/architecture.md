@@ -110,7 +110,7 @@ Public methods acquire the lock and delegate to `*Internal` variants. Internal c
 
 ## Session Architecture
 
-ViperSQL supports per-connection isolation through the Session entity:
+ViperSQL supports per-connection isolation through the Session class:
 
 ```
 Session (per connection)

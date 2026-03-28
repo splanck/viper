@@ -15,7 +15,7 @@ A comprehensive reference for Zia syntax and features. This appendix is designed
 7. [Collections](#collections)
 8. [Strings](#strings)
 9. [Values (Structures)](#values-structures)
-10. [Entities (Objects)](#entities-objects)
+10. [Entities (Objects)](#classes-objects)
 11. [Visibility Modifiers](#visibility-modifiers)
 12. [Inheritance](#inheritance)
 13. [Interfaces](#interfaces)
@@ -69,7 +69,7 @@ func circleArea(radius: Number) -> Number {
 **When to use each:**
 - Single-line (`//`): Quick notes, explaining a single line
 - Multi-line (`/* */`): Longer explanations, temporarily commenting out code
-- Documentation (`///`): API documentation for functions, entities, and modules
+- Documentation (`///`): API documentation for functions, classes, and modules
 
 **Cross-reference:** [Chapter 2: Your First Program](../part1-foundations/02-first-program.md)
 
@@ -521,7 +521,7 @@ match result {
     Err(message) => reportError(message)
 }
 
-// Matching entity types
+// Matching class types
 match shape {
     Circle(c) => Terminal.Say("Circle with radius " + c.radius),
     Rectangle(r) => Terminal.Say("Rectangle " + r.width + "x" + r.height),
@@ -933,12 +933,12 @@ Values group related data together. They have value semantics -- assignment crea
 ### Defining Values
 
 ```rust
-value Point {
+struct Point {
     x: Number;
     y: Number;
 }
 
-value Person {
+struct Person {
     name: String;
     age: Integer;
     email: String;
@@ -971,7 +971,7 @@ person.age = 31;
 ### Methods on Values
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 
@@ -1016,10 +1016,10 @@ Terminal.Say(p1.x);  // 10.0 - p1 is unchanged
 Terminal.Say(p2.x);  // 99.0 - only p2 changed
 ```
 
-**When to use values vs. entities:**
-- Use `value` for simple data containers (Point, Color, Config)
-- Use `value` when you want copy semantics
-- Use `entity` when you need identity, inheritance, or reference semantics
+**When to use values vs. classes:**
+- Use `struct` for simple data containers (Point, Color, Config)
+- Use `struct` when you want copy semantics
+- Use `class` when you need idclass, inheritance, or reference semantics
 
 **Cross-reference:** [Chapter 11: Structures](../part2-building-blocks/11-structures.md)
 
@@ -1032,7 +1032,7 @@ Entities combine data and behavior with reference semantics and support for inhe
 ### Defining Entities
 
 ```rust
-entity Counter {
+class Counter {
     hide count: Integer;        // Hidden field (private)
 
     // Initializer - called when creating instances
@@ -1077,7 +1077,7 @@ var counter2 = Counter(100);
 Inside methods, `self` refers to the current instance:
 
 ```rust
-entity Player {
+class Player {
     name: String;
     score: Integer;
 
@@ -1111,8 +1111,8 @@ Terminal.Say(c1.getCount());  // 11 - both see the same object
 Terminal.Say(c2.getCount());  // 11
 ```
 
-**When to use entities:**
-- When objects need identity (two Players are different even with same stats)
+**When to use classes:**
+- When objects need idclass (two Players are different even with same stats)
 - When you need inheritance or polymorphism
 - When you want to share modifications between references
 - When objects have complex lifecycle (initialization, state changes)
@@ -1128,14 +1128,14 @@ Control access to fields and methods.
 | Modifier | Access Level |
 |----------|--------------|
 | `expose` | Accessible from anywhere (public) |
-| `hide` | Only within the entity (private) |
-| `protected` | Within entity and subentities |
+| `hide` | Only within the class (private) |
+| `protected` | Within class and subclasses |
 | `internal` | Within the same module |
 
 ```rust
-entity BankAccount {
-    hide balance: Number;              // Only this entity can access directly
-    protected accountType: String;   // This entity and subentities
+class BankAccount {
+    hide balance: Number;              // Only this class can access directly
+    protected accountType: String;   // This class and subclasses
     internal bankCode: String;       // Anywhere in this module
     expose ownerName: String;        // Anywhere
 
@@ -1172,7 +1172,7 @@ Terminal.Say(account.getBalance());  // OK - exposed method
 - Hide fields by default, expose through methods
 - Use `expose` for the public API
 - Use `hide` for implementation details
-- Use `protected` when subentities need access
+- Use `protected` when subclasses need access
 - Use `internal` for module-internal utilities
 
 **Cross-reference:** [Chapter 14: Objects and Entities](../part3-objects/14-objects.md)
@@ -1181,12 +1181,12 @@ Terminal.Say(account.getBalance());  // OK - exposed method
 
 ## Inheritance
 
-Entities can extend other entities to inherit and specialize behavior.
+Entities can extend other classes to inherit and specialize behavior.
 
 ### Basic Inheritance
 
 ```rust
-entity Animal {
+class Animal {
     protected name: String;
 
     expose func init(name: String) {
@@ -1202,7 +1202,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     hide breed: String;
 
     expose func init(name: String, breed: String) {
@@ -1230,7 +1230,7 @@ Terminal.Say(dog.getName());  // "Rex" - inherited method
 ### Calling Parent Methods
 
 ```rust
-entity Cat extends Animal {
+class Cat extends Animal {
     expose func init(name: String) {
         super(name);
     }
@@ -1251,7 +1251,7 @@ cat.speak();
 ### Abstract Methods
 
 ```rust
-entity Shape {
+class Shape {
     // Abstract method - must be overridden
     abstract func area() -> Number;
     abstract func perimeter() -> Number;
@@ -1263,7 +1263,7 @@ entity Shape {
     }
 }
 
-entity Circle extends Shape {
+class Circle extends Shape {
     hide radius: Number;
 
     expose func init(radius: Number) {
@@ -1286,7 +1286,7 @@ entity Circle extends Shape {
 
 ## Interfaces
 
-Interfaces define contracts that entities must fulfill.
+Interfaces define contracts that classes must fulfill.
 
 ### Defining Interfaces
 
@@ -1305,7 +1305,7 @@ interface Clickable {
 ### Implementing Interfaces
 
 ```rust
-entity Button implements Drawable, Clickable {
+class Button implements Drawable, Clickable {
     hide x: Integer;
     hide y: Integer;
     hide width: Integer;
@@ -1373,7 +1373,7 @@ interface Printable {
     }
 }
 
-entity User implements Printable {
+class User implements Printable {
     expose name: String;
 
     expose func toString() -> String {
@@ -1511,12 +1511,12 @@ Write code that works with multiple types.
 
 ```rust
 // Single type parameter
-func identity[T](value: T) -> T {
+func idclass[T](value: T) -> T {
     return value;
 }
 
-var num = identity(42);           // T inferred as Integer
-var str = identity("hello");      // T inferred as String
+var num = idclass(42);           // T inferred as Integer
+var str = idclass("hello");      // T inferred as String
 
 // Multiple type parameters
 func pair[A, B](first: A, second: B) -> (A, B) {
@@ -1529,7 +1529,7 @@ var p = pair(1, "one");           // (Integer, String)
 ### Generic Entities
 
 ```rust
-entity Box[T] {
+class Box[T] {
     hide value: T;
 
     expose func init(value: T) {
@@ -1582,7 +1582,7 @@ interface Container[T] {
     func contains(item: T) -> Boolean;
 }
 
-entity Stack[T] implements Container[T] {
+class Stack[T] implements Container[T] {
     hide items: List[T];
 
     expose func init() {
@@ -1712,7 +1712,7 @@ func helper(x: Number) -> Number {
     return x;
 }
 
-export entity Calculator {
+export class Calculator {
     // ...
 }
 ```
@@ -1744,8 +1744,8 @@ var result = square(5);
 // Nested modules
 module Graphics.Shapes;
 
-export entity Circle { ... }
-export entity Rectangle { ... }
+export class Circle { ... }
+export class Rectangle { ... }
 
 // Usage
 bind Graphics.Shapes.Circle;
@@ -1913,7 +1913,7 @@ func legacyFunction() {
 
 ```rust
 @serializable
-entity User {
+class User {
     @jsonName("user_name")
     expose name: String;
 
@@ -2016,14 +2016,14 @@ Reserved words that cannot be used as identifiers.
 
 | Keyword | Purpose |
 |---------|---------|
-| `entity` | Declare entity (class) |
+| `class` | Declare class (class) |
 | `enum` | Declare enumeration |
 | `final` | Declare immutable variable |
 | `func` | Declare function |
 | `interface` | Declare interface |
 | `module` | Declare module |
 | `type` | Declare type alias |
-| `value` | Declare value type (struct) |
+| `struct` | Declare struct type |
 | `var` | Declare mutable variable |
 
 ### Control Flow Keywords
@@ -2044,12 +2044,12 @@ Reserved words that cannot be used as identifiers.
 | Keyword | Purpose |
 |---------|---------|
 | `abstract` | Declare abstract method |
-| `extends` | Inherit from entity |
+| `extends` | Inherit from class |
 | `implements` | Implement interface |
 | `override` | Override parent method |
 | `self` | Current instance |
 | `static` | Static member |
-| `super` | Parent entity |
+| `super` | Parent class |
 
 ### Visibility Keywords
 
@@ -2158,7 +2158,7 @@ func name(param: Type) -> ReturnType {
 
 ### Entity Definition
 ```rust
-entity Name {
+class Name {
     hide field: Type;
     expose func init() { }
     expose func method() { }
@@ -2167,7 +2167,7 @@ entity Name {
 
 ### Value Definition
 ```rust
-value Name {
+struct Name {
     field: Type;
     func method() -> Type { }
 }

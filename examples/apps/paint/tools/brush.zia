@@ -7,7 +7,7 @@ bind "../colors";
 bind "../brush";
 
 // BrushTool - draws with variable size and opacity
-entity BrushTool {
+class BrushTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X
     hide Integer lastY;         // Last mouse Y

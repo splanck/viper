@@ -43,7 +43,7 @@ final ORIG_BOSS_H = 84;
 final ORIG_COIN_SIZE = 24;
 final ORIG_POWERUP_SIZE = 30;
 
-entity SpriteFactory {
+class SpriteFactory {
     // Cached sprites — created once, reused every frame
     // Player (2 idle, 4 run, jump, fall, djump, wallslide, hurt, dead = 12 frames)
     hide Palette pal;

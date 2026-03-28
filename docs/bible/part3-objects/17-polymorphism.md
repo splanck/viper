@@ -57,19 +57,19 @@ interface PaymentMethod {
     func pay(amount: Number) -> Boolean;
 }
 
-entity CashPayment implements PaymentMethod {
+class CashPayment implements PaymentMethod {
     func pay(amount: Number) -> Boolean {
         // Count bills, make change
     }
 }
 
-entity CreditCard implements PaymentMethod {
+class CreditCard implements PaymentMethod {
     func pay(amount: Number) -> Boolean {
         // Contact bank, authorize transaction
     }
 }
 
-entity MobilePayment implements PaymentMethod {
+class MobilePayment implements PaymentMethod {
     func pay(amount: Number) -> Boolean {
         // Communicate with phone, verify fingerprint
     }
@@ -103,41 +103,41 @@ Without polymorphism, your code becomes a cascade of type checks:
 
 ```rust
 // Without polymorphism - this gets ugly fast
-func processEntity(entity: Any, type: String) {
+func processEntity(class: Any, type: String) {
     if type == "player" {
-        entity.movePlayer();
-        entity.drawPlayer();
-        entity.handlePlayerInput();
+        class.movePlayer();
+        class.drawPlayer();
+        class.handlePlayerInput();
     } else if type == "enemy" {
-        entity.moveEnemy();
-        entity.drawEnemy();
-        entity.runEnemyAI();
+        class.moveEnemy();
+        class.drawEnemy();
+        class.runEnemyAI();
     } else if type == "projectile" {
-        entity.moveProjectile();
-        entity.drawProjectile();
-        entity.checkProjectileCollision();
+        class.moveProjectile();
+        class.drawProjectile();
+        class.checkProjectileCollision();
     } else if type == "particle" {
-        entity.moveParticle();
-        entity.drawParticle();
-        entity.updateParticleLife();
+        class.moveParticle();
+        class.drawParticle();
+        class.updateParticleLife();
     }
     // This goes on forever...
 }
 ```
 
-Every new entity type requires modifying this function. Miss one place? Bug. Forget to add a case? Bug. Want to reorganize? Touch dozens of files.
+Every new class type requires modifying this function. Miss one place? Bug. Forget to add a case? Bug. Want to reorganize? Touch dozens of files.
 
 With polymorphism:
 
 ```rust
 // With polymorphism - clean and maintainable
-func processEntity(entity: GameEntity) {
-    entity.update();
-    entity.draw();
+func processEntity(class: GameEntity) {
+    class.update();
+    class.draw();
 }
 ```
 
-The `GameEntity` interface (or base class) guarantees that every entity knows how to update and draw itself. New entity types just implement the interface — no modification to existing code.
+The `GameEntity` interface (or base class) guarantees that every class knows how to update and draw itself. New class types just implement the interface — no modification to existing code.
 
 ### Problem 2: Adding New Types Should Be Easy
 
@@ -156,7 +156,7 @@ Want to test your payment processing without actually charging credit cards? Wit
 ```rust
 bind Viper.Terminal;
 
-entity MockPayment implements PaymentMethod {
+class MockPayment implements PaymentMethod {
     func pay(amount: Number) -> Boolean {
         Say("[Test] Would charge: " + amount);
         return true;  // Always succeeds for testing
@@ -183,25 +183,25 @@ This is what we've been discussing: the decision about which method to call happ
 ```rust
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     func speak() {
         Say("...");
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     func speak() {
         Say("Woof!");
     }
 }
 
-entity Cat extends Animal {
+class Cat extends Animal {
     func speak() {
         Say("Meow!");
     }
 }
 
-entity Cow extends Animal {
+class Cow extends Animal {
     func speak() {
         Say("Moo!");
     }
@@ -257,7 +257,7 @@ The other form of polymorphism happens at compile time: *method overloading*.
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-entity Printer {
+class Printer {
     func print(text: String) {
         Say(text);
     }
@@ -323,38 +323,38 @@ One of the most practical applications of polymorphism is creating collections o
 
 ### The Game Loop Pattern
 
-Consider a game with many different kinds of entities:
+Consider a game with many different kinds of classes:
 
 ```rust
 interface Updatable {
     func update(deltaTime: Number);
 }
 
-entity Player implements Updatable {
+class Player implements Updatable {
     func update(deltaTime: Number) {
         // Read input, move character, check interactions
     }
 }
 
-entity Enemy implements Updatable {
+class Enemy implements Updatable {
     func update(deltaTime: Number) {
         // Run AI, chase player, attack if in range
     }
 }
 
-entity Projectile implements Updatable {
+class Projectile implements Updatable {
     func update(deltaTime: Number) {
         // Move forward, check for collisions
     }
 }
 
-entity Particle implements Updatable {
+class Particle implements Updatable {
     func update(deltaTime: Number) {
         // Fade out, drift, disappear when expired
     }
 }
 
-entity AnimatedDecoration implements Updatable {
+class AnimatedDecoration implements Updatable {
     func update(deltaTime: Number) {
         // Advance animation frame
     }
@@ -364,29 +364,29 @@ entity AnimatedDecoration implements Updatable {
 Now the game loop becomes beautifully simple:
 
 ```rust
-var entities: List[Updatable] = [];
+var classes: List[Updatable] = [];
 
 // Add all kinds of things
-entities.Push(Player());
-entities.Push(Enemy());
-entities.Push(Enemy());
-entities.Push(Particle());
-entities.Push(Projectile());
-entities.Push(AnimatedDecoration());
+classes.Push(Player());
+classes.Push(Enemy());
+classes.Push(Enemy());
+classes.Push(Particle());
+classes.Push(Projectile());
+classes.Push(AnimatedDecoration());
 
 // The game loop - handles everything uniformly
 while running {
     var deltaTime = getDeltaTime();
 
-    for entity in entities {
-        entity.update(deltaTime);  // Each updates in its own way
+    for class in classes {
+        class.update(deltaTime);  // Each updates in its own way
     }
 
     render();
 }
 ```
 
-One loop handles everything. Players, enemies, projectiles, particles — all different types, all updated through the same interface. Adding a new entity type means creating a new class that implements `Updatable`. The game loop never changes.
+One loop handles everything. Players, enemies, projectiles, particles — all different types, all updated through the same interface. Adding a new class type means creating a new class that implements `Updatable`. The game loop never changes.
 
 ### Rendering Systems
 
@@ -398,27 +398,27 @@ interface Drawable {
     func getDepth() -> Integer;  // For sorting (draw back-to-front)
 }
 
-entity Background implements Drawable {
+class Background implements Drawable {
     func draw() { /* Draw sky, mountains */ }
     func getDepth() -> Integer { return 0; }  // Furthest back
 }
 
-entity Ground implements Drawable {
+class Ground implements Drawable {
     func draw() { /* Draw terrain */ }
     func getDepth() -> Integer { return 1; }
 }
 
-entity Character implements Drawable {
+class Character implements Drawable {
     func draw() { /* Draw sprite */ }
     func getDepth() -> Integer { return 2; }
 }
 
-entity Foreground implements Drawable {
+class Foreground implements Drawable {
     func draw() { /* Draw trees, buildings in front */ }
     func getDepth() -> Integer { return 3; }
 }
 
-entity UIOverlay implements Drawable {
+class UIOverlay implements Drawable {
     func draw() { /* Draw health bar, score */ }
     func getDepth() -> Integer { return 100; }  // Always on top
 }
@@ -454,21 +454,21 @@ interface Exporter {
     func getExtension() -> String;
 }
 
-entity PDFExporter implements Exporter {
+class PDFExporter implements Exporter {
     func export(document: Document) -> String {
         // Convert to PDF format
     }
     func getExtension() -> String { return "pdf"; }
 }
 
-entity HTMLExporter implements Exporter {
+class HTMLExporter implements Exporter {
     func export(document: Document) -> String {
         // Convert to HTML
     }
     func getExtension() -> String { return "html"; }
 }
 
-entity MarkdownExporter implements Exporter {
+class MarkdownExporter implements Exporter {
     func export(document: Document) -> String {
         // Convert to Markdown
     }
@@ -481,7 +481,7 @@ The export menu:
 ```rust
 bind Viper.Terminal;
 
-entity ExportMenu {
+class ExportMenu {
     exporters: List[Exporter];
 
     expose func init() {
@@ -515,7 +515,7 @@ entity ExportMenu {
 Later, someone wants to add Word export. They create a `WordExporter` class:
 
 ```rust
-entity WordExporter implements Exporter {
+class WordExporter implements Exporter {
     func export(document: Document) -> String {
         // Convert to Word format
     }
@@ -545,7 +545,7 @@ interface Plugin {
     func execute(context: PluginContext);
 }
 
-entity PluginManager {
+class PluginManager {
     plugins: List[Plugin];
 
     func loadPlugin(plugin: Plugin) {
@@ -562,7 +562,7 @@ entity PluginManager {
 }
 ```
 
-The PluginManager is completely decoupled from any specific plugin. It works with any entity that implements the `Plugin` interface. Third-party developers can create plugins without access to your source code — they just need to know the interface.
+The PluginManager is completely decoupled from any specific plugin. It works with any class that implements the `Plugin` interface. Third-party developers can create plugins without access to your source code — they just need to know the interface.
 
 ---
 
@@ -580,12 +580,12 @@ interface CompressionStrategy {
     func decompress(data: String) -> String;
 }
 
-entity NoCompression implements CompressionStrategy {
+class NoCompression implements CompressionStrategy {
     func compress(data: String) -> String { return data; }
     func decompress(data: String) -> String { return data; }
 }
 
-entity GzipCompression implements CompressionStrategy {
+class GzipCompression implements CompressionStrategy {
     func compress(data: String) -> String {
         // Apply gzip algorithm
     }
@@ -594,7 +594,7 @@ entity GzipCompression implements CompressionStrategy {
     }
 }
 
-entity LZ4Compression implements CompressionStrategy {
+class LZ4Compression implements CompressionStrategy {
     func compress(data: String) -> String {
         // Apply LZ4 - faster but less compression
     }
@@ -603,7 +603,7 @@ entity LZ4Compression implements CompressionStrategy {
     }
 }
 
-entity FileManager {
+class FileManager {
     compression: CompressionStrategy;
 
     expose func init(compression: CompressionStrategy) {
@@ -648,7 +648,7 @@ interface EventHandler {
     func canHandle(event: Event) -> Boolean;
 }
 
-entity KeyPressHandler implements EventHandler {
+class KeyPressHandler implements EventHandler {
     func canHandle(event: Event) -> Boolean {
         return event.type == "keypress";
     }
@@ -658,7 +658,7 @@ entity KeyPressHandler implements EventHandler {
     }
 }
 
-entity MouseClickHandler implements EventHandler {
+class MouseClickHandler implements EventHandler {
     func canHandle(event: Event) -> Boolean {
         return event.type == "click";
     }
@@ -668,7 +668,7 @@ entity MouseClickHandler implements EventHandler {
     }
 }
 
-entity ResizeHandler implements EventHandler {
+class ResizeHandler implements EventHandler {
     func canHandle(event: Event) -> Boolean {
         return event.type == "resize";
     }
@@ -678,7 +678,7 @@ entity ResizeHandler implements EventHandler {
     }
 }
 
-entity EventDispatcher {
+class EventDispatcher {
     handlers: List[EventHandler];
 
     func dispatch(event: Event) {
@@ -704,7 +704,7 @@ interface Command {
     func getDescription() -> String;
 }
 
-entity InsertTextCommand implements Command {
+class InsertTextCommand implements Command {
     document: Document;
     position: Integer;
     text: String;
@@ -722,7 +722,7 @@ entity InsertTextCommand implements Command {
     }
 }
 
-entity DeleteTextCommand implements Command {
+class DeleteTextCommand implements Command {
     document: Document;
     position: Integer;
     deletedText: String;
@@ -741,7 +741,7 @@ entity DeleteTextCommand implements Command {
     }
 }
 
-entity CommandHistory {
+class CommandHistory {
     executed: List[Command];
     undone: List[Command];
 
@@ -811,7 +811,7 @@ func feedAnimal(animal: Feedable) {
 
 ### The Contract Mental Model
 
-An interface is a contract. When an entity implements an interface, it makes a promise: "I guarantee I can do these things."
+An interface is a contract. When a class implements an interface, it makes a promise: "I guarantee I can do these things."
 
 When you write code that accepts an interface:
 - You're saying "I need something that can do X"
@@ -863,7 +863,7 @@ interface Movable {
 }
 
 // Base class: provides shared implementation
-entity GameEntity {
+class GameEntity {
     x: Number;
     y: Number;
 
@@ -873,7 +873,7 @@ entity GameEntity {
 }
 
 // Derived classes: inherit code AND implement interfaces
-entity Player extends GameEntity implements Attackable, Drawable, Movable {
+class Player extends GameEntity implements Attackable, Drawable, Movable {
     health: Integer;
     sprite: Sprite;
 
@@ -897,14 +897,14 @@ entity Player extends GameEntity implements Attackable, Drawable, Movable {
     }
 }
 
-entity Tree extends GameEntity implements Drawable {
+class Tree extends GameEntity implements Drawable {
     // Trees don't move or take damage - just Drawable
     func draw() {
         drawTreeSprite(self.x, self.y);
     }
 }
 
-entity Enemy extends GameEntity implements Attackable, Drawable, Movable {
+class Enemy extends GameEntity implements Attackable, Drawable, Movable {
     health: Integer;
 
     func takeDamage(amount: Integer) {
@@ -941,7 +941,7 @@ for a in attackables { a.takeDamage(1); }  // Area damage
 for m in movables { m.move(wind.x, wind.y); }  // Wind pushes things
 ```
 
-The Player can be in all three collections. The Tree only appears in drawables. Each entity participates in exactly the systems that make sense for it.
+The Player can be in all three collections. The Tree only appears in drawables. Each class participates in exactly the systems that make sense for it.
 
 ---
 
@@ -959,7 +959,7 @@ interface Drawable {
     func getBounds() -> Rect;
 }
 
-value Rect {
+struct Rect {
     x: Number;
     y: Number;
     width: Number;
@@ -971,7 +971,7 @@ value Rect {
     }
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     x: Number;
     y: Number;
     radius: Number;
@@ -999,7 +999,7 @@ entity Circle implements Drawable {
     }
 }
 
-entity Rectangle implements Drawable {
+class Rectangle implements Drawable {
     x: Number;
     y: Number;
     width: Number;
@@ -1024,7 +1024,7 @@ entity Rectangle implements Drawable {
     }
 }
 
-entity Text implements Drawable {
+class Text implements Drawable {
     x: Number;
     y: Number;
     content: String;
@@ -1049,7 +1049,7 @@ entity Text implements Drawable {
 }
 
 // Group of drawables - demonstrates the Composite Pattern
-entity Group implements Drawable {
+class Group implements Drawable {
     children: List[Drawable];
     name: String;
 
@@ -1154,13 +1154,13 @@ interface Animal {
     func speak();
 }
 
-entity Dog implements Animal {
+class Dog implements Animal {
     func speak() {
         Say("Woof!");
     }
 }
 
-entity Cat implements Animal {
+class Cat implements Animal {
     func speak() {
         Say("Meow!");
     }
@@ -1200,7 +1200,7 @@ NEXT
 
 ## Enums and Pattern Matching
 
-Polymorphism isn't limited to entities and interfaces. Viper also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
+Polymorphism isn't limited to classes and interfaces. Viper also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
 
 ```rust
 enum Direction { North, South, East, West }
@@ -1255,16 +1255,16 @@ Not everything needs to share code. Often, shared *behavior contracts* (interfac
 
 ```rust
 // Awkward: forcing inheritance for unrelated things
-entity Drawable { func draw() { } }
-entity DrawableCircle extends Drawable { ... }
-entity DrawableEnemy extends Drawable { ... }
-entity DrawableUI extends Drawable { ... }
+class Drawable { func draw() { } }
+class DrawableCircle extends Drawable { ... }
+class DrawableEnemy extends Drawable { ... }
+class DrawableUI extends Drawable { ... }
 
 // Better: interface lets unrelated things share behavior
 interface Drawable { func draw(); }
-entity Circle implements Drawable { ... }
-entity Enemy implements Drawable { ... }
-entity UIElement implements Drawable { ... }
+class Circle implements Drawable { ... }
+class Enemy implements Drawable { ... }
+class UIElement implements Drawable { ... }
 ```
 
 ### Mistake 4: Not Using Polymorphism When You Should
@@ -1302,7 +1302,7 @@ That's often a sign you should use polymorphism instead.
 - *Polymorphism* means "many forms" — one interface, many implementations
 - **Runtime polymorphism** (dynamic dispatch) determines methods at runtime based on actual object type
 - **Compile-time polymorphism** (overloading) determines methods at compile time based on argument types
-- Use base entities or interfaces to treat different types uniformly
+- Use base classes or interfaces to treat different types uniformly
 - Collections can hold mixed types through common interfaces
 - The **Strategy pattern** swaps algorithms through interfaces
 - The **Command pattern** encapsulates actions for undo/redo
@@ -1329,7 +1329,7 @@ That's often a sign you should use polymorphism instead.
 
 **Exercise 17.7** (Challenge): Build a simple expression evaluator: `Expression` interface with `evaluate() -> Number`, implemented by `NumericLiteral`, `Add`, `Subtract`, `Multiply`, `Divide`. Create an expression tree like `Add(Multiply(2, 3), 4)` and evaluate it (should return 10).
 
-**Exercise 17.8** (Challenge): Create a simple game with polymorphic entities. Define `GameEntity` interface with `update()` and `render()`. Create `Player`, `Enemy`, `Projectile`, and `PowerUp` entities. Write a game loop that updates and renders all entities.
+**Exercise 17.8** (Challenge): Create a simple game with polymorphic classes. Define `GameEntity` interface with `update()` and `render()`. Create `Player`, `Enemy`, `Projectile`, and `PowerUp` classes. Write a game loop that updates and renders all classes.
 
 ---
 

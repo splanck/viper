@@ -225,12 +225,12 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             }
 
             const std::vector<FieldLayout> *fields = nullptr;
-            if (scrutinee.type->kind == TypeKindSem::Value) {
-                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(scrutinee.type->name);
+            if (scrutinee.type->kind == TypeKindSem::Struct) {
+                const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(scrutinee.type->name);
                 if (valueInfo)
                     fields = &valueInfo->fields;
-            } else if (scrutinee.type->kind == TypeKindSem::Entity) {
-                const EntityTypeInfo *entityInfo = getOrCreateEntityTypeInfo(scrutinee.type->name);
+            } else if (scrutinee.type->kind == TypeKindSem::Class) {
+                const ClassTypeInfo *entityInfo = getOrCreateClassTypeInfo(scrutinee.type->name);
                 if (entityInfo)
                     fields = &entityInfo->fields;
             }
@@ -308,12 +308,12 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
                 return;
 
             const std::vector<FieldLayout> *fields = nullptr;
-            if (scrutinee.type->kind == TypeKindSem::Value) {
-                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(scrutinee.type->name);
+            if (scrutinee.type->kind == TypeKindSem::Struct) {
+                const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(scrutinee.type->name);
                 if (valueInfo)
                     fields = &valueInfo->fields;
-            } else if (scrutinee.type->kind == TypeKindSem::Entity) {
-                const EntityTypeInfo *entityInfo = getOrCreateEntityTypeInfo(scrutinee.type->name);
+            } else if (scrutinee.type->kind == TypeKindSem::Class) {
+                const ClassTypeInfo *entityInfo = getOrCreateClassTypeInfo(scrutinee.type->name);
                 if (entityInfo)
                     fields = &entityInfo->fields;
             }

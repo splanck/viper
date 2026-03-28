@@ -30,7 +30,7 @@ final MAP_NODES = 10;
 //              |
 //             [10]
 
-entity WorldMap {
+class WorldMap {
     expose func init() {}
     hide Palette pal;
     hide List[Integer] nodeX;

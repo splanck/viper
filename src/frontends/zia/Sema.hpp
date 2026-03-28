@@ -17,7 +17,7 @@
 /// The analyzer performs several passes over the AST:
 ///
 /// **Phase 1: Type Registration**
-/// - Registers all type declarations (value, entity, interface)
+/// - Registers all type declarations (struct, class, interface)
 /// - Builds the type hierarchy (inheritance, interface implementation)
 /// - Creates entries in the type registry
 ///
@@ -35,7 +35,7 @@
 ///
 /// The analyzer handles:
 /// - Primitive types: Integer, Number, Boolean, String, Byte
-/// - User-defined types: value types, entity types, interfaces
+/// - User-defined types: struct types, class types, interfaces
 /// - Generic types: List[T], Map[K,V], Result[T]
 /// - Optional types: T? with null safety checks
 /// - Function types: (A, B) -> C for closures and references
@@ -526,23 +526,23 @@ class Sema {
     /// in the global scope.
     void analyzeGlobalVarDecl(GlobalVarDecl &decl);
 
-    /// @brief Analyze a value type declaration.
-    /// @param decl The value type declaration.
+    /// @brief Analyze a struct type declaration.
+    /// @param decl The struct type declaration.
     ///
     /// @details Registers the type and analyzes all members.
-    void analyzeValueDecl(ValueDecl &decl);
+    void analyzeStructDecl(StructDecl &decl);
 
     /// @brief Register type member signatures for cross-module resolution.
-    /// @tparam T Decl type (EntityDecl, ValueDecl, or InterfaceDecl)
+    /// @tparam T Decl type (ClassDecl, StructDecl, or InterfaceDecl)
     /// @param decl The type declaration.
     /// @param includeFields Whether to register field types (false for interfaces).
     template <typename T> void registerTypeMembers(T &decl, bool includeFields = true);
 
-    /// @brief Register entity member signatures for cross-module resolution.
-    void registerEntityMembers(EntityDecl &decl);
+    /// @brief Register class member signatures for cross-module resolution.
+    void registerClassMembers(ClassDecl &decl);
 
-    /// @brief Register value type member signatures for cross-module resolution.
-    void registerValueMembers(ValueDecl &decl);
+    /// @brief Register struct type member signatures for cross-module resolution.
+    void registerStructMembers(StructDecl &decl);
 
     /// @brief Register interface member signatures for cross-module resolution.
     void registerInterfaceMembers(InterfaceDecl &decl);
@@ -551,7 +551,7 @@ class Sema {
     /// @param declarations The declaration list to process.
     /// @details Scans for GlobalVarDecl with isFinal and literal initializer, updating
     ///          the symbol's type from unknown() to the concrete type. This allows
-    ///          forward references to final constants in entity/function bodies.
+    ///          forward references to final constants in class/function bodies.
     void registerFinalConstantTypes(std::vector<DeclPtr> &declarations);
 
     /// @brief Pass 2: Register member signatures (fields, methods) for type declarations.
@@ -562,11 +562,11 @@ class Sema {
     /// @param declarations The declaration list to process.
     void analyzeDeclarationBodies(std::vector<DeclPtr> &declarations);
 
-    /// @brief Analyze an entity type declaration.
-    /// @param decl The entity type declaration.
+    /// @brief Analyze an class type declaration.
+    /// @param decl The class type declaration.
     ///
     /// @details Registers the type, resolves inheritance, and analyzes members.
-    void analyzeEntityDecl(EntityDecl &decl);
+    void analyzeClassDecl(ClassDecl &decl);
 
     /// @brief Analyze an interface declaration.
     /// @param decl The interface declaration.
@@ -621,7 +621,7 @@ class Sema {
     /// @brief Analyze a property declaration within a type.
     void analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType);
 
-    /// @brief Analyze a destructor declaration within an entity type.
+    /// @brief Analyze a destructor declaration within an class type.
     void analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType);
 
     /// @brief Analyze a method declaration within a type.
@@ -692,8 +692,8 @@ class Sema {
     /// @brief Check whether a name has multiple user-defined overloads.
     bool hasOverloadedFunctionName(const std::string &name) const;
 
-    EntityDecl *lookupEntityDeclForType(const std::string &typeName) const;
-    ValueDecl *lookupValueDeclForType(const std::string &typeName) const;
+    ClassDecl *lookupClassDeclForType(const std::string &typeName) const;
+    StructDecl *lookupStructDeclForType(const std::string &typeName) const;
 
     /// @brief Initialize all runtime function type mappings.
     /// @details Registers all Viper.* namespace functions as extern symbols
@@ -752,7 +752,7 @@ class Sema {
     /// @brief Analyze a return statement.
     /// @param stmt The return statement.
     ///
-    /// @details Validates that the return value type matches the expected
+    /// @details Validates that the return struct type matches the expected
     /// return type of the enclosing function.
     void analyzeReturnStmt(ReturnStmt *stmt);
 
@@ -849,7 +849,7 @@ class Sema {
     TypeRef analyzeIfExpr(IfExpr *expr);
 
     /// @brief Analyze a struct-literal expression (`TypeName { field = val, ... }`).
-    /// @return The value type named by the struct literal.
+    /// @return The struct type named by the struct literal.
     TypeRef analyzeStructLiteral(StructLiteralExpr *expr);
 
     /// @brief Analyze a function/method call expression.
@@ -899,7 +899,7 @@ class Sema {
     TypeRef analyzeMatchExpr(MatchExpr *expr);
 
     /// @brief Analyze a new expression (object creation).
-    /// @return The entity type being constructed.
+    /// @return The class type being constructed.
     TypeRef analyzeNew(NewExpr *expr);
 
     /// @brief Analyze a lambda expression.
@@ -1079,7 +1079,7 @@ class Sema {
                                    SourceLoc loc);
 
     /// @brief Get the generic parameters from a declaration.
-    /// @param decl The declaration (ValueDecl, EntityDecl, or InterfaceDecl).
+    /// @param decl The declaration (StructDecl, ClassDecl, or InterfaceDecl).
     /// @return Vector of type parameter names.
     static std::vector<std::string> getGenericParams(const Decl *decl);
 
@@ -1146,7 +1146,7 @@ class Sema {
 
     /// @brief Get all symbols visible in the module-level (global) scope.
     /// @return All symbols defined at module level (functions, top-level vars,
-    ///         entity constructors, and imported runtime identifiers).
+    ///         class constructors, and imported runtime identifiers).
     /// @note Local variables inside function bodies are not included — they
     ///       are popped from the scope stack when their block finishes.
     std::vector<Symbol> getGlobalSymbols() const;
@@ -1165,7 +1165,7 @@ class Sema {
                                              uint32_t col) const;
 
     /// @brief Get all visible fields and methods of a user-defined type.
-    /// @param type An entity, value, or interface type reference.
+    /// @param type An class, struct, or interface type reference.
     /// @return Symbols for each exposed field and method.
     ///         For runtime class pointer types (kind == Ptr, name non-empty),
     ///         delegates to getRuntimeMembers(type->name).
@@ -1179,7 +1179,7 @@ class Sema {
     std::vector<Symbol> getRuntimeMembers(const std::string &className) const;
 
     /// @brief Get all user-defined type names declared in this module.
-    /// @return Names of all entity, value, and interface declarations.
+    /// @return Names of all class, struct, and interface declarations.
     std::vector<std::string> getTypeNames() const;
 
     /// @brief Get all bound module aliases visible in this module.
@@ -1372,11 +1372,11 @@ class Sema {
     /// @details Includes both built-in types and user-defined types.
     std::unordered_map<std::string, TypeRef> typeRegistry_;
 
-    /// @brief Value type declarations for pattern analysis.
-    std::unordered_map<std::string, ValueDecl *> valueDecls_;
+    /// @brief Struct type declarations for pattern analysis.
+    std::unordered_map<std::string, StructDecl *> structDecls_;
 
-    /// @brief Entity type declarations for pattern analysis.
-    std::unordered_map<std::string, EntityDecl *> entityDecls_;
+    /// @brief Class type declarations for pattern analysis.
+    std::unordered_map<std::string, ClassDecl *> classDecls_;
 
     /// @brief Interface declarations for implementation checks.
     std::unordered_map<std::string, InterfaceDecl *> interfaceDecls_;

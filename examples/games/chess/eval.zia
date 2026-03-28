@@ -13,7 +13,7 @@ bind "./board";
 // White piece ranks are mirrored: index = (7 - rank) * 8 + file for white,
 // index = rank * 8 + file for black.
 // ============================================================================
-entity Evaluator {
+class Evaluator {
     // Piece-square tables (64 integers each, in display order: rank 0 = top)
     hide List[Integer] pstPawn;
     hide List[Integer] pstKnight;

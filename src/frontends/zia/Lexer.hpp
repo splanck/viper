@@ -15,7 +15,7 @@
 ///
 /// **Identifiers and Keywords:**
 /// - Identifiers: `foo`, `myVariable`, `_private`
-/// - 33 reserved keywords: `var`, `func`, `entity`, `if`, `while`, etc.
+/// - 33 reserved keywords: `var`, `func`, `class`, `if`, `while`, etc.
 /// - Keywords are case-sensitive
 ///
 /// **Literals:**

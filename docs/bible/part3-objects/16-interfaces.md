@@ -4,7 +4,7 @@ Inheritance says "this thing *is* a specific type." But sometimes you care about
 
 A dog can be drawn on screen. So can a spaceship. So can a health bar. They're completely different things, but they share an ability: they can be drawn. How do you write code that works with "anything drawable"?
 
-*Interfaces* solve this. An interface defines a set of methods that entities must implement. It's a contract: "I promise I can do these things."
+*Interfaces* solve this. An interface defines a set of methods that classes must implement. It's a contract: "I promise I can do these things."
 
 ---
 
@@ -108,7 +108,7 @@ interface Drawable {
 }
 ```
 
-This says: "Anything that is Drawable must have a `draw()` method." It doesn't say *how* to draw. That's up to each entity.
+This says: "Anything that is Drawable must have a `draw()` method." It doesn't say *how* to draw. That's up to each class.
 
 The interface contains only *method signatures*:
 - The method name: `draw`
@@ -142,11 +142,11 @@ interface Calculator {
 
 ## Implementing Interfaces
 
-When an entity *implements* an interface, it's making a promise. It's saying: "I guarantee I can do everything this interface requires."
+When a class *implements* an interface, it's making a promise. It's saying: "I guarantee I can do everything this interface requires."
 
 ### What Does "Implement" Mean?
 
-To implement an interface, an entity must:
+To implement an interface, a class must:
 1. Declare that it implements the interface using the `implements` keyword
 2. Provide working code for *every* method the interface declares
 3. Match the exact signatures (names, parameters, return types)
@@ -158,7 +158,7 @@ interface Drawable {
     func draw();
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     radius: Number;
 
     func draw() {
@@ -166,7 +166,7 @@ entity Circle implements Drawable {
     }
 }
 
-entity Rectangle implements Drawable {
+class Rectangle implements Drawable {
     width: Number;
     height: Number;
 
@@ -176,7 +176,7 @@ entity Rectangle implements Drawable {
 }
 ```
 
-Both entities are Drawable. They each provide their own implementation of `draw()`. The Circle draws itself as a circle. The Rectangle draws itself as a rectangle. But both fulfill the Drawable contract.
+Both classes are Drawable. They each provide their own implementation of `draw()`. The Circle draws itself as a circle. The Rectangle draws itself as a rectangle. But both fulfill the Drawable contract.
 
 ### The Compiler Enforces the Contract
 
@@ -190,7 +190,7 @@ interface Drawable {
     func getColor() -> String;
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     func draw() {
         Say("Drawing circle");
     }
@@ -211,7 +211,7 @@ interface DataStore {
 }
 
 // Store in memory
-entity MemoryStore implements DataStore {
+class MemoryStore implements DataStore {
     data: {String: String};
 
     func save(key: String, value: String) {
@@ -224,7 +224,7 @@ entity MemoryStore implements DataStore {
 }
 
 // Store in a file
-entity FileStore implements DataStore {
+class FileStore implements DataStore {
     basePath: String;
 
     func save(key: String, value: String) {
@@ -239,7 +239,7 @@ entity FileStore implements DataStore {
 }
 
 // Store in a database
-entity DatabaseStore implements DataStore {
+class DatabaseStore implements DataStore {
     connection: DBConnection;
 
     func save(key: String, value: String) {
@@ -265,7 +265,7 @@ Three completely different implementations, one interface. Code that uses DataSt
 
 ## Using Interfaces
 
-The power comes from treating different entities uniformly:
+The power comes from treating different classes uniformly:
 
 ```rust
 func renderScene(items: List[Drawable]) {
@@ -287,7 +287,7 @@ The `renderScene` function doesn't know or care about the specific types. It jus
 
 ### Interface Types in Variables and Parameters
 
-You can use an interface as a type anywhere you'd use an entity type:
+You can use an interface as a type anywhere you'd use a class type:
 
 ```rust
 // As a variable type
@@ -331,14 +331,14 @@ This is a crucial distinction that often confuses beginners. Let's be crystal cl
 **Inheritance** creates an "is-a" relationship and shares implementation:
 
 ```rust
-entity Dog extends Animal { ... }
+class Dog extends Animal { ... }
 // A dog IS an animal, inherits animal's code
 ```
 
-When you extend an entity:
+When you extend a class:
 - You get all the parent's fields automatically
 - You get all the parent's method implementations
-- You can only extend ONE entity
+- You can only extend ONE class
 - You're creating a tight coupling. Changes to the parent affect you.
 
 ### Interface: The "Can-Do" Relationship
@@ -346,7 +346,7 @@ When you extend an entity:
 **Interface** creates a "can-do" relationship and shares behavior contract:
 
 ```rust
-entity Dog implements Drawable { ... }
+class Dog implements Drawable { ... }
 // A dog CAN BE drawn, must implement draw()
 ```
 
@@ -370,8 +370,8 @@ When you implement an interface:
 
 **Use inheritance when:**
 - There's a clear "is-a" relationship
-- You want to share actual code between entities
-- The entities are fundamentally the same kind of thing
+- You want to share actual code between classes
+- The classes are fundamentally the same kind of thing
 - You need to reuse and extend parent behavior
 
 **Use interfaces when:**
@@ -384,22 +384,22 @@ When you implement an interface:
 
 ```rust
 // These ARE accounts. They share implementation. Use inheritance.
-entity BankAccount { ... }
-entity SavingsAccount extends BankAccount { ... }
-entity CheckingAccount extends BankAccount { ... }
+class BankAccount { ... }
+class SavingsAccount extends BankAccount { ... }
+class CheckingAccount extends BankAccount { ... }
 
 // These CAN BE printed. They're different things. Use interface.
 interface Printable { func print(); }
-entity Document implements Printable { ... }
-entity Photo implements Printable { ... }
-entity Report implements Printable { ... }
+class Document implements Printable { ... }
+class Photo implements Printable { ... }
+class Report implements Printable { ... }
 ```
 
 ---
 
 ## Multiple Interfaces
 
-One of the most powerful aspects of interfaces is that an entity can implement many of them. This is something inheritance can't do.
+One of the most powerful aspects of interfaces is that a class can implement many of them. This is something inheritance can't do.
 
 ### Why Multiple Interfaces?
 
@@ -429,7 +429,7 @@ interface Clickable {
     func onClick();
 }
 
-entity Button implements Drawable, Movable, Clickable {
+class Button implements Drawable, Movable, Clickable {
     x: Number;
     y: Number;
     label: String;
@@ -464,28 +464,28 @@ handleClick(btn);    // Works: Button is Clickable
 
 ### Flexible Combinations
 
-Different entities can implement different combinations:
+Different classes can implement different combinations:
 
 ```rust
 // A tree can be drawn but not moved or clicked
-entity Tree implements Drawable {
+class Tree implements Drawable {
     func draw() { ... }
 }
 
 // A player can be drawn and moved, but not clicked
-entity Player implements Drawable, Movable {
+class Player implements Drawable, Movable {
     func draw() { ... }
     func move(dx: Number, dy: Number) { ... }
 }
 
 // An invisible trigger can be moved and clicked, but not drawn
-entity InvisibleTrigger implements Movable, Clickable {
+class InvisibleTrigger implements Movable, Clickable {
     func move(dx: Number, dy: Number) { ... }
     func onClick() { ... }
 }
 ```
 
-Each entity implements exactly what it needs. No more, no less.
+Each class implements exactly what it needs. No more, no less.
 
 ---
 
@@ -496,7 +496,7 @@ You can combine inheritance and interfaces. This is common and powerful.
 ```rust
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     health: Integer;
 
     func takeDamage(amount: Integer) {
@@ -512,7 +512,7 @@ interface Attackable {
     func attack() -> Integer;
 }
 
-entity Goblin extends Enemy implements Drawable, Attackable {
+class Goblin extends Enemy implements Drawable, Attackable {
     func draw() {
         Say("Drawing a goblin");
     }
@@ -534,10 +534,10 @@ When combining, `extends` comes before `implements`:
 
 ```rust
 // Correct
-entity Goblin extends Enemy implements Drawable, Attackable { ... }
+class Goblin extends Enemy implements Drawable, Attackable { ... }
 
 // Wrong order (syntax error)
-entity Goblin implements Drawable extends Enemy { ... }
+class Goblin implements Drawable extends Enemy { ... }
 ```
 
 ### A Richer Example
@@ -545,7 +545,7 @@ entity Goblin implements Drawable extends Enemy { ... }
 ```rust
 bind Viper.Terminal;
 
-entity GameObject {
+class GameObject {
     id: Integer;
     x: Number;
     y: Number;
@@ -576,7 +576,7 @@ interface Updatable {
 }
 
 // A player has everything
-entity Player extends GameObject implements Renderable, Collidable, Updatable {
+class Player extends GameObject implements Renderable, Collidable, Updatable {
     sprite: Sprite;
     velocity: Vector2;
     hitbox: Rectangle;
@@ -604,7 +604,7 @@ entity Player extends GameObject implements Renderable, Collidable, Updatable {
 }
 
 // A background image just renders, nothing else
-entity Background extends GameObject implements Renderable {
+class Background extends GameObject implements Renderable {
     image: Image;
 
     func render(screen: Screen) {
@@ -628,7 +628,7 @@ This is where interfaces truly shine. *Dependency injection* is a fancy term for
 Consider a UserService that needs to store user data:
 
 ```rust
-entity UserService {
+class UserService {
     func saveUser(user: User) {
         var db = MySQLDatabase();  // Hardcoded!
         db.save("users", user);
@@ -649,7 +649,7 @@ interface Database {
     func load(table: String, id: Integer) -> any;
 }
 
-entity UserService {
+class UserService {
     db: Database;  // Depends on interface, not implementation
 
     expose func init(database: Database) {
@@ -712,7 +712,7 @@ interface EmailSender {
     func send(to: String, subject: String, body: String);
 }
 
-entity OrderService {
+class OrderService {
     logger: Logger;
     payments: PaymentProcessor;
     email: EmailSender;
@@ -769,7 +769,7 @@ interface EmailSender {
 }
 
 // Real implementation for production
-entity SmtpEmailSender implements EmailSender {
+class SmtpEmailSender implements EmailSender {
     func send(to: String, subject: String, body: String) {
         // Actually send email via SMTP
         Viper.Net.SMTP.send(to, subject, body);
@@ -777,7 +777,7 @@ entity SmtpEmailSender implements EmailSender {
 }
 
 // Fake implementation for testing
-entity FakeEmailSender implements EmailSender {
+class FakeEmailSender implements EmailSender {
     sentEmails: List[Email];
 
     expose func init() {
@@ -827,7 +827,7 @@ func testOrderConfirmationEmail() {
 Fakes let you simulate scenarios that are hard to create with real systems:
 
 ```rust
-entity AlwaysFailingPaymentProcessor implements PaymentProcessor {
+class AlwaysFailingPaymentProcessor implements PaymentProcessor {
     func charge(amount: Number, cardNumber: String) -> Boolean {
         return false;  // Simulate payment failure
     }
@@ -1025,7 +1025,7 @@ interface Plugin {
 }
 
 // Some plugins
-entity UppercasePlugin implements Plugin {
+class UppercasePlugin implements Plugin {
     func getName() -> String {
         return "Uppercase";
     }
@@ -1035,7 +1035,7 @@ entity UppercasePlugin implements Plugin {
     }
 }
 
-entity ReversePlugin implements Plugin {
+class ReversePlugin implements Plugin {
     func getName() -> String {
         return "Reverse";
     }
@@ -1045,7 +1045,7 @@ entity ReversePlugin implements Plugin {
     }
 }
 
-entity RepeatPlugin implements Plugin {
+class RepeatPlugin implements Plugin {
     times: Integer;
 
     expose func init(times: Integer) {
@@ -1062,7 +1062,7 @@ entity RepeatPlugin implements Plugin {
 }
 
 // Plugin manager doesn't need to know about specific plugins
-entity PluginManager {
+class PluginManager {
     plugins: List[Plugin];
 
     expose func init() {
@@ -1126,7 +1126,7 @@ interface Printable {
     func print();
 }
 
-entity Document implements Printable {
+class Document implements Printable {
     func print() {
         Say("Printing document");
     }
@@ -1159,21 +1159,21 @@ interface SortStrategy {
     func sort(items: List[Integer]) -> List[Integer];
 }
 
-entity QuickSort implements SortStrategy {
+class QuickSort implements SortStrategy {
     func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation
         ...
     }
 }
 
-entity MergeSort implements SortStrategy {
+class MergeSort implements SortStrategy {
     func sort(items: List[Integer]) -> List[Integer] {
         // Merge sort implementation
         ...
     }
 }
 
-entity BubbleSort implements SortStrategy {
+class BubbleSort implements SortStrategy {
     func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation (slow but simple)
         ...
@@ -1204,7 +1204,7 @@ interface Observer {
     func onEvent(event: String);
 }
 
-entity Subject {
+class Subject {
     observers: List[Observer];
 
     expose func init() {
@@ -1227,13 +1227,13 @@ entity Subject {
 }
 
 // Different observers respond differently
-entity LoggingObserver implements Observer {
+class LoggingObserver implements Observer {
     func onEvent(event: String) {
         Say("LOG: " + event);
     }
 }
 
-entity EmailObserver implements Observer {
+class EmailObserver implements Observer {
     adminEmail: String;
 
     func onEvent(event: String) {
@@ -1263,7 +1263,7 @@ interface UserRepository {
 }
 
 // In-memory implementation for development/testing
-entity InMemoryUserRepository implements UserRepository {
+class InMemoryUserRepository implements UserRepository {
     users: {Integer: User};
     nextId: Integer;
 
@@ -1298,7 +1298,7 @@ entity InMemoryUserRepository implements UserRepository {
 }
 
 // PostgreSQL implementation for production
-entity PostgresUserRepository implements UserRepository {
+class PostgresUserRepository implements UserRepository {
     connection: PGConnection;
 
     func findById(id: Integer) -> User {
@@ -1317,10 +1317,10 @@ entity PostgresUserRepository implements UserRepository {
 ## When to Use Interfaces
 
 **Use interfaces when:**
-- Different entities need to be treated uniformly (all Drawables can be drawn)
+- Different classes need to be treated uniformly (all Drawables can be drawn)
 - You're designing a plugin or extension system
 - You want to define contracts without dictating implementation
-- You need multiple inheritance of behavior (one entity, many capabilities)
+- You need multiple inheritance of behavior (one class, many capabilities)
 - You want to enable testing with mocks/fakes
 - You're building for flexibility and future extension
 - You want loose coupling between parts of your system
@@ -1329,7 +1329,7 @@ entity PostgresUserRepository implements UserRepository {
 - Entities share actual implementation code
 - There's a clear "is-a" relationship
 - You want to reuse and extend parent code
-- The entities are fundamentally the same kind of thing
+- The classes are fundamentally the same kind of thing
 
 Often you'll use both together: inheritance for shared code, interfaces for shared contracts. A `Goblin extends Enemy implements Drawable, Attackable` gets code from Enemy and implements the Drawable and Attackable contracts.
 
@@ -1340,8 +1340,8 @@ Often you'll use both together: inheritance for shared code, interfaces for shar
 - *Interfaces* define method contracts without implementation
 - Think of interfaces as contracts or promises: "I can do these things"
 - Entities *implement* interfaces by providing the methods
-- An entity can implement multiple interfaces (unlike single inheritance)
-- Interfaces enable polymorphism: treating different entities uniformly
+- A class can implement multiple interfaces (unlike single inheritance)
+- Interfaces enable polymorphism: treating different classes uniformly
 - **Program to interfaces, not implementations** for flexible, testable code
 - Use small, focused interfaces (Interface Segregation Principle)
 - Interfaces make testing easy through mocking and fakes
@@ -1360,13 +1360,13 @@ Master interfaces, and you'll write code that adapts to change instead of fighti
 
 ## Exercises
 
-**Exercise 16.1**: Create a `Comparable` interface with a `compareTo(other) -> Integer` method. Implement it for a `Person` entity (compare by age). Write a function that finds the oldest person in a list.
+**Exercise 16.1**: Create a `Comparable` interface with a `compareTo(other) -> Integer` method. Implement it for a `Person` class (compare by age). Write a function that finds the oldest person in a list.
 
-**Exercise 16.2**: Create `Readable` and `Writable` interfaces. Create a `File` entity that implements both. Create a `ReadOnlyFile` that implements only `Readable`.
+**Exercise 16.2**: Create `Readable` and `Writable` interfaces. Create a `File` class that implements both. Create a `ReadOnlyFile` that implements only `Readable`.
 
-**Exercise 16.3**: Create a simple command pattern: `Command` interface with `execute()` and `undo()`. Create `AddCommand`, `DeleteCommand`, `MoveCommand` entities. Build a simple undo system.
+**Exercise 16.3**: Create a simple command pattern: `Command` interface with `execute()` and `undo()`. Create `AddCommand`, `DeleteCommand`, `MoveCommand` classes. Build a simple undo system.
 
-**Exercise 16.4**: Create a `Serializable` interface with `toJson() -> String` and `fromJson(s: String)`. Implement for a simple data entity. Think about how you'd test this.
+**Exercise 16.4**: Create a `Serializable` interface with `toJson() -> String` and `fromJson(s: String)`. Implement for a simple data class. Think about how you'd test this.
 
 **Exercise 16.5**: Create a filter system: `Filter` interface with `matches(item) -> Boolean`. Create `AgeFilter`, `NameFilter`, `ActiveFilter`. Write code that applies multiple filters to a list of users.
 
@@ -1374,7 +1374,7 @@ Master interfaces, and you'll write code that adapts to change instead of fighti
 
 **Exercise 16.7**: Create `PaymentProcessor` interface. Implement `StripeProcessor` (real) and `FakeProcessor` (for tests). Write tests for a checkout service using the fake.
 
-**Exercise 16.8** (Challenge): Build a complete event system: `EventListener` interface, `EventDispatcher` entity that manages listeners and dispatches events. Support multiple listeners for the same event type.
+**Exercise 16.8** (Challenge): Build a complete event system: `EventListener` interface, `EventDispatcher` class that manages listeners and dispatches events. Support multiple listeners for the same event type.
 
 **Exercise 16.9** (Challenge): Design interfaces for a document editor that supports multiple file formats. Think about: `Loadable`, `Saveable`, `Renderable`, `Editable`. How would you handle format conversion?
 

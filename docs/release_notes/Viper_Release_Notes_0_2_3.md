@@ -164,7 +164,7 @@ A dual-protocol language server supporting both MCP (for AI assistants) and LSP 
 - MCP transport (newline-delimited) with 11 tool definitions for AI assistants
 - LSP transport (Content-Length framed) with diagnostics, completions, hover, and document symbols
 - JSON-RPC 2.0 request/response handling
-- `CompilerBridge` facade wrapping Zia compiler APIs, including entity field hover
+- `CompilerBridge` facade wrapping Zia compiler APIs, including class field hover
 - VS Code extension with auto-discovery of `zia-server` binary
 - Completion engine improvements for both Zia and BASIC frontends
 
@@ -247,7 +247,7 @@ structured bug report (`docs/bugs/language_audit_2026_03_25.md`) with 13 finding
 - ZIA-BUG-004: Properties — getters/setters parse but hit sema/lowering errors
 - ZIA-BUG-005: Typed catch (`catch (e: Error)`) not yet supported
 - ZIA-BUG-006: Tuple destructuring not supported in Zia
-- ZIA-BUG-007: Child entity overriding parent `init()` with different args
+- ZIA-BUG-007: Child class overriding parent `init()` with different args
 - BASIC-BUG-001: `FOR EACH` loop off-by-one on collection iteration
 
 **Reference Documentation Corrections**
@@ -259,7 +259,7 @@ structured bug report (`docs/bugs/language_audit_2026_03_25.md`) with 13 finding
 - `33_enum_runtime.zia` — enum declaration, variant access, match exhaustiveness
 - `34_async_functions.zia` — async/await with Future.Get runtime calls
 - `35_optional_primitive_narrowing.zia` — guard clause narrowing for `Integer?`
-- `36_entity_properties.zia` — getter/setter property declarations
+- `36_class_properties.zia` — getter/setter property declarations
 - `37_string_instance_methods.zia` — `.Trim()`, `.Replace()`, `.Split()`, `.Contains()`
 - `38_deinit_bindings.zia` — destructor field binding propagation
 
@@ -472,7 +472,7 @@ reassociate. The codegen pipeline was running a stripped-down O1-level optimizer
 **Peephole Decomposition**
 
 Split the monolithic 2,750-line AArch64 `Peephole.cpp` into 6 focused sub-passes under `peephole/`:
-`IdentityElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared
+`IdclassElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared
 peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are
 used by both AArch64 and x86-64 backends.
 
@@ -524,7 +524,7 @@ ObjC dynamic stub generation extracted from the native linker into `DynStubGen.h
 
 A comprehensive game development infrastructure built as pure Zia libraries and C runtime additions:
 
-**GameBase + IScene (Zia library)** — Reusable game loop framework. `GameBase` entity handles canvas
+**GameBase + IScene (Zia library)** — Reusable game loop framework. `GameBase` class handles canvas
 creation, frame pacing, DeltaTime clamping, and scene management. `IScene` interface defines
 `update`/`draw`/`onEnter`/`onExit` lifecycle. Eliminates ~100 lines of boilerplate per game.
 
@@ -640,7 +640,7 @@ The bulk of this release is a multi-phase safety audit touching every layer of t
 - **Deterministic labels**: Replace three static `uint32_t` counters with per-function
   `nextLocalLabelId()`, reset to 0 per function for output determinism
 - **Parallel move resolution**: Replace entry parameter MOV loop with PX_COPY pseudo-instruction
-  for topological sort and cycle-breaking (fixes crash in multi-param entity init calls)
+  for topological sort and cycle-breaking (fixes crash in multi-param class init calls)
 - **GNU-stack marking**: Add `.note.GNU-stack` section to ELF output for non-executable stack
 - **PE/COFF directives**: `.rdata` section and ELF `.type @function` in AsmEmitter
 - **PIE support**: `-pie` flag for Linux linker
@@ -807,18 +807,18 @@ Post-audit fixes across the 3D graphics subsystem:
 - **Init overload resolution**: Entity `init()` methods now correctly match parameter count
   and types against the call site. Previously, entities with inherited init from a parent
   would fail with "no init overload matching the provided arguments"
-- **Override keyword**: `override expose func` on entity methods now works for method
+- **Override keyword**: `override expose func` on class methods now works for method
   dispatch. Child entities can override parent methods with the `override` keyword
-- **Entity method dispatch**: Improved codegen routing for entity method calls through
+- **Entity method dispatch**: Improved codegen routing for class method calls through
   the inheritance chain
 
 #### Destructor & Property Fixes
 
-- **Deinit binding propagation**: Destructor (`deinit`) blocks can now access entity fields
+- **Deinit binding propagation**: Destructor (`deinit`) blocks can now access class fields
   through `self` bindings — previously, field accesses inside `deinit` hit lowering errors
   because the binding context wasn't propagated to the destructor scope
 - **Destructor dispatch**: Correct lowering of `__dtor_TypeName` IL function calls through
-  entity inheritance chains
+  class inheritance chains
 - **Property access improvements**: Sema now correctly resolves property getter/setter
   declarations and validates return types against the backing field type
 
@@ -838,7 +838,7 @@ Post-audit fixes across the 3D graphics subsystem:
 - Call instructions use extern-declared return type for IL verification
 - Match exhaustiveness checking (W019)
 - Escape analysis in BasicAA (non-escaping allocas vs Param → NoAlias)
-- Warning suppression improvements for entity method self-parameter warnings
+- Warning suppression improvements for class method self-parameter warnings
 - Import deduplication in `ImportResolver` to prevent redundant module loads
 
 ---
@@ -867,7 +867,7 @@ and `Tint` — replacing the original rectangles-only rendering. Includes 4-fram
 - Frame-rate-independent physics via DeltaTime scaling across all subsystems
 - Gamepad support via `Action.BindPadButton` with integer button constants
 - Persistent high scores via CSV file I/O
-- 12 procedurally generated WAV sound effects with SoundManager entity integration
+- 12 procedurally generated WAV sound effects with SoundManager class integration
 - ParticleEmitter-based effects replacing manual particle arrays
 - Projectile particle trails for player and enemy bullets
 
@@ -947,7 +947,7 @@ Systematic 10-item improvement across BASIC, Zia, and shared frontend infrastruc
 - `Parser_Expr.cpp` (1,804 LOC → 3 files)
 - `Lowerer_Decl.cpp` (1,690 LOC → 3 files)
 - `Lowerer_Expr_Complex.cpp` (1,386 LOC → 3 files)
-- Extract entity layout helpers (`computeEntityFieldLayout`, `buildEntityVtable`,
+- Extract class layout helpers (`computeEntityFieldLayout`, `buildEntityVtable`,
   `inheritEntityMembers`) from monolithic `registerEntityLayout`
 
 **BASIC Improvements**

@@ -37,6 +37,13 @@ void rt_world3d_remove(void *world, void *body);
 int64_t rt_world3d_body_count(void *world);
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 
+/* Collision event queries (populated after each Step) */
+int64_t rt_world3d_get_collision_count(void *world);
+void *rt_world3d_get_collision_body_a(void *world, int64_t index);
+void *rt_world3d_get_collision_body_b(void *world, int64_t index);
+void *rt_world3d_get_collision_normal(void *world, int64_t index);
+double rt_world3d_get_collision_depth(void *world, int64_t index);
+
 /* Physics3D Body */
 void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass);
 void *rt_body3d_new_sphere(double radius, double mass);

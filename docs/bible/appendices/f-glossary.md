@@ -40,7 +40,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **[ ]** (square brackets): Used to access array elements by index, or to define array types. Example: `numbers[0]` accesses the first element; `[Integer]` is an array of integers. See also *Array*, *Index*.
 
-**{ }** (curly braces): Define code blocks, entity bodies, or object literals. Everything between `{` and `}` is grouped together. See also *Block*.
+**{ }** (curly braces): Define code blocks, class bodies, or object literals. Everything between `{` and `}` is grouped together. See also *Block*.
 
 **||** (double pipe): The logical OR operator. Returns `true` if at least one side is true. Example: `true || false` equals `true`. See also *Boolean*, *Logical operator*, *&&*.
 
@@ -80,7 +80,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## B
 
-**Base class**: In inheritance, the parent class that another class extends. Also called superclass or parent class. A `Dog` entity that extends `Animal` has `Animal` as its base class. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Derived class*, *Superclass*.
+**Base class**: In inheritance, the parent class that another class extends. Also called superclass or parent class. A `Dog` class that extends `Animal` has `Animal` as its base class. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Derived class*, *Superclass*.
 
 **Binary** (BY-nuh-ree): (1) The base-2 number system using only digits 0 and 1. Computers work in binary because electronic circuits are either on (1) or off (0). (2) A compiled executable file that can run directly on a computer. See also *Bit*, *Byte*, *Compiler*.
 
@@ -122,7 +122,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Child class**: See *Derived class*.
 
-**Class**: In most programming languages, a blueprint for creating objects. Defines data (fields) and behavior (methods). **[Zia]** In Zia, this concept is expressed using the `entity` keyword instead. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Object*.
+**Class**: A blueprint for creating objects. Defines data (fields) and behavior (methods). **[Zia]** Declared with the `class` keyword. Example: `class Player { ... }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Object*, *Struct*.
 
 **Closure** (KLOH-zhur): A function that captures and remembers variables from the scope where it was created, even after that scope has ended. The function "closes over" its environment. Example: a function inside another function that uses the outer function's variables. See [Appendix A](a-zia-reference.md). See also *Lambda*, *Scope*.
 
@@ -196,7 +196,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Dependency injection**: A design pattern where dependencies are passed to a component rather than having it create them internally. Makes code more flexible and testable. See [Chapter 18](../part3-objects/18-patterns.md). See also *Design pattern*.
 
-**Derived class**: A class that inherits from another class (the base class). Also called subclass or child class. A `Dog` entity that extends `Animal` is derived from `Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Base class*, *Inheritance*, *Subclass*.
+**Derived class**: A class that inherits from another class (the base class). Also called subclass or child class. A `Dog` class that extends `Animal` is derived from `Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Base class*, *Inheritance*, *Subclass*.
 
 **Design pattern**: A reusable solution to a commonly occurring problem in software design. Examples: Singleton, Factory, Observer. Not code you copy directly, but templates for solving problems. See [Chapter 18](../part3-objects/18-patterns.md).
 
@@ -222,7 +222,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Encapsulation** (en-kap-soo-LAY-shun): Hiding an object's internal details and exposing only a controlled public interface. Like a car - you use the steering wheel and pedals, but the engine's internals are hidden. **[Zia]** Controlled using `expose` (public) and `hide` (private) visibility modifiers. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Hide*, *Information hiding*.
 
-**Entity** (EN-ti-tee): **[Zia]** The keyword used to define object templates (equivalent to "class" in other languages). An entity combines data (fields) and behavior (methods). Represents "things" with identity and behavior. Example: `entity Player { ... }`. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Object*, *Value*.
+**Entity** (EN-ti-tee): A general term for an object with identity and behavior. **[Zia]** In older versions of Zia, `entity` was the keyword for class declarations; it has been replaced by `class`. See *Class*.
 
 **Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. In Zia: `enum Color { Red, Green, Blue }`. In BASIC: `ENUM Color / RED / GREEN / BLUE / END ENUM`. Variants are integer constants (auto-incrementing from 0 or explicitly assigned). Useful when a variable should only have certain specific values. See [Appendix A](a-zia-reference.md#enums) and [Appendix B](b-basic-reference.md#enums). See also *Type*, *Match*.
 
@@ -240,11 +240,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Export**: To make code available for use by other modules. Exported functions and entities can be imported elsewhere. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Import*, *Module*.
 
-**Expose**: **[Zia]** The visibility modifier that makes a member accessible from outside the entity (equivalent to "public" in other languages). This is the default visibility for methods in Zia. Example: `expose func init() { ... }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
+**Expose**: **[Zia]** The visibility modifier that makes a member accessible from outside the class (equivalent to "public" in other languages). This is the default visibility for methods in Zia. Example: `expose func init() { ... }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
 
 **Expression**: Code that evaluates to a value. Can be used anywhere a value is expected. Examples: `2 + 3` (evaluates to 5), `x * y` (evaluates to the product), `age >= 18` (evaluates to boolean). See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Statement*, *Value*.
 
-**Extends**: **[Zia]** Keyword used to indicate inheritance. `entity Dog extends Animal` means Dog inherits from Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
+**Extends**: **[Zia]** Keyword used to indicate inheritance. `class Dog extends Animal` means Dog inherits from Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
 
 ---
 
@@ -254,7 +254,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **False**: One of the two boolean values, representing "no," "off," or "not true." The opposite of `true`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Boolean*, *True*.
 
-**Field**: A variable that belongs to an entity or value type. Part of an object's data. Example: in `entity Player { name: String; health: Integer; }`, `name` and `health` are fields. Also called member variable, attribute, or property. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Method*.
+**Field**: A variable that belongs to a class or struct type. Part of an object's data. Example: in `class Player { name: String; health: Integer; }`, `name` and `health` are fields. Also called member variable, attribute, or property. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Method*.
 
 **FIFO**: First In, First Out. A queue behavior where the first item added is the first item removed. Like a line at a store. See also *Queue*, *LIFO*.
 
@@ -304,9 +304,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Heap**: The memory region for dynamically allocated objects - things created at runtime whose size or lifetime isn't known at compile time. Objects, arrays, and other data structures typically live on the heap. See also *Stack*, *Memory*, *Allocate*.
 
-**Helper method**: A private method that assists other methods in an entity. Breaks down complex operations into smaller pieces. Example: a private `validateInput()` method called by public methods. See also *Method*, *Hide*.
+**Helper method**: A private method that assists other methods in a class. Breaks down complex operations into smaller pieces. Example: a private `validateInput()` method called by public methods. See also *Method*, *Hide*.
 
-**Hide**: **[Zia]** The visibility modifier that restricts a member's access to within the entity only (equivalent to "private" in other languages). Hidden fields can only be accessed by the entity's own methods. Example: `hide balance: Number`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
+**Hide**: **[Zia]** The visibility modifier that restricts a member's access to within the class only (equivalent to "private" in other languages). Hidden fields can only be accessed by the class's own methods. Example: `hide balance: Number`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
 
 **HTTP** (Hypertext Transfer Protocol) (aitch-tee-tee-PEE): The protocol for web communication. When you visit a website, your browser uses HTTP to request pages from servers. See [Chapter 22](../part4-applications/22-networking.md). See also *TCP*, *Protocol*.
 
@@ -316,7 +316,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **IDE** (Integrated Development Environment) (eye-dee-EE): A software application that provides comprehensive facilities for software development: code editor, debugger, build tools, and more. Examples: VS Code, IntelliJ, Eclipse. See also *Debugger*, *Compiler*.
 
-**Identifier**: A name given to a variable, function, entity, or other program element. Must follow naming rules (start with letter or underscore, contain letters/numbers/underscores). Examples: `playerScore`, `calculateTotal`, `MAX_SIZE`. See also *Variable*, *Keyword*.
+**Identifier**: A name given to a variable, function, class, or other program element. Must follow naming rules (start with letter or underscore, contain letters/numbers/underscores). Examples: `playerScore`, `calculateTotal`, `MAX_SIZE`. See also *Variable*, *Keyword*.
 
 **If statement**: A conditional statement that executes code only when a condition is true. Example: `if (age >= 18) { allowVoting(); }`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Conditional*, *Else*, *Condition*.
 
@@ -324,9 +324,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Immutable** (ih-MYOO-tuh-bul): Cannot be changed after creation. Once an immutable value is set, it stays that way forever. Strings are often immutable. `final` variables are immutable. Opposite of mutable. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Mutable*, *Final*, *Constant*.
 
-**Implement**: To provide code that fulfills an interface or abstract definition. When an entity "implements" an interface, it provides concrete methods for all the interface's requirements. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Implements*.
+**Implement**: To provide code that fulfills an interface or abstract definition. When a class "implements" an interface, it provides concrete methods for all the interface's requirements. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Implements*.
 
-**Implements**: **[Zia]** Keyword indicating that an entity provides implementations for an interface's methods. Example: `entity Circle implements Drawable`. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Entity*.
+**Implements**: **[Zia]** Keyword indicating that a class provides implementations for an interface's methods. Example: `class Circle implements Drawable`. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Class*.
 
 **Implicit**: Not explicitly stated; inferred or assumed. Type inference is implicit - the compiler figures out the type without you stating it. Opposite of explicit. Example: `var x = 5` implicitly has type `Integer`. See also *Explicit*, *Type inference*.
 
@@ -340,7 +340,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Information hiding**: A design principle where implementation details are hidden and only a public interface is exposed. Prevents external code from depending on internal details that might change. See also *Encapsulation*, *Hide*.
 
-**Inheritance** (in-HAIR-ih-tuns): An entity adopting properties and methods from a parent entity. The child "inherits" from the parent and can add or override functionality. Models "is-a" relationships: a Dog is an Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Entity*, *Extends*, *Base class*, *Derived class*.
+**Inheritance** (in-HAIR-ih-tuns): A class adopting properties and methods from a parent class. The child "inherits" from the parent and can add or override functionality. Models "is-a" relationships: a Dog is an Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Class*, *Extends*, *Base class*, *Derived class*.
 
 **Init**: **[Zia]** The special method name for initializers (constructors). Called automatically when creating new objects. Example: `expose func init(name: String) { self.name = name; }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Constructor*.
 
@@ -350,15 +350,15 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Input**: Data that enters a program from outside - user keyboard input, file contents, network data, etc. See also *Output*, *I/O*.
 
-**Instance**: A specific object created from an entity (class). Each instance has its own copy of the fields. Example: `var fido = Dog("Fido")` creates an instance of Dog. See [Chapter 14](../part3-objects/14-objects.md). See also *Object*, *Entity*, *Instantiate*.
+**Instance**: A specific object created from a class. Each instance has its own copy of the fields. Example: `var fido = Dog("Fido")` creates an instance of Dog. See [Chapter 14](../part3-objects/14-objects.md). See also *Object*, *Class*, *Instantiate*.
 
-**Instantiate** (in-STAN-shee-ate): To create an instance (object) from an entity (class). Example: `var player = Player("Hero")` instantiates a Player. See also *Instance*, *Object*.
+**Instantiate** (in-STAN-shee-ate): To create an instance (object) from a class. Example: `var player = Player("Hero")` instantiates a Player. See also *Instance*, *Object*.
 
 **Integer** (IN-tuh-jur): A whole number without a decimal point. Can be positive, negative, or zero. Examples: `42`, `-7`, `0`, `1000000`. In Zia: `i8`, `i16`, `i32`, `i64` (signed), `u8`, `u16`, `u32`, `u64` (unsigned). See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Float*, *Signed*, *Unsigned*.
 
 **Integer division**: Division between two integers that produces an integer result by discarding the fractional part. Example: `10 / 3` equals `3`, not `3.333`. A common source of bugs for beginners. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Division*, *Modulo*.
 
-**Interface** (IN-ter-fase): A contract specifying what methods an entity must implement, without providing the implementation. Defines "what" but not "how." Example: a `Drawable` interface requires a `draw()` method. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Implements*, *Abstract*, *Polymorphism*.
+**Interface** (IN-ter-fase): A contract specifying what methods a class must implement, without providing the implementation. Defines "what" but not "how." Example: a `Drawable` interface requires a `draw()` method. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Implements*, *Abstract*, *Polymorphism*.
 
 **Internal**: **[Zia]** A visibility modifier that makes a member accessible within the same module but not from outside. Between `expose` and `hide`. See [Appendix A](a-zia-reference.md). See also *Expose*, *Hide*, *Module*.
 
@@ -392,7 +392,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Key-value pair**: An association between a key and its corresponding value in a map. The key is used to retrieve the value. See also *Key*, *Map*.
 
-**Keyword**: A reserved word with special meaning in the programming language. Cannot be used as variable names. Examples in Zia: `if`, `func`, `entity`, `var`, `final`, `while`, `for`, `return`. See [Appendix A](a-zia-reference.md). See also *Identifier*, *Reserved word*.
+**Keyword**: A reserved word with special meaning in the programming language. Cannot be used as variable names. Examples in Zia: `if`, `func`, `class`, `var`, `final`, `while`, `for`, `return`. See [Appendix A](a-zia-reference.md). See also *Identifier*, *Reserved word*.
 
 ---
 
@@ -430,11 +430,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Match statement**: A control flow statement that compares a value against multiple patterns and executes the matching case. More powerful than multiple if/else statements. Example: `match color { RED => ..., GREEN => ..., _ => ... }`. See [Appendix A](a-zia-reference.md). See also *Pattern matching*.
 
-**Member**: Something that belongs to an entity - either a field (data) or a method (behavior). See also *Field*, *Method*, *Entity*.
+**Member**: Something that belongs to a class - either a field (data) or a method (behavior). See also *Field*, *Method*, *Class*.
 
 **Memory**: Storage where programs keep data while running. Includes registers, cache, RAM, and disk. Programs read from and write to memory constantly. See [Chapter 1](../part1-foundations/01-the-machine.md). See also *RAM*, *Stack*, *Heap*.
 
-**Method**: A function that belongs to an entity and operates on its data. Called on objects using dot notation: `player.takeDamage(10)`. Has access to `self` (the object it belongs to). See [Chapter 14](../part3-objects/14-objects.md). See also *Function*, *Self*, *Entity*.
+**Method**: A function that belongs to a class and operates on its data. Called on objects using dot notation: `player.takeDamage(10)`. Has access to `self` (the object it belongs to). See [Chapter 14](../part3-objects/14-objects.md). See also *Function*, *Self*, *Class*.
 
 **Modular**: Organized into separate, independent modules. Modular code is easier to understand, test, and maintain. See also *Module*.
 
@@ -470,7 +470,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## O
 
-**Object**: An instance created from an entity (class), containing data (fields) and behavior (methods). Each object has its own state. Example: if `Dog` is an entity, `fido` and `rex` are objects of type Dog. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Instance*, *Class*.
+**Object**: An instance created from a class, containing data (fields) and behavior (methods). Each object has its own state. Example: if `Dog` is a class, `fido` and `rex` are objects of type Dog. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Instance*.
 
 **Object-oriented programming** (OOP): A programming paradigm organizing code around objects that combine data and behavior. Core concepts include encapsulation, inheritance, and polymorphism. See [Part III](../part3-objects/14-objects.md). See also *Encapsulation*, *Inheritance*, *Polymorphism*.
 
@@ -488,7 +488,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Overload**: Multiple functions or methods with the same name but different parameters. The correct version is chosen based on the arguments provided. Example: `init(name)` and `init(name, age)`. See also *Override*.
 
-**Override**: Replacing a parent entity's method with a new implementation in a child entity. The child's version is used instead of the parent's. Marked with `override` keyword. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Virtual method*.
+**Override**: Replacing a parent class's method with a new implementation in a child class. The child's version is used instead of the parent's. Marked with `override` keyword. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Virtual method*.
 
 ---
 
@@ -506,7 +506,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Parse** (PARS): To analyze text and convert it to a structured format. Parsing `"42"` as an integer gives the number 42. Parsing JSON text creates a data structure. See [Chapter 23](../part4-applications/23-data-formats.md). See also *Serialize*.
 
-**Pascal case**: A naming convention where each word starts with a capital letter, including the first. Example: `PlayerScore`, `BankAccount`. Often used for entity/class names. Also called upper camel case. See also *Camel case*.
+**Pascal case**: A naming convention where each word starts with a capital letter, including the first. Example: `PlayerScore`, `BankAccount`. Often used for class names. Also called upper camel case. See also *Camel case*.
 
 **Pass by reference**: Passing a reference to data rather than a copy. Changes to the parameter affect the original. See also *Pass by value*, *Reference*.
 
@@ -528,7 +528,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Print**: To display text on the screen. In Zia: `Viper.Terminal.Say()` prints with a newline; `Viper.Terminal.Print()` prints without. See [Chapter 2](../part1-foundations/02-first-program.md).
 
-**Private**: Accessible only within the entity that defines it. Hidden from external code. **[Zia]** Use the `hide` keyword instead of "private." See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
+**Private**: Accessible only within the class that defines it. Hidden from external code. **[Zia]** Use the `hide` keyword instead of "private." See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
 
 **Procedure**: A function that performs an action but doesn't return a value. Also called a subroutine or void function. In Zia, a function without a return type. See also *Function*, *Void*.
 
@@ -536,7 +536,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Property**: A field with associated getter and/or setter methods. Provides controlled access to data. In some languages, properties look like fields but run code when accessed. See also *Field*, *Accessor*, *Mutator*.
 
-**Protected**: **[Zia]** A visibility modifier that allows access within the entity and its subclasses, but not from outside the inheritance hierarchy. Between `expose` and `hide`. See [Appendix A](a-zia-reference.md). See also *Expose*, *Hide*.
+**Protected**: **[Zia]** A visibility modifier that allows access within the class and its subclasses, but not from outside the inheritance hierarchy. Between `expose` and `hide`. See [Appendix A](a-zia-reference.md). See also *Expose*, *Hide*.
 
 **Protocol**: A set of rules for communication or interaction. HTTP is a protocol for web communication. TCP is a network protocol. Interfaces can be seen as protocols between code components. See also *Interface*.
 
@@ -614,7 +614,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Signed**: A numeric type that can represent negative numbers. `i64` is signed (-9223372036854775808 to 9223372036854775807). See also *Unsigned*, *Integer*.
 
-**Singleton**: A design pattern where an entity allows only one instance to exist. Used for shared resources like configuration. See [Chapter 18](../part3-objects/18-patterns.md). See also *Design pattern*.
+**Singleton**: A design pattern where a class allows only one instance to exist. Used for shared resources like configuration. See [Chapter 18](../part3-objects/18-patterns.md). See also *Design pattern*.
 
 **Snake case**: A naming convention using lowercase letters with underscores between words. Example: `player_score`, `total_count`. Common in Python and for constants. See also *Camel case*.
 
@@ -636,7 +636,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Statement**: A complete instruction - a single step the program takes. Declarations, assignments, function calls, control flow are all statements. Statements do things; expressions produce values. See [Chapter 2](../part1-foundations/02-first-program.md). See also *Expression*.
 
-**Static**: (1) Belonging to the entity itself rather than to instances. A static method can be called without creating an object. (2) Known at compile-time rather than runtime. See also *Instance*, *Static typing*.
+**Static**: (1) Belonging to the class itself rather than to instances. A static method can be called without creating an object. (2) Known at compile-time rather than runtime. See also *Instance*, *Static typing*.
 
 **Static typing**: Type checking done at compile time. Variables have fixed types that are known before the program runs. Zia uses static typing. Catches many errors early. See also *Dynamic typing*, *Type*.
 
@@ -644,15 +644,15 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **String interpolation**: Embedding expressions inside a string. In Zia: `"Hello, ${name}!"` replaces `${name}` with the value of `name`. Cleaner than concatenation. See [Appendix A](a-zia-reference.md). See also *Format string*.
 
-**Struct/Structure**: A composite type grouping related values together, typically without behavior. **[Zia]** Use the `value` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Value*, *Entity*.
+**Struct/Structure**: A composite type grouping related values together, typically without behavior. **[Zia]** Declared with the `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Class*.
 
-**Subclass**: An entity that inherits from another entity (the superclass). The child in an inheritance relationship. `Dog extends Animal` makes `Dog` a subclass of `Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Superclass*, *Inheritance*, *Derived class*.
+**Subclass**: A class that inherits from another class (the superclass). The child in an inheritance relationship. `Dog extends Animal` makes `Dog` a subclass of `Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Superclass*, *Inheritance*, *Derived class*.
 
 **Subroutine**: See *Procedure*, *Function*.
 
-**Super**: **[Zia]** Keyword to access the parent entity's methods, especially in initializers. `super(name)` calls the parent's initializer with `name`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
+**Super**: **[Zia]** Keyword to access the parent class's methods, especially in initializers. `super(name)` calls the parent's initializer with `name`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
 
-**Superclass**: The parent entity that another entity inherits from. `Animal` is the superclass of `Dog` if `Dog extends Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Subclass*, *Base class*, *Inheritance*.
+**Superclass**: The parent class that another class inherits from. `Animal` is the superclass of `Dog` if `Dog extends Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Subclass*, *Base class*, *Inheritance*.
 
 **Synchronization**: Coordinating concurrent access to shared resources. Ensuring threads don't interfere with each other. Uses mechanisms like mutexes and channels. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Mutex*, *Thread*, *Race condition*.
 
@@ -728,9 +728,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## V
 
-**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[Zia]** The keyword used to define value types (equivalent to "struct" in other languages). A value groups related data fields together. Example: `value Point { x: Number; y: Number; }`. ViperScript and ViperC use the traditional `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
+**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[Zia]** In older versions of Zia, `value` was the keyword for struct declarations; it has been replaced by `struct`. See *Struct/Structure*. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
 
-**Value type**: A type where variables hold the actual data directly (not a reference). When assigned or passed, the data is copied. `value` types in Zia are value types. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Reference type*, *Value*.
+**Value type**: A type where variables hold the actual data directly (not a reference). When assigned or passed, the data is copied. `struct` types in Zia are value types. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Reference type*, *Value*.
 
 **Var**: **[Zia]** Keyword that declares a mutable variable. Example: `var count = 0`. The value can be changed after creation. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Final*, *Variable*, *Mutable*.
 
@@ -786,11 +786,11 @@ Key Zia-specific terms and their equivalents in other languages:
 
 | Zia | Other Languages | Meaning |
 |-----------|-----------------|---------|
-| `entity` | `class` | Template for objects with data and behavior |
-| `value` | `struct`, `record` | Template for pure data without identity |
+| `class` | `class` | Template for objects with data and behavior |
+| `struct` | `struct`, `record` | Template for pure data without identity |
 | `expose` | `public` | Accessible from anywhere |
-| `hide` | `private` | Accessible only within the entity |
-| `protected` | `protected` | Accessible within entity and subclasses |
+| `hide` | `private` | Accessible only within the class |
+| `protected` | `protected` | Accessible within class and subclasses |
 | `internal` | `internal` | Accessible within the module |
 | `init` | constructor | Method that initializes new objects |
 | `self` | `this` | Reference to the current object |

@@ -17,7 +17,7 @@ bind "./types";
 // PARAMETER ENTITY
 //=============================================================================
 
-entity FuncParam {
+class FuncParam {
     expose String name;
     expose Integer typeCode;    // SQL_INTEGER, SQL_TEXT, SQL_REAL, etc.
 
@@ -46,7 +46,7 @@ entity FuncParam {
 // STORED FUNCTION ENTITY
 //=============================================================================
 
-entity StoredFunction {
+class StoredFunction {
     expose String name;
     expose List[FuncParam] params;
     expose Integer returnType;     // SQL_INTEGER, SQL_TEXT, SQL_REAL, SQL_VOID, etc.
@@ -163,7 +163,7 @@ func replaceAll(str: String, from: String, to: String) -> String {
 // FUNCTION MANAGER
 //=============================================================================
 
-entity FunctionManager {
+class FunctionManager {
     expose List[StoredFunction] functions;
 
     expose func init() {

@@ -50,7 +50,7 @@ palette, find/replace, minimap, and a fully themeable UI.
 | Principle | Rationale |
 |-----------|-----------|
 | **Polling event loop** | Viper.GUI uses an immediate-mode polling pattern (`Poll → check state → Render`), not callbacks. All UI logic lives in the main loop. |
-| **Entity-based components** | Each subsystem is a Zia entity with clear state and methods. Entities communicate through shared state and method calls, not events or signals. |
+| **Entity-based components** | Each subsystem is a Zia class with clear state and methods. Entities communicate through shared state and method calls, not events or signals. |
 | **Background threads for heavy work** | Compilation, git operations, file search, and file watching run on worker threads via `Viper.Threads.Thread.Start()` and `Viper.Threads.Channel` to keep the UI responsive. |
 | **Subprocess integration** | The compiler (`zia`, `vbasic`) and git are invoked via `Viper.Exec.Capture()` / `Viper.Exec.CaptureArgs()`. Parse their stderr/stdout for diagnostics. |
 | **JSON configuration** | All settings stored as JSON via `Viper.Text.Json`. Human-readable, easy to edit outside the IDE. |
@@ -205,7 +205,7 @@ results from worker threads.
 Every major component follows this pattern:
 
 ```rust
-entity ComponentName {
+class ComponentName {
     // State fields
     expose ...
 
@@ -483,7 +483,7 @@ App ("ViperIDE", 1280, 800)
 ### 4.2 Layout Construction (Zia Pseudocode)
 
 ```rust
-entity AppShell {
+class AppShell {
     expose app: obj;          // Viper.GUI.App handle
     expose mainVBox: obj;
     expose menuBar: obj;
@@ -627,7 +627,7 @@ Default dark token colors:
 Represents a single open file in the editor.
 
 ```rust
-entity Document {
+class Document {
     expose filePath: String;      // Absolute path ("" for untitled)
     expose fileName: String;      // Display name
     expose content: String;       // Full text content
@@ -649,7 +649,7 @@ entity Document {
 Represents a workspace/folder.
 
 ```rust
-entity Project {
+class Project {
     expose rootPath: String;       // Absolute path to project root
     expose name: String;           // Folder name
     expose files: obj;             // Seq of file paths (relative)
@@ -661,7 +661,7 @@ entity Project {
 ### 5.3 BuildConfig
 
 ```rust
-entity BuildConfig {
+class BuildConfig {
     expose compilerPath: String;   // "zia" or "vbasic" (or absolute path)
     expose mainFile: String;       // Entry point file
     expose outputName: String;     // Output binary name
@@ -674,7 +674,7 @@ entity BuildConfig {
 ### 5.4 Diagnostic (compiler error/warning)
 
 ```rust
-entity Diagnostic {
+class Diagnostic {
     expose filePath: String;
     expose line: Int;
     expose column: Int;
@@ -687,7 +687,7 @@ entity Diagnostic {
 ### 5.5 Breakpoint
 
 ```rust
-entity Breakpoint {
+class Breakpoint {
     expose filePath: String;
     expose line: Int;
     expose isEnabled: Bool;
@@ -699,9 +699,9 @@ entity Breakpoint {
 ### 5.6 SymbolEntry (for autocomplete / go-to-definition)
 
 ```rust
-entity SymbolEntry {
+class SymbolEntry {
     expose name: String;
-    expose kind: Int;          // 0=func, 1=entity, 2=var, 3=field, 4=method, 5=value, 6=interface
+    expose kind: Int;          // 0=func, 1=class, 2=var, 3=field, 4=method, 5=value, 6=interface
     expose filePath: String;
     expose line: Int;
     expose detail: String;     // Signature or type info for display
@@ -712,7 +712,7 @@ entity SymbolEntry {
 ### 5.7 GitFileStatus
 
 ```rust
-entity GitFileStatus {
+class GitFileStatus {
     expose filePath: String;   // Relative to project root
     expose status: String;     // "M", "A", "D", "?", "R", "C", "U"
     expose staged: Bool;
@@ -722,7 +722,7 @@ entity GitFileStatus {
 ### 5.8 SearchResult
 
 ```rust
-entity SearchResult {
+class SearchResult {
     expose filePath: String;
     expose line: Int;
     expose column: Int;
@@ -734,7 +734,7 @@ entity SearchResult {
 ### 5.9 Command
 
 ```rust
-entity Command {
+class Command {
     expose id: String;         // "file.save", "edit.undo", etc.
     expose label: String;      // "Save File"
     expose category: String;   // "File", "Edit", "View", etc.
@@ -745,7 +745,7 @@ entity Command {
 ### 5.10 Settings
 
 ```rust
-entity Settings {
+class Settings {
     // Editor
     expose tabSize: Int;              // Default: 4
     expose insertSpaces: Bool;        // Default: true (spaces, not tabs)
@@ -803,7 +803,7 @@ features: syntax highlighting, code folding, bracket matching, and gutter icon
 management.
 
 ```rust
-entity EditorEngine {
+class EditorEngine {
     expose editor: obj;        // Viper.GUI.CodeEditor widget handle
     expose currentDoc: Document;
 
@@ -866,7 +866,7 @@ entity EditorEngine {
 tab bar, handles file open/close/save operations.
 
 ```rust
-entity DocumentManager {
+class DocumentManager {
     expose documents: obj;     // Seq of Document
     expose activeIndex: Int;   // Index of active document (-1 if none)
     expose tabBar: obj;        // Reference to editor TabBar widget
@@ -988,11 +988,11 @@ func SetupBasicLanguage(editor: obj) {
 completion suggestions based on cursor context.
 
 **Design approach:** Since Zia has no reflection or eval, we build the symbol index
-by parsing source files textually. We scan for `func`, `entity`, `value`,
+by parsing source files textually. We scan for `func`, `class`, `struct`,
 `interface`, `var`, `expose`, and `hide` declarations using pattern matching.
 
 ```rust
-entity SymbolIndex {
+class SymbolIndex {
     expose symbols: obj;       // Seq of SymbolEntry
     expose fileTimestamps: obj; // Map<String, Int> — path → last indexed timestamp
 
@@ -1017,7 +1017,7 @@ entity SymbolIndex {
     func FindInFile(filePath: String) -> obj { ... }
 }
 
-entity AutocompleteEngine {
+class AutocompleteEngine {
     expose index: SymbolIndex;
     expose popup: obj;         // ListBox widget for completion popup
     expose isVisible: Bool;
@@ -1052,7 +1052,7 @@ loaded from a static data table compiled into the symbol index at startup.
 creates/deletes/renames files and folders, monitors for external changes.
 
 ```rust
-entity ProjectManager {
+class ProjectManager {
     expose project: Project;
     expose treeView: obj;          // Viper.GUI.TreeView widget
     expose watcher: obj;           // Viper.IO.Watcher handle
@@ -1110,7 +1110,7 @@ entity ProjectManager {
 diagnostics, display build output.
 
 ```rust
-entity BuildSystem {
+class BuildSystem {
     expose isBuilding: Bool;
     expose isRunning: Bool;
     expose buildChannel: obj;       // Channel for build results
@@ -1176,7 +1176,7 @@ support in the Viper VM. The initial implementation provides:
 Future versions will add step-by-step execution when the VM exposes a debug protocol.
 
 ```rust
-entity Debugger {
+class Debugger {
     expose isDebugging: Bool;
     expose breakpoints: obj;        // Seq of Breakpoint
     expose currentLine: Int;        // Current execution line (-1 if not debugging)
@@ -1211,7 +1211,7 @@ entity Debugger {
 status/diff/branch/commit/log functionality.
 
 ```rust
-entity GitIntegration {
+class GitIntegration {
     expose isGitRepo: Bool;
     expose currentBranch: String;
     expose fileStatuses: obj;      // Seq of GitFileStatus
@@ -1284,7 +1284,7 @@ Parse each line: first two chars → status, rest → file path.
 messages in the bottom panel.
 
 ```rust
-entity OutputPanel {
+class OutputPanel {
     expose outputEditor: obj;   // CodeEditor widget used as read-only output
     expose content: String;     // Accumulated output text
 
@@ -1314,7 +1314,7 @@ to display output with syntax coloring for error messages.
 project-wide file search.
 
 ```rust
-entity FindReplace {
+class FindReplace {
     expose findBar: obj;       // Viper.GUI.FindBar widget
 
     func New(findBarWidget: obj) -> FindReplace { ... }
@@ -1354,7 +1354,7 @@ entity FindReplace {
 **Find in files (background thread):**
 
 ```rust
-entity FindInFiles {
+class FindInFiles {
     expose results: obj;          // Seq of SearchResult
     expose searchChannel: obj;    // Channel for results from worker
     expose isSearching: Bool;
@@ -1387,7 +1387,7 @@ ID, label, category, and optional keyboard shortcut. The command palette and
 keyboard shortcuts both resolve to command IDs.
 
 ```rust
-entity CommandSystem {
+class CommandSystem {
     expose commands: obj;      // Map<String, Command> — id → Command
     expose palette: obj;       // Viper.GUI.CommandPalette widget
 
@@ -1447,7 +1447,7 @@ if palette.WasSelected() != 0 {
 **Responsibility:** Load/save IDE settings from a JSON configuration file.
 
 ```rust
-entity SettingsManager {
+class SettingsManager {
     expose settings: Settings;
     expose configPath: String;     // Path to settings.json
 
@@ -1481,7 +1481,7 @@ entity SettingsManager {
 **Responsibility:** Top-level UI layout and coordination. Creates all widgets,
 builds menus and toolbars, manages sidebar/panel visibility.
 
-See Section 4.2 for the full entity definition.
+See Section 4.2 for the full class definition.
 
 Additional responsibilities:
 
@@ -1552,7 +1552,7 @@ No full parser needed — we extract enough structure for useful completions.
 | Declaration | Pattern | Example |
 |-------------|---------|---------|
 | Function | line starts with `func ` (after whitespace) | `func Foo(x: Int) -> String` |
-| Entity | line starts with `entity ` | `entity Document {` |
+| Entity | line starts with `class ` | `class Document {` |
 | Value | line starts with `value ` | `value Color { ... }` |
 | Interface | line starts with `interface ` | `interface Drawable { ... }` |
 | Variable | line starts with `var ` (module-level) | `var MAX_SIZE = 100;` |
@@ -1568,8 +1568,8 @@ for each line in file:
         name = extract_word_after("func ")
         sig = extract_until("{") or extract_until(";")
         add SymbolEntry(name, kind=FUNC, file, lineNum, sig)
-    elif trimmed.StartsWith("entity "):
-        name = extract_word_after("entity ")
+    elif trimmed.StartsWith("class "):
+        name = extract_word_after("class ")
         currentScope = name
         add SymbolEntry(name, kind=ENTITY, file, lineNum, "")
     elif trimmed.StartsWith("value "):
@@ -1946,7 +1946,7 @@ User-customizable keybindings (overrides defaults):
 **Files to create:**
 - `main.zia` — Entry point, event loop
 - `app_shell.zia` — Basic layout (VBox, editor area, status bar)
-- `core/document.zia` — Document entity
+- `core/document.zia` — Document class
 - `core/document_manager.zia` — Open/save/close
 - `editor/editor_engine.zia` — CodeEditor wrapper
 - `editor/editor_tabs.zia` — Tab management
@@ -1992,7 +1992,7 @@ User-customizable keybindings (overrides defaults):
 **Goal:** Open a folder, display file tree, click files to open.
 
 **Files to create:**
-- `core/project.zia` — Project entity
+- `core/project.zia` — Project class
 - `core/project_manager.zia` — File tree management
 - `ui/sidebar.zia` — Sidebar panel switching
 - `services/path_utils.zia` — Path helpers
@@ -2166,7 +2166,7 @@ User-customizable keybindings (overrides defaults):
 **Goal:** Persistent settings, user customization.
 
 **Files to create:**
-- `core/settings.zia` — Settings entity
+- `core/settings.zia` — Settings class
 - `core/settings_manager.zia` — Load/save/apply
 - `core/recent_files.zia` — MRU files
 - `core/recent_projects.zia` — MRU projects
@@ -2203,7 +2203,7 @@ User-customizable keybindings (overrides defaults):
 - [ ] File system watcher (background thread)
 - [ ] Prompt when file changed externally
 - [ ] Auto-refresh file tree on external changes
-- [ ] Code snippets (entity template, func template, etc.)
+- [ ] Code snippets (class template, func template, etc.)
 - [ ] Smart auto-indent (language-aware)
 - [ ] Toggle comment (Ctrl+/)
 - [ ] Breadcrumb navigation bar

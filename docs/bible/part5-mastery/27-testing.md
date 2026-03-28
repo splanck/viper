@@ -90,7 +90,7 @@ Not all tests are the same. Different tests verify different aspects of your sof
 
 ### Unit Tests
 
-Unit tests verify that individual pieces of code work correctly in isolation. A "unit" is typically a single function, method, or small entity --- the smallest testable piece of behavior.
+Unit tests verify that individual pieces of code work correctly in isolation. A "unit" is typically a single function, method, or small class --- the smallest testable piece of behavior.
 
 ```rust
 // The function we want to test
@@ -569,7 +569,7 @@ A helpful mnemonic for remembering what to test:
 Let's apply ZOMBIES to testing a stack:
 
 ```rust
-entity Stack[T] {
+class Stack[T] {
     hide items: List[T];
 
     expose func init() {
@@ -680,7 +680,7 @@ test "transfer moves money from source to destination" { ... }
 Good test names:
 - Describe the scenario or behavior being tested
 - Are specific enough to understand without reading the code
-- Often follow a pattern: "entity/function does something when condition"
+- Often follow a pattern: "class/function does something when condition"
 
 ### Test Names as Documentation
 
@@ -772,7 +772,7 @@ A stub returns predetermined values, ignoring its inputs:
 
 ```rust
 // Real implementation
-entity WeatherService {
+class WeatherService {
     func getTemperature(city: String) -> Number {
         var response = Http.Get("https://api.weather.com/" + city);
         return parseTemperature(response);
@@ -780,7 +780,7 @@ entity WeatherService {
 }
 
 // Stub for testing
-entity StubWeatherService implements IWeatherService {
+class StubWeatherService implements IWeatherService {
     hide temperature: Number;
 
     expose func init(temp: Number) {
@@ -821,7 +821,7 @@ The stub lets us test the thermostat's logic without depending on real weather d
 A mock records how it was called, letting you verify interactions:
 
 ```rust
-entity MockEmailService implements IEmailService {
+class MockEmailService implements IEmailService {
     hide sentEmails: List[Email];
 
     expose func init() {
@@ -876,12 +876,12 @@ A fake is a simplified but functional implementation:
 
 ```rust
 // Real database: connects to PostgreSQL, handles transactions, etc.
-entity ProductionDatabase implements IDatabase {
+class ProductionDatabase implements IDatabase {
     // ... complex implementation
 }
 
 // Fake database: uses in-memory storage
-entity FakeDatabase implements IDatabase {
+class FakeDatabase implements IDatabase {
     hide data: Map[String, User];
 
     expose func init() {
@@ -1109,7 +1109,7 @@ Learning to test well means learning what not to do. Here are common mistakes an
 
 ```rust
 // Bad: Tests internal details
-entity Cache {
+class Cache {
     hide storage: Map[String, String];
     // ...
 }
@@ -1458,7 +1458,7 @@ Property-based testing often finds edge cases you wouldn't think to test manuall
 
 ## Step-by-Step Example: Building with Tests
 
-Let's build a `StringCalculator` entity using tests to guide our development.
+Let's build a `StringCalculator` class using tests to guide our development.
 
 ### Requirements
 
@@ -1481,7 +1481,7 @@ test "empty string returns 0" {
 Implementation:
 
 ```rust
-entity StringCalculator {
+class StringCalculator {
     expose func init() {}
 
     func add(numbers: String) -> Integer {
@@ -1645,7 +1645,7 @@ func add(numbers: String) -> Integer {
 ### The Complete Solution
 
 ```rust
-entity StringCalculator {
+class StringCalculator {
     expose func init() {}
 
     func add(numbers: String) -> Integer {
@@ -1843,14 +1843,14 @@ The time you spend writing tests saves far more time in debugging, maintenance, 
 
 ## Exercises
 
-**Exercise 27.1 (Mimic)**: Write tests for a `StringUtils` entity with these methods:
+**Exercise 27.1 (Mimic)**: Write tests for a `StringUtils` class with these methods:
 - `reverse(s: String) -> String`: Returns the string reversed
 - `capitalize(s: String) -> String`: Capitalizes the first letter
 - `isPalindrome(s: String) -> Boolean`: Returns true if the string reads the same forwards and backwards
 
 Test normal cases, edge cases (empty string, single character), and various inputs.
 
-**Exercise 27.2 (Extend)**: Create a `BankAccount` entity with `deposit`, `withdraw`, and `transfer` methods. Write comprehensive tests including:
+**Exercise 27.2 (Extend)**: Create a `BankAccount` class with `deposit`, `withdraw`, and `transfer` methods. Write comprehensive tests including:
 - Normal deposits and withdrawals
 - Edge cases (zero amounts, exact balance withdrawals)
 - Error cases (negative amounts, overdrafts)
@@ -1862,14 +1862,14 @@ Test normal cases, edge cases (empty string, single character), and various inpu
 - The result contains exactly the same elements as the input
 - Sorting twice gives the same result as sorting once
 
-**Exercise 27.4 (Create)**: Create a mock for a file system and use it to test a `LogRotator` entity. The LogRotator should:
+**Exercise 27.4 (Create)**: Create a mock for a file system and use it to test a `LogRotator` class. The LogRotator should:
 - Check if a log file exceeds a size limit
 - Rename the old file with a timestamp
 - Create a new empty log file
 
 Your mock file system should track which operations were called without actually creating files.
 
-**Exercise 27.5 (TDD)**: Practice TDD by building a `ShoppingCart` entity. Write tests first, then implement:
+**Exercise 27.5 (TDD)**: Practice TDD by building a `ShoppingCart` class. Write tests first, then implement:
 1. Cart starts empty
 2. Adding an item increases the count
 3. Removing an item decreases the count

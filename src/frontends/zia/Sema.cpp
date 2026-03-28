@@ -16,7 +16,7 @@
 /// - Sema_Generics.cpp: Generic type/function substitution and instantiation
 /// - Sema_TypeResolution.cpp: Type resolution, extern functions, captures
 /// - Sema_Runtime.cpp: Runtime function registration
-/// - Sema_Decl.cpp: Declaration analysis (bind, value, entity, interface, etc.)
+/// - Sema_Decl.cpp: Declaration analysis (bind, struct, class, interface, etc.)
 /// - Sema_Stmt.cpp: Statement analysis
 /// - Sema_Expr.cpp: Expression analysis
 ///
@@ -293,11 +293,11 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
     if (!includeInherited)
         return result;
 
-    auto entityIt = lookupEntityDeclForType(typeName);
-    while (entityIt && !entityIt->baseClass.empty()) {
-        const std::string &parentName = entityIt->baseClass;
+    auto classIt = lookupClassDeclForType(typeName);
+    while (classIt && !classIt->baseClass.empty()) {
+        const std::string &parentName = classIt->baseClass;
         addFamily(parentName);
-        entityIt = lookupEntityDeclForType(parentName);
+        classIt = lookupClassDeclForType(parentName);
     }
 
     return result;
@@ -418,10 +418,10 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
 
     considerOwner(ownerType);
     if (includeInherited) {
-        auto entityIt = lookupEntityDeclForType(ownerType);
-        while (entityIt && !entityIt->baseClass.empty()) {
-            considerOwner(entityIt->baseClass);
-            entityIt = lookupEntityDeclForType(entityIt->baseClass);
+        auto classIt = lookupClassDeclForType(ownerType);
+        while (classIt && !classIt->baseClass.empty()) {
+            considerOwner(classIt->baseClass);
+            classIt = lookupClassDeclForType(classIt->baseClass);
         }
     }
 
@@ -440,11 +440,11 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
 
 MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
                                            const MethodDecl &decl) const {
-    auto entityIt = lookupEntityDeclForType(ownerType);
-    if (!entityIt)
+    auto classIt = lookupClassDeclForType(ownerType);
+    if (!classIt)
         return nullptr;
     const std::string wanted = methodSignatureKey(ownerType, &decl);
-    std::string parentName = entityIt->baseClass;
+    std::string parentName = classIt->baseClass;
     while (!parentName.empty()) {
         auto famIt = methodOverloads_.find(parentName + "." + decl.name);
         if (famIt != methodOverloads_.end()) {
@@ -456,7 +456,7 @@ MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
                     return candidate;
             }
         }
-        EntityDecl *nextIt = lookupEntityDeclForType(parentName);
+        ClassDecl *nextIt = lookupClassDeclForType(parentName);
         if (!nextIt)
             break;
         parentName = nextIt->baseClass;
@@ -464,24 +464,24 @@ MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
     return nullptr;
 }
 
-EntityDecl *Sema::lookupEntityDeclForType(const std::string &typeName) const {
-    auto it = entityDecls_.find(typeName);
-    if (it != entityDecls_.end())
+ClassDecl *Sema::lookupClassDeclForType(const std::string &typeName) const {
+    auto it = classDecls_.find(typeName);
+    if (it != classDecls_.end())
         return it->second;
     if (Decl *genericDecl = getGenericDeclForInstantiation(typeName)) {
-        if (genericDecl->kind == DeclKind::Entity)
-            return static_cast<EntityDecl *>(genericDecl);
+        if (genericDecl->kind == DeclKind::Class)
+            return static_cast<ClassDecl *>(genericDecl);
     }
     return nullptr;
 }
 
-ValueDecl *Sema::lookupValueDeclForType(const std::string &typeName) const {
-    auto it = valueDecls_.find(typeName);
-    if (it != valueDecls_.end())
+StructDecl *Sema::lookupStructDeclForType(const std::string &typeName) const {
+    auto it = structDecls_.find(typeName);
+    if (it != structDecls_.end())
         return it->second;
     if (Decl *genericDecl = getGenericDeclForInstantiation(typeName)) {
-        if (genericDecl->kind == DeclKind::Value)
-            return static_cast<ValueDecl *>(genericDecl);
+        if (genericDecl->kind == DeclKind::Struct)
+            return static_cast<StructDecl *>(genericDecl);
     }
     return nullptr;
 }
@@ -567,8 +567,8 @@ bool Sema::analyze(ModuleDecl &module) {
                 }
                 break;
             }
-            case DeclKind::Value: {
-                auto *value = static_cast<ValueDecl *>(decl.get());
+            case DeclKind::Struct: {
+                auto *value = static_cast<StructDecl *>(decl.get());
 
                 TypeRef valueType;
                 if (!value->genericParams.empty()) {
@@ -580,9 +580,9 @@ bool Sema::analyze(ModuleDecl &module) {
                         paramTypes.push_back(types::typeParam(param));
                     }
                     valueType =
-                        std::make_shared<ViperType>(TypeKindSem::Value, value->name, paramTypes);
+                        std::make_shared<ViperType>(TypeKindSem::Struct, value->name, paramTypes);
                 } else {
-                    valueType = types::value(value->name);
+                    valueType = types::structType(value->name);
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
@@ -590,36 +590,36 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.type = valueType;
                 sym.decl = value;
                 if (defineSymbol(value->name, sym)) {
-                    valueDecls_[value->name] = value;
+                    structDecls_[value->name] = value;
                     typeRegistry_[value->name] = valueType;
                 }
                 break;
             }
-            case DeclKind::Entity: {
-                auto *entity = static_cast<EntityDecl *>(decl.get());
+            case DeclKind::Class: {
+                auto *cls = static_cast<ClassDecl *>(decl.get());
 
-                TypeRef entityType;
-                if (!entity->genericParams.empty()) {
+                TypeRef classT;
+                if (!cls->genericParams.empty()) {
                     // Generic type: register for later instantiation
-                    registerGenericType(entity->name, entity);
+                    registerGenericType(cls->name, cls);
                     // Create uninstantiated type placeholder with type parameters
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : entity->genericParams) {
+                    for (const auto &param : cls->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
-                    entityType =
-                        std::make_shared<ViperType>(TypeKindSem::Entity, entity->name, paramTypes);
+                    classT =
+                        std::make_shared<ViperType>(TypeKindSem::Class, cls->name, paramTypes);
                 } else {
-                    entityType = types::entity(entity->name);
+                    classT = types::classType(cls->name);
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
-                sym.name = entity->name;
-                sym.type = entityType;
-                sym.decl = entity;
-                if (defineSymbol(entity->name, sym)) {
-                    entityDecls_[entity->name] = entity;
-                    typeRegistry_[entity->name] = entityType;
+                sym.name = cls->name;
+                sym.type = classT;
+                sym.decl = cls;
+                if (defineSymbol(cls->name, sym)) {
+                    classDecls_[cls->name] = cls;
+                    typeRegistry_[cls->name] = classT;
                 }
                 break;
             }
@@ -695,7 +695,7 @@ bool Sema::analyze(ModuleDecl &module) {
     }
 
     // Pre-pass: eagerly resolve types of final constants from literal initializers
-    // This allows forward references to final constants in entity/function bodies
+    // This allows forward references to final constants in class/function bodies
     registerFinalConstantTypes(module.declarations);
 
     // Second pass: register all method/field signatures (before analyzing bodies)
@@ -1177,11 +1177,11 @@ std::string Sema::qualifyName(const std::string &name) const {
 void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
         switch (decl->kind) {
-            case DeclKind::Value:
-                registerValueMembers(*static_cast<ValueDecl *>(decl.get()));
+            case DeclKind::Struct:
+                registerStructMembers(*static_cast<StructDecl *>(decl.get()));
                 break;
-            case DeclKind::Entity:
-                registerEntityMembers(*static_cast<EntityDecl *>(decl.get()));
+            case DeclKind::Class:
+                registerClassMembers(*static_cast<ClassDecl *>(decl.get()));
                 break;
             case DeclKind::Interface:
                 registerInterfaceMembers(*static_cast<InterfaceDecl *>(decl.get()));
@@ -1198,7 +1198,7 @@ void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations) {
 /// @brief Pre-pass: Eagerly resolve types of final constants from literal initializers.
 /// @details Scans declarations for final globals with literal initializers and updates
 ///          the registered symbol type from unknown() to the concrete literal type.
-///          This allows forward references to final constants in entity/function bodies.
+///          This allows forward references to final constants in class/function bodies.
 /// @param declarations The declaration list to process.
 void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
@@ -1260,11 +1260,11 @@ void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations) {
             case DeclKind::Function:
                 analyzeFunctionDecl(*static_cast<FunctionDecl *>(decl.get()));
                 break;
-            case DeclKind::Value:
-                analyzeValueDecl(*static_cast<ValueDecl *>(decl.get()));
+            case DeclKind::Struct:
+                analyzeStructDecl(*static_cast<StructDecl *>(decl.get()));
                 break;
-            case DeclKind::Entity:
-                analyzeEntityDecl(*static_cast<EntityDecl *>(decl.get()));
+            case DeclKind::Class:
+                analyzeClassDecl(*static_cast<ClassDecl *>(decl.get()));
                 break;
             case DeclKind::Interface:
                 analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(decl.get()));
@@ -1316,10 +1316,10 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 registerFunctionOverload(qualifiedName, func, funcType, func->loc);
                 break;
             }
-            case DeclKind::Value: {
-                auto *value = static_cast<ValueDecl *>(innerDecl.get());
+            case DeclKind::Struct: {
+                auto *value = static_cast<StructDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(value->name);
-                auto valueType = types::value(qualifiedName);
+                auto valueType = types::structType(qualifiedName);
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
@@ -1327,24 +1327,24 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.type = valueType;
                 sym.decl = value;
                 if (defineSymbol(qualifiedName, sym)) {
-                    valueDecls_[qualifiedName] = value;
+                    structDecls_[qualifiedName] = value;
                     typeRegistry_[qualifiedName] = valueType;
                 }
                 break;
             }
-            case DeclKind::Entity: {
-                auto *entity = static_cast<EntityDecl *>(innerDecl.get());
-                std::string qualifiedName = qualifyName(entity->name);
-                auto entityType = types::entity(qualifiedName);
+            case DeclKind::Class: {
+                auto *cls = static_cast<ClassDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(cls->name);
+                auto classT = types::classType(qualifiedName);
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
                 sym.name = qualifiedName;
-                sym.type = entityType;
-                sym.decl = entity;
+                sym.type = classT;
+                sym.decl = cls;
                 if (defineSymbol(qualifiedName, sym)) {
-                    entityDecls_[qualifiedName] = entity;
-                    typeRegistry_[qualifiedName] = entityType;
+                    classDecls_[qualifiedName] = cls;
+                    typeRegistry_[qualifiedName] = classT;
                 }
                 break;
             }

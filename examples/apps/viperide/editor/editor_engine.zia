@@ -7,7 +7,7 @@ bind GUI = Viper.GUI;
 // EditorEngine — wraps the GUI.CodeEditor widget with IDE-level features
 // ============================================================================
 
-entity EditorEngine {
+class EditorEngine {
     expose GUI.CodeEditor editor;   // CodeEditor widget handle
     expose Integer lastCursorLine;        // For detecting cursor changes
     expose Integer lastCursorCol;

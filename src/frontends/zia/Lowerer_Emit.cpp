@@ -279,11 +279,11 @@ Lowerer::Value Lowerer::emitBox(Value val, Type type) {
 }
 
 Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticType) {
-    // Check if this is a value type that needs heap allocation
-    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+    // Check if this is a struct type that needs heap allocation
+    if (semanticType && semanticType->kind == TypeKindSem::Struct &&
         ilType.kind == Type::Kind::Ptr) {
-        // Look up the value type info
-        const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
+        // Look up the struct type info
+        const StructTypeInfo *info = getOrCreateStructTypeInfo(semanticType->name);
         if (info && info->totalSize > 0) {
             // Read all field values BEFORE allocating heap memory. The source
             // pointer (val) may point into a callee's C stack frame that was
@@ -345,14 +345,14 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType) {
 }
 
 LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType) {
-    // Check if this is a value type that needs copying from heap to stack
-    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+    // Check if this is a struct type that needs copying from heap to stack
+    if (semanticType && semanticType->kind == TypeKindSem::Struct &&
         ilType.kind == Type::Kind::Ptr) {
-        // Look up the value type info
-        const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
+        // Look up the struct type info
+        const StructTypeInfo *info = getOrCreateStructTypeInfo(semanticType->name);
         if (info && info->totalSize > 0) {
             // Allocate stack memory for the copy
-            Value stackCopy = emitValueTypeCopy(*info, boxed);
+            Value stackCopy = emitStructTypeCopy(*info, boxed);
             return {stackCopy, Type(Type::Kind::Ptr)};
         }
     }
@@ -437,7 +437,7 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     Type fieldType = mapType(field->type);
     // BUG-ADV-002: Retain/release string fields on store to maintain correct
     // refcounts.  Without this, the caller's deferred release may free the
-    // string while the entity still holds a pointer to it.
+    // string while the class still holds a pointer to it.
     if (fieldType.kind == Type::Kind::Str) {
         Value oldValue = emitLoad(fieldAddr, fieldType);
         emitCall(runtime::kStrRetainMaybe, {val});
@@ -448,7 +448,7 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     }
 }
 
-Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr) {
+Lowerer::Value Lowerer::emitStructTypeCopy(const StructTypeInfo &info, Value sourcePtr) {
     // Allocate stack space for the copy
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
@@ -477,8 +477,8 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     return destPtr;
 }
 
-Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info) {
-    // Allocate stack space for the value type
+Lowerer::Value Lowerer::emitStructTypeAlloc(const StructTypeInfo &info) {
+    // Allocate stack space for the struct type
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
     allocaInstr.result = allocaId;
@@ -683,7 +683,7 @@ void Lowerer::removeSlot(const std::string &name) {
 }
 
 bool Lowerer::getSelfPtr(Value &result) {
-    // Check if self is stored in a slot (used in entity/value type methods)
+    // Check if self is stored in a slot (used in class/struct type methods)
     auto slotIt = slots_.find("self");
     if (slotIt != slots_.end()) {
         result = loadFromSlot("self", Type(Type::Kind::Ptr));
@@ -735,7 +735,7 @@ bool Lowerer::needsRelease(TypeRef type) const {
         return false;
     switch (type->kind) {
         case TypeKindSem::String:
-        case TypeKindSem::Entity:
+        case TypeKindSem::Class:
         case TypeKindSem::List:
         case TypeKindSem::Map:
         case TypeKindSem::Set:
@@ -828,8 +828,8 @@ void Lowerer::releaseDeferredTemps() {
 
 void Lowerer::emitDestructorDispatch() {
     std::vector<std::pair<int, std::string>> destructors;
-    destructors.reserve(entityTypes_.size());
-    for (const auto &[typeName, info] : entityTypes_) {
+    destructors.reserve(classTypes_.size());
+    for (const auto &[typeName, info] : classTypes_) {
         const std::string dtorName = typeName + ".__dtor";
         if (definedFunctions_.count(dtorName) > 0)
             destructors.emplace_back(info.classId, dtorName);
@@ -845,15 +845,15 @@ void Lowerer::emitDestructorDispatch() {
     auto savedLocalTypes = std::move(localTypes_);
     auto savedDeferredTemps = std::move(deferredTemps_);
     TypeRef savedReturnType = currentReturnType_;
-    const EntityTypeInfo *savedEntityType = currentEntityType_;
-    const ValueTypeInfo *savedValueType = currentValueType_;
+    const ClassTypeInfo *savedEntityType = currentClassType_;
+    const StructTypeInfo *savedValueType = currentStructType_;
 
     auto &fn = builder_->startFunction(
         "__zia_dtor_dispatch", Type(Type::Kind::Void), {{"self", Type(Type::Kind::Ptr)}});
     currentFunc_ = &fn;
     currentReturnType_ = types::voidType();
-    currentEntityType_ = nullptr;
-    currentValueType_ = nullptr;
+    currentClassType_ = nullptr;
+    currentStructType_ = nullptr;
     definedFunctions_.insert("__zia_dtor_dispatch");
     blockMgr_.bind(builder_.get(), &fn);
     locals_.clear();
@@ -901,8 +901,8 @@ void Lowerer::emitDestructorDispatch() {
 
     currentFunc_ = savedFunc;
     currentReturnType_ = savedReturnType;
-    currentEntityType_ = savedEntityType;
-    currentValueType_ = savedValueType;
+    currentClassType_ = savedEntityType;
+    currentStructType_ = savedValueType;
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
     localTypes_ = std::move(savedLocalTypes);

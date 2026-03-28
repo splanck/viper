@@ -352,7 +352,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
         }
     }
 
-    // For entity/object types, the cast is a no-op at the IL level since all
+    // For class/object types, the cast is a no-op at the IL level since all
     // objects are represented as pointers. The semantic analysis already
     // validated the cast is valid.
     return {source.value, ilTargetType};
@@ -372,14 +372,14 @@ LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    // Look up the entity type info for the target type
+    // Look up the class type info for the target type
     std::string targetName = targetType->name;
-    auto it = entityTypes_.find(targetName);
-    if (it == entityTypes_.end()) {
-        // Not an entity type -- fall back to false
+    auto it = classTypes_.find(targetName);
+    if (it == classTypes_.end()) {
+        // Not a class type -- fall back to false
         diag_.report(
             {il::support::Severity::Warning,
-             "'is' check against non-entity type '" + targetName + "' always evaluates to false",
+             "'is' check against non-class type '" + targetName + "' always evaluates to false",
              expr->loc,
              "W019"});
         return {Value::constInt(0), Type(Type::Kind::I64)};

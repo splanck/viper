@@ -40,7 +40,7 @@ bind "./config";
 // ParticleEmitter.New(capacity) allocates the particle pool.
 // FadeOut and Shrink make particles gracefully disappear over their lifetime.
 
-entity ParticleSystem {
+class ParticleSystem {
     hide PE emitter;
 
     expose func init() {
@@ -175,7 +175,7 @@ entity ParticleSystem {
 //
 // Synth.Tone(frequency, durationMs, waveform) generates a sine/square tone.
 
-entity SoundManager {
+class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
 

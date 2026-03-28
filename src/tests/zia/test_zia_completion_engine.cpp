@@ -12,7 +12,7 @@
 ///
 ///   - CtrlSpace trigger → returns scope symbols and keywords
 ///   - Keyword prefix filtering (e.g. "fu" → "func")
-///   - Member access trigger (dot) → returns members of entity type
+///   - Member access trigger (dot) → returns members of class type
 ///   - AfterNew trigger → returns type names
 ///   - serialize() → tab-delimited output
 ///   - Cache: consecutive calls with same source reuse cached Sema
@@ -88,7 +88,7 @@ TEST(CompletionEngine, CtrlSpace_ReturnsKeywords) {
     // maxResults=0 → unlimited. Keywords are priority=50; scope symbols priority=10.
     auto items = engine.complete(source, 2, 0, "<test>", 0);
     EXPECT_TRUE(hasLabel(items, "func"));
-    EXPECT_TRUE(hasLabel(items, "entity"));
+    EXPECT_TRUE(hasLabel(items, "class"));
     EXPECT_TRUE(hasLabel(items, "var"));
     EXPECT_TRUE(hasLabel(items, "if"));
     EXPECT_TRUE(hasLabel(items, "while"));
@@ -110,13 +110,13 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults) {
 // ---------------------------------------------------------------------------
 
 TEST(CompletionEngine, MemberAccess_EntityMembers) {
-    // Source with entity Box. We position the cursor in "Box.wi" (prefix="wi",
+    // Source with class Box. We position the cursor in "Box.wi" (prefix="wi",
     // triggerExpr="Box"). "Box" is in global scope as a Type symbol so
-    // resolveExprType() can find it and return the entity type for getMembersOf().
+    // resolveExprType() can find it and return the class type for getMembersOf().
     const std::string src = R"(
 module Test;
 
-entity Box {
+class Box {
     expose Integer width;
     expose Integer height;
     expose func Area() -> Integer {
@@ -146,11 +146,11 @@ TEST(CompletionEngine, AfterNew_ReturnsTypeNames) {
     const std::string src = R"(
 module Test;
 
-entity Dog {
+class Dog {
     expose func init() {}
 }
 
-value Diamond {
+struct Diamond {
     expose Integer x;
 }
 

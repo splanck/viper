@@ -175,7 +175,7 @@ static HoverResult resolveHoverTarget(
             }
         }
 
-        // Try position-based lookup (locals, params, entity fields).
+        // Try position-based lookup (locals, params, class fields).
         if (!current) {
             auto *scoped = sema.findSymbolAtPosition(
                 parts[0], ar.fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
@@ -397,7 +397,7 @@ static std::string formatHoverMarkdown(const HoverResult &info) {
         if (!info.ownerName.empty())
             md += "\n\n*Member of `" + info.ownerName + "`*";
     } else if (info.kind == "type") {
-        md += "```zia\nentity " + info.name + "\n```";
+        md += "```zia\nclass " + info.name + "\n```";
     } else if (info.kind == "module") {
         md += "```zia\nbind " + info.name + " = " + info.type + "\n```\n\n*Module namespace*";
     } else if (info.kind == "runtime-class") {

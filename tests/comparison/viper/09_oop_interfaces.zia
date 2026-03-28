@@ -9,7 +9,7 @@ interface IShape {
 }
 
 // Implement interface in Circle
-entity Circle implements IShape {
+class Circle implements IShape {
     expose Number radius;
 
     expose func init(r: Number) {
@@ -30,7 +30,7 @@ entity Circle implements IShape {
 }
 
 // Implement interface in Rectangle
-entity Rectangle implements IShape {
+class Rectangle implements IShape {
     expose Number width;
     expose Number height;
 

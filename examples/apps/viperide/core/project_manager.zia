@@ -14,7 +14,7 @@ bind Str = Viper.String;
 // when the user selects a file.
 // ============================================================================
 
-entity ProjectManager {
+class ProjectManager {
     // The current project
     expose project.Project project;
 

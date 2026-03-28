@@ -367,7 +367,7 @@ bind Viper.Network;
 bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
-value Weather {
+struct Weather {
     temperature: Number;
     conditions: String;
     humidity: Number;
@@ -607,7 +607,7 @@ bind Viper.Collections;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity ChatServer {
+class ChatServer {
     // The server socket that accepts new connections
     hide server: TcpServer;
 
@@ -746,7 +746,7 @@ bind Thread = Viper.Threads.Thread;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity ChatClient {
+class ChatClient {
     hide socket: TcpSocket;
     hide username: String;
     hide running: Boolean;
@@ -908,7 +908,7 @@ bind Viper.Time;
 bind Convert = Viper.Core.Convert;
 
 // Player state that we'll send frequently
-value PlayerState {
+struct PlayerState {
     id: Integer;
     x: Number;
     y: Number;
@@ -917,7 +917,7 @@ value PlayerState {
     timestamp: Integer;  // When this state was captured
 }
 
-entity GameNetwork {
+class GameNetwork {
     hide socket: UdpSocket;
     hide serverAddress: String;
     hide serverPort: Integer;
@@ -992,7 +992,7 @@ HTTP was designed for request-response: the client asks, the server answers, don
 bind Viper.Network;
 bind Viper.Terminal;
 
-entity WebSocketClient {
+class WebSocketClient {
     hide ws: WebSocket;
     hide connected: Boolean;
 
@@ -1485,7 +1485,7 @@ Without limits, attackers can flood your server with requests.
 ```rust
 bind Viper.Time;
 
-entity RateLimitedServer {
+class RateLimitedServer {
     // Track requests per IP address
     hide requestCounts: Map[String, Integer];
     hide lastReset: Integer;
@@ -1676,7 +1676,7 @@ bind Viper.Time;
 bind Viper.Terminal;
 
 // Data type for weather information
-value CityWeather {
+struct CityWeather {
     city: String;
     temperature: Number;
     conditions: String;
@@ -1685,8 +1685,8 @@ value CityWeather {
     lastUpdated: Integer;
 }
 
-// Service entity that handles weather API calls
-entity WeatherService {
+// Service class that handles weather API calls
+class WeatherService {
     hide apiKey: String;
     hide baseUrl: String;
     hide cache: Map[String, CityWeather];

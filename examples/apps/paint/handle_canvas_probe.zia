@@ -24,7 +24,7 @@ func countInk(dc: DrawingCanvas) -> Integer {
     return count;
 }
 
-entity ProbeApp {
+class ProbeApp {
     hide DrawingCanvas canvas;
     hide ColorManager colors;
     hide BrushSettings brushSettings;

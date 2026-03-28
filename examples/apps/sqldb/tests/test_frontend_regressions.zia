@@ -22,7 +22,7 @@ bind "../types";
 bind "../table";
 bind "../schema";
 
-entity RecoveryEngine {
+class RecoveryEngine {
     expose WALManager wal;
     expose Boolean isPersistent;
     expose Integer nextTxnId;

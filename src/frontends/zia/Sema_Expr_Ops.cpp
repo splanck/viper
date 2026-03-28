@@ -149,8 +149,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                         baseType->innerType())
                         baseType = baseType->innerType();
 
-                    if (baseType && (baseType->kind == TypeKindSem::Entity ||
-                                     baseType->kind == TypeKindSem::Value)) {
+                    if (baseType && (baseType->kind == TypeKindSem::Class ||
+                                     baseType->kind == TypeKindSem::Struct)) {
                         if (const PropertyDecl *prop =
                                 findPropertyDecl(baseType->name, fieldExpr->field)) {
                             if (!prop->setterBody) {
@@ -178,7 +178,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                             // the lowerer can insert Number↔Integer conversions.
                             if (setter->type && setter->type->kind == TypeKindSem::Function) {
                                 auto params = setter->type->paramTypes();
-                                // Setter signature: (self, value) — value type is params[1]
+                                // Setter signature: (self, value) — struct type is params[1]
                                 if (params.size() >= 2 && params[1]) {
                                     exprTypes_[fieldExpr] = params[1];
                                 } else if (params.size() == 1 && params[0]) {

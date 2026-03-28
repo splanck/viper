@@ -16,7 +16,7 @@ bind Viper.Math;
 bind Viper.Time;
 
 // Star entity representing a single star in 3D space
-entity Star {
+class Star {
     expose Number x;
     expose Number y;
     expose Number z;
@@ -73,7 +73,7 @@ entity Star {
 }
 
 // Starfield manager
-entity Starfield {
+class Starfield {
     expose List[Star] stars;
     expose Integer numStars;
     expose Number maxDepth;

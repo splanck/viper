@@ -5,7 +5,7 @@ bind "./config";
 // ============================================================================
 // Move — represents a single chess move
 // ============================================================================
-value Move {
+struct Move {
     expose Integer from;
     expose Integer to;
     expose Integer captured;       // piece type captured (0 = none), always positive
@@ -32,7 +32,7 @@ value Move {
 // ============================================================================
 // UndoInfo — state captured before makeMove, needed to restore after unmakeMove
 // ============================================================================
-value UndoInfo {
+struct UndoInfo {
     expose Integer enPassantFile;
     expose Boolean castleWK;
     expose Boolean castleWQ;
@@ -65,7 +65,7 @@ value UndoInfo {
 // Piece encoding: positive = white, negative = black, 0 = empty
 //   abs(piece) gives piece type (PAWN=1..KING=6)
 // ============================================================================
-entity Board {
+class Board {
     expose Integer squares0;   expose Integer squares1;
     expose Integer squares2;   expose Integer squares3;
     expose Integer squares4;   expose Integer squares5;

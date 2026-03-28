@@ -578,7 +578,7 @@ Games should abstract input so the same action can come from different sources. 
 bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Math as Math;
 
-entity InputManager {
+class InputManager {
     func getMoveX() -> Number {
         // Check keyboard first
         if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
@@ -658,7 +658,7 @@ Players appreciate customizable controls. A key map stores the current bindings:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-entity KeyMap {
+class KeyMap {
     hide bindings: Map[String, Integer];
 
     expose func init() {
@@ -720,7 +720,7 @@ Professional games use *input buffering* to feel responsive. The idea: remember 
 Imagine you're playing a platformer. Your character is falling toward the ground. You press jump slightly before landing. Without buffering, the jump is ignored because you weren't on the ground yet. With buffering, the game remembers you pressed jump and executes it the moment you land.
 
 ```rust
-entity InputBuffer {
+class InputBuffer {
     hide jumpBufferTime: Number;
     hide jumpBufferDuration: Number = 0.1;  // 100ms buffer window
 
@@ -769,7 +769,7 @@ This small addition makes games feel much more responsive. Players don't realize
 A related technique is *coyote time* (named after cartoon coyotes who don't fall until they look down). It's the opposite of input buffering: instead of remembering inputs, you remember when the player was last grounded.
 
 ```rust
-entity CoyoteTime {
+class CoyoteTime {
     hide timeLeftGrounded: Number;
     hide coyoteDuration: Number = 0.1;  // 100ms grace period
     hide wasGrounded: Boolean = false;
@@ -800,7 +800,7 @@ Now the player can jump for a brief moment after walking off a ledge, which feel
 Some inputs shouldn't repeat too quickly. *Debouncing* prevents rapid-fire activation:
 
 ```rust
-entity Debouncer {
+class Debouncer {
     hide cooldowns: Map[String, Number];
 
     expose func init() {
@@ -859,7 +859,7 @@ bind Viper.Graphics;
 bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Time;
 
-value Player {
+struct Player {
     x: Number;
     y: Number;
     vx: Number;
@@ -1080,7 +1080,7 @@ if Keyboard.IsPressed(KEY_SPACE) { jump(); }
 **Better:**
 ```rust
 // Centralized input handling
-entity InputManager {
+class InputManager {
     func getMoveDirection() -> Vec2 { ... }
     func isJumpPressed() -> Boolean { ... }
 }

@@ -116,9 +116,9 @@ static const char *const kKeywords[] = {
     "null",
     "match",
     // Declaration keywords
-    "entity",
+    "class",
     "interface",
-    "value",
+    "struct",
     "expose",
     "module",
     "bind",
@@ -148,7 +148,7 @@ static const SnippetData kSnippets[] = {
     {"for", "for i in 0..n {\n    \n}"},
     {"for-in", "for item in  {\n    \n}"},
     {"func", "func name() {\n    \n}"},
-    {"entity", "entity Name {\n    expose func init() {\n    }\n}"},
+    {"class", "class Name {\n    expose func init() {\n    }\n}"},
     {nullptr, nullptr},
 };
 
@@ -458,7 +458,7 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
             return nsMembers;
     }
 
-    // ── Step 4: resolve via expression type (for user-defined entity fields) ─
+    // ── Step 4: resolve via expression type (for user-defined class fields) ─
     TypeRef type = resolveExprType(sema, ctx.triggerExpr);
     if (!type)
         return items;

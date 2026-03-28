@@ -30,7 +30,7 @@ bind Viper.Graphics;
 bind Viper.Game;
 bind "./config";
 
-entity EnemyManager {
+class EnemyManager {
     // ObjectPool.New(capacity) — fixed-size pool of reusable slots.
     // Acquire() returns a handle (integer >= 0) or -1 if full.
     // Release(handle) returns the slot to the pool.

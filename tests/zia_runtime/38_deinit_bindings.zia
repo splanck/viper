@@ -5,7 +5,7 @@ bind Viper.Memory;
 
 var released: Boolean = false;
 
-entity Resource {
+class Resource {
     deinit {
         released = true;
         Say("deinit");

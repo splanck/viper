@@ -16,7 +16,7 @@ bind Viper.Game.ParticleEmitter as PE;
 // PARTICLE SYSTEM ENTITY - Runtime-backed particle effects
 // =============================================================================
 
-entity ParticleSystem {
+class ParticleSystem {
     hide PE emitter;
 
     expose func init() {

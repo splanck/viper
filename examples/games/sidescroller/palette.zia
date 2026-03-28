@@ -14,7 +14,7 @@ module palette;
 
 bind Viper.Graphics.Color;
 
-entity Palette {
+class Palette {
     expose Integer outline;
     expose Integer skyTop;
     expose Integer skyBot;

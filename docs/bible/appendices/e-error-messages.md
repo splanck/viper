@@ -38,7 +38,7 @@ Error: ErrorType at filename.zia:LINE:COLUMN
 | [Type Errors](#type-errors) | Mismatched types, invalid operations, conversion failures |
 | [Name Errors](#name-errors) | Undefined variables, duplicate definitions, scope issues |
 | [Function Errors](#function-errors) | Wrong arguments, missing returns, signature mismatches |
-| [Entity/Interface Errors](#entityinterface-errors) | Unimplemented methods, access violations, inheritance issues |
+| [Entity/Interface Errors](#classinterface-errors) | Unimplemented methods, access violations, inheritance issues |
 | [Runtime Errors](#runtime-errors) | Null access, array bounds, division by zero |
 | [File/IO Errors](#fileio-errors) | Missing files, permission issues, format errors |
 | [Memory Errors](#memory-errors) | Out of memory, stack overflow, resource exhaustion |
@@ -505,7 +505,7 @@ Error: TypeError at main.zia:15:12
 **Common causes:**
 - Parsing non-numeric String as number
 - Invalid format for date/time parsing
-- Casting between incompatible entity types
+- Casting between incompatible class types
 
 **Fix examples:**
 
@@ -1051,7 +1051,7 @@ Error: TypeError at main.zia:20:8
   Entity 'Circle' does not implement method 'draw' from interface 'Drawable'
 ```
 
-**What it means:** An entity claims to implement an interface but is missing one or more required methods.
+**What it means:** An class claims to implement an interface but is missing one or more required methods.
 
 **Fix examples:**
 
@@ -1064,7 +1064,7 @@ interface Drawable {
 // Problem: Missing method
 bind Viper.Terminal;
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     radius: Number;
 
     func draw() {
@@ -1074,7 +1074,7 @@ entity Circle implements Drawable {
 }
 
 // Solution: Implement all methods
-entity Circle implements Drawable {
+class Circle implements Drawable {
     radius: Number;
     color: String;
 
@@ -1096,15 +1096,15 @@ entity Circle implements Drawable {
 
 ```text
 Error: AccessError at main.zia:30:15
-  Cannot access hidden member 'balance' of entity 'BankAccount'
+  Cannot access hidden member 'balance' of class 'BankAccount'
 ```
 
-**What it means:** You tried to access a field or method marked `hide` from outside the entity.
+**What it means:** You tried to access a field or method marked `hide` from outside the class.
 
 **Fix examples:**
 
 ```rust
-entity BankAccount {
+class BankAccount {
     hide balance: Number;  // Hidden field
 
     expose func getBalance() -> Number {
@@ -1135,33 +1135,33 @@ Error: TypeError at main.zia:25:5
   Override of 'speak' has different signature than parent
 ```
 
-**What it means:** When overriding a method from a parent entity, the signature must match exactly.
+**What it means:** When overriding a method from a parent class, the signature must match exactly.
 
 **Fix examples:**
 
 ```rust
-entity Animal {
+class Animal {
     func speak() -> String {
         return "...";
     }
 }
 
 // Problem: Different return type
-entity Dog extends Animal {
+class Dog extends Animal {
     func speak() -> Integer {  // Error: parent returns String
         return 1;
     }
 }
 
 // Problem: Different parameters
-entity Dog extends Animal {
+class Dog extends Animal {
     func speak(loudly: Boolean) -> String {  // Error: parent has no params
         return "Woof!";
     }
 }
 
 // Solution: Match signature exactly
-entity Dog extends Animal {
+class Dog extends Animal {
     func speak() -> String {
         return "Woof!";
     }
@@ -1177,12 +1177,12 @@ Error: TypeError at main.zia:15:12
   Cannot create 'Player' without initializer
 ```
 
-**What it means:** You tried to create an entity instance without providing required initialization values.
+**What it means:** You tried to create a class instance without providing required initialization values.
 
 **Fix examples:**
 
 ```rust
-entity Player {
+class Player {
     name: String;
     health: Integer;
 
@@ -1215,7 +1215,7 @@ Error: ContextError at main.zia:12:16
 ```rust
 bind Viper.Terminal;
 
-entity Counter {
+class Counter {
     count: Integer;
 
     // Problem: Using self in static function
@@ -1225,7 +1225,7 @@ entity Counter {
 }
 
 // Solution 1: Make it a regular method
-entity Counter {
+class Counter {
     count: Integer;
 
     func printCount() {
@@ -1234,7 +1234,7 @@ entity Counter {
 }
 
 // Solution 2: Pass instance as parameter
-entity Counter {
+class Counter {
     count: Integer;
 
     static func printCount(counter: Counter) {

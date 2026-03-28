@@ -3,7 +3,7 @@
 module Test;
 
 // Base entity
-entity Animal {
+class Animal {
     hide String name;
 
     expose func init(n: String) {
@@ -20,7 +20,7 @@ entity Animal {
 }
 
 // Derived entity with additional field
-entity Dog extends Animal {
+class Dog extends Animal {
     hide String breed;
 
     expose func init(n: String, b: String) {
@@ -39,7 +39,7 @@ entity Dog extends Animal {
 }
 
 // Another derived entity
-entity Cat extends Animal {
+class Cat extends Animal {
     expose func init(n: String) {
         name = n;   // Access inherited field
     }

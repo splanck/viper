@@ -18,7 +18,7 @@ bind "./effects/torch";
 bind "./world/level_builder";
 bind "./world/level1_crypt";
 
-entity Game {
+class Game {
     hide Integer state;
     hide Integer currentLevel;
     hide Integer score;

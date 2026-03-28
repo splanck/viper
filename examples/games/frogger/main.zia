@@ -26,7 +26,7 @@ var TICK_MS = 100;
 // ============================================
 // FROG - Player Character
 // ============================================
-entity Frog {
+class Frog {
     expose Integer col;
     expose Integer row;
     expose Integer startCol;
@@ -106,7 +106,7 @@ entity Frog {
 // ============================================
 // VEHICLE - Cars/Trucks on Road
 // ============================================
-entity Vehicle {
+class Vehicle {
     expose Integer col;
     expose Integer row;
     expose Integer speed;
@@ -151,7 +151,7 @@ entity Vehicle {
 // ============================================
 // PLATFORM - Logs/Turtles in River
 // ============================================
-entity Platform {
+class Platform {
     expose Integer col;
     expose Integer row;
     expose Integer speed;
@@ -219,7 +219,7 @@ entity Platform {
 // ============================================
 // HOME - Goal Slots
 // ============================================
-entity Home {
+class Home {
     expose Integer col;
     expose Boolean filled;
 
@@ -302,7 +302,7 @@ func drawLine(r: Integer, startC: Integer, endC: Integer, color: Integer, ch: St
 // ============================================
 // GAME STATE Entity
 // ============================================
-entity GameState {
+class GameState {
     expose Integer homesFilled;
     expose Boolean running;
     expose Boolean paused;

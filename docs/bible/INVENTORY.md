@@ -102,7 +102,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 
 Chapter 21 will walk through building Frogger from scratch, teaching:
 - Game loop architecture
-- Sprite/entity management
+- Sprite/class management
 - Collision detection
 - State machines
 - Score and lives

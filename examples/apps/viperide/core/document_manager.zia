@@ -7,7 +7,7 @@ bind "../services/file_utils";
 // DocumentManager — manages all open documents and tab synchronization
 // ============================================================================
 
-entity DocumentManager {
+class DocumentManager {
     expose List[document.Document] documents;  // All open documents
     expose Integer activeIndex;                // Index of active document (-1 = none)
     expose Integer untitledCount;             // Counter for "Untitled N" naming

@@ -39,7 +39,7 @@
         <li><a href="#2-variables-and-types">2. Variables and Types</a></li>
         <li><a href="#3-control-flow">3. Control Flow</a></li>
         <li><a href="#4-functions">4. Functions</a></li>
-        <li><a href="#5-entity-types-classes">5. Entity Types (Classes)</a></li>
+        <li><a href="#5-class-types-classes">5. Entity Types (Classes)</a></li>
         <li><a href="#6-value-types-structs">6. Value Types (Structs)</a></li>
         <li><a href="#7-generic-collections">7. Generic Collections</a></li>
         <li><a href="#8-modules-and-bindings">8. Modules and Bindings</a></li>
@@ -64,7 +64,7 @@
 <li>[Variables and Types](#2-variables-and-types)</li>
 <li>[Control Flow](#3-control-flow)</li>
 <li>[Functions](#4-functions)</li>
-<li>[Entity Types (Classes)](#5-entity-types-classes)</li>
+<li>[Entity Types (Classes)](#5-class-types-classes)</li>
 <li>[Value Types (Structs)](#6-value-types-structs)</li>
 <li>[Generic Collections](#7-generic-collections)</li>
 <li>[Modules and Bindings](#8-modules-and-bindings)</li>
@@ -263,11 +263,11 @@ func start() {
 <p>For full details on mixed-language projects, see the</p>
 <p>[Cross-Language Interop Guide](interop.md).</p>
 <p>---</p>
-<h2 id="5-entity-types-classes">5. Entity Types (Classes)</h2>
-<p>Entities are reference types with identity, inheritance, and methods.</p>
-<h3 id="defining-an-entity">Defining an Entity</h3>
+<h2 id="5-class-types-classes">5. Entity Types (Classes)</h2>
+<p>Entities are reference types with idclass, inheritance, and methods.</p>
+<h3 id="defining-an-class">Defining an Entity</h3>
 <pre><code data-lang="viper">
-entity Player {
+class Player {
     String name;
     Integer health;
     Integer score;
@@ -306,7 +306,7 @@ entity Player {
 bind Viper.Terminal;
 
 func start() {
-    // Create a new entity instance
+    // Create a new class instance
     var player = new Player();
     player.init(&quot;Alice&quot;);
 
@@ -331,7 +331,7 @@ func start() {
 <pre><code data-lang="viper">
 bind Viper.Math;
 
-value Point {
+struct Point {
     Integer x;
     Integer y;
 
@@ -368,9 +368,9 @@ while i &lt; numbers.size() {
     i = i + 1;
 }
 </code></pre>
-<h3 id="entity-lists">Entity Lists</h3>
+<h3 id="class-lists">Entity Lists</h3>
 <pre><code data-lang="viper">
-// List of entity instances
+// List of class instances
 var players: List[Player] = new List[Player]();
 
 var p1 = new Player();
@@ -597,13 +597,13 @@ bind &quot;./other&quot;;
 var globalVar = 0;
 
 // Entity types
-entity MyEntity {
+class MyEntity {
     Integer field;
     func method() { }
 }
 
 // Value types
-value MyValue {
+struct MyStruct {
     Integer field;
 }
 

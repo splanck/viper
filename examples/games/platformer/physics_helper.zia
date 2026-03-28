@@ -23,7 +23,7 @@ module physics_helper;
 bind Viper.Game;
 bind "./config";
 
-entity PhysicsHelper {
+class PhysicsHelper {
 
     // CollisionRect instances reused each frame (avoid allocation per check).
     // CollisionRect.New(x, y, w, h) creates an AABB at the given position.

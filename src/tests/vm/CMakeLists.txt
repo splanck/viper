@@ -439,10 +439,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_tco_string_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_tco_string_retain test_vm_tco_string_retain)
 
-    # Entity allocation stress tests (BUG-VM-001 regression)
-    viper_add_test(test_vm_entity_stress ${_VIPER_VM_DIR}/EntityStressTests.cpp)
-    target_link_libraries(test_vm_entity_stress PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common fe_zia)
-    viper_add_ctest(test_vm_entity_stress test_vm_entity_stress)
+    # Class allocation stress tests (BUG-VM-001 regression)
+    viper_add_test(test_vm_class_stress ${_VIPER_VM_DIR}/ClassStressTests.cpp)
+    target_link_libraries(test_vm_class_stress PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common fe_zia)
+    viper_add_ctest(test_vm_class_stress test_vm_class_stress)
 
     # Priority-1 hot-path optimisation correctness tests
     # Covers: flat Slot+paramsSet (P1-3.3), VM-level SwitchCache (P1-3.4),

@@ -28,7 +28,7 @@ Example:
 ```viper
 module Hello;
 
-entity User {
+class User {
     String name;
     Integer age;
     
@@ -121,7 +121,7 @@ Shared components extracted for frontend reuse:
 
 **BASIC**: Monopoly, Pac-Man, Particles
 
-**Zia**: Frogger, entity examples, collection demos
+**Zia**: Frogger, class examples, collection demos
 
 ### Project Statistics
 

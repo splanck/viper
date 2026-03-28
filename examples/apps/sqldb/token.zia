@@ -319,7 +319,7 @@ final TK_DOT = 164;
 // TOKEN ENTITY
 //=============================================================================
 
-entity Token {
+class Token {
     expose Integer kind;
     expose String text;
     expose Integer line;

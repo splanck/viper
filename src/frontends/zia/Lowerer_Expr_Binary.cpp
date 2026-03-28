@@ -125,11 +125,11 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                 }
             }
 
-            // Handle value type copy semantics - deep copy on assignment
-            if (rightType && rightType->kind == TypeKindSem::Value) {
-                const ValueTypeInfo *info = getOrCreateValueTypeInfo(rightType->name);
+            // Handle struct type copy semantics - deep copy on assignment
+            if (rightType && rightType->kind == TypeKindSem::Struct) {
+                const StructTypeInfo *info = getOrCreateStructTypeInfo(rightType->name);
                 if (info) {
-                    assignValue = emitValueTypeCopy(*info, assignValue);
+                    assignValue = emitStructTypeCopy(*info, assignValue);
                 }
             }
 
@@ -142,9 +142,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                 return right;
             }
 
-            // Check for implicit field assignment inside a value type method
-            if (currentValueType_) {
-                const FieldLayout *field = currentValueType_->findField(ident->name);
+            // Check for implicit field assignment inside a struct type method
+            if (currentStructType_) {
+                const FieldLayout *field = currentStructType_->findField(ident->name);
                 if (field) {
                     Value selfPtr;
                     if (getSelfPtr(selfPtr)) {
@@ -188,9 +188,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                 }
             }
 
-            // Check for implicit field assignment inside an entity method
-            if (currentEntityType_) {
-                const FieldLayout *field = currentEntityType_->findField(ident->name);
+            // Check for implicit field assignment inside an class method
+            if (currentClassType_) {
+                const FieldLayout *field = currentClassType_->findField(ident->name);
                 if (field) {
                     Value selfPtr;
                     if (getSelfPtr(selfPtr)) {
@@ -365,8 +365,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
             if (baseType) {
                 std::string typeName = baseType->name;
 
-                // Check value types
-                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+                // Check struct types
+                const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
                 if (valueInfo) {
                     const FieldLayout *field = valueInfo->findField(fieldExpr->field);
                     if (field) {
@@ -383,8 +383,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                     }
                 }
 
-                // Check entity types
-                const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+                // Check class types
+                const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(typeName);
                 if (entityInfoPtr) {
                     const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
                     if (field) {

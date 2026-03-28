@@ -375,14 +375,14 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
     }
 }
 
-/// @brief Analyze a value type declaration body (fields, methods, interface validation).
-/// @param decl The value type declaration to analyze.
-void Sema::analyzeValueDecl(ValueDecl &decl) {
+/// @brief Analyze a struct type declaration body (fields, methods, interface validation).
+/// @param decl The struct type declaration to analyze.
+void Sema::analyzeStructDecl(StructDecl &decl) {
     // Generic types are registered in the first pass; skip body analysis
     if (!decl.genericParams.empty())
         return;
 
-    auto selfType = types::value(decl.name);
+    auto selfType = types::structType(decl.name);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
@@ -413,7 +413,7 @@ void Sema::analyzeValueDecl(ValueDecl &decl) {
 /// @brief Register field and method type signatures for a type declaration.
 /// @details Populates fieldTypes_ and methodTypes_ maps with qualified keys
 ///          (typeName.memberName) so cross-type member references resolve correctly.
-/// @tparam T The declaration type (EntityDecl, ValueDecl, or InterfaceDecl).
+/// @tparam T The declaration type (ClassDecl, StructDecl, or InterfaceDecl).
 /// @param decl The type declaration whose members should be registered.
 /// @param includeFields If true, register field types; false for interface-only registration.
 template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields) {
@@ -479,13 +479,13 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
 }
 
 // Explicit template instantiations
-template void Sema::registerTypeMembers<EntityDecl>(EntityDecl &, bool);
-template void Sema::registerTypeMembers<ValueDecl>(ValueDecl &, bool);
+template void Sema::registerTypeMembers<ClassDecl>(ClassDecl &, bool);
+template void Sema::registerTypeMembers<StructDecl>(StructDecl &, bool);
 template void Sema::registerTypeMembers<InterfaceDecl>(InterfaceDecl &, bool);
 
-/// @brief Register entity member signatures (fields and methods).
+/// @brief Register class member signatures (fields and methods).
 /// @details Skips generic types, which are registered during instantiation.
-void Sema::registerEntityMembers(EntityDecl &decl) {
+void Sema::registerClassMembers(ClassDecl &decl) {
     // Skip member registration for generic types - done during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -494,7 +494,7 @@ void Sema::registerEntityMembers(EntityDecl &decl) {
 
 /// @brief Register value member signatures (fields and methods).
 /// @details Skips generic types, which are registered during instantiation.
-void Sema::registerValueMembers(ValueDecl &decl) {
+void Sema::registerStructMembers(StructDecl &decl) {
     // Skip member registration for generic types - done during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -506,17 +506,17 @@ void Sema::registerInterfaceMembers(InterfaceDecl &decl) {
     registerTypeMembers(decl, false);
 }
 
-/// @brief Analyze an entity type declaration body.
+/// @brief Analyze an class type declaration body.
 /// @details Handles base class inheritance by copying parent fields and methods into scope,
-///          pre-defines method symbols for intra-entity calls, then analyzes member bodies.
+///          pre-defines method symbols for intra-class calls, then analyzes member bodies.
 ///          Validates interface implementations after all members are analyzed.
-/// @param decl The entity declaration to analyze.
-void Sema::analyzeEntityDecl(EntityDecl &decl) {
+/// @param decl The class declaration to analyze.
+void Sema::analyzeClassDecl(ClassDecl &decl) {
     // Generic types are registered in the first pass; skip body analysis
     if (!decl.genericParams.empty())
         return;
 
-    auto selfType = types::entity(decl.name);
+    auto selfType = types::classType(decl.name);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
@@ -535,15 +535,15 @@ void Sema::analyzeEntityDecl(EntityDecl &decl) {
 
     // BUG-VL-006 fix: Handle inheritance - add parent's members to scope
     if (!decl.baseClass.empty()) {
-        auto parentIt = entityDecls_.find(decl.baseClass);
-        if (parentIt == entityDecls_.end()) {
+        auto parentIt = classDecls_.find(decl.baseClass);
+        if (parentIt == classDecls_.end()) {
             error(decl.loc, "Unknown base class: " + decl.baseClass);
         } else {
-            EntityDecl *parent = parentIt->second;
+            ClassDecl *parent = parentIt->second;
             // BUG-VL-007 fix: Register inheritance for polymorphism support
-            types::registerEntityInheritance(decl.name, parent->name);
+            types::registerClassInheritance(decl.name, parent->name);
 
-            // Add ALL parent's fields to this entity's scope (including inherited fields)
+            // Add ALL parent's fields to this class's scope (including inherited fields)
             // by scanning fieldTypes_ for entries with parent's name prefix.
             // This ensures grandparent fields are also accessible in grandchildren.
             // NOTE: Collect entries first, then insert — inserting into an
@@ -572,8 +572,8 @@ void Sema::analyzeEntityDecl(EntityDecl &decl) {
     }
 
     if (!decl.baseClass.empty()) {
-        auto parentIt = entityDecls_.find(decl.baseClass);
-        if (parentIt != entityDecls_.end()) {
+        auto parentIt = classDecls_.find(decl.baseClass);
+        if (parentIt != classDecls_.end()) {
             for (auto *method : declaredMethods) {
                 MethodDecl *parentMethod = findInheritedExactMethod(decl.name, *method);
                 if (method->isOverride && !parentMethod) {
@@ -612,7 +612,7 @@ void Sema::analyzeEntityDecl(EntityDecl &decl) {
     }
 
     // Pre-define method symbols in scope so they can be called without 'self.'
-    // This allows methods to call each other by bare name within the entity.
+    // This allows methods to call each other by bare name within the class.
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
@@ -866,18 +866,18 @@ const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
         return nullptr;
     };
 
-    auto entityIt = entityDecls_.find(ownerName);
-    if (entityIt != entityDecls_.end()) {
-        if (const PropertyDecl *prop = scanMembers(entityIt->second))
+    auto classIt = classDecls_.find(ownerName);
+    if (classIt != classDecls_.end()) {
+        if (const PropertyDecl *prop = scanMembers(classIt->second))
             return prop;
-        if (!entityIt->second->baseClass.empty())
-            return findPropertyDecl(entityIt->second->baseClass, propertyName);
+        if (!classIt->second->baseClass.empty())
+            return findPropertyDecl(classIt->second->baseClass, propertyName);
         return nullptr;
     }
 
-    auto valueIt = valueDecls_.find(ownerName);
-    if (valueIt != valueDecls_.end())
-        return scanMembers(valueIt->second);
+    auto structIt = structDecls_.find(ownerName);
+    if (structIt != structDecls_.end())
+        return scanMembers(structIt->second);
 
     return nullptr;
 }

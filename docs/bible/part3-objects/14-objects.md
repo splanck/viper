@@ -19,7 +19,7 @@ Before diving into syntax, let's understand the problems that objects solve. Thi
 Consider a simple `BankAccount` structure:
 
 ```rust
-value BankAccount {
+struct BankAccount {
     ownerName: String;
     balance: Number;
 }
@@ -71,7 +71,7 @@ This is better -- now we have functions that enforce rules. But there are proble
 A structure is just raw data. There's no built-in way to ensure it starts in a valid state:
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -87,7 +87,7 @@ What does a rectangle with negative dimensions even mean? The structure allows i
 Say you have a structure for representing colors:
 
 ```rust
-value Color {
+struct Color {
     red: Integer;    // 0-255
     green: Integer;  // 0-255
     blue: Integer;   // 0-255
@@ -106,7 +106,7 @@ Objects solve all these problems:
 
 1. **Encapsulation**: Objects can hide their internal data and expose only controlled access through methods. The balance can only be modified through `deposit()` and `withdraw()`.
 
-2. **Unified behavior**: Methods live inside the object definition, right alongside the data they operate on. When you look at a `BankAccount` entity, you see everything it can do.
+2. **Unified behavior**: Methods live inside the object definition, right alongside the data they operate on. When you look at a `BankAccount` class, you see everything it can do.
 
 3. **Guaranteed initialization**: Objects are created through initializers that can validate and set up the object properly. You can't create an invalid object if the initializer checks its inputs.
 
@@ -116,23 +116,23 @@ Objects don't just organize your code -- they make it possible to build systems 
 
 ---
 
-## From Values to Entities
+## From Structs to Classes
 
-In Zia, the `value` keyword creates a structure -- pure data without behavior. The `entity` keyword creates something more powerful: a template for objects that combine data and behavior.
+In Zia, the `struct` keyword creates a structure -- pure data without behavior. The `class` keyword creates something more powerful: a template for objects that combine data and behavior.
 
-A value groups data:
+A struct groups data:
 
 ```rust
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
 ```
 
-An *entity* groups data *and* behavior:
+A *class* groups data *and* behavior:
 
 ```rust
-entity Rectangle {
+class Rectangle {
     width: Number;
     height: Number;
 
@@ -153,52 +153,41 @@ entity Rectangle {
 
 The key differences:
 
-- **`entity` instead of `value`**: Signals that this is an object template with behavior
+- **`class` instead of `struct`**: Signals that this is an object template with behavior
 - **An initializer**: The special `init` function that runs when creating new objects
-- **Methods**: Functions that belong to the entity and operate on its data
+- **Methods**: Functions that belong to the class and operate on its data
 - **`self`**: A reference to the specific object the method is operating on
 
 Let's explore each of these in depth.
 
 ---
 
-## Why "Entity" Instead of "Class"?
+## Classes and Structs
 
-If you've read about object-oriented programming in other languages, you've certainly encountered the term *class*. Java, Python, C++, C#, Ruby -- they all use `class` to define object templates. Zia uses `entity` instead.
+If you've learned about object-oriented programming in other languages, Zia's terminology will feel familiar. Like Java, Python, C++, and C#, Zia uses `class` to define object templates.
 
-This isn't just a cosmetic difference. The word "class" carries decades of accumulated complexity:
-
-- Multiple inheritance hierarchies where a class inherits from several parents
-- Abstract base classes that can't be instantiated
-- Virtual methods, pure virtual methods, method resolution order
-- Friend classes, inner classes, anonymous classes
-- Class variables vs instance variables, class methods vs instance methods
-- Design patterns built on elaborate class hierarchies
-
-Many programmers have been burned by overly complex class hierarchies that became impossible to understand or modify. The word "class" can trigger memories of debugging a 15-level inheritance chain at 3 AM.
-
-Zia's `entity` is intentionally simpler and more focused. An entity is:
+A class is:
 
 - **A template for things.** A `Player` is a thing. A `BankAccount` is a thing. A `Rectangle` is a thing.
-- **Concrete and tangible.** You can imagine pointing at an entity and saying "that's a Player" or "that's a bank account."
-- **Focused on identity and behavior.** Entities have state that changes over time and methods that operate on that state.
+- **Concrete and tangible.** You can imagine pointing at a class instance and saying "that's a Player" or "that's a bank account."
+- **Focused on identity and behavior.** Classes have state that changes over time and methods that operate on that state.
 
-This contrasts with `value`, which is for pure data:
+This contrasts with `struct`, which is for pure data:
 
 - A `Point` is just coordinates -- data without behavior or identity
 - A `Color` is just RGB values -- data you might copy and compare
 - A `Config` is just settings -- passive information
 
-The distinction helps you think clearly about your design: "Am I modeling a *thing* with behavior and identity (entity)? Or am I just grouping *data* together (value)?"
+The distinction helps you think clearly about your design: "Am I modeling a *thing* with behavior and identity (`class`)? Or am I just grouping *data* together (`struct`)?"
 
 ### Terminology Throughout This Book
 
-Zia has its own vocabulary:
+Zia uses familiar OOP vocabulary:
 
 | Zia Term | Common OOP Term |
 |----------------|-----------------|
-| entity | class |
-| value | struct, record |
+| class | class |
+| struct | struct, record |
 | expose | public |
 | hide | private |
 | init | constructor |
@@ -211,13 +200,13 @@ When you see code from other languages in "The Two Languages" sections, they use
 
 This concept is fundamental, so let's make it crystal clear.
 
-An **entity** is a template -- a blueprint, a cookie cutter, a factory mold. It describes what objects of this type look like (their fields) and what they can do (their methods). The entity itself is not a thing you can use; it's a description of things.
+A **class** is a template -- a blueprint, a cookie cutter, a factory mold. It describes what objects of this type look like (their fields) and what they can do (their methods). The class itself is not a thing you can use; it's a description of things.
 
-An **object** (also called an **instance**) is a specific thing created from that template. Each object has its own copy of the data fields, with its own values. You can have many objects created from the same entity, each independent of the others.
+An **object** (also called an **instance**) is a specific thing created from that template. Each object has its own copy of the data fields, with its own values. You can have many objects created from the same class, each independent of the others.
 
 Think of it like this:
 
-- **Entity `Dog`**: "A Dog has a name, an age, and can bark."
+- **Class `Dog`**: "A Dog has a name, an age, and can bark."
 - **Object `fido`**: A specific dog named "Fido" who is 3 years old.
 - **Object `rex`**: A different dog named "Rex" who is 7 years old.
 
@@ -226,7 +215,7 @@ Both `fido` and `rex` are Dogs -- they follow the same template. But they're sep
 ```rust
 bind Viper.Terminal;
 
-entity Dog {
+class Dog {
     name: String;
     age: Integer;
 
@@ -258,7 +247,7 @@ Say(rex.age);  // Still 7 - Rex didn't age
 
 This distinction matters because:
 
-1. **Entities are defined once.** You write the `Dog` entity definition one time. It describes all possible dogs.
+1. **Classes are defined once.** You write the `Dog` class definition one time. It describes all possible dogs.
 
 2. **Objects are created many times.** Each call to `Dog(...)` creates a new, independent object.
 
@@ -270,7 +259,7 @@ This distinction matters because:
 
 ## Creating Objects
 
-You create an object by calling the entity name like a function:
+You create an object by calling the class name like a function:
 
 ```rust
 bind Viper.Terminal;
@@ -300,7 +289,7 @@ Now `rect1` refers to a specific Rectangle object with its own width and height.
 The initializer is a special method that runs when you create a new object. Its job is to set up the object's initial state -- to make sure the object starts its life in a valid, usable condition.
 
 ```rust
-entity Person {
+class Person {
     name: String;
     age: Integer;
 
@@ -329,7 +318,7 @@ The object would be in a meaningless state. The initializer ensures that every o
 You can define multiple initializers with different parameter lists. This is called *overloading* -- the same name (`init`) with different signatures:
 
 ```rust
-entity Person {
+class Person {
     name: String;
     age: Integer;
     email: String;
@@ -370,7 +359,7 @@ Initializers are the perfect place to validate input and ensure objects start in
 ```rust
 bind Viper.Terminal;
 
-entity Rectangle {
+class Rectangle {
     width: Number;
     height: Number;
 
@@ -403,7 +392,7 @@ You might also choose to report errors differently -- storing an error flag, log
 Initializers can do more than just assign fields. They can perform any setup logic the object needs:
 
 ```rust
-entity GameCharacter {
+class GameCharacter {
     name: String;
     health: Integer;
     maxHealth: Integer;
@@ -435,7 +424,7 @@ Some fields have values that depend on other fields. The initializer is where yo
 ```rust
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
     diameter: Number;
     circumference: Number;
@@ -453,7 +442,7 @@ However, this pattern can be dangerous -- if `radius` changes later, `diameter` 
 ```rust
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
 
     expose func init(radius: Number) {
@@ -479,7 +468,7 @@ This leads us to an important principle: **initializers set up the essential sta
 Inside a method, you need a way to refer to the specific object the method was called on. That's what `self` provides.
 
 ```rust
-entity Counter {
+class Counter {
     count: Integer;
 
     expose func init() {
@@ -579,7 +568,7 @@ One of the most powerful ideas in object-oriented programming is *encapsulation*
 Consider what happens when anyone can modify an object's fields directly:
 
 ```rust
-entity BankAccount {
+class BankAccount {
     ownerName: String;
     balance: Number;  // Completely exposed!
 
@@ -601,10 +590,10 @@ There are no rules, no validation, no protection. The object is just passive dat
 
 ### The Solution: `hide` and `expose`
 
-Zia lets you control what's visible from outside the entity:
+Zia lets you control what's visible from outside the class:
 
 ```rust
-entity BankAccount {
+class BankAccount {
     hide balance: Number;
     ownerName: String;
 
@@ -667,10 +656,10 @@ As long as all modifications go through these methods, the invariant is guarante
 
 ### Common Invariants
 
-Different entities have different invariants:
+Different classes have different invariants:
 
 ```rust
-entity Temperature {
+class Temperature {
     hide kelvin: Number;
 
     expose func init(kelvin: Number) {
@@ -690,7 +679,7 @@ entity Temperature {
     // ...
 }
 
-entity Password {
+class Password {
     hide hash: String;
 
     expose func init(plaintext: String) {
@@ -704,7 +693,7 @@ entity Password {
     // The plaintext is never stored or retrievable
 }
 
-entity OrderedPair {
+class OrderedPair {
     hide first: Integer;
     hide second: Integer;
 
@@ -728,11 +717,11 @@ entity OrderedPair {
 
 2. **Uncontrolled access**: External code can't bypass validation logic
 
-3. **Hidden implementation changes**: You can change internal representation without affecting code that uses the entity
+3. **Hidden implementation changes**: You can change internal representation without affecting code that uses the class
 
-4. **Debugging complexity**: When something goes wrong with an object's state, you know the problem is in one of the entity's own methods -- not scattered throughout the codebase
+4. **Debugging complexity**: When something goes wrong with an object's state, you know the problem is in one of the class's own methods -- not scattered throughout the codebase
 
-5. **Coupling**: Code that uses the entity depends only on its public interface, not its internal structure
+5. **Coupling**: Code that uses the class depends only on its public interface, not its internal structure
 
 ### Hide by Default
 
@@ -741,7 +730,7 @@ A good practice is to hide fields by default and only expose what's necessary. A
 Usually, the answer is no. External code needs to *do things* with the object (call methods), not *poke at its internals* (access fields).
 
 ```rust
-entity Player {
+class Player {
     hide name: String;
     hide health: Integer;
     hide maxHealth: Integer;
@@ -764,12 +753,12 @@ entity Player {
 
 ## Methods: Behavior That Belongs to Objects
 
-Methods define what objects can *do*. They're functions that belong to an entity and operate on its data through `self`.
+Methods define what objects can *do*. They're functions that belong to a class and operate on its data through `self`.
 
 ```rust
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
 
     expose func init(radius: Number) {
@@ -864,7 +853,7 @@ func save() {
 
 ### Methods vs Functions: When to Use Which
 
-Sometimes you have a choice: should this be a method on an entity, or a standalone function?
+Sometimes you have a choice: should this be a method on a class, or a standalone function?
 
 **Use a method when:**
 
@@ -876,7 +865,7 @@ Sometimes you have a choice: should this be a method on an entity, or a standalo
 bind Viper.Math as Math;
 
 // Good as a method - operates on the circle's own data
-entity Circle {
+class Circle {
     func area() -> Number {
         return PI * self.radius * self.radius;
     }
@@ -886,7 +875,7 @@ entity Circle {
 **Use a function when:**
 
 - The operation works with multiple objects equally (no clear "main" object)
-- The operation is a general utility that doesn't belong to any particular entity
+- The operation is a general utility that doesn't belong to any particular class
 - The operation doesn't need access to hidden state
 
 ```rust
@@ -971,7 +960,7 @@ State is the current condition of an object -- the values of all its fields at a
 ```rust
 bind Viper.Terminal;
 
-entity TrafficLight {
+class TrafficLight {
     hide color: String;
 
     expose func init() {
@@ -1010,7 +999,7 @@ The traffic light object transitions through states: red, green, yellow, red, gr
 
 ### State Diagrams
 
-When designing entities with complex state, it helps to think in terms of state diagrams:
+When designing classes with complex state, it helps to think in terms of state diagrams:
 
 ```text
     +---------+       +---------+       +----------+
@@ -1020,11 +1009,11 @@ When designing entities with complex state, it helps to think in terms of state 
          +------------------------------------+
 ```
 
-The entity enforces valid transitions. You can't go directly from red to yellow -- the `advance()` method only allows red->green, green->yellow, yellow->red.
+The class enforces valid transitions. You can't go directly from red to yellow -- the `advance()` method only allows red->green, green->yellow, yellow->red.
 
 ### Thinking About State
 
-When designing an entity, ask:
+When designing a class, ask:
 
 1. **What states can the object be in?** A player might be "alive", "dead", or "respawning". A connection might be "disconnected", "connecting", "connected", or "error".
 
@@ -1035,7 +1024,7 @@ When designing an entity, ask:
 4. **What behavior differs by state?** A "dead" player might ignore movement commands. A "disconnected" connection might queue messages instead of sending them.
 
 ```rust
-entity GameCharacter {
+class GameCharacter {
     hide health: Integer;
     hide state: String;  // "alive", "dead", "respawning"
 
@@ -1091,13 +1080,13 @@ character.state = "alive";   // Resurrected without going through respawn!
 character.health = -50;      // Invalid health!
 ```
 
-By hiding state and controlling access through methods, the entity ensures it only ever enters valid states through valid transitions.
+By hiding state and controlling access through methods, the class ensures it only ever enters valid states through valid transitions.
 
 ---
 
 ## Practical Design: Building an Entity from Scratch
 
-Let's walk through the process of designing an entity from the ground up. This will tie together everything we've learned.
+Let's walk through the process of designing a class from the ground up. This will tie together everything we've learned.
 
 ### The Problem
 
@@ -1151,7 +1140,7 @@ Following the principle of "hide by default":
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity BankAccount {
+class BankAccount {
     hide accountNumber: String;
     hide ownerName: String;
     hide balance: Number;
@@ -1305,7 +1294,7 @@ module TodoApp;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity TodoItem {
+class TodoItem {
     hide text: String;
     hide done: Boolean;
     hide createdAt: String;
@@ -1351,7 +1340,7 @@ entity TodoItem {
     }
 }
 
-entity TodoList {
+class TodoList {
     hide items: List[TodoItem];
     hide name: String;
 
@@ -1465,7 +1454,7 @@ Notice how:
 
 - **`TodoItem` manages individual tasks**: Each item knows its text, status, and timestamps
 - **`TodoList` manages the collection**: It handles adding, removing, and displaying items
-- **Each entity has one responsibility**: Items don't know about lists; lists don't know about item internals
+- **Each class has one responsibility**: Items don't know about lists; lists don't know about item internals
 - **Hidden fields protect state**: You can't directly mark an item done or modify the list's items array
 - **Methods provide controlled access**: All operations go through validated methods
 
@@ -1478,7 +1467,7 @@ Notice how:
 ```rust
 bind Viper.Terminal;
 
-entity Dog {
+class Dog {
     name: String;
 
     expose func init(name: String) {
@@ -1520,20 +1509,20 @@ dog.Bark()
 
 ### Model Real Concepts
 
-An entity should represent a concrete thing you can describe and point to:
+A class should represent a concrete thing you can describe and point to:
 
-- A `Dog` entity, a `BankAccount` entity, a `Player` entity -- things with identity
+- A `Dog` class, a `BankAccount` class, a `Player` class -- things with identity
 - A `ShoppingCart`, a `GameLevel`, a `UserSession` -- meaningful concepts
 
-If you can't clearly describe what an entity represents, it probably shouldn't be an entity.
+If you can't clearly describe what a class represents, it probably shouldn't be a class.
 
 ### Keep Entities Focused
 
-An entity should have one primary responsibility. If an entity is doing too many things, split it:
+A class should have one primary responsibility. If a class is doing too many things, split it:
 
 ```rust
 // Too much responsibility
-entity Game {
+class Game {
     player: Player;
     enemies: List[Enemy];
     graphics: GraphicsSystem;
@@ -1543,15 +1532,15 @@ entity Game {
     // ... 50 methods for all these different things
 }
 
-// Better: separate entities for each concern
-entity Player { ... }
-entity EnemyManager { ... }
-entity Renderer { ... }
-entity SoundSystem { ... }
-entity InputHandler { ... }
-entity NetworkManager { ... }
+// Better: separate classes for each concern
+class Player { ... }
+class EnemyManager { ... }
+class Renderer { ... }
+class SoundSystem { ... }
+class InputHandler { ... }
+class NetworkManager { ... }
 
-entity Game {
+class Game {
     player: Player;
     enemies: EnemyManager;
     renderer: Renderer;
@@ -1611,7 +1600,7 @@ func processOrder() {
 ### Forgetting `self`
 
 ```rust
-entity Counter {
+class Counter {
     count: Integer;
 
     func increment() {
@@ -1625,7 +1614,7 @@ Inside a method, you must use `self` to access the object's fields. Without it, 
 ### Exposing Fields That Should Be Hidden
 
 ```rust
-entity BankAccount {
+class BankAccount {
     balance: Number;  // Bad: anyone can modify directly
 }
 
@@ -1638,8 +1627,8 @@ Exposed fields bypass all your carefully written validation logic. Hide them and
 ### Monster Entities
 
 ```rust
-// Don't do this -- one entity doing everything
-entity Game {
+// Don't do this -- one class doing everything
+class Game {
     player: ...;
     enemies: ...;
     graphics: ...;
@@ -1654,7 +1643,7 @@ entity Game {
 }
 ```
 
-Such entities become impossible to understand, test, or modify. Split them into focused entities that each handle one concern.
+Such classes become impossible to understand, test, or modify. Split them into focused classes that each handle one concern.
 
 ### Methods That Do Too Much
 
@@ -1691,13 +1680,13 @@ This chapter introduced the fundamentals of object-oriented programming:
 
 - **Objects solve problems** that values and functions alone cannot: protecting data integrity, unifying behavior with data, and providing stable interfaces
 - **Entities are templates** that define what objects look like (fields) and can do (methods)
-- **Objects are instances** created from entities, each with independent state
+- **Objects are instances** created from classes, each with independent state
 - **Initializers** set up objects in valid initial states
 - **`self`** refers to the current object inside methods, connecting methods to their object's data
 - **Encapsulation** (hide/expose) protects object state and enforces invariants
 - **Methods** define object behavior -- what objects can do
 - **State** changes over time through method calls, and good design ensures only valid states are reachable
-- **Good entity design** means one responsibility per entity, hidden internals, clear interfaces, focused methods
+- **Good class design** means one responsibility per class, hidden internals, clear interfaces, focused methods
 
 Objects are the foundation of organizing complex programs. They let you build systems out of components that manage themselves, protect their own integrity, and interact through well-defined interfaces.
 
@@ -1705,17 +1694,17 @@ Objects are the foundation of organizing complex programs. They let you build sy
 
 ## Exercises
 
-**Exercise 14.1**: Create a `Counter` entity with `increment()`, `decrement()`, `reset()`, and `getValue()` methods. The count should never go below zero -- `decrement()` should do nothing if the count is already zero.
+**Exercise 14.1**: Create a `Counter` class with `increment()`, `decrement()`, `reset()`, and `getValue()` methods. The count should never go below zero -- `decrement()` should do nothing if the count is already zero.
 
-**Exercise 14.2**: Create a `Temperature` entity that stores a temperature in Celsius and has methods `toFahrenheit()` and `toKelvin()`. Add validation to ensure the temperature never goes below absolute zero (-273.15 Celsius).
+**Exercise 14.2**: Create a `Temperature` class that stores a temperature in Celsius and has methods `toFahrenheit()` and `toKelvin()`. Add validation to ensure the temperature never goes below absolute zero (-273.15 Celsius).
 
-**Exercise 14.3**: Create a `Stopwatch` entity with `start()`, `stop()`, `reset()`, and `elapsed()` methods. Think carefully about what states a stopwatch can be in (stopped, running) and what transitions are valid.
+**Exercise 14.3**: Create a `Stopwatch` class with `start()`, `stop()`, `reset()`, and `elapsed()` methods. Think carefully about what states a stopwatch can be in (stopped, running) and what transitions are valid.
 
-**Exercise 14.4**: Create a `Deck` entity that represents a deck of playing cards with `shuffle()` and `draw()` methods. What should `draw()` return if the deck is empty?
+**Exercise 14.4**: Create a `Deck` class that represents a deck of playing cards with `shuffle()` and `draw()` methods. What should `draw()` return if the deck is empty?
 
-**Exercise 14.5**: Create a `ShoppingCart` entity that stores items with prices. Include methods to add items, remove items, get the item count, and calculate the total price. Consider: should you allow negative prices? Duplicate items?
+**Exercise 14.5**: Create a `ShoppingCart` class that stores items with prices. Include methods to add items, remove items, get the item count, and calculate the total price. Consider: should you allow negative prices? Duplicate items?
 
-**Exercise 14.6** (Challenge): Create a text-based RPG character: a `Character` entity with name, health, maxHealth, attack power, and defense. Include methods for:
+**Exercise 14.6** (Challenge): Create a text-based RPG character: a `Character` class with name, health, maxHealth, attack power, and defense. Include methods for:
 - Taking damage (reduced by defense)
 - Healing (cannot exceed max health)
 - Attacking another character
@@ -1724,7 +1713,7 @@ Objects are the foundation of organizing complex programs. They let you build sy
 
 Think about invariants: health should be between 0 and maxHealth, attack and defense should be positive.
 
-**Exercise 14.7** (Design Challenge): Design a `Thermostat` entity for a home heating/cooling system. Consider:
+**Exercise 14.7** (Design Challenge): Design a `Thermostat` class for a home heating/cooling system. Consider:
 - What data does it need? (current temperature, target temperature, mode, etc.)
 - What are the valid states and transitions?
 - What invariants must be maintained?

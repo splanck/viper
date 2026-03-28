@@ -626,7 +626,7 @@ rt_obj_resurrect(obj);  // Set refcount from 0 → 1 (inside finalizer only)
 <h3 id="2-high-no-automatic-gc-triggering">2. HIGH: No Automatic GC Triggering</h3>
 <p>The cycle collector only runs when explicitly called via</p>
 <p><code>Viper.Memory.GC.Collect()</code>. Programs that create cyclic object graphs (e.g.,</p>
-<p>doubly-linked lists, parent-child entity references) without calling</p>
+<p>doubly-linked lists, parent-child class references) without calling</p>
 <p><code>GC.Collect()</code> will leak those cycles indefinitely.</p>
 <h3 id="3-high-seq-elements-not-lifetime-managed">3. HIGH: Seq Elements Not Lifetime-Managed</h3>
 <p><code>rt_seq</code> does not retain or release elements. This creates two hazards:</p>

@@ -231,7 +231,7 @@ func addCracks(pix: Pixels, ox: Integer, oy: Integer, w: Integer, h: Integer,
 // Surface Generators — Pre-cached tile textures
 // =============================================================================
 
-entity TextureFactory {
+class TextureFactory {
     expose func init() {}
     hide Palette pal;
 

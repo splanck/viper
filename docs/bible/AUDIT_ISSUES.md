@@ -199,7 +199,7 @@ Tracked issues are categorized by severity.
 
 ## Chapter 11 (Structures)
 
-**PASS** — All code examples correct. `value` keyword for structures verified.
+**PASS** — All code examples correct. `struct` keyword for structures verified.
 
 ---
 

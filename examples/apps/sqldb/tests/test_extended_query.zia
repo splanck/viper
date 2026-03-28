@@ -200,7 +200,7 @@ func sendCloseMsg(client: Ptr, closeType: Integer, name: String) {
 // RESPONSE READING HELPERS
 //=============================================================================
 
-entity PgResponse {
+class PgResponse {
     expose Integer msgType;
     expose Bytes body;
     expose Integer bodyLen;

@@ -190,7 +190,7 @@ BindDecl Parser::parseBindDecl() {
 }
 
 /// @brief Dispatch to the appropriate declaration parser based on the current keyword.
-/// @details Handles func, value, entity, interface, namespace, var/final, and
+/// @details Handles func, struct, class, interface, namespace, var/final, and
 ///          Java-style global variable declarations.
 /// @return The parsed declaration, or nullptr on error.
 DeclPtr Parser::parseDeclaration() {
@@ -247,11 +247,11 @@ DeclPtr Parser::parseDeclaration() {
     if (check(TokenKind::KwFunc)) {
         return parseFunctionDecl();
     }
-    if (check(TokenKind::KwValue)) {
-        return parseValueDecl();
+    if (check(TokenKind::KwStruct)) {
+        return parseStructDecl();
     }
-    if (check(TokenKind::KwEntity)) {
-        return parseEntityDecl();
+    if (check(TokenKind::KwClass)) {
+        return parseClassDecl();
     }
     if (check(TokenKind::KwInterface)) {
         return parseInterfaceDecl();
@@ -507,7 +507,7 @@ bool Parser::parseInterfaceList(std::vector<std::string> &interfaces) {
 
 /// @brief Parse type body members (fields and methods) between braces.
 /// @param[out] members Output member list.
-/// @param defaultVisibility Default visibility (Public for value, Private for entity).
+/// @param defaultVisibility Default visibility (Public for struct, Private for class).
 /// @param allowOverride Whether the 'override' modifier is permitted.
 /// @return True on success.
 bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
@@ -556,10 +556,10 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
             dtor->body = parseBlock();
             members.push_back(std::move(dtor));
         } else if (check(TokenKind::KwFinal)) {
-            // BUG-FE-012: 'final' is not allowed inside entity/value bodies.
+            // BUG-FE-012: 'final' is not allowed inside class/struct bodies.
             // Finals are compile-time constants and must be declared at module scope.
             // Provide a clear error instead of the generic "expected field..." message.
-            error("'final' declarations are not allowed inside entity bodies. "
+            error("'final' declarations are not allowed inside class bodies. "
                   "Move 'final' to module scope, or use a field initialized in init()");
             // Skip past the final declaration to recover
             advance(); // consume 'final'
@@ -590,57 +590,57 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
     return true;
 }
 
-/// @brief Parse a value type declaration (value Name[T] implements I { fields; methods }).
-/// @return The parsed ValueDecl, or nullptr on error.
-DeclPtr Parser::parseValueDecl() {
-    Token valueTok = advance(); // consume 'value'
-    SourceLoc loc = valueTok.loc;
+/// @brief Parse a struct type declaration (struct Name[T] implements I { fields; methods }).
+/// @return The parsed StructDecl, or nullptr on error.
+DeclPtr Parser::parseStructDecl() {
+    Token structTok = advance(); // consume 'struct'
+    SourceLoc loc = structTok.loc;
 
     if (!check(TokenKind::Identifier)) {
-        error("expected value type name");
+        error("expected struct type name");
         return nullptr;
     }
     Token nameTok = advance();
     std::string name = nameTok.text;
 
-    auto value = std::make_unique<ValueDecl>(loc, std::move(name));
+    auto decl = std::make_unique<StructDecl>(loc, std::move(name));
 
     // Generic parameters
-    value->genericParams = parseGenericParams();
+    decl->genericParams = parseGenericParams();
 
     // Implements clause
-    if (!parseInterfaceList(value->interfaces))
+    if (!parseInterfaceList(decl->interfaces))
         return nullptr;
 
     // Body
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
 
-    parseMemberBlock(value->members, Visibility::Public, /*allowOverride=*/false);
+    parseMemberBlock(decl->members, Visibility::Public, /*allowOverride=*/false);
 
     if (!expect(TokenKind::RBrace, "}"))
         return nullptr;
 
-    return value;
+    return decl;
 }
 
-/// @brief Parse an entity type declaration (entity Name[T] extends Base implements I { ... }).
-/// @return The parsed EntityDecl, or nullptr on error.
-DeclPtr Parser::parseEntityDecl() {
-    Token entityTok = advance(); // consume 'entity'
-    SourceLoc loc = entityTok.loc;
+/// @brief Parse a class type declaration (class Name[T] extends Base implements I { ... }).
+/// @return The parsed ClassDecl, or nullptr on error.
+DeclPtr Parser::parseClassDecl() {
+    Token classTok = advance(); // consume 'class'
+    SourceLoc loc = classTok.loc;
 
     if (!check(TokenKind::Identifier)) {
-        error("expected entity type name");
+        error("expected class type name");
         return nullptr;
     }
     Token nameTok = advance();
     std::string name = nameTok.text;
 
-    auto entity = std::make_unique<EntityDecl>(loc, std::move(name));
+    auto decl = std::make_unique<ClassDecl>(loc, std::move(name));
 
     // Generic parameters
-    entity->genericParams = parseGenericParams();
+    decl->genericParams = parseGenericParams();
 
     // Extends clause
     if (match(TokenKind::KwExtends)) {
@@ -649,23 +649,23 @@ DeclPtr Parser::parseEntityDecl() {
             return nullptr;
         }
         Token baseTok = advance();
-        entity->baseClass = baseTok.text;
+        decl->baseClass = baseTok.text;
     }
 
     // Implements clause
-    if (!parseInterfaceList(entity->interfaces))
+    if (!parseInterfaceList(decl->interfaces))
         return nullptr;
 
     // Body
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
 
-    parseMemberBlock(entity->members, Visibility::Private, /*allowOverride=*/true);
+    parseMemberBlock(decl->members, Visibility::Private, /*allowOverride=*/true);
 
     if (!expect(TokenKind::RBrace, "}"))
         return nullptr;
 
-    return entity;
+    return decl;
 }
 
 /// @brief Parse an interface declaration (interface Name[T] { method signatures }).
@@ -844,7 +844,7 @@ DeclPtr Parser::parseJavaStyleGlobalVarDecl() {
     return decl;
 }
 
-/// @brief Parse a field declaration inside a value or entity body (Type name [= init];).
+/// @brief Parse a field declaration inside a struct or class body (Type name [= init];).
 /// @return The parsed FieldDecl, or nullptr on error.
 DeclPtr Parser::parseFieldDecl() {
     SourceLoc loc = peek().loc;
@@ -877,7 +877,7 @@ DeclPtr Parser::parseFieldDecl() {
     return field;
 }
 
-/// @brief Parse a method declaration inside a value, entity, or interface body.
+/// @brief Parse a method declaration inside a struct, class, or interface body.
 /// @details For interfaces, the method has no body and ends with a semicolon.
 /// @return The parsed MethodDecl, or nullptr on error.
 DeclPtr Parser::parseMethodDecl() {

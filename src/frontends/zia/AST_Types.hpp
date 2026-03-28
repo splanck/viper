@@ -20,7 +20,7 @@
 /// resolved semantic types.
 ///
 /// Supported type forms:
-///   - Named types: `i64`, `str`, `bool`, `f64`, user-defined entity names
+///   - Named types: `i64`, `str`, `bool`, `f64`, user-defined class names
 ///   - Generic types: `List<i64>`, `Map<str, i64>`
 ///   - Function types: `fn(i64, str) -> bool`
 ///   - Optional types: `i64?`
@@ -86,7 +86,7 @@ enum class TypeKind {
     Tuple,
 
     /// @brief Fixed-size array type: `T[N]` (N is a compile-time integer constant).
-    /// @details Used for inline fixed-size arrays in entity/value type fields.
+    /// @details Used for inline fixed-size arrays in class/struct type fields.
     /// The array is stored contiguously in the parent object with no heap allocation.
     /// @see FixedArrayType
     FixedArray,
@@ -123,14 +123,14 @@ struct TypeNode {
 
 /// @brief Named type reference: `Integer`, `String`, `MyClass`.
 /// @details Represents a simple type reference by name. During semantic
-/// analysis, the name is resolved to a built-in type, value type, entity
+/// analysis, the name is resolved to a built-in type, struct type, class
 /// type, or interface type.
 ///
 /// ## Examples
 /// - `Integer` - Built-in 64-bit signed integer
 /// - `String` - Built-in UTF-8 string type
-/// - `Player` - User-defined entity type
-/// - `Point` - User-defined value type
+/// - `Player` - User-defined class type
+/// - `Point` - User-defined struct type
 struct NamedType : TypeNode {
     /// @brief The type name as written in source code.
     /// @details Must be resolved during semantic analysis to determine
@@ -244,7 +244,7 @@ struct TupleType : TypeNode {
 
 /// @brief Fixed-size array type: `Integer[64]`, `Number[8]`.
 /// @details Represents a compile-time-sized array of a base element type.
-/// The array is stored inline in the containing entity or value type field —
+/// The array is stored inline in the containing class or struct type field —
 /// no heap allocation. The count is a compile-time integer constant.
 ///
 /// ## Examples

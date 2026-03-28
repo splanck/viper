@@ -14,7 +14,7 @@ bind ZiaCompletion = Viper.Zia.Completion;
 // Arrow keys navigate; Tab accepts; Escape dismisses.
 // ============================================================================
 
-entity CompletionController {
+class CompletionController {
     expose GUI.CodeEditor editor;
     expose GUI.FloatingPanel popup;
     expose GUI.ListBox listbox;

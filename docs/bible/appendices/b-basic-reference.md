@@ -1593,7 +1593,7 @@ TYPE Vector2D
     END SUB
 END TYPE
 
-' Game entity
+' Game class
 TYPE Entity
     id AS INTEGER
     type AS STRING
@@ -1610,7 +1610,7 @@ END TYPE
 
 **Zia equivalent:**
 ```rust
-value Point {
+struct Point {
     x: Number;
     y: Number;
 
@@ -1816,7 +1816,7 @@ NEXT animal
 
 **Zia equivalent:**
 ```rust
-entity Counter {
+class Counter {
     hide count: Integer;
 
     expose func init() {
@@ -1828,7 +1828,7 @@ entity Counter {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     override func speak() {
         Viper.Terminal.Say(self.name + " says Woof!");
     }
@@ -1939,7 +1939,7 @@ interface Drawable {
     func getBounds() -> Rect;
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     func draw() { ... }
     func getBounds() -> Rect { ... }
 }

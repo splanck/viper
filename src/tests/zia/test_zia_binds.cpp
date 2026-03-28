@@ -169,12 +169,12 @@ TEST(ZiaBinds, CircularBindCrossReference) {
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "cycle_cross";
 
-    // File A defines entity Foo and uses entity Bar from B
+    // File A defines class Foo and uses class Bar from B
     const std::string aSource = R"(
 module A;
 bind "b.zia";
 
-entity Foo {
+class Foo {
     expose Integer x;
     expose func init(Integer val) { x = val; }
 }
@@ -194,12 +194,12 @@ func start() {
     const fs::path aPath = writeFile(dir, "a.zia", aSource);
     const std::string aPathStr = aPath.string();
 
-    // File B defines entity Bar and uses entity Foo from A
+    // File B defines class Bar and uses class Foo from A
     const std::string bSource = R"(
 module B;
 bind "a.zia";
 
-entity Bar {
+class Bar {
     expose Integer y;
     expose func init(Integer val) { y = val; }
 }
@@ -297,11 +297,11 @@ TEST(ZiaBinds, TransitiveBindDeclarationOrder) {
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "transitive_order";
 
-    // Inner entity with a method
+    // Inner class with a method
     const fs::path innerPath = writeFile(dir, "inner.zia", R"(
 module Inner;
 
-entity Inner {
+class Inner {
     expose Integer myValue;
 
     expose func init(Integer v) {
@@ -314,13 +314,13 @@ entity Inner {
 }
 )");
 
-    // Outer entity that has Inner field and calls its method
+    // Outer class that has Inner field and calls its method
     const fs::path outerPath = writeFile(dir, "outer.zia", R"(
 module Outer;
 
 bind "./inner";
 
-entity Outer {
+class Outer {
     expose Inner inner;
 
     expose func test() -> Integer {

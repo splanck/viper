@@ -787,7 +787,7 @@ func testSimple() {
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
-    Say(report);  // Report entity should override toString() for display
+    Say(report);  // Report class should override toString() for display
 }
 ```
 

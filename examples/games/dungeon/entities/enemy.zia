@@ -6,7 +6,7 @@ bind Viper.Math;
 bind Viper.Terminal;
 bind "../config";
 
-entity Enemy {
+class Enemy {
     hide Float posX;
     hide Float posY;
     hide Float posZ;

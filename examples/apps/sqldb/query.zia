@@ -37,7 +37,7 @@ bind "./system_views";
 // QUERY HANDLER ENTITY
 //=============================================================================
 
-entity QueryHandler {
+class QueryHandler {
     expose Executor exec;
 
     expose func init(executor: Executor) {

@@ -18,7 +18,7 @@
 /// @invariant Default-constructed CompilerOptions enable all safety checks
 ///            (bounds, overflow, null) and use O0 optimization.
 ///
-/// Ownership/Lifetime: Value type, typically constructed once and passed
+/// Ownership/Lifetime: Struct type, typically constructed once and passed
 /// by const reference through the compilation pipeline.
 ///
 /// @see Compiler.hpp — accepts CompilerOptions to configure compilation.

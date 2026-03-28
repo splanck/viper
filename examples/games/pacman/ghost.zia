@@ -26,7 +26,7 @@ final GHOST_CLYDE = 3;   // Orange - targets Pac-Man when far, scatter when clos
 // GHOST ENTITY - Enemy characters with AI
 // =============================================================================
 
-entity Ghost {
+class Ghost {
     hide Integer gridX;
     hide Integer gridY;
     hide Integer screenX;

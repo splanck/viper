@@ -7,7 +7,7 @@ bind Viper.Game;
 bind Viper.Math;
 bind "./config";
 
-entity Level {
+class Level {
     hide Tilemap tilemap;
     expose Integer levelWidth;
     expose Integer levelHeight;

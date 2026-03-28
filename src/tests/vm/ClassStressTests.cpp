@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/vm/EntityStressTests.cpp
-// Purpose: Stress test for VM entity allocation to detect memory management
+// File: tests/vm/ClassStressTests.cpp
+// Purpose: Stress test for VM class allocation to detect memory management
 //          issues under sustained allocation pressure (BUG-VM-001 regression).
 //
 //===----------------------------------------------------------------------===//
@@ -38,15 +38,15 @@ int64_t compileAndRun(const std::string &source) {
 }
 
 //===----------------------------------------------------------------------===//
-// BUG-VM-001: Heavy entity allocation stress tests
+// BUG-VM-001: Heavy class allocation stress tests
 //===----------------------------------------------------------------------===//
 
-/// @brief Allocate many entity objects in a loop to test allocation pressure.
+/// @brief Allocate many class objects in a loop to test allocation pressure.
 TEST(VMEntityStress, AllocateManyEntities) {
     const std::string source = R"(
 module Test;
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 }
@@ -65,12 +65,12 @@ func start() {
     EXPECT_EQ(rc, 0);
 }
 
-/// @brief Entity with List field — allocate and populate in a loop.
+/// @brief Class with List field — allocate and populate in a loop.
 TEST(VMEntityStress, EntityWithListFieldStress) {
     const std::string source = R"(
 module Test;
 
-entity Container {
+class Container {
     expose List[Integer] items;
     expose func init() { items = []; }
     expose func addItem(v: Integer) { items.add(v); }
@@ -90,12 +90,12 @@ func start() {
     EXPECT_EQ(rc, 0);
 }
 
-/// @brief Chained entity allocation — entities referencing other entities.
+/// @brief Chained class allocation — classes referencing other classes.
 TEST(VMEntityStress, ChainedEntityAllocation) {
     const std::string source = R"(
 module Test;
 
-entity Node {
+class Node {
     expose Integer value;
     expose Node next;
 }
@@ -118,21 +118,21 @@ func start() {
     EXPECT_EQ(rc, 0);
 }
 
-/// @brief Multiple entity types allocated in interleaved pattern.
+/// @brief Multiple class types allocated in interleaved pattern.
 TEST(VMEntityStress, InterleavedMultiEntityAlloc) {
     const std::string source = R"(
 module Test;
 
-entity TypeA {
+class TypeA {
     expose Integer a;
 }
 
-entity TypeB {
+class TypeB {
     expose Integer b;
     expose Integer extra;
 }
 
-entity TypeC {
+class TypeC {
     expose Integer c;
     expose TypeA ref;
 }
@@ -156,12 +156,12 @@ func start() {
     EXPECT_EQ(rc, 0);
 }
 
-/// @brief Entity with multiple List fields — forward reference stress.
+/// @brief Class with multiple List fields — forward reference stress.
 TEST(VMEntityStress, ForwardRefEntityFieldChainStress) {
     const std::string source = R"(
 module Test;
 
-entity Manager {
+class Manager {
     expose Store store;
     expose func init() {
         store = new Store();
@@ -176,7 +176,7 @@ entity Manager {
     }
 }
 
-entity Store {
+class Store {
     expose List[Integer] values;
     expose func init() { values = []; }
 }

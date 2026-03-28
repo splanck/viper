@@ -13,7 +13,7 @@ bind "../lib/iscene";
 bind "./config";
 bind "./game";
 
-entity PlayScene implements IScene {
+class PlayScene implements IScene {
     hide PlatformerGame game;
 
     // Tilemap — level grid with collision data

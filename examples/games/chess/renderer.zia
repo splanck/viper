@@ -17,7 +17,7 @@ bind "./board";
 //   File 0 (a-file) at left, file 7 (h-file) at right
 //   Square index: sq = rank * 8 + file
 // ============================================================================
-entity BoardRenderer {
+class BoardRenderer {
     hide Canvas canvas;
 
     // Cached piece colors, set by setPieceColors()

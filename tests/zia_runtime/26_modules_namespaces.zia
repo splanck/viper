@@ -37,7 +37,7 @@ func getModuleName() -> String {
 // Module-level entities
 //=============================================================================
 
-entity ModuleEntity {
+class ModuleEntity {
     expose Integer id;
 
     expose func init(i: Integer) {
@@ -54,7 +54,7 @@ entity ModuleEntity {
 // Nested namespace simulation with entities
 //=============================================================================
 
-entity Math {
+class Math {
     expose func add(a: Integer, b: Integer) -> Integer {
         return a + b;
     }
@@ -89,7 +89,7 @@ entity Math {
     }
 }
 
-entity StringUtils {
+class StringUtils {
     expose func repeat(s: String, n: Integer) -> String {
         var result = "";
         var i = 0;

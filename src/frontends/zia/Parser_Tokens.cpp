@@ -60,7 +60,7 @@ bool Parser::checkIdentifierLike() {
 
     // These keywords can be used as identifiers in parameter/variable contexts
     switch (peek().kind) {
-        case TokenKind::KwValue: // Common parameter name (e.g., setValue(Integer value))
+        case TokenKind::KwStruct: // Common parameter name (e.g., setValue(Integer value))
         case TokenKind::KwMatch: // Common variable name (e.g., var match = false)
             return true;
         default:
@@ -114,8 +114,8 @@ void Parser::resyncAfterError() {
             advance();
             return;
         }
-        if (check(TokenKind::RBrace) || check(TokenKind::KwFunc) || check(TokenKind::KwValue) ||
-            check(TokenKind::KwEntity) || check(TokenKind::KwInterface)) {
+        if (check(TokenKind::RBrace) || check(TokenKind::KwFunc) || check(TokenKind::KwStruct) ||
+            check(TokenKind::KwClass) || check(TokenKind::KwInterface)) {
             return;
         }
         advance();

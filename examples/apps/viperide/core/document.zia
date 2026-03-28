@@ -4,7 +4,7 @@ module document;
 // Document — represents a single open file in the editor
 // ============================================================================
 
-entity Document {
+class Document {
     expose String filePath;            // Absolute path ("" for untitled)
     expose String fileName;            // Display name
     expose String content;             // Full text content

@@ -19,7 +19,7 @@ bind Viper.Input;
 // BULLET ENTITY - Player's projectile
 // =============================================================================
 
-entity Bullet {
+class Bullet {
     hide Integer screenX;
     hide Integer screenY;
     hide Boolean active;
@@ -85,7 +85,7 @@ entity Bullet {
 // PLAYER ENTITY - The player's ship
 // =============================================================================
 
-entity Player {
+class Player {
     hide Integer screenX;
     hide Integer screenY;
     hide Bullet bullet;

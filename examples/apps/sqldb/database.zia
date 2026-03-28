@@ -16,7 +16,7 @@ bind "./table";
 // DATABASE ENTITY
 //=============================================================================
 
-entity Database {
+class Database {
     expose String name;
     expose List[Table] tables;
     expose List[String] viewNames;

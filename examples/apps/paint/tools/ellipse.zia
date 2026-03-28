@@ -8,7 +8,7 @@ bind "../canvas";
 bind "../colors";
 
 // EllipseTool - draws ellipses/circles (filled or outline)
-entity EllipseTool {
+class EllipseTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start corner X (bounding box)
     expose Integer startY;      // Start corner Y

@@ -76,7 +76,7 @@ class ZiaReplAdapter : public ReplAdapter {
     /// @brief Check if input looks like a function definition.
     bool isFuncDef(const std::string &input) const;
 
-    /// @brief Check if input looks like an entity/value/interface definition.
+    /// @brief Check if input looks like an class/struct/interface definition.
     bool isTypeDef(const std::string &input) const;
 
     /// @brief Check if input looks like a variable declaration.
@@ -94,7 +94,7 @@ class ZiaReplAdapter : public ReplAdapter {
     /// @brief Extract function name from a func definition.
     std::string extractFuncName(const std::string &input) const;
 
-    /// @brief Extract type name from an entity/value/interface definition.
+    /// @brief Extract type name from an class/struct/interface definition.
     std::string extractTypeName(const std::string &input) const;
 
     /// @brief Extract variable name and type from a var declaration.

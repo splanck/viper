@@ -13,8 +13,8 @@ Complete language reference for Zia. This document describes **syntax**, **types
 ## Key Language Features
 
 - **Static typing**: All variables have compile-time types with inference
-- **Entity types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
-- **Value types**: Copy semantics with stack allocation
+- **Class types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
+- **Struct types**: Copy semantics with stack allocation
 - **Interfaces**: Contracts with full runtime itable dispatch
 - **Enums**: Named sets of integer constants with exhaustiveness checking in match
 - **Generics**: Parameterized types and functions with optional constraints (`List[T]`, `func max[T: Comparable]`)
@@ -33,8 +33,8 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - [Expressions](#expressions)
 - [Statements](#statements) (includes try/catch/finally)
 - [Declarations](#declarations) (includes default parameters)
-- [Entity Types](#entity-types) (includes properties, static members, destructors)
-- [Value Types](#value-types)
+- [Class Types](#class-types) (includes properties, static members, destructors)
+- [Struct Types](#struct-types)
 - [Interfaces](#interfaces)
 - [Enums](#enums)
 - [Modules and Imports](#modules-and-imports)
@@ -59,9 +59,9 @@ bind "path/to/module";
 var globalVar: Type = value;
 final CONSTANT = value;
 
-// Type declarations (entity, value, interface)
-entity MyEntity { ... }
-value MyValue { ... }
+// Type declarations (class, struct, interface)
+class MyClass { ... }
+struct MyStruct { ... }
 interface MyInterface { ... }
 
 // Function declarations
@@ -188,23 +188,23 @@ Parameterized types with type arguments:
 
 ```viper
 List[Integer]           // List of integers
-List[Player]            // List of entity instances
+List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
 ```
 
 Map keys are restricted to `String`.
 
-### Entity Types
+### Class Types
 
-Reference types defined with the `entity` keyword:
+Reference types defined with the `class` keyword:
 
 ```viper
 var player: Player = new Player();
 ```
 
-### Value Types
+### Struct Types
 
-Copy-semantics types defined with the `value` keyword:
+Copy-semantics types defined with the `struct` keyword:
 
 ```viper
 var point: Point;
@@ -461,15 +461,15 @@ var r = createRect(x: 10, y: 20, w: 100, h: 50);
 ### Object Creation
 
 ```viper
-new EntityType()        // Create entity instance
+new ClassName()         // Create class instance
 ```
 
-### Value Type Initialization (Struct Literals)
+### Struct Type Initialization (Struct Literals)
 
-Value types can be initialized with field assignments:
+Struct types can be initialized with field assignments:
 
 ```viper
-value Point {
+struct Point {
     Integer x;
     Integer y;
 }
@@ -794,14 +794,14 @@ final CONSTANT = value;
 
 ---
 
-## Entity Types
+## Class Types
 
-Entities are reference types with identity, stored on the heap.
+Classes are reference types with identity, stored on the heap.
 
-### Entity Declaration
+### Class Declaration
 
 ```viper
-entity EntityName {
+class ClassName {
     // Fields
     Type fieldName;
 
@@ -822,27 +822,27 @@ entity EntityName {
 Fields and methods can be marked with visibility:
 
 ```viper
-entity Player {
+class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
     expose String name;     // Public field
 }
 ```
 
-### Entity Inheritance
+### Class Inheritance
 
 ```viper
-entity ChildEntity extends ParentEntity {
+class ChildClass extends ParentClass {
     // Additional fields and methods
 }
 ```
 
 #### The `super` Keyword
 
-Within a child entity, `super` refers to the parent entity's implementation. Use it to call the parent's methods:
+Within a child class, `super` refers to the parent class's implementation. Use it to call the parent's methods:
 
 ```viper
-entity Child extends Parent {
+class Child extends Parent {
     override func greet() -> String {
         return super.greet() + " (child)";
     }
@@ -854,20 +854,20 @@ entity Child extends Parent {
 Methods that override a parent's method must be marked with `override`:
 
 ```viper
-entity Base {
+class Base {
     func describe() -> String { return "Base"; }
 }
 
-entity Derived extends Base {
+class Derived extends Base {
     override func describe() -> String { return "Derived"; }
 }
 ```
 
-### Creating Entities
+### Creating Instances
 
 ```viper
-var entity = new EntityType();
-entity.init(args);
+var obj = new ClassName();
+obj.init(args);
 ```
 
 ### Self Reference
@@ -875,7 +875,7 @@ entity.init(args);
 Within methods, fields can be accessed directly or with `self`:
 
 ```viper
-entity Counter {
+class Counter {
     Integer count;
 
     func increment() {
@@ -887,10 +887,10 @@ entity Counter {
 
 ### Properties
 
-Properties provide computed get/set accessors for entity fields:
+Properties provide computed get/set accessors for class fields:
 
 ```viper
-entity Temperature {
+class Temperature {
     Number celsius;
 
     expose property fahrenheit: Number {
@@ -908,10 +908,10 @@ entity Temperature {
 
 ### Static Members
 
-Fields and methods marked `static` belong to the entity type, not to instances:
+Fields and methods marked `static` belong to the class type, not to instances:
 
 ```viper
-entity Counter {
+class Counter {
     static Integer instanceCount;
 
     static func getCount() -> Integer {
@@ -926,14 +926,14 @@ entity Counter {
 
 - Static fields are stored as module-level globals (not per-instance).
 - Static methods have no `self` parameter.
-- Access via the entity name: `Counter.getCount()`, `Counter.instanceCount`.
+- Access via the class name: `Counter.getCount()`, `Counter.instanceCount`.
 
 ### Destructors
 
 The `deinit` block defines cleanup logic that runs when an object is destroyed:
 
 ```viper
-entity FileHandle {
+class FileHandle {
     Integer fd;
 
     deinit {
@@ -943,23 +943,23 @@ entity FileHandle {
 }
 ```
 
-- At most one `deinit` block per entity.
+- At most one `deinit` block per class.
 - The destructor automatically releases reference-typed fields after the user body executes.
 - The generated IL function is named `TypeName.__dtor`.
-- Bound runtime/module symbols remain visible inside `deinit`, just like other entity members.
+- Bound runtime/module symbols remain visible inside `deinit`, just like other class members.
 - If you need deterministic cleanup, releasing the last reference explicitly with
   `Viper.Memory.Release(handle)` will run `deinit` before the object storage is freed.
 
 ---
 
-## Value Types
+## Struct Types
 
-Value types have copy semantics — assignments copy the entire value.
+Struct types have copy semantics — assignments copy the entire struct.
 
-### Value Declaration
+### Struct Declaration
 
 ```viper
-value ValueName {
+struct StructName {
     // Fields
     Type fieldName;
 
@@ -970,10 +970,10 @@ value ValueName {
 }
 ```
 
-### Using Value Types
+### Using Struct Types
 
 ```viper
-value Point {
+struct Point {
     Integer x;
     Integer y;
 
@@ -993,7 +993,7 @@ func start() {
 
 ## Interfaces
 
-Interfaces define contracts that entities and values can implement.
+Interfaces define contracts that classes and structs can implement.
 
 ### Interface Declaration
 
@@ -1006,7 +1006,7 @@ interface InterfaceName {
 ### Implementing Interfaces
 
 ```viper
-entity MyEntity implements InterfaceName {
+class MyClass implements InterfaceName {
     expose func methodSignature(params) -> ReturnType {
         // Implementation
     }
@@ -1024,7 +1024,7 @@ interface IShape {
     func area() -> Number;
 }
 
-entity Circle implements IShape {
+class Circle implements IShape {
     expose Number radius;
     expose func area() -> Number { return 3.14 * self.radius * self.radius; }
 }
@@ -1241,7 +1241,7 @@ namespace MyLib {
         return 42;
     }
 
-    entity Parser {
+    class Parser {
         Integer value;
 
         func parse(input: String) -> Boolean {
@@ -1294,8 +1294,8 @@ var n = Outer.Inner.nested();
 
 Namespaces can contain:
 - Functions
-- Entity types
-- Value types
+- Class types
+- Struct types
 - Interfaces
 - Global variables (final or var)
 - Other namespaces
@@ -1305,7 +1305,7 @@ namespace Config {
     final VERSION = 42;
     var debug = false;
 
-    value Point {
+    struct Point {
         Integer x;
         Integer y;
     }
@@ -1314,7 +1314,7 @@ namespace Config {
         func configure();
     }
 
-    entity Settings {
+    class Settings {
         String name;
     }
 }
@@ -1464,16 +1464,15 @@ The following words are reserved and cannot be used as identifiers:
 ### Keywords
 
 ```text
-and         as          bind        break       catch
-continue    deinit      else        entity      enum
-async       await
-expose      extends     false       final       finally
-for         func        guard       hide        if
-implements  in          interface   is          match
-module      namespace   new         not         null
-or          override    property    return      self
-static      super       throw       true        try
-value       var         while
+and         as          async       await       bind
+break       catch       class       continue    deinit
+else        enum        expose      extends     false
+final       finally     for         func        guard
+hide        if          implements  in          interface
+is          match       module      namespace   new
+not         null        or          override    property
+return      self        static      struct      super
+throw       true        try         var         while
 ```
 
 `async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
@@ -1508,9 +1507,9 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ### Declarations
 
 ```text
-decl        ::= entityDecl | valueDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
-entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
-valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
+decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
+classDecl   ::= "class" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
+structDecl  ::= "struct" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
 enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]

@@ -58,7 +58,7 @@ final WAL_MAX_FILE_SIZE = 10485760;  // 10MB before rotation
 //=============================================================================
 
 // LSN uniquely identifies a log record position
-entity LSN {
+class LSN {
     expose Integer fileNumber;  // Log file number
     expose Integer offset;      // Byte offset within file
 
@@ -98,7 +98,7 @@ entity LSN {
 //=============================================================================
 
 // A single log record
-entity LogRecord {
+class LogRecord {
     expose LSN lsn;              // Position in log
     expose Integer recordType;   // LOG_* constant
     expose Integer txnId;        // Transaction ID
@@ -225,7 +225,7 @@ entity LogRecord {
 // LOG RECORD SERIALIZER
 //=============================================================================
 
-entity LogRecordSerializer {
+class LogRecordSerializer {
     expose func init() {
         // No state needed
     }
@@ -312,7 +312,7 @@ entity LogRecordSerializer {
 
 // Write-Ahead Log Manager
 // Thread-safe: all log-writing methods are protected by a Monitor lock.
-entity WALManager {
+class WALManager {
     expose String logDir;            // Directory for log files
     expose Integer currentFile;      // Current log file number
     expose Integer currentOffset;    // Current offset in file
@@ -741,7 +741,7 @@ entity WALManager {
 // RECOVERY RESULT
 //=============================================================================
 
-entity RecoveryResult {
+class RecoveryResult {
     expose Boolean recoveryComplete;
     expose List[Integer] committedTxns;
     expose List[Integer] abortedTxns;

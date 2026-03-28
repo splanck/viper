@@ -37,7 +37,7 @@
 ///
 /// **User-Defined Types:**
 /// - `Value`: Copy-semantics type (struct-like)
-/// - `Entity`: Reference-semantics type (class-like)
+/// - `Class`: Reference-semantics type (class)
 /// - `Interface`: Abstract type contract
 ///
 /// **Function Type:**
@@ -63,7 +63,7 @@
 /// - `Boolean` → `i64` (0 or 1)
 /// - `String` → `ptr` (pointer to string data)
 /// - Reference types → `ptr` (pointer to object)
-/// - Value types → inline struct layout
+/// - Struct types → inline struct layout
 ///
 /// ## Type Compatibility
 ///
@@ -121,7 +121,7 @@ using TypeRef = std::shared_ptr<const ViperType>;
 enum class TypeKindSem {
     // =========================================================================
     /// @name Primitive Types
-    /// @brief Built-in value types with fixed representation.
+    /// @brief Built-in struct types with fixed representation.
     /// @{
     // =========================================================================
 
@@ -169,7 +169,7 @@ enum class TypeKindSem {
 
     /// @brief Optional (nullable) type: `T?`.
     /// @details Wraps a type to allow null values. For reference types,
-    /// null is represented as a null pointer. For value types, requires
+    /// null is represented as a null pointer. For struct types, requires
     /// a flag + value pair.
     Optional,
 
@@ -201,8 +201,8 @@ enum class TypeKindSem {
     Set,
 
     /// @brief Fixed-size inline array: `T[N]`.
-    /// @details Compile-time-sized array stored inline in the parent entity or
-    /// value type. No heap allocation. Elements are accessed via GEP + load/store.
+    /// @details Compile-time-sized array stored inline in the parent class or
+    /// struct type. No heap allocation. Elements are accessed via GEP + load/store.
     /// The element type is stored in typeArgs[0]; the count in elementCount.
     FixedArray,
 
@@ -229,15 +229,15 @@ enum class TypeKindSem {
     /// @{
     // =========================================================================
 
-    /// @brief Value type with copy semantics.
+    /// @brief Struct type with copy semantics.
     /// @details Instances are copied on assignment. No identity or reference
-    /// counting. Defined with the `value` keyword.
-    Value,
+    /// counting. Defined with the `struct` keyword.
+    Struct,
 
-    /// @brief Entity type with reference semantics.
+    /// @brief Class type with reference semantics.
     /// @details Instances are heap-allocated with reference counting.
-    /// Support inheritance and interfaces. Defined with `entity` keyword.
-    Entity,
+    /// Support inheritance and interfaces. Defined with `class` keyword.
+    Class,
 
     /// @brief Interface type (abstract contract).
     /// @details Defines method signatures that implementing types must
@@ -257,7 +257,7 @@ enum class TypeKindSem {
     /// @{
     // =========================================================================
 
-    /// @brief Error value type.
+    /// @brief Error struct type.
     /// @details Represents an error in a Result type. Contains error
     /// information for error handling.
     Error,
@@ -316,7 +316,7 @@ enum class TypeKindSem {
 /// ## Structure
 /// Each type has:
 /// - `kind`: The type category (primitive, collection, user-defined, etc.)
-/// - `name`: For named types (Value, Entity, Interface, TypeParam)
+/// - `name`: For named types (Struct, Class, Interface, TypeParam)
 /// - `typeArgs`: For generic types (List[T], Map[K,V], Function types)
 ///
 /// ## Type Predicates
@@ -336,7 +336,7 @@ struct ViperType {
     TypeKindSem kind;
 
     /// @brief The type name for user-defined and parameter types.
-    /// @details Used for Value, Entity, Interface, and TypeParam kinds.
+    /// @details Used for Struct, Class, Interface, and TypeParam kinds.
     /// Empty for primitive and built-in generic types.
     std::string name;
 
@@ -361,7 +361,7 @@ struct ViperType {
     /// @param k The type kind.
     explicit ViperType(TypeKindSem k) : kind(k) {}
 
-    /// @brief Construct a named type (Value, Entity, Interface, TypeParam).
+    /// @brief Construct a named type (Struct, Class, Interface, TypeParam).
     /// @param k The type kind.
     /// @param n The type name.
     ViperType(TypeKindSem k, std::string n) : kind(k), name(std::move(n)) {}
@@ -394,7 +394,7 @@ struct ViperType {
     /// @brief Check if this is a primitive type.
     /// @return True for Integer, Number, Boolean, String, Byte, Unit.
     /// @details Primitive types have fixed representation and built-in
-    /// operations. They are always value types (copied on assignment).
+    /// operations. They are always struct types (copied on assignment).
     bool isPrimitive() const {
         switch (kind) {
             case TypeKindSem::Integer:
@@ -425,11 +425,11 @@ struct ViperType {
     }
 
     /// @brief Check if this is a reference type.
-    /// @return True for Entity, Interface, List, Map, Set.
+    /// @return True for Class, Interface, List, Map, Set.
     /// @details Reference types are heap-allocated and use reference semantics.
     /// They are passed by pointer and may be null when wrapped in Optional.
     bool isReference() const {
-        return kind == TypeKindSem::Entity || kind == TypeKindSem::Interface ||
+        return kind == TypeKindSem::Class || kind == TypeKindSem::Interface ||
                kind == TypeKindSem::List || kind == TypeKindSem::Map || kind == TypeKindSem::Set;
     }
 
@@ -497,10 +497,10 @@ struct ViperType {
     }
 
     /// @brief Check if this is a user-defined type.
-    /// @return True for Value, Entity, Interface types.
+    /// @return True for Struct, Class, Interface types.
     /// @details User-defined types are declared in source code.
     bool isUserDefined() const {
-        return kind == TypeKindSem::Value || kind == TypeKindSem::Entity ||
+        return kind == TypeKindSem::Struct || kind == TypeKindSem::Class ||
                kind == TypeKindSem::Interface || kind == TypeKindSem::Enum;
     }
 
@@ -549,8 +549,8 @@ struct ViperType {
         return nullptr;
     }
 
-    /// @brief Get the value type for Map[K, V].
-    /// @return The value type V, or nullptr if not a Map.
+    /// @brief Get the struct type for Map[K, V].
+    /// @return The struct type V, or nullptr if not a Map.
     /// @details For `Map[String, Integer]`, returns the Integer type.
     TypeRef valueType() const {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
@@ -745,7 +745,7 @@ TypeRef set(TypeRef element);
 
 /// @brief Create a Map[K, V] type.
 /// @param key The key type K.
-/// @param value The value type V.
+/// @param value The struct type V.
 /// @return A new Map type.
 /// @details Creates a dictionary type.
 TypeRef map(TypeRef key, TypeRef value);
@@ -766,23 +766,23 @@ TypeRef tuple(std::vector<TypeRef> elements);
 /// @}
 // =========================================================================
 /// @name User-Defined Type Constructors
-/// @brief Create types for user-defined value, entity, and interface types.
+/// @brief Create types for user-defined struct, class, and interface types.
 /// @{
 // =========================================================================
 
-/// @brief Create a value type reference.
-/// @param name The value type name.
+/// @brief Create a struct type reference.
+/// @param name The struct type name.
 /// @param typeParams Optional type parameters for generic types.
-/// @return A new Value type.
-/// @details Value types have copy semantics.
-TypeRef value(const std::string &name, std::vector<TypeRef> typeParams = {});
+/// @return A new Struct type.
+/// @details Struct types have copy semantics.
+TypeRef structType(const std::string &name, std::vector<TypeRef> typeParams = {});
 
-/// @brief Create an entity type reference.
-/// @param name The entity type name.
+/// @brief Create a class type reference.
+/// @param name The class type name.
 /// @param typeParams Optional type parameters for generic types.
-/// @return A new Entity type.
-/// @details Entity types have reference semantics.
-TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams = {});
+/// @return A new Class type.
+/// @details Class types have reference semantics.
+TypeRef classType(const std::string &name, std::vector<TypeRef> typeParams = {});
 
 /// @brief Create an interface type reference.
 /// @param name The interface type name.
@@ -807,11 +807,11 @@ void registerInterfaceImplementation(const std::string &typeName, const std::str
 /// @brief Check whether @p typeName implements @p interfaceName.
 bool implementsInterface(const std::string &typeName, const std::string &interfaceName);
 
-/// @brief Clear all entity inheritance registrations.
-void clearEntityInheritance();
+/// @brief Clear all class inheritance registrations.
+void clearClassInheritance();
 
 /// @brief Register that @p childName extends @p parentName.
-void registerEntityInheritance(const std::string &childName, const std::string &parentName);
+void registerClassInheritance(const std::string &childName, const std::string &parentName);
 
 /// @brief Check whether @p childName is a subclass of @p parentName.
 bool isSubclassOf(const std::string &childName, const std::string &parentName);
@@ -839,7 +839,7 @@ TypeRef module(const std::string &name);
 /// @param elemType The element type T.
 /// @param count Number of elements N (compile-time constant).
 /// @return A new FixedArray type.
-/// @details Used for inline array fields in entity types. No heap allocation.
+/// @details Used for inline array fields in class types. No heap allocation.
 TypeRef fixedArray(TypeRef elemType, size_t count);
 
 /// @}
@@ -866,13 +866,13 @@ TypeRef fixedArray(TypeRef elemType, size_t count);
 /// - Boolean → i64 (stored as 0 or 1)
 /// - String → ptr (pointer to string structure)
 /// - Byte → i32 (IL has no i8)
-/// - Entity → ptr (pointer to object)
+/// - Class → ptr (pointer to object)
 /// - List/Map/Set → ptr (pointer to collection)
 /// - Optional of reference → ptr (null for none)
 /// - Optional of value → requires flag + value
 ///
-/// @note Reference types (Entity, collections) map to Ptr.
-/// @note Optionals of value types require special handling (flag + value).
+/// @note Reference types (Class, collections) map to Ptr.
+/// @note Optionals of struct types require special handling (flag + value).
 il::core::Type::Kind toILType(const ViperType &type);
 
 /// @brief Get the size in bytes for a type in memory.
@@ -885,7 +885,7 @@ il::core::Type::Kind toILType(const ViperType &type);
 /// - Boolean: 8 bytes (stored as i64)
 /// - Byte: 4 bytes (stored as i32)
 /// - String: pointer size (8 bytes on 64-bit)
-/// - Entity: pointer size
+/// - Class: pointer size
 /// - Collections: pointer size
 size_t typeSize(const ViperType &type);
 
@@ -899,7 +899,7 @@ size_t typeAlignment(const ViperType &type);
 
 /// @brief Convert type kind to human-readable string.
 /// @param kind The type kind to convert.
-/// @return String name like "Integer", "Entity", "List".
+/// @return String name like "Integer", "Class", "List".
 ///
 /// @details Used for error messages and debugging output.
 const char *kindToString(TypeKindSem kind);

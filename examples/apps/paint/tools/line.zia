@@ -8,7 +8,7 @@ bind "../canvas";
 bind "../colors";
 
 // LineTool - draws straight lines from start to end
-entity LineTool {
+class LineTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start X (expose for preview)
     expose Integer startY;      // Start Y

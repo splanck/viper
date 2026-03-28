@@ -22,6 +22,7 @@
 
 #include "rt.hpp"
 #include "rt_canvas3d.h"
+#include "rt_sprite3d.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 #include <cassert>
@@ -647,6 +648,102 @@ static void test_material_reflectivity() {
 }
 
 //=============================================================================
+// Mesh3D.Clear tests
+//=============================================================================
+
+static void test_mesh_clear() {
+    TEST("Mesh3D.Clear resets counts to zero");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    rt_mesh3d_clear(m);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 0);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    PASS();
+}
+
+static void test_mesh_clear_then_rebuild() {
+    TEST("Mesh3D.Clear allows rebuild without reallocation");
+    void *m = rt_mesh3d_new();
+    // Build a triangle
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    // Clear and rebuild a different triangle
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 2, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 3, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 2, 1, 0, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, 3, 1, 0, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_add_triangle(m, 1, 3, 2);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 4);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 2);
+    PASS();
+}
+
+static void test_mesh_clear_null_safety() {
+    TEST("Mesh3D.Clear null safety");
+    rt_mesh3d_clear(NULL); // should not crash
+    PASS();
+}
+
+//=============================================================================
+// Sprite3D tests
+//=============================================================================
+
+static void test_sprite3d_new() {
+    TEST("Sprite3D.New creates sprite");
+    void *tex = rt_pixels_new(16, 16);
+    void *s = rt_sprite3d_new(tex);
+    assert(s);
+    PASS();
+}
+
+static void test_sprite3d_new_null_texture() {
+    TEST("Sprite3D.New with null texture");
+    void *s = rt_sprite3d_new(NULL);
+    assert(s);
+    PASS();
+}
+
+static void test_sprite3d_set_position() {
+    TEST("Sprite3D.SetPosition");
+    void *s = rt_sprite3d_new(NULL);
+    rt_sprite3d_set_position(s, 1.0, 2.0, 3.0);
+    PASS();
+}
+
+static void test_sprite3d_set_scale() {
+    TEST("Sprite3D.SetScale");
+    void *s = rt_sprite3d_new(NULL);
+    rt_sprite3d_set_scale(s, 2.0, 3.0);
+    PASS();
+}
+
+static void test_sprite3d_set_frame() {
+    TEST("Sprite3D.SetFrame");
+    void *tex = rt_pixels_new(64, 64);
+    void *s = rt_sprite3d_new(tex);
+    rt_sprite3d_set_frame(s, 0, 0, 32, 32);
+    PASS();
+}
+
+static void test_sprite3d_null_safety() {
+    TEST("Sprite3D null safety");
+    rt_sprite3d_set_position(NULL, 0, 0, 0);
+    rt_sprite3d_set_scale(NULL, 1, 1);
+    rt_sprite3d_set_anchor(NULL, 0.5, 0.5);
+    rt_sprite3d_set_frame(NULL, 0, 0, 16, 16);
+    PASS();
+}
+
+//=============================================================================
 // RenderTarget3D tests
 //=============================================================================
 
@@ -765,6 +862,19 @@ int main() {
     /* Phase 11 — Cube maps */
     test_cubemap_new();
     test_material_reflectivity();
+
+    /* Mesh3D.Clear */
+    test_mesh_clear();
+    test_mesh_clear_then_rebuild();
+    test_mesh_clear_null_safety();
+
+    /* Sprite3D */
+    test_sprite3d_new();
+    test_sprite3d_new_null_texture();
+    test_sprite3d_set_position();
+    test_sprite3d_set_scale();
+    test_sprite3d_set_frame();
+    test_sprite3d_null_safety();
 
     /* RenderTarget3D */
     test_rendertarget_new();

@@ -24,7 +24,7 @@ bind Viper.Game;
 bind "./config";
 bind "./level";
 
-entity PhysicsHelper {
+class PhysicsHelper {
 
     // CollisionRect instances reused each frame (avoid allocation per check).
     hide CollisionRect rectA;

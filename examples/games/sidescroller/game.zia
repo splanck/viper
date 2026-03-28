@@ -32,7 +32,7 @@ bind "./texture";
 bind "./ai";
 bind "./achievements";
 
-entity Game {
+class Game {
     hide Palette pal;
     hide Canvas canvas;
     hide StateMachine sm;

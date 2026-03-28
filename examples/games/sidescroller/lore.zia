@@ -20,7 +20,7 @@ bind "./palette";
 
 final MAX_LORE_ENTRIES = 32;
 
-entity LoreSystem {
+class LoreSystem {
     expose func init() {}
     hide Palette pal;
     hide List[String] loreTitles;

@@ -7,7 +7,7 @@ bind "./_support";
 // Test: Guard statements and error handling patterns
 
 // Simple Result-like entity for error handling
-entity Result {
+class Result {
     expose Boolean ok;
     expose Integer value;
     expose String error;
@@ -72,7 +72,7 @@ func findPositive(a: Integer, b: Integer, c: Integer) -> Integer? {
 }
 
 // Entity with optional field
-entity Container {
+class Container {
     expose Integer? storedValue;
 
     expose func init() {

@@ -7,12 +7,12 @@
 //
 // File: src/frontends/zia/Lowerer_Decl_Functions.cpp
 // Purpose: Function and method declaration lowering for the Zia IL lowerer —
-//          top-level functions, entity/value methods, properties, destructors,
+//          top-level functions, class/struct methods, properties, destructors,
 //          global variable declarations, and generic function instantiation.
 // Key invariants:
 //   - Functions are created via builder_->startFunction and terminated with ret/retVoid
 //   - Parameters are stored in slots for cross-block SSA correctness
-//   - currentEntityType_/currentValueType_ are set/cleared around method lowering
+//   - currentClassType_/currentStructType_ are set/cleared around method lowering
 // Ownership/Lifetime:
 //   - Lowerer owns IL builder; function pointers are stable within a lowering session
 // Links: src/frontends/zia/Lowerer.hpp, src/frontends/zia/Lowerer_Decl.cpp
@@ -250,7 +250,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
             }
 
             Value futureValue = defaultValue;
-            if (payloadType->kind == TypeKindSem::Value || payloadIlType.kind != Type::Kind::Ptr)
+            if (payloadType->kind == TypeKindSem::Struct || payloadIlType.kind != Type::Kind::Ptr)
                 futureValue = emitBoxValue(defaultValue, payloadIlType, payloadType);
             else
                 emitCall("rt_obj_retain_maybe", {futureValue});
@@ -298,7 +298,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
 
             Value unpacked = ownedArg;
             if (paramType &&
-                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
+                (paramType->kind == TypeKindSem::Struct || ilParamType.kind != Type::Kind::Ptr))
                 unpacked = emitUnboxValue(ownedArg, ilParamType, paramType).value;
 
             createSlot(decl.params[i].name, ilParamType);
@@ -346,7 +346,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
 
             Value storedValue = paramValue;
             if (paramType &&
-                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr)) {
+                (paramType->kind == TypeKindSem::Struct || ilParamType.kind != Type::Kind::Ptr)) {
                 storedValue = emitBoxValue(paramValue, ilParamType, paramType);
             } else {
                 emitCall("rt_obj_retain_maybe", {storedValue});
@@ -584,7 +584,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
 // Value and Entity Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerValueDecl(ValueDecl &decl) {
+void Lowerer::lowerStructDecl(StructDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Skip uninstantiated generic types - they're lowered during instantiation
@@ -594,11 +594,11 @@ void Lowerer::lowerValueDecl(ValueDecl &decl) {
     std::string qualifiedName = qualifyName(decl.name);
 
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
-    if (valueTypes_.find(qualifiedName) == valueTypes_.end()) {
-        registerValueLayout(decl);
+    if (structTypes_.find(qualifiedName) == structTypes_.end()) {
+        registerStructLayout(decl);
     }
 
-    const ValueTypeInfo &storedInfo = valueTypes_[qualifiedName];
+    const StructTypeInfo &storedInfo = structTypes_[qualifiedName];
 
     // Lower all methods using qualified type name
     for (auto *method : storedInfo.methods) {
@@ -606,7 +606,7 @@ void Lowerer::lowerValueDecl(ValueDecl &decl) {
     }
 }
 
-void Lowerer::lowerEntityDecl(EntityDecl &decl) {
+void Lowerer::lowerClassDecl(ClassDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Skip uninstantiated generic types - they're lowered during instantiation
@@ -617,12 +617,12 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl) {
 
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
     // If not registered yet (e.g., in pending generic instantiation), do it now.
-    auto it = entityTypes_.find(qualifiedName);
-    if (it == entityTypes_.end()) {
-        registerEntityLayout(decl);
+    auto it = classTypes_.find(qualifiedName);
+    if (it == classTypes_.end()) {
+        registerClassLayout(decl);
     }
 
-    EntityTypeInfo &storedInfo = entityTypes_[qualifiedName];
+    ClassTypeInfo &storedInfo = classTypes_[qualifiedName];
 
     // Register module-level globals for static fields
     for (auto &member : decl.members) {
@@ -663,7 +663,7 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl) {
         }
     }
 
-    // Lower destructor declaration (at most one per entity)
+    // Lower destructor declaration (at most one per class)
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Destructor) {
             auto *dtor = static_cast<DestructorDecl *>(member.get());
@@ -702,29 +702,29 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
     interfaceTypes_[qualifiedName] = std::move(info);
 
     // Note: Interface methods are not lowered directly since they're abstract.
-    // The implementing entity's methods are called at runtime.
+    // The implementing class's methods are called at runtime.
 }
 
 //=============================================================================
 // Method Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity) {
+void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isClass) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Find the type info
-    if (isEntity) {
-        auto it = entityTypes_.find(typeName);
-        if (it == entityTypes_.end())
+    if (isClass) {
+        auto it = classTypes_.find(typeName);
+        if (it == classTypes_.end())
             return;
-        currentEntityType_ = &it->second;
-        currentValueType_ = nullptr;
+        currentClassType_ = &it->second;
+        currentStructType_ = nullptr;
     } else {
-        const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+        const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
         if (!valueInfo)
             return;
-        currentValueType_ = valueInfo;
-        currentEntityType_ = nullptr;
+        currentStructType_ = valueInfo;
+        currentClassType_ = nullptr;
     }
 
     // Look up cached method type - this has already-substituted types for generics
@@ -845,27 +845,27 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     currentFunc_ = nullptr;
     currentReturnType_ = nullptr;
-    currentValueType_ = nullptr;
-    currentEntityType_ = nullptr;
+    currentStructType_ = nullptr;
+    currentClassType_ = nullptr;
 }
 
 //=============================================================================
 // Property Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isEntity) {
+void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isClass) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     TypeRef propType = decl.type ? sema_.resolveType(decl.type.get()) : types::unknown();
     Type ilPropType = mapType(propType);
 
-    // Set current entity/value type context
-    if (isEntity) {
-        auto it = entityTypes_.find(typeName);
-        if (it == entityTypes_.end())
+    // Set current class/struct type context
+    if (isClass) {
+        auto it = classTypes_.find(typeName);
+        if (it == classTypes_.end())
             return;
-        currentEntityType_ = &it->second;
-        currentValueType_ = nullptr;
+        currentClassType_ = &it->second;
+        currentStructType_ = nullptr;
     }
 
     // --- Synthesize getter: get_PropertyName(self: Ptr) -> Type ---
@@ -978,8 +978,8 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
         currentReturnType_ = nullptr;
     }
 
-    currentEntityType_ = nullptr;
-    currentValueType_ = nullptr;
+    currentClassType_ = nullptr;
+    currentStructType_ = nullptr;
 }
 
 //=============================================================================
@@ -989,11 +989,11 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName) {
     ZiaLocationScope locScope(*this, decl.loc);
 
-    auto it = entityTypes_.find(typeName);
-    if (it == entityTypes_.end())
+    auto it = classTypes_.find(typeName);
+    if (it == classTypes_.end())
         return;
-    currentEntityType_ = &it->second;
-    currentValueType_ = nullptr;
+    currentClassType_ = &it->second;
+    currentStructType_ = nullptr;
 
     // Emit __dtor function: TypeName.__dtor(self: Ptr) -> Void
     std::string dtorName = typeName + ".__dtor";
@@ -1026,7 +1026,7 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
     // Release reference-typed fields (Str and Ptr)
     if (!isTerminated()) {
         Value selfPtr = loadFromSlot("self", Type(Type::Kind::Ptr));
-        const EntityTypeInfo &info = *currentEntityType_;
+        const ClassTypeInfo &info = *currentClassType_;
 
         for (const auto &field : info.fields) {
             Type ilFieldType = mapType(field.type);
@@ -1049,8 +1049,8 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
     definedFunctions_.insert(dtorName);
     currentFunc_ = nullptr;
     currentReturnType_ = nullptr;
-    currentEntityType_ = nullptr;
-    currentValueType_ = nullptr;
+    currentClassType_ = nullptr;
+    currentStructType_ = nullptr;
 }
 
 } // namespace il::frontends::zia

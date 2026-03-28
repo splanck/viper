@@ -99,10 +99,10 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_operators PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_operators test_zia_operators)
 
-    # Entity/OOP tests
-    viper_add_test(test_zia_entities ${_VIPER_ZIA_DIR}/test_zia_entities.cpp)
-    target_link_libraries(test_zia_entities PRIVATE ${VIPER_ZIA_LIBS})
-    viper_add_ctest(test_zia_entities test_zia_entities)
+    # Class/OOP tests
+    viper_add_test(test_zia_classes ${_VIPER_ZIA_DIR}/test_zia_classes.cpp)
+    target_link_libraries(test_zia_classes PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_classes test_zia_classes)
 
     # Function tests
     viper_add_test(test_zia_functions ${_VIPER_ZIA_DIR}/test_zia_functions.cpp)
@@ -114,10 +114,10 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_statements PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_statements test_zia_statements)
 
-    # Value type tests
-    viper_add_test(test_zia_value_types ${_VIPER_ZIA_DIR}/test_zia_value_types.cpp)
-    target_link_libraries(test_zia_value_types PRIVATE ${VIPER_ZIA_LIBS})
-    viper_add_ctest(test_zia_value_types test_zia_value_types)
+    # Struct type tests
+    viper_add_test(test_zia_struct_types ${_VIPER_ZIA_DIR}/test_zia_struct_types.cpp)
+    target_link_libraries(test_zia_struct_types PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_struct_types test_zia_struct_types)
 
     # Namespace tests
     viper_add_test(test_zia_namespaces ${_VIPER_ZIA_DIR}/test_zia_namespaces.cpp)
@@ -227,10 +227,10 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_iface_dispatch PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_iface_dispatch test_zia_iface_dispatch)
 
-    # BUG-ADV-001: Entity string field loads must emit rt_str_retain_maybe
-    viper_add_test(test_zia_entity_string_field ${_VIPER_ZIA_DIR}/test_zia_entity_string_field.cpp)
-    target_link_libraries(test_zia_entity_string_field PRIVATE ${VIPER_ZIA_LIBS})
-    viper_add_ctest(test_zia_entity_string_field test_zia_entity_string_field)
+    # BUG-ADV-001: Class string field loads must emit rt_str_retain_maybe
+    viper_add_test(test_zia_class_string_field ${_VIPER_ZIA_DIR}/test_zia_class_string_field.cpp)
+    target_link_libraries(test_zia_class_string_field PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_class_string_field test_zia_class_string_field)
 
     # REPL adapter tests (input classifier, expression auto-print, var persistence, .type)
     viper_add_test(test_zia_repl ${_VIPER_ZIA_DIR}/test_zia_repl.cpp)

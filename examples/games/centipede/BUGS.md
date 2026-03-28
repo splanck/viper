@@ -10,20 +10,20 @@ This document tracks bugs discovered while porting Centipede to Zia.
 **Status:** FIXED
 
 **Description:**
-When a method inside an entity calls another method of the same entity, the compiler reports "Undefined identifier". The method name is not automatically resolved within the entity scope.
+When a method inside an class calls another method of the same class, the compiler reports "Undefined identifier". The method name is not automatically resolved within the class scope.
 
 **Root Cause:**
-In `Sema_Decl.cpp::analyzeEntityDecl()`, entity fields were added to the scope via `defineSymbol()`, but methods were only registered in the `methodTypes_` map, not in the local scope. When calling `helper()`, `lookupSymbol("helper")` failed because methods weren't in scope.
+In `Sema_Decl.cpp::analyzeEntityDecl()`, class fields were added to the scope via `defineSymbol()`, but methods were only registered in the `methodTypes_` map, not in the local scope. When calling `helper()`, `lookupSymbol("helper")` failed because methods weren't in scope.
 
-Additionally, `Lowerer_Expr.cpp::lowerCall()` didn't check for implicit method calls when the callee was just an identifier matching a method of the current entity.
+Additionally, `Lowerer_Expr.cpp::lowerCall()` didn't check for implicit method calls when the callee was just an identifier matching a method of the current class.
 
 **Fix:**
 1. Modified `Sema_Decl.cpp::analyzeEntityDecl()` to pre-define method symbols in scope before analyzing method bodies
-2. Modified `Lowerer_Expr.cpp::lowerCall()` to check for implicit method calls when inside an entity
+2. Modified `Lowerer_Expr.cpp::lowerCall()` to check for implicit method calls when inside an class
 
 **Verification:**
 ```viper
-entity Foo {
+class Foo {
     expose func helper() -> Integer { return 42; }
     expose func doWork() -> Integer { return helper(); }  // Now works!
 }
@@ -99,14 +99,14 @@ var sub = Viper.String.Substring(s, 0, 5);  // Returns "Hello"
 **Status:** NOT A BUG - Works Correctly
 
 **Description:**
-Complex expressions involving entity field access were reported to sometimes fail with "Invalid operands for arithmetic operation".
+Complex expressions involving class field access were reported to sometimes fail with "Invalid operands for arithmetic operation".
 
 **Root Cause:**
 Testing confirms this works correctly. The original issue may have been caused by type mismatches (mixing Integer and Number types) or other syntax errors.
 
 **Verification:**
 ```viper
-entity Game {
+class Game {
     expose Integer x;
     expose Integer y;
     expose Integer width;
@@ -145,13 +145,13 @@ items.set_Item(1, 99);  // Sets index 1 to 99
 **Status:** FIXED (by Bug #45 fix)
 
 **Description:**
-Within an entity method, accessing `fieldName` implicitly uses `self.fieldName` and works correctly. However, calling `methodName()` did NOT implicitly use `self.methodName()`.
+Within an class method, accessing `fieldName` implicitly uses `self.fieldName` and works correctly. However, calling `methodName()` did NOT implicitly use `self.methodName()`.
 
 **Root Cause:**
-Same as Bug #45. Methods weren't added to the entity scope.
+Same as Bug #45. Methods weren't added to the class scope.
 
 **Fix:**
-The Bug #45 fix also resolved this inconsistency. Now both fields and methods work implicitly within entity methods.
+The Bug #45 fix also resolved this inconsistency. Now both fields and methods work implicitly within class methods.
 
 ---
 

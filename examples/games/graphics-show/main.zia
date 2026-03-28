@@ -74,7 +74,7 @@ func setupActions() {
 }
 
 // Menu item structure
-entity MenuItem {
+class MenuItem {
     expose String name;
     expose String description;
     expose Integer index;
@@ -87,7 +87,7 @@ entity MenuItem {
 }
 
 // Animated background stars for menu
-entity MenuStar {
+class MenuStar {
     expose Number x;
     expose Number y;
     expose Number speed;
@@ -114,7 +114,7 @@ entity MenuStar {
 }
 
 // Main menu system
-entity Menu {
+class Menu {
     expose List[MenuItem] items;
     expose Integer selected;
     expose List[MenuStar] stars;

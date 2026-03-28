@@ -30,7 +30,7 @@ TEST(ZiaOptionalNarrowing, NarrowingAfterNotNullCheck) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -70,7 +70,7 @@ TEST(ZiaOptionalNarrowing, NarrowingInElseBranchAfterNullCheck) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -112,7 +112,7 @@ TEST(ZiaOptionalNarrowing, NarrowingWithReversedNullCheck) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -152,7 +152,7 @@ TEST(ZiaOptionalNarrowing, NarrowedTypeAllowsMethodCalls) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -200,7 +200,7 @@ TEST(ZiaForceUnwrap, ForceUnwrapEntity) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -236,7 +236,7 @@ TEST(ZiaForceUnwrap, ForceUnwrapInCallArg) {
     const std::string src = R"(
 module Test;
 
-entity Item {
+class Item {
     expose String label;
 
     expose func init(l: String) {
@@ -295,7 +295,7 @@ TEST(ZiaForceUnwrap, ForceUnwrapThenFieldAccess) {
     const std::string src = R"(
 module Test;
 
-entity Node {
+class Node {
     expose String value;
 
     expose func init(v: String) {

@@ -35,7 +35,7 @@ namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 
 /// @brief Information about a declared symbol (variable, function, type, etc.).
-/// @details Represents any named entity that can be looked up in a scope.
+/// @details Represents any named symbol that can be looked up in a scope.
 /// Used during semantic analysis to track declarations and their types.
 ///
 /// ## Symbol Categories
@@ -45,7 +45,7 @@ namespace il::frontends::zia {
 /// - **Function**: Global function that can be called
 /// - **Method**: Method on a type that can be called on an object
 /// - **Field**: Field in a type that can be accessed on an object
-/// - **Type**: Type declaration (value, entity, interface)
+/// - **Type**: Type declaration (struct, class, interface)
 struct Symbol {
     /// @brief The kind of symbol.
     /// @details Determines how the symbol can be used in expressions.
@@ -55,7 +55,7 @@ struct Symbol {
         Function,  ///< Global function declaration
         Method,    ///< Method in a type declaration
         Field,     ///< Field in a type declaration
-        Type,      ///< Type declaration (value, entity, interface)
+        Type,      ///< Type declaration (struct, class, interface)
         Module,    ///< Imported module namespace
     };
 
@@ -67,7 +67,7 @@ struct Symbol {
 
     /// @brief The resolved semantic type of this symbol.
     /// @details For functions/methods, this is the function type.
-    /// For types, this is the type itself (e.g., entity("MyClass")).
+    /// For types, this is the type itself (e.g., classType("MyClass")).
     TypeRef type;
 
     /// @brief True if this symbol is immutable (declared with `final`).
@@ -100,7 +100,7 @@ struct Symbol {
 struct ScopedSymbol {
     Symbol symbol;         ///< The full symbol metadata (kind, name, type, etc.)
     SourceLoc loc;         ///< Position of the defining declaration/statement
-    std::string ownerType; ///< Entity name when inside entity body (empty otherwise)
+    std::string ownerType; ///< Class name when inside class body (empty otherwise)
     uint32_t scopeId{0};   ///< Lexical scope that owns the definition
 };
 

@@ -20,7 +20,7 @@ bind Viper.Math.Random;
 // SPIDER ENTITY - Erratic bouncing enemy
 // =============================================================================
 
-entity Spider {
+class Spider {
     hide Integer screenX;
     hide Integer screenY;
     hide Integer dirX;

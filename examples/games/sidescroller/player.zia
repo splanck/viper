@@ -11,7 +11,7 @@ bind "./config";
 bind "./level";
 bind "./physics";
 
-entity Player {
+class Player {
     // Position/velocity (x100 scale)
     expose Integer x;
     expose Integer y;

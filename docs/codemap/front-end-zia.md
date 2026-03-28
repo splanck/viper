@@ -32,7 +32,7 @@ Last updated: 2026-02-17
 | `Lexer.cpp`         | Tokenizer implementation                  |
 | `Lexer.hpp`         | Tokenizer for Zia source                  |
 | `Parser.hpp`        | Recursive-descent parser core             |
-| `Parser_Decl.cpp`   | Declaration parsing (func, entity, value) |
+| `Parser_Decl.cpp`   | Declaration parsing (func, class, value) |
 | `Parser_Expr.cpp`   | Expression parsing                        |
 | `Parser_Stmt.cpp`   | Statement parsing                         |
 | `Parser_Tokens.cpp` | Token handling utilities                  |

@@ -216,10 +216,10 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     setBlock(hasValueIdx);
     Value fieldValue = Value::null();
     if (innerType) {
-        if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity) {
-            const std::unordered_map<std::string, ValueTypeInfo> &valueTypes = valueTypes_;
-            const std::unordered_map<std::string, EntityTypeInfo> &entityTypes = entityTypes_;
-            if (innerType->kind == TypeKindSem::Value) {
+        if (innerType->kind == TypeKindSem::Struct || innerType->kind == TypeKindSem::Class) {
+            const std::unordered_map<std::string, StructTypeInfo> &valueTypes = structTypes_;
+            const std::unordered_map<std::string, ClassTypeInfo> &entityTypes = classTypes_;
+            if (innerType->kind == TypeKindSem::Struct) {
                 auto it = valueTypes.find(innerType->name);
                 if (it != valueTypes.end()) {
                     const FieldLayout *field = it->second.findField(expr->field);
@@ -437,7 +437,7 @@ LowerResult Lowerer::lowerAwait(AwaitExpr *expr) {
         return {result, Type(Type::Kind::Ptr)};
 
     Type ilType = mapType(awaitedType);
-    if (awaitedType->kind == TypeKindSem::Value || ilType.kind != Type::Kind::Ptr)
+    if (awaitedType->kind == TypeKindSem::Struct || ilType.kind != Type::Kind::Ptr)
         return emitUnboxValue(result, ilType, awaitedType);
     return {result, ilType};
 }

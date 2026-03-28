@@ -22,7 +22,7 @@ bind "./executor";
 // CSV HANDLER ENTITY
 //=============================================================================
 
-entity CsvHandler {
+class CsvHandler {
     expose Executor exec;
 
     expose func init(executor: Executor) {

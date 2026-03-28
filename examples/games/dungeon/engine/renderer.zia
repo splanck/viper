@@ -6,7 +6,7 @@ bind Viper.Math;
 bind Viper.Terminal;
 bind "../config";
 
-entity Renderer {
+class Renderer {
     hide Canvas3D canvas;
     hide Camera3D cam;
     hide PostFX3D postfx;

@@ -82,26 +82,26 @@ canvas.Close();
 **Discovered:** During Vec2 implementation
 
 **Description:**
-Value types (declared with `value` keyword) weren't properly allocated in memory. When creating a value type variable without an initializer, the compiler only allocated a null pointer instead of actual stack space.
+Struct types (declared with `struct` keyword) weren't properly allocated in memory. When creating a struct type variable without an initializer, the compiler only allocated a null pointer instead of actual stack space.
 
 **Root Cause:**
-In `Lowerer_Stmt.cpp`, the `lowerVarStmt()` function mapped value types to `Type::Kind::Ptr` but only initialized them with `Value::null()`, not actual allocated memory.
+In `Lowerer_Stmt.cpp`, the `lowerVarStmt()` function mapped struct types to `Type::Kind::Ptr` but only initialized them with `Value::null()`, not actual allocated memory.
 
 **Fix:**
 1. Added `emitValueTypeAlloc()` function in `Lowerer_Emit.cpp` that:
-   - Allocates proper stack space using `alloca` with the value type's actual size
+   - Allocates proper stack space using `alloca` with the struct type's actual size
    - Zero-initializes all fields
 
-2. Modified `lowerVarStmt()` to detect value types and call `emitValueTypeAlloc()` instead of using `Value::null()`
+2. Modified `lowerVarStmt()` to detect struct types and call `emitValueTypeAlloc()` instead of using `Value::null()`
 
 **Files Changed:**
 - `src/frontends/zia/Lowerer.hpp` - Added `emitValueTypeAlloc()` declaration
 - `src/frontends/zia/Lowerer_Emit.cpp` - Added `emitValueTypeAlloc()` implementation
-- `src/frontends/zia/Lowerer_Stmt.cpp` - Modified default initialization to handle value types
+- `src/frontends/zia/Lowerer_Stmt.cpp` - Modified default initialization to handle struct types
 
 **Code Now Works:**
 ```rust
-value Vec2 {
+struct Vec2 {
     Integer x;
     Integer y;
 }
@@ -127,7 +127,7 @@ Zia uses different syntax for field declarations vs function parameters, which c
 
 Entity/Value fields:
 ```rust
-entity Example {
+class Example {
     Integer fieldName;           // Type first, then name
     hide Integer privateField;   // With visibility modifier
     expose String publicField;

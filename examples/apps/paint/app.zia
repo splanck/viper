@@ -23,7 +23,7 @@ bind "./ui/button";
 bind "./ui/slider";
 
 // PaintApp entity - main application controller
-entity PaintApp {
+class PaintApp {
     // Graphics canvas (window)
     hide Canvas gfx;
 

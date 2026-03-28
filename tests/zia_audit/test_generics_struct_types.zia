@@ -1,7 +1,7 @@
 module TestGenericsValueTypes;
 
 // Test 1: Simple generic value type
-value Box[T] {
+struct Box[T] {
     expose T contents;
 
     expose func init(value: T) {

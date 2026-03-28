@@ -5,7 +5,7 @@ last-verified: 2026-03-10
 ---
 
 # GameBase + IScene — Game Loop Framework
-> Eliminates game loop boilerplate with a reusable base entity and scene interface.
+> Eliminates game loop boilerplate with a reusable base class and scene interface.
 
 **Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
 
@@ -13,7 +13,7 @@ last-verified: 2026-03-10
 
 ## Overview
 
-Every Viper game needs the same ~100 lines of boilerplate: canvas creation, frame loop, input polling, DeltaTime clamping, and frame pacing. **GameBase** encapsulates all of this into a single entity you extend, while **IScene** provides a clean interface for organizing game states (menus, gameplay, game over, etc.).
+Every Viper game needs the same ~100 lines of boilerplate: canvas creation, frame loop, input polling, DeltaTime clamping, and frame pacing. **GameBase** encapsulates all of this into a single class you extend, while **IScene** provides a clean interface for organizing game states (menus, gameplay, game over, etc.).
 
 **Location:** `examples/games/lib/gamebase.zia` and `examples/games/lib/iscene.zia`
 
@@ -94,7 +94,7 @@ bind "../lib/iscene";
 bind "../lib/gamebase";
 bind Viper.Graphics.Color;
 
-entity SimpleGame extends GameBase {
+class SimpleGame extends GameBase {
     override expose func onInit() {
         // Setup happens here
     }
@@ -127,7 +127,7 @@ bind Viper.Input;
 
 // --- Scenes reference GameBase (not the concrete game type) ---
 
-entity MenuScene implements IScene {
+class MenuScene implements IScene {
     hide GameBase game;
     hide IScene playTarget;
     hide Boolean hasTarget;
@@ -158,7 +158,7 @@ entity MenuScene implements IScene {
     expose func onExit() { }
 }
 
-entity PlayScene implements IScene {
+class PlayScene implements IScene {
     hide GameBase game;
     hide IScene menuTarget;
     hide Boolean hasTarget;
@@ -191,7 +191,7 @@ entity PlayScene implements IScene {
 
 // --- Concrete game wires scenes together ---
 
-entity MyGame extends GameBase {
+class MyGame extends GameBase {
     expose MenuScene menuScene;
     expose PlayScene playScene;
 
@@ -241,7 +241,7 @@ game.run();                           // Start game loop
 Scenes store `GameBase` (the parent type), not the concrete game type. This follows the Dependency Inversion Principle and avoids circular analysis ordering issues:
 
 ```zia
-entity MenuScene implements IScene {
+class MenuScene implements IScene {
     hide GameBase game;        // Abstract reference — not `hide MyGame game;`
     // ...
 }
@@ -249,7 +249,7 @@ entity MenuScene implements IScene {
 
 ### Why NullScene Instead of `IScene?`
 
-Zia's optional chaining (`?.`) supports field access but not method calls on interface types. Instead of `IScene?` with null checks, GameBase uses a **Null Object** sentinel — a `NullScene` entity with empty methods. This eliminates all null-checking complexity.
+Zia's optional chaining (`?.`) supports field access but not method calls on interface types. Instead of `IScene?` with null checks, GameBase uses a **Null Object** sentinel — a `NullScene` class with empty methods. This eliminates all null-checking complexity.
 
 ### Deferred Scene Transitions
 
@@ -302,5 +302,5 @@ The overlay is rendered automatically — GameBase handles the `BoxAlpha` render
 | File | Description |
 |------|-------------|
 | `examples/games/lib/iscene.zia` | IScene interface definition |
-| `examples/games/lib/gamebase.zia` | GameBase entity + NullScene sentinel |
+| `examples/games/lib/gamebase.zia` | GameBase class + NullScene sentinel |
 | `examples/games/lib/test_gamebase.zia` | Validation test (Red/Blue scene switching) |

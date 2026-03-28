@@ -10,7 +10,7 @@ bind Str = Viper.String;
 // It is managed by ProjectManager which handles file tree operations.
 // ============================================================================
 
-entity Project {
+class Project {
     // Absolute path to project root directory
     expose String rootPath;
 

@@ -17,7 +17,7 @@ bind Viper.Fmt;
 bind Viper.Time;
 
 // Single particle with physics properties
-entity Particle {
+class Particle {
     expose Number x;
     expose Number y;
     expose Number vx;
@@ -93,7 +93,7 @@ entity Particle {
 }
 
 // Particle emitter
-entity Emitter {
+class Emitter {
     expose Number x;
     expose Number y;
     expose Integer color;
@@ -140,7 +140,7 @@ entity Emitter {
 }
 
 // Particle system manager
-entity ParticleSystem {
+class ParticleSystem {
     expose List[Particle] particles;
     expose Integer maxParticles;
     expose Number wind;

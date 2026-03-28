@@ -81,7 +81,7 @@ func coerceToColumnType(val: SqlValue, targetType: Integer) -> SqlValue {
 // DML HANDLER ENTITY
 //=============================================================================
 
-entity DmlHandler {
+class DmlHandler {
     expose Executor exec;
 
     expose func init(executor: Executor) {

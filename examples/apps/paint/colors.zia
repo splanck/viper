@@ -7,7 +7,7 @@ bind Viper.Collections;
 bind "./config";
 
 // ColorManager entity - manages foreground, background, palette, and recent colors
-entity ColorManager {
+class ColorManager {
     expose Integer foreground;      // Current foreground color (0x00RRGGBB)
     expose Integer background;      // Current background color (0x00RRGGBB)
     expose Integer paletteCount;    // Number of palette colors

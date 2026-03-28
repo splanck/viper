@@ -42,7 +42,7 @@
 ///
 /// **4. Declaration Nodes (Decl hierarchy)**
 /// Represent top-level and type member declarations:
-/// - Types: value, entity, interface
+/// - Types: struct, class, interface
 /// - Functions: global functions, methods, constructors
 /// - Members: fields
 /// - Modules: module declaration, imports

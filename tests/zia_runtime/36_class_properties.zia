@@ -2,7 +2,7 @@ module RuntimeTest36;
 
 bind Viper.Terminal;
 
-entity Counter {
+class Counter {
     hide Integer _count;
 
     expose func init() {

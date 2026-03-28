@@ -54,7 +54,7 @@ final JOIN_MERGE = 3;
 // TABLE STATISTICS
 //=============================================================================
 
-entity TableStats {
+class TableStats {
     expose String tableName;
     expose Integer rowCount;
     expose Integer distinctValues;  // Estimate of distinct values per column
@@ -114,7 +114,7 @@ entity TableStats {
 // ACCESS PATH
 //=============================================================================
 
-entity AccessPath {
+class AccessPath {
     expose Integer pathType;
     expose String tableName;
     expose String indexName;
@@ -180,7 +180,7 @@ entity AccessPath {
 // QUERY PLAN
 //=============================================================================
 
-entity QueryPlan {
+class QueryPlan {
     expose List[AccessPath] accessPaths;
     expose Integer joinType;
     expose List[String] joinOrder;
@@ -260,7 +260,7 @@ entity QueryPlan {
 // STATISTICS MANAGER
 //=============================================================================
 
-entity StatsManager {
+class StatsManager {
     expose List[String] tableNames;
     expose List[Integer] rowCounts;
 
@@ -302,7 +302,7 @@ entity StatsManager {
 // QUERY OPTIMIZER
 //=============================================================================
 
-entity QueryOptimizer {
+class QueryOptimizer {
     expose StatsManager stats;
 
     expose func init() {

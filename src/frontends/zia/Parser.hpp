@@ -54,11 +54,11 @@
 /// module     = "module" IDENT ";" import* declaration* EOF
 /// import     = "import" dotted-name ("as" IDENT)? ";"
 ///
-/// declaration = value-decl | entity-decl | interface-decl
+/// declaration = struct-decl | class-decl | interface-decl
 ///             | func-decl | global-var-decl
 ///
-/// value-decl = "value" IDENT generic-params? interfaces? "{" member* "}"
-/// entity-decl = "entity" IDENT generic-params? extends? interfaces? "{" member* "}"
+/// struct-decl = "struct" IDENT generic-params? interfaces? "{" member* "}"
+/// class-decl = "class" IDENT generic-params? extends? interfaces? "{" member* "}"
 /// func-decl = "func" IDENT generic-params? "(" params ")" return-type? block
 ///
 /// statement = block | var-stmt | if-stmt | while-stmt | for-stmt
@@ -115,7 +115,7 @@ namespace il::frontends::zia {
 /// @details Consumes tokens from a Lexer and builds an AST. The parser
 /// handles the complete Zia grammar including:
 /// - Module structure (imports, declarations)
-/// - Type declarations (value, entity, interface)
+/// - Type declarations (struct, class, interface)
 /// - Function and method declarations
 /// - All statement types
 /// - Full expression grammar with precedence
@@ -581,13 +581,13 @@ class Parser {
     /// @return The parsed FunctionDecl.
     DeclPtr parseFunctionDecl(bool isForeign = false);
 
-    /// @brief Parse a value type declaration: value Name { }
-    /// @return The parsed ValueDecl.
-    DeclPtr parseValueDecl();
+    /// @brief Parse a struct type declaration: value Name { }
+    /// @return The parsed StructDecl.
+    DeclPtr parseStructDecl();
 
-    /// @brief Parse an entity type declaration: entity Name { }
-    /// @return The parsed EntityDecl.
-    DeclPtr parseEntityDecl();
+    /// @brief Parse an class type declaration: class Name { }
+    /// @return The parsed ClassDecl.
+    DeclPtr parseClassDecl();
 
     /// @brief Parse an interface declaration: interface Name { }
     /// @return The parsed InterfaceDecl.
@@ -605,7 +605,7 @@ class Parser {
     /// Example:
     /// ```
     /// namespace MyLib {
-    ///     entity Parser { ... }
+    ///     class Parser { ... }
     ///     func parse() { ... }
     /// }
     /// ```
@@ -663,7 +663,7 @@ class Parser {
 
     /// @brief Parse type body members (fields and methods) between braces.
     /// @param[out] members Output member list.
-    /// @param defaultVisibility Default visibility (Public for value, Private for entity).
+    /// @param defaultVisibility Default visibility (Public for struct, Private for class).
     /// @param allowOverride Whether the 'override' modifier is permitted.
     /// @return True on success.
     bool parseMemberBlock(std::vector<DeclPtr> &members,

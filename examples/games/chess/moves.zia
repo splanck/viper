@@ -9,7 +9,7 @@ bind "./board";
 // Strategy: generate pseudo-legal moves, then filter those that leave the
 // moving side's king in check. Simple, readable, and sufficient for depth 4-5.
 // ============================================================================
-entity MoveGen {
+class MoveGen {
 
     // Direction tables cached as entity fields (avoids per-call list allocation)
     hide List[Integer] knR_;

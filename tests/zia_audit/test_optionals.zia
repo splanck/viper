@@ -32,7 +32,7 @@ func checkStr(name: String, actual: String, expected: String) {
     }
 }
 
-entity Box {
+class Box {
     expose Integer value;
 
     expose func init(v: Integer) {

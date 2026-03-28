@@ -56,12 +56,12 @@ This separation makes code easier to reason about. When something draws wrong, y
 
 ### Entities: The Things in Your World
 
-Games are full of things: players, enemies, obstacles, collectibles, projectiles, platforms. We call these entities. An entity is anything that exists in your game world and needs to be tracked.
+Games are full of things: players, enemies, obstacles, collectibles, projectiles, platforms. We call these entities. An class is anything that exists in your game world and needs to be tracked.
 
-In Zia, we represent entities using values and sometimes entity types. Think of a value as a filled-out form describing something:
+In Zia, we represent entities using values and sometimes class types. Think of a value as a filled-out form describing something:
 
 ```rust
-value Frog {
+struct Frog {
     x: Number;           // Position across the screen
     y: Number;           // Position up and down
     alive: Boolean;      // Is the frog currently alive?
@@ -109,7 +109,7 @@ Before we build, let us develop some mental pictures that will help you think ab
 
 ### The World as a Spreadsheet
 
-Imagine a spreadsheet where each row is an entity and each column is a property. One row for the frog with columns for x, y, alive, cooldown. Many rows for vehicles, each with x, y, width, speed, color. Every frame, you read this spreadsheet, calculate new values, and write an updated spreadsheet. Rendering is looking at the spreadsheet and drawing what it describes.
+Imagine a spreadsheet where each row is an class and each column is a property. One row for the frog with columns for x, y, alive, cooldown. Many rows for vehicles, each with x, y, width, speed, color. Every frame, you read this spreadsheet, calculate new values, and write an updated spreadsheet. Rendering is looking at the spreadsheet and drawing what it describes.
 
 This is why state and rendering are separate. The spreadsheet is the truth. The screen is just a visualization.
 
@@ -159,7 +159,7 @@ Why this structure? Each file has a single responsibility:
 - **config.zia** holds all magic numbers in one place. Want to make the screen bigger? Change it there. Want to adjust scoring? One file.
 - **frog.zia** knows everything about how a frog works but nothing about cars, logs, or scoring.
 - **vehicle.zia** knows how cars and trucks move but nothing about frogs or platforms.
-- **game.zia** orchestrates everything, knowing about all entity types and how they interact.
+- **game.zia** orchestrates everything, knowing about all class types and how they interact.
 - **renderer.zia** only draws. It never changes game state.
 
 This separation means you can modify one aspect without breaking others. Adding a new vehicle type only touches vehicle.zia and game.zia, not the frog code or renderer.
@@ -228,7 +228,7 @@ module Frog;
 bind Config;
 
 // The Frog value represents everything we need to know about the player
-expose value Frog {
+expose struct Frog {
     // Pixel coordinates for smooth movement and drawing
     x: Number;
     y: Number;
@@ -365,7 +365,7 @@ module Vehicle;
 
 bind Config;
 
-expose value Vehicle {
+expose struct Vehicle {
     x: Number;             // Horizontal position (pixels)
     y: Number;             // Vertical position (pixels)
     width: Number;         // How wide the vehicle is
@@ -446,7 +446,7 @@ module Platform;
 
 bind Config;
 
-expose value Platform {
+expose struct Platform {
     x: Number;
     y: Number;
     width: Number;
@@ -507,7 +507,7 @@ bind Frog;
 bind Vehicle;
 bind Platform;
 
-expose value GameState {
+expose struct GameState {
     frog: Frog.Frog;                    // The player
     vehicles: List[Vehicle.Vehicle];        // All cars and trucks
     platforms: List[Platform.Platform];     // All logs and turtles
@@ -1274,7 +1274,7 @@ var frogLeft = Sprite.Load("frog_left.png");
 var frogRight = Sprite.Load("frog_right.png");
 
 // Track facing direction
-value Frog {
+struct Frog {
     // ... existing fields ...
     facing: Direction;
 }
@@ -1322,7 +1322,7 @@ if state.score > highScore {
 Add urgency with a countdown timer:
 
 ```rust
-value GameState {
+struct GameState {
     // ... existing fields ...
     timeRemaining: Number;
 }
@@ -1347,7 +1347,7 @@ canvas.Text(500, Config.SCREEN_HEIGHT - 10,
 In the original Frogger, turtles periodically submerge, creating temporary danger:
 
 ```rust
-value Platform {
+struct Platform {
     // ... existing fields ...
     isTurtle: Boolean;
     submergeTimer: Number;
@@ -1381,7 +1381,7 @@ if Platform.containsPoint(platform, frogX, frogY) {
 Add a second frog controlled by WASD, competing for score:
 
 ```rust
-value GameState {
+struct GameState {
     frog1: Frog;  // Arrow keys
     frog2: Frog;  // WASD keys
     score1: Integer;
@@ -1397,7 +1397,7 @@ Each frog fills different homes and earns its own score. First to fill all five 
 Add collectible items that appear occasionally:
 
 ```rust
-value PowerUp {
+struct PowerUp {
     x: Number;
     y: Number;
     kind: PowerUpKind;  // EXTRA_LIFE, SLOW_MOTION, INVINCIBILITY

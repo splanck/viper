@@ -192,12 +192,12 @@ func start() {
 // Method Chains
 //===----------------------------------------------------------------------===//
 
-/// @brief Chained method calls on an entity instance.
+/// @brief Chained method calls on a class instance.
 TEST(ZiaParser, MethodChaining) {
     auto result = compileSource(R"(
 module Test;
 
-entity Builder {
+class Builder {
     expose String value;
 
     expose func append(s: String) -> Builder {
@@ -228,12 +228,12 @@ func start() {
 // Optional Chaining
 //===----------------------------------------------------------------------===//
 
-/// @brief Optional chaining with ?. operator on nullable entity.
+/// @brief Optional chaining with ?. operator on nullable class.
 TEST(ZiaParser, OptionalChaining) {
     auto result = compileSource(R"(
 module Test;
 
-entity Node {
+class Node {
     expose Integer value;
 }
 
@@ -263,7 +263,7 @@ TEST(ZiaParser, NullCoalesceOperator) {
     auto result = compileSource(R"(
 module Test;
 
-entity Item {
+class Item {
     expose Integer id;
 }
 
@@ -482,7 +482,7 @@ TEST(ZiaParser, GuardNullCheckReturn) {
     auto result = compileSource(R"(
 module Test;
 
-entity Item {
+class Item {
     expose String label;
 }
 
@@ -724,7 +724,7 @@ TEST(ZiaParser, EntityDeclaration) {
     auto result = compileSource(R"(
 module Test;
 
-entity Rectangle {
+class Rectangle {
     expose Integer width;
     expose Integer height;
 
@@ -757,7 +757,7 @@ TEST(ZiaParser, EntityWithInit) {
     auto result = compileSource(R"(
 module Test;
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 

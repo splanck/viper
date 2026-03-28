@@ -10,7 +10,7 @@ bind "./_support";
 // Generic entity with single type parameter
 //=============================================================================
 
-entity Box[T] {
+class Box[T] {
     expose T value;
 
     expose func init(v: T) {

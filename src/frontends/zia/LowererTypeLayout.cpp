@@ -22,12 +22,12 @@
 
 namespace il::frontends::zia {
 
-void LowererTypeLayout::registerValueType(const std::string &name, ValueTypeInfo info) {
-    valueTypes_[name] = std::move(info);
+void LowererTypeLayout::registerValueType(const std::string &name, StructTypeInfo info) {
+    structTypes_[name] = std::move(info);
 }
 
-void LowererTypeLayout::registerEntityType(const std::string &name, EntityTypeInfo info) {
-    entityTypes_[name] = std::move(info);
+void LowererTypeLayout::registerEntityType(const std::string &name, ClassTypeInfo info) {
+    classTypes_[name] = std::move(info);
 }
 
 void LowererTypeLayout::registerInterfaceType(const std::string &name, InterfaceTypeInfo info) {

@@ -69,10 +69,10 @@ const char *tokenKindToString(TokenKind kind) {
             return "string_end";
 
         // Keywords
-        case TokenKind::KwValue:
-            return "value";
-        case TokenKind::KwEntity:
-            return "entity";
+        case TokenKind::KwStruct:
+            return "struct";
+        case TokenKind::KwClass:
+            return "class";
         case TokenKind::KwEnum:
             return "enum";
         case TokenKind::KwInterface:
@@ -258,7 +258,7 @@ const char *tokenKindToString(TokenKind kind) {
 }
 
 bool Token::isKeyword() const {
-    return kind >= TokenKind::KwValue && kind <= TokenKind::KwNot;
+    return kind >= TokenKind::KwStruct && kind <= TokenKind::KwNot;
 }
 
 //===----------------------------------------------------------------------===//
@@ -281,10 +281,10 @@ constexpr std::array<KeywordEntry, 48> kKeywordTable = {{
     {"bind", TokenKind::KwBind},
     {"break", TokenKind::KwBreak},
     {"catch", TokenKind::KwCatch},
+    {"class", TokenKind::KwClass},
     {"continue", TokenKind::KwContinue},
     {"deinit", TokenKind::KwDeinit},
     {"else", TokenKind::KwElse},
-    {"entity", TokenKind::KwEntity},
     {"enum", TokenKind::KwEnum},
     {"expose", TokenKind::KwExpose},
     {"extends", TokenKind::KwExtends},
@@ -314,11 +314,11 @@ constexpr std::array<KeywordEntry, 48> kKeywordTable = {{
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
     {"static", TokenKind::KwStatic},
+    {"struct", TokenKind::KwStruct},
     {"super", TokenKind::KwSuper},
     {"throw", TokenKind::KwThrow},
     {"true", TokenKind::KwTrue},
     {"try", TokenKind::KwTry},
-    {"value", TokenKind::KwValue},
     {"var", TokenKind::KwVar},
     {"weak", TokenKind::KwWeak},
     {"while", TokenKind::KwWhile},

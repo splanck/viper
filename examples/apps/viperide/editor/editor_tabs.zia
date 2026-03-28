@@ -11,7 +11,7 @@ bind GUI = Viper.GUI;
 // in Zia runtime Lists due to heap header validation).
 // ============================================================================
 
-entity EditorTabs {
+class EditorTabs {
     expose GUI.TabBar tabBar;  // TabBar widget handle
     expose Integer lastActiveIndex;  // For detecting tab switches
 

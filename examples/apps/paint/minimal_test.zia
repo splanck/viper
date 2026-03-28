@@ -1,7 +1,7 @@
 module minimal_test;
 
 // Minimal entity to test OOP in native
-entity Counter {
+class Counter {
     expose Integer value;
 
     expose func init() {

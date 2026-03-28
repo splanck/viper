@@ -74,7 +74,7 @@ bind Viper.Game;
 bind Viper.Graphics;
 bind Viper.Input;
 
-entity MyGame extends GameBase {
+class MyGame extends GameBase {
     hide DebugOverlay debug;
     hide Integer score;
 

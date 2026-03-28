@@ -19,7 +19,7 @@ bind "./utils";
 // FRUIT ENTITY - Bonus item that appears in the maze
 // =============================================================================
 
-entity Fruit {
+class Fruit {
     hide Integer fruitType;
     hide Integer gridX;
     hide Integer gridY;

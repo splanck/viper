@@ -20,7 +20,7 @@ bind "./utils";
 // MAZE ENTITY - The game board with walls, dots, and power pellets
 // =============================================================================
 
-entity Maze {
+class Maze {
     hide Grid2D tiles;
     hide Integer totalDots;
     hide Integer dotsRemaining;

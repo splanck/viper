@@ -113,7 +113,7 @@ func parseDateTimeText(text: String) -> Integer {
 // SQL VALUE ENTITY
 //=============================================================================
 
-entity SqlValue {
+class SqlValue {
     expose Integer kind;       // SQL_NULL, SQL_INTEGER, SQL_REAL, SQL_TEXT, SQL_BLOB
     expose Integer intValue;   // Used when kind == SQL_INTEGER
     expose Float realValue;    // Used when kind == SQL_REAL

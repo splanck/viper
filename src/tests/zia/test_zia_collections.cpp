@@ -240,7 +240,7 @@ TEST(ZiaCollections, ListOfEntities) {
     const std::string source = R"(
 module Test;
 
-entity Frog {
+class Frog {
     expose Integer x;
 }
 
@@ -268,7 +268,7 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    // Check that rt_obj_new_i64 is used for entity allocation (not rt_alloc)
+    // Check that rt_obj_new_i64 is used for class allocation (not rt_alloc)
     // This ensures entities have proper heap headers for reference counting
     bool foundRtObjNew = false;
     for (const auto &fn : result.module.functions) {

@@ -43,7 +43,7 @@ func getRandomChar() -> String {
 }
 
 // A single character cell
-entity MatrixChar {
+class MatrixChar {
     expose String char;
     expose Integer brightness;
 
@@ -58,7 +58,7 @@ entity MatrixChar {
 }
 
 // A falling column
-entity MatrixColumn {
+class MatrixColumn {
     expose List[MatrixChar] chars;
     expose Integer headY;
     expose Integer length;
@@ -151,7 +151,7 @@ entity MatrixColumn {
 }
 
 // Matrix rain manager
-entity MatrixRain {
+class MatrixRain {
     expose List[MatrixColumn] columns;
     expose Integer numColumns;
     expose Integer charWidth;

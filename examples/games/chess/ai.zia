@@ -17,7 +17,7 @@ bind "./eval";
 //
 // The score is always from the perspective of the side to move (negamax convention).
 // ============================================================================
-entity ChessAI {
+class ChessAI {
     hide MoveGen moveGen;
     hide Evaluator evaluator;
     hide Integer maxDepth;

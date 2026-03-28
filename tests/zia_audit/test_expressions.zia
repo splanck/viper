@@ -33,7 +33,7 @@ func checkBool(name: String, actual: Boolean, expected: Boolean) {
 }
 
 // Entity for field access testing
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 
@@ -52,7 +52,7 @@ entity Point {
 }
 
 // Nested entity for chained access
-entity Container {
+class Container {
     expose Point point;
     expose Integer value;
 

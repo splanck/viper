@@ -24,7 +24,7 @@ bind "./expr";
 //=============================================================================
 
 // Index entry - maps a key value to a row index
-entity IndexEntry {
+class IndexEntry {
     expose Integer keyHash;      // Hash of the key value(s)
     expose String keyString;     // String representation of key for comparison
     expose Integer rowIndex;     // Index into table rows
@@ -47,7 +47,7 @@ entity IndexEntry {
 //=============================================================================
 
 // SqlIndex - Hash-based index on one or more columns (with bucket acceleration)
-entity SqlIndex {
+class SqlIndex {
     expose String name;
     expose String tableName;
     expose List[String] columnNames;
@@ -465,7 +465,7 @@ func makeIndex(idxName: String, tblName: String) -> SqlIndex {
 //=============================================================================
 
 // Index Manager - Stores all indexes for the database
-entity IndexManager {
+class IndexManager {
     expose List[SqlIndex] indexes;
     expose List[String] indexNames;  // Parallel list of index names
 

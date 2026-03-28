@@ -181,7 +181,7 @@ TEST(ZiaMatch, MatchPatterns) {
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }

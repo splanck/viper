@@ -20,7 +20,7 @@ bind Viper.Math.Random;
 // SCORPION ENTITY - Mushroom-poisoning enemy
 // =============================================================================
 
-entity Scorpion {
+class Scorpion {
     hide Integer screenX;
     hide Integer screenY;
     hide Integer direction;  // -1 for left, 1 for right

@@ -13,7 +13,7 @@ bind "./config";
 // VEC2 VALUE TYPE - 2D integer vector
 // =============================================================================
 
-value Vec2 {
+struct Vec2 {
     expose Integer x;
     expose Integer y;
 

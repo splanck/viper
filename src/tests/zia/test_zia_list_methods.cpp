@@ -187,13 +187,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test that accessing entity field through List.get() compiles.
+/// @brief Test that accessing class field through List.get() compiles.
 /// This is the core of Bug #022.
 TEST(ZiaListMethods, GetEntityProperty) {
     const std::string src = R"(
 module Test;
 
-entity Item {
+class Item {
     expose String name;
 
     func init(n: String) {

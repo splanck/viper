@@ -62,7 +62,7 @@
   });
 
   /* ---------- Syntax Highlighting ---------- */
-  var ZIA_KEYWORDS = /\b(module|bind|func|var|if|else|while|for|in|return|expose|hide|entity|final|as|true|false|new|try|catch|finally|throw|match|import|inherit)\b/g;
+  var ZIA_KEYWORDS = /\b(module|bind|func|var|if|else|while|for|in|return|expose|hide|class|struct|final|as|true|false|new|try|catch|finally|throw|match|import|inherit)\b/g;
   var BASIC_KEYWORDS = /\b(DIM|AS|IF|THEN|ELSE|END|FOR|TO|NEXT|WHILE|WEND|FUNCTION|SUB|RETURN|CLASS|NEW|PRINT|INPUT|DO|LOOP|SELECT|CASE|NAMESPACE|USING|PROPERTY|GET|SET|BOOLEAN|INTEGER|STRING|DOUBLE|TRUE|FALSE|AND|OR|NOT|MOD|REM)\b/g;
   var IL_KEYWORDS = /\b(il|extern|global|const|func|entry_\w+|ret|call|br|brc|phi|alloca|store|load|iadd|isub|imul|idiv|imod|fadd|fsub|fmul|fdiv|icmp|fcmp|iadd\.ovf|isub\.ovf|imul\.ovf|const_str|const_int|const_float|sext|zext|trunc|itof|ftoi|i64|i32|i16|i8|f64|f32|str|void|bool|ptr)\b/g;
 

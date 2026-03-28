@@ -6,7 +6,7 @@ bind Viper.Math;
 bind Viper.Terminal;
 bind "../config";
 
-entity HUD {
+class HUD {
     hide Float hitMarkerTimer;
     hide Float damageFlashTimer;
     hide Float levelNameTimer;

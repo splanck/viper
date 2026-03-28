@@ -90,7 +90,7 @@ static int countOpcode(const Function &fn, Opcode op) {
 }
 
 // ============================================================================
-// Test: Entity construction lowering (entity with fields)
+// Test: Class construction lowering (class with fields)
 // ============================================================================
 
 TEST(ZiaLowerer, EntityConstruction) {
@@ -98,7 +98,7 @@ TEST(ZiaLowerer, EntityConstruction) {
     const std::string source = R"(
 module Test;
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 }
@@ -116,14 +116,14 @@ func start() {
     auto verified = il::verify::Verifier::verify(result.module);
     EXPECT_TRUE(verified.hasValue());
 
-    // Entity construction should produce a Call to the runtime allocator.
+    // Class construction should produce a Call to the runtime allocator.
     const auto *main = findFunction(result.module, "main");
     ASSERT_TRUE(main != nullptr);
     EXPECT_TRUE(hasOpcode(*main, Opcode::Call));
 }
 
 // ============================================================================
-// Test: Method dispatch lowering (calling entity methods)
+// Test: Method dispatch lowering (calling class methods)
 // ============================================================================
 
 TEST(ZiaLowerer, MethodDispatch) {
@@ -131,7 +131,7 @@ TEST(ZiaLowerer, MethodDispatch) {
     const std::string source = R"(
 module Test;
 
-entity Counter {
+class Counter {
     expose Integer count;
 
     expose func increment() {
@@ -484,7 +484,7 @@ TEST(ZiaLowerer, VerifierPassesComplex) {
     const std::string source = R"(
 module Test;
 
-entity Animal {
+class Animal {
     expose String name;
     expose Integer age;
 

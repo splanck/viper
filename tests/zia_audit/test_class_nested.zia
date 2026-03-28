@@ -2,7 +2,7 @@ module TestEntityNested;
 
 // Test: Nested entities
 
-entity Point {
+class Point {
     expose Integer x;
     expose Integer y;
 
@@ -16,7 +16,7 @@ entity Point {
     }
 }
 
-entity Container {
+class Container {
     expose Point point;
     expose Integer value;
 

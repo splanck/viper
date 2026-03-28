@@ -31,7 +31,7 @@ bind Viper.Game;
 bind Viper.Game.UI;
 bind "./config";
 
-entity HUD {
+class HUD {
     // --- UI Widget instances ---
     // These are created once in init() and redrawn each frame.
     hide Panel hudPanel;       // semi-transparent background

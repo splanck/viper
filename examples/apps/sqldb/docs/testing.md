@@ -259,13 +259,13 @@ sqldb/
 ├── expr.zia              Expression AST node types
 ├── types.zia             Core SQL value types (Integer, Real, Text, Null)
 ├── schema.zia            Column and Row definitions
-├── table.zia             Table entity (row storage, column metadata)
-├── database.zia          Database entity (table registry)
+├── table.zia             Table class (row storage, column metadata)
+├── database.zia          Database class (table registry)
 ├── ddl.zia               DDL handler (CREATE/DROP/ALTER TABLE, INDEX, VIEW, DATABASE)
 ├── dml.zia               DML handler (INSERT, UPDATE, DELETE with constraints)
 ├── query.zia             Query handler (SELECT, GROUP BY, sorting, subqueries)
 ├── index.zia             Index manager (hash-based lookups, 64 buckets)
-├── result.zia            QueryResult entity (returned from all queries)
+├── result.zia            QueryResult class (returned from all queries)
 ├── join.zia              JoinEngine -- cross join, hash join, join GROUP BY, sorting
 ├── setops.zia            Set operations (UNION, EXCEPT, INTERSECT)
 ├── csv.zia               CSV import/export handler

@@ -341,7 +341,7 @@ struct ForInStmt : Stmt {
 
 /// @brief Return statement: `return expr;`.
 /// @details Returns from the current function with an optional value.
-/// The value type must match the function's return type.
+/// The struct type must match the function's return type.
 struct ReturnStmt : Stmt {
     /// @brief The return value (nullptr for void/unit return).
     ExprPtr value;

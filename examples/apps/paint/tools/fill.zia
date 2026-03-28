@@ -6,7 +6,7 @@ bind "../canvas";
 bind "../colors";
 
 // FillTool - flood fills an area with the foreground color
-entity FillTool {
+class FillTool {
     expose func init() {
         // No state needed
     }

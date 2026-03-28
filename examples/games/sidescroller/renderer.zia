@@ -31,7 +31,7 @@ bind "./particles";
 bind "./hud";
 bind "./sprites";
 
-entity Renderer {
+class Renderer {
     // Screen effects manager (replaces manual shake/flash/fade)
     hide Palette pal;
     hide FX fx;

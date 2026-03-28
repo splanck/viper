@@ -11,7 +11,7 @@
 //   - Boxed values carry a type tag: 0=i64, 1=f64, 2=i1, 3=str.
 //   - rt_unbox_* traps if the type tag does not match the requested type.
 //   - Boxed values participate in reference counting.
-//   - rt_box_value_type boxes a struct/entity by copying all fields into a heap object.
+//   - rt_box_value_type boxes a struct/class by copying all fields into a heap object.
 //
 // Ownership/Lifetime:
 //   - Boxed objects are heap-allocated with refcount 1; callers own the initial reference.

@@ -25,7 +25,7 @@ func check(x: Integer?) {
 
 **Validated behavior**
 - Reproduced with the local compiler.
-- Narrowing works for optional entity references in common cases.
+- Narrowing works for optional class references in common cases.
 - Narrowing does not carry through correctly for optional primitives like `Integer?`.
 
 **Likely root cause**
@@ -97,12 +97,12 @@ try {
   - `catch(e: RuntimeError)`
   - typed catch with `finally`
 
-### ZIA-BUG-005: Child entity `init` requires explicit `override`
+### ZIA-BUG-005: Child class `init` requires explicit `override`
 **Severity:** P3 — Confirmed behavior, mostly a DX issue
 
 ```zia
-entity A { expose func init(x: Integer) {} }
-entity B extends A {
+class A { expose func init(x: Integer) {} }
+class B extends A {
     expose func init(x: Integer) {} // ERROR: must be marked override
 }
 ```
@@ -125,7 +125,7 @@ entity B extends A {
 **Severity:** P1 — Documented feature is non-functional on user entities
 
 ```zia
-entity Counter {
+class Counter {
     hide Integer _count;
     expose func init() { _count = 0; }
     property count: Integer {
@@ -152,7 +152,7 @@ func start() {
   keyword doesn't inherit or set an `expose` visibility flag.
 
 **Recommendation**
-- Allow `expose property count: Integer { ... }` or infer visibility from the entity's
+- Allow `expose property count: Integer { ... }` or infer visibility from the class's
   default visibility context.
 - Add compile+run tests for both get and set on user-defined entities.
 
@@ -191,7 +191,7 @@ is functional.
 ```zia
 bind Viper.Terminal;
 
-entity Res {
+class Res {
     deinit { Say("deinit"); }  // ERROR: unknown callee @Say
 }
 ```
@@ -199,7 +199,7 @@ entity Res {
 **Status:** Fixed on 2026-03-25
 
 **Resolved behavior**
-- `deinit` lowering now runs semantic analysis with the enclosing entity/module context, so
+- `deinit` lowering now runs semantic analysis with the enclosing class/module context, so
   bound symbols such as `Say` resolve normally inside the synthesized destructor.
 - Managed object release paths now dispatch through `__zia_dtor_dispatch` before `rt_obj_free`,
   so explicit `Viper.Memory.Release(obj)` also executes the user `deinit` body.
@@ -321,7 +321,7 @@ language spec commits to them.
 **Status:** Reclassified — design gap, not a proven spec violation
 
 ```zia
-entity Person { expose Integer age; }
+class Person { expose Integer age; }
 var p = new Person(30);  // ERROR: no init overload matching
 ```
 
@@ -393,7 +393,7 @@ Current doc drift:
 
 ### OPEN — Priority Fix Order
 1. `ZIA-BUG-001` optional primitive narrowing in lowering (P1)
-2. `ZIA-BUG-006` entity property access — private visibility (P1)
+2. `ZIA-BUG-006` class property access — private visibility (P1)
 3. `ZIA-BUG-004` typed catch EH lowering (P1)
 4. `ZIA-BUG-005` child init requires override (P3, design decision)
 5. `ZIA-BUG-003` match arm bare return syntax (P2)

@@ -17,7 +17,7 @@ bind Viper.Fmt;
 // SCORE POPUP ENTITY - Floating score text
 // =============================================================================
 
-entity ScorePopup {
+class ScorePopup {
     hide Integer screenX;
     hide Integer screenY;
     hide Integer points;
@@ -83,7 +83,7 @@ entity ScorePopup {
 // POPUP MANAGER ENTITY - Manages multiple score popups
 // =============================================================================
 
-entity PopupManager {
+class PopupManager {
     hide List[ScorePopup] popups;
     hide Integer maxPopups;
 

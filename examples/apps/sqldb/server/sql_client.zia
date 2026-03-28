@@ -20,7 +20,7 @@ final RECV_TIMEOUT = 30000;
 // SQL CLIENT
 //=============================================================================
 
-entity SqlClient {
+class SqlClient {
     expose String host;
     expose Integer port;
     expose TcpClient connection;

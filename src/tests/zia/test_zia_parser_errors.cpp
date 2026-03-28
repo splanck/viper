@@ -282,7 +282,7 @@ func start() {
 TEST(ZiaParserErrors, EntityMissingName) {
     auto result = compileSource(R"(
 module Test;
-entity {
+class {
     var x: Integer
 }
 func start() {}
@@ -293,7 +293,7 @@ func start() {}
 TEST(ZiaParserErrors, EntityMissingBrace) {
     auto result = compileSource(R"(
 module Test;
-entity Foo
+class Foo
     var x: Integer
 func start() {}
 )");

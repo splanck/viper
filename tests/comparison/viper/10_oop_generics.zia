@@ -3,7 +3,7 @@
 module Test;
 
 // Generic entity
-entity Box[T] {
+class Box[T] {
     expose T value;
 
     expose func init(v: T) {

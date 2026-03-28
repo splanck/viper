@@ -18,7 +18,7 @@ module sound;
 bind Viper.Sound;
 bind "./config";
 
-entity SoundManager {
+class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
     hide Integer musicVoice;

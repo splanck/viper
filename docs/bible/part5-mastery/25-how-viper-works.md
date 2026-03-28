@@ -269,7 +269,7 @@ func maybeReturn(flag: Boolean) -> Integer {
 When working with entities and values, the semantic analyzer ensures you use them correctly:
 
 ```rust
-entity Player {
+class Player {
     expose name: String;
     hide health: Integer;       // hidden from outside
 }
@@ -591,13 +591,13 @@ One of the runtime's most important jobs is managing memory. In many languages, 
 
 ### How Objects Live and Die
 
-When you create a value or entity, memory is allocated:
+When you create a value or class, memory is allocated:
 
 ```rust
 func createStuff() {
     var list = [1, 2, 3];      // Memory allocated for array
     var name = "Alice";         // Memory allocated for string
-    var player = Player();      // Memory allocated for entity
+    var player = Player();      // Memory allocated for class
 }
 // When function returns, what happens to this memory?
 ```

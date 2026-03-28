@@ -25,7 +25,7 @@ using DispatchEntry = std::pair<int, std::string>;
 // Virtual Method Dispatch
 //=============================================================================
 
-LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
+LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
                                             const std::string &slotKey,
                                             const std::string &ownerType,
                                             MethodDecl *method,
@@ -46,14 +46,14 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 
     // Build dispatch table
     std::vector<DispatchEntry> dispatchTable;
-    auto addEntry = [&](const EntityTypeInfo &info) {
+    auto addEntry = [&](const ClassTypeInfo &info) {
         auto vtIt = info.vtableIndex.find(slotKey);
         if (vtIt != info.vtableIndex.end())
             dispatchTable.emplace_back(info.classId, info.vtable[vtIt->second]);
     };
 
     addEntry(entityInfo);
-    for (const auto &[name, info] : entityTypes_) {
+    for (const auto &[name, info] : classTypes_) {
         if (name == entityInfo.name)
             continue;
         std::string parent = info.baseClass;
@@ -62,8 +62,8 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
                 addEntry(info);
                 break;
             }
-            auto it = entityTypes_.find(parent);
-            if (it == entityTypes_.end())
+            auto it = classTypes_.find(parent);
+            if (it == classTypes_.end())
                 break;
             parent = it->second.baseClass;
         }

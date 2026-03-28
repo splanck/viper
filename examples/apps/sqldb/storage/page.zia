@@ -68,7 +68,7 @@ final INVALID_PAGE_ID = -1;
 // PAGE HEADER ENTITY
 //=============================================================================
 
-entity PageHeader {
+class PageHeader {
     expose Integer pageType;
     expose Integer pageId;
 
@@ -88,7 +88,7 @@ entity PageHeader {
 //=============================================================================
 
 // Slot directory entry: points to a row within the page
-entity SlotEntry {
+class SlotEntry {
     expose Integer offset;      // Offset from page start to row data
     expose Integer length;      // Length of row data
     expose Boolean deleted;     // Tombstone flag

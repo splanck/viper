@@ -38,7 +38,7 @@ final INDEX_DATA_OFFSET = 24;
 //=============================================================================
 
 // A key in the B-tree contains the indexed value and a row pointer (page ID + slot)
-entity BTreeKey {
+class BTreeKey {
     expose SqlValue keyValue;
     expose Integer dataPageId;   // Page where the row is stored
     expose Integer dataSlotId;   // Slot within the page
@@ -67,7 +67,7 @@ entity BTreeKey {
 //=============================================================================
 
 // Represents a node in the B-tree (corresponds to an index page)
-entity BTreeNode {
+class BTreeNode {
     expose Integer pageId;
     expose Integer indexId;
     expose Boolean isLeaf;
@@ -269,7 +269,7 @@ entity BTreeNode {
 // NODE SERIALIZATION
 //=============================================================================
 
-entity BTreeNodeSerializer {
+class BTreeNodeSerializer {
     hide ValueSerializer valSer;
 
     expose func init() {

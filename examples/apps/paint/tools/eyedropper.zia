@@ -6,7 +6,7 @@ bind "../canvas";
 bind "../colors";
 
 // EyedropperTool - picks a color from the canvas
-entity EyedropperTool {
+class EyedropperTool {
     expose Integer lastPickedColor;  // Last color that was picked
 
     expose func init() {

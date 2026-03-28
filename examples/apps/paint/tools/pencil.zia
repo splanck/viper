@@ -6,7 +6,7 @@ bind "../canvas";
 bind "../colors";
 
 // PencilTool - draws single pixel lines
-entity PencilTool {
+class PencilTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X
     hide Integer lastY;         // Last mouse Y

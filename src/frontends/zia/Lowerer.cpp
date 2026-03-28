@@ -29,9 +29,9 @@
 ///
 /// ## Type Layout
 ///
-/// Value and entity types compute field layouts:
-/// - ValueTypeInfo: Inline field layout with total size
-/// - EntityTypeInfo: Fields after 16-byte object header, class ID for RTTI
+/// Value and class types compute field layouts:
+/// - StructTypeInfo: Inline field layout with total size
+/// - ClassTypeInfo: Fields after 16-byte object header, class ID for RTTI
 /// - Field offsets computed during type registration
 ///
 /// ## Runtime Integration
@@ -79,8 +79,8 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
     locals_.clear();
     usedExterns_.clear();
     definedFunctions_.clear();
-    pendingEntityInstantiations_.clear();
-    pendingValueInstantiations_.clear();
+    pendingClassInstantiations_.clear();
+    pendingStructInstantiations_.clear();
     pendingFunctionInstantiations_.clear();
 
     // Setup string table emitter
@@ -88,13 +88,13 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         builder_->addGlobalStr(label, content);
     });
 
-    // Pre-pass 1: register all `final` constants so that entity/function
+    // Pre-pass 1: register all `final` constants so that class/function
     // method bodies can reference constants defined later in the same file.
     registerAllFinalConstants(module.declarations);
 
-    // Pre-pass 2: register all entity/value type layouts so that field access
+    // Pre-pass 2: register all class/struct type layouts so that field access
     // in any method body can resolve types, even for forward-declared entities.
-    // This fixes BUG-FE-006 where entity A's methods reference entity B
+    // This fixes BUG-FE-006 where class A's methods reference class B
     // declared later in the same file.
     registerAllTypeLayouts(module.declarations);
 
@@ -103,23 +103,23 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         lowerDecl(decl.get());
     }
 
-    // Process pending generic entity instantiations
+    // Process pending generic class instantiations
     // These were deferred during expression lowering because we couldn't
     // lower methods while inside another function's body
-    while (!pendingEntityInstantiations_.empty()) {
-        std::string typeName = pendingEntityInstantiations_.back();
-        pendingEntityInstantiations_.pop_back();
+    while (!pendingClassInstantiations_.empty()) {
+        std::string typeName = pendingClassInstantiations_.back();
+        pendingClassInstantiations_.pop_back();
 
-        auto it = entityTypes_.find(typeName);
-        if (it == entityTypes_.end())
+        auto it = classTypes_.find(typeName);
+        if (it == classTypes_.end())
             continue;
 
-        EntityTypeInfo &info = it->second;
+        ClassTypeInfo &info = it->second;
 
         // Push substitution context so type parameters resolve correctly
         bool pushedContext = sema_.pushSubstitutionContext(typeName);
 
-        // Lower all methods for this instantiated generic entity
+        // Lower all methods for this instantiated generic class
         for (auto *method : info.methods) {
             lowerMethodDecl(*method, typeName, true);
         }
@@ -135,21 +135,21 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         }
     }
 
-    // Process pending generic value type instantiations
-    while (!pendingValueInstantiations_.empty()) {
-        std::string typeName = pendingValueInstantiations_.back();
-        pendingValueInstantiations_.pop_back();
+    // Process pending generic struct type instantiations
+    while (!pendingStructInstantiations_.empty()) {
+        std::string typeName = pendingStructInstantiations_.back();
+        pendingStructInstantiations_.pop_back();
 
-        auto it = valueTypes_.find(typeName);
-        if (it == valueTypes_.end())
+        auto it = structTypes_.find(typeName);
+        if (it == structTypes_.end())
             continue;
 
-        ValueTypeInfo &info = it->second;
+        StructTypeInfo &info = it->second;
 
         // Push substitution context so type parameters resolve correctly
         bool pushedContext = sema_.pushSubstitutionContext(typeName);
 
-        // Lower all methods for this instantiated generic value type
+        // Lower all methods for this instantiated generic struct type
         for (auto *method : info.methods) {
             lowerMethodDecl(*method, typeName, false);
         }
@@ -169,7 +169,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         lowerGenericFunctionInstantiation(mangledName, decl);
     }
 
-    // Emit destructor dispatch after all concrete entity destructors exist.
+    // Emit destructor dispatch after all concrete class destructors exist.
     emitDestructorDispatch();
 
     // Emit interface registration and itable binding
@@ -181,13 +181,13 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         if (definedFunctions_.count(externName) > 0)
             continue;
 
-        // Skip methods defined in this module (value type and entity type methods)
+        // Skip methods defined in this module (struct type and class type methods)
         bool isLocalMethod = false;
         auto dotPos = externName.find('.');
         if (dotPos != std::string::npos) {
             std::string typeName = externName.substr(0, dotPos);
-            if (getOrCreateValueTypeInfo(typeName) ||
-                entityTypes_.find(typeName) != entityTypes_.end()) {
+            if (getOrCreateStructTypeInfo(typeName) ||
+                classTypes_.find(typeName) != classTypes_.end()) {
                 isLocalMethod = true;
             }
         }

@@ -22,7 +22,7 @@ bind "./stmt";
 // PARSER ENTITY
 //=============================================================================
 
-entity Parser {
+class Parser {
     hide Lexer lexer;
     hide Token currentToken;
     expose String error;

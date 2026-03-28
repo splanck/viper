@@ -92,6 +92,7 @@ void rt_canvas3d_reset_render_target(void *canvas);
 //=========================================================================
 
 void *rt_mesh3d_new(void);
+void rt_mesh3d_clear(void *obj);
 void *rt_mesh3d_new_box(double sx, double sy, double sz);
 void *rt_mesh3d_new_sphere(double radius, int64_t segments);
 void *rt_mesh3d_new_plane(double sx, double sz);

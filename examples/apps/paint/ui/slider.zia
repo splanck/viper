@@ -7,7 +7,7 @@ bind Viper.Core.Convert;
 bind "../config";
 
 // Slider entity - horizontal slider for numeric values
-entity Slider {
+class Slider {
     expose Integer x;           // X position
     expose Integer y;           // Y position
     expose Integer width;       // Slider width

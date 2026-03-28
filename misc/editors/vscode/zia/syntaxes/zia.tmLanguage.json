@@ -75,7 +75,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.zia",
-          "match": "\\b(module|func|var|final|let|value|entity|interface|property|namespace|bind)\\b"
+          "match": "\\b(module|func|var|final|let|struct|class|interface|property|namespace|bind)\\b"
         },
         {
           "name": "keyword.control.zia",

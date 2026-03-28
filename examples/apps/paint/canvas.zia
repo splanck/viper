@@ -6,7 +6,7 @@ bind Viper.Graphics;
 bind "./config";
 
 // DrawingCanvas entity - manages the pixel buffer for drawing
-entity DrawingCanvas {
+class DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels
     expose Integer backgroundColor; // Background color (for clear/eraser)

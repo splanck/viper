@@ -88,7 +88,7 @@ interface IShape {
     func area(): Number;
 }
 
-entity Circle implements IShape {
+class Circle implements IShape {
     expose Number radius;
     expose func area(): Number { return 3.14 * self.radius * self.radius; }
 }
@@ -127,7 +127,7 @@ interface IGreeter {
     func greet(): String;
 }
 
-entity HelloGreeter implements IGreeter {
+class HelloGreeter implements IGreeter {
     expose func greet(): String { return "Hello"; }
 }
 
@@ -164,11 +164,11 @@ interface IAnimal {
     func speak(): String;
 }
 
-entity Dog implements IAnimal {
+class Dog implements IAnimal {
     expose func speak(): String { return "Woof"; }
 }
 
-entity Cat implements IAnimal {
+class Cat implements IAnimal {
     expose func speak(): String { return "Meow"; }
 }
 
@@ -209,7 +209,7 @@ interface IShape {
     func perimeter(): Number;
 }
 
-entity Rect implements IShape {
+class Rect implements IShape {
     expose Number w;
     expose Number h;
     expose func area(): Number { return self.w * self.h; }
@@ -248,7 +248,7 @@ TEST(ZiaIfaceDispatch, NoInterfacesNoInit) {
     const std::string source = R"(
 module Test;
 
-entity Foo {
+class Foo {
     expose Integer x;
 }
 

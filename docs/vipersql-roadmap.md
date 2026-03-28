@@ -115,7 +115,7 @@ Transform the Zia SQL database demo into **ViperSQL**, a fully-featured, product
 
 #### Architecture Changes
 ```rust
-DatabaseServer (new entity)
+DatabaseServer (new class)
 ├── databases: Map[String -> Database]
 ├── currentDatabase: Database
 ├── createDatabase(name) -> Boolean
@@ -130,7 +130,7 @@ DatabaseServer (new entity)
 | `token.zia` | Add TK_DATABASE, TK_USE, TK_DATABASES |
 | `lexer.zia` | Add keyword recognition |
 | `parser.zia` | Parse CREATE/DROP/USE DATABASE |
-| `server.zia` | **NEW** - DatabaseServer entity |
+| `server.zia` | **NEW** - DatabaseServer class |
 | `executor.zia` | Route all operations through server context |
 
 #### Tests Required
@@ -222,7 +222,7 @@ SqlValue Binary Format:
 #### 2.3 Buffer Pool (Page Cache)
 
 ```rust
-BufferPool entity:
+BufferPool class:
 ├── pageSize: 4096
 ├── maxPages: configurable (default 1000 = 4MB cache)
 ├── pages: Map[PageID -> PageFrame]
@@ -272,7 +272,7 @@ BufferPool entity:
 
 #### Operations
 ```rust
-BTreeIndex entity:
+BTreeIndex class:
 ├── rootPage: PageID
 ├── keyColumns: List[String]
 ├── isUnique: Boolean
@@ -285,7 +285,7 @@ BTreeIndex entity:
 ├── findPrefix(prefix) -> Cursor      // LIKE 'abc%'
 └── scan() -> Cursor                  // Full index scan
 
-BTreeCursor entity:
+BTreeCursor class:
 ├── currentPage: PageID
 ├── currentSlot: Integer
 ├── hasNext() -> Boolean
@@ -390,7 +390,7 @@ Default: READ COMMITTED (like PostgreSQL)
 
 #### Lock Manager
 ```rust
-LockManager entity:
+LockManager class:
 ├── lockTable: Map[ResourceID -> LockEntry]
 ├── waitGraph: Graph[TxnID -> TxnID]
 │
@@ -463,7 +463,7 @@ Server → Client:
 
 #### Server Components
 ```rust
-NetworkServer entity:
+NetworkServer class:
 ├── config: ServerConfig
 │   ├── host: String
 │   ├── port: Integer (default 5433)
@@ -475,7 +475,7 @@ NetworkServer entity:
 ├── shutdown()
 └── stats() -> ServerStats
 
-Connection entity:
+Connection class:
 ├── socket: TcpSocket
 ├── session: Session
 ├── authenticated: Boolean
@@ -485,7 +485,7 @@ Connection entity:
 ├── sendError(error: String)
 └── close()
 
-Session entity:
+Session class:
 ├── connectionID: Integer
 ├── username: String
 ├── currentDatabase: Database
@@ -511,13 +511,13 @@ Session entity:
 
 #### Client Library
 ```rust
-ViperSQLClient entity:
+ViperSQLClient class:
 ├── connect(host, port, user, pass) -> Connection
 ├── execute(sql) -> QueryResult
 ├── prepare(sql) -> PreparedStatement
 ├── close()
 
-PreparedStatement entity:
+PreparedStatement class:
 ├── bind(index, value)
 ├── execute() -> QueryResult
 ├── close()
@@ -561,11 +561,11 @@ Concrete nodes:
 
 #### Statistics
 ```rust
-TableStats entity:
+TableStats class:
 ├── rowCount: Integer
 ├── columnStats: Map[String -> ColumnStats]
 
-ColumnStats entity:
+ColumnStats class:
 ├── distinctCount: Integer
 ├── nullCount: Integer
 ├── min: SqlValue

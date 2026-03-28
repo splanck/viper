@@ -81,13 +81,13 @@ func start() {
 // Bug #39: Module-Level Entity Variables
 //===----------------------------------------------------------------------===//
 
-/// @brief Test module-level entity variables can store and retrieve objects.
+/// @brief Test module-level class variables can store and retrieve objects.
 TEST(ZiaBugFixes, Bug39_ModuleLevelEntityVariables) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Player {
+class Player {
     expose Integer score;
 
     expose func addScore(Integer points) {
@@ -238,13 +238,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test colon return type syntax in entity methods.
+/// @brief Test colon return type syntax in class methods.
 TEST(ZiaBugFixes, Bug43_ColonReturnTypeMethod) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Calculator {
+class Calculator {
     expose Integer value;
 
     expose func getValue(): Integer {
@@ -302,22 +302,22 @@ func start() {
 }
 
 //===----------------------------------------------------------------------===//
-// BUG-FE-007: Non-existent entity method through field chain
+// BUG-FE-007: Non-existent class method through field chain
 //===----------------------------------------------------------------------===//
 
-/// @brief Calling a non-existent method on an entity field should fail compilation.
+/// @brief Calling a non-existent method on a class field should fail compilation.
 TEST(ZiaBugFixes, BugFE007_NonExistentEntityMethodError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Inner {
+class Inner {
     expose Integer x;
     expose func init() { x = 0; }
     expose func getX() -> Integer { return x; }
 }
 
-entity Outer {
+class Outer {
     expose Inner inner;
     expose func init() {
         inner = new Inner();
@@ -341,19 +341,19 @@ func start() {
     EXPECT_TRUE(result.diagnostics.errorCount() > 0);
 }
 
-/// @brief Calling a valid method on an entity field should compile successfully.
+/// @brief Calling a valid method on a class field should compile successfully.
 TEST(ZiaBugFixes, BugFE007_ValidEntityFieldMethodDispatch) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Inner {
+class Inner {
     expose Integer x;
     expose func init() { x = 42; }
     expose func getX() -> Integer { return x; }
 }
 
-entity Outer {
+class Outer {
     expose Inner inner;
     expose func init() {
         inner = new Inner();
@@ -485,17 +485,17 @@ func start() {
 }
 
 //===----------------------------------------------------------------------===//
-// BUG-FE-006: Entity field chain List method calls generate wrong IL types
+// BUG-FE-006: Class field chain List method calls generate wrong IL types
 //===----------------------------------------------------------------------===//
 
-/// @brief Entity field chain List.add() should compile when entity B is declared
-///        AFTER entity A (forward reference pattern).
+/// @brief Class field chain List.add() should compile when class B is declared
+///        AFTER class A (forward reference pattern).
 TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_ForwardRef) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity User {
+class User {
     expose Container container;
     expose func init() {
         container = new Container();
@@ -506,7 +506,7 @@ entity User {
     }
 }
 
-entity Container {
+class Container {
     expose List[Integer] items;
     expose func init() { items = []; }
 }
@@ -525,19 +525,19 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Entity field chain List.add() should compile when entity B is declared
-///        BEFORE entity A (normal declaration order).
+/// @brief Class field chain List.add() should compile when class B is declared
+///        BEFORE class A (normal declaration order).
 TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_NormalOrder) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Container {
+class Container {
     expose List[Integer] items;
     expose func init() { items = []; }
 }
 
-entity User {
+class User {
     expose Container container;
     expose func init() {
         container = new Container();
@@ -562,13 +562,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Multiple entity field chains with different collection types.
+/// @brief Multiple class field chains with different collection types.
 TEST(ZiaBugFixes, BugFE006_EntityFieldChainMultipleCollections) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Manager {
+class Manager {
     expose DataStore store;
     expose func init() {
         store = new DataStore();
@@ -582,7 +582,7 @@ entity Manager {
     }
 }
 
-entity DataStore {
+class DataStore {
     expose List[Integer] values;
     expose List[String] names;
     expose func init() {
@@ -606,13 +606,13 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Entity field chain accessing an entity-typed field (not just List).
+/// @brief Class field chain accessing an class-typed field (not just List).
 TEST(ZiaBugFixes, BugFE006_EntityFieldChainEntityField_ForwardRef) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Outer {
+class Outer {
     expose Middle mid;
     expose func init() {
         mid = new Middle();
@@ -623,7 +623,7 @@ entity Outer {
     }
 }
 
-entity Middle {
+class Middle {
     expose Inner inner;
     expose func init() {
         inner = new Inner();
@@ -631,7 +631,7 @@ entity Middle {
     }
 }
 
-entity Inner {
+class Inner {
     expose Integer value;
 }
 
@@ -653,15 +653,15 @@ func start() {
 // Final Constant Forward Reference
 //===----------------------------------------------------------------------===//
 
-/// @brief Test that entity methods can reference `final` constants defined later
+/// @brief Test that class methods can reference `final` constants defined later
 /// in the same file. This was a bug where the single-pass lowering processed
-/// entity methods before later `final` declarations, causing them to resolve to 0.
+/// class methods before later `final` declarations, causing them to resolve to 0.
 TEST(ZiaBugFixes, FinalConstantForwardReference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Config {
+class Config {
     expose Integer val;
     expose func init() {
         val = DEFAULT_SIZE;
@@ -685,7 +685,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     // Verify the constant was inlined correctly by checking the IL output
-    // The entity method should use const 42, not 0
+    // The class method should use const 42, not 0
     if (result.succeeded()) {
         auto &mod = result.module;
         bool found42 = false;
@@ -704,13 +704,13 @@ func start() {
     }
 }
 
-/// @brief Test that multiple finals defined after an entity all resolve correctly.
+/// @brief Test that multiple finals defined after a class all resolve correctly.
 TEST(ZiaBugFixes, MultipleFinalConstantsForwardReference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity MathHelper {
+class MathHelper {
     expose func getSum() -> Integer {
         return VAL_A + VAL_B + VAL_C;
     }
@@ -1209,7 +1209,7 @@ TEST(ZiaBugFixes, ZIA001_StructLiteralInit) {
     const std::string source = R"(
 module Test;
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
     expose func init(px: Integer, py: Integer) { x = px; y = py; }
@@ -1237,7 +1237,7 @@ TEST(ZiaBugFixes, ZIA001_StructLiteralPartialFields) {
     const std::string source = R"(
 module Test;
 
-value Color {
+struct Color {
     expose Integer r;
     expose Integer g;
     expose Integer b;
@@ -1260,17 +1260,17 @@ func start() {
 }
 
 //===----------------------------------------------------------------------===//
-// ZIA-002: Fixed-size array fields in `entity` types (`Integer[64]`).
+// ZIA-002: Fixed-size array fields in `class` types (`Integer[64]`).
 //===----------------------------------------------------------------------===//
 
-/// @brief An entity with an `Integer[N]` field must compile; individual elements
+/// @brief A class with an `Integer[N]` field must compile; individual elements
 /// must be readable and writable via subscript syntax.
 TEST(ZiaBugFixes, ZIA002_FixedSizeArrayField) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-entity Board {
+class Board {
     expose Integer[64] squares;
     expose func init() {}
     expose func get(i: Integer) -> Integer { return squares[i]; }
@@ -1300,7 +1300,7 @@ TEST(ZiaBugFixes, ZIA002_FixedSizeArrayArithmetic) {
     const std::string source = R"(
 module Test;
 
-entity Vec {
+class Vec {
     expose Float[4] data;
     expose func init() {}
     expose func set(i: Integer, v: Float) { data[i] = v; }

@@ -3,7 +3,7 @@ module HelloLSP;
 // Try hovering over "start", or typing "Viper." to get completions.
 // Errors should appear as red squiggly underlines.
 
-value Point {
+struct Point {
     var x: Integer;
     var y: Integer;
 }

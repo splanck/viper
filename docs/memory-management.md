@@ -473,7 +473,7 @@ result that is never released.
 
 The cycle collector only runs when explicitly called via
 `Viper.Memory.GC.Collect()`. Programs that create cyclic object graphs (e.g.,
-doubly-linked lists, parent-child entity references) without calling
+doubly-linked lists, parent-child class references) without calling
 `GC.Collect()` will leak those cycles indefinitely.
 
 ### 3. HIGH: Seq Elements Not Lifetime-Managed

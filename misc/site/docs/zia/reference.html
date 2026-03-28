@@ -41,7 +41,7 @@
         <li><a href="#expressions">Expressions</a></li>
         <li><a href="#statements">Statements</a></li>
         <li><a href="#declarations">Declarations</a></li>
-        <li><a href="#entity-types">Entity Types</a></li>
+        <li><a href="#class-types">Entity Types</a></li>
         <li><a href="#value-types">Value Types</a></li>
         <li><a href="#interfaces">Interfaces</a></li>
         <li><a href="#enums">Enums</a></li>
@@ -63,7 +63,7 @@
 <h2 id="key-language-features">Key Language Features</h2>
 <ul>
 <li><strong>Static typing</strong>: All variables have compile-time types with inference</li>
-<li><strong>Entity types</strong>: Reference semantics with identity, methods, inheritance, properties, static members, and destructors</li>
+<li><strong>Entity types</strong>: Reference semantics with idclass, methods, inheritance, properties, static members, and destructors</li>
 <li><strong>Value types</strong>: Copy semantics with stack allocation</li>
 <li><strong>Interfaces</strong>: Contracts with full runtime itable dispatch</li>
 <li><strong>Enums</strong>: Named sets of integer constants with exhaustiveness checking in match</li>
@@ -82,7 +82,7 @@
 <li>[Expressions](#expressions)</li>
 <li>[Statements](#statements) (includes try/catch/finally)</li>
 <li>[Declarations](#declarations) (includes default parameters)</li>
-<li>[Entity Types](#entity-types) (includes properties, static members, destructors)</li>
+<li>[Entity Types](#class-types) (includes properties, static members, destructors)</li>
 <li>[Value Types](#value-types)</li>
 <li>[Interfaces](#interfaces)</li>
 <li>[Enums](#enums)</li>
@@ -105,9 +105,9 @@ bind &quot;path/to/module&quot;;
 var globalVar: Type = value;
 final CONSTANT = value;
 
-// Type declarations (entity, value, interface)
-entity MyEntity { ... }
-value MyValue { ... }
+// Type declarations (class, value, interface)
+class MyEntity { ... }
+struct MyStruct { ... }
 interface MyInterface { ... }
 
 // Function declarations
@@ -257,12 +257,12 @@ var count: Integer? = 42;   // Optional with value
 <p>Parameterized types with type arguments:</p>
 <pre><code data-lang="viper">
 List[Integer]           // List of integers
-List[Player]            // List of entity instances
+List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
 </code></pre>
 <p>Map keys are restricted to <code>String</code>.</p>
-<h3 id="entity-types">Entity Types</h3>
-<p>Reference types defined with the <code>entity</code> keyword:</p>
+<h3 id="class-types">Entity Types</h3>
+<p>Reference types defined with the <code>class</code> keyword:</p>
 <pre><code data-lang="viper">
 var player: Player = new Player();
 </code></pre>
@@ -557,12 +557,12 @@ var r = createRect(x: 10, y: 20, w: 100, h: 50);
 </code></pre>
 <h3 id="object-creation">Object Creation</h3>
 <pre><code data-lang="viper">
-new EntityType()        // Create entity instance
+new EntityType()        // Create class instance
 </code></pre>
 <h3 id="value-type-initialization-struct-literals">Value Type Initialization (Struct Literals)</h3>
 <p>Value types can be initialized with field assignments:</p>
 <pre><code data-lang="viper">
-value Point {
+struct Point {
     Integer x;
     Integer y;
 }
@@ -778,7 +778,7 @@ func start() {
 <h3 id="generic-function-declaration">Generic Function Declaration</h3>
 <p>Functions can be parameterized over types with optional constraints:</p>
 <pre><code data-lang="viper">
-func identity[T](x: T) -&gt; T {
+func idclass[T](x: T) -&gt; T {
     return x;
 }
 
@@ -794,11 +794,11 @@ var globalName: Type = initialValue;
 final CONSTANT = value;
 </code></pre>
 <p>---</p>
-<h2 id="entity-types">Entity Types</h2>
-<p>Entities are reference types with identity, stored on the heap.</p>
-<h3 id="entity-declaration">Entity Declaration</h3>
+<h2 id="class-types">Entity Types</h2>
+<p>Entities are reference types with idclass, stored on the heap.</p>
+<h3 id="class-declaration">Entity Declaration</h3>
 <pre><code data-lang="viper">
-entity EntityName {
+class EntityName {
     // Fields
     Type fieldName;
 
@@ -816,22 +816,22 @@ entity EntityName {
 <h3 id="field-visibility">Field Visibility</h3>
 <p>Fields and methods can be marked with visibility:</p>
 <pre><code data-lang="viper">
-entity Player {
+class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
     expose String name;     // Public field
 }
 </code></pre>
-<h3 id="entity-inheritance">Entity Inheritance</h3>
+<h3 id="class-inheritance">Entity Inheritance</h3>
 <pre><code data-lang="viper">
-entity ChildEntity extends ParentEntity {
+class ChildEntity extends ParentEntity {
     // Additional fields and methods
 }
 </code></pre>
 <h4 id="the-super-keyword">The `super` Keyword</h4>
-<p>Within a child entity, <code>super</code> refers to the parent entity&#x27;s implementation. Use it to call the parent&#x27;s methods:</p>
+<p>Within a child class, <code>super</code> refers to the parent class&#x27;s implementation. Use it to call the parent&#x27;s methods:</p>
 <pre><code data-lang="viper">
-entity Child extends Parent {
+class Child extends Parent {
     override func greet() -&gt; String {
         return super.greet() + &quot; (child)&quot;;
     }
@@ -840,23 +840,23 @@ entity Child extends Parent {
 <h4 id="the-override-keyword">The `override` Keyword</h4>
 <p>Methods that override a parent&#x27;s method must be marked with <code>override</code>:</p>
 <pre><code data-lang="viper">
-entity Base {
+class Base {
     func describe() -&gt; String { return &quot;Base&quot;; }
 }
 
-entity Derived extends Base {
+class Derived extends Base {
     override func describe() -&gt; String { return &quot;Derived&quot;; }
 }
 </code></pre>
-<h3 id="creating-entities">Creating Entities</h3>
+<h3 id="creating-classes">Creating Entities</h3>
 <pre><code data-lang="viper">
-var entity = new EntityType();
-entity.init(args);
+var class = new EntityType();
+class.init(args);
 </code></pre>
 <h3 id="self-reference">Self Reference</h3>
 <p>Within methods, fields can be accessed directly or with <code>self</code>:</p>
 <pre><code data-lang="viper">
-entity Counter {
+class Counter {
     Integer count;
 
     func increment() {
@@ -866,9 +866,9 @@ entity Counter {
 }
 </code></pre>
 <h3 id="properties">Properties</h3>
-<p>Properties provide computed get/set accessors for entity fields:</p>
+<p>Properties provide computed get/set accessors for class fields:</p>
 <pre><code data-lang="viper">
-entity Temperature {
+class Temperature {
     Number celsius;
 
     property fahrenheit: Number {
@@ -884,9 +884,9 @@ entity Temperature {
 <li>Properties are accessed like fields: <code>temp.fahrenheit</code> calls the getter, <code>temp.fahrenheit = 212.0</code> calls the setter.</li>
 </ul>
 <h3 id="static-members">Static Members</h3>
-<p>Fields and methods marked <code>static</code> belong to the entity type, not to instances:</p>
+<p>Fields and methods marked <code>static</code> belong to the class type, not to instances:</p>
 <pre><code data-lang="viper">
-entity Counter {
+class Counter {
     static Integer instanceCount;
 
     static func getCount() -&gt; Integer {
@@ -901,12 +901,12 @@ entity Counter {
 <ul>
 <li>Static fields are stored as module-level globals (not per-instance).</li>
 <li>Static methods have no <code>self</code> parameter.</li>
-<li>Access via the entity name: <code>Counter.getCount()</code>, <code>Counter.instanceCount</code>.</li>
+<li>Access via the class name: <code>Counter.getCount()</code>, <code>Counter.instanceCount</code>.</li>
 </ul>
 <h3 id="destructors">Destructors</h3>
 <p>The <code>deinit</code> block defines cleanup logic that runs when an object is destroyed:</p>
 <pre><code data-lang="viper">
-entity FileHandle {
+class FileHandle {
     Integer fd;
 
     deinit {
@@ -916,7 +916,7 @@ entity FileHandle {
 }
 </code></pre>
 <ul>
-<li>At most one <code>deinit</code> block per entity.</li>
+<li>At most one <code>deinit</code> block per class.</li>
 <li>The destructor automatically releases reference-typed fields after the user body executes.</li>
 <li>The generated IL function is named <code>__dtor_TypeName</code>.</li>
 </ul>
@@ -925,7 +925,7 @@ entity FileHandle {
 <p>Value types have copy semantics — assignments copy the entire value.</p>
 <h3 id="value-declaration">Value Declaration</h3>
 <pre><code data-lang="viper">
-value ValueName {
+struct StructName {
     // Fields
     Type fieldName;
 
@@ -937,7 +937,7 @@ value ValueName {
 </code></pre>
 <h3 id="using-value-types">Using Value Types</h3>
 <pre><code data-lang="viper">
-value Point {
+struct Point {
     Integer x;
     Integer y;
 
@@ -954,7 +954,7 @@ func start() {
 </code></pre>
 <p>---</p>
 <h2 id="interfaces">Interfaces</h2>
-<p>Interfaces define contracts that entities and values can implement.</p>
+<p>Interfaces define contracts that classes and values can implement.</p>
 <h3 id="interface-declaration">Interface Declaration</h3>
 <pre><code data-lang="viper">
 interface InterfaceName {
@@ -963,7 +963,7 @@ interface InterfaceName {
 </code></pre>
 <h3 id="implementing-interfaces">Implementing Interfaces</h3>
 <pre><code data-lang="viper">
-entity MyEntity implements InterfaceName {
+class MyEntity implements InterfaceName {
     expose func methodSignature(params) -&gt; ReturnType {
         // Implementation
     }
@@ -977,7 +977,7 @@ interface IShape {
     func area() -&gt; Number;
 }
 
-entity Circle implements IShape {
+class Circle implements IShape {
     expose Number radius;
     expose func area() -&gt; Number { return 3.14 * self.radius * self.radius; }
 }
@@ -1135,7 +1135,7 @@ namespace MyLib {
         return 42;
     }
 
-    entity Parser {
+    class Parser {
         Integer value;
 
         func parse(input: String) -&gt; Boolean {
@@ -1190,7 +1190,7 @@ namespace Config {
     final VERSION = 42;
     var debug = false;
 
-    value Point {
+    struct Point {
         Integer x;
         Integer y;
     }
@@ -1199,7 +1199,7 @@ namespace Config {
         func configure();
     }
 
-    entity Settings {
+    class Settings {
         String name;
     }
 }
@@ -1391,7 +1391,7 @@ map.Length;                         // Entry count
 <h3 id="keywords">Keywords</h3>
 <pre><code data-lang="text">
 and         as          bind        break       catch
-continue    deinit      else        entity      enum
+continue    deinit      else        class      enum
 expose      extends     false       final       finally
 for         func        guard       hide        if
 implements  in          interface   is          match
@@ -1420,8 +1420,8 @@ bind        ::= &quot;bind&quot; STRING [&quot;as&quot; IDENT] &quot;;&quot;
 </code></pre>
 <h3 id="declarations">Declarations</h3>
 <pre><code data-lang="text">
-decl        ::= entityDecl | valueDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
-entityDecl  ::= &quot;entity&quot; IDENT [&quot;extends&quot; IDENT] [&quot;implements&quot; identList] &quot;{&quot; member* &quot;}&quot;
+decl        ::= classDecl | valueDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
+classDecl  ::= &quot;class&quot; IDENT [&quot;extends&quot; IDENT] [&quot;implements&quot; identList] &quot;{&quot; member* &quot;}&quot;
 valueDecl   ::= &quot;value&quot; IDENT [&quot;implements&quot; identList] &quot;{&quot; member* &quot;}&quot;
 interfaceDecl ::= &quot;interface&quot; IDENT &quot;{&quot; methodSig* &quot;}&quot;
 enumDecl    ::= [&quot;expose&quot;] &quot;enum&quot; IDENT &quot;{&quot; enumVariant (&quot;,&quot; enumVariant)* [&quot;,&quot;] &quot;}&quot;

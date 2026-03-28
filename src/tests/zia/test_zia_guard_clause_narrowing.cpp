@@ -31,7 +31,7 @@ TEST(ZiaGuardClause, NullCheckReturnNarrows) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -74,7 +74,7 @@ TEST(ZiaGuardClause, MultipleGuardClauses) {
     const std::string src = R"(
 module Test;
 
-entity Person {
+class Person {
     expose String name;
 
     expose func init(n: String) {
@@ -82,7 +82,7 @@ entity Person {
     }
 }
 
-entity Item {
+class Item {
     expose String label;
 
     expose func init(l: String) {

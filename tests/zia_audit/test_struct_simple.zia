@@ -2,7 +2,7 @@ module TestValueSimple;
 
 // Test: Simple value type
 
-value Point2D {
+struct Point2D {
     expose Number x;
     expose Number y;
 

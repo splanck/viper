@@ -498,7 +498,7 @@ TEST(ZiaLexer, BitwiseOperators) {
 //===----------------------------------------------------------------------===//
 
 TEST(ZiaLexer, AllKeywordsRecognized) {
-    auto tokens = tokenize("var func entity value interface if else while for in "
+    auto tokens = tokenize("var func class struct interface if else while for in "
                            "return match break continue true false null new self "
                            "super extends implements module bind let guard");
     // All should be keywords, not identifiers
@@ -509,7 +509,7 @@ TEST(ZiaLexer, AllKeywordsRecognized) {
 
 TEST(ZiaLexer, KeywordsCaseSensitive) {
     // Uppercase versions should be identifiers, not keywords
-    auto tokens = tokenize("Var Func Entity IF ELSE");
+    auto tokens = tokenize("Var Func Class IF ELSE");
     for (const auto &tok : tokens) {
         EXPECT_EQ(tok.kind, TokenKind::Identifier);
     }

@@ -17,7 +17,7 @@ bind "./token";
 // LEXER ENTITY
 //=============================================================================
 
-entity Lexer {
+class Lexer {
     hide String source;
     hide Integer pos;
     hide Integer line;

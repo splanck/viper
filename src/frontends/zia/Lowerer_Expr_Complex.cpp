@@ -8,10 +8,10 @@
 // File: src/frontends/zia/Lowerer_Expr_Complex.cpp
 // Purpose: Field access and new-expression lowering for the Zia IL lowerer.
 // Key invariants:
-//   - Field access checks value types, entity types, and built-in properties
-//   - New expressions handle collections, runtime classes, value types, entities
+//   - Field access checks struct types, class types, and built-in properties
+//   - New expressions handle collections, runtime classes, struct types, entities
 // Ownership/Lifetime:
-//   - Lowerer owns IL builder; field lookups use entityTypes_/valueTypes_ maps
+//   - Lowerer owns IL builder; field lookups use classTypes_/structTypes_ maps
 // Links: src/frontends/zia/Lowerer.hpp,
 //        src/frontends/zia/Lowerer_Expr_Optional.cpp,
 //        src/frontends/zia/Lowerer_Expr_Lambda.cpp
@@ -142,9 +142,9 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     // Lower the base expression
     auto base = lowerExpr(expr->base.get());
 
-    // Check if base is a value type
+    // Check if base is a struct type
     std::string typeName = baseType->name;
-    const ValueTypeInfo *info = getOrCreateValueTypeInfo(typeName);
+    const StructTypeInfo *info = getOrCreateStructTypeInfo(typeName);
     if (info) {
         const FieldLayout *field = info->findField(expr->field);
 
@@ -175,7 +175,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
             loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
-            // BUG-ADV-001: Retain loaded string fields from value types.
+            // BUG-ADV-001: Retain loaded string fields from struct types.
             if (fieldType.kind == Type::Kind::Str)
                 emitCall(runtime::kStrRetainMaybe, {Value::temp(loadId)});
 
@@ -183,10 +183,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         }
     }
 
-    // Check if base is an entity type
-    const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+    // Check if base is an class type
+    const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(typeName);
     if (entityInfoPtr) {
-        const EntityTypeInfo &entityInfo = *entityInfoPtr;
+        const ClassTypeInfo &entityInfo = *entityInfoPtr;
         const FieldLayout *field = entityInfo.findField(expr->field);
 
         if (field) {
@@ -216,7 +216,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
             loadInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(loadInstr);
 
-            // BUG-ADV-001: Retain loaded string fields from entity types.
+            // BUG-ADV-001: Retain loaded string fields from class types.
             // Load gives a borrowed reference; retain converts it to owned,
             // preventing use-after-free when the string is consumed by
             // concatenation or passed cross-module.
@@ -322,9 +322,9 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
     // Handle runtime class types (Ptr) -- look up ctor from RuntimeRegistry catalog.
     // The ctor field is already a fully-qualified extern target, e.g.,
     // "Viper.Collections.FrozenSet.FromSeq"
-    // Skip Entity and Value types -- they have their own lowering below.
-    if (type && !type->name.empty() && type->kind != TypeKindSem::Entity &&
-        type->kind != TypeKindSem::Value) {
+    // Skip Entity and Struct types -- they have their own lowering below.
+    if (type && !type->name.empty() && type->kind != TypeKindSem::Class &&
+        type->kind != TypeKindSem::Struct) {
         std::string ctorName;
         if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
             if (rtClass->ctor)
@@ -346,12 +346,12 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         return {result, Type(Type::Kind::Ptr)};
     }
 
-    // BUG-010 fix: Check for value type construction via 'new' keyword
-    // Value types can be instantiated with 'new' just like entity types
+    // BUG-010 fix: Check for struct type construction via 'new' keyword
+    // Struct types can be instantiated with 'new' just like class types
     std::string typeName = type->name;
-    const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+    const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
     if (valueInfo) {
-        const ValueTypeInfo &valInfo = *valueInfo;
+        const StructTypeInfo &valInfo = *valueInfo;
 
         // Lower arguments
         std::vector<Value> argValues;
@@ -371,7 +371,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
         Value ptr = Value::temp(allocaId);
 
-        // Check if the value type has an explicit init method
+        // Check if the struct type has an explicit init method
         auto initIt = valInfo.methodMap.find("init");
         if (initIt != valInfo.methodMap.end()) {
             // Call the explicit init method
@@ -411,14 +411,14 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         return LowerResult{ptr, Type(Type::Kind::Ptr)};
     }
 
-    // Find the entity type info
-    const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
+    // Find the class type info
+    const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);
     if (!infoPtr) {
-        // Not an entity type
+        // Not an class type
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
-    const EntityTypeInfo &entityInfo = *infoPtr;
+    const ClassTypeInfo &entityInfo = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
@@ -427,7 +427,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         argValues.push_back(result.value);
     }
 
-    // Allocate heap memory for the entity using rt_obj_new_i64
+    // Allocate heap memory for the class using rt_obj_new_i64
     // This properly initializes the heap header with magic, refcount, etc.
     // so that entities can be added to lists and other reference-counted collections
     Value ptr = emitCallRet(Type(Type::Kind::Ptr),
@@ -435,7 +435,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
                             {Value::constInt(static_cast<int64_t>(entityInfo.classId)),
                              Value::constInt(static_cast<int64_t>(entityInfo.totalSize))});
 
-    // Check if the entity has an explicit init method
+    // Check if the class has an explicit init method
     MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);
     auto initIt = entityInfo.methodMap.find("init");
     if (resolvedInit || initIt != entityInfo.methodMap.end()) {
@@ -491,7 +491,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         }
     }
 
-    // Return pointer to the allocated entity
+    // Return pointer to the allocated class
     return {ptr, Type(Type::Kind::Ptr)};
 }
 

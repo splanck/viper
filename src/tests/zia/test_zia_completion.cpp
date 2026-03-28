@@ -15,7 +15,7 @@
 ///   - Sema::getGlobalSymbols() — module-level symbol enumeration
 ///   - Sema::getMembersOf()     — fields and methods of user-defined types
 ///   - Sema::getRuntimeMembers()— RT class methods and properties
-///   - Sema::getTypeNames()     — entity/value/interface declarations
+///   - Sema::getTypeNames()     — class/struct/interface declarations
 ///   - Sema::getBoundModuleNames() — bound namespace aliases
 ///   - Sema::getModuleExports() — symbols exported by bound file modules
 ///
@@ -130,7 +130,7 @@ TEST(ZiaCompletion, GetGlobalSymbols_IncludesEntityConstructor) {
     const std::string source = R"(
 module Test;
 
-entity Dog {
+class Dog {
     expose String name;
     expose func init() { name = "Buddy"; }
 }
@@ -155,11 +155,11 @@ TEST(ZiaCompletion, GetTypeNames_ReturnsEntityNames) {
     const std::string source = R"(
 module Test;
 
-entity Cat {
+class Cat {
     expose func init() {}
 }
 
-value Point {
+struct Point {
     expose Integer x;
     expose Integer y;
 }
@@ -184,7 +184,7 @@ TEST(ZiaCompletion, GetMembersOf_EntityFieldsAndMethods) {
     const std::string source = R"(
 module Test;
 
-entity Box {
+class Box {
     expose Integer width;
     expose Integer height;
     expose func Area() -> Integer {
@@ -198,7 +198,7 @@ entity Box {
     auto ar = parseAndAnalyze(input, opts, sm);
     ASSERT_TRUE(ar->sema != nullptr);
 
-    // Look up the Box entity type via global symbols.
+    // Look up the Box class type via global symbols.
     auto globals = ar->sema->getGlobalSymbols();
     const Symbol *boxSym = nullptr;
     for (const auto &s : globals) {

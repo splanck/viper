@@ -8,7 +8,7 @@ bind "../canvas";
 bind "../colors";
 
 // RectangleTool - draws rectangles (filled or outline)
-entity RectangleTool {
+class RectangleTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start corner X
     expose Integer startY;      // Start corner Y

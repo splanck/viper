@@ -183,9 +183,9 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
         return lowerStoredValue(*local, storageType, useType);
     }
 
-    // Check for implicit field access (self.field) inside a value type method
-    if (currentValueType_) {
-        const FieldLayout *field = currentValueType_->findField(expr->name);
+    // Check for implicit field access (self.field) inside a struct type method
+    if (currentStructType_) {
+        const FieldLayout *field = currentStructType_->findField(expr->name);
         if (field) {
             Value selfPtr;
             if (getSelfPtr(selfPtr)) {
@@ -195,9 +195,9 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
         }
     }
 
-    // Check for implicit field access (self.field) inside an entity method
-    if (currentEntityType_) {
-        const FieldLayout *field = currentEntityType_->findField(expr->name);
+    // Check for implicit field access (self.field) inside an class method
+    if (currentClassType_) {
+        const FieldLayout *field = currentClassType_->findField(expr->name);
         if (field) {
             Value selfPtr;
             if (getSelfPtr(selfPtr)) {

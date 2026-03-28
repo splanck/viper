@@ -6,15 +6,15 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/frontends/zia/Lowerer_Decl_Types.cpp
-// Purpose: Type layout registration for the Zia IL lowerer — entity/value
+// Purpose: Type layout registration for the Zia IL lowerer — class/struct
 //          type field offset computation, vtable construction, itable init,
 //          and on-demand generic type instantiation.
 // Key invariants:
-//   - registerEntityLayout/registerValueLayout are idempotent (skip if cached)
-//   - Entity field offsets start at kEntityFieldsOffset (after header)
-//   - Value type field offsets start at 0
+//   - registerClassLayout/registerStructLayout are idempotent (skip if cached)
+//   - Entity field offsets start at kClassFieldsOffset (after header)
+//   - Struct type field offsets start at 0
 // Ownership/Lifetime:
-//   - Lowerer owns entityTypes_/valueTypes_ maps; pointers are stable across calls
+//   - Lowerer owns classTypes_/structTypes_ maps; pointers are stable across calls
 // Links: src/frontends/zia/Lowerer.hpp, src/frontends/zia/Lowerer_Decl.cpp
 //
 //===----------------------------------------------------------------------===//
@@ -32,10 +32,10 @@ using namespace runtime;
 
 void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
-        if (decl->kind == DeclKind::Entity) {
-            registerEntityLayout(*static_cast<EntityDecl *>(decl.get()));
-        } else if (decl->kind == DeclKind::Value) {
-            registerValueLayout(*static_cast<ValueDecl *>(decl.get()));
+        if (decl->kind == DeclKind::Class) {
+            registerClassLayout(*static_cast<ClassDecl *>(decl.get()));
+        } else if (decl->kind == DeclKind::Struct) {
+            registerStructLayout(*static_cast<StructDecl *>(decl.get()));
         } else if (decl->kind == DeclKind::Namespace) {
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
             std::string savedPrefix = namespacePrefix_;
@@ -51,7 +51,7 @@ void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
     }
 }
 
-void Lowerer::registerEntityLayout(EntityDecl &decl) {
+void Lowerer::registerClassLayout(ClassDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
         return;
@@ -59,13 +59,13 @@ void Lowerer::registerEntityLayout(EntityDecl &decl) {
     std::string qualifiedName = qualifyName(decl.name);
 
     // Skip if already registered
-    if (entityTypes_.find(qualifiedName) != entityTypes_.end())
+    if (classTypes_.find(qualifiedName) != classTypes_.end())
         return;
 
-    EntityTypeInfo info;
+    ClassTypeInfo info;
     info.name = qualifiedName;
     info.baseClass = decl.baseClass;
-    info.totalSize = kEntityFieldsOffset;
+    info.totalSize = kClassFieldsOffset;
     info.classId = nextClassId_++;
     info.vtableName = "__vtable_" + qualifiedName;
 
@@ -73,23 +73,23 @@ void Lowerer::registerEntityLayout(EntityDecl &decl) {
         info.implementedInterfaces.insert(iface);
     }
 
-    // Copy inherited fields from parent entity
+    // Copy inherited fields from parent class
     if (!decl.baseClass.empty()) {
-        auto parentIt = entityTypes_.find(decl.baseClass);
-        if (parentIt != entityTypes_.end()) {
-            inheritEntityMembers(info, parentIt->second);
+        auto parentIt = classTypes_.find(decl.baseClass);
+        if (parentIt != classTypes_.end()) {
+            inheritClassMembers(info, parentIt->second);
         }
     }
 
-    // Compute field layout and build vtable from this entity's own members
-    computeEntityFieldLayout(decl, info, qualifiedName);
-    buildEntityVtable(decl, info, qualifiedName);
+    // Compute field layout and build vtable from this class's own members
+    computeClassFieldLayout(decl, info, qualifiedName);
+    buildClassVtable(decl, info, qualifiedName);
 
-    entityTypes_[qualifiedName] = std::move(info);
+    classTypes_[qualifiedName] = std::move(info);
 }
 
-void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
-                                       EntityTypeInfo &info,
+void Lowerer::computeClassFieldLayout(ClassDecl &decl,
+                                       ClassTypeInfo &info,
                                        const std::string &qualifiedName) {
     (void)qualifiedName; // used implicitly via caller context
     for (auto &member : decl.members) {
@@ -130,8 +130,8 @@ void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
     }
 }
 
-void Lowerer::buildEntityVtable(EntityDecl &decl,
-                                EntityTypeInfo &info,
+void Lowerer::buildClassVtable(ClassDecl &decl,
+                                ClassTypeInfo &info,
                                 const std::string &qualifiedName) {
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
@@ -170,7 +170,7 @@ void Lowerer::buildEntityVtable(EntityDecl &decl,
     }
 }
 
-void Lowerer::inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &parent) {
+void Lowerer::inheritClassMembers(ClassTypeInfo &info, const ClassTypeInfo &parent) {
     for (const auto &parentField : parent.fields) {
         info.fieldIndex[parentField.name] = info.fields.size();
         info.fields.push_back(parentField);
@@ -180,7 +180,7 @@ void Lowerer::inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &p
     info.vtableIndex = parent.vtableIndex;
 }
 
-void Lowerer::registerValueLayout(ValueDecl &decl) {
+void Lowerer::registerStructLayout(StructDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
         return;
@@ -188,10 +188,10 @@ void Lowerer::registerValueLayout(ValueDecl &decl) {
     std::string qualifiedName = qualifyName(decl.name);
 
     // Skip if already registered
-    if (valueTypes_.find(qualifiedName) != valueTypes_.end())
+    if (structTypes_.find(qualifiedName) != structTypes_.end())
         return;
 
-    ValueTypeInfo info;
+    StructTypeInfo info;
     info.name = qualifiedName;
     info.totalSize = 0;
 
@@ -231,10 +231,10 @@ void Lowerer::registerValueLayout(ValueDecl &decl) {
         }
     }
 
-    valueTypes_[qualifiedName] = std::move(info);
+    structTypes_[qualifiedName] = std::move(info);
 }
 
-void Lowerer::emitVtable(const EntityTypeInfo & /*info*/) {
+void Lowerer::emitVtable(const ClassTypeInfo & /*info*/) {
     // BUG-VL-011: Virtual dispatch is now handled via class_id-based dispatch
     // instead of vtable pointers. The vtable info is used at compile time
     // to generate dispatch code, not runtime vtable lookup.
@@ -279,8 +279,8 @@ void Lowerer::emitItableInit() {
                   Value::constInt(static_cast<int64_t>(ifaceInfo.methods.size()))});
     }
 
-    // Phase 2: For each entity implementing an interface, build and bind itable
-    for (const auto &[entityName, entityInfo] : entityTypes_) {
+    // Phase 2: For each class implementing an interface, build and bind itable
+    for (const auto &[entityName, entityInfo] : classTypes_) {
         for (const auto &ifaceName : entityInfo.implementedInterfaces) {
             auto ifaceIt = interfaceTypes_.find(ifaceName);
             if (ifaceIt == interfaceTypes_.end())
@@ -304,12 +304,12 @@ void Lowerer::emitItableInit() {
                 Value slotPtr = emitBinary(
                     Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
 
-                // Find the implementing method in the entity (or its bases)
+                // Find the implementing method in the class (or its bases)
                 std::string implName;
                 std::string searchEntity = entityName;
                 while (!searchEntity.empty()) {
-                    auto entIt = entityTypes_.find(searchEntity);
-                    if (entIt == entityTypes_.end())
+                    auto entIt = classTypes_.find(searchEntity);
+                    if (entIt == classTypes_.end())
                         break;
                     auto vtIt = entIt->second.vtableIndex.find(slotKey);
                     if (vtIt != entIt->second.vtableIndex.end()) {
@@ -349,10 +349,10 @@ void Lowerer::emitItableInit() {
 // On-Demand Generic Type Instantiation
 //=============================================================================
 
-const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeName) {
+const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &typeName) {
     // Check existing cache
-    auto it = valueTypes_.find(typeName);
-    if (it != valueTypes_.end()) {
+    auto it = structTypes_.find(typeName);
+    if (it != structTypes_.end()) {
         return &it->second;
     }
 
@@ -363,18 +363,18 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
 
     // Get the original generic declaration
     Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
-    if (!genericDecl || genericDecl->kind != DeclKind::Value) {
+    if (!genericDecl || genericDecl->kind != DeclKind::Struct) {
         return nullptr;
     }
 
-    auto *valueDecl = static_cast<ValueDecl *>(genericDecl);
+    auto *structDecl = static_cast<StructDecl *>(genericDecl);
 
-    // Build ValueTypeInfo for the instantiated type
-    ValueTypeInfo info;
+    // Build StructTypeInfo for the instantiated type
+    StructTypeInfo info;
     info.name = typeName;
     info.totalSize = 0;
 
-    for (auto &member : valueDecl->members) {
+    for (auto &member : structDecl->members) {
         if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             // Get the substituted field type from Sema
@@ -412,20 +412,20 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
         }
     }
 
-    // Store the value type info
-    valueTypes_[typeName] = std::move(info);
+    // Store the struct type info
+    structTypes_[typeName] = std::move(info);
 
     // Defer method lowering until after all declarations are processed
     // (we may be in the middle of lowering another function body)
-    pendingValueInstantiations_.push_back(typeName);
+    pendingStructInstantiations_.push_back(typeName);
 
-    return &valueTypes_[typeName];
+    return &structTypes_[typeName];
 }
 
-const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &typeName) {
+const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeName) {
     // Check existing cache
-    auto it = entityTypes_.find(typeName);
-    if (it != entityTypes_.end()) {
+    auto it = classTypes_.find(typeName);
+    if (it != classTypes_.end()) {
         return &it->second;
     }
 
@@ -436,35 +436,35 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
 
     // Get the original generic declaration
     Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
-    if (!genericDecl || genericDecl->kind != DeclKind::Entity) {
+    if (!genericDecl || genericDecl->kind != DeclKind::Class) {
         return nullptr;
     }
 
-    auto *entityDecl = static_cast<EntityDecl *>(genericDecl);
+    auto *classDecl = static_cast<ClassDecl *>(genericDecl);
 
-    // Build EntityTypeInfo for the instantiated type
-    EntityTypeInfo info;
+    // Build ClassTypeInfo for the instantiated type
+    ClassTypeInfo info;
     info.name = typeName;
-    info.baseClass = entityDecl->baseClass;
-    info.totalSize = kEntityFieldsOffset; // Space for header + vtable ptr
+    info.baseClass = classDecl->baseClass;
+    info.totalSize = kClassFieldsOffset; // Space for header + vtable ptr
     info.classId = nextClassId_++;
     info.vtableName = "__vtable_" + typeName;
 
     // Store implemented interfaces
-    for (const auto &iface : entityDecl->interfaces) {
+    for (const auto &iface : classDecl->interfaces) {
         info.implementedInterfaces.insert(iface);
     }
 
     // Handle inheritance (if base class exists, copy its fields)
-    if (!entityDecl->baseClass.empty()) {
-        auto parentIt = entityTypes_.find(entityDecl->baseClass);
-        if (parentIt != entityTypes_.end()) {
-            inheritEntityMembers(info, parentIt->second);
+    if (!classDecl->baseClass.empty()) {
+        auto parentIt = classTypes_.find(classDecl->baseClass);
+        if (parentIt != classTypes_.end()) {
+            inheritClassMembers(info, parentIt->second);
         }
     }
 
     // Process members
-    for (auto &member : entityDecl->members) {
+    for (auto &member : classDecl->members) {
         if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             // Get the substituted field type from Sema
@@ -515,14 +515,14 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
         }
     }
 
-    // Store the entity type info
-    entityTypes_[typeName] = std::move(info);
+    // Store the class type info
+    classTypes_[typeName] = std::move(info);
 
     // Defer method lowering until after all declarations are processed
     // (we may be in the middle of lowering another function body)
-    pendingEntityInstantiations_.push_back(typeName);
+    pendingClassInstantiations_.push_back(typeName);
 
-    return &entityTypes_[typeName];
+    return &classTypes_[typeName];
 }
 
 } // namespace il::frontends::zia

@@ -11,7 +11,7 @@ bind "./physics";
 bind "./sprites";
 bind "./particles";
 
-entity EnemyManager {
+class EnemyManager {
     // ObjectPool manages active/inactive slots; parallel arrays hold per-enemy data
     hide ObjectPool pool;
     // Quadtree for spatial collision queries (O(log n) instead of O(n) linear scan)

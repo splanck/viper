@@ -90,7 +90,7 @@ inline constexpr const char *kBoxF64 = kCoreBoxF64;
 inline constexpr const char *kBoxI1 = kCoreBoxI1;
 /// @brief Box a string pointer into a heap-allocated Box object.
 inline constexpr const char *kBoxStr = kCoreBoxStr;
-/// @brief Query the value type tag stored in a Box object.
+/// @brief Query the struct type tag stored in a Box object.
 inline constexpr const char *kBoxValueType = kCoreBoxValueType;
 /// @brief Unbox a Box object to extract the i64 value.
 inline constexpr const char *kUnboxI64 = kCoreBoxToI64;
@@ -278,18 +278,18 @@ inline constexpr size_t kMaxImportDepth = 50;
 /// @brief Maximum number of imported files to prevent runaway compilation.
 inline constexpr size_t kMaxImportedFiles = 100;
 
-/// @brief Object header size for entity types in bytes.
-/// All entity instances begin with an 8-byte header containing runtime info.
+/// @brief Object header size for class types in bytes.
+/// All class instances begin with an 8-byte header containing runtime info.
 inline constexpr size_t kObjectHeaderSize = 8;
 
-/// @brief Offset of the vtable pointer within entity objects.
+/// @brief Offset of the vtable pointer within class objects.
 inline constexpr size_t kVtablePtrOffset = 8;
 
 /// @brief Size of the vtable pointer in bytes.
 inline constexpr size_t kVtablePtrSize = 8;
 
-/// @brief Offset where entity fields begin (after header and vtable ptr).
-inline constexpr size_t kEntityFieldsOffset = kObjectHeaderSize + kVtablePtrSize;
+/// @brief Offset where class fields begin (after header and vtable ptr).
+inline constexpr size_t kClassFieldsOffset = kObjectHeaderSize + kVtablePtrSize;
 
 /// @}
 
@@ -325,7 +325,7 @@ inline constexpr const char *kHeapRelease = kMemoryRelease;
 ///          in RuntimeSignatures.cpp (not via runtime.def's mangled name).
 inline constexpr const char *kStrReleaseMaybe = "rt_str_release_maybe";
 /// @brief Retain a string if it's heap-allocated (no-op for static/interned).
-/// @details Converts a borrowed string reference (e.g. from an entity field Load)
+/// @details Converts a borrowed string reference (e.g. from an class field Load)
 ///          into an owned reference, preventing use-after-free when the loaded
 ///          string is consumed by concatenation or passed to functions.
 inline constexpr const char *kStrRetainMaybe = "rt_str_retain_maybe";

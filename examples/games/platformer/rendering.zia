@@ -24,7 +24,7 @@ bind Viper.Graphics;
 bind Viper.Game.ScreenFX as FX;
 bind "./config";
 
-entity GameRenderer {
+class GameRenderer {
     // ScreenFX.New() — manages shake, flash, and fade effects.
     // Update(dt) advances all active effects. ShakeX/ShakeY give offset.
     hide FX fx;

@@ -4,7 +4,7 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 
-entity Node {
+class Node {
     expose Integer value;
     expose Node? next;
 

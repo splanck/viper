@@ -16,7 +16,7 @@ bind Viper.GUI;
 // Call Load() once at startup and Save() whenever settings change.
 // ============================================================================
 
-entity SettingsManager {
+class SettingsManager {
     expose Integer fontSize;
     expose String  theme;
     expose Boolean minimapVisible;

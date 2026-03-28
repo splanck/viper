@@ -10,7 +10,7 @@ bind "./_support";
 // 2-Level Inheritance Chain: Animal -> Dog/Cat
 //=============================================================================
 
-entity Animal {
+class Animal {
     hide String name;
 
     expose func init(n: String) {
@@ -30,7 +30,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     hide String breed;
 
     expose func setup(n: String, b: String) {
@@ -51,7 +51,7 @@ entity Dog extends Animal {
     }
 }
 
-entity Cat extends Animal {
+class Cat extends Animal {
     hide Boolean indoor;
 
     expose func setup(n: String, i: Boolean) {
@@ -76,7 +76,7 @@ entity Cat extends Animal {
 // 2-Level Inheritance: Shape -> Circle/Rectangle
 //=============================================================================
 
-entity Shape {
+class Shape {
     expose func area() -> Integer {
         return 0;
     }
@@ -90,7 +90,7 @@ entity Shape {
     }
 }
 
-entity Circle extends Shape {
+class Circle extends Shape {
     hide Integer radius;
 
     expose func setup(r: Integer) {
@@ -116,7 +116,7 @@ entity Circle extends Shape {
     }
 }
 
-entity Rectangle extends Shape {
+class Rectangle extends Shape {
     hide Integer width;
     hide Integer height;
 
@@ -151,7 +151,7 @@ entity Rectangle extends Shape {
 // (regression tests for fixed grandparent field access bug)
 //=============================================================================
 
-entity Grandparent {
+class Grandparent {
     expose String familyName;
 
     expose func init(fn: String) {
@@ -159,7 +159,7 @@ entity Grandparent {
     }
 }
 
-entity Parent extends Grandparent {
+class Parent extends Grandparent {
     expose Integer generation;
 
     expose func setup(fn: String, gen: Integer) {
@@ -168,7 +168,7 @@ entity Parent extends Grandparent {
     }
 }
 
-entity Child extends Parent {
+class Child extends Parent {
     expose String nickname;
 
     expose func setup(fn: String, gen: Integer, nick: String) {

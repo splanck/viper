@@ -23,7 +23,7 @@ This document outlines a comprehensive plan to implement full generics support i
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      Source Code                             │
-│    value Box[T] { T contents; }                             │
+│    struct Box[T] { T contents; }                             │
 │    var b: Box[Integer] = Box(42);                           │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -180,13 +180,13 @@ TypeRef Sema::resolveTypeNode(TypeNode* node)
 // test_generics_substitution.zia
 
 // Test 1: Simple type parameter substitution
-value Wrapper[T] {
+struct Wrapper[T] {
     T value;
 }
 var w: Wrapper[Integer];  // T should substitute to Integer
 
 // Test 2: Nested substitution
-value Pair[A, B] {
+struct Pair[A, B] {
     A first;
     B second;
 }
@@ -363,7 +363,7 @@ case TypeKind::Generic:
 // test_generics_instantiation.zia
 
 // Test 1: Simple generic value type
-value Box[T] {
+struct Box[T] {
     T contents;
 
     func init(value: T) {
@@ -383,7 +383,7 @@ if (intBox.get() == 42) {
 }
 
 // Test 2: Generic with multiple parameters
-value Pair[A, B] {
+struct Pair[A, B] {
     A first;
     B second;
 }
@@ -576,7 +576,7 @@ var f = first(nums);  // T inferred as Integer
 var x = identity[Number](42);  // Explicit: T=Number (Integer→Number coercion)
 
 // Test 5: Generic method
-value Container[T] {
+struct Container[T] {
     List[T] items;
 
     func map[U](transform: func(T) -> U) -> Container[U] {
@@ -787,7 +787,7 @@ Methods:       Box[T].get()     → Box$Integer.get
 // test_generics_lowering.zia
 
 // Test 1: Value type monomorphization
-value Stack[T] {
+struct Stack[T] {
     List[T] items;
 
     func init() {
@@ -1031,7 +1031,7 @@ TEST_CASE("Monomorphization generates correct IL", "[generics]") {
 module TestGenericsComprehensive;
 
 // All generic features working together
-value Result[T, E] {
+struct Result[T, E] {
     Boolean isOk;
     T value;
     E error;
@@ -1141,7 +1141,7 @@ interface Functor[F[_]] {
 ## Appendix A: Example IL Output
 
 ```text
-; Source: value Box[T] { T contents; func get() -> T { return contents; } }
+; Source: struct Box[T] { T contents; func get() -> T { return contents; } }
 ; Instantiation: Box[Integer]
 
 ; Mangled type definition

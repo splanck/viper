@@ -20,7 +20,7 @@ bind "./result";
 // PREPARED STATEMENT ENTITY (Phase 11 — Extended Query Protocol)
 //=============================================================================
 
-entity PreparedStatement {
+class PreparedStatement {
     expose String name;             // "" = unnamed statement
     expose String query;            // Original SQL with $1, $2, etc.
     expose Integer paramCount;      // Number of $N placeholders found
@@ -38,7 +38,7 @@ entity PreparedStatement {
 // PORTAL ENTITY (Phase 11 — Extended Query Protocol)
 //=============================================================================
 
-entity Portal {
+class Portal {
     expose String name;             // "" = unnamed portal
     expose String stmtName;         // Name of the prepared statement
     expose String boundQuery;       // SQL with params substituted
@@ -61,7 +61,7 @@ entity Portal {
 // SESSION ENTITY
 //=============================================================================
 
-entity Session {
+class Session {
     expose Integer sessionId;
     expose String clientHost;
     expose String username;

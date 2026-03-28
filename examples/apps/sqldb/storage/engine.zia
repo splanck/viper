@@ -34,7 +34,7 @@ bind "../schema";
 //=============================================================================
 
 // Thread-safe: all public methods are protected by a Monitor lock.
-entity StorageEngine {
+class StorageEngine {
     expose BufferPool pool;
     expose SchemaPageManager schemaMgr;
     expose DataPageManager dataMgr;

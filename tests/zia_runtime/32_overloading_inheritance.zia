@@ -12,7 +12,7 @@ func greet(n: Integer) -> String {
     return "hi " + toString(n);
 }
 
-entity Animal {
+class Animal {
     expose func speak() -> String {
         return "animal";
     }
@@ -22,7 +22,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     override expose func speak() -> String {
         return "dog";
     }
@@ -32,7 +32,7 @@ entity Dog extends Animal {
     }
 }
 
-entity Husky extends Dog {
+class Husky extends Dog {
     override expose func speak() -> String {
         return "husky";
     }
@@ -47,7 +47,7 @@ interface Formatter {
     func fmt(n: Integer) -> String;
 }
 
-entity Message implements Formatter {
+class Message implements Formatter {
     expose func fmt() -> String {
         return "msg";
     }

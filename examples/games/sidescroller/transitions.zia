@@ -26,7 +26,7 @@ final TRANS_ABILITY = 5;       // Ability acquired
 final TRANS_GAME_OVER = 6;     // Game over screen
 final TRANS_VICTORY = 7;       // Game complete
 
-entity TransitionManager {
+class TransitionManager {
     expose func init() {}
     hide Palette pal;
     hide Integer currentTransition;

@@ -129,8 +129,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                                                     expr);
             }
 
-            if (baseType && baseType->kind == TypeKindSem::Entity && !resolvedMethod->isStatic) {
-                const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(baseType->name);
+            if (baseType && baseType->kind == TypeKindSem::Class && !resolvedMethod->isStatic) {
+                const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(baseType->name);
                 if (entityInfoPtr) {
                     return lowerVirtualMethodCall(*entityInfoPtr,
                                                   slotKey,
@@ -149,10 +149,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         Value selfPtr;
         if (getSelfPtr(selfPtr)) {
-            if (currentEntityType_ && !resolvedMethod->isStatic)
-                return lowerVirtualMethodCall(*currentEntityType_,
+            if (currentClassType_ && !resolvedMethod->isStatic)
+                return lowerVirtualMethodCall(*currentClassType_,
                                               slotKey,
-                                              ownerType.empty() ? currentEntityType_->name
+                                              ownerType.empty() ? currentClassType_->name
                                                                 : ownerType,
                                               resolvedMethod,
                                               selfPtr,
@@ -160,10 +160,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
             std::string implicitOwner = ownerType;
             if (implicitOwner.empty()) {
-                if (currentEntityType_)
-                    implicitOwner = currentEntityType_->name;
-                else if (currentValueType_)
-                    implicitOwner = currentValueType_->name;
+                if (currentClassType_)
+                    implicitOwner = currentClassType_->name;
+                else if (currentStructType_)
+                    implicitOwner = currentStructType_->name;
             }
             return lowerMethodCall(resolvedMethod, implicitOwner, selfPtr, expr);
         }
@@ -255,18 +255,18 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         }
     }
 
-    // Check for method call on value or entity type: obj.method()
+    // Check for method call on value or class type: obj.method()
     if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
         // Check for super.method() call - dispatch to parent class method
         if (fieldExpr->base->kind == ExprKind::SuperExpr) {
             Value selfPtr;
-            if (getSelfPtr(selfPtr) && currentEntityType_ &&
-                !currentEntityType_->baseClass.empty()) {
-                auto parentIt = entityTypes_.find(currentEntityType_->baseClass);
-                if (parentIt != entityTypes_.end()) {
+            if (getSelfPtr(selfPtr) && currentClassType_ &&
+                !currentClassType_->baseClass.empty()) {
+                auto parentIt = classTypes_.find(currentClassType_->baseClass);
+                if (parentIt != classTypes_.end()) {
                     if (auto *method = parentIt->second.findMethod(fieldExpr->field)) {
                         return lowerMethodCall(
-                            method, currentEntityType_->baseClass, selfPtr, expr);
+                            method, currentClassType_->baseClass, selfPtr, expr);
                     }
                 }
             }
@@ -285,8 +285,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
             std::string typeName = baseType->name;
 
-            // Check value type methods
-            const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+            // Check struct type methods
+            const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
             if (valueInfo) {
                 if (auto *method = valueInfo->findMethod(fieldExpr->field)) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
@@ -294,10 +294,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 }
             }
 
-            // Check entity type methods with virtual dispatch
-            const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+            // Check class type methods with virtual dispatch
+            const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(typeName);
             if (entityInfoPtr) {
-                const EntityTypeInfo &entityInfo = *entityInfoPtr;
+                const ClassTypeInfo &entityInfo = *entityInfoPtr;
                 MethodDecl *namedMethod = entityInfo.findMethod(fieldExpr->field);
 
                 if (namedMethod) {
@@ -315,11 +315,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                     return lowerMethodCall(namedMethod, typeName, baseResult.value, expr);
                 }
 
-                // Check parent entity for inherited methods
+                // Check parent class for inherited methods
                 std::string parentName = entityInfo.baseClass;
                 while (!parentName.empty()) {
-                    auto parentIt = entityTypes_.find(parentName);
-                    if (parentIt == entityTypes_.end())
+                    auto parentIt = classTypes_.find(parentName);
+                    if (parentIt == classTypes_.end())
                         break;
                     if (auto *method = parentIt->second.findMethod(fieldExpr->field)) {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
@@ -328,10 +328,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                     parentName = parentIt->second.baseClass;
                 }
 
-                // Entity type found but method not in it or any parent — emit error
+                // Class type found but method not in it or any parent — emit error
                 diag_.report(
                     {il::support::Severity::Error,
-                     "Entity type '" + typeName + "' has no method '" + fieldExpr->field + "'",
+                     "Class type '" + typeName + "' has no method '" + fieldExpr->field + "'",
                      expr->loc,
                      "V3100"});
                 return {Value::constInt(0), Type(Type::Kind::Void)};
@@ -618,20 +618,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         }
     }
 
-    // Check for built-in functions and value type construction
+    // Check for built-in functions and struct type construction
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         // Check built-in functions
         auto builtinResult = lowerBuiltinCall(ident->name, expr);
         if (builtinResult)
             return *builtinResult;
 
-        // Check value type construction
-        auto valueTypeResult = lowerValueTypeConstruction(ident->name, expr);
+        // Check struct type construction
+        auto valueTypeResult = lowerStructTypeConstruction(ident->name, expr);
         if (valueTypeResult)
             return *valueTypeResult;
 
-        // Check entity type construction (Entity(args) without 'new' keyword)
-        auto entityTypeResult = lowerEntityTypeConstruction(ident->name, expr);
+        // Check class type construction (Entity(args) without 'new' keyword)
+        auto entityTypeResult = lowerClassTypeConstruction(ident->name, expr);
         if (entityTypeResult)
             return *entityTypeResult;
     }
@@ -646,11 +646,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         // Check for implicit method call
-        if (currentEntityType_) {
-            if (auto *method = currentEntityType_->findMethod(ident->name)) {
+        if (currentClassType_) {
+            if (auto *method = currentClassType_->findMethod(ident->name)) {
                 Value selfPtr;
                 if (getSelfPtr(selfPtr)) {
-                    return lowerMethodCall(method, currentEntityType_->name, selfPtr, expr);
+                    return lowerMethodCall(method, currentClassType_->name, selfPtr, expr);
                 }
             }
         }

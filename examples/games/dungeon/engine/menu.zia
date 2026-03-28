@@ -7,7 +7,7 @@ bind Viper.Input;
 bind Viper.Terminal;
 bind "../config";
 
-entity MenuSystem {
+class MenuSystem {
     hide Integer selectedItem;
     hide Integer itemCount;
     hide Float animTime;

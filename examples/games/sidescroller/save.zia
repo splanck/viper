@@ -12,7 +12,7 @@ bind "./config";
 
 final MAX_SAVE_SLOTS = 3;
 
-entity SaveManager {
+class SaveManager {
     expose func init() {}
     hide SaveData store;
     hide List[Integer] slotLevel;

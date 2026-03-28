@@ -6,7 +6,7 @@ bind Viper.Graphics;
 bind "../config";
 
 // Button entity - clickable button with text
-entity Button {
+class Button {
     expose Integer x;           // X position
     expose Integer y;           // Y position
     expose Integer width;       // Button width
@@ -137,7 +137,7 @@ entity Button {
 }
 
 // ToolButton - specialized button for tool selection
-entity ToolButton {
+class ToolButton {
     expose Integer x;
     expose Integer y;
     expose Integer size;        // Button is square

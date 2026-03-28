@@ -225,7 +225,7 @@ The IL module linker (`il::link::linkModules`) merges multiple modules:
 - **Single entry point**: Only one module may provide `main` / `start()`
 - **No circular imports**: Module A cannot import from B while B imports from A
   (the linker processes modules sequentially)
-- **No entity/value type sharing**: Object types cannot currently be shared
+- **No class/value type sharing**: Object types cannot currently be shared
   across language boundaries. Use primitive types (`Integer`, `Number`, `String`)
   for cross-language function signatures
 - **Boolean arithmetic caveat**: Zia's `true` zero-extends to `1`, not BASIC's

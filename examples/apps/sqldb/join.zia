@@ -35,7 +35,7 @@ bind "./executor";
 // JOIN ENGINE ENTITY
 //=============================================================================
 
-entity JoinEngine {
+class JoinEngine {
     expose Executor exec;
 
     expose func init(executor: Executor) {

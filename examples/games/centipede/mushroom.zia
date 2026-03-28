@@ -18,7 +18,7 @@ bind Viper.Math.Random;
 // MUSHROOM FIELD ENTITY - The game board with mushrooms
 // =============================================================================
 
-entity MushroomField {
+class MushroomField {
     hide Grid2D grid;         // Stores mushroom health (0-4)
     hide Grid2D poisoned;     // Tracks poisoned mushrooms
     hide Integer totalMushrooms;

@@ -1,7 +1,7 @@
 module TestGenericsEntity;
 
 // Generic entity
-entity Container[T] {
+class Container[T] {
     expose T value;
 
     expose func init(v: T) {

@@ -37,7 +37,7 @@ bind "./executor";
 // PERSISTENCE MANAGER ENTITY
 //=============================================================================
 
-entity PersistenceManager {
+class PersistenceManager {
     expose Executor exec;
 
     expose func init(executor: Executor) {

@@ -30,7 +30,7 @@ Seven feature-parity batches close all remaining gaps between Zia and the BASIC 
 Entity properties with custom getter/setter logic:
 
 ```rust
-entity Counter {
+class Counter {
     Integer _count;
 
     get Count() -> Integer { return _count; }
@@ -43,7 +43,7 @@ entity Counter {
 Deterministic cleanup via `deinit` blocks, lowered to `__dtor_TypeName` IL functions:
 
 ```rust
-entity FileHandle {
+class FileHandle {
     deinit {
         IO.File.Close(self.handle);
     }
@@ -89,7 +89,7 @@ Three new language constructs improve expressiveness:
 var pos = Position { x = 10, y = 20 };
 
 // Fixed-size array fields (ZIA-002)
-entity Board {
+class Board {
     Integer[64] squares;
 }
 
@@ -451,14 +451,14 @@ Over 170 individual bug fixes across all layers. Organized by subsystem:
 - **List.Pop() missing case**: Dispatch table had `pop→Pop` but `lowerListMethodCall` had
   no implementation — added case calling `kListPop`
 - **Entity method currentReturnType_**: `lowerMethodDecl` computed returnType but never stored
-  it in `currentReturnType_`, silently bypassing all return-type coercions for entity methods
+  it in `currentReturnType_`, silently bypassing all return-type coercions for class methods
 - **List[Boolean] boxing**: `emitBox` I1 case now inserts Zext1 (was emitting wrong IL type)
 - **Canvas.KeyHeld signature**: RT_FUNC fixed from `i1(obj,i64)` to `i64(obj,i64)`
 - **Canvas boolean returns**: `IsMaximized`/`IsMinimized`/`IsFocused` return type corrected
 - **GAP-1/2**: Definite-assignment analysis — flow-sensitive if/else branch tracking
-- **GAP-3**: As-cast compatibility checking via `isConvertibleTo()` + entity/Ptr rules
+- **GAP-3**: As-cast compatibility checking via `isConvertibleTo()` + class/Ptr rules
 - **GAP-4/5**: Optional field/method access without null check now emits warning
-- **GAP-6**: Missing field error for entity/value/primitive types
+- **GAP-6**: Missing field error for class/value/primitive types
 - **GAP-7**: `validateCallArgs()` for arity and type checking on user-defined calls
 - **GAP-8**: Optional-to-non-Optional parameter mismatch caught by argument validation
 

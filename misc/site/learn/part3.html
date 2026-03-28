@@ -34,8 +34,8 @@
       <h4>On This Page</h4>
       <ul>
         <li><a href="#why-do-we-need-objects">Why Do We Need Objects?</a></li>
-        <li><a href="#from-values-to-entities">From Values to Entities</a></li>
-        <li><a href="#why-entity-instead-of-class">Why &quot;Entity&quot; Instead of &quot;Class&quot;?</a></li>
+        <li><a href="#from-values-to-classes">From Values to Classes</a></li>
+        <li><a href="#why-class-instead-of-class">Why &quot;Entity&quot; Instead of &quot;Class&quot;?</a></li>
         <li><a href="#the-template-and-instance-distinction">The Template and Instance Distinction</a></li>
         <li><a href="#creating-objects">Creating Objects</a></li>
         <li><a href="#the-initializer">The Initializer</a></li>
@@ -43,10 +43,10 @@
         <li><a href="#encapsulation-protecting-object-state">Encapsulation: Protecting Object State</a></li>
         <li><a href="#methods-behavior-that-belongs-to-objects">Methods: Behavior That Belongs to Objects</a></li>
         <li><a href="#objects-have-state-that-changes-over-time">Objects Have State That Changes Over Time</a></li>
-        <li><a href="#practical-design-building-an-entity-from-scratch">Practical Design: Building an Entity from Scratch</a></li>
+        <li><a href="#practical-design-building-an-class-from-scratch">Practical Design: Building an Entity from Scratch</a></li>
         <li><a href="#a-complete-example-todo-list-application">A Complete Example: Todo List Application</a></li>
         <li><a href="#the-two-languages">The Two Languages</a></li>
-        <li><a href="#entity-design-guidelines">Entity Design Guidelines</a></li>
+        <li><a href="#class-design-guidelines">Entity Design Guidelines</a></li>
         <li><a href="#common-mistakes">Common Mistakes</a></li>
         <li><a href="#summary">Summary</a></li>
         <li><a href="#exercises">Exercises</a></li>
@@ -123,10 +123,10 @@
     <h1>Part 3: Objects</h1>
 <h1 id="part-3-objects">Part 3: Objects</h1>
 <p>Classes, inheritance, interfaces, and object-oriented design patterns.</p>
-<h1 id="chapter-14-objects-and-entities">Chapter 14: Objects and Entities</h1>
+<h1 id="chapter-14-objects-and-classes">Chapter 14: Objects and Classes</h1>
 <p>In Chapter 11, we learned about structures -- grouping data together into cohesive units. A <code>Point</code> bundles x and y coordinates. A <code>Player</code> bundles name, health, and position. Structures solved the problem of scattered, disconnected data.</p>
 <p>But structures have limitations that become apparent as your programs grow more complex. What if you want to ensure a player&#x27;s health never goes negative? What if you want different types of game characters to share common behavior? What if you want to hide the internal representation of a data type so you can change it later without breaking code that uses it?</p>
-<p>These questions lead us to <em>object-oriented programming</em> (OOP) -- a way of thinking about programs as collections of interacting <em>objects</em>. Objects combine data and behavior into unified entities that protect their internal state, expose controlled interfaces to the outside world, and can relate to each other in powerful ways.</p>
+<p>These questions lead us to <em>object-oriented programming</em> (OOP) -- a way of thinking about programs as collections of interacting <em>objects</em>. Objects combine data and behavior into unified classes that protect their internal state, expose controlled interfaces to the outside world, and can relate to each other in powerful ways.</p>
 <p>This chapter introduces the fundamentals of object-oriented programming in Zia. By the end, you&#x27;ll understand what objects are, why they matter, and how to design them well.</p>
 <p>---</p>
 <h2 id="why-do-we-need-objects">Why Do We Need Objects?</h2>
@@ -134,7 +134,7 @@
 <h3 id="problem-1-data-without-protection">Problem 1: Data Without Protection</h3>
 <p>Consider a simple <code>BankAccount</code> structure:</p>
 <pre><code data-lang="rust">
-value BankAccount {
+struct BankAccount {
     ownerName: String;
     balance: Number;
 }
@@ -178,7 +178,7 @@ func withdraw(account: BankAccount, amount: Number) -&gt; Boolean {
 <h3 id="problem-3-no-guarantee-of-consistency">Problem 3: No Guarantee of Consistency</h3>
 <p>A structure is just raw data. There&#x27;s no built-in way to ensure it starts in a valid state:</p>
 <pre><code data-lang="rust">
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
@@ -190,7 +190,7 @@ rect.width = -5.0;  // Negative width makes no sense!
 <h3 id="problem-4-changes-ripple-everywhere">Problem 4: Changes Ripple Everywhere</h3>
 <p>Say you have a structure for representing colors:</p>
 <pre><code data-lang="rust">
-value Color {
+struct Color {
     red: Integer;    // 0-255
     green: Integer;  // 0-255
     blue: Integer;   // 0-255
@@ -205,7 +205,7 @@ value Color {
 <li>**Encapsulation**: Objects can hide their internal data and expose only controlled access through methods. The balance can only be modified through <code>deposit()</code> and <code>withdraw()</code>.</li>
 </ul>
 <ol>
-<li>**Unified behavior**: Methods live inside the object definition, right alongside the data they operate on. When you look at a <code>BankAccount</code> entity, you see everything it can do.</li>
+<li>**Unified behavior**: Methods live inside the object definition, right alongside the data they operate on. When you look at a <code>BankAccount</code> class, you see everything it can do.</li>
 </ul>
 <ol>
 <li>**Guaranteed initialization**: Objects are created through initializers that can validate and set up the object properly. You can&#x27;t create an invalid object if the initializer checks its inputs.</li>
@@ -215,18 +215,18 @@ value Color {
 </ul>
 <p>Objects don&#x27;t just organize your code -- they make it possible to build systems that maintain their own integrity.</p>
 <p>---</p>
-<h2 id="from-values-to-entities">From Values to Entities</h2>
-<p>In Zia, the <code>value</code> keyword creates a structure -- pure data without behavior. The <code>entity</code> keyword creates something more powerful: a template for objects that combine data and behavior.</p>
+<h2 id="from-values-to-classes">From Values to Classes</h2>
+<p>In Zia, the <code>value</code> keyword creates a structure -- pure data without behavior. The <code>class</code> keyword creates something more powerful: a template for objects that combine data and behavior.</p>
 <p>A value groups data:</p>
 <pre><code data-lang="rust">
-value Rectangle {
+struct Rectangle {
     width: Number;
     height: Number;
 }
 </code></pre>
-<p>An <em>entity</em> groups data <em>and</em> behavior:</p>
+<p>An <em>class</em> groups data <em>and</em> behavior:</p>
 <pre><code data-lang="rust">
-entity Rectangle {
+class Rectangle {
     width: Number;
     height: Number;
 
@@ -246,15 +246,15 @@ entity Rectangle {
 </code></pre>
 <p>The key differences:</p>
 <ul>
-<li><strong><code>entity</code> instead of <code>value</code></strong>: Signals that this is an object template with behavior</li>
+<li><strong><code>class</code> instead of <code>value</code></strong>: Signals that this is an object template with behavior</li>
 <li><strong>An initializer</strong>: The special <code>init</code> function that runs when creating new objects</li>
-<li><strong>Methods</strong>: Functions that belong to the entity and operate on its data</li>
+<li><strong>Methods</strong>: Functions that belong to the class and operate on its data</li>
 <li><strong><code>self</code></strong>: A reference to the specific object the method is operating on</li>
 </ul>
 <p>Let&#x27;s explore each of these in depth.</p>
 <p>---</p>
-<h2 id="why-entity-instead-of-class">Why &quot;Entity&quot; Instead of &quot;Class&quot;?</h2>
-<p>If you&#x27;ve read about object-oriented programming in other languages, you&#x27;ve certainly encountered the term <em>class</em>. Java, Python, C++, C#, Ruby -- they all use <code>class</code> to define object templates. Zia uses <code>entity</code> instead.</p>
+<h2 id="why-class-instead-of-class">Why &quot;Entity&quot; Instead of &quot;Class&quot;?</h2>
+<p>If you&#x27;ve read about object-oriented programming in other languages, you&#x27;ve certainly encountered the term <em>class</em>. Java, Python, C++, C#, Ruby -- they all use <code>class</code> to define object templates. Zia uses <code>class</code> instead.</p>
 <p>This isn&#x27;t just a cosmetic difference. The word &quot;class&quot; carries decades of accumulated complexity:</p>
 <ul>
 <li>Multiple inheritance hierarchies where a class inherits from several parents</li>
@@ -265,19 +265,19 @@ entity Rectangle {
 <li>Design patterns built on elaborate class hierarchies</li>
 </ul>
 <p>Many programmers have been burned by overly complex class hierarchies that became impossible to understand or modify. The word &quot;class&quot; can trigger memories of debugging a 15-level inheritance chain at 3 AM.</p>
-<p>Zia&#x27;s <code>entity</code> is intentionally simpler and more focused. An entity is:</p>
+<p>Zia&#x27;s <code>class</code> is intentionally simpler and more focused. A class is:</p>
 <ul>
 <li><strong>A template for things.</strong> A <code>Player</code> is a thing. A <code>BankAccount</code> is a thing. A <code>Rectangle</code> is a thing.</li>
-<li><strong>Concrete and tangible.</strong> You can imagine pointing at an entity and saying &quot;that&#x27;s a Player&quot; or &quot;that&#x27;s a bank account.&quot;</li>
-<li><strong>Focused on identity and behavior.</strong> Entities have state that changes over time and methods that operate on that state.</li>
+<li><strong>Concrete and tangible.</strong> You can imagine pointing at a class and saying &quot;that&#x27;s a Player&quot; or &quot;that&#x27;s a bank account.&quot;</li>
+<li><strong>Focused on idclass and behavior.</strong> Classes have state that changes over time and methods that operate on that state.</li>
 </ul>
 <p>This contrasts with <code>value</code>, which is for pure data:</p>
 <ul>
-<li>A <code>Point</code> is just coordinates -- data without behavior or identity</li>
+<li>A <code>Point</code> is just coordinates -- data without behavior or idclass</li>
 <li>A <code>Color</code> is just RGB values -- data you might copy and compare</li>
 <li>A <code>Config</code> is just settings -- passive information</li>
 </ul>
-<p>The distinction helps you think clearly about your design: &quot;Am I modeling a <em>thing</em> with behavior and identity (entity)? Or am I just grouping <em>data</em> together (value)?&quot;</p>
+<p>The distinction helps you think clearly about your design: &quot;Am I modeling a <em>thing</em> with behavior and idclass (class)? Or am I just grouping <em>data</em> together (value)?&quot;</p>
 <h3 id="terminology-throughout-this-book">Terminology Throughout This Book</h3>
 <p>Zia has its own vocabulary:</p>
 <table><thead><tr>
@@ -285,7 +285,7 @@ entity Rectangle {
 <th>Common OOP Term</th>
 </tr></thead><tbody>
 <tr>
-<td>entity</td>
+<td>class</td>
 <td>class</td>
 </tr>
 <tr>
@@ -309,8 +309,8 @@ entity Rectangle {
 <p>---</p>
 <h2 id="the-template-and-instance-distinction">The Template and Instance Distinction</h2>
 <p>This concept is fundamental, so let&#x27;s make it crystal clear.</p>
-<p>An <strong>entity</strong> is a template -- a blueprint, a cookie cutter, a factory mold. It describes what objects of this type look like (their fields) and what they can do (their methods). The entity itself is not a thing you can use; it&#x27;s a description of things.</p>
-<p>An <strong>object</strong> (also called an <strong>instance</strong>) is a specific thing created from that template. Each object has its own copy of the data fields, with its own values. You can have many objects created from the same entity, each independent of the others.</p>
+<p>An <strong>class</strong> is a template -- a blueprint, a cookie cutter, a factory mold. It describes what objects of this type look like (their fields) and what they can do (their methods). The class itself is not a thing you can use; it&#x27;s a description of things.</p>
+<p>An <strong>object</strong> (also called an <strong>instance</strong>) is a specific thing created from that template. Each object has its own copy of the data fields, with its own values. You can have many objects created from the same class, each independent of the others.</p>
 <p>Think of it like this:</p>
 <ul>
 <li><strong>Entity <code>Dog</code></strong>: &quot;A Dog has a name, an age, and can bark.&quot;</li>
@@ -321,7 +321,7 @@ entity Rectangle {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Dog {
+class Dog {
     name: String;
     age: Integer;
 
@@ -352,7 +352,7 @@ Say(rex.age);  // Still 7 - Rex didn&#x27;t age
 </code></pre>
 <p>This distinction matters because:</p>
 <ol>
-<li>**Entities are defined once.** You write the <code>Dog</code> entity definition one time. It describes all possible dogs.</li>
+<li>**Classes are defined once.** You write the <code>Dog</code> class definition one time. It describes all possible dogs.</li>
 </ul>
 <ol>
 <li>**Objects are created many times.** Each call to <code>Dog(...)</code> creates a new, independent object.</li>
@@ -365,7 +365,7 @@ Say(rex.age);  // Still 7 - Rex didn&#x27;t age
 </ul>
 <p>---</p>
 <h2 id="creating-objects">Creating Objects</h2>
-<p>You create an object by calling the entity name like a function:</p>
+<p>You create an object by calling the class name like a function:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
@@ -388,7 +388,7 @@ Say(rect2.area());  // 12
 <h2 id="the-initializer">The Initializer</h2>
 <p>The initializer is a special method that runs when you create a new object. Its job is to set up the object&#x27;s initial state -- to make sure the object starts its life in a valid, usable condition.</p>
 <pre><code data-lang="rust">
-entity Person {
+class Person {
     name: String;
     age: Integer;
 
@@ -410,7 +410,7 @@ var person = Person();  // What is person.name? What is person.age?
 <h3 id="multiple-initializers">Multiple Initializers</h3>
 <p>You can define multiple initializers with different parameter lists. This is called <em>overloading</em> -- the same name (<code>init</code>) with different signatures:</p>
 <pre><code data-lang="rust">
-entity Person {
+class Person {
     name: String;
     age: Integer;
     email: String;
@@ -447,7 +447,7 @@ var baby = Person(&quot;Baby&quot;);          // Just a name
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Rectangle {
+class Rectangle {
     width: Number;
     height: Number;
 
@@ -476,7 +476,7 @@ Say(rect.height);  // 1.0 (corrected)
 <h3 id="setup-logic-in-initializers">Setup Logic in Initializers</h3>
 <p>Initializers can do more than just assign fields. They can perform any setup logic the object needs:</p>
 <pre><code data-lang="rust">
-entity GameCharacter {
+class GameCharacter {
     name: String;
     health: Integer;
     maxHealth: Integer;
@@ -505,7 +505,7 @@ entity GameCharacter {
 <pre><code data-lang="rust">
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
     diameter: Number;
     circumference: Number;
@@ -521,7 +521,7 @@ entity Circle {
 <pre><code data-lang="rust">
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
 
     expose func init(radius: Number) {
@@ -542,7 +542,7 @@ entity Circle {
 <h2 id="understanding-self-the-current-object">Understanding `self`: The Current Object</h2>
 <p>Inside a method, you need a way to refer to the specific object the method was called on. That&#x27;s what <code>self</code> provides.</p>
 <pre><code data-lang="rust">
-entity Counter {
+class Counter {
     count: Integer;
 
     expose func init() {
@@ -622,7 +622,7 @@ Say(counterB.getCount());  // 1
 <h3 id="the-problem-unrestricted-access">The Problem: Unrestricted Access</h3>
 <p>Consider what happens when anyone can modify an object&#x27;s fields directly:</p>
 <pre><code data-lang="rust">
-entity BankAccount {
+class BankAccount {
     ownerName: String;
     balance: Number;  // Completely exposed!
 
@@ -641,9 +641,9 @@ account.ownerName = &quot;&quot;;        // Nameless account
 </code></pre>
 <p>There are no rules, no validation, no protection. The object is just passive data that any code can manipulate however it wants.</p>
 <h3 id="the-solution-hide-and-expose">The Solution: `hide` and `expose`</h3>
-<p>Zia lets you control what&#x27;s visible from outside the entity:</p>
+<p>Zia lets you control what&#x27;s visible from outside the class:</p>
 <pre><code data-lang="rust">
-entity BankAccount {
+class BankAccount {
     hide balance: Number;
     ownerName: String;
 
@@ -697,9 +697,9 @@ Say(account.getBalance());  // 150
 </ul>
 <p>As long as all modifications go through these methods, the invariant is guaranteed. The object protects its own consistency.</p>
 <h3 id="common-invariants">Common Invariants</h3>
-<p>Different entities have different invariants:</p>
+<p>Different classes have different invariants:</p>
 <pre><code data-lang="rust">
-entity Temperature {
+class Temperature {
     hide kelvin: Number;
 
     expose func init(kelvin: Number) {
@@ -719,7 +719,7 @@ entity Temperature {
     // ...
 }
 
-entity Password {
+class Password {
     hide hash: String;
 
     expose func init(plaintext: String) {
@@ -733,7 +733,7 @@ entity Password {
     // The plaintext is never stored or retrievable
 }
 
-entity OrderedPair {
+class OrderedPair {
     hide first: Integer;
     hide second: Integer;
 
@@ -758,19 +758,19 @@ entity OrderedPair {
 <li>**Uncontrolled access**: External code can&#x27;t bypass validation logic</li>
 </ul>
 <ol>
-<li>**Hidden implementation changes**: You can change internal representation without affecting code that uses the entity</li>
+<li>**Hidden implementation changes**: You can change internal representation without affecting code that uses the class</li>
 </ul>
 <ol>
-<li>**Debugging complexity**: When something goes wrong with an object&#x27;s state, you know the problem is in one of the entity&#x27;s own methods -- not scattered throughout the codebase</li>
+<li>**Debugging complexity**: When something goes wrong with an object&#x27;s state, you know the problem is in one of the class&#x27;s own methods -- not scattered throughout the codebase</li>
 </ul>
 <ol>
-<li>**Coupling**: Code that uses the entity depends only on its public interface, not its internal structure</li>
+<li>**Coupling**: Code that uses the class depends only on its public interface, not its internal structure</li>
 </ul>
 <h3 id="hide-by-default">Hide by Default</h3>
 <p>A good practice is to hide fields by default and only expose what&#x27;s necessary. Ask yourself: &quot;Does external code <em>need</em> to access this directly?&quot;</p>
 <p>Usually, the answer is no. External code needs to <em>do things</em> with the object (call methods), not <em>poke at its internals</em> (access fields).</p>
 <pre><code data-lang="rust">
-entity Player {
+class Player {
     hide name: String;
     hide health: Integer;
     hide maxHealth: Integer;
@@ -790,11 +790,11 @@ entity Player {
 </code></pre>
 <p>---</p>
 <h2 id="methods-behavior-that-belongs-to-objects">Methods: Behavior That Belongs to Objects</h2>
-<p>Methods define what objects can <em>do</em>. They&#x27;re functions that belong to an entity and operate on its data through <code>self</code>.</p>
+<p>Methods define what objects can <em>do</em>. They&#x27;re functions that belong to a class and operate on its data through <code>self</code>.</p>
 <pre><code data-lang="rust">
 bind Viper.Math as Math;
 
-entity Circle {
+class Circle {
     radius: Number;
 
     expose func init(radius: Number) {
@@ -876,7 +876,7 @@ func save() {
 }
 </code></pre>
 <h3 id="methods-vs-functions-when-to-use-which">Methods vs Functions: When to Use Which</h3>
-<p>Sometimes you have a choice: should this be a method on an entity, or a standalone function?</p>
+<p>Sometimes you have a choice: should this be a method on a class, or a standalone function?</p>
 <p><strong>Use a method when:</strong></p>
 <ul>
 <li>The operation primarily works with one object&#x27;s data</li>
@@ -887,7 +887,7 @@ func save() {
 bind Viper.Math as Math;
 
 // Good as a method - operates on the circle&#x27;s own data
-entity Circle {
+class Circle {
     func area() -&gt; Number {
         return PI * self.radius * self.radius;
     }
@@ -896,7 +896,7 @@ entity Circle {
 <p><strong>Use a function when:</strong></p>
 <ul>
 <li>The operation works with multiple objects equally (no clear &quot;main&quot; object)</li>
-<li>The operation is a general utility that doesn&#x27;t belong to any particular entity</li>
+<li>The operation is a general utility that doesn&#x27;t belong to any particular class</li>
 <li>The operation doesn&#x27;t need access to hidden state</li>
 </ul>
 <pre><code data-lang="rust">
@@ -969,7 +969,7 @@ func increment() { self.count += 1; }
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity TrafficLight {
+class TrafficLight {
     hide color: String;
 
     expose func init() {
@@ -1005,7 +1005,7 @@ Say(light.getColor());  // &quot;red&quot; again
 </code></pre>
 <p>The traffic light object transitions through states: red, green, yellow, red, green, yellow... Each call to <code>advance()</code> changes the state.</p>
 <h3 id="state-diagrams">State Diagrams</h3>
-<p>When designing entities with complex state, it helps to think in terms of state diagrams:</p>
+<p>When designing classes with complex state, it helps to think in terms of state diagrams:</p>
 <pre><code data-lang="text">
     +---------+       +---------+       +----------+
     |   RED   | ----&gt; |  GREEN  | ----&gt; |  YELLOW  |
@@ -1013,9 +1013,9 @@ Say(light.getColor());  // &quot;red&quot; again
          ^                                    |
          +------------------------------------+
 </code></pre>
-<p>The entity enforces valid transitions. You can&#x27;t go directly from red to yellow -- the <code>advance()</code> method only allows red-&gt;green, green-&gt;yellow, yellow-&gt;red.</p>
+<p>The class enforces valid transitions. You can&#x27;t go directly from red to yellow -- the <code>advance()</code> method only allows red-&gt;green, green-&gt;yellow, yellow-&gt;red.</p>
 <h3 id="thinking-about-state">Thinking About State</h3>
-<p>When designing an entity, ask:</p>
+<p>When designing a class, ask:</p>
 <ol>
 <li>**What states can the object be in?** A player might be &quot;alive&quot;, &quot;dead&quot;, or &quot;respawning&quot;. A connection might be &quot;disconnected&quot;, &quot;connecting&quot;, &quot;connected&quot;, or &quot;error&quot;.</li>
 </ul>
@@ -1029,7 +1029,7 @@ Say(light.getColor());  // &quot;red&quot; again
 <li>**What behavior differs by state?** A &quot;dead&quot; player might ignore movement commands. A &quot;disconnected&quot; connection might queue messages instead of sending them.</li>
 </ul>
 <pre><code data-lang="rust">
-entity GameCharacter {
+class GameCharacter {
     hide health: Integer;
     hide state: String;  // &quot;alive&quot;, &quot;dead&quot;, &quot;respawning&quot;
 
@@ -1081,10 +1081,10 @@ character.state = &quot;flying&quot;;  // Not a valid state!
 character.state = &quot;alive&quot;;   // Resurrected without going through respawn!
 character.health = -50;      // Invalid health!
 </code></pre>
-<p>By hiding state and controlling access through methods, the entity ensures it only ever enters valid states through valid transitions.</p>
+<p>By hiding state and controlling access through methods, the class ensures it only ever enters valid states through valid transitions.</p>
 <p>---</p>
-<h2 id="practical-design-building-an-entity-from-scratch">Practical Design: Building an Entity from Scratch</h2>
-<p>Let&#x27;s walk through the process of designing an entity from the ground up. This will tie together everything we&#x27;ve learned.</p>
+<h2 id="practical-design-building-an-class-from-scratch">Practical Design: Building an Entity from Scratch</h2>
+<p>Let&#x27;s walk through the process of designing a class from the ground up. This will tie together everything we&#x27;ve learned.</p>
 <h3 id="the-problem">The Problem</h3>
 <p>We want to model a simple bank account for a personal finance application. Users can deposit money, withdraw money, and view their transaction history.</p>
 <h3 id="step-1-identify-the-core-data">Step 1: Identify the Core Data</h3>
@@ -1126,12 +1126,12 @@ character.health = -50;      // Invalid health!
 <li><code>ownerName</code>: Could be exposed for reading, but changes should be controlled</li>
 <li><code>dateOpened</code>: Hidden -- set once at creation</li>
 </ul>
-<h3 id="step-5-write-the-entity">Step 5: Write the Entity</h3>
+<h3 id="step-5-write-the-class">Step 5: Write the Entity</h3>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity BankAccount {
+class BankAccount {
     hide accountNumber: String;
     hide ownerName: String;
     hide balance: Number;
@@ -1237,7 +1237,7 @@ entity BankAccount {
     }
 }
 </code></pre>
-<h3 id="step-6-use-the-entity">Step 6: Use the Entity</h3>
+<h3 id="step-6-use-the-class">Step 6: Use the Entity</h3>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
@@ -1279,7 +1279,7 @@ module TodoApp;
 bind Viper.Terminal;
 bind Viper.Time;
 
-entity TodoItem {
+class TodoItem {
     hide text: String;
     hide done: Boolean;
     hide createdAt: String;
@@ -1325,7 +1325,7 @@ entity TodoItem {
     }
 }
 
-entity TodoList {
+class TodoList {
     hide items: List[TodoItem];
     hide name: String;
 
@@ -1438,7 +1438,7 @@ func start() {
 <ul>
 <li><strong><code>TodoItem</code> manages individual tasks</strong>: Each item knows its text, status, and timestamps</li>
 <li><strong><code>TodoList</code> manages the collection</strong>: It handles adding, removing, and displaying items</li>
-<li><strong>Each entity has one responsibility</strong>: Items don&#x27;t know about lists; lists don&#x27;t know about item internals</li>
+<li><strong>Each class has one responsibility</strong>: Items don&#x27;t know about lists; lists don&#x27;t know about item internals</li>
 <li><strong>Hidden fields protect state</strong>: You can&#x27;t directly mark an item done or modify the list&#x27;s items array</li>
 <li><strong>Methods provide controlled access</strong>: All operations go through validated methods</li>
 </ul>
@@ -1448,7 +1448,7 @@ func start() {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Dog {
+class Dog {
     name: String;
 
     expose func init(name: String) {
@@ -1482,19 +1482,19 @@ dog = NEW Dog(&quot;Rex&quot;)
 dog.Bark()
 </code></pre>
 <p>---</p>
-<h2 id="entity-design-guidelines">Entity Design Guidelines</h2>
+<h2 id="class-design-guidelines">Entity Design Guidelines</h2>
 <h3 id="model-real-concepts">Model Real Concepts</h3>
-<p>An entity should represent a concrete thing you can describe and point to:</p>
+<p>A class should represent a concrete thing you can describe and point to:</p>
 <ul>
-<li>A <code>Dog</code> entity, a <code>BankAccount</code> entity, a <code>Player</code> entity -- things with identity</li>
+<li>A <code>Dog</code> class, a <code>BankAccount</code> class, a <code>Player</code> class -- things with idclass</li>
 <li>A <code>ShoppingCart</code>, a <code>GameLevel</code>, a <code>UserSession</code> -- meaningful concepts</li>
 </ul>
-<p>If you can&#x27;t clearly describe what an entity represents, it probably shouldn&#x27;t be an entity.</p>
-<h3 id="keep-entities-focused">Keep Entities Focused</h3>
-<p>An entity should have one primary responsibility. If an entity is doing too many things, split it:</p>
+<p>If you can&#x27;t clearly describe what a class represents, it probably shouldn&#x27;t be a class.</p>
+<h3 id="keep-classes-focused">Keep Classes Focused</h3>
+<p>A class should have one primary responsibility. If a class is doing too many things, split it:</p>
 <pre><code data-lang="rust">
 // Too much responsibility
-entity Game {
+class Game {
     player: Player;
     enemies: List[Enemy];
     graphics: GraphicsSystem;
@@ -1504,15 +1504,15 @@ entity Game {
     // ... 50 methods for all these different things
 }
 
-// Better: separate entities for each concern
-entity Player { ... }
-entity EnemyManager { ... }
-entity Renderer { ... }
-entity SoundSystem { ... }
-entity InputHandler { ... }
-entity NetworkManager { ... }
+// Better: separate classes for each concern
+class Player { ... }
+class EnemyManager { ... }
+class Renderer { ... }
+class SoundSystem { ... }
+class InputHandler { ... }
+class NetworkManager { ... }
 
-entity Game {
+class Game {
     player: Player;
     enemies: EnemyManager;
     renderer: Renderer;
@@ -1563,7 +1563,7 @@ func processOrder() {
 <h2 id="common-mistakes">Common Mistakes</h2>
 <h3 id="forgetting-self">Forgetting `self`</h3>
 <pre><code data-lang="rust">
-entity Counter {
+class Counter {
     count: Integer;
 
     func increment() {
@@ -1574,7 +1574,7 @@ entity Counter {
 <p>Inside a method, you must use <code>self</code> to access the object&#x27;s fields. Without it, the compiler looks for a local variable named <code>count</code>, which doesn&#x27;t exist.</p>
 <h3 id="exposing-fields-that-should-be-hidden">Exposing Fields That Should Be Hidden</h3>
 <pre><code data-lang="rust">
-entity BankAccount {
+class BankAccount {
     balance: Number;  // Bad: anyone can modify directly
 }
 
@@ -1582,10 +1582,10 @@ var account = BankAccount();
 account.balance = -1000;  // Oops, negative balance!
 </code></pre>
 <p>Exposed fields bypass all your carefully written validation logic. Hide them and provide controlled access through methods.</p>
-<h3 id="monster-entities">Monster Entities</h3>
+<h3 id="monster-classes">Monster Classes</h3>
 <pre><code data-lang="rust">
-// Don&#x27;t do this -- one entity doing everything
-entity Game {
+// Don&#x27;t do this -- one class doing everything
+class Game {
     player: ...;
     enemies: ...;
     graphics: ...;
@@ -1599,7 +1599,7 @@ entity Game {
     // 100 methods covering all these different concerns
 }
 </code></pre>
-<p>Such entities become impossible to understand, test, or modify. Split them into focused entities that each handle one concern.</p>
+<p>Such classes become impossible to understand, test, or modify. Split them into focused classes that each handle one concern.</p>
 <h3 id="methods-that-do-too-much">Methods That Do Too Much</h3>
 <pre><code data-lang="rust">
 func doEverything() {
@@ -1626,24 +1626,24 @@ func setAge(age: Integer) {
 <p>This chapter introduced the fundamentals of object-oriented programming:</p>
 <ul>
 <li><strong>Objects solve problems</strong> that values and functions alone cannot: protecting data integrity, unifying behavior with data, and providing stable interfaces</li>
-<li><strong>Entities are templates</strong> that define what objects look like (fields) and can do (methods)</li>
-<li><strong>Objects are instances</strong> created from entities, each with independent state</li>
+<li><strong>Classes are templates</strong> that define what objects look like (fields) and can do (methods)</li>
+<li><strong>Objects are instances</strong> created from classes, each with independent state</li>
 <li><strong>Initializers</strong> set up objects in valid initial states</li>
 <li><strong><code>self</code></strong> refers to the current object inside methods, connecting methods to their object&#x27;s data</li>
 <li><strong>Encapsulation</strong> (hide/expose) protects object state and enforces invariants</li>
 <li><strong>Methods</strong> define object behavior -- what objects can do</li>
 <li><strong>State</strong> changes over time through method calls, and good design ensures only valid states are reachable</li>
-<li><strong>Good entity design</strong> means one responsibility per entity, hidden internals, clear interfaces, focused methods</li>
+<li><strong>Good class design</strong> means one responsibility per class, hidden internals, clear interfaces, focused methods</li>
 </ul>
 <p>Objects are the foundation of organizing complex programs. They let you build systems out of components that manage themselves, protect their own integrity, and interact through well-defined interfaces.</p>
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
-<p><strong>Exercise 14.1</strong>: Create a <code>Counter</code> entity with <code>increment()</code>, <code>decrement()</code>, <code>reset()</code>, and <code>getValue()</code> methods. The count should never go below zero -- <code>decrement()</code> should do nothing if the count is already zero.</p>
-<p><strong>Exercise 14.2</strong>: Create a <code>Temperature</code> entity that stores a temperature in Celsius and has methods <code>toFahrenheit()</code> and <code>toKelvin()</code>. Add validation to ensure the temperature never goes below absolute zero (-273.15 Celsius).</p>
-<p><strong>Exercise 14.3</strong>: Create a <code>Stopwatch</code> entity with <code>start()</code>, <code>stop()</code>, <code>reset()</code>, and <code>elapsed()</code> methods. Think carefully about what states a stopwatch can be in (stopped, running) and what transitions are valid.</p>
-<p><strong>Exercise 14.4</strong>: Create a <code>Deck</code> entity that represents a deck of playing cards with <code>shuffle()</code> and <code>draw()</code> methods. What should <code>draw()</code> return if the deck is empty?</p>
-<p><strong>Exercise 14.5</strong>: Create a <code>ShoppingCart</code> entity that stores items with prices. Include methods to add items, remove items, get the item count, and calculate the total price. Consider: should you allow negative prices? Duplicate items?</p>
-<p><strong>Exercise 14.6</strong> (Challenge): Create a text-based RPG character: a <code>Character</code> entity with name, health, maxHealth, attack power, and defense. Include methods for:</p>
+<p><strong>Exercise 14.1</strong>: Create a <code>Counter</code> class with <code>increment()</code>, <code>decrement()</code>, <code>reset()</code>, and <code>getValue()</code> methods. The count should never go below zero -- <code>decrement()</code> should do nothing if the count is already zero.</p>
+<p><strong>Exercise 14.2</strong>: Create a <code>Temperature</code> class that stores a temperature in Celsius and has methods <code>toFahrenheit()</code> and <code>toKelvin()</code>. Add validation to ensure the temperature never goes below absolute zero (-273.15 Celsius).</p>
+<p><strong>Exercise 14.3</strong>: Create a <code>Stopwatch</code> class with <code>start()</code>, <code>stop()</code>, <code>reset()</code>, and <code>elapsed()</code> methods. Think carefully about what states a stopwatch can be in (stopped, running) and what transitions are valid.</p>
+<p><strong>Exercise 14.4</strong>: Create a <code>Deck</code> class that represents a deck of playing cards with <code>shuffle()</code> and <code>draw()</code> methods. What should <code>draw()</code> return if the deck is empty?</p>
+<p><strong>Exercise 14.5</strong>: Create a <code>ShoppingCart</code> class that stores items with prices. Include methods to add items, remove items, get the item count, and calculate the total price. Consider: should you allow negative prices? Duplicate items?</p>
+<p><strong>Exercise 14.6</strong> (Challenge): Create a text-based RPG character: a <code>Character</code> class with name, health, maxHealth, attack power, and defense. Include methods for:</p>
 <ul>
 <li>Taking damage (reduced by defense)</li>
 <li>Healing (cannot exceed max health)</li>
@@ -1652,7 +1652,7 @@ func setAge(age: Integer) {
 <li>Leveling up (increases max health and attack)</li>
 </ul>
 <p>Think about invariants: health should be between 0 and maxHealth, attack and defense should be positive.</p>
-<p><strong>Exercise 14.7</strong> (Design Challenge): Design a <code>Thermostat</code> entity for a home heating/cooling system. Consider:</p>
+<p><strong>Exercise 14.7</strong> (Design Challenge): Design a <code>Thermostat</code> class for a home heating/cooling system. Consider:</p>
 <ul>
 <li>What data does it need? (current temperature, target temperature, mode, etc.)</li>
 <li>What are the valid states and transitions?</li>
@@ -1665,7 +1665,7 @@ func setAge(age: Integer) {
 <p><em>[Continue to Chapter 15: Inheritance](15-inheritance.md)</em></p>
 <h1 id="chapter-15-inheritance">Chapter 15: Inheritance</h1>
 <p>A dog is an animal. A savings account is a bank account. A button is a UI element. In the real world, things often have &quot;is-a&quot; relationships - one thing is a specialized version of another. When we say &quot;a dog is an animal,&quot; we mean that dogs share all the fundamental characteristics of animals (they breathe, they move, they eat) while also having their own unique traits (they bark, they fetch, they wag their tails).</p>
-<p><em>Inheritance</em> lets you model these relationships in code. You create a base entity with common functionality, then create derived entities that extend or customize it. When used well, inheritance promotes code reuse, creates logical hierarchies, and makes your programs easier to understand and maintain. When misused, it can create tangled dependencies and rigid code that&#x27;s hard to change.</p>
+<p><em>Inheritance</em> lets you model these relationships in code. You create a base class with common functionality, then create derived classes that extend or customize it. When used well, inheritance promotes code reuse, creates logical hierarchies, and makes your programs easier to understand and maintain. When misused, it can create tangled dependencies and rigid code that&#x27;s hard to change.</p>
 <p>This chapter will teach you not just <em>how</em> to use inheritance, but <em>when</em> to use it - and equally important, when not to.</p>
 <p>---</p>
 <h2 id="the-problem-without-inheritance">The Problem Without Inheritance</h2>
@@ -1673,7 +1673,7 @@ func setAge(age: Integer) {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Goblin {
+class Goblin {
     x: Number;
     y: Number;
     health: Integer;
@@ -1707,7 +1707,7 @@ entity Goblin {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Orc {
+class Orc {
     x: Number;
     y: Number;
     health: Integer;
@@ -1737,12 +1737,12 @@ entity Orc {
     }
 }
 </code></pre>
-<p>Do you see the problem? These entities are almost identical! The same fields, the same <code>move</code> method, the same <code>takeDamage</code> method. Only the initial values and attack power differ.</p>
-<p>Now imagine you need to add dragons, skeletons, trolls, and giant spiders. Each one copies the same code. And when you discover a bug in <code>takeDamage</code> or want to add a new feature to movement, you have to change every single enemy entity. Miss one, and you have inconsistent behavior. This duplication is wasteful, error-prone, and a maintenance nightmare.</p>
+<p>Do you see the problem? These classes are almost identical! The same fields, the same <code>move</code> method, the same <code>takeDamage</code> method. Only the initial values and attack power differ.</p>
+<p>Now imagine you need to add dragons, skeletons, trolls, and giant spiders. Each one copies the same code. And when you discover a bug in <code>takeDamage</code> or want to add a new feature to movement, you have to change every single enemy class. Miss one, and you have inconsistent behavior. This duplication is wasteful, error-prone, and a maintenance nightmare.</p>
 <p>There has to be a better way.</p>
 <p>---</p>
 <h2 id="understanding-the-is-a-relationship">Understanding the &quot;Is-A&quot; Relationship</h2>
-<p>Before we dive into the solution, let&#x27;s think about what these entities have in common. A goblin, an orc, a dragon - they&#x27;re all <em>enemies</em>. In fact, we could say:</p>
+<p>Before we dive into the solution, let&#x27;s think about what these classes have in common. A goblin, an orc, a dragon - they&#x27;re all <em>enemies</em>. In fact, we could say:</p>
 <ul>
 <li>A Goblin *is an* Enemy</li>
 <li>An Orc *is an* Enemy</li>
@@ -1752,11 +1752,11 @@ entity Orc {
 <p>This isn&#x27;t just a programming trick - it reflects how we naturally categorize the world. A poodle is a dog. A dog is a mammal. A mammal is an animal. Each level adds specificity while inheriting the properties of the levels above.</p>
 <p>---</p>
 <h2 id="inheritance-to-the-rescue">Inheritance to the Rescue</h2>
-<p>With inheritance, we extract the common parts into a <em>base entity</em>:</p>
+<p>With inheritance, we extract the common parts into a <em>base class</em>:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     x: Number;
     y: Number;
     health: Integer;
@@ -1790,7 +1790,7 @@ entity Enemy {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 30, &quot;Goblin&quot;);
     }
@@ -1800,7 +1800,7 @@ entity Goblin extends Enemy {
     }
 }
 
-entity Orc extends Enemy {
+class Orc extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 50, &quot;Orc&quot;);
     }
@@ -1810,7 +1810,7 @@ entity Orc extends Enemy {
     }
 }
 
-entity Dragon extends Enemy {
+class Dragon extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 200, &quot;Dragon&quot;);
     }
@@ -1824,20 +1824,20 @@ entity Dragon extends Enemy {
     }
 }
 </code></pre>
-<p>Look how much cleaner this is! Each specialized enemy only defines what makes it unique. The common functionality lives in one place (Enemy), so fixing a bug or adding a feature only requires changing one entity.</p>
+<p>Look how much cleaner this is! Each specialized enemy only defines what makes it unique. The common functionality lives in one place (Enemy), so fixing a bug or adding a feature only requires changing one class.</p>
 <p>---</p>
 <h2 id="the-parent-child-relationship">The Parent-Child Relationship</h2>
-<p>When one entity extends another, we create a <em>parent-child</em> relationship (also called a <em>superclass-subclass</em> relationship):</p>
-<p><strong>Parent entity (also called base entity or superclass):</strong> The entity being inherited from. In our example, <code>Enemy</code> is the parent.</p>
-<p><strong>Child entity (also called derived entity or subclass):</strong> The entity that inherits. <code>Goblin</code>, <code>Orc</code>, and <code>Dragon</code> are children of <code>Enemy</code>.</p>
+<p>When one class extends another, we create a <em>parent-child</em> relationship (also called a <em>superclass-subclass</em> relationship):</p>
+<p><strong>Parent class (also called base class or superclass):</strong> The class being inherited from. In our example, <code>Enemy</code> is the parent.</p>
+<p><strong>Child class (also called derived class or subclass):</strong> The class that inherits. <code>Goblin</code>, <code>Orc</code>, and <code>Dragon</code> are children of <code>Enemy</code>.</p>
 <p>The <code>extends</code> keyword establishes this relationship:</p>
 <pre><code data-lang="rust">
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     // Goblin is the child, Enemy is the parent
 }
 </code></pre>
 <h3 id="what-gets-inherited">What Gets Inherited</h3>
-<p>When an entity extends another, it automatically receives:</p>
+<p>When a class extends another, it automatically receives:</p>
 <ol>
 <li>**All fields from the parent** - A Goblin has <code>x</code>, <code>y</code>, <code>health</code>, and <code>name</code> even though we didn&#x27;t declare them in Goblin.</li>
 </ul>
@@ -1866,8 +1866,8 @@ Say(goblin.attack()); // 5 (not 1!)
 </code></pre>
 <p>The goblin can do everything an enemy can do, plus whatever specialized behavior we add.</p>
 <h3 id="what-gets-overridden">What Gets Overridden</h3>
-<p>A child entity can <em>override</em> methods from its parent - providing its own implementation that replaces the parent&#x27;s. In our example, <code>Goblin</code> overrides <code>attack()</code> to return 5 instead of the parent&#x27;s default of 1.</p>
-<p>A child entity can also <em>add</em> new fields and methods that don&#x27;t exist in the parent. The <code>Dragon</code> entity adds a <code>breatheFire()</code> method that only dragons have.</p>
+<p>A child class can <em>override</em> methods from its parent - providing its own implementation that replaces the parent&#x27;s. In our example, <code>Goblin</code> overrides <code>attack()</code> to return 5 instead of the parent&#x27;s default of 1.</p>
+<p>A child class can also <em>add</em> new fields and methods that don&#x27;t exist in the parent. The <code>Dragon</code> class adds a <code>breatheFire()</code> method that only dragons have.</p>
 <pre><code data-lang="rust">
 var dragon = Dragon(0.0, 0.0);
 dragon.breatheFire();  // Works!
@@ -1877,11 +1877,11 @@ goblin.breatheFire();  // Error! Goblins can&#x27;t breathe fire
 </code></pre>
 <p>---</p>
 <h2 id="the-super-keyword">The `super` Keyword</h2>
-<p>The <code>super</code> keyword is how child entities communicate with their parent. It has two important uses.</p>
+<p>The <code>super</code> keyword is how child classes communicate with their parent. It has two important uses.</p>
 <h3 id="calling-the-parent-initializer">Calling the Parent Initializer</h3>
-<p>When you create a child entity, you typically need to initialize the parent&#x27;s fields. The <code>super()</code> call in an initializer invokes the parent&#x27;s initializer:</p>
+<p>When you create a child class, you typically need to initialize the parent&#x27;s fields. The <code>super()</code> call in an initializer invokes the parent&#x27;s initializer:</p>
 <pre><code data-lang="rust">
-entity Enemy {
+class Enemy {
     x: Number;
     y: Number;
     health: Integer;
@@ -1895,20 +1895,20 @@ entity Enemy {
     }
 }
 
-entity Goblin extends Enemy {
+class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 30, &quot;Goblin&quot;);  // Call Enemy&#x27;s initializer
     }
 }
 </code></pre>
 <p>Here, <code>Goblin</code>&#x27;s initializer takes only <code>x</code> and <code>y</code> (the goblin&#x27;s position), then calls <code>super()</code> with those plus the goblin-specific values for health and name. This pattern is common - child initializers often have simpler signatures because some values are predetermined.</p>
-<p>Think of it like filling out a form. The parent entity says &quot;I need these four pieces of information.&quot; The child entity says &quot;I already know two of them, so I only need to ask for the other two.&quot;</p>
+<p>Think of it like filling out a form. The parent class says &quot;I need these four pieces of information.&quot; The child class says &quot;I already know two of them, so I only need to ask for the other two.&quot;</p>
 <h3 id="calling-parent-methods">Calling Parent Methods</h3>
 <p>Sometimes you want to <em>extend</em> the parent&#x27;s behavior rather than completely replace it. The <code>super.methodName()</code> syntax lets you call the parent&#x27;s version of a method:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     func describe() {
         Say(&quot;An enemy named &quot; + self.name);
         Say(&quot;  Position: (&quot; + self.x + &quot;, &quot; + self.y + &quot;)&quot;);
@@ -1916,7 +1916,7 @@ entity Enemy {
     }
 }
 
-entity Dragon extends Enemy {
+class Dragon extends Enemy {
     fireBreaths: Integer;
 
     expose func init(x: Number, y: Number) {
@@ -1941,7 +1941,7 @@ dragon.describe();
 <p>This pattern - doing what the parent does, then adding more - is extremely common and useful. You&#x27;ll see it frequently in real code.</p>
 <p>---</p>
 <h2 id="overriding-methods-when-and-why">Overriding Methods: When and Why</h2>
-<p><em>Overriding</em> is when a child entity provides its own implementation of a method that exists in the parent. The child&#x27;s version <em>replaces</em> the parent&#x27;s version (for instances of the child type).</p>
+<p><em>Overriding</em> is when a child class provides its own implementation of a method that exists in the parent. The child&#x27;s version <em>replaces</em> the parent&#x27;s version (for instances of the child type).</p>
 <h3 id="why-override">Why Override?</h3>
 <p>You override methods when the child needs different behavior than the parent provides. Common reasons include:</p>
 <ol>
@@ -1954,15 +1954,15 @@ dragon.describe();
 <li>**Correction** - The parent&#x27;s default behavior isn&#x27;t appropriate for this child. Perhaps most enemies make a sound when attacked, but ghosts are silent.</li>
 </ul>
 <h3 id="the-override-keyword">The `override` Keyword</h3>
-<p>In Viper, when you define a method in a child entity with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the <code>override</code> keyword to make your intentions explicit:</p>
+<p>In Viper, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the <code>override</code> keyword to make your intentions explicit:</p>
 <pre><code data-lang="rust">
-entity Enemy {
+class Enemy {
     func attack() -&gt; Integer {
         return 1;
     }
 }
 
-entity Orc extends Enemy {
+class Orc extends Enemy {
     override func attack() -&gt; Integer {
         return 10;
     }
@@ -1981,13 +1981,13 @@ entity Orc extends Enemy {
 <h3 id="accidental-overriding">Accidental Overriding</h3>
 <p>Without the <code>override</code> keyword, you might accidentally override a parent method:</p>
 <pre><code data-lang="rust">
-entity Vehicle {
+class Vehicle {
     func turn(degrees: Number) {
         // Rotate the vehicle
     }
 }
 
-entity Car extends Vehicle {
+class Car extends Vehicle {
     func turn(degrees: Number) {
         // Oops! We meant to add a new method for turn signals
         // But we accidentally overrode the steering!
@@ -1997,11 +1997,11 @@ entity Car extends Vehicle {
 <p>Using <code>override</code> explicitly helps catch these mistakes. If you add <code>override</code> but there&#x27;s no parent method to override, the compiler tells you. If you meant to create a new method, you know you need a different name.</p>
 <p>---</p>
 <h2 id="inheritance-hierarchies">Inheritance Hierarchies</h2>
-<p>Inheritance can extend multiple levels, creating a <em>hierarchy</em> or <em>tree</em> of related entities:</p>
+<p>Inheritance can extend multiple levels, creating a <em>hierarchy</em> or <em>tree</em> of related classes:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     name: String;
 
     func breathe() {
@@ -2013,7 +2013,7 @@ entity Animal {
     }
 }
 
-entity Mammal extends Animal {
+class Mammal extends Animal {
     furColor: String;
 
     func nurse() {
@@ -2021,7 +2021,7 @@ entity Mammal extends Animal {
     }
 }
 
-entity Dog extends Mammal {
+class Dog extends Mammal {
     breed: String;
 
     expose func init(name: String, breed: String) {
@@ -2069,7 +2069,7 @@ Entity
 </code></pre>
 <p>This eleven-level hierarchy has several problems:</p>
 <ol>
-<li>**Hard to understand** - To understand what an OrangeTabbyWithWhitePaws can do, you need to examine eleven different entity definitions.</li>
+<li>**Hard to understand** - To understand what an OrangeTabbyWithWhitePaws can do, you need to examine eleven different class definitions.</li>
 </ul>
 <ol>
 <li>**Fragile** - A change to any level might affect everything below it. Changing Carnivore could break your OrangeTabbyWithWhitePaws.</li>
@@ -2090,7 +2090,7 @@ module Shapes;
 bind Viper.Terminal;
 bind Viper.Math;
 
-entity Shape {
+class Shape {
     x: Number;
     y: Number;
 
@@ -2117,7 +2117,7 @@ entity Shape {
     }
 }
 
-entity Rectangle extends Shape {
+class Rectangle extends Shape {
     width: Number;
     height: Number;
 
@@ -2144,7 +2144,7 @@ entity Rectangle extends Shape {
     }
 }
 
-entity Circle extends Shape {
+class Circle extends Shape {
     radius: Number;
 
     expose func init(x: Number, y: Number, radius: Number) {
@@ -2173,7 +2173,7 @@ entity Circle extends Shape {
     }
 }
 
-entity Square extends Rectangle {
+class Square extends Rectangle {
     expose func init(x: Number, y: Number, size: Number) {
         super(x, y, size, size);
     }
@@ -2228,7 +2228,7 @@ func start() {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Report {
+class Report {
     title: String;
 
     func generate() {
@@ -2253,7 +2253,7 @@ entity Report {
     }
 }
 
-entity SalesReport extends Report {
+class SalesReport extends Report {
     totalSales: Number;
     itemsSold: Integer;
 
@@ -2270,7 +2270,7 @@ entity SalesReport extends Report {
     }
 }
 
-entity InventoryReport extends Report {
+class InventoryReport extends Report {
     items: Integer;
     lowStock: Integer;
 
@@ -2295,7 +2295,7 @@ entity InventoryReport extends Report {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Account {
+class Account {
     balance: Number;
     accountNumber: String;
 
@@ -2312,7 +2312,7 @@ entity Account {
     }
 }
 
-entity SavingsAccount extends Account {
+class SavingsAccount extends Account {
     interestRate: Number;
 
     expose func init(accountNumber: String, initialDeposit: Number, rate: Number) {
@@ -2337,7 +2337,7 @@ entity SavingsAccount extends Account {
     }
 }
 
-entity CheckingAccount extends Account {
+class CheckingAccount extends Account {
     overdraftLimit: Number;
 
     expose func init(accountNumber: String, initialDeposit: Number, limit: Number) {
@@ -2363,7 +2363,7 @@ entity CheckingAccount extends Account {
 <p>Each child specializes the parent for a particular use case. SavingsAccount adds interest and minimum balance requirements. CheckingAccount allows overdrafts. Both are still accounts - they can deposit and withdraw - but with different rules.</p>
 <p>---</p>
 <h2 id="inheritance-vs-composition-knowing-when-to-choose">Inheritance vs Composition: Knowing When to Choose</h2>
-<p>Inheritance is a powerful tool, but it&#x27;s not always the right tool. <em>Composition</em> - having one entity contain instances of other entities - is often a better choice.</p>
+<p>Inheritance is a powerful tool, but it&#x27;s not always the right tool. <em>Composition</em> - having one class contain instances of other classes - is often a better choice.</p>
 <h3 id="the-is-a-vs-has-a-test">The &quot;Is-A&quot; vs &quot;Has-A&quot; Test</h3>
 <p>Use inheritance for &quot;is-a&quot; relationships:</p>
 <ul>
@@ -2379,12 +2379,12 @@ entity CheckingAccount extends Account {
 </ul>
 <pre><code data-lang="rust">
 // WRONG: A car is not a type of engine!
-entity Car extends Engine {
+class Car extends Engine {
     // This makes no sense
 }
 
 // RIGHT: A car contains an engine
-entity Car {
+class Car {
     engine: Engine;
     transmission: Transmission;
     wheels: List[Wheel];
@@ -2399,7 +2399,7 @@ entity Car {
 <p><strong>1. You only need part of the parent&#x27;s functionality</strong></p>
 <pre><code data-lang="rust">
 // If Rectangle only needs the position from Shape, not area/perimeter methods:
-entity Rectangle {
+class Rectangle {
     position: Point;  // Composition
     width: Number;
     height: Number;
@@ -2408,7 +2408,7 @@ entity Rectangle {
 <p><strong>2. You need to change behavior at runtime</strong></p>
 <p>Inheritance relationships are fixed at compile time. Composition relationships can change:</p>
 <pre><code data-lang="rust">
-entity Character {
+class Character {
     weapon: Weapon;  // Can swap weapons during the game
 
     func attack() {
@@ -2422,13 +2422,13 @@ entity Character {
 </code></pre>
 <p>With inheritance, a <code>SwordCharacter</code> is always a sword character. With composition, a character can switch from sword to bow to magic staff.</p>
 <p><strong>3. You need functionality from multiple sources</strong></p>
-<p>Viper (like many languages) only allows inheriting from one parent. But you can compose as many entities as you want:</p>
+<p>Viper (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:</p>
 <pre><code data-lang="rust">
 // Can&#x27;t do this:
-entity FlyingCar extends Car, Aircraft { }  // Error!
+class FlyingCar extends Car, Aircraft { }  // Error!
 
 // Do this instead:
-entity FlyingCar {
+class FlyingCar {
     carParts: CarMechanics;
     flightSystem: AircraftControls;
 
@@ -2445,10 +2445,10 @@ entity FlyingCar {
 <p>If you find yourself creating odd inheritance relationships to reuse code, that&#x27;s a sign to use composition:</p>
 <pre><code data-lang="rust">
 // Awkward: A Window is not really a Rectangle in the UI sense
-entity Window extends Rectangle { }
+class Window extends Rectangle { }
 
 // Better: A Window has a rectangular frame
-entity Window {
+class Window {
     frame: Rectangle;
     title: String;
     content: View;
@@ -2458,7 +2458,7 @@ entity Window {
 <p>Should a Stack extend Array? After all, a stack uses array-like storage...</p>
 <pre><code data-lang="rust">
 // Tempting but WRONG
-entity Stack extends Array {
+class Stack extends Array {
     func push(item) {
         self.Push(item);
     }
@@ -2471,7 +2471,7 @@ entity Stack extends Array {
 <p>This seems convenient, but now Stack inherits ALL of Array&#x27;s methods. Users can call <code>stack.InsertAt(index)</code> or <code>stack.RemoveAt(index)</code>, which violates how stacks work. A stack is not an array - it just uses an array internally.</p>
 <pre><code data-lang="rust">
 // RIGHT: Stack contains an array
-entity Stack {
+class Stack {
     items: List[any];
 
     expose func init() {
@@ -2521,13 +2521,13 @@ processEnemy(Dragon(0.0, 0.0));   // Works!
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Bird {
+class Bird {
     func fly() {
         Say(&quot;Flying through the air&quot;);
     }
 }
 
-entity Penguin extends Bird {
+class Penguin extends Bird {
     override func fly() {
         // Penguins can&#x27;t fly!
         Say(&quot;Error: Penguins cannot fly&quot;);
@@ -2553,7 +2553,7 @@ migrateSouth(Penguin(...));  // Broken! Violates substitutability
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity MediaPlayer {
+class MediaPlayer {
     func play() {
         self.preparePlayback();
         self.startPlayback();
@@ -2568,7 +2568,7 @@ entity MediaPlayer {
     }
 }
 
-entity VideoPlayer extends MediaPlayer {
+class VideoPlayer extends MediaPlayer {
     override func play() {
         self.loadVideo();
         super.play();
@@ -2581,7 +2581,7 @@ entity VideoPlayer extends MediaPlayer {
 </code></pre>
 <p>This works fine. But what if someone modifies MediaPlayer?</p>
 <pre><code data-lang="rust">
-entity MediaPlayer {
+class MediaPlayer {
     func play() {
         // Changed: now calls preparePlayback differently
         self.startPlayback();  // Moved before prepare!
@@ -2611,7 +2611,7 @@ entity MediaPlayer {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     name: String;
 
     func speak() {
@@ -2619,7 +2619,7 @@ entity Animal {
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     expose func init(name: String) {
         self.name = name;
     }
@@ -2691,8 +2691,8 @@ END CLASS
 <h2 id="summary">Summary</h2>
 <p>Inheritance is a fundamental object-oriented concept that lets you model &quot;is-a&quot; relationships:</p>
 <ul>
-<li>Use <code>extends</code> to create a child entity that inherits from a parent</li>
-<li>Child entities automatically receive all fields and methods from the parent</li>
+<li>Use <code>extends</code> to create a child class that inherits from a parent</li>
+<li>Child classes automatically receive all fields and methods from the parent</li>
 <li>Use <code>super()</code> to call the parent&#x27;s initializer</li>
 <li>Use <code>super.methodName()</code> to call the parent&#x27;s version of a method</li>
 <li>Override methods to provide specialized behavior for the child</li>
@@ -2706,20 +2706,20 @@ END CLASS
 <li>Respect the Liskov Substitution Principle - children should be substitutable for parents</li>
 <li>Be aware of the fragile base class problem</li>
 </ul>
-<p>Inheritance is powerful but easy to misuse. When you&#x27;re unsure, composition is usually the safer choice. In the next chapter, we&#x27;ll learn about interfaces, which provide another way to create relationships between entities - based on what they <em>can do</em> rather than what they <em>are</em>.</p>
+<p>Inheritance is powerful but easy to misuse. When you&#x27;re unsure, composition is usually the safer choice. In the next chapter, we&#x27;ll learn about interfaces, which provide another way to create relationships between classes - based on what they <em>can do</em> rather than what they <em>are</em>.</p>
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
-<p><strong>Exercise 15.1 - Vehicle Hierarchy</strong>: Create a <code>Vehicle</code> entity with <code>speed</code> and <code>position</code> fields, and <code>move()</code> and <code>stop()</code> methods. Create <code>Car</code> and <code>Bicycle</code> child entities with different speed limits and movement behaviors.</p>
-<p><strong>Exercise 15.2 - Employee System</strong>: Create an <code>Employee</code> base entity with <code>name</code>, <code>salary</code>, and <code>work()</code> method. Create <code>Manager</code> (has team members, can <code>holdMeeting()</code>) and <code>Developer</code> (has programming languages, can <code>writeCode()</code>) child entities with specialized <code>work()</code> implementations.</p>
-<p><strong>Exercise 15.3 - Bank Accounts</strong>: Create a <code>BankAccount</code> base entity with <code>balance</code>, <code>deposit()</code>, and <code>withdraw()</code>. Create <code>SavingsAccount</code> (earns interest, has minimum balance) and <code>CheckingAccount</code> (allows overdraft up to a limit) with appropriate specializations.</p>
-<p><strong>Exercise 15.4 - Shape Extensions</strong>: Extend the Shapes example with <code>Triangle</code> (given three side lengths) and <code>Ellipse</code> (given two radii) entities.</p>
-<p><strong>Exercise 15.5 - Template Method</strong>: Create a <code>Game</code> entity with a <code>play()</code> method that calls <code>setup()</code>, <code>playRound()</code> (in a loop), and <code>declareWinner()</code>. Create <code>TicTacToe</code> and <code>GuessTheNumber</code> games that override these methods.</p>
+<p><strong>Exercise 15.1 - Vehicle Hierarchy</strong>: Create a <code>Vehicle</code> class with <code>speed</code> and <code>position</code> fields, and <code>move()</code> and <code>stop()</code> methods. Create <code>Car</code> and <code>Bicycle</code> child classes with different speed limits and movement behaviors.</p>
+<p><strong>Exercise 15.2 - Employee System</strong>: Create an <code>Employee</code> base class with <code>name</code>, <code>salary</code>, and <code>work()</code> method. Create <code>Manager</code> (has team members, can <code>holdMeeting()</code>) and <code>Developer</code> (has programming languages, can <code>writeCode()</code>) child classes with specialized <code>work()</code> implementations.</p>
+<p><strong>Exercise 15.3 - Bank Accounts</strong>: Create a <code>BankAccount</code> base class with <code>balance</code>, <code>deposit()</code>, and <code>withdraw()</code>. Create <code>SavingsAccount</code> (earns interest, has minimum balance) and <code>CheckingAccount</code> (allows overdraft up to a limit) with appropriate specializations.</p>
+<p><strong>Exercise 15.4 - Shape Extensions</strong>: Extend the Shapes example with <code>Triangle</code> (given three side lengths) and <code>Ellipse</code> (given two radii) classes.</p>
+<p><strong>Exercise 15.5 - Template Method</strong>: Create a <code>Game</code> class with a <code>play()</code> method that calls <code>setup()</code>, <code>playRound()</code> (in a loop), and <code>declareWinner()</code>. Create <code>TicTacToe</code> and <code>GuessTheNumber</code> games that override these methods.</p>
 <p><strong>Exercise 15.6 - Composition Refactoring</strong>: Take the following (bad) inheritance hierarchy and refactor it to use composition:</p>
 <pre><code data-lang="rust">
-entity Person { }
-entity Employee extends Person { }
-entity Manager extends Employee { }
-entity CEOWithCompanyCar extends Manager { }  // This is getting silly!
+class Person { }
+class Employee extends Person { }
+class Manager extends Employee { }
+class CEOWithCompanyCar extends Manager { }  // This is getting silly!
 </code></pre>
 <p><strong>Exercise 15.7 (Challenge) - Game Enemy System</strong>: Design and implement an enemy system for a game with:</p>
 <ul>
@@ -2737,12 +2737,12 @@ entity CEOWithCompanyCar extends Manager { }  // This is getting silly!
 <li>A <code>LoggingDatabaseConnection</code> that adds logging to database queries</li>
 </ul>
 <p>---</p>
-<p><em>Inheritance creates &quot;is-a&quot; relationships and lets child entities specialize their parents. But what if you want to define what something can do, without specifying how? What if you want a function that can work with any entity that has a certain capability? Next, we learn about interfaces - contracts that entities can fulfill, enabling powerful abstractions.</em></p>
+<p><em>Inheritance creates &quot;is-a&quot; relationships and lets child classes specialize their parents. But what if you want to define what something can do, without specifying how? What if you want a function that can work with any class that has a certain capability? Next, we learn about interfaces - contracts that classes can fulfill, enabling powerful abstractions.</em></p>
 <p><em>[Continue to Chapter 16: Interfaces](16-interfaces.md)</em></p>
 <h1 id="chapter-16-interfaces">Chapter 16: Interfaces</h1>
 <p>Inheritance says &quot;this thing <em>is</em> a specific type.&quot; But sometimes you care about what something <em>can do</em>, not what it <em>is</em>.</p>
 <p>A dog can be drawn on screen. So can a spaceship. So can a health bar. They&#x27;re completely different things, but they share an ability: they can be drawn. How do you write code that works with &quot;anything drawable&quot;?</p>
-<p><em>Interfaces</em> solve this. An interface defines a set of methods that entities must implement. It&#x27;s a contract: &quot;I promise I can do these things.&quot;</p>
+<p><em>Interfaces</em> solve this. An interface defines a set of methods that classes must implement. It&#x27;s a contract: &quot;I promise I can do these things.&quot;</p>
 <p>---</p>
 <h2 id="what-is-an-interface">What Is an Interface?</h2>
 <p>Before we dive into code, let&#x27;s understand what interfaces really are at a conceptual level.</p>
@@ -2814,7 +2814,7 @@ interface Drawable {
     func draw();
 }
 </code></pre>
-<p>This says: &quot;Anything that is Drawable must have a <code>draw()</code> method.&quot; It doesn&#x27;t say <em>how</em> to draw. That&#x27;s up to each entity.</p>
+<p>This says: &quot;Anything that is Drawable must have a <code>draw()</code> method.&quot; It doesn&#x27;t say <em>how</em> to draw. That&#x27;s up to each class.</p>
 <p>The interface contains only <em>method signatures</em>:</p>
 <ul>
 <li>The method name: <code>draw</code></li>
@@ -2841,9 +2841,9 @@ interface Calculator {
 </code></pre>
 <p>---</p>
 <h2 id="implementing-interfaces">Implementing Interfaces</h2>
-<p>When an entity <em>implements</em> an interface, it&#x27;s making a promise. It&#x27;s saying: &quot;I guarantee I can do everything this interface requires.&quot;</p>
+<p>When a class <em>implements</em> an interface, it&#x27;s making a promise. It&#x27;s saying: &quot;I guarantee I can do everything this interface requires.&quot;</p>
 <h3 id="what-does-implement-mean">What Does &quot;Implement&quot; Mean?</h3>
-<p>To implement an interface, an entity must:</p>
+<p>To implement an interface, a class must:</p>
 <ol>
 <li>Declare that it implements the interface using the <code>implements</code> keyword</li>
 <li>Provide working code for *every* method the interface declares</li>
@@ -2856,7 +2856,7 @@ interface Drawable {
     func draw();
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     radius: Number;
 
     func draw() {
@@ -2864,7 +2864,7 @@ entity Circle implements Drawable {
     }
 }
 
-entity Rectangle implements Drawable {
+class Rectangle implements Drawable {
     width: Number;
     height: Number;
 
@@ -2873,7 +2873,7 @@ entity Rectangle implements Drawable {
     }
 }
 </code></pre>
-<p>Both entities are Drawable. They each provide their own implementation of <code>draw()</code>. The Circle draws itself as a circle. The Rectangle draws itself as a rectangle. But both fulfill the Drawable contract.</p>
+<p>Both classes are Drawable. They each provide their own implementation of <code>draw()</code>. The Circle draws itself as a circle. The Rectangle draws itself as a rectangle. But both fulfill the Drawable contract.</p>
 <h3 id="the-compiler-enforces-the-contract">The Compiler Enforces the Contract</h3>
 <p>If you claim to implement an interface but forget a method, the compiler will complain:</p>
 <pre><code data-lang="rust">
@@ -2884,7 +2884,7 @@ interface Drawable {
     func getColor() -&gt; String;
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     func draw() {
         Say(&quot;Drawing circle&quot;);
     }
@@ -2901,7 +2901,7 @@ interface DataStore {
 }
 
 // Store in memory
-entity MemoryStore implements DataStore {
+class MemoryStore implements DataStore {
     data: {String: String};
 
     func save(key: String, value: String) {
@@ -2914,7 +2914,7 @@ entity MemoryStore implements DataStore {
 }
 
 // Store in a file
-entity FileStore implements DataStore {
+class FileStore implements DataStore {
     basePath: String;
 
     func save(key: String, value: String) {
@@ -2929,7 +2929,7 @@ entity FileStore implements DataStore {
 }
 
 // Store in a database
-entity DatabaseStore implements DataStore {
+class DatabaseStore implements DataStore {
     connection: DBConnection;
 
     func save(key: String, value: String) {
@@ -2951,7 +2951,7 @@ entity DatabaseStore implements DataStore {
 <p>Three completely different implementations, one interface. Code that uses DataStore doesn&#x27;t know or care which one it&#x27;s working with.</p>
 <p>---</p>
 <h2 id="using-interfaces">Using Interfaces</h2>
-<p>The power comes from treating different entities uniformly:</p>
+<p>The power comes from treating different classes uniformly:</p>
 <pre><code data-lang="rust">
 func renderScene(items: List[Drawable]) {
     for item in items {
@@ -2969,7 +2969,7 @@ renderScene(scene);
 </code></pre>
 <p>The <code>renderScene</code> function doesn&#x27;t know or care about the specific types. It just knows they&#x27;re Drawable, so it can call <code>draw()</code> on each one.</p>
 <h3 id="interface-types-in-variables-and-parameters">Interface Types in Variables and Parameters</h3>
-<p>You can use an interface as a type anywhere you&#x27;d use an entity type:</p>
+<p>You can use an interface as a type anywhere you&#x27;d use a class type:</p>
 <pre><code data-lang="rust">
 // As a variable type
 var drawable: Drawable = Circle { radius: 3.0 };
@@ -3004,20 +3004,20 @@ drawable.radius;  // ERROR: Drawable doesn&#x27;t define radius!
 <h3 id="inheritance-the-is-a-relationship">Inheritance: The &quot;Is-A&quot; Relationship</h3>
 <p><strong>Inheritance</strong> creates an &quot;is-a&quot; relationship and shares implementation:</p>
 <pre><code data-lang="rust">
-entity Dog extends Animal { ... }
+class Dog extends Animal { ... }
 // A dog IS an animal, inherits animal&#x27;s code
 </code></pre>
-<p>When you extend an entity:</p>
+<p>When you extend a class:</p>
 <ul>
 <li>You get all the parent&#x27;s fields automatically</li>
 <li>You get all the parent&#x27;s method implementations</li>
-<li>You can only extend ONE entity</li>
+<li>You can only extend ONE class</li>
 <li>You&#x27;re creating a tight coupling. Changes to the parent affect you.</li>
 </ul>
 <h3 id="interface-the-can-do-relationship">Interface: The &quot;Can-Do&quot; Relationship</h3>
 <p><strong>Interface</strong> creates a &quot;can-do&quot; relationship and shares behavior contract:</p>
 <pre><code data-lang="rust">
-entity Dog implements Drawable { ... }
+class Dog implements Drawable { ... }
 // A dog CAN BE drawn, must implement draw()
 </code></pre>
 <p>When you implement an interface:</p>
@@ -3063,8 +3063,8 @@ entity Dog implements Drawable { ... }
 <p><strong>Use inheritance when:</strong></p>
 <ul>
 <li>There&#x27;s a clear &quot;is-a&quot; relationship</li>
-<li>You want to share actual code between entities</li>
-<li>The entities are fundamentally the same kind of thing</li>
+<li>You want to share actual code between classes</li>
+<li>The classes are fundamentally the same kind of thing</li>
 <li>You need to reuse and extend parent behavior</li>
 </ul>
 <p><strong>Use interfaces when:</strong></p>
@@ -3077,19 +3077,19 @@ entity Dog implements Drawable { ... }
 <p><strong>Example decision:</strong></p>
 <pre><code data-lang="rust">
 // These ARE accounts. They share implementation. Use inheritance.
-entity BankAccount { ... }
-entity SavingsAccount extends BankAccount { ... }
-entity CheckingAccount extends BankAccount { ... }
+class BankAccount { ... }
+class SavingsAccount extends BankAccount { ... }
+class CheckingAccount extends BankAccount { ... }
 
 // These CAN BE printed. They&#x27;re different things. Use interface.
 interface Printable { func print(); }
-entity Document implements Printable { ... }
-entity Photo implements Printable { ... }
-entity Report implements Printable { ... }
+class Document implements Printable { ... }
+class Photo implements Printable { ... }
+class Report implements Printable { ... }
 </code></pre>
 <p>---</p>
 <h2 id="multiple-interfaces">Multiple Interfaces</h2>
-<p>One of the most powerful aspects of interfaces is that an entity can implement many of them. This is something inheritance can&#x27;t do.</p>
+<p>One of the most powerful aspects of interfaces is that a class can implement many of them. This is something inheritance can&#x27;t do.</p>
 <h3 id="why-multiple-interfaces">Why Multiple Interfaces?</h3>
 <p>In the real world, things have multiple capabilities. A smartphone:</p>
 <ul>
@@ -3116,7 +3116,7 @@ interface Clickable {
     func onClick();
 }
 
-entity Button implements Drawable, Movable, Clickable {
+class Button implements Drawable, Movable, Clickable {
     x: Number;
     y: Number;
     label: String;
@@ -3147,33 +3147,33 @@ moveAll([btn]);      // Works: Button is Movable
 handleClick(btn);    // Works: Button is Clickable
 </code></pre>
 <h3 id="flexible-combinations">Flexible Combinations</h3>
-<p>Different entities can implement different combinations:</p>
+<p>Different classes can implement different combinations:</p>
 <pre><code data-lang="rust">
 // A tree can be drawn but not moved or clicked
-entity Tree implements Drawable {
+class Tree implements Drawable {
     func draw() { ... }
 }
 
 // A player can be drawn and moved, but not clicked
-entity Player implements Drawable, Movable {
+class Player implements Drawable, Movable {
     func draw() { ... }
     func move(dx: Number, dy: Number) { ... }
 }
 
 // An invisible trigger can be moved and clicked, but not drawn
-entity InvisibleTrigger implements Movable, Clickable {
+class InvisibleTrigger implements Movable, Clickable {
     func move(dx: Number, dy: Number) { ... }
     func onClick() { ... }
 }
 </code></pre>
-<p>Each entity implements exactly what it needs. No more, no less.</p>
+<p>Each class implements exactly what it needs. No more, no less.</p>
 <p>---</p>
 <h2 id="interfaces-with-inheritance">Interfaces with Inheritance</h2>
 <p>You can combine inheritance and interfaces. This is common and powerful.</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Enemy {
+class Enemy {
     health: Integer;
 
     func takeDamage(amount: Integer) {
@@ -3189,7 +3189,7 @@ interface Attackable {
     func attack() -&gt; Integer;
 }
 
-entity Goblin extends Enemy implements Drawable, Attackable {
+class Goblin extends Enemy implements Drawable, Attackable {
     func draw() {
         Say(&quot;Drawing a goblin&quot;);
     }
@@ -3209,16 +3209,16 @@ entity Goblin extends Enemy implements Drawable, Attackable {
 <p>When combining, <code>extends</code> comes before <code>implements</code>:</p>
 <pre><code data-lang="rust">
 // Correct
-entity Goblin extends Enemy implements Drawable, Attackable { ... }
+class Goblin extends Enemy implements Drawable, Attackable { ... }
 
 // Wrong order (syntax error)
-entity Goblin implements Drawable extends Enemy { ... }
+class Goblin implements Drawable extends Enemy { ... }
 </code></pre>
 <h3 id="a-richer-example">A Richer Example</h3>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity GameObject {
+class GameObject {
     id: Integer;
     x: Number;
     y: Number;
@@ -3249,7 +3249,7 @@ interface Updatable {
 }
 
 // A player has everything
-entity Player extends GameObject implements Renderable, Collidable, Updatable {
+class Player extends GameObject implements Renderable, Collidable, Updatable {
     sprite: Sprite;
     velocity: Vector2;
     hitbox: Rectangle;
@@ -3277,7 +3277,7 @@ entity Player extends GameObject implements Renderable, Collidable, Updatable {
 }
 
 // A background image just renders, nothing else
-entity Background extends GameObject implements Renderable {
+class Background extends GameObject implements Renderable {
     image: Image;
 
     func render(screen: Screen) {
@@ -3295,7 +3295,7 @@ entity Background extends GameObject implements Renderable {
 <h3 id="the-problem-hardcoded-dependencies">The Problem: Hardcoded Dependencies</h3>
 <p>Consider a UserService that needs to store user data:</p>
 <pre><code data-lang="rust">
-entity UserService {
+class UserService {
     func saveUser(user: User) {
         var db = MySQLDatabase();  // Hardcoded!
         db.save(&quot;users&quot;, user);
@@ -3315,7 +3315,7 @@ interface Database {
     func load(table: String, id: Integer) -&gt; any;
 }
 
-entity UserService {
+class UserService {
     db: Database;  // Depends on interface, not implementation
 
     expose func init(database: Database) {
@@ -3374,7 +3374,7 @@ interface EmailSender {
     func send(to: String, subject: String, body: String);
 }
 
-entity OrderService {
+class OrderService {
     logger: Logger;
     payments: PaymentProcessor;
     email: EmailSender;
@@ -3425,7 +3425,7 @@ interface EmailSender {
 }
 
 // Real implementation for production
-entity SmtpEmailSender implements EmailSender {
+class SmtpEmailSender implements EmailSender {
     func send(to: String, subject: String, body: String) {
         // Actually send email via SMTP
         Viper.Net.SMTP.send(to, subject, body);
@@ -3433,7 +3433,7 @@ entity SmtpEmailSender implements EmailSender {
 }
 
 // Fake implementation for testing
-entity FakeEmailSender implements EmailSender {
+class FakeEmailSender implements EmailSender {
     sentEmails: List[Email];
 
     expose func init() {
@@ -3478,7 +3478,7 @@ func testOrderConfirmationEmail() {
 <h3 id="testing-edge-cases">Testing Edge Cases</h3>
 <p>Fakes let you simulate scenarios that are hard to create with real systems:</p>
 <pre><code data-lang="rust">
-entity AlwaysFailingPaymentProcessor implements PaymentProcessor {
+class AlwaysFailingPaymentProcessor implements PaymentProcessor {
     func charge(amount: Number, cardNumber: String) -&gt; Boolean {
         return false;  // Simulate payment failure
     }
@@ -3572,7 +3572,7 @@ interface Audible {
 <li>A tree implements only Drawable</li>
 <li>A player implements Drawable, Movable, Combatant, Saveable</li>
 <li>A sound effect implements only Audible</li>
-<li>Entities implement only what they need</li>
+<li>Classes implement only what they need</li>
 </ul>
 <h3 id="the-newspaper-analogy">The Newspaper Analogy</h3>
 <p>Think of small interfaces like sections of a newspaper. The sports fan reads the sports section. The investor reads the business section. Nobody is forced to read the entire paper to get what they want.</p>
@@ -3652,7 +3652,7 @@ interface Plugin {
 }
 
 // Some plugins
-entity UppercasePlugin implements Plugin {
+class UppercasePlugin implements Plugin {
     func getName() -&gt; String {
         return &quot;Uppercase&quot;;
     }
@@ -3662,7 +3662,7 @@ entity UppercasePlugin implements Plugin {
     }
 }
 
-entity ReversePlugin implements Plugin {
+class ReversePlugin implements Plugin {
     func getName() -&gt; String {
         return &quot;Reverse&quot;;
     }
@@ -3672,7 +3672,7 @@ entity ReversePlugin implements Plugin {
     }
 }
 
-entity RepeatPlugin implements Plugin {
+class RepeatPlugin implements Plugin {
     times: Integer;
 
     expose func init(times: Integer) {
@@ -3689,7 +3689,7 @@ entity RepeatPlugin implements Plugin {
 }
 
 // Plugin manager doesn&#x27;t need to know about specific plugins
-entity PluginManager {
+class PluginManager {
     plugins: List[Plugin];
 
     expose func init() {
@@ -3748,7 +3748,7 @@ interface Printable {
     func print();
 }
 
-entity Document implements Printable {
+class Document implements Printable {
     func print() {
         Say(&quot;Printing document&quot;);
     }
@@ -3775,21 +3775,21 @@ interface SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer];
 }
 
-entity QuickSort implements SortStrategy {
+class QuickSort implements SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer] {
         // Quick sort implementation
         ...
     }
 }
 
-entity MergeSort implements SortStrategy {
+class MergeSort implements SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer] {
         // Merge sort implementation
         ...
     }
 }
 
-entity BubbleSort implements SortStrategy {
+class BubbleSort implements SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer] {
         // Bubble sort implementation (slow but simple)
         ...
@@ -3817,7 +3817,7 @@ interface Observer {
     func onEvent(event: String);
 }
 
-entity Subject {
+class Subject {
     observers: List[Observer];
 
     expose func init() {
@@ -3840,13 +3840,13 @@ entity Subject {
 }
 
 // Different observers respond differently
-entity LoggingObserver implements Observer {
+class LoggingObserver implements Observer {
     func onEvent(event: String) {
         Say(&quot;LOG: &quot; + event);
     }
 }
 
-entity EmailObserver implements Observer {
+class EmailObserver implements Observer {
     adminEmail: String;
 
     func onEvent(event: String) {
@@ -3873,7 +3873,7 @@ interface UserRepository {
 }
 
 // In-memory implementation for development/testing
-entity InMemoryUserRepository implements UserRepository {
+class InMemoryUserRepository implements UserRepository {
     users: {Integer: User};
     nextId: Integer;
 
@@ -3908,7 +3908,7 @@ entity InMemoryUserRepository implements UserRepository {
 }
 
 // PostgreSQL implementation for production
-entity PostgresUserRepository implements UserRepository {
+class PostgresUserRepository implements UserRepository {
     connection: PGConnection;
 
     func findById(id: Integer) -&gt; User {
@@ -3925,20 +3925,20 @@ entity PostgresUserRepository implements UserRepository {
 <h2 id="when-to-use-interfaces">When to Use Interfaces</h2>
 <p><strong>Use interfaces when:</strong></p>
 <ul>
-<li>Different entities need to be treated uniformly (all Drawables can be drawn)</li>
+<li>Different classes need to be treated uniformly (all Drawables can be drawn)</li>
 <li>You&#x27;re designing a plugin or extension system</li>
 <li>You want to define contracts without dictating implementation</li>
-<li>You need multiple inheritance of behavior (one entity, many capabilities)</li>
+<li>You need multiple inheritance of behavior (one class, many capabilities)</li>
 <li>You want to enable testing with mocks/fakes</li>
 <li>You&#x27;re building for flexibility and future extension</li>
 <li>You want loose coupling between parts of your system</li>
 </ul>
 <p><strong>Use inheritance when:</strong></p>
 <ul>
-<li>Entities share actual implementation code</li>
+<li>Classes share actual implementation code</li>
 <li>There&#x27;s a clear &quot;is-a&quot; relationship</li>
 <li>You want to reuse and extend parent code</li>
-<li>The entities are fundamentally the same kind of thing</li>
+<li>The classes are fundamentally the same kind of thing</li>
 </ul>
 <p>Often you&#x27;ll use both together: inheritance for shared code, interfaces for shared contracts. A <code>Goblin extends Enemy implements Drawable, Attackable</code> gets code from Enemy and implements the Drawable and Attackable contracts.</p>
 <p>---</p>
@@ -3946,9 +3946,9 @@ entity PostgresUserRepository implements UserRepository {
 <ul>
 <li>*Interfaces* define method contracts without implementation</li>
 <li>Think of interfaces as contracts or promises: &quot;I can do these things&quot;</li>
-<li>Entities *implement* interfaces by providing the methods</li>
-<li>An entity can implement multiple interfaces (unlike single inheritance)</li>
-<li>Interfaces enable polymorphism: treating different entities uniformly</li>
+<li>Classes *implement* interfaces by providing the methods</li>
+<li>A class can implement multiple interfaces (unlike single inheritance)</li>
+<li>Interfaces enable polymorphism: treating different classes uniformly</li>
 <li><strong>Program to interfaces, not implementations</strong> for flexible, testable code</li>
 <li>Use small, focused interfaces (Interface Segregation Principle)</li>
 <li>Interfaces make testing easy through mocking and fakes</li>
@@ -3965,14 +3965,14 @@ entity PostgresUserRepository implements UserRepository {
 <p>Master interfaces, and you&#x27;ll write code that adapts to change instead of fighting it.</p>
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
-<p><strong>Exercise 16.1</strong>: Create a <code>Comparable</code> interface with a <code>compareTo(other) -&gt; Integer</code> method. Implement it for a <code>Person</code> entity (compare by age). Write a function that finds the oldest person in a list.</p>
-<p><strong>Exercise 16.2</strong>: Create <code>Readable</code> and <code>Writable</code> interfaces. Create a <code>File</code> entity that implements both. Create a <code>ReadOnlyFile</code> that implements only <code>Readable</code>.</p>
-<p><strong>Exercise 16.3</strong>: Create a simple command pattern: <code>Command</code> interface with <code>execute()</code> and <code>undo()</code>. Create <code>AddCommand</code>, <code>DeleteCommand</code>, <code>MoveCommand</code> entities. Build a simple undo system.</p>
-<p><strong>Exercise 16.4</strong>: Create a <code>Serializable</code> interface with <code>toJson() -&gt; String</code> and <code>fromJson(s: String)</code>. Implement for a simple data entity. Think about how you&#x27;d test this.</p>
+<p><strong>Exercise 16.1</strong>: Create a <code>Comparable</code> interface with a <code>compareTo(other) -&gt; Integer</code> method. Implement it for a <code>Person</code> class (compare by age). Write a function that finds the oldest person in a list.</p>
+<p><strong>Exercise 16.2</strong>: Create <code>Readable</code> and <code>Writable</code> interfaces. Create a <code>File</code> class that implements both. Create a <code>ReadOnlyFile</code> that implements only <code>Readable</code>.</p>
+<p><strong>Exercise 16.3</strong>: Create a simple command pattern: <code>Command</code> interface with <code>execute()</code> and <code>undo()</code>. Create <code>AddCommand</code>, <code>DeleteCommand</code>, <code>MoveCommand</code> classes. Build a simple undo system.</p>
+<p><strong>Exercise 16.4</strong>: Create a <code>Serializable</code> interface with <code>toJson() -&gt; String</code> and <code>fromJson(s: String)</code>. Implement for a simple data class. Think about how you&#x27;d test this.</p>
 <p><strong>Exercise 16.5</strong>: Create a filter system: <code>Filter</code> interface with <code>matches(item) -&gt; Boolean</code>. Create <code>AgeFilter</code>, <code>NameFilter</code>, <code>ActiveFilter</code>. Write code that applies multiple filters to a list of users.</p>
 <p><strong>Exercise 16.6</strong>: Create a <code>Logger</code> interface. Implement <code>ConsoleLogger</code>, <code>FileLogger</code>, and <code>NullLogger</code> (does nothing). Use dependency injection in a service that logs.</p>
 <p><strong>Exercise 16.7</strong>: Create <code>PaymentProcessor</code> interface. Implement <code>StripeProcessor</code> (real) and <code>FakeProcessor</code> (for tests). Write tests for a checkout service using the fake.</p>
-<p><strong>Exercise 16.8</strong> (Challenge): Build a complete event system: <code>EventListener</code> interface, <code>EventDispatcher</code> entity that manages listeners and dispatches events. Support multiple listeners for the same event type.</p>
+<p><strong>Exercise 16.8</strong> (Challenge): Build a complete event system: <code>EventListener</code> interface, <code>EventDispatcher</code> class that manages listeners and dispatches events. Support multiple listeners for the same event type.</p>
 <p><strong>Exercise 16.9</strong> (Challenge): Design interfaces for a document editor that supports multiple file formats. Think about: <code>Loadable</code>, <code>Saveable</code>, <code>Renderable</code>, <code>Editable</code>. How would you handle format conversion?</p>
 <p>---</p>
 <p><em>We&#x27;ve seen interfaces as contracts. Next, we put it all together with polymorphism. Writing code that works with many types through common interfaces.</em></p>
@@ -4016,19 +4016,19 @@ interface PaymentMethod {
     func pay(amount: Number) -&gt; Boolean;
 }
 
-entity CashPayment implements PaymentMethod {
+class CashPayment implements PaymentMethod {
     func pay(amount: Number) -&gt; Boolean {
         // Count bills, make change
     }
 }
 
-entity CreditCard implements PaymentMethod {
+class CreditCard implements PaymentMethod {
     func pay(amount: Number) -&gt; Boolean {
         // Contact bank, authorize transaction
     }
 }
 
-entity MobilePayment implements PaymentMethod {
+class MobilePayment implements PaymentMethod {
     func pay(amount: Number) -&gt; Boolean {
         // Communicate with phone, verify fingerprint
     }
@@ -4053,37 +4053,37 @@ func checkout(items: List[Item], payment: PaymentMethod) {
 <p>Without polymorphism, your code becomes a cascade of type checks:</p>
 <pre><code data-lang="rust">
 // Without polymorphism - this gets ugly fast
-func processEntity(entity: Any, type: String) {
+func processEntity(class: Any, type: String) {
     if type == &quot;player&quot; {
-        entity.movePlayer();
-        entity.drawPlayer();
-        entity.handlePlayerInput();
+        class.movePlayer();
+        class.drawPlayer();
+        class.handlePlayerInput();
     } else if type == &quot;enemy&quot; {
-        entity.moveEnemy();
-        entity.drawEnemy();
-        entity.runEnemyAI();
+        class.moveEnemy();
+        class.drawEnemy();
+        class.runEnemyAI();
     } else if type == &quot;projectile&quot; {
-        entity.moveProjectile();
-        entity.drawProjectile();
-        entity.checkProjectileCollision();
+        class.moveProjectile();
+        class.drawProjectile();
+        class.checkProjectileCollision();
     } else if type == &quot;particle&quot; {
-        entity.moveParticle();
-        entity.drawParticle();
-        entity.updateParticleLife();
+        class.moveParticle();
+        class.drawParticle();
+        class.updateParticleLife();
     }
     // This goes on forever...
 }
 </code></pre>
-<p>Every new entity type requires modifying this function. Miss one place? Bug. Forget to add a case? Bug. Want to reorganize? Touch dozens of files.</p>
+<p>Every new class type requires modifying this function. Miss one place? Bug. Forget to add a case? Bug. Want to reorganize? Touch dozens of files.</p>
 <p>With polymorphism:</p>
 <pre><code data-lang="rust">
 // With polymorphism - clean and maintainable
-func processEntity(entity: GameEntity) {
-    entity.update();
-    entity.draw();
+func processEntity(class: GameEntity) {
+    class.update();
+    class.draw();
 }
 </code></pre>
-<p>The <code>GameEntity</code> interface (or base class) guarantees that every entity knows how to update and draw itself. New entity types just implement the interface — no modification to existing code.</p>
+<p>The <code>GameEntity</code> interface (or base class) guarantees that every class knows how to update and draw itself. New class types just implement the interface — no modification to existing code.</p>
 <h3 id="problem-2-adding-new-types-should-be-easy">Problem 2: Adding New Types Should Be Easy</h3>
 <p>Imagine a graphics program with shapes. Version 1 supports circles and rectangles. Version 2 adds triangles. Version 3 adds polygons. Version 4 adds curves.</p>
 <p>Without polymorphism, every feature that works with shapes must be updated for every new shape. Drawing code, selection code, resizing code, export code — all need new cases added.</p>
@@ -4094,7 +4094,7 @@ func processEntity(entity: GameEntity) {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity MockPayment implements PaymentMethod {
+class MockPayment implements PaymentMethod {
     func pay(amount: Number) -&gt; Boolean {
         Say(&quot;[Test] Would charge: &quot; + amount);
         return true;  // Always succeeds for testing
@@ -4114,25 +4114,25 @@ checkout(items, testPayment);  // No real money charged
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Animal {
+class Animal {
     func speak() {
         Say(&quot;...&quot;);
     }
 }
 
-entity Dog extends Animal {
+class Dog extends Animal {
     func speak() {
         Say(&quot;Woof!&quot;);
     }
 }
 
-entity Cat extends Animal {
+class Cat extends Animal {
     func speak() {
         Say(&quot;Meow!&quot;);
     }
 }
 
-entity Cow extends Animal {
+class Cow extends Animal {
     func speak() {
         Say(&quot;Moo!&quot;);
     }
@@ -4178,7 +4178,7 @@ mystery.speak();  // Which sound? We don&#x27;t know until runtime!
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-entity Printer {
+class Printer {
     func print(text: String) {
         Say(text);
     }
@@ -4232,37 +4232,37 @@ var firstName = first(names);    // Returns String
 <h2 id="the-power-of-polymorphic-collections">The Power of Polymorphic Collections</h2>
 <p>One of the most practical applications of polymorphism is creating collections of mixed types.</p>
 <h3 id="the-game-loop-pattern">The Game Loop Pattern</h3>
-<p>Consider a game with many different kinds of entities:</p>
+<p>Consider a game with many different kinds of classes:</p>
 <pre><code data-lang="rust">
 interface Updatable {
     func update(deltaTime: Number);
 }
 
-entity Player implements Updatable {
+class Player implements Updatable {
     func update(deltaTime: Number) {
         // Read input, move character, check interactions
     }
 }
 
-entity Enemy implements Updatable {
+class Enemy implements Updatable {
     func update(deltaTime: Number) {
         // Run AI, chase player, attack if in range
     }
 }
 
-entity Projectile implements Updatable {
+class Projectile implements Updatable {
     func update(deltaTime: Number) {
         // Move forward, check for collisions
     }
 }
 
-entity Particle implements Updatable {
+class Particle implements Updatable {
     func update(deltaTime: Number) {
         // Fade out, drift, disappear when expired
     }
 }
 
-entity AnimatedDecoration implements Updatable {
+class AnimatedDecoration implements Updatable {
     func update(deltaTime: Number) {
         // Advance animation frame
     }
@@ -4270,28 +4270,28 @@ entity AnimatedDecoration implements Updatable {
 </code></pre>
 <p>Now the game loop becomes beautifully simple:</p>
 <pre><code data-lang="rust">
-var entities: List[Updatable] = [];
+var classes: List[Updatable] = [];
 
 // Add all kinds of things
-entities.Push(Player());
-entities.Push(Enemy());
-entities.Push(Enemy());
-entities.Push(Particle());
-entities.Push(Projectile());
-entities.Push(AnimatedDecoration());
+classes.Push(Player());
+classes.Push(Enemy());
+classes.Push(Enemy());
+classes.Push(Particle());
+classes.Push(Projectile());
+classes.Push(AnimatedDecoration());
 
 // The game loop - handles everything uniformly
 while running {
     var deltaTime = getDeltaTime();
 
-    for entity in entities {
-        entity.update(deltaTime);  // Each updates in its own way
+    for class in classes {
+        class.update(deltaTime);  // Each updates in its own way
     }
 
     render();
 }
 </code></pre>
-<p>One loop handles everything. Players, enemies, projectiles, particles — all different types, all updated through the same interface. Adding a new entity type means creating a new class that implements <code>Updatable</code>. The game loop never changes.</p>
+<p>One loop handles everything. Players, enemies, projectiles, particles — all different types, all updated through the same interface. Adding a new class type means creating a new class that implements <code>Updatable</code>. The game loop never changes.</p>
 <h3 id="rendering-systems">Rendering Systems</h3>
 <p>The same pattern works for drawing:</p>
 <pre><code data-lang="rust">
@@ -4300,27 +4300,27 @@ interface Drawable {
     func getDepth() -&gt; Integer;  // For sorting (draw back-to-front)
 }
 
-entity Background implements Drawable {
+class Background implements Drawable {
     func draw() { /* Draw sky, mountains */ }
     func getDepth() -&gt; Integer { return 0; }  // Furthest back
 }
 
-entity Ground implements Drawable {
+class Ground implements Drawable {
     func draw() { /* Draw terrain */ }
     func getDepth() -&gt; Integer { return 1; }
 }
 
-entity Character implements Drawable {
+class Character implements Drawable {
     func draw() { /* Draw sprite */ }
     func getDepth() -&gt; Integer { return 2; }
 }
 
-entity Foreground implements Drawable {
+class Foreground implements Drawable {
     func draw() { /* Draw trees, buildings in front */ }
     func getDepth() -&gt; Integer { return 3; }
 }
 
-entity UIOverlay implements Drawable {
+class UIOverlay implements Drawable {
     func draw() { /* Draw health bar, score */ }
     func getDepth() -&gt; Integer { return 100; }  // Always on top
 }
@@ -4348,21 +4348,21 @@ interface Exporter {
     func getExtension() -&gt; String;
 }
 
-entity PDFExporter implements Exporter {
+class PDFExporter implements Exporter {
     func export(document: Document) -&gt; String {
         // Convert to PDF format
     }
     func getExtension() -&gt; String { return &quot;pdf&quot;; }
 }
 
-entity HTMLExporter implements Exporter {
+class HTMLExporter implements Exporter {
     func export(document: Document) -&gt; String {
         // Convert to HTML
     }
     func getExtension() -&gt; String { return &quot;html&quot;; }
 }
 
-entity MarkdownExporter implements Exporter {
+class MarkdownExporter implements Exporter {
     func export(document: Document) -&gt; String {
         // Convert to Markdown
     }
@@ -4373,7 +4373,7 @@ entity MarkdownExporter implements Exporter {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity ExportMenu {
+class ExportMenu {
     exporters: List[Exporter];
 
     expose func init() {
@@ -4405,7 +4405,7 @@ entity ExportMenu {
 </code></pre>
 <p>Later, someone wants to add Word export. They create a <code>WordExporter</code> class:</p>
 <pre><code data-lang="rust">
-entity WordExporter implements Exporter {
+class WordExporter implements Exporter {
     func export(document: Document) -&gt; String {
         // Convert to Word format
     }
@@ -4429,7 +4429,7 @@ interface Plugin {
     func execute(context: PluginContext);
 }
 
-entity PluginManager {
+class PluginManager {
     plugins: List[Plugin];
 
     func loadPlugin(plugin: Plugin) {
@@ -4445,7 +4445,7 @@ entity PluginManager {
     }
 }
 </code></pre>
-<p>The PluginManager is completely decoupled from any specific plugin. It works with any entity that implements the <code>Plugin</code> interface. Third-party developers can create plugins without access to your source code — they just need to know the interface.</p>
+<p>The PluginManager is completely decoupled from any specific plugin. It works with any class that implements the <code>Plugin</code> interface. Third-party developers can create plugins without access to your source code — they just need to know the interface.</p>
 <p>---</p>
 <h2 id="practical-patterns-using-polymorphism">Practical Patterns Using Polymorphism</h2>
 <p>Let&#x27;s explore common patterns that leverage polymorphism.</p>
@@ -4457,12 +4457,12 @@ interface CompressionStrategy {
     func decompress(data: String) -&gt; String;
 }
 
-entity NoCompression implements CompressionStrategy {
+class NoCompression implements CompressionStrategy {
     func compress(data: String) -&gt; String { return data; }
     func decompress(data: String) -&gt; String { return data; }
 }
 
-entity GzipCompression implements CompressionStrategy {
+class GzipCompression implements CompressionStrategy {
     func compress(data: String) -&gt; String {
         // Apply gzip algorithm
     }
@@ -4471,7 +4471,7 @@ entity GzipCompression implements CompressionStrategy {
     }
 }
 
-entity LZ4Compression implements CompressionStrategy {
+class LZ4Compression implements CompressionStrategy {
     func compress(data: String) -&gt; String {
         // Apply LZ4 - faster but less compression
     }
@@ -4480,7 +4480,7 @@ entity LZ4Compression implements CompressionStrategy {
     }
 }
 
-entity FileManager {
+class FileManager {
     compression: CompressionStrategy;
 
     expose func init(compression: CompressionStrategy) {
@@ -4519,7 +4519,7 @@ interface EventHandler {
     func canHandle(event: Event) -&gt; Boolean;
 }
 
-entity KeyPressHandler implements EventHandler {
+class KeyPressHandler implements EventHandler {
     func canHandle(event: Event) -&gt; Boolean {
         return event.type == &quot;keypress&quot;;
     }
@@ -4529,7 +4529,7 @@ entity KeyPressHandler implements EventHandler {
     }
 }
 
-entity MouseClickHandler implements EventHandler {
+class MouseClickHandler implements EventHandler {
     func canHandle(event: Event) -&gt; Boolean {
         return event.type == &quot;click&quot;;
     }
@@ -4539,7 +4539,7 @@ entity MouseClickHandler implements EventHandler {
     }
 }
 
-entity ResizeHandler implements EventHandler {
+class ResizeHandler implements EventHandler {
     func canHandle(event: Event) -&gt; Boolean {
         return event.type == &quot;resize&quot;;
     }
@@ -4549,7 +4549,7 @@ entity ResizeHandler implements EventHandler {
     }
 }
 
-entity EventDispatcher {
+class EventDispatcher {
     handlers: List[EventHandler];
 
     func dispatch(event: Event) {
@@ -4571,7 +4571,7 @@ interface Command {
     func getDescription() -&gt; String;
 }
 
-entity InsertTextCommand implements Command {
+class InsertTextCommand implements Command {
     document: Document;
     position: Integer;
     text: String;
@@ -4589,7 +4589,7 @@ entity InsertTextCommand implements Command {
     }
 }
 
-entity DeleteTextCommand implements Command {
+class DeleteTextCommand implements Command {
     document: Document;
     position: Integer;
     deletedText: String;
@@ -4608,7 +4608,7 @@ entity DeleteTextCommand implements Command {
     }
 }
 
-entity CommandHistory {
+class CommandHistory {
     executed: List[Command];
     undone: List[Command];
 
@@ -4671,7 +4671,7 @@ func feedAnimal(animal: Feedable) {
 }
 </code></pre>
 <h3 id="the-contract-mental-model">The Contract Mental Model</h3>
-<p>An interface is a contract. When an entity implements an interface, it makes a promise: &quot;I guarantee I can do these things.&quot;</p>
+<p>An interface is a contract. When a class implements an interface, it makes a promise: &quot;I guarantee I can do these things.&quot;</p>
 <p>When you write code that accepts an interface:</p>
 <ul>
 <li>You&#x27;re saying &quot;I need something that can do X&quot;</li>
@@ -4714,7 +4714,7 @@ interface Movable {
 }
 
 // Base class: provides shared implementation
-entity GameEntity {
+class GameEntity {
     x: Number;
     y: Number;
 
@@ -4724,7 +4724,7 @@ entity GameEntity {
 }
 
 // Derived classes: inherit code AND implement interfaces
-entity Player extends GameEntity implements Attackable, Drawable, Movable {
+class Player extends GameEntity implements Attackable, Drawable, Movable {
     health: Integer;
     sprite: Sprite;
 
@@ -4748,14 +4748,14 @@ entity Player extends GameEntity implements Attackable, Drawable, Movable {
     }
 }
 
-entity Tree extends GameEntity implements Drawable {
+class Tree extends GameEntity implements Drawable {
     // Trees don&#x27;t move or take damage - just Drawable
     func draw() {
         drawTreeSprite(self.x, self.y);
     }
 }
 
-entity Enemy extends GameEntity implements Attackable, Drawable, Movable {
+class Enemy extends GameEntity implements Attackable, Drawable, Movable {
     health: Integer;
 
     func takeDamage(amount: Integer) {
@@ -4789,7 +4789,7 @@ for d in drawables { d.draw(); }        // Render everything
 for a in attackables { a.takeDamage(1); }  // Area damage
 for m in movables { m.move(wind.x, wind.y); }  // Wind pushes things
 </code></pre>
-<p>The Player can be in all three collections. The Tree only appears in drawables. Each entity participates in exactly the systems that make sense for it.</p>
+<p>The Player can be in all three collections. The Tree only appears in drawables. Each class participates in exactly the systems that make sense for it.</p>
 <p>---</p>
 <h2 id="a-complete-example-drawing-system">A Complete Example: Drawing System</h2>
 <p>Let&#x27;s build a complete rendering system that demonstrates polymorphism&#x27;s power:</p>
@@ -4803,7 +4803,7 @@ interface Drawable {
     func getBounds() -&gt; Rect;
 }
 
-value Rect {
+struct Rect {
     x: Number;
     y: Number;
     width: Number;
@@ -4815,7 +4815,7 @@ value Rect {
     }
 }
 
-entity Circle implements Drawable {
+class Circle implements Drawable {
     x: Number;
     y: Number;
     radius: Number;
@@ -4843,7 +4843,7 @@ entity Circle implements Drawable {
     }
 }
 
-entity Rectangle implements Drawable {
+class Rectangle implements Drawable {
     x: Number;
     y: Number;
     width: Number;
@@ -4868,7 +4868,7 @@ entity Rectangle implements Drawable {
     }
 }
 
-entity Text implements Drawable {
+class Text implements Drawable {
     x: Number;
     y: Number;
     content: String;
@@ -4893,7 +4893,7 @@ entity Text implements Drawable {
 }
 
 // Group of drawables - demonstrates the Composite Pattern
-entity Group implements Drawable {
+class Group implements Drawable {
     children: List[Drawable];
     name: String;
 
@@ -4994,13 +4994,13 @@ interface Animal {
     func speak();
 }
 
-entity Dog implements Animal {
+class Dog implements Animal {
     func speak() {
         Say(&quot;Woof!&quot;);
     }
 }
 
-entity Cat implements Animal {
+class Cat implements Animal {
     func speak() {
         Say(&quot;Meow!&quot;);
     }
@@ -5036,7 +5036,7 @@ NEXT
 </code></pre>
 <p>---</p>
 <h2 id="enums-and-pattern-matching">Enums and Pattern Matching</h2>
-<p>Polymorphism isn&#x27;t limited to entities and interfaces. Viper also supports <strong>enumerations</strong> — fixed sets of named constants — with exhaustive pattern matching through <code>match</code>:</p>
+<p>Polymorphism isn&#x27;t limited to classes and interfaces. Viper also supports <strong>enumerations</strong> — fixed sets of named constants — with exhaustive pattern matching through <code>match</code>:</p>
 <pre><code data-lang="rust">
 enum Direction { North, South, East, West }
 
@@ -5077,16 +5077,16 @@ interface Drawable {
 <p>Not everything needs to share code. Often, shared <em>behavior contracts</em> (interfaces) are more flexible than shared <em>implementation</em> (inheritance).</p>
 <pre><code data-lang="rust">
 // Awkward: forcing inheritance for unrelated things
-entity Drawable { func draw() { } }
-entity DrawableCircle extends Drawable { ... }
-entity DrawableEnemy extends Drawable { ... }
-entity DrawableUI extends Drawable { ... }
+class Drawable { func draw() { } }
+class DrawableCircle extends Drawable { ... }
+class DrawableEnemy extends Drawable { ... }
+class DrawableUI extends Drawable { ... }
 
 // Better: interface lets unrelated things share behavior
 interface Drawable { func draw(); }
-entity Circle implements Drawable { ... }
-entity Enemy implements Drawable { ... }
-entity UIElement implements Drawable { ... }
+class Circle implements Drawable { ... }
+class Enemy implements Drawable { ... }
+class UIElement implements Drawable { ... }
 </code></pre>
 <h3 id="mistake-4-not-using-polymorphism-when-you-should">Mistake 4: Not Using Polymorphism When You Should</h3>
 <p>If you see code like this:</p>
@@ -5117,7 +5117,7 @@ if type == &quot;A&quot; {
 <li>*Polymorphism* means &quot;many forms&quot; — one interface, many implementations</li>
 <li><strong>Runtime polymorphism</strong> (dynamic dispatch) determines methods at runtime based on actual object type</li>
 <li><strong>Compile-time polymorphism</strong> (overloading) determines methods at compile time based on argument types</li>
-<li>Use base entities or interfaces to treat different types uniformly</li>
+<li>Use base classes or interfaces to treat different types uniformly</li>
 <li>Collections can hold mixed types through common interfaces</li>
 <li>The <strong>Strategy pattern</strong> swaps algorithms through interfaces</li>
 <li>The <strong>Command pattern</strong> encapsulates actions for undo/redo</li>
@@ -5135,7 +5135,7 @@ if type == &quot;A&quot; {
 <p><strong>Exercise 17.5</strong>: Create a validation system: <code>Validator</code> interface with <code>validate(input: String) -&gt; Boolean</code> and <code>getError() -&gt; String</code>. Create <code>LengthValidator</code>, <code>EmailValidator</code>, <code>NumberValidator</code>. Write code that applies multiple validators.</p>
 <p><strong>Exercise 17.6</strong>: Implement a simple calculator using the Command pattern with undo/redo. Commands: <code>AddCommand</code>, <code>SubtractCommand</code>, <code>MultiplyCommand</code>, <code>DivideCommand</code>.</p>
 <p><strong>Exercise 17.7</strong> (Challenge): Build a simple expression evaluator: <code>Expression</code> interface with <code>evaluate() -&gt; Number</code>, implemented by <code>NumericLiteral</code>, <code>Add</code>, <code>Subtract</code>, <code>Multiply</code>, <code>Divide</code>. Create an expression tree like <code>Add(Multiply(2, 3), 4)</code> and evaluate it (should return 10).</p>
-<p><strong>Exercise 17.8</strong> (Challenge): Create a simple game with polymorphic entities. Define <code>GameEntity</code> interface with <code>update()</code> and <code>render()</code>. Create <code>Player</code>, <code>Enemy</code>, <code>Projectile</code>, and <code>PowerUp</code> entities. Write a game loop that updates and renders all entities.</p>
+<p><strong>Exercise 17.8</strong> (Challenge): Create a simple game with polymorphic classes. Define <code>GameEntity</code> interface with <code>update()</code> and <code>render()</code>. Create <code>Player</code>, <code>Enemy</code>, <code>Projectile</code>, and <code>PowerUp</code> classes. Write a game loop that updates and renders all classes.</p>
 <p>---</p>
 <p><em>We&#x27;ve mastered the core of object-oriented programming. You now understand how inheritance provides shared implementation, interfaces provide shared contracts, and polymorphism ties them together into flexible, extensible systems. Next, we look at design patterns — recurring solutions to recurring problems that experienced programmers use every day.</em></p>
 <p><em>[Continue to Chapter 18: Design Patterns](18-patterns.md)</em></p>
@@ -5158,7 +5158,7 @@ if type == &quot;A&quot; {
 <p>These solutions work. They&#x27;ve been battle-tested in thousands of programs across decades. When you use the Observer pattern for event handling, you&#x27;re not experimenting — you&#x27;re applying a technique that&#x27;s succeeded in countless applications from word processors to video games to operating systems.</p>
 <p>Compare this to designing your own solution from scratch. You might create something clever, but you&#x27;ll probably hit problems that pattern designers already solved. Why rediscover what others learned the hard way?</p>
 <h3 id="a-shared-vocabulary">A Shared Vocabulary</h3>
-<p>Imagine explaining a solution: &quot;Create an interface for the algorithm, then have different entities implement it. Store one of them in your main entity and delegate to it. You can swap implementations at runtime.&quot;</p>
+<p>Imagine explaining a solution: &quot;Create an interface for the algorithm, then have different classes implement it. Store one of them in your main class and delegate to it. You can swap implementations at runtime.&quot;</p>
 <p>Or you could say: &quot;Use the Strategy pattern.&quot;</p>
 <p>The second version communicates instantly to anyone who knows patterns. It&#x27;s like the difference between describing &quot;a sequence of handshakes, key exchanges, and encrypted communication&quot; versus saying &quot;TLS.&quot; Vocabulary matters.</p>
 <p>When you join a team or read open-source code, pattern names appear everywhere. Knowing patterns lets you understand existing code faster and communicate your designs more clearly.</p>
@@ -5218,7 +5218,7 @@ if type == &quot;A&quot; {
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity GameEngine {
+class GameEngine {
     // The single instance, hidden from outside
     hide static instance: GameEngine? = null;
 
@@ -5273,7 +5273,7 @@ func start() {
 bind Viper.Terminal;
 bind File = Viper.IO.File;
 
-entity Config {
+class Config {
     hide static instance: Config? = null;
 
     // Configuration data
@@ -5400,7 +5400,7 @@ interface Enemy {
     func getName() -&gt; String;
 }
 
-entity Goblin implements Enemy {
+class Goblin implements Enemy {
     x: Number;
     y: Number;
 
@@ -5422,7 +5422,7 @@ entity Goblin implements Enemy {
     }
 }
 
-entity Orc implements Enemy {
+class Orc implements Enemy {
     x: Number;
     y: Number;
 
@@ -5444,7 +5444,7 @@ entity Orc implements Enemy {
     }
 }
 
-entity Dragon implements Enemy {
+class Dragon implements Enemy {
     x: Number;
     y: Number;
 
@@ -5467,7 +5467,7 @@ entity Dragon implements Enemy {
 }
 
 // The Factory
-entity EnemyFactory {
+class EnemyFactory {
     static func create(type: String, x: Number, y: Number) -&gt; Enemy {
         if type == &quot;goblin&quot; {
             return Goblin(x, y);
@@ -5588,7 +5588,7 @@ var hero = Character(
 <pre><code data-lang="rust">
 bind Viper.Terminal;
 
-entity Character {
+class Character {
     name: String;
     characterClass: String;
     health: Integer;
@@ -5633,7 +5633,7 @@ entity Character {
     }
 }
 
-entity CharacterBuilder {
+class CharacterBuilder {
     // All fields with defaults
     hide name: String = &quot;Unnamed&quot;;
     hide characterClass: String = &quot;Adventurer&quot;;
@@ -5855,7 +5855,7 @@ interface RouteStrategy {
     func getEstimatedTime(distance: Number) -&gt; Number;
 }
 
-entity DrivingStrategy implements RouteStrategy {
+class DrivingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -&gt; List[Point] {
         Say(&quot;Calculating driving route...&quot;);
         // Prefer highways, avoid pedestrian zones
@@ -5872,7 +5872,7 @@ entity DrivingStrategy implements RouteStrategy {
     }
 }
 
-entity WalkingStrategy implements RouteStrategy {
+class WalkingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -&gt; List[Point] {
         Say(&quot;Calculating walking route...&quot;);
         // Use sidewalks, can cut through parks
@@ -5888,7 +5888,7 @@ entity WalkingStrategy implements RouteStrategy {
     }
 }
 
-entity BikingStrategy implements RouteStrategy {
+class BikingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -&gt; List[Point] {
         Say(&quot;Calculating biking route...&quot;);
         // Use bike lanes, avoid steep hills
@@ -5904,7 +5904,7 @@ entity BikingStrategy implements RouteStrategy {
     }
 }
 
-entity TransitStrategy implements RouteStrategy {
+class TransitStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -&gt; List[Point] {
         Say(&quot;Calculating transit route...&quot;);
         // Follow bus and train routes
@@ -5921,7 +5921,7 @@ entity TransitStrategy implements RouteStrategy {
 }
 
 // The Navigator uses whatever strategy is set
-entity Navigator {
+class Navigator {
     hide strategy: RouteStrategy;
 
     expose func init(strategy: RouteStrategy) {
@@ -5988,8 +5988,8 @@ func start() {
 </code></pre>
 <h3 id="strategy-benefits">Strategy Benefits</h3>
 <p><strong>Algorithms are interchangeable</strong>: Switch strategies without changing the Navigator.</p>
-<p><strong>Easy to add new strategies</strong>: Create a new entity implementing the interface. No existing code changes.</p>
-<p><strong>Algorithms are isolated</strong>: Each strategy is a self-contained entity. Test them independently.</p>
+<p><strong>Easy to add new strategies</strong>: Create a new class implementing the interface. No existing code changes.</p>
+<p><strong>Algorithms are isolated</strong>: Each strategy is a self-contained class. Test them independently.</p>
 <p><strong>No conditionals</strong>: Instead of if-else chains based on mode, the strategy object handles behavior directly.</p>
 <h3 id="another-example-sorting-strategies">Another Example: Sorting Strategies</h3>
 <pre><code data-lang="rust">
@@ -5998,7 +5998,7 @@ interface SortStrategy {
     func getName() -&gt; String;
 }
 
-entity BubbleSort implements SortStrategy {
+class BubbleSort implements SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer] {
         // Bubble sort implementation
         var result = items.copy();
@@ -6018,7 +6018,7 @@ entity BubbleSort implements SortStrategy {
     func getName() -&gt; String { return &quot;Bubble Sort&quot;; }
 }
 
-entity QuickSort implements SortStrategy {
+class QuickSort implements SortStrategy {
     func sort(items: List[Integer]) -&gt; List[Integer] {
         // Quick sort implementation (simplified)
         if items.Length &lt;= 1 {
@@ -6031,7 +6031,7 @@ entity QuickSort implements SortStrategy {
     func getName() -&gt; String { return &quot;Quick Sort&quot;; }
 }
 
-entity DataProcessor {
+class DataProcessor {
     hide sortStrategy: SortStrategy;
 
     expose func init(strategy: SortStrategy) {
@@ -6078,7 +6078,7 @@ interface Observer {
     func onUpdate(event: String, data: any);
 }
 
-entity Subject {
+class Subject {
     hide observers: List[Observer];
 
     expose func init() {
@@ -6114,7 +6114,7 @@ bind Viper.Math as Math;
 bind Viper.Time;
 
 // The subject: stock price
-entity StockPrice extends Subject {
+class StockPrice extends Subject {
     hide symbol: String;
     hide price: Number;
 
@@ -6147,7 +6147,7 @@ entity StockPrice extends Subject {
 }
 
 // Various observers
-entity PriceDisplay implements Observer {
+class PriceDisplay implements Observer {
     hide name: String;
 
     expose func init(name: String) {
@@ -6165,7 +6165,7 @@ entity PriceDisplay implements Observer {
     }
 }
 
-entity AlertSystem implements Observer {
+class AlertSystem implements Observer {
     hide threshold: Number;
 
     expose func init(threshold: Number) {
@@ -6184,7 +6184,7 @@ entity AlertSystem implements Observer {
     }
 }
 
-entity TradeLogger implements Observer {
+class TradeLogger implements Observer {
     hide logFile: String;
 
     expose func init(logFile: String) {
@@ -6201,7 +6201,7 @@ entity TradeLogger implements Observer {
     }
 }
 
-entity AutoTrader implements Observer {
+class AutoTrader implements Observer {
     hide buyThreshold: Number;
     hide sellThreshold: Number;
 
@@ -6264,7 +6264,7 @@ func start() {
 <p>The <code>StockPrice</code> doesn&#x27;t know what observers do. The observers don&#x27;t know about each other. They&#x27;re completely decoupled, communicating only through the event system.</p>
 <h3 id="observer-in-game-events">Observer in Game Events</h3>
 <pre><code data-lang="rust">
-entity GameEventSystem extends Subject {
+class GameEventSystem extends Subject {
     // Singleton for global game events
     hide static instance: GameEventSystem? = null;
 
@@ -6299,7 +6299,7 @@ entity GameEventSystem extends Subject {
     }
 }
 
-entity ScoreManager implements Observer {
+class ScoreManager implements Observer {
     hide score: Integer = 0;
 
     func onUpdate(event: String, data: any) {
@@ -6316,7 +6316,7 @@ entity ScoreManager implements Observer {
     }
 }
 
-entity SoundManager implements Observer {
+class SoundManager implements Observer {
     func onUpdate(event: String, data: any) {
         if event == &quot;player_died&quot; {
             Say(&quot;Playing: death_sound.wav&quot;);
@@ -6328,7 +6328,7 @@ entity SoundManager implements Observer {
     }
 }
 
-entity AchievementSystem implements Observer {
+class AchievementSystem implements Observer {
     hide enemiesKilled: Integer = 0;
 
     func onUpdate(event: String, data: any) {
@@ -6378,7 +6378,7 @@ interface Command {
     func describe() -&gt; String;
 }
 
-entity TextEditor {
+class TextEditor {
     hide content: String;
 
     expose func init() {
@@ -6407,7 +6407,7 @@ entity TextEditor {
 }
 
 // Insert text command
-entity InsertCommand implements Command {
+class InsertCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide text: String;
@@ -6432,7 +6432,7 @@ entity InsertCommand implements Command {
 }
 
 // Delete text command
-entity DeleteCommand implements Command {
+class DeleteCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide deletedText: String;  // Remember what was deleted for undo
@@ -6458,7 +6458,7 @@ entity DeleteCommand implements Command {
 }
 
 // Replace text command
-entity ReplaceCommand implements Command {
+class ReplaceCommand implements Command {
     hide editor: TextEditor;
     hide position: Integer;
     hide oldText: String;
@@ -6487,7 +6487,7 @@ entity ReplaceCommand implements Command {
 }
 
 // Command history manager
-entity CommandHistory {
+class CommandHistory {
     hide commands: List[Command];
     hide undoneCommands: List[Command];  // For redo
 
@@ -6576,7 +6576,7 @@ func start() {
 <h3 id="command-for-macro-recording">Command for Macro Recording</h3>
 <p>Commands can be grouped and replayed:</p>
 <pre><code data-lang="rust">
-entity MacroCommand implements Command {
+class MacroCommand implements Command {
     hide commands: List[Command];
     hide name: String;
 
@@ -6685,7 +6685,7 @@ interface VendingState {
     func getName() -&gt; String;
 }
 
-entity IdleState implements VendingState {
+class IdleState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say(&quot;Inserted: $&quot; + amount + &quot;. Balance: $&quot; + machine.getBalance());
@@ -6707,7 +6707,7 @@ entity IdleState implements VendingState {
     func getName() -&gt; String { return &quot;Idle&quot;; }
 }
 
-entity HasMoneyState implements VendingState {
+class HasMoneyState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say(&quot;Added: $&quot; + amount + &quot;. Balance: $&quot; + machine.getBalance());
@@ -6749,7 +6749,7 @@ entity HasMoneyState implements VendingState {
     func getName() -&gt; String { return &quot;Has Money&quot;; }
 }
 
-entity DispensingState implements VendingState {
+class DispensingState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         Say(&quot;Please wait, dispensing in progress&quot;);
         // Could queue the coin for later
@@ -6791,7 +6791,7 @@ entity DispensingState implements VendingState {
     func getName() -&gt; String { return &quot;Dispensing&quot;; }
 }
 
-entity OutOfStockState implements VendingState {
+class OutOfStockState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         Say(&quot;Sorry, machine is empty. Returning your $&quot; + amount);
     }
@@ -6811,7 +6811,7 @@ entity OutOfStockState implements VendingState {
     func getName() -&gt; String { return &quot;Out of Stock&quot;; }
 }
 
-entity VendingMachine {
+class VendingMachine {
     hide state: VendingState;
     hide balance: Integer;
     hide selectedItem: String?;
@@ -6957,21 +6957,21 @@ func start() {
 <h3 id="the-problem">The Problem</h3>
 <p>You run a coffee shop with a software ordering system. You start with simple coffee:</p>
 <pre><code data-lang="rust">
-entity Coffee {
+class Coffee {
     func cost() -&gt; Number { return 2.00; }
     func description() -&gt; String { return &quot;Coffee&quot;; }
 }
 </code></pre>
-<p>But customers want options: milk, sugar, whipped cream, vanilla, caramel, oat milk, extra shot... You could create subentities:</p>
+<p>But customers want options: milk, sugar, whipped cream, vanilla, caramel, oat milk, extra shot... You could create subclasses:</p>
 <pre><code data-lang="rust">
-entity CoffeeWithMilk extends Coffee { ... }
-entity CoffeeWithSugar extends Coffee { ... }
-entity CoffeeWithMilkAndSugar extends Coffee { ... }
-entity CoffeeWithMilkAndVanilla extends Coffee { ... }
-entity CoffeeWithMilkAndSugarAndVanilla extends Coffee { ... }
+class CoffeeWithMilk extends Coffee { ... }
+class CoffeeWithSugar extends Coffee { ... }
+class CoffeeWithMilkAndSugar extends Coffee { ... }
+class CoffeeWithMilkAndVanilla extends Coffee { ... }
+class CoffeeWithMilkAndSugarAndVanilla extends Coffee { ... }
 // ... explosion of combinations
 </code></pre>
-<p>With 10 options, you&#x27;d need hundreds of entities to cover all combinations. That&#x27;s unmanageable.</p>
+<p>With 10 options, you&#x27;d need hundreds of classes to cover all combinations. That&#x27;s unmanageable.</p>
 <h3 id="real-world-analogy">Real-World Analogy</h3>
 <p>Think of a plain t-shirt. You can add things to it: iron-on patches, embroidery, screen printing, rhinestones. Each addition <em>decorates</em> the shirt without changing the base shirt. You can combine them however you like. And crucially, you&#x27;re still selling a t-shirt — it has all the properties of a t-shirt plus the decorations.</p>
 <h3 id="the-solution">The Solution</h3>
@@ -6985,28 +6985,28 @@ interface Beverage {
 }
 
 // Base beverages
-entity Espresso implements Beverage {
+class Espresso implements Beverage {
     func cost() -&gt; Number { return 2.00; }
     func description() -&gt; String { return &quot;Espresso&quot;; }
 }
 
-entity HouseBlend implements Beverage {
+class HouseBlend implements Beverage {
     func cost() -&gt; Number { return 1.50; }
     func description() -&gt; String { return &quot;House Blend Coffee&quot;; }
 }
 
-entity Decaf implements Beverage {
+class Decaf implements Beverage {
     func cost() -&gt; Number { return 1.75; }
     func description() -&gt; String { return &quot;Decaf Coffee&quot;; }
 }
 
-entity Tea implements Beverage {
+class Tea implements Beverage {
     func cost() -&gt; Number { return 1.25; }
     func description() -&gt; String { return &quot;Tea&quot;; }
 }
 
 // Abstract decorator
-entity BeverageDecorator implements Beverage {
+class BeverageDecorator implements Beverage {
     hide beverage: Beverage;
 
     expose func init(beverage: Beverage) {
@@ -7023,7 +7023,7 @@ entity BeverageDecorator implements Beverage {
 }
 
 // Concrete decorators
-entity Milk extends BeverageDecorator {
+class Milk extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -7037,7 +7037,7 @@ entity Milk extends BeverageDecorator {
     }
 }
 
-entity Sugar extends BeverageDecorator {
+class Sugar extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -7051,7 +7051,7 @@ entity Sugar extends BeverageDecorator {
     }
 }
 
-entity WhippedCream extends BeverageDecorator {
+class WhippedCream extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -7065,7 +7065,7 @@ entity WhippedCream extends BeverageDecorator {
     }
 }
 
-entity Vanilla extends BeverageDecorator {
+class Vanilla extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -7079,7 +7079,7 @@ entity Vanilla extends BeverageDecorator {
     }
 }
 
-entity ExtraShot extends BeverageDecorator {
+class ExtraShot extends BeverageDecorator {
     expose func init(beverage: Beverage) {
         super(beverage);
     }
@@ -7144,7 +7144,7 @@ interface DataStream {
     func read() -&gt; String;
 }
 
-entity FileStream implements DataStream {
+class FileStream implements DataStream {
     hide content: String = &quot;&quot;;
 
     func write(data: String) {
@@ -7156,7 +7156,7 @@ entity FileStream implements DataStream {
     }
 }
 
-entity EncryptionDecorator implements DataStream {
+class EncryptionDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -7191,7 +7191,7 @@ entity EncryptionDecorator implements DataStream {
     }
 }
 
-entity CompressionDecorator implements DataStream {
+class CompressionDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -7219,7 +7219,7 @@ entity CompressionDecorator implements DataStream {
     }
 }
 
-entity LoggingDecorator implements DataStream {
+class LoggingDecorator implements DataStream {
     hide stream: DataStream;
 
     expose func init(stream: DataStream) {
@@ -7266,20 +7266,20 @@ func start() {
 <p><strong>Use when:</strong></p>
 <ul>
 <li>You want to add responsibilities to objects dynamically</li>
-<li>Subentity explosion would be impractical</li>
+<li>Subclass explosion would be impractical</li>
 <li>You need flexible combinations of features</li>
 <li>You want to add/remove features at runtime</li>
 </ul>
 <p><strong>Don&#x27;t use when:</strong></p>
 <ul>
 <li>Combinations are fixed and known at compile time</li>
-<li>You only have a few features (subentities might be simpler)</li>
+<li>You only have a few features (subclasses might be simpler)</li>
 <li>The wrapping overhead matters for performance</li>
 </ul>
 <p>---</p>
 <h2 id="patterns-working-together">Patterns Working Together</h2>
 <p>Real systems don&#x27;t use patterns in isolation. They combine multiple patterns to solve complex problems. Let&#x27;s look at how patterns work together.</p>
-<h3 id="a-game-entity-system">A Game Entity System</h3>
+<h3 id="a-game-class-system">A Game Entity System</h3>
 <p>This example combines Factory, Strategy, Observer, and State:</p>
 <pre><code data-lang="rust">
 bind Viper.Terminal;
@@ -7290,7 +7290,7 @@ interface GameObserver {
     func onEvent(event: String, data: any);
 }
 
-entity GameEvents {
+class GameEvents {
     hide static instance: GameEvents? = null;
     hide observers: List[GameObserver];
 
@@ -7318,88 +7318,88 @@ entity GameEvents {
 
 // Strategy for AI behavior
 interface AIStrategy {
-    func decide(entity: GameEntity, world: World) -&gt; String;
+    func decide(class: GameEntity, world: World) -&gt; String;
 }
 
-entity AggressiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -&gt; String {
+class AggressiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -&gt; String {
         var player = world.getPlayer();
-        if entity.distanceTo(player) &lt; 100 {
+        if class.distanceTo(player) &lt; 100 {
             return &quot;attack&quot;;
         }
         return &quot;chase&quot;;
     }
 }
 
-entity DefensiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -&gt; String {
+class DefensiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -&gt; String {
         var player = world.getPlayer();
-        if entity.health &lt; 30 {
+        if class.health &lt; 30 {
             return &quot;flee&quot;;
         }
-        if entity.distanceTo(player) &lt; 50 {
+        if class.distanceTo(player) &lt; 50 {
             return &quot;attack&quot;;
         }
         return &quot;patrol&quot;;
     }
 }
 
-entity PassiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -&gt; String {
+class PassiveAI implements AIStrategy {
+    func decide(class: GameEntity, world: World) -&gt; String {
         return &quot;wander&quot;;
     }
 }
 
-// State for entity condition
+// State for class condition
 interface EntityState {
-    func update(entity: GameEntity, world: World);
+    func update(class: GameEntity, world: World);
     func getName() -&gt; String;
 }
 
-entity AliveState implements EntityState {
-    func update(entity: GameEntity, world: World) {
-        if entity.health &lt;= 0 {
-            entity.setState(DeadState());
-            GameEvents.getInstance().emit(&quot;entity_died&quot;, { &quot;entity&quot;: entity });
+class AliveState implements EntityState {
+    func update(class: GameEntity, world: World) {
+        if class.health &lt;= 0 {
+            class.setState(DeadState());
+            GameEvents.getInstance().emit(&quot;class_died&quot;, { &quot;class&quot;: class });
             return;
         }
 
         // Use AI strategy to decide action
-        var action = entity.ai.decide(entity, world);
-        entity.executeAction(action);
+        var action = class.ai.decide(class, world);
+        class.executeAction(action);
     }
 
     func getName() -&gt; String { return &quot;Alive&quot;; }
 }
 
-entity DeadState implements EntityState {
-    func update(entity: GameEntity, world: World) {
-        // Dead entities don&#x27;t update
+class DeadState implements EntityState {
+    func update(class: GameEntity, world: World) {
+        // Dead classes don&#x27;t update
     }
 
     func getName() -&gt; String { return &quot;Dead&quot;; }
 }
 
-entity StunnedState implements EntityState {
+class StunnedState implements EntityState {
     hide duration: Integer;
 
     expose func init(duration: Integer) {
         self.duration = duration;
     }
 
-    func update(entity: GameEntity, world: World) {
+    func update(class: GameEntity, world: World) {
         self.duration -= 1;
         if self.duration &lt;= 0 {
-            entity.setState(AliveState());
+            class.setState(AliveState());
         }
-        // Stunned entities can&#x27;t act
+        // Stunned classes can&#x27;t act
     }
 
     func getName() -&gt; String { return &quot;Stunned&quot;; }
 }
 
-// The game entity
-entity GameEntity {
+// The game class
+class GameEntity {
     name: String;
     health: Integer;
     x: Number;
@@ -7445,8 +7445,8 @@ entity GameEntity {
     }
 }
 
-// Factory for creating entities
-entity EntityFactory {
+// Factory for creating classes
+class EntityFactory {
     static func createGoblin(x: Number, y: Number) -&gt; GameEntity {
         var goblin = GameEntity(&quot;Goblin&quot;, 30, AggressiveAI());
         goblin.x = x;
@@ -7472,16 +7472,16 @@ entity EntityFactory {
         if type == &quot;goblin&quot; { return EntityFactory.createGoblin(x, y); }
         if type == &quot;orc&quot; { return EntityFactory.createOrc(x, y); }
         if type == &quot;slime&quot; { return EntityFactory.createSlime(x, y); }
-        throw Error(&quot;Unknown entity type: &quot; + type);
+        throw Error(&quot;Unknown class type: &quot; + type);
     }
 }
 
 // Observer for scoring
-entity ScoreTracker implements GameObserver {
+class ScoreTracker implements GameObserver {
     hide score: Integer = 0;
 
     func onEvent(event: String, data: any) {
-        if event == &quot;entity_died&quot; {
+        if event == &quot;class_died&quot; {
             self.score += 100;
             Say(&quot;Score: &quot; + self.score);
         }
@@ -7490,9 +7490,9 @@ entity ScoreTracker implements GameObserver {
 </code></pre>
 <p>This system demonstrates:</p>
 <ul>
-<li><strong>Factory</strong>: Creates different entities with appropriate configurations</li>
-<li><strong>Strategy</strong>: Each entity has an AI strategy that can be swapped</li>
-<li><strong>State</strong>: Entities have states (Alive, Dead, Stunned) that control behavior</li>
+<li><strong>Factory</strong>: Creates different classes with appropriate configurations</li>
+<li><strong>Strategy</strong>: Each class has an AI strategy that can be swapped</li>
+<li><strong>State</strong>: Classes have states (Alive, Dead, Stunned) that control behavior</li>
 <li><strong>Observer</strong>: Game events notify interested parties (score tracker)</li>
 <li><strong>Singleton</strong>: GameEvents provides global event system access</li>
 </ul>
@@ -7590,7 +7590,7 @@ entity ScoreTracker implements GameObserver {
 <li><strong>State</strong>: Let objects change behavior when internal state changes. Replace conditional sprawl.</li>
 </ul>
 <ul>
-<li><strong>Decorator</strong>: Add behavior by wrapping objects. Avoid subentity explosion.</li>
+<li><strong>Decorator</strong>: Add behavior by wrapping objects. Avoid subclass explosion.</li>
 </ul>
 <p>Patterns are powerful, but use them wisely:</p>
 <ul>
@@ -7606,14 +7606,14 @@ entity ScoreTracker implements GameObserver {
 <p><strong>Exercise 18.2</strong>: Create a DocumentFactory that creates different document types (PDF, Word, PlainText) based on file extension. Each document type should implement a common <code>Document</code> interface.</p>
 <p><strong>Exercise 18.3</strong>: Build a PizzaBuilder with methods like <code>size()</code>, <code>addTopping()</code>, <code>setCrust()</code>, <code>addCheese()</code>. The final <code>build()</code> method should return a complete Pizza with calculated price.</p>
 <p><strong>Exercise 18.4</strong>: Implement a weather station using Observer. The WeatherStation subject should notify DisplayPanel, AlertSystem, and StatisticsTracker observers when temperature, humidity, or pressure changes.</p>
-<p><strong>Exercise 18.5</strong>: Create a sorting system using Strategy. Implement at least three strategies (BubbleSort, QuickSort, MergeSort). A DataAnalyzer entity should use the strategy to sort data, with ability to switch strategies.</p>
+<p><strong>Exercise 18.5</strong>: Create a sorting system using Strategy. Implement at least three strategies (BubbleSort, QuickSort, MergeSort). A DataAnalyzer class should use the strategy to sort data, with ability to switch strategies.</p>
 <p><strong>Exercise 18.6</strong>: Build a text editor with Command pattern. Implement InsertCharacter, DeleteCharacter, and ReplaceText commands. Include CommandHistory with undo and redo functionality.</p>
 <p><strong>Exercise 18.7</strong>: Create a media player with State pattern. States: Stopped, Playing, Paused. Actions: play, pause, stop. Each state should handle actions differently and transition to appropriate next states.</p>
 <p><strong>Exercise 18.8</strong>: Design a notification system using Decorator. Start with a basic Notification. Add decorators for: SMS, Email, Push, Slack. Each decorator adds its own delivery method. Test combining multiple decorators.</p>
 <p><strong>Exercise 18.9</strong> (Challenge): Build a simple game enemy system that combines Factory (create enemies), Strategy (AI behavior), State (alive/dead/stunned), and Observer (notify score system of kills). Create at least three enemy types with different AI strategies.</p>
 <p><strong>Exercise 18.10</strong> (Challenge): Design a document processing pipeline using Decorator. Start with a TextDocument. Create decorators for: SpellCheck, GrammarCheck, FormatHeaders, AddWatermark. Each decorator modifies the document content. Allow arbitrary combinations.</p>
 <p>---</p>
-<p><em>We&#x27;ve completed Part III! You now understand object-oriented programming: entities, inheritance, interfaces, polymorphism, and common design patterns.</em></p>
+<p><em>We&#x27;ve completed Part III! You now understand object-oriented programming: classes, inheritance, interfaces, polymorphism, and common design patterns.</em></p>
 <p><em>Part IV puts everything together to build real applications: graphics, games, networking, and more.</em></p>
 <p><em>[Continue to Part IV: Real Applications -&gt;](../part4-applications/19-graphics.md)</em></p>
   </main>

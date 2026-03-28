@@ -29,7 +29,7 @@
 /// The toILType() function maps Zia types to IL types:
 /// - Integer → i64, Number → f64, Boolean → i1
 /// - String and all reference types → ptr
-/// - Value types → ptr (passed by reference to stack slot)
+/// - Struct types → ptr (passed by reference to stack slot)
 ///
 /// @see Types.hpp for type definitions and factory function declarations
 ///
@@ -45,8 +45,8 @@ namespace il::frontends::zia {
 namespace {
 using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
-// BUG-VL-007 fix: Track entity inheritance (child -> parent)
-std::unordered_map<std::string, std::string> g_entity_parents;
+// BUG-VL-007 fix: Track class inheritance (child -> parent)
+std::unordered_map<std::string, std::string> g_class_parents;
 } // namespace
 
 //=============================================================================
@@ -88,7 +88,7 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
 
     // Entity and Ptr types accept null (Optional[Unknown])
     // This allows patterns like: func findItem() -> Entity { ... return null; }
-    if ((kind == TypeKindSem::Entity || kind == TypeKindSem::Ptr) &&
+    if ((kind == TypeKindSem::Class || kind == TypeKindSem::Ptr) &&
         source.kind == TypeKindSem::Optional && !source.typeArgs.empty() &&
         source.typeArgs[0]->kind == TypeKindSem::Unknown)
         return true;
@@ -123,11 +123,11 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
 
     // Interface assignment (requires declared implementation)
     if (kind == TypeKindSem::Interface &&
-        (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))
+        (source.kind == TypeKindSem::Class || source.kind == TypeKindSem::Struct))
         return types::implementsInterface(source.name, name);
 
-    // BUG-VL-007 fix: Entity inheritance (Animal from Dog where Dog extends Animal)
-    if (kind == TypeKindSem::Entity && source.kind == TypeKindSem::Entity)
+    // BUG-VL-007 fix: Class inheritance (Animal from Dog where Dog extends Animal)
+    if (kind == TypeKindSem::Class && source.kind == TypeKindSem::Class)
         return types::isSubclassOf(source.name, name);
 
     // Generic container assignment: List[Unknown] -> List[T], etc.
@@ -139,7 +139,7 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
         if (!source.typeArgs.empty() && source.typeArgs[0]->kind == TypeKindSem::Unknown) {
             return true;
         }
-        // For maps, also check the value type
+        // For maps, also check the struct type
         if (kind == TypeKindSem::Map && source.typeArgs.size() >= 2 &&
             source.typeArgs[1]->kind == TypeKindSem::Unknown) {
             return true;
@@ -271,8 +271,8 @@ std::string ViperType::toString() const {
             ss << ")";
             return ss.str();
 
-        case TypeKindSem::Value:
-        case TypeKindSem::Entity:
+        case TypeKindSem::Struct:
+        case TypeKindSem::Class:
         case TypeKindSem::Interface:
         case TypeKindSem::Enum:
             ss << name;
@@ -324,21 +324,21 @@ bool implementsInterface(const std::string &typeName, const std::string &interfa
     return it->second.find(interfaceName) != it->second.end();
 }
 
-// BUG-VL-007 fix: Entity inheritance tracking
-void clearEntityInheritance() {
-    g_entity_parents.clear();
+// BUG-VL-007 fix: Class inheritance tracking
+void clearClassInheritance() {
+    g_class_parents.clear();
 }
 
-void registerEntityInheritance(const std::string &childName, const std::string &parentName) {
-    g_entity_parents[childName] = parentName;
+void registerClassInheritance(const std::string &childName, const std::string &parentName) {
+    g_class_parents[childName] = parentName;
 }
 
 bool isSubclassOf(const std::string &childName, const std::string &parentName) {
     // Walk up the inheritance chain
     std::string current = childName;
     while (!current.empty()) {
-        auto it = g_entity_parents.find(current);
-        if (it == g_entity_parents.end())
+        auto it = g_class_parents.find(current);
+        if (it == g_class_parents.end())
             return false; // No parent, not a subclass
         if (it->second == parentName)
             return true;      // Found the parent
@@ -472,12 +472,12 @@ TypeRef tuple(std::vector<TypeRef> elements) {
     return std::make_shared<ViperType>(TypeKindSem::Tuple, std::move(elements));
 }
 
-TypeRef value(const std::string &name, std::vector<TypeRef> typeParams) {
-    return std::make_shared<ViperType>(TypeKindSem::Value, name, std::move(typeParams));
+TypeRef structType(const std::string &name, std::vector<TypeRef> typeParams) {
+    return std::make_shared<ViperType>(TypeKindSem::Struct, name, std::move(typeParams));
 }
 
-TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams) {
-    return std::make_shared<ViperType>(TypeKindSem::Entity, name, std::move(typeParams));
+TypeRef classType(const std::string &name, std::vector<TypeRef> typeParams) {
+    return std::make_shared<ViperType>(TypeKindSem::Class, name, std::move(typeParams));
 }
 
 TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams) {
@@ -540,21 +540,21 @@ il::core::Type::Kind toILType(const ViperType &type) {
             return il::core::Type::Kind::Error;
 
         case TypeKindSem::Ptr:
-        case TypeKindSem::Entity:
+        case TypeKindSem::Class:
         case TypeKindSem::Interface:
         case TypeKindSem::List:
         case TypeKindSem::Map:
         case TypeKindSem::Set:
             return il::core::Type::Kind::Ptr;
 
-        // Value types need special handling at lowering time
+        // Struct types need special handling at lowering time
         // (passed as ptr to stack slot)
-        case TypeKindSem::Value:
+        case TypeKindSem::Struct:
             return il::core::Type::Kind::Ptr;
 
         // Optional reference types (String?, Entity?) use the inner type directly
         // at the IL level since they are already nullable pointers (null = none).
-        // Optional value types (Integer?) need a flag+value wrapper → Ptr.
+        // Optional struct types (Integer?) need a flag+value wrapper → Ptr.
         case TypeKindSem::Optional: {
             if (!type.typeArgs.empty()) {
                 auto innerKind = toILType(*type.typeArgs[0]);
@@ -622,7 +622,7 @@ size_t typeSize(const ViperType &type) {
             return 8; // Pointer to error object
         case TypeKindSem::Ptr:
             return 8;
-        case TypeKindSem::Entity:
+        case TypeKindSem::Class:
         case TypeKindSem::Interface:
         case TypeKindSem::Enum:
         case TypeKindSem::List:
@@ -639,7 +639,7 @@ size_t typeSize(const ViperType &type) {
             // tag (8) + max(value size, error size)
             // Simplified: assume 16 bytes
             return 16;
-        case TypeKindSem::Value:
+        case TypeKindSem::Struct:
             // User-defined value size determined by fields
             return 0; // Must be computed from type definition
         case TypeKindSem::Tuple:
@@ -672,7 +672,7 @@ size_t typeAlignment(const ViperType &type) {
         case TypeKindSem::Boolean:
         case TypeKindSem::String:
         case TypeKindSem::Ptr:
-        case TypeKindSem::Entity:
+        case TypeKindSem::Class:
         case TypeKindSem::Interface:
         case TypeKindSem::Enum:
         case TypeKindSem::List:
@@ -699,7 +699,7 @@ size_t typeAlignment(const ViperType &type) {
             if (!type.typeArgs.empty())
                 return typeAlignment(*type.typeArgs[0]);
             return 8;
-        case TypeKindSem::Value:
+        case TypeKindSem::Struct:
             return 8; // Default alignment
     }
     return 1;
@@ -735,10 +735,10 @@ const char *kindToString(TypeKindSem kind) {
             return "Function";
         case TypeKindSem::Tuple:
             return "Tuple";
-        case TypeKindSem::Value:
-            return "Value";
-        case TypeKindSem::Entity:
-            return "Entity";
+        case TypeKindSem::Struct:
+            return "Struct";
+        case TypeKindSem::Class:
+            return "Class";
         case TypeKindSem::Interface:
             return "Interface";
         case TypeKindSem::Enum:

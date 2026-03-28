@@ -3,7 +3,7 @@ module test_minimal;
 bind GUI = Viper.GUI;
 bind Terminal = Viper.Terminal;
 
-entity Shell {
+class Shell {
     expose GUI.App app;
     expose GUI.VBox mainVBox;
     expose GUI.MenuBar menuBar;

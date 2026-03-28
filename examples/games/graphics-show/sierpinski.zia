@@ -22,7 +22,7 @@ func initConstants() {
 }
 
 // Sierpinski triangle using chaos game
-entity SierpinskiTriangle {
+class SierpinskiTriangle {
     expose List[Integer] points;  // Packed x,y positions
     expose Integer maxPoints;
     expose List[Integer] vertices;  // 3 vertices as packed x,y
@@ -115,7 +115,7 @@ entity SierpinskiTriangle {
 }
 
 // Simple Mandelbrot set renderer
-entity MandelbrotRenderer {
+class MandelbrotRenderer {
     expose Pixels buffer;
     expose Integer width;
     expose Integer height;
@@ -231,7 +231,7 @@ entity MandelbrotRenderer {
 }
 
 // Recursive fractal tree
-entity FractalTree {
+class FractalTree {
     expose List[Integer] branches;  // Packed as x1,y1,x2,y2,depth
     expose Integer maxDepth;
     expose Number angle;
@@ -333,7 +333,7 @@ entity FractalTree {
 }
 
 // Fractal demo manager
-entity FractalDemo {
+class FractalDemo {
     expose Integer mode;  // 0=sierpinski, 1=mandelbrot, 2=tree
     expose SierpinskiTriangle sierpinski;
     expose MandelbrotRenderer mandelbrot;

@@ -30,7 +30,7 @@ bind Viper.Fmt;
 // GAME ENTITY - Main game controller
 // =============================================================================
 
-entity Game {
+class Game {
     hide Canvas canvas;
     hide Integer gameState;
     hide Integer score;

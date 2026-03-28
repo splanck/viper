@@ -26,7 +26,7 @@ TEST(ZiaVisibility, VisibilityEnforcement) {
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     Integer secretAge;
     expose Integer publicAge;
 }
@@ -60,7 +60,7 @@ TEST(ZiaVisibility, VisibilityExposed) {
     const std::string source = R"(
 module Test;
 
-entity Person {
+class Person {
     expose Integer age;
 
     expose func init(a: Integer) {

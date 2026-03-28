@@ -29,7 +29,7 @@ bind "../types";
 // B-TREE INDEX ENTITY
 //=============================================================================
 
-entity BTree {
+class BTree {
     expose Integer indexId;
     expose String indexName;
     expose Integer tableId;

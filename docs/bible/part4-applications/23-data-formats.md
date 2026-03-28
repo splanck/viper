@@ -15,7 +15,7 @@ This chapter is about the most important skill in practical programming: moving 
 Imagine you are building a game. Your player has a name, a level, health points, an inventory of items, and a position on the map:
 
 ```rust
-value Player {
+struct Player {
     name: String;
     level: Integer;
     health: Number;
@@ -23,7 +23,7 @@ value Player {
     position: Position;
 }
 
-value Position {
+struct Position {
     x: Number;
     y: Number;
 }
@@ -61,7 +61,7 @@ Key insights from this metaphor:
 Think of serialization as translation between languages. Your program thinks in "Zia" --- it has entities, values, arrays, and functions. A JSON file thinks in "JSON" --- it has objects, arrays, strings, and numbers. An XML file thinks in "XML" --- it has elements, attributes, and text content.
 
 To save your player to JSON, you must translate from Zia to JSON:
-- A `value` becomes a JSON object
+- A `struct` becomes a JSON object
 - A `String` becomes a JSON string
 - An `Integer` becomes a JSON number
 - An array becomes a JSON array
@@ -393,7 +393,7 @@ This is the same data, just formatted with indentation and newlines for human ey
 For clean code, add serialization methods to your entities:
 
 ```rust
-entity Player {
+class Player {
     name: String;
     level: Integer;
     health: Number;
@@ -626,7 +626,7 @@ Understanding data formats deeply requires tracing through the process step by s
 
 ### Trace: Serializing a Player to JSON
 
-We start with a Player entity in memory:
+We start with a Player class in memory:
 
 ```rust
 var player = Player();
@@ -861,7 +861,7 @@ bind Viper.Terminal;
 // Data Model
 // ============================================
 
-entity Contact {
+class Contact {
     name: String;
     phone: String;
     email: String;
@@ -883,7 +883,7 @@ entity Contact {
     }
 }
 
-entity ContactBook {
+class ContactBook {
     hide contacts: List[Contact];
     hide filename: String;
 
@@ -1063,7 +1063,7 @@ func start() {
 
 This example demonstrates:
 - **Entity-to-JSON serialization** with `toJSON()` methods
-- **JSON-to-entity parsing** with `fromJSON()` methods
+- **JSON-to-class parsing** with `fromJSON()` methods
 - **Automatic persistence** that saves after every change
 - **Graceful startup** that loads existing data if available
 - **Clean separation** between data model and user interface
@@ -1503,7 +1503,7 @@ Here is a complete binary save example:
 bind Viper.IO;
 bind Viper.Terminal;
 
-value GameSave {
+struct GameSave {
     version: Integer;
     playerName: String;
     level: Integer;
@@ -1593,7 +1593,7 @@ bind Json = Viper.Text.Json;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-entity Config {
+class Config {
     hide data: JSONValue;
     hide filename: String;
     hide dirty: Boolean;

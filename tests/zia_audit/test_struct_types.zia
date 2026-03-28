@@ -26,7 +26,7 @@ func checkNum(name: String, actual: Number, expected: Number) {
 }
 
 // Value type definition
-value Point2D {
+struct Point2D {
     expose Number x;
     expose Number y;
 
@@ -45,7 +45,7 @@ value Point2D {
 }
 
 // Entity for comparison (reference semantics)
-entity PointEntity {
+class PointEntity {
     expose Number x;
     expose Number y;
 
