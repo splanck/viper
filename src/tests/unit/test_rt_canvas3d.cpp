@@ -555,6 +555,52 @@ static void test_light_null_safety() {
     PASS();
 }
 
+static void test_light_spot() {
+    TEST("Light3D.NewSpot — creates spot light");
+    void *pos = rt_vec3_new(0, 5, 0);
+    void *dir = rt_vec3_new(0, -1, 0);
+    void *light = rt_light3d_new_spot(pos, dir, 1.0, 1.0, 1.0, 0.1, 30.0, 45.0);
+    assert(light);
+    PASS();
+}
+
+static void test_light_spot_intensity() {
+    TEST("Light3D spot — set intensity");
+    void *pos = rt_vec3_new(0, 5, 0);
+    void *dir = rt_vec3_new(0, -1, 0);
+    void *light = rt_light3d_new_spot(pos, dir, 1.0, 1.0, 1.0, 0.1, 30.0, 45.0);
+    rt_light3d_set_intensity(light, 2.5);
+    PASS();
+}
+
+static void test_camera_ortho() {
+    TEST("Camera3D.NewOrtho — creates orthographic camera");
+    void *cam = rt_camera3d_new_ortho(10.0, 16.0 / 9.0, 0.1, 100.0);
+    assert(cam);
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 1);
+    PASS();
+}
+
+static void test_camera_ortho_look_at() {
+    TEST("Camera3D ortho — LookAt works");
+    void *cam = rt_camera3d_new_ortho(10.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0, 10, 10);
+    void *target = rt_vec3_new(0, 0, 0);
+    void *up = rt_vec3_new(0, 1, 0);
+    rt_camera3d_look_at(cam, eye, target, up);
+    void *pos = rt_camera3d_get_position(cam);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.01);
+    EXPECT_NEAR(rt_vec3_y(pos), 10.0, 0.01);
+    PASS();
+}
+
+static void test_camera_perspective_not_ortho() {
+    TEST("Camera3D.New — IsOrtho returns false");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 0);
+    PASS();
+}
+
 //=============================================================================
 // Phase 9 — Multi-texture material tests
 //=============================================================================
@@ -690,6 +736,24 @@ static void test_mesh_clear_then_rebuild() {
 static void test_mesh_clear_null_safety() {
     TEST("Mesh3D.Clear null safety");
     rt_mesh3d_clear(NULL); // should not crash
+    PASS();
+}
+
+static void test_mesh_clear_stress() {
+    TEST("Mesh3D.Clear stress: 100 clear-rebuild cycles (Water3D pattern)");
+    void *m = rt_mesh3d_new();
+    for (int cycle = 0; cycle < 100; cycle++) {
+        rt_mesh3d_clear(m);
+        // Rebuild a simple quad
+        rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+        rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+        rt_mesh3d_add_vertex(m, 1, 0, 1, 0, 1, 0, 1, 1);
+        rt_mesh3d_add_vertex(m, 0, 0, 1, 0, 1, 0, 0, 1);
+        rt_mesh3d_add_triangle(m, 0, 1, 2);
+        rt_mesh3d_add_triangle(m, 0, 2, 3);
+    }
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 4);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 2);
     PASS();
 }
 
@@ -850,6 +914,11 @@ int main() {
     test_light_set_intensity();
     test_light_set_color();
     test_light_null_safety();
+    test_light_spot();
+    test_light_spot_intensity();
+    test_camera_ortho();
+    test_camera_ortho_look_at();
+    test_camera_perspective_not_ortho();
 
     /* Phase 9 — Multi-texture materials */
     test_material_set_emissive();
@@ -867,6 +936,7 @@ int main() {
     test_mesh_clear();
     test_mesh_clear_then_rebuild();
     test_mesh_clear_null_safety();
+    test_mesh_clear_stress();
 
     /* Sprite3D */
     test_sprite3d_new();

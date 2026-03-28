@@ -9627,6 +9627,8 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(Camera3DNew,            rt_camera3d_new,            "Viper.Graphics3D.Camera3D.New",            "obj(f64,f64,f64,f64)")
+RT_FUNC(Camera3DNewOrtho,       rt_camera3d_new_ortho,      "Viper.Graphics3D.Camera3D.NewOrtho",       "obj(f64,f64,f64,f64)")
+RT_FUNC(Camera3DIsOrtho,        rt_camera3d_is_ortho,       "Viper.Graphics3D.Camera3D.get_IsOrtho",    "i1(obj)")
 RT_FUNC(Camera3DLookAt,         rt_camera3d_look_at,        "Viper.Graphics3D.Camera3D.LookAt",         "void(obj,obj,obj,obj)")
 RT_FUNC(Camera3DOrbit,          rt_camera3d_orbit,          "Viper.Graphics3D.Camera3D.Orbit",          "void(obj,obj,f64,f64,f64)")
 RT_FUNC(Camera3DGetFov,         rt_camera3d_get_fov,        "Viper.Graphics3D.Camera3D.get_Fov",        "f64(obj)")
@@ -9652,6 +9654,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_METHOD("Shake", "void(f64,f64,f64)", Camera3DShake)
     RT_METHOD("SmoothFollow", "void(obj,f64,f64,f64,f64)", Camera3DSmoothFollow)
     RT_METHOD("SmoothLookAt", "void(obj,f64,f64)", Camera3DSmoothLookAt)
+    RT_PROP("IsOrtho", "i1", Camera3DIsOrtho, none)
 RT_CLASS_END()
 
 //=============================================================================
@@ -9695,6 +9698,7 @@ RT_CLASS_END()
 RT_FUNC(Light3DNewDirectional,  rt_light3d_new_directional, "Viper.Graphics3D.Light3D.NewDirectional",  "obj(obj,f64,f64,f64)")
 RT_FUNC(Light3DNewPoint,        rt_light3d_new_point,       "Viper.Graphics3D.Light3D.NewPoint",        "obj(obj,f64,f64,f64,f64)")
 RT_FUNC(Light3DNewAmbient,      rt_light3d_new_ambient,     "Viper.Graphics3D.Light3D.NewAmbient",      "obj(f64,f64,f64)")
+RT_FUNC(Light3DNewSpot,         rt_light3d_new_spot,        "Viper.Graphics3D.Light3D.NewSpot",         "obj(obj,obj,f64,f64,f64,f64,f64,f64)")
 RT_FUNC(Light3DSetIntensity,    rt_light3d_set_intensity,   "Viper.Graphics3D.Light3D.SetIntensity",    "void(obj,f64)")
 RT_FUNC(Light3DSetColor,        rt_light3d_set_color,       "Viper.Graphics3D.Light3D.SetColor",        "void(obj,f64,f64,f64)")
 
@@ -10016,13 +10020,30 @@ RT_FUNC(World3DCollisionBodyB,  rt_world3d_get_collision_body_b, "Viper.Graphics
 RT_FUNC(World3DCollisionNormal, rt_world3d_get_collision_normal, "Viper.Graphics3D.Physics3DWorld.GetCollisionNormal",  "obj(obj,i64)")
 RT_FUNC(World3DCollisionDepth,  rt_world3d_get_collision_depth,  "Viper.Graphics3D.Physics3DWorld.GetCollisionDepth",   "f64(obj,i64)")
 
+// Joint constructors
+RT_FUNC(DistJoint3DNew,         rt_distance_joint3d_new,         "Viper.Graphics3D.DistanceJoint3D.New",         "obj(obj,obj,f64)")
+RT_FUNC(DistJoint3DGetDist,     rt_distance_joint3d_get_distance,"Viper.Graphics3D.DistanceJoint3D.get_Distance","f64(obj)")
+RT_FUNC(DistJoint3DSetDist,     rt_distance_joint3d_set_distance,"Viper.Graphics3D.DistanceJoint3D.set_Distance","void(obj,f64)")
+RT_FUNC(SpringJoint3DNew,       rt_spring_joint3d_new,           "Viper.Graphics3D.SpringJoint3D.New",           "obj(obj,obj,f64,f64,f64)")
+RT_FUNC(SpringJoint3DGetStiff,  rt_spring_joint3d_get_stiffness, "Viper.Graphics3D.SpringJoint3D.get_Stiffness", "f64(obj)")
+RT_FUNC(SpringJoint3DSetStiff,  rt_spring_joint3d_set_stiffness, "Viper.Graphics3D.SpringJoint3D.set_Stiffness", "void(obj,f64)")
+RT_FUNC(SpringJoint3DGetDamp,   rt_spring_joint3d_get_damping,   "Viper.Graphics3D.SpringJoint3D.get_Damping",   "f64(obj)")
+RT_FUNC(SpringJoint3DSetDamp,   rt_spring_joint3d_set_damping,   "Viper.Graphics3D.SpringJoint3D.set_Damping",   "void(obj,f64)")
+RT_FUNC(SpringJoint3DGetRest,   rt_spring_joint3d_get_rest_length,"Viper.Graphics3D.SpringJoint3D.get_RestLength","f64(obj)")
+RT_FUNC(World3DAddJoint,        rt_world3d_add_joint,            "Viper.Graphics3D.Physics3DWorld.AddJoint",      "void(obj,obj,i64)")
+RT_FUNC(World3DRemoveJoint,     rt_world3d_remove_joint,         "Viper.Graphics3D.Physics3DWorld.RemoveJoint",   "void(obj,obj)")
+RT_FUNC(World3DJointCount,      rt_world3d_joint_count,          "Viper.Graphics3D.Physics3DWorld.get_JointCount","i64(obj)")
+
 RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3DNew)
     RT_PROP("BodyCount", "i64", World3DBodyCount, none)
     RT_PROP("CollisionCount", "i64", World3DCollisionCount, none)
+    RT_PROP("JointCount", "i64", World3DJointCount, none)
     RT_METHOD("Step", "void(f64)", World3DStep)
     RT_METHOD("Add", "void(obj)", World3DAdd)
     RT_METHOD("Remove", "void(obj)", World3DRemove)
     RT_METHOD("SetGravity", "void(f64,f64,f64)", World3DSetGravity)
+    RT_METHOD("AddJoint", "void(obj,i64)", World3DAddJoint)
+    RT_METHOD("RemoveJoint", "void(obj)", World3DRemoveJoint)
     RT_METHOD("GetCollisionBodyA", "obj(i64)", World3DCollisionBodyA)
     RT_METHOD("GetCollisionBodyB", "obj(i64)", World3DCollisionBodyB)
     RT_METHOD("GetCollisionNormal", "obj(i64)", World3DCollisionNormal)
@@ -10108,6 +10129,18 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Trigger3D", Trigger3D, "obj", Trigger3DNew)
     RT_METHOD("Contains", "i1(obj)", Trigger3DContains)
     RT_METHOD("Update", "void(obj)", Trigger3DUpdate)
     RT_METHOD("SetBounds", "void(f64,f64,f64,f64,f64,f64)", Trigger3DSetBounds)
+RT_CLASS_END()
+
+// DistanceJoint3D — maintains fixed distance between two bodies
+RT_CLASS_BEGIN("Viper.Graphics3D.DistanceJoint3D", DistanceJoint3D, "obj", DistJoint3DNew)
+    RT_PROP("Distance", "f64", DistJoint3DGetDist, DistJoint3DSetDist)
+RT_CLASS_END()
+
+// SpringJoint3D — Hooke's law spring between two bodies
+RT_CLASS_BEGIN("Viper.Graphics3D.SpringJoint3D", SpringJoint3D, "obj", SpringJoint3DNew)
+    RT_PROP("Stiffness", "f64", SpringJoint3DGetStiff, SpringJoint3DSetStiff)
+    RT_PROP("Damping", "f64", SpringJoint3DGetDamp, SpringJoint3DSetDamp)
+    RT_PROP("RestLength", "f64", SpringJoint3DGetRest, none)
 RT_CLASS_END()
 
 //=============================================================================

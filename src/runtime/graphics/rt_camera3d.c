@@ -132,8 +132,65 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
     cam->shake_seed = 0x12345678;
+    cam->is_ortho = 0;
+    cam->ortho_size = 10.0;
 
     return cam;
+}
+
+/* Build orthographic projection matrix */
+static void build_ortho(double *m, double left, double right, double bottom, double top,
+                        double near_val, double far_val) {
+    memset(m, 0, 16 * sizeof(double));
+    double rl = right - left;
+    double tb = top - bottom;
+    double fn = far_val - near_val;
+    if (fabs(rl) < 1e-12 || fabs(tb) < 1e-12 || fabs(fn) < 1e-12)
+        return;
+    m[0] = 2.0 / rl;
+    m[5] = 2.0 / tb;
+    m[10] = -2.0 / fn;
+    m[3] = -(right + left) / rl;
+    m[7] = -(top + bottom) / tb;
+    m[11] = -(far_val + near_val) / fn;
+    m[15] = 1.0;
+}
+
+void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val) {
+    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
+    if (!cam) {
+        rt_trap("Camera3D.NewOrtho: memory allocation failed");
+        return NULL;
+    }
+    cam->vptr = NULL;
+    cam->fov = 0;
+    cam->aspect = aspect;
+    cam->near_plane = near_val;
+    cam->far_plane = far_val;
+    cam->is_ortho = 1;
+    cam->ortho_size = size;
+
+    double half_w = size * aspect;
+    double half_h = size;
+    build_ortho(cam->projection, -half_w, half_w, -half_h, half_h, near_val, far_val);
+
+    /* Default identity view */
+    memset(cam->view, 0, 16 * sizeof(double));
+    cam->view[0] = cam->view[5] = cam->view[10] = cam->view[15] = 1.0;
+    cam->eye[0] = cam->eye[1] = cam->eye[2] = 0.0;
+    cam->fps_yaw = 0.0;
+    cam->fps_pitch = 0.0;
+    cam->shake_intensity = 0.0;
+    cam->shake_duration = 0.0;
+    cam->shake_decay = 5.0;
+    cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
+    cam->shake_seed = 0x12345678;
+
+    return cam;
+}
+
+int8_t rt_camera3d_is_ortho(void *obj) {
+    return obj ? ((rt_camera3d *)obj)->is_ortho : 0;
 }
 
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {

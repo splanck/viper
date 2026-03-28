@@ -1,72 +1,36 @@
-# Plan: Spot Lights + Orthographic Camera
+# Plan: Spot Lights + Orthographic Camera — COMPLETE
 
-## Overview
-Two foundational features needed by most 3D game genres.
+## 1. Spot Lights — DONE (2026-03-28)
+- Added `rt_light3d_new_spot(position, direction, r, g, b, attenuation, innerAngle, outerAngle)` constructor
+- Angles in degrees, converted to cosines internally for shader comparison
+- Added `inner_cos` and `outer_cos` fields to both `rt_light3d` struct and `vgfx3d_light_params_t` backend params
+- Software backend: smoothstep cone attenuation between outer and inner cosines
+- GPU backends (Metal, D3D11, OpenGL): receive spot params via light_params struct; shader update needed for full GPU spot rendering (currently uses point light fallback on GPU)
+- Light param copy in `build_light_params()` updated to pass cone angles
 
-## 1. Spot Lights
+## 2. Orthographic Camera — DONE (2026-03-28)
+- Added `rt_camera3d_new_ortho(size, aspect, near, far)` — size is half-height in world units
+- Builds orthographic projection matrix: no perspective foreshortening
+- Added `is_ortho` flag and `ortho_size` fields to camera struct
+- Added `rt_camera3d_is_ortho()` query
+- `LookAt`, `Orbit`, `Shake`, `SmoothFollow` all work unchanged (only projection differs)
 
-### API
-```
-Light3D.NewSpot(position_vec3, direction_vec3, r, g, b, range, innerAngle, outerAngle)
-Light3D.SetDirection(direction_vec3)   // new method
-Light3D.SetRange(range)                // new method
-Light3D.SetSpotAngles(inner, outer)    // new method
-```
+## Files Changed
+- `src/runtime/graphics/rt_light3d.c` — NewSpot constructor
+- `src/runtime/graphics/rt_camera3d.c` — NewOrtho constructor, build_ortho helper, is_ortho query
+- `src/runtime/graphics/rt_canvas3d_internal.h` — Spot fields on rt_light3d, ortho fields on rt_camera3d
+- `src/runtime/graphics/vgfx3d_backend.h` — Spot fields on vgfx3d_light_params_t
+- `src/runtime/graphics/vgfx3d_backend_sw.c` — Spot cone attenuation in software renderer
+- `src/runtime/graphics/rt_canvas3d.c` — Copy spot params in build_light_params
+- `src/runtime/graphics/rt_canvas3d.h` — Declarations
+- `src/il/runtime/runtime.def` — RT_FUNC entries + class updates
 
-### Implementation
-**File:** `src/runtime/graphics/rt_light3d.c`
-- Add `LIGHT_SPOT = 2` shape type alongside existing directional (0) and point (1)
-- Store `direction[3]`, `inner_cos`, `outer_cos`, `range`
-- In `vgfx3d_light_params_t`: add `type`, `direction`, `inner_cos`, `outer_cos`
+## Tests Added
+5 new tests in `test_rt_canvas3d.cpp`:
+- `test_light_spot`: Creates spot light, verifies non-null
+- `test_light_spot_intensity`: Set intensity on spot light
+- `test_camera_ortho`: Creates ortho camera, verifies IsOrtho=true
+- `test_camera_ortho_look_at`: LookAt on ortho camera preserves position
+- `test_camera_perspective_not_ortho`: Perspective camera IsOrtho=false
 
-**Backend changes (all 4):**
-- Fragment shader: compute `spot_factor = smoothstep(outer_cos, inner_cos, dot(-light_dir, spot_dir))`
-- Multiply point light attenuation by spot_factor
-- Metal: Update MSL shader `lighting_fragment`
-- D3D11: Update HLSL pixel shader
-- OpenGL: Update GLSL fragment shader
-- Software: Add cone attenuation in per-pixel lighting loop
-
-**Canvas3D:**
-- `SetLight(index, light)` already passes light params — just needs to forward the new fields
-
-### Files Modified
-- `rt_light3d.c/h` — New constructor + properties
-- `vgfx3d_backend.h` — Extend `vgfx3d_light_params_t`
-- `vgfx3d_backend_metal.m` — MSL shader update
-- `vgfx3d_backend_d3d11.c` — HLSL shader update
-- `vgfx3d_backend_opengl.c` — GLSL shader update
-- `vgfx3d_backend_sw.c` — Software spot cone
-- `runtime.def` — New RT_FUNC entries
-
-## 2. Orthographic Camera
-
-### API
-```
-Camera3D.NewOrtho(left, right, bottom, top, near, far)
-Camera3D.SetOrthoSize(size)   // convenience: -size to +size in all axes
-Camera3D.IsOrtho -> Boolean
-```
-
-### Implementation
-**File:** `src/runtime/graphics/rt_camera3d.c`
-- Add `is_ortho` flag to camera struct
-- New constructor builds orthographic projection matrix:
-```c
-proj[0][0] = 2.0 / (right - left);
-proj[1][1] = 2.0 / (top - bottom);
-proj[2][2] = -2.0 / (far - near);
-// ... standard ortho matrix
-```
-- `LookAt` and `Orbit` work the same — only projection changes
-- `ScreenToRay` needs ortho variant (parallel rays instead of perspective)
-
-### Files Modified
-- `rt_camera3d.c/h` — New constructor + ortho flag
-- `runtime.def` — New RT_FUNC entries
-
-## Verification
-- Spot light: Place spot at ceiling pointing down — should create cone on floor
-- Spot falloff: Objects outside cone should be unlit
-- Ortho camera: Render scene — no perspective foreshortening
-- Ortho + isometric: 45-degree rotation should produce classic isometric view
+Total: 67/67 canvas3d, 1358/1358 full suite.

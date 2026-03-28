@@ -151,18 +151,22 @@ All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** windi
 
 ## Camera3D
 
-Perspective camera with view and projection matrices.
+Perspective or orthographic camera with view and projection matrices.
 
 | Member | Description |
 |--------|-------------|
-| `New(fov, aspect, near, far)` | Create camera (fov in degrees) |
+| `New(fov, aspect, near, far)` | Create perspective camera (fov in degrees) |
+| `NewOrtho(size, aspect, near, far)` | Create orthographic camera (size = half-height in world units) |
 | `LookAt(eye, target, up)` | Point camera from eye toward target (Vec3 args) |
 | `Orbit(target, distance, yaw, pitch)` | Orbit around target (angles in degrees) |
 | `ScreenToRay(sx, sy, sw, sh)` | Unproject screen point to world-space ray (returns Vec3) |
-| `Fov` | Field of view in degrees (read/write) |
+| `Fov` | Field of view in degrees (read/write, perspective only) |
 | `Position` | Camera world position (read/write, Vec3) |
 | `Forward` | Camera forward direction (read-only, Vec3) |
 | `Right` | Camera right direction (read-only, Vec3) |
+| `IsOrtho` | Boolean — true for orthographic cameras |
+
+**Orthographic cameras** have no perspective foreshortening. Use for isometric RPGs, strategy games, 2D-in-3D rendering, and UI overlays. The `size` parameter controls the visible area (half the viewport height in world units).
 
 **Coordinate system:** Right-handed. +X right, +Y up, +Z toward viewer. Projection uses OpenGL NDC convention (Z: [-1,1]).
 
@@ -195,6 +199,7 @@ Light sources for the scene. Up to 8 lights simultaneously.
 |-------------|-------------|
 | `NewDirectional(direction, r, g, b)` | Sun-like light from a direction (Vec3) |
 | `NewPoint(position, r, g, b, attenuation)` | Local point light with distance falloff |
+| `NewSpot(position, direction, r, g, b, attenuation, innerAngle, outerAngle)` | Spot light with cone falloff. Angles in degrees. Full brightness inside inner cone, smoothstep to outer. |
 | `NewAmbient(r, g, b)` | Uniform ambient light |
 
 | Method | Description |
@@ -328,7 +333,7 @@ Canvas3D.DrawMeshSkinned(canvas, mesh, transform, material, player)
 - Bones must be added in topological order (parent before child)
 - Max 128 bones per skeleton
 - Rotation keyframes use SLERP; position/scale use linear interpolation
-- `Crossfade(player, newAnim, duration)` blends between animations
+- `Crossfade(player, newAnim, duration)` blends between animations using TRS decomposition: position and scale are linearly interpolated, rotation uses quaternion SLERP for artifact-free blending
 - `DrawMeshSkinned` applies CPU skinning via weighted bone palette
 
 ## MorphTarget3D
@@ -491,6 +496,7 @@ Audio3D.UpdateVoice(voice, newPosition)  // for moving sounds
 
 - Linear distance attenuation: `volume * max(0, 1 - dist/maxDist)`
 - Pan computed from dot product of source direction with listener's right vector
+- Per-voice max_distance: each `PlayAt` records its max_distance. `UpdateVoice` without explicit max_distance uses the per-voice value (not a shared global).
 - Listener must be updated manually each frame (not auto-tracked from Camera3D)
 
 ## Mouse Capture
@@ -527,6 +533,31 @@ AABB-sphere uses closest-point projection. Coulomb friction and Baumgarte positi
 | `GetCollisionBodyB(index)` | Get second body in contact pair |
 | `GetCollisionNormal(index)` | Get contact normal (Vec3, A→B direction) |
 | `GetCollisionDepth(index)` | Get penetration depth (Float) |
+| `AddJoint(joint, type)` | Add joint constraint (type: 0=distance, 1=spring) |
+| `RemoveJoint(joint)` | Remove joint |
+| `JointCount` | Number of active joints |
+
+---
+
+## DistanceJoint3D
+
+Maintains a fixed distance between two body centers. Uses positional correction + velocity damping.
+
+| Member | Description |
+|--------|-------------|
+| `New(bodyA, bodyB, distance)` | Create distance joint |
+| `Distance` | Target distance (read/write, Float) |
+
+## SpringJoint3D
+
+Hooke's law spring with configurable stiffness and damping. Bodies oscillate around rest length.
+
+| Member | Description |
+|--------|-------------|
+| `New(bodyA, bodyB, restLength, stiffness, damping)` | Create spring joint |
+| `Stiffness` | Spring constant (read/write, Float) |
+| `Damping` | Velocity damping factor (read/write, Float) |
+| `RestLength` | Equilibrium distance (read-only, Float) |
 
 ### Physics3DBody
 

@@ -37,6 +37,11 @@ void rt_world3d_remove(void *world, void *body);
 int64_t rt_world3d_body_count(void *world);
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 
+/* Joint management */
+void rt_world3d_add_joint(void *world, void *joint, int64_t joint_type);
+void rt_world3d_remove_joint(void *world, void *joint);
+int64_t rt_world3d_joint_count(void *world);
+
 /* Collision event queries (populated after each Step) */
 int64_t rt_world3d_get_collision_count(void *world);
 void *rt_world3d_get_collision_body_a(void *world, int64_t index);

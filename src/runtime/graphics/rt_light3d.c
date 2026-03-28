@@ -24,6 +24,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -96,6 +97,37 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     light->color[2] = b;
     light->intensity = 1.0;
     light->attenuation = 0.0;
+    return light;
+}
+
+void *rt_light3d_new_spot(void *position, void *direction, double r, double g, double b,
+                          double attenuation, double inner_angle, double outer_angle) {
+    if (!position || !direction) {
+        rt_trap("Light3D.NewSpot: position and direction must not be null");
+        return NULL;
+    }
+    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    if (!light) {
+        rt_trap("Light3D.NewSpot: memory allocation failed");
+        return NULL;
+    }
+    light->vptr = NULL;
+    light->type = 3; /* spot */
+    light->direction[0] = rt_vec3_x(direction);
+    light->direction[1] = rt_vec3_y(direction);
+    light->direction[2] = rt_vec3_z(direction);
+    light->position[0] = rt_vec3_x(position);
+    light->position[1] = rt_vec3_y(position);
+    light->position[2] = rt_vec3_z(position);
+    light->color[0] = r;
+    light->color[1] = g;
+    light->color[2] = b;
+    light->intensity = 1.0;
+    light->attenuation = attenuation;
+    /* Convert angles (degrees) to cosines for shader comparison */
+    double pi = 3.14159265358979323846;
+    light->inner_cos = cos(inner_angle * pi / 180.0);
+    light->outer_cos = cos(outer_angle * pi / 180.0);
     return light;
 }
 

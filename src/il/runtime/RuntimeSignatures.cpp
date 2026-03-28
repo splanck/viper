@@ -180,6 +180,7 @@
 #include "rt_physics2d.h"
 #include "rt_physics2d_joint.h"
 #include "rt_physics3d.h"
+#include "rt_joints3d.h"
 #include "rt_pixels.h"
 #include "rt_platformer_ctrl.h"
 #include "rt_playlist.h"

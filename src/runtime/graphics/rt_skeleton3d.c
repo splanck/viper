@@ -567,6 +567,54 @@ static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_
     build_trs_float(pos, rot, scl, out_local);
 }
 
+/// @brief Sample a channel at time t, returning separate TRS components
+/// instead of a composed matrix. Used for crossfade blending.
+static void sample_channel_trs(const vgfx3d_anim_channel_t *ch, float t,
+                               float *out_pos, float *out_rot, float *out_scl) {
+    if (ch->keyframe_count == 0) {
+        out_pos[0] = out_pos[1] = out_pos[2] = 0.0f;
+        out_rot[0] = out_rot[1] = out_rot[2] = 0.0f;
+        out_rot[3] = 1.0f; /* identity quaternion */
+        out_scl[0] = out_scl[1] = out_scl[2] = 1.0f;
+        return;
+    }
+    if (ch->keyframe_count == 1) {
+        memcpy(out_pos, ch->keyframes[0].position, 3 * sizeof(float));
+        memcpy(out_rot, ch->keyframes[0].rotation, 4 * sizeof(float));
+        memcpy(out_scl, ch->keyframes[0].scale_xyz, 3 * sizeof(float));
+        return;
+    }
+
+    /* Find bracketing keyframes (same logic as sample_channel) */
+    int k0 = 0, k1 = 1;
+    for (int i = 0; i < ch->keyframe_count - 1; i++) {
+        if (ch->keyframes[i + 1].time >= t) {
+            k0 = i;
+            k1 = i + 1;
+            break;
+        }
+        k0 = i;
+        k1 = i + 1;
+    }
+
+    float t0 = ch->keyframes[k0].time;
+    float t1 = ch->keyframes[k1].time;
+    float alpha = (t1 > t0) ? (t - t0) / (t1 - t0) : 0.0f;
+    if (alpha < 0.0f)
+        alpha = 0.0f;
+    if (alpha > 1.0f)
+        alpha = 1.0f;
+
+    const vgfx3d_keyframe_t *key0 = &ch->keyframes[k0];
+    const vgfx3d_keyframe_t *key1 = &ch->keyframes[k1];
+
+    for (int i = 0; i < 3; i++)
+        out_pos[i] = key0->position[i] + alpha * (key1->position[i] - key0->position[i]);
+    quat_slerp_float(key0->rotation, key1->rotation, alpha, out_rot);
+    for (int i = 0; i < 3; i++)
+        out_scl[i] = key0->scale_xyz[i] + alpha * (key1->scale_xyz[i] - key0->scale_xyz[i]);
+}
+
 /*==========================================================================
  * AnimPlayer3D implementation
  *=========================================================================*/
@@ -666,22 +714,62 @@ static void compute_bone_palette(rt_anim_player3d *p) {
         }
     }
 
-    /* Crossfade: blend with previous animation */
+    /* Crossfade: blend with previous animation using TRS decomposition.
+     * SLERP quaternion rotation (avoids skew/shear from raw matrix lerp).
+     * Linear lerp for position and scale. */
     if (p->crossfade_from && p->crossfade_duration > 0.0f) {
         float factor = p->crossfade_time / p->crossfade_duration;
         if (factor > 1.0f)
             factor = 1.0f;
 
-        float from_local[16];
         for (int32_t c = 0; c < p->crossfade_from->channel_count; c++) {
             int32_t bone = p->crossfade_from->channels[c].bone_index;
             if (bone < 0 || bone >= skel->bone_count)
                 continue;
-            sample_channel(&p->crossfade_from->channels[c], p->crossfade_from_time, from_local);
-            /* Blend: lerp the local transform matrices */
-            float *to = &p->local_transforms[bone * 16];
-            for (int i = 0; i < 16; i++)
-                to[i] = from_local[i] + factor * (to[i] - from_local[i]);
+
+            /* Sample "from" animation into TRS */
+            float from_pos[3], from_rot[4], from_scl[3];
+            sample_channel_trs(
+                &p->crossfade_from->channels[c], p->crossfade_from_time, from_pos, from_rot, from_scl);
+
+            /* Sample "to" (current) animation into TRS for this bone */
+            float to_pos[3], to_rot[4], to_scl[3];
+            /* Find the current animation's channel for this bone */
+            int found_to = 0;
+            if (p->current) {
+                for (int32_t tc = 0; tc < p->current->channel_count; tc++) {
+                    if (p->current->channels[tc].bone_index == bone) {
+                        sample_channel_trs(
+                            &p->current->channels[tc], p->current_time, to_pos, to_rot, to_scl);
+                        found_to = 1;
+                        break;
+                    }
+                }
+            }
+            if (!found_to) {
+                /* No current channel for this bone — use bind pose TRS.
+                 * Extract from bind pose matrix (diagonal = scale, last col = pos). */
+                const float *bp = skel->bones[bone].bind_pose_local;
+                to_pos[0] = bp[12];
+                to_pos[1] = bp[13];
+                to_pos[2] = bp[14];
+                to_rot[0] = 0;
+                to_rot[1] = 0;
+                to_rot[2] = 0;
+                to_rot[3] = 1; /* identity rotation */
+                to_scl[0] = to_scl[1] = to_scl[2] = 1.0f;
+            }
+
+            /* Blend TRS components: lerp position/scale, SLERP rotation */
+            float blend_pos[3], blend_rot[4], blend_scl[3];
+            for (int i = 0; i < 3; i++) {
+                blend_pos[i] = from_pos[i] + factor * (to_pos[i] - from_pos[i]);
+                blend_scl[i] = from_scl[i] + factor * (to_scl[i] - from_scl[i]);
+            }
+            quat_slerp_float(from_rot, to_rot, factor, blend_rot);
+
+            /* Compose blended TRS back into local transform matrix */
+            build_trs_float(blend_pos, blend_rot, blend_scl, &p->local_transforms[bone * 16]);
         }
     }
 

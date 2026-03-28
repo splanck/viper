@@ -79,3 +79,9 @@ Comprehensive documentation pass across all 2,668 source files with standardized
 - Physics3D sphere-sphere and AABB-sphere narrow-phase collision (replaces AABB-only approximation)
 - Physics3D character controller with slide-and-step movement (replaces trivial velocity-set)
 - Physics3D collision event queue: `CollisionCount`, `GetCollisionBodyA/B`, `GetCollisionNormal/Depth`
+- Canvas3D software framebuffer clear optimized: uint32 writes instead of per-byte loop (~4x faster at 1080p)
+- Animation crossfade rewritten: TRS decomposition + quaternion SLERP replaces raw matrix lerp (eliminates shear artifacts)
+- `Light3D.NewSpot` — spot light with position, direction, cone angles, and smoothstep attenuation
+- `Camera3D.NewOrtho` — orthographic camera for isometric/strategy games (no perspective foreshortening)
+- `DistanceJoint3D` and `SpringJoint3D` — physics joint constraints with 6-iteration sequential impulse solver
+- Audio3D per-voice max_distance tracking (replaces shared global that caused cross-voice attenuation bugs)

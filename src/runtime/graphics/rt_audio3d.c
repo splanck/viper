@@ -36,7 +36,43 @@ extern void rt_voice_set_pan(int64_t voice, int64_t pan);
 static double listener_pos[3] = {0, 0, 0};
 static double listener_fwd[3] = {0, 0, -1};
 static double listener_right[3] = {1, 0, 0};
-static double saved_max_dist = 50.0;
+
+/* Per-voice max_distance tracking — avoids global state pollution
+ * when multiple sounds have different falloff ranges. */
+#define MAX_3D_VOICES 64
+static struct {
+    int64_t voice_id;
+    double max_distance;
+} s_voice_dist[MAX_3D_VOICES];
+static int32_t s_voice_dist_count = 0;
+
+static void track_voice_distance(int64_t voice, double max_dist) {
+    /* Update existing entry */
+    for (int32_t i = 0; i < s_voice_dist_count; i++) {
+        if (s_voice_dist[i].voice_id == voice) {
+            s_voice_dist[i].max_distance = max_dist;
+            return;
+        }
+    }
+    /* Add new entry (overwrite oldest if full) */
+    if (s_voice_dist_count < MAX_3D_VOICES) {
+        s_voice_dist[s_voice_dist_count].voice_id = voice;
+        s_voice_dist[s_voice_dist_count].max_distance = max_dist;
+        s_voice_dist_count++;
+    } else {
+        /* Overwrite slot 0 (oldest) */
+        s_voice_dist[0].voice_id = voice;
+        s_voice_dist[0].max_distance = max_dist;
+    }
+}
+
+static double lookup_voice_distance(int64_t voice) {
+    for (int32_t i = 0; i < s_voice_dist_count; i++) {
+        if (s_voice_dist[i].voice_id == voice)
+            return s_voice_dist[i].max_distance;
+    }
+    return 50.0; /* default fallback */
+}
 
 /// @brief Perform audio3d set listener operation.
 /// @param position
@@ -96,11 +132,13 @@ static void compute_3d_params(
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     if (!sound || !position)
         return 0;
-    saved_max_dist = max_distance;
 
     int64_t vol, pan;
     compute_3d_params(position, max_distance, volume, &vol, &pan);
-    return rt_sound_play_ex(sound, vol, pan);
+    int64_t voice = rt_sound_play_ex(sound, vol, pan);
+    if (voice > 0)
+        track_voice_distance(voice, max_distance);
+    return voice;
 }
 
 /// @brief Perform audio3d update voice operation.
@@ -111,7 +149,7 @@ void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
     if (!position || voice <= 0)
         return;
     if (max_distance <= 0.0)
-        max_distance = saved_max_dist; /* fallback to last play_at value */
+        max_distance = lookup_voice_distance(voice); /* per-voice fallback */
     int64_t vol, pan;
     compute_3d_params(position, max_distance, 100, &vol, &pan);
     rt_voice_set_volume(voice, vol);

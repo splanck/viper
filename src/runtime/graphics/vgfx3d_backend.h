@@ -68,12 +68,14 @@ typedef struct {
  *=========================================================================*/
 
 typedef struct {
-    int32_t type; /* 0=directional, 1=point, 2=ambient */
+    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
     float direction[3];
     float position[3];
     float color[3];
     float intensity;
     float attenuation;
+    float inner_cos; /* spot: cosine of inner cone angle (full brightness) */
+    float outer_cos; /* spot: cosine of outer cone angle (zero brightness) */
 } vgfx3d_light_params_t;
 
 /*==========================================================================

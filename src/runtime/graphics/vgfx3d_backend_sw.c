@@ -266,6 +266,28 @@ static void compute_lighting(pipe_vert_t *v,
                 lz /= dist;
             }
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
+        } else if (light->type == 3) /* spot */
+        {
+            lx = light->position[0] - v->world[0];
+            ly = light->position[1] - v->world[1];
+            lz = light->position[2] - v->world[2];
+            float dist = sqrtf(lx * lx + ly * ly + lz * lz);
+            if (dist > 1e-7f) {
+                lx /= dist;
+                ly /= dist;
+                lz /= dist;
+            }
+            atten = 1.0f / (1.0f + light->attenuation * dist * dist);
+            /* Cone attenuation: smoothstep between outer and inner cosines */
+            float spot_dot = -(lx * light->direction[0] + ly * light->direction[1] +
+                               lz * light->direction[2]);
+            if (spot_dot < light->outer_cos)
+                atten = 0.0f; /* outside cone */
+            else if (spot_dot < light->inner_cos) {
+                float t = (spot_dot - light->outer_cos) /
+                          (light->inner_cos - light->outer_cos);
+                atten *= t * t * (3.0f - 2.0f * t); /* smoothstep */
+            }
         } else /* ambient */
         {
             r += light->color[0] * light->intensity * cmd->diffuse_color[0];

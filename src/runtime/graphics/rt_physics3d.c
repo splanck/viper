@@ -24,6 +24,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_physics3d.h"
+#include "rt_joints3d.h"
 #include "rt_raycast3d.h"
 
 #include <math.h>
@@ -85,6 +86,11 @@ typedef struct {
     int32_t body_count;
     rt_contact3d contacts[PH3D_MAX_CONTACTS];
     int32_t contact_count;
+    /* Joint constraints */
+    #define PH3D_MAX_JOINTS 128
+    void *joints[PH3D_MAX_JOINTS];
+    int32_t joint_types[PH3D_MAX_JOINTS];
+    int32_t joint_count;
 } rt_world3d;
 
 typedef struct {
@@ -330,7 +336,9 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->gravity[2] = gz;
     w->body_count = 0;
     w->contact_count = 0;
+    w->joint_count = 0;
     memset(w->bodies, 0, sizeof(w->bodies));
+    memset(w->joints, 0, sizeof(w->joints));
     rt_obj_set_finalizer(w, world3d_finalizer);
     return w;
 }
@@ -411,6 +419,45 @@ void rt_world3d_step(void *obj, double dt) {
             }
         }
     }
+
+    /* Phase 3: Joint constraint solving (6 iterations for stability) */
+    for (int32_t iter = 0; iter < 6; iter++) {
+        for (int32_t j = 0; j < w->joint_count; j++) {
+            if (w->joints[j])
+                rt_joint3d_solve(w->joints[j], w->joint_types[j], dt);
+        }
+    }
+}
+
+void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
+    if (!obj || !joint)
+        return;
+    rt_world3d *w = (rt_world3d *)obj;
+    if (w->joint_count >= PH3D_MAX_JOINTS) {
+        rt_trap("Physics3D: max joint limit (128) exceeded");
+        return;
+    }
+    w->joints[w->joint_count] = joint;
+    w->joint_types[w->joint_count] = (int32_t)joint_type;
+    w->joint_count++;
+}
+
+void rt_world3d_remove_joint(void *obj, void *joint) {
+    if (!obj || !joint)
+        return;
+    rt_world3d *w = (rt_world3d *)obj;
+    for (int32_t i = 0; i < w->joint_count; i++) {
+        if (w->joints[i] == joint) {
+            w->joints[i] = w->joints[--w->joint_count];
+            w->joint_types[i] = w->joint_types[w->joint_count];
+            w->joints[w->joint_count] = NULL;
+            return;
+        }
+    }
+}
+
+int64_t rt_world3d_joint_count(void *obj) {
+    return obj ? ((rt_world3d *)obj)->joint_count : 0;
 }
 
 void rt_world3d_add(void *obj, void *body) {

@@ -16,6 +16,7 @@
 #include "rt.hpp"
 #include "rt_internal.h"
 #include "rt_physics3d.h"
+#include "rt_joints3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -482,6 +483,81 @@ static void test_trigger_set_bounds() {
     EXPECT_TRUE(rt_trigger3d_contains(t, p) != 0, "After resize: inside");
 }
 
+/*==========================================================================
+ * Joint tests
+ *=========================================================================*/
+
+static void test_distance_joint_create() {
+    void *a = rt_body3d_new_sphere(1.0, 1.0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    void *j = rt_distance_joint3d_new(a, b, 5.0);
+    EXPECT_TRUE(j != nullptr, "DistanceJoint3D.New creates joint");
+    EXPECT_NEAR(rt_distance_joint3d_get_distance(j), 5.0, 0.01, "DistanceJoint3D distance = 5.0");
+}
+
+static void test_distance_joint_constraint() {
+    /* Two bodies separated by 10 units, connected by distance joint of 5 */
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 10, 0, 0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_distance_joint3d_new(a, b, 5.0), RT_JOINT_DISTANCE);
+
+    /* Step several times — bodies should move toward target distance */
+    for (int i = 0; i < 60; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_a = rt_body3d_get_position(a);
+    void *pos_b = rt_body3d_get_position(b);
+    double dist = fabs(rt_vec3_x(pos_b) - rt_vec3_x(pos_a));
+    EXPECT_NEAR(dist, 5.0, 0.5, "DistanceJoint: bodies converge to target distance");
+}
+
+static void test_spring_joint_create() {
+    void *a = rt_body3d_new_sphere(1.0, 1.0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    void *j = rt_spring_joint3d_new(a, b, 3.0, 100.0, 5.0);
+    EXPECT_TRUE(j != nullptr, "SpringJoint3D.New creates joint");
+    EXPECT_NEAR(rt_spring_joint3d_get_stiffness(j), 100.0, 0.01, "SpringJoint3D stiffness = 100");
+    EXPECT_NEAR(rt_spring_joint3d_get_damping(j), 5.0, 0.01, "SpringJoint3D damping = 5");
+    EXPECT_NEAR(rt_spring_joint3d_get_rest_length(j), 3.0, 0.01, "SpringJoint3D rest length = 3");
+}
+
+static void test_spring_joint_force() {
+    /* Two bodies separated by 10 units, spring rest length 3, high stiffness */
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 10, 0, 0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_spring_joint3d_new(a, b, 3.0, 50.0, 10.0), RT_JOINT_SPRING);
+
+    /* After stepping, bodies should move closer due to spring force */
+    for (int i = 0; i < 30; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_b = rt_body3d_get_position(b);
+    EXPECT_TRUE(rt_vec3_x(pos_b) < 10.0, "SpringJoint: body B pulled toward A by spring");
+}
+
+static void test_world_joint_management() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(1.0, 1.0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    void *j = rt_distance_joint3d_new(a, b, 5.0);
+
+    EXPECT_TRUE(rt_world3d_joint_count(world) == 0, "World: 0 joints initially");
+    rt_world3d_add_joint(world, j, RT_JOINT_DISTANCE);
+    EXPECT_TRUE(rt_world3d_joint_count(world) == 1, "World: 1 joint after add");
+    rt_world3d_remove_joint(world, j);
+    EXPECT_TRUE(rt_world3d_joint_count(world) == 0, "World: 0 joints after remove");
+}
+
 int main() {
     /* Body creation */
     test_body_new_aabb();
@@ -532,6 +608,13 @@ int main() {
     /* Collision event queue */
     test_collision_event_count();
     test_collision_event_bodies();
+
+    /* Joint tests */
+    test_distance_joint_create();
+    test_distance_joint_constraint();
+    test_spring_joint_create();
+    test_spring_joint_force();
+    test_world_joint_management();
 
     printf("Physics3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

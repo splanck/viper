@@ -113,6 +113,8 @@ void rt_mesh3d_calc_tangents(void *obj);
 //=========================================================================
 
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val);
+void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val);
+int8_t rt_camera3d_is_ortho(void *cam);
 void rt_camera3d_look_at(void *obj, void *eye, void *target, void *up);
 void rt_camera3d_orbit(void *obj, void *target, double distance, double yaw, double pitch);
 double rt_camera3d_get_fov(void *obj);
@@ -148,6 +150,8 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
 void *rt_light3d_new_directional(void *direction, double r, double g, double b);
 void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation);
 void *rt_light3d_new_ambient(double r, double g, double b);
+void *rt_light3d_new_spot(void *position, void *direction, double r, double g, double b,
+                          double attenuation, double inner_angle, double outer_angle);
 void rt_light3d_set_intensity(void *obj, double intensity);
 void rt_light3d_set_color(void *obj, double r, double g, double b);
 

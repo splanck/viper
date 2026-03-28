@@ -11,9 +11,9 @@ Ordered by priority. Each plan is independently implementable.
 | # | Plan | Confirmed Issues | Already Fixed |
 |---|------|-----------------|---------------|
 | 01 | [P0 Crash Fixes](01-p0-crash-fixes.md) | **DONE** — Sprite3D fixed + Mesh3D.Clear added + 9 tests | 2 already fixed |
-| 03 | [Memory Leak Fixes](03-memory-leaks.md) | 1 confirmed (missing mesh clear API) + 3 need verification | 2 (water mesh, particle material) |
-| 04 | [FBX Animation Fixes](04-fbx-animation.md) | 1 (crossfade matrix lerp instead of TRS+SLERP) | 3 (keyframe extraction, bind pose, duration loop) |
-| 07 | [Audio3D Fixes](07-audio3d-fixes.md) | 1 (global max_distance) | 1 (stereo panning correct) |
+| 03 | [Memory Leak Fixes](03-memory-leaks.md) | **DONE** — Canvas3D clear optimized, skeleton verified, Mesh3D.Clear + Sprite3D cache from Plan 01 | 3 already fixed |
+| 04 | [FBX Animation Fixes](04-fbx-animation.md) | **DONE** — Crossfade rewritten with TRS+SLERP + 2 tests | 3 already correct |
+| 07 | [Audio3D Fixes](07-audio3d-fixes.md) | **DONE** — Per-voice max_distance tracking table | 1 already correct |
 | 08 | [NavMesh Fixes](08-navmesh-fixes.md) | 2 (O(n²) adjacency + malloc null checks) | 0 |
 | 13 | [Miscellaneous Fixes](13-misc-fixes.md) | 2 confirmed (OBJ dedup, normal transform) + 4 need verification | 3 (perspective matrix, friction, set_static) |
 
@@ -22,8 +22,8 @@ Ordered by priority. Each plan is independently implementable.
 | # | Plan | What It Enables | Effort |
 |---|------|----------------|--------|
 | 02 | [Physics Overhaul](02-physics-overhaul.md) | **PARTIAL** — Sphere narrow-phase + character controller + collision events DONE. Angular dynamics + joints deferred. | Large |
-| 05 | [Spot Lights + Ortho Camera](05-spot-lights-ortho-camera.md) | Indoor lighting, isometric/strategy games | Medium |
-| 06 | [Collision Callbacks + Joints](06-collision-callbacks-joints.md) | **PARTIAL** — Callbacks DONE in Plan 02. Joints split to Plan 14. | Large |
+| 05 | [Spot Lights + Ortho Camera](05-spot-lights-ortho-camera.md) | **DONE** — NewSpot with cone attenuation + NewOrtho camera + 5 tests | Medium |
+| 06 | [Collision Callbacks + Joints](06-collision-callbacks-joints.md) | **DONE** — Callbacks (Plan 02) + DistanceJoint3D + SpringJoint3D + 5 tests | Large |
 | 14 | [Angular Velocity + Joints](14-angular-velocity-joints.md) | Rotational dynamics, torque, distance/hinge/ball/spring joints | Large |
 
 ## Visual Quality (No existing implementation)

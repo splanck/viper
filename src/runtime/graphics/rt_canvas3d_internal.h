@@ -74,6 +74,8 @@ typedef struct {
     double shake_decay;
     double shake_offset[3];
     uint32_t shake_seed;
+    int8_t is_ortho;       /* 1 = orthographic projection */
+    double ortho_size;     /* half-extent of ortho view */
 } rt_camera3d;
 
 //=============================================================================
@@ -102,12 +104,14 @@ typedef struct {
 
 typedef struct {
     void *vptr;
-    int32_t type; /* 0=directional, 1=point, 2=ambient */
+    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
     double direction[3];
     double position[3];
     double color[3];
     double intensity;
     double attenuation;
+    double inner_cos; /* spot light inner cone cosine (full brightness inside) */
+    double outer_cos; /* spot light outer cone cosine (zero brightness outside) */
 } rt_light3d;
 
 //=============================================================================
