@@ -50,7 +50,9 @@ Per mesh:
                          model_matrix × normal → world normal
 
   2. Per-Vertex Lighting  Blinn-Phong: ambient + Σ(diffuse + specular) per light
+                          Vertex color × diffuse_color used as base albedo
                           Result: lit RGBA color per vertex (Gouraud shading)
+                          SKIPPED when normal map present (per-pixel instead)
 
 Per triangle:
   3. Frustum Clipping     Sutherland-Hodgman against 6 clip planes
@@ -69,10 +71,22 @@ Per sub-triangle:
 
   8. Per-Fragment:
      a. Z-test            Compare interpolated depth against Z-buffer
-     b. Texture sample    Perspective-correct UV: u = (u/w) / (1/w)
-     c. Color multiply    lit_color × texture_color
-     d. Pixel write       Clamp to [0,255] → write RGBA to framebuffer
-     e. Z-buffer update   Store new depth value
+     b. Texture sample    Bilinear filtering, perspective-correct UV: u = (u/w) / (1/w)
+     c. Terrain splat     If has_splat: sample weight map + 4 layer textures per-pixel
+     d. Normal map        If normal_map: sample TBN, perturb normal per-pixel
+     e. Per-pixel light   If normal_map: full Blinn-Phong per-pixel (with specular map)
+     f. Shadow lookup     If shadow_active: transform to light space, compare depth
+     g. Emissive map      Additive emissive texture contribution
+     h. Fog               Linear distance fog blend
+     i. Color compose     Gouraud × texture (default) or per-pixel lit result
+     j. Pixel write       Clamp to [0,255] → write RGBA to framebuffer
+     k. Z-buffer update   Store new depth value
+
+Shadow Pass (before main pass, when shadows enabled):
+  For each opaque mesh:
+    Transform vertices by light view-projection (orthographic)
+    Rasterize depth-only into shadow depth buffer (1024×1024)
+    No lighting, no texturing, no color — depth writes only
 ```
 
 ## Vertex Format (vgfx3d_vertex_t — 80 bytes)

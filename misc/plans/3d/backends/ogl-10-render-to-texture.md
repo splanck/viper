@@ -23,8 +23,12 @@ vgfx3d_rendertarget_t *rtt_target;
 static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (rt) {
-        // Create or resize FBO resources lazily when target dimensions change.
-        // Avoid deleting/recreating the FBO on every bind/unbind pair.
+        // Release old FBO resources before creating new ones (prevents leaks on re-bind)
+        if (ctx->rtt_fbo) {
+            gl.DeleteFramebuffers(1, &ctx->rtt_fbo);
+            gl.DeleteTextures(1, &ctx->rtt_color_tex);
+            gl.DeleteRenderbuffers(1, &ctx->rtt_depth_rbo);
+        }
         // Create FBO
         gl.GenFramebuffers(1, &ctx->rtt_fbo);
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);

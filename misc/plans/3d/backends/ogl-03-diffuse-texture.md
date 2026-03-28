@@ -63,11 +63,21 @@ if (cmd->texture) {
         gl.Uniform1i(ctx->uHasTexture, 1);
 
         free(rgba);
-        // Store tex for cleanup after draw
-        gl.DeleteTextures(1, &tex);
+        // IMPORTANT: Do NOT delete texture here — it must remain bound through the draw call.
+        // Store the texture name for deletion AFTER glDrawElements:
+        ctx->pending_tex = tex;
     }
 } else {
     gl.Uniform1i(ctx->uHasTexture, 0);
+    ctx->pending_tex = 0;
+}
+```
+
+After the `glDrawElements` call (line 729), clean up:
+```c
+if (ctx->pending_tex) {
+    gl.DeleteTextures(1, &ctx->pending_tex);
+    ctx->pending_tex = 0;
 }
 ```
 

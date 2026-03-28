@@ -16,7 +16,7 @@ int hasEmissiveMap;
 ```
 
 ### Step 3: Sample emissive map in fragment
-Replace line 190:
+Replace the `result += material.emissiveColor.rgb` line at the end of the lighting loop:
 ```metal
 // Before: result += material.emissiveColor.rgb;
 // After:
@@ -30,7 +30,7 @@ result += emissive;
 ### Step 4: Bind in C code
 ```objc
 if (cmd->emissive_map) {
-    id<MTLTexture> emisTex = [self getCachedTexture:cmd->emissive_map];
+    id<MTLTexture> emisTex = getCachedTexture(ctx, cmd->emissive_map);
     [ctx.encoder setFragmentTexture:emisTex atIndex:3];
     mat.hasEmissiveMap = 1;
 }

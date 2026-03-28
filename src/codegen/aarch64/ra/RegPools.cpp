@@ -104,7 +104,8 @@ void RegPools::releaseGPR(PhysReg r, const TargetInfo & /*ti*/) {
 
 PhysReg RegPools::takeFPR() {
     if (fprFree.empty())
-        return kScratchFPR; // Fallback to scratch register when pool exhausted
+        throw std::runtime_error("AArch64 register allocator: FPR pool exhausted — "
+                                 "maybeSpillForPressure should have freed a register");
     auto r = fprFree.front();
     fprFree.pop_front();
     return r;

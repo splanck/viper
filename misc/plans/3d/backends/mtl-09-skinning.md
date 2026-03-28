@@ -4,7 +4,7 @@
 Bone indices and weights are defined in the Metal vertex input (attributes 5-6) but the vertex shader ignores them. Currently Canvas3D pre-skins vertices on CPU before passing to the backend. GPU skinning would be faster for animated characters.
 
 ## Current State
-- `vgfx3d_vertex_t` has `bone_indices[4]` (`uint8_t`) and `bone_weights[4]` (`float`)
+- `vgfx3d_vertex_t` has `bone_indices[4]` (`uint8_t`, 4 bytes at offset 60) and `bone_weights[4]` (`float`, 16 bytes at offset 64)
 - Metal vertex descriptor maps them at attributes 5-6 (lines 277-287)
 - `vertex_main` reads `in.position` directly — no bone transform applied
 - CPU skinning in `vgfx3d_skinning.c` pre-transforms vertices before draw submission
@@ -31,7 +31,7 @@ float3 skinnedNormal = float3(0);
 if (obj.hasSkinning) {
     for (int i = 0; i < 4; i++) {
         int boneIdx = in.boneIdx[i];
-        float weight = in.boneWt[i] / 255.0; // uint8 → [0,1]
+        float weight = in.boneWt[i]; // already float [0,1]
         if (weight > 0.001) {
             float4x4 bm = bonePalette[boneIdx];
             skinnedPos += bm * float4(in.position, 1.0) * weight;

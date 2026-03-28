@@ -244,11 +244,16 @@ void lowerTerminators(const il::core::Function &fn,
 
             case Opcode::CBr:
                 if (term.operands.size() >= 1 && term.labels.size() == 2) {
-                    // Emit phi copies for both edges unconditionally
                     const std::string &trueLbl = term.labels[0];
                     const std::string &falseLbl = term.labels[1];
+                    const bool sameTarget = (trueLbl == falseLbl);
+                    const std::string trueEdgeLbl =
+                        sameTarget ? outBB.name + ".Lsame_true_" + std::to_string(i) : trueLbl;
+                    const std::string falseEdgeLbl =
+                        sameTarget ? outBB.name + ".Lsame_false_" + std::to_string(i) : falseLbl;
 
-                    auto emitEdgeCopies = [&](const std::string &dst,
+                    auto emitEdgeCopies = [&](MBasicBlock &edgeBB,
+                                              const std::string &dst,
                                               const std::vector<il::core::Value> &args) {
                         auto itIds = phiVregId.find(dst);
                         if (itIds == phiVregId.end())
@@ -271,7 +276,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                         inBB,
                                                         ti,
                                                         fb,
-                                                        outBB,
+                                                        edgeBB,
                                                         blockTempVReg,
                                                         tempRegClass,
                                                         nextVRegId,
@@ -283,7 +288,7 @@ void lowerTerminators(const il::core::Function &fn,
                             if (dstCls == RegClass::FPR) {
                                 if (scls != RegClass::FPR) {
                                     const uint16_t cvt = nextVRegId++;
-                                    outBB.instrs.push_back(
+                                    edgeBB.instrs.push_back(
                                         MInstr{MOpcode::SCvtF,
                                                {MOperand::vregOp(RegClass::FPR, cvt),
                                                 MOperand::vregOp(RegClass::GPR, sv)}});
@@ -292,13 +297,14 @@ void lowerTerminators(const il::core::Function &fn,
                                 }
                                 // Phi-edge FPR copy: clears dirty flag in RA to
                                 // suppress redundant block-end spill of this vreg.
-                                outBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
-                                                              {MOperand::vregOp(RegClass::FPR, sv),
-                                                               MOperand::immOp(offset)}});
+                                edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
+                                                               {MOperand::vregOp(RegClass::FPR,
+                                                                                 sv),
+                                                                MOperand::immOp(offset)}});
                             } else {
                                 if (scls == RegClass::FPR) {
                                     const uint16_t cvt = nextVRegId++;
-                                    outBB.instrs.push_back(
+                                    edgeBB.instrs.push_back(
                                         MInstr{MOpcode::FCvtZS,
                                                {MOperand::vregOp(RegClass::GPR, cvt),
                                                 MOperand::vregOp(RegClass::FPR, sv)}});
@@ -307,17 +313,20 @@ void lowerTerminators(const il::core::Function &fn,
                                 }
                                 // Phi-edge GPR copy: clears dirty flag in RA to
                                 // suppress redundant block-end spill of this vreg.
-                                outBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
-                                                              {MOperand::vregOp(RegClass::GPR, sv),
-                                                               MOperand::immOp(offset)}});
+                                edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
+                                                               {MOperand::vregOp(RegClass::GPR,
+                                                                                 sv),
+                                                                MOperand::immOp(offset)}});
                             }
                         }
                     };
 
-                    if (term.brArgs.size() > 0)
-                        emitEdgeCopies(trueLbl, term.brArgs[0]);
-                    if (term.brArgs.size() > 1)
-                        emitEdgeCopies(falseLbl, term.brArgs[1]);
+                    if (!sameTarget) {
+                        if (term.brArgs.size() > 0)
+                            emitEdgeCopies(outBB, trueLbl, term.brArgs[0]);
+                        if (term.brArgs.size() > 1)
+                            emitEdgeCopies(outBB, falseLbl, term.brArgs[1]);
+                    }
 
                     // Try to lower compares to cmp + b.<cond>
                     // CORRECTNESS: This optimization only fires in the entry block (i == 0)
@@ -356,9 +365,11 @@ void lowerTerminators(const il::core::Function &fn,
                                                    {MOperand::regOp(src0), MOperand::regOp(src1)}});
                                         outBB.instrs.push_back(MInstr{
                                             MOpcode::BCond,
-                                            {MOperand::condOp(cc), MOperand::labelOp(trueLbl)}});
+                                            {MOperand::condOp(cc),
+                                             MOperand::labelOp(trueEdgeLbl)}});
                                         outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
+                                            MInstr{MOpcode::Br,
+                                                   {MOperand::labelOp(falseEdgeLbl)}});
                                         loweredViaCompare = true;
                                     }
                                 } else if (o0.kind == il::core::Value::Kind::Temp &&
@@ -377,9 +388,11 @@ void lowerTerminators(const il::core::Function &fn,
                                                                        MOperand::immOp(o1.i64)}});
                                         outBB.instrs.push_back(MInstr{
                                             MOpcode::BCond,
-                                            {MOperand::condOp(cc), MOperand::labelOp(trueLbl)}});
+                                            {MOperand::condOp(cc),
+                                             MOperand::labelOp(trueEdgeLbl)}});
                                         outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
+                                            MInstr{MOpcode::Br,
+                                                   {MOperand::labelOp(falseEdgeLbl)}});
                                         loweredViaCompare = true;
                                     }
                                 }
@@ -405,8 +418,28 @@ void lowerTerminators(const il::core::Function &fn,
                             MInstr{MOpcode::CmpRI,
                                    {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});
                         outBB.instrs.push_back(MInstr{
-                            MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trueLbl)}});
-                        outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
+                            MOpcode::BCond,
+                            {MOperand::condOp("ne"), MOperand::labelOp(trueEdgeLbl)}});
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
+                    }
+
+                    if (sameTarget) {
+                        MBasicBlock trueEdgeBB;
+                        trueEdgeBB.name = trueEdgeLbl;
+                        if (term.brArgs.size() > 0)
+                            emitEdgeCopies(trueEdgeBB, trueLbl, term.brArgs[0]);
+                        trueEdgeBB.instrs.push_back(
+                            MInstr{MOpcode::Br, {MOperand::labelOp(trueLbl)}});
+                        mf.blocks.push_back(std::move(trueEdgeBB));
+
+                        MBasicBlock falseEdgeBB;
+                        falseEdgeBB.name = falseEdgeLbl;
+                        if (term.brArgs.size() > 1)
+                            emitEdgeCopies(falseEdgeBB, falseLbl, term.brArgs[1]);
+                        falseEdgeBB.instrs.push_back(
+                            MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
+                        mf.blocks.push_back(std::move(falseEdgeBB));
                     }
                 }
                 break;

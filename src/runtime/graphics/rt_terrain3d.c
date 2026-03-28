@@ -449,8 +449,19 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
             if (!t->chunk_meshes[idx])
                 t->chunk_meshes[idx] = build_chunk(t, cx, cz);
 
-            if (t->chunk_meshes[idx])
+            if (t->chunk_meshes[idx]) {
+                /* Set pending splat data for per-pixel terrain splatting.
+                 * draw_mesh will consume and clear these fields. */
+                if (t->splat_map) {
+                    c->pending_has_splat = 1;
+                    c->pending_splat_map = t->splat_map;
+                    for (int si = 0; si < 4; si++) {
+                        c->pending_splat_layers[si] = t->layer_textures[si];
+                        c->pending_splat_layer_scales[si] = (float)t->layer_scales[si];
+                    }
+                }
                 rt_canvas3d_draw_mesh(canvas_obj, t->chunk_meshes[idx], identity, t->material);
+            }
         }
     }
 }

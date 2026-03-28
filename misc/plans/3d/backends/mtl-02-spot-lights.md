@@ -51,8 +51,14 @@ Replace the `else` clause:
 }
 ```
 
-### Step 3: Update C-side light buffer copy
-In `metal_submit_draw()`, the light struct copy (line ~664) must include `inner_cos` and `outer_cos` from `vgfx3d_light_params_t`.
+### Step 3: Update C-side light struct and buffer copy
+The C-side `mtl_light_t` struct (search for `typedef struct` near the light copy loop) must match the MSL `Light` struct byte-for-byte. Replace the `_p3[2]` padding with `inner_cos` and `outer_cos` fields. Then in the light copy loop in `metal_submit_draw()`, copy from `vgfx3d_light_params_t`:
+```c
+ml[i].inner_cos = lights[i].inner_cos;
+ml[i].outer_cos = lights[i].outer_cos;
+```
+
+**Dependency note:** The `else` clause uses `baseColor` (line 49) which requires MTL-01 to be done first. If implementing before MTL-01, use `material.diffuseColor.rgb` instead.
 
 ## Files Modified
 - `src/runtime/graphics/vgfx3d_backend_metal.m` — shader Light struct + fragment spot branch + C light copy

@@ -104,7 +104,9 @@
 
 #include "AsmEmitter.hpp"
 
+#include "A64ImmediateUtils.hpp"
 #include "FrameCodegen.hpp"
+#include "binenc/A64Encoding.hpp"
 #include "codegen/common/ICE.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
@@ -133,6 +135,15 @@ inline void emit3R(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 /// Emit a 2-register + immediate GPR instruction: "  mnem xd, xn, #imm\n"
 inline void emit2RI(std::ostream &os, const char *mnem, PhysReg d, PhysReg s, long long imm) {
     os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm << "\n";
+}
+
+inline void emit2RIShift12(std::ostream &os,
+                           const char *mnem,
+                           PhysReg d,
+                           PhysReg s,
+                           uint32_t imm12) {
+    os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm12
+       << ", lsl #12\n";
 }
 
 /// Emit a 3-register FPR instruction: "  mnem dd, dn, dm\n"
@@ -339,11 +350,43 @@ void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label
 }
 
 void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const {
-    emit2RI(os, "add", dst, lhs, imm);
+    const uint64_t magnitude = absImmUnsigned(imm);
+    if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
+        if (imm >= 0) {
+            if (enc->shift12)
+                emit2RIShift12(os, "add", dst, lhs, enc->imm12);
+            else
+                emit2RI(os, "add", dst, lhs, static_cast<long long>(magnitude));
+        } else if (enc->shift12) {
+            emit2RIShift12(os, "sub", dst, lhs, enc->imm12);
+        } else {
+            emit2RI(os, "sub", dst, lhs, static_cast<long long>(magnitude));
+        }
+        return;
+    }
+
+    emitMovImm64(os, kScratchGPR, static_cast<unsigned long long>(imm));
+    emit3R(os, "add", dst, lhs, kScratchGPR);
 }
 
 void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const {
-    emit2RI(os, "sub", dst, lhs, imm);
+    const uint64_t magnitude = absImmUnsigned(imm);
+    if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
+        if (imm >= 0) {
+            if (enc->shift12)
+                emit2RIShift12(os, "sub", dst, lhs, enc->imm12);
+            else
+                emit2RI(os, "sub", dst, lhs, static_cast<long long>(magnitude));
+        } else if (enc->shift12) {
+            emit2RIShift12(os, "add", dst, lhs, enc->imm12);
+        } else {
+            emit2RI(os, "add", dst, lhs, static_cast<long long>(magnitude));
+        }
+        return;
+    }
+
+    emitMovImm64(os, kScratchGPR, static_cast<unsigned long long>(imm));
+    emit3R(os, "sub", dst, lhs, kScratchGPR);
 }
 
 void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
@@ -453,13 +496,29 @@ void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const {
 }
 
 void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {
-    os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
+    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
+        os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
+        return;
+    }
+
+    os << "  mov " << rn(PhysReg::X16) << ", sp\n";
+    emitAddRI(os, PhysReg::X16, PhysReg::X16, offset);
+    os << "  str " << rn(src) << ", [" << rn(PhysReg::X16) << "]\n";
 }
 
 void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const {
+    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
+        os << "  str ";
+        printD(os, src);
+        os << ", [sp, #" << offset << "]\n";
+        return;
+    }
+
+    os << "  mov " << rn(PhysReg::X16) << ", sp\n";
+    emitAddRI(os, PhysReg::X16, PhysReg::X16, offset);
     os << "  str ";
     printD(os, src);
-    os << ", [sp, #" << offset << "]\n";
+    os << ", [" << rn(PhysReg::X16) << "]\n";
 }
 
 /// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
@@ -668,12 +727,21 @@ void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {
 }
 
 void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const {
-    const auto savedFlags = os.flags();
-    os << std::fixed;
-    os << "  fmov ";
-    printD(os, dst);
-    os << ", #" << imm << "\n";
-    os.flags(savedFlags);
+    if (binenc::encodeFP8Immediate(imm) >= 0) {
+        const auto savedFlags = os.flags();
+        os << std::fixed;
+        os << "  fmov ";
+        printD(os, dst);
+        os << ", #" << imm << "\n";
+        os.flags(savedFlags);
+        return;
+    }
+
+    unsigned long long bits = 0;
+    static_assert(sizeof(bits) == sizeof(imm), "unexpected f64 size");
+    std::memcpy(&bits, &imm, sizeof(bits));
+    emitMovImm64(os, PhysReg::X16, bits);
+    emitFMovGR(os, dst, PhysReg::X16);
 }
 
 void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const {
@@ -749,7 +817,7 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
     const bool skipFrame = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
                            fn.localFrameSize == 0 && fn.name != "main";
 
-    const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
+    const bool usePlan = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
     if (usePlan) {
         plan.saveGPRs = fn.savedGPRs;
@@ -912,13 +980,26 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
                << rn(getReg(mi.ops[2])) << "\n";
             return;
         case MOpcode::AddsRI:
-            os << "  adds " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", #"
-               << getImm(mi.ops[2]) << "\n";
+        case MOpcode::SubsRI: {
+            const PhysReg dst = getReg(mi.ops[0]);
+            const PhysReg lhs = getReg(mi.ops[1]);
+            const long long imm = getImm(mi.ops[2]);
+            const uint64_t magnitude = absImmUnsigned(imm);
+            const bool isAdds = (mi.opc == MOpcode::AddsRI);
+            if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
+                const bool emitAddImm = imm >= 0 ? isAdds : !isAdds;
+                os << "  " << (emitAddImm ? "adds " : "subs ") << rn(dst) << ", " << rn(lhs)
+                   << ", #" << enc->imm12;
+                if (enc->shift12)
+                    os << ", lsl #12";
+                os << "\n";
+            } else {
+                emitMovImm64(os, PhysReg::X16, static_cast<unsigned long long>(imm));
+                os << "  " << (isAdds ? "adds " : "subs ") << rn(dst) << ", " << rn(lhs) << ", "
+                   << rn(PhysReg::X16) << "\n";
+            }
             return;
-        case MOpcode::SubsRI:
-            os << "  subs " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", #"
-               << getImm(mi.ops[2]) << "\n";
-            return;
+        }
         case MOpcode::MAddRRRR:
             os << "  madd " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
                << rn(getReg(mi.ops[2])) << ", " << rn(getReg(mi.ops[3])) << "\n";

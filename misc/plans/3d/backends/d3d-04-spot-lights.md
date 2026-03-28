@@ -40,7 +40,19 @@ Replace `else` clause (line 128-130):
 }
 ```
 
-### Step 3: Update C-side light buffer copy
+### Step 3: Update C-side light struct and buffer copy
+The `d3d_light_t` C struct already has `float _p3[2]` padding at the end that lines up with the new HLSL fields. Replace the padding with the actual cone fields:
+```c
+typedef struct {
+    int32_t type;
+    float _p0, _p1, _p2;
+    float dir[4];
+    float pos[4];
+    float col[4];
+    float intensity, attenuation;
+    float inner_cos, outer_cos; // was: float _p3[2]
+} d3d_light_t;
+```
 In `submit_draw()`, the light struct copy (lines 578-591) must include `inner_cos` and `outer_cos` from `vgfx3d_light_params_t`.
 
 ## Files Modified

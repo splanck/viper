@@ -25,11 +25,11 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
 | Diffuse texture | ✅ perspective-correct | ⚠️ unlit path only | ❌ NONE | ❌ NONE |
-| Normal map | ❌ (in draw cmd, unused) | ❌ (in draw cmd, unused) | ❌ | ❌ |
-| Specular map | ❌ (in draw cmd, unused) | ❌ (in draw cmd, unused) | ❌ | ❌ |
+| Normal map | ✅ per-pixel TBN perturbation | ❌ (in draw cmd, unused) | ❌ | ❌ |
+| Specular map | ✅ per-pixel modulation | ❌ (in draw cmd, unused) | ❌ | ❌ |
 | Emissive map | ✅ additive blend | ❌ (color only, no map) | ❌ | ❌ |
-| Texture wrapping | ✅ clamp | ✅ repeat (hardcoded) | ❌ | ❌ |
-| Texture filtering | ✅ nearest | ✅ bilinear | ❌ | ❌ |
+| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (hardcoded) | ❌ | ❌ |
+| Texture filtering | ✅ bilinear | ✅ bilinear | ❌ | ❌ |
 | Texture cache | N/A | ❌ recreated every draw! | N/A | N/A |
 | Sampler state | N/A | ✅ recreated every draw | ❌ | ❌ |
 
@@ -42,7 +42,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Directional specular (Blinn-Phong) | ✅ | ✅ | ✅ | ✅ |
 | Point light + attenuation | ✅ | ✅ | ✅ | ✅ |
 | Spot light + cone | ✅ smoothstep | ❌ falls to ambient | ❌ falls to ambient | ❌ falls to ambient |
-| Lighting model | Gouraud (per-vertex) | Per-pixel (fragment) | Per-pixel (fragment) | Per-pixel (fragment) |
+| Lighting model | Gouraud (per-vertex) + per-pixel with normal maps | Per-pixel (fragment) | Per-pixel (fragment) | Per-pixel (fragment) |
 | Max light slots | 8 | 8 | 8 | 8 |
 
 ### Material Properties
@@ -67,7 +67,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Backface culling | ✅ screen-space area | ✅ per-draw toggle | ✅ per-draw toggle | ❌ always on, no toggle |
 | Wireframe mode | ✅ Bresenham lines | ❌ param ignored | ❌ param ignored | ❌ param ignored |
 | Fog (linear distance) | ✅ per-pixel | ❌ | ❌ | ❌ |
-| Shadow mapping | ❌ | ❌ | ❌ | ❌ |
+| Shadow mapping | ✅ directional light, 1024x1024 depth map | ❌ | ❌ | ❌ |
 | Render-to-texture | ✅ CPU color_buf | ✅ GPU→CPU readback | ❌ stub | ❌ stub |
 
 ### Advanced Features
@@ -75,7 +75,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
 | Instanced rendering | ❌ | ❌ | ❌ | ❌ |
-| Terrain splat (per-pixel) | ❌ | ❌ | ❌ | ❌ |
+| Terrain splat (per-pixel) | ✅ 4-layer weight blend | ❌ | ❌ | ❌ |
 | Post-processing | ✅ CPU (bloom, FXAA, etc.) | ❌ | ❌ | ❌ |
 | VBO/buffer strategy | N/A (CPU arrays) | Per-draw MTL buffers | Per-draw VBO/IBO (wasteful) | Per-draw VB/IB (wasteful) |
 
@@ -85,7 +85,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Vertex color used in shading | ❌ ignores, uses diffuse_color only | ✅ passed to fragment | ✅ passed to fragment | ✅ passed to fragment |
+| Vertex color used in shading | ✅ multiplied with diffuse_color | ✅ passed to fragment | ✅ passed to fragment | ✅ passed to fragment |
 
 ---
 
@@ -104,8 +104,8 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | D3D-3 | D3D11 | 🟠 MEDIUM | VBO/IBO created+destroyed per draw. | 508-598 |
 | D3D-4 | D3D11 | 🟠 MEDIUM | ~10 unchecked HRESULTs on D3D11 creation calls. | various |
 | MTL-2b | Metal | 🟡 HIGH | Diffuse texture only sampled in **unlit** code path. Lit textured meshes render as solid color. | 161 |
-| SW-1 | Software | 🟠 MEDIUM | Ignores per-vertex colors — uses cmd->diffuse_color only. GPU backends use vertex colors. | compute_lighting |
-| ALL-1 | All | 🟡 HIGH | Normal map and specular map pointers accepted in draw_cmd but **never sampled** by any backend. | — |
+| SW-1 | Software | ✅ FIXED | ~~Ignores per-vertex colors~~ — now multiplies vertex color with diffuse_color. | compute_lighting |
+| ALL-1 | SW ✅ / GPU ❌ | 🟡 HIGH | Normal map and specular map: **sampled by software backend** (per-pixel TBN + Blinn-Phong). Still unused by Metal, OpenGL, D3D11. | — |
 | ALL-2 | All GPU | 🟡 HIGH | Fog parameters passed to begin_frame but **ignored** by Metal, OpenGL, and D3D11. Fog only works in software. | begin_frame |
 
 ## Corrections from Previous Audit
@@ -115,8 +115,9 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | "Software does per-pixel lighting" | **WRONG.** Gouraud (per-vertex). Colors interpolated per-pixel. |
 | "Metal samples diffuse in lit + unlit" | **WRONG.** Only unlit path checks `hasTexture`. Lit textured meshes are solid color. |
 | "OpenGL has working alpha" | **WRONG.** `uAlpha` uniform undeclared. Alpha is undefined. |
-| "Normal/specular maps not used in SW+Metal" | **EXPANDED.** Not used in ANY backend. All 4 ignore them. |
+| "Normal/specular maps not used in SW+Metal" | **PARTIALLY FIXED.** Software backend now samples both with per-pixel Blinn-Phong + TBN. GPU backends still ignore them. |
 | "Fog works on software" | **CONFIRMED.** GPU backends silently drop fog params in begin_frame. |
+| "Software does per-vertex lighting only" | **UPDATED.** Software now supports both Gouraud (default) and per-pixel (when normal map present). Shadow mapping also implemented. |
 | "Vertex colors work everywhere" | **WRONG.** Software backend ignores vertex colors, uses diffuse_color only. |
 
 ## Verified Cross-Backend Facts
@@ -259,6 +260,10 @@ The backend plans are intentionally split by renderer, but several implementatio
 | [OGL-10](ogl-10-render-to-texture.md) | Render-to-texture (FBO + readback) | — | Large |
 | [OGL-11](ogl-11-skinning-morph.md) | GPU skeletal skinning + morph targets | OGL-03, Shared draw-cmd extension | Large |
 | [OGL-12](ogl-12-shadow-mapping.md) | Shadow mapping (FBO depth + comparison) | OGL-10 | Large |
+| [OGL-13](ogl-13-post-processing.md) | GPU post-processing pipeline | OGL-10 | Large |
+| [OGL-14](ogl-14-vbo-optimization.md) | Dynamic VBO/IBO (orphan + sub-upload) | — | Medium |
+| [OGL-15](ogl-15-instanced-rendering.md) | Instanced rendering (`glDrawElementsInstanced`) | Shared instanced backend hook | Medium |
+| [OGL-16](ogl-16-terrain-splat.md) | Per-pixel terrain splatting (5 extra samplers) | OGL-03, OGL-04, Shared draw-cmd extension | Medium |
 
 ### OpenGL recommended execution order
 1. **OGL-01** (alpha fix) — CRITICAL bug, 1-line shader fix
@@ -271,8 +276,12 @@ The backend plans are intentionally split by renderer, but several implementatio
 8. **OGL-08** (normal map) — medium, tangent varying + orthonormal TBN
 9. **OGL-09** (specular + emissive maps) — small, texture units 2-3
 10. **OGL-10** (render-to-texture) — large, FBO + readback
-11. **OGL-11** (skinning + morph) — large, shared draw payload + shader variants
-12. **OGL-12** (shadow mapping) — large, shared pass scheduling + `sampler2DShadow`
+11. **OGL-13** (post-processing) — large, offscreen FBO + backend-facing PostFX snapshot
+12. **OGL-14** (VBO optimization) — medium, orphan + sub-upload
+13. **OGL-11** (skinning + morph) — large, shared draw payload + shader variants
+14. **OGL-12** (shadow mapping) — large, shared pass scheduling + `sampler2DShadow`
+15. **OGL-15** (instanced rendering) — medium, shared hook + `glDrawElementsInstanced`
+16. **OGL-16** (terrain splat) — medium, shared terrain payload + extra samplers
 
 ---
 

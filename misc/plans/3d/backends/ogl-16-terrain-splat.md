@@ -3,6 +3,8 @@
 ## Context
 Same as MTL-14, D3D-16, SW-07. Part of Plan 15. OpenGL needs splat map + 4 layer samplers on texture units 5-9.
 
+Producer-side integration belongs in [`src/runtime/graphics/rt_terrain3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_terrain3d.c). Keep the baked terrain-texture fallback until the shared splat payload is wired and the intended backends consume it.
+
 ## Depends On
 - OGL-03 (texture infrastructure)
 - OGL-04 (texture cache)
@@ -64,6 +66,7 @@ if (cmd->has_splat && cmd->splat_map) {
 
 ## Files Modified
 - `src/runtime/graphics/vgfx3d_backend_opengl.c` — GLSL splat samplers, fragment blending, C texture unit binding
+- `src/runtime/graphics/rt_terrain3d.c` — populate shared splat payload while preserving fallback path
 
 ## Testing
 - Same tests as MTL-14, D3D-16, SW-07

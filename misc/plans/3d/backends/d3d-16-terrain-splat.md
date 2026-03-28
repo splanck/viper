@@ -37,7 +37,16 @@ if (cmd->has_splat && cmd->splat_map) {
 ### Step 2: Add to PerMaterial cbuffer
 ```hlsl
 int hasSplat;
+int _splatPad[3]; // align splatScales to 16-byte boundary
 float4 splatScales; // UV tiling per layer
+```
+
+Update the C struct to match (exact layout depends on which other plans have been applied — D3D-07, D3D-08 may have already added fields after `_p`):
+```c
+// Added fields at end of d3d_per_material_t:
+int32_t has_splat;
+int32_t _splat_pad[3];
+float splat_scales[4]; // must be 16-byte aligned
 ```
 
 ### Step 3: Add HLSL declarations

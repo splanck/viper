@@ -24,16 +24,22 @@ int32_t morph_shape_count;
 ```
 
 ### Step 2: Upload morph data as Metal buffer
-In `metal_submit_draw()`:
+**IMPORTANT:** Metal's `setVertexBytes` has a 4KB limit. Morph delta buffers easily exceed this (1000 verts × 1 shape × 12 bytes = 12KB). Must use `newBufferWithBytes` + `setVertexBuffer` instead:
 ```objc
 if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
-    [ctx.encoder setVertexBytes:cmd->morph_deltas
-                         length:cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float)
-                        atIndex:4];
-    [ctx.encoder setVertexBytes:cmd->morph_weights
-                         length:cmd->morph_shape_count * sizeof(float)
-                        atIndex:5];
+    size_t delta_size = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
+    id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
+                                                     length:delta_size
+                                                    options:MTLResourceStorageModeShared];
+    [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
+
+    size_t weight_size = (size_t)cmd->morph_shape_count * sizeof(float);
+    id<MTLBuffer> weightBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
+                                                       length:weight_size
+                                                      options:MTLResourceStorageModeShared];
+    [ctx.encoder setVertexBuffer:weightBuf offset:0 atIndex:5];
     obj.morphShapeCount = cmd->morph_shape_count;
+    obj.vertexCount = cmd->vertex_count;
 }
 ```
 

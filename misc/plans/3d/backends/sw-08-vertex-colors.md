@@ -10,7 +10,19 @@ The vertex format includes `color[4]` per vertex. GPU backends (Metal, OpenGL, D
 
 ## Implementation
 
-### Change: Multiply vertex color with material diffuse color
+### Step 1: Copy mesh vertex color to pipe_vert_t
+
+**CRITICAL FINDING:** The vertex color from the mesh (`src->color[4]`) is NEVER copied to `dst->color[4]` in the vertex processing loop. Line 756-757 copy UVs but stop there — no color copy. `dst->color` contains uninitialized memory before `compute_lighting()` overwrites it.
+
+Before `compute_lighting()` is called (after the UV copy at line 757):
+```c
+dst->color[0] = src->color[0];
+dst->color[1] = src->color[1];
+dst->color[2] = src->color[2];
+dst->color[3] = src->color[3];
+```
+
+### Step 2: Multiply vertex color with material diffuse color
 
 In `compute_lighting()`, instead of overwriting vertex color with diffuse color, multiply them:
 

@@ -18,6 +18,8 @@
 #include <sstream>
 #include <string>
 
+#include "codegen/aarch64/AsmEmitter.hpp"
+#include "codegen/aarch64/TargetAArch64.hpp"
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
 using namespace viper::tools::ilc;
@@ -237,6 +239,30 @@ TEST(Arm64CalleeSaved, PrologueEpilogue) {
     EXPECT_TRUE(hasFrameSetup);
     // Should have ret
     EXPECT_NE(asmText.find("ret"), std::string::npos);
+}
+
+TEST(Arm64CalleeSaved, FprOnlyFramePlanIsEmitted) {
+    using namespace viper::codegen::aarch64;
+
+    MFunction fn;
+    fn.name = "fpr_only";
+    fn.isLeaf = false;
+    fn.savedFPRs = {PhysReg::V8};
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(bb));
+
+    std::ostringstream os;
+    AsmEmitter emitter(darwinTarget());
+    emitter.emitFunction(os, fn);
+
+    const std::string asmText = os.str();
+    EXPECT_TRUE(asmText.find("str d8") != std::string::npos ||
+                asmText.find("stp d8") != std::string::npos);
+    EXPECT_TRUE(asmText.find("ldr d8") != std::string::npos ||
+                asmText.find("ldp d8") != std::string::npos);
 }
 
 int main(int argc, char **argv) {

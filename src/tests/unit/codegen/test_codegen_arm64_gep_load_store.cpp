@@ -72,6 +72,51 @@ TEST(Arm64CLI, GepLoadStore_NonStack) {
     EXPECT_NE(asmText.find("[x"), std::string::npos);
 }
 
+TEST(Arm64CLI, GepLargeImmediate_SystemAsm) {
+    const std::string in = outPath("arm64_cli_gep_large_imm.il");
+    const std::string out = outPath("arm64_cli_gep_large_imm.s");
+    const std::string il = "il 0.1\n"
+                           "func @addr(%p:ptr) -> ptr {\n"
+                           "entry(%p:ptr):\n"
+                           "  %addr = gep %p, 5000\n"
+                           "  ret %addr\n"
+                           "}\n";
+
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "--system-asm", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_TRUE(asmText.find("mov x") != std::string::npos ||
+                asmText.find("movz x") != std::string::npos ||
+                asmText.find("movk x") != std::string::npos);
+    EXPECT_EQ(asmText.find("add x0, x8, #5000"), std::string::npos);
+}
+
+TEST(Arm64CLI, GepImmediateBoundaries_SystemAsm) {
+    const std::string in = outPath("arm64_cli_gep_boundaries.il");
+    const std::string out = outPath("arm64_cli_gep_boundaries.s");
+    const std::string il = "il 0.1\n"
+                           "func @addr(%p:ptr) -> ptr {\n"
+                           "entry(%p:ptr):\n"
+                           "  %a = gep %p, 4095\n"
+                           "  %b = gep %a, 1\n"
+                           "  %c = gep %b, 4096\n"
+                           "  %d = gep %c, -8\n"
+                           "  ret %d\n"
+                           "}\n";
+
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "--system-asm", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("#4095"), std::string::npos);
+    EXPECT_NE(asmText.find("lsl #12"), std::string::npos);
+    EXPECT_NE(asmText.find("sub x"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

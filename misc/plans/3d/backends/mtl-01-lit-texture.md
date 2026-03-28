@@ -35,10 +35,17 @@ float3 result = scene.ambientColor.rgb * baseColor;
 // ... use baseColor instead of material.diffuseColor.rgb throughout ...
 ```
 
-Replace all `material.diffuseColor.rgb` in the lighting loop with `baseColor`.
+Replace `material.diffuseColor.rgb` with `baseColor` in exactly 2 places in the lighting loop:
+1. Ambient: `scene.ambientColor.rgb * baseColor` (was `* material.diffuseColor.rgb`)
+2. Diffuse accumulation: `NdotL * baseColor * atten` (was `* material.diffuseColor.rgb * atten`)
+
+Also change the lit path return to include texture alpha:
+```metal
+return float4(result, material.alpha * texAlpha);
+```
 
 ## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_metal.m` — shader source string (lines 159-191)
+- `src/runtime/graphics/vgfx3d_backend_metal.m` — fragment_main body in the embedded MSL string
 
 ## Testing
 - Textured box with directional light → texture visible with lighting (not solid color)

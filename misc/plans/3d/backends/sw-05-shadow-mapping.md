@@ -80,5 +80,12 @@ The shadow pass needs the draw command list BEFORE the main pass renders them. C
 - Bias too high → peter-panning (shadow detaches from object)
 - Multiple objects → shadows stack correctly
 
+## Important Notes
+- Directional lights don't have a position. The shadow view matrix should use `scene_center - light_dir * far_distance` as the eye position, with orthographic projection sized to cover the scene's bounding box.
+- Shadow pass should skip transparent objects (alpha < 1.0) — shadow from translucent objects is not supported in v1.
+- The shadow depth buffer should be initialized to `FLT_MAX` before the shadow pass.
+- For orthographic projection, the perspective divide (`lw`) is always 1.0, so the divide is harmless but unnecessary.
+- If `c->shadow_rt->depth_buf` doesn't match the format needed for CPU shadow depth, use a separate `float *shadow_depth` in `sw_context_t` as shown in Phase 1.
+
 ## Performance
 Shadow map render is a second rasterization pass over all opaque geometry, depth-only (no lighting/texturing). At 1024x1024 resolution this is fast. The per-pixel shadow lookup adds 1 matrix multiply + 1 depth comparison per pixel in the main pass.

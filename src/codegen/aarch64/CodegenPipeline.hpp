@@ -44,6 +44,7 @@ struct PipelineResult {
 struct PipelineOptions {
     bool dumpMirBeforeRA = false;
     bool dumpMirAfterRA = false;
+    bool emitAssemblyText = true;
     bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
 };
 

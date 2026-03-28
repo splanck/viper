@@ -219,6 +219,33 @@ int main() {
         CHECK(err.str().empty());
     }
 
+    // --- Known libc/ctype helpers remain silent when treated as dynamic ---
+    {
+        auto obj = makeObj("main.o", {".text"});
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, "localeconv", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "memchr", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "isalnum", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "isupper", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "islower", 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(dynamicSyms.count("localeconv") == 1);
+        CHECK(dynamicSyms.count("memchr") == 1);
+        CHECK(dynamicSyms.count("isalnum") == 1);
+        CHECK(dynamicSyms.count("isupper") == 1);
+        CHECK(dynamicSyms.count("islower") == 1);
+        CHECK(err.str().empty());
+    }
+
     // --- Undefined symbol becomes dynamic (known prefix-matched symbol) ---
     {
         auto obj = makeObj("main.o", {".text"});

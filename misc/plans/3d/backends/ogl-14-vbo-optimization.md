@@ -23,8 +23,8 @@ gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, OGL_MAX_IBO_SIZE, NULL, GL_STREAM_DRAW);
 
 ### Per-draw: orphan + sub-upload
 ```c
-UINT vbo_size = cmd->vertex_count * sizeof(vgfx3d_vertex_t);
-UINT ibo_size = cmd->index_count * sizeof(uint32_t);
+GLsizei vbo_size = cmd->vertex_count * sizeof(vgfx3d_vertex_t);
+GLsizei ibo_size = cmd->index_count * sizeof(uint32_t);
 
 if (vbo_size <= OGL_MAX_VBO_SIZE && ibo_size <= OGL_MAX_IBO_SIZE) {
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->dynamic_vbo);

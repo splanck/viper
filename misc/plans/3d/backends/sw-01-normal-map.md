@@ -4,18 +4,19 @@
 Normal maps exist in `vgfx3d_draw_cmd_t` (field `normal_map`) but no backend samples them. The software backend computes lighting per-vertex using the mesh's geometric normal. Normal maps would perturb the normal per-pixel for surface detail without extra geometry.
 
 ## Current State
-- `compute_lighting()` at line 206 uses `v->normal[0..2]` from the mesh vertex
+- `compute_lighting()` (search for `static void compute_lighting`) uses `v->normal[0..2]` from the mesh vertex
 - Lighting is Gouraud (per-vertex), so normals are interpolated across the triangle
 - The `cmd->normal_map` pointer is passed but never read
+- Note: line numbers in this file shift frequently due to other edits — search by function name, not line number
 
 ## Implementation
 
-### Step 1: Change lighting from per-vertex to per-pixel
-The current Gouraud model computes lighting per-vertex then interpolates colors. Normal mapping requires per-pixel normal lookup, which means per-pixel lighting.
+### Step 1: Conditional per-pixel lighting (only when normal map present)
+The current Gouraud model computes lighting per-vertex then interpolates colors. Normal mapping requires per-pixel lighting. **To avoid a performance regression on non-normal-mapped draws, keep Gouraud as the default path.** Only switch to per-pixel when `cmd->normal_map != NULL`.
 
-**In `raster_triangle()` (line 383):**
-- Currently: vertex colors are pre-computed by `compute_lighting()`, interpolated via barycentric weights (line 443)
-- Change: interpolate world position and normal per-pixel, then compute lighting per-pixel
+**In `raster_triangle()`:**
+- When `cmd->normal_map == NULL`: keep the existing Gouraud path unchanged (pre-computed vertex colors, interpolated per-pixel)
+- When `cmd->normal_map != NULL`: skip `compute_lighting()`, instead interpolate world position, normal, and tangent per-pixel, then compute lighting per-pixel with the perturbed normal
 
 Add to `screen_vert_t`:
 ```c
@@ -64,7 +65,7 @@ if (cmd->normal_map) {
 ```
 
 ### Step 3: Compute per-pixel lighting with perturbed normal
-Move the lighting calculation from `compute_lighting()` into the per-pixel loop, using the (possibly perturbed) normal. This is the same Blinn-Phong math currently in `compute_lighting()` but evaluated per-pixel instead of per-vertex.
+Extract the core Blinn-Phong math from `compute_lighting()` into a shared inline/static helper that can be called either per-vertex (existing Gouraud path) or per-pixel (new normal-map path). Do NOT remove `compute_lighting()` — it remains the default for non-normal-mapped draws. The per-pixel path calls the same math but with the perturbed normal and interpolated world position.
 
 ### Step 4: Add tangent to screen_vert_t and pipe_vert_t
 The vertex tangent (`vgfx3d_vertex_t.tangent[3]`) must flow through the pipeline:
@@ -81,7 +82,7 @@ If the interpolated tangent length collapses, skip the normal-map perturbation f
 - Create mesh with normal map Pixels (e.g., blue-tinted flat normal [0.5, 0.5, 1.0])
 - Verify flat normal map produces same result as no normal map
 - Create tilted normal map — verify lighting changes per-pixel
-- Performance: normal mapping adds ~5 texture samples per pixel; verify <2x slowdown
+- Performance: normal mapping adds 1 texture sample (the normal map) plus per-pixel lighting (was per-vertex). Expect ~1.5-2x slowdown for normal-mapped draws only; non-normal-mapped draws are unaffected (Gouraud path preserved).
 
 ## Dependencies
 - Tangent data must be present on the mesh (`CalcTangents()` already exists)

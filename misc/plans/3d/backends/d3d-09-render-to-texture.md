@@ -25,8 +25,14 @@ vgfx3d_rendertarget_t *rtt_target; // Canvas3D target for readback
 static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (rt) {
-        // Create or resize RTT resources lazily when the target changes
-        // (do not tear down and recreate everything on every bind/unbind)
+        // Release old RTT resources before creating new ones
+        // (prevents resource leaks on repeated bind calls with different targets)
+        if (ctx->rtt_color_tex) ID3D11Texture2D_Release(ctx->rtt_color_tex);
+        if (ctx->rtt_rtv) ID3D11RenderTargetView_Release(ctx->rtt_rtv);
+        if (ctx->rtt_depth_tex) ID3D11Texture2D_Release(ctx->rtt_depth_tex);
+        if (ctx->rtt_dsv) ID3D11DepthStencilView_Release(ctx->rtt_dsv);
+        if (ctx->rtt_staging) ID3D11Texture2D_Release(ctx->rtt_staging);
+
         // RTT color texture (BGRA8, render target + shader resource)
         D3D11_TEXTURE2D_DESC desc = {0};
         desc.Width = rt->width;

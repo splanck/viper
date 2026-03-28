@@ -23,6 +23,19 @@ int morphShapeCount;
 int _objPad;
 ```
 
+Update the C struct to match:
+```c
+typedef struct {
+    float m[16];
+    float vp[16];
+    float nm[16];
+    int32_t has_skinning;
+    int32_t vertex_count;
+    int32_t morph_shape_count;
+    int32_t _obj_pad;
+} d3d_per_object_t; // 208 bytes (was 192)
+```
+
 #### Step 2: Apply skinning in vertex shader
 ```hlsl
 PS_INPUT VSMain(VS_INPUT input) {

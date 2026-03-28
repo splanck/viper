@@ -240,7 +240,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
 
-The software renderer is always available and produces identical visual output (with Gouraud shading instead of per-pixel Phong on GPU backends).
+The software renderer is always available. It uses Gouraud shading by default but switches to per-pixel Blinn-Phong when a normal map is present. It supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
 
 ## Performance Tips
 
@@ -699,7 +699,7 @@ Heightmap-based terrain with chunked rendering and texture splatting.
 | `GetHeightAt(x, z)` | Query height at world XZ position |
 | `GetNormalAt(x, z)` | Query surface normal at world XZ position |
 
-**Texture splatting:** When a splat map is set, the terrain bakes a blended texture from the 4 layer textures, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The bake runs once when the terrain is first drawn (or after splat/heightmap changes).
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software backend performs per-pixel splat sampling; a baked fallback texture is used on GPU backends until they implement their own splat shaders.
 
 Draw via `Canvas3D.DrawTerrain(terrain)`.
 

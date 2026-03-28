@@ -47,6 +47,11 @@ typedef struct {
     const void *specular_map; /* Pixels (specular map, slot 2) or NULL */
     const void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
     float emissive_color[3];  /* emissive color multiplier */
+    /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
+    const void *splat_map;         /* RGBA weight texture (NULL = not terrain) */
+    const void *splat_layers[4];   /* Layer textures */
+    float splat_layer_scales[4];   /* UV tiling per layer */
+    int8_t has_splat;              /* 1 = terrain splat active */
 } vgfx3d_draw_cmd_t;
 
 /*==========================================================================
@@ -104,6 +109,15 @@ typedef struct vgfx3d_backend {
 
     /* Render target (NULL = render to window) */
     void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
+
+    /* Shadow map pass. All three may be NULL if not supported by this backend.
+     * shadow_begin: initialize depth buffer, store light VP.
+     * shadow_draw: depth-only rasterize one mesh into the shadow map.
+     * shadow_end: finalize shadow state for lookup in main pass. */
+    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h,
+                         const float *light_vp);
+    void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
+    void (*shadow_end)(void *ctx, float bias);
 
     /* Present the final frame to the display. Called once per Flip().
      * For GPU backends, this presents the drawable / swaps the back buffer.

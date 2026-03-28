@@ -17,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
@@ -40,6 +41,13 @@ static std::string readFile(const std::string &path) {
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
+}
+
+static int runArm64(std::initializer_list<const char *> args) {
+    std::vector<char *> argv;
+    for (const char *arg : args)
+        argv.push_back(const_cast<char *>(arg));
+    return cmd_codegen_arm64(static_cast<int>(argv.size()), argv.data());
 }
 
 TEST(Arm64CLI, CBrOnCompareRR) {
@@ -93,6 +101,37 @@ TEST(Arm64CLI, CBrOnCompareImm) {
     const bool hasOrigBranch = asmText.find("b.lt LT") != std::string::npos;
     const bool hasInvertedBranch = asmText.find("b.ge LF") != std::string::npos;
     EXPECT_TRUE(hasOrigBranch || hasInvertedBranch);
+}
+
+TEST(Arm64CLI, CBrSameTargetSingleArg_SystemAsm) {
+    const std::string in = outPath("arm64_cbr_same_target.il");
+    const std::string exe = outPath("arm64_cbr_same_target");
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %cond = scmp_gt 5, 3\n"
+                           "  cbr %cond, done(7), done(13)\n"
+                           "done(%v:i64):\n"
+                           "  ret %v\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "--system-asm", "-o", exe.c_str(), "-run-native"}), 7);
+}
+
+TEST(Arm64CLI, CBrSameTargetMultiArg_SystemAsm) {
+    const std::string in = outPath("arm64_cbr_same_target_multi.il");
+    const std::string exe = outPath("arm64_cbr_same_target_multi");
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %cond = scmp_gt 5, 3\n"
+                           "  cbr %cond, done(7, 70), done(13, 130)\n"
+                           "done(%a:i64, %b:i64):\n"
+                           "  %sum = iadd.ovf %a, %b\n"
+                           "  ret %sum\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "--system-asm", "-o", exe.c_str(), "-run-native"}), 77);
 }
 
 int main(int argc, char **argv) {

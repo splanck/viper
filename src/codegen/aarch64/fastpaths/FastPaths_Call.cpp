@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "FastPathsInternal.hpp"
+#include "codegen/aarch64/A64ImmediateUtils.hpp"
 #include "codegen/aarch64/LoweringContext.hpp"
 
 namespace viper::codegen::aarch64::fastpaths {
@@ -73,6 +74,31 @@ bool computeTempTo(const il::core::Instr &prod,
     // RI emit helper
     auto ri_emit = [&](MOpcode opc, unsigned p0, long long imm) {
         const PhysReg r0 = argOrder[p0];
+        if (opc == MOpcode::AddRI || opc == MOpcode::SubRI || opc == MOpcode::AddOvfRI ||
+            opc == MOpcode::SubOvfRI) {
+            emitLegalizedSignedImmArith(
+                bbMir,
+                MOperand::regOp(dstReg),
+                MOperand::regOp(r0),
+                imm,
+                (opc == MOpcode::AddRI || opc == MOpcode::AddOvfRI) ? SignedImmArithKind::Add
+                                                                     : SignedImmArithKind::Sub,
+                (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::AddOvfRI
+                                                                       : MOpcode::AddRI,
+                (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::SubOvfRI
+                                                                       : MOpcode::SubRI,
+                (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::AddOvfRRR
+                                                                       : MOpcode::AddRRR,
+                (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::SubOvfRRR
+                                                                       : MOpcode::SubRRR,
+                [&](long long materializedImm) {
+                    const MOperand scratch = MOperand::regOp(PhysReg::X16);
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::MovRI, {scratch, MOperand::immOp(materializedImm)}});
+                    return scratch;
+                });
+            return;
+        }
         bbMir.instrs.push_back(
             MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::immOp(imm)}});
     };

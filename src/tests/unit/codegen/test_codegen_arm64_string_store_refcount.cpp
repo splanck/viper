@@ -194,6 +194,26 @@ TEST(Arm64StringStore, CallReturnedStringIsRetained) {
     EXPECT_NE(asmText.find(blSym("rt_str_retain_maybe")), std::string::npos);
 }
 
+TEST(Arm64StringStore, LocalOverwriteReleasesOldValue) {
+    const std::string in = outPath("arm64_str_local_overwrite.il");
+    const std::string out = outPath("arm64_str_local_overwrite.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @overwrite(%a:str, %b:str) -> i64 {\n"
+                           "entry(%a:str, %b:str):\n"
+                           "  %slot = alloca 8\n"
+                           "  store str, %slot, %a\n"
+                           "  store str, %slot, %b\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find(blSym("rt_str_release_maybe")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_str_retain_maybe")), std::string::npos);
+    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

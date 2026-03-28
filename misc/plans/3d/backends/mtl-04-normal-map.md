@@ -59,7 +59,7 @@ In `metal_submit_draw()`, after diffuse texture binding:
 ```objc
 if (cmd->normal_map) {
     // Same conversion + cache pattern as diffuse
-    id<MTLTexture> normTex = [self getCachedTexture:cmd->normal_map];
+    id<MTLTexture> normTex = getCachedTexture(ctx, cmd->normal_map);
     [ctx.encoder setFragmentTexture:normTex atIndex:1];
     mat.hasNormalMap = 1;
 }

@@ -47,6 +47,12 @@ typedef struct {
     int8_t fog_enabled;
     float fog_near, fog_far;
     float fog_color[3];
+    /* Shadow mapping state */
+    float *shadow_depth;       /* shadow depth buffer (during shadow pass) */
+    int32_t shadow_w, shadow_h;
+    float shadow_vp[16];       /* light view-projection matrix */
+    float shadow_bias;
+    int8_t shadow_active;      /* 1 = shadow map is populated and ready for lookup */
 } sw_context_t;
 
 static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t height) {
@@ -95,6 +101,7 @@ typedef struct {
     float clip[4];
     float world[3];
     float normal[3];
+    float tangent[3];
     float uv[2];
     float color[4];
 } pipe_vert_t;
@@ -109,6 +116,8 @@ static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t, pipe_
         out->world[i] = s * a->world[i] + t * b->world[i];
     for (int i = 0; i < 3; i++)
         out->normal[i] = s * a->normal[i] + t * b->normal[i];
+    for (int i = 0; i < 3; i++)
+        out->tangent[i] = s * a->tangent[i] + t * b->tangent[i];
     for (int i = 0; i < 2; i++)
         out->uv[i] = s * a->uv[i] + t * b->uv[i];
     for (int i = 0; i < 4; i++)
@@ -210,10 +219,10 @@ static void compute_lighting(pipe_vert_t *v,
                              int32_t light_count,
                              const float *ambient) {
     if (cmd->unlit) {
-        v->color[0] = cmd->diffuse_color[0];
-        v->color[1] = cmd->diffuse_color[1];
-        v->color[2] = cmd->diffuse_color[2];
-        v->color[3] = cmd->diffuse_color[3];
+        v->color[0] = cmd->diffuse_color[0] * v->color[0];
+        v->color[1] = cmd->diffuse_color[1] * v->color[1];
+        v->color[2] = cmd->diffuse_color[2] * v->color[2];
+        v->color[3] = cmd->diffuse_color[3] * v->color[3];
         return;
     }
 
@@ -235,9 +244,14 @@ static void compute_lighting(pipe_vert_t *v,
         vz /= vlen;
     }
 
-    float r = ambient[0] * cmd->diffuse_color[0];
-    float g = ambient[1] * cmd->diffuse_color[1];
-    float b = ambient[2] * cmd->diffuse_color[2];
+    /* Effective diffuse = material diffuse × vertex color */
+    float dr = cmd->diffuse_color[0] * v->color[0];
+    float dg = cmd->diffuse_color[1] * v->color[1];
+    float db = cmd->diffuse_color[2] * v->color[2];
+
+    float r = ambient[0] * dr;
+    float g = ambient[1] * dg;
+    float b = ambient[2] * db;
 
     for (int32_t li = 0; li < light_count; li++) {
         const vgfx3d_light_params_t *light = &lights[li];
@@ -290,9 +304,9 @@ static void compute_lighting(pipe_vert_t *v,
             }
         } else /* ambient */
         {
-            r += light->color[0] * light->intensity * cmd->diffuse_color[0];
-            g += light->color[1] * light->intensity * cmd->diffuse_color[1];
-            b += light->color[2] * light->intensity * cmd->diffuse_color[2];
+            r += light->color[0] * light->intensity * dr;
+            g += light->color[1] * light->intensity * dg;
+            b += light->color[2] * light->intensity * db;
             continue;
         }
 
@@ -301,9 +315,9 @@ static void compute_lighting(pipe_vert_t *v,
         if (ndl < 0.0f)
             ndl = 0.0f;
 
-        r += light->color[0] * intensity * ndl * cmd->diffuse_color[0] * atten;
-        g += light->color[1] * intensity * ndl * cmd->diffuse_color[1] * atten;
-        b += light->color[2] * intensity * ndl * cmd->diffuse_color[2] * atten;
+        r += light->color[0] * intensity * ndl * dr * atten;
+        g += light->color[1] * intensity * ndl * dg * atten;
+        b += light->color[2] * intensity * ndl * db * atten;
 
         if (ndl > 0.0f && cmd->shininess > 0.0f) {
             float hx = lx + vx, hy = ly + vy, hz = lz + vz;
@@ -331,7 +345,7 @@ static void compute_lighting(pipe_vert_t *v,
     v->color[0] = r;
     v->color[1] = g;
     v->color[2] = b;
-    v->color[3] = cmd->diffuse_color[3] * cmd->alpha;
+    v->color[3] = v->color[3] * cmd->diffuse_color[3] * cmd->alpha;
 }
 
 /*==========================================================================
@@ -344,25 +358,66 @@ typedef struct {
     uint32_t *data;
 } sw_pixels_view;
 
+static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
+    if (!pixels_obj)
+        return 0;
+    const sw_pixels_view *pv = (const sw_pixels_view *)pixels_obj;
+    *out = *pv;
+    return (out->width > 0 && out->height > 0 && out->data != NULL);
+}
+
 static void sample_texture(
     const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
+    int w = (int)tex->width, h = (int)tex->height;
+    if (w == 0 || h == 0) {
+        *r = *g = *b = 1.0f;
+        *a = 1.0f;
+        return;
+    }
+
     u = u - floorf(u);
     v = v - floorf(v);
-    int x = (int)(u * (float)tex->width);
-    int y = (int)(v * (float)tex->height);
-    if (x < 0)
-        x = 0;
-    if (x >= (int)tex->width)
-        x = (int)tex->width - 1;
-    if (y < 0)
-        y = 0;
-    if (y >= (int)tex->height)
-        y = (int)tex->height - 1;
-    uint32_t pixel = tex->data[y * tex->width + x];
-    *r = (float)((pixel >> 24) & 0xFF) / 255.0f;
-    *g = (float)((pixel >> 16) & 0xFF) / 255.0f;
-    *b = (float)((pixel >> 8) & 0xFF) / 255.0f;
-    *a = (float)(pixel & 0xFF) / 255.0f;
+
+    /* Bilinear: map UV to texel center, then interpolate the 4 neighbors */
+    float fx = u * (float)w - 0.5f;
+    float fy = v * (float)h - 0.5f;
+    int x0 = (int)floorf(fx);
+    int y0 = (int)floorf(fy);
+    float xf = fx - (float)x0; /* fractional part [0,1) */
+    float yf = fy - (float)y0;
+
+    /* Wrap coordinates for repeat mode */
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+    x0 = ((x0 % w) + w) % w;
+    y0 = ((y0 % h) + h) % h;
+    x1 = ((x1 % w) + w) % w;
+    y1 = ((y1 % h) + h) % h;
+
+    /* Sample 4 texels */
+    uint32_t p00 = tex->data[y0 * w + x0];
+    uint32_t p10 = tex->data[y0 * w + x1];
+    uint32_t p01 = tex->data[y1 * w + x0];
+    uint32_t p11 = tex->data[y1 * w + x1];
+
+    /* Bilinear weights */
+    float w00 = (1.0f - xf) * (1.0f - yf);
+    float w10 = xf * (1.0f - yf);
+    float w01 = (1.0f - xf) * yf;
+    float w11 = xf * yf;
+
+    *r = (((p00 >> 24) & 0xFF) * w00 + ((p10 >> 24) & 0xFF) * w10 +
+          ((p01 >> 24) & 0xFF) * w01 + ((p11 >> 24) & 0xFF) * w11) /
+         255.0f;
+    *g = (((p00 >> 16) & 0xFF) * w00 + ((p10 >> 16) & 0xFF) * w10 +
+          ((p01 >> 16) & 0xFF) * w01 + ((p11 >> 16) & 0xFF) * w11) /
+         255.0f;
+    *b = (((p00 >> 8) & 0xFF) * w00 + ((p10 >> 8) & 0xFF) * w10 +
+          ((p01 >> 8) & 0xFF) * w01 + ((p11 >> 8) & 0xFF) * w11) /
+         255.0f;
+    *a = ((p00 & 0xFF) * w00 + (p10 & 0xFF) * w10 + (p01 & 0xFF) * w01 +
+          (p11 & 0xFF) * w11) /
+         255.0f;
 }
 
 /*==========================================================================
@@ -374,6 +429,8 @@ typedef struct {
     float r, g, b, a;
     float u_over_w, v_over_w, inv_w;
     float wx, wy, wz; /* world position (for fog distance computation) */
+    float nx, ny, nz; /* world normal (for per-pixel lighting with normal maps) */
+    float tx, ty, tz; /* world tangent (for TBN matrix construction) */
 } screen_vert_t;
 
 static inline float clamp01f(float x) {
@@ -391,6 +448,12 @@ static void raster_triangle(uint8_t *pixels,
                             const sw_pixels_view *tex,
                             const sw_pixels_view *emissive_tex,
                             const float *emissive_color,
+                            const sw_pixels_view *normal_map,
+                            const sw_pixels_view *specular_map,
+                            const vgfx3d_draw_cmd_t *cmd,
+                            const vgfx3d_light_params_t *lights,
+                            int32_t light_count,
+                            const float *ambient,
                             int8_t backface_cull,
                             const sw_context_t *fog_ctx) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
@@ -459,6 +522,49 @@ static void raster_triangle(uint8_t *pixels,
                             tex_alpha = ta;
                         }
                     }
+                    /* Terrain splat: replace diffuse with per-pixel layer blend */
+                    if (cmd && cmd->has_splat && cmd->splat_map) {
+                        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+                        if (fabsf(iw) > 1e-7f) {
+                            float sp_u =
+                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+                            float sp_v =
+                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                            sw_pixels_view splat_view;
+                            if (setup_pixels_view(cmd->splat_map, &splat_view)) {
+                                float sr, sg, sb, sa;
+                                sample_texture(&splat_view, sp_u, sp_v, &sr, &sg, &sb, &sa);
+                                float w[4] = {sr, sg, sb, sa};
+                                float wsum = w[0] + w[1] + w[2] + w[3];
+                                if (wsum > 0.001f) {
+                                    for (int wi = 0; wi < 4; wi++)
+                                        w[wi] /= wsum;
+                                } else {
+                                    w[0] = 1.0f;
+                                    w[1] = w[2] = w[3] = 0.0f;
+                                }
+                                float blr = 0, blg = 0, blb = 0;
+                                for (int L = 0; L < 4; L++) {
+                                    if (w[L] < 0.001f || !cmd->splat_layers[L])
+                                        continue;
+                                    sw_pixels_view lv;
+                                    if (!setup_pixels_view(cmd->splat_layers[L], &lv))
+                                        continue;
+                                    float lu = sp_u * cmd->splat_layer_scales[L];
+                                    float lvc = sp_v * cmd->splat_layer_scales[L];
+                                    float lr, lg2, lb, la;
+                                    sample_texture(&lv, lu, lvc, &lr, &lg2, &lb, &la);
+                                    blr += lr * w[L];
+                                    blg += lg2 * w[L];
+                                    blb += lb * w[L];
+                                }
+                                fr = blr;
+                                fg = blg;
+                                fb_c = blb;
+                            }
+                        }
+                    }
+
                     /* Emissive map sampling (per-pixel, additive) */
                     if (emissive_tex) {
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
@@ -472,6 +578,228 @@ static void raster_triangle(uint8_t *pixels,
                             fr += er * emissive_color[0];
                             fg += eg * emissive_color[1];
                             fb_c += eb * emissive_color[2];
+                        }
+                    }
+
+                    /* Per-pixel lighting with normal map (replaces Gouraud colors) */
+                    if (normal_map && cmd && !cmd->unlit && lights) {
+                        float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+                        if (fabsf(pp_iw) > 1e-7f) {
+                            float pp_u =
+                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) /
+                                pp_iw;
+                            float pp_vc =
+                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) /
+                                pp_iw;
+
+                            /* Interpolate world normal */
+                            float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
+                            float pny = b0 * v0->ny + b1 * v1->ny + b2 * v2->ny;
+                            float pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
+                            float nlen = sqrtf(pnx * pnx + pny * pny + pnz * pnz);
+                            if (nlen > 1e-7f) {
+                                pnx /= nlen;
+                                pny /= nlen;
+                                pnz /= nlen;
+                            }
+
+                            /* Interpolate tangent + build TBN */
+                            float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
+                            float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
+                            float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
+                            float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+
+                            if (tlen > 1e-7f) {
+                                ptx /= tlen;
+                                pty /= tlen;
+                                ptz /= tlen;
+                                /* Gram-Schmidt orthogonalize T against N */
+                                float tdotn = ptx * pnx + pty * pny + ptz * pnz;
+                                ptx -= tdotn * pnx;
+                                pty -= tdotn * pny;
+                                ptz -= tdotn * pnz;
+                                tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+                                if (tlen > 1e-7f) {
+                                    ptx /= tlen;
+                                    pty /= tlen;
+                                    ptz /= tlen;
+                                }
+
+                                /* Sample normal map: [0,1] → [-1,1] */
+                                float tnr, tng, tnb, tna;
+                                sample_texture(normal_map, pp_u, pp_vc, &tnr, &tng, &tnb, &tna);
+                                float map_x = tnr * 2.0f - 1.0f;
+                                float map_y = tng * 2.0f - 1.0f;
+                                float map_z = tnb * 2.0f - 1.0f;
+
+                                /* Bitangent = N × T */
+                                float bbx = pny * ptz - pnz * pty;
+                                float bby = pnz * ptx - pnx * ptz;
+                                float bbz = pnx * pty - pny * ptx;
+
+                                /* TBN transform: tangent-space → world-space */
+                                float wn_x = ptx * map_x + bbx * map_y + pnx * map_z;
+                                float wn_y = pty * map_x + bby * map_y + pny * map_z;
+                                float wn_z = ptz * map_x + bbz * map_y + pnz * map_z;
+                                float wlen = sqrtf(wn_x * wn_x + wn_y * wn_y + wn_z * wn_z);
+                                if (wlen > 1e-7f) {
+                                    pnx = wn_x / wlen;
+                                    pny = wn_y / wlen;
+                                    pnz = wn_z / wlen;
+                                }
+                            }
+                            /* else: degenerate tangent → use unperturbed normal */
+
+                            /* Per-pixel Blinn-Phong with perturbed normal */
+                            float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+                            float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+                            float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+
+                            float vdx = fog_ctx->cam_pos[0] - wx;
+                            float vdy = fog_ctx->cam_pos[1] - wy;
+                            float vdz = fog_ctx->cam_pos[2] - wz;
+                            float vdlen = sqrtf(vdx * vdx + vdy * vdy + vdz * vdz);
+                            if (vdlen > 1e-7f) {
+                                vdx /= vdlen;
+                                vdy /= vdlen;
+                                vdz /= vdlen;
+                            }
+
+                            /* Ambient */
+                            float lit_r = ambient[0] * fr;
+                            float lit_g = ambient[1] * fg;
+                            float lit_b = ambient[2] * fb_c;
+
+                            /* Specular properties (possibly from specular map) */
+                            float sp_r = cmd->specular[0];
+                            float sp_g = cmd->specular[1];
+                            float sp_b = cmd->specular[2];
+                            if (specular_map) {
+                                float smr, smg, smb, sma;
+                                sample_texture(specular_map, pp_u, pp_vc, &smr, &smg, &smb, &sma);
+                                sp_r *= smr;
+                                sp_g *= smg;
+                                sp_b *= smb;
+                            }
+
+                            for (int32_t li = 0; li < light_count; li++) {
+                                const vgfx3d_light_params_t *lt = &lights[li];
+                                float llx, lly, llz, la = 1.0f;
+
+                                if (lt->type == 0) { /* directional */
+                                    llx = -lt->direction[0];
+                                    lly = -lt->direction[1];
+                                    llz = -lt->direction[2];
+                                    float ll = sqrtf(llx * llx + lly * lly + llz * llz);
+                                    if (ll > 1e-7f) {
+                                        llx /= ll;
+                                        lly /= ll;
+                                        llz /= ll;
+                                    }
+                                } else if (lt->type == 1) { /* point */
+                                    llx = lt->position[0] - wx;
+                                    lly = lt->position[1] - wy;
+                                    llz = lt->position[2] - wz;
+                                    float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                    if (dist > 1e-7f) {
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
+                                    }
+                                    la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                } else if (lt->type == 3) { /* spot */
+                                    llx = lt->position[0] - wx;
+                                    lly = lt->position[1] - wy;
+                                    llz = lt->position[2] - wz;
+                                    float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                    if (dist > 1e-7f) {
+                                        llx /= dist;
+                                        lly /= dist;
+                                        llz /= dist;
+                                    }
+                                    la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                    float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
+                                                 llz * lt->direction[2]);
+                                    if (sd < lt->outer_cos)
+                                        la = 0.0f;
+                                    else if (sd < lt->inner_cos) {
+                                        float st = (sd - lt->outer_cos) /
+                                                   (lt->inner_cos - lt->outer_cos);
+                                        la *= st * st * (3.0f - 2.0f * st);
+                                    }
+                                } else { /* ambient */
+                                    lit_r += lt->color[0] * lt->intensity * fr;
+                                    lit_g += lt->color[1] * lt->intensity * fg;
+                                    lit_b += lt->color[2] * lt->intensity * fb_c;
+                                    continue;
+                                }
+
+                                float ndl = pnx * llx + pny * lly + pnz * llz;
+                                if (ndl < 0.0f)
+                                    ndl = 0.0f;
+                                float li_i = lt->intensity;
+                                lit_r += lt->color[0] * li_i * ndl * fr * la;
+                                lit_g += lt->color[1] * li_i * ndl * fg * la;
+                                lit_b += lt->color[2] * li_i * ndl * fb_c * la;
+
+                                if (ndl > 0.0f && cmd->shininess > 0.0f) {
+                                    float hx = llx + vdx, hy = lly + vdy, hz = llz + vdz;
+                                    float hlen = sqrtf(hx * hx + hy * hy + hz * hz);
+                                    if (hlen > 1e-7f) {
+                                        hx /= hlen;
+                                        hy /= hlen;
+                                        hz /= hlen;
+                                    }
+                                    float ndh = pnx * hx + pny * hy + pnz * hz;
+                                    if (ndh < 0.0f)
+                                        ndh = 0.0f;
+                                    float spec = powf(ndh, cmd->shininess);
+                                    lit_r += lt->color[0] * li_i * spec * sp_r * la;
+                                    lit_g += lt->color[1] * li_i * spec * sp_g * la;
+                                    lit_b += lt->color[2] * li_i * spec * sp_b * la;
+                                }
+                            }
+
+                            /* Emissive color base */
+                            lit_r += cmd->emissive_color[0];
+                            lit_g += cmd->emissive_color[1];
+                            lit_b += cmd->emissive_color[2];
+
+                            fr = lit_r;
+                            fg = lit_g;
+                            fb_c = lit_b;
+                        }
+                    }
+
+                    /* Shadow map lookup — darken direct lighting if in shadow */
+                    if (fog_ctx && fog_ctx->shadow_active && fog_ctx->shadow_depth) {
+                        float swx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+                        float swy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+                        float swz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+                        const float *svp = fog_ctx->shadow_vp;
+                        float lx = swx * svp[0] + swy * svp[1] + swz * svp[2] + svp[3];
+                        float ly = swx * svp[4] + swy * svp[5] + swz * svp[6] + svp[7];
+                        float lz = swx * svp[8] + swy * svp[9] + swz * svp[10] + svp[11];
+                        float lw = swx * svp[12] + swy * svp[13] + swz * svp[14] + svp[15];
+                        if (fabsf(lw) > 1e-7f) {
+                            float su = (lx / lw) * 0.5f + 0.5f;
+                            float sv = (1.0f - ly / lw) * 0.5f;
+                            float sd = (lz / lw) * 0.5f + 0.5f;
+                            if (su >= 0.0f && su < 1.0f && sv >= 0.0f && sv < 1.0f) {
+                                int sxi = (int)(su * (float)fog_ctx->shadow_w);
+                                int syi = (int)(sv * (float)fog_ctx->shadow_h);
+                                if (sxi >= 0 && sxi < fog_ctx->shadow_w && syi >= 0 &&
+                                    syi < fog_ctx->shadow_h) {
+                                    float sz_map =
+                                        fog_ctx->shadow_depth[syi * fog_ctx->shadow_w + sxi];
+                                    if (sd > sz_map + fog_ctx->shadow_bias) {
+                                        /* In shadow — keep only ambient contribution */
+                                        fr *= 0.3f;
+                                        fg *= 0.3f;
+                                        fb_c *= 0.3f;
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -567,6 +895,134 @@ static void draw_line(uint8_t *pixels,
 }
 
 /*==========================================================================
+ * Shadow map — depth-only rasterization
+ *=========================================================================*/
+
+/// @brief Rasterize a single triangle into a depth buffer (no color, no lighting).
+static void shadow_raster_tri(float *depth,
+                              int32_t sw,
+                              int32_t sh,
+                              float *sx,
+                              float *sy,
+                              float *sz) {
+    /* Screen-space area (winding check) */
+    float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
+    if (area < 0.0f) {
+        /* Swap v1/v2 to ensure positive area */
+        float t;
+        t = sx[1]; sx[1] = sx[2]; sx[2] = t;
+        t = sy[1]; sy[1] = sy[2]; sy[2] = t;
+        t = sz[1]; sz[1] = sz[2]; sz[2] = t;
+        area = -area;
+    }
+    if (area < 1e-6f)
+        return;
+
+    float inv_area = 1.0f / area;
+    int min_x = (int)fmaxf(fminf(fminf(sx[0], sx[1]), sx[2]), 0.0f);
+    int max_x = (int)fminf(fmaxf(fmaxf(sx[0], sx[1]), sx[2]), (float)(sw - 1));
+    int min_y = (int)fmaxf(fminf(fminf(sy[0], sy[1]), sy[2]), 0.0f);
+    int max_y = (int)fminf(fmaxf(fmaxf(sy[0], sy[1]), sy[2]), (float)(sh - 1));
+    if (min_x > max_x || min_y > max_y)
+        return;
+
+    float e12_dx = sx[2] - sx[1], e12_dy = sy[2] - sy[1];
+    float e20_dx = sx[0] - sx[2], e20_dy = sy[0] - sy[2];
+    float e01_dx = sx[1] - sx[0], e01_dy = sy[1] - sy[0];
+    float px0 = (float)min_x + 0.5f, py0 = (float)min_y + 0.5f;
+    float row_w0 = e12_dx * (py0 - sy[1]) - e12_dy * (px0 - sx[1]);
+    float row_w1 = e20_dx * (py0 - sy[2]) - e20_dy * (px0 - sx[2]);
+    float row_w2 = e01_dx * (py0 - sy[0]) - e01_dy * (px0 - sx[0]);
+
+    for (int y = min_y; y <= max_y; y++) {
+        float w0 = row_w0, w1 = row_w1, w2 = row_w2;
+        for (int x = min_x; x <= max_x; x++) {
+            if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
+                float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
+                float z = b0 * sz[0] + b1 * sz[1] + b2 * sz[2];
+                int idx = y * sw + x;
+                if (z < depth[idx])
+                    depth[idx] = z;
+            }
+            w0 -= e12_dy;
+            w1 -= e20_dy;
+            w2 -= e01_dy;
+        }
+        row_w0 += e12_dx;
+        row_w1 += e20_dx;
+        row_w2 += e01_dx;
+    }
+}
+
+static void sw_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32_t h,
+                            const float *light_vp) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || !depth_buf)
+        return;
+    ctx->shadow_depth = depth_buf;
+    ctx->shadow_w = w;
+    ctx->shadow_h = h;
+    memcpy(ctx->shadow_vp, light_vp, 16 * sizeof(float));
+    /* Clear shadow depth to FLT_MAX */
+    for (int32_t i = 0; i < w * h; i++)
+        depth_buf[i] = FLT_MAX;
+}
+
+static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || !cmd || !ctx->shadow_depth || cmd->vertex_count == 0 || cmd->index_count == 0)
+        return;
+    /* Skip transparent objects */
+    if (cmd->alpha < 1.0f)
+        return;
+
+    /* Build light MVP = shadow_vp * model */
+    float lmvp[16];
+    mat4f_mul(ctx->shadow_vp, cmd->model_matrix, lmvp);
+
+    float half_w = (float)ctx->shadow_w * 0.5f;
+    float half_h = (float)ctx->shadow_h * 0.5f;
+
+    for (uint32_t i = 0; i + 2 < cmd->index_count; i += 3) {
+        uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
+        if (i0 >= cmd->vertex_count || i1 >= cmd->vertex_count || i2 >= cmd->vertex_count)
+            continue;
+
+        /* Transform 3 vertices by light MVP */
+        float screen_x[3], screen_y[3], screen_z[3];
+        int ok = 1;
+        for (int vi = 0; vi < 3; vi++) {
+            const uint32_t idx[3] = {i0, i1, i2};
+            const vgfx3d_vertex_t *v = &cmd->vertices[idx[vi]];
+            float pos4[4] = {v->pos[0], v->pos[1], v->pos[2], 1.0f};
+            float clip[4];
+            mat4f_transform4(lmvp, pos4, clip);
+            if (fabsf(clip[3]) < 1e-7f) {
+                ok = 0;
+                break;
+            }
+            float iw = 1.0f / clip[3];
+            screen_x[vi] = (clip[0] * iw + 1.0f) * half_w;
+            screen_y[vi] = (1.0f - clip[1] * iw) * half_h;
+            screen_z[vi] = clip[2] * iw;
+        }
+        if (!ok)
+            continue;
+
+        shadow_raster_tri(ctx->shadow_depth, ctx->shadow_w, ctx->shadow_h, screen_x, screen_y,
+                          screen_z);
+    }
+}
+
+static void sw_shadow_end(void *ctx_ptr, float bias) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    ctx->shadow_bias = bias;
+    ctx->shadow_active = 1;
+}
+
+/*==========================================================================
  * Backend vtable implementation
  *=========================================================================*/
 
@@ -658,6 +1114,8 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    /* Reset shadow state — rebuilt if shadows are enabled this frame */
+    ctx->shadow_active = 0;
 }
 
 static void sw_submit_draw(void *ctx_ptr,
@@ -716,6 +1174,20 @@ static void sw_submit_draw(void *ctx_ptr,
         if (emissive_view.width > 0 && emissive_view.height > 0 && emissive_view.data)
             emissive_ptr = &emissive_view;
     }
+    sw_pixels_view normal_view, specular_view;
+    sw_pixels_view *normal_ptr = NULL, *specular_ptr = NULL;
+    if (cmd->normal_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
+        normal_view = *pv;
+        if (normal_view.width > 0 && normal_view.height > 0 && normal_view.data)
+            normal_ptr = &normal_view;
+    }
+    if (cmd->specular_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->specular_map;
+        specular_view = *pv;
+        if (specular_view.width > 0 && specular_view.height > 0 && specular_view.data)
+            specular_ptr = &specular_view;
+    }
 
     float half_w = (float)out_w * 0.5f;
     float half_h = (float)out_h * 0.5f;
@@ -745,6 +1217,14 @@ static void sw_submit_draw(void *ctx_ptr,
         dst->normal[1] = wnrm4[1];
         dst->normal[2] = wnrm4[2];
 
+        /* Transform tangent to world space (for TBN construction with normal maps) */
+        float tan4[4] = {src->tangent[0], src->tangent[1], src->tangent[2], 0.0f};
+        float wtan4[4];
+        mat4f_transform4(cmd->model_matrix, tan4, wtan4);
+        dst->tangent[0] = wtan4[0];
+        dst->tangent[1] = wtan4[1];
+        dst->tangent[2] = wtan4[2];
+
         /* Clip-space */
         float clip[4];
         mat4f_transform4(mvp, pos4, clip);
@@ -756,8 +1236,23 @@ static void sw_submit_draw(void *ctx_ptr,
         dst->uv[0] = src->uv[0];
         dst->uv[1] = src->uv[1];
 
-        /* Per-vertex lighting */
-        compute_lighting(dst, ctx->cam_pos, cmd, lights, light_count, ambient);
+        /* Vertex color (defaults to white {1,1,1,1} if not set) */
+        dst->color[0] = src->color[0];
+        dst->color[1] = src->color[1];
+        dst->color[2] = src->color[2];
+        dst->color[3] = src->color[3];
+
+        /* Per-vertex lighting (Gouraud) — skipped when normal map is present
+         * because per-pixel lighting will be computed in raster_triangle instead */
+        if (!cmd->unlit && cmd->normal_map) {
+            /* Store raw albedo: vertex_color * diffuse (lighting computed per-pixel) */
+            dst->color[0] = cmd->diffuse_color[0] * dst->color[0];
+            dst->color[1] = cmd->diffuse_color[1] * dst->color[1];
+            dst->color[2] = cmd->diffuse_color[2] * dst->color[2];
+            dst->color[3] = dst->color[3] * cmd->diffuse_color[3] * cmd->alpha;
+        } else {
+            compute_lighting(dst, ctx->cam_pos, cmd, lights, light_count, ambient);
+        }
     }
 
     /* Process triangles: clip → rasterize */
@@ -797,6 +1292,12 @@ static void sw_submit_draw(void *ctx_ptr,
                 sv[vi].wx = p->world[0];
                 sv[vi].wy = p->world[1];
                 sv[vi].wz = p->world[2];
+                sv[vi].nx = p->normal[0];
+                sv[vi].ny = p->normal[1];
+                sv[vi].nz = p->normal[2];
+                sv[vi].tx = p->tangent[0];
+                sv[vi].ty = p->tangent[1];
+                sv[vi].tz = p->tangent[2];
             }
             if (!ok)
                 continue;
@@ -850,6 +1351,12 @@ static void sw_submit_draw(void *ctx_ptr,
                                 tex_ptr,
                                 emissive_ptr,
                                 cmd->emissive_color,
+                                normal_ptr,
+                                specular_ptr,
+                                cmd,
+                                lights,
+                                light_count,
+                                ambient,
                                 backface_cull,
                                 ctx);
             }
@@ -882,6 +1389,9 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .submit_draw = sw_submit_draw,
     .end_frame = sw_end_frame,
     .set_render_target = sw_set_render_target,
+    .shadow_begin = sw_shadow_begin,
+    .shadow_draw = sw_shadow_draw,
+    .shadow_end = sw_shadow_end,
     .present = NULL, /* software renders to CPU framebuffer; vgfx_update handles display */
 };
 

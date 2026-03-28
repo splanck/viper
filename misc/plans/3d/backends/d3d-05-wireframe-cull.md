@@ -17,7 +17,7 @@ Both `wireframe` and `backface_cull` parameters are void-cast at line 497. D3D11
 D3D11_RASTERIZER_DESC rs = {0};
 rs.FillMode = D3D11_FILL_SOLID;
 rs.CullMode = D3D11_CULL_BACK;
-rs.FrontCounterClockwise = TRUE;
+rs.FrontCounterClockwise = FALSE; // Must match existing convention (line 323)
 CreateRasterizerState(&rs, &ctx->rs_solid_cull);
 
 // Solid + no cull (two-sided)

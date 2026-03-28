@@ -28,6 +28,8 @@ if (cmd->specular_map) {
     gl.BindTexture(GL_TEXTURE_2D, specTex);
     gl.Uniform1i(ctx->uSpecularTex, 2);
     gl.Uniform1i(ctx->uHasSpecularMap, 1);
+} else {
+    gl.Uniform1i(ctx->uHasSpecularMap, 0); // must clear — stale value from prior draw would be wrong
 }
 ```
 
@@ -51,6 +53,8 @@ if (cmd->emissive_map) {
     gl.BindTexture(GL_TEXTURE_2D, emisTex);
     gl.Uniform1i(ctx->uEmissiveTex, 3);
     gl.Uniform1i(ctx->uHasEmissiveMap, 1);
+} else {
+    gl.Uniform1i(ctx->uHasEmissiveMap, 0);
 }
 ```
 

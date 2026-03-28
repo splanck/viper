@@ -211,6 +211,12 @@ typedef struct {
     vgfx3d_rendertarget_t *shadow_rt;
     float shadow_light_vp[16];
 
+    /* Pending terrain splat data (consumed by next draw_mesh call, then cleared) */
+    int8_t pending_has_splat;
+    const void *pending_splat_map;
+    const void *pending_splat_layers[4];
+    float pending_splat_layer_scales[4];
+
     /* Rendering options */
     int8_t wireframe;
     int8_t backface_cull;

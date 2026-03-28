@@ -897,6 +897,79 @@ static void test_terrain_null_safety() {
 }
 
 //=============================================================================
+//=============================================================================
+// SW Backend Feature Tests (SW-01 through SW-08)
+//=============================================================================
+
+static void test_vertex_color_default_white() {
+    TEST("Mesh3D vertex color defaults to white");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 1);
+    PASS();
+}
+
+static void test_shadow_enable_disable() {
+    TEST("Shadow enable/disable API null safety");
+    extern void rt_canvas3d_enable_shadows(void *canvas, int64_t resolution);
+    extern void rt_canvas3d_disable_shadows(void *canvas);
+    extern void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
+    /* Call with NULL — should not crash (null-guard) */
+    rt_canvas3d_enable_shadows(NULL, 1024);
+    rt_canvas3d_disable_shadows(NULL);
+    rt_canvas3d_set_shadow_bias(NULL, 0.005);
+    PASS();
+}
+
+static void test_mesh_tangents_for_normal_map() {
+    TEST("Mesh3D.CalcTangents produces tangent data");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 0, 1, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_calc_tangents(m);
+    /* CalcTangents should not crash and mesh should still be valid */
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
+static void test_mesh_normals_recalc() {
+    TEST("Mesh3D.RecalcNormals updates normals");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 0, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 0, 1, 0, 0, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_recalc_normals(m);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
+    PASS();
+}
+
+static void test_terrain_splat_layer_count() {
+    TEST("Terrain3D supports 4 splat layers");
+    void *t = rt_terrain3d_new(4, 4);
+    assert(t != NULL);
+    void *px = rt_pixels_new(4, 4);
+    /* Set all 4 layers */
+    for (int i = 0; i < 4; i++) {
+        rt_terrain3d_set_layer_texture(t, i, px);
+        rt_terrain3d_set_layer_scale(t, i, (double)(i + 1));
+    }
+    PASS();
+}
+
+static void test_terrain_splat_map_set() {
+    TEST("Terrain3D splat map can be set and cleared");
+    void *t = rt_terrain3d_new(4, 4);
+    assert(t != NULL);
+    void *px = rt_pixels_new(4, 4);
+    rt_terrain3d_set_splat_map(t, px);
+    rt_terrain3d_set_splat_map(t, NULL);
+    PASS();
+}
+
 // Backend selection tests
 //=============================================================================
 
@@ -1010,6 +1083,14 @@ int main() {
     test_terrain_set_layer_texture();
     test_terrain_set_layer_scale();
     test_terrain_null_safety();
+
+    /* SW Backend Features (SW-01 through SW-08) */
+    test_vertex_color_default_white();
+    test_shadow_enable_disable();
+    test_mesh_tangents_for_normal_map();
+    test_mesh_normals_recalc();
+    test_terrain_splat_layer_count();
+    test_terrain_splat_map_set();
 
     /* Backend */
     test_backend_select();

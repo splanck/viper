@@ -220,6 +220,37 @@ TEST(Arm64FP, MixedCall) {
     EXPECT_NE(asmText.find(blSym("mixed")), std::string::npos);
 }
 
+TEST(Arm64FP, NonEncodableImmediateUsesBitcastPath_SystemAsm) {
+    const std::string in = outPath("arm64_fp_nonenc_imm.il");
+    const std::string out = outPath("arm64_fp_nonenc_imm.s");
+    const std::string il = "il 0.1\n"
+                           "func @ret_pi() -> f64 {\n"
+                           "entry:\n"
+                           "  ret 3.14\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "--system-asm", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("fmov d0, x16"), std::string::npos);
+    EXPECT_EQ(asmText.find("fmov d0, #3.140000"), std::string::npos);
+}
+
+TEST(Arm64FP, EncodableImmediateKeepsDirectForm_SystemAsm) {
+    const std::string in = outPath("arm64_fp_enc_imm.il");
+    const std::string out = outPath("arm64_fp_enc_imm.s");
+    const std::string il = "il 0.1\n"
+                           "func @ret_two() -> f64 {\n"
+                           "entry:\n"
+                           "  ret 2.0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "--system-asm", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("fmov d0, #2.000000"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

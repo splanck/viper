@@ -24,6 +24,7 @@
 
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 
+#include "codegen/aarch64/A64ImmediateUtils.hpp"
 #include "codegen/aarch64/FrameCodegen.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
 #include "codegen/common/ICE.hpp"
@@ -73,6 +74,10 @@ static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }
 
+static bool isLegalScaledUImm64(long long offset) {
+    return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
+}
+
 // =============================================================================
 // encodeFunction
 // =============================================================================
@@ -97,7 +102,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     // Exclude main because we inject bl calls to runtime init.
     skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
                  fn.localFrameSize == 0 && fn.name != "main";
-    usePlan_ = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
+    usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
 
     // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
     emit32(kBtiC, text);
@@ -430,6 +435,25 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(
         emit32((isLoad ? kLdrGpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
 }
 
+void A64BinaryEncoder::encodeSpOffsetStore(
+    uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs) {
+    const uint32_t sp = hwGPR(PhysReg::SP);
+    if (isLegalScaledUImm64(offset)) {
+        const uint32_t scaled = static_cast<uint32_t>(offset / 8);
+        emit32((isFPR ? kStrFpr : kStrGpr) | (scaled << 10) | (sp << 5) | rt, cs);
+        return;
+    }
+
+    const uint32_t scratch = hwGPR(PhysReg::X16);
+    emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
+    if (offset > 0)
+        emitAddSubImmSmart(kAddRI, scratch, scratch, static_cast<uint32_t>(offset), cs);
+    else if (offset < 0)
+        emitAddSubImmSmart(kSubRI, scratch, scratch, static_cast<uint32_t>(-offset), cs);
+
+    emit32((isFPR ? kStrFpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
+}
+
 // =============================================================================
 // encodeInstruction — main dispatch
 // =============================================================================
@@ -566,33 +590,30 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
 
         // ─── Add/Sub Immediate ───
         case MOpcode::AddRI:
-            emit32(encodeAddSubImm(kAddRI,
-                                   hwGPR(getReg(mi.ops[0])),
-                                   hwGPR(getReg(mi.ops[1])),
-                                   static_cast<uint32_t>(getImm(mi.ops[2]))),
-                   cs);
-            return;
         case MOpcode::SubRI:
-            emit32(encodeAddSubImm(kSubRI,
-                                   hwGPR(getReg(mi.ops[0])),
-                                   hwGPR(getReg(mi.ops[1])),
-                                   static_cast<uint32_t>(getImm(mi.ops[2]))),
-                   cs);
-            return;
         case MOpcode::AddsRI:
-            emit32(encodeAddSubImm(kAddsRI,
-                                   hwGPR(getReg(mi.ops[0])),
-                                   hwGPR(getReg(mi.ops[1])),
-                                   static_cast<uint32_t>(getImm(mi.ops[2]))),
+        case MOpcode::SubsRI: {
+            const uint32_t rd = hwGPR(getReg(mi.ops[0]));
+            const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+            const long long immValue = getImm(mi.ops[2]);
+            assert(immValue >= 0 &&
+                   "signed add/sub immediate reached binary encoder without normalization");
+            const uint64_t imm = static_cast<uint64_t>(immValue);
+            const auto enc = classifyAddSubImmEncoding(imm);
+            assert(enc.has_value() &&
+                   "AArch64 add/sub immediate reached binary encoder without legalization");
+            uint32_t tmpl = kAddRI;
+            if (mi.opc == MOpcode::SubRI)
+                tmpl = kSubRI;
+            else if (mi.opc == MOpcode::AddsRI)
+                tmpl = kAddsRI;
+            else if (mi.opc == MOpcode::SubsRI)
+                tmpl = kSubsRI;
+            emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, rn, enc->imm12)
+                                : encodeAddSubImm(tmpl, rd, rn, enc->imm12),
                    cs);
             return;
-        case MOpcode::SubsRI:
-            emit32(encodeAddSubImm(kSubsRI,
-                                   hwGPR(getReg(mi.ops[0])),
-                                   hwGPR(getReg(mi.ops[1])),
-                                   static_cast<uint32_t>(getImm(mi.ops[2]))),
-                   cs);
-            return;
+        }
 
         // ─── Move ───
         case MOpcode::MovRR:
@@ -845,17 +866,14 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             return;
         case MOpcode::StrRegSpImm: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            auto offset = static_cast<uint32_t>(getImm(mi.ops[1]));
-            uint32_t sp = hwGPR(PhysReg::SP);
-            // str Xt, [sp, #offset] — scaled unsigned offset
-            emit32(kStrGpr | ((offset / 8) << 10) | (sp << 5) | rt, cs);
+            const auto offset = static_cast<int64_t>(getImm(mi.ops[1]));
+            encodeSpOffsetStore(rt, offset, false, cs);
             return;
         }
         case MOpcode::StrFprSpImm: {
             uint32_t rt = hwFPR(getReg(mi.ops[0]));
-            auto offset = static_cast<uint32_t>(getImm(mi.ops[1]));
-            uint32_t sp = hwGPR(PhysReg::SP);
-            emit32(kStrFpr | ((offset / 8) << 10) | (sp << 5) | rt, cs);
+            const auto offset = static_cast<int64_t>(getImm(mi.ops[1]));
+            encodeSpOffsetStore(rt, offset, true, cs);
             return;
         }
 
@@ -864,17 +882,16 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             long long offset = getImm(mi.ops[1]);
             uint32_t fp = hwGPR(PhysReg::X29);
-            uint32_t absOff = static_cast<uint32_t>(offset >= 0 ? offset : -offset);
+            const uint64_t magnitude = absImmUnsigned(offset);
             uint32_t tmpl = (offset >= 0) ? kAddRI : kSubRI;
-            if (absOff <= 4095) {
-                emit32(encodeAddSubImm(tmpl, rd, fp, absOff), cs);
-            } else if ((absOff & 0xFFF) == 0 && (absOff >> 12) <= 4095) {
-                // Use lsl #12 shifted immediate for page-aligned offsets.
-                emit32(encodeAddSubImmShift(tmpl, rd, fp, absOff >> 12), cs);
+            if (const auto enc = classifyAddSubImmEncoding(magnitude)) {
+                emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, fp, enc->imm12)
+                                    : encodeAddSubImm(tmpl, rd, fp, enc->imm12),
+                       cs);
             } else {
                 // Large offset: movz x9, #abs(offset); add/sub rd, x29, x9
                 uint32_t scratch = hwGPR(PhysReg::X9);
-                encodeMovImm64(scratch, static_cast<uint64_t>(absOff), cs);
+                encodeMovImm64(scratch, magnitude, cs);
                 if (offset >= 0)
                     emit32(encode3Reg(kAddRRR, rd, fp, scratch), cs);
                 else

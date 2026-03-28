@@ -55,6 +55,9 @@ gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
 gl.Uniform1i(ctx->uFogEnabled, ctx->fog_enabled);
 ```
 
+## Depends On
+- OGL-01 (alpha fix — the `FragColor` line uses `uAlpha` which requires the OGL-01 declaration fix)
+
 ## Files Modified
 - `src/runtime/graphics/vgfx3d_backend_opengl.c` — context fields, begin_frame storage, GLSL uniforms, fragment fog, upload
 

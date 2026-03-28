@@ -9,13 +9,18 @@ Same gap as D3D-15. Metal supports hardware instancing via `drawIndexedPrimitive
 Add a shared optional `submit_draw_instanced()` entry to [`src/runtime/graphics/vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h), and update [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) to use it when present. Unsupported backends keep the current loop.
 
 ### Phase 2: Metal hardware path
-Metal's backend implementation should use a dedicated instance-matrix buffer and `instance_id`:
+Metal's backend implementation should use a dedicated instance-matrix buffer and `instance_id`.
+
+**Important:** Do NOT use `newBufferWithBytes:` per draw call — this has the same per-draw allocation overhead as the texture recreation bug (MTL-02). Use a pooled/cached buffer:
 ```objc
-// Per-instance transforms in a buffer
-id<MTLBuffer> instBuf = [ctx.device newBufferWithBytes:instance_matrices
-                                                length:instance_count * 64
-                                               options:MTLResourceStorageModeShared];
-[ctx.encoder setVertexBuffer:instBuf offset:0 atIndex:3]; // instance buffer slot
+// Reuse a shared instance buffer, growing only when needed
+size_t needed = instance_count * 64;
+if (!ctx.instanceBuf || ctx.instanceBuf.length < needed) {
+    ctx.instanceBuf = [ctx.device newBufferWithLength:needed
+                                              options:MTLResourceStorageModeShared];
+}
+memcpy(ctx.instanceBuf.contents, instance_matrices, needed);
+[ctx.encoder setVertexBuffer:ctx.instanceBuf offset:0 atIndex:3]; // instance buffer slot
 
 // Vertex shader reads instance_id
 // vertex VertexOut vertex_main(..., uint iid [[instance_id]])

@@ -27,6 +27,27 @@ shadowRP.depthAttachment.clearDepth = 1.0;
 shadowRP.depthAttachment.storeAction = MTLStoreActionStore;
 ```
 
+### Shadow pipeline state and comparison sampler
+The shadow pass needs its own pipeline and sampler:
+```objc
+// Shadow-only pipeline (depth write, no color attachment, no fragment shader)
+MTLRenderPipelineDescriptor *shadowPD = [[MTLRenderPipelineDescriptor alloc] init];
+shadowPD.vertexFunction = ctx.shadowVertexFunc; // same vertex transform, no fragment
+shadowPD.fragmentFunction = nil; // depth-only
+shadowPD.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+shadowPD.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid; // no color
+ctx.shadowPipeline = [ctx.device newRenderPipelineStateWithDescriptor:shadowPD error:&err];
+
+// Comparison sampler for shadow lookup
+MTLSamplerDescriptor *cmpDesc = [[MTLSamplerDescriptor alloc] init];
+cmpDesc.compareFunction = MTLCompareFunctionLessEqual;
+cmpDesc.minFilter = MTLSamplerMinMagFilterLinear; // PCF-like 2x2 filtering
+cmpDesc.magFilter = MTLSamplerMinMagFilterLinear;
+ctx.shadowSampler = [ctx.device newSamplerStateWithDescriptor:cmpDesc];
+```
+
+Both should be created once in `metal_create_ctx()` and cached.
+
 ### Shadow comparison in fragment shader
 ```metal
 depth2d<float> shadowMap [[texture(4)]],

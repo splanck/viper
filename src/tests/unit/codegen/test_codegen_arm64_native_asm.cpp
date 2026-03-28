@@ -142,6 +142,21 @@ TEST(NativeAsmArm64, ControlFlowBranch) {
     ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 7);
 }
 
+TEST(NativeAsmArm64, ControlFlowSameTargetBranch) {
+    const std::string in = outPath("nasm_same_target_branch.il");
+    writeFile(in,
+              "il 0.1\n"
+              "func @main() -> i64 {\n"
+              "entry:\n"
+              "  %cond = scmp_gt 5, 3\n"
+              "  cbr %cond, done(7, 70), done(13, 130)\n"
+              "done(%a:i64, %b:i64):\n"
+              "  %r = iadd.ovf %a, %b\n"
+              "  ret %r\n"
+              "}\n");
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 77);
+}
+
 // ---------------------------------------------------------------------------
 // 5. Multi-function — cross-function call
 // ---------------------------------------------------------------------------
@@ -261,6 +276,37 @@ TEST(NativeAsmArm64, FloatingPoint) {
               "}\n");
     // 3.14 + 2.86 = 6.0, truncated to 6
     ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 6);
+}
+
+TEST(NativeAsmArm64, LargePositiveGepOffset) {
+    const std::string in = outPath("nasm_gep_large_positive.il");
+    writeFile(in,
+              "il 0.1\n"
+              "func @main() -> i64 {\n"
+              "entry:\n"
+              "  %buf = alloca 8192\n"
+              "  %addr = gep %buf, 5000\n"
+              "  store i64, %addr, 42\n"
+              "  %v = load i64, %addr\n"
+              "  ret %v\n"
+              "}\n");
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 42);
+}
+
+TEST(NativeAsmArm64, NegativeGepOffset) {
+    const std::string in = outPath("nasm_gep_negative.il");
+    writeFile(in,
+              "il 0.1\n"
+              "func @main() -> i64 {\n"
+              "entry:\n"
+              "  %buf = alloca 64\n"
+              "  %mid = gep %buf, 16\n"
+              "  %addr = gep %mid, -8\n"
+              "  store i64, %addr, 37\n"
+              "  %v = load i64, %addr\n"
+              "  ret %v\n"
+              "}\n");
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 37);
 }
 
 // ---------------------------------------------------------------------------

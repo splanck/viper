@@ -699,6 +699,21 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     dd->cmd.emissive_color[1] = (float)mat->emissive[1];
     dd->cmd.emissive_color[2] = (float)mat->emissive[2];
 
+    /* Consume pending terrain splat data (if set by terrain draw path) */
+    dd->cmd.has_splat = c->pending_has_splat;
+    dd->cmd.splat_map = c->pending_splat_map;
+    for (int i = 0; i < 4; i++) {
+        dd->cmd.splat_layers[i] = c->pending_splat_layers[i];
+        dd->cmd.splat_layer_scales[i] = c->pending_splat_layer_scales[i];
+    }
+    /* Clear pending splat state (one-shot consumption) */
+    c->pending_has_splat = 0;
+    c->pending_splat_map = NULL;
+    for (int i = 0; i < 4; i++) {
+        c->pending_splat_layers[i] = NULL;
+        c->pending_splat_layer_scales[i] = 0.0f;
+    }
+
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
     dd->ambient[0] = c->ambient[0];
@@ -803,6 +818,106 @@ void rt_canvas3d_end(void *obj) {
     }
 
     deferred_draw_t *cmds = (deferred_draw_t *)c->draw_cmds;
+
+    /* Shadow pass: render depth-only into shadow map from directional light */
+    if (c->shadows_enabled && c->shadow_rt && c->shadow_rt->depth_buf &&
+        c->backend->shadow_begin && c->backend->shadow_draw && c->backend->shadow_end) {
+        /* Find first directional light (type 0) from the first draw command */
+        const vgfx3d_light_params_t *dir_light = NULL;
+        for (int32_t i = 0; i < c->draw_count && !dir_light; i++) {
+            for (int32_t li = 0; li < cmds[i].light_count; li++) {
+                if (cmds[i].lights[li].type == 0) {
+                    dir_light = &cmds[i].lights[li];
+                    break;
+                }
+            }
+        }
+
+        if (dir_light) {
+            /* Build light view-projection matrix (orthographic from light direction) */
+            float ldir[3] = {dir_light->direction[0], dir_light->direction[1],
+                             dir_light->direction[2]};
+            float ll = sqrtf(ldir[0] * ldir[0] + ldir[1] * ldir[1] + ldir[2] * ldir[2]);
+            if (ll > 1e-7f) {
+                ldir[0] /= ll;
+                ldir[1] /= ll;
+                ldir[2] /= ll;
+            }
+            /* Eye position: scene center (camera pos) offset along -light direction */
+            float eye[3] = {c->cached_cam_pos[0] - ldir[0] * 50.0f, c->cached_cam_pos[1] - ldir[1] * 50.0f,
+                            c->cached_cam_pos[2] - ldir[2] * 50.0f};
+            /* Look-at view matrix */
+            float fwd[3] = {ldir[0], ldir[1], ldir[2]};
+            float up[3] = {0.0f, 1.0f, 0.0f};
+            /* Handle degenerate case: light pointing straight up/down */
+            float up_dot = fabsf(fwd[0] * up[0] + fwd[1] * up[1] + fwd[2] * up[2]);
+            if (up_dot > 0.99f) {
+                up[0] = 0.0f;
+                up[1] = 0.0f;
+                up[2] = 1.0f;
+            }
+            /* Right = normalize(cross(fwd, up)) */
+            float rx = fwd[1] * up[2] - fwd[2] * up[1];
+            float ry = fwd[2] * up[0] - fwd[0] * up[2];
+            float rz = fwd[0] * up[1] - fwd[1] * up[0];
+            float rl = sqrtf(rx * rx + ry * ry + rz * rz);
+            if (rl > 1e-7f) {
+                rx /= rl;
+                ry /= rl;
+                rz /= rl;
+            }
+            /* Recompute up = cross(right, fwd) */
+            float ux = ry * fwd[2] - rz * fwd[1];
+            float uy = rz * fwd[0] - rx * fwd[2];
+            float uz = rx * fwd[1] - ry * fwd[0];
+
+            /* View matrix (row-major): rows = right, up, fwd */
+            float view[16];
+            view[0] = rx;
+            view[1] = ry;
+            view[2] = rz;
+            view[3] = -(rx * eye[0] + ry * eye[1] + rz * eye[2]);
+            view[4] = ux;
+            view[5] = uy;
+            view[6] = uz;
+            view[7] = -(ux * eye[0] + uy * eye[1] + uz * eye[2]);
+            view[8] = fwd[0];
+            view[9] = fwd[1];
+            view[10] = fwd[2];
+            view[11] = -(fwd[0] * eye[0] + fwd[1] * eye[1] + fwd[2] * eye[2]);
+            view[12] = 0.0f;
+            view[13] = 0.0f;
+            view[14] = 0.0f;
+            view[15] = 1.0f;
+
+            /* Orthographic projection: ±50 in X/Y, 0-100 in Z */
+            float sz = 50.0f;
+            float proj[16] = {0};
+            proj[0] = 1.0f / sz;
+            proj[5] = 1.0f / sz;
+            proj[10] = 1.0f / 100.0f;
+            proj[15] = 1.0f;
+
+            /* light VP = proj * view (row-major multiply) */
+            float light_vp[16];
+            for (int r = 0; r < 4; r++)
+                for (int col = 0; col < 4; col++)
+                    light_vp[r * 4 + col] = proj[r * 4 + 0] * view[0 * 4 + col] +
+                                             proj[r * 4 + 1] * view[1 * 4 + col] +
+                                             proj[r * 4 + 2] * view[2 * 4 + col] +
+                                             proj[r * 4 + 3] * view[3 * 4 + col];
+
+            memcpy(c->shadow_light_vp, light_vp, sizeof(light_vp));
+
+            c->backend->shadow_begin(c->backend_ctx, c->shadow_rt->depth_buf,
+                                     c->shadow_rt->width, c->shadow_rt->height, light_vp);
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].cmd.alpha >= 1.0f)
+                    c->backend->shadow_draw(c->backend_ctx, &cmds[i].cmd);
+            }
+            c->backend->shadow_end(c->backend_ctx, c->shadow_bias);
+        }
+    }
 
     /* Pass 1: submit all opaque draws (alpha >= 1.0) immediately */
     for (int32_t i = 0; i < c->draw_count; i++) {

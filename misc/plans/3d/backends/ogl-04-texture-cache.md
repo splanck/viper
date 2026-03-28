@@ -48,6 +48,9 @@ ctx->tex_cache_count = 0;
 
 This conservative invalidation policy is deliberate because `Pixels` data can mutate in place. A persistent cache needs explicit texture-version tracking first.
 
+### Cleanup in destroy_ctx
+Release all cached textures on context teardown (same loop as begin_frame invalidation).
+
 ## Depends On
 - OGL-03 (diffuse texture)
 

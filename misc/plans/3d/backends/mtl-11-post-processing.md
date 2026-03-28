@@ -17,13 +17,21 @@ if (type == POSTFX_FXAA) apply_fxaa(buf, w, h);
 ## Implementation: Offscreen Render → Post-Process → Present
 
 ### Step 1: Render to offscreen texture instead of drawable
+The backend already has an RTT (render-to-texture) pattern at `metal_set_render_target()` (lines 781-827) that creates offscreen color + depth textures. Follow that pattern.
+
 In `metal_begin_frame()`, when post-processing is enabled:
 ```objc
 if (ctx.postFXEnabled) {
-    // Create offscreen color texture (same size as drawable)
-    ctx.offscreenColor = [ctx.device newTextureWithDescriptor:...];
+    // Cache offscreen texture — only recreate on size change
+    if (!ctx.postfxColor || ctx.postfxColor.width != w || ctx.postfxColor.height != h) {
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+            width:w height:h mipmapped:NO];
+        desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+        ctx.postfxColor = [ctx.device newTextureWithDescriptor:desc];
+    }
     // Render pass writes to offscreen instead of drawable
-    rp.colorAttachments[0].texture = ctx.offscreenColor;
+    rp.colorAttachments[0].texture = ctx.postfxColor;
 }
 ```
 
@@ -85,10 +93,26 @@ fragment float4 postfx_fs(
         color.rgb *= mix(1.0, vig, params.vignetteIntensity);
     }
 
-    // FXAA (simplified edge detection)
+    // FXAA (simplified luma-based edge detection)
     if (params.fxaaEnabled) {
-        // Sample neighbors, detect edge, blend
-        // (Full FXAA is ~100 lines — use simplified Luma-based variant)
+        float2 texelSize = float2(1.0 / sceneColor.get_width(), 1.0 / sceneColor.get_height());
+        float3 rgbN = sceneColor.sample(s, in.uv + float2(0, -texelSize.y)).rgb;
+        float3 rgbS = sceneColor.sample(s, in.uv + float2(0,  texelSize.y)).rgb;
+        float3 rgbE = sceneColor.sample(s, in.uv + float2( texelSize.x, 0)).rgb;
+        float3 rgbW = sceneColor.sample(s, in.uv + float2(-texelSize.x, 0)).rgb;
+        float3 luma = float3(0.299, 0.587, 0.114);
+        float lumaN = dot(rgbN, luma), lumaS = dot(rgbS, luma);
+        float lumaE = dot(rgbE, luma), lumaW = dot(rgbW, luma);
+        float lumaC = dot(color.rgb, luma);
+        float lumaRange = max(max(lumaN, lumaS), max(lumaE, lumaW)) - min(min(lumaN, lumaS), min(lumaE, lumaW));
+        if (lumaRange > 0.05) {
+            float2 dir = float2(-(lumaN - lumaS), lumaE - lumaW);
+            float dirLen = max(abs(dir.x), abs(dir.y));
+            dir = clamp(dir / dirLen, -1.0, 1.0) * texelSize;
+            float3 avg = 0.5 * (sceneColor.sample(s, in.uv + dir * 0.5).rgb +
+                                 sceneColor.sample(s, in.uv - dir * 0.5).rgb);
+            color.rgb = avg;
+        }
     }
 
     return color;

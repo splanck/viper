@@ -67,8 +67,11 @@ This is conservative — textures are re-uploaded once per frame on first use. A
 
 That conservative choice is intentional because `Pixels` data can mutate in place. Prefer correctness over a persistent cache until texture-version tracking exists.
 
+### Step 5: Cleanup in destroy_ctx
+In `metal_destroy_ctx()`, clear the texture cache dictionary to release all cached MTLTexture objects. Under ARC this happens automatically when the context is deallocated, but explicit cleanup is safer for the finalizer path.
+
 ## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_metal.m` — context cache fields, shared sampler, cache lookup/insert, per-frame invalidation
+- `src/runtime/graphics/vgfx3d_backend_metal.m` — context cache fields, shared sampler, cache lookup/insert, per-frame invalidation, destroy cleanup
 
 ## Testing
 - 100 textured boxes → same visual result, drastically fewer MTLTexture allocations

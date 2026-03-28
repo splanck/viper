@@ -8,10 +8,30 @@ As with Metal, the backend should not inspect private `rt_postfx3d.c` internals 
 ## Implementation
 
 ### Step 1: Offscreen render target
-In `d3d11_begin_frame()`, when post-processing is enabled, create offscreen texture and render to it instead of the swap chain RTV:
+In `d3d11_begin_frame()`, when post-processing is enabled, cache and reuse offscreen texture (only recreate on size change):
 ```c
 if (ctx->postfx_enabled) {
-    // Create offscreen BGRA8 texture + RTV (same size as back buffer)
+    // Cache offscreen texture — only recreate on size change
+    if (!ctx->postfx_color_tex || ctx->postfx_w != ctx->width || ctx->postfx_h != ctx->height) {
+        if (ctx->postfx_color_tex) ID3D11Texture2D_Release(ctx->postfx_color_tex);
+        if (ctx->postfx_rtv) ID3D11RenderTargetView_Release(ctx->postfx_rtv);
+        if (ctx->postfx_offscreen_srv) ID3D11ShaderResourceView_Release(ctx->postfx_offscreen_srv);
+        // Create offscreen BGRA8 texture (render target + shader resource)
+        D3D11_TEXTURE2D_DESC desc = {0};
+        desc.Width = ctx->width; desc.Height = ctx->height;
+        desc.MipLevels = 1; desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->postfx_color_tex);
+        ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)ctx->postfx_color_tex,
+                                            NULL, &ctx->postfx_rtv);
+        ID3D11Device_CreateShaderResourceView(ctx->device, (ID3D11Resource *)ctx->postfx_color_tex,
+                                              NULL, &ctx->postfx_offscreen_srv);
+        ctx->postfx_w = ctx->width;
+        ctx->postfx_h = ctx->height;
+    }
     // Render pass targets offscreen instead of swap chain
     ID3D11DeviceContext_OMSetRenderTargets(ctx->context, 1, &ctx->postfx_rtv, ctx->dsv);
 }
@@ -102,6 +122,10 @@ if (ctx->postfx_enabled && ctx->postfx_offscreen_srv) {
     // Draw fullscreen quad (4 vertices, triangle strip, no VBO — SV_VertexID)
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     ID3D11DeviceContext_Draw(ctx->context, 4, 0);
+    // Unbind offscreen SRV to avoid D3D11 resource hazard warning
+    // (texture can't be bound as both RTV and SRV simultaneously)
+    ID3D11ShaderResourceView *nullSRV = NULL;
+    ID3D11DeviceContext_PSSetShaderResources(ctx->context, 0, 1, &nullSRV);
     // Restore main shaders for next frame
 }
 ```

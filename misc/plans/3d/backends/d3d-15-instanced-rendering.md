@@ -18,26 +18,34 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr, vgfx_window_t win,
 
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
 
-    // Create instance buffer with per-instance model matrices
-    D3D11_BUFFER_DESC instDesc = {0};
-    instDesc.ByteWidth = instance_count * 64; // 4x4 float per instance
-    instDesc.Usage = D3D11_USAGE_DEFAULT;
-    instDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA instData = {.pSysMem = instance_matrices};
-    ID3D11Buffer *instBuf;
-    ID3D11Device_CreateBuffer(ctx->device, &instDesc, &instData, &instBuf);
+    // Reuse a cached instance buffer — grow only when needed (avoid per-draw creation)
+    size_t needed = instance_count * 64;
+    if (!ctx->inst_buf || ctx->inst_buf_size < needed) {
+        if (ctx->inst_buf) ID3D11Buffer_Release(ctx->inst_buf);
+        D3D11_BUFFER_DESC instDesc = {0};
+        instDesc.ByteWidth = (UINT)needed;
+        instDesc.Usage = D3D11_USAGE_DYNAMIC;
+        instDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        instDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        ID3D11Device_CreateBuffer(ctx->device, &instDesc, NULL, &ctx->inst_buf);
+        ctx->inst_buf_size = needed;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    ID3D11DeviceContext_Map(ctx->context, (ID3D11Resource *)ctx->inst_buf,
+                           0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, instance_matrices, needed);
+    ID3D11DeviceContext_Unmap(ctx->context, (ID3D11Resource *)ctx->inst_buf, 0);
 
-    // Bind mesh VBO at slot 0, instance buffer at slot 1
+    // Upload mesh to dynamic VBO/IBO (same as D3D-12 pattern)
+    // Then bind mesh VBO at slot 0, instance buffer at slot 1
     UINT strides[2] = {sizeof(vgfx3d_vertex_t), 64};
     UINT offsets[2] = {0, 0};
-    ID3D11Buffer *bufs[2] = {meshVBO, instBuf};
+    ID3D11Buffer *bufs[2] = {ctx->dynamic_vbo, ctx->inst_buf};
     ID3D11DeviceContext_IASetVertexBuffers(ctx->context, 0, 2, bufs, strides, offsets);
 
     // Draw all instances in one call
     ID3D11DeviceContext_DrawIndexedInstanced(ctx->context,
         cmd->index_count, instance_count, 0, 0, 0);
-
-    ID3D11Buffer_Release(instBuf);
 }
 ```
 

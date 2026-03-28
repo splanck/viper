@@ -32,7 +32,7 @@ Keep `shine` uniform in v1 unless the engine adopts one shared gloss-map convent
 ### Step 4: Bind in C code
 ```objc
 if (cmd->specular_map) {
-    id<MTLTexture> specTex = [self getCachedTexture:cmd->specular_map];
+    id<MTLTexture> specTex = getCachedTexture(ctx, cmd->specular_map);
     [ctx.encoder setFragmentTexture:specTex atIndex:2];
     mat.hasSpecularMap = 1;
 }

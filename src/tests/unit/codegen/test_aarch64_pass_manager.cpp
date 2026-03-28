@@ -28,6 +28,7 @@
 #include <sstream>
 #include <string>
 
+#include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
@@ -220,6 +221,33 @@ TEST(AArch64PassManager, EmptyModule) {
 
     EXPECT_TRUE(ok);
     EXPECT_TRUE(m.mir.empty());
+}
+
+TEST(AArch64PassManager, NativeOnlyPipelineSkipsTextEmission) {
+    const std::string il = "il 0.1\n"
+                           "func @forty_two() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 42\n"
+                           "}\n";
+
+    il::core::Module mod = parseIL(il);
+    ASSERT_FALSE(mod.functions.empty());
+
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ilMod = &mod;
+    m.ti = &ti;
+
+    PipelineOptions opts;
+    opts.emitAssemblyText = false;
+    opts.useBinaryEmit = true;
+
+    std::ostringstream diag;
+    const bool ok = runCodegenPipeline(m, opts, diag);
+
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(m.assembly.empty());
+    EXPECT_TRUE(m.binaryText.has_value());
 }
 
 int main(int argc, char **argv) {

@@ -37,12 +37,12 @@ C-side upload:
 ```c
 if (cmd->bone_palette && cmd->bone_count > 0) {
     GLint loc = gl.GetUniformLocation(ctx->program, "uBonePalette");
-    gl.UniformMatrix4fv(loc, cmd->bone_count, GL_FALSE, cmd->bone_palette);
+    gl.UniformMatrix4fv(loc, cmd->bone_count, GL_TRUE, cmd->bone_palette);
     gl.Uniform1i(ctx->uHasSkinning, 1);
 }
 ```
 
-Note: coordinate this with the existing row-major upload conventions already used elsewhere in the backend.
+**Important:** `GL_TRUE` is required to match the existing row-major convention used by all other matrix uploads in this backend (model, VP, normal at lines 651-653). `cmd->bone_palette` stores row-major matrices, and OpenGL's `GL_TRUE` transpose parameter converts them to column-major for GLSL.
 
 ### GPU Morph Targets via Texture Buffer
 For morph deltas, use a texture buffer (GL 3.1+):

@@ -22,21 +22,25 @@ int8_t has_splat;               // Flag
 ```
 
 ### Step 2: Populate Splat Fields in the Terrain Draw Path
-In [`src/runtime/graphics/rt_terrain3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_terrain3d.c), extend `rt_canvas3d_draw_terrain()` so the terrain path can populate the shared splat fields before submission:
+In [`src/runtime/graphics/rt_terrain3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_terrain3d.c), `rt_canvas3d_draw_terrain()` currently calls `rt_canvas3d_draw_mesh()` per chunk. To pass splat data, either:
+- (a) Add an internal variant `rt_canvas3d_draw_mesh_with_splat()` that accepts extra splat fields, or
+- (b) Temporarily store splat data on the Canvas3D struct before calling `draw_mesh`, and have `draw_mesh` copy it into the deferred draw command.
+
+Approach (b) avoids API proliferation. Add `pending_splat_*` fields to `rt_canvas3d` that are consumed (and cleared) by the next `draw_mesh` call:
 ```c
-// For each chunk:
-deferred_draw_t *dd = allocate_deferred_draw(c);
-// ... fill standard fields from chunk mesh + material ...
-dd->cmd.has_splat = (t->splat_map != NULL) ? 1 : 0;
-dd->cmd.splat_map = t->splat_map;
+// In rt_canvas3d_draw_terrain(), before each draw_mesh:
+c->pending_has_splat = (t->splat_map != NULL);
+c->pending_splat_map = t->splat_map;
 for (int i = 0; i < 4; i++) {
-    dd->cmd.splat_layers[i] = t->layer_textures[i];
-    dd->cmd.splat_layer_scales[i] = (float)t->layer_scales[i];
+    c->pending_splat_layers[i] = t->layer_textures[i];
+    c->pending_splat_layer_scales[i] = (float)t->layer_scales[i];
 }
+rt_canvas3d_draw_mesh(canvas, chunk_mesh, identity, t->material);
+// draw_mesh copies pending_splat_* into the deferred draw, then clears them
 ```
 
 ### Step 3: Per-Pixel Splat Sampling in Software Rasterizer
-In `raster_triangle()`, after diffuse texture sampling (line ~461), add:
+In `raster_triangle()`, after diffuse texture sampling, add (note: `sw_pixels_view` conversion must happen before the rasterization loop, same pattern as diffuse/emissive texture setup in `sw_submit_draw`):
 ```c
 if (cmd->has_splat && cmd->splat_map) {
     sw_pixels_view splat_view;

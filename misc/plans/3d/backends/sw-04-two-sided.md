@@ -8,9 +8,7 @@ Metal and OpenGL support two-sided rendering via cull mode toggle. The software 
 - `backface_cull` parameter at line 395 controls whether culling is active
 - When `backface_cull=0`, culling is skipped (two-sided rendering already works)
 
-**Wait — let me verify.** If `backface_cull=0`, does the software backend draw both faces?
-
-Actually, reading line 401 more carefully: the backface check only happens when `backface_cull` is true. When false, both faces are drawn. So **two-sided rendering already works** in the software backend via the `backface_cull` parameter.
+The backface check only happens when `backface_cull` is true. When false, both faces are drawn. Two-sided rendering already works via the `backface_cull` parameter.
 
 ## Status: ALREADY IMPLEMENTED
 
@@ -22,3 +20,6 @@ Canvas3D passes this through from the vtable's `submit_draw` call. The `Canvas3D
 
 ## No Changes Needed
 Update the audit matrix to mark software two-sided as ✅.
+
+## Known Limitation
+Back-face triangles drawn in two-sided mode use the original mesh normal for lighting. If viewed from behind, the face appears dark because the normal points away from the camera. A future improvement could flip the normal for back-facing pixels (detect via screen-space winding sign), but this is not required for v1.

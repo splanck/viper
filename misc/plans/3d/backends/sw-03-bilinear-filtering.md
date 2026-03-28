@@ -5,11 +5,11 @@
 
 ## Current State
 ```c
-// Line 351-352: point sampling
+// In sample_texture() — point sampling:
 int x = (int)(u * (float)tex->width);
 int y = (int)(v * (float)tex->height);
 ```
-Truncates to integer → nearest texel. No interpolation.
+Truncates to integer → nearest texel. No interpolation. Already wraps via `u = u - floorf(u)` (fract).
 
 ## Implementation
 
@@ -31,6 +31,7 @@ static void sample_texture(
     int x1 = x0 + 1;
     int y1 = y0 + 1;
     int w = (int)tex->width, h = (int)tex->height;
+    if (w == 0 || h == 0) { *r = *g = *b = 1.0f; *a = 1.0f; return; }
     x0 = ((x0 % w) + w) % w;
     y0 = ((y0 % h) + h) % h;
     x1 = ((x1 % w) + w) % w;

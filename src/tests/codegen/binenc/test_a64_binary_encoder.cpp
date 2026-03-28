@@ -828,6 +828,19 @@ static void testFMovRI_fallback() {
     CHECK(countWords({mi}) > 1);
 }
 
+static void testAddRI_shift12() {
+    MInstr mi{MOpcode::AddRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(4096)}};
+    uint32_t word = encodeSingleInstr({mi});
+    CHECK(word == encodeAddSubImmShift(kAddRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 1));
+}
+
+static void testStrRegSpImm_largeOffsetFallback() {
+    const std::vector<uint8_t> bytes = encodeInstrBytes(
+        {MInstr{MOpcode::StrRegSpImm, {gpr(PhysReg::X0), imm(40000)}}});
+    // BTI + mov scratch,sp + chunked add + str + ret
+    CHECK((bytes.size() / 4) > 4);
+}
+
 int main() {
     testAddRRR();
     testSubRRR();
@@ -883,6 +896,8 @@ int main() {
     testMovRI_negativeSimple();
     testFMovRI_fp8();
     testFMovRI_fallback();
+    testAddRI_shift12();
+    testStrRegSpImm_largeOffsetFallback();
 
     // --- Encoding coverage validation (W7 remediation) ---
     // Verify that every non-pseudo MOpcode can be encoded without crashing.

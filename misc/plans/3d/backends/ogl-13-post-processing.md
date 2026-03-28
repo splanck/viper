@@ -3,6 +3,8 @@
 ## Context
 Same as MTL-11 and D3D-11. Render to offscreen FBO, then draw fullscreen quad with post-process shader.
 
+As with Metal/D3D, the backend should not inspect private `rt_postfx3d.c` internals directly. Export a compact backend-facing snapshot/helper API from [`src/runtime/graphics/rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c) and [`src/runtime/graphics/rt_postfx3d.h`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h) first.
+
 ## Implementation
 
 ### Offscreen FBO (reuse from OGL-10 infrastructure)
@@ -60,11 +62,17 @@ void main() {
 
 ### Compile + link second shader program in create_ctx
 
+**Important:** GL 3.3 core profile requires a bound VAO for all draw calls, even when using `gl_VertexID` without vertex attributes. Create an empty VAO for the post-process draw:
+```c
+gl.GenVertexArrays(1, &ctx->postfx_vao); // empty — no attributes enabled
+```
+
 ### Post-process pass in end_frame
 ```c
 if (ctx->postfx_enabled) {
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0); // back to screen
     gl.UseProgram(ctx->postfx_program);
+    gl.BindVertexArray(ctx->postfx_vao); // empty VAO required by core profile
     gl.ActiveTexture(GL_TEXTURE0);
     gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_color_tex);
     gl.Uniform1i(ctx->postfx_uSceneColor, 0);
@@ -77,8 +85,13 @@ if (ctx->postfx_enabled) {
 ## Depends On
 - OGL-10 (FBO infrastructure)
 
+## Scope Note
+v1 should explicitly target bloom, tone mapping, FXAA, color grade, and vignette. Depth/history-driven effects such as SSAO, DOF, and motion blur should stay deferred unless this plan is expanded to include those resources.
+
 ## Files Modified
 - `src/runtime/graphics/vgfx3d_backend_opengl.c` — postfx FBO, second shader program, fullscreen quad draw, end_frame post-pass
+- `src/runtime/graphics/rt_postfx3d.c` — export backend-facing PostFX snapshot/helper
+- `src/runtime/graphics/rt_postfx3d.h` — declare backend-facing PostFX snapshot/helper
 
 ## Testing
 - Same tests as MTL-11 and D3D-11

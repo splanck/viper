@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "FastPathsInternal.hpp"
+#include "codegen/aarch64/A64ImmediateUtils.hpp"
 
 namespace viper::codegen::aarch64::fastpaths {
 
@@ -181,27 +182,25 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                     const PhysReg src = ctx.argOrder[paramIndex];
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
-                    if (isAdd)
-                        bbMir.instrs.push_back(MInstr{MOpcode::AddRI,
-                                                      {MOperand::regOp(PhysReg::X0),
-                                                       MOperand::regOp(PhysReg::X0),
-                                                       MOperand::immOp(imm)}});
-                    else if (isAddOvf)
-                        bbMir.instrs.push_back(MInstr{MOpcode::AddOvfRI,
-                                                      {MOperand::regOp(PhysReg::X0),
-                                                       MOperand::regOp(PhysReg::X0),
-                                                       MOperand::immOp(imm)}});
-                    else if (isSub)
-                        bbMir.instrs.push_back(MInstr{MOpcode::SubRI,
-                                                      {MOperand::regOp(PhysReg::X0),
-                                                       MOperand::regOp(PhysReg::X0),
-                                                       MOperand::immOp(imm)}});
-                    else if (isSubOvf)
-                        bbMir.instrs.push_back(MInstr{MOpcode::SubOvfRI,
-                                                      {MOperand::regOp(PhysReg::X0),
-                                                       MOperand::regOp(PhysReg::X0),
-                                                       MOperand::immOp(imm)}});
-                    else if (isShl)
+                    if (isAdd || isAddOvf || isSub || isSubOvf) {
+                        emitLegalizedSignedImmArith(
+                            bbMir,
+                            MOperand::regOp(PhysReg::X0),
+                            MOperand::regOp(PhysReg::X0),
+                            imm,
+                            (isAdd || isAddOvf) ? SignedImmArithKind::Add
+                                                : SignedImmArithKind::Sub,
+                            (isAddOvf || isSubOvf) ? MOpcode::AddOvfRI : MOpcode::AddRI,
+                            (isAddOvf || isSubOvf) ? MOpcode::SubOvfRI : MOpcode::SubRI,
+                            (isAddOvf || isSubOvf) ? MOpcode::AddOvfRRR : MOpcode::AddRRR,
+                            (isAddOvf || isSubOvf) ? MOpcode::SubOvfRRR : MOpcode::SubRRR,
+                            [&](long long materializedImm) {
+                                const MOperand scratch = MOperand::regOp(PhysReg::X16);
+                                bbMir.instrs.push_back(MInstr{
+                                    MOpcode::MovRI, {scratch, MOperand::immOp(materializedImm)}});
+                                return scratch;
+                            });
+                    } else if (isShl)
                         bbMir.instrs.push_back(MInstr{MOpcode::LslRI,
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(PhysReg::X0),

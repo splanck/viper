@@ -370,7 +370,7 @@ bool runCodegenPipeline(passes::AArch64Module &module,
         }
     }
 
-    {
+    if (opts.emitAssemblyText) {
         passes::EmitPass pass;
         if (!pass.run(module, diags)) {
             diags.flush(diagOut);
@@ -446,6 +446,8 @@ PipelineResult CodegenPipeline::run() {
     PipelineOptions pipeOpts;
     pipeOpts.dumpMirBeforeRA = opts_.dump_mir_before_ra;
     pipeOpts.dumpMirAfterRA = opts_.dump_mir_after_ra;
+    pipeOpts.emitAssemblyText = opts_.assembler_mode == AssemblerMode::System || opts_.emit_asm ||
+                                (opts_.output_obj_path.empty() && !opts_.run_native);
     pipeOpts.useBinaryEmit = opts_.assembler_mode == AssemblerMode::Native;
 
     if (!runCodegenPipeline(pipelineModule, pipeOpts, err)) {

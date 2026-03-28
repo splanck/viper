@@ -6,11 +6,12 @@ Software backend implements fog per-pixel. Metal ignores fog parameters passed t
 ## Implementation
 
 ### Step 1: Store fog params in Metal context
-Add to VGFXMetalContext:
+Add to VGFXMetalContext (as ivars or struct fields — Obj-C properties can't hold C arrays):
 ```objc
-@property (nonatomic) BOOL fogEnabled;
-@property (nonatomic) float fogNear, fogFar;
-@property (nonatomic) float fogColor[3];
+// As ivars in @implementation block or via a struct:
+float fogColor[3];
+float fogNear, fogFar;
+BOOL fogEnabled;
 ```
 
 In `metal_begin_frame()`, store from camera params:
