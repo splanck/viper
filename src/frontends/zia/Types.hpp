@@ -410,18 +410,20 @@ struct ViperType {
     }
 
     /// @brief Check if this is a numeric type.
-    /// @return True for Integer, Number, Byte.
+    /// @return True for Integer, Number, Byte, Enum.
     /// @details Numeric types support arithmetic operations.
+    /// Enum variants are I64 constants and participate in integer arithmetic.
     bool isNumeric() const {
         return kind == TypeKindSem::Integer || kind == TypeKindSem::Number ||
-               kind == TypeKindSem::Byte;
+               kind == TypeKindSem::Byte || kind == TypeKindSem::Enum;
     }
 
     /// @brief Check if this is an integral (whole number) type.
-    /// @return True for Integer, Byte.
+    /// @return True for Integer, Byte, Enum.
     /// @details Integral types support bitwise operations and integer division.
     bool isIntegral() const {
-        return kind == TypeKindSem::Integer || kind == TypeKindSem::Byte;
+        return kind == TypeKindSem::Integer || kind == TypeKindSem::Byte ||
+               kind == TypeKindSem::Enum;
     }
 
     /// @brief Check if this is a reference type.

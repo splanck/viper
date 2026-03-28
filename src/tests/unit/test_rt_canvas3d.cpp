@@ -23,6 +23,7 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_sprite3d.h"
+#include "rt_terrain3d.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 #include <cassert>
@@ -845,6 +846,57 @@ static void test_rendertarget_null_safety() {
 }
 
 //=============================================================================
+// Terrain3D splat tests
+//=============================================================================
+
+static void test_terrain_create() {
+    TEST("Terrain3D.New — creates terrain");
+    void *t = rt_terrain3d_new(32, 32);
+    assert(t);
+    PASS();
+}
+
+static void test_terrain_set_splat_map() {
+    TEST("Terrain3D.SetSplatMap — accepts Pixels");
+    void *t = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(16, 16);
+    rt_terrain3d_set_splat_map(t, splat);
+    PASS();
+}
+
+static void test_terrain_set_layer_texture() {
+    TEST("Terrain3D.SetLayerTexture — accepts layer + Pixels");
+    void *t = rt_terrain3d_new(16, 16);
+    void *tex = rt_pixels_new(32, 32);
+    rt_terrain3d_set_layer_texture(t, 0, tex);
+    rt_terrain3d_set_layer_texture(t, 1, tex);
+    rt_terrain3d_set_layer_texture(t, 2, tex);
+    rt_terrain3d_set_layer_texture(t, 3, tex);
+    /* Out of range — should not crash */
+    rt_terrain3d_set_layer_texture(t, 4, tex);
+    rt_terrain3d_set_layer_texture(t, -1, tex);
+    PASS();
+}
+
+static void test_terrain_set_layer_scale() {
+    TEST("Terrain3D.SetLayerScale — sets UV tiling scale");
+    void *t = rt_terrain3d_new(16, 16);
+    rt_terrain3d_set_layer_scale(t, 0, 4.0);
+    rt_terrain3d_set_layer_scale(t, 1, 8.0);
+    /* Out of range — should not crash */
+    rt_terrain3d_set_layer_scale(t, 5, 1.0);
+    PASS();
+}
+
+static void test_terrain_null_safety() {
+    TEST("Terrain3D splat — null safety");
+    rt_terrain3d_set_splat_map(NULL, NULL);
+    rt_terrain3d_set_layer_texture(NULL, 0, NULL);
+    rt_terrain3d_set_layer_scale(NULL, 0, 1.0);
+    PASS();
+}
+
+//=============================================================================
 // Backend selection tests
 //=============================================================================
 
@@ -951,6 +1003,13 @@ int main() {
     test_rendertarget_dimensions();
     test_rendertarget_as_pixels();
     test_rendertarget_null_safety();
+
+    /* Terrain3D splat */
+    test_terrain_create();
+    test_terrain_set_splat_map();
+    test_terrain_set_layer_texture();
+    test_terrain_set_layer_scale();
+    test_terrain_null_safety();
 
     /* Backend */
     test_backend_select();

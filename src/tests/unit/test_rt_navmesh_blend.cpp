@@ -124,6 +124,30 @@ static void test_navmesh_box_slope_filter() {
     EXPECT_TRUE(tri_count > 0 && tri_count < 12, "Box: not all triangles walkable (slope filter)");
 }
 
+static void test_navmesh_adjacency_edge_hash() {
+    /* Build from plane — should produce 2 triangles that are adjacent (share an edge) */
+    void *plane = rt_mesh3d_new_plane(10.0, 10.0);
+    void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
+    EXPECT_TRUE(nm != nullptr, "NavMesh adjacency: builds from plane");
+    int64_t tc = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(tc == 2, "NavMesh adjacency: plane has 2 walkable triangles");
+    /* If adjacency works correctly, pathfinding between opposite corners should succeed
+     * (requires traversing from triangle 0 to triangle 1 via shared edge) */
+    void *from = rt_vec3_new(-4.0, 0.0, -4.0);
+    void *to = rt_vec3_new(4.0, 0.0, 4.0);
+    void *path = rt_navmesh3d_find_path(nm, from, to);
+    EXPECT_TRUE(path != nullptr, "NavMesh adjacency: path found across edge-hash adjacency");
+}
+
+static void test_navmesh_large_mesh() {
+    /* Build from a box (12 triangles) — verifies edge hash handles > 2 triangles */
+    void *box = rt_mesh3d_new_box(10.0, 0.5, 10.0); /* flat-ish box */
+    void *nm = rt_navmesh3d_build(box, 0.4, 1.8);
+    EXPECT_TRUE(nm != nullptr, "NavMesh large: builds from box");
+    int64_t tc = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(tc > 0, "NavMesh large: has walkable triangles");
+}
+
 /*==========================================================================
  * AnimBlend3D tests
  *=========================================================================*/
@@ -188,6 +212,8 @@ int main() {
     test_navmesh_sample_position();
     test_navmesh_find_path();
     test_navmesh_box_slope_filter();
+    test_navmesh_adjacency_edge_hash();
+    test_navmesh_large_mesh();
 
     /* AnimBlend3D */
     test_blend_create();

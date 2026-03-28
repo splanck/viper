@@ -15,11 +15,11 @@ Version 0.2.4 is a showcase and infrastructure release: a flagship demo game, ne
 
 #### By the Numbers
 
-| Metric | Value |
-|--------|-------|
-| Commits since v0.2.3 | 14 |
-| Production SLOC | 379,626 |
-| Test count | 1,358 (up from 1,351) |
+| Metric | v0.2.3 | v0.2.4 | Delta |
+|--------|--------|--------|-------|
+| Source files | 2,671 | 2,699 | +28 |
+| Production SLOC | ~348K | ~380K | +32K |
+| Test count | 1,351 | 1,358 | +7 |
 
 ---
 
@@ -85,3 +85,5 @@ Comprehensive documentation pass across all 2,668 source files with standardized
 - `Camera3D.NewOrtho` — orthographic camera for isometric/strategy games (no perspective foreshortening)
 - `DistanceJoint3D` and `SpringJoint3D` — physics joint constraints with 6-iteration sequential impulse solver
 - Audio3D per-voice max_distance tracking (replaces shared global that caused cross-voice attenuation bugs)
+- NavMesh3D adjacency build optimized from O(n²) to O(n) via edge hash map
+- Terrain3D texture splatting: `SetSplatMap` + 4 layer textures with per-layer UV tiling, baked blend

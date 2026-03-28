@@ -14,7 +14,7 @@ Ordered by priority. Each plan is independently implementable.
 | 03 | [Memory Leak Fixes](03-memory-leaks.md) | **DONE** — Canvas3D clear optimized, skeleton verified, Mesh3D.Clear + Sprite3D cache from Plan 01 | 3 already fixed |
 | 04 | [FBX Animation Fixes](04-fbx-animation.md) | **DONE** — Crossfade rewritten with TRS+SLERP + 2 tests | 3 already correct |
 | 07 | [Audio3D Fixes](07-audio3d-fixes.md) | **DONE** — Per-voice max_distance tracking table | 1 already correct |
-| 08 | [NavMesh Fixes](08-navmesh-fixes.md) | 2 (O(n²) adjacency + malloc null checks) | 0 |
+| 08 | [NavMesh Fixes](08-navmesh-fixes.md) | **DONE** — O(n²) → O(n) edge hash adjacency + 2 tests | Heap+mallocs already safe |
 | 13 | [Miscellaneous Fixes](13-misc-fixes.md) | 2 confirmed (OBJ dedup, normal transform) + 4 need verification | 3 (perspective matrix, friction, set_static) |
 
 ## Core Features (No existing implementation)
@@ -30,7 +30,8 @@ Ordered by priority. Each plan is independently implementable.
 
 | # | Plan | What It Enables | Effort |
 |---|------|----------------|--------|
-| 09 | [Terrain Splatting](09-terrain-splatting.md) | Multi-texture terrain (grass/dirt/rock) | Medium |
+| 09 | [Terrain Splatting](09-terrain-splatting.md) | **DONE** (baked) — API added. Plan 15 upgrades to per-pixel. | Medium |
+| 15 | [Per-Pixel Splatting](15-per-pixel-splatting.md) | Replaces baked splat with per-pixel shader splatting (SW + Metal). OGL/D3D11 deferred. | Medium |
 | 10 | [Animation State Machine + IK](10-animation-state-machine.md) | Proper character animation, foot placement | Large |
 | 11 | [PBR Materials](11-pbr-materials.md) | Physically-based rendering (metallic/roughness) | Large |
 | 12 | [Shadow Improvements](12-shadow-improvements.md) | Soft shadows, cascaded shadow maps | Medium |

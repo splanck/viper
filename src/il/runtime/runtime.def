@@ -10228,10 +10228,17 @@ RT_FUNC(Terrain3DGetHeightAt,    rt_terrain3d_get_height_at,  "Viper.Graphics3D.
 RT_FUNC(Terrain3DGetNormalAt,    rt_terrain3d_get_normal_at,  "Viper.Graphics3D.Terrain3D.GetNormalAt",    "obj(obj,f64,f64)")
 RT_FUNC(Canvas3DDrawTerrain,     rt_canvas3d_draw_terrain,    "Viper.Graphics3D.Canvas3D.DrawTerrain",     "void(obj,obj)")
 
+RT_FUNC(Terrain3DSetSplatMap,    rt_terrain3d_set_splat_map,    "Viper.Graphics3D.Terrain3D.SetSplatMap",    "void(obj,obj)")
+RT_FUNC(Terrain3DSetLayerTex,   rt_terrain3d_set_layer_texture,"Viper.Graphics3D.Terrain3D.SetLayerTexture","void(obj,i64,obj)")
+RT_FUNC(Terrain3DSetLayerScale, rt_terrain3d_set_layer_scale,  "Viper.Graphics3D.Terrain3D.SetLayerScale", "void(obj,i64,f64)")
+
 RT_CLASS_BEGIN("Viper.Graphics3D.Terrain3D", Terrain3D, "obj", Terrain3DNew)
     RT_METHOD("SetHeightmap", "void(obj)", Terrain3DSetHeightmap)
     RT_METHOD("SetMaterial", "void(obj)", Terrain3DSetMaterial)
     RT_METHOD("SetScale", "void(f64,f64,f64)", Terrain3DSetScale)
+    RT_METHOD("SetSplatMap", "void(obj)", Terrain3DSetSplatMap)
+    RT_METHOD("SetLayerTexture", "void(i64,obj)", Terrain3DSetLayerTex)
+    RT_METHOD("SetLayerScale", "void(i64,f64)", Terrain3DSetLayerScale)
     RT_METHOD("GetHeightAt", "f64(f64,f64)", Terrain3DGetHeightAt)
     RT_METHOD("GetNormalAt", "obj(f64,f64)", Terrain3DGetNormalAt)
 RT_CLASS_END()

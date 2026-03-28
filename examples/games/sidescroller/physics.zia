@@ -9,7 +9,7 @@
 //   - Reusable CollisionRect instances (avoid per-check allocation)
 //   - hide for internal helpers (toTileCoord), expose for public API
 //   - x100 sub-pixel coordinate system for smooth movement
-//   - Out-parameters via single-element List (Zia workaround for multiple returns)
+//   - MoveResult struct for clean multiple return values
 //
 // Coordinate system:
 //   All positions/velocities are in x100 units (centipixels) unless noted.
@@ -24,6 +24,16 @@ bind Viper.Game;
 bind "./config";
 bind "./level";
 
+// Collision result — replaces the old out-parameter List[Integer] pattern.
+struct MoveResult {
+    expose Integer x;
+    expose Integer y;
+    expose Boolean hitFloor;
+    expose Boolean hitCeiling;
+    expose Boolean hitLeft;
+    expose Boolean hitRight;
+}
+
 class PhysicsHelper {
 
     // CollisionRect instances reused each frame (avoid allocation per check).
@@ -36,21 +46,18 @@ class PhysicsHelper {
     }
 
     // Move an entity by (vx, vy) and resolve collisions against the tile grid.
-    // The out* lists are single-element lists used to return multiple values.
-    // Returns collision flags: bit 0=floor, bit 1=ceiling, bit 2=left, bit 3=right
+    // Returns a MoveResult with the resolved position and collision flags.
     expose func moveAndCollide(
         x: Integer, y: Integer, vx: Integer, vy: Integer,
-        w: Integer, h: Integer, level: Level,
-        outX: List[Integer], outY: List[Integer],
-        outVx: List[Integer], outVy: List[Integer]
-    ) -> Integer {
-        var flags = 0;
+        w: Integer, h: Integer, level: Level
+    ) -> MoveResult {
         var newX = x + vx;
         var newY = y + vy;
-        var newVx = vx;
-        var newVy = vy;
+        var floor = false;
+        var ceiling = false;
+        var left = false;
+        var right = false;
 
-        // Convert pixel dimensions to x100
         var w100 = w * 100;
         var h100 = h * 100;
 
@@ -58,32 +65,24 @@ class PhysicsHelper {
         // Resolve X axis first
         // =====================================================================
         if vx != 0 {
-            // Check the leading edge
             var leadX = newX;
-            if vx > 0 {
-                leadX = newX + w100 - 1;
-            }
+            if vx > 0 { leadX = newX + w100 - 1; }
 
             var tileX = toTileCoord(leadX);
             var topTile = toTileCoord(y);
             var botTile = toTileCoord(y + h100 - 1);
 
-            var ty = topTile;
-            while ty <= botTile {
+            for ty in topTile..=botTile {
                 if level.isSolid(tileX, ty) {
                     if vx > 0 {
-                        // Snap to left edge of tile
                         newX = tileX * TILE_SIZE * 100 - w100;
-                        flags = flags + 8; // right wall
+                        right = true;
                     } else {
-                        // Snap to right edge of tile
                         newX = (tileX + 1) * TILE_SIZE * 100;
-                        flags = flags + 4; // left wall
+                        left = true;
                     }
-                    newVx = 0;
-                    ty = botTile + 1; // break
+                    break;
                 }
-                ty = ty + 1;
             }
         }
 
@@ -92,38 +91,27 @@ class PhysicsHelper {
         // =====================================================================
         if vy != 0 {
             var leadY = newY;
-            if vy > 0 {
-                leadY = newY + h100 - 1;
-            }
+            if vy > 0 { leadY = newY + h100 - 1; }
 
             var tileY = toTileCoord(leadY);
             var leftTile = toTileCoord(newX);
             var rightTile = toTileCoord(newX + w100 - 1);
 
-            var tx = leftTile;
-            while tx <= rightTile {
+            for tx in leftTile..=rightTile {
                 if level.isSolid(tx, tileY) {
                     if vy > 0 {
-                        // Landing on floor
                         newY = tileY * TILE_SIZE * 100 - h100;
-                        flags = flags + 1; // floor
+                        floor = true;
                     } else {
-                        // Hit ceiling
                         newY = (tileY + 1) * TILE_SIZE * 100;
-                        flags = flags + 2; // ceiling
+                        ceiling = true;
                     }
-                    newVy = 0;
-                    tx = rightTile + 1; // break
+                    break;
                 }
-                tx = tx + 1;
             }
         }
 
-        outX.set(0, newX);
-        outY.set(0, newY);
-        outVx.set(0, newVx);
-        outVy.set(0, newVy);
-        return flags;
+        return new MoveResult(newX, newY, floor, ceiling, left, right);
     }
 
     // Check if a point (x100) is on solid ground (one pixel below feet)
@@ -135,12 +123,10 @@ class PhysicsHelper {
         var leftTile = toTileCoord(x);
         var rightTile = toTileCoord(x + w100 - 1);
 
-        var tx = leftTile;
-        while tx <= rightTile {
+        for tx in leftTile..=rightTile {
             if level.isSolid(tx, tileY) {
                 return true;
             }
-            tx = tx + 1;
         }
         return false;
     }
@@ -159,12 +145,10 @@ class PhysicsHelper {
         var topTile = toTileCoord(y);
         var botTile = toTileCoord(y + h100 - 1);
 
-        var ty = topTile;
-        while ty <= botTile {
+        for ty in topTile..=botTile {
             if level.isSolid(tileX, ty) {
                 return true;
             }
-            ty = ty + 1;
         }
         return false;
     }
@@ -178,8 +162,7 @@ class PhysicsHelper {
         var leftTile = toTileCoord(x + 200);
         var rightTile = toTileCoord(x + w100 - 200);
 
-        var tx = leftTile;
-        while tx <= rightTile {
+        for tx in leftTile..=rightTile {
             if level.isHazard(tx, tileY) {
                 return true;
             }

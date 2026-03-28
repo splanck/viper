@@ -34,6 +34,7 @@ class Level {
     expose Integer bossX;
     expose Integer bossY;
     expose Boolean hasBoss;
+    expose Integer bossType;
 
     expose func init() {
         levelWidth = 0;
@@ -53,6 +54,7 @@ class Level {
         bossX = 0;
         bossY = 0;
         hasBoss = false;
+        bossType = ENEMY_BOSS;
     }
 
     expose func loadLevel(num: Integer) {
@@ -65,6 +67,7 @@ class Level {
         pickupY = [];
         hasCheckpoint = false;
         hasBoss = false;
+        bossType = ENEMY_BOSS;
 
         // Xenoscape: 10-level interconnected world
         if num == 1 { buildDescent(); }          // Crash Site / tutorial
@@ -81,7 +84,7 @@ class Level {
 
     expose func isSolid(col: Integer, row: Integer) -> Boolean {
         if col < 0 { return true; }
-        if row < 0 { return false; }
+        if row < 0 { return true; }
         if col >= levelWidth { return true; }
         if row >= levelHeight { return true; }
         // Tilemap.IsSolidAt takes PIXEL coordinates (divides by tile size internally)
@@ -566,6 +569,7 @@ class Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_SPORE_MOTHER;
         tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
@@ -1150,10 +1154,11 @@ class Level {
         addPickup(PICKUP_HEALTH, 178, 14);
         addPickup(PICKUP_SHIELD, 180, 14);
 
-        // Boss spawn
+        // Boss spawn — Crystal Wyrm (unique to this level)
         bossX = 195 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_CRYSTAL_WYRM;
 
         // End sign (after boss)
         tilemap.SetTile(215, GROUND_ROW - 1, TILE_SIGN_END);
@@ -1617,10 +1622,11 @@ class Level {
         addPickup(PICKUP_HEALTH, 185, 14);
         addPickup(PICKUP_SHIELD, 187, 14);
 
-        // Final boss
+        // Final boss — Magma Core (stationary, AOE attacks)
         bossX = 210 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_MAGMA_CORE;
 
         // End sign
         tilemap.SetTile(245, GROUND_ROW - 1, TILE_SIGN_END);
@@ -1671,8 +1677,7 @@ class Level {
             enemyX.add(85 * TILE_SIZE); enemyY.add(10 * TILE_SIZE);
             enemyTypes.add(ENEMY_MYCELIUM);
             enemyX.add(95 * TILE_SIZE); enemyY.add(4 * TILE_SIZE);
-            enemyTypes.add(ENEMY_SPORE_MOTHER);
-            enemyX.add(130 * TILE_SIZE); enemyY.add(8 * TILE_SIZE);
+            // Spore Mother boss is spawned via level.bossType — not here
         }
         if levelNum == 3 {
             enemyTypes.add(ENEMY_CRYSTAL_GOLEM);
@@ -1685,8 +1690,7 @@ class Level {
             enemyX.add(60 * TILE_SIZE); enemyY.add(10 * TILE_SIZE);
             enemyTypes.add(ENEMY_MIRROR_SLIME);
             enemyX.add(90 * TILE_SIZE); enemyY.add(14 * TILE_SIZE);
-            enemyTypes.add(ENEMY_CRYSTAL_WYRM);
-            enemyX.add(130 * TILE_SIZE); enemyY.add(10 * TILE_SIZE);
+            // Crystal Wyrm boss is spawned via level.bossType — not here
         }
         if levelNum == 4 {
             enemyTypes.add(ENEMY_VINE_WHIP);
@@ -1715,8 +1719,7 @@ class Level {
             enemyX.add(75 * TILE_SIZE); enemyY.add(8 * TILE_SIZE);
             enemyTypes.add(ENEMY_FORGE_SENTINEL);
             enemyX.add(105 * TILE_SIZE); enemyY.add(14 * TILE_SIZE);
-            enemyTypes.add(ENEMY_MAGMA_CORE);
-            enemyX.add(135 * TILE_SIZE); enemyY.add(6 * TILE_SIZE);
+            // Magma Core boss is spawned via level.bossType — not here
         }
         if levelNum == 7 {
             enemyTypes.add(ENEMY_MOSS_GOLEM);
@@ -2026,8 +2029,9 @@ class Level {
         buildPlatformRun(175, 14, 3, TILE_OBSIDIAN, 14 - 2);
         buildPlatformRun(185, 14, 3, TILE_OBSIDIAN, 14 - 2);
 
-        // The Architect (final boss)
+        // The Architect (final boss — 4-phase berserk)
         hasBoss = true;
+        bossType = ENEMY_ARCHITECT;
         bossX = 185 * TILE_SIZE;
         bossY = 14 * TILE_SIZE;
 

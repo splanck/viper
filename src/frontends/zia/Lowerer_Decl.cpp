@@ -158,6 +158,25 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init) {
 // Final Constant Pre-Registration
 //=============================================================================
 
+void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        if (decl->kind == DeclKind::Enum) {
+            auto *enumDecl = static_cast<EnumDecl *>(decl.get());
+            int64_t nextValue = 0;
+            for (const auto &variant : enumDecl->variants) {
+                std::string key = enumDecl->name + "." + variant.name;
+                if (variant.explicitValue.has_value())
+                    nextValue = *variant.explicitValue;
+                enumVariantValues_[key] = nextValue;
+                ++nextValue;
+            }
+        } else if (decl->kind == DeclKind::Namespace) {
+            auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            registerAllEnumValues(ns->declarations);
+        }
+    }
+}
+
 void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
     for (auto &decl : declarations) {
         if (decl->kind == DeclKind::GlobalVar) {
@@ -184,7 +203,20 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
                 // `-1`, `2 * 1024`) that are not direct literals (BUG-FE-011).
                 else if (auto folded = tryFoldNumericConstant(init))
                     globalConstants_[qualifiedName] = *folded;
-                else {
+                // Enum variant access (e.g., PlayerState.Idle) — resolve to I64 constant.
+                // Uses enumVariantValues_ populated by registerAllEnumValues().
+                else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(init)) {
+                    if (auto *base = dynamic_cast<IdentExpr *>(fieldExpr->base.get())) {
+                        std::string key = base->name + "." + fieldExpr->field;
+                        auto it = enumVariantValues_.find(key);
+                        if (it != enumVariantValues_.end()) {
+                            globalConstants_[qualifiedName] =
+                                il::core::Value::constInt(it->second);
+                            continue;
+                        }
+                    }
+                    // Fall through to error if not resolved
+                } else {
                     // BUG-FE-012: Emit diagnostic for non-constant final initializers
                     // instead of silently dropping them (which causes 0-value fallback).
                     diag_.report({il::support::Severity::Error,

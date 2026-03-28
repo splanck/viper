@@ -685,7 +685,7 @@ Draw via `Canvas3D.DrawWater(water, camera)`.
 
 ## Terrain3D
 
-Heightmap-based terrain with chunked rendering.
+Heightmap-based terrain with chunked rendering and texture splatting.
 
 | Member | Description |
 |--------|-------------|
@@ -693,8 +693,13 @@ Heightmap-based terrain with chunked rendering.
 | `SetHeightmap(pixels)` | Load height from red channel of Pixels |
 | `SetMaterial(material)` | Set surface material |
 | `SetScale(sx, sy, sz)` | Set terrain world size (Y = height scale) |
+| `SetSplatMap(pixels)` | Set splat map (RGBA Pixels: R/G/B/A = weight for layers 0-3) |
+| `SetLayerTexture(layer, pixels)` | Set texture for splat layer (0-3) |
+| `SetLayerScale(layer, scale)` | Set UV tiling scale per layer (default 1.0) |
 | `GetHeightAt(x, z)` | Query height at world XZ position |
 | `GetNormalAt(x, z)` | Query surface normal at world XZ position |
+
+**Texture splatting:** When a splat map is set, the terrain bakes a blended texture from the 4 layer textures, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The bake runs once when the terrain is first drawn (or after splat/heightmap changes).
 
 Draw via `Canvas3D.DrawTerrain(terrain)`.
 

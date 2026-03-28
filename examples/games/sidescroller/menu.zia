@@ -464,8 +464,8 @@ class MenuSystem {
         save.Load();
         var i = 0;
         while i < 10 {
-            highScores.set(i, save.GetInt("hs_score_" + Int(i), (10 - i) * 1000));
-            highNames.set(i, save.GetString("hs_name_" + Int(i), "AAA"));
+            highScores.set(i, save.GetInt("hs_score_${i}", (10 - i) * 1000));
+            highNames.set(i, save.GetString("hs_name_${i}", "AAA"));
             i = i + 1;
         }
     }
@@ -473,8 +473,8 @@ class MenuSystem {
     expose func saveHighScores() {
         var i = 0;
         while i < 10 {
-            save.SetInt("hs_score_" + Int(i), highScores.get(i));
-            save.SetString("hs_name_" + Int(i), highNames.get(i));
+            save.SetInt("hs_score_${i}", highScores.get(i));
+            save.SetString("hs_name_${i}", highNames.get(i));
             i = i + 1;
         }
         save.Save();
@@ -564,7 +564,7 @@ class MenuSystem {
             canvas.Frame(cardX, cardY, cardW, cardH, Color.RGB(70, 70, 100));
 
             // Slot number
-            canvas.TextScaled(cardX + 20, cardY + 15, "Slot " + Int(i + 1), pal.white, 2);
+            canvas.TextScaled(cardX + 20, cardY + 15, "Slot ${i + 1}", pal.white, 2);
 
             // Slot info
             canvas.TextScaled(cardX + 20, cardY + 50, slotTexts.get(i), pal.hudGray, 2);
@@ -610,11 +610,11 @@ class MenuSystem {
 
         var mins = totalTime / 60;
         var secs = totalTime % 60;
-        canvas.TextCenteredScaled(statsY + 50, "Total Time: " + Int(mins) + ":" + Int(secs),
+        canvas.TextCenteredScaled(statsY + 50, "Total Time: ${mins}:${secs}",
                                   pal.white, 2);
-        canvas.TextCenteredScaled(statsY + 90, "Gems Collected: " + Int(totalGems),
+        canvas.TextCenteredScaled(statsY + 90, "Gems Collected: ${totalGems}",
                                   Color.RGB(100, 200, 255), 2);
-        canvas.TextCenteredScaled(statsY + 130, "Lore Discovered: " + Int(lorePercent) + "%",
+        canvas.TextCenteredScaled(statsY + 130, "Lore Discovered: ${lorePercent}%",
                                   Color.RGB(200, 180, 255), 2);
 
         // Thank you
@@ -680,13 +680,13 @@ class MenuSystem {
 
         // Biome name with colored indicator
         canvas.Box(statsX, statsY, 12, 12, getBiomeColor(currentLevel));
-        canvas.Text(statsX + 18, statsY, "Area " + Int(currentLevel) + ": " + biomeName,
+        canvas.Text(statsX + 18, statsY, "Area ${currentLevel}: ${biomeName}",
                     Color.RGB(180, 190, 210));
 
         // Time
         var mins = playTime / 60000;
         var secs = (playTime / 1000) % 60;
-        canvas.Text(statsX, statsY + 24, "Time: " + Int(mins) + ":" + Int(secs),
+        canvas.Text(statsX, statsY + 24, "Time: ${mins}:${secs}",
                     Color.RGB(140, 150, 170));
 
         // Health bar (wide, with labels)
@@ -701,12 +701,12 @@ class MenuSystem {
         else if hp <= maxHp * 2 / 3 { barColor = Color.RGB(220, 180, 50); }
         canvas.Box(barX, statsY + 48, fillW, barH, barColor);
         canvas.Frame(barX, statsY + 48, barW, barH, Color.RGB(80, 90, 110));
-        canvas.Text(barX + barW + 8, statsY + 48, Int(hp) + "/" + Int(maxHp),
+        canvas.Text(barX + barW + 8, statsY + 48, "${hp}/${maxHp}",
                     Color.RGB(180, 190, 210));
 
         // Score and gems
-        canvas.Text(statsX, statsY + 72, "Score: " + Int(score), Color.RGB(255, 221, 34));
-        canvas.Text(statsX + 200, statsY + 72, "Gems: " + Int(gems), Color.RGB(100, 200, 255));
+        canvas.Text(statsX, statsY + 72, "Score: ${score}", Color.RGB(255, 221, 34));
+        canvas.Text(statsX + 200, statsY + 72, "Gems: ${gems}", Color.RGB(100, 200, 255));
 
         // Divider
         canvas.Line(panelX + 20, statsY + 100, panelX + panelW - 20, statsY + 100,

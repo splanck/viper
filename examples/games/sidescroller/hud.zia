@@ -135,21 +135,21 @@ class HUD {
         healthBar.Draw(canvas);
 
         // HP number overlay on bar
-        canvas.TextScaled(16, 12, Int(hp) + "/" + Int(maxHp), 2, pal.white);
+        canvas.TextScaled(16, 12, "${hp}/${maxHp}", 2, pal.white);
 
         // Score (animated via SmoothValue)
-        scoreLabel.SetText("SCORE " + Int(displayScore.get_ValueI64()));
+        scoreLabel.SetText("SCORE ${displayScore.get_ValueI64()}");
         scoreLabel.Draw(canvas);
 
         // Coins with mini icon
         canvas.Disc(430, 14, 7, pal.coinGold);
         canvas.Disc(430, 14, 4, pal.coinDark);
         canvas.Disc(429, 12, 2, 0xFFEE88);
-        coinLabel.SetText("x" + Int(coins));
+        coinLabel.SetText("x${coins}");
         coinLabel.Draw(canvas);
 
         // Lives
-        livesLabel.SetText("LIVES " + Int(lives));
+        livesLabel.SetText("LIVES ${lives}");
         livesLabel.Draw(canvas);
 
         // Level name
@@ -219,7 +219,7 @@ class HUD {
         bossBarWidget.Draw(canvas);
 
         // HP text on bar
-        canvas.TextScaled(barX + 170, 58, Int(bossHp) + "/" + Int(bossMaxHpVal), 2, pal.white);
+        canvas.TextScaled(barX + 170, 58, "${bossHp}/${bossMaxHpVal}", 2, pal.white);
     }
 
     expose func resetBossBar(maxHp: Integer) {
@@ -242,17 +242,17 @@ class HUD {
                         Color.RGB(100, 200, 255));
         canvas.Triangle(gemX, gemY + 6, gemX - 6, gemY + 12, gemX + 6, gemY + 12,
                         Color.RGB(60, 150, 220));
-        canvas.Text(gemX + 10, gemY, "x" + Int(gems), Color.RGB(200, 220, 255));
+        canvas.Text(gemX + 10, gemY, "x${gems}", Color.RGB(200, 220, 255));
 
         // Lore progress (small text below gems)
-        canvas.Text(gemX, gemY + 18, "Lore: " + Int(loreCollected) + "/" + Int(loreTotal),
+        canvas.Text(gemX, gemY + 18, "Lore: ${loreCollected}/${loreTotal}",
                     Color.RGB(120, 130, 160));
 
         // Biome name (bottom-left, faded)
         canvas.TextScaled(12, SCREEN_H - 24, biomeName, Color.RGB(80, 90, 110), 1);
 
         // Level number indicator (bottom-left, above biome name)
-        canvas.Text(12, SCREEN_H - 40, "Area " + Int(currentLevel), Color.RGB(100, 110, 130));
+        canvas.Text(12, SCREEN_H - 40, "Area ${currentLevel}", Color.RGB(100, 110, 130));
     }
 
     // Mini-map dot (shows player position in level)

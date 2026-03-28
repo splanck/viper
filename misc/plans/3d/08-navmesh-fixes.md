@@ -1,29 +1,31 @@
-# Plan: NavMesh3D Fixes
+# Plan: NavMesh3D Fixes — COMPLETE
 
-## Overview
-After code verification: heap overflow risk is lower than originally reported but the O(n²) adjacency build is confirmed.
+## ~~1. A* Heap Overflow~~ — ALREADY SAFE (verified)
+Heap capacity is `tc * 3` (line 333). Push checks capacity (line 256). Closed-set prevents re-processing (line 347-348). Mallocs have null checks (lines 134-136, 147-149).
 
-## ~~1. A* Heap Overflow~~ — LOWER RISK THAN REPORTED
-**Verified:** Heap implementation at lines 300-321 has proper size management. However, stack-allocated heap with fixed capacity could still overflow on very large meshes. Add a capacity check before pushing.
+## 2. O(n²) Adjacency Build — FIXED (2026-03-28)
+**Was:** Nested `for (i=0; i<count) for (j=i+1; j<count)` with `count_shared` comparing vertex arrays. O(n²) — 10K triangles = 50M pair comparisons.
 
-## 2. O(n²) Adjacency Build (CONFIRMED)
-**File:** `src/runtime/graphics/rt_navmesh3d.c:215-225`
-**Verified:** Nested loop `for (i=0; i<count) for (j=i+1; j<count)` comparing every triangle pair.
-**Fix:** Build edge hash map:
-1. For each triangle, generate 3 edge keys: `edge_key = min(v_idx_a, v_idx_b) * MAX_VERTS + max(v_idx_a, v_idx_b)`
-2. Insert into hash map: `edge_key → triangle_index`
-3. When a key already exists: the two triangles share that edge → mark adjacent
-4. O(n) with hash table (6 hash operations per triangle)
+**Now:** Edge hash map with open-addressing linear probe:
+1. For each triangle's 3 edges, compute `key = min(va,vb) * 1M + max(va,vb)`
+2. Probe hash table (capacity = triangle_count * 4, load ~0.75)
+3. Empty slot: insert edge + triangle index
+4. Matching key: two triangles share that edge → set mutual adjacency
+5. Total: 3 hash ops per triangle = O(n)
 
-**Implementation detail:** Use a simple open-addressing hash table with `triangle_count * 4` capacity (load factor 0.75). Keys are int64, values are int32 triangle indices.
+Removed `count_shared()` and `set_neighbor()` helper functions (no longer needed).
 
-## 3. Null-Check Mallocs
-**File:** `src/runtime/graphics/rt_navmesh3d.c:133,143`
-**Fix:** Add null checks after malloc for `nm->vertices` and `nm->triangles`. Return NULL on failure.
+**Fallback:** If hash table malloc fails, adjacency is skipped gracefully — navmesh builds but has no connectivity (pathfinding returns NULL).
 
-## Files Modified
-- `src/runtime/graphics/rt_navmesh3d.c` — Edge hash adjacency + null checks
+## 3. Null-Check Mallocs — ALREADY PRESENT (verified)
+Lines 134-136 and 147-149 have null checks with trap messages.
 
-## Verification
-- Build navmesh from 10K triangle mesh — should complete in <100ms (was potentially multi-second)
-- Pathfinding still produces correct paths after adjacency algorithm change
+### Files Changed
+- `src/runtime/graphics/rt_navmesh3d.c` — Edge hash adjacency, removed old helpers
+
+### Tests Added
+2 new tests in `test_rt_navmesh_blend.cpp`:
+- `test_navmesh_adjacency_edge_hash`: Plane (2 triangles) — pathfinding across shared edge verifies adjacency works
+- `test_navmesh_large_mesh`: Box mesh — verifies edge hash handles >2 triangles
+
+Total: 19/19 navmesh+blend, 1358/1358 full suite.

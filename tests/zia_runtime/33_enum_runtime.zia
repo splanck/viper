@@ -46,5 +46,43 @@ func start() {
     }
     assertEqStr(statusLabel, "missing", "enum_explicit_match");
 
+    // ─── Enum→Integer implicit coercion ─────────────────────────────
+
+    // Assignment to Integer variable
+    var code: Integer = HttpStatus.Ok;
+    assertEqInt(code, 200, "enum_to_int_assign");
+
+    var code2: Integer = HttpStatus.NotFound;
+    assertEqInt(code2, 404, "enum_to_int_assign_404");
+
+    // Auto-increment enum to Integer
+    var fruitIdx: Integer = Fruit.Cherry;
+    assertEqInt(fruitIdx, 2, "enum_to_int_auto_increment");
+
+    // Negative enum to Integer
+    var offVal: Integer = Offset.Back;
+    assertEqInt(offVal, -1, "enum_to_int_negative");
+
+    // Enum in arithmetic with Integer
+    var next = HttpStatus.Ok + 1;
+    assertEqInt(next, 201, "enum_arithmetic_add");
+
+    var diff = HttpStatus.NotFound - HttpStatus.Ok;
+    assertEqInt(diff, 204, "enum_arithmetic_sub");
+
+    // Enum compared with Integer literal
+    assertTrue(HttpStatus.Ok == 200, "enum_eq_int_literal");
+    assertTrue(HttpStatus.NotFound != 200, "enum_ne_int_literal");
+    assertTrue(HttpStatus.Ok < 300, "enum_lt_int_literal");
+    assertTrue(Offset.Forward > 0, "enum_gt_int_literal");
+
+    // Enum as function return coerced to Integer
+    var retVal: Integer = getStatus();
+    assertEqInt(retVal, 404, "enum_func_return_coerce");
+
     report();
+}
+
+func getStatus() -> Integer {
+    return HttpStatus.NotFound;
 }

@@ -72,6 +72,7 @@ class Game {
     hide Boolean showWorldMap;
     hide Boolean showLore;
     hide Integer poundImpactTimer;  // ground pound visual timer
+    hide Boolean wasPounding;       // track pound landing (one-shot)
 
     // Death flash tracking (draw bright circle at kill position)
     hide Integer killFlashX;       // world pixel X of last kill
@@ -332,11 +333,12 @@ class Game {
             return;
         }
 
+        // Update expansion systems (abilities, lighting, achievements, lore, etc.)
+        // Must run BEFORE player.update so abilities affect this frame's physics.
+        updateNewSystems();
+
         // Update player
         player.update(level, dt);
-
-        // Update expansion systems (abilities, lighting, achievements, lore, etc.)
-        updateNewSystems();
 
         // Check if player wants to shoot
         if player.wantsToShoot() {
@@ -487,9 +489,15 @@ class Game {
 
     hide func drawLevelIntro(levelNum: Integer) {
         var levelName = "THE DESCENT";
-        if levelNum == 2 { levelName = "SALVAGE"; }
-        if levelNum == 3 { levelName = "FROZEN ABYSS"; }
-        if levelNum == 4 { levelName = "OVERGROWTH"; }
+        if levelNum == 2 { levelName = "FUNGAL CAVERNS"; }
+        if levelNum == 3 { levelName = "CRYSTAL DEPTHS"; }
+        if levelNum == 4 { levelName = "SURFACE RUINS"; }
+        if levelNum == 5 { levelName = "UNDERGROUND LAKE"; }
+        if levelNum == 6 { levelName = "THERMAL VENTS"; }
+        if levelNum == 7 { levelName = "OVERGROWTH"; }
+        if levelNum == 8 { levelName = "FROZEN ABYSS"; }
+        if levelNum == 9 { levelName = "CORRUPTED RUINS"; }
+        if levelNum == 10 { levelName = "THE CORE"; }
 
         // Fade: moderate opacity at start, fading out near end
         var alpha = introTimer * 150 / 1200;
@@ -500,8 +508,7 @@ class Game {
         canvas.BoxAlpha(0, 280, SCREEN_W, 120, pal.black, alpha);
 
         // Level number + name
-        var numStr = Int(levelNum);
-        canvas.TextCenteredScaled(300, "LEVEL " + numStr, pal.hudGray, 3);
+        canvas.TextCenteredScaled(300, "LEVEL ${levelNum}", pal.hudGray, 3);
         canvas.TextCenteredScaled(340, levelName, pal.white, 4);
     }
 
@@ -1007,29 +1014,31 @@ class Game {
             return; // Pause game during transitions
         }
 
-        // Player ability updates
-        if player.isDashing {
-            player.updateDash(dt);
-            particles.burstDashTrail(player.pixelX(), player.pixelY() + PLAYER_H / 2, player.facing);
-        }
-        if player.isCharging {
-            player.updateCharge(dt);
-        }
-        if player.isPounding {
-            player.updatePound(dt);
-            if player.onGround {
-                // Pound landed!
-                poundImpactTimer = 12;
-                particles.burstPoundImpact(player.pixelX(), player.pixelY() + PLAYER_H);
-                sfx.playGroundPound();
-                // Stun nearby enemies (TODO: implement enemy stun)
-            }
-        }
-        if poundImpactTimer > 0 {
-            poundImpactTimer = poundImpactTimer - 1;
-        }
+        // Frozen state suppresses all abilities
         if player.isFrozen() {
             player.updateFreeze(dt);
+        } else {
+            // Player ability updates (only when not frozen)
+            if player.isDashing {
+                player.updateDash(dt);
+                particles.burstDashTrail(player.pixelX(), player.pixelY() + PLAYER_H / 2, player.facing);
+            }
+            if player.isCharging {
+                player.updateCharge(dt);
+            }
+            if player.isPounding {
+                player.updatePound(dt);
+                if player.onGround and not wasPounding {
+                    // Pound just landed
+                    poundImpactTimer = 12;
+                    particles.burstPoundImpact(player.pixelX(), player.pixelY() + PLAYER_H);
+                    sfx.playGroundPound();
+                }
+            }
+        }
+        wasPounding = player.isPounding;
+        if poundImpactTimer > 0 {
+            poundImpactTimer = poundImpactTimer - 1;
         }
 
         // Check for lore terminals
@@ -1091,11 +1100,11 @@ class Game {
         }
 
         // Ability input handling
-        if Action.Pressed("dash") and abilities.has(4) { // ABILITY_DASH
+        if Action.Pressed("dash") and abilities.has(ABILITY_DASH) {
             player.startDash();
             sfx.playDash();
         }
-        if Action.Pressed("shoot") and abilities.has(8) { // ABILITY_CHARGE_SHOT
+        if Action.Pressed("shoot") and abilities.has(ABILITY_CHARGE_SHOT) {
             player.startCharge();
             sfx.playChargeStart();
         }
@@ -1108,7 +1117,7 @@ class Game {
                 sfx.playChargeRelease();
             }
         }
-        if Action.Pressed("move_down") and abilities.has(16) { // ABILITY_GROUND_POUND
+        if Action.Pressed("move_down") and abilities.has(ABILITY_GROUND_POUND) {
             if not player.onGround {
                 player.startPound();
             }
@@ -1134,16 +1143,6 @@ class Game {
                 if currentLevel == 6 { abilities.grant(16); sfx.playAbilityGet(); } // Ground Pound
             }
         }
-    }
-
-    // =========================================================================
-    // Death effect dispatcher — spawns biome-appropriate particles + effects
-    // =========================================================================
-    hide func spawnDeathEffect(enemyIdx: Integer, ex: Integer, ey: Integer) {
-        // Simple, reliable death effect — screen flash + default particles
-        renderObj.shake(6, 3);
-        renderObj.flash(pal.sparkYellow, 3);
-        particles.burstEnemyDeath(ex, ey, pal.sparkYellow);
     }
 
     // Draw all expansion system overlays

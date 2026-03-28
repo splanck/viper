@@ -44,6 +44,9 @@ class Renderer {
     hide Integer shimmerTimer;
     hide Integer shimmerIndex;
 
+    // Pre-rendered tile bevel overlay (1 BlitAlpha vs 4 BoxAlpha per tile)
+    hide Pixels bevelOverlay;
+
     expose func init(p: Palette) {
         pal = p;
         fx = FX.New();
@@ -51,6 +54,21 @@ class Renderer {
         lavaTimer = 0;
         shimmerTimer = 0;
         shimmerIndex = 0;
+
+        // Pre-render bevel overlay: 1px light top/left, dark bottom/right
+        bevelOverlay = Pixels.New(TILE_SIZE, TILE_SIZE);
+        for bx in 0..TILE_SIZE {
+            // Top edge highlight
+            bevelOverlay.Set(bx, 0, Color.RGBA(255, 255, 255, 25));
+            // Bottom edge shadow
+            bevelOverlay.Set(bx, TILE_SIZE - 1, Color.RGBA(0, 0, 0, 35));
+        }
+        for by in 0..TILE_SIZE {
+            // Left edge highlight
+            bevelOverlay.Set(0, by, Color.RGBA(255, 255, 255, 18));
+            // Right edge shadow
+            bevelOverlay.Set(TILE_SIZE - 1, by, Color.RGBA(0, 0, 0, 25));
+        }
     }
 
     // Trigger screen shake (convert game frames/intensity to ScreenFX units)
@@ -238,21 +256,9 @@ class Renderer {
                     // This gives every solid tile a 3D raised-panel look at draw
                     // time without modifying the cached sprite data.
                     // Skip for non-solid decorative tiles (vines, checkpoints).
-                    if tile != TILE_VINE {
-                        if tile != TILE_CHECKPOINT {
-                            if tile != TILE_LAVA {
-                                if tile != TILE_CLOUD {
-                                    // Top edge highlight (1px)
-                                    canvas.BoxAlpha(sx, sy, TILE_SIZE, 1, 0xFFFFFF, 25);
-                                    // Left edge highlight (1px)
-                                    canvas.BoxAlpha(sx, sy, 1, TILE_SIZE, 0xFFFFFF, 18);
-                                    // Bottom edge shadow (1px)
-                                    canvas.BoxAlpha(sx, sy + TILE_SIZE - 1, TILE_SIZE, 1, 0x000000, 35);
-                                    // Right edge shadow (1px)
-                                    canvas.BoxAlpha(sx + TILE_SIZE - 1, sy, 1, TILE_SIZE, 0x000000, 25);
-                                }
-                            }
-                        }
+                    // Bevel overlay: pre-rendered sprite (1 BlitAlpha vs 4 BoxAlpha)
+                    if tile != TILE_VINE and tile != TILE_CHECKPOINT and tile != TILE_LAVA and tile != TILE_CLOUD {
+                        canvas.BlitAlpha(sx, sy, bevelOverlay);
                     }
                 }
                 col = col + 1;

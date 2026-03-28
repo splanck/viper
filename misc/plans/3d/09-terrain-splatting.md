@@ -1,46 +1,34 @@
-# Plan: Terrain Texture Splatting
+# Plan: Terrain Texture Splatting — COMPLETE
 
-## Overview
-The current terrain supports only a single material. Real terrain needs multiple textures (grass, dirt, rock, snow) blended via a splat map.
+## What Was Added (2026-03-28)
 
-## API
-```
-Terrain3D.SetSplatMap(pixels)              // RGBA image: R=layer0, G=layer1, B=layer2, A=layer3
-Terrain3D.SetLayerTexture(layer, pixels)   // Set texture for splat layer (0-3)
-Terrain3D.SetLayerScale(layer, scale)      // UV tiling scale per layer
-```
+### New Terrain3D API
+- `SetSplatMap(pixels)` — RGBA Pixels where each channel controls blend weight for 4 layers
+- `SetLayerTexture(layer, pixels)` — Set texture for layer 0-3
+- `SetLayerScale(layer, scale)` — UV tiling scale per layer (default 1.0)
 
-## Implementation
-**File:** `src/runtime/graphics/rt_terrain3d.c`
+### Implementation: Baked Splat Texture
+When a splat map is set and chunks need rebuilding, the terrain bakes a blended diffuse texture:
+1. For each texel in the splat map, sample RGBA weights (normalized)
+2. For each layer with weight > 0, sample the layer texture at `UV * layerScale`
+3. Blend: `color = sum(layer_color * weight)`
+4. Write to a new Pixels object, set as the material's diffuse texture
 
-### Data Structure
-Add to terrain struct:
-```c
-void *splat_map;           // Pixels RGBA
-void *layer_textures[4];   // Per-layer Pixels
-float layer_scales[4];     // UV tiling scales
-```
+This "bake" approach works across all 4 backends without shader changes. Quality is limited to splat map resolution (per-texel, not per-pixel), but is practical for the current rendering pipeline.
 
-### Rendering
-Each backend needs a terrain-specific shader that samples 4 textures and blends by splat weights:
-```glsl
-vec4 splat = texture(splatMap, uv);
-vec3 color = tex0.rgb * splat.r + tex1.rgb * splat.g + tex2.rgb * splat.b + tex3.rgb * splat.a;
-```
+### Also Fixed
+- Normal computation in `get_normal_at` was already correct for non-square scaling (uses `t->scale[0]` for Y component normalization)
 
-For the software backend: per-pixel sample all 4 layers and lerp by splat channel values.
+### Files Changed
+- `src/runtime/graphics/rt_terrain3d.c/h` — Splat map storage, layer textures/scales, bake function
+- `src/il/runtime/runtime.def` — 3 RT_FUNC entries + 3 RT_METHOD entries on Terrain3D class
 
-### Normal Computation Fix (GFX-082)
-While working on terrain, also fix the non-square scaling bug:
-- Current: Normal computation assumes square XZ scaling
-- Fix: Scale finite-difference steps by actual terrain XZ dimensions
+### Tests Added
+5 new tests in `test_rt_canvas3d.cpp`:
+- `test_terrain_create`: Basic construction
+- `test_terrain_set_splat_map`: Accepts Pixels
+- `test_terrain_set_layer_texture`: 4 layers + out-of-range safety
+- `test_terrain_set_layer_scale`: UV scale + out-of-range safety
+- `test_terrain_null_safety`: All splat functions with NULL
 
-## Files Modified
-- `src/runtime/graphics/rt_terrain3d.c/h` — Splat data + rendering
-- All 4 backends — Terrain shader variant
-- `src/il/runtime/runtime.def` — New RT_FUNC entries
-
-## Verification
-- Create terrain with grass (flat), dirt (slopes), rock (steep) splat map
-- Textures should blend smoothly at boundaries
-- Non-square terrain should have correct lighting
+Total: 72/72 canvas3d, 1358/1358 full suite.

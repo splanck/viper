@@ -114,6 +114,11 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
         return true; // Byte -> Integer
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Byte)
         return true; // Byte -> Number
+    // Enum → Integer (enum variants are I64 constants at the IL level)
+    if (kind == TypeKindSem::Integer && source.kind == TypeKindSem::Enum)
+        return true;
+    if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Enum)
+        return true; // Enum -> Number (via Integer)
 
     // Ptr subtype compatibility: any named Ptr can be assigned to base Ptr
     // This allows functions returning Ptr to accept results from runtime functions

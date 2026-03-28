@@ -88,6 +88,10 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         builder_->addGlobalStr(label, content);
     });
 
+    // Pre-pass 0: register enum variant values so that `final` constants
+    // can reference enum variants (e.g., `final PS_IDLE = PlayerState.Idle`).
+    registerAllEnumValues(module.declarations);
+
     // Pre-pass 1: register all `final` constants so that class/function
     // method bodies can reference constants defined later in the same file.
     registerAllFinalConstants(module.declarations);

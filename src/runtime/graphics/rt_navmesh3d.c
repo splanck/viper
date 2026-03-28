@@ -78,36 +78,6 @@ static void navmesh3d_finalizer(void *obj) {
     nm->triangles = NULL;
 }
 
-/// @brief Count shared vertex indices between two triangles.
-static int count_shared(const int32_t a[3], const int32_t b[3]) {
-    int count = 0;
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            if (a[i] == b[j])
-                count++;
-    return count;
-}
-
-/// @brief Find which edge of tri_a is shared with tri_b and set neighbor.
-static void set_neighbor(nav_triangle_t *tri_a, int32_t tri_b_idx, const int32_t b_verts[3]) {
-    /* Edge i of tri_a connects v[i] and v[(i+1)%3].
-     * If both vertices are in tri_b, edge i is shared. */
-    for (int i = 0; i < 3; i++) {
-        int32_t e0 = tri_a->v[i], e1 = tri_a->v[(i + 1) % 3];
-        int found0 = 0, found1 = 0;
-        for (int j = 0; j < 3; j++) {
-            if (b_verts[j] == e0)
-                found0 = 1;
-            if (b_verts[j] == e1)
-                found1 = 1;
-        }
-        if (found0 && found1) {
-            tri_a->neighbors[i] = tri_b_idx;
-            return;
-        }
-    }
-}
-
 void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_height) {
     if (!mesh_obj)
         return NULL;
@@ -195,15 +165,60 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         tri->neighbors[0] = tri->neighbors[1] = tri->neighbors[2] = -1;
     }
 
-    /* Phase 3: Build adjacency */
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        for (int32_t j = i + 1; j < nm->triangle_count; j++) {
-            if (count_shared(nm->triangles[i].v, nm->triangles[j].v) >= 2) {
-                set_neighbor(&nm->triangles[i], j, nm->triangles[j].v);
-                set_neighbor(&nm->triangles[j], i, nm->triangles[i].v);
+    /* Phase 3: Build adjacency via edge hash map (O(n) instead of O(n²)).
+     * For each triangle, hash its 3 edges. If an edge is already in the table,
+     * the two triangles sharing that edge are adjacent. */
+    {
+        int32_t tc = nm->triangle_count;
+        int32_t map_cap = tc * 4; /* load factor ~0.75 for 3 edges per tri */
+        if (map_cap < 16)
+            map_cap = 16;
+
+        /* Edge hash table: key = packed edge (min_v * MAX + max_v), val = tri index */
+        typedef struct {
+            int64_t key;
+            int32_t tri_idx;
+            int32_t edge_idx; /* which edge of the triangle (0,1,2) */
+            int8_t used;
+        } edge_entry_t;
+
+        edge_entry_t *emap = (edge_entry_t *)calloc((size_t)map_cap, sizeof(edge_entry_t));
+        if (!emap)
+            goto skip_adjacency; /* degrade gracefully — no adjacency */
+
+        for (int32_t i = 0; i < tc; i++) {
+            for (int e = 0; e < 3; e++) {
+                int32_t va = nm->triangles[i].v[e];
+                int32_t vb = nm->triangles[i].v[(e + 1) % 3];
+                int32_t lo = va < vb ? va : vb;
+                int32_t hi = va < vb ? vb : va;
+                int64_t key = (int64_t)lo * 1000000LL + hi;
+
+                /* Open-addressing linear probe */
+                uint32_t slot = (uint32_t)(key & 0x7FFFFFFF) % (uint32_t)map_cap;
+                for (int probe = 0; probe < map_cap; probe++) {
+                    uint32_t idx = (slot + (uint32_t)probe) % (uint32_t)map_cap;
+                    if (!emap[idx].used) {
+                        /* Empty slot — insert edge */
+                        emap[idx].key = key;
+                        emap[idx].tri_idx = i;
+                        emap[idx].edge_idx = e;
+                        emap[idx].used = 1;
+                        break;
+                    }
+                    if (emap[idx].key == key) {
+                        /* Matching edge — triangles are adjacent */
+                        int32_t j = emap[idx].tri_idx;
+                        nm->triangles[i].neighbors[e] = j;
+                        nm->triangles[j].neighbors[emap[idx].edge_idx] = i;
+                        break;
+                    }
+                }
             }
         }
+        free(emap);
     }
+    skip_adjacency:
 
     return nm;
 }

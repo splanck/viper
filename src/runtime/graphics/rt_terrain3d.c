@@ -43,6 +43,8 @@ extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, voi
 
 #define TERRAIN_CHUNK_SIZE 16
 
+#define TERRAIN_MAX_SPLAT_LAYERS 4
+
 typedef struct {
     void *vptr;
     float *heights;
@@ -51,6 +53,10 @@ typedef struct {
     void **chunk_meshes;
     int32_t chunks_x, chunks_z;
     void *material;
+    /* Splat map: RGBA Pixels where R/G/B/A = weight for layers 0-3 */
+    void *splat_map;
+    void *layer_textures[TERRAIN_MAX_SPLAT_LAYERS];
+    double layer_scales[TERRAIN_MAX_SPLAT_LAYERS]; /* UV tiling per layer */
 } rt_terrain3d;
 
 static void terrain3d_finalizer(void *obj) {
@@ -82,6 +88,11 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->chunks_z = ((int32_t)depth - 1 + TERRAIN_CHUNK_SIZE - 1) / TERRAIN_CHUNK_SIZE;
     t->chunk_meshes = (void **)calloc((size_t)(t->chunks_x * t->chunks_z), sizeof(void *));
     t->material = NULL;
+    t->splat_map = NULL;
+    for (int i = 0; i < TERRAIN_MAX_SPLAT_LAYERS; i++) {
+        t->layer_textures[i] = NULL;
+        t->layer_scales[i] = 1.0;
+    }
     rt_obj_set_finalizer(t, terrain3d_finalizer);
     return t;
 }
@@ -137,6 +148,57 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     /* Invalidate chunks */
     for (int32_t i = 0; i < t->chunks_x * t->chunks_z; i++)
         t->chunk_meshes[i] = NULL;
+}
+
+void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
+    if (!obj)
+        return;
+    rt_terrain3d *t = (rt_terrain3d *)obj;
+    t->splat_map = pixels;
+    /* Invalidate chunks — need to rebake vertex colors */
+    for (int32_t i = 0; i < t->chunks_x * t->chunks_z; i++)
+        t->chunk_meshes[i] = NULL;
+}
+
+void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
+    if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
+        return;
+    rt_terrain3d *t = (rt_terrain3d *)obj;
+    t->layer_textures[layer] = pixels;
+    for (int32_t i = 0; i < t->chunks_x * t->chunks_z; i++)
+        t->chunk_meshes[i] = NULL;
+}
+
+void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
+    if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
+        return;
+    rt_terrain3d *t = (rt_terrain3d *)obj;
+    t->layer_scales[layer] = scale;
+    for (int32_t i = 0; i < t->chunks_x * t->chunks_z; i++)
+        t->chunk_meshes[i] = NULL;
+}
+
+/// @brief Sample a pixel from a Pixels object at UV coordinates (clamped).
+static uint32_t sample_pixels_uv(void *pixels, double u, double v) {
+    if (!pixels)
+        return 0xFFFFFFFF;
+    typedef struct {
+        int64_t w, h;
+        uint32_t *data;
+    } px_view;
+    px_view *pv = (px_view *)pixels;
+    if (!pv->data || pv->w == 0 || pv->h == 0)
+        return 0xFFFFFFFF;
+    /* Wrap UV */
+    u = u - floor(u);
+    v = v - floor(v);
+    int32_t px = (int32_t)(u * pv->w);
+    int32_t py = (int32_t)(v * pv->h);
+    if (px >= pv->w)
+        px = (int32_t)(pv->w - 1);
+    if (py >= pv->h)
+        py = (int32_t)(pv->h - 1);
+    return pv->data[py * pv->w + px];
 }
 
 /// @brief Sample height at grid coordinates (clamped).
@@ -218,6 +280,88 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
     return rt_vec3_new(nx, ny, nz);
 }
 
+/// @brief Bake splat-blended texture onto the terrain material.
+/// Generates a Pixels texture where each texel is the weighted blend of the 4
+/// layer textures, sampled at their respective UV scales, weighted by the splat
+/// map RGBA channels. Applied once when chunks are invalidated.
+extern void *rt_pixels_new(int64_t width, int64_t height);
+extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
+extern void rt_material3d_set_texture(void *material, void *pixels);
+
+static void bake_splat_texture(rt_terrain3d *t) {
+    if (!t->splat_map || !t->material)
+        return;
+
+    typedef struct {
+        int64_t w, h;
+        uint32_t *data;
+    } px_view;
+
+    px_view *splat = (px_view *)t->splat_map;
+    if (!splat->data || splat->w == 0 || splat->h == 0)
+        return;
+
+    /* Generate a blended texture at splat map resolution */
+    int32_t tw = (int32_t)splat->w, th = (int32_t)splat->h;
+    void *baked = rt_pixels_new(tw, th);
+    if (!baked)
+        return;
+
+    for (int32_t y = 0; y < th; y++) {
+        for (int32_t x = 0; x < tw; x++) {
+            double u = (double)x / (double)(tw - 1);
+            double v = (double)y / (double)(th - 1);
+
+            /* Sample splat weights (RGBA → 4 layer weights) */
+            uint32_t sp = splat->data[y * tw + x];
+            double w0 = (double)((sp >> 24) & 0xFF) / 255.0;
+            double w1 = (double)((sp >> 16) & 0xFF) / 255.0;
+            double w2 = (double)((sp >> 8) & 0xFF) / 255.0;
+            double w3 = (double)(sp & 0xFF) / 255.0;
+
+            /* Normalize weights */
+            double wsum = w0 + w1 + w2 + w3;
+            if (wsum > 0.001) {
+                w0 /= wsum;
+                w1 /= wsum;
+                w2 /= wsum;
+                w3 /= wsum;
+            } else {
+                w0 = 1.0;
+                w1 = w2 = w3 = 0.0;
+            }
+
+            /* Sample each layer texture at its UV scale and blend */
+            double weights[4] = {w0, w1, w2, w3};
+            double br = 0, bg = 0, bb = 0;
+            for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; layer++) {
+                if (weights[layer] < 0.001 || !t->layer_textures[layer])
+                    continue;
+                double lu = u * t->layer_scales[layer];
+                double lv = v * t->layer_scales[layer];
+                uint32_t lp = sample_pixels_uv(t->layer_textures[layer], lu, lv);
+                double lr = (double)((lp >> 24) & 0xFF) / 255.0;
+                double lg2 = (double)((lp >> 16) & 0xFF) / 255.0;
+                double lb = (double)((lp >> 8) & 0xFF) / 255.0;
+                br += lr * weights[layer];
+                bg += lg2 * weights[layer];
+                bb += lb * weights[layer];
+            }
+
+            int32_t cr = (int32_t)(br * 255);
+            int32_t cg = (int32_t)(bg * 255);
+            int32_t cb = (int32_t)(bb * 255);
+            if (cr > 255) cr = 255;
+            if (cg > 255) cg = 255;
+            if (cb > 255) cb = 255;
+            int64_t color = ((int64_t)cr << 16) | ((int64_t)cg << 8) | (int64_t)cb;
+            rt_pixels_set(baked, x, y, color);
+        }
+    }
+
+    rt_material3d_set_texture(t->material, baked);
+}
+
 /// @brief Build mesh for one terrain chunk.
 static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz) {
     void *mesh = rt_mesh3d_new();
@@ -286,6 +430,16 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     rt_terrain3d *t = (rt_terrain3d *)terrain_obj;
     if (!c->in_frame || !c->backend || !t->material)
         return;
+
+    /* Bake splat-blended texture if splat map is set and chunks are invalid */
+    if (t->splat_map) {
+        int any_invalid = 0;
+        for (int32_t i = 0; i < t->chunks_x * t->chunks_z && !any_invalid; i++)
+            if (!t->chunk_meshes[i])
+                any_invalid = 1;
+        if (any_invalid)
+            bake_splat_texture(t);
+    }
 
     void *identity = rt_mat4_identity();
 

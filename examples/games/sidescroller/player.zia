@@ -64,18 +64,8 @@ class Player {
     // Physics helper (shared)
     hide PhysicsHelper phys;
 
-    // Output buffers for moveAndCollide (single-element lists)
-    hide List[Integer] outX;
-    hide List[Integer] outY;
-    hide List[Integer] outVx;
-    hide List[Integer] outVy;
-
     expose func init() {
         phys = new PhysicsHelper();
-        outX = [0];
-        outY = [0];
-        outVx = [0];
-        outVy = [0];
 
         // Configure platformer controller with game physics constants
         ctrl = PlatformerController.New();
@@ -224,49 +214,40 @@ class Player {
         var dispX = vx * dt / DT_BASE;
         var dispY = vy * dt / DT_BASE;
 
-        // Move and collide using scaled displacement
-        outX.set(0, x);
-        outY.set(0, y);
-        outVx.set(0, dispX);
-        outVy.set(0, dispY);
+        // Move and collide — returns struct with resolved position + collision flags
+        var result = phys.moveAndCollide(x, y, dispX, dispY, PLAYER_W, PLAYER_H, level);
 
-        var flags = phys.moveAndCollide(x, y, dispX, dispY,
-                                         PLAYER_W, PLAYER_H, level,
-                                         outX, outY, outVx, outVy);
-
-        x = outX.get(0);
-        y = outY.get(0);
+        x = result.x;
+        y = result.y;
         // Zero persistent velocity on collision and sync back to controller
-        if (flags / 4) % 2 == 1 { vx = 0; ctrl.VX = 0; }   // left wall
-        if (flags / 8) % 2 == 1 { vx = 0; ctrl.VX = 0; }   // right wall
-        if (flags % 2) == 1 { vy = 0; ctrl.VY = 0; }         // floor
-        if (flags / 2) % 2 == 1 { vy = 0; ctrl.VY = 0; }   // ceiling
+        if result.hitLeft { vx = 0; ctrl.VX = 0; }
+        if result.hitRight { vx = 0; ctrl.VX = 0; }
+        if result.hitFloor { vy = 0; ctrl.VY = 0; }
+        if result.hitCeiling { vy = 0; ctrl.VY = 0; }
 
         // Detect floor contact
-        onGround = (flags % 2) == 1; // bit 0
+        onGround = result.hitFloor;
 
         if onGround {
             canDoubleJump = true;
         }
 
         // Detect wall contact
-        var leftWall = (flags / 4) % 2 == 1;  // bit 2
-        var rightWall = (flags / 8) % 2 == 1; // bit 3
         onWall = false;
         wallDir = 0;
         if onGround == false {
-            if leftWall {
+            if result.hitLeft {
                 onWall = true;
                 wallDir = -1;
             }
-            if rightWall {
+            if result.hitRight {
                 onWall = true;
                 wallDir = 1;
             }
         }
 
         // Update state based on movement
-        if state != PS_HURT || iframes <= 0 {
+        if state != PS_HURT and iframes <= 0 {
             if onGround {
                 if vx == 0 {
                     state = PS_IDLE;
@@ -460,6 +441,8 @@ class Player {
     // =========================================================================
     expose func startPound() {
         if onGround { return; }
+        if state == PS_DEAD { return; }
+        if state == PS_HURT { return; }
         isPounding = true;
         poundVy = 2500; // Very fast downward (x100)
         vx = 0; // Stop horizontal movement
