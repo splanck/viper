@@ -33,8 +33,8 @@ enum class RtComponent
     Base,        ///< Core runtime (always linked)
     Arrays,      ///< Array operations (rt_arr_*)
     Oop,         ///< Object-oriented features (rt_obj_*, rt_type_*, etc.)
-    Collections, ///< Collections and containers (rt_list_*, rt_map_*, rt_grid2d_*, rt_timer_*,
-                 ///< etc.)
+    Collections, ///< Collections and containers (rt_list_*, rt_map_*, etc.)
+    Game,        ///< Game dev utilities (rt_grid2d_*, rt_timer_*, rt_achievement_*, etc.)
     Text,        ///< Text processing (rt_codec_*, rt_csv_*, etc.)
     IoFs,        ///< File I/O (rt_file_*, rt_dir_*, etc.)
     Exec,        ///< Process execution (rt_exec_*, rt_machine_*)
@@ -63,22 +63,29 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_lazy") || starts("rt_oop_") || sym == "rt_bind_interface")
         return RtComponent::Oop;
 
-    // Collections component (includes game dev utilities)
+    // Collections component
     if (starts("rt_list_") || starts("rt_map_") || starts("rt_treemap_") || starts("rt_bag_") ||
         starts("rt_queue_") || starts("rt_ring_") || starts("rt_seq_") || starts("rt_stack_") ||
-        starts("rt_bytes_") || starts("rt_grid2d_") || starts("rt_timer_") ||
-        starts("rt_smoothvalue_") || starts("rt_inputmanager_") || starts("rt_inputaction_") ||
-        starts("rt_set_") || starts("rt_sortedset_") || starts("rt_deque_") ||
-        starts("rt_bitset_") || starts("rt_bloomfilter_") || starts("rt_bimap_") ||
-        starts("rt_countmap_") || starts("rt_defaultmap_") || starts("rt_frozenset_") ||
-        starts("rt_frozenmap_") || starts("rt_lrucache_") || starts("rt_multimap_") ||
-        starts("rt_orderedmap_") || starts("rt_sparsearray_") || starts("rt_weakmap_") ||
-        starts("rt_pqueue_") || starts("rt_trie_") || starts("rt_unionfind_") ||
-        starts("rt_convert_") || starts("rt_statemachine_") || starts("rt_tween_") ||
-        starts("rt_buttongroup_") || starts("rt_particle_") || starts("rt_spriteanim_") ||
-        starts("rt_collision_") || starts("rt_objpool_") || starts("rt_screenfx_") ||
-        starts("rt_pathfollow_") || starts("rt_quadtree_") || starts("rt_debugoverlay_"))
+        starts("rt_bytes_") || starts("rt_set_") || starts("rt_sortedset_") ||
+        starts("rt_deque_") || starts("rt_bitset_") || starts("rt_bloomfilter_") ||
+        starts("rt_bimap_") || starts("rt_countmap_") || starts("rt_defaultmap_") ||
+        starts("rt_frozenset_") || starts("rt_frozenmap_") || starts("rt_lrucache_") ||
+        starts("rt_multimap_") || starts("rt_orderedmap_") || starts("rt_sparsearray_") ||
+        starts("rt_weakmap_") || starts("rt_pqueue_") || starts("rt_trie_") ||
+        starts("rt_unionfind_") || starts("rt_convert_") ||
+        starts("rt_inputmanager_") || starts("rt_inputaction_"))
         return RtComponent::Collections;
+
+    // Game component (game dev utilities — lives in src/runtime/game/)
+    if (starts("rt_grid2d_") || starts("rt_timer_") || starts("rt_statemachine_") ||
+        starts("rt_animstate_") || starts("rt_tween_") || starts("rt_buttongroup_") ||
+        starts("rt_smoothvalue_") || starts("rt_particle_") || starts("rt_spriteanim_") ||
+        starts("rt_collision_") || starts("rt_objpool_") || starts("rt_screenfx_") ||
+        starts("rt_pathfollow_") || starts("rt_quadtree_") || starts("rt_debugoverlay_") ||
+        starts("rt_gameui_") || starts("rt_pathfinder_") || starts("rt_dialogue_") ||
+        starts("rt_lighting2d_") || starts("rt_platformer_ctrl_") ||
+        starts("rt_achievement_") || starts("rt_typewriter_"))
+        return RtComponent::Game;
 
     // Text component
     if (starts("rt_codec_") || starts("rt_csv_") || starts("rt_guid_") || starts("rt_hash_") ||
@@ -162,6 +169,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Base;
     if (starts("Viper.Collections."))
         return RtComponent::Collections;
+    if (starts("Viper.Game."))
+        return RtComponent::Game;
     if (starts("Viper.Text."))
         return RtComponent::Text;
     if (starts("Viper.IO.") || starts("Viper.File.") || starts("Viper.Dir.") ||
@@ -197,6 +206,8 @@ inline std::string_view archiveNameForComponent(RtComponent comp)
             return "viper_rt_oop";
         case RtComponent::Collections:
             return "viper_rt_collections";
+        case RtComponent::Game:
+            return "viper_rt_game";
         case RtComponent::Text:
             return "viper_rt_text";
         case RtComponent::IoFs:
@@ -242,12 +253,15 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
     if (has(RtComponent::Text) || has(RtComponent::IoFs) || has(RtComponent::Exec) ||
         has(RtComponent::Network))
         add(RtComponent::Collections);
+    if (has(RtComponent::Game))
+        add(RtComponent::Collections); // Game depends on Collections + OOP
     if (has(RtComponent::IoFs))
         add(RtComponent::Text); // SaveData depends on rt_json_stream_*
     if (has(RtComponent::Collections))
         add(RtComponent::Arrays);
     if (has(RtComponent::Collections) || has(RtComponent::Arrays) || has(RtComponent::Graphics) ||
-        has(RtComponent::Threads) || has(RtComponent::Audio) || has(RtComponent::Network))
+        has(RtComponent::Threads) || has(RtComponent::Audio) || has(RtComponent::Network) ||
+        has(RtComponent::Game))
         add(RtComponent::Oop);
 
     // Build ordered list (Base always first).
@@ -259,6 +273,7 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         RtComponent::Oop,
         RtComponent::Arrays,
         RtComponent::Collections,
+        RtComponent::Game,
         RtComponent::Text,
         RtComponent::IoFs,
         RtComponent::Exec,

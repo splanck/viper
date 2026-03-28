@@ -62,7 +62,7 @@ entity Game {
     hide LightingSystem lighting;
     hide TextureFactory textures;
     hide TransitionManager transitions;
-    hide AchievementSystem achievements2;
+    hide AchievementSystem achSys;
 
     // Expansion state
     hide Integer gems;
@@ -335,6 +335,9 @@ entity Game {
         // Update player
         player.update(level, dt);
 
+        // Update expansion systems (abilities, lighting, achievements, lore, etc.)
+        updateNewSystems();
+
         // Check if player wants to shoot
         if player.wantsToShoot() {
             var bx = player.pixelX() + PLAYER_W / 2;
@@ -518,6 +521,7 @@ entity Game {
                 if etype != ENEMY_TURRET {
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
+                    player.syncVelocity();
                     player.iframes = IFRAMES_STOMP_MS;
 
                     var ex = enemies.getEnemyPixelX(hit);
@@ -529,6 +533,7 @@ entity Game {
                         particles.burstDeath(ex, ey);
                         renderObj.shake(8, 4);
                         sfx.playEnemyDeath();
+                        achSys.onEnemyKilled();
                         // Trigger visible kill flash
                         killFlashX = ex;
                         killFlashY = ey;
@@ -546,6 +551,7 @@ entity Game {
             renderObj.shake(8, 4);
             renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
+            achSys.onPlayerHit();
         }
     }
 
@@ -562,6 +568,7 @@ entity Game {
                 score = score + COIN_SCORE;
                 particles.burstCoinCollect(player.centerX(), player.centerY());
                 sfx.playCoin();
+                achSys.onCoinCollected();
             } else {
                 player.collectPowerUp(collected);
                 particles.burstSpark(player.centerX(), player.centerY(),
@@ -602,6 +609,7 @@ entity Game {
                             particles.burstEnemyDeath(bx, by, pal.sparkYellow);
                         }
                         sfx.playEnemyDeath();
+                        achSys.onEnemyKilled();
                         // Trigger visible kill flash
                         killFlashX = bx;
                         killFlashY = by;
@@ -718,6 +726,7 @@ entity Game {
             renderObj.shake(12, 6);
             renderObj.flash(pal.hudRed, 10);
             sfx.playDeath();
+            achSys.onPlayerDeath();
         }
 
         deathTimer = deathTimer + dt;
@@ -897,6 +906,7 @@ entity Game {
 
     hide func loadLevel(num: Integer) {
         currentLevel = num;
+        achSys.onLevelReached(num);
         level.loadLevel(num);
         level.enrichEnemies(num); // Add new enemy types
         camera.setLevelSize(level.levelWidth, level.levelHeight);
@@ -940,6 +950,9 @@ entity Game {
         lighting = new LightingSystem();
         lighting.initLighting(pal);
 
+        achSys = new AchievementSystem();
+        achSys.initAchievements(pal);
+
         transitions = new TransitionManager();
         transitions.initTransitions(pal);
 
@@ -971,12 +984,13 @@ entity Game {
     hide func updateNewSystems() {
         abilities.updateUI();
         lighting.update();
+        achSys.update(dt);
 
-        // Lore display
+        // Lore display (Typewriter-based text reveal)
         if loreSystem.isDisplayActive() {
             loreSystem.update(dt);
             if Action.Pressed("jump") {
-                loreSystem.dismiss();
+                loreSystem.dismiss(); // First press skips text, second dismisses
             }
             return; // Pause game while reading lore
         }
@@ -1066,11 +1080,13 @@ entity Game {
                                             PLAYER_W, PLAYER_H, level);
         if convDir != 0 {
             player.vx = player.vx + convDir * 200; // Push player
+            player.syncVelocity();
         }
 
         // Steam vent
         if phys.isOnSteamVent(player.x, player.y, PLAYER_W, PLAYER_H, level) {
             player.vy = -1800; // Launch upward
+            player.syncVelocity();
             sfx.playJump();
         }
 
@@ -1193,6 +1209,9 @@ entity Game {
         if loreSystem.isDisplayActive() {
             loreSystem.draw(canvas);
         }
+
+        // Achievement notification popup
+        achSys.drawNotification(canvas);
 
         // World map (if open)
         if showWorldMap {

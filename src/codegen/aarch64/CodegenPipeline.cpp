@@ -621,6 +621,7 @@ PipelineResult CodegenPipeline::run()
                 RtComponent::Threads,
                 RtComponent::Audio,
                 RtComponent::Graphics,
+                RtComponent::Game,
                 RtComponent::Exec,
                 RtComponent::IoFs,
                 RtComponent::Text,

@@ -13,8 +13,8 @@ last-verified: 2026-03-04
 
 ## Viper.Game.Timer
 
-Frame-based timers for games and animations. Unlike wall-clock timers, Timer operates
-in discrete frames, making it ideal for deterministic game logic.
+Countdown timer supporting both **frame-based** and **millisecond-based** modes. Frame mode
+counts discrete frames (deterministic). Ms mode counts delta time (frame-rate independent).
 
 **Type:** Instance class (requires `New()`)
 
@@ -28,31 +28,47 @@ in discrete frames, making it ideal for deterministic game logic.
 
 | Property      | Type                   | Description                                      |
 |---------------|------------------------|--------------------------------------------------|
-| `Duration`    | `Integer` (read/write) | Total frames for the countdown                   |
-| `Elapsed`     | `Integer` (read-only)  | Frames elapsed since start                       |
-| `Remaining`   | `Integer` (read-only)  | Frames remaining until expiration (0 if expired) |
-| `Progress`    | `Integer` (read-only)  | Completion percentage (0-100)                    |
+| `Duration`    | `Integer` (read/write) | Total frames or ms for the countdown             |
+| `Elapsed`     | `Integer` (read-only)  | Frames elapsed since start (frame mode)          |
+| `Remaining`   | `Integer` (read-only)  | Frames remaining (frame mode)                    |
+| `ElapsedMs`   | `Integer` (read-only)  | Milliseconds elapsed (ms mode)                   |
+| `RemainingMs` | `Integer` (read-only)  | Milliseconds remaining (ms mode)                 |
+| `Progress`    | `Integer` (read-only)  | Completion percentage 0-100 (both modes)         |
 | `IsRunning`   | `Boolean` (read-only)  | True if the timer is currently running           |
 | `IsExpired`   | `Boolean` (read-only)  | True if the timer has finished                   |
 | `IsRepeating` | `Boolean` (read-only)  | True if the timer auto-restarts when expired     |
 
-### Methods
+### Frame-Based Methods
 
 | Method                   | Signature       | Description                                               |
 |--------------------------|-----------------|-----------------------------------------------------------|
-| `Reset()`                | `Void()`        | Reset elapsed to 0 without stopping                       |
 | `Start(frames)`          | `Void(Integer)` | Start a one-shot countdown for specified frames           |
 | `StartRepeating(frames)` | `Void(Integer)` | Start a repeating timer that auto-restarts                |
-| `Stop()`                 | `Void()`        | Pause the timer, preserving elapsed time                  |
-| `Update()`               | `Boolean()`     | Advance timer by one frame; returns true if just expired  |
+| `Update()`               | `Boolean()`     | Advance by one frame; returns true if just expired        |
+
+### Millisecond-Based Methods
+
+| Method                       | Signature          | Description                                            |
+|------------------------------|--------------------|--------------------------------------------------------|
+| `StartMs(durationMs)`        | `Void(Integer)`    | Start a one-shot countdown in milliseconds             |
+| `StartRepeatingMs(intervalMs)` | `Void(Integer)`  | Start a repeating timer in milliseconds                |
+| `UpdateMs(dt)`               | `Boolean(Integer)` | Advance by dt ms; returns true if just expired         |
+
+### Common Methods
+
+| Method   | Signature  | Description                                 |
+|----------|------------|---------------------------------------------|
+| `Stop()` | `Void()`   | Stop the timer                              |
+| `Reset()`| `Void()`   | Reset elapsed to 0 without stopping         |
 
 ### Notes
 
-- Timer operates in frames, not milliseconds - call `Update()` once per frame
-- `Update()` returns true exactly once when the timer expires
-- One-shot timers stop when expired; repeating timers reset and continue
-- `Progress` returns integer percentage (0-100), useful for animations
-- Frame-based timing ensures deterministic game behavior across different hardware
+- Frame mode: call `Update()` once per frame. Ms mode: call `UpdateMs(dt)` with delta time.
+- Do not mix modes — a timer started with `StartMs` must be updated with `UpdateMs`.
+- `Update()` / `UpdateMs()` returns true exactly once when the timer expires.
+- One-shot timers stop when expired; repeating timers reset and continue.
+- `Progress` works for both modes (0-100 based on elapsed/duration ratio).
+- Ms mode is preferred for cooldowns, buffs, and effects that should be frame-rate independent.
 
 ### Zia Example
 

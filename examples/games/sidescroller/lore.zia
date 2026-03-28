@@ -2,7 +2,7 @@
 // Lore System — Scannable lore entries for environmental storytelling
 // =============================================================================
 // Lore terminals scattered throughout levels reveal the backstory of XENOSCAPE.
-// Uses the Viper.Game.Dialogue API for typewriter text display.
+// Uses Viper.Game.Typewriter for character-by-character text reveal.
 //
 // Story premise:
 //   You are an astronaut from the colony ship XENOSCAPE, which crash-landed
@@ -14,6 +14,7 @@
 module lore;
 
 bind Viper.Graphics;
+bind Viper.Game;
 bind "./config";
 bind "./palette";
 
@@ -27,16 +28,14 @@ entity LoreSystem {
     hide Integer collectedMask;   // Bitmask of collected entries
     hide Boolean displayActive;   // Is a lore entry being displayed?
     hide Integer displayIndex;    // Which entry is showing
-    hide Integer displayTimer;    // Typewriter timer
-    hide String displayBuffer;    // Text revealed so far
+    hide Typewriter tw;           // Character-by-character text reveal
 
     expose func initLore(p: Palette) {
         pal = p;
         collectedMask = 0;
         displayActive = false;
         displayIndex = 0;
-        displayTimer = 0;
-        displayBuffer = "";
+        tw = Typewriter.New();
 
         loreTitles = [];
         loreTexts = [];
@@ -118,26 +117,24 @@ entity LoreSystem {
         collectedMask = collectedMask + (1 * index); // Simplified bitmask
         displayActive = true;
         displayIndex = index;
-        displayTimer = 0;
-        displayBuffer = "";
+        tw.Say(loreTexts.get(index), 30); // 30ms per character
     }
 
     expose func isDisplayActive(): Boolean { return displayActive; }
 
     expose func update(dt: Integer) {
         if not displayActive { return; }
-        displayTimer = displayTimer + dt;
-        // Typewriter effect: reveal one character every 30ms
-        var targetLen = displayTimer / 30;
-        var fullText = loreTexts.get(displayIndex);
-        if targetLen > fullText.length() {
-            targetLen = fullText.length();
-        }
-        displayBuffer = fullText;
+        tw.Update(dt);
     }
 
+    // Skip to show all text instantly, or dismiss if already complete.
     expose func dismiss() {
-        displayActive = false;
+        if displayActive and not tw.IsComplete {
+            tw.Skip();
+        } else {
+            displayActive = false;
+            tw.Reset();
+        }
     }
 
     expose func draw(canvas: Canvas) {
@@ -163,12 +160,17 @@ entity LoreSystem {
         canvas.Line(panelX + 20, panelY + 52, panelX + panelW - 20, panelY + 52,
                     Color.RGB(60, 80, 120));
 
-        // Body text (word-wrapped manually — simplified)
-        canvas.Text(panelX + 20, panelY + 65, displayBuffer, Color.RGB(160, 170, 200));
+        // Body text via Typewriter reveal
+        canvas.Text(panelX + 20, panelY + 65, tw.VisibleText, Color.RGB(160, 170, 200));
 
-        // "Press Jump to close" hint
-        canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
-                    "[ Press Jump to close ]", Color.RGB(100, 100, 130));
+        // Progress indicator + hint
+        if tw.IsComplete {
+            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
+                        "[ Press Jump to close ]", Color.RGB(100, 100, 130));
+        } else {
+            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
+                        "[ Press Jump to skip ]", Color.RGB(80, 80, 100));
+        }
     }
 
     // Get collection stats for HUD

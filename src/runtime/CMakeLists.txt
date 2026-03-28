@@ -100,24 +100,31 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_trie.c
         collections/rt_bytes.c
         collections/rt_binbuf.c
-        collections/rt_grid2d.c
-        collections/rt_timer.c
-        collections/rt_statemachine.c
-        collections/rt_animstate.c
-        collections/rt_tween.c
-        collections/rt_buttongroup.c
-        collections/rt_smoothvalue.c
-        collections/rt_particle.c
-        collections/rt_spriteanim.c
-        collections/rt_collision.c
-        collections/rt_objpool.c
-        collections/rt_screenfx.c
-        collections/rt_pathfollow.c
-        collections/rt_quadtree.c
-        collections/rt_debugoverlay.c
-        collections/rt_gameui.c
-        collections/rt_pathfinder.c
-        collections/rt_dialogue.c
+)
+
+set(RT_GAME_SOURCES
+        game/rt_grid2d.c
+        game/rt_timer.c
+        game/rt_statemachine.c
+        game/rt_animstate.c
+        game/rt_tween.c
+        game/rt_buttongroup.c
+        game/rt_smoothvalue.c
+        game/rt_particle.c
+        game/rt_spriteanim.c
+        game/rt_collision.c
+        game/rt_objpool.c
+        game/rt_screenfx.c
+        game/rt_pathfollow.c
+        game/rt_quadtree.c
+        game/rt_debugoverlay.c
+        game/rt_gameui.c
+        game/rt_pathfinder.c
+        game/rt_dialogue.c
+        game/rt_lighting2d.c
+        game/rt_platformer_ctrl.c
+        game/rt_achievement.c
+        game/rt_typewriter.c
 )
 
 set(RT_TEXT_SOURCES
@@ -345,21 +352,28 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_gui.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_input.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/rt_inputmgr.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_grid2d.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_timer.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_statemachine.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_animstate.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_tween.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_buttongroup.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_smoothvalue.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_particle.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_spriteanim.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_collision.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_objpool.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_screenfx.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_pathfollow.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_quadtree.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_debugoverlay.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_grid2d.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_timer.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_statemachine.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animstate.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_tween.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_buttongroup.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_smoothvalue.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_particle.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_spriteanim.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_collision.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_objpool.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_screenfx.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_pathfollow.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_quadtree.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_debugoverlay.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_gameui.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_pathfinder.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_dialogue.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_lighting2d.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_platformer_ctrl.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_achievement.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_typewriter.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_binbuf.h
@@ -386,6 +400,7 @@ add_library(viper_rt_base_obj OBJECT ${RT_BASE_SOURCES})
 add_library(viper_rt_arrays_obj OBJECT ${RT_ARRAY_SOURCES})
 add_library(viper_rt_oop_obj OBJECT ${RT_OOP_SOURCES})
 add_library(viper_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
+add_library(viper_rt_game_obj OBJECT ${RT_GAME_SOURCES})
 add_library(viper_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
 add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
 add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
@@ -398,6 +413,7 @@ add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
 add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
 add_library(viper_rt_oop STATIC $<TARGET_OBJECTS:viper_rt_oop_obj>)
 add_library(viper_rt_collections STATIC $<TARGET_OBJECTS:viper_rt_collections_obj>)
+add_library(viper_rt_game STATIC $<TARGET_OBJECTS:viper_rt_game_obj>)
 add_library(viper_rt_text STATIC $<TARGET_OBJECTS:viper_rt_text_obj>)
 add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
 add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
@@ -411,6 +427,7 @@ add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_arrays_obj>
         $<TARGET_OBJECTS:viper_rt_oop_obj>
         $<TARGET_OBJECTS:viper_rt_collections_obj>
+        $<TARGET_OBJECTS:viper_rt_game_obj>
         $<TARGET_OBJECTS:viper_rt_text_obj>
         $<TARGET_OBJECTS:viper_rt_io_fs_obj>
         $<TARGET_OBJECTS:viper_rt_exec_obj>
@@ -425,6 +442,7 @@ set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
         viper_rt_arrays_obj
         viper_rt_oop_obj
         viper_rt_collections_obj
+        viper_rt_game_obj
         viper_rt_text_obj
         viper_rt_io_fs_obj
         viper_rt_exec_obj
@@ -439,6 +457,7 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_rt_arrays
         viper_rt_oop
         viper_rt_collections
+        viper_rt_game
         viper_rt_text
         viper_rt_io_fs
         viper_rt_exec
@@ -455,6 +474,7 @@ set(_RT_SUBDIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/arrays
         ${CMAKE_CURRENT_SOURCE_DIR}/oop
         ${CMAKE_CURRENT_SOURCE_DIR}/collections
+        ${CMAKE_CURRENT_SOURCE_DIR}/game
         ${CMAKE_CURRENT_SOURCE_DIR}/text
         ${CMAKE_CURRENT_SOURCE_DIR}/io
         ${CMAKE_CURRENT_SOURCE_DIR}/system
@@ -503,6 +523,7 @@ foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/arrays>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/oop>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/collections>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/game>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/text>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/system>
@@ -519,6 +540,7 @@ endforeach ()
 target_link_libraries(viper_rt_arrays PUBLIC viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_oop PUBLIC viper_rt_base)
 target_link_libraries(viper_rt_collections PUBLIC viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_game PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_text PUBLIC viper_rt_collections viper_rt_base)
 target_link_libraries(viper_rt_io_fs PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)

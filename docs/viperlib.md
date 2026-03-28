@@ -19,7 +19,7 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | [Cryptography](viperlib/crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
 | [Diagnostics](viperlib/diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](viperlib/functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
-| [Game Utilities](viperlib/game.md)       | `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `ObjectPool`, `ParticleEmitter` (with batch Draw/DrawAt/DrawToPixels), `PathFollower`, `Physics2D`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `SpriteSheet`, `StateMachine`, `Timer`, `Tween` |
+| [Game Utilities](viperlib/game.md)       | `AchievementTracker`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `SpriteSheet`, `StateMachine`, `Timer`, `Tween`, `Typewriter` |
 | [Graphics](viperlib/graphics/README.md)  | `Camera` (with parallax layers), `Canvas` (with DeltaTime), `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `Tilemap` |
 | [GUI](viperlib/gui/README.md)            | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Index](viperlib/README.md)              | Overview and quick navigation                                             |

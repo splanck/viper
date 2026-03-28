@@ -22,6 +22,7 @@ module camera;
 bind Viper.Graphics;
 bind Viper.Game.SmoothValue as SV;
 bind Viper.Math;
+bind Viper.Core;
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -43,6 +44,13 @@ entity GameCamera {
     // Background animation timer (accumulated ms, wraps at 60000)
     hide Integer bgTimer;
 
+    // Pre-generated Perlin noise cloud textures (5 variants)
+    hide Pixels cloudFar0;   // 64x28  — small wisp
+    hide Pixels cloudFar1;   // 80x32  — small wisp
+    hide Pixels cloudMid0;   // 120x48 — medium
+    hide Pixels cloudMid1;   // 140x56 — medium
+    hide Pixels cloudNear0;  // 180x72 — large
+
     expose func init(p: Palette) {
         pal = p;
         x = 0;
@@ -55,6 +63,13 @@ entity GameCamera {
         smoothX = SV.New(0.0, 0.875);
         // 0.917 ≈ y += (target-y)/12 per frame
         smoothY = SV.New(0.0, 0.917);
+
+        // Generate Perlin noise cloud textures (noiseScale is x100: 500 = 5.0)
+        cloudFar0  = generateCloud(64,  28, 42,  500, 140);
+        cloudFar1  = generateCloud(80,  32, 97,  450, 150);
+        cloudMid0  = generateCloud(120, 48, 173, 400, 160);
+        cloudMid1  = generateCloud(140, 56, 251, 350, 170);
+        cloudNear0 = generateCloud(180, 72, 337, 300, 185);
     }
 
     // Advance background animation timer. Call once per frame.
@@ -210,6 +225,112 @@ entity GameCamera {
         drawStationBridgeBg(canvas);
     }
 
+    // =========================================================================
+    // Perlin noise cloud system — pre-generated textures, 3 parallax layers
+    // =========================================================================
+
+    // Generate a single cloud texture using Perlin octave noise with radial falloff.
+    // Returns a Pixels buffer with per-pixel alpha for soft, organic edges.
+    // Generate a Perlin noise cloud texture. noiseScale (x100, e.g. 400=4.0) controls
+    // detail frequency. maxAlpha (0-255) caps peak opacity. Returns Pixels buffer.
+    hide func generateCloud(w: Integer, h: Integer, seed: Integer,
+                             noiseScale100: Integer, maxAlpha: Integer) -> Pixels {
+        var pn = PerlinNoise.New(seed);
+        var buf = Pixels.New(w, h);
+        var cx = w / 2;
+        var cy = h / 2;
+
+        var py = 0;
+        while py < h {
+            var px = 0;
+            while px < w {
+                // Noise sampling — convert to float for Octave2D
+                var nx = (px + 0.0) * (noiseScale100 + 0.0) / (w * 100 + 0.0);
+                var ny = (py + 0.0) * (noiseScale100 + 0.0) / (h * 100 + 0.0);
+                var noiseF = pn.Octave2D(nx, ny, 4, 0.5);
+                // Remap [-1,1] → [0,1000] as integer
+                var density = Convert.NumToInt((noiseF + 1.0) * 500.0);
+
+                // Elliptical radial falloff (integer, x1000 precision)
+                var dxi = (px - cx) * 2000 / w;
+                var dyi = (py - cy) * 2000 / h;
+                var distI = (dxi * dxi + dyi * dyi) / 1000;
+                var falloffI = 1000 - distI;
+                if falloffI < 0 { falloffI = 0; }
+
+                // Combined alpha: density * falloff^2 / 1000000
+                var alphaI = density * falloffI / 1000 * falloffI / 1000;
+
+                if alphaI > 40 {
+                    // Color gradient: brighter at top (sunlit), darker at bottom
+                    var vertPct = 100 - py * 100 / h;
+                    var r = 218 + vertPct * 37 / 100;
+                    var g = 220 + vertPct * 35 / 100;
+                    var b = 225 + vertPct * 30 / 100;
+                    if r > 255 { r = 255; }
+                    if g > 255 { g = 255; }
+                    if b > 255 { b = 255; }
+                    var a = alphaI * maxAlpha / 1000;
+                    if a > 255 { a = 255; }
+                    if a < 1 { a = 1; }
+                    buf.Set(px, py, Color.RGBA(r, g, b, a));
+                }
+                px = px + 1;
+            }
+            py = py + 1;
+        }
+        return buf;
+    }
+
+    // Draw all three cloud layers. masterAlpha (0-255) scales opacity for crossfade.
+    hide func drawCloudLayers(canvas: Canvas, masterAlpha: Integer) {
+        if masterAlpha <= 0 { return; }
+
+        // Slow ambient drift (clouds move even when camera is still)
+        var drift = bgTimer / 80;
+
+        // --- Layer 1: Far wisps (4% parallax, small, faint) ---
+        var farScroll = x * 4 / 100 + drift / 3;
+        var wrapFar = SCREEN_W + 300;
+        var fi = 0;
+        while fi < 6 {
+            // Alternate between the two far cloud variants
+            var cloud = cloudFar0;
+            if fi % 2 == 1 { cloud = cloudFar1; }
+            var fx = ((fi * 197 + 31) % wrapFar) - (farScroll % wrapFar);
+            if fx < 0 - 100 { fx = fx + wrapFar; }
+            var fy = 25 + (fi * 67) % 110;
+            canvas.BlitAlpha(fx, fy, cloud);
+            fi = fi + 1;
+        }
+
+        // --- Layer 2: Mid clouds (8% parallax) ---
+        var midScroll = x * PARA_CLOUD / 100 + drift / 2;
+        var wrapMid = SCREEN_W + 400;
+        var mi = 0;
+        while mi < 5 {
+            var cloud = cloudMid0;
+            if mi % 2 == 1 { cloud = cloudMid1; }
+            var mx = ((mi * 173 + 47) % wrapMid) - (midScroll % wrapMid);
+            if mx < 0 - 160 { mx = mx + wrapMid; }
+            var my = 40 + (mi * 53) % 120;
+            canvas.BlitAlpha(mx, my, cloud);
+            mi = mi + 1;
+        }
+
+        // --- Layer 3: Near clouds (14% parallax, large) ---
+        var nearScroll = x * 14 / 100 + drift;
+        var wrapNear = SCREEN_W + 500;
+        var ni = 0;
+        while ni < 3 {
+            var nx = ((ni * 251 + 83) % wrapNear) - (nearScroll % wrapNear);
+            if nx < 0 - 200 { nx = nx + wrapNear; }
+            var ny = 30 + (ni * 79) % 90;
+            canvas.BlitAlpha(nx, ny, cloudNear0);
+            ni = ni + 1;
+        }
+    }
+
     hide func drawJungleBg(canvas: Canvas, sprites: SpriteFactory) {
         // Alien jungle: teal-green sky with bioluminescent atmosphere
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.jungleSkyTop, pal.jungleSkyBot);
@@ -246,18 +367,10 @@ entity GameCamera {
         canvas.Disc(SCREEN_W - 180, 80, 40, 0xEEEECC);
         canvas.Disc(SCREEN_W - 170, 75, 35, pal.skyTop);
 
-        // Clouds (0.08x parallax — slowest layer, farthest back)
-        var cloudScroll = x * PARA_CLOUD / 100;
-        var ci = 0;
-        while ci < 8 {
-            var cx2 = ((ci * 173 + 47) % (SCREEN_W + 200)) - (cloudScroll % (SCREEN_W + 200));
-            if cx2 < 0 - 120 { cx2 = cx2 + SCREEN_W + 200; }
-            var cy2 = 60 + (ci * 53) % 120;
-            var cw = 80 + (ci * 37) % 60;
-            canvas.BoxAlpha(cx2, cy2, cw, 12, 0xFFFFFF, 20 + ci * 3);
-            canvas.BoxAlpha(cx2 + 15, cy2 - 6, cw - 30, 8, 0xFFFFFF, 15 + ci * 2);
-            ci = ci + 1;
-        }
+        // === Multi-layer cloud system (3 depths) ===
+        // Each cloud is a cluster of overlapping discs for a puffy cumulus look.
+        // Layers scroll at different parallax rates for depth.
+        drawCloudLayers(canvas, 255);
 
         // Far mountains (0.15x parallax)
         var mtn = sprites.getMountainBg();
@@ -316,17 +429,8 @@ entity GameCamera {
         // Moon
         canvas.DiscAlpha(SCREEN_W - 160, 80, 30, pal.white, alpha * 40 / 255);
         canvas.DiscAlpha(SCREEN_W - 155, 75, 26, pal.jungleSkyTop, alpha * 50 / 255);
-        // Clouds (8% parallax)
-        var cloudScroll = x * PARA_CLOUD / 100;
-        var ci = 0;
-        while ci < 8 {
-            var cx2 = ((ci * 173 + 47) % (SCREEN_W + 200)) - (cloudScroll % (SCREEN_W + 200));
-            if cx2 < 0 - 120 { cx2 = cx2 + SCREEN_W + 200; }
-            var cy2 = 60 + (ci * 53) % 120;
-            var cw = 80 + (ci * 37) % 60;
-            canvas.BoxAlpha(cx2, cy2, cw, 12, pal.white, alpha * (20 + ci * 3) / 255);
-            ci = ci + 1;
-        }
+        // Clouds (multi-layer, alpha-scaled for crossfade)
+        drawCloudLayers(canvas, alpha);
         // Mountains (15% parallax)
         var mtn = sprites.getMountainBg();
         var mtnScroll = x * 15 / 100;
@@ -594,16 +698,8 @@ entity GameCamera {
         canvas.Disc(200, 100, 50, 0xFFEE88);
         canvas.DiscAlpha(200, 100, 70, 0xFFEE88, 30);
 
-        // Volumetric cloud layers
-        var ci = 0;
-        while ci < 10 {
-            var cx = (ci * 149 + 33) % (SCREEN_W + 100);
-            var cy = 200 + (ci * 61) % 200;
-            var cr = 40 + (ci * 37) % 30;
-            canvas.DiscAlpha(cx, cy, cr, 0xFFFFFF, 20 + ci * 2);
-            canvas.DiscAlpha(cx + 20, cy - 10, cr - 10, 0xFFFFFF, 25 + ci);
-            ci = ci + 1;
-        }
+        // Volumetric cloud layers (reuse multi-layer system)
+        drawCloudLayers(canvas, 255);
 
         // Ambient birds (V-shapes using lines)
         var bi = 0;

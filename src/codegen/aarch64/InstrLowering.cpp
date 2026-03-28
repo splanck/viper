@@ -292,6 +292,22 @@ bool materializeValueToVReg(const il::core::Value &v,
                     out.instrs.push_back(
                         MInstr{MOpcode::LdrRegFpImm,
                                {MOperand::vregOp(cls, outVReg), MOperand::immOp(callerArgOffset)}});
+                    // Mask i1 parameters to ensure upper bits are zero (stack path).
+                    if (bb.params[static_cast<std::size_t>(pIdx)].type.kind ==
+                        il::core::Type::Kind::I1)
+                    {
+                        const uint16_t mask = nextVRegId++;
+                        out.instrs.push_back(MInstr{
+                            MOpcode::MovRI,
+                            {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+                        const uint16_t masked = nextVRegId++;
+                        out.instrs.push_back(MInstr{
+                            MOpcode::AndRRR,
+                            {MOperand::vregOp(RegClass::GPR, masked),
+                             MOperand::vregOp(RegClass::GPR, outVReg),
+                             MOperand::vregOp(RegClass::GPR, mask)}});
+                        outVReg = masked;
+                    }
                 }
                 return true;
             }
@@ -303,6 +319,22 @@ bool materializeValueToVReg(const il::core::Value &v,
             {
                 out.instrs.push_back(
                     MInstr{MOpcode::MovRR, {MOperand::vregOp(cls, outVReg), MOperand::regOp(src)}});
+                // Mask i1 parameters to ensure upper bits are zero (register path).
+                if (bb.params[static_cast<std::size_t>(pIdx)].type.kind ==
+                    il::core::Type::Kind::I1)
+                {
+                    const uint16_t mask = nextVRegId++;
+                    out.instrs.push_back(MInstr{
+                        MOpcode::MovRI,
+                        {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+                    const uint16_t masked = nextVRegId++;
+                    out.instrs.push_back(MInstr{
+                        MOpcode::AndRRR,
+                        {MOperand::vregOp(RegClass::GPR, masked),
+                         MOperand::vregOp(RegClass::GPR, outVReg),
+                         MOperand::vregOp(RegClass::GPR, mask)}});
+                    outVReg = masked;
+                }
             }
             else
             {

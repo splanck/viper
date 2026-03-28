@@ -1,0 +1,547 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/game/rt_tween.c
+// Purpose: Frame-counted value interpolation ("tweening") for Viper games and
+//   UIs. A Tween smoothly animates a scalar value from a start to an end over
+//   a specified number of frames, optionally applying one of 19 easing curves
+//   (linear, quad, cubic, sine, exponential, back-overshoot, and bounced
+//   variants). Typical uses: moving UI panels, fading colors, scaling entities,
+//   and any animation that must complete in a predictable number of frames.
+//
+// Key invariants:
+//   - Time is measured in integer frames (not wall-clock milliseconds).
+//     Duration must be >= 1; zero or negative durations are clamped to 1.
+//   - The tween progresses by calling rt_tween_update() once per frame.
+//     Update returns 1 on the frame the tween completes, 0 otherwise.
+//     After completion, is_complete() returns 1 and the value is pinned to `to`.
+//   - Easing functions operate on a normalized progress t ∈ [0.0, 1.0]:
+//       Linear:  f(t) = t
+//       In-Quad: f(t) = t²     (starts slow, ends fast)
+//       Back:    overshoots the target slightly before settling (c1 = 1.70158)
+//       Bounce:  simulates a physical bounce using piecewise polynomials
+//     The `ease_type` parameter is one of the RT_EASE_* constants defined in
+//     rt_tween.h. Unknown types fall back to linear.
+//   - Pause/Resume halt and resume update progression without resetting elapsed.
+//   - rt_tween_reset() rewinds to frame 0 and resumes from the original `from`.
+//   - rt_tween_value_i64() rounds to the nearest integer (round-half-up for
+//     positive values, round-half-down for negative) — suitable for pixel coords.
+//
+// Ownership/Lifetime:
+//   - Tween objects are GC-managed (rt_obj_new_i64). rt_tween_destroy() calls
+//     rt_obj_free() for callers that manage lifetimes explicitly; the GC also
+//     collects them automatically.
+//
+// Links: src/runtime/game/rt_tween.h (public API, easing constants),
+//        docs/viperlib/game.md (Tween and TweenChain sections)
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_tween.h"
+#include "rt_object.h"
+
+#include <math.h>
+#include <stdlib.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+/// Internal structure for Tween.
+struct rt_tween_impl
+{
+    double from;       ///< Starting value.
+    double to;         ///< Ending value.
+    double current;    ///< Current interpolated value.
+    int64_t duration;  ///< Total duration in frames.
+    int64_t elapsed;   ///< Elapsed frames.
+    int64_t ease_type; ///< Easing function type.
+    int8_t running;    ///< 1 if tween is running.
+    int8_t complete;   ///< 1 if tween has completed.
+    int8_t paused;     ///< 1 if tween is paused.
+};
+
+// Forward declaration of public easing function
+/// @brief Perform ease operation.
+/// @param t
+/// @param ease_type
+/// @return Result value.
+double rt_tween_ease(double t, int64_t ease_type);
+
+// Forward declaration of internal easing functions
+// NOTE: These duplicate rt_easing.c implementations. A future refactor could
+// have rt_tween call the public rt_ease_* API instead.
+static double ease_linear(double t);
+static double ease_in_quad(double t);
+static double ease_out_quad(double t);
+static double ease_in_out_quad(double t);
+static double ease_in_cubic(double t);
+static double ease_out_cubic(double t);
+static double ease_in_out_cubic(double t);
+static double ease_in_sine(double t);
+static double ease_out_sine(double t);
+static double ease_in_out_sine(double t);
+static double ease_in_expo(double t);
+static double ease_out_expo(double t);
+static double ease_in_out_expo(double t);
+static double ease_in_back(double t);
+static double ease_out_back(double t);
+static double ease_in_out_back(double t);
+static double ease_in_bounce(double t);
+static double ease_out_bounce(double t);
+static double ease_in_out_bounce(double t);
+
+/// @brief Create a new new instance.
+/// @return Result value.
+rt_tween rt_tween_new(void)
+{
+    struct rt_tween_impl *tween =
+        (struct rt_tween_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_tween_impl));
+    if (!tween)
+        return NULL;
+
+    tween->from = 0.0;
+    tween->to = 0.0;
+    tween->current = 0.0;
+    tween->duration = 0;
+    tween->elapsed = 0;
+    tween->ease_type = RT_EASE_LINEAR;
+    tween->running = 0;
+    tween->complete = 0;
+    tween->paused = 0;
+
+    return tween;
+}
+
+/// @brief Destroy and free destroy resources.
+/// @param tween
+void rt_tween_destroy(rt_tween tween)
+{
+    if (tween && rt_obj_release_check0(tween))
+        rt_obj_free(tween);
+}
+
+/// @brief Start start.
+/// @param tween
+/// @param from
+/// @param to
+/// @param duration
+/// @param ease_type
+void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type)
+{
+    if (!tween)
+        return;
+    if (duration < 1)
+        duration = 1;
+    if (ease_type < 0 || ease_type >= RT_EASE_COUNT)
+        ease_type = RT_EASE_LINEAR;
+
+    tween->from = from;
+    tween->to = to;
+    tween->current = from;
+    tween->duration = duration;
+    tween->elapsed = 0;
+    tween->ease_type = ease_type;
+    tween->running = 1;
+    tween->complete = 0;
+    tween->paused = 0;
+}
+
+void rt_tween_start_i64(
+    rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type)
+{
+    rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
+}
+
+/// @brief Update update state for current frame.
+/// @param tween
+/// @return Result value.
+int8_t rt_tween_update(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    if (!tween->running || tween->paused)
+        return 0;
+
+    tween->elapsed++;
+
+    // Calculate progress (0.0 to 1.0)
+    double t = (double)tween->elapsed / (double)tween->duration;
+    if (t > 1.0)
+        t = 1.0;
+
+    // Apply easing
+    double eased_t = rt_tween_ease(t, tween->ease_type);
+
+    // Interpolate
+    tween->current = tween->from + (tween->to - tween->from) * eased_t;
+
+    // Check for completion
+    if (tween->elapsed >= tween->duration)
+    {
+        tween->running = 0;
+        tween->complete = 1;
+        tween->current = tween->to; // Ensure exact end value
+        return 1;                   // Just completed
+    }
+
+    return 0;
+}
+
+/// @brief Perform value operation.
+/// @param tween
+/// @return Result value.
+double rt_tween_value(rt_tween tween)
+{
+    if (!tween)
+        return 0.0;
+    return tween->current;
+}
+
+/// @brief Perform value i64 operation.
+/// @param tween
+/// @return Result value.
+int64_t rt_tween_value_i64(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    // Round to nearest integer
+    return (int64_t)(tween->current + (tween->current >= 0 ? 0.5 : -0.5));
+}
+
+/// @brief Check if running.
+/// @param tween
+/// @return Result value.
+int8_t rt_tween_is_running(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    return tween->running && !tween->paused;
+}
+
+/// @brief Check if complete.
+/// @param tween
+/// @return Result value.
+int8_t rt_tween_is_complete(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    return tween->complete;
+}
+
+/// @brief Perform progress operation.
+/// @param tween
+/// @return Result value.
+int64_t rt_tween_progress(rt_tween tween)
+{
+    if (!tween || tween->duration == 0)
+        return 0;
+    int64_t progress = (tween->elapsed * 100) / tween->duration;
+    if (progress > 100)
+        progress = 100;
+    return progress;
+}
+
+/// @brief Perform elapsed operation.
+/// @param tween
+/// @return Result value.
+int64_t rt_tween_elapsed(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    return tween->elapsed;
+}
+
+/// @brief Perform duration operation.
+/// @param tween
+/// @return Result value.
+int64_t rt_tween_duration(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    return tween->duration;
+}
+
+/// @brief Stop stop.
+/// @param tween
+void rt_tween_stop(rt_tween tween)
+{
+    if (!tween)
+        return;
+    tween->running = 0;
+    tween->paused = 0;
+}
+
+/// @brief Reset reset to initial state.
+/// @param tween
+void rt_tween_reset(rt_tween tween)
+{
+    if (!tween)
+        return;
+    tween->elapsed = 0;
+    tween->current = tween->from;
+    tween->complete = 0;
+    if (tween->duration > 0)
+        tween->running = 1;
+    tween->paused = 0;
+}
+
+/// @brief Pause pause.
+/// @param tween
+void rt_tween_pause(rt_tween tween)
+{
+    if (!tween)
+        return;
+    tween->paused = 1;
+}
+
+/// @brief Resume resume.
+/// @param tween
+void rt_tween_resume(rt_tween tween)
+{
+    if (!tween)
+        return;
+    tween->paused = 0;
+}
+
+/// @brief Check if paused.
+/// @param tween
+/// @return Result value.
+int8_t rt_tween_is_paused(rt_tween tween)
+{
+    if (!tween)
+        return 0;
+    return tween->paused;
+}
+
+//=============================================================================
+// Static interpolation functions
+//=============================================================================
+
+// Note: rt_lerp is provided by rt_math.c
+
+/// @brief Perform lerp i64 operation.
+/// @param from
+/// @param to
+/// @param t
+/// @return Result value.
+int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t)
+{
+    if (t < 0.0)
+        t = 0.0;
+    if (t > 1.0)
+        t = 1.0;
+    double result = (double)from + ((double)to - (double)from) * t;
+    return (int64_t)(result + (result >= 0 ? 0.5 : -0.5));
+}
+
+/// @brief Perform ease operation.
+/// @param t
+/// @param ease_type
+/// @return Result value.
+double rt_tween_ease(double t, int64_t ease_type)
+{
+    if (t <= 0.0)
+        return 0.0;
+    if (t >= 1.0)
+        return 1.0;
+
+    switch (ease_type)
+    {
+        case RT_EASE_LINEAR:
+            return ease_linear(t);
+        case RT_EASE_IN_QUAD:
+            return ease_in_quad(t);
+        case RT_EASE_OUT_QUAD:
+            return ease_out_quad(t);
+        case RT_EASE_IN_OUT_QUAD:
+            return ease_in_out_quad(t);
+        case RT_EASE_IN_CUBIC:
+            return ease_in_cubic(t);
+        case RT_EASE_OUT_CUBIC:
+            return ease_out_cubic(t);
+        case RT_EASE_IN_OUT_CUBIC:
+            return ease_in_out_cubic(t);
+        case RT_EASE_IN_SINE:
+            return ease_in_sine(t);
+        case RT_EASE_OUT_SINE:
+            return ease_out_sine(t);
+        case RT_EASE_IN_OUT_SINE:
+            return ease_in_out_sine(t);
+        case RT_EASE_IN_EXPO:
+            return ease_in_expo(t);
+        case RT_EASE_OUT_EXPO:
+            return ease_out_expo(t);
+        case RT_EASE_IN_OUT_EXPO:
+            return ease_in_out_expo(t);
+        case RT_EASE_IN_BACK:
+            return ease_in_back(t);
+        case RT_EASE_OUT_BACK:
+            return ease_out_back(t);
+        case RT_EASE_IN_OUT_BACK:
+            return ease_in_out_back(t);
+        case RT_EASE_IN_BOUNCE:
+            return ease_in_bounce(t);
+        case RT_EASE_OUT_BOUNCE:
+            return ease_out_bounce(t);
+        case RT_EASE_IN_OUT_BOUNCE:
+            return ease_in_out_bounce(t);
+        default:
+            return t;
+    }
+}
+
+//=============================================================================
+// Internal easing function implementations
+//=============================================================================
+
+static double ease_linear(double t)
+{
+    return t;
+}
+
+static double ease_in_quad(double t)
+{
+    return t * t;
+}
+
+static double ease_out_quad(double t)
+{
+    return t * (2.0 - t);
+}
+
+static double ease_in_out_quad(double t)
+{
+    if (t < 0.5)
+        return 2.0 * t * t;
+    return -1.0 + (4.0 - 2.0 * t) * t;
+}
+
+static double ease_in_cubic(double t)
+{
+    return t * t * t;
+}
+
+static double ease_out_cubic(double t)
+{
+    double t1 = t - 1.0;
+    return t1 * t1 * t1 + 1.0;
+}
+
+static double ease_in_out_cubic(double t)
+{
+    if (t < 0.5)
+        return 4.0 * t * t * t;
+    double t1 = 2.0 * t - 2.0;
+    return 0.5 * t1 * t1 * t1 + 1.0;
+}
+
+static double ease_in_sine(double t)
+{
+    return 1.0 - cos(t * M_PI / 2.0);
+}
+
+static double ease_out_sine(double t)
+{
+    return sin(t * M_PI / 2.0);
+}
+
+static double ease_in_out_sine(double t)
+{
+    return 0.5 * (1.0 - cos(M_PI * t));
+}
+
+static double ease_in_expo(double t)
+{
+    if (t == 0.0)
+        return 0.0;
+    return pow(2.0, 10.0 * (t - 1.0));
+}
+
+static double ease_out_expo(double t)
+{
+    if (t == 1.0)
+        return 1.0;
+    return 1.0 - pow(2.0, -10.0 * t);
+}
+
+static double ease_in_out_expo(double t)
+{
+    if (t == 0.0)
+        return 0.0;
+    if (t == 1.0)
+        return 1.0;
+    if (t < 0.5)
+        return 0.5 * pow(2.0, 20.0 * t - 10.0);
+    return 1.0 - 0.5 * pow(2.0, -20.0 * t + 10.0);
+}
+
+static double ease_in_back(double t)
+{
+    const double c1 = 1.70158;
+    const double c3 = c1 + 1.0;
+    return c3 * t * t * t - c1 * t * t;
+}
+
+static double ease_out_back(double t)
+{
+    const double c1 = 1.70158;
+    const double c3 = c1 + 1.0;
+    double t1 = t - 1.0;
+    return 1.0 + c3 * t1 * t1 * t1 + c1 * t1 * t1;
+}
+
+static double ease_in_out_back(double t)
+{
+    const double c1 = 1.70158;
+    const double c2 = c1 * 1.525;
+    if (t < 0.5)
+    {
+        double t2 = 2.0 * t;
+        return 0.5 * t2 * t2 * ((c2 + 1.0) * t2 - c2);
+    }
+    double t2 = 2.0 * t - 2.0;
+    return 0.5 * (t2 * t2 * ((c2 + 1.0) * t2 + c2) + 2.0);
+}
+
+static double ease_out_bounce(double t)
+{
+    const double n1 = 7.5625;
+    const double d1 = 2.75;
+
+    if (t < 1.0 / d1)
+    {
+        return n1 * t * t;
+    }
+    else if (t < 2.0 / d1)
+    {
+        double t1 = t - 1.5 / d1;
+        return n1 * t1 * t1 + 0.75;
+    }
+    else if (t < 2.5 / d1)
+    {
+        double t1 = t - 2.25 / d1;
+        return n1 * t1 * t1 + 0.9375;
+    }
+    else
+    {
+        double t1 = t - 2.625 / d1;
+        return n1 * t1 * t1 + 0.984375;
+    }
+}
+
+static double ease_in_bounce(double t)
+{
+    return 1.0 - ease_out_bounce(1.0 - t);
+}
+
+static double ease_in_out_bounce(double t)
+{
+    if (t < 0.5)
+        return 0.5 * (1.0 - ease_out_bounce(1.0 - 2.0 * t));
+    return 0.5 * (1.0 + ease_out_bounce(2.0 * t - 1.0));
+}

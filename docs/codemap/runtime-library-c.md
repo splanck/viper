@@ -336,8 +336,10 @@ Last updated: 2026-02-17
 
 ## Game & Animation
 
-| File                | Purpose                                                |
-|---------------------|--------------------------------------------------------|
+> **Directory:** `src/runtime/game/` (moved from `src/runtime/collections/` in v0.2.4)
+
+| File                    | Purpose                                                |
+|-------------------------|--------------------------------------------------------|
 | `rt_collision.c`    | Collision detection utilities                          |
 | `rt_collision.h`    | Collision declarations                                 |
 | `rt_easing.c`       | Easing functions for animation                         |
@@ -372,6 +374,14 @@ Last updated: 2026-02-17
 | `rt_animstate.h`    | AnimStateMachine declarations                          |
 | `rt_tween.c`        | Tweening/interpolation for animation                   |
 | `rt_tween.h`        | Tween declarations                                     |
+| `rt_lighting2d.c`   | 2D darkness overlay with dynamic point lights          |
+| `rt_lighting2d.h`   | Lighting2D declarations                                |
+| `rt_platformer_ctrl.c` | Platformer input controller (jump buffer, coyote time, accel curves) |
+| `rt_platformer_ctrl.h` | PlatformerController declarations                   |
+| `rt_achievement.c`  | Achievement tracking with bitmask unlocks and notifications |
+| `rt_achievement.h`  | AchievementTracker declarations                        |
+| `rt_typewriter.c`   | Character-by-character text reveal effect               |
+| `rt_typewriter.h`   | Typewriter declarations                                |
 
 ## GUI (Extended)
 

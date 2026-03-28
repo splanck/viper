@@ -2,18 +2,19 @@
 // Achievement System — Track and display player accomplishments
 // =============================================================================
 // 30+ achievements across categories: exploration, combat, bosses, collection,
-// speedrunning, and secret challenges. Each achievement has a name, description,
-// icon color, and unlock condition tracked by the game.
+// speedrunning, and secret challenges. Uses Viper.Game.AchievementTracker for
+// bitmask unlock tracking, stat counters, and notification popup rendering.
 //
-// Achievements are displayed via a notification popup when unlocked and
-// viewable in a dedicated achievements screen from the pause menu.
+// Custom screen drawing (achievement grid with categories) is kept locally;
+// the tracker handles unlock logic, stats, and notification animations.
 //
-// Viper APIs: Canvas drawing, Color.RGB
+// Viper APIs: Viper.Game.AchievementTracker, Canvas drawing, Color.RGB
 // =============================================================================
 
 module achievements;
 
 bind Viper.Graphics;
+bind Viper.Game;
 bind "./config";
 bind "./palette";
 
@@ -28,64 +29,38 @@ final ACH_CAT_SECRET = 5;
 // Total number of achievements
 final ACH_COUNT = 32;
 
+// Stat counter IDs (maps to AchievementTracker's 32 stat slots)
+final STAT_ENEMIES_KILLED = 0;
+final STAT_COINS_COLLECTED = 1;
+final STAT_DEATHS = 2;
+final STAT_JUMPS = 3;
+final STAT_BULLETS_SHOT = 4;
+final STAT_DASHES_USED = 5;
+final STAT_POUNDS_USED = 6;
+final STAT_GEMS_COLLECTED = 7;
+final STAT_LORE_FOUND = 8;
+final STAT_BOSSES_DEFEATED = 9;
+final STAT_LONGEST_COMBO = 10;
+final STAT_CURRENT_COMBO = 11;
+final STAT_SPEEDRUN_BEST = 12;
+
 entity AchievementSystem {
     expose func init() {}
     hide Palette pal;
-    hide List[String] achNames;
+    hide AchievementTracker tracker;
+    hide List[Integer] achCats;      // Category per achievement (for screen display)
+    hide List[Integer] achColors;    // Icon color per achievement (for screen display)
+    hide List[String] achNames;      // Cached locally for custom screen rendering
     hide List[String] achDescs;
-    hide List[Integer] achCats;      // Category per achievement
-    hide List[Integer] achColors;    // Icon color per achievement
-    hide Integer unlockedMask1;      // Bits 0-31 for first 32 achievements
-    hide Integer unlockedMask2;      // Bits 0-31 for achievements 32-63
-
-    // Notification state
-    hide Boolean notifyActive;
-    hide Integer notifyTimer;
-    hide Integer notifyIndex;
-    hide Integer notifySlideY;       // Slide-in animation
-
-    // Stats tracked for achievement conditions
-    hide Integer totalEnemiesKilled;
-    hide Integer totalCoinsCollected;
-    hide Integer totalDeaths;
-    hide Integer totalJumps;
-    hide Integer totalBulletsShot;
-    hide Integer totalDashesUsed;
-    hide Integer totalPoundsUsed;
-    hide Integer totalGemsCollected;
-    hide Integer totalLoreFound;
-    hide Integer totalBossesDefeated;
-    hide Integer longestCombo;       // Kills without taking damage
-    hide Integer currentCombo;
-    hide Integer speedrunBestMs;     // Best level completion time
 
     expose func initAchievements(p: Palette) {
         pal = p;
-        achNames = [];
-        achDescs = [];
+        tracker = AchievementTracker.New(ACH_COUNT);
         achCats = [];
         achColors = [];
-        unlockedMask1 = 0;
-        unlockedMask2 = 0;
-        notifyActive = false;
-        notifyTimer = 0;
-        notifyIndex = 0;
-        notifySlideY = -60;
-
-        totalEnemiesKilled = 0;
-        totalCoinsCollected = 0;
-        totalDeaths = 0;
-        totalJumps = 0;
-        totalBulletsShot = 0;
-        totalDashesUsed = 0;
-        totalPoundsUsed = 0;
-        totalGemsCollected = 0;
-        totalLoreFound = 0;
-        totalBossesDefeated = 0;
-        longestCombo = 0;
-        currentCombo = 0;
-        speedrunBestMs = 999999;
-
+        achNames = [];
+        achDescs = [];
+        tracker.SetStat(STAT_SPEEDRUN_BEST, 999999);
         defineAchievements();
     }
 
@@ -136,6 +111,8 @@ entity AchievementSystem {
     }
 
     hide func addAch(name: String, desc: String, cat: Integer, color: Integer) {
+        var idx = achNames.length();
+        tracker.Add(idx, name, desc);
         achNames.add(name);
         achDescs.add(desc);
         achCats.add(cat);
@@ -145,175 +122,127 @@ entity AchievementSystem {
     // ─── Stat tracking (called from game.zia) ─────────────────────────
 
     expose func onEnemyKilled() {
-        totalEnemiesKilled = totalEnemiesKilled + 1;
-        currentCombo = currentCombo + 1;
-        if currentCombo > longestCombo { longestCombo = currentCombo; }
+        tracker.IncrementStat(STAT_ENEMIES_KILLED, 1);
+        tracker.IncrementStat(STAT_CURRENT_COMBO, 1);
+        var combo = tracker.GetStat(STAT_CURRENT_COMBO);
+        if combo > tracker.GetStat(STAT_LONGEST_COMBO) {
+            tracker.SetStat(STAT_LONGEST_COMBO, combo);
+        }
         checkCombat();
     }
 
     expose func onPlayerHit() {
-        currentCombo = 0;
+        tracker.SetStat(STAT_CURRENT_COMBO, 0);
     }
 
     expose func onPlayerDeath() {
-        totalDeaths = totalDeaths + 1;
-        currentCombo = 0;
-        if totalDeaths == 10 { tryUnlock(30); } // Resilient
+        tracker.IncrementStat(STAT_DEATHS, 1);
+        tracker.SetStat(STAT_CURRENT_COMBO, 0);
+        if tracker.GetStat(STAT_DEATHS) == 10 { tracker.Unlock(30); }
     }
 
     expose func onCoinCollected() {
-        totalCoinsCollected = totalCoinsCollected + 1;
+        tracker.IncrementStat(STAT_COINS_COLLECTED, 1);
         checkCollection();
     }
 
     expose func onGemCollected() {
-        totalGemsCollected = totalGemsCollected + 1;
+        tracker.IncrementStat(STAT_GEMS_COLLECTED, 1);
         checkCollection();
     }
 
     expose func onBulletFired() {
-        totalBulletsShot = totalBulletsShot + 1;
-        if totalBulletsShot == 200 { tryUnlock(10); }
+        tracker.IncrementStat(STAT_BULLETS_SHOT, 1);
+        if tracker.GetStat(STAT_BULLETS_SHOT) == 200 { tracker.Unlock(10); }
     }
 
     expose func onDashUsed() {
-        totalDashesUsed = totalDashesUsed + 1;
-        if totalDashesUsed == 50 { tryUnlock(12); }
+        tracker.IncrementStat(STAT_DASHES_USED, 1);
+        if tracker.GetStat(STAT_DASHES_USED) == 50 { tracker.Unlock(12); }
     }
 
     expose func onPoundUsed() {
-        totalPoundsUsed = totalPoundsUsed + 1;
-        if totalPoundsUsed == 25 { tryUnlock(13); }
+        tracker.IncrementStat(STAT_POUNDS_USED, 1);
+        if tracker.GetStat(STAT_POUNDS_USED) == 25 { tracker.Unlock(13); }
     }
 
     expose func onJump() {
-        totalJumps = totalJumps + 1;
+        tracker.IncrementStat(STAT_JUMPS, 1);
     }
 
     expose func onLoreFound(count: Integer) {
-        totalLoreFound = count;
-        if count >= 10 { tryUnlock(23); }
+        tracker.SetStat(STAT_LORE_FOUND, count);
+        if count >= 10 { tracker.Unlock(23); }
     }
 
     expose func onLevelReached(levelNum: Integer) {
-        if levelNum >= 1 { tryUnlock(0); } // First Steps
-        if levelNum >= 2 { tryUnlock(1); } // Deep Delver
-        if levelNum >= 3 { tryUnlock(2); } // Crystal Seeker
-        if levelNum >= 6 { tryUnlock(3); } // Into the Fire
-        if levelNum >= 8 { tryUnlock(4); } // Frozen Frontier
-        if levelNum >= 10 { tryUnlock(5); } // The Core Awaits
+        if levelNum >= 1 { tracker.Unlock(0); }
+        if levelNum >= 2 { tracker.Unlock(1); }
+        if levelNum >= 3 { tracker.Unlock(2); }
+        if levelNum >= 6 { tracker.Unlock(3); }
+        if levelNum >= 8 { tracker.Unlock(4); }
+        if levelNum >= 10 { tracker.Unlock(5); }
     }
 
     expose func onBossDefeated(bossType: Integer) {
-        totalBossesDefeated = totalBossesDefeated + 1;
-        if bossType == ENEMY_SPORE_MOTHER { tryUnlock(14); }
-        if bossType == ENEMY_CRYSTAL_WYRM { tryUnlock(15); }
-        if bossType == ENEMY_MAGMA_CORE { tryUnlock(16); }
-        if bossType == ENEMY_ARCHITECT { tryUnlock(17); }
-        if totalBossesDefeated >= 4 { tryUnlock(18); }
+        tracker.IncrementStat(STAT_BOSSES_DEFEATED, 1);
+        if bossType == ENEMY_SPORE_MOTHER { tracker.Unlock(14); }
+        if bossType == ENEMY_CRYSTAL_WYRM { tracker.Unlock(15); }
+        if bossType == ENEMY_MAGMA_CORE { tracker.Unlock(16); }
+        if bossType == ENEMY_ARCHITECT { tracker.Unlock(17); }
+        if tracker.GetStat(STAT_BOSSES_DEFEATED) >= 4 { tracker.Unlock(18); }
     }
 
     expose func onLevelComplete(timeMs: Integer, damageTaken: Integer) {
-        if timeMs < 60000 { tryUnlock(25); } // Speed Runner
-        if timeMs < 30000 { tryUnlock(26); } // Lightning Fast
-        if damageTaken == 0 { tryUnlock(27); } // Unstoppable
-        if timeMs < speedrunBestMs { speedrunBestMs = timeMs; }
+        if timeMs < 60000 { tracker.Unlock(25); }
+        if timeMs < 30000 { tracker.Unlock(26); }
+        if damageTaken == 0 { tracker.Unlock(27); }
+        if timeMs < tracker.GetStat(STAT_SPEEDRUN_BEST) {
+            tracker.SetStat(STAT_SPEEDRUN_BEST, timeMs);
+        }
     }
 
-    expose func onAllAbilities() { tryUnlock(28); }
-    expose func onAllLore() { tryUnlock(24); }
+    expose func onAllAbilities() { tracker.Unlock(28); }
+    expose func onAllLore() { tracker.Unlock(24); }
 
     hide func checkCombat() {
-        if totalEnemiesKilled >= 1 { tryUnlock(6); }
-        if totalEnemiesKilled >= 50 { tryUnlock(7); }
-        if totalEnemiesKilled >= 100 { tryUnlock(8); }
-        if totalEnemiesKilled >= 500 { tryUnlock(9); }
-        if currentCombo >= 5 { tryUnlock(11); }
+        var kills = tracker.GetStat(STAT_ENEMIES_KILLED);
+        var combo = tracker.GetStat(STAT_CURRENT_COMBO);
+        if kills >= 1 { tracker.Unlock(6); }
+        if kills >= 50 { tracker.Unlock(7); }
+        if kills >= 100 { tracker.Unlock(8); }
+        if kills >= 500 { tracker.Unlock(9); }
+        if combo >= 5 { tracker.Unlock(11); }
     }
 
     hide func checkCollection() {
-        if totalCoinsCollected >= 100 { tryUnlock(19); }
-        if totalCoinsCollected >= 500 { tryUnlock(20); }
-        if totalGemsCollected >= 25 { tryUnlock(21); }
-        if totalGemsCollected >= 100 { tryUnlock(22); }
+        var coins = tracker.GetStat(STAT_COINS_COLLECTED);
+        var gems = tracker.GetStat(STAT_GEMS_COLLECTED);
+        if coins >= 100 { tracker.Unlock(19); }
+        if coins >= 500 { tracker.Unlock(20); }
+        if gems >= 25 { tracker.Unlock(21); }
+        if gems >= 100 { tracker.Unlock(22); }
     }
 
-    // ─── Unlock + notification ────────────────────────────────────────
-
-    hide func tryUnlock(idx: Integer) {
-        if idx < 0 or idx >= ACH_COUNT { return; }
-        // Check if already unlocked (simplified — just check mask1 for now)
-        var bit = 1;
-        var b = 0;
-        while b < idx {
-            bit = bit * 2;
-            b = b + 1;
-        }
-        if (unlockedMask1 / bit) % 2 == 1 { return; } // Already unlocked
-        unlockedMask1 = unlockedMask1 + bit;
-        // Show notification
-        notifyActive = true;
-        notifyTimer = 3000; // 3 seconds
-        notifyIndex = idx;
-        notifySlideY = -60; // Start off-screen
-    }
+    // ─── Query (delegates to tracker) ──────────────────────────────────
 
     expose func isUnlocked(idx: Integer) -> Boolean {
-        if idx < 0 or idx >= ACH_COUNT { return false; }
-        var bit = 1;
-        var b = 0;
-        while b < idx { bit = bit * 2; b = b + 1; }
-        return (unlockedMask1 / bit) % 2 == 1;
+        return tracker.IsUnlocked(idx);
     }
 
     expose func getUnlockedCount() -> Integer {
-        var count = 0;
-        var i = 0;
-        while i < ACH_COUNT {
-            if isUnlocked(i) { count = count + 1; }
-            i = i + 1;
-        }
-        return count;
+        return tracker.UnlockedCount;
     }
 
-    // ─── Update + Draw ────────────────────────────────────────────────
+    // ─── Update + Draw (delegates to tracker notification system) ────
 
     expose func update(dt: Integer) {
-        if notifyActive {
-            notifyTimer = notifyTimer - dt;
-            // Slide in
-            if notifySlideY < 10 { notifySlideY = notifySlideY + 4; }
-            if notifyTimer <= 0 {
-                notifyActive = false;
-                notifySlideY = -60;
-            }
-        }
+        tracker.Update(dt);
     }
 
-    // Draw achievement notification popup (top-center of screen)
+    // Draw achievement notification popup (rendered by AchievementTracker)
     expose func drawNotification(canvas: Canvas) {
-        if not notifyActive { return; }
-        if notifyIndex < 0 or notifyIndex >= achNames.length() { return; }
-
-        var nw = 400;
-        var nh = 50;
-        var nx = SCREEN_W / 2 - nw / 2;
-        var ny = notifySlideY;
-
-        // Background panel
-        canvas.Box(nx + 2, ny + 2, nw, nh, Color.RGB(0, 0, 0));
-        canvas.Box(nx, ny, nw, nh, Color.RGB(20, 25, 40));
-        canvas.Frame(nx, ny, nw, nh, achColors.get(notifyIndex));
-
-        // Achievement icon (colored disc)
-        canvas.Disc(nx + 25, ny + 25, 12, achColors.get(notifyIndex));
-        canvas.Disc(nx + 25, ny + 25, 8, Color.RGB(255, 255, 255));
-        canvas.Text(nx + 21, ny + 19, "!", Color.RGB(0, 0, 0));
-
-        // Text
-        canvas.TextScaled(nx + 50, ny + 6, "ACHIEVEMENT UNLOCKED", Color.RGB(255, 221, 34), 1);
-        canvas.TextScaled(nx + 50, ny + 24, achNames.get(notifyIndex),
-                          Color.RGB(255, 255, 255), 2);
+        tracker.Draw(canvas);
     }
 
     // Draw full achievements screen
@@ -328,10 +257,11 @@ entity AchievementSystem {
         canvas.Box(px, py, pw, ph, Color.RGB(12, 15, 25));
         canvas.Frame(px, py, pw, ph, Color.RGB(60, 100, 160));
 
-        // Title + progress
-        var unlocked = getUnlockedCount();
+        // Title + progress (via tracker)
+        var unlocked = tracker.UnlockedCount;
+        var total = tracker.TotalCount;
         canvas.TextCenteredScaled(py + 15, "ACHIEVEMENTS", Color.RGB(200, 210, 240), 3);
-        canvas.Text(px + pw - 120, py + 22, Int(unlocked) + " / " + Int(ACH_COUNT),
+        canvas.Text(px + pw - 120, py + 22, Int(unlocked) + " / " + Int(total),
                     Color.RGB(140, 150, 170));
         canvas.Line(px + 20, py + 50, px + pw - 20, py + 50, Color.RGB(40, 60, 90));
 
@@ -341,7 +271,7 @@ entity AchievementSystem {
         var barW = pw - 40;
         var barH = 6;
         canvas.Box(barX, barY, barW, barH, Color.RGB(20, 25, 40));
-        var fillW = unlocked * barW / ACH_COUNT;
+        var fillW = unlocked * barW / total;
         canvas.Box(barX, barY, fillW, barH, Color.RGB(80, 120, 200));
 
         // Achievement list (scrollable)
@@ -406,10 +336,10 @@ entity AchievementSystem {
         return "Other";
     }
 
-    // ─── Persistence ──────────────────────────────────────────────────
-    expose func getMask() -> Integer { return unlockedMask1; }
-    expose func setMask(mask: Integer) { unlockedMask1 = mask; }
-    expose func getTotalKills() -> Integer { return totalEnemiesKilled; }
-    expose func getTotalCoins() -> Integer { return totalCoinsCollected; }
-    expose func getTotalDeaths() -> Integer { return totalDeaths; }
+    // ─── Persistence (save/load via tracker bitmask) ──────────────────
+    expose func getMask() -> Integer { return tracker.Mask; }
+    expose func setMask(mask: Integer) { tracker.Mask = mask; }
+    expose func getTotalKills() -> Integer { return tracker.GetStat(STAT_ENEMIES_KILLED); }
+    expose func getTotalCoins() -> Integer { return tracker.GetStat(STAT_COINS_COLLECTED); }
+    expose func getTotalDeaths() -> Integer { return tracker.GetStat(STAT_DEATHS); }
 }

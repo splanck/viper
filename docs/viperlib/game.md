@@ -31,6 +31,10 @@ last-verified: 2026-03-25
 - [Viper.Game.DebugOverlay](#vipergamedebugoverlay)
 - [Viper.Game.Collision](#vipergamecollision)
 - [Viper.Game.Grid2D](#vipergamegrid2d)
+- [Viper.Game.Lighting2D](#vipergamelighting2d)
+- [Viper.Game.PlatformerController](#vipergameplatformercontroller)
+- [Viper.Game.AchievementTracker](#vipergameachievementtracker)
+- [Viper.Game.Typewriter](#vipergametypewriter)
 - [Viper.Game.UI.*](game/ui.md) — Label, Bar, Panel, NineSlice, MenuList (in-game UI widgets)
 - [Viper.Game.Pathfinder](game/pathfinding.md) — A* grid pathfinding for AI navigation
 - [Current Limits](#current-limits)
@@ -429,21 +433,44 @@ between waypoints with a fixed-point coordinate scale of **1000 = 1 world unit**
 
 ## Viper.Game.Timer
 
-A frame-based countdown timer. Each call to `Tick()` decrements the remaining count by 1.
-At 60 fps a 1-second timer requires `SetDuration(60)`.
+A countdown timer supporting both frame-based and millisecond-based modes. Frame mode counts
+frames (call `Update()` once per frame). Ms mode counts delta time (call `UpdateMs(dt)` with
+the frame's delta time in ms) for frame-rate-independent timing.
 
 **Type:** Instance (obj)
 **Constructor:** `Timer.New()`
 
-### Methods
+### Frame-Based Methods
 
 | Method | Signature | Description |
 |---|---|---|
-| `SetDuration(frames)` | `none(Integer)` | Set countdown in frames |
-| `Tick()` | `none()` | Decrement by 1 |
-| `IsFinished()` | `Integer()` | 1 when remaining reaches 0 |
-| `Remaining()` | `Integer()` | Frames remaining |
-| `Reset()` | `none()` | Restart from the original duration |
+| `Start(frames)` | `none(Integer)` | Start one-shot countdown in frames |
+| `StartRepeating(frames)` | `none(Integer)` | Start repeating timer in frames |
+| `Update()` | `Boolean()` | Advance by 1 frame; returns true on expiry |
+| `Stop()` | `none()` | Stop the timer |
+| `Reset()` | `none()` | Reset elapsed to 0 without changing state |
+
+### Millisecond-Based Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `StartMs(durationMs)` | `none(Integer)` | Start one-shot countdown in milliseconds |
+| `StartRepeatingMs(intervalMs)` | `none(Integer)` | Start repeating timer in milliseconds |
+| `UpdateMs(dt)` | `Boolean(Integer)` | Advance by dt ms; returns true on expiry |
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `IsRunning` | `Boolean` | True if timer is counting |
+| `IsExpired` | `Boolean` | True if timer finished |
+| `IsRepeating` | `Boolean` | True if auto-restarting |
+| `Elapsed` | `Integer` | Frames elapsed (frame mode) |
+| `Remaining` | `Integer` | Frames remaining (frame mode) |
+| `ElapsedMs` | `Integer` | Milliseconds elapsed (ms mode) |
+| `RemainingMs` | `Integer` | Milliseconds remaining (ms mode) |
+| `Progress` | `Integer` | 0-100 completion percentage (both modes) |
+| `Duration` | `Integer` | Total duration (read/write) |
 
 ---
 
@@ -688,3 +715,139 @@ cam.Follow(camX, camY);
 
 > **ScreenFX color** uses `0xRRGGBBAA`; **Canvas drawing** uses `0x00RRGGBB`.
 > These formats are incompatible — always check which is expected.
+
+---
+
+## Viper.Game.Lighting2D
+
+A 2D darkness overlay system with a pulsing player light and pooled dynamic point lights.
+Renders a full-screen tinted overlay, then punches bright "holes" for light sources. Suitable
+for cave, dungeon, and horror game atmospheres.
+
+**Type:** Instance (obj)
+**Constructor:** `Lighting2D.New(maxDynamicLights)`
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Darkness` | `Integer` | Overlay alpha (0 = fully lit, 255 = pitch black) |
+| `TintColor` | `Integer` | Darkness tint color (0xRRGGBB) — e.g., blue for underwater |
+| `LightCount` | `Integer` | Number of active dynamic lights |
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `SetPlayerLight(radius, color)` | `none(Integer, Integer)` | Configure the player's light radius and color |
+| `AddLight(x, y, radius, color, lifetime)` | `none(Integer, Integer, Integer, Integer, Integer)` | Add a dynamic light at world position with frame lifetime |
+| `AddTileLight(screenX, screenY, radius, color)` | `none(Integer, Integer, Integer, Integer)` | Add a single-frame tile glow at screen position |
+| `ClearLights()` | `none()` | Remove all dynamic lights |
+| `Update()` | `none()` | Tick light lifetimes, advance player light pulse |
+| `Draw(canvas, camX, camY, playerScreenX, playerScreenY)` | `none(Canvas, Integer, Integer, Integer, Integer)` | Render darkness overlay + all lights |
+
+---
+
+## Viper.Game.PlatformerController
+
+Encapsulates standard 2D platformer input mechanics: jump buffering, coyote time, variable
+jump height, and separate ground/air acceleration curves with apex gravity bonus. All timing
+is ms-based for frame-rate independence.
+
+**Type:** Instance (obj)
+**Constructor:** `PlatformerController.New()`
+
+### Configuration Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `SetJumpBuffer(ms)` | `none(Integer)` | Grace window for early jump press (default: 100ms) |
+| `SetCoyoteTime(ms)` | `none(Integer)` | Grace window after leaving ledge (default: 80ms) |
+| `SetAcceleration(ground, air, decel)` | `none(Integer, Integer, Integer)` | Horizontal acceleration rates (x100 units) |
+| `SetJumpForce(full, cut)` | `none(Integer, Integer)` | Full jump and early-release cut force (negative = up) |
+| `SetMaxSpeed(normal, sprint)` | `none(Integer, Integer)` | Speed caps for walk and sprint (x100 units) |
+| `SetGravity(gravity, maxFall)` | `none(Integer, Integer)` | Gravity strength and terminal velocity |
+| `SetApexBonus(threshold, gravityPct)` | `none(Integer, Integer)` | Apex hang: reduce gravity when |vy| < threshold |
+
+### Per-Frame Update
+
+| Method | Signature | Description |
+|---|---|---|
+| `Update(dt, left, right, jumpPressed, jumpHeld, onGround, sprint)` | `none(Integer, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean)` | Process input and compute velocities |
+
+### Output Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `VX` | `Integer` | Computed horizontal velocity (x100, read/write) |
+| `VY` | `Integer` | Computed vertical velocity (x100, read/write) |
+| `ShouldJump` | `Boolean` | True when jump buffer + coyote resolve (one-shot, consumed on read) |
+| `JumpForce` | `Integer` | Configured full jump force |
+| `Facing` | `Integer` | 1 = right, -1 = left |
+| `IsMoving` | `Boolean` | True when VX != 0 |
+
+---
+
+## Viper.Game.AchievementTracker
+
+Achievement system with bitmask-based unlock tracking, stat counters, and animated slide-in
+notification popups. Supports up to 64 achievements and 32 stat counters. The unlock mask is
+a single Integer suitable for save/load via SaveData.
+
+**Type:** Instance (obj)
+**Constructor:** `AchievementTracker.New(maxAchievements)`
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Mask` | `Integer` | Bitmask of unlocked achievements (read/write for save/load) |
+| `UnlockedCount` | `Integer` | Number of achievements unlocked |
+| `TotalCount` | `Integer` | Number of achievements defined |
+| `NotifyDuration` | `Integer` | Notification display time in ms (write-only, default: 3000) |
+| `HasNotification` | `Boolean` | True when a notification popup is visible |
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `Add(id, name, description)` | `none(Integer, String, String)` | Define an achievement |
+| `Unlock(id)` | `Boolean(Integer)` | Unlock achievement; returns true if newly unlocked |
+| `IsUnlocked(id)` | `Boolean(Integer)` | Check if achievement is unlocked |
+| `IncrementStat(statId, amount)` | `none(Integer, Integer)` | Add to a stat counter |
+| `GetStat(statId)` | `Integer(Integer)` | Read a stat counter |
+| `SetStat(statId, value)` | `none(Integer, Integer)` | Set a stat counter directly |
+| `Update(dt)` | `none(Integer)` | Tick notification timer |
+| `Draw(canvas)` | `none(Canvas)` | Render notification popup (top-right corner) |
+
+---
+
+## Viper.Game.Typewriter
+
+Character-by-character text reveal effect for dialogue, lore terminals, tutorials, and
+narrative sequences. Accumulates milliseconds and reveals one character per configured
+interval. `Skip()` instantly reveals all remaining text.
+
+**Type:** Instance (obj)
+**Constructor:** `Typewriter.New()`
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `VisibleText` | `String` | Text revealed so far |
+| `FullText` | `String` | Complete source text |
+| `IsActive` | `Boolean` | True while revealing |
+| `IsComplete` | `Boolean` | True when fully revealed |
+| `Progress` | `Integer` | 0-100 reveal percentage |
+| `CharCount` | `Integer` | Characters revealed |
+| `TotalChars` | `Integer` | Total characters in source |
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `Say(text, rateMs)` | `none(String, Integer)` | Start revealing text at rateMs per character |
+| `Update(dt)` | `Boolean(Integer)` | Advance reveal; returns true on completion |
+| `Skip()` | `none()` | Reveal all remaining text instantly |
+| `Reset()` | `none()` | Clear text and state |

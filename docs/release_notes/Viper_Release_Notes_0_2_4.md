@@ -43,6 +43,22 @@ Comprehensive documentation pass across all 2,668 source files with standardized
 
 ---
 
+### New Game Runtime Classes
+
+Five additions to the `Viper.Game` namespace:
+
+- **Timer ms-mode** — `StartMs(durationMs)`, `UpdateMs(dt)`, `ElapsedMs`, `RemainingMs` added to the existing `Timer` class for delta-time-independent cooldowns.
+- **Lighting2D** — 2D darkness overlay with pulsing player light and pooled dynamic point lights. Configurable darkness alpha, tint color, and per-biome atmosphere.
+- **PlatformerController** — Jump buffering, coyote time, variable jump height, ground/air acceleration curves, and apex gravity bonus. All ms-based.
+- **AchievementTracker** — Up to 64 achievements with bitmask unlock tracking, 32 stat counters, and animated slide-in notification popups. Mask is save/load compatible.
+- **Typewriter** — Character-by-character text reveal with configurable ms-per-character rate. For dialogue, lore terminals, tutorials.
+
+### Runtime Directory Reorganization
+
+Game engine classes moved from `src/runtime/collections/` to `src/runtime/game/` — 36 files (18 class pairs). Collections now contains only data structures. No API changes.
+
+---
+
 ### Demo Games
 
 - **XENOSCAPE**: Sidescroller demo expanded into a Metroid-style action exploration game — 5 themed levels, 30 enemy types, boss fights, unlockable abilities, procedural music, dynamic lighting, and save system. 17K LOC across 26 files. Migrated to use runtime APIs (CollisionRect, Tilemap, ObjectPool, Quadtree, Camera) and added smooth biome crossfade transitions via Color.Lerp.

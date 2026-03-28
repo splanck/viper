@@ -1,16 +1,11 @@
 // =============================================================================
 // Lighting System — Darkness overlay, dynamic lights, ambient glow
 // =============================================================================
-// Creates atmospheric depth for cave and underground biomes by rendering a
-// darkness overlay with light sources that punch circular holes.
+// Wraps Viper.Game.Lighting2D for atmospheric 2D lighting effects.
+// The Lighting2D runtime class handles darkness overlay rendering, player light
+// pulsing, dynamic light lifetime management, and tile-based light sources.
 //
-// Rendering approach:
-//   1. Full-screen dark overlay (BoxAlpha with biome darkness level)
-//   2. Player light: concentric DiscAlpha rings creating soft falloff
-//   3. Tile lights: torches, crystals, lava emit smaller light circles
-//   4. Dynamic lights: explosions, projectiles, pickups create brief flashes
-//
-// Viper APIs: canvas.BoxAlpha, canvas.DiscAlpha, canvas.Disc
+// Viper APIs: Viper.Game.Lighting2D
 // =============================================================================
 
 module lighting;
@@ -50,174 +45,72 @@ final DARK_CORRUPTED = 180;   // Corrupted core — nearly pitch black
 final DARK_UNDERWATER = 140;  // Underground lake — murky
 
 // =============================================================================
-// Lighting Entity
+// Lighting Entity — thin wrapper around Lighting2D runtime class
 // =============================================================================
 entity LightingSystem {
     expose func init() {}
     hide Palette pal;
-    hide Integer darknessLevel;
-    hide Integer darkColor;
-
-    // Player light
-    hide Integer playerLightRadius;
-    hide Integer playerLightPulse; // Animation timer
-
-    // Dynamic light pool via ObjectPool with parallel arrays
-    hide ObjectPool lightPool;
-    hide List[Integer] dynX;
-    hide List[Integer] dynY;
-    hide List[Integer] dynRadius;
-    hide List[Integer] dynColor;
-    hide List[Integer] dynLife;     // Remaining frames
-    hide List[Integer] dynMaxLife;  // Starting frames (for fade calc)
+    hide Lighting2D lit;
 
     expose func initLighting(p: Palette) {
         pal = p;
-        darknessLevel = 0;
-        darkColor = Color.RGB(0, 0, 10);
-        playerLightRadius = 180;
-        playerLightPulse = 0;
-
-        lightPool = ObjectPool.New(MAX_DYN_LIGHTS);
-        dynX = [];
-        dynY = [];
-        dynRadius = [];
-        dynColor = [];
-        dynLife = [];
-        dynMaxLife = [];
-        for i in 0..MAX_DYN_LIGHTS {
-            dynX.add(0); dynY.add(0); dynRadius.add(0);
-            dynColor.add(0); dynLife.add(0); dynMaxLife.add(0);
-        }
+        lit = Lighting2D.New(MAX_DYN_LIGHTS);
+        lit.Darkness = 0;
+        lit.TintColor = Color.RGB(0, 0, 10);
+        lit.SetPlayerLight(180, Color.RGB(60, 70, 80));
     }
 
-    // Set the darkness level for the current biome.
     expose func setDarkness(level: Integer) {
-        darknessLevel = level;
+        lit.Darkness = level;
     }
 
-    // Set the darkness tint color (e.g., blue for underwater, green for poison).
     expose func setDarkColor(color: Integer) {
-        darkColor = color;
+        lit.TintColor = color;
     }
 
-    // Add a brief dynamic light (explosion, bullet impact, etc.).
     expose func addLight(x: Integer, y: Integer, radius: Integer,
                          color: Integer, lifetimeFrames: Integer) {
-        var handle = lightPool.Acquire();
-        if handle < 0 { return; } // Pool full — light is dropped
-        dynX.set(handle, x);
-        dynY.set(handle, y);
-        dynRadius.set(handle, radius);
-        dynColor.set(handle, color);
-        dynLife.set(handle, lifetimeFrames);
-        dynMaxLife.set(handle, lifetimeFrames);
+        lit.AddLight(x, y, radius, color, lifetimeFrames);
     }
 
-    // Update dynamic light lifetimes.
     expose func update() {
-        playerLightPulse = playerLightPulse + 1;
-        if playerLightPulse > 120 { playerLightPulse = 0; }
-
-        // Tick down dynamic lights, release expired
-        var i = lightPool.FirstActive();
-        while i >= 0 {
-            var next = lightPool.NextActive(i);
-            dynLife.set(i, dynLife.get(i) - 1);
-            if dynLife.get(i) <= 0 {
-                lightPool.Release(i);
-            }
-            i = next;
-        }
+        lit.Update();
     }
 
-    // Render the darkness overlay with light cutouts.
-    // Call this AFTER all game entities are drawn (as a post-process overlay).
+    // Render the darkness overlay with all light sources.
+    // Call this AFTER all game entities are drawn (post-process overlay).
     expose func draw(canvas: Canvas, camX: Integer, camY: Integer,
                      playerScreenX: Integer, playerScreenY: Integer) {
-        if darknessLevel <= 0 { return; }
-
-        // Step 1: Full-screen darkness overlay
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, darkColor, darknessLevel);
-
-        // Step 2: Player light — concentric rings for soft falloff
-        // Pulse the radius slightly for a living-light feel
-        var pulse = 0;
-        if playerLightPulse < 60 {
-            pulse = playerLightPulse / 6;
-        } else {
-            pulse = (120 - playerLightPulse) / 6;
-        }
-        var radius = playerLightRadius + pulse;
-
-        // Draw light as negative darkness (bright disc with decreasing alpha)
-        // Outer glow (very subtle)
-        canvas.DiscAlpha(playerScreenX, playerScreenY, radius + 40,
-                         Color.RGB(40, 50, 60), 30);
-        // Main light cone — multiple rings with decreasing alpha
-        var ring = 0;
-        while ring < 6 {
-            var r = radius - ring * (radius / 6);
-            var alpha = 40 + ring * 15;
-            if alpha > darknessLevel { alpha = darknessLevel; }
-            // "Erase" darkness by drawing the background sky color at this alpha
-            canvas.DiscAlpha(playerScreenX, playerScreenY, r,
-                             Color.RGB(30, 40, 50), alpha);
-            ring = ring + 1;
-        }
-        // Inner bright core
-        canvas.DiscAlpha(playerScreenX, playerScreenY, radius / 4,
-                         Color.RGB(60, 70, 80), darknessLevel / 2);
-
-        // Step 3: Dynamic lights via ObjectPool iteration
-        var i = lightPool.FirstActive();
-        while i >= 0 {
-            var next = lightPool.NextActive(i);
-            var lx = dynX.get(i) - camX;
-            var ly = dynY.get(i) - camY;
-            var lr = dynRadius.get(i);
-            var lc = dynColor.get(i);
-            // Fade based on remaining life
-            var fadeAlpha = darknessLevel;
-            if dynMaxLife.get(i) > 0 {
-                fadeAlpha = darknessLevel * dynLife.get(i) / dynMaxLife.get(i);
-            }
-            if fadeAlpha > 0 {
-                canvas.DiscAlpha(lx, ly, lr, lc, fadeAlpha / 2);
-                canvas.DiscAlpha(lx, ly, lr / 2, lc, fadeAlpha);
-            }
-            i = next;
-        }
+        if lit.Darkness <= 0 { return; }
+        lit.Draw(canvas, camX, camY, playerScreenX, playerScreenY);
     }
 
-    // Add a tile-based static light source (called during tile rendering).
-    // Draws a small glow around the tile.
+    // Add a tile-based light source (accumulated per frame, auto-cleared on Draw).
     expose func drawTileLight(canvas: Canvas, screenX: Integer, screenY: Integer,
                               radius: Integer, color: Integer) {
-        if darknessLevel <= 0 { return; }
+        if lit.Darkness <= 0 { return; }
         var cx = screenX + TILE_SIZE / 2;
         var cy = screenY + TILE_SIZE / 2;
-        canvas.DiscAlpha(cx, cy, radius, color, darknessLevel / 3);
-        canvas.DiscAlpha(cx, cy, radius / 2, color, darknessLevel / 2);
+        lit.AddTileLight(cx, cy, radius, color);
     }
 
-    // Convenience: add explosion light.
+    // Convenience: add explosion light
     expose func flashExplosion(x: Integer, y: Integer) {
-        addLight(x, y, 120, Color.RGB(255, 200, 100), 8);
+        lit.AddLight(x, y, 120, Color.RGB(255, 200, 100), 8);
     }
 
-    // Convenience: add bullet light.
+    // Convenience: add bullet light
     expose func flashBullet(x: Integer, y: Integer) {
-        addLight(x, y, 40, Color.RGB(68, 238, 255), 3);
+        lit.AddLight(x, y, 40, Color.RGB(68, 238, 255), 3);
     }
 
-    // Convenience: add pickup glow.
+    // Convenience: add pickup glow
     expose func flashPickup(x: Integer, y: Integer) {
-        addLight(x, y, 80, Color.RGB(255, 221, 34), 12);
+        lit.AddLight(x, y, 80, Color.RGB(255, 221, 34), 12);
     }
 
-    // Convenience: add boss phase pulse.
+    // Convenience: add boss phase pulse
     expose func flashBossPhase(x: Integer, y: Integer) {
-        addLight(x, y, 300, Color.RGB(255, 50, 50), 20);
+        lit.AddLight(x, y, 300, Color.RGB(255, 50, 50), 20);
     }
 }

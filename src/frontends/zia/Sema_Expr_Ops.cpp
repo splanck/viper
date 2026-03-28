@@ -187,6 +187,36 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                             }
                         }
                     }
+
+                    // Resolve runtime class property setters (e.g., ctrl.VY = value).
+                    // Getters are resolved in Sema_Expr_Advanced; setters need the same
+                    // symbol-table lookup here on the assignment path.
+                    if (baseType && resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end())
+                    {
+                        std::string setterName = baseType->name + ".set_" + fieldExpr->field;
+                        Symbol *setter = lookupSymbol(setterName);
+                        if (setter && setter->kind == Symbol::Kind::Function)
+                        {
+                            resolvedFieldSetters_[fieldExpr] = setterName;
+                            // For write-only properties (no getter), register the
+                            // property type from the setter's value parameter so
+                            // the lowerer can insert Number↔Integer conversions.
+                            if (setter->type && setter->type->kind == TypeKindSem::Function)
+                            {
+                                auto params = setter->type->paramTypes();
+                                // Setter signature: (self, value) — value type is params[1]
+                                if (params.size() >= 2 && params[1])
+                                {
+                                    exprTypes_[fieldExpr] = params[1];
+                                }
+                                else if (params.size() == 1 && params[0])
+                                {
+                                    // Static setter: (value) — no self
+                                    exprTypes_[fieldExpr] = params[0];
+                                }
+                            }
+                        }
+                    }
                 }
 
                 TypeRef assignTarget = leftType;
