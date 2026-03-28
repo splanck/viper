@@ -1437,24 +1437,6 @@ bool lowerStore(const il::core::Instr &ins,
         return true;
     const unsigned ptrId = ins.operands[0].id;
     const int off = ctx.fb.localOffset(ptrId);
-    const bool isStr = (ins.type.kind == il::core::Type::Kind::Str);
-    auto emitRefcountedStore = [&](uint16_t valueVreg,
-                                   const MInstr &loadOld,
-                                   const MInstr &storeNew) {
-        const uint16_t oldVreg = ctx.nextVRegId++;
-        MInstr load = loadOld;
-        load.ops[0] = MOperand::vregOp(RegClass::GPR, oldVreg);
-        out.instrs.push_back(std::move(load));
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRR,
-                   {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, oldVreg)}});
-        out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_release_maybe")}});
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRR,
-                   {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, valueVreg)}});
-        out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
-        out.instrs.push_back(storeNew);
-    };
     if (off != 0) {
         // Store to alloca local via FP offset
         uint16_t v = 0;
@@ -1472,13 +1454,6 @@ bool lowerStore(const il::core::Instr &ins,
                 out.instrs.push_back(
                     MInstr{MOpcode::StrFprFpImm,
                            {MOperand::vregOp(RegClass::FPR, srcF), MOperand::immOp(off)}});
-            } else if (isStr) {
-                emitRefcountedStore(
-                    v,
-                    MInstr{MOpcode::LdrRegFpImm,
-                           {MOperand::vregOp(RegClass::GPR, 0), MOperand::immOp(off)}},
-                    MInstr{MOpcode::StrRegFpImm,
-                           {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(off)}});
             } else {
                 out.instrs.push_back(
                     MInstr{MOpcode::StrRegFpImm,
@@ -1504,17 +1479,6 @@ bool lowerStore(const il::core::Instr &ins,
                                             {MOperand::vregOp(RegClass::FPR, srcF),
                                              MOperand::vregOp(RegClass::GPR, vbase),
                                              MOperand::immOp(0)}});
-            } else if (isStr) {
-                emitRefcountedStore(
-                    vval,
-                    MInstr{MOpcode::LdrRegBaseImm,
-                           {MOperand::vregOp(RegClass::GPR, 0),
-                            MOperand::vregOp(RegClass::GPR, vbase),
-                            MOperand::immOp(0)}},
-                    MInstr{MOpcode::StrRegBaseImm,
-                           {MOperand::vregOp(RegClass::GPR, vval),
-                            MOperand::vregOp(RegClass::GPR, vbase),
-                            MOperand::immOp(0)}});
             } else {
                 out.instrs.push_back(MInstr{MOpcode::StrRegBaseImm,
                                             {MOperand::vregOp(RegClass::GPR, vval),
