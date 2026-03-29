@@ -59,7 +59,13 @@ These shared prerequisites are now implemented:
 
 Known remaining follow-up:
 
-- Onscreen GPU skybox rendering is still not backend-owned. The RTT ownership bug is fixed, but full GPU-visible skybox rendering remains separate work.
+- OGL-01 through OGL-16 are implemented, but a smaller follow-on set still remains:
+  - OGL-17: backend-owned cubemap skybox rendering
+  - OGL-18: material environment reflections from `CubeMap3D`
+  - OGL-19: GPU morph normal-delta parity
+  - OGL-20: depth/history-based GPU postfx (SSAO, DOF, motion blur)
+
+Those are real remaining OpenGL gaps because the shared runtime already exposes the relevant APIs or data models, but the current OpenGL path still lacks the end-to-end backend ownership.
 
 ## Backend-Local Work
 
@@ -73,6 +79,10 @@ The detailed implementation work is split across the OpenGL backend plan set in 
 6. `OGL-14`: persistent dynamic buffers
 7. `OGL-15`: real hardware instancing
 8. `OGL-16`: terrain splatting
+9. `OGL-17`: backend-owned cubemap skybox rendering
+10. `OGL-18`: material environment reflections
+11. `OGL-19`: GPU morph normal-delta parity
+12. `OGL-20`: depth/history-based GPU postfx follow-ons
 
 ## Execution Principle
 

@@ -29,6 +29,8 @@ values match the `TrapKind` enum in `src/vm/Trap.hpp`.
 | `IOError`          | 7     | Other I/O failure (permissions, device errors).                  |
 | `Overflow`         | 1     | Checked arithmetic overflow (e.g., `INT64_MIN / -1`, `i64` abs). |
 | `RuntimeError`     | 9     | Catch-all for unexpected runtime failures.                       |
+| `Interrupt`        | 10    | Program interrupted by Ctrl-C or `requestInterrupt()`.           |
+| `NetworkError`     | 11    | Network I/O failure (connection, DNS, TLS, etc.).                |
 
 ## IL Error-Handling Primitives
 

@@ -1005,9 +1005,9 @@ RT_CLASS_END()
 
 | IL | C | BASIC | Zia |
 |----|---|-------|-----|
-| `i64` | `int64_t` | `Integer` / `Long` | `int` |
-| `f64` | `double` | `Double` | `float` |
-| `i1` | `int8_t` (0/1) | `Boolean` | `bool` |
-| `str` | `rt_string` | `String` | `str` |
+| `i64` | `int64_t` | `Integer` / `Long` | `Integer` |
+| `f64` | `double` | `Double` | `Number` |
+| `i1` | `int8_t` (0/1) | `Boolean` | `Boolean` |
+| `str` | `rt_string` | `String` | `String` |
 | `obj` | `void*` | Object type | class instance |
 | `void` | `void` | (no return) | (no return) |

@@ -7,7 +7,7 @@ last-verified: 2026-03-16
 # Testing Guide
 
 This document describes the testing infrastructure for the Viper compiler stack. The test suite
-contains 1,300+ tests across unit, golden, end-to-end, differential, conformance, and fuzz
+contains 1,358 tests across unit, golden, end-to-end, differential, conformance, and fuzz
 categories.
 
 ## Test Suite Overview
@@ -70,23 +70,23 @@ ctest --test-dir build --print-labels
 
 | Label | Count | Description |
 |-------|-------|-------------|
-| `basic` | ~94 | BASIC frontend (lexer, parser, sema, lowerer) |
-| `il` | ~186 | IL core (parsing, serialization, verification, analysis, transforms) |
-| `vm` | ~111 | VM runtime (opcodes, traps, debugging, concurrency) |
-| `runtime` | ~318 | C runtime library (strings, collections, I/O, math, etc.) |
-| `codegen` | ~95 | Code generation (x86_64, AArch64, linker, binary encoding) |
-| `oop` | ~31 | Object-oriented programming (classes, inheritance, interfaces) |
-| `golden` | ~203 | Golden file regression (diagnostic messages, IL/optimizer output) |
-| `e2e` | ~19 | End-to-end pipeline tests |
-| `ilopt` | ~4 | IL optimizer pass golden tests |
-| `conformance` | ~10 | Arithmetic semantics cross-layer equivalence |
-| `zia` | ~88 | Zia language frontend tests |
-| `namespace` | ~13 | Namespace/module system tests |
-| `tools` | ~29 | CLI tools, language server tests |
-| `smoke` | ~5 | Quick sanity tests |
-| `tui` | ~28 | Terminal UI / REPL tests |
+| `basic` | 95 | BASIC frontend (lexer, parser, sema, lowerer) |
+| `il` | 196 | IL core (parsing, serialization, verification, analysis, transforms) |
+| `vm` | 111 | VM runtime (opcodes, traps, debugging, concurrency) |
+| `runtime` | 352 | C runtime library (strings, collections, I/O, math, graphics, etc.) |
+| `codegen` | 121 | Code generation (x86_64, AArch64, linker, binary encoding) |
+| `oop` | 31 | Object-oriented programming (classes, inheritance, interfaces) |
+| `golden` | 203 | Golden file regression (diagnostic messages, IL/optimizer output) |
+| `e2e` | 19 | End-to-end pipeline tests |
+| `ilopt` | 4 | IL optimizer pass golden tests |
+| `conformance` | 10 | Arithmetic semantics cross-layer equivalence |
+| `zia` | 99 | Zia language frontend tests |
+| `namespace` | 5 | Namespace/module system tests |
+| `tools` | 29 | CLI tools, language server tests |
+| `smoke` | 5 | Quick sanity tests |
+| `tui` | 28 | Terminal UI / REPL tests |
 | `perf` | — | Performance benchmarks (excluded from default runs) |
-| `slow` | ~1 | Long-running tests (excluded from default runs) |
+| `slow` | 1 | Long-running tests (excluded from default runs) |
 
 ## Test Categories
 
@@ -514,7 +514,7 @@ cmake --build build-fuzz --target fuzz_zia_lexer
 ## Future Work
 
 - Expand fuzz testing to BASIC lexer/parser, IL parser, IL verifier, VM
-- Full-suite sanitizer CI (ASan + UBSan on all 1,300+ tests)
+- Full-suite sanitizer CI (ASan + UBSan on all 1,358 tests)
 - Reusable DifferentialTestFixture for VM vs native comparisons
 - Test consolidation: merge 196 standalone runtime tests into ~30 themed files
 - LoopRotate, GVN, DSE, LICM edge-case tests
