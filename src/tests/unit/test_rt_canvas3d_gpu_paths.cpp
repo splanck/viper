@@ -51,6 +51,7 @@ static vgfx3d_backend_t make_backend(const char *name) {
 }
 
 static vgfx3d_backend_t kOpenGLBackend = make_backend("opengl");
+static vgfx3d_backend_t kD3D11Backend = make_backend("d3d11");
 static vgfx3d_backend_t kSoftwareBackend = make_backend("software");
 
 static int skybox_draw_calls = 0;
@@ -139,6 +140,29 @@ static void test_gpu_skinning_bypass_for_opengl(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_skinning_bypass_for_d3d11(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kD3D11Backend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "D3D11 skinned draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "D3D11 skinned draw avoids CPU temp buffer");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "D3D11 skinned draw keeps original mesh vertices for GPU skinning");
+    EXPECT_TRUE(draws[0].cmd.bone_palette != nullptr, "D3D11 skinned draw forwards bone palette");
+    EXPECT_TRUE(draws[0].cmd.bone_count == 1, "D3D11 skinned draw forwards bone count");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_cpu_skinning_fallback_for_software(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kSoftwareBackend);
@@ -194,6 +218,33 @@ static void test_gpu_morph_payload_for_opengl(void) {
         EXPECT_TRUE(draws[0].cmd.morph_weights[0] == 0.5f,
                     "OpenGL morphed draw forwards morph weights");
     }
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_gpu_morph_payload_for_d3d11(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kD3D11Backend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 2, "D3D11 morphed draw registers packed deltas and weights");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "D3D11 morphed draw keeps original mesh vertices for GPU morphing");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr, "D3D11 morphed draw forwards packed morph deltas");
+    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr, "D3D11 morphed draw forwards packed morph weights");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "D3D11 morphed draw forwards shape count");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -430,8 +481,10 @@ static void test_instanced_transform_history_forwarded(void) {
 
 int main() {
     test_gpu_skinning_bypass_for_opengl();
+    test_gpu_skinning_bypass_for_d3d11();
     test_cpu_skinning_fallback_for_software();
     test_gpu_morph_payload_for_opengl();
+    test_gpu_morph_payload_for_d3d11();
     test_gpu_morph_normal_payload_for_opengl();
     test_cpu_morph_fallback_for_software();
     test_env_map_payload_forwarded();

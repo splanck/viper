@@ -39,6 +39,8 @@ static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t
         return 1;
     if (strcmp(backend_name, "opengl") == 0)
         return bone_count <= 128;
+    if (strcmp(backend_name, "d3d11") == 0)
+        return bone_count <= 128;
     return 0;
 }
 

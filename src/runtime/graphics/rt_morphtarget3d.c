@@ -63,7 +63,8 @@ typedef struct {
 static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name) {
     if (!backend_name)
         return 0;
-    return strcmp(backend_name, "metal") == 0 || strcmp(backend_name, "opengl") == 0;
+    return strcmp(backend_name, "metal") == 0 || strcmp(backend_name, "opengl") == 0 ||
+           strcmp(backend_name, "d3d11") == 0;
 }
 
 /*==========================================================================
