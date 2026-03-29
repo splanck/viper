@@ -89,8 +89,7 @@ void *rt_debounce_new(int64_t delay_ms) {
     return obj;
 }
 
-/// @brief Perform debounce signal operation.
-/// @param debouncer
+/// @brief Signal the debounce.
 void rt_debounce_signal(void *debouncer) {
     if (!debouncer)
         return;
@@ -99,9 +98,7 @@ void rt_debounce_signal(void *debouncer) {
     data->signal_count++;
 }
 
-/// @brief Perform debounce is ready operation.
-/// @param debouncer
-/// @return Result value.
+/// @brief Check whether enough time has elapsed since the last signal (delay satisfied).
 int8_t rt_debounce_is_ready(void *debouncer) {
     if (!debouncer)
         return 0;
@@ -112,8 +109,7 @@ int8_t rt_debounce_is_ready(void *debouncer) {
     return elapsed >= data->delay_ms ? 1 : 0;
 }
 
-/// @brief Perform debounce reset operation.
-/// @param debouncer
+/// @brief Reset the debouncer's signal time and count to zero.
 void rt_debounce_reset(void *debouncer) {
     if (!debouncer)
         return;
@@ -122,18 +118,14 @@ void rt_debounce_reset(void *debouncer) {
     data->signal_count = 0;
 }
 
-/// @brief Perform debounce get delay operation.
-/// @param debouncer
-/// @return Result value.
+/// @brief Return the debounce delay in milliseconds.
 int64_t rt_debounce_get_delay(void *debouncer) {
     if (!debouncer)
         return 0;
     return ((rt_debounce_data *)debouncer)->delay_ms;
 }
 
-/// @brief Perform debounce get signal count operation.
-/// @param debouncer
-/// @return Result value.
+/// @brief Return the count of elements in the debounce.
 int64_t rt_debounce_get_signal_count(void *debouncer) {
     if (!debouncer)
         return 0;
@@ -162,9 +154,7 @@ void *rt_throttle_new(int64_t interval_ms) {
     return obj;
 }
 
-/// @brief Perform throttle try operation.
-/// @param throttler
-/// @return Result value.
+/// @brief Attempt to pass through the throttle; returns 1 if allowed, 0 if rate-limited.
 int8_t rt_throttle_try(void *throttler) {
     if (!throttler)
         return 0;
@@ -179,9 +169,7 @@ int8_t rt_throttle_try(void *throttler) {
     return 0;
 }
 
-/// @brief Perform throttle can proceed operation.
-/// @param throttler
-/// @return Result value.
+/// @brief Check whether the throttle interval has elapsed (without consuming it).
 int8_t rt_throttle_can_proceed(void *throttler) {
     if (!throttler)
         return 0;
@@ -192,8 +180,7 @@ int8_t rt_throttle_can_proceed(void *throttler) {
     return elapsed >= data->interval_ms ? 1 : 0;
 }
 
-/// @brief Perform throttle reset operation.
-/// @param throttler
+/// @brief Reset the throttler's timing so the next try always succeeds.
 void rt_throttle_reset(void *throttler) {
     if (!throttler)
         return;
@@ -202,27 +189,21 @@ void rt_throttle_reset(void *throttler) {
     data->count = 0;
 }
 
-/// @brief Perform throttle get interval operation.
-/// @param throttler
-/// @return Result value.
+/// @brief Return the throttle interval in milliseconds.
 int64_t rt_throttle_get_interval(void *throttler) {
     if (!throttler)
         return 0;
     return ((rt_throttle_data *)throttler)->interval_ms;
 }
 
-/// @brief Perform throttle get count operation.
-/// @param throttler
-/// @return Result value.
+/// @brief Return the count of elements in the throttle.
 int64_t rt_throttle_get_count(void *throttler) {
     if (!throttler)
         return 0;
     return ((rt_throttle_data *)throttler)->count;
 }
 
-/// @brief Perform throttle remaining ms operation.
-/// @param throttler
-/// @return Result value.
+/// @brief Return milliseconds remaining until the next try would succeed (0 if ready).
 int64_t rt_throttle_remaining_ms(void *throttler) {
     if (!throttler)
         return 0;

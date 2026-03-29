@@ -54,8 +54,7 @@ struct rt_statemachine_impl {
     int64_t state_count;         ///< Number of registered states.
 };
 
-/// @brief Perform statemachine new operation.
-/// @return Result value.
+/// @brief Create a new statemachine object.
 rt_statemachine rt_statemachine_new(void) {
     rt_statemachine sm = rt_obj_new_i64(0, sizeof(struct rt_statemachine_impl));
     if (!sm)
@@ -72,17 +71,13 @@ rt_statemachine rt_statemachine_new(void) {
     return sm;
 }
 
-/// @brief Perform statemachine destroy operation.
-/// @param sm
+/// @brief Release resources and destroy the statemachine.
 void rt_statemachine_destroy(rt_statemachine sm) {
     // Object is GC-managed via rt_obj_new_i64; no manual free needed.
     (void)sm;
 }
 
-/// @brief Perform statemachine add state operation.
-/// @param sm
-/// @param state_id
-/// @return Result value.
+/// @brief Register a state ID as valid; the machine can only transition to known states.
 int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
@@ -98,10 +93,7 @@ int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id) {
     return 1;
 }
 
-/// @brief Perform statemachine set initial operation.
-/// @param sm
-/// @param state_id
-/// @return Result value.
+/// @brief Set the initial state and reset all transition tracking flags.
 int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
@@ -118,38 +110,28 @@ int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id) {
     return 1;
 }
 
-/// @brief Perform statemachine current operation.
-/// @param sm
-/// @return Result value.
+/// @brief Return the ID of the currently active state, or -1 if uninitialized.
 int64_t rt_statemachine_current(rt_statemachine sm) {
     if (!sm)
         return -1;
     return sm->current_state;
 }
 
-/// @brief Perform statemachine previous operation.
-/// @param sm
-/// @return Result value.
+/// @brief Return the ID of the state that was active before the last transition.
 int64_t rt_statemachine_previous(rt_statemachine sm) {
     if (!sm)
         return -1;
     return sm->previous_state;
 }
 
-/// @brief Perform statemachine is state operation.
-/// @param sm
-/// @param state_id
-/// @return Result value.
+/// @brief Check whether the machine is currently in the given state.
 int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
     return sm->current_state == state_id ? 1 : 0;
 }
 
-/// @brief Perform statemachine transition operation.
-/// @param sm
-/// @param state_id
-/// @return Result value.
+/// @brief Transition to a new state, updating previous/entered/exited flags.
 int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
@@ -168,26 +150,21 @@ int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id) {
     return 1;
 }
 
-/// @brief Perform statemachine just entered operation.
-/// @param sm
-/// @return Result value.
+/// @brief Check whether the current state was entered this frame (one-shot flag).
 int8_t rt_statemachine_just_entered(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->just_entered;
 }
 
-/// @brief Perform statemachine just exited operation.
-/// @param sm
-/// @return Result value.
+/// @brief Check whether a state was exited this frame (one-shot flag).
 int8_t rt_statemachine_just_exited(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->just_exited;
 }
 
-/// @brief Perform statemachine clear flags operation.
-/// @param sm
+/// @brief Reset the just_entered and just_exited one-shot flags after checking them.
 void rt_statemachine_clear_flags(rt_statemachine sm) {
     if (!sm)
         return;
@@ -195,17 +172,14 @@ void rt_statemachine_clear_flags(rt_statemachine sm) {
     sm->just_exited = 0;
 }
 
-/// @brief Perform statemachine frames in state operation.
-/// @param sm
-/// @return Result value.
+/// @brief Return how many frames have elapsed since entering the current state.
 int64_t rt_statemachine_frames_in_state(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->frames_in_state;
 }
 
-/// @brief Perform statemachine update operation.
-/// @param sm
+/// @brief Update the statemachine state (called per frame/tick).
 void rt_statemachine_update(rt_statemachine sm) {
     if (!sm)
         return;
@@ -214,10 +188,7 @@ void rt_statemachine_update(rt_statemachine sm) {
     }
 }
 
-/// @brief Perform statemachine has state operation.
-/// @param sm
-/// @param state_id
-/// @return Result value.
+/// @brief Check whether a state ID has been registered with add_state.
 int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
@@ -226,9 +197,7 @@ int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id) {
     return sm->states[state_id];
 }
 
-/// @brief Perform statemachine state count operation.
-/// @param sm
-/// @return Result value.
+/// @brief Return the count of elements in the statemachine.
 int64_t rt_statemachine_state_count(rt_statemachine sm) {
     if (!sm)
         return 0;

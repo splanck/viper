@@ -57,34 +57,34 @@ void *rt_seq_apply_wrapper(void *seq, void *fn) {
     return rt_seq_apply(seq, (transform_fn)fn);
 }
 
-/// @brief Perform seq all wrapper operation.
-/// @param seq
-/// @param pred
-/// @return Result value.
+/// @brief Check if all elements satisfy a predicate (opaque function pointer wrapper).
+/// @param seq Sequence object.
+/// @param pred Opaque predicate function pointer (cast to predicate_fn).
+/// @return 1 if all elements match, 0 if any element fails.
 int8_t rt_seq_all_wrapper(void *seq, void *pred) {
     return rt_seq_all(seq, (predicate_fn)pred);
 }
 
-/// @brief Perform seq any wrapper operation.
-/// @param seq
-/// @param pred
-/// @return Result value.
+/// @brief Check if any element satisfies a predicate (opaque function pointer wrapper).
+/// @param seq Sequence object.
+/// @param pred Opaque predicate function pointer.
+/// @return 1 if at least one element matches, 0 if none do.
 int8_t rt_seq_any_wrapper(void *seq, void *pred) {
     return rt_seq_any(seq, (predicate_fn)pred);
 }
 
-/// @brief Perform seq none wrapper operation.
-/// @param seq
-/// @param pred
-/// @return Result value.
+/// @brief Check if no elements satisfy a predicate (opaque function pointer wrapper).
+/// @param seq Sequence object.
+/// @param pred Opaque predicate function pointer.
+/// @return 1 if no elements match, 0 if any do.
 int8_t rt_seq_none_wrapper(void *seq, void *pred) {
     return rt_seq_none(seq, (predicate_fn)pred);
 }
 
-/// @brief Perform seq count where wrapper operation.
-/// @param seq
-/// @param pred
-/// @return Result value.
+/// @brief Count elements satisfying a predicate (opaque function pointer wrapper).
+/// @param seq Sequence object.
+/// @param pred Opaque predicate function pointer.
+/// @return Number of elements for which the predicate returns non-zero.
 int64_t rt_seq_count_where_wrapper(void *seq, void *pred) {
     return rt_seq_count_where(seq, (predicate_fn)pred);
 }

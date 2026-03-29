@@ -52,12 +52,9 @@ struct rt_collision_rect_impl {
     double height; ///< Height.
 };
 
-/// @brief Perform collision rect new operation.
-/// @param x
-/// @param y
-/// @param width
-/// @param height
-/// @return Result value.
+/// @brief Create a new axis-aligned collision rectangle.
+/// @details Allocates a GC-managed AABB with the given top-left position and dimensions.
+///          Negative width/height are clamped to zero.
 rt_collision_rect rt_collision_rect_new(double x, double y, double width, double height) {
     struct rt_collision_rect_impl *rect = (struct rt_collision_rect_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_collision_rect_impl));
@@ -72,73 +69,53 @@ rt_collision_rect rt_collision_rect_new(double x, double y, double width, double
     return rect;
 }
 
-/// @brief Perform collision rect destroy operation.
-/// @param rect
+/// @brief Release a collision rectangle, decrementing its reference count.
 void rt_collision_rect_destroy(rt_collision_rect rect) {
     if (rect && rt_obj_release_check0(rect))
         rt_obj_free(rect);
 }
 
-/// @brief Perform collision rect x operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the X coordinate (left edge) of the collision rectangle.
 double rt_collision_rect_x(rt_collision_rect rect) {
     return rect ? rect->x : 0.0;
 }
 
-/// @brief Perform collision rect y operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the Y coordinate (top edge) of the collision rectangle.
 double rt_collision_rect_y(rt_collision_rect rect) {
     return rect ? rect->y : 0.0;
 }
 
-/// @brief Perform collision rect width operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the width of the collision rectangle.
 double rt_collision_rect_width(rt_collision_rect rect) {
     return rect ? rect->width : 0.0;
 }
 
-/// @brief Perform collision rect height operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the height of the collision rectangle.
 double rt_collision_rect_height(rt_collision_rect rect) {
     return rect ? rect->height : 0.0;
 }
 
-/// @brief Perform collision rect right operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the right edge (x + width) of the collision rectangle.
 double rt_collision_rect_right(rt_collision_rect rect) {
     return rect ? rect->x + rect->width : 0.0;
 }
 
-/// @brief Perform collision rect bottom operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the bottom edge (y + height) of the collision rectangle.
 double rt_collision_rect_bottom(rt_collision_rect rect) {
     return rect ? rect->y + rect->height : 0.0;
 }
 
-/// @brief Perform collision rect center x operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the X coordinate of the rectangle's center point.
 double rt_collision_rect_center_x(rt_collision_rect rect) {
     return rect ? rect->x + rect->width * 0.5 : 0.0;
 }
 
-/// @brief Perform collision rect center y operation.
-/// @param rect
-/// @return Result value.
+/// @brief Return the Y coordinate of the rectangle's center point.
 double rt_collision_rect_center_y(rt_collision_rect rect) {
     return rect ? rect->y + rect->height * 0.5 : 0.0;
 }
 
-/// @brief Perform collision rect set position operation.
-/// @param rect
-/// @param x
-/// @param y
+/// @brief Move the rectangle to a new top-left position.
 void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y) {
     if (!rect)
         return;
@@ -146,10 +123,8 @@ void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y) 
     rect->y = y;
 }
 
-/// @brief Perform collision rect set size operation.
-/// @param rect
-/// @param width
-/// @param height
+/// @brief Set the width and height of the collision rectangle.
+/// @details Negative dimensions are clamped to zero.
 void rt_collision_rect_set_size(rt_collision_rect rect, double width, double height) {
     if (!rect)
         return;
@@ -157,12 +132,8 @@ void rt_collision_rect_set_size(rt_collision_rect rect, double width, double hei
     rect->height = height > 0 ? height : 0;
 }
 
-/// @brief Perform collision rect set operation.
-/// @param rect
-/// @param x
-/// @param y
-/// @param width
-/// @param height
+/// @brief Set all four components (x, y, width, height) of the collision rectangle.
+/// @details Negative dimensions are clamped to zero.
 void rt_collision_rect_set(
     rt_collision_rect rect, double x, double y, double width, double height) {
     if (!rect)
@@ -173,10 +144,8 @@ void rt_collision_rect_set(
     rect->height = height > 0 ? height : 0;
 }
 
-/// @brief Perform collision rect set center operation.
-/// @param rect
-/// @param cx
-/// @param cy
+/// @brief Reposition the rectangle so its center is at (cx, cy).
+/// @details Computes new top-left from center minus half-dimensions.
 void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) {
     if (!rect)
         return;
@@ -184,10 +153,7 @@ void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) 
     rect->y = cy - rect->height * 0.5;
 }
 
-/// @brief Perform collision rect move operation.
-/// @param rect
-/// @param dx
-/// @param dy
+/// @brief Translate the rectangle by (dx, dy) relative to its current position.
 void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
     if (!rect)
         return;
@@ -195,11 +161,8 @@ void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
     rect->y += dy;
 }
 
-/// @brief Perform collision rect contains point operation.
-/// @param rect
-/// @param px
-/// @param py
-/// @return Result value.
+/// @brief Test whether a point (px, py) lies inside the collision rectangle.
+/// @details Inclusive on left/top edges, exclusive on right/bottom edges.
 int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py) {
     if (!rect)
         return 0;
@@ -207,10 +170,9 @@ int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, doubl
            py < rect->y + rect->height;
 }
 
-/// @brief Perform collision rect overlaps operation.
-/// @param rect
-/// @param other
-/// @return Result value.
+/// @brief Test whether two axis-aligned rectangles overlap.
+/// @details Uses the separating-axis theorem on both X and Y axes. Returns 1
+///          if the rectangles share any interior area, 0 if separated.
 int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0;
@@ -239,10 +201,8 @@ int8_t rt_collision_rect_overlaps_rect(
     return 1;
 }
 
-/// @brief Perform collision rect overlap x operation.
-/// @param rect
-/// @param other
-/// @return Result value.
+/// @brief Compute the overlap distance along the X axis between two rectangles.
+/// @details Returns 0.0 if the rectangles do not overlap on the X axis.
 double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0.0;
@@ -263,10 +223,8 @@ double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect oth
     return (overlap_left < overlap_right) ? overlap_left : -overlap_right;
 }
 
-/// @brief Perform collision rect overlap y operation.
-/// @param rect
-/// @param other
-/// @return Result value.
+/// @brief Compute the overlap distance along the Y axis between two rectangles.
+/// @details Returns 0.0 if the rectangles do not overlap on the Y axis.
 double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0.0;
@@ -287,9 +245,9 @@ double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect oth
     return (overlap_top < overlap_bottom) ? overlap_top : -overlap_bottom;
 }
 
-/// @brief Perform collision rect expand operation.
-/// @param rect
-/// @param margin
+/// @brief Create a new rectangle expanded by the given amounts on each side.
+/// @details The result is larger by 2*dx horizontally and 2*dy vertically,
+///          centered on the same point as the original.
 void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
     if (!rect)
         return;
@@ -305,10 +263,9 @@ void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
         rect->height = 0;
 }
 
-/// @brief Perform collision rect contains rect operation.
-/// @param rect
-/// @param other
-/// @return Result value.
+/// @brief Test whether this rectangle fully contains another rectangle.
+/// @details Returns 1 if the other rectangle is entirely within the bounds
+///          of this one (inclusive on all edges).
 int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0;
@@ -330,14 +287,8 @@ int8_t rt_collision_rects_overlap(
     return 1;
 }
 
-/// @brief Perform collision point in rect operation.
-/// @param px
-/// @param py
-/// @param rx
-/// @param ry
-/// @param rw
-/// @param rh
-/// @return Result value.
+/// @brief Standalone function: test if point (px, py) is inside rect (rx, ry, rw, rh).
+/// @details Inclusive on left/top, exclusive on right/bottom.
 int8_t rt_collision_point_in_rect(
     double px, double py, double rx, double ry, double rw, double rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
@@ -352,13 +303,8 @@ int8_t rt_collision_circles_overlap(
     return dist_sq < radii * radii;
 }
 
-/// @brief Perform collision point in circle operation.
-/// @param px
-/// @param py
-/// @param cx
-/// @param cy
-/// @param r
-/// @return Result value.
+/// @brief Standalone function: test if point (px, py) is inside a circle.
+/// @details Uses distance-squared comparison to avoid sqrt.
 int8_t rt_collision_point_in_circle(double px, double py, double cx, double cy, double r) {
     double dx = px - cx;
     double dy = py - cy;
@@ -387,24 +333,15 @@ int8_t rt_collision_circle_rect(
     return dx * dx + dy * dy < r * r;
 }
 
-/// @brief Perform collision distance operation.
-/// @param x1
-/// @param y1
-/// @param x2
-/// @param y2
-/// @return Result value.
+/// @brief Compute the Euclidean distance between two points.
 double rt_collision_distance(double x1, double y1, double x2, double y2) {
     double dx = x2 - x1;
     double dy = y2 - y1;
     return sqrt(dx * dx + dy * dy);
 }
 
-/// @brief Perform collision distance squared operation.
-/// @param x1
-/// @param y1
-/// @param x2
-/// @param y2
-/// @return Result value.
+/// @brief Compute the squared Euclidean distance between two points.
+/// @details Avoids the sqrt call, useful for comparison-only scenarios.
 double rt_collision_distance_squared(double x1, double y1, double x2, double y2) {
     double dx = x2 - x1;
     double dy = y2 - y1;

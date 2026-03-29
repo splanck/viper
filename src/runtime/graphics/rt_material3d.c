@@ -78,11 +78,7 @@ void *rt_material3d_new_textured(void *pixels) {
     return mat;
 }
 
-/// @brief Perform material3d set color operation.
-/// @param obj
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the color of the material3d.
 void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -92,83 +88,63 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
     mat->diffuse[2] = b;
 }
 
-/// @brief Perform material3d set texture operation.
-/// @param obj
-/// @param pixels
+/// @brief Set the texture of the material3d.
 void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->texture = pixels;
 }
 
-/// @brief Perform material3d set shininess operation.
-/// @param obj
-/// @param s
+/// @brief Set the shininess of the material3d.
 void rt_material3d_set_shininess(void *obj, double s) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->shininess = s;
 }
 
-/// @brief Perform material3d set unlit operation.
-/// @param obj
-/// @param unlit
+/// @brief Set the unlit of the material3d.
 void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->unlit = unlit;
 }
 
-/// @brief Perform material3d set alpha operation.
-/// @param obj
-/// @param alpha
+/// @brief Set the alpha of the material3d.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->alpha = alpha;
 }
 
-/// @brief Perform material3d get alpha operation.
-/// @param obj
-/// @return Result value.
+/// @brief Get the alpha of the material3d.
 double rt_material3d_get_alpha(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->alpha;
 }
 
-/// @brief Perform material3d set normal map operation.
-/// @param obj
-/// @param pixels
+/// @brief Set the normal map of the material3d.
 void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->normal_map = pixels;
 }
 
-/// @brief Perform material3d set specular map operation.
-/// @param obj
-/// @param pixels
+/// @brief Set the specular map of the material3d.
 void rt_material3d_set_specular_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->specular_map = pixels;
 }
 
-/// @brief Perform material3d set emissive map operation.
-/// @param obj
-/// @param pixels
+/// @brief Set the emissive map of the material3d.
 void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->emissive_map = pixels;
 }
 
-/// @brief Perform material3d set emissive color operation.
-/// @param obj
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the emissive color of the material3d.
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;

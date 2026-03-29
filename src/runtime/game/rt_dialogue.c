@@ -116,9 +116,7 @@ void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
 // Configuration
 //=============================================================================
 
-/// @brief Perform dialogue set speed operation.
-/// @param dlg
-/// @param cps
+/// @brief Set the typewriter text reveal speed in characters per second (min 1).
 void rt_dialogue_set_speed(void *dlg, int64_t cps) {
     if (!dlg)
         return;
@@ -126,9 +124,7 @@ void rt_dialogue_set_speed(void *dlg, int64_t cps) {
     d->chars_per_second = cps < 1 ? 1 : (int32_t)cps;
 }
 
-/// @brief Perform dialogue set font operation.
-/// @param dlg
-/// @param font
+/// @brief Assign a BitmapFont for dialogue text; retains the new font and releases the old one.
 void rt_dialogue_set_font(void *dlg, void *font) {
     if (!dlg)
         return;
@@ -141,28 +137,21 @@ void rt_dialogue_set_font(void *dlg, void *font) {
     d->font = font;
 }
 
-/// @brief Perform dialogue set text color operation.
-/// @param dlg
-/// @param color
+/// @brief Set the text color of the dialogue.
 void rt_dialogue_set_text_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->text_color = (int32_t)color;
 }
 
-/// @brief Perform dialogue set speaker color operation.
-/// @param dlg
-/// @param color
+/// @brief Set the speaker color of the dialogue.
 void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->speaker_color = (int32_t)color;
 }
 
-/// @brief Perform dialogue set bg color operation.
-/// @param dlg
-/// @param color
-/// @param alpha
+/// @brief Set the bg color of the dialogue.
 void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
     if (!dlg)
         return;
@@ -171,27 +160,21 @@ void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
     d->bg_alpha = (int32_t)alpha;
 }
 
-/// @brief Perform dialogue set border color operation.
-/// @param dlg
-/// @param color
+/// @brief Set the border color of the dialogue.
 void rt_dialogue_set_border_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->border_color = (int32_t)color;
 }
 
-/// @brief Perform dialogue set padding operation.
-/// @param dlg
-/// @param padding
+/// @brief Set the inner padding (pixels) between the box edge and text.
 void rt_dialogue_set_padding(void *dlg, int64_t padding) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->padding = (int32_t)padding;
 }
 
-/// @brief Perform dialogue set text scale operation.
-/// @param dlg
-/// @param scale
+/// @brief Set the text scale of the dialogue.
 void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
     if (!dlg)
         return;
@@ -200,10 +183,7 @@ void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
     ((rt_dialogue_impl *)dlg)->text_scale = (int32_t)scale;
 }
 
-/// @brief Perform dialogue set pos operation.
-/// @param dlg
-/// @param x
-/// @param y
+/// @brief Reposition the dialogue box to screen coordinates (x, y).
 void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
     if (!dlg)
         return;
@@ -212,10 +192,7 @@ void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
     d->y = (int32_t)y;
 }
 
-/// @brief Perform dialogue set size operation.
-/// @param dlg
-/// @param w
-/// @param h
+/// @brief Set the dialogue box width and height in pixels.
 void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
     if (!dlg)
         return;
@@ -228,10 +205,7 @@ void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
 // Dialogue Queue
 //=============================================================================
 
-/// @brief Perform dialogue say operation.
-/// @param dlg
-/// @param speaker
-/// @param text
+/// @brief Say the dialogue.
 void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text) {
     if (!dlg)
         return;
@@ -282,15 +256,12 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text) {
     }
 }
 
-/// @brief Perform dialogue say text operation.
-/// @param dlg
-/// @param text
+/// @brief Begin displaying a new line of dialogue with typewriter text reveal.
 void rt_dialogue_say_text(void *dlg, rt_string text) {
     rt_dialogue_say(dlg, NULL, text);
 }
 
-/// @brief Perform dialogue clear operation.
-/// @param dlg
+/// @brief Remove all entries from the dialogue.
 void rt_dialogue_clear(void *dlg) {
     if (!dlg)
         return;
@@ -309,9 +280,7 @@ void rt_dialogue_clear(void *dlg) {
 // Playback
 //=============================================================================
 
-/// @brief Perform dialogue update operation.
-/// @param dlg
-/// @param dt_ms
+/// @brief Update the dialogue state (called per frame/tick).
 void rt_dialogue_update(void *dlg, int64_t dt_ms) {
     if (!dlg)
         return;
@@ -348,8 +317,7 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms) {
     }
 }
 
-/// @brief Perform dialogue advance operation.
-/// @param dlg
+/// @brief Advance the dialogue.
 void rt_dialogue_advance(void *dlg) {
     if (!dlg)
         return;
@@ -379,8 +347,7 @@ void rt_dialogue_advance(void *dlg) {
     }
 }
 
-/// @brief Perform dialogue skip operation.
-/// @param dlg
+/// @brief Skip the dialogue.
 void rt_dialogue_skip(void *dlg) {
     if (!dlg)
         return;
@@ -396,63 +363,49 @@ void rt_dialogue_skip(void *dlg) {
 // State Queries
 //=============================================================================
 
-/// @brief Perform dialogue is active operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Check whether the dialogue box is currently visible and displaying text.
 int8_t rt_dialogue_is_active(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->active;
 }
 
-/// @brief Perform dialogue is line complete operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Is the line complete of the dialogue.
 int8_t rt_dialogue_is_line_complete(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->line_complete;
 }
 
-/// @brief Perform dialogue is finished operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Check whether the typewriter effect has fully revealed all text.
 int8_t rt_dialogue_is_finished(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->finished;
 }
 
-/// @brief Perform dialogue is waiting operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Check whether the dialogue is waiting for the player to dismiss it.
 int8_t rt_dialogue_is_waiting(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->waiting_for_input;
 }
 
-/// @brief Perform dialogue get line count operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Return the count of elements in the dialogue.
 int64_t rt_dialogue_get_line_count(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->line_count;
 }
 
-/// @brief Perform dialogue get current line operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Get the current line of the dialogue.
 int64_t rt_dialogue_get_current_line(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->current_line;
 }
 
-/// @brief Perform dialogue get speaker operation.
-/// @param dlg
-/// @return Result value.
+/// @brief Return the name of the current speaker, or empty string if none.
 rt_string rt_dialogue_get_speaker(void *dlg) {
     if (!dlg)
         return rt_const_cstr("");
@@ -466,9 +419,7 @@ rt_string rt_dialogue_get_speaker(void *dlg) {
 // Rendering
 //=============================================================================
 
-/// @brief Perform dialogue draw operation.
-/// @param dlg
-/// @param canvas
+/// @brief Draw the dialogue.
 void rt_dialogue_draw(void *dlg, void *canvas) {
     if (!dlg || !canvas)
         return;

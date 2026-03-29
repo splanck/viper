@@ -146,9 +146,7 @@ void *rt_lazy_get(void *obj) {
     return l->value.ptr;
 }
 
-/// @brief Perform lazy get str operation.
-/// @param obj
-/// @return Result value.
+/// @brief Force evaluation if needed and return the result as a string.
 rt_string rt_lazy_get_str(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -162,9 +160,7 @@ rt_string rt_lazy_get_str(void *obj) {
     return rt_const_cstr("");
 }
 
-/// @brief Perform lazy get i64 operation.
-/// @param obj
-/// @return Result value.
+/// @brief Force evaluation if needed and return the result as an i64.
 int64_t rt_lazy_get_i64(void *obj) {
     if (!obj)
         return 0;
@@ -182,9 +178,7 @@ int64_t rt_lazy_get_i64(void *obj) {
 // Lazy State
 //=============================================================================
 
-/// @brief Perform lazy is evaluated operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the lazy value has already been evaluated (computed).
 int8_t rt_lazy_is_evaluated(void *obj) {
     if (!obj)
         return 1;
@@ -192,8 +186,7 @@ int8_t rt_lazy_is_evaluated(void *obj) {
     return l->evaluated;
 }
 
-/// @brief Perform lazy force operation.
-/// @param obj
+/// @brief Force evaluation of the lazy value, even if already evaluated.
 void rt_lazy_force(void *obj) {
     if (!obj)
         return;

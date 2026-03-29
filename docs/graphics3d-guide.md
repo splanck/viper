@@ -246,13 +246,15 @@ The Metal backend (macOS) has near-full feature parity with the software rendere
 
 The OpenGL backend (Linux) now implements OGL-01 through OGL-20: diffuse/normal/specular/emissive textures, vertex-color modulation, inverse-transpose normal matrices, spot lights, fog, wireframe mode, render-to-texture readback, shadow mapping, GPU post-processing, hardware instancing, GPU skinning + morph payload consumption, terrain splatting, persistent dynamic buffers, backend-owned cubemap skyboxes, material environment reflections, GPU morph normal-delta parity, and depth/history-based GPU postfx additions including SSAO, depth of field, and velocity-buffer motion blur.
 
+The D3D11 backend (Windows) now implements the full DX11 plan set as well: diffuse/normal/specular/emissive textures, vertex-color modulation, inverse-transpose normal matrices, spot lights, fog, wireframe mode, render-to-texture readback, shadow mapping, GPU post-processing, hardware instancing, GPU skinning + morph payload consumption, terrain splatting, persistent dynamic buffers, backend-owned cubemap skyboxes, material environment reflections, GPU morph normal-delta parity, and depth/history-based GPU postfx additions including SSAO, depth of field, and velocity-buffer motion blur. On non-Windows hosts, final backend validation still depends on the focused Windows CI lane.
+
 ## Performance Tips
 
 - **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.
 - **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
 - **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
 - **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
-- **Non-uniform scaling:** Metal and OpenGL use a proper inverse-transpose normal matrix. The software and D3D11 paths still use the model matrix directly, so non-uniform scaling can distort lighting there.
+- **Non-uniform scaling:** Metal, OpenGL, and D3D11 use a proper inverse-transpose normal matrix. The software path still uses the model matrix directly, so non-uniform scaling can distort lighting there.
 
 ## Resource Limits
 
@@ -703,7 +705,7 @@ Heightmap-based terrain with chunked rendering and texture splatting.
 | `GetHeightAt(x, z)` | Query height at world XZ position |
 | `GetNormalAt(x, z)` | Query surface normal at world XZ position |
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software and OpenGL backends perform per-pixel splat sampling. A baked fallback texture is still used on GPU backends that have not implemented splat shaders yet.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling.
 
 Draw via `Canvas3D.DrawTerrain(terrain)`.
 

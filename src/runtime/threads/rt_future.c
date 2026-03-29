@@ -148,9 +148,7 @@ void *rt_promise_get_future(void *obj) {
     return result;
 }
 
-/// @brief Perform promise set operation.
-/// @param obj
-/// @param value
+/// @brief Set a value in the promise.
 void rt_promise_set(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
@@ -185,9 +183,7 @@ void rt_promise_set(void *obj, void *value) {
 #endif
 }
 
-/// @brief Perform promise set error operation.
-/// @param obj
-/// @param error
+/// @brief Complete the promise with an error; wakes all waiting futures.
 void rt_promise_set_error(void *obj, rt_string error) {
     if (!obj)
         rt_trap("Promise: null object");
@@ -225,9 +221,7 @@ void rt_promise_set_error(void *obj, rt_string error) {
 #endif
 }
 
-/// @brief Perform promise is done operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the promise has been completed (either Ok or Error).
 int8_t rt_promise_is_done(void *obj) {
     if (!obj)
         return 0;
@@ -280,11 +274,9 @@ void *rt_future_get(void *obj) {
     return p->value;
 }
 
-/// @brief Perform future get for operation.
-/// @param obj
-/// @param ms
-/// @param out
-/// @return Result value.
+/// @brief Wait up to @p ms milliseconds for the future to complete, returning success.
+/// @details If the future completes within the timeout and is not an error, stores
+///          the result in *out and returns 1. Returns 0 on timeout or error.
 int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     if (!obj)
         return 0;
@@ -326,9 +318,7 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     return success;
 }
 
-/// @brief Perform future is done operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the future's underlying promise has been completed.
 int8_t rt_future_is_done(void *obj) {
     if (!obj)
         return 0;
@@ -349,9 +339,7 @@ int8_t rt_future_is_done(void *obj) {
     return result;
 }
 
-/// @brief Perform future is error operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the future completed with an error.
 int8_t rt_future_is_error(void *obj) {
     if (!obj)
         return 0;
@@ -372,9 +360,7 @@ int8_t rt_future_is_error(void *obj) {
     return result;
 }
 
-/// @brief Perform future get error operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the error message if the future failed, or empty string otherwise.
 rt_string rt_future_get_error(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -395,10 +381,7 @@ rt_string rt_future_get_error(void *obj) {
     return result;
 }
 
-/// @brief Perform future try get operation.
-/// @param obj
-/// @param out
-/// @return Result value.
+/// @brief Get a value from the future.
 int8_t rt_future_try_get(void *obj, void **out) {
     if (!obj)
         return 0;
@@ -486,8 +469,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     return result;
 }
 
-/// @brief Perform future wait operation.
-/// @param obj
+/// @brief Wait the future.
 void rt_future_wait(void *obj) {
     if (!obj)
         return;
@@ -510,10 +492,8 @@ void rt_future_wait(void *obj) {
 #endif
 }
 
-/// @brief Perform future wait for operation.
-/// @param obj
-/// @param ms
-/// @return Result value.
+/// @brief Block until the future completes or the timeout expires.
+/// @details Returns 1 if the future is done (regardless of ok/error), 0 on timeout.
 int8_t rt_future_wait_for(void *obj, int64_t ms) {
     if (!obj)
         return 0;

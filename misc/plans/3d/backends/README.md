@@ -1,4 +1,4 @@
-# 3D Backend Feature Matrix — Verified Deep Audit (2026-03-28)
+# 3D Backend Feature Matrix — Verified Deep Audit (2026-03-29)
 
 Two-pass audit: initial scan + deep verification reading actual shader source and draw paths.
 
@@ -11,27 +11,30 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Position input | ✅ | ✅ | ✅ | ✅ |
 | Normal input | ✅ | ✅ | ✅ | ✅ |
 | UV input | ✅ | ✅ | ✅ | ✅ |
-| Color input | ✅ | ✅ attribute passed, unused | ✅ multiplied into diffuse/alpha | ✅ attribute passed, unused |
+| Color input | ✅ | ✅ attribute passed, unused | ✅ multiplied into diffuse/alpha | ✅ multiplied into diffuse/alpha |
 | Tangent input | ✅ | ✅ | ✅ | ✅ |
 | Bone indices (defined) | ✅ | ✅ | ✅ | ✅ |
 | Bone weights (defined) | ✅ | ✅ | ✅ | ✅ |
 | MVP transform | ✅ | ✅ | ✅ | ✅ |
-| Normal matrix | ✅ | ✅ | ✅ inverse-transpose helper | 🐛 BUG: uses model matrix |
-| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer bypass | ✅ GPU vertex shader + shared producer bypass | ❌ shader path missing |
-| Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer payload | ✅ GPU vertex shader + shared producer payload | ❌ |
+| Normal matrix | ✅ | ✅ | ✅ inverse-transpose helper | ✅ inverse-transpose helper |
+| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer bypass | ✅ GPU vertex shader + shared producer bypass | ✅ GPU vertex shader + shared producer bypass |
+| Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer payload | ✅ GPU vertex shader + shared producer payload | ✅ GPU vertex shader + shared producer payload |
+| Morph normal deltas | ✅ CPU path | ✅ GPU path | ✅ GPU path | ✅ GPU path |
 
 ### Texture Sampling
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ✅ lit + unlit paths | ❌ NONE |
-| Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ✅ TBN perturbation (slot 1) | ❌ |
-| Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ✅ per-texel modulation (slot 2) | ❌ |
-| Emissive map | ✅ additive map/sample | ✅ additive map sample (slot 3) | ✅ emissive color * map, added after lighting | ❌ |
-| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ✅ repeat | ❌ |
-| Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ✅ linear | ❌ |
-| Texture cache | N/A | ✅ per-frame cache by Pixels ptr | ✅ per-frame cache by Pixels ptr | ❌ |
-| Sampler state | N/A | ✅ shared sampler | ✅ fixed repeat/clamp + linear state per texture type | ❌ |
+| Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ✅ lit + unlit paths | ✅ lit + unlit paths |
+| Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ✅ TBN perturbation (slot 1) | ✅ TBN perturbation (slot 1) |
+| Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ✅ per-texel modulation (slot 2) | ✅ per-texel modulation (slot 2) |
+| Emissive map | ✅ additive map/sample | ✅ additive map sample (slot 3) | ✅ emissive color * map, added after lighting | ✅ emissive color * map, added after lighting |
+| Cubemap skybox | ✅ CPU path | ❌ | ✅ backend-owned | ✅ backend-owned |
+| Environment reflections | ✅ CPU path | ❌ | ✅ | ✅ |
+| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ✅ repeat | ✅ repeat |
+| Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ✅ linear | ✅ linear |
+| Texture cache | N/A | ✅ per-frame cache by Pixels ptr | ✅ per-frame cache by Pixels ptr | ✅ per-frame cache by Pixels/CubeMap ptr |
+| Sampler state | N/A | ✅ shared sampler | ✅ fixed repeat/clamp + linear state per texture type | ✅ wrap/clamp/comparison samplers |
 
 ### Lighting
 
@@ -41,7 +44,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Directional diffuse | ✅ | ✅ | ✅ | ✅ |
 | Directional specular (Blinn-Phong) | ✅ | ✅ | ✅ | ✅ |
 | Point light + attenuation | ✅ | ✅ | ✅ | ✅ |
-| Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ✅ smoothstep cone | ❌ falls to ambient |
+| Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ✅ smoothstep cone | ✅ smoothstep cone |
 | Lighting model | Gouraud + per-pixel normal-map path | Per-pixel | Per-pixel | Per-pixel |
 | Max light slots | 8 | 8 | 8 | 8 |
 
@@ -54,7 +57,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Alpha/transparency | ✅ | ✅ | ✅ | ✅ |
 | Emissive color | ✅ | ✅ | ✅ | ✅ |
 | Unlit mode | ✅ | ✅ | ✅ | ✅ |
-| Two-sided rendering | ✅ | ✅ | ✅ | ❌ toggle missing |
+| Two-sided rendering | ✅ | ✅ | ✅ | ✅ |
 
 ### Rendering Features
 
@@ -64,38 +67,36 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Alpha blending | ✅ src*a + dst*(1-a) | ✅ | ✅ | ✅ |
 | Transparency sorting | ✅ | ✅ | ✅ | ✅ |
 | Depth write disabled for transparent | ✅ | ✅ | ✅ | ✅ |
-| Backface culling | ✅ | ✅ | ✅ | ❌ toggle missing |
-| Wireframe mode | ✅ | ✅ | ✅ | ❌ param ignored |
-| Fog (linear distance) | ✅ | ✅ | ✅ | ❌ |
-| Shadow mapping | ✅ | ✅ | ✅ | ❌ |
-| Render-to-texture | ✅ | ✅ GPU offscreen + readback | ✅ GPU offscreen + readback | ❌ stub |
+| Backface culling | ✅ | ✅ | ✅ | ✅ |
+| Wireframe mode | ✅ | ✅ | ✅ | ✅ |
+| Fog (linear distance) | ✅ | ✅ | ✅ | ✅ |
+| Shadow mapping | ✅ | ✅ | ✅ | ✅ |
+| Render-to-texture | ✅ | ✅ GPU offscreen + readback | ✅ GPU offscreen + readback | ✅ GPU offscreen + readback |
 
 ### Advanced Features
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Instanced rendering | ❌ | ⚠️ backend-side multi-draw hook, not true instancing | ✅ hardware instancing | ❌ |
-| Terrain splat (per-pixel) | ✅ | ✅ | ✅ | ❌ |
-| Post-processing | ✅ CPU | ⚠️ shader/pipeline pieces exist, shared flip handoff still needed | ✅ GPU fullscreen pass + shared flip handoff | ❌ |
-| VBO/buffer strategy | N/A | Per-draw MTL buffers | ✅ persistent dynamic VBO/IBO/instance/morph buffers | ❌ per-draw VB/IB |
+| Instanced rendering | ❌ | ⚠️ backend-side multi-draw hook, not true instancing | ✅ hardware instancing | ✅ hardware instancing |
+| Terrain splat (per-pixel) | ✅ | ✅ | ✅ | ✅ |
+| Post-processing | ✅ CPU | ⚠️ shader/pipeline pieces exist, shared flip handoff still needed | ✅ GPU fullscreen pass + shared flip handoff | ✅ GPU fullscreen pass + shared flip handoff |
+| Advanced postfx (SSAO / DOF / motion blur) | ❌ | ❌ | ✅ | ✅ |
+| VBO/buffer strategy | N/A | Per-draw MTL buffers | ✅ persistent dynamic VBO/IBO/instance/morph buffers | ✅ persistent dynamic VB/IB/instance/morph buffers |
 
 ### Per-Vertex Color
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Vertex color used in shading | ✅ multiplied into diffuse | ❌ passed through, unused | ✅ multiplied into diffuse/alpha | ❌ passed through, unused |
+| Vertex color used in shading | ✅ multiplied into diffuse | ❌ passed through, unused | ✅ multiplied into diffuse/alpha | ✅ multiplied into diffuse/alpha |
 
 ---
 
-## Bugs Found
+## Residual Risks
 
 | ID | Backend | Severity | Description |
 |----|---------|----------|-------------|
-| D3D-1 | D3D11 | 🟡 HIGH | Normal matrix = model matrix. |
-| D3D-2 | D3D11 | 🟡 HIGH | Backface culling and wireframe params ignored. |
-| D3D-3 | D3D11 | 🟠 MEDIUM | Per-draw VB/IB creation. |
-| D3D-4 | D3D11 | 🟠 MEDIUM | Unchecked HRESULTs on several creation paths. |
-| GPU-VC | Metal/D3D11 | 🟠 MEDIUM | Vertex color is forwarded from the vertex stage but not used in shading. |
+| D3D-VAL | D3D11 | 🟠 MEDIUM | Non-Windows hosts still depend on the focused Windows CI lane for backend syntax/device validation; local macOS/Linux runs only cover shared runtime tests. |
+| GPU-VC | Metal | 🟠 MEDIUM | Vertex color is forwarded from the vertex stage but not used in Metal shading. |
 
 ---
 
@@ -113,10 +114,10 @@ Already present:
 
 Implemented shared prerequisites now available to every backend:
 
-- GPU postfx presentation handoff in [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L1001) through `present_postfx`.
-- Producer-side GPU skinning bypass in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L934) with backend-name gating and CPU fallback.
-- Producer-side morph payload packing in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L251) plus draw-command propagation in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L664).
-- GPU RTT ownership fix in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L761) so the CPU skybox path is not clobbered during GPU render-target readback.
+- GPU postfx presentation handoff in [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L1114) through `present_postfx`.
+- Producer-side GPU skinning bypass in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L35) with backend-name gating and CPU fallback.
+- Producer-side morph payload packing in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L63) plus draw-command propagation in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L759).
+- GPU RTT ownership fix in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L895) so the CPU skybox path is not clobbered during GPU render-target readback.
 
 Recently implemented shared prerequisites:
 
@@ -124,6 +125,10 @@ Recently implemented shared prerequisites:
 - The GPU morph producer now packs optional morph normal deltas.
 - The backend vtable now exposes an optional `draw_skybox` hook.
 - The GPU PostFX snapshot now includes SSAO, DOF, and motion-blur parameters.
+
+DX11-specific remaining prerequisite:
+
+- add and keep a Windows-capable D3D11 validation lane active in CI; local macOS/Linux validation is not enough for backend code in [`vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
 
 ## Software Backend Implementation Plans
 
@@ -165,41 +170,32 @@ Metal is no longer the blocking backend for parity. Remaining work is primarily 
 
 | Plan | Feature | Depends On | Effort |
 |------|---------|-----------|--------|
-| [D3D-01](d3d-01-diffuse-texture.md) | Diffuse texture pipeline + vertex color modulation | — | Medium |
-| [D3D-02](d3d-02-normal-matrix.md) | True inverse-transpose normal matrix | — | Small |
-| [D3D-03](d3d-03-texture-cache.md) | Per-frame texture cache | D3D-01 | Medium |
-| [D3D-04](d3d-04-spot-lights.md) | Spot light cone attenuation | — | Small |
-| [D3D-05](d3d-05-wireframe-cull.md) | Wireframe mode + cull toggle | — | Small |
-| [D3D-06](d3d-06-fog.md) | Linear distance fog | — | Small |
-| [D3D-07](d3d-07-normal-map.md) | Normal map sampling | D3D-01, D3D-03 | Medium |
-| [D3D-08](d3d-08-specular-emissive-maps.md) | Specular + emissive maps | D3D-01, D3D-03 | Small |
-| [D3D-09](d3d-09-render-to-texture.md) | Render-to-texture + readback | Shared render-target path, skybox interaction fix | Large |
-| [D3D-10](d3d-10-skinning-morph.md) | GPU skinning + morph consumption | Shared producer work | Large |
-| [D3D-11](d3d-11-post-processing.md) | GPU post-processing | D3D-09, shared flip handoff | Large |
-| [D3D-12](d3d-12-vbo-optimization.md) | Persistent dynamic VB/IB | — | Medium |
-| [D3D-13](d3d-13-hresult-checks.md) | HRESULT / failure-path rigor | — | Small |
-| [D3D-14](d3d-14-shadow-mapping.md) | Shadow mapping | D3D-09 | Large |
-| [D3D-15](d3d-15-instanced-rendering.md) | True hardware instancing | Shared hook, D3D-12 recommended | Medium |
-| [D3D-16](d3d-16-terrain-splat.md) | Terrain splatting | D3D-01, D3D-03, shared terrain payload | Medium |
+| [D3D-01](d3d-01-diffuse-texture.md) | Diffuse texture pipeline + vertex color modulation | — | **DONE** |
+| [D3D-02](d3d-02-normal-matrix.md) | True inverse-transpose normal matrix | — | **DONE** |
+| [D3D-03](d3d-03-texture-cache.md) | Per-frame texture cache | D3D-01 | **DONE** |
+| [D3D-04](d3d-04-spot-lights.md) | Spot light cone attenuation | — | **DONE** |
+| [D3D-05](d3d-05-wireframe-cull.md) | Wireframe mode + cull toggle | — | **DONE** |
+| [D3D-06](d3d-06-fog.md) | Linear distance fog | — | **DONE** |
+| [D3D-07](d3d-07-normal-map.md) | Normal map sampling | D3D-01, D3D-03 | **DONE** |
+| [D3D-08](d3d-08-specular-emissive-maps.md) | Specular + emissive maps | D3D-01, D3D-03 | **DONE** |
+| [D3D-09](d3d-09-render-to-texture.md) | Render-to-texture + readback | Shared render-target path, skybox interaction fix | **DONE** |
+| [D3D-10](d3d-10-skinning-morph.md) | GPU skinning + morph consumption | Shared producer work | **DONE** |
+| [D3D-11](d3d-11-post-processing.md) | GPU post-processing | D3D-09, shared flip handoff | **DONE** |
+| [D3D-12](d3d-12-vbo-optimization.md) | Persistent dynamic VB/IB | — | **DONE** |
+| [D3D-13](d3d-13-hresult-checks.md) | HRESULT / failure-path rigor | — | **DONE** |
+| [D3D-14](d3d-14-shadow-mapping.md) | Shadow mapping | D3D-09 | **DONE** |
+| [D3D-15](d3d-15-instanced-rendering.md) | True hardware instancing | Shared hook, D3D-12 recommended | **DONE** |
+| [D3D-16](d3d-16-terrain-splat.md) | Terrain splatting | D3D-01, D3D-03, shared terrain payload | **DONE** |
+| [D3D-17](d3d-17-cubemap-skybox.md) | Backend-owned cubemap skybox rendering | Shared skybox hook, D3D-03 recommended | **DONE** |
+| [D3D-18](d3d-18-env-reflections.md) | Material environment reflections | D3D-17, shared draw-command env-map payload | **DONE** |
+| [D3D-19](d3d-19-morph-normal-deltas.md) | GPU morph normal-delta parity | D3D-10, shared morph-normal payload | **DONE** |
+| [D3D-20](d3d-20-advanced-postfx.md) | SSAO / DOF / motion blur on GPU | D3D-09, D3D-11, shared previous-frame payloads | **DONE** |
 
-### D3D11 recommended execution order
+### D3D11 status
 
-1. **D3D-02** — fix the normal-matrix bug first
-2. **D3D-13** — harden failure paths before more D3D resource creation lands
-3. **D3D-05** — cheap render-state parity
-4. **D3D-01** — establish texture upload/bind path and fix missing vertex-color modulation
-5. **D3D-04** — complete light-type parity
-6. **D3D-06** — add scene fog
-7. **D3D-03** — make texture-heavy draws practical
-8. **D3D-08** — specular/emissive build cheaply on the same SRV path
-9. **D3D-07** — normal maps build on the same texture path
-10. **D3D-12** — remove per-draw buffer churn before larger features pile on
-11. **D3D-09** — offscreen render target foundation
-12. **D3D-14** — shadow pass builds cleanly on RTT ownership
-13. **D3D-16** — terrain splat is straightforward after texture/cache work
-14. **D3D-15** — true instancing once buffer management is cleaned up
-15. **D3D-10** — backend shader work plus producer-side skinning/morph prerequisites
-16. **D3D-11** — last because it needs both RTT and shared flip ownership changes
+D3D-01 through D3D-20 are now implemented in [`vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c) plus the shared runtime work in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c), and [`rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c).
+
+The remaining operational gap is validation breadth, not backend functionality: the focused Windows CI lane now builds `viper`, `test_rt_canvas3d_gpu_paths`, and `test_vgfx3d_backend_utils`, and runs the two shared graphics `ctest` entries, but dedicated device-level Windows renderer tests are still desirable.
 
 ## OpenGL Backend Implementation Plans
 

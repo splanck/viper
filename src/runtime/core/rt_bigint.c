@@ -68,6 +68,15 @@ typedef struct {
 
 static void bigint_finalizer(void *obj);
 
+/// @brief Allocate a GC-managed BigInt with the given digit capacity.
+/// @details Creates the BigInt as a runtime object via rt_obj_new_i64 so the
+///          garbage collector can track it. The digit array is a separate heap
+///          allocation (calloc) because it may need to grow via realloc — which
+///          is incompatible with the fixed-layout GC object. The finalizer
+///          (bigint_finalizer) ensures the digit array is freed when the GC
+///          reclaims the outer object.
+/// @param capacity Initial number of uint32 digit slots to allocate.
+/// @return Pointer to the initialized bigint_t, or NULL on allocation failure.
 static bigint_t *bigint_alloc(int64_t capacity) {
     void *obj = rt_obj_new_i64(BIGINT_CLASS_ID, sizeof(bigint_t));
     if (!obj)
@@ -85,6 +94,13 @@ static bigint_t *bigint_alloc(int64_t capacity) {
     return bi;
 }
 
+/// @brief Free the digit array owned by a BigInt object.
+/// @details Called automatically by the GC when the BigInt's refcount drops to
+///          zero. The digit array was allocated separately from the GC object
+///          (see bigint_alloc), so it must be freed explicitly here. Nulling
+///          the pointer prevents double-free if the finalizer runs twice during
+///          shutdown sweeps.
+/// @param obj Pointer to the bigint_t payload (cast from void* by GC).
 static void bigint_finalizer(void *obj) {
     if (!obj)
         return;
@@ -95,6 +111,15 @@ static void bigint_finalizer(void *obj) {
     }
 }
 
+/// @brief Grow the digit array if current capacity is insufficient.
+/// @details Doubles the existing capacity (or uses @p cap, whichever is larger)
+///          to amortize growth cost over many operations. The new region is
+///          zero-filled so arithmetic routines can safely read beyond the current
+///          len without encountering uninitialized data. Silently returns without
+///          growing if the requested capacity would overflow size_t — callers
+///          must check len after operations that depend on growth succeeding.
+/// @param bi BigInt whose digit array may need expansion.
+/// @param cap Minimum number of digit slots required.
 static void bigint_ensure_capacity(bigint_t *bi, int64_t cap) {
     if (cap <= bi->cap)
         return;
@@ -115,6 +140,15 @@ static void bigint_ensure_capacity(bigint_t *bi, int64_t cap) {
     bi->cap = new_cap;
 }
 
+/// @brief Strip trailing zero digits and normalize the sign (-0 → +0).
+/// @details Every arithmetic operation must call this before returning to
+///          maintain the invariant that the digit array has no leading zeros
+///          (index len-1 is always nonzero, or len is 0 for the value zero).
+///          Without normalization, comparison and printing would produce
+///          incorrect results because they rely on len to determine magnitude.
+///          The -0 → +0 rule prevents sign-related edge cases in division
+///          and comparison.
+/// @param bi BigInt to normalize in-place.
 static void bigint_normalize(bigint_t *bi) {
     while (bi->len > 0 && bi->digits[bi->len - 1] == 0)
         bi->len--;
@@ -124,6 +158,13 @@ static void bigint_normalize(bigint_t *bi) {
         bi->sign = 0;
 }
 
+/// @brief Deep-copy a BigInt including its digit array.
+/// @details Allocates a fresh GC-managed BigInt and copies all digits from @p a.
+///          Needed because BigInt arithmetic is non-mutating — every operation
+///          returns a new object rather than modifying an operand in place.
+///          The clone inherits the sign and length but gets its own digit storage.
+/// @param a Source BigInt to copy.
+/// @return New BigInt with identical value, or NULL on allocation failure.
 static bigint_t *bigint_clone(bigint_t *a) {
     bigint_t *result = bigint_alloc(a->len);
     if (!result)
@@ -139,6 +180,14 @@ static bigint_t *bigint_clone(bigint_t *a) {
 // BigInt Creation
 //=============================================================================
 
+/// @brief Create a BigInt from a signed 64-bit integer.
+/// @details Decomposes the value into base-2^32 digits stored little-endian.
+///          Handles INT64_MIN specially because negating it overflows int64 —
+///          we cast to uint64 first and add 1 to INT64_MAX instead. Zero is
+///          represented as len=0, sign=0 (no digits needed). Negative values
+///          store the magnitude in digits and set sign=1.
+/// @param val The 64-bit integer to convert.
+/// @return New GC-managed BigInt (refcount=1), or NULL on allocation failure.
 void *rt_bigint_from_i64(int64_t val) {
     bigint_t *bi = bigint_alloc(2);
     if (!bi)
@@ -169,6 +218,15 @@ void *rt_bigint_from_i64(int64_t val) {
     return bi;
 }
 
+/// @brief Parse a BigInt from a decimal or 0x-prefixed hexadecimal string.
+/// @details Skips leading whitespace, handles an optional sign character, then
+///          detects the 0x/0X prefix to choose base 10 or 16. Digits are
+///          accumulated using grade-school multiply-and-add: for each digit d,
+///          result = result * base + d. Returns NULL for empty or non-numeric
+///          input rather than trapping, so callers can provide their own
+///          diagnostic. The result is always normalized (no leading zeros).
+/// @param str Runtime string containing the number text.
+/// @return New BigInt, or NULL if the string is empty, NULL, or invalid.
 void *rt_bigint_from_str(rt_string str) {
     if (!str)
         return NULL;
@@ -262,6 +320,7 @@ void *rt_bigint_from_str(rt_string str) {
     return result;
 }
 
+/// @brief Create a BigInt from a big-endian two's-complement byte array.
 void *rt_bigint_from_bytes(void *bytes) {
     if (!bytes)
         return rt_bigint_zero();
@@ -330,10 +389,12 @@ void *rt_bigint_from_bytes(void *bytes) {
     return bi;
 }
 
+/// @brief Return a new BigInt representing zero.
 void *rt_bigint_zero(void) {
     return rt_bigint_from_i64(0);
 }
 
+/// @brief Return a new BigInt representing one.
 void *rt_bigint_one(void) {
     return rt_bigint_from_i64(1);
 }
@@ -342,9 +403,12 @@ void *rt_bigint_one(void) {
 // Conversion
 //=============================================================================
 
-/// @brief Perform bigint to i64 operation.
-/// @param a
-/// @return Result value.
+/// @brief Convert BigInt to int64, truncating if the value exceeds 64-bit range.
+/// @details Extracts the lower 64 bits of the magnitude and applies the sign.
+///          Values larger than INT64_MAX are silently truncated — callers should
+///          use rt_bigint_fits_i64 first if truncation is not acceptable.
+/// @param a BigInt to convert.
+/// @return int64_t representation (truncated if too large).
 int64_t rt_bigint_to_i64(void *a) {
     if (!a)
         return 0;
@@ -369,17 +433,22 @@ int64_t rt_bigint_to_i64(void *a) {
     return bi->sign ? -(int64_t)val : (int64_t)val;
 }
 
-/// @brief Perform bigint to str operation.
-/// @param a
-/// @return Result value.
+/// @brief Convert BigInt to its decimal string representation.
+/// @details Delegates to rt_bigint_to_str_base with base 10.
+/// @param a BigInt to convert.
+/// @return Newly allocated runtime string with the decimal text.
 rt_string rt_bigint_to_str(void *a) {
     return rt_bigint_to_str_base(a, 10);
 }
 
-/// @brief Perform bigint to str base operation.
-/// @param a
-/// @param base
-/// @return Result value.
+/// @brief Convert BigInt to a string in the specified base (2-36).
+/// @details Repeatedly divides the magnitude by the base, collecting remainders
+///          as digits. Digits above 9 use lowercase letters (a-z). Prepends '-'
+///          for negative values. Traps on invalid base (< 2 or > 36).
+/// @param a BigInt to convert.
+/// @param base Radix for the output (2-36).
+/// @return Newly allocated runtime string.
+/// @brief Convert BigInt to string in the specified base (2-36).
 rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     if (!a)
         return rt_string_from_bytes("0", 1);
@@ -430,6 +499,7 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     return result;
 }
 
+/// @brief Convert BigInt to big-endian two's-complement byte array.
 void *rt_bigint_to_bytes(void *a) {
     if (!a) {
         void *b = rt_bytes_new(1);
@@ -509,9 +579,12 @@ void *rt_bigint_to_bytes(void *a) {
     return result;
 }
 
-/// @brief Perform bigint fits i64 operation.
-/// @param a
-/// @return Result value.
+/// @brief Check whether the BigInt value fits in a signed 64-bit integer.
+/// @details Compares the magnitude against INT64_MAX (for non-negative) or
+///          INT64_MIN (for negative). Used by callers to guard against silent
+///          truncation before calling rt_bigint_to_i64.
+/// @param a BigInt to test.
+/// @return 1 if the value is representable as int64, 0 otherwise.
 int8_t rt_bigint_fits_i64(void *a) {
     if (!a)
         return 1;
@@ -605,6 +678,14 @@ static bigint_t *bigint_sub_mag(bigint_t *a, bigint_t *b) {
 // Basic Arithmetic
 //=============================================================================
 
+/// @brief Add two BigInts, returning a new result.
+/// @details Dispatches to magnitude-add or magnitude-subtract depending on the
+///          signs: same signs → add magnitudes (keep sign); different signs →
+///          subtract smaller from larger (take sign of larger). NULL inputs
+///          are treated as zero. Neither input is consumed.
+/// @param a First addend (not consumed).
+/// @param b Second addend (not consumed).
+/// @return New BigInt holding a + b.
 void *rt_bigint_add(void *a, void *b) {
     if (!a)
         return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
@@ -640,6 +721,14 @@ void *rt_bigint_add(void *a, void *b) {
     }
 }
 
+/// @brief Subtract two BigInts (a - b), returning a new result.
+/// @details Implemented as a + (-b): negates the sign of b and delegates to
+///          rt_bigint_add. This reuses the sign-dispatch logic in add rather
+///          than duplicating it. The temporary negation is reverted after the
+///          call so the original b is not mutated.
+/// @param a Minuend (not consumed).
+/// @param b Subtrahend (not consumed).
+/// @return New BigInt holding a - b.
 void *rt_bigint_sub(void *a, void *b) {
     if (!b)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
@@ -655,6 +744,15 @@ void *rt_bigint_sub(void *a, void *b) {
     return rt_bigint_add(a, &neg_b);
 }
 
+/// @brief Multiply two BigInts using grade-school long multiplication.
+/// @details Allocates a result with len = a.len + b.len digits (the maximum
+///          possible product width). For each pair of digits (a[i], b[j]),
+///          computes the uint64 product and accumulates into result[i+j] with
+///          carry propagation into result[i+j+1]. The sign of the result is
+///          XOR of the input signs. Handles NULL/zero inputs as zero.
+/// @param a First factor (not consumed).
+/// @param b Second factor (not consumed).
+/// @return New BigInt holding a * b.
 void *rt_bigint_mul(void *a, void *b) {
     if (!a || !b)
         return rt_bigint_zero();
@@ -688,6 +786,20 @@ void *rt_bigint_mul(void *a, void *b) {
     return result;
 }
 
+/// @brief Divide two BigInts, producing quotient and optional remainder.
+/// @details Three-path implementation:
+///          1. Single-digit divisor → fast path using simple loop division.
+///          2. Equal-length operands → magnitude comparison shortcut.
+///          3. Multi-digit divisor → Knuth's Algorithm D (long division with
+///             normalizing shift to ensure the leading divisor digit ≥ base/2,
+///             trial quotient estimation via two-digit / one-digit, and
+///             correction step for overestimates).
+///          Sign of quotient = XOR of input signs. Remainder takes dividend's sign.
+///          Traps on zero divisor. NULL inputs are treated as zero.
+/// @param a Dividend (not consumed).
+/// @param b Divisor (not consumed). Must be non-zero.
+/// @param remainder If non-NULL, receives a new BigInt holding the remainder.
+/// @return New BigInt holding the quotient (truncated toward zero).
 void *rt_bigint_divmod(void *a, void *b, void **remainder) {
     if (!b) {
         rt_trap("BigInt division by zero");
@@ -955,10 +1067,12 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
     return quot;
 }
 
+/// @brief Divide two BigInts, returning the quotient. Traps on zero divisor.
 void *rt_bigint_div(void *a, void *b) {
     return rt_bigint_divmod(a, b, NULL);
 }
 
+/// @brief Return the remainder of BigInt division (a % b).
 void *rt_bigint_mod(void *a, void *b) {
     void *rem = NULL;
     void *quot = rt_bigint_divmod(a, b, &rem);
@@ -969,6 +1083,7 @@ void *rt_bigint_mod(void *a, void *b) {
     return rem;
 }
 
+/// @brief Negate a BigInt, returning a new result.
 void *rt_bigint_neg(void *a) {
     if (!a)
         return rt_bigint_zero();
@@ -982,6 +1097,7 @@ void *rt_bigint_neg(void *a) {
     return result;
 }
 
+/// @brief Return the absolute value of a BigInt.
 void *rt_bigint_abs(void *a) {
     if (!a)
         return rt_bigint_zero();
@@ -998,10 +1114,12 @@ void *rt_bigint_abs(void *a) {
 // Comparison
 //=============================================================================
 
-/// @brief Perform bigint cmp operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Compare two BigInts: returns -1, 0, or 1.
+/// @details Compares signs first (negative < non-negative), then magnitudes
+///          digit-by-digit from most significant to least significant.
+/// @param a First operand.
+/// @param b Second operand.
+/// @return -1 if a < b, 0 if equal, 1 if a > b.
 int64_t rt_bigint_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
@@ -1025,26 +1143,27 @@ int64_t rt_bigint_cmp(void *a, void *b) {
     return bi_a->sign ? -mag_cmp : mag_cmp;
 }
 
-/// @brief Perform bigint eq operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Check equality of two BigInts.
+/// @param a First operand.
+/// @param b Second operand.
+/// @return 1 if the values are equal, 0 otherwise.
+/// @brief Return 1 if two BigInts are equal.
 int8_t rt_bigint_eq(void *a, void *b) {
     return rt_bigint_cmp(a, b) == 0 ? 1 : 0;
 }
 
-/// @brief Perform bigint is zero operation.
-/// @param a
-/// @return Result value.
+/// @brief Check if the BigInt represents zero (len == 0).
+/// @param a BigInt to test; NULL is treated as zero.
+/// @return 1 if the value is zero, 0 otherwise.
 int8_t rt_bigint_is_zero(void *a) {
     if (!a)
         return 1;
     return ((bigint_t *)a)->len == 0 ? 1 : 0;
 }
 
-/// @brief Perform bigint is negative operation.
-/// @param a
-/// @return Result value.
+/// @brief Check if the BigInt is strictly negative (sign == 1 and len > 0).
+/// @param a BigInt to test; NULL is treated as non-negative.
+/// @return 1 if negative, 0 otherwise.
 int8_t rt_bigint_is_negative(void *a) {
     if (!a)
         return 0;
@@ -1052,9 +1171,11 @@ int8_t rt_bigint_is_negative(void *a) {
     return (bi->len > 0 && bi->sign) ? 1 : 0;
 }
 
-/// @brief Perform bigint sign operation.
-/// @param a
-/// @return Result value.
+/// @brief Return the sign of the BigInt: -1, 0, or 1.
+/// @details Returns -1 for negative, 0 for zero, 1 for positive. Mirrors the
+///          signum function from mathematics. NULL is treated as zero.
+/// @param a BigInt to query.
+/// @return -1, 0, or 1.
 int64_t rt_bigint_sign(void *a) {
     if (!a)
         return 0;
@@ -1068,6 +1189,15 @@ int64_t rt_bigint_sign(void *a) {
 // Bitwise Operations
 //=============================================================================
 
+/// @brief Bitwise AND of two BigInts.
+/// @details For non-negative values, ANDs corresponding digit pairs up to the
+///          shorter length (higher digits are implicitly zero, so AND with zero
+///          eliminates them). For negative values, falls back to int64 conversion
+///          when both fit — full arbitrary-precision two's complement AND is not
+///          yet implemented. Returns zero when either input is NULL.
+/// @param a First operand (not consumed).
+/// @param b Second operand (not consumed).
+/// @return New BigInt holding a AND b.
 void *rt_bigint_and(void *a, void *b) {
     if (!a || !b)
         return rt_bigint_zero();
@@ -1098,6 +1228,7 @@ void *rt_bigint_and(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise OR of two BigInts (two's complement semantics).
 void *rt_bigint_or(void *a, void *b) {
     if (!a)
         return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
@@ -1130,6 +1261,7 @@ void *rt_bigint_or(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise XOR of two BigInts (two's complement semantics).
 void *rt_bigint_xor(void *a, void *b) {
     if (!a)
         return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
@@ -1162,6 +1294,7 @@ void *rt_bigint_xor(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise NOT (one's complement) of a BigInt.
 void *rt_bigint_not(void *a) {
     // For arbitrary precision, NOT doesn't have fixed meaning
     // Return -(a + 1) as two's complement would
@@ -1177,6 +1310,7 @@ void *rt_bigint_not(void *a) {
     return result;
 }
 
+/// @brief Left-shift a BigInt by n bits.
 void *rt_bigint_shl(void *a, int64_t n) {
     if (!a || n <= 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
@@ -1213,6 +1347,7 @@ void *rt_bigint_shl(void *a, int64_t n) {
     return result;
 }
 
+/// @brief Arithmetic right-shift a BigInt by n bits.
 void *rt_bigint_shr(void *a, int64_t n) {
     if (!a || n <= 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
@@ -1253,6 +1388,15 @@ void *rt_bigint_shr(void *a, int64_t n) {
 // Advanced Operations
 //=============================================================================
 
+/// @brief Compute a^n using binary exponentiation (squaring method).
+/// @details Runs in O(log n) multiplications by repeatedly squaring the base
+///          and multiplying into the accumulator when the current exponent bit
+///          is set. This is dramatically faster than n successive multiplications
+///          for large exponents. Negative exponents trap because BigInt has no
+///          fractional representation — callers must check before calling.
+/// @param a Base value (not consumed).
+/// @param n Exponent (must be non-negative).
+/// @return New BigInt holding a^n. Returns 1 for n=0.
 void *rt_bigint_pow(void *a, int64_t n) {
     if (n < 0) {
         rt_trap("BigInt.Pow: negative exponent");
@@ -1293,6 +1437,16 @@ void *rt_bigint_pow(void *a, int64_t n) {
     return result;
 }
 
+/// @brief Modular exponentiation: compute a^n mod m.
+/// @details Uses binary exponentiation with intermediate modular reduction after
+///          each multiply, keeping intermediate values bounded by m^2 rather
+///          than growing exponentially. Essential for cryptographic operations
+///          (RSA, Diffie-Hellman) where a^n would be astronomically large but
+///          a^n mod m fits in a reasonable number of digits. Traps on zero modulus.
+/// @param a Base (not consumed).
+/// @param n Exponent (not consumed).
+/// @param m Modulus (not consumed; must be non-zero).
+/// @return New BigInt holding a^n mod m.
 void *rt_bigint_pow_mod(void *a, void *n, void *m) {
     if (!m || rt_bigint_is_zero(m)) {
         rt_trap("BigInt.PowMod: zero modulus");
@@ -1356,6 +1510,14 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m) {
     return r0;
 }
 
+/// @brief Compute the greatest common divisor using Euclidean algorithm.
+/// @details Repeatedly replaces the larger value with the remainder of dividing
+///          the larger by the smaller until the remainder is zero. Operates on
+///          absolute values so negative inputs are handled correctly. Returns
+///          zero when both inputs are zero (mathematical convention).
+/// @param a First value (not consumed).
+/// @param b Second value (not consumed).
+/// @return New BigInt holding gcd(|a|, |b|).
 void *rt_bigint_gcd(void *a, void *b) {
     if (!a)
         return b ? rt_bigint_abs(b) : rt_bigint_zero();
@@ -1379,6 +1541,14 @@ void *rt_bigint_gcd(void *a, void *b) {
     return x;
 }
 
+/// @brief Compute the least common multiple: lcm(a,b) = |a*b| / gcd(a,b).
+/// @details Uses the standard identity lcm(a,b) = |a*b| / gcd(a,b) rather than
+///          enumerating multiples, which would be impractical for large values.
+///          The absolute value ensures the result is always non-negative.
+///          Returns zero when either input is zero (by convention).
+/// @param a First value (not consumed).
+/// @param b Second value (not consumed).
+/// @return New BigInt holding lcm(|a|, |b|).
 void *rt_bigint_lcm(void *a, void *b) {
     if (!a || !b)
         return rt_bigint_zero();
@@ -1404,9 +1574,11 @@ void *rt_bigint_lcm(void *a, void *b) {
     return result;
 }
 
-/// @brief Perform bigint bit length operation.
-/// @param a
-/// @return Result value.
+/// @brief Return the number of bits needed to represent the magnitude.
+/// @details Computes floor(log2(|value|)) + 1 by finding the highest set bit
+///          in the most significant digit. Returns 0 for a zero value.
+/// @param a BigInt to measure.
+/// @return Bit count (excludes the sign).
 int64_t rt_bigint_bit_length(void *a) {
     if (!a)
         return 0;
@@ -1426,10 +1598,13 @@ int64_t rt_bigint_bit_length(void *a) {
     return bits;
 }
 
-/// @brief Perform bigint test bit operation.
-/// @param a
-/// @param n
-/// @return Result value.
+/// @brief Test whether bit n is set (0 = LSB).
+/// @details Locates the digit containing bit n and masks the specific bit.
+///          Out-of-range bit positions (n >= bit_length) return 0.
+/// @param a BigInt to test.
+/// @param n Zero-based bit index.
+/// @return 1 if the bit is set, 0 otherwise.
+/// @brief Test bit n (0 = LSB). Returns 1 if set, 0 if clear.
 int8_t rt_bigint_test_bit(void *a, int64_t n) {
     if (!a || n < 0)
         return 0;
@@ -1444,6 +1619,7 @@ int8_t rt_bigint_test_bit(void *a, int64_t n) {
     return (bi->digits[word] >> bit) & 1 ? 1 : 0;
 }
 
+/// @brief Return a new BigInt with bit n set to 1.
 void *rt_bigint_set_bit(void *a, int64_t n) {
     if (n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
@@ -1478,6 +1654,7 @@ void *rt_bigint_set_bit(void *a, int64_t n) {
     return result;
 }
 
+/// @brief Return a new BigInt with bit n cleared to 0.
 void *rt_bigint_clear_bit(void *a, int64_t n) {
     if (!a || n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
@@ -1498,6 +1675,15 @@ void *rt_bigint_clear_bit(void *a, int64_t n) {
     return result;
 }
 
+/// @brief Integer square root using Newton's method (Heron's algorithm).
+/// @details Computes floor(sqrt(a)) by iterating x = (x + a/x) / 2 until the
+///          estimate stabilizes (consecutive iterations differ by at most 1).
+///          The initial guess uses half the bit-length to start close to the
+///          answer, typically converging in O(log(log(a))) iterations. Traps
+///          on negative input because square root of a negative integer is
+///          undefined in the integer domain.
+/// @param a Non-negative BigInt (not consumed).
+/// @return New BigInt holding floor(sqrt(a)).
 void *rt_bigint_sqrt(void *a) {
     if (!a)
         return rt_bigint_zero();

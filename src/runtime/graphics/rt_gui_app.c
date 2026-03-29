@@ -145,7 +145,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
 }
 
 // Ensure the default font is loaded (lazy init on first use).
-/// @brief Perform ensure default font operation.
+/// @brief Default the font of the ensure.
 void rt_gui_ensure_default_font(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
@@ -182,8 +182,7 @@ void rt_gui_ensure_default_font(void) {
     }
 }
 
-/// @brief Perform app destroy operation.
-/// @param app_ptr
+/// @brief Release resources and destroy the app.
 void rt_gui_app_destroy(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -216,9 +215,7 @@ void rt_gui_app_destroy(void *app_ptr) {
     }
 }
 
-/// @brief Perform app should close operation.
-/// @param app_ptr
-/// @return Result value.
+/// @brief Should the close of the app.
 int64_t rt_gui_app_should_close(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -233,8 +230,7 @@ static void render_widget_tree(vgfx_window_t window,
                                float parent_abs_x,
                                float parent_abs_y);
 
-/// @brief Perform app poll operation.
-/// @param app_ptr
+/// @brief Poll the app.
 void rt_gui_app_poll(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -468,8 +464,7 @@ void rt_gui_app_poll(void *app_ptr) {
     }
 }
 
-/// @brief Perform app render operation.
-/// @param app_ptr
+/// @brief Render the app.
 void rt_gui_app_render(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -562,10 +557,7 @@ void *rt_gui_app_get_root(void *app_ptr) {
     return app->root;
 }
 
-/// @brief Perform app set font operation.
-/// @param app_ptr
-/// @param font
-/// @param size
+/// @brief Set the font of the app.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -634,31 +626,26 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return NULL;
 }
 
-/// @brief Perform ensure default font operation.
+/// @brief Default the font of the ensure.
 void rt_gui_ensure_default_font(void) {}
 
-/// @brief Perform app destroy operation.
-/// @param app_ptr
+/// @brief Release resources and destroy the app.
 void rt_gui_app_destroy(void *app_ptr) {
     (void)app_ptr;
 }
 
-/// @brief Perform app should close operation.
-/// @param app_ptr
-/// @return Result value.
+/// @brief Should the close of the app.
 int64_t rt_gui_app_should_close(void *app_ptr) {
     (void)app_ptr;
     return 1;
 }
 
-/// @brief Perform app poll operation.
-/// @param app_ptr
+/// @brief Poll the app.
 void rt_gui_app_poll(void *app_ptr) {
     (void)app_ptr;
 }
 
-/// @brief Perform app render operation.
-/// @param app_ptr
+/// @brief Render the app.
 void rt_gui_app_render(void *app_ptr) {
     (void)app_ptr;
 }
@@ -668,10 +655,7 @@ void *rt_gui_app_get_root(void *app_ptr) {
     return NULL;
 }
 
-/// @brief Perform app set font operation.
-/// @param app_ptr
-/// @param font
-/// @param size
+/// @brief Set the font of the app.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     (void)app_ptr;
     (void)font;

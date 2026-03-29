@@ -136,9 +136,7 @@ void *rt_result_err_str(rt_string message) {
 // Result Inspection
 //=============================================================================
 
-/// @brief Perform result is ok operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the Result is the Ok variant (operation succeeded).
 int8_t rt_result_is_ok(void *obj) {
     if (!obj)
         return 0;
@@ -146,9 +144,7 @@ int8_t rt_result_is_ok(void *obj) {
     return r->variant == RESULT_OK ? 1 : 0;
 }
 
-/// @brief Perform result is err operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the Result is the Err variant (operation failed).
 int8_t rt_result_is_err(void *obj) {
     if (!obj)
         return 0;
@@ -175,9 +171,7 @@ void *rt_result_unwrap(void *obj) {
     return r->value.ptr;
 }
 
-/// @brief Perform result unwrap str operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the string value from an Ok result; traps if Err or wrong type.
 rt_string rt_result_unwrap_str(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
@@ -189,9 +183,7 @@ rt_string rt_result_unwrap_str(void *obj) {
     return r->value.str;
 }
 
-/// @brief Perform result unwrap i64 operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the i64 value from an Ok result; traps if Err or wrong type.
 int64_t rt_result_unwrap_i64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
@@ -203,9 +195,7 @@ int64_t rt_result_unwrap_i64(void *obj) {
     return r->value.i64;
 }
 
-/// @brief Perform result unwrap f64 operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the f64 value from an Ok result; traps if Err or wrong type.
 double rt_result_unwrap_f64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
@@ -226,10 +216,7 @@ void *rt_result_unwrap_or(void *obj, void *def) {
     return r->value.ptr;
 }
 
-/// @brief Perform result unwrap or str operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or str of the result.
 rt_string rt_result_unwrap_or_str(void *obj, rt_string def) {
     if (!obj)
         return def;
@@ -241,10 +228,7 @@ rt_string rt_result_unwrap_or_str(void *obj, rt_string def) {
     return r->value.str;
 }
 
-/// @brief Perform result unwrap or i64 operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or i64 of the result.
 int64_t rt_result_unwrap_or_i64(void *obj, int64_t def) {
     if (!obj)
         return def;
@@ -256,10 +240,7 @@ int64_t rt_result_unwrap_or_i64(void *obj, int64_t def) {
     return r->value.i64;
 }
 
-/// @brief Perform result unwrap or f64 operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or f64 of the result.
 double rt_result_unwrap_or_f64(void *obj, double def) {
     if (!obj)
         return def;
@@ -280,9 +261,7 @@ void *rt_result_unwrap_err(void *obj) {
     return r->value.ptr;
 }
 
-/// @brief Perform result unwrap err str operation.
-/// @param obj
-/// @return Result value.
+/// @brief Unwrap the err str of the result.
 rt_string rt_result_unwrap_err_str(void *obj) {
     if (!obj)
         trap_with_message("UnwrapErr called on NULL Result");
@@ -408,10 +387,7 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
 // Utility
 //=============================================================================
 
-/// @brief Perform result equals operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Compare two result instances for structural equality.
 int8_t rt_result_equals(void *a, void *b) {
     if (a == b)
         return 1;

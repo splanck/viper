@@ -163,11 +163,14 @@ void *rt_msgbus_new(void) {
     return (void *)mb;
 }
 
-/// @brief Perform msgbus subscribe operation.
-/// @param obj
-/// @param topic
-/// @param callback
-/// @return Result value.
+/// @brief Subscribe a callback to a topic on the message bus.
+/// @details Adds the callback to the topic's subscriber list. When a message is
+///          published to this topic, the callback will be invoked with the payload.
+///          Returns a unique subscription ID for later unsubscribe.
+/// @param obj MessageBus object.
+/// @param topic Topic name string.
+/// @param callback Function pointer (opaque) to invoke on publish.
+/// @return Subscription ID (>= 0 on success, -1 on failure).
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     if (!obj || !topic)
         return -1;
@@ -189,10 +192,17 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     return s->id;
 }
 
-/// @brief Perform msgbus unsubscribe operation.
-/// @param obj
-/// @param sub_id
-/// @return Result value.
+/// @brief Remove a subscription from the message bus by its unique ID.
+/// @details Performs a linear scan across all topic buckets and their subscriber
+///          chains to locate the subscription matching sub_id. This O(B*S) scan
+///          is acceptable because unsubscribe is infrequent relative to publish,
+///          and maintaining a separate ID→subscription index would add complexity
+///          for little practical benefit. Once found, the node is unlinked from
+///          the singly-linked list using the classic pointer-to-pointer technique,
+///          its topic string and callback are released, and the node is freed.
+/// @param obj MessageBus object pointer; returns 0 if NULL.
+/// @param sub_id The subscription ID returned by rt_msgbus_subscribe.
+/// @return 1 if the subscription was found and removed, 0 if not found.
 int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
     if (!obj)
         return 0;
@@ -219,11 +229,18 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
     return 0;
 }
 
-/// @brief Perform msgbus publish operation.
-/// @param obj
-/// @param topic
-/// @param data
-/// @return Result value.
+/// @brief Publish a message to all subscribers of a topic.
+/// @details Looks up the topic by name using FNV-1a hashing, then counts
+///          the number of active subscribers. The actual callback invocation
+///          requires VM support (trampolining from C back into managed code),
+///          so currently this returns the subscriber count as a proxy for
+///          "messages that would be delivered." This is still useful: callers
+///          can check whether anyone is listening before constructing expensive
+///          payloads.
+/// @param obj MessageBus object pointer; returns 0 if NULL.
+/// @param topic Topic name string to publish to.
+/// @param data Payload pointer (currently unused pending VM callback support).
+/// @return Number of subscribers that would receive the message, 0 if none.
 int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     if (!obj || !topic)
         return 0;
@@ -237,10 +254,14 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     return t->count;
 }
 
-/// @brief Perform msgbus subscriber count operation.
-/// @param obj
-/// @param topic
-/// @return Result value.
+/// @brief Return the number of active subscribers for a specific topic.
+/// @details Looks up the topic bucket via FNV-1a hash and returns the cached
+///          subscriber count. This is O(1) after the hash lookup because each
+///          mb_topic maintains a running count that is incremented on subscribe
+///          and decremented on unsubscribe, avoiding a linked-list traversal.
+/// @param obj MessageBus object pointer; returns 0 if NULL.
+/// @param topic Topic name string to query.
+/// @return Number of subscribers for the topic, 0 if topic not found or NULL.
 int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic) {
     if (!obj || !topic)
         return 0;
@@ -249,9 +270,13 @@ int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic) {
     return t ? t->count : 0;
 }
 
-/// @brief Perform msgbus total subscriptions operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the total number of active subscriptions across all topics.
+/// @details Returns the cached total_subs counter maintained by the bus. This
+///          is a global aggregate: it is incremented on every subscribe and
+///          decremented on every unsubscribe or clear operation. Useful for
+///          diagnostics and monitoring bus activity without iterating topics.
+/// @param obj MessageBus object pointer; returns 0 if NULL.
+/// @return Total subscription count across all topics.
 int64_t rt_msgbus_total_subscriptions(void *obj) {
     if (!obj)
         return 0;
@@ -275,9 +300,15 @@ void *rt_msgbus_topics(void *obj) {
     return seq;
 }
 
-/// @brief Perform msgbus clear topic operation.
-/// @param obj
-/// @param topic
+/// @brief Remove all subscriptions from a single topic without destroying the
+///        topic bucket itself.
+/// @details Walks the subscriber linked list for the given topic, freeing each
+///          node (releasing its topic string reference and callback). The topic
+///          bucket remains in the hash table with count=0 so that future
+///          subscriptions to the same topic name reuse it without re-hashing.
+///          The bus-wide total_subs counter is decremented for each removed sub.
+/// @param obj MessageBus object pointer; no-op if NULL.
+/// @param topic Topic name string to clear; no-op if NULL or not found.
 void rt_msgbus_clear_topic(void *obj, rt_string topic) {
     if (!obj || !topic)
         return;
@@ -297,8 +328,14 @@ void rt_msgbus_clear_topic(void *obj, rt_string topic) {
     t->count = 0;
 }
 
-/// @brief Perform msgbus clear operation.
-/// @param obj
+/// @brief Remove all subscriptions from every topic on the message bus.
+/// @details Iterates all buckets and all topic chains, freeing every subscriber
+///          node in each topic. Unlike the finalizer, this does NOT free the
+///          topic buckets themselves or the bucket array — the bus remains usable
+///          for new subscriptions afterward. This distinction is important: clear
+///          is a "reset to empty" operation, not a destruction. The total_subs
+///          counter is reset to 0 after all nodes are freed.
+/// @param obj MessageBus object pointer; no-op if NULL.
 void rt_msgbus_clear(void *obj) {
     if (!obj)
         return;

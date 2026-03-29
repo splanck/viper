@@ -77,10 +77,7 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
     return a;
 }
 
-/// @brief Perform texatlas3d add operation.
-/// @param obj
-/// @param pixels
-/// @return Result value.
+/// @brief Add an element to the texatlas3d.
 int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     if (!obj || !pixels)
         return -1;

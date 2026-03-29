@@ -113,12 +113,7 @@ double rt_ray3d_intersect_triangle(
  * Ray-AABB intersection (slab method)
  *=========================================================================*/
 
-/// @brief Perform ray3d intersect aabb operation.
-/// @param origin
-/// @param dir
-/// @param aabb_min
-/// @param aabb_max
-/// @return Result value.
+/// @brief Intersect the aabb of the ray3d.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     if (!origin || !dir || !aabb_min || !aabb_max)
         return -1.0;
@@ -165,12 +160,7 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
  * Ray-sphere intersection (quadratic formula)
  *=========================================================================*/
 
-/// @brief Perform ray3d intersect sphere operation.
-/// @param origin
-/// @param dir
-/// @param center
-/// @param radius
-/// @return Result value.
+/// @brief Intersect the sphere of the ray3d.
 double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
     if (!origin || !dir || !center)
         return -1.0;
@@ -322,12 +312,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
  * AABB-AABB collision
  *=========================================================================*/
 
-/// @brief Perform aabb3d overlaps operation.
-/// @param min_a
-/// @param max_a
-/// @param min_b
-/// @param max_b
-/// @return Result value.
+/// @brief Overlaps the aabb3d.
 int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
     if (!min_a || !max_a || !min_b || !max_b)
         return 0;
@@ -378,9 +363,7 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
  * RayHit3D accessors
  *=========================================================================*/
 
-/// @brief Perform ray3d hit distance operation.
-/// @param hit
-/// @return Result value.
+/// @brief Hit the distance of the ray3d.
 double rt_ray3d_hit_distance(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->distance : -1.0;
 }
@@ -399,9 +382,7 @@ void *rt_ray3d_hit_normal(void *hit) {
     return rt_vec3_new(h->normal[0], h->normal[1], h->normal[2]);
 }
 
-/// @brief Perform ray3d hit triangle operation.
-/// @param hit
-/// @return Result value.
+/// @brief Hit the triangle of the ray3d.
 int64_t rt_ray3d_hit_triangle(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->triangle_index : -1;
 }
@@ -410,12 +391,7 @@ int64_t rt_ray3d_hit_triangle(void *hit) {
  * Shape-shape collision primitives (for Physics3D)
  *=========================================================================*/
 
-/// @brief Perform sphere3d overlaps operation.
-/// @param center_a
-/// @param radius_a
-/// @param center_b
-/// @param radius_b
-/// @return Result value.
+/// @brief Overlaps the sphere3d.
 int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return 0;
@@ -454,12 +430,7 @@ void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     return rt_vec3_new(cx, cy, cz);
 }
 
-/// @brief Perform aabb3d sphere overlaps operation.
-/// @param aabb_min
-/// @param aabb_max
-/// @param center
-/// @param radius
-/// @return Result value.
+/// @brief Sphere the overlaps of the aabb3d.
 int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
     if (!aabb_min || !aabb_max || !center)
         return 0;

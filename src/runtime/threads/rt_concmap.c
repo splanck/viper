@@ -206,9 +206,7 @@ void *rt_concmap_new(void) {
     return cm;
 }
 
-/// @brief Perform concmap len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of elements in the concmap.
 int64_t rt_concmap_len(void *obj) {
     if (!obj)
         return 0;
@@ -219,17 +217,12 @@ int64_t rt_concmap_len(void *obj) {
     return len;
 }
 
-/// @brief Perform concmap is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the concmap has no entries.
 int8_t rt_concmap_is_empty(void *obj) {
     return rt_concmap_len(obj) == 0 ? 1 : 0;
 }
 
-/// @brief Perform concmap set operation.
-/// @param obj
-/// @param key
-/// @param value
+/// @brief Set a value in the concmap.
 void rt_concmap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
@@ -312,10 +305,7 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     return result;
 }
 
-/// @brief Perform concmap has operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key/element exists in the concmap.
 int8_t rt_concmap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -332,11 +322,7 @@ int8_t rt_concmap_has(void *obj, rt_string key) {
     return found;
 }
 
-/// @brief Perform concmap set if missing operation.
-/// @param obj
-/// @param key
-/// @param value
-/// @return Result value.
+/// @brief Set the if missing of the concmap.
 int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
@@ -381,10 +367,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     return 1;
 }
 
-/// @brief Perform concmap remove operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Remove an entry from the concmap.
 int8_t rt_concmap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -414,8 +397,7 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
     return 0;
 }
 
-/// @brief Perform concmap clear operation.
-/// @param obj
+/// @brief Remove all entries from the concmap.
 void rt_concmap_clear(void *obj) {
     if (!obj)
         return;

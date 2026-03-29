@@ -128,9 +128,7 @@ void *rt_concqueue_new(void) {
     return (void *)cq;
 }
 
-/// @brief Perform concqueue len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of elements in the concqueue.
 int64_t rt_concqueue_len(void *obj) {
     if (!obj)
         return 0;
@@ -141,16 +139,12 @@ int64_t rt_concqueue_len(void *obj) {
     return len;
 }
 
-/// @brief Perform concqueue is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the concqueue has no entries.
 int8_t rt_concqueue_is_empty(void *obj) {
     return rt_concqueue_len(obj) == 0 ? 1 : 0;
 }
 
-/// @brief Perform concqueue enqueue operation.
-/// @param obj
-/// @param item
+/// @brief Enqueue the concqueue.
 void rt_concqueue_enqueue(void *obj, void *item) {
     if (!obj)
         return;
@@ -278,8 +272,7 @@ void *rt_concqueue_peek(void *obj) {
     return value;
 }
 
-/// @brief Perform concqueue clear operation.
-/// @param obj
+/// @brief Remove all entries from the concqueue.
 void rt_concqueue_clear(void *obj) {
     if (!obj)
         return;

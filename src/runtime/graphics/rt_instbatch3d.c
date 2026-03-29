@@ -210,15 +210,22 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
         cmd.diffuse_color[0] = (float)mat->diffuse[0];
         cmd.diffuse_color[1] = (float)mat->diffuse[1];
         cmd.diffuse_color[2] = (float)mat->diffuse[2];
-        cmd.diffuse_color[3] = (float)mat->alpha;
+        cmd.diffuse_color[3] = (float)mat->diffuse[3];
+        cmd.specular[0] = (float)mat->specular[0];
+        cmd.specular[1] = (float)mat->specular[1];
+        cmd.specular[2] = (float)mat->specular[2];
         cmd.shininess = (float)mat->shininess;
         cmd.alpha = (float)mat->alpha;
         cmd.unlit = mat->unlit;
         cmd.texture = mat->texture;
+        cmd.normal_map = mat->normal_map;
+        cmd.specular_map = mat->specular_map;
         cmd.emissive_map = mat->emissive_map;
         cmd.emissive_color[0] = (float)mat->emissive[0];
         cmd.emissive_color[1] = (float)mat->emissive[1];
         cmd.emissive_color[2] = (float)mat->emissive[2];
+        cmd.env_map = mat->env_map;
+        cmd.reflectivity = (float)mat->reflectivity;
         cmd.prev_instance_matrices =
             (b->has_prev_snapshot && b->prev_count == b->instance_count) ? b->prev_transforms : NULL;
         cmd.has_prev_instance_matrices =

@@ -133,9 +133,7 @@ void *rt_option_none(void) {
 // Option Inspection
 //=============================================================================
 
-/// @brief Perform option is some operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the Option contains a value (is the Some variant).
 int8_t rt_option_is_some(void *obj) {
     if (!obj)
         return 0;
@@ -143,9 +141,7 @@ int8_t rt_option_is_some(void *obj) {
     return o->variant == OPTION_SOME ? 1 : 0;
 }
 
-/// @brief Perform option is none operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the Option is empty (is the None variant). NULL is treated as None.
 int8_t rt_option_is_none(void *obj) {
     if (!obj)
         return 1; // Treat NULL as None
@@ -172,9 +168,7 @@ void *rt_option_unwrap(void *obj) {
     return o->value.ptr;
 }
 
-/// @brief Perform option unwrap str operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the string value from a Some option; traps if None or wrong type.
 rt_string rt_option_unwrap_str(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
@@ -186,9 +180,7 @@ rt_string rt_option_unwrap_str(void *obj) {
     return o->value.str;
 }
 
-/// @brief Perform option unwrap i64 operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the i64 value from a Some option; traps if None or wrong type.
 int64_t rt_option_unwrap_i64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
@@ -200,9 +192,7 @@ int64_t rt_option_unwrap_i64(void *obj) {
     return o->value.i64;
 }
 
-/// @brief Perform option unwrap f64 operation.
-/// @param obj
-/// @return Result value.
+/// @brief Extract the f64 value from a Some option; traps if None or wrong type.
 double rt_option_unwrap_f64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
@@ -223,10 +213,7 @@ void *rt_option_unwrap_or(void *obj, void *def) {
     return o->value.ptr;
 }
 
-/// @brief Perform option unwrap or str operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or str of the option.
 rt_string rt_option_unwrap_or_str(void *obj, rt_string def) {
     if (!obj)
         return def;
@@ -238,10 +225,7 @@ rt_string rt_option_unwrap_or_str(void *obj, rt_string def) {
     return o->value.str;
 }
 
-/// @brief Perform option unwrap or i64 operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or i64 of the option.
 int64_t rt_option_unwrap_or_i64(void *obj, int64_t def) {
     if (!obj)
         return def;
@@ -253,10 +237,7 @@ int64_t rt_option_unwrap_or_i64(void *obj, int64_t def) {
     return o->value.i64;
 }
 
-/// @brief Perform option unwrap or f64 operation.
-/// @param obj
-/// @param def
-/// @return Result value.
+/// @brief Unwrap the or f64 of the option.
 double rt_option_unwrap_or_f64(void *obj, double def) {
     if (!obj)
         return def;
@@ -393,10 +374,7 @@ void *rt_option_ok_or_str(void *obj, rt_string err) {
 // Utility
 //=============================================================================
 
-/// @brief Perform option equals operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Compare two option instances for structural equality.
 int8_t rt_option_equals(void *a, void *b) {
     if (a == b)
         return 1;
@@ -434,9 +412,7 @@ int8_t rt_option_equals(void *a, void *b) {
     return 0;
 }
 
-/// @brief Perform option to string operation.
-/// @param obj
-/// @return Result value.
+/// @brief Convert the option to a human-readable string representation.
 rt_string rt_option_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("None");

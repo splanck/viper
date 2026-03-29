@@ -179,10 +179,7 @@ void *rt_keychord_new(void) {
     return kc;
 }
 
-/// @brief Perform keychord define operation.
-/// @param obj
-/// @param name
-/// @param keys
+/// @brief Define the keychord.
 void rt_keychord_define(void *obj, rt_string name, void *keys) {
     if (!obj || !keys)
         return;
@@ -193,11 +190,7 @@ void rt_keychord_define(void *obj, rt_string name, void *keys) {
     add_entry(kc, cstr, KC_TYPE_CHORD, keys, 0);
 }
 
-/// @brief Perform keychord define combo operation.
-/// @param obj
-/// @param name
-/// @param keys
-/// @param window_frames
+/// @brief Define the combo of the keychord.
 void rt_keychord_define_combo(void *obj, rt_string name, void *keys, int64_t window_frames) {
     if (!obj || !keys)
         return;
@@ -210,8 +203,7 @@ void rt_keychord_define_combo(void *obj, rt_string name, void *keys, int64_t win
     add_entry(kc, cstr, KC_TYPE_COMBO, keys, window_frames);
 }
 
-/// @brief Perform keychord update operation.
-/// @param obj
+/// @brief Update the keychord state (called per frame/tick).
 void rt_keychord_update(void *obj) {
     if (!obj)
         return;
@@ -269,10 +261,7 @@ void rt_keychord_update(void *obj) {
     }
 }
 
-/// @brief Perform keychord active operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Active the keychord.
 int8_t rt_keychord_active(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -286,10 +275,7 @@ int8_t rt_keychord_active(void *obj, rt_string name) {
     return e->is_active;
 }
 
-/// @brief Perform keychord triggered operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Triggered the keychord.
 int8_t rt_keychord_triggered(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -303,10 +289,7 @@ int8_t rt_keychord_triggered(void *obj, rt_string name) {
     return e->triggered;
 }
 
-/// @brief Perform keychord progress operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Progress the keychord.
 int64_t rt_keychord_progress(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -322,10 +305,7 @@ int64_t rt_keychord_progress(void *obj, rt_string name) {
     return e->combo_index;
 }
 
-/// @brief Perform keychord remove operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Remove an entry from the keychord.
 int8_t rt_keychord_remove(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -347,8 +327,7 @@ int8_t rt_keychord_remove(void *obj, rt_string name) {
     return 1;
 }
 
-/// @brief Perform keychord clear operation.
-/// @param obj
+/// @brief Remove all entries from the keychord.
 void rt_keychord_clear(void *obj) {
     if (!obj)
         return;
@@ -360,9 +339,7 @@ void rt_keychord_clear(void *obj) {
     kc->count = 0;
 }
 
-/// @brief Perform keychord count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the count of elements in the keychord.
 int64_t rt_keychord_count(void *obj) {
     if (!obj)
         return 0;

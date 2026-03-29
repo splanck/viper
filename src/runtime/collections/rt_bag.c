@@ -764,38 +764,6 @@ void *rt_bag_intersect(void *obj, void *other) {
     return result;
 }
 
-/// @brief Creates a new Bag containing the difference of two Bags.
-///
-/// Returns a new Bag containing strings that appear in the first Bag but not
-/// in the second. This is the set difference operation (A - B or A \ B).
-///
-/// **Set theory:**
-/// ```
-/// A = {apple, banana, cherry}
-/// B = {banana, date}
-/// A.Diff(B) = {apple, cherry}
-/// ```
-///
-/// **Example:**
-/// ```
-/// Dim all_fruits = Bag.New()
-/// all_fruits.Put("apple")
-/// all_fruits.Put("banana")
-/// all_fruits.Put("cherry")
-///
-/// Dim sold = Bag.New()
-/// sold.Put("banana")
-///
-/// Dim remaining = all_fruits.Diff(sold)
-/// Print remaining.Len()  ' Outputs: 2 (apple, cherry)
-/// ```
-///
-/// **Use cases:**
-/// - Finding elements unique to one set
-/// - Computing what's left after removing items
-/// - Filtering out unwanted elements
-///
-/// **Asymmetric operation:**
 /// @brief Creates a deep copy (clone) of a Bag.
 ///
 /// @param obj Pointer to the Bag to clone. If NULL, returns empty Bag.
@@ -824,6 +792,33 @@ void *rt_bag_clone(void *obj) {
     return result;
 }
 
+/// @brief Creates a new Bag containing the difference of two Bags.
+///
+/// Returns a new Bag containing strings that appear in the first Bag but not
+/// in the second. This is the set difference operation (A \ B).
+///
+/// **Set theory:**
+/// ```
+/// A = {apple, banana, cherry}
+/// B = {banana, date}
+/// A.Diff(B) = {apple, cherry}
+/// ```
+///
+/// **Asymmetric operation:** A.Diff(B) is NOT the same as B.Diff(A). The first
+/// Bag determines which elements are candidates; the second Bag acts as the
+/// exclusion filter.
+///
+/// @param obj Pointer to the first Bag (source set). If NULL, returns empty Bag.
+/// @param other Pointer to the second Bag (exclusion set). If NULL, returns a
+///        copy of obj (nothing is excluded).
+///
+/// @return A new Bag containing strings in obj that are NOT in other.
+///
+/// @note O(n) time where n is the size of the first Bag.
+/// @note The input Bags are not modified.
+///
+/// @see rt_bag_union For set union
+/// @see rt_bag_intersect For set intersection
 void *rt_bag_diff(void *obj, void *other) {
     void *result = rt_bag_new();
     if (!result || !obj)

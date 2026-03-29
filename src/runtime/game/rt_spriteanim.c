@@ -62,8 +62,7 @@ struct rt_spriteanim_impl {
     int8_t frame_changed; ///< 1 if frame changed this update.
 };
 
-/// @brief Perform spriteanim new operation.
-/// @return Result value.
+/// @brief Create a new spriteanim object.
 rt_spriteanim rt_spriteanim_new(void) {
     struct rt_spriteanim_impl *anim =
         (struct rt_spriteanim_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_spriteanim_impl));
@@ -88,8 +87,7 @@ rt_spriteanim rt_spriteanim_new(void) {
     return anim;
 }
 
-/// @brief Perform spriteanim destroy operation.
-/// @param anim
+/// @brief Release resources and destroy the spriteanim.
 void rt_spriteanim_destroy(rt_spriteanim anim) {
     (void)anim;
 }
@@ -117,40 +115,31 @@ void rt_spriteanim_setup(rt_spriteanim anim,
     anim->finished = 0;
 }
 
-/// @brief Perform spriteanim set loop operation.
-/// @param anim
-/// @param loop
+/// @brief Enable or disable looping; when enabled, the animation restarts after the last frame.
 void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
     if (!anim)
         return;
     anim->loop = loop ? 1 : 0;
 }
 
-/// @brief Perform spriteanim set pingpong operation.
-/// @param anim
-/// @param pingpong
+/// @brief Enable or disable ping-pong mode (forward then reverse, then forward again).
 void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
     if (!anim)
         return;
     anim->pingpong = pingpong ? 1 : 0;
 }
 
-/// @brief Perform spriteanim loop operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return whether looping is enabled for this animation.
 int8_t rt_spriteanim_loop(rt_spriteanim anim) {
     return anim ? anim->loop : 0;
 }
 
-/// @brief Perform spriteanim pingpong operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return whether ping-pong mode is enabled for this animation.
 int8_t rt_spriteanim_pingpong(rt_spriteanim anim) {
     return anim ? anim->pingpong : 0;
 }
 
-/// @brief Perform spriteanim play operation.
-/// @param anim
+/// @brief Start playback from the first frame, resetting all internal counters.
 void rt_spriteanim_play(rt_spriteanim anim) {
     if (!anim)
         return;
@@ -163,8 +152,7 @@ void rt_spriteanim_play(rt_spriteanim anim) {
     anim->speed_accum = 0.0;
 }
 
-/// @brief Perform spriteanim stop operation.
-/// @param anim
+/// @brief Stop playback entirely (not paused — position is not preserved for resume).
 void rt_spriteanim_stop(rt_spriteanim anim) {
     if (!anim)
         return;
@@ -172,8 +160,7 @@ void rt_spriteanim_stop(rt_spriteanim anim) {
     anim->paused = 0;
 }
 
-/// @brief Perform spriteanim pause operation.
-/// @param anim
+/// @brief Pause a playing animation so it can be resumed from the current frame.
 void rt_spriteanim_pause(rt_spriteanim anim) {
     if (!anim)
         return;
@@ -181,16 +168,14 @@ void rt_spriteanim_pause(rt_spriteanim anim) {
         anim->paused = 1;
 }
 
-/// @brief Perform spriteanim resume operation.
-/// @param anim
+/// @brief Resume a paused animation from the frame where it was paused.
 void rt_spriteanim_resume(rt_spriteanim anim) {
     if (!anim)
         return;
     anim->paused = 0;
 }
 
-/// @brief Perform spriteanim reset operation.
-/// @param anim
+/// @brief Reset the animation to its first frame without changing play/pause state.
 void rt_spriteanim_reset(rt_spriteanim anim) {
     if (!anim)
         return;
@@ -201,9 +186,7 @@ void rt_spriteanim_reset(rt_spriteanim anim) {
     anim->speed_accum = 0.0;
 }
 
-/// @brief Perform spriteanim update operation.
-/// @param anim
-/// @return Result value.
+/// @brief Update the spriteanim state (called per frame/tick).
 int8_t rt_spriteanim_update(rt_spriteanim anim) {
     if (!anim)
         return 0;
@@ -266,18 +249,14 @@ int8_t rt_spriteanim_update(rt_spriteanim anim) {
     return 0;
 }
 
-/// @brief Perform spriteanim frame operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return the current frame index within the sprite sheet.
 int64_t rt_spriteanim_frame(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->current_frame;
 }
 
-/// @brief Perform spriteanim set frame operation.
-/// @param anim
-/// @param frame
+/// @brief Jump to a specific frame, clamped to [start_frame, end_frame].
 void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
     if (!anim)
         return;
@@ -289,18 +268,14 @@ void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
     anim->frame_counter = 0;
 }
 
-/// @brief Perform spriteanim frame duration operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return how many update ticks each frame is displayed before advancing.
 int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->frame_duration;
 }
 
-/// @brief Perform spriteanim set frame duration operation.
-/// @param anim
-/// @param duration
+/// @brief Set how many update ticks each frame is displayed (minimum 1).
 void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
     if (!anim)
         return;
@@ -309,45 +284,35 @@ void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
     anim->frame_duration = duration;
 }
 
-/// @brief Perform spriteanim frame count operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return the count of elements in the spriteanim.
 int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->end_frame - anim->start_frame + 1;
 }
 
-/// @brief Perform spriteanim is playing operation.
-/// @param anim
-/// @return Result value.
+/// @brief Check whether the animation is currently playing (not paused or stopped).
 int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->playing && !anim->paused;
 }
 
-/// @brief Perform spriteanim is paused operation.
-/// @param anim
-/// @return Result value.
+/// @brief Check whether the animation is paused (can be resumed).
 int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->paused;
 }
 
-/// @brief Perform spriteanim is finished operation.
-/// @param anim
-/// @return Result value.
+/// @brief Check whether a non-looping animation has reached its last frame.
 int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->finished;
 }
 
-/// @brief Perform spriteanim progress operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return the animation progress as a percentage (0-100).
 int64_t rt_spriteanim_progress(rt_spriteanim anim) {
     if (!anim)
         return 0;
@@ -358,9 +323,7 @@ int64_t rt_spriteanim_progress(rt_spriteanim anim) {
     return (current * 100) / total;
 }
 
-/// @brief Perform spriteanim set speed operation.
-/// @param anim
-/// @param speed
+/// @brief Set the playback speed multiplier, clamped to [0.0, 10.0] (1.0 = normal).
 void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
     if (!anim)
         return;
@@ -371,18 +334,14 @@ void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
     anim->speed = speed;
 }
 
-/// @brief Perform spriteanim speed operation.
-/// @param anim
-/// @return Result value.
+/// @brief Return the current playback speed multiplier.
 double rt_spriteanim_speed(rt_spriteanim anim) {
     if (!anim)
         return 1.0;
     return anim->speed;
 }
 
-/// @brief Perform spriteanim frame changed operation.
-/// @param anim
-/// @return Result value.
+/// @brief Check whether the current frame changed during the last update call.
 int8_t rt_spriteanim_frame_changed(rt_spriteanim anim) {
     if (!anim)
         return 0;

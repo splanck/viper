@@ -167,9 +167,7 @@ void *rt_version_parse(rt_string str) {
     return v;
 }
 
-/// @brief Perform version is valid operation.
-/// @param str
-/// @return Result value.
+/// @brief Check whether a string is a valid semantic version (major.minor.patch).
 int8_t rt_version_is_valid(rt_string str) {
     void *v = rt_version_parse(str);
     if (!v)
@@ -179,36 +177,28 @@ int8_t rt_version_is_valid(rt_string str) {
     return 1;
 }
 
-/// @brief Perform version major operation.
-/// @param ver
-/// @return Result value.
+/// @brief Major the version.
 int64_t rt_version_major(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->major;
 }
 
-/// @brief Perform version minor operation.
-/// @param ver
-/// @return Result value.
+/// @brief Minor the version.
 int64_t rt_version_minor(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->minor;
 }
 
-/// @brief Perform version patch operation.
-/// @param ver
-/// @return Result value.
+/// @brief Patch the version.
 int64_t rt_version_patch(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->patch;
 }
 
-/// @brief Perform version prerelease operation.
-/// @param ver
-/// @return Result value.
+/// @brief Prerelease the version.
 rt_string rt_version_prerelease(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->prerelease)
         return rt_string_from_bytes("", 0);
@@ -216,9 +206,7 @@ rt_string rt_version_prerelease(void *ver) {
     return rt_string_from_bytes(pr, strlen(pr));
 }
 
-/// @brief Perform version build operation.
-/// @param ver
-/// @return Result value.
+/// @brief Build the version.
 rt_string rt_version_build(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->build)
         return rt_string_from_bytes("", 0);
@@ -226,9 +214,7 @@ rt_string rt_version_build(void *ver) {
     return rt_string_from_bytes(b, strlen(b));
 }
 
-/// @brief Perform version to string operation.
-/// @param ver
-/// @return Result value.
+/// @brief Convert the version to a human-readable string representation.
 rt_string rt_version_to_string(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
@@ -317,10 +303,7 @@ static int cmp_prerelease(const char *a, const char *b) {
     return 0;
 }
 
-/// @brief Perform version cmp operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Cmp the version.
 int64_t rt_version_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
@@ -342,10 +325,7 @@ int64_t rt_version_cmp(void *a, void *b) {
     return cmp_prerelease(va->prerelease, vb->prerelease);
 }
 
-/// @brief Perform version satisfies operation.
-/// @param ver
-/// @param constraint
-/// @return Result value.
+/// @brief Satisfies the version.
 int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     if (!ver || !constraint)
         return 0;
@@ -457,9 +437,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     return cmp == 0 ? 1 : 0;
 }
 
-/// @brief Perform version bump major operation.
-/// @param ver
-/// @return Result value.
+/// @brief Return a new version string with the major component incremented and minor/patch reset to 0.
 rt_string rt_version_bump_major(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
@@ -469,9 +447,7 @@ rt_string rt_version_bump_major(void *ver) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Perform version bump minor operation.
-/// @param ver
-/// @return Result value.
+/// @brief Return a new version string with the minor component incremented and patch reset to 0.
 rt_string rt_version_bump_minor(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
@@ -481,9 +457,7 @@ rt_string rt_version_bump_minor(void *ver) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Perform version bump patch operation.
-/// @param ver
-/// @return Result value.
+/// @brief Return a new version string with the patch component incremented.
 rt_string rt_version_bump_patch(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);

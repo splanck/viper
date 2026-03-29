@@ -249,6 +249,37 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_morph_normal_payload_for_d3d11(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kD3D11Backend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_normal_delta(morph, 0, 0, 0.25, 0.5, 0.75);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed-normal draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 3,
+                "D3D11 morphed-normal draw registers packed deltas, normal deltas, and weights");
+    EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
+                "D3D11 morphed-normal draw forwards packed morph normal deltas");
+    if (draws[0].cmd.morph_normal_deltas) {
+        EXPECT_TRUE(draws[0].cmd.morph_normal_deltas[0] == 0.25f &&
+                        draws[0].cmd.morph_normal_deltas[1] == 0.5f &&
+                        draws[0].cmd.morph_normal_deltas[2] == 0.75f,
+                    "D3D11 morphed-normal draw packs normal deltas in XYZ order");
+    }
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_gpu_morph_normal_payload_for_opengl(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -479,6 +510,69 @@ static void test_instanced_transform_history_forwarded(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_instanced_material_payload_forwarded(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "d3d11";
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    last_instance_matrices = nullptr;
+    last_instance_count = 0;
+    std::memset(&last_instanced_cmd, 0, sizeof(last_instanced_cmd));
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    rt_material3d *mat_view = (rt_material3d *)material;
+    mat_view->diffuse[0] = 0.2;
+    mat_view->diffuse[1] = 0.4;
+    mat_view->diffuse[2] = 0.6;
+    mat_view->diffuse[3] = 0.8;
+    mat_view->specular[0] = 0.9;
+    mat_view->specular[1] = 0.7;
+    mat_view->specular[2] = 0.5;
+    mat_view->shininess = 48.0;
+    mat_view->alpha = 0.65;
+    mat_view->emissive[0] = 0.1;
+    mat_view->emissive[1] = 0.2;
+    mat_view->emissive[2] = 0.3;
+
+    void *px = rt_pixels_new(1, 1);
+    rt_pixels_set(px, 0, 0, 0xFFAA00FF);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    mat_view->texture = px;
+    mat_view->normal_map = px;
+    mat_view->specular_map = px;
+    mat_view->emissive_map = px;
+    mat_view->env_map = cubemap;
+    mat_view->reflectivity = 0.55;
+
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *transform = rt_mat4_identity();
+    rt_instbatch3d_add(batch, transform);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+
+    EXPECT_TRUE(last_instance_count == 1, "Instanced material draw submits one instance");
+    EXPECT_TRUE(last_instanced_cmd.texture == px, "Instanced draw forwards diffuse texture");
+    EXPECT_TRUE(last_instanced_cmd.normal_map == px, "Instanced draw forwards normal map");
+    EXPECT_TRUE(last_instanced_cmd.specular_map == px, "Instanced draw forwards specular map");
+    EXPECT_TRUE(last_instanced_cmd.emissive_map == px, "Instanced draw forwards emissive map");
+    EXPECT_TRUE(last_instanced_cmd.env_map == cubemap, "Instanced draw forwards environment map");
+    EXPECT_TRUE(last_instanced_cmd.reflectivity == 0.55f,
+                "Instanced draw forwards reflectivity");
+    EXPECT_TRUE(last_instanced_cmd.specular[0] == 0.9f &&
+                    last_instanced_cmd.specular[1] == 0.7f &&
+                    last_instanced_cmd.specular[2] == 0.5f,
+                "Instanced draw forwards specular color");
+    EXPECT_TRUE(last_instanced_cmd.diffuse_color[3] == 0.8f,
+                "Instanced draw preserves diffuse alpha separate from material alpha");
+    EXPECT_TRUE(last_instanced_cmd.alpha == 0.65f, "Instanced draw forwards material opacity");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
@@ -486,6 +580,7 @@ int main() {
     test_gpu_morph_payload_for_opengl();
     test_gpu_morph_payload_for_d3d11();
     test_gpu_morph_normal_payload_for_opengl();
+    test_gpu_morph_normal_payload_for_d3d11();
     test_cpu_morph_fallback_for_software();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
@@ -493,6 +588,7 @@ int main() {
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
+    test_instanced_material_payload_forwarded();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

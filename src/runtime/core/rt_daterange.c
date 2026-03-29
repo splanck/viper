@@ -56,6 +56,13 @@ typedef struct {
 // Constructor
 // ---------------------------------------------------------------------------
 
+/// @brief Create a DateRange representing a closed interval [start, end].
+/// @details Automatically normalizes the interval so start <= end by swapping
+///          if the caller passes them in reverse order. This prevents invalid
+///          ranges from entering the system.
+/// @param start Start timestamp in seconds since Unix epoch (UTC).
+/// @param end End timestamp in seconds since Unix epoch (UTC).
+/// @return New GC-managed DateRange object.
 void *rt_daterange_new(int64_t start, int64_t end) {
     // Ensure start <= end
     int64_t s = start <= end ? start : end;
@@ -71,18 +78,18 @@ void *rt_daterange_new(int64_t start, int64_t end) {
 // Accessors
 // ---------------------------------------------------------------------------
 
-/// @brief Perform daterange start operation.
-/// @param range
-/// @return Result value.
+/// @brief Return the start timestamp of the range (seconds since epoch).
+/// @param range DateRange object pointer; returns 0 if NULL.
+/// @return Start timestamp in UTC seconds.
 int64_t rt_daterange_start(void *range) {
     if (!range)
         return 0;
     return ((rt_daterange_impl *)range)->start;
 }
 
-/// @brief Perform daterange end operation.
-/// @param range
-/// @return Result value.
+/// @brief Return the end timestamp of the range (seconds since epoch).
+/// @param range DateRange object pointer; returns 0 if NULL.
+/// @return End timestamp in UTC seconds.
 int64_t rt_daterange_end(void *range) {
     if (!range)
         return 0;
@@ -93,10 +100,12 @@ int64_t rt_daterange_end(void *range) {
 // Containment / overlap
 // ---------------------------------------------------------------------------
 
-/// @brief Perform daterange contains operation.
-/// @param range
-/// @param timestamp
-/// @return Result value.
+/// @brief Test whether a timestamp falls within the range (inclusive).
+/// @details Returns true when start <= timestamp <= end. Both endpoints are
+///          included because the range represents a closed interval.
+/// @param range DateRange object pointer; returns false if NULL.
+/// @param timestamp Unix timestamp (UTC seconds) to test.
+/// @return 1 if the timestamp is within [start, end], 0 otherwise.
 int8_t rt_daterange_contains(void *range, int64_t timestamp) {
     if (!range)
         return false;
@@ -104,10 +113,13 @@ int8_t rt_daterange_contains(void *range, int64_t timestamp) {
     return (timestamp >= r->start && timestamp <= r->end);
 }
 
-/// @brief Perform daterange overlaps operation.
-/// @param range
-/// @param other
-/// @return Result value.
+/// @brief Test whether two ranges share any common time.
+/// @details Two closed intervals [a.start, a.end] and [b.start, b.end] overlap
+///          when a.start <= b.end AND b.start <= a.end. This handles all cases:
+///          partial overlap, containment, and touching endpoints.
+/// @param range First DateRange; returns false if NULL.
+/// @param other Second DateRange; returns false if NULL.
+/// @return 1 if the ranges overlap, 0 otherwise.
 int8_t rt_daterange_overlaps(void *range, void *other) {
     if (!range || !other)
         return false;
@@ -120,6 +132,13 @@ int8_t rt_daterange_overlaps(void *range, void *other) {
 // Set operations
 // ---------------------------------------------------------------------------
 
+/// @brief Return the overlapping portion of two ranges, or NULL if disjoint.
+/// @details The intersection start is max(a.start, b.start) and the end is
+///          min(a.end, b.end). If start > end, there is no overlap and NULL
+///          is returned. Otherwise a new DateRange covering the overlap is created.
+/// @param range First DateRange.
+/// @param other Second DateRange.
+/// @return New DateRange for the overlap, or NULL if the ranges are disjoint.
 void *rt_daterange_intersection(void *range, void *other) {
     if (!range || !other)
         return NULL;
@@ -134,6 +153,14 @@ void *rt_daterange_intersection(void *range, void *other) {
     return rt_daterange_new(s, e);
 }
 
+/// @brief Merge two ranges into a single range, or NULL if they have a gap.
+/// @details The union is only defined when the ranges overlap or are contiguous
+///          (within 1 second of each other). If there is a gap, merging would
+///          create a range that includes time not covered by either input, so
+///          NULL is returned instead. The result spans min(starts) to max(ends).
+/// @param range First DateRange.
+/// @param other Second DateRange.
+/// @return New DateRange spanning both, or NULL if there is a gap between them.
 void *rt_daterange_union_range(void *range, void *other) {
     if (!range || !other)
         return NULL;
@@ -153,9 +180,11 @@ void *rt_daterange_union_range(void *range, void *other) {
 // Duration queries
 // ---------------------------------------------------------------------------
 
-/// @brief Perform daterange days operation.
-/// @param range
-/// @return Result value.
+/// @brief Return the number of whole days spanned by the range.
+/// @details Computed as (end - start) / 86400. Fractional days are truncated.
+///          For a 36-hour range, this returns 1 (not 2).
+/// @param range DateRange object pointer; returns 0 if NULL.
+/// @return Whole days contained in the range.
 int64_t rt_daterange_days(void *range) {
     if (!range)
         return 0;
@@ -163,9 +192,10 @@ int64_t rt_daterange_days(void *range) {
     return (r->end - r->start) / 86400;
 }
 
-/// @brief Perform daterange hours operation.
-/// @param range
-/// @return Result value.
+/// @brief Return the number of whole hours spanned by the range.
+/// @details Computed as (end - start) / 3600. Fractional hours are truncated.
+/// @param range DateRange object pointer; returns 0 if NULL.
+/// @return Whole hours contained in the range.
 int64_t rt_daterange_hours(void *range) {
     if (!range)
         return 0;
@@ -173,9 +203,12 @@ int64_t rt_daterange_hours(void *range) {
     return (r->end - r->start) / 3600;
 }
 
-/// @brief Perform daterange duration operation.
-/// @param range
-/// @return Result value.
+/// @brief Return the exact duration of the range in seconds.
+/// @details Simply end - start. This is the raw difference without rounding,
+///          suitable for precise timing. For human-friendly units, use
+///          rt_daterange_days or rt_daterange_hours.
+/// @param range DateRange object pointer; returns 0 if NULL.
+/// @return Duration in seconds (>= 0).
 int64_t rt_daterange_duration(void *range) {
     if (!range)
         return 0;
@@ -187,9 +220,12 @@ int64_t rt_daterange_duration(void *range) {
 // Formatting
 // ---------------------------------------------------------------------------
 
-/// @brief Perform daterange to string operation.
-/// @param range
-/// @return Result value.
+/// @brief Format the range as "YYYY-MM-DD HH:MM - YYYY-MM-DD HH:MM" (UTC).
+/// @details Converts both timestamps to UTC calendar components via gmtime_r
+///          and formats into a fixed-layout string. Returns an empty string for
+///          NULL inputs. The output is always in UTC with no timezone suffix.
+/// @param range DateRange object pointer.
+/// @return Newly allocated runtime string with the formatted range.
 rt_string rt_daterange_to_string(void *range) {
     if (!range)
         return rt_string_from_bytes("", 0);

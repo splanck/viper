@@ -131,20 +131,14 @@ void *rt_light3d_new_spot(void *position, void *direction, double r, double g, d
     return light;
 }
 
-/// @brief Perform light3d set intensity operation.
-/// @param obj
-/// @param intensity
+/// @brief Set the intensity of the light3d.
 void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!obj)
         return;
     ((rt_light3d *)obj)->intensity = intensity;
 }
 
-/// @brief Perform light3d set color operation.
-/// @param obj
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the color of the light3d.
 void rt_light3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;

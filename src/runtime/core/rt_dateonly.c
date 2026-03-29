@@ -71,7 +71,11 @@ static int64_t days_in_month_impl(int64_t year, int64_t month) {
     return days[month];
 }
 
-// Convert date to days since epoch (Jan 1, 1970)
+/// @brief Convert a Gregorian date to days since Unix epoch (1970-01-01).
+/// @details Uses the Julian Day Number algorithm: first adjusts the calendar
+///          so March is month 0 (simplifies the variable-length February),
+///          computes the JDN, then subtracts the JDN of the Unix epoch
+///          (2440588). The algorithm is valid for any proleptic Gregorian date.
 static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
     // Adjust for months starting from March
     int64_t a = (14 - month) / 12;
@@ -85,7 +89,12 @@ static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
     return jdn - 2440588;
 }
 
-// Convert days since epoch to date components
+/// @brief Convert days since Unix epoch back to Gregorian year/month/day.
+/// @details Inverse of to_days_since_epoch. Adds the epoch JDN, then reverses
+///          the Julian Day Number formula to recover year, month, and day.
+///          The magic constants (146097, 1461, 153) come from the cycle lengths
+///          of the Gregorian calendar: 400-year cycle = 146097 days,
+///          4-year cycle = 1461 days, 5-month group = 153 days.
 static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, int64_t *day) {
     // Add Unix epoch offset
     int64_t jdn = days + 2440588;
@@ -107,6 +116,14 @@ static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, i
 // DateOnly Creation
 //=============================================================================
 
+/// @brief Create a DateOnly from explicit year, month, and day components.
+/// @details Validates that month is in [1,12] and day is in [1, days-in-month].
+///          Returns NULL for invalid inputs rather than trapping, allowing callers
+///          to provide their own error handling.
+/// @param year Gregorian year (e.g. 2026).
+/// @param month Month number (1=January, 12=December).
+/// @param day Day of month (1-based).
+/// @return New GC-managed DateOnly, or NULL if inputs are out of range.
 void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
     // Validate inputs
     if (month < 1 || month > 12)
@@ -123,6 +140,11 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
     return d;
 }
 
+/// @brief Return a DateOnly representing today's date in local time.
+/// @details Uses the platform's localtime_r to convert the current Unix
+///          timestamp to a calendar date. The result reflects the system's
+///          local timezone setting (not UTC).
+/// @return New DateOnly for today, or NULL if the system clock fails.
 void *rt_dateonly_today(void) {
     time_t now = time(NULL);
     struct tm tm_buf;
@@ -132,6 +154,12 @@ void *rt_dateonly_today(void) {
     return rt_dateonly_create(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
 }
 
+/// @brief Parse a DateOnly from an ISO 8601 date string (YYYY-MM-DD).
+/// @details Uses sscanf to extract three integers separated by hyphens. Rejects
+///          strings that don't match the expected format. Delegates validation
+///          of month/day ranges to rt_dateonly_create.
+/// @param s Runtime string containing the date text.
+/// @return New DateOnly, or NULL if the string is malformed or out of range.
 void *rt_dateonly_parse(rt_string s) {
     const char *str = rt_string_cstr(s);
     int year, month, day;
@@ -142,6 +170,12 @@ void *rt_dateonly_parse(rt_string s) {
     return rt_dateonly_create(year, month, day);
 }
 
+/// @brief Create a DateOnly from a days-since-epoch count.
+/// @details Converts the signed day offset back to year/month/day using the
+///          inverse Julian Day Number algorithm. Day 0 = January 1, 1970.
+///          Negative values represent dates before the Unix epoch.
+/// @param days Signed offset from 1970-01-01.
+/// @return New DateOnly for the corresponding calendar date.
 void *rt_dateonly_from_days(int64_t days) {
     int64_t year, month, day;
     from_days_since_epoch(days, &year, &month, &day);
@@ -152,9 +186,9 @@ void *rt_dateonly_from_days(int64_t days) {
 // Component Access
 //=============================================================================
 
-/// @brief Perform dateonly year operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the year component of a DateOnly (e.g. 2026).
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Four-digit year.
 int64_t rt_dateonly_year(void *obj) {
     if (!obj)
         return 0;
@@ -162,9 +196,9 @@ int64_t rt_dateonly_year(void *obj) {
     return d->year;
 }
 
-/// @brief Perform dateonly month operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the month component (1=January, 12=December).
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Month number in the range 1-12.
 int64_t rt_dateonly_month(void *obj) {
     if (!obj)
         return 0;
@@ -172,9 +206,9 @@ int64_t rt_dateonly_month(void *obj) {
     return d->month;
 }
 
-/// @brief Perform dateonly day operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the day-of-month component (1-31).
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Day number in the range 1-31.
 int64_t rt_dateonly_day(void *obj) {
     if (!obj)
         return 0;
@@ -182,9 +216,12 @@ int64_t rt_dateonly_day(void *obj) {
     return d->day;
 }
 
-/// @brief Perform dateonly day of week operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the day of week (0=Sunday through 6=Saturday).
+/// @details Converts the date to days-since-epoch, then offsets by 4 because
+///          January 1, 1970 was a Thursday (day index 4 in a Sunday-start week).
+///          The modulo 7 produces the correct weekday for any date.
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Day-of-week index: 0=Sunday, 1=Monday, ..., 6=Saturday.
 int64_t rt_dateonly_day_of_week(void *obj) {
     if (!obj)
         return 0;
@@ -196,9 +233,11 @@ int64_t rt_dateonly_day_of_week(void *obj) {
     return (days + 4) % 7;
 }
 
-/// @brief Perform dateonly day of year operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the 1-based day-of-year (1-366).
+/// @details Sums the number of days in all preceding months (accounting for
+///          leap years in February) then adds the current day. January 1 = 1.
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Day-of-year in the range 1-366.
 int64_t rt_dateonly_day_of_year(void *obj) {
     if (!obj)
         return 0;
@@ -212,9 +251,11 @@ int64_t rt_dateonly_day_of_year(void *obj) {
     return doy;
 }
 
-/// @brief Perform dateonly to days operation.
-/// @param obj
-/// @return Result value.
+/// @brief Convert the date to days since Unix epoch (1970-01-01 = day 0).
+/// @details Delegates to the Julian Day Number conversion. Useful for
+///          serialization, date arithmetic, and comparing dates numerically.
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Signed day offset (negative for dates before 1970).
 int64_t rt_dateonly_to_days(void *obj) {
     if (!obj)
         return 0;
@@ -226,6 +267,13 @@ int64_t rt_dateonly_to_days(void *obj) {
 // Date Arithmetic
 //=============================================================================
 
+/// @brief Return a new DateOnly shifted by the given number of days.
+/// @details Converts to days-since-epoch, adds the offset, and converts back.
+///          Handles month/year boundary crossings automatically via the epoch
+///          round-trip. Negative values move backward in time.
+/// @param obj Source DateOnly (not modified).
+/// @param days Signed number of days to add.
+/// @return New DateOnly for the resulting calendar date.
 void *rt_dateonly_add_days(void *obj, int64_t days) {
     if (!obj)
         return NULL;
@@ -234,6 +282,14 @@ void *rt_dateonly_add_days(void *obj, int64_t days) {
     return rt_dateonly_from_days(total);
 }
 
+/// @brief Return a new DateOnly shifted by the given number of months.
+/// @details Adds the month offset then normalizes year/month. If the resulting
+///          day exceeds the new month's length (e.g. Jan 31 + 1 month → Feb 28),
+///          it clamps to the last day. Special case: Feb 29 → Feb 28 when the
+///          target year is not a leap year.
+/// @param obj Source DateOnly (not modified).
+/// @param months Signed number of months to add (negative = subtract).
+/// @return New DateOnly with clamped day-of-month.
 void *rt_dateonly_add_months(void *obj, int64_t months) {
     if (!obj)
         return NULL;
@@ -261,6 +317,13 @@ void *rt_dateonly_add_months(void *obj, int64_t months) {
     return rt_dateonly_create(year, month, day);
 }
 
+/// @brief Return a new DateOnly shifted by the given number of years.
+/// @details Delegates to add_months(obj, years * 12). This handles the Feb 29
+///          leap-year edge case correctly — adding 1 year to Feb 29 gives Feb 28
+///          in a non-leap year.
+/// @param obj Source DateOnly (not modified).
+/// @param years Signed number of years to add.
+/// @return New DateOnly.
 void *rt_dateonly_add_years(void *obj, int64_t years) {
     if (!obj)
         return NULL;
@@ -278,10 +341,12 @@ void *rt_dateonly_add_years(void *obj, int64_t years) {
     return rt_dateonly_create(year, month, day);
 }
 
-/// @brief Perform dateonly diff days operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Return the signed difference in days between two dates (a - b).
+/// @details Converts both dates to days-since-epoch and subtracts. Positive
+///          result means a is later than b; negative means a is earlier.
+/// @param a First DateOnly (the "later" date in positive-result convention).
+/// @param b Second DateOnly (subtracted from a).
+/// @return Signed day difference; 0 if either input is NULL.
 int64_t rt_dateonly_diff_days(void *a, void *b) {
     if (!a || !b)
         return 0;
@@ -292,9 +357,11 @@ int64_t rt_dateonly_diff_days(void *a, void *b) {
 // Date Queries
 //=============================================================================
 
-/// @brief Perform dateonly is leap year operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check if the date's year is a Gregorian leap year.
+/// @details Leap year rule: divisible by 4, except centuries unless also
+///          divisible by 400. So 2000 is a leap year but 1900 is not.
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return 1 if the year is a leap year, 0 otherwise.
 int8_t rt_dateonly_is_leap_year(void *obj) {
     if (!obj)
         return 0;
@@ -302,9 +369,10 @@ int8_t rt_dateonly_is_leap_year(void *obj) {
     return is_leap_year(d->year);
 }
 
-/// @brief Perform dateonly days in month operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of days in the date's month (28-31).
+/// @details Accounts for leap years when the month is February.
+/// @param obj DateOnly object pointer; returns 0 if NULL.
+/// @return Day count: 28 or 29 for Feb, 30 or 31 for other months.
 int64_t rt_dateonly_days_in_month(void *obj) {
     if (!obj)
         return 0;
@@ -312,6 +380,7 @@ int64_t rt_dateonly_days_in_month(void *obj) {
     return days_in_month_impl(d->year, d->month);
 }
 
+/// @brief Return a new DateOnly for the first day of the same month.
 void *rt_dateonly_start_of_month(void *obj) {
     if (!obj)
         return NULL;
@@ -319,6 +388,7 @@ void *rt_dateonly_start_of_month(void *obj) {
     return rt_dateonly_create(d->year, d->month, 1);
 }
 
+/// @brief Return a new DateOnly for the last day of the same month.
 void *rt_dateonly_end_of_month(void *obj) {
     if (!obj)
         return NULL;
@@ -326,6 +396,7 @@ void *rt_dateonly_end_of_month(void *obj) {
     return rt_dateonly_create(d->year, d->month, days_in_month_impl(d->year, d->month));
 }
 
+/// @brief Return a new DateOnly for January 1 of the same year.
 void *rt_dateonly_start_of_year(void *obj) {
     if (!obj)
         return NULL;
@@ -333,6 +404,7 @@ void *rt_dateonly_start_of_year(void *obj) {
     return rt_dateonly_create(d->year, 1, 1);
 }
 
+/// @brief Return a new DateOnly for December 31 of the same year.
 void *rt_dateonly_end_of_year(void *obj) {
     if (!obj)
         return NULL;
@@ -344,10 +416,12 @@ void *rt_dateonly_end_of_year(void *obj) {
 // Comparison
 //=============================================================================
 
-/// @brief Perform dateonly cmp operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Compare two dates chronologically.
+/// @details Converts both to days-since-epoch for a single integer comparison.
+///          NULL is treated as "less than" any valid date, so NULL < any date.
+/// @param a First DateOnly.
+/// @param b Second DateOnly.
+/// @return -1 if a is earlier, 0 if equal, 1 if a is later.
 int64_t rt_dateonly_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
@@ -366,10 +440,10 @@ int64_t rt_dateonly_cmp(void *a, void *b) {
     return 0;
 }
 
-/// @brief Perform dateonly equals operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Check if two dates represent the same calendar day.
+/// @param a First DateOnly.
+/// @param b Second DateOnly.
+/// @return 1 if both represent the same date, 0 otherwise.
 int8_t rt_dateonly_equals(void *a, void *b) {
     return rt_dateonly_cmp(a, b) == 0 ? 1 : 0;
 }
@@ -378,9 +452,12 @@ int8_t rt_dateonly_equals(void *a, void *b) {
 // Formatting
 //=============================================================================
 
-/// @brief Perform dateonly to string operation.
-/// @param obj
-/// @return Result value.
+/// @brief Format the date as an ISO 8601 string (YYYY-MM-DD).
+/// @details Uses zero-padded fields so the output is always 10 characters
+///          (e.g. "2026-03-29"). This is the canonical serialization format
+///          and is accepted by rt_dateonly_parse for round-tripping.
+/// @param obj DateOnly object pointer; returns "" if NULL.
+/// @return Newly allocated runtime string in ISO 8601 format.
 rt_string rt_dateonly_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -396,10 +473,15 @@ rt_string rt_dateonly_to_string(void *obj) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Perform dateonly format operation.
-/// @param obj
-/// @param fmt
-/// @return Result value.
+/// @brief Format the date using a custom format string.
+/// @details Supports strftime-style specifiers: %Y (4-digit year), %m (2-digit
+///          month), %d (2-digit day), %B (full month name), %b (abbreviated
+///          month name), %A (full weekday name), %a (abbreviated weekday name).
+///          Literal percent signs are written with %%. Characters that don't
+///          follow a % are copied verbatim.
+/// @param obj DateOnly object pointer; returns "" if NULL.
+/// @param fmt Format string containing specifiers.
+/// @return Newly allocated runtime string with the formatted result.
 rt_string rt_dateonly_format(void *obj, rt_string fmt) {
     if (!obj)
         return rt_const_cstr("");

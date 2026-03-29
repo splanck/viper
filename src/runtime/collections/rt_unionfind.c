@@ -106,10 +106,9 @@ void *rt_unionfind_new(int64_t n) {
 // Find (with path compression)
 // ---------------------------------------------------------------------------
 
-/// @brief Perform unionfind find operation.
-/// @param uf_ptr
-/// @param x
-/// @return Result value.
+/// @brief Find the representative (root) of the set containing the element.
+/// @details Applies path compression during traversal so subsequent
+///          lookups on the same path are O(1) amortized.
 int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
     if (!uf_ptr)
         return -1;
@@ -137,11 +136,9 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
 // Union (by rank)
 // ---------------------------------------------------------------------------
 
-/// @brief Perform unionfind union operation.
-/// @param uf_ptr
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Merge the sets containing two elements into one.
+/// @details Uses union-by-rank to keep the tree balanced. After this
+///          operation, find(a) == find(b).
 int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y) {
     if (!uf_ptr)
         return 0;
@@ -174,11 +171,8 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y) {
 // Queries
 // ---------------------------------------------------------------------------
 
-/// @brief Perform unionfind connected operation.
-/// @param uf_ptr
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Check whether two elements belong to the same set.
+/// @details Equivalent to find(a) == find(b).
 int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y) {
     if (!uf_ptr)
         return false;
@@ -187,19 +181,18 @@ int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y) {
     return (rx >= 0 && rx == ry);
 }
 
-/// @brief Perform unionfind count operation.
-/// @param uf_ptr
-/// @return Result value.
+/// @brief Return the number of disjoint sets currently in the structure.
 int64_t rt_unionfind_count(void *uf_ptr) {
     if (!uf_ptr)
         return 0;
     return ((rt_unionfind_impl *)uf_ptr)->sets;
 }
 
-/// @brief Perform unionfind set size operation.
-/// @param uf_ptr
-/// @param x
-/// @return Result value.
+/// @brief Return the number of elements in the set containing element @p x.
+/// @details Finds the root of x's set and returns the size stored at the root.
+/// @param uf_ptr Union-find object pointer; returns 0 if NULL.
+/// @param x Element whose set size is queried.
+/// @return Size of the set, or 0 if the element is invalid.
 int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x) {
     if (!uf_ptr)
         return 0;
@@ -209,8 +202,7 @@ int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x) {
     return ((rt_unionfind_impl *)uf_ptr)->size[root];
 }
 
-/// @brief Perform unionfind reset operation.
-/// @param uf_ptr
+/// @brief Reset the union-find so every element is its own set.
 void rt_unionfind_reset(void *uf_ptr) {
     if (!uf_ptr)
         return;

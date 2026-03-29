@@ -196,9 +196,12 @@ void *rt_playlist_new(void) {
 // Track Management
 //=============================================================================
 
-/// @brief Play playlist add.
-/// @param obj
-/// @param path
+/// @brief Append a music track to the end of the playlist.
+/// @details Retains a reference to the path string and appends it to the
+///          tracks sequence. If shuffle mode is active, the shuffle order is
+///          regenerated to include the new track.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param path Path to the music file to add.
 void rt_playlist_add(void *obj, rt_string path) {
     if (!obj)
         return;
@@ -214,10 +217,13 @@ void rt_playlist_add(void *obj, rt_string path) {
     }
 }
 
-/// @brief Play playlist insert.
-/// @param obj
-/// @param index
-/// @param path
+/// @brief Insert a music track at a specific position in the playlist.
+/// @details Shifts existing tracks at and after @p index to make room. If the
+///          insertion point is before the current track, the current index is
+///          adjusted to keep it pointing at the same track.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param index Zero-based insertion position.
+/// @param path Path to the music file to insert.
 void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
     if (!obj)
         return;
@@ -236,9 +242,12 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
     }
 }
 
-/// @brief Play playlist remove.
-/// @param obj
-/// @param index
+/// @brief Remove a track from the playlist by index.
+/// @details If the removed track is before the current track, the current index
+///          is decremented. If the current track itself is removed, playback is
+///          stopped and the next available track becomes current.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param index Zero-based index of the track to remove.
 void rt_playlist_remove(void *obj, int64_t index) {
     if (!obj)
         return;
@@ -278,8 +287,11 @@ void rt_playlist_remove(void *obj, int64_t index) {
     }
 }
 
-/// @brief Play playlist clear.
-/// @param obj
+/// @brief Remove all tracks from the playlist and stop playback.
+/// @details Stops the current music, releases all track path strings from the
+///          sequence, resets the current index to -1, and frees the shuffle
+///          order if one exists.
+/// @param obj Playlist object pointer; no-op if NULL.
 void rt_playlist_clear(void *obj) {
     if (!obj)
         return;
@@ -308,9 +320,9 @@ void rt_playlist_clear(void *obj) {
     }
 }
 
-/// @brief Play playlist len.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of tracks in the playlist.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return Track count.
 int64_t rt_playlist_len(void *obj) {
     if (!obj)
         return 0;
@@ -318,10 +330,10 @@ int64_t rt_playlist_len(void *obj) {
     return rt_seq_len(pl->tracks);
 }
 
-/// @brief Play playlist get.
-/// @param obj
-/// @param index
-/// @return Result value.
+/// @brief Return the file path of the track at the given index.
+/// @param obj Playlist object pointer; returns empty string if NULL.
+/// @param index Zero-based track index.
+/// @return Track path string, or empty string if index is out of bounds.
 rt_string rt_playlist_get(void *obj, int64_t index) {
     if (!obj)
         return rt_const_cstr("");
@@ -337,8 +349,11 @@ rt_string rt_playlist_get(void *obj, int64_t index) {
 // Playback Control
 //=============================================================================
 
-/// @brief Play playlist play.
-/// @param obj
+/// @brief Start or resume playlist playback.
+/// @details If paused, resumes the current track. If stopped, loads the
+///          current track (defaulting to index 0) and begins playback.
+///          Repeat-one mode passes the loop flag to the music backend.
+/// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_play(void *obj) {
     if (!obj)
         return;
@@ -367,8 +382,8 @@ void rt_playlist_play(void *obj) {
     }
 }
 
-/// @brief Play playlist pause.
-/// @param obj
+/// @brief Pause the currently playing track without resetting position.
+/// @param obj Playlist object pointer; no-op if NULL or not playing.
 void rt_playlist_pause(void *obj) {
     if (!obj)
         return;
@@ -381,8 +396,8 @@ void rt_playlist_pause(void *obj) {
     }
 }
 
-/// @brief Play playlist stop.
-/// @param obj
+/// @brief Stop playback and reset the current position to the beginning.
+/// @param obj Playlist object pointer; no-op if NULL.
 void rt_playlist_stop(void *obj) {
     if (!obj)
         return;
@@ -397,8 +412,11 @@ void rt_playlist_stop(void *obj) {
     pl->current = 0;
 }
 
-/// @brief Play playlist next.
-/// @param obj
+/// @brief Advance to the next track in the playlist.
+/// @details Handles repeat-all (wraps to track 0 and re-shuffles if needed)
+///          and repeat-none (stops at the last track). If playback was active,
+///          the new track is loaded and started automatically.
+/// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_next(void *obj) {
     if (!obj)
         return;
@@ -435,8 +453,10 @@ void rt_playlist_next(void *obj) {
     }
 }
 
-/// @brief Play playlist prev.
-/// @param obj
+/// @brief Go back to the previous track in the playlist.
+/// @details With repeat-all, wrapping past the first track goes to the last.
+///          Without repeat, the position clamps at track 0.
+/// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_prev(void *obj) {
     if (!obj)
         return;
@@ -467,9 +487,9 @@ void rt_playlist_prev(void *obj) {
     }
 }
 
-/// @brief Play playlist jump.
-/// @param obj
-/// @param index
+/// @brief Jump to a specific track by index and begin playback if active.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param index Zero-based track index to jump to; out-of-range is ignored.
 void rt_playlist_jump(void *obj, int64_t index) {
     if (!obj)
         return;
@@ -495,9 +515,11 @@ void rt_playlist_jump(void *obj, int64_t index) {
 // Properties
 //=============================================================================
 
-/// @brief Play playlist get current.
-/// @param obj
-/// @return Result value.
+/// @brief Return the real track index of the currently playing/loaded track.
+/// @details In shuffle mode, maps the internal position through the shuffle
+///          order to return the actual track index in the original sequence.
+/// @param obj Playlist object pointer; returns -1 if NULL.
+/// @return Zero-based track index, or -1 if no track is loaded.
 int64_t rt_playlist_get_current(void *obj) {
     if (!obj)
         return -1;
@@ -509,9 +531,9 @@ int64_t rt_playlist_get_current(void *obj) {
     return pl->current;
 }
 
-/// @brief Play playlist is playing.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the playlist is currently playing a track.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return 1 if playing, 0 if stopped or paused.
 int8_t rt_playlist_is_playing(void *obj) {
     if (!obj)
         return 0;
@@ -519,9 +541,9 @@ int8_t rt_playlist_is_playing(void *obj) {
     return pl->playing;
 }
 
-/// @brief Play playlist is paused.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the playlist is paused.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return 1 if paused, 0 otherwise.
 int8_t rt_playlist_is_paused(void *obj) {
     if (!obj)
         return 0;
@@ -529,9 +551,9 @@ int8_t rt_playlist_is_paused(void *obj) {
     return pl->paused;
 }
 
-/// @brief Play playlist get volume.
-/// @param obj
-/// @return Result value.
+/// @brief Return the current playback volume of the playlist.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return Volume in range [0, 100].
 int64_t rt_playlist_get_volume(void *obj) {
     if (!obj)
         return 0;
@@ -539,9 +561,11 @@ int64_t rt_playlist_get_volume(void *obj) {
     return pl->volume;
 }
 
-/// @brief Play playlist set volume.
-/// @param obj
-/// @param volume
+/// @brief Set the playback volume, clamped to [0, 100].
+/// @details Also applies the new volume to the currently loaded music track
+///          so the change takes effect immediately.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param volume Desired volume (0-100).
 void rt_playlist_set_volume(void *obj, int64_t volume) {
     if (!obj)
         return;
@@ -562,9 +586,12 @@ void rt_playlist_set_volume(void *obj, int64_t volume) {
 // Playback Modes
 //=============================================================================
 
-/// @brief Play playlist set shuffle.
-/// @param obj
-/// @param shuffle
+/// @brief Enable or disable shuffle mode.
+/// @details When enabled, generates a random permutation of track indices
+///          using a xorshift64* PRNG seeded from the current time. The
+///          permutation is regenerated each time shuffle is toggled on.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param shuffle 1 to enable shuffle, 0 to disable.
 void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
     if (!obj)
         return;
@@ -577,9 +604,9 @@ void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
     }
 }
 
-/// @brief Play playlist get shuffle.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether shuffle mode is currently enabled.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return 1 if shuffle is enabled, 0 otherwise.
 int8_t rt_playlist_get_shuffle(void *obj) {
     if (!obj)
         return 0;
@@ -587,9 +614,11 @@ int8_t rt_playlist_get_shuffle(void *obj) {
     return pl->shuffle;
 }
 
-/// @brief Play playlist set repeat.
-/// @param obj
-/// @param mode
+/// @brief Set the repeat mode for the playlist.
+/// @details Mode values: RT_REPEAT_NONE (stop at end), RT_REPEAT_ALL (loop),
+///          RT_REPEAT_ONE (replay current track). Out-of-range values are clamped.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param mode Repeat mode constant.
 void rt_playlist_set_repeat(void *obj, int64_t mode) {
     if (!obj)
         return;
@@ -602,9 +631,9 @@ void rt_playlist_set_repeat(void *obj, int64_t mode) {
     pl->repeat = mode;
 }
 
-/// @brief Play playlist get repeat.
-/// @param obj
-/// @return Result value.
+/// @brief Return the current repeat mode.
+/// @param obj Playlist object pointer; returns 0 (REPEAT_NONE) if NULL.
+/// @return Repeat mode constant (RT_REPEAT_NONE, RT_REPEAT_ALL, RT_REPEAT_ONE).
 int64_t rt_playlist_get_repeat(void *obj) {
     if (!obj)
         return 0;
@@ -616,8 +645,11 @@ int64_t rt_playlist_get_repeat(void *obj) {
 // Update
 //=============================================================================
 
-/// @brief Play playlist update.
-/// @param obj
+/// @brief Poll the playlist state and auto-advance when the current track ends.
+/// @details Should be called once per frame or tick. When the current track
+///          finishes, repeat-one restarts it; otherwise rt_playlist_next is
+///          invoked to advance (which handles repeat-all and repeat-none).
+/// @param obj Playlist object pointer; no-op if NULL or not playing.
 void rt_playlist_update(void *obj) {
     if (!obj)
         return;
@@ -644,9 +676,12 @@ void rt_playlist_update(void *obj) {
 // Playlist Crossfade Settings
 //=============================================================================
 
-/// @brief Play playlist set crossfade.
-/// @param obj
-/// @param duration_ms
+/// @brief Set the crossfade duration for track transitions.
+/// @details A value of 0 disables crossfading (immediate switch). Positive
+///          values enable a linear volume crossfade of the specified duration
+///          when advancing between tracks.
+/// @param obj Playlist object pointer; no-op if NULL.
+/// @param duration_ms Crossfade duration in milliseconds (0 = disabled).
 void rt_playlist_set_crossfade(void *obj, int64_t duration_ms) {
     if (!obj)
         return;
@@ -654,9 +689,9 @@ void rt_playlist_set_crossfade(void *obj, int64_t duration_ms) {
     pl->crossfade_ms = duration_ms < 0 ? 0 : duration_ms;
 }
 
-/// @brief Play playlist get crossfade.
-/// @param obj
-/// @return Result value.
+/// @brief Return the current crossfade duration in milliseconds.
+/// @param obj Playlist object pointer; returns 0 if NULL.
+/// @return Crossfade duration (0 = disabled).
 int64_t rt_playlist_get_crossfade(void *obj) {
     if (!obj)
         return 0;

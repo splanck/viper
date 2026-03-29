@@ -57,8 +57,7 @@ void *rt_font_load(rt_string path) {
     return font;
 }
 
-/// @brief Perform font destroy operation.
-/// @param font
+/// @brief Release resources and destroy the font.
 void rt_font_destroy(void *font) {
     RT_ASSERT_MAIN_THREAD();
     if (font) {
@@ -70,8 +69,7 @@ void rt_font_destroy(void *font) {
 // Widget Functions
 //=============================================================================
 
-/// @brief Perform widget destroy operation.
-/// @param widget
+/// @brief Release resources and destroy the widget.
 void rt_widget_destroy(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -79,9 +77,7 @@ void rt_widget_destroy(void *widget) {
     }
 }
 
-/// @brief Perform widget set visible operation.
-/// @param widget
-/// @param visible
+/// @brief Set the visible of the widget.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -89,9 +85,7 @@ void rt_widget_set_visible(void *widget, int64_t visible) {
     }
 }
 
-/// @brief Perform widget set enabled operation.
-/// @param widget
-/// @param enabled
+/// @brief Set the enabled of the widget.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -99,10 +93,7 @@ void rt_widget_set_enabled(void *widget, int64_t enabled) {
     }
 }
 
-/// @brief Perform widget set size operation.
-/// @param widget
-/// @param width
-/// @param height
+/// @brief Return the size of the widget.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -110,9 +101,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     }
 }
 
-/// @brief Perform widget set flex operation.
-/// @param widget
-/// @param flex
+/// @brief Set the flex of the widget.
 void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -120,9 +109,7 @@ void rt_widget_set_flex(void *widget, double flex) {
     }
 }
 
-/// @brief Perform widget add child operation.
-/// @param parent
-/// @param child
+/// @brief Add the child of the widget.
 void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (parent && child) {
@@ -131,18 +118,14 @@ void rt_widget_add_child(void *parent, void *child) {
 }
 
 // API-005: SetMargin
-/// @brief Perform widget set margin operation.
-/// @param widget
-/// @param margin
+/// @brief Set the margin of the widget.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
         vg_widget_set_margin((vg_widget_t *)widget, (float)margin);
 }
 
-/// @brief Perform widget set tab index operation.
-/// @param widget
-/// @param idx
+/// @brief Set the tab index of the widget.
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
@@ -150,9 +133,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx) {
 }
 
 // BINDING-003: GuiWidget read accessors
-/// @brief Perform widget is visible operation.
-/// @param widget
-/// @return Result value.
+/// @brief Is the visible of the widget.
 int64_t rt_widget_is_visible(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -160,9 +141,7 @@ int64_t rt_widget_is_visible(void *widget) {
     return ((vg_widget_t *)widget)->visible ? 1 : 0;
 }
 
-/// @brief Perform widget is enabled operation.
-/// @param widget
-/// @return Result value.
+/// @brief Is the enabled of the widget.
 int64_t rt_widget_is_enabled(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -170,9 +149,7 @@ int64_t rt_widget_is_enabled(void *widget) {
     return ((vg_widget_t *)widget)->enabled ? 1 : 0;
 }
 
-/// @brief Perform widget get width operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the width of the widget.
 int64_t rt_widget_get_width(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -180,9 +157,7 @@ int64_t rt_widget_get_width(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->width;
 }
 
-/// @brief Perform widget get height operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the height of the widget.
 int64_t rt_widget_get_height(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -190,9 +165,7 @@ int64_t rt_widget_get_height(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->height;
 }
 
-/// @brief Perform widget get x operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the x of the widget.
 int64_t rt_widget_get_x(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -200,9 +173,7 @@ int64_t rt_widget_get_x(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->x;
 }
 
-/// @brief Perform widget get y operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the y of the widget.
 int64_t rt_widget_get_y(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -210,9 +181,7 @@ int64_t rt_widget_get_y(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->y;
 }
 
-/// @brief Perform widget get flex operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the flex of the widget.
 double rt_widget_get_flex(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -232,9 +201,7 @@ void *rt_label_new(void *parent, rt_string text) {
     return label;
 }
 
-/// @brief Perform label set text operation.
-/// @param label
-/// @param text
+/// @brief Set the text of the label.
 void rt_label_set_text(void *label, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!label)
@@ -244,10 +211,7 @@ void rt_label_set_text(void *label, rt_string text) {
     free(ctext);
 }
 
-/// @brief Perform label set font operation.
-/// @param label
-/// @param font
-/// @param size
+/// @brief Set the font of the label.
 void rt_label_set_font(void *label, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (label) {
@@ -255,9 +219,7 @@ void rt_label_set_font(void *label, void *font, double size) {
     }
 }
 
-/// @brief Perform label set color operation.
-/// @param label
-/// @param color
+/// @brief Set the color of the label.
 void rt_label_set_color(void *label, int64_t color) {
     RT_ASSERT_MAIN_THREAD();
     if (label) {
@@ -277,9 +239,7 @@ void *rt_button_new(void *parent, rt_string text) {
     return button;
 }
 
-/// @brief Perform button set text operation.
-/// @param button
-/// @param text
+/// @brief Set the text of the button.
 void rt_button_set_text(void *button, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!button)
@@ -289,10 +249,7 @@ void rt_button_set_text(void *button, rt_string text) {
     free(ctext);
 }
 
-/// @brief Perform button set font operation.
-/// @param button
-/// @param font
-/// @param size
+/// @brief Set the font of the button.
 void rt_button_set_font(void *button, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (button) {
@@ -300,9 +257,7 @@ void rt_button_set_font(void *button, void *font, double size) {
     }
 }
 
-/// @brief Perform button set style operation.
-/// @param button
-/// @param style
+/// @brief Set the style of the button.
 void rt_button_set_style(void *button, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
     if (button) {
@@ -310,9 +265,7 @@ void rt_button_set_style(void *button, int64_t style) {
     }
 }
 
-/// @brief Perform button set icon operation.
-/// @param button
-/// @param icon
+/// @brief Set the icon of the button.
 void rt_button_set_icon(void *button, rt_string icon) {
     RT_ASSERT_MAIN_THREAD();
     if (!button)
@@ -322,9 +275,7 @@ void rt_button_set_icon(void *button, rt_string icon) {
     free(cicon);
 }
 
-/// @brief Perform button set icon pos operation.
-/// @param button
-/// @param pos
+/// @brief Set the icon pos of the button.
 void rt_button_set_icon_pos(void *button, int64_t pos) {
     RT_ASSERT_MAIN_THREAD();
     if (button)
@@ -340,9 +291,7 @@ void *rt_textinput_new(void *parent) {
     return vg_textinput_create((vg_widget_t *)parent);
 }
 
-/// @brief Perform textinput set text operation.
-/// @param input
-/// @param text
+/// @brief Set the text of the textinput.
 void rt_textinput_set_text(void *input, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
@@ -352,9 +301,7 @@ void rt_textinput_set_text(void *input, rt_string text) {
     free(ctext);
 }
 
-/// @brief Perform textinput get text operation.
-/// @param input
-/// @return Result value.
+/// @brief Get the text of the textinput.
 rt_string rt_textinput_get_text(void *input) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
@@ -365,9 +312,7 @@ rt_string rt_textinput_get_text(void *input) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
-/// @brief Perform textinput set placeholder operation.
-/// @param input
-/// @param placeholder
+/// @brief Set the placeholder of the textinput.
 void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
@@ -377,10 +322,7 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     free(ctext);
 }
 
-/// @brief Perform textinput set font operation.
-/// @param input
-/// @param font
-/// @param size
+/// @brief Set the font of the textinput.
 void rt_textinput_set_font(void *input, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (input) {
@@ -441,10 +383,7 @@ void *rt_scrollview_new(void *parent) {
     return vg_scrollview_create((vg_widget_t *)parent);
 }
 
-/// @brief Perform scrollview set scroll operation.
-/// @param scroll
-/// @param x
-/// @param y
+/// @brief Set the scroll of the scrollview.
 void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     if (scroll) {
@@ -452,10 +391,7 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     }
 }
 
-/// @brief Perform scrollview set content size operation.
-/// @param scroll
-/// @param width
-/// @param height
+/// @brief Return the size of the scrollview.
 void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     if (scroll) {
@@ -464,9 +400,7 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height) {
 }
 
 // BINDING-004: ScrollView scroll position query
-/// @brief Perform scrollview get scroll x operation.
-/// @param scroll
-/// @return Result value.
+/// @brief Get the scroll x of the scrollview.
 double rt_scrollview_get_scroll_x(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
     if (!scroll)
@@ -476,9 +410,7 @@ double rt_scrollview_get_scroll_x(void *scroll) {
     return (double)x;
 }
 
-/// @brief Perform scrollview get scroll y operation.
-/// @param scroll
-/// @return Result value.
+/// @brief Get the scroll y of the scrollview.
 double rt_scrollview_get_scroll_y(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
     if (!scroll)
@@ -514,9 +446,7 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     return node;
 }
 
-/// @brief Perform treeview remove node operation.
-/// @param tree
-/// @param node
+/// @brief Remove the node of the treeview.
 void rt_treeview_remove_node(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (tree && node) {
@@ -524,8 +454,7 @@ void rt_treeview_remove_node(void *tree, void *node) {
     }
 }
 
-/// @brief Perform treeview clear operation.
-/// @param tree
+/// @brief Remove all entries from the treeview.
 void rt_treeview_clear(void *tree) {
     RT_ASSERT_MAIN_THREAD();
     if (tree) {
@@ -533,9 +462,7 @@ void rt_treeview_clear(void *tree) {
     }
 }
 
-/// @brief Perform treeview expand operation.
-/// @param tree
-/// @param node
+/// @brief Expand the treeview.
 void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (tree && node) {
@@ -543,9 +470,7 @@ void rt_treeview_expand(void *tree, void *node) {
     }
 }
 
-/// @brief Perform treeview collapse operation.
-/// @param tree
-/// @param node
+/// @brief Collapse the treeview.
 void rt_treeview_collapse(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (tree && node) {
@@ -553,9 +478,7 @@ void rt_treeview_collapse(void *tree, void *node) {
     }
 }
 
-/// @brief Perform treeview select operation.
-/// @param tree
-/// @param node
+/// @brief Select the treeview.
 void rt_treeview_select(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (tree) {
@@ -563,10 +486,7 @@ void rt_treeview_select(void *tree, void *node) {
     }
 }
 
-/// @brief Perform treeview set font operation.
-/// @param tree
-/// @param font
-/// @param size
+/// @brief Set the font of the treeview.
 void rt_treeview_set_font(void *tree, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (tree) {
@@ -582,9 +502,7 @@ void *rt_treeview_get_selected(void *tree) {
     return tv->selected;
 }
 
-/// @brief Perform treeview was selection changed operation.
-/// @param tree
-/// @return Result value.
+/// @brief Was the selection changed of the treeview.
 int64_t rt_treeview_was_selection_changed(void *tree) {
     RT_ASSERT_MAIN_THREAD();
     if (!tree)
@@ -600,9 +518,7 @@ int64_t rt_treeview_was_selection_changed(void *tree) {
     return 0;
 }
 
-/// @brief Perform treeview node get text operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the get text of the treeview.
 rt_string rt_treeview_node_get_text(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
@@ -613,9 +529,7 @@ rt_string rt_treeview_node_get_text(void *node) {
     return rt_string_from_bytes(n->text, strlen(n->text));
 }
 
-/// @brief Perform treeview node set data operation.
-/// @param node
-/// @param data
+/// @brief Node the set data of the treeview.
 void rt_treeview_node_set_data(void *node, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
@@ -629,9 +543,7 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     n->user_data = cstr ? strdup(cstr) : NULL;
 }
 
-/// @brief Perform treeview node get data operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the get data of the treeview.
 rt_string rt_treeview_node_get_data(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
@@ -643,9 +555,7 @@ rt_string rt_treeview_node_get_data(void *node) {
     return rt_string_from_bytes(data, strlen(data));
 }
 
-/// @brief Perform treeview node is expanded operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the is expanded of the treeview.
 int64_t rt_treeview_node_is_expanded(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
@@ -661,127 +571,96 @@ void *rt_font_load(rt_string path) {
     return NULL;
 }
 
-/// @brief Perform font destroy operation.
-/// @param font
+/// @brief Release resources and destroy the font.
 void rt_font_destroy(void *font) {
     (void)font;
 }
 
-/// @brief Perform widget destroy operation.
-/// @param widget
+/// @brief Release resources and destroy the widget.
 void rt_widget_destroy(void *widget) {
     (void)widget;
 }
 
-/// @brief Perform widget set visible operation.
-/// @param widget
-/// @param visible
+/// @brief Set the visible of the widget.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     (void)widget;
     (void)visible;
 }
 
-/// @brief Perform widget set enabled operation.
-/// @param widget
-/// @param enabled
+/// @brief Set the enabled of the widget.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     (void)widget;
     (void)enabled;
 }
 
-/// @brief Perform widget set size operation.
-/// @param widget
-/// @param width
-/// @param height
+/// @brief Return the size of the widget.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     (void)widget;
     (void)width;
     (void)height;
 }
 
-/// @brief Perform widget set flex operation.
-/// @param widget
-/// @param flex
+/// @brief Set the flex of the widget.
 void rt_widget_set_flex(void *widget, double flex) {
     (void)widget;
     (void)flex;
 }
 
-/// @brief Perform widget add child operation.
-/// @param parent
-/// @param child
+/// @brief Add the child of the widget.
 void rt_widget_add_child(void *parent, void *child) {
     (void)parent;
     (void)child;
 }
 
-/// @brief Perform widget set margin operation.
-/// @param widget
-/// @param margin
+/// @brief Set the margin of the widget.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     (void)widget;
     (void)margin;
 }
 
-/// @brief Perform widget set tab index operation.
-/// @param widget
-/// @param idx
+/// @brief Set the tab index of the widget.
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     (void)widget;
     (void)idx;
 }
 
-/// @brief Perform widget is visible operation.
-/// @param widget
-/// @return Result value.
+/// @brief Is the visible of the widget.
 int64_t rt_widget_is_visible(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget is enabled operation.
-/// @param widget
-/// @return Result value.
+/// @brief Is the enabled of the widget.
 int64_t rt_widget_is_enabled(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget get width operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the width of the widget.
 int64_t rt_widget_get_width(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget get height operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the height of the widget.
 int64_t rt_widget_get_height(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget get x operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the x of the widget.
 int64_t rt_widget_get_x(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget get y operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the y of the widget.
 int64_t rt_widget_get_y(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Perform widget get flex operation.
-/// @param widget
-/// @return Result value.
+/// @brief Get the flex of the widget.
 double rt_widget_get_flex(void *widget) {
     (void)widget;
     return 0.0;
@@ -793,27 +672,20 @@ void *rt_label_new(void *parent, rt_string text) {
     return NULL;
 }
 
-/// @brief Perform label set text operation.
-/// @param label
-/// @param text
+/// @brief Set the text of the label.
 void rt_label_set_text(void *label, rt_string text) {
     (void)label;
     (void)text;
 }
 
-/// @brief Perform label set font operation.
-/// @param label
-/// @param font
-/// @param size
+/// @brief Set the font of the label.
 void rt_label_set_font(void *label, void *font, double size) {
     (void)label;
     (void)font;
     (void)size;
 }
 
-/// @brief Perform label set color operation.
-/// @param label
-/// @param color
+/// @brief Set the color of the label.
 void rt_label_set_color(void *label, int64_t color) {
     (void)label;
     (void)color;
@@ -825,43 +697,32 @@ void *rt_button_new(void *parent, rt_string text) {
     return NULL;
 }
 
-/// @brief Perform button set text operation.
-/// @param button
-/// @param text
+/// @brief Set the text of the button.
 void rt_button_set_text(void *button, rt_string text) {
     (void)button;
     (void)text;
 }
 
-/// @brief Perform button set font operation.
-/// @param button
-/// @param font
-/// @param size
+/// @brief Set the font of the button.
 void rt_button_set_font(void *button, void *font, double size) {
     (void)button;
     (void)font;
     (void)size;
 }
 
-/// @brief Perform button set style operation.
-/// @param button
-/// @param style
+/// @brief Set the style of the button.
 void rt_button_set_style(void *button, int64_t style) {
     (void)button;
     (void)style;
 }
 
-/// @brief Perform button set icon operation.
-/// @param button
-/// @param icon
+/// @brief Set the icon of the button.
 void rt_button_set_icon(void *button, rt_string icon) {
     (void)button;
     (void)icon;
 }
 
-/// @brief Perform button set icon pos operation.
-/// @param button
-/// @param pos
+/// @brief Set the icon pos of the button.
 void rt_button_set_icon_pos(void *button, int64_t pos) {
     (void)button;
     (void)pos;
@@ -872,34 +733,25 @@ void *rt_textinput_new(void *parent) {
     return NULL;
 }
 
-/// @brief Perform textinput set text operation.
-/// @param input
-/// @param text
+/// @brief Set the text of the textinput.
 void rt_textinput_set_text(void *input, rt_string text) {
     (void)input;
     (void)text;
 }
 
-/// @brief Perform textinput get text operation.
-/// @param input
-/// @return Result value.
+/// @brief Get the text of the textinput.
 rt_string rt_textinput_get_text(void *input) {
     (void)input;
     return rt_str_empty();
 }
 
-/// @brief Perform textinput set placeholder operation.
-/// @param input
-/// @param placeholder
+/// @brief Set the placeholder of the textinput.
 void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     (void)input;
     (void)placeholder;
 }
 
-/// @brief Perform textinput set font operation.
-/// @param input
-/// @param font
-/// @param size
+/// @brief Set the font of the textinput.
 void rt_textinput_set_font(void *input, void *font, double size) {
     (void)input;
     (void)font;
@@ -941,37 +793,27 @@ void *rt_scrollview_new(void *parent) {
     return NULL;
 }
 
-/// @brief Perform scrollview set scroll operation.
-/// @param scroll
-/// @param x
-/// @param y
+/// @brief Set the scroll of the scrollview.
 void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     (void)scroll;
     (void)x;
     (void)y;
 }
 
-/// @brief Perform scrollview set content size operation.
-/// @param scroll
-/// @param width
-/// @param height
+/// @brief Return the size of the scrollview.
 void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     (void)scroll;
     (void)width;
     (void)height;
 }
 
-/// @brief Perform scrollview get scroll x operation.
-/// @param scroll
-/// @return Result value.
+/// @brief Get the scroll x of the scrollview.
 double rt_scrollview_get_scroll_x(void *scroll) {
     (void)scroll;
     return 0.0;
 }
 
-/// @brief Perform scrollview get scroll y operation.
-/// @param scroll
-/// @return Result value.
+/// @brief Get the scroll y of the scrollview.
 double rt_scrollview_get_scroll_y(void *scroll) {
     (void)scroll;
     return 0.0;
@@ -989,48 +831,36 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     return NULL;
 }
 
-/// @brief Perform treeview remove node operation.
-/// @param tree
-/// @param node
+/// @brief Remove the node of the treeview.
 void rt_treeview_remove_node(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
-/// @brief Perform treeview clear operation.
-/// @param tree
+/// @brief Remove all entries from the treeview.
 void rt_treeview_clear(void *tree) {
     (void)tree;
 }
 
-/// @brief Perform treeview expand operation.
-/// @param tree
-/// @param node
+/// @brief Expand the treeview.
 void rt_treeview_expand(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
-/// @brief Perform treeview collapse operation.
-/// @param tree
-/// @param node
+/// @brief Collapse the treeview.
 void rt_treeview_collapse(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
-/// @brief Perform treeview select operation.
-/// @param tree
-/// @param node
+/// @brief Select the treeview.
 void rt_treeview_select(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
-/// @brief Perform treeview set font operation.
-/// @param tree
-/// @param font
-/// @param size
+/// @brief Set the font of the treeview.
 void rt_treeview_set_font(void *tree, void *font, double size) {
     (void)tree;
     (void)font;
@@ -1042,41 +872,31 @@ void *rt_treeview_get_selected(void *tree) {
     return NULL;
 }
 
-/// @brief Perform treeview was selection changed operation.
-/// @param tree
-/// @return Result value.
+/// @brief Was the selection changed of the treeview.
 int64_t rt_treeview_was_selection_changed(void *tree) {
     (void)tree;
     return 0;
 }
 
-/// @brief Perform treeview node get text operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the get text of the treeview.
 rt_string rt_treeview_node_get_text(void *node) {
     (void)node;
     return rt_str_empty();
 }
 
-/// @brief Perform treeview node set data operation.
-/// @param node
-/// @param data
+/// @brief Node the set data of the treeview.
 void rt_treeview_node_set_data(void *node, rt_string data) {
     (void)node;
     (void)data;
 }
 
-/// @brief Perform treeview node get data operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the get data of the treeview.
 rt_string rt_treeview_node_get_data(void *node) {
     (void)node;
     return rt_str_empty();
 }
 
-/// @brief Perform treeview node is expanded operation.
-/// @param node
-/// @return Result value.
+/// @brief Node the is expanded of the treeview.
 int64_t rt_treeview_node_is_expanded(void *node) {
     (void)node;
     return 0;

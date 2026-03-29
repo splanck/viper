@@ -161,9 +161,7 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     return obj;
 }
 
-/// @brief Perform multipart content type operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the full Content-Type header value including the boundary parameter.
 rt_string rt_multipart_content_type(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -234,9 +232,7 @@ void *rt_multipart_build(void *obj) {
     return result;
 }
 
-/// @brief Perform multipart count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the count of elements in the multipart.
 int64_t rt_multipart_count(void *obj) {
     if (!obj)
         return 0;
@@ -383,10 +379,7 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     return mp;
 }
 
-/// @brief Perform multipart get field operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Look up a non-file field by name and return its value, or empty if not found.
 rt_string rt_multipart_get_field(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);

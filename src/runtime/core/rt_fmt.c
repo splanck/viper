@@ -418,7 +418,15 @@ rt_string rt_fmt_oct(int64_t value) {
 // Thousands separator, currency, words, ordinal
 // -----------------------------------------------------------------------
 
-/// @brief Format an integer with thousands grouping.
+/// @brief Format an integer with thousands grouping (e.g., "1,234,567").
+/// @details Converts the integer to its unsigned decimal representation, then
+///          inserts the separator string every three digits from the right.
+///          INT64_MIN is handled safely via the `-(value+1)+1` trick. A heap
+///          buffer is used because the separator may be multi-byte (e.g., a
+///          thin space), making the output longer than the fixed-size stack buf.
+/// @param value Integer to format.
+/// @param sep Separator string; defaults to "," if NULL or empty.
+/// @return Newly allocated string with grouped digits, or empty on OOM.
 rt_string rt_fmt_int_grouped(int64_t value, rt_string sep) {
     const char *sep_str = sep ? rt_string_cstr(sep) : ",";
     if (!sep_str || *sep_str == '\0')
@@ -475,7 +483,17 @@ rt_string rt_fmt_int_grouped(int64_t value, rt_string sep) {
     return result;
 }
 
-/// @brief Format a number as currency with symbol and thousands grouping.
+/// @brief Format a floating-point number as currency with symbol and grouping.
+/// @details Splits the value into integer and fractional parts, groups the
+///          integer with commas via rt_fmt_int_grouped, and appends the
+///          fractional portion formatted to the requested decimal precision.
+///          The currency symbol (e.g., "$", "EUR") is prepended after the
+///          optional negative sign, matching common accounting conventions.
+///          Decimal places are clamped to [0, 20].
+/// @param value Amount to format (negative values get a leading '-').
+/// @param decimals Number of fractional digits (typically 2 for currency).
+/// @param symbol Currency symbol string; defaults to "$" if NULL.
+/// @return Newly allocated string like "-$1,234.56", or empty on OOM.
 rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol) {
     if (decimals < 0)
         decimals = 0;
@@ -548,6 +566,14 @@ static const char *ones[] = {"",        "one",     "two",       "three",    "fou
 static const char *tens_words[] = {
     "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
 
+/// @brief Format the sub-thousand portion of a number into English words.
+/// @details Handles values 0-999 by breaking into hundreds, tens, and ones.
+///          Teens (11-19) are handled as a special case because English has
+///          unique words for them rather than composing from tens+ones.
+/// @param buf Output buffer to write into.
+/// @param cap Remaining capacity of buf.
+/// @param n Value in range [0, 999].
+/// @return Number of characters written (not including NUL terminator).
 static size_t words_chunk(char *buf, size_t cap, int64_t n) {
     if (n == 0)
         return 0;
@@ -571,7 +597,14 @@ static size_t words_chunk(char *buf, size_t cap, int64_t n) {
     return written;
 }
 
-/// @brief Convert an integer to English words.
+/// @brief Convert a non-negative integer to its English word representation.
+/// @details Decomposes the number into groups of three digits (ones, thousands,
+///          millions, billions, trillions) and converts each group to words via
+///          words_chunk. Groups are joined with scale labels. Supports values up
+///          to the trillions. Negative numbers are prefixed with "negative ".
+///          Zero is special-cased to return "zero" directly.
+/// @param value Integer to convert.
+/// @return Newly allocated string such as "one hundred twenty-three thousand".
 rt_string rt_fmt_to_words(int64_t value) {
     if (value == 0)
         return rt_string_from_bytes("zero", 4);
@@ -615,7 +648,14 @@ rt_string rt_fmt_to_words(int64_t value) {
     return rt_string_from_bytes(buf, pos);
 }
 
-/// @brief Convert an integer to ordinal suffix.
+/// @brief Convert an integer to its ordinal string (e.g., "1st", "2nd", "3rd").
+/// @details Appends the English ordinal suffix to the decimal representation.
+///          The suffix selection follows the English exception rules: 11th, 12th,
+///          and 13th use "th" despite ending in 1/2/3, because the teens always
+///          use "th". All other numbers ending in 1 get "st", 2 gets "nd", 3 gets
+///          "rd", and everything else gets "th".
+/// @param value Integer to format as ordinal.
+/// @return Newly allocated string like "42nd" or "111th".
 rt_string rt_fmt_ordinal(int64_t value) {
     char buf[FMT_BUFFER_SIZE];
     const char *suffix;

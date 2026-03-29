@@ -92,18 +92,14 @@ void *rt_physics2d_distance_joint_new(void *body_a, void *body_b, double length)
     return j;
 }
 
-/// @brief Perform physics2d distance joint get length operation.
-/// @param joint
-/// @return Result value.
+/// @brief Distance the joint get length of the physics2d.
 double rt_physics2d_distance_joint_get_length(void *joint) {
     if (!joint)
         return 0.0;
     return ((ph_joint *)joint)->length;
 }
 
-/// @brief Perform physics2d distance joint set length operation.
-/// @param joint
-/// @param length
+/// @brief Distance the joint set length of the physics2d.
 void rt_physics2d_distance_joint_set_length(void *joint, double length) {
     if (!joint)
         return;
@@ -125,36 +121,28 @@ void *rt_physics2d_spring_joint_new(
     return j;
 }
 
-/// @brief Perform physics2d spring joint get stiffness operation.
-/// @param joint
-/// @return Result value.
+/// @brief Spring the joint get stiffness of the physics2d.
 double rt_physics2d_spring_joint_get_stiffness(void *joint) {
     if (!joint)
         return 0.0;
     return ((ph_joint *)joint)->stiffness;
 }
 
-/// @brief Perform physics2d spring joint set stiffness operation.
-/// @param joint
-/// @param stiffness
+/// @brief Spring the joint set stiffness of the physics2d.
 void rt_physics2d_spring_joint_set_stiffness(void *joint, double stiffness) {
     if (!joint)
         return;
     ((ph_joint *)joint)->stiffness = stiffness < 0.0 ? 0.0 : stiffness;
 }
 
-/// @brief Perform physics2d spring joint get damping operation.
-/// @param joint
-/// @return Result value.
+/// @brief Spring the joint get damping of the physics2d.
 double rt_physics2d_spring_joint_get_damping(void *joint) {
     if (!joint)
         return 0.0;
     return ((ph_joint *)joint)->damping;
 }
 
-/// @brief Perform physics2d spring joint set damping operation.
-/// @param joint
-/// @param damping
+/// @brief Spring the joint set damping of the physics2d.
 void rt_physics2d_spring_joint_set_damping(void *joint, double damping) {
     if (!joint)
         return;
@@ -174,9 +162,7 @@ void *rt_physics2d_hinge_joint_new(void *body_a, void *body_b, double anchor_x, 
     return j;
 }
 
-/// @brief Perform physics2d hinge joint get angle operation.
-/// @param joint
-/// @return Result value.
+/// @brief Hinge the joint get angle of the physics2d.
 double rt_physics2d_hinge_joint_get_angle(void *joint) {
     if (!joint)
         return 0.0;
@@ -202,18 +188,14 @@ void *rt_physics2d_rope_joint_new(void *body_a, void *body_b, double max_length)
     return j;
 }
 
-/// @brief Perform physics2d rope joint get max length operation.
-/// @param joint
-/// @return Result value.
+/// @brief Rope the joint get max length of the physics2d.
 double rt_physics2d_rope_joint_get_max_length(void *joint) {
     if (!joint)
         return 0.0;
     return ((ph_joint *)joint)->length;
 }
 
-/// @brief Perform physics2d rope joint set max length operation.
-/// @param joint
-/// @param max_length
+/// @brief Rope the joint set max length of the physics2d.
 void rt_physics2d_rope_joint_set_max_length(void *joint, double max_length) {
     if (!joint)
         return;
@@ -236,18 +218,14 @@ void *rt_physics2d_joint_get_body_b(void *joint) {
     return ((ph_joint *)joint)->body_b;
 }
 
-/// @brief Perform physics2d joint get type operation.
-/// @param joint
-/// @return Result value.
+/// @brief Joint the get type of the physics2d.
 int64_t rt_physics2d_joint_get_type(void *joint) {
     if (!joint)
         return -1;
     return ((ph_joint *)joint)->type;
 }
 
-/// @brief Perform physics2d joint is active operation.
-/// @param joint
-/// @return Result value.
+/// @brief Joint the is active of the physics2d.
 int8_t rt_physics2d_joint_is_active(void *joint) {
     if (!joint)
         return 0;
@@ -258,9 +236,7 @@ int8_t rt_physics2d_joint_is_active(void *joint) {
 // World Joint Management
 //=============================================================================
 
-/// @brief Perform physics2d world add joint operation.
-/// @param world
-/// @param joint
+/// @brief World the add joint of the physics2d.
 void rt_physics2d_world_add_joint(void *world, void *joint) {
     if (!world || !joint)
         return;
@@ -271,9 +247,7 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
     w->joints[w->joint_count++] = (ph_joint *)joint;
 }
 
-/// @brief Perform physics2d world remove joint operation.
-/// @param world
-/// @param joint
+/// @brief World the remove joint of the physics2d.
 void rt_physics2d_world_remove_joint(void *world, void *joint) {
     if (!world || !joint)
         return;
@@ -289,9 +263,7 @@ void rt_physics2d_world_remove_joint(void *world, void *joint) {
     }
 }
 
-/// @brief Perform physics2d world joint count operation.
-/// @param world
-/// @return Result value.
+/// @brief Return the count of elements in the physics2d.
 int64_t rt_physics2d_world_joint_count(void *world) {
     if (!world)
         return 0;
@@ -420,9 +392,7 @@ static void solve_rope(ph_joint *j, double dt) {
     body_set_center(b, body_cx(b) - cx_b, body_cy(b) - cy_b);
 }
 
-/// @brief Perform physics2d solve joints operation.
-/// @param world
-/// @param dt
+/// @brief Solve the joints of the physics2d.
 void rt_physics2d_solve_joints(void *world, double dt) {
     if (!world)
         return;
@@ -484,18 +454,14 @@ void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double m
     return b;
 }
 
-/// @brief Perform physics2d body radius operation.
-/// @param body
-/// @return Result value.
+/// @brief Body the radius of the physics2d.
 double rt_physics2d_body_radius(void *body) {
     if (!body)
         return 0.0;
     return ((rt_body_impl *)body)->radius;
 }
 
-/// @brief Perform physics2d body is circle operation.
-/// @param body
-/// @return Result value.
+/// @brief Body the is circle of the physics2d.
 int8_t rt_physics2d_body_is_circle(void *body) {
     if (!body)
         return 0;

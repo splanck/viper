@@ -43,7 +43,6 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 | [Pac-Man](games/pacman/) | Pac-Man with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |
 | [Centipede](games/centipede/) | Arcade centipede game | Multiple enemy types, particle effects, Canvas graphics |
 | [Frogger](games/frogger/) | Frogger clone | Single-file implementation, ANSI terminal |
-| [Platformer](games/platformer/) | 2D platformer | Scene system, menu/play scenes, config-driven |
 | [Graphics Show](games/graphics-show/) | Visual effects showcase | Fireworks, plasma, Mandelbrot, starfield, matrix rain, snake |
 | [Fade Test](games/fade-test/) | Graphics transition test | Screen fade and transition effects |
 

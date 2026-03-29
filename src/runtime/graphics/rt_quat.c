@@ -115,9 +115,7 @@ void *rt_quat_from_euler(double pitch, double yaw, double roll) {
 // Property Accessors
 //=============================================================================
 
-/// @brief Perform quat x operation.
-/// @param q
-/// @return Result value.
+/// @brief X the quat.
 double rt_quat_x(void *q) {
     if (!q) {
         rt_trap("Quat.X: null quaternion");
@@ -126,9 +124,7 @@ double rt_quat_x(void *q) {
     return ((ViperQuat *)q)->x;
 }
 
-/// @brief Perform quat y operation.
-/// @param q
-/// @return Result value.
+/// @brief Y the quat.
 double rt_quat_y(void *q) {
     if (!q) {
         rt_trap("Quat.Y: null quaternion");
@@ -137,9 +133,7 @@ double rt_quat_y(void *q) {
     return ((ViperQuat *)q)->y;
 }
 
-/// @brief Perform quat z operation.
-/// @param q
-/// @return Result value.
+/// @brief Z the quat.
 double rt_quat_z(void *q) {
     if (!q) {
         rt_trap("Quat.Z: null quaternion");
@@ -148,9 +142,7 @@ double rt_quat_z(void *q) {
     return ((ViperQuat *)q)->z;
 }
 
-/// @brief Perform quat w operation.
-/// @param q
-/// @return Result value.
+/// @brief W the quat.
 double rt_quat_w(void *q) {
     if (!q) {
         rt_trap("Quat.W: null quaternion");
@@ -214,9 +206,7 @@ void *rt_quat_norm(void *q) {
     return quat_alloc(qv->x * inv, qv->y * inv, qv->z * inv, qv->w * inv);
 }
 
-/// @brief Perform quat len operation.
-/// @param q
-/// @return Result value.
+/// @brief Return the number of elements in the quat.
 double rt_quat_len(void *q) {
     if (!q) {
         rt_trap("Quat.Len: null quaternion");
@@ -226,9 +216,7 @@ double rt_quat_len(void *q) {
     return sqrt(qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w);
 }
 
-/// @brief Perform quat len sq operation.
-/// @param q
-/// @return Result value.
+/// @brief Len the sq of the quat.
 double rt_quat_len_sq(void *q) {
     if (!q) {
         rt_trap("Quat.LenSq: null quaternion");
@@ -238,10 +226,7 @@ double rt_quat_len_sq(void *q) {
     return qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w;
 }
 
-/// @brief Perform quat dot operation.
-/// @param a
-/// @param b
-/// @return Result value.
+/// @brief Dot the quat.
 double rt_quat_dot(void *a, void *b) {
     if (!a || !b) {
         rt_trap("Quat.Dot: null quaternion");
@@ -396,9 +381,7 @@ void *rt_quat_axis(void *q) {
     return rt_vec3_new(qv->x * inv_s, qv->y * inv_s, qv->z * inv_s);
 }
 
-/// @brief Perform quat angle operation.
-/// @param q
-/// @return Result value.
+/// @brief Angle the quat.
 double rt_quat_angle(void *q) {
     if (!q) {
         rt_trap("Quat.Angle: null quaternion");

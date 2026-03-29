@@ -183,26 +183,20 @@ void *rt_frozenset_empty(void) {
     return (void *)fs_alloc(0);
 }
 
-/// @brief Perform frozenset len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of elements in the frozen (immutable) set.
 int64_t rt_frozenset_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_frozenset_impl *)obj)->count;
 }
 
-/// @brief Perform frozenset is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the frozen set has no elements.
 int8_t rt_frozenset_is_empty(void *obj) {
     return rt_frozenset_len(obj) == 0 ? 1 : 0;
 }
 
-/// @brief Perform frozenset has operation.
-/// @param obj
-/// @param elem
-/// @return Result value.
+/// @brief Check whether an element exists in the frozen set.
+/// @details Uses hash-based lookup on the immutable backing array.
 int8_t rt_frozenset_has(void *obj, rt_string elem) {
     if (!obj || !elem)
         return 0;
@@ -294,10 +288,8 @@ void *rt_frozenset_diff(void *obj, void *other) {
     return result;
 }
 
-/// @brief Perform frozenset is subset operation.
-/// @param obj
-/// @param other
-/// @return Result value.
+/// @brief Check whether this frozen set is a subset of another.
+/// @details Every element in this set must also be present in the other.
 int8_t rt_frozenset_is_subset(void *obj, void *other) {
     if (!obj)
         return 1; // empty set is subset of everything
@@ -314,10 +306,8 @@ int8_t rt_frozenset_is_subset(void *obj, void *other) {
     return 1;
 }
 
-/// @brief Perform frozenset equals operation.
-/// @param obj
-/// @param other
-/// @return Result value.
+/// @brief Compare two frozen sets for structural equality.
+/// @details Two frozen sets are equal when they contain the same elements.
 int8_t rt_frozenset_equals(void *obj, void *other) {
     int64_t la = rt_frozenset_len(obj);
     int64_t lb = rt_frozenset_len(other);

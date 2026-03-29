@@ -68,11 +68,7 @@ static void ensure_props(void) {
     }
 }
 
-/// @brief Perform tilemap set tile property operation.
-/// @param tm
-/// @param tile_index
-/// @param key
-/// @param value
+/// @brief Set the tile property of the tilemap.
 void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, int64_t value) {
     (void)tm;
     ensure_props();
@@ -122,11 +118,7 @@ int64_t rt_tilemap_get_tile_property(void *tm,
     return default_val;
 }
 
-/// @brief Perform tilemap has tile property operation.
-/// @param tm
-/// @param tile_index
-/// @param key
-/// @return Result value.
+/// @brief Has the tile property of the tilemap.
 int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key) {
     (void)tm;
     ensure_props();
@@ -224,9 +216,7 @@ void rt_tilemap_set_autotile_hi(void *tm,
     r->active = 1;
 }
 
-/// @brief Perform tilemap clear autotile operation.
-/// @param tm
-/// @param base_tile
+/// @brief Clear the autotile of the tilemap.
 void rt_tilemap_clear_autotile(void *tm, int64_t base_tile) {
     (void)tm;
     for (int32_t i = 0; i < s_autotile_count; i++) {
@@ -259,12 +249,7 @@ static int8_t is_same_base(int64_t tile, int64_t base) {
     return 0;
 }
 
-/// @brief Perform tilemap apply autotile region operation.
-/// @param tm
-/// @param rx
-/// @param ry
-/// @param rw
-/// @param rh
+/// @brief Apply the autotile region of the tilemap.
 void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t rw, int64_t rh) {
     if (!tm || s_autotile_count == 0)
         return;
@@ -317,8 +302,7 @@ void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t 
     }
 }
 
-/// @brief Perform tilemap apply autotile operation.
-/// @param tm
+/// @brief Apply the autotile of the tilemap.
 void rt_tilemap_apply_autotile(void *tm) {
     if (!tm)
         return;
@@ -329,10 +313,7 @@ void rt_tilemap_apply_autotile(void *tm) {
 // JSON Save/Load
 //=============================================================================
 
-/// @brief Perform tilemap save to file operation.
-/// @param tm
-/// @param path
-/// @return Result value.
+/// @brief Save the to file of the tilemap.
 int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     if (!tm || !path)
         return 0;

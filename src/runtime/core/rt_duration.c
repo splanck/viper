@@ -51,37 +51,37 @@
 // Duration Creation
 //=============================================================================
 
-/// @brief Perform duration from millis operation.
-/// @param ms
-/// @return Result value.
+/// @brief Create a Duration from a raw millisecond count (identity).
+/// @param ms Milliseconds.
+/// @return The same value (Durations are stored as milliseconds internally).
 int64_t rt_duration_from_millis(int64_t ms) {
     return ms;
 }
 
-/// @brief Perform duration from seconds operation.
-/// @param seconds
-/// @return Result value.
+/// @brief Create a Duration from a count of seconds.
+/// @param seconds Number of seconds.
+/// @return Duration in milliseconds (seconds * 1000).
 int64_t rt_duration_from_seconds(int64_t seconds) {
     return seconds * MS_PER_SECOND;
 }
 
-/// @brief Perform duration from minutes operation.
-/// @param minutes
-/// @return Result value.
+/// @brief Create a Duration from a count of minutes.
+/// @param minutes Number of minutes.
+/// @return Duration in milliseconds (minutes * 60000).
 int64_t rt_duration_from_minutes(int64_t minutes) {
     return minutes * MS_PER_MINUTE;
 }
 
-/// @brief Perform duration from hours operation.
-/// @param hours
-/// @return Result value.
+/// @brief Create a Duration from a count of hours.
+/// @param hours Number of hours.
+/// @return Duration in milliseconds (hours * 3600000).
 int64_t rt_duration_from_hours(int64_t hours) {
     return hours * MS_PER_HOUR;
 }
 
-/// @brief Perform duration from days operation.
-/// @param days
-/// @return Result value.
+/// @brief Create a Duration from a count of days.
+/// @param days Number of days.
+/// @return Duration in milliseconds (days * 86400000).
 int64_t rt_duration_from_days(int64_t days) {
     return days * MS_PER_DAY;
 }
@@ -96,44 +96,45 @@ int64_t rt_duration_create(
 // Duration Total Conversions
 //=============================================================================
 
-/// @brief Perform duration total millis operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total milliseconds in the duration (identity).
+/// @param duration Duration in milliseconds.
+/// @return Same value.
 int64_t rt_duration_total_millis(int64_t duration) {
     return duration;
 }
 
-/// @brief Perform duration total seconds operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total whole seconds in the duration.
+/// @param duration Duration in milliseconds.
+/// @return Truncated seconds (duration / 1000).
 int64_t rt_duration_total_seconds(int64_t duration) {
     return duration / MS_PER_SECOND;
 }
 
-/// @brief Perform duration total minutes operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total whole minutes in the duration.
+/// @param duration Duration in milliseconds.
+/// @return Truncated minutes (duration / 60000).
 int64_t rt_duration_total_minutes(int64_t duration) {
     return duration / MS_PER_MINUTE;
 }
 
-/// @brief Perform duration total hours operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total whole hours in the duration.
+/// @param duration Duration in milliseconds.
+/// @return Truncated hours (duration / 3600000).
 int64_t rt_duration_total_hours(int64_t duration) {
     return duration / MS_PER_HOUR;
 }
 
-/// @brief Perform duration total days operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total whole days in the duration.
+/// @param duration Duration in milliseconds.
+/// @return Truncated days (duration / 86400000).
 int64_t rt_duration_total_days(int64_t duration) {
     return duration / MS_PER_DAY;
 }
 
-/// @brief Perform duration total seconds f operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the total seconds as a floating-point value.
+/// @details Useful for sub-second precision without truncation.
+/// @param duration Duration in milliseconds.
+/// @return Fractional seconds (e.g. 1500ms → 1.5).
 double rt_duration_total_seconds_f(int64_t duration) {
     return (double)duration / (double)MS_PER_SECOND;
 }
@@ -142,41 +143,42 @@ double rt_duration_total_seconds_f(int64_t duration) {
 // Duration Components
 //=============================================================================
 
-/// @brief Perform duration get days operation.
-/// @param duration
-/// @return Result value.
+/// @brief Extract the days component (largest unit).
+/// @details Returns abs(duration) / MS_PER_DAY — the whole days portion.
+/// @param duration Duration in milliseconds.
+/// @return Unsigned day count.
 int64_t rt_duration_get_days(int64_t duration) {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return abs_dur / MS_PER_DAY;
 }
 
-/// @brief Perform duration get hours operation.
-/// @param duration
-/// @return Result value.
+/// @brief Extract the hours component (0-23 after removing days).
+/// @param duration Duration in milliseconds.
+/// @return Hours remaining after subtracting whole days.
 int64_t rt_duration_get_hours(int64_t duration) {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
 }
 
-/// @brief Perform duration get minutes operation.
-/// @param duration
-/// @return Result value.
+/// @brief Extract the minutes component (0-59 after removing hours).
+/// @param duration Duration in milliseconds.
+/// @return Minutes remaining after subtracting whole hours.
 int64_t rt_duration_get_minutes(int64_t duration) {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
 }
 
-/// @brief Perform duration get seconds operation.
-/// @param duration
-/// @return Result value.
+/// @brief Extract the seconds component (0-59 after removing minutes).
+/// @param duration Duration in milliseconds.
+/// @return Seconds remaining after subtracting whole minutes.
 int64_t rt_duration_get_seconds(int64_t duration) {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
 }
 
-/// @brief Perform duration get millis operation.
-/// @param duration
-/// @return Result value.
+/// @brief Extract the milliseconds component (0-999 after removing seconds).
+/// @param duration Duration in milliseconds.
+/// @return Milliseconds remaining after subtracting whole seconds.
 int64_t rt_duration_get_millis(int64_t duration) {
     int64_t abs_dur = duration >= 0 ? duration : -duration;
     return abs_dur % MS_PER_SECOND;
@@ -186,50 +188,51 @@ int64_t rt_duration_get_millis(int64_t duration) {
 // Duration Operations
 //=============================================================================
 
-/// @brief Perform duration add operation.
-/// @param d1
-/// @param d2
-/// @return Result value.
+/// @brief Add two durations.
+/// @param d1 First duration in milliseconds.
+/// @param d2 Second duration in milliseconds.
+/// @return Sum (d1 + d2) in milliseconds.
 int64_t rt_duration_add(int64_t d1, int64_t d2) {
     return d1 + d2;
 }
 
-/// @brief Perform duration sub operation.
-/// @param d1
-/// @param d2
-/// @return Result value.
+/// @brief Subtract two durations.
+/// @param d1 First duration in milliseconds.
+/// @param d2 Second duration in milliseconds.
+/// @return Difference (d1 - d2) in milliseconds.
 int64_t rt_duration_sub(int64_t d1, int64_t d2) {
     return d1 - d2;
 }
 
-/// @brief Perform duration mul operation.
-/// @param duration
-/// @param factor
-/// @return Result value.
+/// @brief Scale a duration by an integer factor.
+/// @param duration Duration in milliseconds.
+/// @param factor Multiplier.
+/// @return Scaled duration (duration * factor).
 int64_t rt_duration_mul(int64_t duration, int64_t factor) {
     return duration * factor;
 }
 
-/// @brief Perform duration div operation.
-/// @param duration
-/// @param divisor
-/// @return Result value.
+/// @brief Divide a duration by an integer divisor.
+/// @details Traps on zero divisor to match runtime error conventions.
+/// @param duration Duration in milliseconds.
+/// @param divisor Divisor (must be non-zero).
+/// @return Truncated quotient (duration / divisor).
 int64_t rt_duration_div(int64_t duration, int64_t divisor) {
     if (divisor == 0)
         return 0; // Avoid division by zero
     return duration / divisor;
 }
 
-/// @brief Perform duration abs operation.
-/// @param duration
-/// @return Result value.
+/// @brief Return the absolute value of a duration.
+/// @param duration Duration in milliseconds (may be negative).
+/// @return Non-negative magnitude.
 int64_t rt_duration_abs(int64_t duration) {
     return duration >= 0 ? duration : (int64_t)(0 - (uint64_t)duration);
 }
 
-/// @brief Perform duration neg operation.
-/// @param duration
-/// @return Result value.
+/// @brief Negate a duration.
+/// @param duration Duration in milliseconds.
+/// @return Negated value (-duration).
 int64_t rt_duration_neg(int64_t duration) {
     return (int64_t)(0 - (uint64_t)duration);
 }
@@ -238,10 +241,10 @@ int64_t rt_duration_neg(int64_t duration) {
 // Duration Comparison
 //=============================================================================
 
-/// @brief Perform duration cmp operation.
-/// @param d1
-/// @param d2
-/// @return Result value.
+/// @brief Compare two durations.
+/// @param d1 First duration in milliseconds.
+/// @param d2 Second duration in milliseconds.
+/// @return -1 if d1 < d2, 0 if equal, 1 if d1 > d2.
 int64_t rt_duration_cmp(int64_t d1, int64_t d2) {
     if (d1 < d2)
         return -1;
@@ -254,9 +257,11 @@ int64_t rt_duration_cmp(int64_t d1, int64_t d2) {
 // Duration Formatting
 //=============================================================================
 
-/// @brief Perform duration to string operation.
-/// @param duration
-/// @return Result value.
+/// @brief Format a duration as a human-readable string.
+/// @details Produces output like "2d 3h 15m 30s 500ms", omitting zero components.
+///          Negative durations are prefixed with "-". Zero returns "0ms".
+/// @param duration Duration in milliseconds.
+/// @return Newly allocated runtime string.
 rt_string rt_duration_to_string(int64_t duration) {
     char buffer[64];
 
@@ -316,9 +321,11 @@ rt_string rt_duration_to_string(int64_t duration) {
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
-/// @brief Perform duration to iso operation.
-/// @param duration
-/// @return Result value.
+/// @brief Format a duration as an ISO 8601 duration string.
+/// @details Produces output like "P2DT3H15M30.5S" (period-designator format).
+///          This format is machine-parseable and widely used in APIs.
+/// @param duration Duration in milliseconds.
+/// @return Newly allocated runtime string.
 rt_string rt_duration_to_iso(int64_t duration) {
     char buffer[64];
     char *p = buffer;
@@ -374,7 +381,7 @@ rt_string rt_duration_to_iso(int64_t duration) {
 // Constants
 //=============================================================================
 
-/// @brief Perform duration zero operation.
+/// @brief Return the zero duration (0 milliseconds).
 /// @return Result value.
 int64_t rt_duration_zero(void) {
     return 0;

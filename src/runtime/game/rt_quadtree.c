@@ -398,12 +398,7 @@ static void quadtree_finalizer(void *obj) {
     tree->root = NULL;
 }
 
-/// @brief Perform quadtree new operation.
-/// @param x
-/// @param y
-/// @param width
-/// @param height
-/// @return Result value.
+/// @brief Create a new quadtree object.
 rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     struct rt_quadtree_impl *tree = rt_obj_new_i64(0, sizeof(struct rt_quadtree_impl));
     if (!tree)
@@ -422,15 +417,13 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
     return tree;
 }
 
-/// @brief Perform quadtree destroy operation.
-/// @param tree
+/// @brief Release resources and destroy the quadtree.
 void rt_quadtree_destroy(rt_quadtree tree) {
     // Object is GC-managed; finalizer frees internal nodes.
     (void)tree;
 }
 
-/// @brief Perform quadtree clear operation.
-/// @param tree
+/// @brief Remove all entries from the quadtree.
 void rt_quadtree_clear(rt_quadtree tree) {
     if (!tree)
         return;
@@ -480,10 +473,7 @@ int8_t rt_quadtree_insert(
     return insert_into_node(tree, tree->root, idx);
 }
 
-/// @brief Perform quadtree remove operation.
-/// @param tree
-/// @param id
-/// @return Result value.
+/// @brief Remove an entry from the quadtree.
 int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
     if (!tree)
         return 0;
@@ -536,19 +526,12 @@ int64_t rt_quadtree_query_rect(
     return tree->result_count;
 }
 
-/// @brief Perform quadtree query was truncated operation.
-/// @param tree
-/// @return Result value.
+/// @brief Query the was truncated of the quadtree.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
     return tree ? tree->query_truncated : 0;
 }
 
-/// @brief Perform quadtree query point operation.
-/// @param tree
-/// @param x
-/// @param y
-/// @param radius
-/// @return Result value.
+/// @brief Find all items within a circular area centered at (x, y) with given radius.
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
     if (!tree)
         return 0;
@@ -557,26 +540,19 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
     return rt_quadtree_query_rect(tree, x - radius, y - radius, radius * 2, radius * 2);
 }
 
-/// @brief Perform quadtree get result operation.
-/// @param tree
-/// @param index
-/// @return Result value.
+/// @brief Return the item ID at a given index in the most recent query result set.
 int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
     if (!tree || index < 0 || index >= tree->result_count)
         return -1;
     return tree->results[index];
 }
 
-/// @brief Perform quadtree result count operation.
-/// @param tree
-/// @return Result value.
+/// @brief Return the count of elements in the quadtree.
 int64_t rt_quadtree_result_count(rt_quadtree tree) {
     return tree ? tree->result_count : 0;
 }
 
-/// @brief Perform quadtree item count operation.
-/// @param tree
-/// @return Result value.
+/// @brief Return the count of elements in the quadtree.
 int64_t rt_quadtree_item_count(rt_quadtree tree) {
     if (!tree)
         return 0;
@@ -589,9 +565,8 @@ int64_t rt_quadtree_item_count(rt_quadtree tree) {
     return count;
 }
 
-/// @brief Perform quadtree get pairs operation.
-/// @param tree
-/// @return Result value.
+/// @brief Compute all potentially-colliding pairs in the quadtree and return the count.
+/// @details Traverses the tree collecting pairs of items that share a leaf node.
 int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
     if (!tree)
         return 0;
@@ -602,20 +577,14 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
     return tree->pair_count;
 }
 
-/// @brief Perform quadtree pair first operation.
-/// @param tree
-/// @param pair_index
-/// @return Result value.
+/// @brief Return the first item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].first;
 }
 
-/// @brief Perform quadtree pair second operation.
-/// @param tree
-/// @param pair_index
-/// @return Result value.
+/// @brief Return the second item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;

@@ -64,9 +64,7 @@ void *rt_scanner_new(rt_string source) {
 // Position and State
 //=============================================================================
 
-/// @brief Perform scanner pos operation.
-/// @param obj
-/// @return Result value.
+/// @brief Pos the scanner.
 int64_t rt_scanner_pos(void *obj) {
     if (!obj)
         return 0;
@@ -74,9 +72,7 @@ int64_t rt_scanner_pos(void *obj) {
     return s->pos;
 }
 
-/// @brief Perform scanner set pos operation.
-/// @param obj
-/// @param pos
+/// @brief Seek to an absolute position in the input, clamped to [0, len].
 void rt_scanner_set_pos(void *obj, int64_t pos) {
     if (!obj)
         return;
@@ -88,9 +84,7 @@ void rt_scanner_set_pos(void *obj, int64_t pos) {
     s->pos = pos;
 }
 
-/// @brief Perform scanner is end operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the scanner has reached the end of input.
 int8_t rt_scanner_is_end(void *obj) {
     if (!obj)
         return 1;
@@ -98,9 +92,7 @@ int8_t rt_scanner_is_end(void *obj) {
     return s->pos >= s->len ? 1 : 0;
 }
 
-/// @brief Perform scanner remaining operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of bytes remaining from the current position to end.
 int64_t rt_scanner_remaining(void *obj) {
     if (!obj)
         return 0;
@@ -108,9 +100,7 @@ int64_t rt_scanner_remaining(void *obj) {
     return s->len - s->pos;
 }
 
-/// @brief Perform scanner len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of elements in the scanner.
 int64_t rt_scanner_len(void *obj) {
     if (!obj)
         return 0;
@@ -118,8 +108,7 @@ int64_t rt_scanner_len(void *obj) {
     return s->len;
 }
 
-/// @brief Perform scanner reset operation.
-/// @param obj
+/// @brief Reset the scanner position to the beginning of the input.
 void rt_scanner_reset(void *obj) {
     if (!obj)
         return;
@@ -131,9 +120,7 @@ void rt_scanner_reset(void *obj) {
 // Peeking
 //=============================================================================
 
-/// @brief Perform scanner peek operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the top/last element without removing it.
 int64_t rt_scanner_peek(void *obj) {
     if (!obj)
         return -1;
@@ -143,10 +130,7 @@ int64_t rt_scanner_peek(void *obj) {
     return (unsigned char)s->data[s->pos];
 }
 
-/// @brief Perform scanner peek at operation.
-/// @param obj
-/// @param offset
-/// @return Result value.
+/// @brief Look at a character at a relative offset from the current position without advancing.
 int64_t rt_scanner_peek_at(void *obj, int64_t offset) {
     if (!obj)
         return -1;
@@ -157,10 +141,7 @@ int64_t rt_scanner_peek_at(void *obj, int64_t offset) {
     return (unsigned char)s->data[idx];
 }
 
-/// @brief Perform scanner peek str operation.
-/// @param obj
-/// @param n
-/// @return Result value.
+/// @brief Preview the next n characters as a string without advancing the position.
 rt_string rt_scanner_peek_str(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_const_cstr("");
@@ -179,9 +160,7 @@ rt_string rt_scanner_peek_str(void *obj, int64_t n) {
 // Reading
 //=============================================================================
 
-/// @brief Perform scanner read operation.
-/// @param obj
-/// @return Result value.
+/// @brief Read and consume one character, returning it as a byte value (-1 at end).
 int64_t rt_scanner_read(void *obj) {
     if (!obj)
         return -1;
@@ -191,10 +170,7 @@ int64_t rt_scanner_read(void *obj) {
     return (unsigned char)s->data[s->pos++];
 }
 
-/// @brief Perform scanner read str operation.
-/// @param obj
-/// @param n
-/// @return Result value.
+/// @brief Read and consume up to n characters, returning them as a string.
 rt_string rt_scanner_read_str(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_const_cstr("");
@@ -211,10 +187,7 @@ rt_string rt_scanner_read_str(void *obj, int64_t n) {
     return result;
 }
 
-/// @brief Perform scanner read until operation.
-/// @param obj
-/// @param delim
-/// @return Result value.
+/// @brief Read characters until the delimiter byte is found (delimiter not consumed).
 rt_string rt_scanner_read_until(void *obj, int64_t delim) {
     if (!obj)
         return rt_const_cstr("");
@@ -230,10 +203,7 @@ rt_string rt_scanner_read_until(void *obj, int64_t delim) {
     return rt_string_from_bytes(s->data + start, s->pos - start);
 }
 
-/// @brief Perform scanner read until any operation.
-/// @param obj
-/// @param delims
-/// @return Result value.
+/// @brief Read characters until any character in the delimiter set is found.
 rt_string rt_scanner_read_until_any(void *obj, rt_string delims) {
     if (!obj)
         return rt_const_cstr("");
@@ -262,10 +232,7 @@ rt_string rt_scanner_read_until_any(void *obj, rt_string delims) {
     return rt_string_from_bytes(s->data + start, s->pos - start);
 }
 
-/// @brief Perform scanner read while operation.
-/// @param obj
-/// @param (*pred
-/// @return Result value.
+/// @brief Read characters while a predicate function returns true.
 rt_string rt_scanner_read_while(void *obj, int8_t (*pred)(int64_t)) {
     if (!obj || !pred)
         return rt_const_cstr("");
@@ -285,10 +252,7 @@ rt_string rt_scanner_read_while(void *obj, int8_t (*pred)(int64_t)) {
 // Matching
 //=============================================================================
 
-/// @brief Perform scanner match operation.
-/// @param obj
-/// @param c
-/// @return Result value.
+/// @brief Check whether the current character matches the given byte (without consuming).
 int8_t rt_scanner_match(void *obj, int64_t c) {
     if (!obj)
         return 0;
@@ -298,10 +262,7 @@ int8_t rt_scanner_match(void *obj, int64_t c) {
     return (unsigned char)s->data[s->pos] == (unsigned char)c ? 1 : 0;
 }
 
-/// @brief Perform scanner match str operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Check whether the upcoming bytes match a string (without consuming).
 int8_t rt_scanner_match_str(void *obj, rt_string str) {
     if (!obj)
         return 0;
@@ -316,10 +277,7 @@ int8_t rt_scanner_match_str(void *obj, rt_string str) {
     return memcmp(s->data + s->pos, str_data, (size_t)str_len) == 0 ? 1 : 0;
 }
 
-/// @brief Perform scanner accept operation.
-/// @param obj
-/// @param c
-/// @return Result value.
+/// @brief If the current character matches, consume it and return 1; else return 0.
 int8_t rt_scanner_accept(void *obj, int64_t c) {
     if (!rt_scanner_match(obj, c))
         return 0;
@@ -328,10 +286,7 @@ int8_t rt_scanner_accept(void *obj, int64_t c) {
     return 1;
 }
 
-/// @brief Perform scanner accept str operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief If the upcoming bytes match a string, consume them and return 1; else return 0.
 int8_t rt_scanner_accept_str(void *obj, rt_string str) {
     if (!rt_scanner_match_str(obj, str))
         return 0;
@@ -340,10 +295,7 @@ int8_t rt_scanner_accept_str(void *obj, rt_string str) {
     return 1;
 }
 
-/// @brief Perform scanner accept any operation.
-/// @param obj
-/// @param chars
-/// @return Result value.
+/// @brief If the current character is in the given character set, consume it; else return 0.
 int8_t rt_scanner_accept_any(void *obj, rt_string chars) {
     if (!obj)
         return 0;
@@ -368,9 +320,7 @@ int8_t rt_scanner_accept_any(void *obj, rt_string chars) {
 // Skipping
 //=============================================================================
 
-/// @brief Perform scanner skip operation.
-/// @param obj
-/// @param n
+/// @brief Advance the position by n characters (clamped to end of input).
 void rt_scanner_skip(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return;
@@ -380,9 +330,7 @@ void rt_scanner_skip(void *obj, int64_t n) {
         s->pos = s->len;
 }
 
-/// @brief Perform scanner skip whitespace operation.
-/// @param obj
-/// @return Result value.
+/// @brief Skip over whitespace characters (space, tab, newline, carriage return).
 int64_t rt_scanner_skip_whitespace(void *obj) {
     if (!obj)
         return 0;
@@ -399,10 +347,7 @@ int64_t rt_scanner_skip_whitespace(void *obj) {
     return s->pos - start;
 }
 
-/// @brief Perform scanner skip while operation.
-/// @param obj
-/// @param (*pred
-/// @return Result value.
+/// @brief Skip characters while a predicate function returns true; returns count skipped.
 int64_t rt_scanner_skip_while(void *obj, int8_t (*pred)(int64_t)) {
     if (!obj || !pred)
         return 0;
@@ -419,9 +364,7 @@ int64_t rt_scanner_skip_while(void *obj, int8_t (*pred)(int64_t)) {
 // Token Helpers
 //=============================================================================
 
-/// @brief Perform scanner read ident operation.
-/// @param obj
-/// @return Result value.
+/// @brief Read an identifier token (letter/underscore start, then alphanumeric/underscore).
 rt_string rt_scanner_read_ident(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -449,9 +392,7 @@ rt_string rt_scanner_read_ident(void *obj) {
     return rt_string_from_bytes(s->data + start, s->pos - start);
 }
 
-/// @brief Perform scanner read int operation.
-/// @param obj
-/// @return Result value.
+/// @brief Read an integer literal (optional sign followed by digits) as a string.
 rt_string rt_scanner_read_int(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -484,9 +425,7 @@ rt_string rt_scanner_read_int(void *obj) {
     return rt_string_from_bytes(s->data + start, s->pos - start);
 }
 
-/// @brief Perform scanner read number operation.
-/// @param obj
-/// @return Result value.
+/// @brief Read a numeric literal (integer or float with optional exponent) as a string.
 rt_string rt_scanner_read_number(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -543,10 +482,7 @@ rt_string rt_scanner_read_number(void *obj) {
     return rt_string_from_bytes(s->data + start, s->pos - start);
 }
 
-/// @brief Perform scanner read quoted operation.
-/// @param obj
-/// @param quote
-/// @return Result value.
+/// @brief Read a quoted string literal (consumes opening/closing quote, handles escape sequences).
 rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     if (!obj)
         return rt_const_cstr("");
@@ -606,9 +542,7 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     return rt_string_from_bytes(buf, buf_pos);
 }
 
-/// @brief Perform scanner read line operation.
-/// @param obj
-/// @return Result value.
+/// @brief Read until end-of-line and consume the line terminator (\r\n or \n).
 rt_string rt_scanner_read_line(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -634,30 +568,22 @@ rt_string rt_scanner_read_line(void *obj) {
 // Character Class Predicates
 //=============================================================================
 
-/// @brief Perform scanner is digit operation.
-/// @param c
-/// @return Result value.
+/// @brief Character predicate: returns 1 if c is an ASCII digit ('0'-'9').
 int8_t rt_scanner_is_digit(int64_t c) {
     return (c >= '0' && c <= '9') ? 1 : 0;
 }
 
-/// @brief Perform scanner is alpha operation.
-/// @param c
-/// @return Result value.
+/// @brief Character predicate: returns 1 if c is an ASCII letter (a-z or A-Z).
 int8_t rt_scanner_is_alpha(int64_t c) {
     return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) ? 1 : 0;
 }
 
-/// @brief Perform scanner is alnum operation.
-/// @param c
-/// @return Result value.
+/// @brief Character predicate: returns 1 if c is alphanumeric (letter or digit).
 int8_t rt_scanner_is_alnum(int64_t c) {
     return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) ? 1 : 0;
 }
 
-/// @brief Perform scanner is space operation.
-/// @param c
-/// @return Result value.
+/// @brief Character predicate: returns 1 if c is whitespace (space, tab, newline, CR).
 int8_t rt_scanner_is_space(int64_t c) {
     return (c == ' ' || c == '\t' || c == '\n' || c == '\r') ? 1 : 0;
 }

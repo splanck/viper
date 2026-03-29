@@ -189,17 +189,24 @@ void *rt_random_new(long long seed) {
     return obj;
 }
 
-// Instance method wrappers that accept and ignore receiver
+/// @brief Instance method wrapper for rt_rnd; ignores the receiver.
+/// @details Allows the Random class to expose NextFloat() as an instance method
+///          while delegating to the global LCG state. The receiver is unused
+///          because Random state is process-global per RtContext.
 double rt_rnd_method(void *self) {
     (void)self;
     return rt_rnd();
 }
 
+/// @brief Instance method wrapper for rt_rand_int; ignores the receiver.
+/// @details Allows the Random class to expose NextInt(max) as an instance method.
 long long rt_rand_int_method(void *self, long long max) {
     (void)self;
     return rt_rand_int(max);
 }
 
+/// @brief Instance method wrapper for rt_randomize_i64; ignores the receiver.
+/// @details Allows re-seeding via the Random.Seed() instance method.
 void rt_randomize_i64_method(void *self, long long seed) {
     (void)self;
     rt_randomize_i64(seed);

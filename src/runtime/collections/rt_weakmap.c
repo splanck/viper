@@ -135,26 +135,23 @@ void *rt_weakmap_new(void) {
     return obj;
 }
 
-/// @brief Perform weakmap len operation.
-/// @param map
-/// @return Result value.
+/// @brief Return the number of live entries in the weak map.
+/// @details Entries whose keys have been garbage-collected are not counted.
 int64_t rt_weakmap_len(void *map) {
     if (!map)
         return 0;
     return ((rt_weakmap_data *)map)->count;
 }
 
-/// @brief Perform weakmap is empty operation.
-/// @param map
-/// @return Result value.
+/// @brief Check whether the weak map has no live entries.
 int8_t rt_weakmap_is_empty(void *map) {
     return rt_weakmap_len(map) == 0 ? 1 : 0;
 }
 
-/// @brief Perform weakmap set operation.
-/// @param map
-/// @param key
-/// @param value
+/// @brief Insert or update a key-value pair in the weak map.
+/// @details The key is stored as a weak reference; if the key object is
+///          collected by the GC, the entry becomes stale and is cleaned up
+///          on the next compact or access.
 void rt_weakmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
@@ -192,10 +189,7 @@ void *rt_weakmap_get(void *map, rt_string key) {
     return data->entries[slot].value;
 }
 
-/// @brief Perform weakmap has operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key still exists (not collected) in the weak map.
 int8_t rt_weakmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -204,10 +198,11 @@ int8_t rt_weakmap_has(void *map, rt_string key) {
     return (slot >= 0 && data->entries[slot].occupied) ? 1 : 0;
 }
 
-/// @brief Perform weakmap remove operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Remove an entry by key from the weak map.
+/// @details Releases the key's string reference and clears the slot. The value
+///          is not released because weak maps do not retain values. After removal,
+///          subsequent occupied slots are rehashed to maintain open-addressing
+///          probe chain integrity.
 int8_t rt_weakmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -249,8 +244,8 @@ void *rt_weakmap_keys(void *map) {
     return seq;
 }
 
-/// @brief Perform weakmap clear operation.
-/// @param map
+/// @brief Remove all entries from the weak map.
+/// @details Releases all value references and clears all weak key slots.
 void rt_weakmap_clear(void *map) {
     if (!map)
         return;
@@ -266,9 +261,9 @@ void rt_weakmap_clear(void *map) {
     data->count = 0;
 }
 
-/// @brief Perform weakmap compact operation.
-/// @param map
-/// @return Result value.
+/// @brief Remove stale entries whose keys have been garbage-collected.
+/// @details Scans all slots and removes any where the weak key reference
+///          has been zeroed by the GC, reclaiming their space.
 int64_t rt_weakmap_compact(void *map) {
     if (!map)
         return 0;

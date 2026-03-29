@@ -25,6 +25,27 @@
 | `RT3DD3D11Tests.cpp` | Windows | 10 | Device+swap chain, buffer create, shader compile, constant buffer map, texture SRV, MSAA, resize, present, cleanup, fallback |
 | `RT3DOpenGLTests.cpp` | Linux | 10 | Context creation, GL loader, VAO/VBO, shader compile+link, texture upload, FBO MSAA, resize, present, cleanup, fallback |
 
+#### Shared GPU-Path Runtime Tests (Current)
+
+| File | Platform | Tests | Description |
+|------|----------|-------|-------------|
+| `test_rt_canvas3d_gpu_paths.cpp` | Cross-platform | 15 | Shared producer/runtime payload checks: GPU skinning bypass, GPU morph payloads, morph-normal payloads, env-map forwarding, backend skybox hook usage, previous-frame history propagation, and instanced material forwarding |
+| `test_vgfx3d_backend_utils.c` | Cross-platform | 9 | Backend utility checks: RGBA unpack, cubemap-face unpack, row flip, inverse-transpose normal matrix fallback + correctness, and 4x4 inversion success/failure paths |
+
+#### Current D3D11 Validation Path
+
+The current practical DX11 validation path is:
+
+1. Windows CI build compiles `viper`, `test_rt_canvas3d_gpu_paths`, and `test_vgfx3d_backend_utils`
+2. Windows CI runs the focused shared graphics tests:
+   - `test_rt_canvas3d_gpu_paths`
+   - `test_vgfx3d_backend_utils`
+3. local focused validation can use the same `ctest` entries directly:
+   - `ctest --test-dir build --output-on-failure -R 'test_rt_canvas3d_gpu_paths|test_vgfx3d_backend_utils'`
+4. device-level D3D11 renderer tests remain desirable, but they are not the current baseline gate
+
+This keeps backend code in [`vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c) from landing entirely unvalidated when local development happens on macOS/Linux.
+
 #### Cross-Backend Parity Tests
 
 | File | Tests | Description |
@@ -74,4 +95,3 @@ endif ()
 | Backend parity | 8 |
 | Golden tests (BASIC programs) | 6 |
 | **Total** | **~164** |
-

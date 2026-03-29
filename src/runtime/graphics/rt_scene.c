@@ -230,18 +230,14 @@ static void update_world_transform(scene_node_impl *node) {
 // Scene Node Properties - Position
 //=============================================================================
 
-/// @brief Perform node get x operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the x of the node.
 int64_t rt_scene_node_get_x(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->x;
 }
 
-/// @brief Perform node set x operation.
-/// @param node_ptr
-/// @param x
+/// @brief Set the x of the node.
 void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     if (!node_ptr)
         return;
@@ -250,18 +246,14 @@ void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node get y operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the y of the node.
 int64_t rt_scene_node_get_y(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->y;
 }
 
-/// @brief Perform node set y operation.
-/// @param node_ptr
-/// @param y
+/// @brief Set the y of the node.
 void rt_scene_node_set_y(void *node_ptr, int64_t y) {
     if (!node_ptr)
         return;
@@ -270,9 +262,7 @@ void rt_scene_node_set_y(void *node_ptr, int64_t y) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node get world x operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the world x of the node.
 int64_t rt_scene_node_get_world_x(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -281,9 +271,7 @@ int64_t rt_scene_node_get_world_x(void *node_ptr) {
     return node->world_x;
 }
 
-/// @brief Perform node get world y operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the world y of the node.
 int64_t rt_scene_node_get_world_y(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -296,18 +284,14 @@ int64_t rt_scene_node_get_world_y(void *node_ptr) {
 // Scene Node Properties - Scale
 //=============================================================================
 
-/// @brief Perform node get scale x operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the scale x of the node.
 int64_t rt_scene_node_get_scale_x(void *node_ptr) {
     if (!node_ptr)
         return 100;
     return ((scene_node_impl *)node_ptr)->scale_x;
 }
 
-/// @brief Perform node set scale x operation.
-/// @param node_ptr
-/// @param scale
+/// @brief Set the scale x of the node.
 void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;
@@ -316,18 +300,14 @@ void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node get scale y operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the scale y of the node.
 int64_t rt_scene_node_get_scale_y(void *node_ptr) {
     if (!node_ptr)
         return 100;
     return ((scene_node_impl *)node_ptr)->scale_y;
 }
 
-/// @brief Perform node set scale y operation.
-/// @param node_ptr
-/// @param scale
+/// @brief Set the scale y of the node.
 void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;
@@ -336,9 +316,7 @@ void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node get world scale x operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the world scale x of the node.
 int64_t rt_scene_node_get_world_scale_x(void *node_ptr) {
     if (!node_ptr)
         return 100;
@@ -347,9 +325,7 @@ int64_t rt_scene_node_get_world_scale_x(void *node_ptr) {
     return node->world_scale_x;
 }
 
-/// @brief Perform node get world scale y operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the world scale y of the node.
 int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
     if (!node_ptr)
         return 100;
@@ -362,18 +338,14 @@ int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
 // Scene Node Properties - Rotation
 //=============================================================================
 
-/// @brief Perform node get rotation operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the rotation of the node.
 int64_t rt_scene_node_get_rotation(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->rotation;
 }
 
-/// @brief Perform node set rotation operation.
-/// @param node_ptr
-/// @param degrees
+/// @brief Set the rotation of the node.
 void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
     if (!node_ptr)
         return;
@@ -382,9 +354,7 @@ void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node get world rotation operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the world rotation of the node.
 int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -397,36 +367,28 @@ int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
 // Scene Node Properties - Visibility & Depth
 //=============================================================================
 
-/// @brief Perform node get visible operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the visible of the node.
 int8_t rt_scene_node_get_visible(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->visible;
 }
 
-/// @brief Perform node set visible operation.
-/// @param node_ptr
-/// @param visible
+/// @brief Set the visible of the node.
 void rt_scene_node_set_visible(void *node_ptr, int8_t visible) {
     if (!node_ptr)
         return;
     ((scene_node_impl *)node_ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Perform node get depth operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the depth of the node.
 int64_t rt_scene_node_get_depth(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->depth;
 }
 
-/// @brief Perform node set depth operation.
-/// @param node_ptr
-/// @param depth
+/// @brief Set the depth of the node.
 void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
     if (!node_ptr)
         return;
@@ -437,18 +399,14 @@ void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
 // Scene Node Properties - Name & Sprite
 //=============================================================================
 
-/// @brief Perform node get name operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Get the name of the node.
 rt_string rt_scene_node_get_name(void *node_ptr) {
     if (!node_ptr)
         return rt_const_cstr("");
     return ((scene_node_impl *)node_ptr)->name;
 }
 
-/// @brief Perform node set name operation.
-/// @param node_ptr
-/// @param name
+/// @brief Set the name of the node.
 void rt_scene_node_set_name(void *node_ptr, rt_string name) {
     if (!node_ptr)
         return;
@@ -461,9 +419,7 @@ void *rt_scene_node_get_sprite(void *node_ptr) {
     return ((scene_node_impl *)node_ptr)->sprite;
 }
 
-/// @brief Perform node set sprite operation.
-/// @param node_ptr
-/// @param sprite
+/// @brief Set the sprite of the node.
 void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     if (!node_ptr)
         return;
@@ -474,9 +430,7 @@ void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
 // Scene Node Hierarchy
 //=============================================================================
 
-/// @brief Perform node add child operation.
-/// @param node_ptr
-/// @param child_ptr
+/// @brief Add the child of the node.
 void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -500,9 +454,7 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     mark_transform_dirty(child);
 }
 
-/// @brief Perform node remove child operation.
-/// @param node_ptr
-/// @param child_ptr
+/// @brief Remove the child of the node.
 void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -521,9 +473,7 @@ void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     }
 }
 
-/// @brief Perform node child count operation.
-/// @param node_ptr
-/// @return Result value.
+/// @brief Return the count of elements in the node.
 int64_t rt_scene_node_child_count(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -568,8 +518,7 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
     return NULL;
 }
 
-/// @brief Perform node detach operation.
-/// @param node_ptr
+/// @brief Detach the node.
 void rt_scene_node_detach(void *node_ptr) {
     if (!node_ptr)
         return;
@@ -583,9 +532,7 @@ void rt_scene_node_detach(void *node_ptr) {
 // Scene Node Methods
 //=============================================================================
 
-/// @brief Perform node draw operation.
-/// @param node_ptr
-/// @param canvas
+/// @brief Draw the node.
 void rt_scene_node_draw(void *node_ptr, void *canvas) {
     if (!node_ptr || !canvas)
         return;
@@ -629,10 +576,7 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
     }
 }
 
-/// @brief Perform node draw with camera operation.
-/// @param node_ptr
-/// @param canvas
-/// @param camera
+/// @brief Draw the with camera of the node.
 void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) {
     if (!node_ptr || !canvas)
         return;
@@ -690,8 +634,7 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
     }
 }
 
-/// @brief Perform node update operation.
-/// @param node_ptr
+/// @brief Update the node state (called per frame/tick).
 void rt_scene_node_update(void *node_ptr) {
     if (!node_ptr)
         return;
@@ -710,10 +653,7 @@ void rt_scene_node_update(void *node_ptr) {
     }
 }
 
-/// @brief Perform node move operation.
-/// @param node_ptr
-/// @param dx
-/// @param dy
+/// @brief Move the node.
 void rt_scene_node_move(void *node_ptr, int64_t dx, int64_t dy) {
     if (!node_ptr)
         return;
@@ -723,10 +663,7 @@ void rt_scene_node_move(void *node_ptr, int64_t dx, int64_t dy) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node set position operation.
-/// @param node_ptr
-/// @param x
-/// @param y
+/// @brief Set the position of the node.
 void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
     if (!node_ptr)
         return;
@@ -736,9 +673,7 @@ void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
     mark_transform_dirty(node);
 }
 
-/// @brief Perform node set scale operation.
-/// @param node_ptr
-/// @param scale
+/// @brief Set the scale of the node.
 void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;
@@ -992,9 +927,7 @@ void rt_scene_update(void *scene_ptr) {
     rt_scene_node_update(scene->root);
 }
 
-/// @brief Perform node count operation.
-/// @param scene_ptr
-/// @return Result value.
+/// @brief Return the count of elements in the node.
 int64_t rt_scene_node_count(void *scene_ptr) {
     if (!scene_ptr)
         return 0;

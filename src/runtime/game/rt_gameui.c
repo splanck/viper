@@ -81,9 +81,7 @@ void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color) {
     return label;
 }
 
-/// @brief Perform uilabel set text operation.
-/// @param ptr
-/// @param text
+/// @brief Replace the label's displayed text, truncating to 511 bytes if needed.
 void rt_uilabel_set_text(void *ptr, rt_string text) {
     if (!ptr)
         return;
@@ -101,10 +99,7 @@ void rt_uilabel_set_text(void *ptr, rt_string text) {
     }
 }
 
-/// @brief Perform uilabel set pos operation.
-/// @param ptr
-/// @param x
-/// @param y
+/// @brief Reposition the label to screen coordinates (x, y).
 void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return;
@@ -113,27 +108,21 @@ void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
     label->y = y;
 }
 
-/// @brief Perform uilabel set color operation.
-/// @param ptr
-/// @param color
+/// @brief Set the label's text color (RGBA packed integer).
 void rt_uilabel_set_color(void *ptr, int64_t color) {
     if (!ptr)
         return;
     ((rt_uilabel_impl *)ptr)->color = color;
 }
 
-/// @brief Perform uilabel set font operation.
-/// @param ptr
-/// @param font
+/// @brief Assign a BitmapFont for rendering; NULL uses the built-in 8x8 font.
 void rt_uilabel_set_font(void *ptr, void *font) {
     if (!ptr)
         return;
     ((rt_uilabel_impl *)ptr)->font = font;
 }
 
-/// @brief Perform uilabel set scale operation.
-/// @param ptr
-/// @param scale
+/// @brief Set the integer pixel scale for text rendering (minimum 1).
 void rt_uilabel_set_scale(void *ptr, int64_t scale) {
     if (!ptr)
         return;
@@ -142,36 +131,31 @@ void rt_uilabel_set_scale(void *ptr, int64_t scale) {
     ((rt_uilabel_impl *)ptr)->scale = scale;
 }
 
-/// @brief Perform uilabel set visible operation.
-/// @param ptr
-/// @param visible
+/// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
     if (!ptr)
         return;
     ((rt_uilabel_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Perform uilabel get x operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the label's current X position in screen coordinates.
 int64_t rt_uilabel_get_x(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uilabel_impl *)ptr)->x;
 }
 
-/// @brief Perform uilabel get y operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the label's current Y position in screen coordinates.
 int64_t rt_uilabel_get_y(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uilabel_impl *)ptr)->y;
 }
 
-/// @brief Perform uilabel draw operation.
-/// @param ptr
-/// @param canvas
+/// @brief Render the label onto the canvas using its font, scale, and color.
+/// @details Skips rendering if the label is hidden or has empty text. Uses
+///          the assigned BitmapFont when set, otherwise falls back to the
+///          built-in 8x8 pixel font.
 void rt_uilabel_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
@@ -234,10 +218,9 @@ void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color,
     return bar;
 }
 
-/// @brief Perform uibar set value operation.
-/// @param ptr
-/// @param value
-/// @param max_value
+/// @brief Set the bar's current and maximum values, clamping to [0, max].
+/// @details max_value is forced to at least 1 to prevent division by zero
+///          during fill-ratio computation in the draw function.
 void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
     if (!ptr)
         return;
@@ -252,10 +235,7 @@ void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
     bar->max_value = max_value;
 }
 
-/// @brief Perform uibar set pos operation.
-/// @param ptr
-/// @param x
-/// @param y
+/// @brief Reposition the bar to screen coordinates (x, y).
 void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return;
@@ -264,10 +244,7 @@ void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y) {
     bar->y = y;
 }
 
-/// @brief Perform uibar set size operation.
-/// @param ptr
-/// @param w
-/// @param h
+/// @brief Set the bar's width and height in pixels (minimum 1 each).
 void rt_uibar_set_size(void *ptr, int64_t w, int64_t h) {
     if (!ptr)
         return;
@@ -276,10 +253,7 @@ void rt_uibar_set_size(void *ptr, int64_t w, int64_t h) {
     bar->h = h > 0 ? h : 1;
 }
 
-/// @brief Perform uibar set colors operation.
-/// @param ptr
-/// @param fg
-/// @param bg
+/// @brief Set the foreground (filled portion) and background colors of the bar.
 void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg) {
     if (!ptr)
         return;
@@ -288,18 +262,14 @@ void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg) {
     bar->bg_color = bg;
 }
 
-/// @brief Perform uibar set border operation.
-/// @param ptr
-/// @param color
+/// @brief Set the bar's border color; 0 disables the border outline.
 void rt_uibar_set_border(void *ptr, int64_t color) {
     if (!ptr)
         return;
     ((rt_uibar_impl *)ptr)->border_color = color;
 }
 
-/// @brief Perform uibar set direction operation.
-/// @param ptr
-/// @param dir
+/// @brief Set the bar's fill direction (0=L→R, 1=R→L, 2=B→T, 3=T→B).
 void rt_uibar_set_direction(void *ptr, int64_t dir) {
     if (!ptr)
         return;
@@ -308,36 +278,28 @@ void rt_uibar_set_direction(void *ptr, int64_t dir) {
     ((rt_uibar_impl *)ptr)->direction = dir;
 }
 
-/// @brief Perform uibar set visible operation.
-/// @param ptr
-/// @param visible
+/// @brief Show or hide the bar; hidden bars are skipped during draw.
 void rt_uibar_set_visible(void *ptr, int8_t visible) {
     if (!ptr)
         return;
     ((rt_uibar_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Perform uibar get value operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the bar's current fill value.
 int64_t rt_uibar_get_value(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uibar_impl *)ptr)->value;
 }
 
-/// @brief Perform uibar get max operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the bar's maximum value (the denominator for fill ratio).
 int64_t rt_uibar_get_max(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uibar_impl *)ptr)->max_value;
 }
 
-/// @brief Perform uibar draw operation.
-/// @param ptr
-/// @param canvas
+/// @brief Draw the uibar.
 void rt_uibar_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
@@ -409,10 +371,7 @@ void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_colo
     return panel;
 }
 
-/// @brief Perform uipanel set pos operation.
-/// @param ptr
-/// @param x
-/// @param y
+/// @brief Reposition the panel to screen coordinates (x, y).
 void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return;
@@ -421,10 +380,7 @@ void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y) {
     panel->y = y;
 }
 
-/// @brief Perform uipanel set size operation.
-/// @param ptr
-/// @param w
-/// @param h
+/// @brief Set the panel's width and height in pixels (minimum 1 each).
 void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h) {
     if (!ptr)
         return;
@@ -433,10 +389,7 @@ void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h) {
     panel->h = h > 0 ? h : 1;
 }
 
-/// @brief Perform uipanel set color operation.
-/// @param ptr
-/// @param bg_color
-/// @param alpha
+/// @brief Set the panel's background color and alpha (opacity 0-255).
 void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
     if (!ptr)
         return;
@@ -445,10 +398,7 @@ void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
     panel->alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
 }
 
-/// @brief Perform uipanel set border operation.
-/// @param ptr
-/// @param color
-/// @param thickness
+/// @brief Set the panel's border color and thickness (minimum 1 pixel).
 void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
     if (!ptr)
         return;
@@ -457,27 +407,23 @@ void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
     panel->border_thickness = thickness > 0 ? thickness : 1;
 }
 
-/// @brief Perform uipanel set corner radius operation.
-/// @param ptr
-/// @param radius
+/// @brief Set the corner radius for rounded-rectangle drawing (0 = sharp).
 void rt_uipanel_set_corner_radius(void *ptr, int64_t radius) {
     if (!ptr)
         return;
     ((rt_uipanel_impl *)ptr)->corner_radius = radius < 0 ? 0 : radius;
 }
 
-/// @brief Perform uipanel set visible operation.
-/// @param ptr
-/// @param visible
+/// @brief Show or hide the panel; hidden panels are skipped during draw.
 void rt_uipanel_set_visible(void *ptr, int8_t visible) {
     if (!ptr)
         return;
     ((rt_uipanel_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Perform uipanel draw operation.
-/// @param ptr
-/// @param canvas
+/// @brief Render the panel onto the canvas as a filled rectangle.
+/// @details Draws a rounded or sharp rectangle depending on corner_radius,
+///          then overlays the border if a border color is set.
 void rt_uipanel_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
@@ -577,22 +523,17 @@ void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right,
     return ns;
 }
 
-/// @brief Perform uinineslice set tint operation.
-/// @param ptr
-/// @param color
+/// @brief Set a color tint applied over the nine-slice texture when drawn.
 void rt_uinineslice_set_tint(void *ptr, int64_t color) {
     if (!ptr)
         return;
     ((rt_uinineslice_impl *)ptr)->tint = color;
 }
 
-/// @brief Perform uinineslice draw operation.
-/// @param ptr
-/// @param canvas
-/// @param x
-/// @param y
-/// @param w
-/// @param h
+/// @brief Render the nine-slice texture onto the canvas at the given rect.
+/// @details Splits the source texture into 9 patches using the configured insets
+///          (left/top/right/bottom) and stretches the center/edge patches to fill
+///          the destination rectangle while keeping corners at their natural size.
 void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!ptr || !canvas)
         return;
@@ -722,9 +663,7 @@ void *rt_uimenulist_new(int64_t x, int64_t y, int64_t item_height) {
     return menu;
 }
 
-/// @brief Perform uimenulist add item operation.
-/// @param ptr
-/// @param text
+/// @brief Append a text item to the menu list (max 32 items, 127 chars each).
 void rt_uimenulist_add_item(void *ptr, rt_string text) {
     if (!ptr || !text)
         return;
@@ -744,8 +683,7 @@ void rt_uimenulist_add_item(void *ptr, rt_string text) {
     menu->count++;
 }
 
-/// @brief Perform uimenulist clear operation.
-/// @param ptr
+/// @brief Remove all entries from the uimenulist.
 void rt_uimenulist_clear(void *ptr) {
     if (!ptr)
         return;
@@ -754,9 +692,7 @@ void rt_uimenulist_clear(void *ptr) {
     menu->selected = 0;
 }
 
-/// @brief Perform uimenulist set selected operation.
-/// @param ptr
-/// @param index
+/// @brief Set the selected item index, clamped to [0, count-1].
 void rt_uimenulist_set_selected(void *ptr, int64_t index) {
     if (!ptr)
         return;
@@ -772,17 +708,14 @@ void rt_uimenulist_set_selected(void *ptr, int64_t index) {
     menu->selected = index;
 }
 
-/// @brief Perform uimenulist get selected operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the zero-based index of the currently highlighted menu item.
 int64_t rt_uimenulist_get_selected(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uimenulist_impl *)ptr)->selected;
 }
 
-/// @brief Perform uimenulist move up operation.
-/// @param ptr
+/// @brief Move the selection cursor up by one; wraps from first to last item.
 void rt_uimenulist_move_up(void *ptr) {
     if (!ptr)
         return;
@@ -795,8 +728,7 @@ void rt_uimenulist_move_up(void *ptr) {
         menu->selected--;
 }
 
-/// @brief Perform uimenulist move down operation.
-/// @param ptr
+/// @brief Move the selection cursor down by one; wraps from last to first item.
 void rt_uimenulist_move_down(void *ptr) {
     if (!ptr)
         return;
@@ -821,36 +753,28 @@ void rt_uimenulist_set_colors(void *ptr,
     menu->highlight_bg = highlight_bg;
 }
 
-/// @brief Perform uimenulist set font operation.
-/// @param ptr
-/// @param font
+/// @brief Assign a BitmapFont for menu item text; NULL uses the default font.
 void rt_uimenulist_set_font(void *ptr, void *font) {
     if (!ptr)
         return;
     ((rt_uimenulist_impl *)ptr)->font = font;
 }
 
-/// @brief Perform uimenulist set visible operation.
-/// @param ptr
-/// @param visible
+/// @brief Show or hide the menu list; hidden menus are skipped during draw.
 void rt_uimenulist_set_visible(void *ptr, int8_t visible) {
     if (!ptr)
         return;
     ((rt_uimenulist_impl *)ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Perform uimenulist get count operation.
-/// @param ptr
-/// @return Result value.
+/// @brief Return the count of elements in the uimenulist.
 int64_t rt_uimenulist_get_count(void *ptr) {
     if (!ptr)
         return 0;
     return ((rt_uimenulist_impl *)ptr)->count;
 }
 
-/// @brief Perform uimenulist draw operation.
-/// @param ptr
-/// @param canvas
+/// @brief Draw the uimenulist.
 void rt_uimenulist_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;

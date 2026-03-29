@@ -70,15 +70,19 @@ static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
 static _Thread_local int rt_trap_net_code_ = 0;
 
+/// @brief Install a longjmp recovery point for recoverable traps on this thread.
+/// @param buf jmp_buf to longjmp to when rt_trap is called; NULL disables.
 void rt_trap_set_recovery(jmp_buf *buf) {
     rt_trap_recovery_ = buf;
 }
 
+/// @brief Remove the thread-local trap recovery point and clear the saved error.
 void rt_trap_clear_recovery(void) {
     rt_trap_recovery_ = NULL;
     rt_trap_error_[0] = '\0';
 }
 
+/// @brief Return the error message captured by the most recent recovered trap.
 const char *rt_trap_get_error(void) {
     return rt_trap_error_;
 }

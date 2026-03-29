@@ -216,9 +216,8 @@ static void *get_element(rt_iter_impl *it, int64_t idx) {
     return NULL;
 }
 
-/// @brief Perform iter has next operation.
-/// @param iter
-/// @return Result value.
+/// @brief Check whether the iterator has more elements.
+/// @details Returns true if the current position is before the end.
 int8_t rt_iter_has_next(void *iter) {
     rt_iter_impl *it;
     if (!iter)
@@ -250,26 +249,23 @@ void *rt_iter_peek(void *iter) {
     return get_element(it, it->pos);
 }
 
-/// @brief Perform iter reset operation.
-/// @param iter
+/// @brief Reset the iterator to the beginning of the collection.
 void rt_iter_reset(void *iter) {
     if (!iter)
         return;
     ((rt_iter_impl *)iter)->pos = 0;
 }
 
-/// @brief Perform iter index operation.
-/// @param iter
-/// @return Result value.
+/// @brief Return the current position (0-based index) of the iterator.
+/// @param iter Iterator object pointer; returns 0 if NULL.
+/// @return Current index within the underlying collection.
 int64_t rt_iter_index(void *iter) {
     if (!iter)
         return 0;
     return ((rt_iter_impl *)iter)->pos;
 }
 
-/// @brief Perform iter count operation.
-/// @param iter
-/// @return Result value.
+/// @brief Return the total number of elements in the iterable collection.
 int64_t rt_iter_count(void *iter) {
     if (!iter)
         return 0;
@@ -291,10 +287,12 @@ void *rt_iter_to_seq(void *iter) {
     return seq;
 }
 
-/// @brief Perform iter skip operation.
-/// @param iter
-/// @param n
-/// @return Result value.
+/// @brief Advance the iterator by up to @p n positions, returning the count skipped.
+/// @details Moves the cursor forward without returning the intermediate elements.
+///          Stops at the end of the collection if fewer than @p n elements remain.
+/// @param iter Iterator object pointer; returns 0 if NULL.
+/// @param n Maximum number of elements to skip (must be positive).
+/// @return Number of elements actually skipped.
 int64_t rt_iter_skip(void *iter, int64_t n) {
     rt_iter_impl *it;
     int64_t remaining, skipped;

@@ -155,18 +155,14 @@ void *rt_orderedmap_new(void) {
 // Accessors
 // ---------------------------------------------------------------------------
 
-/// @brief Perform orderedmap len operation.
-/// @param map
-/// @return Result value.
+/// @brief Return the number of entries in the ordered map.
 int64_t rt_orderedmap_len(void *map) {
     if (!map)
         return 0;
     return ((rt_orderedmap_impl *)map)->count;
 }
 
-/// @brief Perform orderedmap is empty operation.
-/// @param map
-/// @return Result value.
+/// @brief Check whether the ordered map has no entries.
 int64_t rt_orderedmap_is_empty(void *map) {
     if (!map)
         return 1;
@@ -177,10 +173,9 @@ int64_t rt_orderedmap_is_empty(void *map) {
 // Set
 // ---------------------------------------------------------------------------
 
-/// @brief Perform orderedmap set operation.
-/// @param map
-/// @param key
-/// @param value
+/// @brief Insert or update a key-value pair, preserving insertion order.
+/// @details New keys are appended to the end of the order. Updating an
+///          existing key replaces the value but keeps its position.
 void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
@@ -257,10 +252,7 @@ void *rt_orderedmap_get(void *map, rt_string key) {
     return e ? e->value : NULL;
 }
 
-/// @brief Perform orderedmap has operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key exists in the ordered map.
 int64_t rt_orderedmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -278,10 +270,9 @@ int64_t rt_orderedmap_has(void *map, rt_string key) {
 // Remove
 // ---------------------------------------------------------------------------
 
-/// @brief Perform orderedmap remove operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Remove a key-value pair from the ordered map.
+/// @details The entry is removed from both the hash table and the
+///          insertion-order linked list.
 int8_t rt_orderedmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -361,10 +352,11 @@ void *rt_orderedmap_values(void *map) {
     return seq;
 }
 
-/// @brief Perform orderedmap key at operation.
-/// @param map
-/// @param index
-/// @return Result value.
+/// @brief Return the key at the given insertion-order index.
+/// @details Walks the insertion-order linked list to the nth entry.
+/// @param map Ordered map object pointer; returns NULL if NULL.
+/// @param index Zero-based position in insertion order.
+/// @return Key string at the given position, or NULL if out of range.
 rt_string rt_orderedmap_key_at(void *map, int64_t index) {
     if (!map)
         return NULL;
@@ -384,8 +376,9 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index) {
 // Clear
 // ---------------------------------------------------------------------------
 
-/// @brief Perform orderedmap clear operation.
-/// @param map
+/// @brief Remove all entries from the ordered map.
+/// @details Releases all retained references and resets both the hash
+///          table and the insertion-order list.
 void rt_orderedmap_clear(void *map) {
     if (!map)
         return;
