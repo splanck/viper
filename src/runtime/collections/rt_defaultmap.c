@@ -151,9 +151,7 @@ void *rt_defaultmap_new(void *default_value) {
 // Accessors
 // ---------------------------------------------------------------------------
 
-/// @brief Perform defaultmap len operation.
-/// @param map
-/// @return Result value.
+/// @brief Return the number of key-value pairs in the default map.
 int64_t rt_defaultmap_len(void *map) {
     if (!map)
         return 0;
@@ -188,10 +186,9 @@ void *rt_defaultmap_get(void *map, rt_string key) {
 // Set
 // ---------------------------------------------------------------------------
 
-/// @brief Perform defaultmap set operation.
-/// @param map
-/// @param key
-/// @param value
+/// @brief Insert or update a key-value pair in the default map.
+/// @details If the key already exists, the old value is released and replaced
+///          with the new one. Both key and value are retained by the map.
 void rt_defaultmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
@@ -243,10 +240,10 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 // Has / Remove
 // ---------------------------------------------------------------------------
 
-/// @brief Perform defaultmap has operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key exists in the default map.
+/// @details Hashes the key with FNV-1a, indexes into the bucket array, and
+///          walks the separate-chaining linked list comparing by key length
+///          and content. Returns 1 if found, 0 otherwise.
 int64_t rt_defaultmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -267,10 +264,10 @@ int64_t rt_defaultmap_has(void *map, rt_string key) {
     return 0;
 }
 
-/// @brief Perform defaultmap remove operation.
-/// @param map
-/// @param key
-/// @return Result value.
+/// @brief Remove a key-value pair from the default map.
+/// @details Walks the bucket's chain using a pointer-to-pointer technique to
+///          unlink the entry. Releases the value reference (if non-null) and
+///          frees the key string and entry node.
 int8_t rt_defaultmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
@@ -332,8 +329,10 @@ void *rt_defaultmap_get_default(void *map) {
     return ((rt_defaultmap_impl *)map)->default_value;
 }
 
-/// @brief Perform defaultmap clear operation.
-/// @param map
+/// @brief Remove all entries from the default map.
+/// @details Releases all retained key and value references and resets the
+///          entry count to zero. The backing array is retained at its current
+///          capacity to avoid re-allocation on subsequent inserts.
 void rt_defaultmap_clear(void *map) {
     if (!map)
         return;
@@ -354,9 +353,8 @@ void rt_defaultmap_clear(void *map) {
     m->count = 0;
 }
 
-/// @brief Perform defaultmap is empty operation.
-/// @param map
-/// @return Result value.
+/// @brief Check whether the default map contains no entries.
+/// @details Equivalent to checking if len == 0.
 int8_t rt_defaultmap_is_empty(void *map) {
     if (!map)
         return 1;

@@ -110,10 +110,7 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
 // Unified Format
 //=============================================================================
 
-/// @brief Perform serialize format operation.
-/// @param obj
-/// @param format
-/// @return Result value.
+/// @brief Format the serialize.
 rt_string rt_serialize_format(void *obj, int64_t format) {
     clear_error();
 
@@ -139,11 +136,7 @@ rt_string rt_serialize_format(void *obj, int64_t format) {
     }
 }
 
-/// @brief Perform serialize format pretty operation.
-/// @param obj
-/// @param format
-/// @param indent
-/// @return Result value.
+/// @brief Serialize an object to a pretty-printed string in the specified format (JSON/XML/YAML).
 rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent) {
     clear_error();
 
@@ -176,10 +169,7 @@ rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent) 
 // Validation
 //=============================================================================
 
-/// @brief Perform serialize is valid operation.
-/// @param text
-/// @param format
-/// @return Result value.
+/// @brief Check whether a string is valid in the specified format (JSON/XML/YAML).
 int8_t rt_serialize_is_valid(rt_string text, int64_t format) {
     if (!text)
         return 0;
@@ -217,9 +207,7 @@ static const char *skip_ws(const char *s) {
     return s;
 }
 
-/// @brief Perform serialize detect operation.
-/// @param text
-/// @return Result value.
+/// @brief Detect the serialize.
 int64_t rt_serialize_detect(rt_string text) {
     const char *s;
     const char *line;
@@ -296,11 +284,7 @@ void *rt_serialize_auto_parse(rt_string text) {
 // Round-Trip Conversion
 //=============================================================================
 
-/// @brief Perform serialize convert operation.
-/// @param text
-/// @param from_format
-/// @param to_format
-/// @return Result value.
+/// @brief Convert the serialize.
 rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_format) {
     void *parsed;
 
@@ -321,9 +305,7 @@ rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_f
 // Format Metadata
 //=============================================================================
 
-/// @brief Perform serialize format name operation.
-/// @param format
-/// @return Result value.
+/// @brief Return the human-readable name of a format constant (e.g., "JSON", "XML").
 rt_string rt_serialize_format_name(int64_t format) {
     switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
@@ -341,9 +323,7 @@ rt_string rt_serialize_format_name(int64_t format) {
     }
 }
 
-/// @brief Perform serialize mime type operation.
-/// @param format
-/// @return Result value.
+/// @brief Return the MIME content-type string for a format (e.g., "application/json").
 rt_string rt_serialize_mime_type(int64_t format) {
     switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
@@ -361,9 +341,7 @@ rt_string rt_serialize_mime_type(int64_t format) {
     }
 }
 
-/// @brief Perform serialize format from name operation.
-/// @param name
-/// @return Result value.
+/// @brief Format the from name of the serialize.
 int64_t rt_serialize_format_from_name(rt_string name) {
     const char *s;
     if (!name)
@@ -394,8 +372,7 @@ int64_t rt_serialize_format_from_name(rt_string name) {
 // Error Handling
 //=============================================================================
 
-/// @brief Perform serialize error operation.
-/// @return Result value.
+/// @brief Error the serialize.
 rt_string rt_serialize_error(void) {
     if (g_last_error)
         return g_last_error;

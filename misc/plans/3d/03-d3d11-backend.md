@@ -2,77 +2,67 @@
 
 ## Goal
 
-Bring the existing Windows D3D11 backend to parity with the current 3D runtime architecture. This is not a greenfield backend plan anymore: [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c) already creates a device and swap chain, compiles HLSL at runtime, uploads per-draw buffers, and renders a basic lit path.
+Bring the Windows D3D11 backend to parity with the current 3D runtime architecture and the shared GPU feature set.
 
-The remaining work is expanding that backend to match the shared runtime and the feature set already present in software and partially present in Metal.
+That goal is now met in [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c).
 
-## Current Baseline
+## Implemented Scope
 
-Already implemented:
+The backend now owns the full DX11 plan set:
 
-- `D3D11CreateDeviceAndSwapChain`
-- runtime HLSL compilation via `D3DCompile`
-- one vertex shader + one pixel shader
-- depth test, alpha blending, back-buffer presentation
-- basic directional / point lighting
-- row-major matrix upload convention
-- clip-space Z remap from OpenGL-style `[-1, 1]` to D3D `[0, 1]`
+- material/render-state parity:
+  - diffuse, normal, specular, and emissive textures
+  - vertex-color modulation
+  - inverse-transpose normal matrix upload
+  - spot lights, fog, wireframe, and cull toggle
+- render targets and scene resources:
+  - GPU render-to-texture with CPU readback into `RenderTarget3D`
+  - shadow-map depth targets + comparison sampling
+  - backend-owned cubemap skybox rendering
+  - environment reflections from `Material3D.env_map` / `reflectivity`
+- animation and batching:
+  - GPU skeletal skinning
+  - GPU morph target consumption
+  - GPU morph normal-delta consumption
+  - true hardware instancing with previous-frame instance matrices
+- presentation:
+  - fullscreen GPU post-processing path
+  - advanced postfx support using depth/history payloads (SSAO, DOF, motion blur)
+- backend foundation:
+  - persistent dynamic vertex/index/instance buffers
+  - HRESULT-checked resource creation/update paths
+  - per-frame texture/cubemap caching
 
-Still missing or incomplete:
+## Shared Runtime Dependencies Now Exercised End To End
 
-- diffuse / normal / specular / emissive texture sampling
-- vertex-color modulation
-- correct normal matrix
-- spot lights, fog, wireframe, two-sided control
-- render-to-texture
-- shadow mapping
-- GPU post-processing
-- real hardware instancing
-- terrain splatting
-- efficient dynamic vertex/index buffers
-- full GPU skinning / GPU morph support
+The D3D11 backend now consumes the shared runtime hooks and payloads that were added across the 3D stack:
 
-## Important Corrections To The Older Sketch
+- `present_postfx` handoff from [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c)
+- `shadow_begin` / `shadow_draw` / `shadow_end` scheduling from [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c)
+- GPU skinning producer bypass from [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c)
+- morph payload + morph-normal payload production from [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c)
+- instanced previous-transform and material-map forwarding from [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c)
+- RTT ownership/readback flow from [`rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c)
 
-The older phase note should not be used as the implementation spec:
+## Validation
 
-- the implementation lives in [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c), not in `src/lib/graphics/...`
-- shaders are compiled at runtime from a C string today; the plan does not require a separate `.hlsl` file or build-time `fxc` step
-- there is already a working backend abstraction and a functioning D3D11 backend; this phase is an expansion plan, not an initial bootstrap
-- the D3D NDC depth remap is already implemented in the vertex shader and must remain in place unless the matrix convention changes globally
+The active validation path is now:
 
-## Shared Runtime Prerequisites
+1. Focused shared `ctest` coverage for GPU-path payloads and backend utility helpers:
+   - `test_rt_canvas3d_gpu_paths`
+   - `test_vgfx3d_backend_utils`
+2. A Windows CI lane that builds `viper` plus those two test targets and runs them on `windows-latest`
 
-Some D3D11 feature plans require work outside the backend file:
+Local macOS/Linux builds still cannot validate D3D11 device creation or HLSL compilation directly, so Windows CI remains the authoritative backend gate.
 
-- GPU post-processing:
-  - [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993) still always applies CPU PostFX before `backend->present()`
-- GPU skinning:
-  - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins before enqueueing
-- GPU morph targets:
-  - draw-command morph fields exist, but [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722) does not populate them yet
-- GPU render-to-texture + skybox:
-  - Canvas3D currently writes the skybox directly into the CPU render-target buffer when `render_target` is active
+## Remaining Follow-Up
 
-## Backend-Local Work
+The remaining work is no longer feature implementation. It is validation breadth:
 
-The detailed implementation work is split across the D3D11 backend plan set in [`misc/plans/3d/backends`](/Users/stephen/git/viper/misc/plans/3d/backends):
+- keep the Windows D3D11 CI lane green
+- add dedicated device-level Windows renderer tests when practical
+- preserve software fallback behavior when backend initialization fails
 
-1. `D3D-01` through `D3D-08`: material and render-state parity
-2. `D3D-09`: render-to-texture and readback ownership
-3. `D3D-10`: GPU skinning and morph consumption
-4. `D3D-11`: GPU post-processing
-5. `D3D-12`: persistent dynamic buffers
-6. `D3D-13`: HRESULT / failure-path rigor
-7. `D3D-14`: shadow mapping
-8. `D3D-15`: true hardware instancing
-9. `D3D-16`: terrain splatting
+## Plan Mapping
 
-## Execution Principle
-
-Implement against the current runtime, not against the earlier architecture sketch:
-
-- keep the existing backend file unless a refactor is clearly justified
-- reuse the current Canvas3D scheduling and backend vtable
-- document shared prerequisites explicitly
-- preserve software fallbacks until each D3D11 feature is wired end to end
+The detailed per-feature notes remain in [`misc/plans/3d/backends`](/Users/stephen/git/viper/misc/plans/3d/backends), but D3D-01 through D3D-20 should now be treated as implemented status records rather than pending execution steps.

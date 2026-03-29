@@ -171,9 +171,7 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
 
 // --- Public API ---
 
-/// @brief Perform markdown to html operation.
-/// @param md
-/// @return Result value.
+/// @brief Convert Markdown text to HTML.
 rt_string rt_markdown_to_html(rt_string md) {
     if (!md)
         return rt_string_from_bytes("", 0);
@@ -302,9 +300,7 @@ rt_string rt_markdown_to_html(rt_string md) {
     return result;
 }
 
-/// @brief Perform markdown to text operation.
-/// @param md
-/// @return Result value.
+/// @brief Convert Markdown text to plain text (strip all formatting).
 rt_string rt_markdown_to_text(rt_string md) {
     if (!md)
         return rt_string_from_bytes("", 0);

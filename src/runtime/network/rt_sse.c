@@ -157,9 +157,7 @@ void *rt_sse_connect(rt_string url) {
     return sse;
 }
 
-/// @brief Perform sse recv operation.
-/// @param obj
-/// @return Result value.
+/// @brief Recv the sse.
 rt_string rt_sse_recv(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -234,10 +232,8 @@ rt_string rt_sse_recv(void *obj) {
     return result;
 }
 
-/// @brief Perform sse recv for operation.
-/// @param obj
-/// @param timeout_ms
-/// @return Result value.
+/// @brief Receive the next SSE event with a timeout, returning empty on timeout or error.
+/// @details Temporarily sets the socket recv timeout, reads one event, then clears the timeout.
 rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -252,9 +248,7 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     return result;
 }
 
-/// @brief Perform sse is open operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the SSE connection is still open and the underlying TCP socket is alive.
 int8_t rt_sse_is_open(void *obj) {
     if (!obj)
         return 0;
@@ -262,8 +256,7 @@ int8_t rt_sse_is_open(void *obj) {
     return sse->is_open && sse->tcp && rt_tcp_is_open(sse->tcp) ? 1 : 0;
 }
 
-/// @brief Perform sse close operation.
-/// @param obj
+/// @brief Close the sse.
 void rt_sse_close(void *obj) {
     if (!obj)
         return;
@@ -275,9 +268,7 @@ void rt_sse_close(void *obj) {
     }
 }
 
-/// @brief Perform sse last event type operation.
-/// @param obj
-/// @return Result value.
+/// @brief Last the event type of the sse.
 rt_string rt_sse_last_event_type(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -286,9 +277,7 @@ rt_string rt_sse_last_event_type(void *obj) {
     return rt_string_from_bytes(t, strlen(t));
 }
 
-/// @brief Perform sse last event id operation.
-/// @param obj
-/// @return Result value.
+/// @brief Last the event id of the sse.
 rt_string rt_sse_last_event_id(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);

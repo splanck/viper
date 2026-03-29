@@ -111,11 +111,14 @@ void *rt_perlin_new(int64_t seed) {
     return p;
 }
 
-/// @brief Perform perlin noise2d operation.
-/// @param obj
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Compute 2D Perlin noise at the given coordinates.
+/// @details Uses gradient interpolation with smoothstep fade curves for seamless
+///          spatial transitions. Output is approximately in [-1, 1]. The noise
+///          is deterministic — same (obj, x, y) always produces the same value.
+/// @param obj PerlinNoise object containing the permutation table.
+/// @param x X coordinate in noise space.
+/// @param y Y coordinate in noise space.
+/// @return Noise value (approximately [-1, 1]).
 double rt_perlin_noise2d(void *obj, double x, double y) {
     if (!obj)
         return 0.0;
@@ -139,12 +142,14 @@ double rt_perlin_noise2d(void *obj, double x, double y) {
     return lerp(v, x1, x2);
 }
 
-/// @brief Perform perlin noise3d operation.
-/// @param obj
-/// @param x
-/// @param y
-/// @param z
-/// @return Result value.
+/// @brief Compute 3D Perlin noise at the given coordinates.
+/// @details Extends the 2D algorithm to three dimensions with trilinear
+///          gradient interpolation. Useful for volumetric effects (clouds, fog).
+/// @param obj PerlinNoise object containing the permutation table.
+/// @param x X coordinate in noise space.
+/// @param y Y coordinate in noise space.
+/// @param z Z coordinate in noise space.
+/// @return Noise value (approximately [-1, 1]).
 double rt_perlin_noise3d(void *obj, double x, double y, double z) {
     if (!obj)
         return 0.0;
@@ -182,13 +187,17 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
                   grad3(p->perm[bb + 1], xf - 1, yf - 1, zf - 1))));
 }
 
-/// @brief Perform perlin octave2d operation.
-/// @param obj
-/// @param x
-/// @param y
-/// @param octaves
-/// @param persistence
-/// @return Result value.
+/// @brief Compute fractal Brownian motion (fBm) using multiple Perlin octaves.
+/// @details Sums noise layers at exponentially increasing frequency (lacunarity=2)
+///          and exponentially decreasing amplitude (persistence). More octaves add
+///          fine detail but cost proportionally more computation. Typical values:
+///          octaves=4-8, persistence=0.5.
+/// @param obj PerlinNoise object.
+/// @param x X coordinate.
+/// @param y Y coordinate.
+/// @param octaves Number of noise layers to sum (clamped to 1-16).
+/// @param persistence Amplitude multiplier per octave (0.5 = halve each layer).
+/// @return Summed noise value (range depends on octaves and persistence).
 double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence) {
     if (!obj || octaves <= 0)
         return 0.0;

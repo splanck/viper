@@ -106,10 +106,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
  * Shape management
  *=========================================================================*/
 
-/// @brief Perform morphtarget3d add shape operation.
-/// @param obj
-/// @param name
-/// @return Result value.
+/// @brief Add the shape of the morphtarget3d.
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!obj)
         return -1;
@@ -188,10 +185,7 @@ void rt_morphtarget3d_set_normal_delta(
  * Weight control
  *=========================================================================*/
 
-/// @brief Perform morphtarget3d set weight operation.
-/// @param obj
-/// @param shape
-/// @param weight
+/// @brief Set the weight of the morphtarget3d.
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     if (!obj)
         return;
@@ -201,10 +195,7 @@ void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     mt->weights[shape] = (float)weight;
 }
 
-/// @brief Perform morphtarget3d get weight operation.
-/// @param obj
-/// @param shape
-/// @return Result value.
+/// @brief Get the weight of the morphtarget3d.
 double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     if (!obj)
         return 0.0;
@@ -214,10 +205,7 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     return mt->weights[shape];
 }
 
-/// @brief Perform morphtarget3d set weight by name operation.
-/// @param obj
-/// @param name
-/// @param weight
+/// @brief Set the weight by name of the morphtarget3d.
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     if (!obj || !name)
         return;
@@ -233,9 +221,7 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     }
 }
 
-/// @brief Perform morphtarget3d get shape count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the count of elements in the morphtarget3d.
 int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
 }
@@ -258,9 +244,7 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
  * Mesh integration (placeholder — morph targets passed at draw time)
  *=========================================================================*/
 
-/// @brief Perform mesh3d set morph targets operation.
-/// @param mesh
-/// @param morph_targets
+/// @brief Set the morph targets of the mesh3d.
 void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
     (void)mesh;
     (void)morph_targets;

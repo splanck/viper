@@ -65,32 +65,25 @@ void rt_canvas_destroy(void *canvas) {
     (void)canvas;
 }
 
-/// @brief Perform width operation.
-/// @param canvas
-/// @return Result value.
+/// @brief Return the width of the canvas or surface in pixels.
 int64_t rt_canvas_width(void *canvas) {
     (void)canvas;
     return 0;
 }
 
-/// @brief Perform height operation.
-/// @param canvas
-/// @return Result value.
+/// @brief Return the height of the canvas or surface in pixels.
 int64_t rt_canvas_height(void *canvas) {
     (void)canvas;
     return 0;
 }
 
-/// @brief Perform should close operation.
-/// @param canvas
-/// @return Result value.
+/// @brief Close the should.
 int64_t rt_canvas_should_close(void *canvas) {
     (void)canvas;
     return 1;
 }
 
-/// @brief Perform flip operation.
-/// @param canvas
+/// @brief Present the back buffer to the screen (double-buffering swap).
 void rt_canvas_flip(void *canvas) {
     (void)canvas;
 }
@@ -103,13 +96,7 @@ void rt_canvas_clear(void *canvas, int64_t color) {
     (void)color;
 }
 
-/// @brief Perform line operation.
-/// @param canvas
-/// @param x1
-/// @param y1
-/// @param x2
-/// @param y2
-/// @param color
+/// @brief Draw a line between two points on the canvas.
 void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
     (void)canvas;
     (void)x1;
@@ -119,13 +106,7 @@ void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2
     (void)color;
 }
 
-/// @brief Perform box operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param color
+/// @brief Draw a filled rectangle on the canvas.
 void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     (void)canvas;
     (void)x;
@@ -135,13 +116,7 @@ void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int
     (void)color;
 }
 
-/// @brief Perform frame operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param color
+/// @brief Draw an unfilled rectangle (outline) on the canvas.
 void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     (void)canvas;
     (void)x;
@@ -151,12 +126,7 @@ void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, i
     (void)color;
 }
 
-/// @brief Perform disc operation.
-/// @param canvas
-/// @param cx
-/// @param cy
-/// @param radius
-/// @param color
+/// @brief Draw a filled circle on the canvas.
 void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     (void)canvas;
     (void)cx;
@@ -165,12 +135,7 @@ void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
     (void)color;
 }
 
-/// @brief Perform ring operation.
-/// @param canvas
-/// @param cx
-/// @param cy
-/// @param radius
-/// @param color
+/// @brief Draw an unfilled circle (outline) on the canvas.
 void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     (void)canvas;
     (void)cx;
@@ -179,11 +144,7 @@ void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
     (void)color;
 }
 
-/// @brief Perform plot operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param color
+/// @brief Draw a single pixel at the given coordinates.
 void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)canvas;
     (void)x;
@@ -191,30 +152,20 @@ void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)color;
 }
 
-/// @brief Perform poll operation.
-/// @param canvas
-/// @return Result value.
+/// @brief Process pending window/input events and update the event queue.
 int64_t rt_canvas_poll(void *canvas) {
     (void)canvas;
     return 0;
 }
 
-/// @brief Perform key held operation.
-/// @param canvas
-/// @param key
-/// @return Result value.
+/// @brief Held the key.
 int64_t rt_canvas_key_held(void *canvas, int64_t key) {
     (void)canvas;
     (void)key;
     return 0;
 }
 
-/// @brief Perform text operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param text
-/// @param color
+/// @brief Draw text at the given position on the canvas.
 void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)x;
@@ -223,13 +174,7 @@ void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t 
     (void)color;
 }
 
-/// @brief Perform text bg operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param text
-/// @param fg
-/// @param bg
+/// @brief Bg the text.
 void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg) {
     (void)canvas;
     (void)x;
@@ -239,16 +184,13 @@ void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64
     (void)bg;
 }
 
-/// @brief Perform text width operation.
-/// @param text
-/// @return Result value.
+/// @brief Width the text.
 int64_t rt_canvas_text_width(rt_string text) {
     (void)text;
     return 0;
 }
 
-/// @brief Perform text height operation.
-/// @return Result value.
+/// @brief Height the text.
 int64_t rt_canvas_text_height(void) {
     return 8;
 }
@@ -274,21 +216,14 @@ void rt_canvas_text_scaled_bg(
     (void)bg;
 }
 
-/// @brief Perform text scaled width operation.
-/// @param text
-/// @param scale
-/// @return Result value.
+/// @brief Scaled the width of the text.
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
     (void)text;
     (void)scale;
     return 0;
 }
 
-/// @brief Perform text centered operation.
-/// @param canvas
-/// @param y
-/// @param text
-/// @param color
+/// @brief Centered the text.
 void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)y;
@@ -296,12 +231,7 @@ void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t co
     (void)color;
 }
 
-/// @brief Perform text right operation.
-/// @param canvas
-/// @param margin
-/// @param y
-/// @param text
-/// @param color
+/// @brief Right the text.
 void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)margin;
@@ -340,11 +270,7 @@ void rt_canvas_disc_alpha(
     (void)alpha;
 }
 
-/// @brief Perform blit operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param pixels
+/// @brief Copy a rectangular region from one surface to another.
 void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)canvas;
     (void)x;
@@ -370,11 +296,7 @@ void rt_canvas_blit_region(void *canvas,
     (void)h;
 }
 
-/// @brief Perform blit alpha operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param pixels
+/// @brief Alpha the blit.
 void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)canvas;
     (void)x;
@@ -420,11 +342,7 @@ void rt_canvas_round_frame(
     (void)color;
 }
 
-/// @brief Perform flood fill operation.
-/// @param canvas
-/// @param x
-/// @param y
-/// @param color
+/// @brief Fill the flood.
 void rt_canvas_flood_fill(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)canvas;
     (void)x;
@@ -468,13 +386,7 @@ void rt_canvas_triangle_frame(void *canvas,
     (void)color;
 }
 
-/// @brief Perform ellipse operation.
-/// @param canvas
-/// @param cx
-/// @param cy
-/// @param rx
-/// @param ry
-/// @param color
+/// @brief Ellipse operation.
 void rt_canvas_ellipse(
     void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     (void)canvas;
@@ -545,11 +457,7 @@ void rt_canvas_bezier(void *canvas,
     (void)color;
 }
 
-/// @brief Perform polyline operation.
-/// @param canvas
-/// @param points
-/// @param count
-/// @param color
+/// @brief Polyline operation.
 void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
@@ -557,11 +465,7 @@ void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color
     (void)color;
 }
 
-/// @brief Perform polygon operation.
-/// @param canvas
-/// @param points
-/// @param count
-/// @param color
+/// @brief Polygon operation.
 void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
@@ -569,11 +473,7 @@ void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color)
     (void)color;
 }
 
-/// @brief Perform polygon frame operation.
-/// @param canvas
-/// @param points
-/// @param count
-/// @param color
+/// @brief Frame the polygon.
 void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
@@ -623,71 +523,57 @@ int64_t rt_canvas_save_png(void *canvas, rt_string path) {
 }
 
 // Color constants — packed 0x00RRGGBB
-/// @brief Perform red operation.
-/// @return Result value.
+/// @brief Return the predefined red color constant.
 int64_t rt_color_red(void) {
     return 0xFF0000;
 }
 
-/// @brief Perform green operation.
-/// @return Result value.
+/// @brief Return the predefined green color constant.
 int64_t rt_color_green(void) {
     return 0x00FF00;
 }
 
-/// @brief Perform blue operation.
-/// @return Result value.
+/// @brief Return the predefined blue color constant.
 int64_t rt_color_blue(void) {
     return 0x0000FF;
 }
 
-/// @brief Perform white operation.
-/// @return Result value.
+/// @brief Return the predefined white color constant.
 int64_t rt_color_white(void) {
     return 0xFFFFFF;
 }
 
-/// @brief Perform black operation.
-/// @return Result value.
+/// @brief Return the predefined black color constant.
 int64_t rt_color_black(void) {
     return 0x000000;
 }
 
-/// @brief Perform yellow operation.
-/// @return Result value.
+/// @brief Return the predefined yellow color constant.
 int64_t rt_color_yellow(void) {
     return 0xFFFF00;
 }
 
-/// @brief Perform cyan operation.
-/// @return Result value.
+/// @brief Return the predefined cyan color constant.
 int64_t rt_color_cyan(void) {
     return 0x00FFFF;
 }
 
-/// @brief Perform magenta operation.
-/// @return Result value.
+/// @brief Return the predefined magenta color constant.
 int64_t rt_color_magenta(void) {
     return 0xFF00FF;
 }
 
-/// @brief Perform gray operation.
-/// @return Result value.
+/// @brief Return the predefined gray color constant.
 int64_t rt_color_gray(void) {
     return 0x808080;
 }
 
-/// @brief Perform orange operation.
-/// @return Result value.
+/// @brief Return the predefined orange color constant.
 int64_t rt_color_orange(void) {
     return 0xFFA500;
 }
 
-/// @brief Perform rgb operation.
-/// @param r
-/// @param g
-/// @param b
-/// @return Result value.
+/// @brief Construct a color from red, green, blue components (0-255).
 int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
@@ -695,12 +581,7 @@ int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b) {
     return (int64_t)(((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)b8);
 }
 
-/// @brief Perform rgba operation.
-/// @param r
-/// @param g
-/// @param b
-/// @param a
-/// @return Result value.
+/// @brief Construct a color from red, green, blue, alpha components (0-255).
 int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
@@ -710,11 +591,7 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
                      (uint32_t)b8);
 }
 
-/// @brief Perform from hsl operation.
-/// @param h
-/// @param s
-/// @param l
-/// @return Result value.
+/// @brief Hsl the from.
 int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
     (void)h;
     (void)s;
@@ -746,11 +623,7 @@ int64_t rt_color_get_l(int64_t color) {
     return 0;
 }
 
-/// @brief Perform lerp operation.
-/// @param c1
-/// @param c2
-/// @param t
-/// @return Result value.
+/// @brief Lerp operation.
 int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
     (void)c1;
     (void)c2;
@@ -786,81 +659,59 @@ int64_t rt_color_get_a(int64_t color) {
     return (color >> 24) & 0xFF;
 }
 
-/// @brief Perform brighten operation.
-/// @param color
-/// @param amount
-/// @return Result value.
+/// @brief Brighten operation.
 int64_t rt_color_brighten(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
 }
 
-/// @brief Perform darken operation.
-/// @param color
-/// @param amount
-/// @return Result value.
+/// @brief Darken operation.
 int64_t rt_color_darken(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
 }
 
-/// @brief Perform from hex operation.
-/// @param hex
-/// @return Result value.
+/// @brief Hex the from.
 int64_t rt_color_from_hex(rt_string hex) {
     (void)hex;
     return 0;
 }
 
-/// @brief Perform to hex operation.
-/// @param color
-/// @return Result value.
+/// @brief Hex the to.
 rt_string rt_color_to_hex(int64_t color) {
     (void)color;
     return rt_string_from_bytes("#000000", 7);
 }
 
-/// @brief Perform saturate operation.
-/// @param color
-/// @param amount
-/// @return Result value.
+/// @brief Saturate operation.
 int64_t rt_color_saturate(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
 }
 
-/// @brief Perform desaturate operation.
-/// @param color
-/// @param amount
-/// @return Result value.
+/// @brief Desaturate operation.
 int64_t rt_color_desaturate(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
 }
 
-/// @brief Perform complement operation.
-/// @param color
-/// @return Result value.
+/// @brief Complement operation.
 int64_t rt_color_complement(int64_t color) {
     (void)color;
     return 0;
 }
 
-/// @brief Perform grayscale operation.
-/// @param color
-/// @return Result value.
+/// @brief Grayscale operation.
 int64_t rt_color_grayscale(int64_t color) {
     (void)color;
     return 0;
 }
 
-/// @brief Perform invert operation.
-/// @param color
-/// @return Result value.
+/// @brief Invert operation.
 int64_t rt_color_invert(int64_t color) {
     (void)color;
     return 0;
@@ -902,18 +753,14 @@ rt_string rt_canvas_get_title(void *canvas) {
     return rt_string_from_bytes("", 0);
 }
 
-/// @brief Perform resize operation.
-/// @param canvas
-/// @param width
-/// @param height
+/// @brief Resize operation.
 void rt_canvas_resize(void *canvas, int64_t width, int64_t height) {
     (void)canvas;
     (void)width;
     (void)height;
 }
 
-/// @brief Perform close operation.
-/// @param canvas
+/// @brief Close operation.
 void rt_canvas_close(void *canvas) {
     (void)canvas;
 }
@@ -923,14 +770,12 @@ void *rt_canvas_screenshot(void *canvas) {
     return NULL;
 }
 
-/// @brief Perform fullscreen operation.
-/// @param canvas
+/// @brief Fullscreen operation.
 void rt_canvas_fullscreen(void *canvas) {
     (void)canvas;
 }
 
-/// @brief Perform windowed operation.
-/// @param canvas
+/// @brief Windowed operation.
 void rt_canvas_windowed(void *canvas) {
     (void)canvas;
 }
@@ -1035,8 +880,7 @@ int8_t rt_canvas_is_maximized(void *canvas) {
     return 0;
 }
 
-/// @brief Perform maximize operation.
-/// @param canvas
+/// @brief Maximize operation.
 void rt_canvas_maximize(void *canvas) {
     (void)canvas;
 }
@@ -1049,14 +893,12 @@ int8_t rt_canvas_is_minimized(void *canvas) {
     return 0;
 }
 
-/// @brief Perform minimize operation.
-/// @param canvas
+/// @brief Minimize operation.
 void rt_canvas_minimize(void *canvas) {
     (void)canvas;
 }
 
-/// @brief Perform restore operation.
-/// @param canvas
+/// @brief Restore operation.
 void rt_canvas_restore(void *canvas) {
     (void)canvas;
 }
@@ -1069,15 +911,12 @@ int8_t rt_canvas_is_focused(void *canvas) {
     return 0;
 }
 
-/// @brief Perform focus operation.
-/// @param canvas
+/// @brief Focus operation.
 void rt_canvas_focus(void *canvas) {
     (void)canvas;
 }
 
-/// @brief Perform prevent close operation.
-/// @param canvas
-/// @param prevent
+/// @brief Close the prevent.
 void rt_canvas_prevent_close(void *canvas, int64_t prevent) {
     (void)canvas;
     (void)prevent;
@@ -1110,39 +949,30 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
     return NULL;
 }
 
-/// @brief Perform canvas3d set skybox operation.
-/// @param c
-/// @param cm
+/// @brief Set the skybox of the canvas3d.
 void rt_canvas3d_set_skybox(void *c, void *cm) {
     (void)c;
     (void)cm;
 }
 
-/// @brief Perform canvas3d clear skybox operation.
-/// @param c
+/// @brief Clear the skybox of the canvas3d.
 void rt_canvas3d_clear_skybox(void *c) {
     (void)c;
 }
 
-/// @brief Perform material3d set env map operation.
-/// @param o
-/// @param cm
+/// @brief Set the env map of the material3d.
 void rt_material3d_set_env_map(void *o, void *cm) {
     (void)o;
     (void)cm;
 }
 
-/// @brief Perform material3d set reflectivity operation.
-/// @param o
-/// @param r
+/// @brief Set the reflectivity of the material3d.
 void rt_material3d_set_reflectivity(void *o, double r) {
     (void)o;
     (void)r;
 }
 
-/// @brief Perform material3d get reflectivity operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the reflectivity of the material3d.
 double rt_material3d_get_reflectivity(void *o) {
     (void)o;
     return 0.0;
@@ -1155,17 +985,13 @@ void *rt_rendertarget3d_new(int64_t w, int64_t h) {
     return NULL;
 }
 
-/// @brief Perform rendertarget3d get width operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the width of the rendertarget3d.
 int64_t rt_rendertarget3d_get_width(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform rendertarget3d get height operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the height of the rendertarget3d.
 int64_t rt_rendertarget3d_get_height(void *o) {
     (void)o;
     return 0;
@@ -1176,16 +1002,13 @@ void *rt_rendertarget3d_as_pixels(void *o) {
     return NULL;
 }
 
-/// @brief Perform canvas3d set render target operation.
-/// @param c
-/// @param t
+/// @brief Get a value from the canvas3d.
 void rt_canvas3d_set_render_target(void *c, void *t) {
     (void)c;
     (void)t;
 }
 
-/// @brief Perform canvas3d reset render target operation.
-/// @param c
+/// @brief Get a value from the canvas3d.
 void rt_canvas3d_reset_render_target(void *c) {
     (void)c;
 }
@@ -1198,11 +1021,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     return NULL;
 }
 
-/// @brief Perform canvas3d clear operation.
-/// @param o
-/// @param r
-/// @param g
-/// @param b
+/// @brief Remove all entries from the canvas3d.
 void rt_canvas3d_clear(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
@@ -1210,19 +1029,13 @@ void rt_canvas3d_clear(void *o, double r, double g, double b) {
     (void)b;
 }
 
-/// @brief Perform canvas3d begin operation.
-/// @param o
-/// @param c
+/// @brief Begin the canvas3d.
 void rt_canvas3d_begin(void *o, void *c) {
     (void)o;
     (void)c;
 }
 
-/// @brief Perform canvas3d draw mesh operation.
-/// @param o
-/// @param m
-/// @param t
-/// @param mt
+/// @brief Draw the mesh of the canvas3d.
 void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) {
     (void)o;
     (void)m;
@@ -1230,105 +1043,78 @@ void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) {
     (void)mt;
 }
 
-/// @brief Perform canvas3d end operation.
-/// @param o
+/// @brief End the canvas3d.
 void rt_canvas3d_end(void *o) {
     (void)o;
 }
 
-/// @brief Perform canvas3d flip operation.
-/// @param o
+/// @brief Flip the canvas3d.
 void rt_canvas3d_flip(void *o) {
     (void)o;
 }
 
-/// @brief Perform canvas3d poll operation.
-/// @param o
-/// @return Result value.
+/// @brief Poll the canvas3d.
 int64_t rt_canvas3d_poll(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d should close operation.
-/// @param o
-/// @return Result value.
+/// @brief Should the close of the canvas3d.
 int8_t rt_canvas3d_should_close(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d set wireframe operation.
-/// @param o
-/// @param e
+/// @brief Set the wireframe of the canvas3d.
 void rt_canvas3d_set_wireframe(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
 
-/// @brief Perform canvas3d set backface cull operation.
-/// @param o
-/// @param e
+/// @brief Set the backface cull of the canvas3d.
 void rt_canvas3d_set_backface_cull(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
 
-/// @brief Perform canvas3d get width operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the width of the canvas3d.
 int64_t rt_canvas3d_get_width(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d get height operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the height of the canvas3d.
 int64_t rt_canvas3d_get_height(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d get fps operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the fps of the canvas3d.
 int64_t rt_canvas3d_get_fps(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d get delta time operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the delta time of the canvas3d.
 int64_t rt_canvas3d_get_delta_time(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d set dt max operation.
-/// @param o
-/// @param m
+/// @brief Set the dt max of the canvas3d.
 void rt_canvas3d_set_dt_max(void *o, int64_t m) {
     (void)o;
     (void)m;
 }
 
-/// @brief Perform canvas3d set light operation.
-/// @param o
-/// @param i
-/// @param l
+/// @brief Set the light of the canvas3d.
 void rt_canvas3d_set_light(void *o, int64_t i, void *l) {
     (void)o;
     (void)i;
     (void)l;
 }
 
-/// @brief Perform canvas3d set ambient operation.
-/// @param o
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the ambient of the canvas3d.
 void rt_canvas3d_set_ambient(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
@@ -1336,11 +1122,7 @@ void rt_canvas3d_set_ambient(void *o, double r, double g, double b) {
     (void)b;
 }
 
-/// @brief Perform canvas3d draw line3d operation.
-/// @param o
-/// @param f
-/// @param t
-/// @param c
+/// @brief Draw the line3d of the canvas3d.
 void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c) {
     (void)o;
     (void)f;
@@ -1348,11 +1130,7 @@ void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c) {
     (void)c;
 }
 
-/// @brief Perform canvas3d draw point3d operation.
-/// @param o
-/// @param p
-/// @param c
-/// @param s
+/// @brief Draw the point3d of the canvas3d.
 void rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s) {
     (void)o;
     (void)p;
@@ -1360,9 +1138,7 @@ void rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s) {
     (void)s;
 }
 
-/// @brief Perform canvas3d get backend operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the backend of the canvas3d.
 rt_string rt_canvas3d_get_backend(void *o) {
     (void)o;
     return NULL;
@@ -1414,17 +1190,13 @@ void *rt_mesh3d_from_obj(rt_string p) {
     return NULL;
 }
 
-/// @brief Perform mesh3d get vertex count operation.
-/// @param o
-/// @return Result value.
+/// @brief Return the count of elements in the mesh3d.
 int64_t rt_mesh3d_get_vertex_count(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform mesh3d get triangle count operation.
-/// @param o
-/// @return Result value.
+/// @brief Return the count of elements in the mesh3d.
 int64_t rt_mesh3d_get_triangle_count(void *o) {
     (void)o;
     return 0;
@@ -1443,11 +1215,7 @@ void rt_mesh3d_add_vertex(
     (void)v;
 }
 
-/// @brief Perform mesh3d add triangle operation.
-/// @param o
-/// @param v0
-/// @param v1
-/// @param v2
+/// @brief Add the triangle of the mesh3d.
 void rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2) {
     (void)o;
     (void)v0;
@@ -1455,8 +1223,7 @@ void rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2) {
     (void)v2;
 }
 
-/// @brief Perform mesh3d recalc normals operation.
-/// @param o
+/// @brief Recalc the normals of the mesh3d.
 void rt_mesh3d_recalc_normals(void *o) {
     (void)o;
 }
@@ -1466,9 +1233,7 @@ void *rt_mesh3d_clone(void *o) {
     return NULL;
 }
 
-/// @brief Perform mesh3d transform operation.
-/// @param o
-/// @param m
+/// @brief Transform the mesh3d.
 void rt_mesh3d_transform(void *o, void *m) {
     (void)o;
     (void)m;
@@ -1483,11 +1248,7 @@ void *rt_camera3d_new(double f, double a, double n, double fa) {
     return NULL;
 }
 
-/// @brief Perform camera3d look at operation.
-/// @param o
-/// @param e
-/// @param t
-/// @param u
+/// @brief Look the at of the camera3d.
 void rt_camera3d_look_at(void *o, void *e, void *t, void *u) {
     (void)o;
     (void)e;
@@ -1495,12 +1256,7 @@ void rt_camera3d_look_at(void *o, void *e, void *t, void *u) {
     (void)u;
 }
 
-/// @brief Perform camera3d orbit operation.
-/// @param o
-/// @param t
-/// @param d
-/// @param y
-/// @param p
+/// @brief Orbit the camera3d.
 void rt_camera3d_orbit(void *o, void *t, double d, double y, double p) {
     (void)o;
     (void)t;
@@ -1509,17 +1265,13 @@ void rt_camera3d_orbit(void *o, void *t, double d, double y, double p) {
     (void)p;
 }
 
-/// @brief Perform camera3d get fov operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the fov of the camera3d.
 double rt_camera3d_get_fov(void *o) {
     (void)o;
     return 0.0;
 }
 
-/// @brief Perform camera3d set fov operation.
-/// @param o
-/// @param f
+/// @brief Set the fov of the camera3d.
 void rt_camera3d_set_fov(void *o, double f) {
     (void)o;
     (void)f;
@@ -1530,9 +1282,7 @@ void *rt_camera3d_get_position(void *o) {
     return NULL;
 }
 
-/// @brief Perform camera3d set position operation.
-/// @param o
-/// @param p
+/// @brief Set the position of the camera3d.
 void rt_camera3d_set_position(void *o, void *p) {
     (void)o;
     (void)p;
@@ -1576,11 +1326,7 @@ void *rt_material3d_new_textured(void *p) {
     return NULL;
 }
 
-/// @brief Perform material3d set color operation.
-/// @param o
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the color of the material3d.
 void rt_material3d_set_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
@@ -1588,75 +1334,55 @@ void rt_material3d_set_color(void *o, double r, double g, double b) {
     (void)b;
 }
 
-/// @brief Perform material3d set texture operation.
-/// @param o
-/// @param p
+/// @brief Set the texture of the material3d.
 void rt_material3d_set_texture(void *o, void *p) {
     (void)o;
     (void)p;
 }
 
-/// @brief Perform material3d set shininess operation.
-/// @param o
-/// @param s
+/// @brief Set the shininess of the material3d.
 void rt_material3d_set_shininess(void *o, double s) {
     (void)o;
     (void)s;
 }
 
-/// @brief Perform material3d set alpha operation.
-/// @param o
-/// @param a
+/// @brief Set the alpha of the material3d.
 void rt_material3d_set_alpha(void *o, double a) {
     (void)o;
     (void)a;
 }
 
-/// @brief Perform material3d get alpha operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the alpha of the material3d.
 double rt_material3d_get_alpha(void *o) {
     (void)o;
     return 1.0;
 }
 
-/// @brief Perform material3d set unlit operation.
-/// @param o
-/// @param u
+/// @brief Set the unlit of the material3d.
 void rt_material3d_set_unlit(void *o, int8_t u) {
     (void)o;
     (void)u;
 }
 
-/// @brief Perform material3d set normal map operation.
-/// @param o
-/// @param p
+/// @brief Set the normal map of the material3d.
 void rt_material3d_set_normal_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
 
-/// @brief Perform material3d set specular map operation.
-/// @param o
-/// @param p
+/// @brief Set the specular map of the material3d.
 void rt_material3d_set_specular_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
 
-/// @brief Perform material3d set emissive map operation.
-/// @param o
-/// @param p
+/// @brief Set the emissive map of the material3d.
 void rt_material3d_set_emissive_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
 
-/// @brief Perform material3d set emissive color operation.
-/// @param o
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the emissive color of the material3d.
 void rt_material3d_set_emissive_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
@@ -1664,8 +1390,7 @@ void rt_material3d_set_emissive_color(void *o, double r, double g, double b) {
     (void)b;
 }
 
-/// @brief Perform mesh3d calc tangents operation.
-/// @param o
+/// @brief Calc the tangents of the mesh3d.
 void rt_mesh3d_calc_tangents(void *o) {
     (void)o;
 }
@@ -1697,19 +1422,13 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     return NULL;
 }
 
-/// @brief Perform light3d set intensity operation.
-/// @param o
-/// @param i
+/// @brief Set the intensity of the light3d.
 void rt_light3d_set_intensity(void *o, double i) {
     (void)o;
     (void)i;
 }
 
-/// @brief Perform light3d set color operation.
-/// @param o
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the color of the light3d.
 void rt_light3d_set_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
@@ -1728,17 +1447,13 @@ void *rt_scene3d_get_root(void *s) {
     return NULL;
 }
 
-/// @brief Perform scene3d add operation.
-/// @param s
-/// @param n
+/// @brief Add an element to the scene3d.
 void rt_scene3d_add(void *s, void *n) {
     (void)s;
     (void)n;
 }
 
-/// @brief Perform scene3d remove operation.
-/// @param s
-/// @param n
+/// @brief Remove an entry from the scene3d.
 void rt_scene3d_remove(void *s, void *n) {
     (void)s;
     (void)n;
@@ -1750,25 +1465,19 @@ void *rt_scene3d_find(void *s, rt_string n) {
     return NULL;
 }
 
-/// @brief Perform scene3d draw operation.
-/// @param s
-/// @param c
-/// @param cam
+/// @brief Draw the scene3d.
 void rt_scene3d_draw(void *s, void *c, void *cam) {
     (void)s;
     (void)c;
     (void)cam;
 }
 
-/// @brief Perform scene3d clear operation.
-/// @param s
+/// @brief Remove all entries from the scene3d.
 void rt_scene3d_clear(void *s) {
     (void)s;
 }
 
-/// @brief Perform scene3d get node count operation.
-/// @param s
-/// @return Result value.
+/// @brief Return the count of elements in the scene3d.
 int64_t rt_scene3d_get_node_count(void *s) {
     (void)s;
     return 0;
@@ -1779,11 +1488,7 @@ void *rt_scene_node3d_new(void) {
     return NULL;
 }
 
-/// @brief Perform node3d set position operation.
-/// @param n
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the node3d.
 void rt_scene_node3d_set_position(void *n, double x, double y, double z) {
     (void)n;
     (void)x;
@@ -1796,9 +1501,7 @@ void *rt_scene_node3d_get_position(void *n) {
     return NULL;
 }
 
-/// @brief Perform node3d set rotation operation.
-/// @param n
-/// @param q
+/// @brief Set the rotation of the node3d.
 void rt_scene_node3d_set_rotation(void *n, void *q) {
     (void)n;
     (void)q;
@@ -1809,11 +1512,7 @@ void *rt_scene_node3d_get_rotation(void *n) {
     return NULL;
 }
 
-/// @brief Perform node3d set scale operation.
-/// @param n
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the scale of the node3d.
 void rt_scene_node3d_set_scale(void *n, double x, double y, double z) {
     (void)n;
     (void)x;
@@ -1831,25 +1530,19 @@ void *rt_scene_node3d_get_world_matrix(void *n) {
     return NULL;
 }
 
-/// @brief Perform node3d add child operation.
-/// @param n
-/// @param c
+/// @brief Add the child of the node3d.
 void rt_scene_node3d_add_child(void *n, void *c) {
     (void)n;
     (void)c;
 }
 
-/// @brief Perform node3d remove child operation.
-/// @param n
-/// @param c
+/// @brief Remove the child of the node3d.
 void rt_scene_node3d_remove_child(void *n, void *c) {
     (void)n;
     (void)c;
 }
 
-/// @brief Perform node3d child count operation.
-/// @param n
-/// @return Result value.
+/// @brief Return the count of elements in the node3d.
 int64_t rt_scene_node3d_child_count(void *n) {
     (void)n;
     return 0;
@@ -1872,49 +1565,37 @@ void *rt_scene_node3d_find(void *n, rt_string name) {
     return NULL;
 }
 
-/// @brief Perform node3d set mesh operation.
-/// @param n
-/// @param m
+/// @brief Set the mesh of the node3d.
 void rt_scene_node3d_set_mesh(void *n, void *m) {
     (void)n;
     (void)m;
 }
 
-/// @brief Perform node3d set material operation.
-/// @param n
-/// @param m
+/// @brief Set the material of the node3d.
 void rt_scene_node3d_set_material(void *n, void *m) {
     (void)n;
     (void)m;
 }
 
-/// @brief Perform node3d set visible operation.
-/// @param n
-/// @param v
+/// @brief Set the visible of the node3d.
 void rt_scene_node3d_set_visible(void *n, int8_t v) {
     (void)n;
     (void)v;
 }
 
-/// @brief Perform node3d get visible operation.
-/// @param n
-/// @return Result value.
+/// @brief Get the visible of the node3d.
 int8_t rt_scene_node3d_get_visible(void *n) {
     (void)n;
     return 0;
 }
 
-/// @brief Perform node3d set name operation.
-/// @param n
-/// @param s
+/// @brief Set the name of the node3d.
 void rt_scene_node3d_set_name(void *n, rt_string s) {
     (void)n;
     (void)s;
 }
 
-/// @brief Perform node3d get name operation.
-/// @param n
-/// @return Result value.
+/// @brief Get the name of the node3d.
 rt_string rt_scene_node3d_get_name(void *n) {
     (void)n;
     return NULL;
@@ -1930,27 +1611,21 @@ void *rt_scene_node3d_get_aabb_max(void *n) {
     return NULL;
 }
 
-/// @brief Perform scene3d get culled count operation.
-/// @param s
-/// @return Result value.
+/// @brief Return the count of elements in the scene3d.
 int64_t rt_scene3d_get_culled_count(void *s) {
     (void)s;
     return 0;
 }
 
 /* LOD stubs */
-/// @brief Perform node3d add lod operation.
-/// @param n
-/// @param d
-/// @param m
+/// @brief Add the lod of the node3d.
 void rt_scene_node3d_add_lod(void *n, double d, void *m) {
     (void)n;
     (void)d;
     (void)m;
 }
 
-/// @brief Perform node3d clear lod operation.
-/// @param n
+/// @brief Clear the lod of the node3d.
 void rt_scene_node3d_clear_lod(void *n) {
     (void)n;
 }
@@ -1961,12 +1636,7 @@ void *rt_skeleton3d_new(void) {
     return NULL;
 }
 
-/// @brief Perform skeleton3d add bone operation.
-/// @param s
-/// @param n
-/// @param p
-/// @param m
-/// @return Result value.
+/// @brief Add the bone of the skeleton3d.
 int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m) {
     (void)s;
     (void)n;
@@ -1975,34 +1645,25 @@ int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m) {
     return -1;
 }
 
-/// @brief Perform skeleton3d compute inverse bind operation.
-/// @param s
+/// @brief Compute the inverse bind of the skeleton3d.
 void rt_skeleton3d_compute_inverse_bind(void *s) {
     (void)s;
 }
 
-/// @brief Perform skeleton3d get bone count operation.
-/// @param s
-/// @return Result value.
+/// @brief Return the count of elements in the skeleton3d.
 int64_t rt_skeleton3d_get_bone_count(void *s) {
     (void)s;
     return 0;
 }
 
-/// @brief Perform skeleton3d find bone operation.
-/// @param s
-/// @param n
-/// @return Result value.
+/// @brief Find the bone of the skeleton3d.
 int64_t rt_skeleton3d_find_bone(void *s, rt_string n) {
     (void)s;
     (void)n;
     return -1;
 }
 
-/// @brief Perform skeleton3d get bone name operation.
-/// @param s
-/// @param i
-/// @return Result value.
+/// @brief Get the bone name of the skeleton3d.
 rt_string rt_skeleton3d_get_bone_name(void *s, int64_t i) {
     (void)s;
     (void)i;
@@ -2022,13 +1683,7 @@ void *rt_animation3d_new(rt_string n, double d) {
     return NULL;
 }
 
-/// @brief Perform animation3d add keyframe operation.
-/// @param a
-/// @param b
-/// @param t
-/// @param p
-/// @param r
-/// @param s
+/// @brief Add the keyframe of the animation3d.
 void rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r, void *s) {
     (void)a;
     (void)b;
@@ -2038,33 +1693,25 @@ void rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r,
     (void)s;
 }
 
-/// @brief Perform animation3d set looping operation.
-/// @param a
-/// @param l
+/// @brief Set the looping of the animation3d.
 void rt_animation3d_set_looping(void *a, int8_t l) {
     (void)a;
     (void)l;
 }
 
-/// @brief Perform animation3d get looping operation.
-/// @param a
-/// @return Result value.
+/// @brief Get the looping of the animation3d.
 int8_t rt_animation3d_get_looping(void *a) {
     (void)a;
     return 0;
 }
 
-/// @brief Perform animation3d get duration operation.
-/// @param a
-/// @return Result value.
+/// @brief Get the duration of the animation3d.
 double rt_animation3d_get_duration(void *a) {
     (void)a;
     return 0.0;
 }
 
-/// @brief Perform animation3d get name operation.
-/// @param a
-/// @return Result value.
+/// @brief Get the name of the animation3d.
 rt_string rt_animation3d_get_name(void *a) {
     (void)a;
     return NULL;
@@ -2076,73 +1723,55 @@ void *rt_anim_player3d_new(void *s) {
     return NULL;
 }
 
-/// @brief Perform anim player3d play operation.
-/// @param p
-/// @param a
+/// @brief Player3d the play of the anim.
 void rt_anim_player3d_play(void *p, void *a) {
     (void)p;
     (void)a;
 }
 
-/// @brief Perform anim player3d crossfade operation.
-/// @param p
-/// @param a
-/// @param d
+/// @brief Player3d the crossfade of the anim.
 void rt_anim_player3d_crossfade(void *p, void *a, double d) {
     (void)p;
     (void)a;
     (void)d;
 }
 
-/// @brief Perform anim player3d stop operation.
-/// @param p
+/// @brief Stop the anim.
 void rt_anim_player3d_stop(void *p) {
     (void)p;
 }
 
-/// @brief Perform anim player3d update operation.
-/// @param p
-/// @param d
+/// @brief Update the anim state (called per frame/tick).
 void rt_anim_player3d_update(void *p, double d) {
     (void)p;
     (void)d;
 }
 
-/// @brief Perform anim player3d set speed operation.
-/// @param p
-/// @param s
+/// @brief Player3d the set speed of the anim.
 void rt_anim_player3d_set_speed(void *p, double s) {
     (void)p;
     (void)s;
 }
 
-/// @brief Perform anim player3d get speed operation.
-/// @param p
-/// @return Result value.
+/// @brief Player3d the get speed of the anim.
 double rt_anim_player3d_get_speed(void *p) {
     (void)p;
     return 1.0;
 }
 
-/// @brief Perform anim player3d is playing operation.
-/// @param p
-/// @return Result value.
+/// @brief Player3d the is playing of the anim.
 int8_t rt_anim_player3d_is_playing(void *p) {
     (void)p;
     return 0;
 }
 
-/// @brief Perform anim player3d get time operation.
-/// @param p
-/// @return Result value.
+/// @brief Player3d the get time of the anim.
 double rt_anim_player3d_get_time(void *p) {
     (void)p;
     return 0.0;
 }
 
-/// @brief Perform anim player3d set time operation.
-/// @param p
-/// @param t
+/// @brief Player3d the set time of the anim.
 void rt_anim_player3d_set_time(void *p, double t) {
     (void)p;
     (void)t;
@@ -2154,9 +1783,7 @@ void *rt_anim_player3d_get_bone_matrix(void *p, int64_t i) {
     return NULL;
 }
 
-/// @brief Perform mesh3d set skeleton operation.
-/// @param m
-/// @param s
+/// @brief Set the skeleton of the mesh3d.
 void rt_mesh3d_set_skeleton(void *m, void *s) {
     (void)m;
     (void)s;
@@ -2184,12 +1811,7 @@ void rt_mesh3d_set_bone_weights(void *m,
     (void)w3;
 }
 
-/// @brief Perform canvas3d draw mesh skinned operation.
-/// @param c
-/// @param m
-/// @param t
-/// @param mat
-/// @param p
+/// @brief Draw the mesh skinned of the canvas3d.
 void rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p) {
     (void)c;
     (void)m;
@@ -2205,9 +1827,7 @@ void *rt_fbx_load(rt_string p) {
     return NULL;
 }
 
-/// @brief Perform fbx mesh count operation.
-/// @param f
-/// @return Result value.
+/// @brief Return the count of elements in the fbx.
 int64_t rt_fbx_mesh_count(void *f) {
     (void)f;
     return 0;
@@ -2224,9 +1844,7 @@ void *rt_fbx_get_skeleton(void *f) {
     return NULL;
 }
 
-/// @brief Perform fbx animation count operation.
-/// @param f
-/// @return Result value.
+/// @brief Return the count of elements in the fbx.
 int64_t rt_fbx_animation_count(void *f) {
     (void)f;
     return 0;
@@ -2238,19 +1856,14 @@ void *rt_fbx_get_animation(void *f, int64_t i) {
     return NULL;
 }
 
-/// @brief Perform fbx get animation name operation.
-/// @param f
-/// @param i
-/// @return Result value.
+/// @brief Get the animation name of the fbx.
 rt_string rt_fbx_get_animation_name(void *f, int64_t i) {
     (void)f;
     (void)i;
     return NULL;
 }
 
-/// @brief Perform fbx material count operation.
-/// @param f
-/// @return Result value.
+/// @brief Return the count of elements in the fbx.
 int64_t rt_fbx_material_count(void *f) {
     (void)f;
     return 0;
@@ -2269,23 +1882,14 @@ void *rt_morphtarget3d_new(int64_t vc) {
     return NULL;
 }
 
-/// @brief Perform morphtarget3d add shape operation.
-/// @param m
-/// @param n
-/// @return Result value.
+/// @brief Add the shape of the morphtarget3d.
 int64_t rt_morphtarget3d_add_shape(void *m, rt_string n) {
     (void)m;
     (void)n;
     return -1;
 }
 
-/// @brief Perform morphtarget3d set delta operation.
-/// @param m
-/// @param s
-/// @param v
-/// @param dx
-/// @param dy
-/// @param dz
+/// @brief Set the delta of the morphtarget3d.
 void rt_morphtarget3d_set_delta(void *m, int64_t s, int64_t v, double dx, double dy, double dz) {
     (void)m;
     (void)s;
@@ -2305,58 +1909,40 @@ void rt_morphtarget3d_set_normal_delta(
     (void)dz;
 }
 
-/// @brief Perform morphtarget3d set weight operation.
-/// @param m
-/// @param s
-/// @param w
+/// @brief Set the weight of the morphtarget3d.
 void rt_morphtarget3d_set_weight(void *m, int64_t s, double w) {
     (void)m;
     (void)s;
     (void)w;
 }
 
-/// @brief Perform morphtarget3d get weight operation.
-/// @param m
-/// @param s
-/// @return Result value.
+/// @brief Get the weight of the morphtarget3d.
 double rt_morphtarget3d_get_weight(void *m, int64_t s) {
     (void)m;
     (void)s;
     return 0.0;
 }
 
-/// @brief Perform morphtarget3d set weight by name operation.
-/// @param m
-/// @param n
-/// @param w
+/// @brief Set the weight by name of the morphtarget3d.
 void rt_morphtarget3d_set_weight_by_name(void *m, rt_string n, double w) {
     (void)m;
     (void)n;
     (void)w;
 }
 
-/// @brief Perform morphtarget3d get shape count operation.
-/// @param m
-/// @return Result value.
+/// @brief Return the count of elements in the morphtarget3d.
 int64_t rt_morphtarget3d_get_shape_count(void *m) {
     (void)m;
     return 0;
 }
 
-/// @brief Perform mesh3d set morph targets operation.
-/// @param m
-/// @param mt
+/// @brief Set the morph targets of the mesh3d.
 void rt_mesh3d_set_morph_targets(void *m, void *mt) {
     (void)m;
     (void)mt;
 }
 
-/// @brief Perform canvas3d draw mesh morphed operation.
-/// @param c
-/// @param m
-/// @param t
-/// @param mat
-/// @param mt
+/// @brief Draw the mesh morphed of the canvas3d.
 void rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *mt) {
     (void)c;
     (void)m;
@@ -2372,11 +1958,7 @@ void *rt_particles3d_new(int64_t n) {
     return NULL;
 }
 
-/// @brief Perform particles3d set position operation.
-/// @param o
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the particles3d.
 void rt_particles3d_set_position(void *o, double x, double y, double z) {
     (void)o;
     (void)x;
@@ -2384,12 +1966,7 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
     (void)z;
 }
 
-/// @brief Perform particles3d set direction operation.
-/// @param o
-/// @param dx
-/// @param dy
-/// @param dz
-/// @param s
+/// @brief Set the direction of the particles3d.
 void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double s) {
     (void)o;
     (void)dx;
@@ -2398,41 +1975,28 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
     (void)s;
 }
 
-/// @brief Perform particles3d set speed operation.
-/// @param o
-/// @param mn
-/// @param mx
+/// @brief Set the speed of the particles3d.
 void rt_particles3d_set_speed(void *o, double mn, double mx) {
     (void)o;
     (void)mn;
     (void)mx;
 }
 
-/// @brief Perform particles3d set lifetime operation.
-/// @param o
-/// @param mn
-/// @param mx
+/// @brief Set the lifetime of the particles3d.
 void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     (void)o;
     (void)mn;
     (void)mx;
 }
 
-/// @brief Perform particles3d set size operation.
-/// @param o
-/// @param s
-/// @param e
+/// @brief Return the size of the particles3d.
 void rt_particles3d_set_size(void *o, double s, double e) {
     (void)o;
     (void)s;
     (void)e;
 }
 
-/// @brief Perform particles3d set gravity operation.
-/// @param o
-/// @param gx
-/// @param gy
-/// @param gz
+/// @brief Set the gravity of the particles3d.
 void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     (void)o;
     (void)gx;
@@ -2440,63 +2004,45 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     (void)gz;
 }
 
-/// @brief Perform particles3d set color operation.
-/// @param o
-/// @param sc
-/// @param ec
+/// @brief Set the color of the particles3d.
 void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     (void)o;
     (void)sc;
     (void)ec;
 }
 
-/// @brief Perform particles3d set alpha operation.
-/// @param o
-/// @param sa
-/// @param ea
+/// @brief Set the alpha of the particles3d.
 void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     (void)o;
     (void)sa;
     (void)ea;
 }
 
-/// @brief Perform particles3d set rate operation.
-/// @param o
-/// @param r
+/// @brief Set the rate of the particles3d.
 void rt_particles3d_set_rate(void *o, double r) {
     (void)o;
     (void)r;
 }
 
-/// @brief Perform particles3d set additive operation.
-/// @param o
-/// @param a
+/// @brief Set the additive of the particles3d.
 void rt_particles3d_set_additive(void *o, int8_t a) {
     (void)o;
     (void)a;
 }
 
-/// @brief Perform particles3d set texture operation.
-/// @param o
-/// @param t
+/// @brief Set the texture of the particles3d.
 void rt_particles3d_set_texture(void *o, void *t) {
     (void)o;
     (void)t;
 }
 
-/// @brief Perform particles3d set emitter shape operation.
-/// @param o
-/// @param s
+/// @brief Set the emitter shape of the particles3d.
 void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
     (void)o;
     (void)s;
 }
 
-/// @brief Perform particles3d set emitter size operation.
-/// @param o
-/// @param sx
-/// @param sy
-/// @param sz
+/// @brief Return the size of the particles3d.
 void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     (void)o;
     (void)sx;
@@ -2504,61 +2050,47 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     (void)sz;
 }
 
-/// @brief Perform particles3d start operation.
-/// @param o
+/// @brief Start the particles3d.
 void rt_particles3d_start(void *o) {
     (void)o;
 }
 
-/// @brief Perform particles3d stop operation.
-/// @param o
+/// @brief Stop the particles3d.
 void rt_particles3d_stop(void *o) {
     (void)o;
 }
 
-/// @brief Perform particles3d burst operation.
-/// @param o
-/// @param n
+/// @brief Burst the particles3d.
 void rt_particles3d_burst(void *o, int64_t n) {
     (void)o;
     (void)n;
 }
 
-/// @brief Perform particles3d clear operation.
-/// @param o
+/// @brief Remove all entries from the particles3d.
 void rt_particles3d_clear(void *o) {
     (void)o;
 }
 
-/// @brief Perform particles3d update operation.
-/// @param o
-/// @param dt
+/// @brief Update the particles3d state (called per frame/tick).
 void rt_particles3d_update(void *o, double dt) {
     (void)o;
     (void)dt;
 }
 
-/// @brief Perform particles3d draw operation.
-/// @param o
-/// @param c
-/// @param cam
+/// @brief Draw the particles3d.
 void rt_particles3d_draw(void *o, void *c, void *cam) {
     (void)o;
     (void)c;
     (void)cam;
 }
 
-/// @brief Perform particles3d get count operation.
-/// @param o
-/// @return Result value.
+/// @brief Return the count of elements in the particles3d.
 int64_t rt_particles3d_get_count(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform particles3d get emitting operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the emitting of the particles3d.
 int8_t rt_particles3d_get_emitting(void *o) {
     (void)o;
     return 0;
@@ -2570,11 +2102,7 @@ void *rt_postfx3d_new(void) {
     return NULL;
 }
 
-/// @brief Perform postfx3d add bloom operation.
-/// @param o
-/// @param t
-/// @param i
-/// @param b
+/// @brief Add the bloom of the postfx3d.
 void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b) {
     (void)o;
     (void)t;
@@ -2582,27 +2110,19 @@ void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b) {
     (void)b;
 }
 
-/// @brief Perform postfx3d add tonemap operation.
-/// @param o
-/// @param m
-/// @param e
+/// @brief Add the tonemap of the postfx3d.
 void rt_postfx3d_add_tonemap(void *o, int64_t m, double e) {
     (void)o;
     (void)m;
     (void)e;
 }
 
-/// @brief Perform postfx3d add fxaa operation.
-/// @param o
+/// @brief Add the fxaa of the postfx3d.
 void rt_postfx3d_add_fxaa(void *o) {
     (void)o;
 }
 
-/// @brief Perform postfx3d add color grade operation.
-/// @param o
-/// @param b
-/// @param c
-/// @param s
+/// @brief Add the color grade of the postfx3d.
 void rt_postfx3d_add_color_grade(void *o, double b, double c, double s) {
     (void)o;
     (void)b;
@@ -2610,68 +2130,49 @@ void rt_postfx3d_add_color_grade(void *o, double b, double c, double s) {
     (void)s;
 }
 
-/// @brief Perform postfx3d add vignette operation.
-/// @param o
-/// @param r
-/// @param s
+/// @brief Add the vignette of the postfx3d.
 void rt_postfx3d_add_vignette(void *o, double r, double s) {
     (void)o;
     (void)r;
     (void)s;
 }
 
-/// @brief Perform postfx3d set enabled operation.
-/// @param o
-/// @param e
+/// @brief Set the enabled of the postfx3d.
 void rt_postfx3d_set_enabled(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
 
-/// @brief Perform postfx3d get enabled operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the enabled of the postfx3d.
 int8_t rt_postfx3d_get_enabled(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform postfx3d clear operation.
-/// @param o
+/// @brief Remove all entries from the postfx3d.
 void rt_postfx3d_clear(void *o) {
     (void)o;
 }
 
-/// @brief Perform postfx3d get effect count operation.
-/// @param o
-/// @return Result value.
+/// @brief Return the count of elements in the postfx3d.
 int64_t rt_postfx3d_get_effect_count(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform canvas3d set post fx operation.
-/// @param c
-/// @param fx
+/// @brief Set the post fx of the canvas3d.
 void rt_canvas3d_set_post_fx(void *c, void *fx) {
     (void)c;
     (void)fx;
 }
 
-/// @brief Perform postfx3d apply to canvas operation.
-/// @param c
+/// @brief Apply the to canvas of the postfx3d.
 void rt_postfx3d_apply_to_canvas(void *c) {
     (void)c;
 }
 
 /* Ray3D / AABB3D / RayHit3D stubs */
-/// @brief Perform ray3d intersect triangle operation.
-/// @param o
-/// @param d
-/// @param v0
-/// @param v1
-/// @param v2
-/// @return Result value.
+/// @brief Intersect the triangle of the ray3d.
 double rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v2) {
     (void)o;
     (void)d;
@@ -2689,12 +2190,7 @@ void *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t) {
     return NULL;
 }
 
-/// @brief Perform ray3d intersect aabb operation.
-/// @param o
-/// @param d
-/// @param mn
-/// @param mx
-/// @return Result value.
+/// @brief Intersect the aabb of the ray3d.
 double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx) {
     (void)o;
     (void)d;
@@ -2703,12 +2199,7 @@ double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx) {
     return -1.0;
 }
 
-/// @brief Perform ray3d intersect sphere operation.
-/// @param o
-/// @param d
-/// @param c
-/// @param r
-/// @return Result value.
+/// @brief Intersect the sphere of the ray3d.
 double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r) {
     (void)o;
     (void)d;
@@ -2717,12 +2208,7 @@ double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r) {
     return -1.0;
 }
 
-/// @brief Perform aabb3d overlaps operation.
-/// @param a0
-/// @param a1
-/// @param b0
-/// @param b1
-/// @return Result value.
+/// @brief Overlaps the aabb3d.
 int8_t rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1) {
     (void)a0;
     (void)a1;
@@ -2739,9 +2225,7 @@ void *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1) {
     return NULL;
 }
 
-/// @brief Perform ray3d hit distance operation.
-/// @param h
-/// @return Result value.
+/// @brief Hit the distance of the ray3d.
 double rt_ray3d_hit_distance(void *h) {
     (void)h;
     return -1.0;
@@ -2757,20 +2241,13 @@ void *rt_ray3d_hit_normal(void *h) {
     return NULL;
 }
 
-/// @brief Perform ray3d hit triangle operation.
-/// @param h
-/// @return Result value.
+/// @brief Hit the triangle of the ray3d.
 int64_t rt_ray3d_hit_triangle(void *h) {
     (void)h;
     return -1;
 }
 
-/// @brief Perform sphere3d overlaps operation.
-/// @param a
-/// @param ra
-/// @param b
-/// @param rb
-/// @return Result value.
+/// @brief Overlaps the sphere3d.
 int8_t rt_sphere3d_overlaps(void *a, double ra, void *b, double rb) {
     (void)a;
     (void)ra;
@@ -2794,12 +2271,7 @@ void *rt_aabb3d_closest_point(void *mn, void *mx, void *p) {
     return NULL;
 }
 
-/// @brief Perform aabb3d sphere overlaps operation.
-/// @param mn
-/// @param mx
-/// @param c
-/// @param r
-/// @return Result value.
+/// @brief Sphere the overlaps of the aabb3d.
 int8_t rt_aabb3d_sphere_overlaps(void *mn, void *mx, void *c, double r) {
     (void)mn;
     (void)mx;
@@ -2815,13 +2287,7 @@ void *rt_segment3d_closest_point(void *a, void *b, void *p) {
     return NULL;
 }
 
-/// @brief Perform capsule3d sphere overlaps operation.
-/// @param a
-/// @param b
-/// @param cr
-/// @param c
-/// @param sr
-/// @return Result value.
+/// @brief Sphere the overlaps of the capsule3d.
 int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double sr) {
     (void)a;
     (void)b;
@@ -2831,13 +2297,7 @@ int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double
     return 0;
 }
 
-/// @brief Perform capsule3d aabb overlaps operation.
-/// @param a
-/// @param b
-/// @param r
-/// @param mn
-/// @param mx
-/// @return Result value.
+/// @brief Aabb the overlaps of the capsule3d.
 int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx) {
     (void)a;
     (void)b;
@@ -2848,8 +2308,7 @@ int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx
 }
 
 /* FPS Camera stubs */
-/// @brief Perform camera3d fps init operation.
-/// @param c
+/// @brief Fps the init of the camera3d.
 void rt_camera3d_fps_init(void *c) {
     (void)c;
 }
@@ -2866,46 +2325,32 @@ void rt_camera3d_fps_update(
     (void)h;
 }
 
-/// @brief Perform camera3d get yaw operation.
-/// @param c
-/// @return Result value.
+/// @brief Get the yaw of the camera3d.
 double rt_camera3d_get_yaw(void *c) {
     (void)c;
     return 0.0;
 }
 
-/// @brief Perform camera3d get pitch operation.
-/// @param c
-/// @return Result value.
+/// @brief Get the pitch of the camera3d.
 double rt_camera3d_get_pitch(void *c) {
     (void)c;
     return 0.0;
 }
 
-/// @brief Perform camera3d set yaw operation.
-/// @param c
-/// @param v
+/// @brief Set the yaw of the camera3d.
 void rt_camera3d_set_yaw(void *c, double v) {
     (void)c;
     (void)v;
 }
 
-/// @brief Perform camera3d set pitch operation.
-/// @param c
-/// @param v
+/// @brief Set the pitch of the camera3d.
 void rt_camera3d_set_pitch(void *c, double v) {
     (void)c;
     (void)v;
 }
 
 /* HUD overlay stubs */
-/// @brief Perform canvas3d draw rect2d operation.
-/// @param c
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param cl
+/// @brief Draw the rect2d of the canvas3d.
 void rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) {
     (void)c;
     (void)x;
@@ -2915,22 +2360,14 @@ void rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h
     (void)cl;
 }
 
-/// @brief Perform canvas3d draw crosshair operation.
-/// @param c
-/// @param cl
-/// @param sz
+/// @brief Draw the crosshair of the canvas3d.
 void rt_canvas3d_draw_crosshair(void *c, int64_t cl, int64_t sz) {
     (void)c;
     (void)cl;
     (void)sz;
 }
 
-/// @brief Perform canvas3d draw text2d operation.
-/// @param c
-/// @param x
-/// @param y
-/// @param t
-/// @param cl
+/// @brief Draw the text2d of the canvas3d.
 void rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) {
     (void)c;
     (void)x;
@@ -2940,11 +2377,7 @@ void rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t
 }
 
 /* Debug gizmo stubs */
-/// @brief Perform canvas3d draw aabb wire operation.
-/// @param c
-/// @param mn
-/// @param mx
-/// @param cl
+/// @brief Draw the aabb wire of the canvas3d.
 void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl) {
     (void)c;
     (void)mn;
@@ -2952,11 +2385,7 @@ void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl) {
     (void)cl;
 }
 
-/// @brief Perform canvas3d draw sphere wire operation.
-/// @param c
-/// @param ctr
-/// @param r
-/// @param cl
+/// @brief Draw the sphere wire of the canvas3d.
 void rt_canvas3d_draw_sphere_wire(void *c, void *ctr, double r, int64_t cl) {
     (void)c;
     (void)ctr;
@@ -2964,12 +2393,7 @@ void rt_canvas3d_draw_sphere_wire(void *c, void *ctr, double r, int64_t cl) {
     (void)cl;
 }
 
-/// @brief Perform canvas3d draw debug ray operation.
-/// @param c
-/// @param o
-/// @param d
-/// @param l
-/// @param cl
+/// @brief Draw the debug ray of the canvas3d.
 void rt_canvas3d_draw_debug_ray(void *c, void *o, void *d, double l, int64_t cl) {
     (void)c;
     (void)o;
@@ -2978,10 +2402,7 @@ void rt_canvas3d_draw_debug_ray(void *c, void *o, void *d, double l, int64_t cl)
     (void)cl;
 }
 
-/// @brief Perform canvas3d draw axis operation.
-/// @param c
-/// @param o
-/// @param s
+/// @brief Draw the axis of the canvas3d.
 void rt_canvas3d_draw_axis(void *c, void *o, double s) {
     (void)c;
     (void)o;
@@ -2989,13 +2410,7 @@ void rt_canvas3d_draw_axis(void *c, void *o, double s) {
 }
 
 /* Fog stubs */
-/// @brief Perform canvas3d set fog operation.
-/// @param c
-/// @param n
-/// @param f
-/// @param r
-/// @param g
-/// @param b
+/// @brief Set the fog of the canvas3d.
 void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double b) {
     (void)c;
     (void)n;
@@ -3005,50 +2420,37 @@ void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double
     (void)b;
 }
 
-/// @brief Perform canvas3d clear fog operation.
-/// @param c
+/// @brief Clear the fog of the canvas3d.
 void rt_canvas3d_clear_fog(void *c) {
     (void)c;
 }
 
 /* Shadow stubs */
-/// @brief Perform canvas3d enable shadows operation.
-/// @param c
-/// @param r
+/// @brief Enable the shadows of the canvas3d.
 void rt_canvas3d_enable_shadows(void *c, int64_t r) {
     (void)c;
     (void)r;
 }
 
-/// @brief Perform canvas3d disable shadows operation.
-/// @param c
+/// @brief Disable the shadows of the canvas3d.
 void rt_canvas3d_disable_shadows(void *c) {
     (void)c;
 }
 
-/// @brief Perform canvas3d set shadow bias operation.
-/// @param c
-/// @param b
+/// @brief Set the shadow bias of the canvas3d.
 void rt_canvas3d_set_shadow_bias(void *c, double b) {
     (void)c;
     (void)b;
 }
 
 /* Audio3D stubs */
-/// @brief Perform audio3d set listener operation.
-/// @param p
-/// @param f
+/// @brief Set the listener of the audio3d.
 void rt_audio3d_set_listener(void *p, void *f) {
     (void)p;
     (void)f;
 }
 
-/// @brief Perform audio3d play at operation.
-/// @param s
-/// @param p
-/// @param d
-/// @param v
-/// @return Result value.
+/// @brief Play the at of the audio3d.
 int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
     (void)s;
     (void)p;
@@ -3057,10 +2459,7 @@ int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
     return 0;
 }
 
-/// @brief Perform audio3d update voice operation.
-/// @param v
-/// @param p
-/// @param md
+/// @brief Update the voice of the audio3d.
 void rt_audio3d_update_voice(int64_t v, void *p, double md) {
     (void)v;
     (void)p;
@@ -3076,43 +2475,31 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     return NULL;
 }
 
-/// @brief Perform world3d step operation.
-/// @param w
-/// @param dt
+/// @brief Step the world3d.
 void rt_world3d_step(void *w, double dt) {
     (void)w;
     (void)dt;
 }
 
-/// @brief Perform world3d add operation.
-/// @param w
-/// @param b
+/// @brief Add an element to the world3d.
 void rt_world3d_add(void *w, void *b) {
     (void)w;
     (void)b;
 }
 
-/// @brief Perform world3d remove operation.
-/// @param w
-/// @param b
+/// @brief Remove an entry from the world3d.
 void rt_world3d_remove(void *w, void *b) {
     (void)w;
     (void)b;
 }
 
-/// @brief Perform world3d body count operation.
-/// @param w
-/// @return Result value.
+/// @brief Return the count of elements in the world3d.
 int64_t rt_world3d_body_count(void *w) {
     (void)w;
     return 0;
 }
 
-/// @brief Perform world3d set gravity operation.
-/// @param w
-/// @param gx
-/// @param gy
-/// @param gz
+/// @brief Set the gravity of the world3d.
 void rt_world3d_set_gravity(void *w, double gx, double gy, double gz) {
     (void)w;
     (void)gx;
@@ -3142,11 +2529,7 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
     return NULL;
 }
 
-/// @brief Perform body3d set position operation.
-/// @param o
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the body3d.
 void rt_body3d_set_position(void *o, double x, double y, double z) {
     (void)o;
     (void)x;
@@ -3159,11 +2542,7 @@ void *rt_body3d_get_position(void *o) {
     return NULL;
 }
 
-/// @brief Perform body3d set velocity operation.
-/// @param o
-/// @param vx
-/// @param vy
-/// @param vz
+/// @brief Set the velocity of the body3d.
 void rt_body3d_set_velocity(void *o, double vx, double vy, double vz) {
     (void)o;
     (void)vx;
@@ -3176,11 +2555,7 @@ void *rt_body3d_get_velocity(void *o) {
     return NULL;
 }
 
-/// @brief Perform body3d apply force operation.
-/// @param o
-/// @param fx
-/// @param fy
-/// @param fz
+/// @brief Apply the force of the body3d.
 void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)o;
     (void)fx;
@@ -3188,11 +2563,7 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)fz;
 }
 
-/// @brief Perform body3d apply impulse operation.
-/// @param o
-/// @param ix
-/// @param iy
-/// @param iz
+/// @brief Apply the impulse of the body3d.
 void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     (void)o;
     (void)ix;
@@ -3200,105 +2571,79 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     (void)iz;
 }
 
-/// @brief Perform body3d set restitution operation.
-/// @param o
-/// @param r
+/// @brief Set the restitution of the body3d.
 void rt_body3d_set_restitution(void *o, double r) {
     (void)o;
     (void)r;
 }
 
-/// @brief Perform body3d get restitution operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the restitution of the body3d.
 double rt_body3d_get_restitution(void *o) {
     (void)o;
     return 0.0;
 }
 
-/// @brief Perform body3d set friction operation.
-/// @param o
-/// @param f
+/// @brief Set the friction of the body3d.
 void rt_body3d_set_friction(void *o, double f) {
     (void)o;
     (void)f;
 }
 
-/// @brief Perform body3d get friction operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the friction of the body3d.
 double rt_body3d_get_friction(void *o) {
     (void)o;
     return 0.0;
 }
 
-/// @brief Perform body3d set collision layer operation.
-/// @param o
-/// @param l
+/// @brief Set the collision layer of the body3d.
 void rt_body3d_set_collision_layer(void *o, int64_t l) {
     (void)o;
     (void)l;
 }
 
-/// @brief Perform body3d get collision layer operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the collision layer of the body3d.
 int64_t rt_body3d_get_collision_layer(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform body3d set collision mask operation.
-/// @param o
-/// @param m
+/// @brief Set the collision mask of the body3d.
 void rt_body3d_set_collision_mask(void *o, int64_t m) {
     (void)o;
     (void)m;
 }
 
-/// @brief Perform body3d get collision mask operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the collision mask of the body3d.
 int64_t rt_body3d_get_collision_mask(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform body3d set static operation.
-/// @param o
-/// @param s
+/// @brief Set the static of the body3d.
 void rt_body3d_set_static(void *o, int8_t s) {
     (void)o;
     (void)s;
 }
 
-/// @brief Perform body3d is static operation.
-/// @param o
-/// @return Result value.
+/// @brief Is the static of the body3d.
 int8_t rt_body3d_is_static(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform body3d set trigger operation.
-/// @param o
-/// @param t
+/// @brief Set the trigger of the body3d.
 void rt_body3d_set_trigger(void *o, int8_t t) {
     (void)o;
     (void)t;
 }
 
-/// @brief Perform body3d is trigger operation.
-/// @param o
-/// @return Result value.
+/// @brief Is the trigger of the body3d.
 int8_t rt_body3d_is_trigger(void *o) {
     (void)o;
     return 0;
 }
 
-/// @brief Perform body3d is grounded operation.
-/// @param o
-/// @return Result value.
+/// @brief Is the grounded of the body3d.
 int8_t rt_body3d_is_grounded(void *o) {
     (void)o;
     return 0;
@@ -3309,9 +2654,7 @@ void *rt_body3d_get_ground_normal(void *o) {
     return NULL;
 }
 
-/// @brief Perform body3d get mass operation.
-/// @param o
-/// @return Result value.
+/// @brief Get the mass of the body3d.
 double rt_body3d_get_mass(void *o) {
     (void)o;
     return 0.0;
@@ -3325,51 +2668,38 @@ void *rt_character3d_new(double radius, double height, double mass) {
     return NULL;
 }
 
-/// @brief Perform character3d move operation.
-/// @param c
-/// @param v
-/// @param dt
+/// @brief Move the character3d.
 void rt_character3d_move(void *c, void *v, double dt) {
     (void)c;
     (void)v;
     (void)dt;
 }
 
-/// @brief Perform character3d set step height operation.
-/// @param c
-/// @param h
+/// @brief Set the step height of the character3d.
 void rt_character3d_set_step_height(void *c, double h) {
     (void)c;
     (void)h;
 }
 
-/// @brief Perform character3d get step height operation.
-/// @param c
-/// @return Result value.
+/// @brief Get the step height of the character3d.
 double rt_character3d_get_step_height(void *c) {
     (void)c;
     return 0.3;
 }
 
-/// @brief Perform character3d set slope limit operation.
-/// @param c
-/// @param d
+/// @brief Set the slope limit of the character3d.
 void rt_character3d_set_slope_limit(void *c, double d) {
     (void)c;
     (void)d;
 }
 
-/// @brief Perform character3d is grounded operation.
-/// @param c
-/// @return Result value.
+/// @brief Is the grounded of the character3d.
 int8_t rt_character3d_is_grounded(void *c) {
     (void)c;
     return 0;
 }
 
-/// @brief Perform character3d just landed operation.
-/// @param c
-/// @return Result value.
+/// @brief Just the landed of the character3d.
 int8_t rt_character3d_just_landed(void *c) {
     (void)c;
     return 0;
@@ -3380,11 +2710,7 @@ void *rt_character3d_get_position(void *c) {
     return NULL;
 }
 
-/// @brief Perform character3d set position operation.
-/// @param c
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the character3d.
 void rt_character3d_set_position(void *c, double x, double y, double z) {
     (void)c;
     (void)x;
@@ -3403,48 +2729,32 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
     return NULL;
 }
 
-/// @brief Perform trigger3d contains operation.
-/// @param t
-/// @param p
-/// @return Result value.
+/// @brief Check whether the trigger3d contains a given element.
 int8_t rt_trigger3d_contains(void *t, void *p) {
     (void)t;
     (void)p;
     return 0;
 }
 
-/// @brief Perform trigger3d update operation.
-/// @param t
-/// @param w
+/// @brief Update the trigger3d state (called per frame/tick).
 void rt_trigger3d_update(void *t, void *w) {
     (void)t;
     (void)w;
 }
 
-/// @brief Perform trigger3d get enter count operation.
-/// @param t
-/// @return Result value.
+/// @brief Return the count of elements in the trigger3d.
 int64_t rt_trigger3d_get_enter_count(void *t) {
     (void)t;
     return 0;
 }
 
-/// @brief Perform trigger3d get exit count operation.
-/// @param t
-/// @return Result value.
+/// @brief Return the count of elements in the trigger3d.
 int64_t rt_trigger3d_get_exit_count(void *t) {
     (void)t;
     return 0;
 }
 
-/// @brief Perform trigger3d set bounds operation.
-/// @param t
-/// @param x0
-/// @param y0
-/// @param z0
-/// @param x1
-/// @param y1
-/// @param z1
+/// @brief Set the bounds of the trigger3d.
 void rt_trigger3d_set_bounds(
     void *t, double x0, double y0, double z0, double x1, double y1, double z1) {
     (void)t;
@@ -3457,11 +2767,7 @@ void rt_trigger3d_set_bounds(
 }
 
 /* Camera shake/follow stubs */
-/// @brief Perform camera3d shake operation.
-/// @param c
-/// @param i
-/// @param d
-/// @param dc
+/// @brief Shake the camera3d.
 void rt_camera3d_shake(void *c, double i, double d, double dc) {
     (void)c;
     (void)i;
@@ -3469,13 +2775,7 @@ void rt_camera3d_shake(void *c, double i, double d, double dc) {
     (void)dc;
 }
 
-/// @brief Perform camera3d smooth follow operation.
-/// @param c
-/// @param t
-/// @param d
-/// @param h
-/// @param s
-/// @param dt
+/// @brief Smooth the follow of the camera3d.
 void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, double dt) {
     (void)c;
     (void)t;
@@ -3485,11 +2785,7 @@ void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, d
     (void)dt;
 }
 
-/// @brief Perform camera3d smooth look at operation.
-/// @param c
-/// @param t
-/// @param s
-/// @param dt
+/// @brief Smooth the look at of the camera3d.
 void rt_camera3d_smooth_look_at(void *c, void *t, double s, double dt) {
     (void)c;
     (void)t;
@@ -3502,11 +2798,7 @@ void *rt_transform3d_new(void) {
     return NULL;
 }
 
-/// @brief Perform transform3d set position operation.
-/// @param x
-/// @param a
-/// @param b
-/// @param c
+/// @brief Set the position of the transform3d.
 void rt_transform3d_set_position(void *x, double a, double b, double c) {
     (void)x;
     (void)a;
@@ -3519,9 +2811,7 @@ void *rt_transform3d_get_position(void *x) {
     return NULL;
 }
 
-/// @brief Perform transform3d set rotation operation.
-/// @param x
-/// @param q
+/// @brief Set the rotation of the transform3d.
 void rt_transform3d_set_rotation(void *x, void *q) {
     (void)x;
     (void)q;
@@ -3532,11 +2822,7 @@ void *rt_transform3d_get_rotation(void *x) {
     return NULL;
 }
 
-/// @brief Perform transform3d set euler operation.
-/// @param x
-/// @param p
-/// @param y
-/// @param r
+/// @brief Set the euler of the transform3d.
 void rt_transform3d_set_euler(void *x, double p, double y, double r) {
     (void)x;
     (void)p;
@@ -3544,11 +2830,7 @@ void rt_transform3d_set_euler(void *x, double p, double y, double r) {
     (void)r;
 }
 
-/// @brief Perform transform3d set scale operation.
-/// @param x
-/// @param a
-/// @param b
-/// @param c
+/// @brief Set the scale of the transform3d.
 void rt_transform3d_set_scale(void *x, double a, double b, double c) {
     (void)x;
     (void)a;
@@ -3566,28 +2848,20 @@ void *rt_transform3d_get_matrix(void *x) {
     return NULL;
 }
 
-/// @brief Perform transform3d translate operation.
-/// @param x
-/// @param d
+/// @brief Translate the transform3d.
 void rt_transform3d_translate(void *x, void *d) {
     (void)x;
     (void)d;
 }
 
-/// @brief Perform transform3d rotate operation.
-/// @param x
-/// @param a
-/// @param ang
+/// @brief Rotate the transform3d.
 void rt_transform3d_rotate(void *x, void *a, double ang) {
     (void)x;
     (void)a;
     (void)ang;
 }
 
-/// @brief Perform transform3d look at operation.
-/// @param x
-/// @param t
-/// @param u
+/// @brief Look the at of the transform3d.
 void rt_transform3d_look_at(void *x, void *t, void *u) {
     (void)x;
     (void)t;
@@ -3599,9 +2873,7 @@ void *rt_path3d_new(void) {
     return NULL;
 }
 
-/// @brief Perform path3d add point operation.
-/// @param p
-/// @param v
+/// @brief Add the point of the path3d.
 void rt_path3d_add_point(void *p, void *v) {
     (void)p;
     (void)v;
@@ -3619,32 +2891,25 @@ void *rt_path3d_get_direction_at(void *p, double t) {
     return NULL;
 }
 
-/// @brief Perform path3d get length operation.
-/// @param p
-/// @return Result value.
+/// @brief Get the length of the path3d.
 double rt_path3d_get_length(void *p) {
     (void)p;
     return 0.0;
 }
 
-/// @brief Perform path3d get point count operation.
-/// @param p
-/// @return Result value.
+/// @brief Return the count of elements in the path3d.
 int64_t rt_path3d_get_point_count(void *p) {
     (void)p;
     return 0;
 }
 
-/// @brief Perform path3d set looping operation.
-/// @param p
-/// @param l
+/// @brief Set the looping of the path3d.
 void rt_path3d_set_looping(void *p, int8_t l) {
     (void)p;
     (void)l;
 }
 
-/// @brief Perform path3d clear operation.
-/// @param p
+/// @brief Remove all entries from the path3d.
 void rt_path3d_clear(void *p) {
     (void)p;
 }
@@ -3656,49 +2921,37 @@ void *rt_instbatch3d_new(void *m, void *mt) {
     return NULL;
 }
 
-/// @brief Perform instbatch3d add operation.
-/// @param b
-/// @param t
+/// @brief Add an element to the instbatch3d.
 void rt_instbatch3d_add(void *b, void *t) {
     (void)b;
     (void)t;
 }
 
-/// @brief Perform instbatch3d remove operation.
-/// @param b
-/// @param i
+/// @brief Remove an entry from the instbatch3d.
 void rt_instbatch3d_remove(void *b, int64_t i) {
     (void)b;
     (void)i;
 }
 
-/// @brief Perform instbatch3d set operation.
-/// @param b
-/// @param i
-/// @param t
+/// @brief Set a value in the instbatch3d.
 void rt_instbatch3d_set(void *b, int64_t i, void *t) {
     (void)b;
     (void)i;
     (void)t;
 }
 
-/// @brief Perform instbatch3d clear operation.
-/// @param b
+/// @brief Remove all entries from the instbatch3d.
 void rt_instbatch3d_clear(void *b) {
     (void)b;
 }
 
-/// @brief Perform instbatch3d count operation.
-/// @param b
-/// @return Result value.
+/// @brief Return the count of elements in the instbatch3d.
 int64_t rt_instbatch3d_count(void *b) {
     (void)b;
     return 0;
 }
 
-/// @brief Perform canvas3d draw instanced operation.
-/// @param c
-/// @param b
+/// @brief Draw the instanced of the canvas3d.
 void rt_canvas3d_draw_instanced(void *c, void *b) {
     (void)c;
     (void)b;
@@ -3711,27 +2964,19 @@ void *rt_terrain3d_new(int64_t w, int64_t d) {
     return NULL;
 }
 
-/// @brief Perform terrain3d set heightmap operation.
-/// @param t
-/// @param p
+/// @brief Set the heightmap of the terrain3d.
 void rt_terrain3d_set_heightmap(void *t, void *p) {
     (void)t;
     (void)p;
 }
 
-/// @brief Perform terrain3d set material operation.
-/// @param t
-/// @param m
+/// @brief Set the material of the terrain3d.
 void rt_terrain3d_set_material(void *t, void *m) {
     (void)t;
     (void)m;
 }
 
-/// @brief Perform terrain3d set scale operation.
-/// @param t
-/// @param sx
-/// @param sy
-/// @param sz
+/// @brief Set the scale of the terrain3d.
 void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz) {
     (void)t;
     (void)sx;
@@ -3739,11 +2984,7 @@ void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz) {
     (void)sz;
 }
 
-/// @brief Perform terrain3d get height at operation.
-/// @param t
-/// @param x
-/// @param z
-/// @return Result value.
+/// @brief Get the height at of the terrain3d.
 double rt_terrain3d_get_height_at(void *t, double x, double z) {
     (void)t;
     (void)x;
@@ -3758,9 +2999,7 @@ void *rt_terrain3d_get_normal_at(void *t, double x, double z) {
     return NULL;
 }
 
-/// @brief Perform canvas3d draw terrain operation.
-/// @param c
-/// @param t
+/// @brief Draw the terrain of the canvas3d.
 void rt_canvas3d_draw_terrain(void *c, void *t) {
     (void)c;
     (void)t;
@@ -3787,35 +3026,26 @@ void *rt_navmesh3d_sample_position(void *n, void *p) {
     return NULL;
 }
 
-/// @brief Perform navmesh3d is walkable operation.
-/// @param n
-/// @param p
-/// @return Result value.
+/// @brief Is the walkable of the navmesh3d.
 int8_t rt_navmesh3d_is_walkable(void *n, void *p) {
     (void)n;
     (void)p;
     return 0;
 }
 
-/// @brief Perform navmesh3d get triangle count operation.
-/// @param n
-/// @return Result value.
+/// @brief Return the count of elements in the navmesh3d.
 int64_t rt_navmesh3d_get_triangle_count(void *n) {
     (void)n;
     return 0;
 }
 
-/// @brief Perform navmesh3d set max slope operation.
-/// @param n
-/// @param d
+/// @brief Set the max slope of the navmesh3d.
 void rt_navmesh3d_set_max_slope(void *n, double d) {
     (void)n;
     (void)d;
 }
 
-/// @brief Perform navmesh3d debug draw operation.
-/// @param n
-/// @param c
+/// @brief Debug the draw of the navmesh3d.
 void rt_navmesh3d_debug_draw(void *n, void *c) {
     (void)n;
     (void)c;
@@ -3827,11 +3057,7 @@ void *rt_anim_blend3d_new(void *s) {
     return NULL;
 }
 
-/// @brief Perform anim blend3d add state operation.
-/// @param b
-/// @param n
-/// @param a
-/// @return Result value.
+/// @brief Blend3d the add state of the anim.
 int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a) {
     (void)b;
     (void)n;
@@ -3839,68 +3065,47 @@ int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a) {
     return -1;
 }
 
-/// @brief Perform anim blend3d set weight operation.
-/// @param b
-/// @param s
-/// @param w
+/// @brief Blend3d the set weight of the anim.
 void rt_anim_blend3d_set_weight(void *b, int64_t s, double w) {
     (void)b;
     (void)s;
     (void)w;
 }
 
-/// @brief Perform anim blend3d set weight by name operation.
-/// @param b
-/// @param n
-/// @param w
+/// @brief Blend3d the set weight by name of the anim.
 void rt_anim_blend3d_set_weight_by_name(void *b, rt_string n, double w) {
     (void)b;
     (void)n;
     (void)w;
 }
 
-/// @brief Perform anim blend3d get weight operation.
-/// @param b
-/// @param s
-/// @return Result value.
+/// @brief Blend3d the get weight of the anim.
 double rt_anim_blend3d_get_weight(void *b, int64_t s) {
     (void)b;
     (void)s;
     return 0.0;
 }
 
-/// @brief Perform anim blend3d set speed operation.
-/// @param b
-/// @param s
-/// @param sp
+/// @brief Blend3d the set speed of the anim.
 void rt_anim_blend3d_set_speed(void *b, int64_t s, double sp) {
     (void)b;
     (void)s;
     (void)sp;
 }
 
-/// @brief Perform anim blend3d update operation.
-/// @param b
-/// @param dt
+/// @brief Update the anim state (called per frame/tick).
 void rt_anim_blend3d_update(void *b, double dt) {
     (void)b;
     (void)dt;
 }
 
-/// @brief Perform anim blend3d state count operation.
-/// @param b
-/// @return Result value.
+/// @brief Return the count of elements in the anim.
 int64_t rt_anim_blend3d_state_count(void *b) {
     (void)b;
     return 0;
 }
 
-/// @brief Perform canvas3d draw mesh blended operation.
-/// @param c
-/// @param m
-/// @param t
-/// @param mt
-/// @param bl
+/// @brief Draw the mesh blended of the canvas3d.
 void rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl) {
     (void)c;
     (void)m;
@@ -3918,33 +3123,25 @@ void *rt_decal3d_new(void *p, void *n, double s, void *t) {
     return NULL;
 }
 
-/// @brief Perform decal3d set lifetime operation.
-/// @param d
-/// @param s
+/// @brief Set the lifetime of the decal3d.
 void rt_decal3d_set_lifetime(void *d, double s) {
     (void)d;
     (void)s;
 }
 
-/// @brief Perform decal3d update operation.
-/// @param d
-/// @param dt
+/// @brief Update the decal3d state (called per frame/tick).
 void rt_decal3d_update(void *d, double dt) {
     (void)d;
     (void)dt;
 }
 
-/// @brief Perform decal3d is expired operation.
-/// @param d
-/// @return Result value.
+/// @brief Is the expired of the decal3d.
 int8_t rt_decal3d_is_expired(void *d) {
     (void)d;
     return 1;
 }
 
-/// @brief Perform canvas3d draw decal operation.
-/// @param c
-/// @param d
+/// @brief Draw the decal of the canvas3d.
 void rt_canvas3d_draw_decal(void *c, void *d) {
     (void)c;
     (void)d;
@@ -3956,11 +3153,7 @@ void *rt_sprite3d_new(void *t) {
     return NULL;
 }
 
-/// @brief Perform sprite3d set position operation.
-/// @param s
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the sprite3d.
 void rt_sprite3d_set_position(void *s, double x, double y, double z) {
     (void)s;
     (void)x;
@@ -3968,32 +3161,21 @@ void rt_sprite3d_set_position(void *s, double x, double y, double z) {
     (void)z;
 }
 
-/// @brief Perform sprite3d set scale operation.
-/// @param s
-/// @param w
-/// @param h
+/// @brief Set the scale of the sprite3d.
 void rt_sprite3d_set_scale(void *s, double w, double h) {
     (void)s;
     (void)w;
     (void)h;
 }
 
-/// @brief Perform sprite3d set anchor operation.
-/// @param s
-/// @param ax
-/// @param ay
+/// @brief Set the anchor of the sprite3d.
 void rt_sprite3d_set_anchor(void *s, double ax, double ay) {
     (void)s;
     (void)ax;
     (void)ay;
 }
 
-/// @brief Perform sprite3d set frame operation.
-/// @param s
-/// @param fx
-/// @param fy
-/// @param fw
-/// @param fh
+/// @brief Set the frame of the sprite3d.
 void rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     (void)s;
     (void)fx;
@@ -4002,10 +3184,7 @@ void rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t 
     (void)fh;
 }
 
-/// @brief Perform canvas3d draw sprite3d operation.
-/// @param c
-/// @param s
-/// @param cam
+/// @brief Draw the sprite3d of the canvas3d.
 void rt_canvas3d_draw_sprite3d(void *c, void *s, void *cam) {
     (void)c;
     (void)s;
@@ -4019,19 +3198,13 @@ void *rt_water3d_new(double w, double d) {
     return NULL;
 }
 
-/// @brief Perform water3d set height operation.
-/// @param w
-/// @param y
+/// @brief Set the height of the water3d.
 void rt_water3d_set_height(void *w, double y) {
     (void)w;
     (void)y;
 }
 
-/// @brief Perform water3d set wave params operation.
-/// @param w
-/// @param s
-/// @param a
-/// @param f
+/// @brief Set the wave params of the water3d.
 void rt_water3d_set_wave_params(void *w, double s, double a, double f) {
     (void)w;
     (void)s;
@@ -4039,12 +3212,7 @@ void rt_water3d_set_wave_params(void *w, double s, double a, double f) {
     (void)f;
 }
 
-/// @brief Perform water3d set color operation.
-/// @param w
-/// @param r
-/// @param g
-/// @param b
-/// @param a
+/// @brief Set the color of the water3d.
 void rt_water3d_set_color(void *w, double r, double g, double b, double a) {
     (void)w;
     (void)r;
@@ -4053,18 +3221,13 @@ void rt_water3d_set_color(void *w, double r, double g, double b, double a) {
     (void)a;
 }
 
-/// @brief Perform water3d update operation.
-/// @param w
-/// @param dt
+/// @brief Update the water3d state (called per frame/tick).
 void rt_water3d_update(void *w, double dt) {
     (void)w;
     (void)dt;
 }
 
-/// @brief Perform canvas3d draw water operation.
-/// @param c
-/// @param w
-/// @param cam
+/// @brief Draw the water of the canvas3d.
 void rt_canvas3d_draw_water(void *c, void *w, void *cam) {
     (void)c;
     (void)w;
@@ -4072,11 +3235,7 @@ void rt_canvas3d_draw_water(void *c, void *w, void *cam) {
 }
 
 /* PostFX F5-F7 stubs */
-/// @brief Perform postfx3d add ssao operation.
-/// @param p
-/// @param r
-/// @param i
-/// @param s
+/// @brief Add the ssao of the postfx3d.
 void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s) {
     (void)p;
     (void)r;
@@ -4084,11 +3243,7 @@ void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s) {
     (void)s;
 }
 
-/// @brief Perform postfx3d add dof operation.
-/// @param p
-/// @param f
-/// @param a
-/// @param m
+/// @brief Add the dof of the postfx3d.
 void rt_postfx3d_add_dof(void *p, double f, double a, double m) {
     (void)p;
     (void)f;
@@ -4096,10 +3251,7 @@ void rt_postfx3d_add_dof(void *p, double f, double a, double m) {
     (void)m;
 }
 
-/// @brief Perform postfx3d add motion blur operation.
-/// @param p
-/// @param i
-/// @param s
+/// @brief Add the motion blur of the postfx3d.
 void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) {
     (void)p;
     (void)i;
@@ -4113,27 +3265,18 @@ int vgfx3d_postfx_get_snapshot(void *postfx, void *out) {
 }
 
 /* Occlusion culling stub (F3) */
-/// @brief Perform canvas3d set occlusion culling operation.
-/// @param c
-/// @param e
+/// @brief Set the occlusion culling of the canvas3d.
 void rt_canvas3d_set_occlusion_culling(void *c, int8_t e) {
     (void)c;
     (void)e;
 }
 
-/// @brief Perform canvas3d begin 2d operation.
-/// @param c
+/// @brief Begin the 2d of the canvas3d.
 void rt_canvas3d_begin_2d(void *c) {
     (void)c;
 }
 
-/// @brief Perform canvas3d draw rect 3d operation.
-/// @param c
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param cl
+/// @brief Draw the rect 3d of the canvas3d.
 void rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) {
     (void)c;
     (void)x;
@@ -4143,12 +3286,7 @@ void rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t 
     (void)cl;
 }
 
-/// @brief Perform canvas3d draw text 3d operation.
-/// @param c
-/// @param x
-/// @param y
-/// @param t
-/// @param cl
+/// @brief Draw the text 3d of the canvas3d.
 void rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) {
     (void)c;
     (void)x;
@@ -4164,10 +3302,7 @@ void *rt_texatlas3d_new(int64_t w, int64_t h) {
     return NULL;
 }
 
-/// @brief Perform texatlas3d add operation.
-/// @param a
-/// @param p
-/// @return Result value.
+/// @brief Add an element to the texatlas3d.
 int64_t rt_texatlas3d_add(void *a, void *p) {
     (void)a;
     (void)p;
@@ -4179,13 +3314,7 @@ void *rt_texatlas3d_get_texture(void *a) {
     return NULL;
 }
 
-/// @brief Perform texatlas3d get uv rect operation.
-/// @param a
-/// @param id
-/// @param u0
-/// @param v0
-/// @param u1
-/// @param v1
+/// @brief Get the uv rect of the texatlas3d.
 void rt_texatlas3d_get_uv_rect(
     void *a, int64_t id, double *u0, double *v0, double *u1, double *v1) {
     (void)a;

@@ -55,10 +55,7 @@ struct rt_smoothvalue_impl {
     double velocity;  ///< Current rate of change.
 };
 
-/// @brief Perform smoothvalue new operation.
-/// @param initial
-/// @param smoothing
-/// @return Result value.
+/// @brief Create a new smoothvalue object.
 rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing) {
     struct rt_smoothvalue_impl *sv = (struct rt_smoothvalue_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_smoothvalue_impl));
@@ -79,52 +76,41 @@ rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing) {
     return sv;
 }
 
-/// @brief Perform smoothvalue destroy operation.
-/// @param sv
+/// @brief Release resources and destroy the smoothvalue.
 void rt_smoothvalue_destroy(rt_smoothvalue sv) {
     if (sv && rt_obj_release_check0(sv))
         rt_obj_free(sv);
 }
 
-/// @brief Perform smoothvalue get operation.
-/// @param sv
-/// @return Result value.
+/// @brief Get a value from the smoothvalue.
 double rt_smoothvalue_get(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->current;
 }
 
-/// @brief Perform smoothvalue get i64 operation.
-/// @param sv
-/// @return Result value.
+/// @brief Return the current smoothed value rounded to the nearest integer.
 int64_t rt_smoothvalue_get_i64(rt_smoothvalue sv) {
     if (!sv)
         return 0;
     return (int64_t)(sv->current + (sv->current >= 0 ? 0.5 : -0.5));
 }
 
-/// @brief Perform smoothvalue target operation.
-/// @param sv
-/// @return Result value.
+/// @brief Get a value from the smoothvalue.
 double rt_smoothvalue_target(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->target;
 }
 
-/// @brief Perform smoothvalue set target operation.
-/// @param sv
-/// @param target
+/// @brief Get a value from the smoothvalue.
 void rt_smoothvalue_set_target(rt_smoothvalue sv, double target) {
     if (!sv)
         return;
     sv->target = target;
 }
 
-/// @brief Perform smoothvalue set immediate operation.
-/// @param sv
-/// @param value
+/// @brief Snap both current and target to a value instantly (no interpolation).
 void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
     if (!sv)
         return;
@@ -133,18 +119,14 @@ void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
     sv->velocity = 0.0;
 }
 
-/// @brief Perform smoothvalue smoothing operation.
-/// @param sv
-/// @return Result value.
+/// @brief Return the current smoothing factor.
 double rt_smoothvalue_smoothing(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->smoothing;
 }
 
-/// @brief Perform smoothvalue set smoothing operation.
-/// @param sv
-/// @param smoothing
+/// @brief Set the smoothing factor [0.0, 0.999]; higher = slower interpolation.
 void rt_smoothvalue_set_smoothing(rt_smoothvalue sv, double smoothing) {
     if (!sv)
         return;
@@ -155,8 +137,7 @@ void rt_smoothvalue_set_smoothing(rt_smoothvalue sv, double smoothing) {
     sv->smoothing = smoothing;
 }
 
-/// @brief Perform smoothvalue update operation.
-/// @param sv
+/// @brief Update the smoothvalue state (called per frame/tick).
 void rt_smoothvalue_update(rt_smoothvalue sv) {
     if (!sv)
         return;
@@ -176,27 +157,21 @@ void rt_smoothvalue_update(rt_smoothvalue sv) {
     }
 }
 
-/// @brief Perform smoothvalue at target operation.
-/// @param sv
-/// @return Result value.
+/// @brief Get a value from the smoothvalue.
 int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
     if (!sv)
         return 1;
     return fabs(sv->current - sv->target) < SMOOTH_EPSILON ? 1 : 0;
 }
 
-/// @brief Perform smoothvalue velocity operation.
-/// @param sv
-/// @return Result value.
+/// @brief Velocity the smoothvalue.
 double rt_smoothvalue_velocity(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->velocity;
 }
 
-/// @brief Perform smoothvalue impulse operation.
-/// @param sv
-/// @param impulse
+/// @brief Impulse the smoothvalue.
 void rt_smoothvalue_impulse(rt_smoothvalue sv, double impulse) {
     if (!sv)
         return;

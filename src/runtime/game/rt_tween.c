@@ -65,10 +65,7 @@ struct rt_tween_impl {
 };
 
 // Forward declaration of public easing function
-/// @brief Perform ease operation.
-/// @param t
-/// @param ease_type
-/// @return Result value.
+/// @brief Ease operation.
 double rt_tween_ease(double t, int64_t ease_type);
 
 // Forward declaration of internal easing functions
@@ -185,18 +182,14 @@ int8_t rt_tween_update(rt_tween tween) {
     return 0;
 }
 
-/// @brief Perform value operation.
-/// @param tween
-/// @return Result value.
+/// @brief Value operation.
 double rt_tween_value(rt_tween tween) {
     if (!tween)
         return 0.0;
     return tween->current;
 }
 
-/// @brief Perform value i64 operation.
-/// @param tween
-/// @return Result value.
+/// @brief I64 the value.
 int64_t rt_tween_value_i64(rt_tween tween) {
     if (!tween)
         return 0;
@@ -222,9 +215,7 @@ int8_t rt_tween_is_complete(rt_tween tween) {
     return tween->complete;
 }
 
-/// @brief Perform progress operation.
-/// @param tween
-/// @return Result value.
+/// @brief Progress operation.
 int64_t rt_tween_progress(rt_tween tween) {
     if (!tween || tween->duration == 0)
         return 0;
@@ -234,18 +225,14 @@ int64_t rt_tween_progress(rt_tween tween) {
     return progress;
 }
 
-/// @brief Perform elapsed operation.
-/// @param tween
-/// @return Result value.
+/// @brief Elapsed operation.
 int64_t rt_tween_elapsed(rt_tween tween) {
     if (!tween)
         return 0;
     return tween->elapsed;
 }
 
-/// @brief Perform duration operation.
-/// @param tween
-/// @return Result value.
+/// @brief Duration operation.
 int64_t rt_tween_duration(rt_tween tween) {
     if (!tween)
         return 0;
@@ -305,11 +292,7 @@ int8_t rt_tween_is_paused(rt_tween tween) {
 
 // Note: rt_lerp is provided by rt_math.c
 
-/// @brief Perform lerp i64 operation.
-/// @param from
-/// @param to
-/// @param t
-/// @return Result value.
+/// @brief I64 the lerp.
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
     if (t < 0.0)
         t = 0.0;
@@ -319,10 +302,7 @@ int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
     return (int64_t)(result + (result >= 0 ? 0.5 : -0.5));
 }
 
-/// @brief Perform ease operation.
-/// @param t
-/// @param ease_type
-/// @return Result value.
+/// @brief Ease operation.
 double rt_tween_ease(double t, int64_t ease_type) {
     if (t <= 0.0)
         return 0.0;

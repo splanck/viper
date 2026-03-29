@@ -134,10 +134,7 @@ void *rt_http_client_delete(void *obj, rt_string url) {
     return do_request((rt_http_client_impl *)obj, "DELETE", url, NULL);
 }
 
-/// @brief Perform client set header operation.
-/// @param obj
-/// @param name
-/// @param value
+/// @brief Add or replace a default header that is sent with every request.
 void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
@@ -145,47 +142,35 @@ void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     rt_map_set(c->default_headers, name, (void *)value);
 }
 
-/// @brief Perform client set timeout operation.
-/// @param obj
-/// @param timeout_ms
+/// @brief Set the request timeout in milliseconds for all subsequent requests.
 void rt_http_client_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
     ((rt_http_client_impl *)obj)->timeout_ms = timeout_ms;
 }
 
-/// @brief Perform client set max redirects operation.
-/// @param obj
-/// @param max
+/// @brief Set the maximum number of HTTP redirects to follow (0 = no redirects).
 void rt_http_client_set_max_redirects(void *obj, int64_t max) {
     if (!obj)
         return;
     ((rt_http_client_impl *)obj)->max_redirects = max;
 }
 
-/// @brief Perform client get follow redirects operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the client automatically follows HTTP redirects.
 int8_t rt_http_client_get_follow_redirects(void *obj) {
     if (!obj)
         return 0;
     return ((rt_http_client_impl *)obj)->follow_redirects;
 }
 
-/// @brief Perform client set follow redirects operation.
-/// @param obj
-/// @param follow
+/// @brief Enable or disable automatic following of HTTP redirects.
 void rt_http_client_set_follow_redirects(void *obj, int8_t follow) {
     if (!obj)
         return;
     ((rt_http_client_impl *)obj)->follow_redirects = follow;
 }
 
-/// @brief Perform client set cookie operation.
-/// @param obj
-/// @param domain
-/// @param name
-/// @param value
+/// @brief Store a cookie for a specific domain; sent automatically on matching requests.
 void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_string value) {
     if (!obj)
         return;

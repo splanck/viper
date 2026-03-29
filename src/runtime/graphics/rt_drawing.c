@@ -37,13 +37,7 @@ static int rt_trace_canvas_box_enabled(void) {
     return cached;
 }
 
-/// @brief Perform line operation.
-/// @param canvas_ptr
-/// @param x1
-/// @param y1
-/// @param x2
-/// @param y2
-/// @param color
+/// @brief Draw a line between two points on the canvas.
 void rt_canvas_line(
     void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
     if (!canvas_ptr)
@@ -59,13 +53,7 @@ void rt_canvas_line(
                   (vgfx_color_t)color);
 }
 
-/// @brief Perform box operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param color
+/// @brief Draw a filled rectangle on the canvas.
 void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     static int trace_count = 0;
     if (!canvas_ptr)
@@ -89,13 +77,7 @@ void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h,
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
 }
 
-/// @brief Perform frame operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param w
-/// @param h
-/// @param color
+/// @brief Draw an unfilled rectangle (outline) on the canvas.
 void rt_canvas_frame(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!canvas_ptr)
         return;
@@ -106,12 +88,7 @@ void rt_canvas_frame(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t 
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
 }
 
-/// @brief Perform disc operation.
-/// @param canvas_ptr
-/// @param cx
-/// @param cy
-/// @param radius
-/// @param color
+/// @brief Draw a filled circle on the canvas.
 void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     if (!canvas_ptr)
         return;
@@ -122,12 +99,7 @@ void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
 }
 
-/// @brief Perform ring operation.
-/// @param canvas_ptr
-/// @param cx
-/// @param cy
-/// @param radius
-/// @param color
+/// @brief Draw an unfilled circle (outline) on the canvas.
 void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     if (!canvas_ptr)
         return;
@@ -138,11 +110,7 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
 }
 
-/// @brief Perform plot operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param color
+/// @brief Draw a single pixel at the given coordinates.
 void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color) {
     if (!canvas_ptr)
         return;
@@ -153,71 +121,57 @@ void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color) {
 }
 
 // Color constants — packed 0x00RRGGBB
-/// @brief Perform red operation.
-/// @return Result value.
+/// @brief Return the predefined red color constant.
 int64_t rt_color_red(void) {
     return 0xFF0000;
 }
 
-/// @brief Perform green operation.
-/// @return Result value.
+/// @brief Return the predefined green color constant.
 int64_t rt_color_green(void) {
     return 0x00FF00;
 }
 
-/// @brief Perform blue operation.
-/// @return Result value.
+/// @brief Return the predefined blue color constant.
 int64_t rt_color_blue(void) {
     return 0x0000FF;
 }
 
-/// @brief Perform white operation.
-/// @return Result value.
+/// @brief Return the predefined white color constant.
 int64_t rt_color_white(void) {
     return 0xFFFFFF;
 }
 
-/// @brief Perform black operation.
-/// @return Result value.
+/// @brief Return the predefined black color constant.
 int64_t rt_color_black(void) {
     return 0x000000;
 }
 
-/// @brief Perform yellow operation.
-/// @return Result value.
+/// @brief Return the predefined yellow color constant.
 int64_t rt_color_yellow(void) {
     return 0xFFFF00;
 }
 
-/// @brief Perform cyan operation.
-/// @return Result value.
+/// @brief Return the predefined cyan color constant.
 int64_t rt_color_cyan(void) {
     return 0x00FFFF;
 }
 
-/// @brief Perform magenta operation.
-/// @return Result value.
+/// @brief Return the predefined magenta color constant.
 int64_t rt_color_magenta(void) {
     return 0xFF00FF;
 }
 
-/// @brief Perform gray operation.
-/// @return Result value.
+/// @brief Return the predefined gray color constant.
 int64_t rt_color_gray(void) {
     return 0x808080;
 }
 
-/// @brief Perform orange operation.
-/// @return Result value.
+/// @brief Return the predefined orange color constant.
 int64_t rt_color_orange(void) {
     return 0xFFA500;
 }
 
-/// @brief Perform rgb operation.
-/// @param r
-/// @param g
-/// @param b
-/// @return Result value.
+/// @brief Construct a color from red, green, blue components (0-255).
 int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
@@ -225,12 +179,7 @@ int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b) {
     return (int64_t)vgfx_rgb(r8, g8, b8);
 }
 
-/// @brief Perform rgba operation.
-/// @param r
-/// @param g
-/// @param b
-/// @param a
-/// @return Result value.
+/// @brief Construct a color from red, green, blue, alpha components (0-255).
 int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
@@ -244,12 +193,7 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
 // Text Rendering
 //=============================================================================
 
-/// @brief Perform text operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param text
-/// @param color
+/// @brief Draw text at the given position on the canvas.
 void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t color) {
     if (!canvas_ptr || !text)
         return;
@@ -317,17 +261,14 @@ void rt_canvas_text_bg(
     }
 }
 
-/// @brief Perform text width operation.
-/// @param text
-/// @return Result value.
+/// @brief Width the text.
 int64_t rt_canvas_text_width(rt_string text) {
     if (!text)
         return 0;
     return rt_str_len(text) * 8;
 }
 
-/// @brief Perform text height operation.
-/// @return Result value.
+/// @brief Height the text.
 int64_t rt_canvas_text_height(void) {
     return 8;
 }
@@ -409,10 +350,7 @@ void rt_canvas_text_scaled_bg(
     }
 }
 
-/// @brief Perform text scaled width operation.
-/// @param text
-/// @param scale
-/// @return Result value.
+/// @brief Scaled the width of the text.
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
     if (!text || scale < 1)
         return 0;
@@ -423,11 +361,7 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
 // Centered / Right-Aligned Text Helpers
 //=============================================================================
 
-/// @brief Perform text centered operation.
-/// @param canvas_ptr
-/// @param y
-/// @param text
-/// @param color
+/// @brief Centered the text.
 void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_t color) {
     if (!canvas_ptr || !text)
         return;
@@ -520,11 +454,7 @@ void rt_canvas_disc_alpha(
 // Pixel Blitting
 //=============================================================================
 
-/// @brief Perform blit operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param pixels_ptr
+/// @brief Copy a rectangular region from one surface to another.
 void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!canvas_ptr || !pixels_ptr)
         return;
@@ -692,11 +622,7 @@ void rt_canvas_blit_region(void *canvas_ptr,
     }
 }
 
-/// @brief Perform blit alpha operation.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @param pixels_ptr
+/// @brief Alpha the blit.
 void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!canvas_ptr || !pixels_ptr)
         return;

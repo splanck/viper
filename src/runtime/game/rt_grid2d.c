@@ -89,18 +89,13 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
     return grid;
 }
 
-/// @brief Perform grid2d destroy operation.
-/// @param grid
+/// @brief Release resources and destroy the grid2d.
 void rt_grid2d_destroy(rt_grid2d grid) {
     // Object is GC-managed; finalizer frees internal data.
     (void)grid;
 }
 
-/// @brief Perform grid2d get operation.
-/// @param grid
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Get a value from the grid2d.
 int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y) {
     if (!grid)
         return 0;
@@ -110,11 +105,7 @@ int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y) {
     return grid->data[y * grid->width + x];
 }
 
-/// @brief Perform grid2d set operation.
-/// @param grid
-/// @param x
-/// @param y
-/// @param value
+/// @brief Set a value in the grid2d.
 void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value) {
     if (!grid)
         return;
@@ -124,9 +115,7 @@ void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value) {
     grid->data[y * grid->width + x] = value;
 }
 
-/// @brief Perform grid2d fill operation.
-/// @param grid
-/// @param value
+/// @brief Fill the grid2d.
 void rt_grid2d_fill(rt_grid2d grid, int64_t value) {
     if (!grid)
         return;
@@ -137,57 +126,41 @@ void rt_grid2d_fill(rt_grid2d grid, int64_t value) {
     }
 }
 
-/// @brief Perform grid2d clear operation.
-/// @param grid
+/// @brief Remove all entries from the grid2d.
 void rt_grid2d_clear(rt_grid2d grid) {
     rt_grid2d_fill(grid, 0);
 }
 
-/// @brief Perform grid2d width operation.
-/// @param grid
-/// @return Result value.
+/// @brief Width the grid2d.
 int64_t rt_grid2d_width(rt_grid2d grid) {
     return grid ? grid->width : 0;
 }
 
-/// @brief Perform grid2d height operation.
-/// @param grid
-/// @return Result value.
+/// @brief Height the grid2d.
 int64_t rt_grid2d_height(rt_grid2d grid) {
     return grid ? grid->height : 0;
 }
 
-/// @brief Perform grid2d in bounds operation.
-/// @param grid
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Check whether (x, y) is within the grid dimensions.
 int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y) {
     if (!grid)
         return 0;
     return (x >= 0 && x < grid->width && y >= 0 && y < grid->height) ? 1 : 0;
 }
 
-/// @brief Perform grid2d size operation.
-/// @param grid
-/// @return Result value.
+/// @brief Return the total number of cells (width * height).
 int64_t rt_grid2d_size(rt_grid2d grid) {
     return grid ? grid->width * grid->height : 0;
 }
 
-/// @brief Perform grid2d is empty operation.
-/// @param grid
-/// @return Result value.
+/// @brief Check whether the grid2d has no entries.
 int8_t rt_grid2d_is_empty(rt_grid2d grid) {
     if (!grid)
         return 1;
     return (grid->width == 0 || grid->height == 0) ? 1 : 0;
 }
 
-/// @brief Perform grid2d copy from operation.
-/// @param dest
-/// @param src
-/// @return Result value.
+/// @brief Copy all cell values from another grid of the same dimensions.
 int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
     if (!dest || !src)
         return 0;
@@ -200,10 +173,7 @@ int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
     return 1;
 }
 
-/// @brief Perform grid2d count operation.
-/// @param grid
-/// @param value
-/// @return Result value.
+/// @brief Return the count of elements in the grid2d.
 int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
     if (!grid)
         return 0;
@@ -218,12 +188,7 @@ int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
     return count;
 }
 
-/// @brief Perform grid2d find operation.
-/// @param grid
-/// @param value
-/// @param out_x
-/// @param out_y
-/// @return Result value.
+/// @brief Find the grid2d.
 int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *out_y) {
     if (!grid)
         return 0;
@@ -242,11 +207,7 @@ int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *ou
     return 0;
 }
 
-/// @brief Perform grid2d replace operation.
-/// @param grid
-/// @param old_value
-/// @param new_value
-/// @return Result value.
+/// @brief Replace the grid2d.
 int64_t rt_grid2d_replace(rt_grid2d grid, int64_t old_value, int64_t new_value) {
     if (!grid)
         return 0;

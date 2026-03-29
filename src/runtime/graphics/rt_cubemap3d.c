@@ -171,17 +171,14 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 // Canvas3D skybox
 //=============================================================================
 
-/// @brief Perform canvas3d set skybox operation.
-/// @param canvas
-/// @param cubemap
+/// @brief Set the skybox of the canvas3d.
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (!canvas)
         return;
     ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
 }
 
-/// @brief Perform canvas3d clear skybox operation.
-/// @param canvas
+/// @brief Clear the skybox of the canvas3d.
 void rt_canvas3d_clear_skybox(void *canvas) {
     if (!canvas)
         return;
@@ -192,27 +189,21 @@ void rt_canvas3d_clear_skybox(void *canvas) {
 // Material3D env map + reflectivity
 //=============================================================================
 
-/// @brief Perform material3d set env map operation.
-/// @param obj
-/// @param cubemap
+/// @brief Set the env map of the material3d.
 void rt_material3d_set_env_map(void *obj, void *cubemap) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->env_map = cubemap;
 }
 
-/// @brief Perform material3d set reflectivity operation.
-/// @param obj
-/// @param r
+/// @brief Set the reflectivity of the material3d.
 void rt_material3d_set_reflectivity(void *obj, double r) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->reflectivity = r;
 }
 
-/// @brief Perform material3d get reflectivity operation.
-/// @param obj
-/// @return Result value.
+/// @brief Get the reflectivity of the material3d.
 double rt_material3d_get_reflectivity(void *obj) {
     if (!obj)
         return 0.0;

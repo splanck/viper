@@ -233,9 +233,12 @@ vaf_header;
 #pragma pack(pop)
 #endif
 
-/// @brief Check if vaf.
-/// @param path
-/// @return Result value.
+/// @brief Check whether a file begins with the .vaf magic number ("VAF1").
+/// @details Opens the file, reads the first 4 bytes, and compares against
+///          the VAF_MAGIC constant. The file is closed immediately after the
+///          read so no resources are leaked regardless of the outcome.
+/// @param path Null-terminated filesystem path to inspect.
+/// @return 1 if the file starts with the .vaf magic, 0 otherwise.
 int8_t rt_audio_is_vaf(const char *path) {
     if (!path)
         return 0;
@@ -409,10 +412,15 @@ static wav_data parse_wav(const char *path) {
 // Encode WAV -> VAF
 //=============================================================================
 
-/// @brief Perform encode vaf operation.
-/// @param input_wav_path
-/// @param output_vaf_path
-/// @return Result value.
+/// @brief Encode a PCM WAV file into the compressed .vaf (Viper Audio Format).
+/// @details Parses the input WAV (must be 16-bit PCM), writes a .vaf header
+///          with channel/sample-rate metadata, then encodes the audio data in
+///          1024-byte ADPCM blocks achieving ~4:1 compression. The output file
+///          is created atomically: on failure the partially written file is left
+///          on disk (the caller may clean up).
+/// @param input_wav_path Runtime string path to the source WAV file.
+/// @param output_vaf_path Runtime string path for the encoded .vaf output.
+/// @return 1 on success, 0 on failure (bad input, I/O error, OOM).
 int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path) {
     if (!input_wav_path || !output_vaf_path)
         return 0;
@@ -467,10 +475,13 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path) 
     return 1;
 }
 
-/// @brief Perform encode operation.
-/// @param input_path
-/// @param output_path
-/// @return Result value.
+/// @brief Public entry point for Viper.Sound.Encode; delegates to rt_audio_encode_vaf.
+/// @details Exposed to the Zia frontend as the `Sound.Encode(in, out)` method.
+///          Currently only supports WAV→VAF encoding; future formats could be
+///          dispatched based on file extension.
+/// @param input_path Runtime string path to the source audio file.
+/// @param output_path Runtime string path for the encoded output.
+/// @return 1 on success, 0 on failure.
 int8_t rt_audio_encode(rt_string input_path, rt_string output_path) {
     return rt_audio_encode_vaf(input_path, output_path);
 }

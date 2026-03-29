@@ -198,18 +198,14 @@ void *rt_frozenmap_empty(void) {
     return (void *)fm_alloc(0);
 }
 
-/// @brief Perform frozenmap len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of entries in the frozen (immutable) map.
 int64_t rt_frozenmap_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_frozenmap_impl *)obj)->count;
 }
 
-/// @brief Perform frozenmap is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the frozen map has no entries.
 int8_t rt_frozenmap_is_empty(void *obj) {
     return rt_frozenmap_len(obj) == 0 ? 1 : 0;
 }
@@ -221,10 +217,8 @@ void *rt_frozenmap_get(void *obj, rt_string key) {
     return s ? s->value : NULL;
 }
 
-/// @brief Perform frozenmap has operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key exists in the frozen map.
+/// @details Uses hash-based lookup on the immutable backing array.
 int8_t rt_frozenmap_has(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
@@ -290,10 +284,10 @@ void *rt_frozenmap_merge(void *obj, void *other) {
     return (void *)fm;
 }
 
-/// @brief Perform frozenmap equals operation.
-/// @param obj
-/// @param other
-/// @return Result value.
+/// @brief Compare two frozen maps for structural equality.
+/// @details Two frozen maps are equal when they contain the same key-value
+///          pairs. Order does not matter since the comparison checks
+///          membership in both directions.
 int8_t rt_frozenmap_equals(void *obj, void *other) {
     int64_t la = rt_frozenmap_len(obj);
     int64_t lb = rt_frozenmap_len(other);

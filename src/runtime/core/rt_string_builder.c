@@ -400,7 +400,10 @@ typedef struct {
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
-// Helper to validate and get the embedded builder
+/// @brief Extract the embedded rt_string_builder from an opaque StringBuilder object.
+/// @details The StringBuilder object stores a vptr at offset 0 followed by an
+///          inlined rt_string_builder struct. This helper validates non-null and
+///          returns a pointer to the embedded builder for use by bridge functions.
 static rt_string_builder *get_builder(void *sb) {
     if (!sb) {
         // Fail loudly on null StringBuilder
@@ -413,6 +416,9 @@ static rt_string_builder *get_builder(void *sb) {
     return &obj->builder;
 }
 
+/// @brief Return the current content length of the embedded builder in bytes.
+/// @details Exposes StringBuilder.Length to the runtime dispatch layer. Returns
+///          0 for a null receiver so callers never observe an error path.
 int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
@@ -423,6 +429,9 @@ int64_t rt_text_sb_get_length(void *sb) {
     return (int64_t)builder->len;
 }
 
+/// @brief Return the current allocated capacity of the embedded builder in bytes.
+/// @details Exposes StringBuilder.Capacity for diagnostics and tests. Capacity
+///          includes space for the null terminator.
 int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
@@ -432,6 +441,10 @@ int64_t rt_text_sb_get_capacity(void *sb) {
     return (int64_t)builder->cap;
 }
 
+/// @brief Append the bytes of a runtime string to the embedded builder.
+/// @details Reserves space for the incoming bytes, copies them directly into
+///          the buffer, and returns the receiver for fluent method chaining.
+///          Null strings are treated as empty (no bytes appended).
 void *rt_text_sb_append(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
@@ -499,6 +512,10 @@ void *rt_text_sb_append_line(void *sb, rt_string s) {
     return sb;
 }
 
+/// @brief Materialise the builder contents as a new immutable runtime string.
+/// @details Allocates an rt_string and copies the builder's current bytes into
+///          it. Zero-length content yields the canonical empty string, not NULL.
+///          The builder's state is unchanged (callers can continue appending).
 rt_string rt_text_sb_to_string(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
@@ -513,6 +530,9 @@ rt_string rt_text_sb_to_string(void *sb) {
     return rt_string_from_bytes(builder->data, builder->len);
 }
 
+/// @brief Reset the builder contents to empty while preserving capacity.
+/// @details Sets the length to zero and null-terminates the buffer so the
+///          builder can be reused without freeing and re-allocating storage.
 void rt_text_sb_clear(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)

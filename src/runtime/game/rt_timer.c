@@ -155,16 +155,12 @@ int8_t rt_timer_is_expired(rt_timer timer) {
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
 }
 
-/// @brief Perform elapsed operation.
-/// @param timer
-/// @return Result value.
+/// @brief Elapsed operation.
 int64_t rt_timer_elapsed(rt_timer timer) {
     return timer ? timer->elapsed : 0;
 }
 
-/// @brief Perform remaining operation.
-/// @param timer
-/// @return Result value.
+/// @brief Remaining operation.
 int64_t rt_timer_remaining(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
@@ -173,9 +169,7 @@ int64_t rt_timer_remaining(rt_timer timer) {
     return (remaining > 0) ? remaining : 0;
 }
 
-/// @brief Perform progress operation.
-/// @param timer
-/// @return Result value.
+/// @brief Progress operation.
 int64_t rt_timer_progress(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
@@ -184,9 +178,7 @@ int64_t rt_timer_progress(rt_timer timer) {
     return (progress > 100) ? 100 : progress;
 }
 
-/// @brief Perform duration operation.
-/// @param timer
-/// @return Result value.
+/// @brief Duration operation.
 int64_t rt_timer_duration(rt_timer timer) {
     return timer ? timer->duration : 0;
 }

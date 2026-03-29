@@ -49,8 +49,7 @@ struct rt_buttongroup_impl {
     int8_t selection_changed;            ///< Flag: selection just changed.
 };
 
-/// @brief Perform buttongroup new operation.
-/// @return Result value.
+/// @brief Create a new buttongroup object.
 rt_buttongroup rt_buttongroup_new(void) {
     struct rt_buttongroup_impl *group = rt_obj_new_i64(0, sizeof(struct rt_buttongroup_impl));
     if (!group)
@@ -63,8 +62,7 @@ rt_buttongroup rt_buttongroup_new(void) {
     return group;
 }
 
-/// @brief Perform buttongroup destroy operation.
-/// @param group
+/// @brief Release resources and destroy the buttongroup.
 void rt_buttongroup_destroy(rt_buttongroup group) {
     // Object is GC-managed via rt_obj_new_i64; no manual free needed.
     (void)group;
@@ -80,10 +78,7 @@ static int64_t find_button_index(rt_buttongroup group, int64_t button_id) {
     return -1;
 }
 
-/// @brief Perform buttongroup add operation.
-/// @param group
-/// @param button_id
-/// @return Result value.
+/// @brief Add an element to the buttongroup.
 int8_t rt_buttongroup_add(rt_buttongroup group, int64_t button_id) {
     if (!group)
         return 0;
@@ -100,10 +95,7 @@ int8_t rt_buttongroup_add(rt_buttongroup group, int64_t button_id) {
     return 1;
 }
 
-/// @brief Perform buttongroup remove operation.
-/// @param group
-/// @param button_id
-/// @return Result value.
+/// @brief Remove an entry from the buttongroup.
 int8_t rt_buttongroup_remove(rt_buttongroup group, int64_t button_id) {
     if (!group)
         return 0;
@@ -127,29 +119,21 @@ int8_t rt_buttongroup_remove(rt_buttongroup group, int64_t button_id) {
     return 1;
 }
 
-/// @brief Perform buttongroup has operation.
-/// @param group
-/// @param button_id
-/// @return Result value.
+/// @brief Check whether a key/element exists in the buttongroup.
 int8_t rt_buttongroup_has(rt_buttongroup group, int64_t button_id) {
     if (!group)
         return 0;
     return find_button_index(group, button_id) >= 0 ? 1 : 0;
 }
 
-/// @brief Perform buttongroup count operation.
-/// @param group
-/// @return Result value.
+/// @brief Return the count of elements in the buttongroup.
 int64_t rt_buttongroup_count(rt_buttongroup group) {
     if (!group)
         return 0;
     return group->count;
 }
 
-/// @brief Perform buttongroup select operation.
-/// @param group
-/// @param button_id
-/// @return Result value.
+/// @brief Select the buttongroup.
 int8_t rt_buttongroup_select(rt_buttongroup group, int64_t button_id) {
     if (!group)
         return 0;
@@ -163,8 +147,7 @@ int8_t rt_buttongroup_select(rt_buttongroup group, int64_t button_id) {
     return 1;
 }
 
-/// @brief Perform buttongroup clear selection operation.
-/// @param group
+/// @brief Deselect the currently selected button (sets selection to -1).
 void rt_buttongroup_clear_selection(rt_buttongroup group) {
     if (!group)
         return;
@@ -174,55 +157,42 @@ void rt_buttongroup_clear_selection(rt_buttongroup group) {
     }
 }
 
-/// @brief Perform buttongroup selected operation.
-/// @param group
-/// @return Result value.
+/// @brief Return the button ID of the currently selected button, or -1 if none.
 int64_t rt_buttongroup_selected(rt_buttongroup group) {
     if (!group)
         return -1;
     return group->selected;
 }
 
-/// @brief Perform buttongroup is selected operation.
-/// @param group
-/// @param button_id
-/// @return Result value.
+/// @brief Check whether a specific button ID is the currently selected one.
 int8_t rt_buttongroup_is_selected(rt_buttongroup group, int64_t button_id) {
     if (!group)
         return 0;
     return group->selected == button_id ? 1 : 0;
 }
 
-/// @brief Perform buttongroup has selection operation.
-/// @param group
-/// @return Result value.
+/// @brief Check whether any button is currently selected (selection >= 0).
 int8_t rt_buttongroup_has_selection(rt_buttongroup group) {
     if (!group)
         return 0;
     return group->selected >= 0 ? 1 : 0;
 }
 
-/// @brief Perform buttongroup selection changed operation.
-/// @param group
-/// @return Result value.
+/// @brief Check whether the selection changed since the last clear_changed_flag call.
 int8_t rt_buttongroup_selection_changed(rt_buttongroup group) {
     if (!group)
         return 0;
     return group->selection_changed;
 }
 
-/// @brief Perform buttongroup clear changed flag operation.
-/// @param group
+/// @brief Clear the changed flag of the buttongroup.
 void rt_buttongroup_clear_changed_flag(rt_buttongroup group) {
     if (!group)
         return;
     group->selection_changed = 0;
 }
 
-/// @brief Perform buttongroup get at operation.
-/// @param group
-/// @param index
-/// @return Result value.
+/// @brief Return the button ID at a given index in the group's button list.
 int64_t rt_buttongroup_get_at(rt_buttongroup group, int64_t index) {
     if (!group)
         return -1;
@@ -231,9 +201,7 @@ int64_t rt_buttongroup_get_at(rt_buttongroup group, int64_t index) {
     return group->buttons[index];
 }
 
-/// @brief Perform buttongroup select next operation.
-/// @param group
-/// @return Result value.
+/// @brief Move selection to the next button in the group, wrapping at the end.
 int64_t rt_buttongroup_select_next(rt_buttongroup group) {
     if (!group || group->count == 0)
         return -1;
@@ -252,9 +220,7 @@ int64_t rt_buttongroup_select_next(rt_buttongroup group) {
     return next_id;
 }
 
-/// @brief Perform buttongroup select prev operation.
-/// @param group
-/// @return Result value.
+/// @brief Move selection to the previous button in the group, wrapping at the start.
 int64_t rt_buttongroup_select_prev(rt_buttongroup group) {
     if (!group || group->count == 0)
         return -1;

@@ -52,9 +52,7 @@ void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t m
     return obj;
 }
 
-/// @brief Perform retry can retry operation.
-/// @param policy
-/// @return Result value.
+/// @brief Check whether another retry attempt is allowed (current < max).
 int8_t rt_retry_can_retry(void *policy) {
     if (!policy)
         return 0;
@@ -62,9 +60,10 @@ int8_t rt_retry_can_retry(void *policy) {
     return data->current_attempt < data->max_retries ? 1 : 0;
 }
 
-/// @brief Perform retry next delay operation.
-/// @param policy
-/// @return Result value.
+/// @brief Compute the delay (ms) before the next retry attempt and advance the counter.
+/// @details Applies exponential backoff with 0-25% additive jitter when exponential
+///          mode is enabled, or returns the fixed base delay otherwise. Returns -1
+///          when retries are exhausted.
 int64_t rt_retry_next_delay(void *policy) {
     if (!policy)
         return -1;
@@ -117,44 +116,35 @@ int64_t rt_retry_next_delay(void *policy) {
     return delay;
 }
 
-/// @brief Perform retry get attempt operation.
-/// @param policy
-/// @return Result value.
+/// @brief Return the number of retry attempts consumed so far.
 int64_t rt_retry_get_attempt(void *policy) {
     if (!policy)
         return 0;
     return ((rt_retry_data *)policy)->current_attempt;
 }
 
-/// @brief Perform retry get max retries operation.
-/// @param policy
-/// @return Result value.
+/// @brief Return the maximum number of retries configured for this policy.
 int64_t rt_retry_get_max_retries(void *policy) {
     if (!policy)
         return 0;
     return ((rt_retry_data *)policy)->max_retries;
 }
 
-/// @brief Perform retry reset operation.
-/// @param policy
+/// @brief Reset the attempt counter to zero so the policy can be reused.
 void rt_retry_reset(void *policy) {
     if (!policy)
         return;
     ((rt_retry_data *)policy)->current_attempt = 0;
 }
 
-/// @brief Perform retry get total attempts operation.
-/// @param policy
-/// @return Result value.
+/// @brief Return the total number of attempts made (same as get_attempt).
 int64_t rt_retry_get_total_attempts(void *policy) {
     if (!policy)
         return 0;
     return ((rt_retry_data *)policy)->current_attempt;
 }
 
-/// @brief Perform retry is exhausted operation.
-/// @param policy
-/// @return Result value.
+/// @brief Check whether all retry attempts have been used up.
 int8_t rt_retry_is_exhausted(void *policy) {
     if (!policy)
         return 1;

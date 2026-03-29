@@ -58,10 +58,12 @@ static int64_t i64_abs(int64_t x) {
 // rt_reltime_format_from
 // ---------------------------------------------------------------------------
 
-/// @brief Perform reltime format from operation.
-/// @param timestamp
-/// @param reference
-/// @return Result value.
+/// @brief Format the relative time between two timestamps as a human string.
+/// @details Computes (timestamp - reference) and picks the best unit to express
+///          the offset: "just now", "X minutes ago", "in X hours", etc.
+/// @param timestamp The target Unix timestamp (seconds).
+/// @param reference The baseline Unix timestamp to compare against.
+/// @return Newly allocated runtime string like "3 minutes ago" or "in 2 hours".
 rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference) {
     int64_t diff = timestamp - reference; // positive = future, negative = past
     int64_t abs_diff = i64_abs(diff);
@@ -112,9 +114,11 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference) {
 // rt_reltime_format
 // ---------------------------------------------------------------------------
 
-/// @brief Perform reltime format operation.
-/// @param timestamp
-/// @return Result value.
+/// @brief Format a Unix timestamp as a relative time string from now.
+/// @details Computes the difference from the current time and delegates to
+///          the seconds-based formatter.
+/// @param timestamp Unix timestamp in seconds.
+/// @return Newly allocated runtime string like "5 minutes ago".
 rt_string rt_reltime_format(int64_t timestamp) {
     return rt_reltime_format_from(timestamp, current_unix_seconds());
 }
@@ -123,9 +127,11 @@ rt_string rt_reltime_format(int64_t timestamp) {
 // rt_reltime_format_duration
 // ---------------------------------------------------------------------------
 
-/// @brief Perform reltime format duration operation.
-/// @param duration_ms
-/// @return Result value.
+/// @brief Format a millisecond duration as a human-readable relative string.
+/// @details Converts to the most appropriate unit (e.g. "2.5 seconds", "1 hour").
+///          Always uses the largest unit that produces a value >= 1.
+/// @param duration_ms Duration in milliseconds.
+/// @return Newly allocated runtime string.
 rt_string rt_reltime_format_duration(int64_t duration_ms) {
     int64_t abs_ms = i64_abs(duration_ms);
     int negative = duration_ms < 0;
@@ -176,9 +182,11 @@ rt_string rt_reltime_format_duration(int64_t duration_ms) {
 // rt_reltime_format_short
 // ---------------------------------------------------------------------------
 
-/// @brief Perform reltime format short operation.
-/// @param timestamp
-/// @return Result value.
+/// @brief Format a timestamp as a short relative time from now.
+/// @details Like rt_reltime_format but uses abbreviated forms: "3m ago", "in 2h",
+///          "just now". Suitable for compact UI displays.
+/// @param timestamp Unix timestamp in seconds.
+/// @return Newly allocated runtime string with abbreviated relative time.
 rt_string rt_reltime_format_short(int64_t timestamp) {
     int64_t now = current_unix_seconds();
     int64_t diff = timestamp - now;

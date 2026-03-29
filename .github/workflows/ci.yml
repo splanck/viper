@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ['__disabled__']
+  workflow_dispatch:
 
 jobs:
   basic-strings:
@@ -119,6 +120,28 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logs-sanitize
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/CMakeCache.txt
+
+  windows-d3d11:
+    name: windows-d3d11 focused validation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Print tool versions
+        run: cmake --version
+      - name: Configure
+        run: cmake -S . -B build -DIL_WARN_AS_ERROR=ON
+      - name: Build focused targets
+        run: cmake --build build --config Debug --target viper test_rt_canvas3d_gpu_paths test_vgfx3d_backend_utils
+      - name: Run focused tests
+        run: ctest --test-dir build -C Debug --output-on-failure -R "test_(rt_canvas3d_gpu_paths|vgfx3d_backend_utils)$"
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-windows-d3d11
           path: |
             build/Testing/Temporary/LastTest.log
             build/CMakeCache.txt

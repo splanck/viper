@@ -128,9 +128,10 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
 // Add / query
 // ---------------------------------------------------------------------------
 
-/// @brief Perform bloomfilter add operation.
-/// @param filter
-/// @param item
+/// @brief Add an element's hash to the Bloom filter.
+/// @details Sets the bits at positions determined by multiple hash functions.
+///          After adding, the element will always test positive with
+///          might_contain (no false negatives).
 void rt_bloomfilter_add(void *filter, rt_string item) {
     if (!filter || !item)
         return;
@@ -149,10 +150,9 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
     bf->item_count++;
 }
 
-/// @brief Perform bloomfilter might contain operation.
-/// @param filter
-/// @param item
-/// @return Result value.
+/// @brief Test whether an element might be in the Bloom filter.
+/// @details Returns true if all bits for the element's hashes are set.
+///          May return false positives but never false negatives.
 int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
     if (!filter || !item)
         return 0;
@@ -176,18 +176,18 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
 // Accessors
 // ---------------------------------------------------------------------------
 
-/// @brief Perform bloomfilter count operation.
-/// @param filter
-/// @return Result value.
+/// @brief Return the number of elements that have been added to the filter.
+/// @details This is an exact count of add operations, not a cardinality
+///          estimate from the bit array.
 int64_t rt_bloomfilter_count(void *filter) {
     if (!filter)
         return 0;
     return ((rt_bloomfilter_impl *)filter)->item_count;
 }
 
-/// @brief Perform bloomfilter fpr operation.
-/// @param filter
-/// @return Result value.
+/// @brief Estimate the current false positive rate of the Bloom filter.
+/// @details Computed from the number of set bits, total bits, and number
+///          of hash functions using the standard Bloom filter FPR formula.
 double rt_bloomfilter_fpr(void *filter) {
     if (!filter)
         return 0.0;
@@ -203,8 +203,8 @@ double rt_bloomfilter_fpr(void *filter) {
     return pow(1.0 - exp(-k * n / m), k);
 }
 
-/// @brief Perform bloomfilter clear operation.
-/// @param filter
+/// @brief Reset the Bloom filter by clearing all bits and the element count.
+/// @details After clearing, might_contain returns false for all inputs.
 void rt_bloomfilter_clear(void *filter) {
     if (!filter)
         return;
@@ -214,10 +214,9 @@ void rt_bloomfilter_clear(void *filter) {
     bf->item_count = 0;
 }
 
-/// @brief Perform bloomfilter merge operation.
-/// @param filter
-/// @param other
-/// @return Result value.
+/// @brief Merge another Bloom filter into this one (bitwise OR).
+/// @details Both filters must have the same size and hash count.
+///          After merging, this filter contains the union of both sets.
 int64_t rt_bloomfilter_merge(void *filter, void *other) {
     if (!filter || !other)
         return 0;

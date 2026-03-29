@@ -146,10 +146,7 @@ void rt_animstate_add_state(void *asm_,
     c->valid = 1;
 }
 
-/// @brief Perform animstate set initial operation.
-/// @param asm_
-/// @param state_id
-/// @return Result value.
+/// @brief Set the starting state and reset all transition flags to initial values.
 int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
     if (!asm_)
         return 0;
@@ -171,10 +168,7 @@ int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
 // Transitions & Update
 //=============================================================================
 
-/// @brief Perform animstate transition operation.
-/// @param asm_
-/// @param state_id
-/// @return Result value.
+/// @brief Transition to a new state, setting entered/exited flags and resetting the frame counter.
 int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
     if (!asm_)
         return 0;
@@ -197,8 +191,7 @@ int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
     return 1;
 }
 
-/// @brief Perform animstate update operation.
-/// @param asm_
+/// @brief Update the animstate state (called per frame/tick).
 void rt_animstate_update(void *asm_) {
     if (!asm_)
         return;
@@ -238,8 +231,7 @@ void rt_animstate_update(void *asm_) {
     }
 }
 
-/// @brief Perform animstate clear flags operation.
-/// @param asm_
+/// @brief Reset the just_entered and just_exited one-shot flags (call once per frame after checking).
 void rt_animstate_clear_flags(void *asm_) {
     if (!asm_)
         return;
@@ -252,58 +244,42 @@ void rt_animstate_clear_flags(void *asm_) {
 // Properties
 //=============================================================================
 
-/// @brief Perform animstate current state operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Return the ID of the currently active state.
 int64_t rt_animstate_current_state(void *asm_) {
     return asm_ ? get(asm_)->current_state : -1;
 }
 
-/// @brief Perform animstate previous state operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Return the ID of the state that was active before the last transition.
 int64_t rt_animstate_previous_state(void *asm_) {
     return asm_ ? get(asm_)->previous_state : -1;
 }
 
-/// @brief Perform animstate just entered operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Check whether the current state was entered this frame (one-shot flag).
 int8_t rt_animstate_just_entered(void *asm_) {
     return asm_ ? get(asm_)->just_entered : 0;
 }
 
-/// @brief Perform animstate just exited operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Check whether the previous state was exited this frame (one-shot flag).
 int8_t rt_animstate_just_exited(void *asm_) {
     return asm_ ? get(asm_)->just_exited : 0;
 }
 
-/// @brief Perform animstate frames in state operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Return how many frames have elapsed since entering the current state.
 int64_t rt_animstate_frames_in_state(void *asm_) {
     return asm_ ? get(asm_)->frames_in_state : 0;
 }
 
-/// @brief Perform animstate current frame operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Return the current animation frame index within the active clip.
 int64_t rt_animstate_current_frame(void *asm_) {
     return asm_ ? get(asm_)->current_frame : 0;
 }
 
-/// @brief Perform animstate is anim finished operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Check whether the current clip has reached its last frame (non-looping only).
 int8_t rt_animstate_is_anim_finished(void *asm_) {
     return asm_ ? get(asm_)->anim_finished : 0;
 }
 
-/// @brief Perform animstate progress operation.
-/// @param asm_
-/// @return Result value.
+/// @brief Progress the animstate.
 int64_t rt_animstate_progress(void *asm_) {
     if (!asm_)
         return 0;

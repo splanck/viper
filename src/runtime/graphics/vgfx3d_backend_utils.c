@@ -10,6 +10,12 @@ typedef struct {
     uint32_t *data;
 } vgfx3d_pixels_view_t;
 
+typedef struct {
+    void *vptr;
+    void *faces[6];
+    int64_t face_size;
+} vgfx3d_cubemap_view_t;
+
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               int32_t *out_w,
                               int32_t *out_h,
@@ -39,6 +45,37 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
     *out_w = w;
     *out_h = h;
     *out_rgba = rgba;
+    return 0;
+}
+
+int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
+                                     int32_t *out_face_size,
+                                     uint8_t *out_faces[6]) {
+    int32_t face_size = 0;
+    const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+
+    if (!cubemap || !out_face_size || !out_faces || cubemap->face_size <= 0 ||
+        cubemap->face_size > INT32_MAX)
+        return -1;
+
+    for (int face = 0; face < 6; face++)
+        out_faces[face] = NULL;
+
+    face_size = (int32_t)cubemap->face_size;
+    for (int face = 0; face < 6; face++) {
+        int32_t w = 0;
+        int32_t h = 0;
+        if (vgfx3d_unpack_pixels_rgba(cubemap->faces[face], &w, &h, &out_faces[face]) != 0 ||
+            w != face_size || h != face_size) {
+            for (int cleanup = 0; cleanup < 6; cleanup++) {
+                free(out_faces[cleanup]);
+                out_faces[cleanup] = NULL;
+            }
+            return -1;
+        }
+    }
+
+    *out_face_size = face_size;
     return 0;
 }
 
@@ -110,4 +147,70 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
     out_matrix[8] = c02 * inv_det;
     out_matrix[9] = c12 * inv_det;
     out_matrix[10] = c22 * inv_det;
+}
+
+int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
+    float inv[16];
+    float det;
+
+    if (!matrix || !out_matrix)
+        return -1;
+
+    inv[0] = matrix[5] * matrix[10] * matrix[15] - matrix[5] * matrix[11] * matrix[14] -
+             matrix[9] * matrix[6] * matrix[15] + matrix[9] * matrix[7] * matrix[14] +
+             matrix[13] * matrix[6] * matrix[11] - matrix[13] * matrix[7] * matrix[10];
+    inv[4] = -matrix[4] * matrix[10] * matrix[15] + matrix[4] * matrix[11] * matrix[14] +
+             matrix[8] * matrix[6] * matrix[15] - matrix[8] * matrix[7] * matrix[14] -
+             matrix[12] * matrix[6] * matrix[11] + matrix[12] * matrix[7] * matrix[10];
+    inv[8] = matrix[4] * matrix[9] * matrix[15] - matrix[4] * matrix[11] * matrix[13] -
+             matrix[8] * matrix[5] * matrix[15] + matrix[8] * matrix[7] * matrix[13] +
+             matrix[12] * matrix[5] * matrix[11] - matrix[12] * matrix[7] * matrix[9];
+    inv[12] = -matrix[4] * matrix[9] * matrix[14] + matrix[4] * matrix[10] * matrix[13] +
+              matrix[8] * matrix[5] * matrix[14] - matrix[8] * matrix[6] * matrix[13] -
+              matrix[12] * matrix[5] * matrix[10] + matrix[12] * matrix[6] * matrix[9];
+    inv[1] = -matrix[1] * matrix[10] * matrix[15] + matrix[1] * matrix[11] * matrix[14] +
+             matrix[9] * matrix[2] * matrix[15] - matrix[9] * matrix[3] * matrix[14] -
+             matrix[13] * matrix[2] * matrix[11] + matrix[13] * matrix[3] * matrix[10];
+    inv[5] = matrix[0] * matrix[10] * matrix[15] - matrix[0] * matrix[11] * matrix[14] -
+             matrix[8] * matrix[2] * matrix[15] + matrix[8] * matrix[3] * matrix[14] +
+             matrix[12] * matrix[2] * matrix[11] - matrix[12] * matrix[3] * matrix[10];
+    inv[9] = -matrix[0] * matrix[9] * matrix[15] + matrix[0] * matrix[11] * matrix[13] +
+             matrix[8] * matrix[1] * matrix[15] - matrix[8] * matrix[3] * matrix[13] -
+             matrix[12] * matrix[1] * matrix[11] + matrix[12] * matrix[3] * matrix[9];
+    inv[13] = matrix[0] * matrix[9] * matrix[14] - matrix[0] * matrix[10] * matrix[13] -
+              matrix[8] * matrix[1] * matrix[14] + matrix[8] * matrix[2] * matrix[13] +
+              matrix[12] * matrix[1] * matrix[10] - matrix[12] * matrix[2] * matrix[9];
+    inv[2] = matrix[1] * matrix[6] * matrix[15] - matrix[1] * matrix[7] * matrix[14] -
+             matrix[5] * matrix[2] * matrix[15] + matrix[5] * matrix[3] * matrix[14] +
+             matrix[13] * matrix[2] * matrix[7] - matrix[13] * matrix[3] * matrix[6];
+    inv[6] = -matrix[0] * matrix[6] * matrix[15] + matrix[0] * matrix[7] * matrix[14] +
+             matrix[4] * matrix[2] * matrix[15] - matrix[4] * matrix[3] * matrix[14] -
+             matrix[12] * matrix[2] * matrix[7] + matrix[12] * matrix[3] * matrix[6];
+    inv[10] = matrix[0] * matrix[5] * matrix[15] - matrix[0] * matrix[7] * matrix[13] -
+              matrix[4] * matrix[1] * matrix[15] + matrix[4] * matrix[3] * matrix[13] +
+              matrix[12] * matrix[1] * matrix[7] - matrix[12] * matrix[3] * matrix[5];
+    inv[14] = -matrix[0] * matrix[5] * matrix[14] + matrix[0] * matrix[6] * matrix[13] +
+              matrix[4] * matrix[1] * matrix[14] - matrix[4] * matrix[2] * matrix[13] -
+              matrix[12] * matrix[1] * matrix[6] + matrix[12] * matrix[2] * matrix[5];
+    inv[3] = -matrix[1] * matrix[6] * matrix[11] + matrix[1] * matrix[7] * matrix[10] +
+             matrix[5] * matrix[2] * matrix[11] - matrix[5] * matrix[3] * matrix[10] -
+             matrix[9] * matrix[2] * matrix[7] + matrix[9] * matrix[3] * matrix[6];
+    inv[7] = matrix[0] * matrix[6] * matrix[11] - matrix[0] * matrix[7] * matrix[10] -
+             matrix[4] * matrix[2] * matrix[11] + matrix[4] * matrix[3] * matrix[10] +
+             matrix[8] * matrix[2] * matrix[7] - matrix[8] * matrix[3] * matrix[6];
+    inv[11] = -matrix[0] * matrix[5] * matrix[11] + matrix[0] * matrix[7] * matrix[9] +
+              matrix[4] * matrix[1] * matrix[11] - matrix[4] * matrix[3] * matrix[9] -
+              matrix[8] * matrix[1] * matrix[7] + matrix[8] * matrix[3] * matrix[5];
+    inv[15] = matrix[0] * matrix[5] * matrix[10] - matrix[0] * matrix[6] * matrix[9] -
+              matrix[4] * matrix[1] * matrix[10] + matrix[4] * matrix[2] * matrix[9] +
+              matrix[8] * matrix[1] * matrix[6] - matrix[8] * matrix[2] * matrix[5];
+
+    det = matrix[0] * inv[0] + matrix[1] * inv[4] + matrix[2] * inv[8] + matrix[3] * inv[12];
+    if (fabsf(det) < 1e-12f)
+        return -1;
+
+    det = 1.0f / det;
+    for (int i = 0; i < 16; i++)
+        out_matrix[i] = inv[i] * det;
+    return 0;
 }

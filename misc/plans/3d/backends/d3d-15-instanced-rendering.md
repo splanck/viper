@@ -1,68 +1,24 @@
 # D3D-15: Hardware Instanced Rendering
 
-## Depends On
+## Status
 
-- shared `submit_draw_instanced()` hook
-- D3D-12 recommended
+Implemented through `submit_draw_instanced()` and a dedicated D3D11 instance stream.
 
-## Correction To The Earlier Plan
+## Shipped
 
-The shared instanced hook is already present in [`vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h) and already used by [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c). This plan is not about adding that hook anymore. It is about making the D3D11 backend implement it with real `DrawIndexedInstanced()` hardware instancing.
+- D3D11 now uses `DrawIndexedInstanced()` instead of replaying per-instance draws
+- the instance stream carries current model matrices, inverse-transpose normal matrices, and previous model matrices
+- instanced lighting stays correct under non-uniform scale because the backend computes per-instance normal matrices explicitly
 
-## Backend Work
+## Shared Runtime
 
-Add to `d3d11_context_t`:
+- [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) already routes batches through the backend hook and now forwards material maps plus previous-frame instance matrices correctly
 
-- persistent instance buffer
-- instance buffer capacity
-- instanced input layout
-- instanced vertex shader variant
+## Validation
 
-## Per-Instance Data
-
-This plan must not reintroduce the normal-matrix bug for instanced draws.
-
-Recommended v1 approach:
-
-- build a temporary CPU-side instance stream that contains:
-  - model matrix
-  - normal matrix
-
-That lets the D3D11 instanced shader read a correct per-instance normal transform without relying on shader-side matrix inversion.
-
-Suggested instance payload:
-
-```c
-typedef struct {
-    float model[16];
-    float normal[16];
-} d3d_instance_data_t;
-```
-
-The backend can derive `normal` internally from the provided `instance_matrices` using the same helper introduced by D3D-02, so the shared hook signature does not need to change.
-
-## Draw Path
-
-Implement `submit_draw_instanced()` using:
-
-- one mesh VB
-- one IB
-- one instance buffer
-- `DrawIndexedInstanced`
-
-Create a separate instanced input layout with per-instance data slots for:
-
-- four `float4` rows of the model matrix
-- four `float4` rows of the normal matrix
-
-Use `D3D11_INPUT_PER_INSTANCE_DATA` with step rate `1`.
+- history and instanced material payload forwarding are covered by [`src/tests/unit/test_rt_canvas3d_gpu_paths.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d_gpu_paths.cpp)
 
 ## Files
 
 - [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
-
-## Done When
-
-- one draw call renders N instances
-- per-instance transforms work
-- instanced lighting stays correct under non-uniform scale
+- [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c)

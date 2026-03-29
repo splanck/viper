@@ -97,11 +97,7 @@ void *rt_sprite3d_new(void *texture) {
     return s;
 }
 
-/// @brief Perform sprite3d set position operation.
-/// @param obj
-/// @param x
-/// @param y
-/// @param z
+/// @brief Set the position of the sprite3d.
 void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -111,10 +107,7 @@ void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     s->position[2] = z;
 }
 
-/// @brief Perform sprite3d set scale operation.
-/// @param obj
-/// @param w
-/// @param h
+/// @brief Set the scale of the sprite3d.
 void rt_sprite3d_set_scale(void *obj, double w, double h) {
     if (!obj)
         return;
@@ -123,10 +116,7 @@ void rt_sprite3d_set_scale(void *obj, double w, double h) {
     s->scale_wh[1] = h;
 }
 
-/// @brief Perform sprite3d set anchor operation.
-/// @param obj
-/// @param ax
-/// @param ay
+/// @brief Set the anchor of the sprite3d.
 void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     if (!obj)
         return;
@@ -135,12 +125,7 @@ void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     s->anchor[1] = ay;
 }
 
-/// @brief Perform sprite3d set frame operation.
-/// @param obj
-/// @param fx
-/// @param fy
-/// @param fw
-/// @param fh
+/// @brief Set the frame of the sprite3d.
 void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     if (!obj)
         return;
@@ -151,10 +136,7 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     s->frame_h = (int32_t)fh;
 }
 
-/// @brief Perform canvas3d draw sprite3d operation.
-/// @param canvas
-/// @param obj
-/// @param camera
+/// @brief Draw the sprite3d of the canvas3d.
 void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;

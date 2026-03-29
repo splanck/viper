@@ -140,17 +140,14 @@ void *rt_sortedset_new(void) {
     return set;
 }
 
-/// @brief Perform sortedset len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of elements in the sorted set.
 int64_t rt_sortedset_len(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     return set ? set->len : 0;
 }
 
-/// @brief Perform sortedset is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the sorted set is empty.
+/// @details Equivalent to checking if the sorted array has no elements.
 int8_t rt_sortedset_is_empty(void *obj) {
     return rt_sortedset_len(obj) == 0 ? 1 : 0;
 }
@@ -159,10 +156,11 @@ int8_t rt_sortedset_is_empty(void *obj) {
 // Basic Operations
 //=============================================================================
 
-/// @brief Perform sortedset add operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Insert an element into the sorted set maintaining sorted order.
+/// @details Performs a binary search to locate the insertion point, then shifts
+///          subsequent elements right to open a gap. Duplicates (where the binary
+///          search finds an exact match) are silently ignored. O(log n) search
+///          plus O(n) shift for the insertion.
 int8_t rt_sortedset_add(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -187,10 +185,10 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
     return 1;
 }
 
-/// @brief Perform sortedset remove operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Remove an element from the sorted set.
+/// @details Performs a binary search to find the element, releases its string
+///          reference, then shifts subsequent elements left to close the gap.
+///          O(log n) search plus O(n) shift for the removal.
 int8_t rt_sortedset_remove(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -214,10 +212,8 @@ int8_t rt_sortedset_remove(void *obj, rt_string str) {
     return 1;
 }
 
-/// @brief Perform sortedset has operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Check whether an element exists in the sorted set.
+/// @details Uses binary search over the sorted array for O(log n) lookup.
 int8_t rt_sortedset_has(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -228,8 +224,9 @@ int8_t rt_sortedset_has(void *obj, rt_string str) {
     return found;
 }
 
-/// @brief Perform sortedset clear operation.
-/// @param obj
+/// @brief Remove all elements from the sorted set.
+/// @details Releases all retained string references and resets the length to
+///          zero. The backing array capacity is preserved for potential reuse.
 void rt_sortedset_clear(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -245,9 +242,8 @@ void rt_sortedset_clear(void *obj) {
 // Ordered Access
 //=============================================================================
 
-/// @brief Perform sortedset first operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the smallest element in the sorted set.
+/// @details Returns data[0] since the backing array is always sorted ascending.
 rt_string rt_sortedset_first(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -255,9 +251,8 @@ rt_string rt_sortedset_first(void *obj) {
     return set->data[0];
 }
 
-/// @brief Perform sortedset last operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the largest element in the sorted set.
+/// @details Returns data[len-1] since the backing array is always sorted ascending.
 rt_string rt_sortedset_last(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -265,10 +260,10 @@ rt_string rt_sortedset_last(void *obj) {
     return set->data[set->len - 1];
 }
 
-/// @brief Perform sortedset floor operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Return the greatest element less than or equal to the given value.
+/// @details Uses binary search to find the insertion point; if an exact match
+///          exists it is returned, otherwise the element just before the
+///          insertion point is the floor.
 rt_string rt_sortedset_floor(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -284,10 +279,10 @@ rt_string rt_sortedset_floor(void *obj, rt_string str) {
     return set->data[idx - 1];
 }
 
-/// @brief Perform sortedset ceil operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Return the smallest element greater than or equal to the given value.
+/// @details Uses binary search to find the insertion point; if an exact match
+///          exists it is returned, otherwise the element at the insertion point
+///          (the first element greater than the value) is the ceiling.
 rt_string rt_sortedset_ceil(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -303,10 +298,8 @@ rt_string rt_sortedset_ceil(void *obj, rt_string str) {
     return set->data[idx];
 }
 
-/// @brief Perform sortedset lower operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Return the greatest element strictly less than the given value.
+/// @details Similar to floor but excludes exact matches.
 rt_string rt_sortedset_lower(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -326,10 +319,8 @@ rt_string rt_sortedset_lower(void *obj, rt_string str) {
     return set->data[idx];
 }
 
-/// @brief Perform sortedset higher operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Return the smallest element strictly greater than the given value.
+/// @details Similar to ceil but excludes exact matches.
 rt_string rt_sortedset_higher(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
@@ -347,10 +338,8 @@ rt_string rt_sortedset_higher(void *obj, rt_string str) {
     return set->data[idx];
 }
 
-/// @brief Perform sortedset at operation.
-/// @param obj
-/// @param index
-/// @return Result value.
+/// @brief Return the element at the given rank (0-based index in sorted order).
+/// @details Direct array access: data[index]. O(1) since the array is sorted.
 rt_string rt_sortedset_at(void *obj, int64_t index) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || index < 0 || index >= set->len)
@@ -358,10 +347,8 @@ rt_string rt_sortedset_at(void *obj, int64_t index) {
     return set->data[index];
 }
 
-/// @brief Perform sortedset index of operation.
-/// @param obj
-/// @param str
-/// @return Result value.
+/// @brief Return the 0-based rank of an element in sorted order.
+/// @details Returns -1 if the element is not in the set.
 int64_t rt_sortedset_index_of(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
@@ -523,10 +510,8 @@ void *rt_sortedset_diff(void *obj, void *other) {
     return result;
 }
 
-/// @brief Perform sortedset is subset operation.
-/// @param obj
-/// @param other
-/// @return Result value.
+/// @brief Check whether this set is a subset of another sorted set.
+/// @details Every element in this set must also be present in the other set.
 int8_t rt_sortedset_is_subset(void *obj, void *other) {
     rt_sortedset a = (rt_sortedset)obj;
     rt_sortedset b = (rt_sortedset)other;

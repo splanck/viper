@@ -172,9 +172,9 @@ void *rt_sparse_new(void) {
     return (void *)sa;
 }
 
-/// @brief Perform sparse len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of populated entries in the sparse array.
+/// @param obj Sparse array object pointer; returns 0 if NULL.
+/// @return Count of occupied slots.
 int64_t rt_sparse_len(void *obj) {
     if (!obj)
         return 0;
@@ -188,10 +188,12 @@ void *rt_sparse_get(void *obj, int64_t index) {
     return s ? s->value : NULL;
 }
 
-/// @brief Perform sparse set operation.
-/// @param obj
-/// @param index
-/// @param value
+/// @brief Set the value at a sparse index, growing the table if needed.
+/// @details Uses open addressing with linear probing. Grows the table when
+///          load factor exceeds 70% to maintain O(1) amortized access.
+/// @param obj Sparse array object pointer; no-op if NULL.
+/// @param index Sparse key to store at.
+/// @param value Value to associate with the index.
 void rt_sparse_set(void *obj, int64_t index, void *value) {
     if (!obj)
         return;
@@ -204,20 +206,23 @@ void rt_sparse_set(void *obj, int64_t index, void *value) {
     sa_insert_internal(sa, index, value);
 }
 
-/// @brief Perform sparse has operation.
-/// @param obj
-/// @param index
-/// @return Result value.
+/// @brief Check whether a value exists at the given sparse index.
+/// @param obj Sparse array object pointer; returns 0 if NULL.
+/// @param index Sparse key to look up.
+/// @return 1 if the index is occupied, 0 otherwise.
 int8_t rt_sparse_has(void *obj, int64_t index) {
     if (!obj)
         return 0;
     return sa_find((rt_sparse_impl *)obj, index) != NULL ? 1 : 0;
 }
 
-/// @brief Perform sparse remove operation.
-/// @param obj
-/// @param index
-/// @return Result value.
+/// @brief Remove the value at a sparse index, rehashing displaced neighbors.
+/// @details Uses backward-shift deletion: after clearing the slot, any
+///          subsequent occupied slots that were displaced by probing are
+///          re-inserted to maintain correct lookup behavior.
+/// @param obj Sparse array object pointer; returns 0 if NULL.
+/// @param index Sparse key to remove.
+/// @return 1 if the entry was found and removed, 0 otherwise.
 int8_t rt_sparse_remove(void *obj, int64_t index) {
     if (!obj)
         return 0;
@@ -281,8 +286,9 @@ void *rt_sparse_values(void *obj) {
     return seq;
 }
 
-/// @brief Perform sparse clear operation.
-/// @param obj
+/// @brief Remove all entries from the sparse array.
+/// @details Releases all value references and marks all slots as unoccupied.
+/// @param obj Sparse array object pointer; no-op if NULL.
 void rt_sparse_clear(void *obj) {
     if (!obj)
         return;

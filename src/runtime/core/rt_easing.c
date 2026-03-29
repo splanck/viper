@@ -38,117 +38,133 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-/// @brief Perform ease linear operation.
-/// @param t
-/// @return Result value.
+/// @brief Linear interpolation (no easing).
+/// @details Constant velocity from start to end — t is returned unchanged.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_linear(double t) {
     return t;
 }
 
-/// @brief Perform ease in quad operation.
-/// @param t
-/// @return Result value.
+/// @brief Quadratic ease-in (accelerating from zero velocity).
+/// @details Starts slow, accelerates: t^2.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_quad(double t) {
     return t * t;
 }
 
-/// @brief Perform ease out quad operation.
-/// @param t
-/// @return Result value.
+/// @brief Quadratic ease-out (decelerating to zero velocity).
+/// @details Starts fast, decelerates: 1-(1-t)^2.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_quad(double t) {
     return t * (2.0 - t);
 }
 
-/// @brief Perform ease in out quad operation.
-/// @param t
-/// @return Result value.
+/// @brief Quadratic ease-in-out (accelerate then decelerate).
+/// @details Smooth S-curve using quadratic segments.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_quad(double t) {
     return t < 0.5 ? 2.0 * t * t : -1.0 + (4.0 - 2.0 * t) * t;
 }
 
-/// @brief Perform ease in cubic operation.
-/// @param t
-/// @return Result value.
+/// @brief Cubic ease-in (accelerating from zero velocity).
+/// @details Starts slow, accelerates: t^3.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_cubic(double t) {
     return t * t * t;
 }
 
-/// @brief Perform ease out cubic operation.
-/// @param t
-/// @return Result value.
+/// @brief Cubic ease-out (decelerating to zero velocity).
+/// @details Starts fast, decelerates: 1-(1-t)^3.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_cubic(double t) {
     double u = t - 1.0;
     return u * u * u + 1.0;
 }
 
-/// @brief Perform ease in out cubic operation.
-/// @param t
-/// @return Result value.
+/// @brief Cubic ease-in-out (accelerate then decelerate).
+/// @details Smooth S-curve using cubic segments.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_cubic(double t) {
     return t < 0.5 ? 4.0 * t * t * t : (t - 1.0) * (2.0 * t - 2.0) * (2.0 * t - 2.0) + 1.0;
 }
 
-/// @brief Perform ease in quart operation.
-/// @param t
-/// @return Result value.
+/// @brief Quartic ease-in (very slow start).
+/// @details Starts very slow, accelerates: t^4.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_quart(double t) {
     return t * t * t * t;
 }
 
-/// @brief Perform ease out quart operation.
-/// @param t
-/// @return Result value.
+/// @brief Quartic ease-out (very slow end).
+/// @details Starts fast, decelerates: 1-(1-t)^4.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_quart(double t) {
     double u = t - 1.0;
     return 1.0 - u * u * u * u;
 }
 
-/// @brief Perform ease in out quart operation.
-/// @param t
-/// @return Result value.
+/// @brief Quartic ease-in-out.
+/// @details S-curve with quartic segments.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_quart(double t) {
     double u = t - 1.0;
     return t < 0.5 ? 8.0 * t * t * t * t : 1.0 - 8.0 * u * u * u * u;
 }
 
-/// @brief Perform ease in sine operation.
-/// @param t
-/// @return Result value.
+/// @brief Sinusoidal ease-in.
+/// @details Uses sin() for a natural-feeling acceleration.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_sine(double t) {
     return 1.0 - cos(t * M_PI / 2.0);
 }
 
-/// @brief Perform ease out sine operation.
-/// @param t
-/// @return Result value.
+/// @brief Sinusoidal ease-out.
+/// @details Uses sin() for a natural-feeling deceleration.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_sine(double t) {
     return sin(t * M_PI / 2.0);
 }
 
-/// @brief Perform ease in out sine operation.
-/// @param t
-/// @return Result value.
+/// @brief Sinusoidal ease-in-out.
+/// @details Uses cos() for a natural S-curve.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_sine(double t) {
     return 0.5 * (1.0 - cos(M_PI * t));
 }
 
-/// @brief Perform ease in expo operation.
-/// @param t
-/// @return Result value.
+/// @brief Exponential ease-in.
+/// @details Starts nearly invisible then explodes: 2^(10*(t-1)).
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_expo(double t) {
     return t <= 0.0 ? 0.0 : pow(2.0, 10.0 * (t - 1.0));
 }
 
-/// @brief Perform ease out expo operation.
-/// @param t
-/// @return Result value.
+/// @brief Exponential ease-out.
+/// @details Fast start that asymptotically approaches 1.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_expo(double t) {
     return t >= 1.0 ? 1.0 : 1.0 - pow(2.0, -10.0 * t);
 }
 
-/// @brief Perform ease in out expo operation.
-/// @param t
-/// @return Result value.
+/// @brief Exponential ease-in-out.
+/// @details S-curve with exponential segments.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_expo(double t) {
     if (t <= 0.0)
         return 0.0;
@@ -157,24 +173,27 @@ double rt_ease_in_out_expo(double t) {
     return t < 0.5 ? 0.5 * pow(2.0, 20.0 * t - 10.0) : 1.0 - 0.5 * pow(2.0, -20.0 * t + 10.0);
 }
 
-/// @brief Perform ease in circ operation.
-/// @param t
-/// @return Result value.
+/// @brief Circular ease-in.
+/// @details Quarter-circle acceleration curve.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_circ(double t) {
     return 1.0 - sqrt(1.0 - t * t);
 }
 
-/// @brief Perform ease out circ operation.
-/// @param t
-/// @return Result value.
+/// @brief Circular ease-out.
+/// @details Quarter-circle deceleration curve.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_circ(double t) {
     double u = t - 1.0;
     return sqrt(1.0 - u * u);
 }
 
-/// @brief Perform ease in out circ operation.
-/// @param t
-/// @return Result value.
+/// @brief Circular ease-in-out.
+/// @details Semicircular S-curve.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_circ(double t) {
     if (t < 0.5)
         return 0.5 * (1.0 - sqrt(1.0 - 4.0 * t * t));
@@ -186,24 +205,27 @@ double rt_ease_in_out_circ(double t) {
 #define BACK_C2 (BACK_C1 * 1.525)
 #define BACK_C3 (BACK_C1 + 1.0)
 
-/// @brief Perform ease in back operation.
-/// @param t
-/// @return Result value.
+/// @brief Ease-in with overshoot (pulls back first).
+/// @details Moves slightly backward before accelerating forward.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_back(double t) {
     return BACK_C3 * t * t * t - BACK_C1 * t * t;
 }
 
-/// @brief Perform ease out back operation.
-/// @param t
-/// @return Result value.
+/// @brief Ease-out with overshoot (overshoots then settles).
+/// @details Overshoots the target then returns.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_back(double t) {
     double u = t - 1.0;
     return 1.0 + BACK_C3 * u * u * u + BACK_C1 * u * u;
 }
 
-/// @brief Perform ease in out back operation.
-/// @param t
-/// @return Result value.
+/// @brief Ease-in-out with overshoot.
+/// @details Pulls back, overshoots, then settles.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_back(double t) {
     if (t < 0.5) {
         double s = 2.0 * t;
@@ -216,9 +238,10 @@ double rt_ease_in_out_back(double t) {
 #define ELASTIC_C4 (2.0 * M_PI / 3.0)
 #define ELASTIC_C5 (2.0 * M_PI / 4.5)
 
-/// @brief Perform ease in elastic operation.
-/// @param t
-/// @return Result value.
+/// @brief Elastic ease-in (rubber-band effect at start).
+/// @details Oscillating approach from the start side.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
@@ -227,9 +250,10 @@ double rt_ease_in_elastic(double t) {
     return -pow(2.0, 10.0 * t - 10.0) * sin((10.0 * t - 10.75) * ELASTIC_C4);
 }
 
-/// @brief Perform ease out elastic operation.
-/// @param t
-/// @return Result value.
+/// @brief Elastic ease-out (rubber-band effect at end).
+/// @details Oscillating settlement at the end.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
@@ -238,9 +262,10 @@ double rt_ease_out_elastic(double t) {
     return pow(2.0, -10.0 * t) * sin((10.0 * t - 0.75) * ELASTIC_C4) + 1.0;
 }
 
-/// @brief Perform ease in out elastic operation.
-/// @param t
-/// @return Result value.
+/// @brief Elastic ease-in-out.
+/// @details Oscillating S-curve with rubber-band feel.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
@@ -251,9 +276,10 @@ double rt_ease_in_out_elastic(double t) {
     return 0.5 * pow(2.0, -20.0 * t + 10.0) * sin((20.0 * t - 11.125) * ELASTIC_C5) + 1.0;
 }
 
-/// @brief Perform ease out bounce operation.
-/// @param t
-/// @return Result value.
+/// @brief Bounce ease-out (bounces at the end).
+/// @details Simulates a ball dropping and bouncing to rest.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_out_bounce(double t) {
     const double n1 = 7.5625;
     const double d1 = 2.75;
@@ -271,16 +297,18 @@ double rt_ease_out_bounce(double t) {
     return n1 * t * t + 0.984375;
 }
 
-/// @brief Perform ease in bounce operation.
-/// @param t
-/// @return Result value.
+/// @brief Bounce ease-in (bounces at the start).
+/// @details Inverted bounce: simulates bouncing away from origin.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_bounce(double t) {
     return 1.0 - rt_ease_out_bounce(1.0 - t);
 }
 
-/// @brief Perform ease in out bounce operation.
-/// @param t
-/// @return Result value.
+/// @brief Bounce ease-in-out.
+/// @details Bouncing from both sides.
+/// @param t Normalized time in [0, 1] (0=start, 1=end).
+/// @return Eased value in [0, 1] (may exceed range for overshoot/elastic).
 double rt_ease_in_out_bounce(double t) {
     return t < 0.5 ? 0.5 * (1.0 - rt_ease_out_bounce(1.0 - 2.0 * t))
                    : 0.5 * (1.0 + rt_ease_out_bounce(2.0 * t - 1.0));

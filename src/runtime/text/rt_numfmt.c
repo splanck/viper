@@ -41,10 +41,7 @@
 // rt_numfmt_decimals
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt decimals operation.
-/// @param n
-/// @param decimals
-/// @return Result value.
+/// @brief Decimals the numfmt.
 rt_string rt_numfmt_decimals(double n, int64_t decimals) {
     if (decimals < 0)
         decimals = 0;
@@ -64,10 +61,7 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals) {
 // rt_numfmt_thousands
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt thousands operation.
-/// @param n
-/// @param sep
-/// @return Result value.
+/// @brief Thousands the numfmt.
 rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
     const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
     if (!sep_cstr || *sep_cstr == '\0')
@@ -119,10 +113,7 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
 // rt_numfmt_currency
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt currency operation.
-/// @param n
-/// @param symbol
-/// @return Result value.
+/// @brief Currency the numfmt.
 rt_string rt_numfmt_currency(double n, rt_string symbol) {
     const char *sym = symbol ? rt_string_cstr(symbol) : "$";
     if (!sym)
@@ -178,9 +169,7 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 // rt_numfmt_percent
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt percent operation.
-/// @param n
-/// @return Result value.
+/// @brief Percent the numfmt.
 rt_string rt_numfmt_percent(double n) {
     double pct = n * 100.0;
     char buf[64];
@@ -206,9 +195,7 @@ rt_string rt_numfmt_percent(double n) {
 // rt_numfmt_ordinal
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt ordinal operation.
-/// @param n
-/// @return Result value.
+/// @brief Ordinal the numfmt.
 rt_string rt_numfmt_ordinal(int64_t n) {
     const char *suffix;
     int64_t abs_n = (n == INT64_MIN) ? INT64_MAX : (n < 0 ? -n : n);
@@ -276,9 +263,7 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
     *has_prev = 1;
 }
 
-/// @brief Perform numfmt to words operation.
-/// @param n
-/// @return Result value.
+/// @brief Convert an integer to its English word representation (e.g., 42 -> "forty-two").
 rt_string rt_numfmt_to_words(int64_t n) {
     if (n == 0)
         return rt_string_from_bytes("zero", 4);
@@ -328,9 +313,7 @@ rt_string rt_numfmt_to_words(int64_t n) {
 // rt_numfmt_bytes
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt bytes operation.
-/// @param bytes
-/// @return Result value.
+/// @brief Bytes the numfmt.
 rt_string rt_numfmt_bytes(int64_t bytes) {
     static const char *const units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
     double val = (double)(bytes < 0 ? -bytes : bytes);
@@ -372,10 +355,7 @@ rt_string rt_numfmt_bytes(int64_t bytes) {
 // rt_numfmt_pad
 // ---------------------------------------------------------------------------
 
-/// @brief Perform numfmt pad operation.
-/// @param n
-/// @param width
-/// @return Result value.
+/// @brief Pad the numfmt.
 rt_string rt_numfmt_pad(int64_t n, int64_t width) {
     if (width < 1)
         width = 1;

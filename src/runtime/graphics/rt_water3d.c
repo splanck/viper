@@ -84,19 +84,13 @@ void *rt_water3d_new(double width, double depth) {
     return w;
 }
 
-/// @brief Perform water3d set height operation.
-/// @param obj
-/// @param y
+/// @brief Set the height of the water3d.
 void rt_water3d_set_height(void *obj, double y) {
     if (obj)
         ((rt_water3d *)obj)->height = y;
 }
 
-/// @brief Perform water3d set wave params operation.
-/// @param obj
-/// @param speed
-/// @param amplitude
-/// @param frequency
+/// @brief Set the wave params of the water3d.
 void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency) {
     if (!obj)
         return;
@@ -106,12 +100,7 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     w->wave_frequency = frequency;
 }
 
-/// @brief Perform water3d set color operation.
-/// @param obj
-/// @param r
-/// @param g
-/// @param b
-/// @param a
+/// @brief Set the color of the water3d.
 void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     if (!obj)
         return;
@@ -122,9 +111,7 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     w->alpha = a;
 }
 
-/// @brief Perform water3d update operation.
-/// @param obj
-/// @param dt
+/// @brief Update the water3d state (called per frame/tick).
 void rt_water3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
@@ -189,10 +176,7 @@ void rt_water3d_update(void *obj, double dt) {
     rt_material3d_set_alpha(w->material, w->alpha);
 }
 
-/// @brief Perform canvas3d draw water operation.
-/// @param canvas
-/// @param obj
-/// @param camera
+/// @brief Draw the water of the canvas3d.
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj)
         return;

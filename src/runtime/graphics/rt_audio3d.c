@@ -74,9 +74,7 @@ static double lookup_voice_distance(int64_t voice) {
     return 50.0; /* default fallback */
 }
 
-/// @brief Perform audio3d set listener operation.
-/// @param position
-/// @param forward
+/// @brief Set the listener of the audio3d.
 void rt_audio3d_set_listener(void *position, void *forward) {
     if (!position || !forward)
         return;
@@ -123,12 +121,7 @@ static void compute_3d_params(
     }
 }
 
-/// @brief Perform audio3d play at operation.
-/// @param sound
-/// @param position
-/// @param max_distance
-/// @param volume
-/// @return Result value.
+/// @brief Play the at of the audio3d.
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     if (!sound || !position)
         return 0;
@@ -141,10 +134,7 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     return voice;
 }
 
-/// @brief Perform audio3d update voice operation.
-/// @param voice
-/// @param position
-/// @param max_distance
+/// @brief Update the voice of the audio3d.
 void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance) {
     if (!position || voice <= 0)
         return;

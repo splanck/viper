@@ -151,9 +151,7 @@ void *rt_ini_parse(rt_string text) {
 // Format
 // ---------------------------------------------------------------------------
 
-/// @brief Perform ini format operation.
-/// @param ini_map
-/// @return Result value.
+/// @brief Format the ini.
 rt_string rt_ini_format(void *ini_map) {
     if (!ini_map)
         return rt_string_from_bytes("", 0);
@@ -227,11 +225,7 @@ rt_string rt_ini_format(void *ini_map) {
 // Get / Set / Remove
 // ---------------------------------------------------------------------------
 
-/// @brief Perform ini get operation.
-/// @param ini_map
-/// @param section
-/// @param key
-/// @return Result value.
+/// @brief Get a value from the ini.
 rt_string rt_ini_get(void *ini_map, rt_string section, rt_string key) {
     if (!ini_map || !section || !key)
         return rt_string_from_bytes("", 0);
@@ -249,11 +243,7 @@ rt_string rt_ini_get(void *ini_map, rt_string section, rt_string key) {
     return val;
 }
 
-/// @brief Perform ini set operation.
-/// @param ini_map
-/// @param section
-/// @param key
-/// @param value
+/// @brief Set a value in the ini.
 void rt_ini_set(void *ini_map, rt_string section, rt_string key, rt_string value) {
     if (!ini_map || !section || !key)
         return;
@@ -266,10 +256,7 @@ void rt_ini_set(void *ini_map, rt_string section, rt_string key, rt_string value
     rt_map_set(sect_map, key, (void *)value);
 }
 
-/// @brief Perform ini has section operation.
-/// @param ini_map
-/// @param section
-/// @return Result value.
+/// @brief Check whether a named section exists in the parsed INI map.
 int8_t rt_ini_has_section(void *ini_map, rt_string section) {
     if (!ini_map || !section)
         return 0;
@@ -282,11 +269,7 @@ void *rt_ini_sections(void *ini_map) {
     return rt_map_keys(ini_map);
 }
 
-/// @brief Perform ini remove operation.
-/// @param ini_map
-/// @param section
-/// @param key
-/// @return Result value.
+/// @brief Remove an entry from the ini.
 int8_t rt_ini_remove(void *ini_map, rt_string section, rt_string key) {
     if (!ini_map || !section || !key)
         return 0;

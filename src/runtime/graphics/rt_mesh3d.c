@@ -127,11 +127,7 @@ void rt_mesh3d_add_vertex(
     vt->color[3] = 1.0f;
 }
 
-/// @brief Perform mesh3d add triangle operation.
-/// @param obj
-/// @param v0
-/// @param v1
-/// @param v2
+/// @brief Add the triangle of the mesh3d.
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     if (!obj)
         return;
@@ -157,26 +153,21 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     m->indices[m->index_count++] = (uint32_t)v2;
 }
 
-/// @brief Perform mesh3d get vertex count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the count of elements in the mesh3d.
 int64_t rt_mesh3d_get_vertex_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_mesh3d *)obj)->vertex_count;
 }
 
-/// @brief Perform mesh3d get triangle count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the count of elements in the mesh3d.
 int64_t rt_mesh3d_get_triangle_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
 }
 
-/// @brief Perform mesh3d recalc normals operation.
-/// @param obj
+/// @brief Recalc the normals of the mesh3d.
 void rt_mesh3d_recalc_normals(void *obj) {
     if (!obj)
         return;
@@ -272,9 +263,7 @@ void *rt_mesh3d_clone(void *obj) {
     return dst;
 }
 
-/// @brief Perform mesh3d transform operation.
-/// @param obj
-/// @param mat4_obj
+/// @brief Transform the mesh3d.
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     if (!obj || !mat4_obj)
         return;
@@ -531,8 +520,7 @@ static double obj_parse_double(const char **p) {
     return val;
 }
 
-/// @brief Perform mesh3d calc tangents operation.
-/// @param obj
+/// @brief Calc the tangents of the mesh3d.
 void rt_mesh3d_calc_tangents(void *obj) {
     if (!obj)
         return;

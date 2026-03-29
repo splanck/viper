@@ -47,6 +47,7 @@
 #include <windows.h>
 #endif
 
+/// @brief Get the argument store from the active context (or legacy fallback).
 static RtArgsState *rt_args_state(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
@@ -54,6 +55,8 @@ static RtArgsState *rt_args_state(void) {
     return ctx ? &ctx->args_state : NULL;
 }
 
+/// @brief Ensure the args array has capacity for at least @p new_size entries.
+/// @details Doubles capacity until sufficient; traps on overflow or alloc failure.
 static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
     if (!state)
         return 0;

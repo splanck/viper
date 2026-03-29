@@ -151,35 +151,30 @@ void *rt_multimap_new(void) {
     return mm;
 }
 
-/// @brief Perform multimap len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the total number of values across all keys in the multimap.
 int64_t rt_multimap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_multimap_impl *)obj)->total_count;
 }
 
-/// @brief Perform multimap key count operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of distinct keys in the multimap.
+/// @param obj Multimap object pointer; returns 0 if NULL.
+/// @return Number of unique keys.
 int64_t rt_multimap_key_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_multimap_impl *)obj)->key_count;
 }
 
-/// @brief Perform multimap is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the multimap has no entries.
 int8_t rt_multimap_is_empty(void *obj) {
     return rt_multimap_len(obj) == 0;
 }
 
-/// @brief Perform multimap put operation.
-/// @param obj
-/// @param key
-/// @param value
+/// @brief Add a value under a key in the multimap.
+/// @details Unlike a regular map, multimaps allow multiple values per key.
+///          The value is appended to the key's value list.
 void rt_multimap_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
@@ -265,10 +260,7 @@ void *rt_multimap_get_first(void *obj, rt_string key) {
     return rt_seq_get(entry->values, 0);
 }
 
-/// @brief Perform multimap has operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key exists in the multimap.
 int8_t rt_multimap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -283,10 +275,10 @@ int8_t rt_multimap_has(void *obj, rt_string key) {
     return find_entry(mm->buckets[idx], key_data, key_len) ? 1 : 0;
 }
 
-/// @brief Perform multimap count for operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Return the number of values associated with a specific key.
+/// @param obj Multimap object pointer; returns 0 if NULL.
+/// @param key Key to count values for.
+/// @return Number of values stored under the key, 0 if key not found.
 int64_t rt_multimap_count_for(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -303,10 +295,11 @@ int64_t rt_multimap_count_for(void *obj, rt_string key) {
     return entry ? rt_seq_len(entry->values) : 0;
 }
 
-/// @brief Perform multimap remove all operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Remove all values associated with a key from the multimap.
+/// @details Frees the key's entry and releases all value references in its list.
+/// @param obj Multimap object pointer; returns 0 if NULL.
+/// @param key Key whose entries should be removed.
+/// @return 1 if the key was found and removed, 0 otherwise.
 int8_t rt_multimap_remove_all(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -335,8 +328,7 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key) {
     return 0;
 }
 
-/// @brief Perform multimap clear operation.
-/// @param obj
+/// @brief Remove all entries from the multimap.
 void rt_multimap_clear(void *obj) {
     if (!obj)
         return;

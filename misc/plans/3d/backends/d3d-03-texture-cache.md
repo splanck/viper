@@ -1,76 +1,22 @@
 # D3D-03: Texture Cache + SRV Management
 
-## Depends On
+## Status
 
-- D3D-01
+Implemented in [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c).
 
-## Current State
+## Shipped
 
-Once D3D-01 lands, the backend can create textures, but doing that per draw is too expensive and would make later normal/specular/emissive/splat paths unnecessarily costly.
+- `Pixels` textures are cached by raw object identity for the duration of the frame
+- cache misses create `Texture2D + SRV` pairs once and reuse them across draws in that frame
+- overflow falls back to temporary SRVs that are released after use instead of leaking
+- all cached resources are released at frame boundaries and again at context teardown
 
-## Required Cache Behavior
+## Notes
 
-Match the current Metal strategy:
-
-- cache by raw `Pixels` pointer identity
-- invalidate the cache every frame
-- release all cached resources on context teardown
-
-This stays conservative because `Pixels` data can mutate in place and there is no version tracking yet.
-
-## Implementation
-
-Add to `d3d11_context_t`:
-
-```c
-#define D3D_TEX_CACHE_SIZE 64
-typedef struct {
-    const void *pixels_ptr;
-    ID3D11Texture2D *tex;
-    ID3D11ShaderResourceView *srv;
-} d3d_tex_cache_entry_t;
-
-d3d_tex_cache_entry_t tex_cache[D3D_TEX_CACHE_SIZE];
-int32_t tex_cache_count;
-```
-
-Add a helper:
-
-```c
-static ID3D11ShaderResourceView *d3d_get_or_create_srv(d3d11_context_t *ctx,
-                                                       const void *pixels,
-                                                       int *out_temporary);
-```
-
-Behavior:
-
-1. return cached SRV on pointer hit
-2. on miss, create texture + SRV via the D3D-01 upload helper
-3. if cache has room:
-   - store it
-   - `*out_temporary = 0`
-4. if cache is full:
-   - return an uncached temporary SRV
-   - `*out_temporary = 1`
-   - caller releases it after the draw
-
-## Frame Lifetime
-
-At the top of `d3d11_begin_frame()`:
-
-- release every cached `tex` and `srv`
-- clear `tex_cache_count`
-
-At `d3d11_destroy_ctx()`:
-
-- release any remaining cached entries
+- the same conservative lifetime model is now used for D3D11 cubemaps as part of D3D-17 and D3D-18
+- this keeps mutable runtime `Pixels` objects safe without adding version tracking
 
 ## Files
 
 - [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
-
-## Done When
-
-- repeated use of the same `Pixels` object within one frame reuses one SRV
-- cache entries are released at frame boundaries and teardown
-- cache overflow does not leak resources
+- [`misc/plans/3d/backends/d3d-17-cubemap-skybox.md`](/Users/stephen/git/viper/misc/plans/3d/backends/d3d-17-cubemap-skybox.md)

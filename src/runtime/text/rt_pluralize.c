@@ -117,9 +117,7 @@ static int is_uncountable(const char *word) {
     return 0;
 }
 
-/// @brief Perform pluralize operation.
-/// @param word
-/// @return Result value.
+/// @brief Pluralize operation.
 rt_string rt_pluralize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
@@ -228,9 +226,7 @@ rt_string rt_pluralize(rt_string word) {
     }
 }
 
-/// @brief Perform singularize operation.
-/// @param word
-/// @return Result value.
+/// @brief Singularize operation.
 rt_string rt_singularize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
@@ -303,10 +299,7 @@ rt_string rt_singularize(rt_string word) {
     return rt_string_from_bytes(src, len);
 }
 
-/// @brief Perform pluralize count operation.
-/// @param count
-/// @param word
-/// @return Result value.
+/// @brief Return the count of elements in the pluralize.
 rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);

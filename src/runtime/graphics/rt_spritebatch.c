@@ -264,8 +264,7 @@ void *rt_spritebatch_new(int64_t capacity) {
 // SpriteBatch Operations
 //=============================================================================
 
-/// @brief Perform spritebatch begin operation.
-/// @param batch_ptr
+/// @brief Begin the spritebatch.
 void rt_spritebatch_begin(void *batch_ptr) {
     if (!batch_ptr)
         return;
@@ -275,9 +274,7 @@ void rt_spritebatch_begin(void *batch_ptr) {
     batch->active = 1;
 }
 
-/// @brief Perform spritebatch end operation.
-/// @param batch_ptr
-/// @param canvas
+/// @brief End the spritebatch.
 void rt_spritebatch_end(void *batch_ptr, void *canvas) {
     if (!batch_ptr || !canvas)
         return;
@@ -345,21 +342,12 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
     batch->active = 0;
 }
 
-/// @brief Perform spritebatch draw operation.
-/// @param batch_ptr
-/// @param sprite
-/// @param x
-/// @param y
+/// @brief Draw the spritebatch.
 void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, 100, 100, 0);
 }
 
-/// @brief Perform spritebatch draw scaled operation.
-/// @param batch_ptr
-/// @param sprite
-/// @param x
-/// @param y
-/// @param scale
+/// @brief Draw the scaled of the spritebatch.
 void rt_spritebatch_draw_scaled(
     void *batch_ptr, void *sprite, int64_t x, int64_t y, int64_t scale) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
@@ -392,11 +380,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
     add_item(batch, &item);
 }
 
-/// @brief Perform spritebatch draw pixels operation.
-/// @param batch_ptr
-/// @param pixels
-/// @param x
-/// @param y
+/// @brief Draw the pixels of the spritebatch.
 void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y) {
     if (!batch_ptr || !pixels)
         return;
@@ -469,27 +453,21 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
 // SpriteBatch Properties
 //=============================================================================
 
-/// @brief Perform spritebatch count operation.
-/// @param batch_ptr
-/// @return Result value.
+/// @brief Return the count of elements in the spritebatch.
 int64_t rt_spritebatch_count(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
     return ((spritebatch_impl *)batch_ptr)->count;
 }
 
-/// @brief Perform spritebatch capacity operation.
-/// @param batch_ptr
-/// @return Result value.
+/// @brief Capacity the spritebatch.
 int64_t rt_spritebatch_capacity(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
     return ((spritebatch_impl *)batch_ptr)->capacity;
 }
 
-/// @brief Perform spritebatch is active operation.
-/// @param batch_ptr
-/// @return Result value.
+/// @brief Is the active of the spritebatch.
 int8_t rt_spritebatch_is_active(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
@@ -500,27 +478,21 @@ int8_t rt_spritebatch_is_active(void *batch_ptr) {
 // SpriteBatch Settings
 //=============================================================================
 
-/// @brief Perform spritebatch set sort by depth operation.
-/// @param batch_ptr
-/// @param enabled
+/// @brief Set the sort by depth of the spritebatch.
 void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->sort_by_depth = enabled ? 1 : 0;
 }
 
-/// @brief Perform spritebatch set tint operation.
-/// @param batch_ptr
-/// @param color
+/// @brief Set the tint of the spritebatch.
 void rt_spritebatch_set_tint(void *batch_ptr, int64_t color) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->tint_color = color;
 }
 
-/// @brief Perform spritebatch set alpha operation.
-/// @param batch_ptr
-/// @param alpha
+/// @brief Set the alpha of the spritebatch.
 void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
     if (!batch_ptr)
         return;
@@ -531,8 +503,7 @@ void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
     ((spritebatch_impl *)batch_ptr)->alpha = alpha;
 }
 
-/// @brief Perform spritebatch reset settings operation.
-/// @param batch_ptr
+/// @brief Reset the settings of the spritebatch.
 void rt_spritebatch_reset_settings(void *batch_ptr) {
     if (!batch_ptr)
         return;

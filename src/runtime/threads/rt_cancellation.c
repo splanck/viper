@@ -100,9 +100,7 @@ void *rt_cancellation_new(void) {
     return obj;
 }
 
-/// @brief Perform cancellation is cancelled operation.
-/// @param token
-/// @return Result value.
+/// @brief Check whether cancellation has been requested on this token.
 int8_t rt_cancellation_is_cancelled(void *token) {
     if (!token)
         return 0;
@@ -110,8 +108,7 @@ int8_t rt_cancellation_is_cancelled(void *token) {
     return cancel_load(data) ? 1 : 0;
 }
 
-/// @brief Perform cancellation cancel operation.
-/// @param token
+/// @brief Request cancellation on this token, propagating to all child tokens.
 void rt_cancellation_cancel(void *token) {
     if (!token)
         return;
@@ -119,8 +116,7 @@ void rt_cancellation_cancel(void *token) {
     cancel_store(data, 1);
 }
 
-/// @brief Perform cancellation reset operation.
-/// @param token
+/// @brief Set a value in the cancellation.
 void rt_cancellation_reset(void *token) {
     if (!token)
         return;
@@ -139,9 +135,7 @@ void *rt_cancellation_linked(void *parent) {
     return obj;
 }
 
-/// @brief Perform cancellation check operation.
-/// @param token
-/// @return Result value.
+/// @brief Check the cancellation.
 int8_t rt_cancellation_check(void *token) {
     if (!token)
         return 0;
@@ -153,8 +147,7 @@ int8_t rt_cancellation_check(void *token) {
     return 0;
 }
 
-/// @brief Perform cancellation throw if cancelled operation.
-/// @param token
+/// @brief Throw the if cancelled of the cancellation.
 void rt_cancellation_throw_if_cancelled(void *token) {
     if (rt_cancellation_check(token))
         rt_trap("OperationCancelledException: cancellation was requested");

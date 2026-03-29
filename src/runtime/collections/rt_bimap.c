@@ -231,26 +231,22 @@ void *rt_bimap_new(void) {
     return bm;
 }
 
-/// @brief Perform bimap len operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the number of entries in the bidirectional map.
 int64_t rt_bimap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_bimap_impl *)obj)->count;
 }
 
-/// @brief Perform bimap is empty operation.
-/// @param obj
-/// @return Result value.
+/// @brief Check whether the bidirectional map is empty.
 int8_t rt_bimap_is_empty(void *obj) {
     return rt_bimap_len(obj) == 0 ? 1 : 0;
 }
 
-/// @brief Perform bimap put operation.
-/// @param obj
-/// @param key
-/// @param value
+/// @brief Insert a key-value pair with bidirectional lookup support.
+/// @details Maintains two parallel hash tables so both key→value and
+///          value→key lookups are O(1). If either the key or value already
+///          exists, the conflicting entries are removed first.
 void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     if (!obj)
         return;
@@ -303,10 +299,8 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     bm->count++;
 }
 
-/// @brief Perform bimap get by key operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Look up a value by its associated key.
+/// @details Returns NULL if the key is not present in the map.
 rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -324,10 +318,8 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
     return rt_string_from_bytes(e->value, e->value_len);
 }
 
-/// @brief Perform bimap get by value operation.
-/// @param obj
-/// @param value
-/// @return Result value.
+/// @brief Look up a key by its associated value (reverse lookup).
+/// @details Returns NULL if the value is not present in the reverse index.
 rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -345,10 +337,7 @@ rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
     return rt_string_from_bytes(l->entry->key, l->entry->key_len);
 }
 
-/// @brief Perform bimap has key operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Check whether a key exists in the bidirectional map.
 int8_t rt_bimap_has_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -362,10 +351,7 @@ int8_t rt_bimap_has_key(void *obj, rt_string key) {
     return find_fwd(bm->fwd_buckets[idx], kdata, klen) ? 1 : 0;
 }
 
-/// @brief Perform bimap has value operation.
-/// @param obj
-/// @param value
-/// @return Result value.
+/// @brief Check whether a value exists in the reverse index.
 int8_t rt_bimap_has_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
@@ -379,10 +365,8 @@ int8_t rt_bimap_has_value(void *obj, rt_string value) {
     return find_inv(bm->inv_chains[idx], vdata, vlen) ? 1 : 0;
 }
 
-/// @brief Perform bimap remove by key operation.
-/// @param obj
-/// @param key
-/// @return Result value.
+/// @brief Remove an entry by its key, also removing the reverse mapping.
+/// @details Both the key and value references are released.
 int8_t rt_bimap_remove_by_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -411,10 +395,8 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key) {
     return 0;
 }
 
-/// @brief Perform bimap remove by value operation.
-/// @param obj
-/// @param value
-/// @return Result value.
+/// @brief Remove an entry by its value, also removing the forward mapping.
+/// @details Both the key and value references are released.
 int8_t rt_bimap_remove_by_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
@@ -485,8 +467,8 @@ void *rt_bimap_values(void *obj) {
     return seq;
 }
 
-/// @brief Perform bimap clear operation.
-/// @param obj
+/// @brief Remove all entries from both forward and reverse tables.
+/// @details Releases all retained references and resets both tables.
 void rt_bimap_clear(void *obj) {
     if (!obj)
         return;

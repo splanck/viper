@@ -82,7 +82,6 @@ ZIA_DEMOS=(
     "sqldb:${APPS_DIR}/sqldb"
     "chess-zia:${GAMES_DIR}/chess"
     "sidescroller:${GAMES_DIR}/sidescroller"
-    "platformer:${GAMES_DIR}/platformer"
 )
 
 build_demo() {

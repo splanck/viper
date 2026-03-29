@@ -1,61 +1,20 @@
 # D3D-08: Specular + Emissive Map Sampling
 
-## Depends On
+## Status
 
-- D3D-01
-- D3D-03
+Implemented in the D3D11 material constant buffer and texture binding path.
 
-## Current State
+## Shipped
 
-The D3D11 backend only supports uniform specular and emissive terms. Texture-driven modulation is missing.
+- specular maps bind at `t2` and modulate specular color per texel
+- emissive maps bind at `t3` and add emissive contribution after direct lighting
+- material flags are derived from the SRVs actually bound for the draw, which avoids stale-state mismatches
 
-## HLSL Changes
+## Shared Runtime Note
 
-Add:
-
-```hlsl
-Texture2D specularTex : register(t2);
-Texture2D emissiveTex : register(t3);
-```
-
-Extend the material cbuffer with:
-
-- `hasSpecularMap`
-- `hasEmissiveMap`
-
-Specular setup:
-
-```hlsl
-float3 specColor = specularColor.rgb;
-float shine = specularColor.w;
-if (hasSpecularMap) {
-    specColor *= specularTex.Sample(texSampler, input.uv).rgb;
-}
-```
-
-Emissive setup:
-
-```hlsl
-float3 emissive = emissiveColor.rgb;
-if (hasEmissiveMap) {
-    emissive *= emissiveTex.Sample(texSampler, input.uv).rgb;
-}
-result += emissive;
-```
-
-Keep shininess uniform-driven in v1.
-
-## C-Side Binding
-
-- bind specular map at `t2`
-- bind emissive map at `t3`
-- clear those SRV slots when the maps are absent
+- instanced material forwarding in [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) now passes specular color, emissive maps, and alpha correctly to the backend
 
 ## Files
 
 - [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
-
-## Done When
-
-- specular highlights can be masked or tinted per texel
-- emissive maps add light independent of scene lighting
+- [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c)

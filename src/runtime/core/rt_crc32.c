@@ -45,6 +45,13 @@ static uint32_t crc32_table[256];
 ///          populated table. Matches the pattern in rt_context.c.
 static int crc32_init_state = 0;
 
+/// @brief Build the CRC32 lookup table (thread-safe, exactly-once).
+/// @details Uses double-checked locking with atomic CAS: the first thread to
+///          observe state=0 transitions to state=1, populates the 256-entry
+///          table by computing the CRC of each possible byte value through 8
+///          rounds of the IEEE polynomial, then transitions to state=2.
+///          Concurrent callers spin until the table is ready. After init, the
+///          table is read-only and subsequent calls return immediately.
 void rt_crc32_init(void) {
     if (__atomic_load_n(&crc32_init_state, __ATOMIC_ACQUIRE) == 2)
         return;
@@ -72,6 +79,16 @@ void rt_crc32_init(void) {
     }
 }
 
+/// @brief Compute the CRC32 checksum of a byte buffer.
+/// @details Lazily initializes the lookup table on first call, then processes
+///          each byte through the table-driven algorithm. The initial CRC is
+///          pre-conditioned to 0xFFFFFFFF and post-conditioned by XOR with
+///          0xFFFFFFFF (the IEEE 802.3 standard "complement" convention). This
+///          ensures that leading/trailing zeros affect the checksum — without
+///          the conditioning, prepending zero bytes would not change the output.
+/// @param data Pointer to the input buffer (may be NULL when len is 0).
+/// @param len Number of bytes to checksum.
+/// @return 32-bit CRC matching zlib crc32() output for the same input.
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len) {
     rt_crc32_init();
 

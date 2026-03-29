@@ -177,9 +177,7 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     return tcp;
 }
 
-/// @brief Perform connpool release operation.
-/// @param obj
-/// @param conn
+/// @brief Release the connpool.
 void rt_connpool_release(void *obj, void *conn) {
     if (!obj || !conn)
         return;
@@ -225,8 +223,7 @@ void rt_connpool_release(void *obj, void *conn) {
     rt_tcp_close(conn);
 }
 
-/// @brief Perform connpool clear operation.
-/// @param obj
+/// @brief Remove all entries from the connpool.
 void rt_connpool_clear(void *obj) {
     if (!obj)
         return;
@@ -239,9 +236,7 @@ void rt_connpool_clear(void *obj) {
     POOL_MUTEX_UNLOCK(&pool->lock);
 }
 
-/// @brief Perform connpool size operation.
-/// @param obj
-/// @return Result value.
+/// @brief Return the size of the connpool.
 int64_t rt_connpool_size(void *obj) {
     if (!obj)
         return 0;
@@ -253,9 +248,7 @@ int64_t rt_connpool_size(void *obj) {
     return n;
 }
 
-/// @brief Perform connpool available operation.
-/// @param obj
-/// @return Result value.
+/// @brief Available the connpool.
 int64_t rt_connpool_available(void *obj) {
     if (!obj)
         return 0;

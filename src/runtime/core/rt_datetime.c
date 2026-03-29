@@ -736,6 +736,13 @@ static int dt_parse_digits(const char *s, int n, const char **end) {
     return val;
 }
 
+/// @brief Parse an ISO 8601 datetime string to a Unix timestamp.
+/// @details Accepts "YYYY-MM-DDTHH:MM:SS" with optional 'Z' suffix for UTC.
+///          Without 'Z', the time is interpreted as local. The 'T' separator
+///          can also be a space. Returns 0 on parse failure — callers cannot
+///          distinguish a failure from the actual epoch timestamp (rare edge case).
+/// @param s Runtime string containing the ISO datetime.
+/// @return Unix timestamp in seconds, or 0 on parse failure.
 int64_t rt_datetime_parse_iso(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
@@ -818,6 +825,11 @@ int64_t rt_datetime_parse_iso(rt_string s) {
     }
 }
 
+/// @brief Parse a date-only string (YYYY-MM-DD) to a Unix timestamp at midnight.
+/// @details Interprets the date as local midnight (00:00:00) and converts via
+///          mktime. Returns 0 on parse failure.
+/// @param s Runtime string containing the date in ISO format.
+/// @return Unix timestamp at midnight on the given date, or 0 on failure.
 int64_t rt_datetime_parse_date(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
@@ -854,6 +866,12 @@ int64_t rt_datetime_parse_date(rt_string s) {
     return (int64_t)t;
 }
 
+/// @brief Parse a time string (HH:MM or HH:MM:SS) to seconds since midnight.
+/// @details Accepts 24-hour format with optional seconds. Validates ranges
+///          (hour 0-23, minute 0-59, second 0-59). Returns -1 on any parse
+///          error, allowing callers to distinguish "midnight" (0) from failure.
+/// @param s Runtime string containing the time text.
+/// @return Seconds since midnight (0-86399), or -1 on parse failure.
 int64_t rt_datetime_parse_time(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
@@ -887,6 +905,13 @@ int64_t rt_datetime_parse_time(rt_string s) {
     return (int64_t)(hour * 3600 + minute * 60 + second);
 }
 
+/// @brief Attempt to parse a datetime string in any supported format.
+/// @details Tries formats in order of specificity: ISO 8601 (YYYY-MM-DDTHH:MM:SS),
+///          date-only (YYYY-MM-DD), then time-only (HH:MM or HH:MM:SS). Returns
+///          the first successful parse. This is the most forgiving entry point
+///          for user-supplied date strings.
+/// @param s Runtime string to parse.
+/// @return Unix timestamp on success, or 0 on parse failure.
 int64_t rt_datetime_try_parse(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str || *str == '\0')
