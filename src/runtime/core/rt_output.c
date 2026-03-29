@@ -58,6 +58,9 @@ static int g_output_init_state = 0;
 /// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
 
+/// @brief Initialize stdout buffering (idempotent, thread-safe).
+/// @details Switches stdout to full buffering with a 16KB static buffer.
+///          Uses double-checked locking so concurrent callers are safe.
 void rt_output_init(void) {
     if (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) == 2)
         return;
@@ -79,26 +82,34 @@ void rt_output_init(void) {
     }
 }
 
+/// @brief Write a null-terminated string to stdout without flushing.
 void rt_output_str(const char *s) {
     if (!s)
         return;
     fputs(s, stdout);
 }
 
+/// @brief Write exactly @p len bytes from @p s to stdout without flushing.
 void rt_output_strn(const char *s, size_t len) {
     if (!s || len == 0)
         return;
     fwrite(s, 1, len, stdout);
 }
 
+/// @brief Flush the stdout buffer immediately.
 void rt_output_flush(void) {
     fflush(stdout);
 }
 
+/// @brief Enter batch mode — defer all flushes until the matching end_batch.
+/// @details Increments a reference counter. Nested calls are supported.
 void rt_output_begin_batch(void) {
     __atomic_fetch_add(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
 }
 
+/// @brief Exit batch mode — flush stdout when the outermost batch ends.
+/// @details Decrements the reference counter. Only the outermost end triggers
+///          a flush. Unbalanced end calls (without matching begin) are no-ops.
 void rt_output_end_batch(void) {
     // Guard against unbalanced end without begin
     int cur = __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE);
@@ -111,10 +122,14 @@ void rt_output_end_batch(void) {
     }
 }
 
+/// @brief Return non-zero if batch mode is currently active.
 int8_t rt_output_is_batch_mode(void) {
     return __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) > 0;
 }
 
+/// @brief Flush stdout only if not in batch mode.
+/// @details Used by PRINT/SAY functions that want immediate output when running
+///          interactively but deferred output during canvas rendering loops.
 void rt_output_flush_if_not_batch(void) {
     if (__atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) == 0) {
         fflush(stdout);
