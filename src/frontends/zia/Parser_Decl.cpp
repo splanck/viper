@@ -262,6 +262,9 @@ DeclPtr Parser::parseDeclaration() {
     if (check(TokenKind::KwNamespace)) {
         return parseNamespaceDecl();
     }
+    if (check(TokenKind::KwType)) {
+        return parseTypeAlias();
+    }
     // Module-level variable declarations (global variables)
     if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
         return parseGlobalVarDecl();
@@ -325,6 +328,18 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
         func->body = parseBlock();
         if (!func->body)
             return nullptr;
+    } else if (match(TokenKind::Equal)) {
+        // Single-expression function: func f(x: T) -> R = expr;
+        SourceLoc exprLoc = peek().loc;
+        ExprPtr bodyExpr = parseExpression();
+        if (!bodyExpr)
+            return nullptr;
+        if (!expect(TokenKind::Semicolon, "';'"))
+            return nullptr;
+        auto returnStmt = std::make_unique<ReturnStmt>(exprLoc, std::move(bodyExpr));
+        std::vector<StmtPtr> stmts;
+        stmts.push_back(std::move(returnStmt));
+        func->body = std::make_unique<BlockStmt>(exprLoc, std::move(stmts));
     } else {
         error("expected function body");
         return nullptr;
@@ -713,6 +728,29 @@ DeclPtr Parser::parseInterfaceDecl() {
 
 /// @brief Parse a namespace declaration (namespace Foo.Bar { declarations... }).
 /// @return The parsed NamespaceDecl, or nullptr on error.
+DeclPtr Parser::parseTypeAlias() {
+    SourceLoc loc = peek().loc;
+    advance(); // consume 'type'
+
+    if (!check(TokenKind::Identifier)) {
+        error("expected type alias name");
+        return nullptr;
+    }
+    std::string name = advance().text;
+
+    if (!expect(TokenKind::Equal, "'='"))
+        return nullptr;
+
+    TypePtr target = parseType();
+    if (!target)
+        return nullptr;
+
+    if (!expect(TokenKind::Semicolon, "';'"))
+        return nullptr;
+
+    return std::make_unique<TypeAliasDecl>(loc, std::move(name), std::move(target));
+}
+
 DeclPtr Parser::parseNamespaceDecl() {
     if (++stmtDepth_ > kMaxStmtDepth) {
         --stmtDepth_;
@@ -911,6 +949,19 @@ DeclPtr Parser::parseMethodDecl() {
     // Body
     if (check(TokenKind::LBrace)) {
         method->body = parseBlock();
+    } else if (check(TokenKind::Equal)) {
+        // Single-expression method: func f(x: T) -> R = expr;
+        advance();
+        SourceLoc exprLoc = peek().loc;
+        ExprPtr bodyExpr = parseExpression();
+        if (!bodyExpr)
+            return nullptr;
+        if (!expect(TokenKind::Semicolon, "';'"))
+            return nullptr;
+        auto returnStmt = std::make_unique<ReturnStmt>(exprLoc, std::move(bodyExpr));
+        std::vector<StmtPtr> stmts;
+        stmts.push_back(std::move(returnStmt));
+        method->body = std::make_unique<BlockStmt>(exprLoc, std::move(stmts));
     } else {
         // No body - interface method signature
         if (!expect(TokenKind::Semicolon, ";"))

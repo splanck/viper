@@ -137,6 +137,8 @@ const char *tokenKindToString(TokenKind kind) {
             return "continue";
         case TokenKind::KwTry:
             return "try";
+        case TokenKind::KwType:
+            return "type";
         case TokenKind::KwCatch:
             return "catch";
         case TokenKind::KwFinally:
@@ -195,6 +197,20 @@ const char *tokenKindToString(TokenKind kind) {
             return "^";
         case TokenKind::Tilde:
             return "~";
+        case TokenKind::ShiftLeft:
+            return "<<";
+        case TokenKind::ShiftRight:
+            return ">>";
+        case TokenKind::ShiftLeftEqual:
+            return "<<=";
+        case TokenKind::ShiftRightEqual:
+            return ">>=";
+        case TokenKind::AmpersandEqual:
+            return "&=";
+        case TokenKind::PipeEqual:
+            return "|=";
+        case TokenKind::CaretEqual:
+            return "^=";
         case TokenKind::Bang:
             return "!";
         case TokenKind::Equal:
@@ -273,7 +289,7 @@ struct KeywordEntry {
 };
 
 // Sorted for binary search (48 keywords)
-constexpr std::array<KeywordEntry, 48> kKeywordTable = {{
+constexpr std::array<KeywordEntry, 49> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"async", TokenKind::KwAsync},
@@ -319,6 +335,7 @@ constexpr std::array<KeywordEntry, 48> kKeywordTable = {{
     {"throw", TokenKind::KwThrow},
     {"true", TokenKind::KwTrue},
     {"try", TokenKind::KwTry},
+    {"type", TokenKind::KwType},
     {"var", TokenKind::KwVar},
     {"weak", TokenKind::KwWeak},
     {"while", TokenKind::KwWhile},
@@ -986,6 +1003,10 @@ Token Lexer::next() {
                 getChar();
                 tok.kind = TokenKind::AmpAmp;
                 tok.text = "&&";
+            } else if (peekChar() == '=') {
+                getChar();
+                tok.kind = TokenKind::AmpersandEqual;
+                tok.text = "&=";
             } else {
                 tok.kind = TokenKind::Ampersand;
                 tok.text = "&";
@@ -998,6 +1019,10 @@ Token Lexer::next() {
                 getChar();
                 tok.kind = TokenKind::PipePipe;
                 tok.text = "||";
+            } else if (peekChar() == '=') {
+                getChar();
+                tok.kind = TokenKind::PipeEqual;
+                tok.text = "|=";
             } else {
                 tok.kind = TokenKind::Pipe;
                 tok.text = "|";
@@ -1005,9 +1030,15 @@ Token Lexer::next() {
             break;
 
         case '^':
-            tok.kind = TokenKind::Caret;
-            tok.text = "^";
             getChar();
+            if (peekChar() == '=') {
+                getChar();
+                tok.kind = TokenKind::CaretEqual;
+                tok.text = "^=";
+            } else {
+                tok.kind = TokenKind::Caret;
+                tok.text = "^";
+            }
             break;
 
         case '~':
@@ -1046,7 +1077,17 @@ Token Lexer::next() {
 
         case '<':
             getChar();
-            if (peekChar() == '=') {
+            if (peekChar() == '<') {
+                getChar();
+                if (peekChar() == '=') {
+                    getChar();
+                    tok.kind = TokenKind::ShiftLeftEqual;
+                    tok.text = "<<=";
+                } else {
+                    tok.kind = TokenKind::ShiftLeft;
+                    tok.text = "<<";
+                }
+            } else if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::LessEqual;
                 tok.text = "<=";
@@ -1058,7 +1099,17 @@ Token Lexer::next() {
 
         case '>':
             getChar();
-            if (peekChar() == '=') {
+            if (peekChar() == '>') {
+                getChar();
+                if (peekChar() == '=') {
+                    getChar();
+                    tok.kind = TokenKind::ShiftRightEqual;
+                    tok.text = ">>=";
+                } else {
+                    tok.kind = TokenKind::ShiftRight;
+                    tok.text = ">>";
+                }
+            } else if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::GreaterEqual;
                 tok.text = ">=";

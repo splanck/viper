@@ -426,6 +426,8 @@ enum class BinaryOp {
     BitAnd, ///< Bitwise AND: `a & b`
     BitOr,  ///< Bitwise OR: `a | b`
     BitXor, ///< Bitwise XOR: `a ^ b`
+    Shl,    ///< Left shift: `a << b`
+    Shr,    ///< Right shift: `a >> b`
 
     // Assignment
     Assign, ///< Assignment: `a = b`

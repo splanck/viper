@@ -21,6 +21,8 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
+#include <functional>
+
 namespace il::frontends::zia {
 
 using namespace runtime;
@@ -385,22 +387,64 @@ LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    int targetClassId = it->second.classId;
+    // Collect the target class ID and all descendant class IDs.
+    // `obj is T` should return true when obj's runtime type is T or any
+    // subclass of T (standard OOP semantics).
+    std::vector<int64_t> matchIds;
+    std::function<void(const std::string &)> collectDescendants =
+        [&](const std::string &name) {
+            auto cit = classTypes_.find(name);
+            if (cit == classTypes_.end())
+                return;
+            matchIds.push_back(static_cast<int64_t>(cit->second.classId));
+            for (const auto &[className, info] : classTypes_) {
+                if (info.baseClass == name)
+                    collectDescendants(className);
+            }
+        };
+    collectDescendants(targetName);
 
     // Emit: classId = call rt_obj_class_id(source)
     Value classId = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {source.value});
 
-    // Emit: result = icmp_eq classId, targetClassId
-    unsigned cmpId = nextTempId();
-    il::core::Instr cmpInstr;
-    cmpInstr.result = cmpId;
-    cmpInstr.op = Opcode::ICmpEq;
-    cmpInstr.type = Type(Type::Kind::I64);
-    cmpInstr.operands = {classId, Value::constInt(static_cast<int64_t>(targetClassId))};
-    cmpInstr.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(cmpInstr);
+    if (matchIds.size() == 1) {
+        // Common case: no subclasses — single comparison
+        unsigned cmpId = nextTempId();
+        il::core::Instr cmpInstr;
+        cmpInstr.result = cmpId;
+        cmpInstr.op = Opcode::ICmpEq;
+        cmpInstr.type = Type(Type::Kind::I1);
+        cmpInstr.operands = {classId, Value::constInt(matchIds[0])};
+        cmpInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(cmpInstr);
+        return {Value::temp(cmpId), Type(Type::Kind::I1)};
+    }
 
-    return {Value::temp(cmpId), Type(Type::Kind::I64)};
+    // Multiple classes: emit OR chain of comparisons on i1 values.
+    // Zext each i1 comparison to i64, OR them, then trunc back to i1.
+    Value accum;
+    for (size_t i = 0; i < matchIds.size(); ++i) {
+        unsigned cmpId = nextTempId();
+        il::core::Instr cmpInstr;
+        cmpInstr.result = cmpId;
+        cmpInstr.op = Opcode::ICmpEq;
+        cmpInstr.type = Type(Type::Kind::I1);
+        cmpInstr.operands = {classId, Value::constInt(matchIds[i])};
+        cmpInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(cmpInstr);
+
+        // Zext i1 → i64 for the OR chain
+        Value ext = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), Value::temp(cmpId));
+
+        if (i == 0) {
+            accum = ext;
+        } else {
+            accum = emitBinary(Opcode::Or, Type(Type::Kind::I64), accum, ext);
+        }
+    }
+    // Trunc i64 → i1 for boolean result
+    Value result = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), accum);
+    return {result, Type(Type::Kind::I1)};
 }
 
 } // namespace il::frontends::zia

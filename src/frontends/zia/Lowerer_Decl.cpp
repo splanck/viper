@@ -60,6 +60,8 @@ void Lowerer::lowerDecl(Decl *decl) {
         case DeclKind::Enum:
             lowerEnumDecl(*static_cast<EnumDecl *>(decl));
             break;
+        case DeclKind::TypeAlias:
+            break; // Type aliases are resolved at sema time, no IL needed
         default:
             break;
     }

@@ -104,6 +104,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
             }
             return types::boolean();
 
+        case BinaryOp::Shl:
+        case BinaryOp::Shr:
         case BinaryOp::BitAnd:
         case BinaryOp::BitOr:
         case BinaryOp::BitXor:

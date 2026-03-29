@@ -63,6 +63,11 @@ TypeRef Sema::resolveNamedType(const std::string &name) const {
     if (it != typeRegistry_.end())
         return it->second;
 
+    // Check type aliases (type Name = TargetType;)
+    auto aliasIt = typeAliases_.find(name);
+    if (aliasIt != typeAliases_.end())
+        return aliasIt->second;
+
     // Check if this is an imported type from a bound namespace
     // e.g., "Canvas" imported from "Viper.Graphics"
     auto importIt = importedSymbols_.find(name);

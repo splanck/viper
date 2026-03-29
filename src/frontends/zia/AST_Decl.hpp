@@ -114,6 +114,10 @@ enum class DeclKind {
     /// @brief Enum type declaration: named set of integer constants.
     /// @see EnumDecl
     Enum,
+
+    /// @brief Type alias declaration: `type Name = TargetType;`
+    /// @see TypeAliasDecl
+    TypeAlias,
 };
 
 /// @brief Member visibility level.
@@ -661,6 +665,20 @@ struct EnumDecl : Decl {
     /// @param l Source location.
     /// @param n Enum name.
     EnumDecl(SourceLoc l, std::string n) : Decl(DeclKind::Enum, l), name(std::move(n)) {}
+};
+
+/// @brief Type alias declaration: `type Name = TargetType;`
+/// @details Creates a compile-time alias that resolves to the target type
+/// during semantic analysis. No runtime representation.
+struct TypeAliasDecl : Decl {
+    /// @brief Alias name.
+    std::string name;
+
+    /// @brief Target type the alias resolves to.
+    TypePtr targetType;
+
+    TypeAliasDecl(SourceLoc l, std::string n, TypePtr t)
+        : Decl(DeclKind::TypeAlias, l), name(std::move(n)), targetType(std::move(t)) {}
 };
 
 /// @brief Module declaration: the top-level compilation unit.

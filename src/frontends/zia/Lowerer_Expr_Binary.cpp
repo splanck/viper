@@ -636,6 +636,14 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
             op = Opcode::Xor;
             break;
 
+        case BinaryOp::Shl:
+            op = Opcode::Shl;
+            break;
+
+        case BinaryOp::Shr:
+            op = Opcode::AShr;
+            break;
+
         case BinaryOp::Assign:
             // Handled above
             break;

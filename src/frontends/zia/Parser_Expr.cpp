@@ -98,6 +98,16 @@ ExprPtr Parser::parseAssignment() {
                 return BinaryOp::Div;
             case TokenKind::PercentEqual:
                 return BinaryOp::Mod;
+            case TokenKind::ShiftLeftEqual:
+                return BinaryOp::Shl;
+            case TokenKind::ShiftRightEqual:
+                return BinaryOp::Shr;
+            case TokenKind::AmpersandEqual:
+                return BinaryOp::BitAnd;
+            case TokenKind::PipeEqual:
+                return BinaryOp::BitOr;
+            case TokenKind::CaretEqual:
+                return BinaryOp::BitXor;
             default:
                 return BinaryOp::Add; // unreachable
         }
@@ -106,7 +116,10 @@ ExprPtr Parser::parseAssignment() {
     Token compTok;
     if (match(TokenKind::PlusEqual, &compTok) || match(TokenKind::MinusEqual, &compTok) ||
         match(TokenKind::StarEqual, &compTok) || match(TokenKind::SlashEqual, &compTok) ||
-        match(TokenKind::PercentEqual, &compTok)) {
+        match(TokenKind::PercentEqual, &compTok) ||
+        match(TokenKind::ShiftLeftEqual, &compTok) || match(TokenKind::ShiftRightEqual, &compTok) ||
+        match(TokenKind::AmpersandEqual, &compTok) || match(TokenKind::PipeEqual, &compTok) ||
+        match(TokenKind::CaretEqual, &compTok)) {
         SourceLoc loc = compTok.loc;
         BinaryOp op = compoundOp(compTok.kind);
 
@@ -309,8 +322,28 @@ ExprPtr Parser::parseEquality() {
     return expr;
 }
 
-ExprPtr Parser::parseComparison() {
+ExprPtr Parser::parseShift() {
     ExprPtr expr = parseAdditive();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::ShiftLeft) || check(TokenKind::ShiftRight)) {
+        Token opTok = advance();
+        BinaryOp op = opTok.kind == TokenKind::ShiftLeft ? BinaryOp::Shl : BinaryOp::Shr;
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseAdditive();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseComparison() {
+    ExprPtr expr = parseShift();
     if (!expr)
         return nullptr;
 
@@ -337,7 +370,7 @@ ExprPtr Parser::parseComparison() {
         }
         SourceLoc loc = opTok.loc;
 
-        ExprPtr right = parseAdditive();
+        ExprPtr right = parseShift();
         if (!right)
             return nullptr;
 

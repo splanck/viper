@@ -82,6 +82,62 @@ ExprPtr Parser::parsePrimary() {
         return std::make_unique<SuperExprNode>(loc);
     }
 
+    // Lambda expression: func(params) -> ReturnType { body }
+    // Distinguished from function declaration by context: parsePrimary is only
+    // called in expression position, never at declaration level.
+    if (check(TokenKind::KwFunc) && peek(1).kind == TokenKind::LParen) {
+        advance(); // consume 'func'
+        advance(); // consume '('
+
+        // Parse lambda parameters
+        std::vector<LambdaParam> params;
+        if (!check(TokenKind::RParen)) {
+            do {
+                LambdaParam p;
+                if (!check(TokenKind::Identifier)) {
+                    error("expected parameter name");
+                    return nullptr;
+                }
+                p.name = advance().text;
+                if (match(TokenKind::Colon)) {
+                    p.type = parseType();
+                }
+                params.push_back(std::move(p));
+            } while (match(TokenKind::Comma));
+        }
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        // Optional return type
+        TypePtr returnType;
+        if (match(TokenKind::Arrow)) {
+            returnType = parseType();
+        }
+
+        // Parse block body
+        if (!check(TokenKind::LBrace)) {
+            error("expected '{' for lambda body");
+            return nullptr;
+        }
+        SourceLoc blockLoc = peek().loc;
+        advance(); // consume '{'
+        std::vector<StmtPtr> statements;
+        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
+            StmtPtr stmt = parseStatement();
+            if (!stmt) {
+                resyncAfterError();
+                continue;
+            }
+            statements.push_back(std::move(stmt));
+        }
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        auto body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+        return std::make_unique<LambdaExpr>(loc, std::move(params),
+                                            std::move(returnType), std::move(body));
+    }
+
     // New expression
     if (match(TokenKind::KwNew)) {
         TypePtr type = parseType();

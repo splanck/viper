@@ -180,6 +180,10 @@ enum class TokenKind {
     /// Syntax: `interface Drawable { func draw(); }`
     KwInterface,
 
+    /// @brief Type alias declaration keyword.
+    /// @details Introduces a type alias: `type UserId = String;`
+    KwType,
+
     /// @}
 
     //=========================================================================
@@ -484,6 +488,21 @@ enum class TokenKind {
     /// @brief Compound modulo assignment `%=`.
     PercentEqual,
 
+    /// @brief Compound left shift assignment `<<=`.
+    ShiftLeftEqual,
+
+    /// @brief Compound right shift assignment `>>=`.
+    ShiftRightEqual,
+
+    /// @brief Compound bitwise AND assignment `&=`.
+    AmpersandEqual,
+
+    /// @brief Compound bitwise OR assignment `|=`.
+    PipeEqual,
+
+    /// @brief Compound bitwise XOR assignment `^=`.
+    CaretEqual,
+
     /// @}
 
     //=========================================================================
@@ -503,6 +522,12 @@ enum class TokenKind {
 
     /// @brief Bitwise NOT operator `~`.
     Tilde,
+
+    /// @brief Left shift operator `<<`.
+    ShiftLeft,
+
+    /// @brief Right shift operator `>>`.
+    ShiftRight,
 
     /// @}
 

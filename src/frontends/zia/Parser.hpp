@@ -384,6 +384,10 @@ class Parser {
     /// @return The parsed expression.
     ExprPtr parseAdditive();
 
+    /// @brief Parse shift expressions (<<, >>).
+    /// @return The parsed expression.
+    ExprPtr parseShift();
+
     /// @brief Parse comparison expressions (<, >, <=, >=).
     /// @return The parsed expression.
     ExprPtr parseComparison();
@@ -610,6 +614,9 @@ class Parser {
     /// }
     /// ```
     DeclPtr parseNamespaceDecl();
+
+    /// @brief Parse a type alias: type Name = TargetType;
+    DeclPtr parseTypeAlias();
 
     /// @brief Parse a global variable declaration: var x = 1; (legacy)
     /// @return The parsed GlobalVarDecl.

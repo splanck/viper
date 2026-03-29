@@ -1398,6 +1398,9 @@ class Sema {
     /// @brief Exact function types keyed by declaration pointer.
     std::unordered_map<const FunctionDecl *, TypeRef> functionDeclTypes_;
 
+    /// @brief Type aliases: `type Name = TargetType;` resolved to TypeRef.
+    std::unordered_map<std::string, TypeRef> typeAliases_;
+
     /// @brief Top-level function overload families keyed by qualified name.
     std::unordered_map<std::string, std::vector<FunctionDecl *>> functionOverloads_;
 

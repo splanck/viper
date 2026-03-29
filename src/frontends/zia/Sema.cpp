@@ -682,6 +682,16 @@ bool Sema::analyze(ModuleDecl &module) {
                 // nested declarations properly
                 break;
             }
+            case DeclKind::TypeAlias: {
+                auto *alias = static_cast<TypeAliasDecl *>(decl.get());
+                TypeRef resolved = resolveTypeNode(alias->targetType.get());
+                if (resolved) {
+                    typeAliases_[alias->name] = resolved;
+                } else {
+                    error(alias->loc, "Cannot resolve type alias target for '" + alias->name + "'");
+                }
+                break;
+            }
             default:
                 break;
         }

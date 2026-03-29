@@ -106,6 +106,10 @@ static const char *binaryOpName(BinaryOp op) {
             return "|";
         case BinaryOp::BitXor:
             return "^";
+        case BinaryOp::Shl:
+            return "<<";
+        case BinaryOp::Shr:
+            return ">>";
         case BinaryOp::Assign:
             return "=";
     }
@@ -1394,6 +1398,11 @@ static void printDecl(const Decl &decl, Printer &p) {
                 }
                 p.pop();
             }
+            break;
+        }
+        case DeclKind::TypeAlias: {
+            const auto &d = static_cast<const TypeAliasDecl &>(decl);
+            p.line("TypeAliasDecl \"" + d.name + "\" " + locStr(d.loc));
             break;
         }
     }
