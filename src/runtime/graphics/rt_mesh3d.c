@@ -68,6 +68,11 @@ void *rt_mesh3d_new(void) {
     m->indices = (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t));
     m->index_count = 0;
     m->index_capacity = MESH_INIT_IDXS;
+    m->bone_palette = NULL;
+    m->bone_count = 0;
+    m->morph_deltas = NULL;
+    m->morph_weights = NULL;
+    m->morph_shape_count = 0;
     if (!m->vertices || !m->indices) {
         free(m->vertices);
         free(m->indices);
@@ -258,6 +263,11 @@ void *rt_mesh3d_clone(void *obj) {
     dst->index_count = src->index_count;
     if (src->index_count > 0)
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
+    dst->bone_palette = NULL;
+    dst->bone_count = 0;
+    dst->morph_deltas = NULL;
+    dst->morph_weights = NULL;
+    dst->morph_shape_count = 0;
 
     return dst;
 }

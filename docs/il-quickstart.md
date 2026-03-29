@@ -16,7 +16,7 @@ IL programs.
 Viper IL is a **typed, readable intermediate language** that serves as the core of the Viper toolchain:
 
 - **Frontends** (Zia, BASIC, etc.) compile to IL
-- **VM** executes IL directly via VM execution
+- **VM** executes IL directly
 - **Verifier** checks IL for safety and correctness
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL
 - **Backends** compile IL to native code
@@ -246,7 +246,7 @@ viper il-opt program.il --pipeline O2 -o program.o2.il
 viper il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
 ```
 
-Available passes: `check-opt`, `dce`, `dse`, `earlycse`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `sccp`, `simplify-cfg`
+Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `reassociate`, `sccp`, `simplify-cfg`
 
 ---
 

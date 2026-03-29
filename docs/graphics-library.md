@@ -40,8 +40,8 @@ management, pixel operations, drawing primitives, and input handling through a s
 | Platform    | Backend      | Status                  |
 |-------------|--------------|-------------------------|
 | **macOS**   | Cocoa/AppKit | ✅ **Fully Implemented** |
-| **Linux**   | X11          | ⚠️ Stub (not yet fully implemented) |
-| **Windows** | Win32 GDI    | ⚠️ Stub (not yet fully implemented) |
+| **Linux**   | X11          | ✅ **Fully Implemented** |
+| **Windows** | Win32 GDI    | ✅ **Fully Implemented** |
 | **Testing** | Mock backend | ✅ Fully Implemented     |
 
 ---
@@ -275,19 +275,18 @@ target_include_directories(your_target PRIVATE
 )
 ```
 
-### Future: BASIC Integration
+### BASIC / Zia Integration
 
-Graphics support will be added to Viper BASIC with statements like:
+Both BASIC and Zia access graphics through the `Viper.Graphics.*` runtime namespace, which wraps ViperGFX internally. Example:
 
 ```basic
-' Planned BASIC graphics support (not yet implemented)
-SCREEN 13                      ' Initialize graphics mode
-PSET (100, 100), 15            ' Set pixel at (100, 100) to color 15
-LINE (0, 0)-(319, 199), 12     ' Draw line from (0,0) to (319,199)
-CIRCLE (160, 100), 50, 14      ' Draw circle at center with radius 50
+USING Viper.Graphics
+DIM c AS Canvas
+LET c = Canvas.New("My Window", 800, 600)
+Canvas.Clear(c, Color.RGB(0, 0, 0))
+Canvas.Box(c, 100, 100, 200, 150, Color.RGB(255, 0, 0))
+Canvas.Flip(c)
 ```
-
-This will lower to calls to the ViperGFX runtime functions.
 
 ---
 
@@ -305,8 +304,8 @@ src/lib/graphics/
 │   ├── vgfx_draw.c      # Drawing algorithms
 │   ├── vgfx_internal.h  # Internal structures
 │   ├── vgfx_platform_macos.m    # macOS Cocoa/AppKit backend (fully implemented)
-│   ├── vgfx_platform_linux.c    # Linux X11 backend (stub)
-│   ├── vgfx_platform_win32.c    # Windows Win32 backend (stub)
+│   ├── vgfx_platform_linux.c    # Linux X11 backend (fully implemented)
+│   ├── vgfx_platform_win32.c    # Windows Win32 backend (fully implemented)
 │   └── vgfx_platform_mock.c     # Mock backend for tests
 ├── tests/               # Unit tests
 └── examples/            # Example programs
@@ -400,10 +399,11 @@ The following features have been implemented in the Viper runtime layer (`Viper.
 
 ### Planned Features (Future)
 
-- **Text rendering** — Bitmap fonts at the C API level
 - **Image loading** — PNG support (BMP already implemented)
 - **Palette modes** — 8-bit indexed color
 - **Multiple windows** — Multi-window support
+
+> **Note:** Bitmap font rendering is already available via `Viper.Graphics.BitmapFont` in the runtime layer.
 
 ---
 
@@ -442,6 +442,6 @@ ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution f
 ✅ **Integrated** — Builds as part of Viper
 ✅ **Tested** — 20/20 tests passing (100%)
 ✅ **Documented** — Complete API reference and examples
-✅ **Cross-Platform** — Fully implemented macOS (Cocoa) backend; Linux (X11) and Windows (Win32) backends are stubs
+✅ **Cross-Platform** — Fully implemented on macOS (Cocoa), Linux (X11), and Windows (Win32)
 
 For questions or contributions, see the [main Viper documentation](README.md).

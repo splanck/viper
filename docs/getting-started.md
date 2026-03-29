@@ -183,7 +183,7 @@ ilrun hello.il
 ```
 
 For more examples, see the **[BASIC Tutorial](basic-language.md)**,
-**[Zia Tutorial](zia-getting-started.md)**, and the `examples/` and `demos/` directories.
+**[Zia Tutorial](zia-getting-started.md)**, and the `examples/` directory.
 
 ---
 
@@ -219,12 +219,11 @@ point.
 
 Viper guarantees consistent numeric behavior across all platforms and execution modes:
 
-- **Overflow checking**: Integer arithmetic traps on overflow instead of wrapping
-- **Division operators**: `/` performs floating-point division; `\` truncates toward zero
-- **Modulo**: `MOD` preserves the dividend's sign
-- **Rounding**: All rounding uses banker's rounding (ties-to-even)
+- **Overflow checking**: Zia defaults to checked arithmetic (traps on overflow); BASIC uses wrapping
+- **Division**: Zia `/` on integers is integer division; BASIC has separate `/` (float) and `\` (integer)
+- **Modulo**: Remainder preserves the dividend's sign (C99 semantics)
 - **Conversions**: Casts use checked variants that trap when values are out of range
-- **String conversions**: `VAL` and `STR$` guarantee round-trip consistency
+- **Rounding**: All rounding uses round-to-nearest-even (IEEE 754 default)
 
 > **Learn more:** See [specs/numerics.md](specs/numerics.md) for complete numeric semantics.
 

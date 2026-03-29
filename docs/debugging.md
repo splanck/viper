@@ -6,7 +6,7 @@ last-verified: 2026-03-04
 
 # Viper Debugging Guide
 
-This guide covers all debugging features available in the Viper platform, including both the VM interpreter and the Zia/BASIC frontends.
+This guide covers all debugging features available in the Viper platform, including both the VM and the Zia/BASIC frontends.
 
 ---
 
@@ -730,7 +730,7 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Full backtrace API | Not implemented | `execStack` is private; only single-frame `TrapInfo` exposed |
 | Conditional breakpoints | Not implemented | No expression evaluation on break condition |
 | Source-to-IL name mapping | Not implemented | Watches require IL register names |
-| DWARF debug info | Not implemented | Native codegen has no debug info for GDB/LLDB |
+| DWARF debug info | Partial | Linker preserves DWARF v5 sections; codegen-generated line tables are limited |
 | Debug Adapter Protocol | Not implemented | No IDE integration (VS Code, etc.) |
 | Signal/crash handler | Not implemented | Native crashes produce no diagnostic output |
 | In-VM profiling | Not implemented | No function-level timing or allocation tracking |

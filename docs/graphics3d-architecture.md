@@ -117,7 +117,7 @@ Defined upfront at 80 bytes for all phases. Unused fields are zero-initialized.
 | Backend | Matrix Upload | Winding |
 |---------|--------------|---------|
 | Software | Direct (row-major float) | CCW tested in clip space |
-| Metal | Transpose to column-major | `MTLWindingClockwise` (Y-flip) |
+| Metal | Transpose to column-major | `MTLWindingCounterClockwise` |
 | D3D11 | `row_major` HLSL qualifier | `FrontCounterClockwise = FALSE` (Y-flip) |
 | OpenGL | `glUniformMatrix4fv(..., GL_TRUE, ...)` transposes on upload | `GL_CCW` (no Y-flip) |
 

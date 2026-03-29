@@ -300,6 +300,44 @@ Direct-call graph with strongly connected component analysis:
   SCCs more accurately than the previous per-edge self-loop check.
 - **Tests**: `test_il_callgraph_scc` — linear chain ordering, mutual recursion, self-recursion, `isRecursive`.
 
+## GVN (Global Value Numbering)
+
+- Assigns value numbers to expressions using dominator-tree-scoped hash tables.
+- Eliminates redundant computations including loads (load elimination) when no intervening store exists.
+- Uses `ValueKey` canonical forms for commutative normalization.
+- Implementation: `src/il/transform/GVN.cpp`
+
+## LICM (Loop-Invariant Code Motion)
+
+- Hoists instructions whose operands are defined outside the loop to the loop preheader.
+- Requires `LoopInfo` and `Dominators` analyses.
+- Checks `canReorderWithMemory()` to avoid moving instructions past memory barriers.
+- Implementation: `src/il/transform/LICM.cpp`
+
+## EHOpt (Exception Handling Optimization)
+
+- Removes dead exception handlers (try/catch blocks where the try body cannot throw).
+- Simplifies exception handling structure after inlining.
+- Implementation: `src/il/transform/EHOpt.cpp`
+
+## LoopRotate
+
+- Rotates loops by duplicating the header into the preheader.
+- Transforms while-loops into do-while form for better analysis by LICM and IndVarSimplify.
+- Implementation: `src/il/transform/LoopRotate.cpp`
+
+## Reassociate
+
+- Reassociates commutative/associative chains (add, mul, and/or/xor) to improve constant folding.
+- Normalizes expression trees so ConstFold can fold more constants in a single pass.
+- Implementation: `src/il/transform/Reassociate.cpp`
+
+## SiblingRecursion
+
+- Detects sibling recursive calls (tail calls to the same function) and optimizes them.
+- Reduces stack growth for mutually-recursive patterns.
+- Implementation: `src/il/transform/SiblingRecursion.cpp`
+
 ## Canonical Optimization Pipelines (Zia and BASIC frontends)
 
 Before 2026-02-17, the Zia compiler (`src/frontends/zia/Compiler.cpp`) applied its own reduced pipeline

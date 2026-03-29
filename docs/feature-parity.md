@@ -393,4 +393,4 @@ To spot-check specific claims, inspect:
 ### IL and runtime
 - IL EH opcodes: `src/il/core/Opcode.def` (EhPush, EhPop, EhEntry, Resume*)
 - Runtime class registry: `src/il/runtime/classes/RuntimeClasses.hpp` (RuntimeTypeId enum)
-- Runtime definitions: `src/il/runtime/runtime.def` (225 RT_CLASS_BEGIN blocks, 3129 RT_FUNC entries)
+- Runtime definitions: `src/il/runtime/runtime.def` (293 RT_CLASS_BEGIN blocks, 3965 RT_FUNC entries)

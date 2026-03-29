@@ -196,7 +196,7 @@ Viper compiles Zia programs to native machine code via its built-in code generat
 
 ### 2.1 x86-64: SysV vs Win64 ABI
 
-The x86-64 backend supports two ABIs. **Currently, only SysV is implemented for native codegen.** The Win64 ABI constants are defined in the target description but the full pipeline (frame lowering, call lowering, register allocation) targets SysV.
+The x86-64 backend supports two ABIs. The pipeline selects the correct ABI automatically via `hostTarget()` — Win64 on Windows, SysV on macOS/Linux.
 
 | Property | SysV AMD64 (macOS, Linux) | Win64 (Windows) |
 |----------|---------------------------|-----------------|
@@ -210,7 +210,7 @@ The x86-64 backend supports two ABIs. **Currently, only SysV is implemented for 
 | Stack alignment | 16-byte aligned before `CALL` | 16-byte aligned before `CALL` |
 | Return registers | RAX (int), XMM0 (float) | RAX (int), XMM0 (float) |
 
-**Implication:** Native compilation (`viper build --native`) produces executables that follow the SysV calling convention on all platforms. On Windows, the generated native code calls into the Viper runtime (which is compiled with MSVC/Win64 ABI), so the runtime bridge handles the ABI translation. Fully native Win64 codegen is a planned feature.
+**Implication:** Native compilation produces executables that follow the platform's native calling convention — Win64 on Windows, SysV on macOS/Linux. The generated code and runtime share the same ABI on each platform.
 
 ### 2.2 AArch64: Darwin vs Linux vs Windows
 
@@ -237,7 +237,7 @@ Register convention (all platforms): 8 integer args (X0–X7), 8 FP args (V0–V
 
 ### 2.4 Linker Integration
 
-The native codegen pipeline invokes the system linker to produce the final executable.
+The native codegen pipeline uses the built-in native linker to produce the final executable. The system linker (`cc`) is available as a fallback.
 
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
@@ -398,7 +398,7 @@ These are known platform-specific limitations, tracked across the project.
 | GAP-1 | Filesystem | ViperDOS file watcher is a stub (no kernel inotify support) | Low |
 | GAP-2 | Filesystem | Windows `MAX_PATH` (260 char) limit on directory operations | Medium |
 | ~~GAP-3~~ | ~~Process~~ | ~~Resolved: Windows tests use CreateProcess self-relaunch + Job Object~~ | ~~Resolved~~ |
-| GAP-4 | Codegen | x86-64 native codegen uses SysV ABI only; Win64 ABI not implemented | Medium |
+| ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: x86-64 native codegen now supports both SysV and Win64 ABIs~~ | ~~Resolved~~ |
 | GAP-5 | Graphics | Linux requires X11 dev headers; graphics silently omitted if missing | Low |
 | GAP-6 | Audio | Linux requires ALSA dev headers; audio silently omitted if missing | Low |
 | GAP-7 | Packaging | ViperDOS Windows build cannot create UEFI ESP images | Low |

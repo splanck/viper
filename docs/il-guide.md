@@ -390,7 +390,7 @@ Its goals are:
 * **Static types** – a minimal set of primitive types (`i1`, `i64`, `f64`, `ptr`, `str`, `void`).
 
 Execution is organized as functions consisting of labelled basic blocks. Modules may execute either under the IL virtual
-machine interpreter or after lowering to native code through a C runtime. Front ends such as BASIC first lower into IL
+machine (VM) or after lowering to native code through a C runtime. Front ends such as BASIC first lower into IL
 patterns described in [BASIC lowering](#lowering).
 
 #### Module & Function Syntax

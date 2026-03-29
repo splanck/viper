@@ -35,6 +35,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int canvas3d_backend_uses_gpu_postfx(const rt_canvas3d *c) {
+    return c && c->backend && c->backend->present_postfx && c->render_target == NULL;
+}
+
+static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
+    return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
+}
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
@@ -718,11 +726,11 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     dd->cmd.bone_palette = mesh->bone_palette;
     dd->cmd.bone_count = mesh->bone_count;
 
-    /* Morph data: not yet populated here (CPU path pre-blends).
-     * Future GPU morph path would set morph_deltas/weights/shape_count. */
-    dd->cmd.morph_deltas = NULL;
-    dd->cmd.morph_weights = NULL;
-    dd->cmd.morph_shape_count = 0;
+    /* GPU morph payloads are supplied by DrawMeshMorphed via transient mesh fields.
+     * CPU morph paths leave these null. */
+    dd->cmd.morph_deltas = mesh->morph_deltas;
+    dd->cmd.morph_weights = mesh->morph_weights;
+    dd->cmd.morph_shape_count = mesh->morph_shape_count;
 
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
@@ -791,7 +799,7 @@ void rt_canvas3d_end(void *obj) {
             }
         }
 
-        if (out_pixels) {
+        if (out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
             float vp_rot[16];
             memcpy(vp_rot, c->cached_vp, sizeof(float) * 16);
             vp_rot[3] = 0.0f;
@@ -997,16 +1005,27 @@ void rt_canvas3d_flip(void *obj) {
     if (!c->gfx_win)
         return;
 
-    /* Apply post-processing effects to the software framebuffer */
-    extern void rt_postfx3d_apply_to_canvas(void *canvas);
-    rt_postfx3d_apply_to_canvas(obj);
+    int gpu_postfx_presented = 0;
+    if (canvas3d_backend_uses_gpu_postfx(c)) {
+        vgfx3d_postfx_snapshot_t snapshot;
+        if (vgfx3d_postfx_get_snapshot(c->postfx, &snapshot)) {
+            c->backend->present_postfx(c->backend_ctx, &snapshot);
+            gpu_postfx_presented = 1;
+        }
+    }
+
+    if (!gpu_postfx_presented) {
+        /* Apply post-processing effects to the software framebuffer */
+        extern void rt_postfx3d_apply_to_canvas(void *canvas);
+        rt_postfx3d_apply_to_canvas(obj);
+    }
 
     /* Present the GPU drawable / swap the back buffer. For GPU backends
      * (Metal, D3D11, OpenGL) this presents only the LAST Begin/End pair's
      * content, avoiding flicker with multi-pass rendering and RTT.
      * Skip when in 2D-only mode (in_frame == -1) — the software framebuffer
      * is displayed via drawRect:/CGImage blit instead. */
-    if (c->in_frame != -1 && c->backend && c->backend->present)
+    if (!gpu_postfx_presented && c->in_frame != -1 && c->backend && c->backend->present)
         c->backend->present(c->backend_ctx);
 
     /* Always call vgfx_update to keep the window alive and process display

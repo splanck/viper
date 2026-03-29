@@ -110,7 +110,7 @@ etc.).
 | `src/codegen/aarch64/RodataPool.cpp` | Mach-O rodata pool handling (macOS-specific addressing). |
 | `src/codegen/common/LinkerSupport.cpp` | Archive naming (`.lib` vs `lib*.a`), framework flags on macOS, X11 on Linux, user32/gdi32 on Windows. |
 
-**[GAP]** x86-64 codegen currently uses SysV ABI only — Win64 ABI (shadow space, different register order) is not implemented. Native compilation targets Unix hosts.
+~~**[GAP]** x86-64 codegen currently uses SysV ABI only.~~ **Resolved:** Both SysV and Win64 ABIs are implemented. `hostTarget()` selects the correct ABI automatically.
 
 ---
 
@@ -193,7 +193,7 @@ etc.).
 | GAP-1 | Filesystem | ViperDOS file watcher is a stub (no kernel inotify) | Low |
 | GAP-2 | Filesystem | Windows `MAX_PATH` (260 char) limit on directory operations | Medium |
 | ~~GAP-3~~ | ~~Process~~ | ~~Resolved: Windows uses CreateProcess self-relaunch + Job Object~~ | ~~Resolved~~ |
-| GAP-4 | Codegen | x86-64 codegen uses SysV ABI only; Win64 ABI not implemented | Medium |
+| ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: Both SysV and Win64 ABIs now implemented~~ | ~~Resolved~~ |
 | GAP-5 | Graphics | Linux requires X11 dev headers; silently omitted if missing | Low |
 | GAP-6 | Audio | Linux requires ALSA dev headers; silently omitted if missing | Low |
 | GAP-7 | Packaging | ViperDOS Windows build cannot create UEFI ESP images | Low |

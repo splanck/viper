@@ -251,6 +251,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_texatlas3d.c
         graphics/vgfx3d_frustum.c
         graphics/vgfx3d_skinning.c
+        graphics/vgfx3d_backend_utils.c
 )
 
 # GPU backends (platform-conditional)

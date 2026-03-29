@@ -55,6 +55,12 @@ typedef struct {
     int32_t vertex_count;
 } rt_morphtarget3d;
 
+static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name) {
+    if (!backend_name)
+        return 0;
+    return strcmp(backend_name, "metal") == 0 || strcmp(backend_name, "opengl") == 0;
+}
+
 /*==========================================================================
  * Lifecycle
  *=========================================================================*/
@@ -254,6 +260,44 @@ void rt_canvas3d_draw_mesh_morphed(
         return;
     if (m->vertex_count != (uint32_t)mt->vertex_count)
         return;
+
+    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
+        size_t delta_count = (size_t)mt->shape_count * (size_t)mt->vertex_count * 3;
+        float *packed_deltas = NULL;
+        float *packed_weights = NULL;
+        if (delta_count > 0)
+            packed_deltas = (float *)calloc(delta_count, sizeof(float));
+        if (mt->shape_count > 0)
+            packed_weights = (float *)malloc((size_t)mt->shape_count * sizeof(float));
+        if ((delta_count > 0 && !packed_deltas) || (mt->shape_count > 0 && !packed_weights)) {
+            free(packed_deltas);
+            free(packed_weights);
+            return;
+        }
+
+        for (int32_t s = 0; s < mt->shape_count; s++) {
+            if (packed_weights)
+                packed_weights[s] = mt->weights[s];
+            if (packed_deltas && mt->shapes[s].pos_deltas) {
+                memcpy(&packed_deltas[(size_t)s * (size_t)mt->vertex_count * 3],
+                       mt->shapes[s].pos_deltas,
+                       (size_t)mt->vertex_count * 3 * sizeof(float));
+            }
+        }
+
+        if (packed_deltas)
+            rt_canvas3d_add_temp_buffer(canvas, packed_deltas);
+        if (packed_weights)
+            rt_canvas3d_add_temp_buffer(canvas, packed_weights);
+
+        rt_mesh3d tmp = *m;
+        tmp.morph_deltas = packed_deltas;
+        tmp.morph_weights = packed_weights;
+        tmp.morph_shape_count = mt->shape_count;
+        rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+        return;
+    }
 
     /* Allocate morphed vertex buffer */
     vgfx3d_vertex_t *morphed =

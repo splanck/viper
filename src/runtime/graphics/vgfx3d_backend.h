@@ -24,6 +24,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_canvas3d_internal.h"
+#include "rt_postfx3d.h"
 #include "vgfx.h"
 #include <stdint.h>
 
@@ -143,6 +144,11 @@ typedef struct vgfx3d_backend {
      * For GPU backends, this presents the drawable / swaps the back buffer.
      * NULL = no-op (software backend — vgfx_update handles display). */
     void (*present)(void *ctx);
+
+    /* Optional GPU post-processing presentation hook. When non-NULL, Canvas3D
+     * skips the CPU postfx pass and lets the backend own the final onscreen
+     * composite for the supplied snapshot. */
+    void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
 } vgfx3d_backend_t;
 
 /*==========================================================================

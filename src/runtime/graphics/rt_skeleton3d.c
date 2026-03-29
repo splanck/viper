@@ -31,6 +31,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t bone_count) {
+    if (!backend_name || bone_count <= 0)
+        return 0;
+    if (strcmp(backend_name, "metal") == 0)
+        return 1;
+    if (strcmp(backend_name, "opengl") == 0)
+        return bone_count <= 128;
+    return 0;
+}
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
@@ -931,6 +941,16 @@ void rt_canvas3d_draw_mesh_skinned(
 
     if (m->vertex_count == 0 || !p->bone_palette)
         return;
+
+    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c && c->backend &&
+        vgfx3d_backend_prefers_gpu_skinning(c->backend->name, p->skeleton->bone_count)) {
+        rt_mesh3d tmp = *m;
+        tmp.bone_palette = p->bone_palette;
+        tmp.bone_count = p->skeleton->bone_count;
+        rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+        return;
+    }
 
     /* Allocate temporary skinned vertex buffer */
     vgfx3d_vertex_t *skinned =
