@@ -1,4 +1,4 @@
-# MTL-13: Instanced Rendering
+# MTL-13: Instanced Rendering — ✅ DONE
 
 ## Context
 Same gap as D3D-15. Metal supports hardware instancing via `drawIndexedPrimitives:indexCount:instanceCount:`. The current `InstanceBatch3D` path in [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) already bypasses the deferred queue, so the win here is fewer backend calls and less duplicated vertex work, not queue overhead.

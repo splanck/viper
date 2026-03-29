@@ -620,4 +620,52 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
     e->p.motion_blur.mb_samples = (int32_t)samples;
 }
 
+/*==========================================================================
+ * Backend-facing snapshot export (MTL-11)
+ *=========================================================================*/
+
+int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
+    memset(out, 0, sizeof(*out));
+    if (!postfx)
+        return 0;
+    rt_postfx3d *fx = (rt_postfx3d *)postfx;
+    if (!fx->enabled || fx->effect_count == 0)
+        return 0;
+
+    out->enabled = 1;
+    for (int32_t i = 0; i < fx->effect_count; i++) {
+        postfx_entry_t *e = &fx->effects[i];
+        if (!e->enabled)
+            continue;
+        switch (e->type) {
+        case POSTFX_BLOOM:
+            out->bloom_enabled = 1;
+            out->bloom_threshold = e->p.bloom.threshold;
+            out->bloom_intensity = e->p.bloom.intensity;
+            break;
+        case POSTFX_TONEMAP:
+            out->tonemap_mode = (int8_t)e->p.tonemap.mode;
+            out->tonemap_exposure = e->p.tonemap.exposure;
+            break;
+        case POSTFX_FXAA:
+            out->fxaa_enabled = 1;
+            break;
+        case POSTFX_COLOR_GRADE:
+            out->color_grade_enabled = 1;
+            out->cg_brightness = e->p.color_grade.brightness;
+            out->cg_contrast = e->p.color_grade.contrast;
+            out->cg_saturation = e->p.color_grade.saturation;
+            break;
+        case POSTFX_VIGNETTE:
+            out->vignette_enabled = 1;
+            out->vignette_radius = e->p.vignette.radius;
+            out->vignette_softness = e->p.vignette.softness;
+            break;
+        default:
+            break; /* SSAO, DOF, motion blur not in v1 GPU snapshot */
+        }
+    }
+    return 1;
+}
+
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -146,9 +146,60 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     /* Build draw command from batch mesh/material */
     rt_material3d *mat = (rt_material3d *)b->material;
 
-    /* For each instance, issue a draw call with its transform.
-     * This is the software fallback — GPU backends could override
-     * with true instanced rendering. */
+    /* Try GPU instanced path if the backend supports it (MTL-13) */
+    if (c->backend->submit_draw_instanced) {
+        vgfx3d_draw_cmd_t cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.vertices = mesh->vertices;
+        cmd.vertex_count = mesh->vertex_count;
+        cmd.indices = mesh->indices;
+        cmd.index_count = mesh->index_count;
+        /* Use identity model matrix — per-instance transforms in instance buffer */
+        cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] =
+            cmd.model_matrix[15] = 1.0f;
+        cmd.diffuse_color[0] = (float)mat->diffuse[0];
+        cmd.diffuse_color[1] = (float)mat->diffuse[1];
+        cmd.diffuse_color[2] = (float)mat->diffuse[2];
+        cmd.diffuse_color[3] = (float)mat->alpha;
+        cmd.shininess = (float)mat->shininess;
+        cmd.alpha = (float)mat->alpha;
+        cmd.unlit = mat->unlit;
+        cmd.texture = mat->texture;
+        cmd.emissive_map = mat->emissive_map;
+        cmd.emissive_color[0] = (float)mat->emissive[0];
+        cmd.emissive_color[1] = (float)mat->emissive[1];
+        cmd.emissive_color[2] = (float)mat->emissive[2];
+
+        vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
+        int32_t lc = 0;
+        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++) {
+            const rt_light3d *l = c->lights[li];
+            if (!l)
+                continue;
+            lp[lc].type = l->type;
+            lp[lc].direction[0] = (float)l->direction[0];
+            lp[lc].direction[1] = (float)l->direction[1];
+            lp[lc].direction[2] = (float)l->direction[2];
+            lp[lc].position[0] = (float)l->position[0];
+            lp[lc].position[1] = (float)l->position[1];
+            lp[lc].position[2] = (float)l->position[2];
+            lp[lc].color[0] = (float)l->color[0];
+            lp[lc].color[1] = (float)l->color[1];
+            lp[lc].color[2] = (float)l->color[2];
+            lp[lc].intensity = (float)l->intensity;
+            lp[lc].attenuation = (float)l->attenuation;
+            lp[lc].inner_cos = (float)l->inner_cos;
+            lp[lc].outer_cos = (float)l->outer_cos;
+            lc++;
+        }
+        c->backend->submit_draw_instanced(
+            c->backend_ctx, c->gfx_win, &cmd,
+            b->transforms, b->instance_count,
+            lp, lc, c->ambient, c->wireframe, c->backface_cull);
+        return;
+    }
+
+    /* Software fallback: issue N individual draw calls */
     for (int32_t i = 0; i < b->instance_count; i++) {
         /* Convert float[16] back to a Mat4 object for DrawMesh */
         float *src = &b->transforms[i * 16];

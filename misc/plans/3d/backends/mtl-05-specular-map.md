@@ -1,4 +1,4 @@
-# MTL-05: Specular Map Sampling
+# MTL-05: Specular Map Sampling — ✅ DONE
 
 ## Context
 Specular color and shininess are uniform across the surface. A specular map modulates these per-texel.

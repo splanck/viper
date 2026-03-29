@@ -51,6 +51,9 @@ typedef struct {
     uint32_t *indices;
     uint32_t index_count;
     uint32_t index_capacity;
+    /* Transient: set by skinning path before draw, zero otherwise */
+    const float *bone_palette; /* bone_count * 16 floats (4x4 row-major) */
+    int32_t bone_count;        /* 0 = not skinned */
 } rt_mesh3d;
 
 //=============================================================================

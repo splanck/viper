@@ -1,4 +1,4 @@
-# MTL-14: Per-Pixel Terrain Splatting
+# MTL-14: Per-Pixel Terrain Splatting — ✅ DONE
 
 ## Context
 Part of Plan 15. Metal needs splat map + 4 layer textures bound and sampled in the fragment shader.

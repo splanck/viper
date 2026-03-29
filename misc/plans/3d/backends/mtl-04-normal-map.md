@@ -1,4 +1,4 @@
-# MTL-04: Normal Map Sampling
+# MTL-04: Normal Map Sampling — ✅ DONE
 
 ## Context
 Normal map pointer exists in `vgfx3d_draw_cmd_t` but Metal shader has only 1 texture slot (diffuse). Normal mapping requires passing the tangent to the fragment shader and sampling a normal map texture.

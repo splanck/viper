@@ -242,6 +242,8 @@ If the GPU backend fails to initialize (no GPU, driver issue), the software rast
 
 The software renderer is always available. It uses Gouraud shading by default but switches to per-pixel Blinn-Phong when a normal map is present. It supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
 
+The Metal backend (macOS) has near-full feature parity with the software renderer (94%). It supports: diffuse texture in both lit and unlit paths, spot light cone attenuation with smoothstep falloff, normal/specular/emissive map sampling (4 texture slots), linear distance fog, wireframe mode, per-frame texture caching, GPU skeletal skinning (4-bone vertex shader), GPU morph targets (vertex shader delta accumulation), shadow mapping (depth-only pass + comparison sampler), instanced rendering (shared vertex/index buffers), per-pixel terrain splatting (4-layer weight blend), and GPU post-processing (bloom, FXAA, tone mapping, vignette, color grading via fullscreen quad).
+
 ## Performance Tips
 
 - **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.

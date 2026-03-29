@@ -1,4 +1,4 @@
-# MTL-08: Wireframe Mode
+# MTL-08: Wireframe Mode — ✅ DONE
 
 ## Context
 The `wireframe` parameter is accepted by `metal_submit_draw()` but void-cast (line 534). Metal supports wireframe via `MTLTriangleFillModeLines`.

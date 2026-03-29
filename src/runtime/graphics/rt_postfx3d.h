@@ -45,6 +45,25 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur);
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
 
+/* Backend-facing PostFX snapshot (MTL-11): compact effect params for GPU backends.
+ * Exported from rt_postfx3d.c — backends should NOT inspect the private rt_postfx3d struct. */
+typedef struct {
+    int8_t enabled;
+    int8_t bloom_enabled;
+    float bloom_threshold;
+    float bloom_intensity;
+    int8_t tonemap_mode; /* 0=off, 1=reinhard, 2=aces */
+    float tonemap_exposure;
+    int8_t fxaa_enabled;
+    int8_t color_grade_enabled;
+    float cg_brightness, cg_contrast, cg_saturation;
+    int8_t vignette_enabled;
+    float vignette_radius, vignette_softness;
+} vgfx3d_postfx_snapshot_t;
+
+/* Fill snapshot from a PostFX3D object. Returns 0 if postfx is NULL or disabled. */
+int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
+
 #ifdef __cplusplus
 }
 #endif

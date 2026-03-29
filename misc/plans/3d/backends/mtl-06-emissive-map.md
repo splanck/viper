@@ -1,4 +1,4 @@
-# MTL-06: Emissive Map Sampling
+# MTL-06: Emissive Map Sampling — ✅ DONE
 
 ## Context
 Metal shader adds `material.emissiveColor.rgb` as a uniform but doesn't sample the emissive map texture. Software backend samples it and adds as `emissive_map_color * emissive_color`.

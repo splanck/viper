@@ -1,4 +1,4 @@
-# MTL-11: GPU Post-Processing Pipeline
+# MTL-11: GPU Post-Processing Pipeline — ✅ DONE
 
 ## Context
 Post-processing effects (bloom, FXAA, tonemap, vignette, color grade, SSAO, DOF) are implemented in `rt_postfx3d.c` but only applied to the software rasterizer's CPU framebuffer. Metal renders to a CAMetalDrawable and presents directly — no post-processing step.

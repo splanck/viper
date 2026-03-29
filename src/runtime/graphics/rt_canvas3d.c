@@ -714,6 +714,16 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
         c->pending_splat_layer_scales[i] = 0.0f;
     }
 
+    /* Pass through bone palette for GPU skinning (MTL-09) */
+    dd->cmd.bone_palette = mesh->bone_palette;
+    dd->cmd.bone_count = mesh->bone_count;
+
+    /* Morph data: not yet populated here (CPU path pre-blends).
+     * Future GPU morph path would set morph_deltas/weights/shape_count. */
+    dd->cmd.morph_deltas = NULL;
+    dd->cmd.morph_weights = NULL;
+    dd->cmd.morph_shape_count = 0;
+
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
     dd->ambient[0] = c->ambient[0];

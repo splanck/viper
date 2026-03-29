@@ -1,4 +1,4 @@
-# MTL-07: Linear Distance Fog
+# MTL-07: Linear Distance Fog — ✅ DONE
 
 ## Context
 Software backend implements fog per-pixel. Metal ignores fog parameters passed to `begin_frame`. Canvas3D passes `fog_enabled`, `fog_near`, `fog_far`, `fog_color` but Metal's `begin_frame` doesn't store them.

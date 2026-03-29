@@ -1,4 +1,4 @@
-# MTL-03: Texture Caching
+# MTL-03: Texture Caching — ✅ DONE
 
 ## Context
 Metal backend creates a new MTLTexture, allocates a temp BGRA conversion buffer, creates a new MTLSamplerState, and frees the buffer — every single draw call. For 100 textured objects at 60fps, that's 6000 texture uploads per second.

@@ -17,21 +17,21 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Bone weights (defined) | ✅ | ✅ | ✅ | ✅ |
 | MVP transform | ✅ | ✅ | ✅ | ✅ |
 | Normal matrix | ✅ | ✅ | 🐛 BUG: uses model matrix | 🐛 BUG: uses model matrix |
-| Skeletal skinning | ✅ (CPU, pre-backend) | ❌ (inputs unused in shader) | ❌ (inputs unused in shader) | ❌ (inputs unused in shader) |
-| Morph targets | ✅ (CPU, pre-backend) | ❌ | ❌ | ❌ |
+| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ (inputs unused in shader) | ❌ (inputs unused in shader) |
+| Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ | ❌ |
 
 ### Texture Sampling
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Diffuse texture | ✅ perspective-correct | ⚠️ unlit path only | ❌ NONE | ❌ NONE |
-| Normal map | ✅ per-pixel TBN perturbation | ❌ (in draw cmd, unused) | ❌ | ❌ |
-| Specular map | ✅ per-pixel modulation | ❌ (in draw cmd, unused) | ❌ | ❌ |
-| Emissive map | ✅ additive blend | ❌ (color only, no map) | ❌ | ❌ |
-| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (hardcoded) | ❌ | ❌ |
-| Texture filtering | ✅ bilinear | ✅ bilinear | ❌ | ❌ |
-| Texture cache | N/A | ❌ recreated every draw! | N/A | N/A |
-| Sampler state | N/A | ✅ recreated every draw | ❌ | ❌ |
+| Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ❌ NONE | ❌ NONE |
+| Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ❌ | ❌ |
+| Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ❌ | ❌ |
+| Emissive map | ✅ additive blend | ✅ additive map sample (slot 3) | ❌ | ❌ |
+| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ❌ | ❌ |
+| Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ❌ | ❌ |
+| Texture cache | N/A | ✅ per-frame NSDict by Pixels ptr | N/A | N/A |
+| Sampler state | N/A | ✅ shared (created once) | ❌ | ❌ |
 
 ### Lighting
 
@@ -41,7 +41,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Directional diffuse | ✅ | ✅ | ✅ | ✅ |
 | Directional specular (Blinn-Phong) | ✅ | ✅ | ✅ | ✅ |
 | Point light + attenuation | ✅ | ✅ | ✅ | ✅ |
-| Spot light + cone | ✅ smoothstep | ❌ falls to ambient | ❌ falls to ambient | ❌ falls to ambient |
+| Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ❌ falls to ambient | ❌ falls to ambient |
 | Lighting model | Gouraud (per-vertex) + per-pixel with normal maps | Per-pixel (fragment) | Per-pixel (fragment) | Per-pixel (fragment) |
 | Max light slots | 8 | 8 | 8 | 8 |
 
@@ -65,18 +65,18 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Transparency sorting | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) |
 | Depth write disabled for transparent | ✅ | ✅ | ✅ | ✅ |
 | Backface culling | ✅ screen-space area | ✅ per-draw toggle | ✅ per-draw toggle | ❌ always on, no toggle |
-| Wireframe mode | ✅ Bresenham lines | ❌ param ignored | ❌ param ignored | ❌ param ignored |
-| Fog (linear distance) | ✅ per-pixel | ❌ | ❌ | ❌ |
-| Shadow mapping | ✅ directional light, 1024x1024 depth map | ❌ | ❌ | ❌ |
+| Wireframe mode | ✅ Bresenham lines | ✅ MTLTriangleFillModeLines | ❌ param ignored | ❌ param ignored |
+| Fog (linear distance) | ✅ per-pixel | ✅ per-pixel linear | ❌ | ❌ |
+| Shadow mapping | ✅ directional light, 1024x1024 depth map | ✅ GPU depth pass + comparison sampler | ❌ | ❌ |
 | Render-to-texture | ✅ CPU color_buf | ✅ GPU→CPU readback | ❌ stub | ❌ stub |
 
 ### Advanced Features
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Instanced rendering | ❌ | ❌ | ❌ | ❌ |
-| Terrain splat (per-pixel) | ✅ 4-layer weight blend | ❌ | ❌ | ❌ |
-| Post-processing | ✅ CPU (bloom, FXAA, etc.) | ❌ | ❌ | ❌ |
+| Instanced rendering | ❌ | ✅ N draws via instanced hook | ❌ | ❌ |
+| Terrain splat (per-pixel) | ✅ 4-layer weight blend | ✅ GPU 4-layer splat (slots 5-9) | ❌ | ❌ |
+| Post-processing | ✅ CPU (bloom, FXAA, etc.) | ✅ GPU fullscreen quad (bloom, FXAA, tonemap, vignette, color grade) | ❌ | ❌ |
 | VBO/buffer strategy | N/A (CPU arrays) | Per-draw MTL buffers | Per-draw VBO/IBO (wasteful) | Per-draw VB/IB (wasteful) |
 
 ---
@@ -97,26 +97,26 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | OGL-2 | OpenGL | 🟡 HIGH | Normal matrix = model matrix (no inverse-transpose). Lighting wrong on scaled objects. | 653 |
 | D3D-1 | D3D11 | 🟡 HIGH | Normal matrix = model matrix. Same bug as OGL-2. | 537 |
 | D3D-2 | D3D11 | 🟡 HIGH | Backface culling + wireframe params void-cast. No per-draw render state toggle. | 497 |
-| MTL-1 | Metal | 🟡 HIGH | Spot lights (type 3) fall through to ambient. No cone attenuation in shader. | 175-178 |
-| MTL-2 | Metal | 🟡 HIGH | Diffuse texture only sampled in `unlit` path. Lit textured meshes render as solid color. | 161 |
-| MTL-3 | Metal | 🟠 MEDIUM | Texture + sampler recreated every draw. No cache. | 614-659 |
+| MTL-1 | Metal | ✅ FIXED | ~~Spot lights (type 3) fall through to ambient.~~ Now smoothstep cone attenuation. | MTL-02 |
+| MTL-2 | Metal | ✅ FIXED | ~~Diffuse texture only sampled in unlit path.~~ Now `baseColor` in both paths. | MTL-01 |
+| MTL-3 | Metal | ✅ FIXED | ~~Texture + sampler recreated every draw.~~ Per-frame cache + shared sampler. | MTL-03 |
 | OGL-3 | OpenGL | 🟠 MEDIUM | VBO/IBO created+destroyed per draw. | 694-732 |
 | D3D-3 | D3D11 | 🟠 MEDIUM | VBO/IBO created+destroyed per draw. | 508-598 |
 | D3D-4 | D3D11 | 🟠 MEDIUM | ~10 unchecked HRESULTs on D3D11 creation calls. | various |
-| MTL-2b | Metal | 🟡 HIGH | Diffuse texture only sampled in **unlit** code path. Lit textured meshes render as solid color. | 161 |
+| MTL-2b | Metal | ✅ FIXED | ~~Diffuse texture only sampled in unlit path.~~ `baseColor` computed before lit/unlit branch. | MTL-01 |
 | SW-1 | Software | ✅ FIXED | ~~Ignores per-vertex colors~~ — now multiplies vertex color with diffuse_color. | compute_lighting |
-| ALL-1 | SW ✅ / GPU ❌ | 🟡 HIGH | Normal map and specular map: **sampled by software backend** (per-pixel TBN + Blinn-Phong). Still unused by Metal, OpenGL, D3D11. | — |
-| ALL-2 | All GPU | 🟡 HIGH | Fog parameters passed to begin_frame but **ignored** by Metal, OpenGL, and D3D11. Fog only works in software. | begin_frame |
+| ALL-1 | SW ✅ MTL ✅ / OGL ❌ D3D ❌ | 🟡 PARTIAL | Normal/specular/emissive maps: sampled by software and Metal backends. Still unused by OpenGL and D3D11. | — |
+| ALL-2 | SW ✅ MTL ✅ / OGL ❌ D3D ❌ | 🟡 PARTIAL | Fog: works in software and Metal backends. Still ignored by OpenGL and D3D11. | begin_frame |
 
 ## Corrections from Previous Audit
 
 | Claim | Correction |
 |-------|-----------|
 | "Software does per-pixel lighting" | **WRONG.** Gouraud (per-vertex). Colors interpolated per-pixel. |
-| "Metal samples diffuse in lit + unlit" | **WRONG.** Only unlit path checks `hasTexture`. Lit textured meshes are solid color. |
+| "Metal samples diffuse in lit + unlit" | **FIXED (MTL-01).** Was wrong — only unlit path checked `hasTexture`. Now `baseColor` computed before branch. |
 | "OpenGL has working alpha" | **WRONG.** `uAlpha` uniform undeclared. Alpha is undefined. |
-| "Normal/specular maps not used in SW+Metal" | **PARTIALLY FIXED.** Software backend now samples both with per-pixel Blinn-Phong + TBN. GPU backends still ignore them. |
-| "Fog works on software" | **CONFIRMED.** GPU backends silently drop fog params in begin_frame. |
+| "Normal/specular maps not used in SW+Metal" | **FIXED for SW+Metal.** Both now sample normal/specular/emissive maps. OGL+D3D still ignore them. |
+| "Fog works on software" | **FIXED for SW+Metal.** Metal now implements linear distance fog. OGL+D3D still drop fog params. |
 | "Software does per-vertex lighting only" | **UPDATED.** Software now supports both Gouraud (default) and per-pixel (when normal map present). Shadow mapping also implemented. |
 | "Vertex colors work everywhere" | **WRONG.** Software backend ignores vertex colors, uses diffuse_color only. |
 
@@ -135,7 +135,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Backend | Implemented | Partial/Buggy | Missing | Score |
 |---------|------------|---------------|---------|-------|
 | **Software** | 22 | 1 (no vertex colors) | 11 | 65% |
-| **Metal** | 16 | 4 (spot, lit texture, texture cache, no fog) | 14 | 47% |
+| **Metal** | 32 | 0 | 2 | 94% |
 | **OpenGL** | 14 | 2 (uAlpha, normal matrix) | 18 | 41% |
 | **D3D11** | 14 | 2 (normal matrix, no cull toggle) | 18 | 41% |
 
@@ -174,36 +174,36 @@ The backend plans are intentionally split by renderer, but several implementatio
 
 | Plan | Feature | Depends On | Effort |
 |------|---------|-----------|--------|
-| [MTL-01](mtl-01-lit-texture.md) | Fix diffuse texture in lit path | — | Small |
-| [MTL-02](mtl-02-spot-lights.md) | Spot light cone attenuation | — | Small |
-| [MTL-03](mtl-03-texture-cache.md) | Texture + sampler caching | — | Medium |
-| [MTL-04](mtl-04-normal-map.md) | Normal map sampling (tangent space) | MTL-03 | Medium |
-| [MTL-05](mtl-05-specular-map.md) | Specular map sampling | MTL-03 | Small |
-| [MTL-06](mtl-06-emissive-map.md) | Emissive map sampling | MTL-03 | Small |
-| [MTL-07](mtl-07-fog.md) | Linear distance fog | — | Small |
-| [MTL-08](mtl-08-wireframe.md) | Wireframe mode | — | Trivial |
-| [MTL-09](mtl-09-skinning.md) | GPU skeletal skinning (bone palette) | Shared draw-cmd extension | Large |
-| [MTL-10](mtl-10-morph-targets.md) | GPU morph targets | Shared draw-cmd extension | Large |
-| [MTL-11](mtl-11-post-processing.md) | GPU post-processing pipeline | — | Large |
-| [MTL-12](mtl-12-shadow-mapping.md) | Shadow mapping (depth pass + comparison) | — | Large |
-| [MTL-13](mtl-13-instanced-rendering.md) | Instanced rendering (instance_id) | Shared instanced backend hook | Medium |
-| [MTL-14](mtl-14-terrain-splat.md) | Per-pixel terrain splatting (5 extra textures) | Shared draw-cmd extension, MTL-03 | Medium |
+| [MTL-01](mtl-01-lit-texture.md) | Fix diffuse texture in lit path | — | **DONE** |
+| [MTL-02](mtl-02-spot-lights.md) | Spot light cone attenuation | — | **DONE** |
+| [MTL-03](mtl-03-texture-cache.md) | Texture + sampler caching | — | **DONE** |
+| [MTL-04](mtl-04-normal-map.md) | Normal map sampling (tangent space) | MTL-03 | **DONE** |
+| [MTL-05](mtl-05-specular-map.md) | Specular map sampling | MTL-03 | **DONE** |
+| [MTL-06](mtl-06-emissive-map.md) | Emissive map sampling | MTL-03 | **DONE** |
+| [MTL-07](mtl-07-fog.md) | Linear distance fog | — | **DONE** |
+| [MTL-08](mtl-08-wireframe.md) | Wireframe mode | — | **DONE** |
+| [MTL-09](mtl-09-skinning.md) | GPU skeletal skinning (bone palette) | Shared draw-cmd extension | **DONE** |
+| [MTL-10](mtl-10-morph-targets.md) | GPU morph targets | Shared draw-cmd extension | **DONE** |
+| [MTL-11](mtl-11-post-processing.md) | GPU post-processing pipeline | — | **DONE** |
+| [MTL-12](mtl-12-shadow-mapping.md) | Shadow mapping (depth pass + comparison) | — | **DONE** |
+| [MTL-13](mtl-13-instanced-rendering.md) | Instanced rendering (instance_id) | Shared instanced backend hook | **DONE** |
+| [MTL-14](mtl-14-terrain-splat.md) | Per-pixel terrain splatting (5 extra textures) | Shared draw-cmd extension, MTL-03 | **DONE** |
 
 ### Metal recommended execution order
-1. **MTL-01** (lit texture) — critical bug fix, 5-line shader change
-2. **MTL-08** (wireframe) — trivial, 2-line fix
-3. **MTL-02** (spot lights) — small, adds shader branch
-4. **MTL-07** (fog) — small, adds PerScene fields + shader fog
-5. **MTL-03** (texture cache) — medium, eliminates per-draw allocation
-6. **MTL-04** (normal map) — medium, adds texture slot + TBN math
-7. **MTL-05** (specular map) — small, adds texture slot
-8. **MTL-06** (emissive map) — small, adds texture slot
-9. **MTL-09** (skinning) — large, shared draw payload + vertex shader bone transform
-10. **MTL-10** (morph targets) — large, shared draw payload + vertex shader morph
-11. **MTL-12** (shadow mapping) — large, shared pass scheduling + depth compare
-12. **MTL-13** (instanced rendering) — medium, shared hook + `instance_id`
-13. **MTL-14** (terrain splat) — medium, shared terrain payload + 5 texture slots
-14. **MTL-11** (post-processing) — large, offscreen render + backend-facing PostFX snapshot
+1. ✅ **MTL-01** (lit texture) — DONE
+2. ✅ **MTL-08** (wireframe) — DONE
+3. ✅ **MTL-02** (spot lights) — DONE
+4. ✅ **MTL-07** (fog) — DONE
+5. ✅ **MTL-03** (texture cache) — DONE
+6. ✅ **MTL-04** (normal map) — DONE
+7. ✅ **MTL-05** (specular map) — DONE
+8. ✅ **MTL-06** (emissive map) — DONE
+9. ✅ **MTL-09** (skinning) — DONE
+10. ✅ **MTL-10** (morph targets) — DONE
+11. ✅ **MTL-12** (shadow mapping) — DONE
+12. ✅ **MTL-13** (instanced rendering) — DONE
+13. ✅ **MTL-14** (terrain splat) — DONE
+14. ✅ **MTL-11** (post-processing) — DONE
 
 ## D3D11 Backend Implementation Plans
 

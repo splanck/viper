@@ -4106,6 +4106,12 @@ void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) {
     (void)s;
 }
 
+int vgfx3d_postfx_get_snapshot(void *postfx, void *out) {
+    (void)postfx;
+    (void)out;
+    return 0;
+}
+
 /* Occlusion culling stub (F3) */
 /// @brief Perform canvas3d set occlusion culling operation.
 /// @param c

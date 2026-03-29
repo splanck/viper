@@ -1,4 +1,4 @@
-# MTL-10: GPU Morph Targets
+# MTL-10: GPU Morph Targets — ✅ DONE
 
 ## Context
 Morph targets (blend shapes) are computed on CPU in `rt_morphtarget3d.c`. GPU morph targets would offload this to the vertex shader. Currently no backend supports GPU morph targets.

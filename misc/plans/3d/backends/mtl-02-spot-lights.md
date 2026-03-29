@@ -1,4 +1,4 @@
-# MTL-02: Spot Light Cone Attenuation
+# MTL-02: Spot Light Cone Attenuation — ✅ DONE
 
 ## Context
 Spot lights (type 3) fall through to the `else` clause in the Metal shader, which adds light as ambient (no direction or cone). The Light struct in the shader doesn't have inner_cos/outer_cos fields.

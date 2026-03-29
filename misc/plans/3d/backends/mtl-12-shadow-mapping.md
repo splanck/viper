@@ -1,4 +1,4 @@
-# MTL-12: Shadow Mapping
+# MTL-12: Shadow Mapping — ✅ DONE
 
 ## Context
 Same as D3D-14 and SW-05. No backend has shadows. Metal needs a depth-only render pass from light perspective + shadow comparison in fragment shader.

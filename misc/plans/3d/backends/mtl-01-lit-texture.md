@@ -1,4 +1,4 @@
-# MTL-01: Fix Diffuse Texture Sampling in Lit Path
+# MTL-01: Fix Diffuse Texture Sampling in Lit Path — ✅ DONE
 
 ## Context
 The Metal fragment shader only samples the diffuse texture in the `unlit` branch (line 161). Lit textured meshes render as flat solid color. This is the most critical Metal bug.

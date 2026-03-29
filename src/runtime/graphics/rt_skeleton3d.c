@@ -938,7 +938,9 @@ void rt_canvas3d_draw_mesh_skinned(
     if (!skinned)
         return;
 
-    /* Apply CPU skinning */
+    /* Apply CPU skinning (always needed — GPU skinning not yet bypassing this).
+     * The bone_palette is also passed through the draw command so GPU backends
+     * can apply skinning on the vertex shader if they choose. */
     vgfx3d_skin_vertices(
         m->vertices, skinned, m->vertex_count, p->bone_palette, p->skeleton->bone_count);
 
@@ -951,6 +953,11 @@ void rt_canvas3d_draw_mesh_skinned(
      * draw queue, so we can't free until End() has processed the draw. */
     extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
     rt_canvas3d_add_temp_buffer(canvas, skinned);
+
+    /* Stash bone palette info on the mesh for draw command population.
+     * Canvas3D's draw path reads these when building vgfx3d_draw_cmd_t. */
+    tmp.bone_palette = p->bone_palette;
+    tmp.bone_count = p->skeleton->bone_count;
 
     /* Draw using the normal pipeline */
     rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);

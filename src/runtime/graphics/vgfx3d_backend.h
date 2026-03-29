@@ -52,6 +52,13 @@ typedef struct {
     const void *splat_layers[4];   /* Layer textures */
     float splat_layer_scales[4];   /* UV tiling per layer */
     int8_t has_splat;              /* 1 = terrain splat active */
+    /* GPU skeletal skinning (MTL-09): set by rt_skeleton3d.c for GPU path */
+    const float *bone_palette;     /* bone_count * 16 floats (4x4 row-major) */
+    int32_t bone_count;            /* number of bones (0 = no skinning) */
+    /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
+    const float *morph_deltas;     /* shape_count * vertex_count * 3 floats */
+    const float *morph_weights;    /* shape_count floats */
+    int32_t morph_shape_count;     /* number of active morph shapes (0 = none) */
 } vgfx3d_draw_cmd_t;
 
 /*==========================================================================
@@ -118,6 +125,19 @@ typedef struct vgfx3d_backend {
                          const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, float bias);
+
+    /* Instanced rendering (MTL-13): draw multiple instances in one GPU call.
+     * NULL = fallback to N individual submit_draw() calls (software path). */
+    void (*submit_draw_instanced)(void *ctx,
+                                  vgfx_window_t win,
+                                  const vgfx3d_draw_cmd_t *cmd,
+                                  const float *instance_matrices, /* N * 16 floats */
+                                  int32_t instance_count,
+                                  const vgfx3d_light_params_t *lights,
+                                  int32_t light_count,
+                                  const float *ambient,
+                                  int8_t wireframe,
+                                  int8_t backface_cull);
 
     /* Present the final frame to the display. Called once per Flip().
      * For GPU backends, this presents the drawable / swaps the back buffer.

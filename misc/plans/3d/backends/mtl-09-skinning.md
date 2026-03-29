@@ -1,4 +1,4 @@
-# MTL-09: GPU Skeletal Skinning
+# MTL-09: GPU Skeletal Skinning — ✅ DONE
 
 ## Context
 Bone indices and weights are defined in the Metal vertex input (attributes 5-6) but the vertex shader ignores them. Currently Canvas3D pre-skins vertices on CPU before passing to the backend. GPU skinning would be faster for animated characters.

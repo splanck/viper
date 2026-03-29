@@ -195,6 +195,27 @@ Shaders are embedded as C string literals and compiled at runtime:
 - D3D11: `D3DCompile(...)`
 - OpenGL: `glCompileShader` + `glLinkProgram`
 
+### Metal Fragment Shader Features
+
+The Metal fragment shader supports the following features (MTL-01 through MTL-08):
+
+| Feature | Texture Slot | Shader Path |
+|---------|-------------|-------------|
+| Diffuse texture | `[[texture(0)]]` | `baseColor *= sample` in both lit/unlit paths |
+| Normal map | `[[texture(1)]]` | TBN perturbation with orthonormalized tangent |
+| Specular map | `[[texture(2)]]` | Modulates `specColor` before Blinn-Phong |
+| Emissive map | `[[texture(3)]]` | `emissive *= sample` added to final result |
+| Spot lights | — | Smoothstep cone via `inner_cos`/`outer_cos` |
+| Distance fog | — | Linear blend via `fogNear`/`fogFar` in PerScene |
+| Wireframe | — | `setTriangleFillMode:MTLTriangleFillModeLines` |
+| Texture cache | — | Per-frame `NSMutableDictionary` keyed by Pixels pointer |
+| Skeletal skinning | `buffer(3)` | 4-bone palette in vertex shader |
+| Morph targets | `buffer(4-5)` | Per-vertex delta accumulation in vertex shader |
+| Shadow mapping | `[[texture(4)]]` | Depth-only pass + `sample_compare` in fragment |
+| Terrain splat | `[[texture(5-9)]]` | 4-layer weight blend with per-layer UV scale |
+| Instanced draw | vtable hook | N draws with shared vertex/index buffers |
+| Post-processing | separate pipeline | Fullscreen quad: bloom, FXAA, tonemap, vignette, color grade |
+
 ## GC Integration
 
 All Graphics3D objects are GC-managed via `rt_obj_new_i64`:
