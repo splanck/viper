@@ -661,8 +661,25 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
             out->vignette_radius = e->p.vignette.radius;
             out->vignette_softness = e->p.vignette.softness;
             break;
+        case POSTFX_SSAO:
+            out->ssao_enabled = 1;
+            out->ssao_radius = e->p.ssao.ao_radius;
+            out->ssao_intensity = e->p.ssao.ao_intensity;
+            out->ssao_samples = e->p.ssao.ao_samples;
+            break;
+        case POSTFX_DOF:
+            out->dof_enabled = 1;
+            out->dof_focus_distance = e->p.dof.focus_distance;
+            out->dof_aperture = e->p.dof.aperture;
+            out->dof_max_blur = e->p.dof.max_blur;
+            break;
+        case POSTFX_MOTION_BLUR:
+            out->motion_blur_enabled = 1;
+            out->motion_blur_intensity = e->p.motion_blur.mb_intensity;
+            out->motion_blur_samples = e->p.motion_blur.mb_samples;
+            break;
         default:
-            break; /* SSAO, DOF, motion blur not in v1 GPU snapshot */
+            break;
         }
     }
     return 1;

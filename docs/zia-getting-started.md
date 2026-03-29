@@ -566,9 +566,9 @@ For more complete examples, see the `examples/games/` directory:
 
 **Examples:**
 
-- `demos/zia/frogger/` — Complete Frogger game example
-- `demos/zia/centipede/` — Centipede arcade game
-- `demos/zia/pacman/` — Pac-Man game
+- `examples/games/frogger/` — Complete Frogger game example
+- `examples/games/centipede/` — Centipede arcade game
+- `examples/games/pacman/` — Pac-Man game
 
 **Interactive:**
 

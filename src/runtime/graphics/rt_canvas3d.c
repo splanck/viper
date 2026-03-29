@@ -706,6 +706,8 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     dd->cmd.emissive_color[0] = (float)mat->emissive[0];
     dd->cmd.emissive_color[1] = (float)mat->emissive[1];
     dd->cmd.emissive_color[2] = (float)mat->emissive[2];
+    dd->cmd.env_map = mat->env_map;
+    dd->cmd.reflectivity = (float)mat->reflectivity;
 
     /* Consume pending terrain splat data (if set by terrain draw path) */
     dd->cmd.has_splat = c->pending_has_splat;
@@ -729,6 +731,7 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     /* GPU morph payloads are supplied by DrawMeshMorphed via transient mesh fields.
      * CPU morph paths leave these null. */
     dd->cmd.morph_deltas = mesh->morph_deltas;
+    dd->cmd.morph_normal_deltas = mesh->morph_normal_deltas;
     dd->cmd.morph_weights = mesh->morph_weights;
     dd->cmd.morph_shape_count = mesh->morph_shape_count;
 
@@ -799,7 +802,9 @@ void rt_canvas3d_end(void *obj) {
             }
         }
 
-        if (out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
+        if (c->backend && c->backend->draw_skybox) {
+            c->backend->draw_skybox(c->backend_ctx, c->skybox);
+        } else if (out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
             float vp_rot[16];
             memcpy(vp_rot, c->cached_vp, sizeof(float) * 16);
             vp_rot[3] = 0.0f;

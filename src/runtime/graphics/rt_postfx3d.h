@@ -59,6 +59,14 @@ typedef struct {
     float cg_brightness, cg_contrast, cg_saturation;
     int8_t vignette_enabled;
     float vignette_radius, vignette_softness;
+    int8_t ssao_enabled;
+    float ssao_radius, ssao_intensity;
+    int32_t ssao_samples;
+    int8_t dof_enabled;
+    float dof_focus_distance, dof_aperture, dof_max_blur;
+    int8_t motion_blur_enabled;
+    float motion_blur_intensity;
+    int32_t motion_blur_samples;
 } vgfx3d_postfx_snapshot_t;
 
 /* Fill snapshot from a PostFX3D object. Returns 0 if postfx is NULL or disabled. */

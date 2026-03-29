@@ -50,6 +50,7 @@ typedef unsigned int GLbitfield;
 #define GL_FRONT_AND_BACK 0x0408
 #define GL_CCW 0x0901
 #define GL_LESS 0x0201
+#define GL_LEQUAL 0x0203
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_INT 0x1405
 #define GL_UNSIGNED_BYTE 0x1401
@@ -67,6 +68,8 @@ typedef unsigned int GLbitfield;
 #define GL_LINK_STATUS 0x8B82
 #define GL_INFO_LOG_LENGTH 0x8B84
 #define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE_CUBE_MAP 0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
 #define GL_RGBA 0x1908
 #define GL_RGBA8 0x8058
 #define GL_R32F 0x822E
@@ -75,6 +78,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE_WRAP_S 0x2802
 #define GL_TEXTURE_WRAP_T 0x2803
+#define GL_TEXTURE_WRAP_R 0x8072
 #define GL_TEXTURE_MIN_FILTER 0x2801
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_REPEAT 0x2901
@@ -290,6 +294,11 @@ typedef struct {
 } gl_texture_cache_entry_t;
 
 typedef struct {
+    const void *cubemap;
+    GLuint tex;
+} gl_cubemap_cache_entry_t;
+
+typedef struct {
     Display *display;
     Window window;
     GLXContext glxCtx;
@@ -297,8 +306,11 @@ typedef struct {
     GLuint program;
     GLuint shadow_program;
     GLuint postfx_program;
+    GLuint skybox_program;
     GLuint vao;
     GLuint fullscreen_vao;
+    GLuint skybox_vao;
+    GLuint skybox_vbo;
 
     GLuint mesh_vbo;
     GLuint mesh_ibo;
@@ -314,9 +326,13 @@ typedef struct {
     GLuint morph_tbo;
     size_t morph_capacity_bytes;
 
+    GLuint morph_normal_buffer;
+    GLuint morph_normal_tbo;
+    size_t morph_normal_capacity_bytes;
+
     GLuint scene_fbo;
     GLuint scene_color_tex;
-    GLuint scene_depth_rbo;
+    GLuint scene_depth_tex;
     int32_t scene_width;
     int32_t scene_height;
 
@@ -339,10 +355,18 @@ typedef struct {
     gl_texture_cache_entry_t *texture_cache;
     int32_t texture_cache_count;
     int32_t texture_cache_capacity;
+    gl_cubemap_cache_entry_t *cubemap_cache;
+    int32_t cubemap_cache_count;
+    int32_t cubemap_cache_capacity;
 
     int32_t width;
     int32_t height;
+    float view[16];
+    float projection[16];
     float vp[16];
+    float inv_vp[16];
+    float prev_vp[16];
+    int8_t prev_vp_valid;
     float cam_pos[3];
     int8_t fog_enabled;
     float fog_near;
@@ -353,11 +377,12 @@ typedef struct {
     GLint uModelMatrix, uViewProjection, uNormalMatrix, uShadowVP;
     GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
     GLint uUnlit, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap, uHasEmissiveMap;
+    GLint uHasEnvMap, uReflectivity;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
     GLint uShadowEnabled, uShadowBias;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
-    GLint uMorphWeights, uMorphDeltas;
-    GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex;
+    GLint uMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
+    GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex, uEnvMap;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[8], uLightDir[8], uLightPos[8], uLightColor[8], uLightIntensity[8];
     GLint uLightAtten[8], uLightInnerCos[8], uLightOuterCos[8];
@@ -366,11 +391,19 @@ typedef struct {
     GLint shadow_uHasSkinning, shadow_uMorphShapeCount, shadow_uVertexCount;
     GLint shadow_uMorphWeights, shadow_uMorphDeltas;
 
-    GLint postfx_uSceneTex, postfx_uInvResolution;
+    GLint skybox_uProjection;
+    GLint skybox_uViewRotation;
+    GLint skybox_uSkybox;
+
+    GLint postfx_uSceneTex, postfx_uSceneDepthTex, postfx_uInvResolution;
     GLint postfx_uBloomEnabled, postfx_uBloomThreshold, postfx_uBloomIntensity;
     GLint postfx_uTonemapMode, postfx_uTonemapExposure, postfx_uFxaaEnabled;
     GLint postfx_uColorGradeEnabled, postfx_uCgBrightness, postfx_uCgContrast, postfx_uCgSaturation;
     GLint postfx_uVignetteEnabled, postfx_uVignetteRadius, postfx_uVignetteSoftness;
+    GLint postfx_uSsaoEnabled, postfx_uSsaoRadius, postfx_uSsaoIntensity, postfx_uSsaoSamples;
+    GLint postfx_uDofEnabled, postfx_uDofFocusDistance, postfx_uDofAperture, postfx_uDofMaxBlur;
+    GLint postfx_uMotionBlurEnabled, postfx_uMotionBlurIntensity, postfx_uMotionBlurSamples;
+    GLint postfx_uCameraPos, postfx_uInvViewProjection, postfx_uPrevViewProjection;
 } gl_context_t;
 
 static int gl_loaded = 0;
@@ -386,6 +419,52 @@ static void mat4f_mul_gl(const float *a, const float *b, float *out) {
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
+}
+
+static int mat4f_inverse_gl(const float *m, float *out) {
+    float inv[16];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    {
+        float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+        if (fabsf(det) < 1e-12f)
+            return -1;
+        det = 1.0f / det;
+        for (int i = 0; i < 16; i++)
+            out[i] = inv[i] * det;
+    }
+    return 0;
 }
 
 static int load_gl(void) {
@@ -526,13 +605,15 @@ static const char *glsl_vertex_src =
     "uniform int uMorphShapeCount;\n"
     "uniform int uVertexCount;\n"
     "uniform samplerBuffer uMorphDeltas;\n"
+    "uniform samplerBuffer uMorphNormalDeltas;\n"
     "uniform float uMorphWeights[32];\n"
+    "uniform int uHasMorphNormalDeltas;\n"
     "out vec3 vWorldPos;\n"
     "out vec3 vNormal;\n"
     "out vec3 vTangent;\n"
     "out vec2 vUV;\n"
     "out vec4 vColor;\n"
-    "void applyMorph(inout vec3 pos) {\n"
+    "void applyMorph(inout vec3 pos, inout vec3 nrm) {\n"
     "    for (int s = 0; s < uMorphShapeCount; s++) {\n"
     "        float w = uMorphWeights[s];\n"
     "        if (abs(w) > 0.0001) {\n"
@@ -540,15 +621,20 @@ static const char *glsl_vertex_src =
     "            pos.x += texelFetch(uMorphDeltas, base + 0).r * w;\n"
     "            pos.y += texelFetch(uMorphDeltas, base + 1).r * w;\n"
     "            pos.z += texelFetch(uMorphDeltas, base + 2).r * w;\n"
+    "            if (uHasMorphNormalDeltas != 0) {\n"
+    "                nrm.x += texelFetch(uMorphNormalDeltas, base + 0).r * w;\n"
+    "                nrm.y += texelFetch(uMorphNormalDeltas, base + 1).r * w;\n"
+    "                nrm.z += texelFetch(uMorphNormalDeltas, base + 2).r * w;\n"
+    "            }\n"
     "        }\n"
     "    }\n"
     "}\n"
     "void main() {\n"
     "    vec3 pos = aPosition;\n"
     "    vec3 nrm = aNormal;\n"
-    "    applyMorph(pos);\n"
+    "    applyMorph(pos, nrm);\n"
     "    vec4 localPos = vec4(pos, 1.0);\n"
-    "    vec3 localNormal = nrm;\n"
+    "    vec3 localNormal = normalize(nrm);\n"
     "    if (uHasSkinning != 0) {\n"
     "        vec4 skinnedPos = vec4(0.0);\n"
     "        vec3 skinnedNormal = vec3(0.0);\n"
@@ -598,6 +684,8 @@ static const char *glsl_fragment_src =
     "uniform int uHasNormalMap;\n"
     "uniform int uHasSpecularMap;\n"
     "uniform int uHasEmissiveMap;\n"
+    "uniform int uHasEnvMap;\n"
+    "uniform float uReflectivity;\n"
     "uniform int uHasSplat;\n"
     "uniform int uFogEnabled;\n"
     "uniform float uFogNear;\n"
@@ -619,6 +707,7 @@ static const char *glsl_fragment_src =
     "uniform sampler2D uSpecularTex;\n"
     "uniform sampler2D uEmissiveTex;\n"
     "uniform sampler2D uShadowTex;\n"
+    "uniform samplerCube uEnvMap;\n"
     "uniform sampler2D uSplatTex;\n"
     "uniform sampler2D uSplatLayer0;\n"
     "uniform sampler2D uSplatLayer1;\n"
@@ -676,6 +765,12 @@ static const char *glsl_fragment_src =
     "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, vUV).rgb;\n"
     "    if (uUnlit != 0) {\n"
     "        vec3 unlitColor = baseColor + emissive;\n"
+    "        if (uHasEnvMap != 0) {\n"
+    "            vec3 V = normalize(uCameraPos - vWorldPos);\n"
+    "            vec3 R = reflect(-V, N);\n"
+    "            vec3 envColor = texture(uEnvMap, R).rgb;\n"
+    "            unlitColor = mix(unlitColor, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
+    "        }\n"
     "        if (uFogEnabled != 0) {\n"
     "            float dist = length(uCameraPos - vWorldPos);\n"
     "            float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);\n"
@@ -720,6 +815,11 @@ static const char *glsl_fragment_src =
     "        }\n"
     "    }\n"
     "    result += emissive;\n"
+    "    if (uHasEnvMap != 0) {\n"
+    "        vec3 R = reflect(-V, N);\n"
+    "        vec3 envColor = texture(uEnvMap, R).rgb;\n"
+    "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
+    "    }\n"
     "    if (uFogEnabled != 0) {\n"
     "        float dist = length(uCameraPos - vWorldPos);\n"
     "        float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);\n"
@@ -774,6 +874,42 @@ static const char *glsl_shadow_fragment_src =
     "#version 330 core\n"
     "void main() {}\n";
 
+static const char *glsl_skybox_vertex_src =
+    "#version 330 core\n"
+    "layout(location=0) in vec3 aPosition;\n"
+    "out vec3 vDir;\n"
+    "uniform mat4 uProjection;\n"
+    "uniform mat4 uViewRotation;\n"
+    "void main() {\n"
+    "    vDir = aPosition;\n"
+    "    vec4 pos = uProjection * uViewRotation * vec4(aPosition, 1.0);\n"
+    "    gl_Position = pos.xyww;\n"
+    "}\n";
+
+static const char *glsl_skybox_fragment_src =
+    "#version 330 core\n"
+    "in vec3 vDir;\n"
+    "out vec4 FragColor;\n"
+    "uniform samplerCube uSkybox;\n"
+    "void main() {\n"
+    "    FragColor = texture(uSkybox, normalize(vDir));\n"
+    "}\n";
+
+static const float gl_skybox_vertices[] = {
+    -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
+    1.0f, -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
+};
+
 static const char *glsl_postfx_vertex_src =
     "#version 330 core\n"
     "out vec2 vUV;\n"
@@ -791,6 +927,7 @@ static const char *glsl_postfx_fragment_src =
     "in vec2 vUV;\n"
     "out vec4 FragColor;\n"
     "uniform sampler2D uSceneTex;\n"
+    "uniform sampler2D uSceneDepthTex;\n"
     "uniform vec2 uInvResolution;\n"
     "uniform int uBloomEnabled;\n"
     "uniform float uBloomThreshold;\n"
@@ -805,7 +942,70 @@ static const char *glsl_postfx_fragment_src =
     "uniform int uVignetteEnabled;\n"
     "uniform float uVignetteRadius;\n"
     "uniform float uVignetteSoftness;\n"
+    "uniform int uSsaoEnabled;\n"
+    "uniform float uSsaoRadius;\n"
+    "uniform float uSsaoIntensity;\n"
+    "uniform int uSsaoSamples;\n"
+    "uniform int uDofEnabled;\n"
+    "uniform float uDofFocusDistance;\n"
+    "uniform float uDofAperture;\n"
+    "uniform float uDofMaxBlur;\n"
+    "uniform int uMotionBlurEnabled;\n"
+    "uniform float uMotionBlurIntensity;\n"
+    "uniform int uMotionBlurSamples;\n"
+    "uniform vec3 uCameraPos;\n"
+    "uniform mat4 uInvViewProjection;\n"
+    "uniform mat4 uPrevViewProjection;\n"
     "vec3 sampleScene(vec2 uv) { return texture(uSceneTex, uv).rgb; }\n"
+    "float sampleDepth(vec2 uv) { return texture(uSceneDepthTex, uv).r; }\n"
+    "vec3 reconstructWorld(vec2 uv, float depth) {\n"
+    "    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+    "    vec4 world = uInvViewProjection * clip;\n"
+    "    return world.xyz / max(world.w, 0.0001);\n"
+    "}\n"
+    "float computeSsao(vec2 uv, float centerDepth) {\n"
+    "    float radius = max(uSsaoRadius, 0.0001) * max(uInvResolution.x, uInvResolution.y) * 120.0;\n"
+    "    vec2 offsets[8] = vec2[](vec2(1.0, 0.0), vec2(-1.0, 0.0), vec2(0.0, 1.0), vec2(0.0, -1.0),\n"
+    "                            vec2(0.707, 0.707), vec2(-0.707, 0.707), vec2(0.707, -0.707), vec2(-0.707, -0.707));\n"
+    "    int count = clamp(uSsaoSamples, 1, 8);\n"
+    "    float occ = 0.0;\n"
+    "    for (int i = 0; i < count; i++) {\n"
+    "        float sd = sampleDepth(uv + offsets[i] * radius);\n"
+    "        occ += max(sd - centerDepth, 0.0);\n"
+    "    }\n"
+    "    float ao = 1.0 - clamp((occ / float(count)) * uSsaoIntensity * 32.0, 0.0, 1.0);\n"
+    "    return ao;\n"
+    "}\n"
+    "vec3 applyDof(vec2 uv, vec3 color, vec3 worldPos) {\n"
+    "    float dist = length(worldPos - uCameraPos);\n"
+    "    float blur = clamp(abs(dist - uDofFocusDistance) * max(uDofAperture, 0.0) * 0.02, 0.0, uDofMaxBlur);\n"
+    "    if (blur < 0.001) return color;\n"
+    "    vec2 stepUv = uInvResolution * blur;\n"
+    "    vec3 acc = color * 0.4;\n"
+    "    acc += sampleScene(uv + vec2(stepUv.x, 0.0)) * 0.15;\n"
+    "    acc += sampleScene(uv - vec2(stepUv.x, 0.0)) * 0.15;\n"
+    "    acc += sampleScene(uv + vec2(0.0, stepUv.y)) * 0.15;\n"
+    "    acc += sampleScene(uv - vec2(0.0, stepUv.y)) * 0.15;\n"
+    "    return acc;\n"
+    "}\n"
+    "vec3 applyMotionBlur(vec2 uv, vec3 color, vec3 worldPos) {\n"
+    "    vec4 prevClip = uPrevViewProjection * vec4(worldPos, 1.0);\n"
+    "    float invW = 1.0 / max(prevClip.w, 0.0001);\n"
+    "    vec2 prevUv = prevClip.xy * invW * 0.5 + 0.5;\n"
+    "    vec2 velocity = (uv - prevUv) * uMotionBlurIntensity;\n"
+    "    float vlen = length(velocity);\n"
+    "    if (vlen < 0.0005) return color;\n"
+    "    int taps = clamp(uMotionBlurSamples, 2, 8);\n"
+    "    vec3 acc = vec3(0.0);\n"
+    "    float weight = 0.0;\n"
+    "    for (int i = 0; i < taps; i++) {\n"
+    "        float t = (float(i) / float(taps - 1)) - 0.5;\n"
+    "        vec3 s = sampleScene(uv + velocity * t);\n"
+    "        acc += s;\n"
+    "        weight += 1.0;\n"
+    "    }\n"
+    "    return acc / max(weight, 1.0);\n"
+    "}\n"
     "vec3 applyFxaa(vec2 uv, vec3 color) {\n"
     "    float lumaM = dot(color, vec3(0.299, 0.587, 0.114));\n"
     "    float lumaN = dot(sampleScene(uv + vec2(0.0, -uInvResolution.y)), vec3(0.299, 0.587, 0.114));\n"
@@ -822,6 +1022,11 @@ static const char *glsl_postfx_fragment_src =
     "}\n"
     "void main() {\n"
     "    vec3 color = sampleScene(vUV);\n"
+    "    float depth = sampleDepth(vUV);\n"
+    "    vec3 worldPos = reconstructWorld(vUV, depth);\n"
+    "    if (uMotionBlurEnabled != 0) color = applyMotionBlur(vUV, color, worldPos);\n"
+    "    if (uDofEnabled != 0) color = applyDof(vUV, color, worldPos);\n"
+    "    if (uSsaoEnabled != 0) color *= computeSsao(vUV, depth);\n"
     "    if (uFxaaEnabled != 0) color = applyFxaa(vUV, color);\n"
     "    if (uBloomEnabled != 0) {\n"
     "        vec3 bright = max(color - vec3(uBloomThreshold), vec3(0.0));\n"
@@ -919,13 +1124,27 @@ static void texture_cache_clear(gl_context_t *ctx) {
     ctx->texture_cache_count = 0;
 }
 
+static void cubemap_cache_clear(gl_context_t *ctx) {
+    if (!ctx || !ctx->cubemap_cache)
+        return;
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        if (ctx->cubemap_cache[i].tex)
+            gl.DeleteTextures(1, &ctx->cubemap_cache[i].tex);
+    }
+    ctx->cubemap_cache_count = 0;
+}
+
 static void texture_cache_destroy(gl_context_t *ctx) {
     if (!ctx)
         return;
     texture_cache_clear(ctx);
+    cubemap_cache_clear(ctx);
     free(ctx->texture_cache);
     ctx->texture_cache = NULL;
     ctx->texture_cache_capacity = 0;
+    free(ctx->cubemap_cache);
+    ctx->cubemap_cache = NULL;
+    ctx->cubemap_cache_capacity = 0;
 }
 
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
@@ -971,18 +1190,76 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     return tex;
 }
 
+static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
+    if (!ctx || !cubemap)
+        return 0;
+
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        if (ctx->cubemap_cache[i].cubemap == cubemap)
+            return ctx->cubemap_cache[i].tex;
+    }
+
+    GLuint tex = 0;
+    gl.GenTextures(1, &tex);
+    gl.BindTexture(GL_TEXTURE_CUBE_MAP, tex);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    for (int face = 0; face < 6; face++) {
+        int32_t w = 0, h = 0;
+        uint8_t *rgba = NULL;
+        if (vgfx3d_unpack_pixels_rgba(cubemap->faces[face], &w, &h, &rgba) != 0 || !rgba) {
+            if (rgba)
+                free(rgba);
+            gl.DeleteTextures(1, &tex);
+            return 0;
+        }
+        gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
+                      0,
+                      GL_RGBA8,
+                      w,
+                      h,
+                      0,
+                      GL_RGBA,
+                      GL_UNSIGNED_BYTE,
+                      rgba);
+        free(rgba);
+    }
+
+    if (ctx->cubemap_cache_count >= ctx->cubemap_cache_capacity) {
+        int32_t new_cap = ctx->cubemap_cache_capacity > 0 ? ctx->cubemap_cache_capacity * 2 : 8;
+        gl_cubemap_cache_entry_t *nv =
+            (gl_cubemap_cache_entry_t *)realloc(ctx->cubemap_cache,
+                                                (size_t)new_cap * sizeof(gl_cubemap_cache_entry_t));
+        if (!nv) {
+            gl.DeleteTextures(1, &tex);
+            return 0;
+        }
+        ctx->cubemap_cache = nv;
+        ctx->cubemap_cache_capacity = new_cap;
+    }
+
+    ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap = cubemap;
+    ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
+    ctx->cubemap_cache_count++;
+    return tex;
+}
+
 static void destroy_scene_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
-    if (ctx->scene_depth_rbo)
-        gl.DeleteRenderbuffers(1, &ctx->scene_depth_rbo);
+    if (ctx->scene_depth_tex)
+        gl.DeleteTextures(1, &ctx->scene_depth_tex);
     if (ctx->scene_color_tex)
         gl.DeleteTextures(1, &ctx->scene_color_tex);
     if (ctx->scene_fbo)
         gl.DeleteFramebuffers(1, &ctx->scene_fbo);
     ctx->scene_fbo = 0;
     ctx->scene_color_tex = 0;
-    ctx->scene_depth_rbo = 0;
+    ctx->scene_depth_tex = 0;
     ctx->scene_width = 0;
     ctx->scene_height = 0;
 }
@@ -1010,11 +1287,15 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
 
-    gl.GenRenderbuffers(1, &ctx->scene_depth_rbo);
-    gl.BindRenderbuffer(GL_RENDERBUFFER, ctx->scene_depth_rbo);
-    gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, w, h);
-    gl.FramebufferRenderbuffer(
-        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ctx->scene_depth_rbo);
+    gl.GenTextures(1, &ctx->scene_depth_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl.FramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->scene_depth_tex, 0);
 
     if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         destroy_scene_targets(ctx);
@@ -1255,7 +1536,9 @@ static void bind_morph_payload(gl_context_t *ctx,
                                GLint uMorphShapeCount,
                                GLint uVertexCount,
                                GLint uMorphWeights,
-                               GLint uMorphDeltas) {
+                               GLint uMorphDeltas,
+                               GLint uHasMorphNormalDeltas,
+                               GLint uMorphNormalDeltas) {
     int use_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
     int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
                           ? cmd->morph_shape_count
@@ -1289,6 +1572,27 @@ static void bind_morph_payload(gl_context_t *ctx,
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
     gl.Uniform1i(uMorphDeltas, 10);
+    gl.ActiveTexture(GL_TEXTURE0 + 11);
+    if (uHasMorphNormalDeltas >= 0)
+        gl.Uniform1i(uHasMorphNormalDeltas,
+                     (morph_count > 0 && cmd->morph_normal_deltas) ? 1 : 0);
+    if (morph_count > 0 && cmd->morph_normal_deltas && uMorphNormalDeltas >= 0) {
+        size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
+        ensure_buffer_capacity(GL_TEXTURE_BUFFER,
+                               ctx->morph_normal_buffer,
+                               &ctx->morph_normal_capacity_bytes,
+                               bytes,
+                               64u * 1024u,
+                               GL_STREAM_DRAW);
+        gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_normal_buffer);
+        gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, cmd->morph_normal_deltas);
+        gl.BindTexture(GL_TEXTURE_BUFFER, ctx->morph_normal_tbo);
+        gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, ctx->morph_normal_buffer);
+    } else {
+        gl.BindTexture(GL_TEXTURE_BUFFER, 0);
+    }
+    if (uMorphNormalDeltas >= 0)
+        gl.Uniform1i(uMorphNormalDeltas, 11);
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
@@ -1347,6 +1651,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  cmd->emissive_color[0],
                  cmd->emissive_color[1],
                  cmd->emissive_color[2]);
+    gl.Uniform1i(ctx->uHasEnvMap, (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0);
+    gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
@@ -1365,7 +1671,9 @@ static void upload_main_uniforms(gl_context_t *ctx,
                        ctx->uMorphShapeCount,
                        ctx->uVertexCount,
                        ctx->uMorphWeights,
-                       ctx->uMorphDeltas);
+                       ctx->uMorphDeltas,
+                       ctx->uHasMorphNormalDeltas,
+                       ctx->uMorphNormalDeltas);
 }
 
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
@@ -1373,6 +1681,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     GLuint normal_tex = cmd->normal_map ? gl_get_cached_texture(ctx, cmd->normal_map) : 0;
     GLuint specular_tex = cmd->specular_map ? gl_get_cached_texture(ctx, cmd->specular_map) : 0;
     GLuint emissive_tex = cmd->emissive_map ? gl_get_cached_texture(ctx, cmd->emissive_map) : 0;
+    GLuint env_tex = cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
     GLuint splat_layer0 =
         cmd->splat_layers[0] ? gl_get_cached_texture(ctx, cmd->splat_layers[0]) : 0;
@@ -1402,6 +1711,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer1, 7, GL_TEXTURE_2D, splat_layer1);
     bind_texture_unit(ctx->uSplatLayer2, 8, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, 9, GL_TEXTURE_2D, splat_layer3);
+    bind_texture_unit(ctx->uEnvMap, 12, GL_TEXTURE_CUBE_MAP, env_tex);
     if (ctx->uSplatScales >= 0) {
         gl.Uniform4f(ctx->uSplatScales,
                      cmd->splat_layer_scales[0],
@@ -1430,7 +1740,9 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
                        ctx->shadow_uMorphShapeCount,
                        ctx->shadow_uVertexCount,
                        ctx->shadow_uMorphWeights,
-                       ctx->shadow_uMorphDeltas);
+                       ctx->shadow_uMorphDeltas,
+                       -1,
+                       -1);
 }
 
 static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
@@ -1446,7 +1758,13 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
     gl.UseProgram(ctx->postfx_program);
     gl.BindVertexArray(ctx->fullscreen_vao);
     bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, ctx->scene_color_tex);
-    gl.Uniform2f(ctx->postfx_uInvResolution, 1.0f / (float)ctx->scene_width, 1.0f / (float)ctx->scene_height);
+    bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
+    gl.Uniform2f(ctx->postfx_uInvResolution,
+                 1.0f / (float)ctx->scene_width,
+                 1.0f / (float)ctx->scene_height);
+    gl.Uniform3f(ctx->postfx_uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
+    gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->inv_vp);
+    gl.UniformMatrix4fv(ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
 
     if (snapshot) {
         gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
@@ -1462,6 +1780,17 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
         gl.Uniform1i(ctx->postfx_uVignetteEnabled, snapshot->vignette_enabled ? 1 : 0);
         gl.Uniform1f(ctx->postfx_uVignetteRadius, snapshot->vignette_radius);
         gl.Uniform1f(ctx->postfx_uVignetteSoftness, snapshot->vignette_softness);
+        gl.Uniform1i(ctx->postfx_uSsaoEnabled, snapshot->ssao_enabled ? 1 : 0);
+        gl.Uniform1f(ctx->postfx_uSsaoRadius, snapshot->ssao_radius);
+        gl.Uniform1f(ctx->postfx_uSsaoIntensity, snapshot->ssao_intensity);
+        gl.Uniform1i(ctx->postfx_uSsaoSamples, snapshot->ssao_samples);
+        gl.Uniform1i(ctx->postfx_uDofEnabled, snapshot->dof_enabled ? 1 : 0);
+        gl.Uniform1f(ctx->postfx_uDofFocusDistance, snapshot->dof_focus_distance);
+        gl.Uniform1f(ctx->postfx_uDofAperture, snapshot->dof_aperture);
+        gl.Uniform1f(ctx->postfx_uDofMaxBlur, snapshot->dof_max_blur);
+        gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, snapshot->motion_blur_enabled ? 1 : 0);
+        gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, snapshot->motion_blur_intensity);
+        gl.Uniform1i(ctx->postfx_uMotionBlurSamples, snapshot->motion_blur_samples);
     } else {
         gl.Uniform1i(ctx->postfx_uBloomEnabled, 0);
         gl.Uniform1f(ctx->postfx_uBloomThreshold, 1.0f);
@@ -1476,9 +1805,52 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
         gl.Uniform1i(ctx->postfx_uVignetteEnabled, 0);
         gl.Uniform1f(ctx->postfx_uVignetteRadius, 1.0f);
         gl.Uniform1f(ctx->postfx_uVignetteSoftness, 0.0f);
+        gl.Uniform1i(ctx->postfx_uSsaoEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uSsaoRadius, 0.0f);
+        gl.Uniform1f(ctx->postfx_uSsaoIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uSsaoSamples, 0);
+        gl.Uniform1i(ctx->postfx_uDofEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uDofFocusDistance, 0.0f);
+        gl.Uniform1f(ctx->postfx_uDofAperture, 0.0f);
+        gl.Uniform1f(ctx->postfx_uDofMaxBlur, 0.0f);
+        gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uMotionBlurSamples, 0);
     }
 
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
+}
+
+static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
+    if (!ctx || !cubemap || !ctx->skybox_program)
+        return;
+
+    GLuint tex = gl_get_cached_cubemap(ctx, cubemap);
+    if (!tex)
+        return;
+
+    float view_rotation[16];
+    memcpy(view_rotation, ctx->view, sizeof(view_rotation));
+    view_rotation[3] = 0.0f;
+    view_rotation[7] = 0.0f;
+    view_rotation[11] = 0.0f;
+
+    gl.DepthMask(GL_FALSE);
+    gl.DepthFunc(GL_LEQUAL);
+    gl.Disable(GL_CULL_FACE);
+    gl.UseProgram(ctx->skybox_program);
+    gl.BindVertexArray(ctx->skybox_vao);
+    gl.UniformMatrix4fv(ctx->skybox_uProjection, 1, GL_TRUE, ctx->projection);
+    gl.UniformMatrix4fv(ctx->skybox_uViewRotation, 1, GL_TRUE, view_rotation);
+    bind_texture_unit(ctx->skybox_uSkybox, 13, GL_TEXTURE_CUBE_MAP, tex);
+    gl.DrawArrays(GL_TRIANGLES, 0, 36);
+
+    gl.ActiveTexture(GL_TEXTURE0);
+    gl.DepthFunc(GL_LESS);
+    gl.DepthMask(GL_TRUE);
+    gl.Enable(GL_CULL_FACE);
+    gl.UseProgram(ctx->program);
+    gl.BindVertexArray(ctx->vao);
 }
 
 static void query_main_uniforms(gl_context_t *ctx) {
@@ -1499,6 +1871,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasNormalMap);
     U(uHasSpecularMap);
     U(uHasEmissiveMap);
+    U(uHasEnvMap);
+    U(uReflectivity);
     U(uHasSplat);
     U(uFogEnabled);
     U(uFogNear);
@@ -1512,11 +1886,14 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uVertexCount);
     ctx->uMorphWeights = gl.GetUniformLocation(ctx->program, "uMorphWeights[0]");
     U(uMorphDeltas);
+    U(uMorphNormalDeltas);
+    U(uHasMorphNormalDeltas);
     U(uDiffuseTex);
     U(uNormalTex);
     U(uSpecularTex);
     U(uEmissiveTex);
     U(uShadowTex);
+    U(uEnvMap);
     U(uSplatTex);
     U(uSplatLayer0);
     U(uSplatLayer1);
@@ -1556,8 +1933,15 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uMorphDeltas = gl.GetUniformLocation(ctx->shadow_program, "uMorphDeltas");
 }
 
+static void query_skybox_uniforms(gl_context_t *ctx) {
+    ctx->skybox_uProjection = gl.GetUniformLocation(ctx->skybox_program, "uProjection");
+    ctx->skybox_uViewRotation = gl.GetUniformLocation(ctx->skybox_program, "uViewRotation");
+    ctx->skybox_uSkybox = gl.GetUniformLocation(ctx->skybox_program, "uSkybox");
+}
+
 static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uSceneTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneTex");
+    ctx->postfx_uSceneDepthTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneDepthTex");
     ctx->postfx_uInvResolution = gl.GetUniformLocation(ctx->postfx_program, "uInvResolution");
     ctx->postfx_uBloomEnabled = gl.GetUniformLocation(ctx->postfx_program, "uBloomEnabled");
     ctx->postfx_uBloomThreshold = gl.GetUniformLocation(ctx->postfx_program, "uBloomThreshold");
@@ -1575,6 +1959,26 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uVignetteRadius = gl.GetUniformLocation(ctx->postfx_program, "uVignetteRadius");
     ctx->postfx_uVignetteSoftness =
         gl.GetUniformLocation(ctx->postfx_program, "uVignetteSoftness");
+    ctx->postfx_uSsaoEnabled = gl.GetUniformLocation(ctx->postfx_program, "uSsaoEnabled");
+    ctx->postfx_uSsaoRadius = gl.GetUniformLocation(ctx->postfx_program, "uSsaoRadius");
+    ctx->postfx_uSsaoIntensity = gl.GetUniformLocation(ctx->postfx_program, "uSsaoIntensity");
+    ctx->postfx_uSsaoSamples = gl.GetUniformLocation(ctx->postfx_program, "uSsaoSamples");
+    ctx->postfx_uDofEnabled = gl.GetUniformLocation(ctx->postfx_program, "uDofEnabled");
+    ctx->postfx_uDofFocusDistance =
+        gl.GetUniformLocation(ctx->postfx_program, "uDofFocusDistance");
+    ctx->postfx_uDofAperture = gl.GetUniformLocation(ctx->postfx_program, "uDofAperture");
+    ctx->postfx_uDofMaxBlur = gl.GetUniformLocation(ctx->postfx_program, "uDofMaxBlur");
+    ctx->postfx_uMotionBlurEnabled =
+        gl.GetUniformLocation(ctx->postfx_program, "uMotionBlurEnabled");
+    ctx->postfx_uMotionBlurIntensity =
+        gl.GetUniformLocation(ctx->postfx_program, "uMotionBlurIntensity");
+    ctx->postfx_uMotionBlurSamples =
+        gl.GetUniformLocation(ctx->postfx_program, "uMotionBlurSamples");
+    ctx->postfx_uCameraPos = gl.GetUniformLocation(ctx->postfx_program, "uCameraPos");
+    ctx->postfx_uInvViewProjection =
+        gl.GetUniformLocation(ctx->postfx_program, "uInvViewProjection");
+    ctx->postfx_uPrevViewProjection =
+        gl.GetUniformLocation(ctx->postfx_program, "uPrevViewProjection");
 }
 
 static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
@@ -1646,7 +2050,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     GLuint sfs = compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src);
     GLuint pvs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src);
     GLuint pfs = compile_shader(GL_FRAGMENT_SHADER, glsl_postfx_fragment_src);
-    if (!vs || !fs || !svs || !sfs || !pvs || !pfs) {
+    GLuint skyvs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
+    GLuint skyfs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
+    if (!vs || !fs || !svs || !sfs || !pvs || !pfs || !skyvs || !skyfs) {
         if (vs)
             gl.DeleteShader(vs);
         if (fs)
@@ -1659,6 +2065,10 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             gl.DeleteShader(pvs);
         if (pfs)
             gl.DeleteShader(pfs);
+        if (skyvs)
+            gl.DeleteShader(skyvs);
+        if (skyfs)
+            gl.DeleteShader(skyfs);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -1667,19 +2077,24 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->program = link_program(vs, fs);
     ctx->shadow_program = link_program(svs, sfs);
     ctx->postfx_program = link_program(pvs, pfs);
+    ctx->skybox_program = link_program(skyvs, skyfs);
     gl.DeleteShader(vs);
     gl.DeleteShader(fs);
     gl.DeleteShader(svs);
     gl.DeleteShader(sfs);
     gl.DeleteShader(pvs);
     gl.DeleteShader(pfs);
-    if (!ctx->program || !ctx->shadow_program || !ctx->postfx_program) {
+    gl.DeleteShader(skyvs);
+    gl.DeleteShader(skyfs);
+    if (!ctx->program || !ctx->shadow_program || !ctx->postfx_program || !ctx->skybox_program) {
         if (ctx->program)
             gl.DeleteProgram(ctx->program);
         if (ctx->shadow_program)
             gl.DeleteProgram(ctx->shadow_program);
         if (ctx->postfx_program)
             gl.DeleteProgram(ctx->postfx_program);
+        if (ctx->skybox_program)
+            gl.DeleteProgram(ctx->skybox_program);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -1687,6 +2102,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     query_main_uniforms(ctx);
     query_shadow_uniforms(ctx);
+    query_skybox_uniforms(ctx);
     query_postfx_uniforms(ctx);
 
     gl.UseProgram(ctx->program);
@@ -1701,12 +2117,18 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.Uniform1i(ctx->uSplatLayer2, 8);
     gl.Uniform1i(ctx->uSplatLayer3, 9);
     gl.Uniform1i(ctx->uMorphDeltas, 10);
+    gl.Uniform1i(ctx->uMorphNormalDeltas, 11);
+    gl.Uniform1i(ctx->uEnvMap, 12);
 
     gl.UseProgram(ctx->shadow_program);
     gl.Uniform1i(ctx->shadow_uMorphDeltas, 10);
 
+    gl.UseProgram(ctx->skybox_program);
+    gl.Uniform1i(ctx->skybox_uSkybox, 13);
+
     gl.UseProgram(ctx->postfx_program);
     gl.Uniform1i(ctx->postfx_uSceneTex, 0);
+    gl.Uniform1i(ctx->postfx_uSceneDepthTex, 1);
 
     GLuint main_block = gl.GetUniformBlockIndex(ctx->program, "Bones");
     GLuint shadow_block = gl.GetUniformBlockIndex(ctx->shadow_program, "Bones");
@@ -1717,12 +2139,16 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     gl.GenVertexArrays(1, &ctx->vao);
     gl.GenVertexArrays(1, &ctx->fullscreen_vao);
+    gl.GenVertexArrays(1, &ctx->skybox_vao);
     gl.GenBuffers(1, &ctx->mesh_vbo);
     gl.GenBuffers(1, &ctx->mesh_ibo);
     gl.GenBuffers(1, &ctx->instance_vbo);
     gl.GenBuffers(1, &ctx->bone_ubo);
     gl.GenBuffers(1, &ctx->morph_buffer);
+    gl.GenBuffers(1, &ctx->morph_normal_buffer);
+    gl.GenBuffers(1, &ctx->skybox_vbo);
     gl.GenTextures(1, &ctx->morph_tbo);
+    gl.GenTextures(1, &ctx->morph_normal_tbo);
 
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(4 * 1024 * 1024), NULL, GL_STREAM_DRAW);
@@ -1737,10 +2163,22 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_buffer);
     gl.BufferData(GL_TEXTURE_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
     ctx->morph_capacity_bytes = 64u * 1024u;
+    gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_normal_buffer);
+    gl.BufferData(GL_TEXTURE_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
+    ctx->morph_normal_capacity_bytes = 64u * 1024u;
 
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->bone_ubo);
     gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->bone_ubo);
+
+    gl.BindVertexArray(ctx->skybox_vao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->skybox_vbo);
+    gl.BufferData(GL_ARRAY_BUFFER,
+                  (GLsizeiptr)sizeof(gl_skybox_vertices),
+                  gl_skybox_vertices,
+                  GL_STATIC_DRAW);
+    gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * (GLsizei)sizeof(float), (void *)0);
+    gl.EnableVertexAttribArray(0);
 
     gl.Enable(GL_DEPTH_TEST);
     gl.DepthFunc(GL_LESS);
@@ -1755,6 +2193,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         gl.DeleteProgram(ctx->program);
         gl.DeleteProgram(ctx->shadow_program);
         gl.DeleteProgram(ctx->postfx_program);
+        gl.DeleteProgram(ctx->skybox_program);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -1776,8 +2215,14 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
 
+    if (ctx->skybox_vbo)
+        gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->morph_normal_tbo)
+        gl.DeleteTextures(1, &ctx->morph_normal_tbo);
     if (ctx->morph_tbo)
         gl.DeleteTextures(1, &ctx->morph_tbo);
+    if (ctx->morph_normal_buffer)
+        gl.DeleteBuffers(1, &ctx->morph_normal_buffer);
     if (ctx->bone_ubo)
         gl.DeleteBuffers(1, &ctx->bone_ubo);
     if (ctx->morph_buffer)
@@ -1788,6 +2233,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->mesh_vbo);
     if (ctx->mesh_ibo)
         gl.DeleteBuffers(1, &ctx->mesh_ibo);
+    if (ctx->skybox_vao)
+        gl.DeleteVertexArrays(1, &ctx->skybox_vao);
     if (ctx->fullscreen_vao)
         gl.DeleteVertexArrays(1, &ctx->fullscreen_vao);
     if (ctx->vao)
@@ -1798,6 +2245,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteProgram(ctx->shadow_program);
     if (ctx->postfx_program)
         gl.DeleteProgram(ctx->postfx_program);
+    if (ctx->skybox_program)
+        gl.DeleteProgram(ctx->skybox_program);
     if (ctx->glxCtx && ctx->display)
         glx.DestroyContext(ctx->display, ctx->glxCtx);
     free(ctx);
@@ -1815,12 +2264,29 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 
 static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    static const float kIdentity4x4[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
     if (!ctx || !cam)
         return;
 
     texture_cache_clear(ctx);
+    cubemap_cache_clear(ctx);
     ctx->shadow_active = 0;
+    if (ctx->prev_vp_valid)
+        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
+    memcpy(ctx->view, cam->view, sizeof(ctx->view));
+    memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
     mat4f_mul_gl(cam->projection, cam->view, ctx->vp);
+    if (mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0)
+        memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
+    if (!ctx->prev_vp_valid) {
+        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
+        ctx->prev_vp_valid = 1;
+    }
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
@@ -1843,6 +2309,10 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl.DepthMask(GL_TRUE);
     gl.UseProgram(ctx->program);
     gl.BindVertexArray(ctx->vao);
+}
+
+static void gl_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
+    gl_draw_skybox_impl((gl_context_t *)ctx_ptr, (const rt_cubemap3d *)cubemap_ptr);
 }
 
 static void gl_submit_draw(void *ctx_ptr,
@@ -2010,6 +2480,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .shadow_begin = gl_shadow_begin,
     .shadow_draw = gl_shadow_draw,
     .shadow_end = gl_shadow_end,
+    .draw_skybox = gl_draw_skybox,
     .submit_draw_instanced = gl_submit_draw_instanced,
     .present = gl_present,
     .present_postfx = gl_present_postfx,

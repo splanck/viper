@@ -109,6 +109,8 @@ The CLI is organized around primary entry points:
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
+- `viper package <dir>` — Package a project for distribution (.app, .deb, .exe, .tar.gz)
+- `viper repl` — Launch the interactive REPL
 
 ### viper init
 
@@ -184,7 +186,7 @@ viper il-opt <in.il> -o <out.il> [flags]
 | `--no-mem2reg`    | Drop mem2reg from default pipeline |
 | `--mem2reg-stats` | Print counts of promoted variables |
 
-Default pipeline: `mem2reg,constfold,peephole,dce`
+Default pipeline: O1 (`simplify-cfg, sccp, constfold, dce, simplify-cfg, sccp, inline, dce, simplify-cfg`)
 
 ### viper codegen
 

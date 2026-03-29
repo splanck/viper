@@ -56,6 +56,7 @@ typedef struct {
     int32_t bone_count;        /* 0 = not skinned */
     /* Transient: set by DrawMeshMorphed GPU path before draw, zero otherwise */
     const float *morph_deltas;  /* shape_count * vertex_count * 3 floats */
+    const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats */
     const float *morph_weights; /* shape_count floats */
     int32_t morph_shape_count;
 } rt_mesh3d;

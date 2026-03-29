@@ -48,6 +48,8 @@ typedef struct {
     const void *specular_map; /* Pixels (specular map, slot 2) or NULL */
     const void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
     float emissive_color[3];  /* emissive color multiplier */
+    const void *env_map;      /* CubeMap3D (environment reflections) or NULL */
+    float reflectivity;       /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
     const void *splat_map;         /* RGBA weight texture (NULL = not terrain) */
     const void *splat_layers[4];   /* Layer textures */
@@ -58,6 +60,7 @@ typedef struct {
     int32_t bone_count;            /* number of bones (0 = no skinning) */
     /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
     const float *morph_deltas;     /* shape_count * vertex_count * 3 floats */
+    const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats or NULL */
     const float *morph_weights;    /* shape_count floats */
     int32_t morph_shape_count;     /* number of active morph shapes (0 = none) */
 } vgfx3d_draw_cmd_t;
@@ -126,6 +129,11 @@ typedef struct vgfx3d_backend {
                          const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, float bias);
+
+    /* Optional skybox pass. When non-NULL, Canvas3D may delegate cubemap skybox
+     * rendering to the backend instead of rasterizing it into the software
+     * framebuffer. */
+    void (*draw_skybox)(void *ctx, const void *cubemap);
 
     /* Instanced rendering (MTL-13): draw multiple instances in one GPU call.
      * NULL = fallback to N individual submit_draw() calls (software path). */

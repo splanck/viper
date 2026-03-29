@@ -266,13 +266,25 @@ void rt_canvas3d_draw_mesh_morphed(
     if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
         size_t delta_count = (size_t)mt->shape_count * (size_t)mt->vertex_count * 3;
         float *packed_deltas = NULL;
+        float *packed_normal_deltas = NULL;
         float *packed_weights = NULL;
+        int has_normal_deltas = 0;
         if (delta_count > 0)
             packed_deltas = (float *)calloc(delta_count, sizeof(float));
+        for (int32_t s = 0; s < mt->shape_count; s++) {
+            if (mt->shapes[s].nrm_deltas) {
+                has_normal_deltas = 1;
+                break;
+            }
+        }
+        if (delta_count > 0 && has_normal_deltas)
+            packed_normal_deltas = (float *)calloc(delta_count, sizeof(float));
         if (mt->shape_count > 0)
             packed_weights = (float *)malloc((size_t)mt->shape_count * sizeof(float));
-        if ((delta_count > 0 && !packed_deltas) || (mt->shape_count > 0 && !packed_weights)) {
+        if ((delta_count > 0 && !packed_deltas) || (delta_count > 0 && has_normal_deltas && !packed_normal_deltas) ||
+            (mt->shape_count > 0 && !packed_weights)) {
             free(packed_deltas);
+            free(packed_normal_deltas);
             free(packed_weights);
             return;
         }
@@ -285,15 +297,23 @@ void rt_canvas3d_draw_mesh_morphed(
                        mt->shapes[s].pos_deltas,
                        (size_t)mt->vertex_count * 3 * sizeof(float));
             }
+            if (packed_normal_deltas && mt->shapes[s].nrm_deltas) {
+                memcpy(&packed_normal_deltas[(size_t)s * (size_t)mt->vertex_count * 3],
+                       mt->shapes[s].nrm_deltas,
+                       (size_t)mt->vertex_count * 3 * sizeof(float));
+            }
         }
 
         if (packed_deltas)
             rt_canvas3d_add_temp_buffer(canvas, packed_deltas);
+        if (packed_normal_deltas)
+            rt_canvas3d_add_temp_buffer(canvas, packed_normal_deltas);
         if (packed_weights)
             rt_canvas3d_add_temp_buffer(canvas, packed_weights);
 
         rt_mesh3d tmp = *m;
         tmp.morph_deltas = packed_deltas;
+        tmp.morph_normal_deltas = packed_normal_deltas;
         tmp.morph_weights = packed_weights;
         tmp.morph_shape_count = mt->shape_count;
         rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
