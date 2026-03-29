@@ -18,7 +18,10 @@
 
 #include "codegen/common/linker/RelocApplier.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
+#include <array>
+#include <algorithm>
 #include <cstring>
 
 namespace viper::codegen::linker {
@@ -30,6 +33,11 @@ static void writeLE32(uint8_t *p, uint32_t v) {
     p[3] = static_cast<uint8_t>(v >> 24);
 }
 
+static void writeLE16(uint8_t *p, uint16_t v) {
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+}
+
 static void writeLE64(uint8_t *p, uint64_t v) {
     for (int i = 0; i < 8; ++i)
         p[i] = static_cast<uint8_t>(v >> (i * 8));
@@ -38,6 +46,38 @@ static void writeLE64(uint8_t *p, uint64_t v) {
 static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+static bool findSectionByAddr(const LinkLayout &layout, uint64_t addr, size_t &outSecIdx) {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
+        const auto &sec = layout.sections[i];
+        if (!sec.alloc || sec.data.empty())
+            continue;
+        if (addr >= sec.virtualAddr && addr < sec.virtualAddr + sec.data.size()) {
+            outSecIdx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sortWindowsPdata(LinkLayout &layout) {
+    for (auto &sec : layout.sections) {
+        if (sec.name != ".pdata" || sec.data.size() < 12)
+            continue;
+
+        const size_t recordCount = sec.data.size() / 12;
+        std::vector<std::array<uint8_t, 12>> records(recordCount);
+        for (size_t i = 0; i < recordCount; ++i)
+            std::memcpy(records[i].data(), sec.data.data() + i * 12, 12);
+
+        std::stable_sort(records.begin(), records.end(), [](const auto &a, const auto &b) {
+            return readLE32(a.data()) < readLE32(b.data());
+        });
+
+        for (size_t i = 0; i < recordCount; ++i)
+            std::memcpy(sec.data.data() + i * 12, records[i].data(), 12);
+    }
 }
 
 /// Encode (objIndex, secIndex) into a single 64-bit key for hash map lookup.
@@ -111,7 +151,7 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
 bool applyRelocations(const std::vector<ObjFile> &objects,
                       LinkLayout &layout,
                       const std::unordered_set<std::string> & /*dynamicSyms*/,
-                      LinkPlatform /*platform*/,
+                      LinkPlatform platform,
                       LinkArch arch,
                       std::ostream &err) {
     // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
@@ -167,6 +207,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             resolveLocalSymAddr(obj.symbols[rel.symIndex], oi, locMap, layout, S);
                 }
                 if (!symResolved && !symName.empty()) {
+                    if (platform == LinkPlatform::Windows && symName == "__ImageBase") {
+                        S = 0x140000000ULL;
+                        symResolved = true;
+                    } else if (platform == LinkPlatform::Windows && symName == "vm_trap") {
+                        symResolved = resolveSymAddr("vm_trap_default", layout.globalSyms, S) ||
+                                      resolveSymAddr("rt_abort", layout.globalSyms, S);
+                    }
+                }
+                if (!symResolved && !symName.empty()) {
                     err << "error: " << obj.name << ": undefined symbol '" << symName << "'\n";
                     return false;
                 }
@@ -182,6 +231,61 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                 }
 
                 uint8_t *patch = outSec.data.data() + patchOff;
+
+                if (obj.format == ObjFileFormat::COFF && arch == LinkArch::X86_64) {
+                    if (rel.type == coff_x64::kSecRel) {
+                        size_t symSecIdx = 0;
+                        if (!findSectionByAddr(layout, S, symSecIdx)) {
+                            err << "error: " << obj.name << ": SECREL target '" << symName
+                                << "' has no output section\n";
+                            return false;
+                        }
+                        const uint32_t val = static_cast<uint32_t>(
+                            static_cast<int64_t>(S) - static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                        writeLE32(patch, val);
+                        continue;
+                    }
+                    if (rel.type == coff_x64::kSection) {
+                        size_t symSecIdx = 0;
+                        if (!findSectionByAddr(layout, S, symSecIdx)) {
+                            err << "error: " << obj.name << ": SECTION target '" << symName
+                                << "' has no output section\n";
+                            return false;
+                        }
+                        if (patchOff + 2 > outSec.data.size()) {
+                            err << "error: section relocation at offset " << patchOff
+                                << " out of bounds in '" << outSec.name << "'\n";
+                            return false;
+                        }
+                        writeLE16(patch, static_cast<uint16_t>(symSecIdx + 1));
+                        continue;
+                    }
+                    if (rel.type == coff_x64::kAddr32Nb) {
+                        const uint64_t imageBase = 0x140000000ULL;
+                        const uint32_t val = static_cast<uint32_t>(
+                            static_cast<int64_t>(S) + A - static_cast<int64_t>(imageBase));
+                        writeLE32(patch, val);
+                        continue;
+                    }
+                    if (rel.type == coff_x64::kRel32 ||
+                        (rel.type >= coff_x64::kRel32_1 && rel.type <= coff_x64::kRel32_5)) {
+                        // COFF AMD64 REL32 relocations are relative to the byte
+                        // following the relocated field, not the field address.
+                        // REL32_n variants apply the same base bias plus an
+                        // additional n-byte adjustment for instructions whose
+                        // displacement isn't immediately followed by the next
+                        // instruction boundary.
+                        const int64_t extraBias =
+                            (rel.type == coff_x64::kRel32)
+                                ? 0
+                                : static_cast<int64_t>(rel.type - coff_x64::kRel32);
+                        const int64_t val = static_cast<int64_t>(S) + A -
+                                            static_cast<int64_t>(P) - 4 - extraBias;
+                        writeLE32(patch, static_cast<uint32_t>(val));
+                        continue;
+                    }
+                }
+
                 const RelocAction action = classifyReloc(obj.format, arch, rel.type);
 
                 switch (action) {
@@ -418,6 +522,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             }
         }
     }
+
+    if (platform == LinkPlatform::Windows && arch == LinkArch::X86_64)
+        sortWindowsPdata(layout);
 
     return true;
 }

@@ -24,6 +24,7 @@
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
 #include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
@@ -36,12 +37,14 @@
 #include "tools/common/module_loader.hpp"
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 #if !defined(_WIN32)
 #include <sys/wait.h>
@@ -60,6 +63,15 @@ constexpr const char *kCcCommand = "cc";
 #endif
 
 constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
+
+std::filesystem::path pickFirstExisting(
+    std::initializer_list<std::filesystem::path> candidates) {
+    for (const auto &candidate : candidates) {
+        if (common::fileExists(candidate))
+            return candidate;
+    }
+    return std::filesystem::path{};
+}
 
 std::size_t totalInstructionCount(const il::core::Module &module) {
     std::size_t totalInstrs = 0;
@@ -512,6 +524,170 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
     return normaliseStatus(run.exit_code);
 }
 
+void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
+    auto appendIfExists = [&](const std::filesystem::path &path) {
+        if (common::fileExists(path))
+            archives.push_back(path.string());
+    };
+
+    auto appendComponent = [&](RtComponent comp) {
+        appendIfExists(common::runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp)));
+    };
+
+    for (const auto &entry : ctx.requiredArchives)
+        appendIfExists(entry.second);
+
+#if defined(_WIN32)
+    auto pickConfigPath =
+        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
+        for (const auto &candidate : candidates) {
+            if (common::fileExists(candidate))
+                return candidate;
+        }
+        return {};
+    };
+
+    // The Windows runtime build does not preserve the Unix weak-link defaults
+    // used by viper_rt_base. Pull in the concrete component archives that
+    // satisfy those cross-component references without regressing to
+    // "link every runtime archive".
+    if (common::hasComponent(ctx, RtComponent::Base)) {
+        appendComponent(RtComponent::Oop);
+        appendComponent(RtComponent::Collections);
+        appendComponent(RtComponent::Text);
+        appendComponent(RtComponent::IoFs);
+    }
+#endif
+
+    if (common::hasComponent(ctx, RtComponent::Graphics)) {
+#if defined(_WIN32)
+#if defined(NDEBUG)
+        const auto guiLib = pickConfigPath({ctx.buildDir / "src/lib/gui/Release/vipergui.lib",
+                                            ctx.buildDir / "src/lib/gui/Debug/vipergui.lib",
+                                            ctx.buildDir / "src/lib/gui/vipergui.lib"});
+        const auto gfxLib = pickConfigPath({ctx.buildDir / "lib/Release/vipergfx.lib",
+                                            ctx.buildDir / "lib/Debug/vipergfx.lib",
+                                            ctx.buildDir / "lib/vipergfx.lib"});
+#else
+        const auto guiLib = pickConfigPath({ctx.buildDir / "src/lib/gui/Debug/vipergui.lib",
+                                            ctx.buildDir / "src/lib/gui/Release/vipergui.lib",
+                                            ctx.buildDir / "src/lib/gui/vipergui.lib"});
+        const auto gfxLib = pickConfigPath({ctx.buildDir / "lib/Debug/vipergfx.lib",
+                                            ctx.buildDir / "lib/Release/vipergfx.lib",
+                                            ctx.buildDir / "lib/vipergfx.lib"});
+#endif
+#else
+        const auto guiLib = ctx.buildDir.empty()
+                                ? std::filesystem::path("src/lib/gui/libvipergui.a")
+                                : ctx.buildDir / "src/lib/gui/libvipergui.a";
+        const auto gfxLib =
+            ctx.buildDir.empty() ? std::filesystem::path("lib/libvipergfx.a")
+                                 : ctx.buildDir / "lib/libvipergfx.a";
+#endif
+        appendIfExists(guiLib);
+        appendIfExists(gfxLib);
+    }
+
+    if (common::hasComponent(ctx, RtComponent::Audio)) {
+#if defined(_WIN32)
+#if defined(NDEBUG)
+        const auto audLib = pickConfigPath({ctx.buildDir / "lib/Release/viperaud.lib",
+                                            ctx.buildDir / "lib/Debug/viperaud.lib",
+                                            ctx.buildDir / "lib/viperaud.lib"});
+#else
+        const auto audLib = pickConfigPath({ctx.buildDir / "lib/Debug/viperaud.lib",
+                                            ctx.buildDir / "lib/Release/viperaud.lib",
+                                            ctx.buildDir / "lib/viperaud.lib"});
+#endif
+#else
+        const auto audLib =
+            ctx.buildDir.empty() ? std::filesystem::path("lib/libviperaud.a")
+                                 : ctx.buildDir / "lib/libviperaud.a";
+#endif
+        appendIfExists(audLib);
+    }
+
+#if defined(_WIN32)
+    const bool debugRuntime =
+#if defined(NDEBUG)
+        false;
+#else
+        true;
+#endif
+
+    auto findMsvcLib = [](const std::string &libName) -> std::filesystem::path {
+        if (const char *vcTools = std::getenv("VCToolsInstallDir")) {
+            const std::filesystem::path candidate =
+                std::filesystem::path(vcTools) / "lib" / "x64" / libName;
+            if (common::fileExists(candidate))
+                return candidate;
+        }
+
+        const std::filesystem::path vsRoot("C:/Program Files/Microsoft Visual Studio");
+        if (!std::filesystem::exists(vsRoot))
+            return {};
+
+        std::vector<std::filesystem::path> versions;
+        for (const auto &ver : std::filesystem::directory_iterator(vsRoot)) {
+            if (ver.is_directory())
+                versions.push_back(ver.path());
+        }
+        std::sort(versions.begin(), versions.end(), std::greater<>());
+
+        for (const auto &version : versions) {
+            std::vector<std::filesystem::path> editions;
+            for (const auto &edition : std::filesystem::directory_iterator(version)) {
+                if (edition.is_directory())
+                    editions.push_back(edition.path());
+            }
+            std::sort(editions.begin(), editions.end(), std::greater<>());
+
+            for (const auto &edition : editions) {
+                const std::filesystem::path msvcRoot = edition / "VC" / "Tools" / "MSVC";
+                if (!std::filesystem::exists(msvcRoot))
+                    continue;
+
+                std::vector<std::filesystem::path> toolsets;
+                for (const auto &toolset : std::filesystem::directory_iterator(msvcRoot)) {
+                    if (toolset.is_directory())
+                        toolsets.push_back(toolset.path());
+                }
+                std::sort(toolsets.begin(), toolsets.end(), std::greater<>());
+
+                for (const auto &toolset : toolsets) {
+                    const std::filesystem::path candidate = toolset / "lib" / "x64" / libName;
+                    if (common::fileExists(candidate))
+                        return candidate;
+                }
+            }
+        }
+
+        return {};
+    };
+
+    appendIfExists(findMsvcLib(debugRuntime ? "msvcrtd.lib" : "msvcrt.lib"));
+#endif
+}
+
+int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
+                               const std::filesystem::path &exePath,
+                               const common::LinkContext &ctx,
+                               std::ostream &out,
+                               std::ostream &err) {
+    linker::NativeLinkerOptions linkOpts;
+    linkOpts.objPath = objPath.string();
+    linkOpts.exePath = exePath.string();
+    collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    for (const auto &archive : linkOpts.archivePaths)
+        err << "debug-native-archive: " << archive << "\n";
+#if defined(_WIN32)
+    linkOpts.entrySymbol = "mainCRTStartup";
+    linkOpts.platform = linker::LinkPlatform::Windows;
+    linkOpts.arch = linker::LinkArch::X86_64;
+#endif
+    return linker::nativeLink(linkOpts, out, err);
+}
+
 } // namespace
 
 /// @brief Construct a pipeline with the given configuration options.
@@ -713,30 +889,28 @@ PipelineResult CodegenPipeline::run() {
                                                   ? deriveExecutablePath(opts_)
                                                   : std::filesystem::path(opts_.output_obj_path);
 
-        int linkExit = 0;
-#if defined(_WIN32)
-        // Windows: invokeLinker handles .o files fine (no symbol scanning needed).
-        linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
-#else
-        {
-            std::unordered_set<std::string> extSymbols;
-            for (const auto &sym : pipelineModule.binaryText->symbols()) {
-                if (sym.binding == objfile::SymbolBinding::External)
-                    extSymbols.insert(sym.name);
-            }
-
-            common::LinkContext ctx;
-            if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
-                rc != 0) {
-                result.exit_code = 1;
-                result.stdout_text = out.str();
-                result.stderr_text = err.str();
-                return result;
-            }
-
-            linkExit = linkWithContext(objPath, exePath, opts_.stack_size, ctx, out, err);
+        std::unordered_set<std::string> extSymbols;
+        for (const auto &sym : pipelineModule.binaryText->symbols()) {
+            if (sym.binding == objfile::SymbolBinding::External)
+                extSymbols.insert(sym.name);
         }
-#endif
+
+        common::LinkContext ctx;
+        if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
+            rc != 0) {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        int linkExit = 0;
+        if (opts_.link_mode == LinkMode::Native)
+            linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, out, err);
+        else if (linker::detectLinkPlatform() == linker::LinkPlatform::Windows)
+            linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
+        else
+            linkExit = linkWithContext(objPath, exePath, opts_.stack_size, ctx, out, err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
@@ -837,7 +1011,34 @@ PipelineResult CodegenPipeline::run() {
     const std::filesystem::path exePath = opts_.output_obj_path.empty()
                                               ? deriveExecutablePath(opts_)
                                               : std::filesystem::path(opts_.output_obj_path);
-    const int linkExit = invokeLinker(asmPath, exePath, opts_.stack_size, out, err);
+    int linkExit = 0;
+    if (opts_.link_mode == LinkMode::Native) {
+        std::filesystem::path objPath = std::filesystem::path(opts_.input_il_path);
+        objPath.replace_extension(".o");
+
+        const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
+        if (assembleExit != 0) {
+            result.exit_code = assembleExit == -1 ? 1 : assembleExit;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        common::LinkContext ctx;
+        if (const int rc = common::prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0) {
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
+
+        linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, out, err);
+
+        std::error_code ec;
+        std::filesystem::remove(objPath, ec);
+    } else {
+        linkExit = invokeLinker(asmPath, exePath, opts_.stack_size, out, err);
+    }
     if (linkExit != 0) {
         result.exit_code = linkExit == -1 ? 1 : linkExit;
         result.stdout_text = out.str();

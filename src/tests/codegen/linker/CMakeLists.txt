@@ -4,6 +4,7 @@
 #          (RelocApplier, SectionMerger, DeadStripPass).
 
 set(_linker_tests
+        archive_reader
         reloc_applier
         section_merger
         dead_strip

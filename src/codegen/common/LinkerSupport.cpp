@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <initializer_list>
 #include <sstream>
 
 namespace viper::codegen::common {
@@ -134,11 +135,34 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
     // MSVC/Clang-CL static libraries use .lib; MinGW uses .a (prefix lib).
     // Default to the MSVC convention when building on Windows.
     const std::string libName = std::string(libBaseName) + ".lib";
+
+    auto pickFirstExisting =
+        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
+        for (const auto &candidate : candidates) {
+            if (fileExists(candidate))
+                return candidate;
+        }
+        return candidates.size() ? *candidates.begin() : std::filesystem::path{};
+    };
 #else
     const std::string libName = "lib" + std::string(libBaseName) + ".a";
 #endif
+#ifdef _WIN32
+    if (!buildDir.empty()) {
+#if defined(NDEBUG)
+        return pickFirstExisting({buildDir / "src/runtime/Release" / libName,
+                                  buildDir / "src/runtime/Debug" / libName,
+                                  buildDir / "src/runtime" / libName});
+#else
+        return pickFirstExisting({buildDir / "src/runtime/Debug" / libName,
+                                  buildDir / "src/runtime/Release" / libName,
+                                  buildDir / "src/runtime" / libName});
+#endif
+    }
+#else
     if (!buildDir.empty())
         return buildDir / "src/runtime" / libName;
+#endif
     return std::filesystem::path("src/runtime") / libName;
 }
 
@@ -227,12 +251,9 @@ int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols
 }
 
 void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd) {
-    for (auto it = ctx.requiredComponents.rbegin(); it != ctx.requiredComponents.rend(); ++it) {
-        const std::filesystem::path path =
-            runtimeArchivePath(ctx.buildDir, archiveNameForComponent(*it));
-        if (fileExists(path))
-            cmd.push_back(path.string());
-    }
+    for (auto it = ctx.requiredArchives.rbegin(); it != ctx.requiredArchives.rend(); ++it)
+        if (fileExists(it->second))
+            cmd.push_back(it->second.string());
 }
 
 void appendGraphicsLibs(const LinkContext &ctx,
@@ -249,13 +270,31 @@ void appendGraphicsLibs(const LinkContext &ctx,
     const char *gfxLibName = "libvipergfx.a";
 #endif
 
+    auto pickFirstExisting =
+        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
+        for (const auto &candidate : candidates) {
+            if (fileExists(candidate))
+                return candidate;
+        }
+        return std::filesystem::path{};
+    };
+
     // vipergui (widget implementations) must come before vipergfx (primitives)
     // because libviper_rt_graphics calls vg_* from vipergui, which in turn
     // calls the lower-level drawing APIs in vipergfx.
     std::filesystem::path guiLib, gfxLib;
     if (!ctx.buildDir.empty()) {
+#ifdef _WIN32
+        guiLib = pickFirstExisting({ctx.buildDir / "src/lib/gui/Release" / guiLibName,
+                                    ctx.buildDir / "src/lib/gui/Debug" / guiLibName,
+                                    ctx.buildDir / "src/lib/gui" / guiLibName});
+        gfxLib = pickFirstExisting({ctx.buildDir / "lib/Release" / gfxLibName,
+                                    ctx.buildDir / "lib/Debug" / gfxLibName,
+                                    ctx.buildDir / "lib" / gfxLibName});
+#else
         guiLib = ctx.buildDir / "src" / "lib" / "gui" / guiLibName;
         gfxLib = ctx.buildDir / "lib" / gfxLibName;
+#endif
     } else {
         guiLib = std::filesystem::path("src") / "lib" / "gui" / guiLibName;
         gfxLib = std::filesystem::path("lib") / gfxLibName;
@@ -285,11 +324,27 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
     const char *audLibName = "libviperaud.a";
 #endif
 
+    auto pickFirstExisting =
+        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
+        for (const auto &candidate : candidates) {
+            if (fileExists(candidate))
+                return candidate;
+        }
+        return std::filesystem::path{};
+    };
+
     std::filesystem::path audLib;
-    if (!ctx.buildDir.empty())
+    if (!ctx.buildDir.empty()) {
+#ifdef _WIN32
+        audLib = pickFirstExisting({ctx.buildDir / "lib/Release" / audLibName,
+                                    ctx.buildDir / "lib/Debug" / audLibName,
+                                    ctx.buildDir / "lib" / audLibName});
+#else
         audLib = ctx.buildDir / "lib" / audLibName;
-    else
+#endif
+    } else {
         audLib = std::filesystem::path("lib") / audLibName;
+    }
 
     if (fileExists(audLib))
         cmd.push_back(audLib.string());

@@ -226,6 +226,95 @@ int main() {
         CHECK(layout.sections[1].tls);
     }
 
+    // --- Windows unwind sections keep their original names ---
+    {
+        auto obj =
+            makeObj("test.obj",
+                    ObjFileFormat::COFF,
+                    {makeSection(".xdata", 8, false, false), makeSection(".pdata", 12, false, false),
+                     makeSection(".text", 16, true, false)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Windows, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 3);
+        CHECK(layout.sections[0].name == ".text");
+        bool sawXdata = false;
+        bool sawPdata = false;
+        for (size_t i = 1; i < layout.sections.size(); ++i) {
+            sawXdata = sawXdata || layout.sections[i].name == ".xdata";
+            sawPdata = sawPdata || layout.sections[i].name == ".pdata";
+        }
+        CHECK(sawXdata);
+        CHECK(sawPdata);
+    }
+
+    // --- Windows PE output sections are page-aligned ---
+    {
+        auto obj = makeObj("test.obj",
+                           ObjFileFormat::COFF,
+                           {makeSection(".text", 16, true, false),
+                            makeSection(".rdata", 24, false, false),
+                            makeSection(".pdata", 12, false, false),
+                            makeSection(".xdata", 8, false, false),
+                            makeSection(".data", 32, false, true)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Windows, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        for (const auto &sec : layout.sections) {
+            if (!sec.alloc)
+                continue;
+            CHECK((sec.virtualAddr % layout.pageSize) == 0);
+        }
+    }
+
+    // --- Windows .CRT$ subsections preserve lexicographic order ---
+    {
+        auto crtA = makeSection(".CRT$XIAA", 8, false, false, false, 32);
+        auto crtB = makeSection(".CRT$XIAC", 8, false, false, false, 8);
+        auto ro = makeSection(".rdata", 8, false, false, false, 64);
+        auto obj = makeObj("crt.obj", ObjFileFormat::COFF, {crtA, ro, crtB});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Windows, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".rodata");
+        CHECK(layout.sections[0].chunks.size() == 3);
+        CHECK(layout.sections[0].chunks[0].inputSecIndex == 1); // .CRT$XIAA
+        CHECK(layout.sections[0].chunks[1].inputSecIndex == 3); // .CRT$XIAC
+        CHECK(layout.sections[0].chunks[2].inputSecIndex == 2); // .rdata
+    }
+
+    // --- Windows .tls subsections preserve lexicographic order ---
+    {
+        auto tlsZ = makeSection(".tls$ZZZ", 8, false, true, true, 32);
+        auto tlsA = makeSection(".tls$", 8, false, true, true, 8);
+        auto obj = makeObj("tls.obj", ObjFileFormat::COFF, {tlsZ, tlsA});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Windows, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".tdata_template");
+        CHECK(layout.sections[0].chunks.size() == 2);
+        CHECK(layout.sections[0].chunks[0].inputSecIndex == 2); // .tls$
+        CHECK(layout.sections[0].chunks[1].inputSecIndex == 1); // .tls$ZZZ
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All SectionMerger tests passed.\n";

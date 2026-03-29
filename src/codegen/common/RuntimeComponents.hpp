@@ -145,16 +145,19 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Network;
 
     // Base component (time, math, formatting, etc.)
-    if (starts("rt_context_") || starts("rt_crc32_") || starts("rt_error_") || starts("rt_trap_") ||
-        starts("rt_fp_") || starts("rt_memory_") || starts("rt_string_") || starts("rt_io_") ||
-        starts("rt_math_") || starts("rt_perlin_") || starts("rt_random_") || starts("rt_bits_") ||
-        starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") || starts("rt_fmt_") ||
-        starts("rt_format_") || starts("rt_int_format_") || starts("rt_printf_") ||
-        starts("rt_term_") || starts("rt_time_") || starts("rt_datetime_") ||
-        starts("rt_dateonly_") || starts("rt_daterange_") || starts("rt_duration_") ||
-        starts("rt_reltime_") || starts("rt_stopwatch_") || starts("rt_countdown_") ||
-        starts("rt_easing_") || starts("rt_modvar_") || starts("rt_args_") || starts("rt_log_") ||
-        starts("rt_msgbus_") || starts("rt_heap_") || starts("rt_output_"))
+    if (starts("rt_context_") || starts("rt_crc32_") || starts("rt_error_") ||
+        starts("rt_trap_") || sym == "rt_trap" || sym == "rt_init_stack_safety" ||
+        sym == "rt_trap_stack_overflow" || starts("rt_fp_") || starts("rt_memory_") ||
+        starts("rt_string_") || starts("rt_io_") || starts("rt_math_") ||
+        starts("rt_perlin_") || starts("rt_random_") || starts("rt_bits_") ||
+        starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") ||
+        starts("rt_fmt_") || starts("rt_format_") || starts("rt_int_format_") ||
+        starts("rt_printf_") || starts("rt_term_") || starts("rt_time_") ||
+        starts("rt_datetime_") || starts("rt_dateonly_") || starts("rt_daterange_") ||
+        starts("rt_duration_") || starts("rt_reltime_") || starts("rt_stopwatch_") ||
+        starts("rt_countdown_") || starts("rt_easing_") || starts("rt_modvar_") ||
+        starts("rt_args_") || starts("rt_log_") || starts("rt_msgbus_") ||
+        starts("rt_heap_") || starts("rt_output_"))
         return RtComponent::Base;
 
     // -------------------------------------------------------------------------

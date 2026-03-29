@@ -29,6 +29,9 @@ static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 static constexpr uint16_t IMAGE_SYM_CLASS_EXTERNAL = 2;
 static constexpr uint16_t IMAGE_SYM_CLASS_STATIC = 3;
 static constexpr uint16_t IMAGE_SYM_CLASS_WEAK_EXTERNAL = 105;
+static constexpr int16_t IMAGE_SYM_UNDEFINED = 0;
+static constexpr int16_t IMAGE_SYM_ABSOLUTE = -1;
+static constexpr int16_t IMAGE_SYM_DEBUG = -2;
 
 static constexpr uint32_t IMAGE_SCN_CNT_CODE = 0x00000020;
 static constexpr uint32_t IMAGE_SCN_CNT_INITIALIZED_DATA = 0x00000040;
@@ -172,6 +175,7 @@ bool readCoffObj(
 
         sec.executable = (sh->Characteristics & coff::IMAGE_SCN_MEM_EXECUTE) != 0;
         sec.writable = (sh->Characteristics & coff::IMAGE_SCN_MEM_WRITE) != 0;
+        sec.tls = sec.name.rfind(".tls", 0) == 0;
         sec.alloc = (sh->Characteristics &
                      (coff::IMAGE_SCN_CNT_CODE | coff::IMAGE_SCN_CNT_INITIALIZED_DATA |
                       coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA)) != 0;
@@ -232,10 +236,13 @@ bool readCoffObj(
         ObjSymbol os;
         os.name = readSymName(sym);
 
-        if (sym->SectionNumber <= 0) {
+        if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
             os.binding = ObjSymbol::Undefined;
             if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL)
                 os.binding = ObjSymbol::Weak;
+        } else if (sym->SectionNumber == coff::IMAGE_SYM_ABSOLUTE ||
+                   sym->SectionNumber == coff::IMAGE_SYM_DEBUG) {
+            os.binding = ObjSymbol::Local;
         } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL) {
             os.binding = ObjSymbol::Global;
         } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {

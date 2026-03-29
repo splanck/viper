@@ -178,6 +178,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
     std::vector<Candidate> candidates;
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
+        if (obj.format == ObjFileFormat::COFF)
+            continue; // COFF COMDATs may have associated .pdata/.xdata siblings.
         for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
             if (!sec.executable || sec.data.empty())

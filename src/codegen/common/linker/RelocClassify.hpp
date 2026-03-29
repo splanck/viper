@@ -131,6 +131,11 @@ inline RelocAction coffX64Action(uint32_t type) {
         case coff_x64::kAddr32:
             return RelocAction::Abs32;
         case coff_x64::kRel32:
+        case coff_x64::kRel32_1:
+        case coff_x64::kRel32_2:
+        case coff_x64::kRel32_3:
+        case coff_x64::kRel32_4:
+        case coff_x64::kRel32_5:
             return RelocAction::PCRel32;
         default:
             return RelocAction::Unknown;

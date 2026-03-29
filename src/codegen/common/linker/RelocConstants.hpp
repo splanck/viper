@@ -69,9 +69,17 @@ constexpr uint32_t kTlvpLoadPageOff12 = 9; // ARM64_RELOC_TLVP_LOAD_PAGEOFF12
 // ── COFF AMD64 Relocation Types (winnt.h) ───────────────────────────────
 
 namespace coff_x64 {
-constexpr uint32_t kAddr64 = 1; // IMAGE_REL_AMD64_ADDR64
-constexpr uint32_t kAddr32 = 2; // IMAGE_REL_AMD64_ADDR32
-constexpr uint32_t kRel32 = 4;  // IMAGE_REL_AMD64_REL32
+constexpr uint32_t kAddr64 = 1;   // IMAGE_REL_AMD64_ADDR64
+constexpr uint32_t kAddr32 = 2;   // IMAGE_REL_AMD64_ADDR32
+constexpr uint32_t kAddr32Nb = 3; // IMAGE_REL_AMD64_ADDR32NB
+constexpr uint32_t kRel32 = 4;    // IMAGE_REL_AMD64_REL32
+constexpr uint32_t kRel32_1 = 5;  // IMAGE_REL_AMD64_REL32_1
+constexpr uint32_t kRel32_2 = 6;  // IMAGE_REL_AMD64_REL32_2
+constexpr uint32_t kRel32_3 = 7;  // IMAGE_REL_AMD64_REL32_3
+constexpr uint32_t kRel32_4 = 8;  // IMAGE_REL_AMD64_REL32_4
+constexpr uint32_t kRel32_5 = 9;  // IMAGE_REL_AMD64_REL32_5
+constexpr uint32_t kSection = 10; // IMAGE_REL_AMD64_SECTION
+constexpr uint32_t kSecRel = 11;  // IMAGE_REL_AMD64_SECREL
 } // namespace coff_x64
 
 // ── COFF ARM64 Relocation Types (winnt.h) ───────────────────────────────

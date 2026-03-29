@@ -25,6 +25,7 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -53,9 +54,34 @@ uint32_t readU32(const std::vector<uint8_t> &data, size_t offset) {
            (static_cast<uint32_t>(data[offset + 3]) << 24);
 }
 
+uint64_t readU64(const std::vector<uint8_t> &data, size_t offset) {
+    return static_cast<uint64_t>(readU32(data, offset)) |
+           (static_cast<uint64_t>(readU32(data, offset + 4)) << 32);
+}
+
+size_t rvaToOffset(const std::vector<uint8_t> &data, uint32_t rva) {
+    uint32_t peOffset = readU32(data, 0x3C);
+    uint16_t numSections = readU16(data, peOffset + 6);
+    uint16_t optSize = readU16(data, peOffset + 20);
+    size_t secOff = peOffset + 24 + optSize;
+
+    for (uint16_t i = 0; i < numSections; ++i) {
+        size_t sh = secOff + static_cast<size_t>(i) * 40;
+        uint32_t virtualSize = readU32(data, sh + 8);
+        uint32_t virtualAddress = readU32(data, sh + 12);
+        uint32_t rawSize = readU32(data, sh + 16);
+        uint32_t rawPtr = readU32(data, sh + 20);
+        uint32_t span = std::max(virtualSize, rawSize);
+        if (rva >= virtualAddress && rva < virtualAddress + span)
+            return rawPtr + (rva - virtualAddress);
+    }
+    return static_cast<size_t>(-1);
+}
+
 /// Create a minimal link layout with one text section.
 LinkLayout makeMinimalLayout() {
     LinkLayout layout;
+    constexpr uint64_t kImageBase = 0x140000000ULL;
 
     OutputSection text;
     text.name = ".text";
@@ -63,10 +89,82 @@ LinkLayout makeMinimalLayout() {
     text.executable = true;
     // Minimal code: x86_64 ret (0xC3)
     text.data = {0xC3};
-    text.virtualAddr = 0x1000;
+    text.virtualAddr = kImageBase + 0x1000;
     layout.sections.push_back(std::move(text));
 
-    layout.entryAddr = 0x1000;
+    layout.entryAddr = kImageBase + 0x1000;
+    return layout;
+}
+
+LinkLayout makeTlsLayout() {
+    constexpr uint64_t kImageBase = 0x140000000ULL;
+
+    LinkLayout layout;
+
+    OutputSection text;
+    text.name = ".text";
+    text.alloc = true;
+    text.executable = true;
+    text.data = {0x31, 0xC0, 0xC3};
+    text.virtualAddr = kImageBase + 0x1000;
+    layout.sections.push_back(std::move(text));
+
+    OutputSection data;
+    data.name = ".data";
+    data.alloc = true;
+    data.writable = true;
+    data.data.resize(8, 0);
+    data.virtualAddr = kImageBase + 0x2000;
+    layout.sections.push_back(std::move(data));
+
+    OutputSection tls;
+    tls.name = ".tdata_template";
+    tls.alloc = true;
+    tls.writable = true;
+    tls.tls = true;
+    tls.alignment = 16;
+    tls.data = {0x11, 0x22, 0x00, 0x00};
+    tls.virtualAddr = kImageBase + 0x3000;
+    layout.sections.push_back(std::move(tls));
+
+    GlobalSymEntry tlsIndex;
+    tlsIndex.name = "_tls_index";
+    tlsIndex.binding = GlobalSymEntry::Global;
+    tlsIndex.resolvedAddr = kImageBase + 0x2000;
+    layout.globalSyms["_tls_index"] = std::move(tlsIndex);
+
+    layout.entryAddr = kImageBase + 0x1000;
+    return layout;
+}
+
+LinkLayout makeExceptionLayout() {
+    constexpr uint64_t kImageBase = 0x140000000ULL;
+
+    LinkLayout layout;
+
+    OutputSection text;
+    text.name = ".text";
+    text.alloc = true;
+    text.executable = true;
+    text.data = {0xC3};
+    text.virtualAddr = kImageBase + 0x1000;
+    layout.sections.push_back(std::move(text));
+
+    OutputSection xdata;
+    xdata.name = ".xdata";
+    xdata.alloc = true;
+    xdata.data = {0x01, 0x00, 0x00, 0x00};
+    xdata.virtualAddr = kImageBase + 0x2000;
+    layout.sections.push_back(std::move(xdata));
+
+    OutputSection pdata;
+    pdata.name = ".pdata";
+    pdata.alloc = true;
+    pdata.data.resize(12, 0);
+    pdata.virtualAddr = kImageBase + 0x3000;
+    layout.sections.push_back(std::move(pdata));
+
+    layout.entryAddr = kImageBase + 0x1000;
     return layout;
 }
 
@@ -158,6 +256,104 @@ TEST(PeWriter, EmptyImportsSucceeds) {
     bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
     EXPECT_TRUE(ok);
     EXPECT_TRUE(err.str().empty());
+}
+
+TEST(PeWriter, ImportDirectoryIsWritten) {
+    auto layout = makeMinimalLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_imports.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path,
+                         layout,
+                         LinkArch::X86_64,
+                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t importRva = readU32(data, optOffset + 112 + 8);
+    uint32_t importSize = readU32(data, optOffset + 112 + 12);
+    uint32_t iatRva = readU32(data, optOffset + 112 + 12 * 8);
+    uint32_t iatSize = readU32(data, optOffset + 112 + 12 * 8 + 4);
+
+    EXPECT_GT(importRva, 0U);
+    EXPECT_GT(importSize, 0U);
+    EXPECT_GT(iatRva, 0U);
+    EXPECT_GT(iatSize, 0U);
+
+    std::string fileText(data.begin(), data.end());
+    EXPECT_TRUE(fileText.find("kernel32.dll") != std::string::npos);
+    EXPECT_TRUE(fileText.find("ExitProcess") != std::string::npos);
+}
+
+TEST(PeWriter, StartupStubBecomesEntryPoint) {
+    auto layout = makeMinimalLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_stub_entry.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path,
+                         layout,
+                         LinkArch::X86_64,
+                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t entryRva = readU32(data, optOffset + 16);
+
+    EXPECT_NE(entryRva, 0x1000U);
+    EXPECT_GT(entryRva, 0x1000U);
+}
+
+TEST(PeWriter, TlsDirectoryIsWritten) {
+    auto layout = makeTlsLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_tls.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t tlsRva = readU32(data, optOffset + 112 + 9 * 8);
+    uint32_t tlsSize = readU32(data, optOffset + 112 + 9 * 8 + 4);
+
+    EXPECT_GT(tlsRva, 0U);
+    EXPECT_EQ(tlsSize, 40U);
+
+    size_t tlsOff = rvaToOffset(data, tlsRva);
+    ASSERT_NE(tlsOff, static_cast<size_t>(-1));
+    EXPECT_EQ(readU64(data, tlsOff + 0), 0x140003000ULL);
+    EXPECT_EQ(readU64(data, tlsOff + 8), 0x140003004ULL);
+    EXPECT_EQ(readU64(data, tlsOff + 16), 0x140002000ULL);
+    EXPECT_EQ(readU32(data, tlsOff + 36), 0x00500000U);
+}
+
+TEST(PeWriter, ExceptionDirectoryPointsAtPdata) {
+    auto layout = makeExceptionLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_exception.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t exceptionRva = readU32(data, optOffset + 112 + 3 * 8);
+    uint32_t exceptionSize = readU32(data, optOffset + 112 + 3 * 8 + 4);
+
+    EXPECT_EQ(exceptionRva, 0x3000U);
+    EXPECT_EQ(exceptionSize, 12U);
 }
 
 int main(int argc, char **argv) {

@@ -24,6 +24,18 @@
 
 namespace viper::codegen::linker {
 
+namespace {
+
+bool isWindowsCrtSubsection(const std::string &name) {
+    return name.rfind(".CRT$", 0) == 0;
+}
+
+bool isWindowsTlsSubsection(const std::string &name) {
+    return name.rfind(".tls", 0) == 0;
+}
+
+} // namespace
+
 bool mergeSections(const std::vector<ObjFile> &objects,
                    LinkPlatform platform,
                    LinkArch arch,
@@ -40,6 +52,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         size_t objIdx;
         size_t secIdx;
         SectionClass cls;
+        std::string name;
         uint32_t alignment;
     };
 
@@ -55,16 +68,40 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 continue;
 
             SectionClass cls = classifySection(sec.name, sec.executable, sec.writable, sec.tls);
-            pending.push_back({oi, si, cls, sec.alignment});
+            pending.push_back({oi, si, cls, sec.name, sec.alignment});
         }
     }
 
-    // Sort chunks by alignment descending within each class to minimize padding.
-    // Higher-alignment chunks placed first reduce wasted inter-chunk padding.
+    // Sort chunks within each class.
+    // Default: higher-alignment chunks first to minimize inter-chunk padding.
+    // Windows exception: COFF subsection families such as .CRT$X* and .tls$*
+    // must preserve lexicographic subsection order so the CRT startup ranges
+    // and TLS template remain valid after merging.
     std::stable_sort(
-        pending.begin(), pending.end(), [](const PendingChunk &a, const PendingChunk &b) {
+        pending.begin(), pending.end(), [platform](const PendingChunk &a, const PendingChunk &b) {
             if (a.cls != b.cls)
                 return false; // Preserve inter-class ordering.
+
+            if (platform == LinkPlatform::Windows) {
+                const bool aCrt = isWindowsCrtSubsection(a.name);
+                const bool bCrt = isWindowsCrtSubsection(b.name);
+                if (aCrt != bCrt)
+                    return aCrt;
+                if (aCrt && bCrt) {
+                    if (a.name != b.name)
+                        return a.name < b.name;
+                    return a.alignment > b.alignment;
+                }
+
+                const bool aTls = isWindowsTlsSubsection(a.name);
+                const bool bTls = isWindowsTlsSubsection(b.name);
+                if (aTls && bTls) {
+                    if (a.name != b.name)
+                        return a.name < b.name;
+                    return a.alignment > b.alignment;
+                }
+            }
+
             return a.alignment > b.alignment;
         });
 
@@ -245,10 +282,9 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         mergeClass(SectionClass::TlsBss, tbss);
     }
 
-    // ObjC metadata sections — each unique section name gets its own output section.
-    // The ObjC runtime locates classes, selectors, protocols, etc. by section name
-    // (e.g., __objc_classlist, __objc_selrefs). Merging them into generic .data
-    // would make the ObjC runtime unable to discover registered classes.
+    // Preserved-name sections — each unique section name gets its own output
+    // section. This keeps ObjC metadata discoverable by name and preserves
+    // Windows unwind tables (.pdata/.xdata) for the PE writer.
     {
         std::map<std::string, std::vector<size_t>> objcGroups;
         for (size_t pi = 0; pi < pending.size(); ++pi) {
@@ -383,7 +419,14 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         if (!sec.alloc)
             continue; // Non-alloc sections (debug) have no VA.
         int cls = permClass(sec);
-        if (cls != prevClass) {
+        if (platform == LinkPlatform::Windows) {
+            // PE section headers must start on SectionAlignment boundaries.
+            // Packing multiple output sections into one 4KB page produces an
+            // invalid image once the PE writer emits one section header per
+            // OutputSection.
+            currentAddr = alignUp(currentAddr, layout.pageSize);
+            prevClass = cls;
+        } else if (cls != prevClass) {
             // Segment boundary — page-align.
             currentAddr = alignUp(currentAddr, layout.pageSize);
             prevClass = cls;

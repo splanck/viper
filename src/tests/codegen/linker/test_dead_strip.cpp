@@ -243,6 +243,76 @@ int main() {
         CHECK(!objs[1].sections[1].data.empty());
     }
 
+    // --- Windows COFF keeps every .CRT$ contribution alive ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        auto crtObj = makeObj("crt.obj", {".CRT$XIAA", ".CRT$XIAC", ".CRT$XCAA"});
+        crtObj.format = ObjFileFormat::COFF;
+
+        std::vector<ObjFile> objs = {user, crtObj};
+        size_t userCount = 1;
+
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::ostringstream err;
+
+        deadStrip(objs, userCount, globalSyms, "mainCRTStartup", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[3].data.empty());
+    }
+
+    // --- Windows unwind sections follow live code reachability ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "func", 0, ObjSymbol::Undefined);
+        addReloc(user, 1, 1);
+
+        ObjFile unwind;
+        unwind.name = "unwind.obj";
+        unwind.format = ObjFileFormat::COFF;
+        unwind.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(16, 0x90);
+        text.executable = true;
+        text.alloc = true;
+        unwind.sections.push_back(text);
+
+        ObjSection pdata;
+        pdata.name = ".pdata";
+        pdata.data.resize(12, 0);
+        pdata.alloc = true;
+        unwind.sections.push_back(pdata);
+
+        ObjSection xdata;
+        xdata.name = ".xdata";
+        xdata.data.resize(8, 0);
+        xdata.alloc = true;
+        unwind.sections.push_back(xdata);
+
+        unwind.symbols.push_back({});
+        addSymbol(unwind, "func", 1, ObjSymbol::Global);
+        addSymbol(unwind, "$pdata", 2, ObjSymbol::Local);
+        addSymbol(unwind, "$unwind", 3, ObjSymbol::Local);
+        addReloc(unwind, 2, 1); // .pdata -> .text
+        addReloc(unwind, 2, 3); // .pdata -> .xdata
+
+        std::vector<ObjFile> objs = {user, unwind};
+        size_t userCount = 1;
+
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["func"] = {"func", GlobalSymEntry::Global, 1, 1, 0, 0};
+        std::ostringstream err;
+
+        deadStrip(objs, userCount, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[3].data.empty());
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All DeadStripPass tests passed.\n";

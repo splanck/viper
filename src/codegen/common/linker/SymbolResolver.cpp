@@ -23,6 +23,9 @@
 
 namespace viper::codegen::linker {
 
+static bool isKnownDynamicSymbol(const std::string &name);
+static bool preferArchiveDefinition(const std::string &name);
+
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
 /// @param objIdx     Its index in allObjects.
@@ -57,6 +60,13 @@ static bool addObjSymbols(const ObjFile &obj,
         if (sym.binding == ObjSymbol::Local)
             continue; // Locals don't participate in global resolution.
 
+        // COFF/MSVC archives often contain helper stubs or repeated CRT import
+        // shims for symbols that still need to be resolved dynamically. Let
+        // those remain external imports instead of treating archive-local
+        // definitions as link-time providers.
+        if (isKnownDynamicSymbol(sym.name) && !preferArchiveDefinition(sym.name))
+            continue;
+
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
         auto it = globalSyms.find(sym.name);
         if (it == globalSyms.end()) {
@@ -85,6 +95,8 @@ static bool addObjSymbols(const ObjFile &obj,
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
+                if (preferArchiveDefinition(sym.name))
+                    continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
                 return false;
@@ -234,7 +246,6 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "strerror",
         "perror",
         "sscanf",
-        "vsnprintf",
         "vfprintf",
         "setvbuf",
         "setbuf",
@@ -340,6 +351,17 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "VirtualAlloc",
         "VirtualFree",
         "GetLastError",
+        "__acrt_iob_func",
+        "__local_stdio_printf_options",
+        "__local_stdio_scanf_options",
+        "__stdio_common_vfprintf",
+        "__stdio_common_vsprintf",
+        "_vfprintf_l",
+        "_vsscanf_l",
+        "__security_check_cookie",
+        "__security_init_cookie",
+        "__GSHandlerCheck",
+        "__chkstk",
     };
 
     for (const char *sym : kDynSymExact) {
@@ -383,6 +405,7 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "host_",
         "vm_",
         "kern_",
+        "__imp_",
         // macOS dispatch (GCD)
         "dispatch_",
         // macOS Metal
@@ -401,6 +424,23 @@ static bool isKnownDynamicSymbol(const std::string &name) {
     }
 
     return false;
+}
+
+/// Runtime archives provide Windows compatibility shims for a small set of
+/// formatting functions. Those definitions must participate in archive
+/// resolution instead of being forced down the dynamic-import path.
+static bool preferArchiveDefinition(const std::string &name) {
+    if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" ||
+        name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
+        name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||
+        name == "__security_init_cookie" || name == "__GSHandlerCheck" || name == "__chkstk")
+        return true;
+
+    return name.find("__scrt_") != std::string::npos ||
+           name.find("__local_stdio_printf_options") != std::string::npos ||
+           name.rfind("__xi_", 0) == 0 ||
+           name.rfind("__xc_", 0) == 0 || name.rfind("__xl_", 0) == 0 ||
+           name.rfind("__dyn_tls_", 0) == 0 || name.rfind("__tls_", 0) == 0;
 }
 
 bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
@@ -434,6 +474,9 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
             for (const auto &undef : undefSnapshot) {
+                if (isKnownDynamicSymbol(undef) && !preferArchiveDefinition(undef))
+                    continue;
+
                 // Mach-O archives use underscore-prefixed symbol names.
                 auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
                 if (symIt == ar.symbolIndex.end())
@@ -483,7 +526,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         if (it != globalSyms.end())
             it->second.binding = GlobalSymEntry::Dynamic;
 
-        if (!isKnownDynamicSymbol(undef))
+        if (!isKnownDynamicSymbol(undef) || preferArchiveDefinition(undef))
             err << "warning: treating undefined symbol '" << undef << "' as dynamic\n";
     }
 

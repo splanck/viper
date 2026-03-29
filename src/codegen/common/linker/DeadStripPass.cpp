@@ -54,11 +54,17 @@ static bool isAlwaysLiveSection(const std::string &name) {
     if (name == ".init" || name == ".fini")
         return true;
 
-    // COFF CRT init/term.
-    if (name == ".CRT$XCA" || name == ".CRT$XCZ" || name == ".CRT$XIA" || name == ".CRT$XIZ")
+    // COFF CRT init/term tables. Keep every .CRT$* contribution alive so
+    // sentinel ranges like __xi_a..__xi_z and __xc_a..__xc_z still bracket
+    // the actual initializer callbacks after archive extraction.
+    if (name.rfind(".CRT$", 0) == 0)
         return true;
 
     return false;
+}
+
+static bool isWindowsUnwindSection(const std::string &name) {
+    return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
 }
 
 void deadStrip(std::vector<ObjFile> &allObjects,
@@ -129,6 +135,37 @@ void deadStrip(std::vector<ObjFile> &allObjects,
         if (si >= obj.sections.size())
             continue;
         const auto &sec = obj.sections[si];
+
+        // Windows x64 unwind tables are reverse-referenced: .pdata points at
+        // code labels, and .xdata is then pulled in from .pdata. When a live
+        // code section is visited, mark sibling unwind sections whose
+        // relocations target that section.
+        if (obj.format == ObjFileFormat::COFF && sec.executable) {
+            for (size_t otherSi = 1; otherSi < obj.sections.size(); ++otherSi) {
+                if (otherSi == si)
+                    continue;
+                const auto &other = obj.sections[otherSi];
+                if (!isWindowsUnwindSection(other.name))
+                    continue;
+                for (const auto &rel : other.relocs) {
+                    if (rel.symIndex >= obj.symbols.size())
+                        continue;
+                    const auto &targetSym = obj.symbols[rel.symIndex];
+                    if (targetSym.sectionIndex == si) {
+                        markLive(oi, otherSi);
+                        break;
+                    }
+                    if (!targetSym.name.empty()) {
+                        auto git = globalSyms.find(targetSym.name);
+                        if (git != globalSyms.end() && git->second.objIndex == oi &&
+                            git->second.secIndex == si) {
+                            markLive(oi, otherSi);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         // Follow each relocation to its target symbol's section.
         for (const auto &rel : sec.relocs) {

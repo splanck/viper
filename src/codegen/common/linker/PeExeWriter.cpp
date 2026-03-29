@@ -6,12 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/common/linker/PeExeWriter.cpp
-// Purpose: Writes a minimal PE executable (PE32+).
+// Purpose: Write PE32+ executables from a linked layout.
 // Key invariants:
-//   - DOS header with e_lfanew pointing to PE signature
-//   - COFF header + PE32+ Optional Header (240 bytes)
-//   - Sections page-aligned (0x1000 VA, 0x200 file)
-//   - Console subsystem (IMAGE_SUBSYSTEM_WINDOWS_CUI = 3)
+//   - Existing section RVAs from SectionMerger are preserved
+//   - Generated PE import data lives in a dedicated read-only section
+//   - Windows x64 gets a tiny startup shim that calls the resolved entry point
+//     and then terminates via ExitProcess
+//   - ASLR flags are not advertised unless relocations are emitted
 // Links: codegen/common/linker/PeExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -21,8 +22,13 @@
 #include "codegen/common/linker/AlignUtil.hpp"
 #include "codegen/common/linker/ExeWriterUtil.hpp"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -30,27 +36,335 @@ using encoding::padTo;
 using encoding::writeLE16;
 using encoding::writeLE32;
 using encoding::writeLE64;
-using encoding::writePad;
 
 namespace {
 
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 
-// DllCharacteristics flags (PE Optional Header).
-static constexpr uint16_t kDllCharHighEntropyVA = 0x0020;
-static constexpr uint16_t kDllCharDynamicBase = 0x0040;
 static constexpr uint16_t kDllCharNXCompat = 0x0100;
 static constexpr uint16_t kDllCharTermServerAware = 0x8000;
-static constexpr uint16_t kDllCharacteristics =
-    kDllCharHighEntropyVA | kDllCharDynamicBase | kDllCharNXCompat | kDllCharTermServerAware;
+static constexpr uint16_t kDllCharacteristics = kDllCharNXCompat | kDllCharTermServerAware;
 
-} // anonymous namespace
+struct ImportLayout {
+    std::vector<uint8_t> data;
+    uint32_t importDirRva = 0;
+    uint32_t importDirSize = 0;
+    uint32_t iatRva = 0;
+    uint32_t iatSize = 0;
+    std::unordered_map<std::string, uint32_t> slotRvas;
+};
+
+struct TlsLayout {
+    std::vector<uint8_t> data;
+    uint32_t directoryRva = 0;
+    uint32_t directorySize = 0;
+};
+
+struct ExceptionLayout {
+    uint32_t directoryRva = 0;
+    uint32_t directorySize = 0;
+};
+
+struct PeSection {
+    std::string name;
+    const std::vector<uint8_t> *data = nullptr;
+    uint32_t virtualAddress = 0;
+    uint32_t virtualSize = 0;
+    uint32_t sizeOfRawData = 0;
+    uint32_t pointerToRawData = 0;
+    uint32_t characteristics = 0;
+    bool alloc = true;
+    bool executable = false;
+    bool writable = false;
+};
+
+void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
+    buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
+    buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+}
+
+void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
+    buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
+    buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+    buf[offset + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+    buf[offset + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+}
+
+void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
+    putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFFULL));
+    putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
+}
+
+uint32_t sectionChars(bool executable, bool writable, bool alloc) {
+    if (!alloc)
+        return 0x42000040; // CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ
+    if (executable)
+        return 0x60000020; // CNT_CODE | MEM_EXECUTE | MEM_READ
+    if (writable)
+        return 0xC0000040; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+    return 0x40000040;     // CNT_INITIALIZED_DATA | MEM_READ
+}
+
+ImportLayout buildImportTables(const std::vector<DllImport> &imports,
+                               uint32_t sectionRva,
+                               const std::unordered_map<std::string, uint32_t> &externalSlotRvas) {
+    ImportLayout result{};
+    if (imports.empty())
+        return result;
+
+    uint32_t idtSize = static_cast<uint32_t>((imports.size() + 1) * 20);
+    uint32_t iltSize = 0;
+    uint32_t hintNameSize = 0;
+    uint32_t dllNameSize = 0;
+    bool useExternalSlots = !externalSlotRvas.empty();
+
+    for (const auto &imp : imports) {
+        iltSize += static_cast<uint32_t>((imp.functions.size() + 1) * 8);
+        dllNameSize += static_cast<uint32_t>(imp.dllName.size() + 1);
+        for (const auto &fn : imp.functions) {
+            auto importIt = imp.importNames.find(fn);
+            const std::string &importName = (importIt != imp.importNames.end()) ? importIt->second : fn;
+            hintNameSize += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
+        }
+    }
+
+    uint32_t idtOff = 0;
+    uint32_t iltOff = idtOff + idtSize;
+    uint32_t hintOff = iltOff + iltSize;
+    uint32_t dllNameOff = hintOff + hintNameSize;
+    uint32_t iatOff = 0;
+    uint32_t iatSize = 0;
+    uint32_t totalSize = static_cast<uint32_t>(alignUp(dllNameOff + dllNameSize, 8));
+    if (!useExternalSlots) {
+        iatOff = totalSize;
+        iatSize = iltSize;
+        totalSize = iatOff + iatSize;
+    }
+
+    result.data.resize(totalSize, 0);
+
+    uint32_t curIltOff = iltOff;
+    uint32_t curHintOff = hintOff;
+    uint32_t curDllNameOff = dllNameOff;
+    uint32_t curIatOff = iatOff;
+    uint32_t minIatRva = UINT32_MAX;
+    uint32_t maxIatEndRva = 0;
+
+    for (size_t i = 0; i < imports.size(); ++i) {
+        const auto &imp = imports[i];
+        const uint32_t idtEntryOff = idtOff + static_cast<uint32_t>(i) * 20;
+        uint32_t firstThunkRva = 0;
+        if (useExternalSlots) {
+            if (!imp.functions.empty()) {
+                const auto firstIt = externalSlotRvas.find(imp.functions.front());
+                if (firstIt != externalSlotRvas.end())
+                    firstThunkRva = firstIt->second;
+            }
+        } else {
+            firstThunkRva = sectionRva + curIatOff;
+        }
+
+        putLE32(result.data, idtEntryOff + 0, sectionRva + curIltOff);
+        putLE32(result.data, idtEntryOff + 4, 0);
+        putLE32(result.data, idtEntryOff + 8, 0);
+        putLE32(result.data, idtEntryOff + 12, sectionRva + curDllNameOff);
+        putLE32(result.data, idtEntryOff + 16, firstThunkRva);
+
+        std::memcpy(result.data.data() + curDllNameOff,
+                    imp.dllName.c_str(),
+                    imp.dllName.size() + 1);
+        curDllNameOff += static_cast<uint32_t>(imp.dllName.size() + 1);
+
+        for (const auto &fn : imp.functions) {
+            auto importIt = imp.importNames.find(fn);
+            const std::string &importName = (importIt != imp.importNames.end()) ? importIt->second : fn;
+            const uint32_t hintNameRva = sectionRva + curHintOff;
+            putLE16(result.data, curHintOff, 0);
+            std::memcpy(result.data.data() + curHintOff + 2,
+                        importName.c_str(),
+                        importName.size() + 1);
+            curHintOff += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
+
+            putLE32(result.data, curIltOff, hintNameRva);
+            putLE32(result.data, curIltOff + 4, 0);
+            curIltOff += 8;
+
+            if (useExternalSlots) {
+                const auto slotIt = externalSlotRvas.find(fn);
+                if (slotIt != externalSlotRvas.end()) {
+                    result.slotRvas[fn] = slotIt->second;
+                    minIatRva = std::min(minIatRva, slotIt->second);
+                    maxIatEndRva = std::max(maxIatEndRva, slotIt->second + 8);
+                }
+            } else {
+                putLE32(result.data, curIatOff, hintNameRva);
+                putLE32(result.data, curIatOff + 4, 0);
+                result.slotRvas[fn] = sectionRva + curIatOff;
+                curIatOff += 8;
+            }
+        }
+
+        curIltOff += 8;
+        if (!useExternalSlots)
+            curIatOff += 8;
+        else if (firstThunkRva != 0) {
+            minIatRva = std::min(minIatRva, firstThunkRva);
+            maxIatEndRva =
+                std::max(maxIatEndRva, firstThunkRva + static_cast<uint32_t>((imp.functions.size() + 1) * 8));
+        }
+    }
+
+    result.importDirRva = sectionRva + idtOff;
+    result.importDirSize = idtSize;
+    if (useExternalSlots) {
+        if (minIatRva != UINT32_MAX) {
+            result.iatRva = minIatRva;
+            result.iatSize = maxIatEndRva - minIatRva;
+        }
+    } else {
+        result.iatRva = sectionRva + iatOff;
+        result.iatSize = iatSize;
+    }
+    return result;
+}
+
+bool fitsInt32(int64_t value) {
+    return value >= static_cast<int64_t>(INT32_MIN) && value <= static_cast<int64_t>(INT32_MAX);
+}
+
+bool hasPrefix(const std::string &value, const char *prefix) {
+    return value.rfind(prefix, 0) == 0;
+}
+
+uint32_t encodeCoffAlignment(uint32_t alignment) {
+    if (alignment <= 1)
+        return 0;
+
+    uint32_t power = 1;
+    uint32_t bits = 1;
+    while (power < alignment && bits < 0xF) {
+        power <<= 1;
+        ++bits;
+    }
+    return bits << 20;
+}
+
+bool layoutHasTls(const LinkLayout &layout) {
+    for (const auto &sec : layout.sections) {
+        if (sec.alloc && sec.tls && !sec.data.empty())
+            return true;
+    }
+    return false;
+}
+
+std::vector<uint8_t> buildX64StartupStub(uint64_t imageBase,
+                                         uint64_t entryAddr,
+                                         uint32_t stubRva,
+                                         uint32_t exitProcessIatRva,
+                                         std::ostream &err) {
+    std::vector<uint8_t> stub = {
+        0x48, 0x83, 0xEC, 0x28,       // sub rsp, 40
+        0xE8, 0x00, 0x00, 0x00, 0x00, // call entry
+        0x89, 0xC1,                   // mov ecx, eax
+        0xFF, 0x15, 0x00, 0x00, 0x00, 0x00, // call [rip+disp32] ; ExitProcess
+        0xCC,                         // int3 if ExitProcess returns
+    };
+
+    const uint64_t stubVa = imageBase + stubRva;
+    const int64_t callDisp = static_cast<int64_t>(entryAddr) - static_cast<int64_t>(stubVa + 9);
+    const int64_t iatDisp = static_cast<int64_t>(exitProcessIatRva) -
+                            static_cast<int64_t>(stubRva + 17);
+
+    if (!fitsInt32(callDisp)) {
+        err << "error: PE startup stub cannot reach entry point\n";
+        return {};
+    }
+    if (!fitsInt32(iatDisp)) {
+        err << "error: PE startup stub cannot reach ExitProcess IAT slot\n";
+        return {};
+    }
+
+    putLE32(stub, 5, static_cast<uint32_t>(static_cast<int32_t>(callDisp)));
+    putLE32(stub, 13, static_cast<uint32_t>(static_cast<int32_t>(iatDisp)));
+    return stub;
+}
+
+std::string sectionNameFor(const OutputSection &sec) {
+    if (!sec.alloc)
+        return ".debug";
+    if (sec.tls)
+        return ".tls";
+    if (hasPrefix(sec.name, ".pdata"))
+        return ".pdata";
+    if (hasPrefix(sec.name, ".xdata"))
+        return ".xdata";
+    if (sec.executable)
+        return ".text";
+    if (sec.writable)
+        return ".data";
+    return ".rdata";
+}
+
+TlsLayout buildTlsDirectory(uint64_t imageBase,
+                            const LinkLayout &layout,
+                            uint32_t sectionRva,
+                            std::ostream &err) {
+    TlsLayout tls{};
+
+    uint32_t tlsStartRva = UINT32_MAX;
+    uint32_t tlsEndRva = 0;
+    uint32_t tlsAlignment = 1;
+    for (const auto &sec : layout.sections) {
+        if (!sec.alloc || !sec.tls || sec.data.empty())
+            continue;
+        const uint32_t secRva = static_cast<uint32_t>(sec.virtualAddr - imageBase);
+        tlsStartRva = std::min(tlsStartRva, secRva);
+        tlsEndRva = std::max(tlsEndRva, secRva + static_cast<uint32_t>(sec.data.size()));
+        tlsAlignment = std::max(tlsAlignment, sec.alignment);
+    }
+
+    if (tlsStartRva == UINT32_MAX)
+        return tls;
+
+    const auto tlsIndexIt = layout.globalSyms.find("_tls_index");
+    if (tlsIndexIt == layout.globalSyms.end() || tlsIndexIt->second.resolvedAddr == 0) {
+        err << "error: PE TLS image is missing a resolved _tls_index symbol\n";
+        return {};
+    }
+
+    tls.data.resize(48, 0);
+    putLE64(tls.data, 0, imageBase + tlsStartRva);
+    putLE64(tls.data, 8, imageBase + tlsEndRva);
+    putLE64(tls.data, 16, tlsIndexIt->second.resolvedAddr);
+    putLE64(tls.data, 24, imageBase + sectionRva + 40); // Null-terminated callback array.
+    putLE32(tls.data, 32, 0); // Zero-fill is already materialized in the template.
+    putLE32(tls.data, 36, encodeCoffAlignment(tlsAlignment));
+    tls.directoryRva = sectionRva;
+    tls.directorySize = 40;
+    return tls;
+}
+
+ExceptionLayout findExceptionDirectory(const std::vector<PeSection> &sections) {
+    ExceptionLayout result{};
+    for (const auto &sec : sections) {
+        if (sec.alloc && sec.name == ".pdata") {
+            result.directoryRva = sec.virtualAddress;
+            result.directorySize = sec.virtualSize;
+            break;
+        }
+    }
+    return result;
+}
+
+} // namespace
 
 bool writePeExe(const std::string &path,
                 const LinkLayout &layout,
                 LinkArch arch,
-                const std::vector<DllImport> & /*imports*/,
+                const std::vector<DllImport> &imports,
+                const std::unordered_map<std::string, uint32_t> &slotRvas,
+                bool emitStartupStub,
                 std::ostream &err) {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
@@ -58,195 +372,233 @@ bool writePeExe(const std::string &path,
     const uint32_t sectionAlignment = 0x1000;
     const uint32_t fileAlignment = 0x200;
 
-    std::vector<uint8_t> file;
+    if (layout.entryAddr == 0) {
+        err << "error: no PE entry point was resolved\n";
+        return false;
+    }
 
-    // === DOS Header (64 bytes) ===
+    std::vector<PeSection> sections;
+    sections.reserve(layout.sections.size() + 2);
+
+    uint32_t nextGeneratedRva = sectionAlignment;
+    for (const auto &sec : layout.sections) {
+        if (sec.data.empty())
+            continue;
+
+        PeSection ps;
+        ps.name = sectionNameFor(sec);
+        ps.data = &sec.data;
+        ps.alloc = sec.alloc;
+        ps.executable = sec.executable;
+        ps.writable = sec.writable;
+        ps.virtualAddress = sec.alloc ? static_cast<uint32_t>(sec.virtualAddr - imageBase) : 0;
+        ps.virtualSize = static_cast<uint32_t>(sec.data.size());
+        ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc);
+        sections.push_back(ps);
+
+        if (sec.alloc) {
+            const uint32_t end =
+                ps.virtualAddress + static_cast<uint32_t>(alignUp(ps.virtualSize, sectionAlignment));
+            nextGeneratedRva = std::max(nextGeneratedRva, end);
+        }
+    }
+
+    std::vector<uint8_t> generatedImportData;
+    std::vector<uint8_t> generatedStubData;
+    std::vector<uint8_t> generatedTlsData;
+    ImportLayout importLayout{};
+    TlsLayout tlsLayout{};
+
+    if (!imports.empty()) {
+        const uint32_t importRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        importLayout = buildImportTables(imports, importRva, slotRvas);
+        generatedImportData = importLayout.data;
+
+        PeSection importSec;
+        importSec.name = ".idata";
+        importSec.data = &generatedImportData;
+        importSec.virtualAddress = importRva;
+        importSec.virtualSize = static_cast<uint32_t>(generatedImportData.size());
+        importSec.characteristics = sectionChars(false, false, true);
+        sections.push_back(importSec);
+        nextGeneratedRva =
+            importRva + static_cast<uint32_t>(alignUp(generatedImportData.size(), sectionAlignment));
+    }
+
+    const bool haveTls = layoutHasTls(layout);
+    const uint32_t tlsDirRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+    tlsLayout = buildTlsDirectory(imageBase, layout, tlsDirRva, err);
+    if (haveTls && tlsLayout.directorySize == 0)
+        return false;
+    if (tlsLayout.directorySize != 0) {
+        generatedTlsData = tlsLayout.data;
+
+        PeSection tlsMetaSec;
+        tlsMetaSec.name = ".rdata";
+        tlsMetaSec.data = &generatedTlsData;
+        tlsMetaSec.virtualAddress = tlsDirRva;
+        tlsMetaSec.virtualSize = static_cast<uint32_t>(generatedTlsData.size());
+        tlsMetaSec.characteristics = sectionChars(false, false, true);
+        sections.push_back(tlsMetaSec);
+        nextGeneratedRva =
+            tlsDirRva + static_cast<uint32_t>(alignUp(generatedTlsData.size(), sectionAlignment));
+    }
+
+    uint32_t entryRva = static_cast<uint32_t>(layout.entryAddr - imageBase);
+    if (emitStartupStub && arch == LinkArch::X86_64 && !imports.empty()) {
+        const auto exitIt = importLayout.slotRvas.find("ExitProcess");
+        if (exitIt == importLayout.slotRvas.end()) {
+            err << "error: PE writer requires ExitProcess for x64 startup stub\n";
+            return false;
+        }
+
+        const uint32_t stubRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        generatedStubData =
+            buildX64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
+        if (generatedStubData.empty())
+            return false;
+
+        PeSection stubSec;
+        stubSec.name = ".text";
+        stubSec.data = &generatedStubData;
+        stubSec.virtualAddress = stubRva;
+        stubSec.virtualSize = static_cast<uint32_t>(generatedStubData.size());
+        stubSec.executable = true;
+        stubSec.characteristics = sectionChars(true, false, true);
+        sections.push_back(stubSec);
+        entryRva = stubRva;
+    }
+
+    std::stable_sort(sections.begin(), sections.end(), [](const PeSection &a, const PeSection &b) {
+        if (a.alloc != b.alloc)
+            return a.alloc > b.alloc;
+        if (!a.alloc)
+            return a.name < b.name;
+        return a.virtualAddress < b.virtualAddress;
+    });
+
+    const ExceptionLayout exceptionLayout = findExceptionDirectory(sections);
+
+    const uint16_t numSections = static_cast<uint16_t>(sections.size());
+    const size_t headersWithoutPadding = 64 + 4 + 20 + 240 + numSections * 40;
+    const uint32_t sizeOfHeaders =
+        static_cast<uint32_t>(alignUp(headersWithoutPadding, fileAlignment));
+
+    uint32_t currentFileOff = sizeOfHeaders;
+    uint32_t sizeOfCode = 0;
+    uint32_t sizeOfInitData = 0;
+    uint32_t baseOfCode = 0;
+    uint32_t sizeOfImage = sectionAlignment;
+
+    for (auto &sec : sections) {
+        sec.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.virtualSize, fileAlignment));
+        sec.pointerToRawData = currentFileOff;
+        currentFileOff += sec.sizeOfRawData;
+
+        if (sec.alloc) {
+            const uint32_t secEnd =
+                sec.virtualAddress + static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
+            sizeOfImage = std::max(sizeOfImage, secEnd);
+            if (sec.executable) {
+                sizeOfCode += sec.sizeOfRawData;
+                if (baseOfCode == 0)
+                    baseOfCode = sec.virtualAddress;
+            } else {
+                sizeOfInitData += sec.sizeOfRawData;
+            }
+        }
+    }
+
+    std::vector<uint8_t> file;
     file.resize(64, 0);
     file[0] = 'M';
     file[1] = 'Z';
-    // e_lfanew at offset 60.
-    const uint32_t peOffset = 64;
-    file[60] = static_cast<uint8_t>(peOffset);
-    file[61] = 0;
-    file[62] = 0;
-    file[63] = 0;
+    putLE32(file, 0x3C, 64);
 
-    // === PE Signature (4 bytes) ===
     writeLE32(file, 0x00004550); // "PE\0\0"
-
-    // Collect alloc and non-alloc sections.
-    std::vector<size_t> allocIndices, debugIndices;
-    for (size_t i = 0; i < layout.sections.size(); ++i) {
-        if (layout.sections[i].data.empty())
-            continue;
-        if (!layout.sections[i].alloc)
-            debugIndices.push_back(i);
-        else
-            allocIndices.push_back(i);
-    }
-
-    // === COFF Header (20 bytes) ===
-    uint16_t numSections = static_cast<uint16_t>(allocIndices.size() + debugIndices.size());
 
     writeLE16(file, machine);
     writeLE16(file, numSections);
-    writeLE32(file, 0);      // TimeDateStamp
-    writeLE32(file, 0);      // PointerToSymbolTable
-    writeLE32(file, 0);      // NumberOfSymbols
-    writeLE16(file, 240);    // SizeOfOptionalHeader (PE32+)
-    writeLE16(file, 0x0022); // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
+    writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE32(file, 0);
+    writeLE16(file, 240);
+    writeLE16(file, 0x0022); // EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
 
-    // === Optional Header (PE32+, 240 bytes) ===
     const size_t optHeaderStart = file.size();
-    writeLE16(file, 0x020B); // Magic: PE32+
-
-    writeLE16(file, 0); // LinkerVersion
-    writeLE32(file, 0); // SizeOfCode (filled later)
-    writeLE32(file, 0); // SizeOfInitializedData
-    writeLE32(file, 0); // SizeOfUninitializedData
-
-    // AddressOfEntryPoint.
-    uint64_t mainAddr = resolveMainAddress(layout);
-    uint32_t entryRVA = mainAddr ? static_cast<uint32_t>(mainAddr - imageBase) : 0;
-    writeLE32(file, entryRVA);
-    writeLE32(file, 0); // BaseOfCode
-
+    writeLE16(file, 0x020B);
+    writeLE16(file, 0);
+    writeLE32(file, sizeOfCode);
+    writeLE32(file, sizeOfInitData);
+    writeLE32(file, 0);
+    writeLE32(file, entryRva);
+    writeLE32(file, baseOfCode);
     writeLE64(file, imageBase);
     writeLE32(file, sectionAlignment);
     writeLE32(file, fileAlignment);
-    writeLE16(file, 6); // MajorOperatingSystemVersion
+    writeLE16(file, 6);
     writeLE16(file, 0);
-    writeLE16(file, 0); // MajorImageVersion
     writeLE16(file, 0);
-    writeLE16(file, 6); // MajorSubsystemVersion
     writeLE16(file, 0);
-    writeLE32(file, 0); // Win32VersionValue
-
-    // SizeOfImage: VA of last alloc section + its aligned size.
-    uint32_t sizeOfImage = sectionAlignment; // At least first page.
-    for (size_t idx : allocIndices) {
-        const auto &sec = layout.sections[idx];
-        uint32_t secEnd = static_cast<uint32_t>(sec.virtualAddr - imageBase +
-                                                alignUp(sec.data.size(), sectionAlignment));
-        if (secEnd > sizeOfImage)
-            sizeOfImage = secEnd;
-    }
+    writeLE16(file, 6);
+    writeLE16(file, 0);
+    writeLE32(file, 0);
     writeLE32(file, sizeOfImage);
-
-    // SizeOfHeaders: headers + section table, file-aligned.
-    const size_t headersEnd = optHeaderStart + 240 + numSections * 40;
-    const uint32_t sizeOfHeaders = static_cast<uint32_t>(alignUp(headersEnd, fileAlignment));
     writeLE32(file, sizeOfHeaders);
+    writeLE32(file, 0);
+    writeLE16(file, 3); // IMAGE_SUBSYSTEM_WINDOWS_CUI
+    writeLE16(file, kDllCharacteristics);
+    writeLE64(file, 0x100000);
+    writeLE64(file, 0x1000);
+    writeLE64(file, 0x100000);
+    writeLE64(file, 0x1000);
+    writeLE32(file, 0);
+    writeLE32(file, 16);
 
-    writeLE32(file, 0);                   // CheckSum
-    writeLE16(file, 3);                   // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI
-    writeLE16(file, kDllCharacteristics); // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
-                                          // TERMINAL_SERVER_AWARE
-    writeLE64(file, 0x100000);            // SizeOfStackReserve (1MB)
-    writeLE64(file, 0x1000);              // SizeOfStackCommit
-    writeLE64(file, 0x100000);            // SizeOfHeapReserve
-    writeLE64(file, 0x1000);              // SizeOfHeapCommit
-    writeLE32(file, 0);                   // LoaderFlags
-    writeLE32(file, 16);                  // NumberOfRvaAndSizes
-
-    // Data directories (16 entries × 8 bytes = 128 bytes).
     for (int i = 0; i < 16; ++i) {
-        writeLE32(file, 0); // VirtualAddress
-        writeLE32(file, 0); // Size
+        writeLE32(file, 0);
+        writeLE32(file, 0);
     }
 
-    // === Section Headers ===
-    struct PeSection {
-        size_t layoutIdx;
-        uint32_t virtualAddress;
-        uint32_t virtualSize;
-        uint32_t sizeOfRawData;
-        uint32_t pointerToRawData;
-        uint32_t characteristics;
-    };
-
-    std::vector<PeSection> peSections;
-
-    uint32_t currentFileOff = sizeOfHeaders;
-
-    // Alloc sections.
-    for (size_t idx : allocIndices) {
-        const auto &sec = layout.sections[idx];
-        PeSection ps;
-        ps.layoutIdx = idx;
-        ps.virtualAddress = static_cast<uint32_t>(sec.virtualAddr - imageBase);
-        ps.virtualSize = static_cast<uint32_t>(sec.data.size());
-        ps.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.data.size(), fileAlignment));
-        ps.pointerToRawData = currentFileOff;
-
-        uint32_t chars = 0;
-        if (sec.executable)
-            chars |= 0x60000020; // MEM_EXECUTE | MEM_READ | CNT_CODE
-        else if (sec.writable)
-            chars |= 0xC0000040; // MEM_READ | MEM_WRITE | CNT_INITIALIZED_DATA
-        else
-            chars |= 0x40000040; // MEM_READ | CNT_INITIALIZED_DATA
-        ps.characteristics = chars;
-
-        peSections.push_back(ps);
-        currentFileOff += ps.sizeOfRawData;
+    if (!imports.empty()) {
+        putLE32(file, optHeaderStart + 112 + 1 * 8 + 0, importLayout.importDirRva);
+        putLE32(file, optHeaderStart + 112 + 1 * 8 + 4, importLayout.importDirSize);
+        putLE32(file, optHeaderStart + 112 + 12 * 8 + 0, importLayout.iatRva);
+        putLE32(file, optHeaderStart + 112 + 12 * 8 + 4, importLayout.iatSize);
+    }
+    if (exceptionLayout.directoryRva != 0) {
+        putLE32(file, optHeaderStart + 112 + 3 * 8 + 0, exceptionLayout.directoryRva);
+        putLE32(file, optHeaderStart + 112 + 3 * 8 + 4, exceptionLayout.directorySize);
+    }
+    if (tlsLayout.directoryRva != 0) {
+        putLE32(file, optHeaderStart + 112 + 9 * 8 + 0, tlsLayout.directoryRva);
+        putLE32(file, optHeaderStart + 112 + 9 * 8 + 4, tlsLayout.directorySize);
     }
 
-    // Non-alloc debug sections (IMAGE_SCN_MEM_DISCARDABLE | CNT_INITIALIZED_DATA | MEM_READ).
-    for (size_t idx : debugIndices) {
-        const auto &sec = layout.sections[idx];
-        PeSection ps;
-        ps.layoutIdx = idx;
-        ps.virtualAddress = 0;
-        ps.virtualSize = static_cast<uint32_t>(sec.data.size());
-        ps.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.data.size(), fileAlignment));
-        ps.pointerToRawData = currentFileOff;
-        ps.characteristics = 0x42000040; // CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ
-        peSections.push_back(ps);
-        currentFileOff += ps.sizeOfRawData;
-    }
-
-    // Write section headers (40 bytes each).
-    for (const auto &ps : peSections) {
-        const auto &sec = layout.sections[ps.layoutIdx];
-        // Section name (8 bytes, NUL-padded).
+    for (const auto &sec : sections) {
         char secName[8] = {};
-        const char *sn;
-        if (!sec.alloc)
-            sn = ".debug";
-        else if (sec.executable)
-            sn = ".text";
-        else if (sec.writable)
-            sn = ".data";
-        else
-            sn = ".rdata";
-        std::strncpy(secName, sn, 8);
-        file.insert(file.end(), secName, secName + 8);
+        std::strncpy(secName, sec.name.c_str(), sizeof(secName));
+        file.insert(file.end(), secName, secName + sizeof(secName));
 
-        writeLE32(file, ps.virtualSize);
-        writeLE32(file, ps.virtualAddress);
-        writeLE32(file, ps.sizeOfRawData);
-        writeLE32(file, ps.pointerToRawData);
-        writeLE32(file, 0); // PointerToRelocations
-        writeLE32(file, 0); // PointerToLinenumbers
-        writeLE16(file, 0); // NumberOfRelocations
-        writeLE16(file, 0); // NumberOfLinenumbers
-        writeLE32(file, ps.characteristics);
+        writeLE32(file, sec.virtualSize);
+        writeLE32(file, sec.virtualAddress);
+        writeLE32(file, sec.sizeOfRawData);
+        writeLE32(file, sec.pointerToRawData);
+        writeLE32(file, 0);
+        writeLE32(file, 0);
+        writeLE16(file, 0);
+        writeLE16(file, 0);
+        writeLE32(file, sec.characteristics);
     }
 
-    // Pad to sizeOfHeaders.
     padTo(file, sizeOfHeaders);
 
-    // Write section data (file-aligned).
-    for (const auto &ps : peSections) {
-        const auto &sec = layout.sections[ps.layoutIdx];
-        padTo(file, ps.pointerToRawData);
-        file.insert(file.end(), sec.data.begin(), sec.data.end());
-        // Pad to file alignment.
+    for (const auto &sec : sections) {
+        padTo(file, sec.pointerToRawData);
+        file.insert(file.end(), sec.data->begin(), sec.data->end());
         padTo(file, alignUp(file.size(), fileAlignment));
     }
 
-    // Write file.
     std::ofstream f(path, std::ios::binary);
     if (!f) {
         err << "error: cannot open '" << path << "' for writing\n";

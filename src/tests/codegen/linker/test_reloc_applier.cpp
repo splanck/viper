@@ -357,6 +357,96 @@ int main() {
         CHECK(patched == 0x12345678);
     }
 
+    // --- COFF x86_64 ADDR32NB writes an RVA (S + A - ImageBase) ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_addr32nb.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "unwind_info",
+                           /*IMAGE_REL_AMD64_ADDR32NB=*/3,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "unwind_info";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x140002000ULL;
+        layout.globalSyms["unwind_info"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x2000);
+    }
+
+    // --- COFF x86_64 REL32 is relative to the end of the relocated field ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_rel32.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "target",
+                           /*IMAGE_REL_AMD64_REL32=*/4,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x140002000ULL;
+        layout.globalSyms["target"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x00000FFC);
+    }
+
+    // --- COFF x86_64 REL32_4 includes the trailing-byte bias ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_rel32_4.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "target",
+                           /*IMAGE_REL_AMD64_REL32_4=*/8,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x140002000ULL;
+        layout.globalSyms["target"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0x00000FF8);
+    }
+
     // --- Unknown reloc type produces error ---
     {
         std::vector<uint8_t> code(8, 0);

@@ -11,8 +11,8 @@
 //                 is written before linking when emit_asm is set; run() returns
 //                 a zero exit_code only when all stages succeed; optimize level
 //                 controls which optimisation passes are run (0=none, 1=peephole).
-// Ownership/Lifetime: Callers retain ownership of file paths and do not transfer resource
-//                     management; pipeline state is local to each run() invocation.
+// Ownership/Lifetime: Callers retain ownership of file paths and do not transfer
+//                     resource management; pipeline state is local to each run().
 // Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -36,36 +36,33 @@ class CodegenPipeline {
   public:
     /// \brief Assembler mode selection.
     enum class AssemblerMode {
-        System, ///< Use system assembler (cc -c) — fallback via --system-asm.
-        Native  ///< Use native binary encoder + ObjectFileWriter (default).
+        System, ///< Use the host assembler/compiler driver.
+        Native, ///< Use the native binary encoder + object writer.
+    };
+
+    /// \brief Linker mode selection.
+    enum class LinkMode {
+        System, ///< Use the host toolchain linker.
+        Native, ///< Use the built-in Viper native linker.
     };
 
     /// \brief User-configurable options controlling pipeline behaviour.
     struct Options {
         std::string input_il_path;   ///< IL module to load and compile.
-        std::string output_obj_path; ///< Destination path for executable/object output; when set
-                                     ///< without @ref run_native the pipeline emits an object file.
+        std::string output_obj_path; ///< Destination path for executable/object output.
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
-        int optimize = 1;            ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
+        int optimize = 1;            ///< Optimization level: 0 = none, 1 = O1, 2 = O2.
         bool run_native = false;     ///< Execute the produced binary after linking when true.
-        std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default (8MB).
-        AssemblerMode assembler_mode =
-            AssemblerMode::Native; ///< Native binary encoder by default; --system-asm to override.
+        std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default.
+        AssemblerMode assembler_mode = AssemblerMode::Native;
+        LinkMode link_mode = LinkMode::Native;
     };
 
     /// \brief Construct a pipeline configured with @p opts.
-    /// @param opts User-supplied configuration controlling input/output paths,
-    ///             optimisation level, and execution behaviour.
     explicit CodegenPipeline(Options opts);
 
     /// \brief Execute the end-to-end code-generation workflow.
-    ///
-    /// @details Loads the IL module, runs the lowering and register-allocation
-    ///          passes, emits assembly or object code, optionally links and
-    ///          executes the resulting binary, then collects process output.
-    ///
-    /// @return Aggregated result including exit code and captured output streams.
     PipelineResult run();
 
   private:

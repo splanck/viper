@@ -325,6 +325,26 @@ int main() {
         CHECK(globalSyms["funcC"].objIndex == 0);
     }
 
+    // --- Test 8: COFF executable sections are not folded ---
+    {
+        auto obj1 = makeTextObj("a.obj", "funcA", {0xC3, 0x90, 0x90, 0x90});
+        obj1.format = ObjFileFormat::COFF;
+        auto obj2 = makeTextObj("b.obj", "funcB", {0xC3, 0x90, 0x90, 0x90});
+        obj2.format = ObjFileFormat::COFF;
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        registerGlobal(globalSyms, "funcA", 0, 1);
+        registerGlobal(globalSyms, "funcB", 1, 1);
+
+        size_t folded = foldIdenticalCode(objs, globalSyms);
+        CHECK(folded == 0);
+        CHECK(!objs[0].sections[1].data.empty());
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(globalSyms["funcA"].objIndex == 0);
+        CHECK(globalSyms["funcB"].objIndex == 1);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All ICF tests passed.\n";

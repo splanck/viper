@@ -23,6 +23,7 @@
 #include <climits>
 #include <cstring>
 #include <fstream>
+#include <limits>
 
 namespace viper::codegen::linker {
 
@@ -34,6 +35,17 @@ static constexpr size_t kArHeaderLen = 60;
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+/// Read a little-endian 16-bit integer from raw bytes.
+static uint16_t readLE16(const uint8_t *p) {
+    return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
+}
+
+/// Read a little-endian 32-bit integer from raw bytes.
+static uint32_t readLE32(const uint8_t *p) {
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// Maximum archive member size: 2 GB.
@@ -154,6 +166,50 @@ static void parseBsdSymbolTable(const uint8_t *data,
     }
 }
 
+/// Parse the Microsoft COFF second linker member (the preferred symbol index).
+/// Format:
+///   u32le memberCount
+///   u32le offsets[memberCount]
+///   u32le symbolCount
+///   u16le indices[symbolCount]   (1-based into offsets[])
+///   char names[][NUL]
+static void parseCoffSecondLinkerMember(const uint8_t *data,
+                                        size_t size,
+                                        std::vector<std::pair<std::string, size_t>> &symbols) {
+    if (size < 8)
+        return;
+
+    const uint32_t memberCount = readLE32(data);
+    const size_t offsetsBytes = static_cast<size_t>(memberCount) * 4;
+    if (offsetsBytes > size || 4 + offsetsBytes + 4 > size)
+        return;
+
+    const uint8_t *offsets = data + 4;
+    const uint8_t *symbolCountPtr = offsets + offsetsBytes;
+    const uint32_t symbolCount = readLE32(symbolCountPtr);
+    const size_t indexBytes = static_cast<size_t>(symbolCount) * 2;
+    if (indexBytes > size || 4 + offsetsBytes + 4 + indexBytes > size)
+        return;
+
+    const uint8_t *indices = symbolCountPtr + 4;
+    const char *namePtr = reinterpret_cast<const char *>(indices + indexBytes);
+    const char *nameEnd = reinterpret_cast<const char *>(data + size);
+
+    for (uint32_t i = 0; i < symbolCount && namePtr < nameEnd; ++i) {
+        const uint16_t memberIndex = readLE16(indices + static_cast<size_t>(i) * 2);
+        const char *nul = std::find(namePtr, nameEnd, '\0');
+        if (nul == nameEnd)
+            break;
+
+        if (memberIndex > 0 && memberIndex <= memberCount) {
+            const uint32_t memberOffset = readLE32(offsets + static_cast<size_t>(memberIndex - 1) * 4);
+            symbols.emplace_back(std::string(namePtr, nul), memberOffset);
+        }
+
+        namePtr = nul + 1;
+    }
+}
+
 bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     // Read the entire file.
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -195,6 +251,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     std::vector<RawMember> rawMembers;
 
     size_t pos = kArMagicLen;
+    size_t coffLinkerMembersSeen = 0;
     while (pos + kArHeaderLen <= fileSize) {
         const uint8_t *header = ar.data.data() + pos;
 
@@ -243,9 +300,26 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             }
         } else {
             resolvedName = nameField;
-            // Trim trailing '/' (GNU terminator).
-            while (!resolvedName.empty() && resolvedName.back() == '/')
-                resolvedName.pop_back();
+            if (resolvedName == "/" || resolvedName == "//") {
+                // Keep the COFF/GNU special member names intact.
+            } else if (resolvedName.size() > 1 && resolvedName[0] == '/' &&
+                       resolvedName[1] >= '0' && resolvedName[1] <= '9') {
+                size_t offset = 0;
+                for (size_t i = 1; i < resolvedName.size() && resolvedName[i] >= '0' &&
+                                   resolvedName[i] <= '9';
+                     ++i)
+                    offset = offset * 10 + (resolvedName[i] - '0');
+                if (offset < longNames.size()) {
+                    size_t end = offset;
+                    while (end < longNames.size() && longNames[end] != '\0')
+                        ++end;
+                    resolvedName = longNames.substr(offset, end - offset);
+                }
+            } else {
+                // Trim trailing '/' (GNU terminator) for normal short names.
+                while (!resolvedName.empty() && resolvedName.back() == '/')
+                    resolvedName.pop_back();
+            }
         }
 
         // Check for special members.
@@ -256,10 +330,16 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             size_t symDataOff = dataStart + bsdNameLen;
             size_t symDataSize = memberSize - bsdNameLen;
             if (symDataOff + symDataSize <= fileSize) {
-                if (resolvedName == "/")
-                    parseGnuSymbolTable(ar.data.data() + symDataOff, symDataSize, rawSymbols);
-                else
+                if (resolvedName == "/") {
+                    ++coffLinkerMembersSeen;
+                    if (coffLinkerMembersSeen == 2)
+                        parseCoffSecondLinkerMember(
+                            ar.data.data() + symDataOff, symDataSize, rawSymbols);
+                    else
+                        parseGnuSymbolTable(ar.data.data() + symDataOff, symDataSize, rawSymbols);
+                } else {
                     parseBsdSymbolTable(ar.data.data() + symDataOff, symDataSize, rawSymbols);
+                }
             }
         } else if (resolvedName == "//" || nameField == "//") {
             isSpecial = true;

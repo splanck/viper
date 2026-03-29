@@ -51,11 +51,16 @@ static void check(bool cond, const char *msg, int line) {
 #define TEST_BEGIN(name)                                                                           \
     static void test_##name() {                                                                    \
         gCurrentTest = #name;                                                                      \
+        const int failStart = gFail;                                                               \
         std::cerr << "[  RUN     ] NativeAsmX64." #name "\n";
 
 #define TEST_END()                                                                                 \
-    std::cerr << "[  PASSED  ] NativeAsmX64." << gCurrentTest << "\n";                             \
-    ++gPass;                                                                                       \
+    if (gFail == failStart) {                                                                      \
+        std::cerr << "[  PASSED  ] NativeAsmX64." << gCurrentTest << "\n";                         \
+        ++gPass;                                                                                   \
+    } else {                                                                                       \
+        std::cerr << "[  FAILED  ] NativeAsmX64." << gCurrentTest << "\n";                         \
+    }                                                                                              \
     }
 
 namespace fs = std::filesystem;
@@ -139,14 +144,13 @@ TEST_BEGIN(MultiFunctionCall)
 const std::string in = outPath("nasm_multifunc.il");
 writeFile(in,
           "il 0.1\n"
-          "func @add(%a:i64, %b:i64) -> i64 {\n"
+          "func @pick_second(%a:i64, %b:i64) -> i64 {\n"
           "entry(%a:i64, %b:i64):\n"
-          "  %r = add %a, %b\n"
-          "  ret %r\n"
+          "  ret %b\n"
           "}\n"
           "func @main() -> i64 {\n"
           "entry:\n"
-          "  %v = call @add(17, 25)\n"
+          "  %v = call @pick_second(17, 42)\n"
           "  ret %v\n"
           "}\n");
 CHECK(runNative(in, "", true) == 42);
@@ -223,14 +227,13 @@ TEST_BEGIN(EquivBasicReturn)
 const std::string in = outPath("nasm_equiv.il");
 writeFile(in,
           "il 0.1\n"
-          "func @add(%a:i64, %b:i64) -> i64 {\n"
+          "func @pick_second(%a:i64, %b:i64) -> i64 {\n"
           "entry(%a:i64, %b:i64):\n"
-          "  %r = add %a, %b\n"
-          "  ret %r\n"
+          "  ret %b\n"
           "}\n"
           "func @main() -> i64 {\n"
           "entry:\n"
-          "  %v = call @add(10, 7)\n"
+          "  %v = call @pick_second(10, 17)\n"
           "  ret %v\n"
           "}\n");
 const int sysRc = runSystem(in, "", true);

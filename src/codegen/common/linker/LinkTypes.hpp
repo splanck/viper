@@ -100,6 +100,13 @@ inline bool isObjCSection(const std::string &name) {
     return name.find("__objc_") != std::string::npos;
 }
 
+/// Check whether a Windows PE/COFF metadata section name must be preserved.
+/// The PE loader and unwinder expect these sections to remain separately
+/// addressable so the exe writer can publish the matching data directories.
+inline bool isWindowsMetadataSection(const std::string &name) {
+    return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
+}
+
 /// Classify a section by name and attributes.
 inline SectionClass classifySection(const std::string &name,
                                     bool executable,
@@ -110,9 +117,10 @@ inline SectionClass classifySection(const std::string &name,
             return SectionClass::TlsBss;
         return SectionClass::TlsData;
     }
-    // ObjC metadata sections must be preserved with their original names.
-    // The ObjC runtime searches for __objc_classlist, __objc_selrefs, etc. by name.
-    if (isObjCSection(name))
+    // ObjC metadata and PE unwind sections must be preserved with their
+    // original names because downstream runtimes/loaders locate them by name
+    // or by dedicated data-directory ranges derived from those names.
+    if (isObjCSection(name) || isWindowsMetadataSection(name))
         return SectionClass::ObjC;
     if (executable)
         return SectionClass::Text;
