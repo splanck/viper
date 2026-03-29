@@ -1062,16 +1062,23 @@ typedef struct {
     anim_blend_state_t states[MAX_BLEND_STATES];
     int32_t state_count;
     float *bone_palette;
+    float *prev_bone_palette;
+    float *motion_palette_snapshot;
     float *local_transforms;
     float *temp_state_local;
+    int64_t last_motion_frame;
+    int8_t has_prev_motion_palette;
 } rt_anim_blend3d;
 
 static void anim_blend3d_finalizer(void *obj) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     free(b->bone_palette);
+    free(b->prev_bone_palette);
+    free(b->motion_palette_snapshot);
     free(b->local_transforms);
     free(b->temp_state_local);
-    b->bone_palette = b->local_transforms = b->temp_state_local = NULL;
+    b->bone_palette = b->prev_bone_palette = b->motion_palette_snapshot = NULL;
+    b->local_transforms = b->temp_state_local = NULL;
 }
 
 void *rt_anim_blend3d_new(void *skel_obj) {
@@ -1087,15 +1094,28 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     b->skeleton = skel;
     b->state_count = 0;
     memset(b->states, 0, sizeof(b->states));
+    b->last_motion_frame = 0;
+    b->has_prev_motion_palette = 0;
 
     size_t buf_sz = (size_t)skel->bone_count * 16 * sizeof(float);
     b->bone_palette = (float *)calloc(1, buf_sz);
+    b->prev_bone_palette = (float *)calloc(1, buf_sz);
+    b->motion_palette_snapshot = (float *)calloc(1, buf_sz);
     b->local_transforms = (float *)calloc(1, buf_sz);
     b->temp_state_local = (float *)calloc(1, buf_sz);
+    if (!b->bone_palette || !b->prev_bone_palette || !b->motion_palette_snapshot ||
+        !b->local_transforms || !b->temp_state_local) {
+        anim_blend3d_finalizer(b);
+        rt_trap("AnimBlend3D.New: allocation failed");
+        return NULL;
+    }
 
     /* Initialize bone palette to identity */
-    for (int32_t i = 0; i < skel->bone_count; i++)
+    for (int32_t i = 0; i < skel->bone_count; i++) {
         mat4f_identity(&b->bone_palette[i * 16]);
+        mat4f_identity(&b->prev_bone_palette[i * 16]);
+        mat4f_identity(&b->motion_palette_snapshot[i * 16]);
+    }
 
     rt_obj_set_finalizer(b, anim_blend3d_finalizer);
     return b;
@@ -1245,6 +1265,23 @@ int64_t rt_anim_blend3d_state_count(void *obj) {
     return obj ? ((rt_anim_blend3d *)obj)->state_count : 0;
 }
 
+static const float *anim_blend_prepare_prev_palette(rt_anim_blend3d *b, int64_t frame_serial) {
+    if (!b || !b->bone_palette)
+        return NULL;
+    int32_t bone_count = b->skeleton ? b->skeleton->bone_count : 0;
+    size_t palette_size = (size_t)bone_count * 16 * sizeof(float);
+    if (b->last_motion_frame != frame_serial) {
+        if (b->motion_palette_snapshot && bone_count > 0 && b->last_motion_frame != 0) {
+            memcpy(b->prev_bone_palette, b->motion_palette_snapshot, palette_size);
+            b->has_prev_motion_palette = 1;
+        }
+        if (b->motion_palette_snapshot && bone_count > 0)
+            memcpy(b->motion_palette_snapshot, b->bone_palette, palette_size);
+        b->last_motion_frame = frame_serial;
+    }
+    return b->has_prev_motion_palette ? b->prev_bone_palette : NULL;
+}
+
 void rt_canvas3d_draw_mesh_blended(
     void *canvas, void *mesh_obj, void *transform, void *material, void *blend_obj) {
     if (!canvas || !mesh_obj || !transform || !material || !blend_obj)
@@ -1257,6 +1294,25 @@ void rt_canvas3d_draw_mesh_blended(
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     if (mesh->vertex_count == 0)
         return;
+
+    rt_canvas3d *canvas3d = (rt_canvas3d *)canvas;
+    if (canvas3d && canvas3d->backend &&
+        vgfx3d_backend_prefers_gpu_skinning(canvas3d->backend->name, skel->bone_count)) {
+        const float *prev_palette =
+            anim_blend_prepare_prev_palette(b, rt_canvas3d_get_frame_serial(canvas));
+        rt_mesh3d tmp = *mesh;
+        tmp.bone_palette = b->bone_palette;
+        tmp.prev_bone_palette = prev_palette;
+        tmp.bone_count = skel->bone_count;
+        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
+                                           &tmp,
+                                           ((mat4_impl *)transform)->m,
+                                           material,
+                                           transform,
+                                           prev_palette,
+                                           NULL);
+        return;
+    }
 
     /* CPU skinning with blend palette */
     vgfx3d_vertex_t *skinned =

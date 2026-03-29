@@ -70,6 +70,7 @@ void rt_str_retain_maybe(rt_string s);
 /// @param p Pointer to test; may be NULL.
 int8_t rt_string_is_handle(void *p);
 
+/// @brief Return a shared empty string singleton (zero-length, non-NULL).
 rt_string rt_str_empty(void);
 
 /// @brief Allocate a runtime string by copying @p len bytes from @p bytes.
