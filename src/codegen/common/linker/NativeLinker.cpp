@@ -759,7 +759,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         }
         case LinkPlatform::Windows: {
             if (peImports.empty())
-                peImports.push_back({"kernel32.dll", {"ExitProcess"}});
+                peImports.push_back({"kernel32.dll", {"ExitProcess"}, {}});
             for (const auto &imp : peImports) {
                 for (const auto &fn : imp.functions) {
                     auto it = layout.globalSyms.find("__imp_" + fn);

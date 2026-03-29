@@ -209,6 +209,50 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             args.push_back(argValue);
         }
 
+        // Pack variadic arguments into a List if the callee has a variadic param.
+        // This must happen before padDefaultArgs which fills missing fixed params.
+        {
+            // Try multiple lookup strategies (name may differ between sema and lowerer)
+            FunctionDecl *varFuncDecl = sema_.resolvedFunctionDecl(expr);
+            if (!varFuncDecl)
+                varFuncDecl = sema_.getFunctionDecl(resolvedFunction);
+            if (!varFuncDecl && expr->callee->kind == ExprKind::Ident) {
+                auto *ident = static_cast<IdentExpr *>(expr->callee.get());
+                varFuncDecl = sema_.getFunctionDecl(ident->name);
+            }
+            // Also check lowered name variants
+            if (!varFuncDecl) {
+                // Try without module prefix
+                auto dotPos = resolvedFunction.rfind('.');
+                if (dotPos != std::string::npos)
+                    varFuncDecl = sema_.getFunctionDecl(
+                        resolvedFunction.substr(dotPos + 1));
+            }
+            if (varFuncDecl && !varFuncDecl->params.empty() &&
+                varFuncDecl->params.back().isVariadic) {
+                size_t fixedCount = varFuncDecl->params.size() - 1;
+
+                // Create a new List and pack the excess arguments
+                Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
+                for (size_t vi = fixedCount; vi < args.size(); ++vi) {
+                    TypeRef argType = (vi < expr->args.size())
+                                         ? sema_.typeOf(expr->args[vi].value.get())
+                                         : nullptr;
+                    Type ilArgType = Type(Type::Kind::I64); // default
+                    if (vi < paramTypes.size())
+                        ilArgType = mapType(paramTypes[vi]);
+                    else if (argType)
+                        ilArgType = mapType(argType);
+                    Value boxed = emitBoxValue(args[vi], ilArgType, argType);
+                    emitCall(kListAdd, {list, boxed});
+                }
+
+                // Replace the variadic args with the single List
+                args.erase(args.begin() + static_cast<ptrdiff_t>(fixedCount), args.end());
+                args.push_back(list);
+            }
+        }
+
         if (resolvedFunction == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
             bool isString = isStringType(argType);
@@ -818,6 +862,31 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             }
         }
     } else {
+        // Pack variadic arguments if the callee has a variadic last param.
+        {
+            FunctionDecl *vDecl = sema_.resolvedFunctionDecl(expr);
+            if (!vDecl)
+                vDecl = sema_.getFunctionDecl(calleeName);
+            if (!vDecl && expr->callee->kind == ExprKind::Ident) {
+                auto *ident = static_cast<IdentExpr *>(expr->callee.get());
+                vDecl = sema_.getFunctionDecl(ident->name);
+            }
+            if (vDecl && !vDecl->params.empty() && vDecl->params.back().isVariadic) {
+                size_t fixedCount = vDecl->params.size() - 1;
+                Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
+                for (size_t vi = fixedCount; vi < args.size(); ++vi) {
+                    TypeRef argType = (vi < expr->args.size())
+                                         ? sema_.typeOf(expr->args[vi].value.get())
+                                         : nullptr;
+                    Type ilArgType = argType ? mapType(argType) : Type(Type::Kind::I64);
+                    Value boxed = emitBoxValue(args[vi], ilArgType, argType);
+                    emitCall(kListAdd, {list, boxed});
+                }
+                args.erase(args.begin() + static_cast<ptrdiff_t>(fixedCount), args.end());
+                args.push_back(list);
+            }
+        }
+
         // Pad missing trailing arguments with default values from function declaration
         padDefaultArgs(calleeName, args, expr);
 

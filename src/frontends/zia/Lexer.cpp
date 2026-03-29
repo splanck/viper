@@ -247,6 +247,8 @@ const char *tokenKindToString(TokenKind kind) {
             return "..";
         case TokenKind::DotDotEqual:
             return "..=";
+        case TokenKind::Ellipsis:
+            return "...";
         case TokenKind::Colon:
             return ":";
         case TokenKind::Semicolon:
@@ -1139,7 +1141,11 @@ Token Lexer::next() {
             getChar();
             if (peekChar() == '.') {
                 getChar();
-                if (peekChar() == '=') {
+                if (peekChar() == '.') {
+                    getChar();
+                    tok.kind = TokenKind::Ellipsis;
+                    tok.text = "...";
+                } else if (peekChar() == '=') {
                     getChar();
                     tok.kind = TokenKind::DotDotEqual;
                     tok.text = "..=";

@@ -373,10 +373,11 @@ std::vector<Param> Parser::parseParameters() {
         SourceLoc firstLoc = firstTok.loc;
 
         if (check(TokenKind::Colon)) {
-            // Swift style: name: Type
+            // Swift style: name: Type  or  name: ...Type (variadic)
             advance(); // consume :
             param.name = first;
             param.loc = firstLoc;
+            param.isVariadic = match(TokenKind::Ellipsis);
             param.type = parseType();
             if (!param.type)
                 return {};
@@ -433,6 +434,13 @@ std::vector<Param> Parser::parseParameters() {
 
         params.push_back(std::move(param));
     } while (match(TokenKind::Comma));
+
+    // Validate: only the last parameter can be variadic
+    for (size_t i = 0; i + 1 < params.size(); ++i) {
+        if (params[i].isVariadic) {
+            error("Only the last parameter can be variadic");
+        }
+    }
 
     return params;
 }

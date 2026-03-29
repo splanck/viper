@@ -267,7 +267,7 @@ TEST(PeWriter, ImportDirectoryIsWritten) {
     bool ok = writePeExe(path,
                          layout,
                          LinkArch::X86_64,
-                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
                          err);
     ASSERT_TRUE(ok);
 
@@ -298,7 +298,7 @@ TEST(PeWriter, StartupStubBecomesEntryPoint) {
     bool ok = writePeExe(path,
                          layout,
                          LinkArch::X86_64,
-                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
                          err);
     ASSERT_TRUE(ok);
 

@@ -167,6 +167,9 @@ struct Param {
 
     /// @brief Source location of the parameter name token.
     SourceLoc loc;
+
+    /// @brief True if this is a variadic parameter (`...Type`).
+    bool isVariadic = false;
 };
 
 /// @brief Generic type parameter specification.

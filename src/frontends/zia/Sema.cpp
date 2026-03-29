@@ -161,8 +161,12 @@ TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const {
                      : (decl.returnType ? resolveType(decl.returnType.get()) : types::voidType());
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
-    for (const auto &param : decl.params)
-        paramTypes.push_back(param.type ? resolveType(param.type.get()) : types::unknown());
+    for (const auto &param : decl.params) {
+        TypeRef resolved = param.type ? resolveType(param.type.get()) : types::unknown();
+        if (param.isVariadic)
+            resolved = types::list(resolved); // ...Integer → List[Integer]
+        paramTypes.push_back(resolved);
+    }
     return types::function(paramTypes, returnType);
 }
 

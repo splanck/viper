@@ -577,6 +577,11 @@ enum class TokenKind {
     /// @{
     //=========================================================================
 
+    /// @brief Ellipsis `...` for variadic parameters.
+    /// @details Marks the last parameter as accepting zero or more arguments.
+    /// Syntax: `func sum(nums: ...Integer) -> Integer`
+    Ellipsis,
+
     /// @brief Return type arrow `->`.
     /// @details Separates function parameters from return type.
     /// Syntax: `func add(a: Int, b: Int) -> Int`

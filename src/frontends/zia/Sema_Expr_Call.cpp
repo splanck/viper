@@ -198,18 +198,23 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
     const size_t numParams = paramTys.size();
     const size_t numArgs = expr->args.size();
 
-    // Check argument count (with default parameter support)
-    if (numArgs > numParams) {
+    // Check if the last parameter is variadic (typed as List[T] from a ...T declaration)
+    FunctionDecl *funcDecl = getFunctionDecl(calleeName);
+    bool hasVariadic = funcDecl && !funcDecl->params.empty() &&
+                       funcDecl->params.back().isVariadic;
+    size_t fixedParams = hasVariadic ? numParams - 1 : numParams;
+
+    // Check argument count (with default parameter and variadic support)
+    if (!hasVariadic && numArgs > numParams) {
         error(expr->loc,
               "Too many arguments to '" + calleeName + "': expected " + std::to_string(numParams) +
                   ", got " + std::to_string(numArgs));
-    } else if (numArgs < numParams) {
-        // Check if missing arguments have default values
-        FunctionDecl *funcDecl = getFunctionDecl(calleeName);
+    } else if (numArgs < fixedParams) {
+        // Check if missing fixed arguments have default values
         bool allDefaulted = false;
         if (funcDecl && funcDecl->params.size() == numParams) {
             allDefaulted = true;
-            for (size_t i = numArgs; i < numParams; ++i) {
+            for (size_t i = numArgs; i < fixedParams; ++i) {
                 if (!funcDecl->params[i].defaultValue) {
                     allDefaulted = false;
                     break;
@@ -217,15 +222,14 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
             }
         }
         if (!allDefaulted) {
-            size_t minRequired = numParams;
+            size_t minRequired = fixedParams;
             if (funcDecl && funcDecl->params.size() == numParams) {
-                // Count required params (those without defaults)
                 minRequired = 0;
-                for (const auto &p : funcDecl->params) {
-                    if (!p.defaultValue)
+                for (size_t i = 0; i < fixedParams; ++i) {
+                    if (!funcDecl->params[i].defaultValue)
                         ++minRequired;
                     else
-                        break; // defaults must be trailing
+                        break;
                 }
             }
             error(expr->loc,
@@ -234,8 +238,8 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
         }
     }
 
-    // Check argument types (up to the shorter of the two lists)
-    const size_t checkCount = std::min(numArgs, numParams);
+    // Type-check fixed arguments
+    const size_t checkCount = std::min(numArgs, fixedParams);
     for (size_t i = 0; i < checkCount; ++i) {
         TypeRef argType = exprTypes_.count(expr->args[i].value.get())
                               ? exprTypes_[expr->args[i].value.get()]
@@ -248,6 +252,24 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 
         if (!paramType->isAssignableFrom(*argType)) {
             errorTypeMismatch(expr->args[i].value->loc, paramType, argType);
+        }
+    }
+
+    // Type-check variadic arguments against the element type
+    if (hasVariadic && numArgs > fixedParams && numParams > 0) {
+        TypeRef variadicListType = paramTys.back(); // List[T]
+        TypeRef elemType = variadicListType ? variadicListType->elementType() : nullptr;
+        if (elemType) {
+            for (size_t i = fixedParams; i < numArgs; ++i) {
+                TypeRef argType = exprTypes_.count(expr->args[i].value.get())
+                                      ? exprTypes_[expr->args[i].value.get()]
+                                      : nullptr;
+                if (!argType || argType->kind == TypeKindSem::Unknown)
+                    continue;
+                if (!elemType->isAssignableFrom(*argType)) {
+                    errorTypeMismatch(expr->args[i].value->loc, elemType, argType);
+                }
+            }
         }
     }
 }

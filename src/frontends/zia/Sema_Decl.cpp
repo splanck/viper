@@ -736,6 +736,8 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
     // Define parameters
     for (const auto &param : decl.params) {
         TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+        if (param.isVariadic)
+            paramType = types::list(paramType); // Body sees ...Integer as List[Integer]
 
         Symbol sym;
         sym.kind = Symbol::Kind::Parameter;

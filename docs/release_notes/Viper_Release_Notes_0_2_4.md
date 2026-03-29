@@ -11,26 +11,30 @@
 
 ### Release Overview
 
-Version 0.2.4 is a rendering, codegen, documentation, and showcase release. Highlights:
+Version 0.2.4 is a rendering, codegen, language features, documentation, and showcase release. Highlights:
 
+- **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
+- **Zia Language Features** — Type alias declarations (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
 - **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, and shadow mapping.
-- **Windows x86_64 Native Assembler Fixes** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, and process isolation hang fix. Windows native executables now link and run correctly.
+- **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
 - **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, and 10+ new codegen tests.
+- **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
 - **XENOSCAPE Demo Game** — Flagship Metroid-style sidescroller expanded from 720 LOC to 17K LOC across 26 files with 10 interconnected levels, 30+ enemy types, boss fights, save system, achievement tracking, procedural music, and ability-gated progression.
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
 - **VAPS Packaging Overhaul** — 10 improvements, 57 new tests, Windows installer stub, symlink safety, dry-run mode.
-- **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,705 source files, @brief Doxygen on 98% of runtime functions.
+- **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,706 source files, @brief Doxygen on 98% of runtime functions. Bible code audit across 12 chapters correcting struct field syntax, class method visibility, interface declarations, catch syntax, and collection API calls.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 33 | +33 |
-| Source files | 2,671 | 2,705 | +34 |
-| Production SLOC | ~348K | ~388K | +40K |
-| Test count | 1,351 | 1,358 | +7 |
+| Commits | — | 42 | +42 |
+| Files changed | — | 3,154 | — |
+| Source files | 2,671 | 2,706 | +35 |
+| Production SLOC | ~348K | ~390K | +42K |
+| Test count | 1,351 | 1,361+ | +10 |
 
 ---
 
@@ -110,18 +114,72 @@ Infrastructure:
 
 ---
 
+### Native PE/COFF Linker Pipeline
+
+Full Windows native linking pipeline, eliminating the clang/link.exe dependency for producing Windows executables. `viper build` now goes from Zia source to `.exe` with zero external tools on all three platforms.
+
+| Component | Description |
+|-----------|-------------|
+| **ArchiveReader** | Reads COFF `.lib` archives, extracts object files and symbol tables |
+| **SymbolResolver** | Resolves symbols across object files and archives with on-demand archive member inclusion |
+| **SectionMerger** | Merges `.text`, `.rdata`, `.data`, `.bss` sections across objects with alignment padding |
+| **DeadStripPass** | Removes unreferenced sections via transitive reachability from entry point |
+| **ICF** | Identical Code Folding — deduplicates sections with matching content and relocations |
+| **RelocApplier** | Applies `IMAGE_REL_AMD64_*` relocations (ADDR64, ADDR32NB, REL32, SECTION, SECREL) |
+| **PeExeWriter** | Produces PE32+ executables with `.idata` import tables, proper section alignment, and optional headers |
+
+CodegenPipeline extended with native link mode: assembles COFF `.obj`, discovers runtime `.lib` archives via `RuntimeComponents`, and invokes the native linker pipeline. Comprehensive tests for all linker passes and PE output validation.
+
+---
+
+### Zia Language Features
+
+Six new language features expanding Zia's operator and declaration surface:
+
+- **Type alias declarations** — `type Name = TargetType;` creates compile-time aliases resolved during semantic analysis. No runtime representation; `typeAliases_` map in Sema, lookup integrated into `resolveNamedType()`.
+- **Shift operators** — `<<` (left shift) and `>>` (arithmetic right shift) with correct precedence between additive and comparison. New `parseShift()` precedence level, lowered to `Shl`/`AShr` IL opcodes.
+- **Compound bitwise assignments** — `<<=`, `>>=`, `&=`, `|=`, `^=` follow the existing compound assignment desugaring pattern (read-op-store).
+- **Single-expression functions** — `func f(x: Integer) -> Integer = x * 2;` desugars to a `ReturnStmt` wrapping the body expression. Works for both top-level functions and class methods.
+- **Lambda expressions** — `func(params) -> RetType { body }` parsed in expression position when `func` is followed by `(`. Supports typed parameters and optional return type annotation.
+- **Polymorphic `is` expressions** — `obj is Base` now returns true when `obj`'s runtime type is `Base` or any subclass of `Base`. `collectDescendants()` walks the class hierarchy, emitting an OR chain of `ICmpEq` comparisons (single comparison optimized for the no-subclass case).
+
+---
+
 ### Compiler & Codegen
 
-- **Zia: `entity` → `class`, `value` → `struct`** — Full rename across lexer, parser, sema, lowerer, REPL, LSP, runtime GUI, tests, docs, VS Code extension, and website. 1358/1358 tests passing after migration.
-- **Zia sema: runtime property setter resolution** — Property assignments on runtime class instances (e.g., `ctrl.VY = value`) now call the setter function via symbol lookup. Previously fell through to invalid direct memory writes.
-- **Windows x86_64: CoffWriter cross-section symbol resolution** — Rodata symbols (`.LC_str_*`) were emitted as undefined in the COFF symbol table, causing LNK2001 linker errors. Rodata symbols now processed first with text relocations redirected to defined entries.
-- **Windows x86_64: X64BinaryEncoder runtime symbol mapping** — External calls used raw IL names (`Viper.Terminal.PrintStr`) instead of C runtime names (`rt_print_str`). Added `mapRuntimeSymbol()` matching the AArch64 pattern.
-- **Windows x86_64: ProcessIsolation hang fix** — `CrossLayerArithTests` missing `dispatchChild()` guard caused infinite process recursion via `CreateProcess` self-relaunch.
-- **AArch64: `i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
-- **AArch64: remove redundant refcount injection** — `emitRefcountedStore` lambda stripped from instruction lowering. String ownership belongs in the IL layer; the codegen backend should not inject phantom `rt_str_retain_maybe`/`rt_str_release_maybe` calls.
-- **AArch64: immediate utils extraction** — `A64ImmediateUtils.hpp` helper for immediate encoding, asm emitter hardening, binary encoder fixes, arithmetic/call fastpath improvements, regpool and symbol resolver fixes.
-- **Native linker: `RtComponent::Game`** — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
-- **Native linker: `-lshell32`** — Added to Windows linker command for `DragQueryFile`/`DragAcceptFiles` GUI support.
+**Zia frontend:**
+- **`entity` → `class`, `value` → `struct`** — Full rename across lexer, parser, sema, lowerer, REPL, LSP, runtime GUI, tests, docs, VS Code extension, and website.
+- **Runtime property setter resolution** — Property assignments on runtime class instances (e.g., `ctrl.VY = value`) now call the setter function via symbol lookup. Previously fell through to invalid direct memory writes.
+- **String bracket-index crash** — Added `String` case to `lowerIndex()`, emitting `Substring(base, idx, 1)` instead of falling through to the List path.
+- **`List[Boolean]` unboxing** — Added `Trunc1` after `kUnboxI1` in `emitUnbox()` to narrow the i64 result back to i1.
+- **`catch(e)` binding** — New `rt_throw_msg_set`/`rt_throw_msg_get` TLS runtime functions and `ErrGetMsg` IL opcode. `throw` stores the message, `catch` reads it as a String binding.
+- **`String.Contains()` method** — Added `Contains` method alias to the String class mapping to the existing `StrHas` implementation.
+
+**x86_64 backend:**
+- **CoffWriter cross-section symbol resolution** — Rodata symbols (`.LC_str_*`) were emitted as undefined in the COFF symbol table, causing LNK2001 linker errors. Rodata symbols now processed first with text relocations redirected to defined entries.
+- **X64BinaryEncoder runtime symbol mapping** — External calls used raw IL names (`Viper.Terminal.PrintStr`) instead of C runtime names (`rt_print_str`). Added `mapRuntimeSymbol()` matching the AArch64 pattern.
+- **Operand materialisation** — Immediate operands for `TESTrr` (select/cond_br) and `call.indirect` callee now materialised into registers to prevent `bad_variant_access` crashes.
+- **SETcc REX prefix** — Correct REX prefix emission for SPL/BPL/SIL/DIL byte registers.
+- **SSE RIP-relative loads** — Added `MOVSD` encoding for xmm loads from RIP-relative labels.
+- **Spill slot reuse disabled** — Interval analysis did not account for cross-block liveness, causing values still live in successor blocks to be overwritten. All three reuse sites now use the safe `ensureSpillSlot` path.
+- **Binary encoder diagnostics** — `bad_variant_access` handler wraps encoding with instruction context for cleaner error reporting.
+- **Pipeline error handling** — `pipeline.run()` wrapped in try/catch for cleaner error reporting.
+
+**AArch64 backend:**
+- **`i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
+- **Remove redundant refcount injection** — `emitRefcountedStore` lambda stripped from instruction lowering. String ownership belongs in the IL layer.
+- **Immediate utils extraction** — `A64ImmediateUtils.hpp` helper for immediate encoding, asm emitter hardening, binary encoder fixes, arithmetic/call fastpath improvements, regpool and symbol resolver fixes.
+
+**Native linker:**
+- `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
+- `-lshell32` — Added to Windows linker command for `DragQueryFile`/`DragAcceptFiles` GUI support.
+
+**Runtime:**
+- `SetErrorMode` + `_set_abort_behavior` added to `rt_init_stack_safety` on Windows to suppress crash/assert dialog boxes in natively compiled programs.
+
+**Windows test infrastructure:**
+- ProcessIsolation framework reworked: function pointers don't survive `CreateProcess`, so `registerChildFunction()` with indexed dispatch (`--viper-child-run=N`) replaces direct pointer passing. `dispatchChild()` added to `TEST_WITH_IL` macro and all 16 VM/conformance tests. Windows test failures reduced from 48 to 4.
+- Codegen test assertions accept `.rdata` (Windows COFF) alongside `.rodata` (ELF), `cmovneq`→`cmovne` suffix fix, platform-adaptive paths for RTDiskFullTests, RTNetworkHardenTests, and test_vm_rt_trap_loc.
 
 ---
 
@@ -178,7 +236,8 @@ Comprehensive overhaul with 10 improvements:
 - **Comprehensive review** — 39 stale/obsolete doc files deleted (-24K lines), 70+ factual errors corrected across 30+ documents. Deleted files include resolved bug trackers, historical stress tests, completed plans, and deprecated specs.
 - **Factual corrections** — `entity`→`class` terminology in 15 files, IL version 0.1→0.2.0, AArch64 status updates (all demos, 89 tests, coalescer/peephole decomp), Win64 ABI marked as implemented (not missing), Linux/Windows graphics backends marked as implemented (not stubs), Metal winding corrected to `MTLWindingCounterClockwise`, 6 missing IL pass docs added (GVN, LICM, EHOpt, LoopRotate, Reassociate, SiblingRecursion).
 - **Test & runtime accuracy** — Test label counts updated to actual values (codegen 121, runtime 352, zia 99, il 196, total 1358), `runtime.def` counts updated (225→293 functions, 3129→3965 entries), GC cycle detection documented (trial-deletion algorithm), `fcmp` opcode mnemonics corrected to underscore format.
-- **File headers** — Viper license header on 100% of 2,705 source files (257 newly added)
+- **Bible code audit** — 12 chapters corrected: struct fields `name: Type` → `expose Type name` (Ch 11, 14–18), class methods `func` → `expose func` (Ch 14–18), interface methods reverted from incorrect `expose` (Ch 16–18), `catch e {}` → `catch {}` (Ch 10), `Split()[0]` → `Split().Get(0)` (Ch 08, 09, 12, 23), `[val; count]` repeat syntax → loop with `Push` (Ch 06).
+- **File headers** — Viper license header on 100% of 2,706 source files (257 newly added)
 - **Doxygen** — `@brief`/`@param`/`@return` comments on 98% of runtime `.c` files, 100% of runtime `.h` files. Includes `rt_output.c`, `rt_memory.c`, `rt_platform.h`, `rt_string.h`, `rt_pool.c`, `rt_gc.c`.
 - **Codemap updates** — File counts refreshed (il-core 24, il-transform 72, runtime 522, tools 113, zia 74, basic 278), 3D Graphics Engine section added (122 files), lsp-common and vbasic-server entries.
 - **Clang-format** — `BreakBeforeBraces` switched from Allman to Attach across all 2,669 source files
@@ -219,6 +278,15 @@ Comprehensive overhaul with 10 improvements:
 - Zia non-constant `final` initializers report V3202 instead of silent drop
 - DEFLATE double-free crash in VAPS packaging
 - `.lnk` shortcuts missing LinkInfo structure
+- Zia string bracket-index crash: `lowerIndex()` missing String case fell through to List path
+- Zia `List[Boolean]` unboxing: `kUnboxI1` returned i64, missing `Trunc1` to narrow to i1
+- Zia `catch(e)` binding empty: throw now stores message via TLS, catch reads it as String
+- Zia `String.Contains()` missing: added method alias to existing `StrHas` implementation
 - Windows x86_64 CoffWriter: rodata symbols emitted as undefined causing LNK2001 linker errors
 - Windows x86_64 BinaryEncoder: external calls used raw IL names instead of C runtime names
+- Windows x86_64 operand materialisation: TESTrr and call.indirect immediate operands caused `bad_variant_access`
+- Windows x86_64 SETcc REX prefix: incorrect encoding for SPL/BPL/SIL/DIL byte registers
+- Windows x86_64 SSE RIP loads: missing MOVSD encoding for xmm loads from RIP-relative labels
+- Windows x86_64 spill slot reuse: interval analysis missed cross-block liveness, overwriting live values
 - Windows `CrossLayerArithTests`: missing `dispatchChild()` guard caused infinite process recursion
+- Windows crash dialogs suppressed via `SetErrorMode` + `_set_abort_behavior` in `rt_init_stack_safety`
