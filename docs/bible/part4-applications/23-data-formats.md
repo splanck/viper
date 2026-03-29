@@ -1646,7 +1646,7 @@ class Config {
         }
 
         // Set the final value
-        current.Set(parts[parts.Length - 1], value);
+        current.Set(parts.Get(parts.Length - 1), value);
         self.dirty = true;
     }
 

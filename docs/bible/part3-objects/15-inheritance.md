@@ -16,10 +16,10 @@ Imagine building a game with different enemies. You start with a goblin:
 bind Viper.Terminal;
 
 class Goblin {
-    x: Number;
-    y: Number;
-    health: Integer;
-    name: String;
+    expose Number x;
+    expose Number y;
+    expose Integer health;
+    expose String name;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
@@ -28,19 +28,19 @@ class Goblin {
         self.name = "Goblin";
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 5;
     }
 }
@@ -52,10 +52,10 @@ Great! Now you need an orc:
 bind Viper.Terminal;
 
 class Orc {
-    x: Number;
-    y: Number;
-    health: Integer;
-    name: String;
+    expose Number x;
+    expose Number y;
+    expose Integer health;
+    expose String name;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
@@ -64,19 +64,19 @@ class Orc {
         self.name = "Orc";
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 10;
     }
 }
@@ -112,10 +112,10 @@ With inheritance, we extract the common parts into a *base class*:
 bind Viper.Terminal;
 
 class Enemy {
-    x: Number;
-    y: Number;
-    health: Integer;
-    name: String;
+    expose Number x;
+    expose Number y;
+    expose Integer health;
+    expose String name;
 
     expose func init(x: Number, y: Number, health: Integer, name: String) {
         self.x = x;
@@ -124,19 +124,19 @@ class Enemy {
         self.name = name;
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 1;  // Default damage
     }
 }
@@ -152,7 +152,7 @@ class Goblin extends Enemy {
         super(x, y, 30, "Goblin");
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 5;
     }
 }
@@ -162,7 +162,7 @@ class Orc extends Enemy {
         super(x, y, 50, "Orc");
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 10;
     }
 }
@@ -172,11 +172,11 @@ class Dragon extends Enemy {
         super(x, y, 200, "Dragon");
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 35;
     }
 
-    func breatheFire() {
+    expose func breatheFire() {
         Say("The dragon unleashes a torrent of flame!");
     }
 }
@@ -260,10 +260,10 @@ When you create a child class, you typically need to initialize the parent's fie
 
 ```rust
 class Enemy {
-    x: Number;
-    y: Number;
-    health: Integer;
-    name: String;
+    expose Number x;
+    expose Number y;
+    expose Integer health;
+    expose String name;
 
     expose func init(x: Number, y: Number, health: Integer, name: String) {
         self.x = x;
@@ -292,7 +292,7 @@ Sometimes you want to *extend* the parent's behavior rather than completely repl
 bind Viper.Terminal;
 
 class Enemy {
-    func describe() {
+    expose func describe() {
         Say("An enemy named " + self.name);
         Say("  Position: (" + self.x + ", " + self.y + ")");
         Say("  Health: " + self.health);
@@ -300,14 +300,14 @@ class Enemy {
 }
 
 class Dragon extends Enemy {
-    fireBreaths: Integer;
+    expose Integer fireBreaths;
 
     expose func init(x: Number, y: Number) {
         super(x, y, 200, "Dragon");
         self.fireBreaths = 3;
     }
 
-    func describe() {
+    expose func describe() {
         super.describe();  // First, do everything Enemy.describe() does
         Say("  Fire breaths remaining: " + self.fireBreaths);
     }
@@ -347,7 +347,7 @@ In Viper, when you define a method in a child class with the same name as a pare
 
 ```rust
 class Enemy {
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 1;
     }
 }
@@ -373,13 +373,13 @@ Without the `override` keyword, you might accidentally override a parent method:
 
 ```rust
 class Vehicle {
-    func turn(degrees: Number) {
+    expose func turn(degrees: Number) {
         // Rotate the vehicle
     }
 }
 
 class Car extends Vehicle {
-    func turn(degrees: Number) {
+    expose func turn(degrees: Number) {
         // Oops! We meant to add a new method for turn signals
         // But we accidentally overrode the steering!
     }
@@ -398,27 +398,27 @@ Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of rela
 bind Viper.Terminal;
 
 class Animal {
-    name: String;
+    expose String name;
 
-    func breathe() {
+    expose func breathe() {
         Say(self.name + " is breathing");
     }
 
-    func speak() {
+    expose func speak() {
         Say("...");
     }
 }
 
 class Mammal extends Animal {
-    furColor: String;
+    expose String furColor;
 
-    func nurse() {
+    expose func nurse() {
         Say(self.name + " is nursing its young");
     }
 }
 
 class Dog extends Mammal {
-    breed: String;
+    expose String breed;
 
     expose func init(name: String, breed: String) {
         self.name = name;
@@ -430,7 +430,7 @@ class Dog extends Mammal {
         Say(self.name + " says: Woof!");
     }
 
-    func fetch() {
+    expose func fetch() {
         Say(self.name + " fetches the ball");
     }
 }
@@ -492,35 +492,35 @@ bind Viper.Terminal;
 bind Viper.Math;
 
 class Shape {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
 
-    func area() -> Number {
+    expose func area() -> Number {
         return 0.0;  // Base shapes have no area
     }
 
-    func perimeter() -> Number {
+    expose func perimeter() -> Number {
         return 0.0;  // Base shapes have no perimeter
     }
 
-    func describe() {
+    expose func describe() {
         Say("Shape at (" + self.x + ", " + self.y + ")");
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 }
 
 class Rectangle extends Shape {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 
     expose func init(x: Number, y: Number, width: Number, height: Number) {
         super(x, y);
@@ -546,7 +546,7 @@ class Rectangle extends Shape {
 }
 
 class Circle extends Shape {
-    radius: Number;
+    expose Number radius;
 
     expose func init(x: Number, y: Number, radius: Number) {
         super(x, y);
@@ -569,7 +569,7 @@ class Circle extends Shape {
         Say("  Circumference: " + self.perimeter());
     }
 
-    func diameter() -> Number {
+    expose func diameter() -> Number {
         return self.radius * 2.0;
     }
 }
@@ -636,33 +636,33 @@ In this pattern, the parent defines the *structure* of an algorithm, but lets ch
 bind Viper.Terminal;
 
 class Report {
-    title: String;
+    expose String title;
 
-    func generate() {
+    expose func generate() {
         self.printHeader();
         self.printContent();
         self.printFooter();
     }
 
-    func printHeader() {
+    expose func printHeader() {
         Say("=== " + self.title + " ===");
         Say("");
     }
 
-    func printContent() {
+    expose func printContent() {
         // Children override this
         Say("(No content)");
     }
 
-    func printFooter() {
+    expose func printFooter() {
         Say("");
         Say("=== End of Report ===");
     }
 }
 
 class SalesReport extends Report {
-    totalSales: Number;
-    itemsSold: Integer;
+    expose Number totalSales;
+    expose Integer itemsSold;
 
     expose func init(sales: Number, items: Integer) {
         self.title = "Sales Report";
@@ -678,8 +678,8 @@ class SalesReport extends Report {
 }
 
 class InventoryReport extends Report {
-    items: Integer;
-    lowStock: Integer;
+    expose Integer items;
+    expose Integer lowStock;
 
     expose func init(items: Integer, lowStock: Integer) {
         self.title = "Inventory Report";
@@ -707,14 +707,14 @@ This pattern creates progressively more specific versions of a concept:
 bind Viper.Terminal;
 
 class Account {
-    balance: Number;
-    accountNumber: String;
+    expose Number balance;
+    expose String accountNumber;
 
-    func deposit(amount: Number) {
+    expose func deposit(amount: Number) {
         self.balance += amount;
     }
 
-    func withdraw(amount: Number) -> Boolean {
+    expose func withdraw(amount: Number) -> Boolean {
         if amount <= self.balance {
             self.balance -= amount;
             return true;
@@ -724,7 +724,7 @@ class Account {
 }
 
 class SavingsAccount extends Account {
-    interestRate: Number;
+    expose Number interestRate;
 
     expose func init(accountNumber: String, initialDeposit: Number, rate: Number) {
         self.accountNumber = accountNumber;
@@ -732,7 +732,7 @@ class SavingsAccount extends Account {
         self.interestRate = rate;
     }
 
-    func addInterest() {
+    expose func addInterest() {
         var interest = self.balance * self.interestRate;
         self.deposit(interest);
         Say("Added $" + interest + " in interest");
@@ -749,7 +749,7 @@ class SavingsAccount extends Account {
 }
 
 class CheckingAccount extends Account {
-    overdraftLimit: Number;
+    expose Number overdraftLimit;
 
     expose func init(accountNumber: String, initialDeposit: Number, limit: Number) {
         self.accountNumber = accountNumber;
@@ -802,9 +802,9 @@ class Car extends Engine {
 class Car {
     engine: Engine;
     transmission: Transmission;
-    wheels: List[Wheel];
+    expose List[Wheel] wheels;
 
-    func start() {
+    expose func start() {
         self.engine.ignite();
     }
 }
@@ -820,8 +820,8 @@ Even when "is-a" seems to apply, composition might still be better. Here are sig
 // If Rectangle only needs the position from Shape, not area/perimeter methods:
 class Rectangle {
     position: Point;  // Composition
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 }
 ```
 
@@ -833,11 +833,11 @@ Inheritance relationships are fixed at compile time. Composition relationships c
 class Character {
     weapon: Weapon;  // Can swap weapons during the game
 
-    func attack() {
+    expose func attack() {
         self.weapon.use();
     }
 
-    func equipWeapon(newWeapon: Weapon) {
+    expose func equipWeapon(newWeapon: Weapon) {
         self.weapon = newWeapon;  // Behavior changes!
     }
 }
@@ -858,11 +858,11 @@ class FlyingCar {
     carParts: CarMechanics;
     flightSystem: AircraftControls;
 
-    func drive() {
+    expose func drive() {
         self.carParts.operate();
     }
 
-    func fly() {
+    expose func fly() {
         self.flightSystem.operate();
     }
 }
@@ -879,7 +879,7 @@ class Window extends Rectangle { }
 // Better: A Window has a rectangular frame
 class Window {
     frame: Rectangle;
-    title: String;
+    expose String title;
     content: View;
 }
 ```
@@ -891,11 +891,11 @@ Should a Stack extend Array? After all, a stack uses array-like storage...
 ```rust
 // Tempting but WRONG
 class Stack extends Array {
-    func push(item) {
+    expose func push(item) {
         self.Push(item);
     }
 
-    func pop() {
+    expose func pop() {
         return self.Pop();
     }
 }
@@ -906,25 +906,25 @@ This seems convenient, but now Stack inherits ALL of Array's methods. Users can 
 ```rust
 // RIGHT: Stack contains an array
 class Stack {
-    items: List[any];
+    expose List[any] items;
 
     expose func init() {
         self.items = [];
     }
 
-    func push(item) {
+    expose func push(item) {
         self.items.Push(item);
     }
 
-    func pop() {
+    expose func pop() {
         return self.items.Pop();
     }
 
-    func peek() {
+    expose func peek() {
         return self.items[self.items.Length - 1];
     }
 
-    func isEmpty() -> Boolean {
+    expose func isEmpty() -> Boolean {
         return self.items.Length == 0;
     }
 }
@@ -968,7 +968,7 @@ This seems obvious, but it's easy to violate. Consider:
 bind Viper.Terminal;
 
 class Bird {
-    func fly() {
+    expose func fly() {
         Say("Flying through the air");
     }
 }
@@ -1003,16 +1003,16 @@ The *fragile base class problem* occurs when changes to a parent class break chi
 bind Viper.Terminal;
 
 class MediaPlayer {
-    func play() {
+    expose func play() {
         self.preparePlayback();
         self.startPlayback();
     }
 
-    func preparePlayback() {
+    expose func preparePlayback() {
         Say("Preparing...");
     }
 
-    func startPlayback() {
+    expose func startPlayback() {
         Say("Playing...");
     }
 }
@@ -1023,7 +1023,7 @@ class VideoPlayer extends MediaPlayer {
         super.play();
     }
 
-    func loadVideo() {
+    expose func loadVideo() {
         Say("Loading video...");
     }
 }
@@ -1033,7 +1033,7 @@ This works fine. But what if someone modifies MediaPlayer?
 
 ```rust
 class MediaPlayer {
-    func play() {
+    expose func play() {
         // Changed: now calls preparePlayback differently
         self.startPlayback();  // Moved before prepare!
         self.preparePlayback();
@@ -1065,9 +1065,9 @@ Different Viper language styles express inheritance differently:
 bind Viper.Terminal;
 
 class Animal {
-    name: String;
+    expose String name;
 
-    func speak() {
+    expose func speak() {
         Say("...");
     }
 }

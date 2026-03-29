@@ -195,6 +195,14 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr) {
         return {elemVal, ilElemType};
     }
 
+    // String index access: emit Substring(base, index, 1) → str
+    if (baseType && baseType->kind == TypeKindSem::String) {
+        Value one = Value::constInt(1);
+        Value result = emitCallRet(Type(Type::Kind::Str), kStringSubstring,
+                                   {base.value, index.value, one});
+        return {result, Type(Type::Kind::Str)};
+    }
+
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map) {
         // Map index access - key is a string

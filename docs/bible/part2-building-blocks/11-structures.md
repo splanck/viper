@@ -147,18 +147,18 @@ A *structure* (sometimes called a *struct*, *record*, or *value type*) lets you 
 
 ```rust
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 }
 ```
 
-This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `struct` keyword tells Viper we're defining a structure.
+This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `struct` keyword tells Viper we're defining a structure. The `expose` keyword makes each field accessible from outside the struct.
 
 Now we can create points:
 
 ```rust
-var origin = Point { x: 0.0, y: 0.0 };
-var position = Point { x: 10.5, y: 20.3 };
+var origin = Point(0.0, 0.0);
+var position = Point(10.5, 20.3);
 ```
 
 Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
@@ -234,12 +234,12 @@ In real life, you don't think of a person as "a name floating in space, plus an 
 
 ```rust
 struct Person {
-    name: String;
-    age: Integer;
-    email: String;
+    expose String name;
+    expose Integer age;
+    expose String email;
 }
 
-var alice = Person { name: "Alice", age: 30, email: "alice@example.com" };
+var alice = Person("Alice", 30, "alice@example.com");
 ```
 
 Now `alice` is one thing — a person — that you can store, pass around, and work with as a unit.
@@ -250,11 +250,11 @@ A rectangle isn't "a width" and "a height." It's a shape that has both propertie
 
 ```rust
 struct Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 }
 
-var screen = Rectangle { width: 1920.0, height: 1080.0 };
+var screen = Rectangle(1920.0, 1080.0);
 ```
 
 ### A Date Combines Year, Month, and Day
@@ -263,12 +263,12 @@ January 15, 2024 isn't three separate numbers. It's a date — one conceptual un
 
 ```rust
 struct Date {
-    year: Integer;
-    month: Integer;
-    day: Integer;
+    expose Integer year;
+    expose Integer month;
+    expose Integer day;
 }
 
-var birthday = Date { year: 1990, month: 7, day: 4 };
+var birthday = Date(1990, 7, 4);
 ```
 
 ### A Color Mixes Red, Green, and Blue
@@ -277,12 +277,12 @@ A color like "coral" isn't separate red, green, and blue values. It's one color 
 
 ```rust
 struct Color {
-    red: Integer;
-    green: Integer;
-    blue: Integer;
+    expose Integer red;
+    expose Integer green;
+    expose Integer blue;
 }
 
-var coral = Color { red: 255, green: 127, blue: 80 };
+var coral = Color(255, 127, 80);
 ```
 
 The pattern is universal: whenever multiple pieces of data describe a single concept, they belong in a structure.
@@ -297,42 +297,40 @@ Use the `struct` keyword to define a new structure type:
 
 ```rust
 struct TypeName {
-    field1: Type1;
-    field2: Type2;
+    expose Type1 field1;
+    expose Type2 field2;
     // ... more fields
 }
 ```
 
-Each field has a name and a type. Fields are separated by semicolons.
+Each field has a type and a name, prefixed with `expose` to make it accessible. Fields are separated by semicolons.
 
 ```rust
 struct Book {
-    title: String;
-    author: String;
-    pageCount: Integer;
-    price: Number;
+    expose String title;
+    expose String author;
+    expose Integer pageCount;
+    expose Number price;
 }
 ```
 
 ### Creating Instances
 
-To create a value of your structure type, use the type name followed by field values in braces:
+To create a value of your structure type, pass the field values in order:
 
 ```rust
-var myBook = Book {
-    title: "The Viper Programming Guide",
-    author: "Jane Developer",
-    pageCount: 450,
-    price: 29.99
-};
+var myBook = Book(
+    "The Viper Programming Guide",
+    "Jane Developer",
+    450,
+    29.99
+);
 ```
 
-You must provide values for all fields. The order doesn't matter, but every field must be set:
+You must provide values for all fields, in the order they are declared:
 
 ```rust
-// These are equivalent:
-var book1 = Book { title: "A", author: "B", pageCount: 100, price: 9.99 };
-var book2 = Book { author: "B", price: 9.99, title: "A", pageCount: 100 };
+var book1 = Book("A", "B", 100, 9.99);
 ```
 
 ### Accessing Fields
@@ -367,11 +365,11 @@ One of the most important concepts to understand about structures is *value sema
 
 ```rust
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 }
 
-var p1 = Point { x: 10.0, y: 20.0 };
+var p1 = Point(10.0, 20.0);
 var p2 = p1;  // p2 is a COPY of p1
 
 p2.x = 99.0;  // Modify p2
@@ -412,7 +410,7 @@ func tryToModify(point: Point) {
     Say("Inside function: " + point.x);  // 999.0
 }
 
-var original = Point { x: 10.0, y: 20.0 };
+var original = Point(10.0, 20.0);
 tryToModify(original);
 Say("After function: " + original.x);  // 10.0 - unchanged!
 ```
@@ -431,7 +429,7 @@ func moveRight(point: Point, amount: Number) -> Point {
     return point;
 }
 
-var p = Point { x: 10.0, y: 20.0 };
+var p = Point(10.0, 20.0);
 p = moveRight(p, 5.0);  // Replace p with the returned copy
 Say(p.x);  // 15.0
 ```
@@ -462,8 +460,8 @@ You can define *methods* inside a structure — functions that operate on that s
 
 ```rust
 struct Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 
     func area() -> Number {
         return self.width * self.height;
@@ -480,7 +478,7 @@ Now you can call these methods on any `Rectangle`:
 ```rust
 bind Viper.Terminal;
 
-var rect = Rectangle { width: 10.0, height: 5.0 };
+var rect = Rectangle(10.0, 5.0);
 Say(rect.area());       // 50.0
 Say(rect.perimeter());  // 30.0
 ```
@@ -490,8 +488,8 @@ Say(rect.perimeter());  // 30.0
 Inside a method, `self` refers to the specific instance the method was called on. When you write `rect.area()`, inside the `area` method, `self` is `rect`. So `self.width` is `rect.width` (10.0) and `self.height` is `rect.height` (5.0).
 
 ```rust
-var small = Rectangle { width: 3.0, height: 2.0 };
-var large = Rectangle { width: 100.0, height: 50.0 };
+var small = Rectangle(3.0, 2.0);
+var large = Rectangle(100.0, 50.0);
 
 small.area();  // Inside: self is small, returns 6.0
 large.area();  // Inside: self is large, returns 5000.0
@@ -534,8 +532,8 @@ bind Viper.Math as Math;
 bind Viper.Terminal;
 
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
@@ -551,8 +549,8 @@ struct Point {
     }
 }
 
-var a = Point { x: 0.0, y: 0.0 };
-var b = Point { x: 3.0, y: 4.0 };
+var a = Point(0.0, 0.0);
+var b = Point(3.0, 4.0);
 
 Say(a.distance(b));  // 5.0 (3-4-5 right triangle)
 
@@ -567,7 +565,7 @@ Methods can change the structure's fields:
 
 ```rust
 struct Counter {
-    count: Integer;
+    expose Integer count;
 
     func increment() {
         self.count = self.count + 1;
@@ -584,7 +582,7 @@ struct Counter {
 
 bind Viper.Terminal;
 
-var c = Counter { count: 0 };
+var c = Counter(0);
 c.increment();
 c.increment();
 c.increment();
@@ -603,8 +601,8 @@ A common pattern is methods that return a new structure rather than modifying th
 
 ```rust
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func add(other: Point) -> Point {
         return Point {
@@ -621,8 +619,8 @@ struct Point {
     }
 }
 
-var p = Point { x: 2.0, y: 3.0 };
-var v = Point { x: 1.0, y: 1.0 };
+var p = Point(2.0, 3.0);
+var v = Point(1.0, 1.0);
 
 bind Viper.Terminal;
 
@@ -647,10 +645,10 @@ Consider modeling an address:
 
 ```rust
 struct Address {
-    street: String;
-    city: String;
-    state: String;
-    zipCode: String;
+    expose String street;
+    expose String city;
+    expose String state;
+    expose String zipCode;
 }
 ```
 
@@ -658,21 +656,12 @@ Now a `Person` can include an `Address`:
 
 ```rust
 struct Person {
-    name: String;
-    age: Integer;
-    home: Address;
+    expose String name;
+    expose Integer age;
+    expose Address home;
 }
 
-var alice = Person {
-    name: "Alice",
-    age: 30,
-    home: Address {
-        street: "123 Main St",
-        city: "Springfield",
-        state: "IL",
-        zipCode: "62701"
-    }
-};
+var alice = Person("Alice", 30, Address("123 Main St", "Springfield", "IL", "62701"));
 ```
 
 Access nested fields with chained dots:
@@ -703,8 +692,8 @@ Let's model a game with nested structures:
 bind Viper.Math as Math;
 
 struct Vec2 {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func add(other: Vec2) -> Vec2 {
         return Vec2 { x: self.x + other.x, y: self.y + other.y };
@@ -718,8 +707,8 @@ struct Vec2 {
 }
 
 struct Health {
-    current: Integer;
-    maximum: Integer;
+    expose Integer current;
+    expose Integer maximum;
 
     func percentage() -> Number {
         return (self.current * 100) / self.maximum;
@@ -745,10 +734,10 @@ struct Health {
 }
 
 struct Player {
-    name: String;
-    position: Vec2;
-    health: Health;
-    score: Integer;
+    expose String name;
+    expose Vec2 position;
+    expose Health health;
+    expose Integer score;
 
     func isAlive() -> Boolean {
         return !self.health.isDead();
@@ -771,17 +760,12 @@ struct Player {
 Now creating a player is clean and structured:
 
 ```rust
-var hero = Player {
-    name: "Hero",
-    position: Vec2 { x: 0.0, y: 0.0 },
-    health: Health { current: 100, maximum: 100 },
-    score: 0
-};
+var hero = Player("Hero", Vec2(0.0, 0.0), Health(100, 100), 0);
 
 bind Viper.Terminal;
 
 // Use nested methods
-hero.move(Vec2 { x: 5.0, y: 3.0 });
+hero.move(Vec2(5.0, 3.0));
 hero.takeDamage(25);
 Say(hero.health.percentage());  // 75.0
 ```
@@ -810,10 +794,10 @@ Create a function that returns a structure with default values:
 
 ```rust
 struct Config {
-    volume: Integer;
-    difficulty: String;
-    fullscreen: Boolean;
-    musicEnabled: Boolean;
+    expose Integer volume;
+    expose String difficulty;
+    expose Boolean fullscreen;
+    expose Boolean musicEnabled;
 }
 
 func defaultConfig() -> Config {
@@ -840,27 +824,27 @@ You can have different functions for different scenarios:
 
 ```rust
 struct Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 }
 
 func square(size: Number) -> Rectangle {
-    return Rectangle { width: size, height: size };
+    return Rectangle(size, size);
 }
 
 func goldenRectangle(width: Number) -> Rectangle {
-    return Rectangle { width: width, height: width / 1.618 };
+    return Rectangle(width, width / 1.618);
 }
 
 func screen(resolution: String) -> Rectangle {
     if resolution == "720p" {
-        return Rectangle { width: 1280.0, height: 720.0 };
+        return Rectangle(1280.0, 720.0);
     } else if resolution == "1080p" {
-        return Rectangle { width: 1920.0, height: 1080.0 };
+        return Rectangle(1920.0, 1080.0);
     } else if resolution == "4K" {
-        return Rectangle { width: 3840.0, height: 2160.0 };
+        return Rectangle(3840.0, 2160.0);
     }
-    return Rectangle { width: 800.0, height: 600.0 };
+    return Rectangle(800.0, 600.0);
 }
 
 var s = square(100.0);
@@ -874,9 +858,9 @@ Some structures benefit from having an `init` method pattern:
 
 ```rust
 struct Circle {
-    centerX: Number;
-    centerY: Number;
-    radius: Number;
+    expose Number centerX;
+    expose Number centerY;
+    expose Number radius;
 }
 
 func createCircle(x: Number, y: Number, r: Number) -> Circle {
@@ -912,19 +896,19 @@ Too many fields:
 ```rust
 // This is unwieldy
 struct Person {
-    firstName: String;
-    lastName: String;
-    birthYear: Integer;
-    birthMonth: Integer;
-    birthDay: Integer;
-    streetAddress: String;
-    city: String;
-    state: String;
-    zipCode: String;
-    country: String;
-    phoneCountryCode: String;
-    phoneAreaCode: String;
-    phoneNumber: String;
+    expose String firstName;
+    expose String lastName;
+    expose Integer birthYear;
+    expose Integer birthMonth;
+    expose Integer birthDay;
+    expose String streetAddress;
+    expose String city;
+    expose String state;
+    expose String zipCode;
+    expose String country;
+    expose String phoneCountryCode;
+    expose String phoneAreaCode;
+    expose String phoneNumber;
     // ... and so on
 }
 ```
@@ -932,30 +916,30 @@ struct Person {
 Better with nesting:
 ```rust
 struct Date {
-    year: Integer;
-    month: Integer;
-    day: Integer;
+    expose Integer year;
+    expose Integer month;
+    expose Integer day;
 }
 
 struct Address {
-    street: String;
-    city: String;
-    state: String;
-    zipCode: String;
-    country: String;
+    expose String street;
+    expose String city;
+    expose String state;
+    expose String zipCode;
+    expose String country;
 }
 
 struct Phone {
-    countryCode: String;
-    areaCode: String;
-    number: String;
+    expose String countryCode;
+    expose String areaCode;
+    expose String number;
 }
 
 struct Person {
-    firstName: String;
-    lastName: String;
-    birthday: Date;
-    address: Address;
+    expose String firstName;
+    expose String lastName;
+    expose Date birthday;
+    expose Address address;
     phone: Phone;
 }
 ```
@@ -998,8 +982,8 @@ bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 struct Card {
-    suit: String;    // "Hearts", "Diamonds", "Clubs", "Spades"
-    rank: String;    // "2"-"10", "J", "Q", "K", "A"
+    expose String suit;    // "Hearts", "Diamonds", "Clubs", "Spades"
+    expose String rank;    // "2"-"10", "J", "Q", "K", "A"
 
     func display() -> String {
         return self.rank + " of " + self.suit;
@@ -1023,7 +1007,7 @@ func createDeck() -> List[Card] {
 
     for suit in suits {
         for rank in ranks {
-            deck.Push(Card { suit: suit, rank: rank });
+            deck.Push(Card(suit, rank));
         }
     }
 
@@ -1047,8 +1031,8 @@ bind Viper.Math as Math;
 bind Viper.Terminal;
 
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func toString() -> String {
         return "(" + self.x + ", " + self.y + ")";
@@ -1069,9 +1053,9 @@ struct Point {
 }
 
 struct Rectangle {
-    topLeft: Point;
-    width: Number;
-    height: Number;
+    expose Point topLeft;
+    expose Number width;
+    expose Number height;
 
     func area() -> Number {
         return self.width * self.height;
@@ -1104,16 +1088,12 @@ struct Rectangle {
 }
 
 func start() {
-    var rect = Rectangle {
-        topLeft: Point { x: 10.0, y: 20.0 },
-        width: 100.0,
-        height: 50.0
-    };
+    var rect = Rectangle(Point(10.0, 20.0), 100.0, 50.0);
 
     Say("Area: " + rect.area());         // 5000.0
     Say("Center: " + rect.center().toString());  // (60.0, 45.0)
 
-    var testPoint = Point { x: 50.0, y: 40.0 };
+    var testPoint = Point(50.0, 40.0);
     if rect.Contains(testPoint) {
         Say("Point is inside rectangle");
     }
@@ -1126,8 +1106,8 @@ func start() {
 bind Viper.Terminal;
 
 struct Student {
-    name: String;
-    grades: List[Integer];
+    expose String name;
+    expose List[Integer] grades;
 
     func average() -> Number {
         if self.grades.Length == 0 {
@@ -1195,8 +1175,8 @@ struct Student {
 }
 
 func start() {
-    var alice = Student { name: "Alice", grades: [92, 88, 95, 87, 91] };
-    var bob = Student { name: "Bob", grades: [78, 82, 75, 80, 79] };
+    var alice = Student("Alice", [92, 88, 95, 87, 91]);
+    var bob = Student("Bob", [78, 82, 75, 80, 79]);
 
     alice.report();
     Say("");
@@ -1216,9 +1196,9 @@ func start() {
 bind Viper.Terminal;
 
 struct Item {
-    name: String;
-    weight: Number;
-    value: Integer;
+    expose String name;
+    expose Number weight;
+    expose Integer value;
 
     func toString() -> String {
         return self.name + " (weight: " + self.weight + ", value: " + self.value + ")";
@@ -1226,8 +1206,8 @@ struct Item {
 }
 
 struct Inventory {
-    items: List[Item];
-    maxWeight: Number;
+    expose List[Item] items;
+    expose Number maxWeight;
 
     func currentWeight() -> Number {
         var total = 0.0;
@@ -1272,15 +1252,12 @@ struct Inventory {
 }
 
 func start() {
-    var backpack = Inventory {
-        items: [],
-        maxWeight: 50.0
-    };
+    var backpack = Inventory([], 50.0);
 
-    var sword = Item { name: "Iron Sword", weight: 10.0, value: 100 };
-    var shield = Item { name: "Wooden Shield", weight: 8.0, value: 50 };
-    var potion = Item { name: "Health Potion", weight: 0.5, value: 25 };
-    var armor = Item { name: "Heavy Armor", weight: 40.0, value: 500 };
+    var sword = Item("Iron Sword", 10.0, 100);
+    var shield = Item("Wooden Shield", 8.0, 50);
+    var potion = Item("Health Potion", 0.5, 25);
+    var armor = Item("Heavy Armor", 40.0, 500);
 
     backpack.Add(sword);
     backpack.Add(shield);
@@ -1312,8 +1289,8 @@ bind Viper.Math as Math;
 bind Viper.Terminal;
 
 struct Vec2 {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func add(other: Vec2) -> Vec2 {
         return Vec2 { x: self.x + other.x, y: self.y + other.y };
@@ -1341,10 +1318,10 @@ struct Vec2 {
 }
 
 struct Stats {
-    health: Integer;
-    maxHealth: Integer;
-    attack: Integer;
-    defense: Integer;
+    expose Integer health;
+    expose Integer maxHealth;
+    expose Integer attack;
+    expose Integer defense;
 
     func healthPercent() -> Integer {
         return (self.health * 100) / self.maxHealth;
@@ -1375,11 +1352,11 @@ struct Stats {
 }
 
 struct Player {
-    name: String;
-    position: Vec2;
+    expose String name;
+    expose Vec2 position;
     stats: Stats;
-    score: Integer;
-    level: Integer;
+    expose Integer score;
+    expose Integer level;
 
     func move(direction: Vec2) {
         self.position = self.position.Add(direction);
@@ -1407,10 +1384,10 @@ struct Player {
 }
 
 struct Enemy {
-    name: String;
-    position: Vec2;
+    expose String name;
+    expose Vec2 position;
     stats: Stats;
-    pointValue: Integer;
+    expose Integer pointValue;
 
     func distanceTo(player: Player) -> Number {
         return self.position.distance(player.position);
@@ -1526,8 +1503,8 @@ bind Viper.Math as Math;
 bind Viper.Terminal;
 
 struct Point {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
@@ -1536,7 +1513,7 @@ struct Point {
     }
 }
 
-var p = Point { x: 3.0, y: 4.0 };
+var p = Point(3.0, 4.0);
 Say(p.x);
 ```
 
@@ -1583,7 +1560,7 @@ Create instances with validated or computed values:
 bind Viper.Math as Math;
 
 func createPoint(x: Number, y: Number) -> Point {
-    return Point { x: x, y: y };
+    return Point(x, y);
 }
 
 func pointFromAngle(angle: Number, distance: Number) -> Point {
@@ -1598,16 +1575,16 @@ func pointFromAngle(angle: Number, distance: Number) -> Point {
 
 ```rust
 struct Config {
-    volume: Integer;
-    difficulty: String;
+    expose Integer volume;
+    expose String difficulty;
 }
 
 func defaultConfig() -> Config {
-    return Config { volume: 50, difficulty: "normal" };
+    return Config(50, "normal");
 }
 
 func hardConfig() -> Config {
-    return Config { volume: 70, difficulty: "hard" };
+    return Config(70, "hard");
 }
 ```
 
@@ -1617,11 +1594,11 @@ For structures with many optional fields, build them step by step:
 
 ```rust
 struct Character {
-    name: String;
-    health: Integer;
-    attack: Integer;
-    defense: Integer;
-    speed: Integer;
+    expose String name;
+    expose Integer health;
+    expose Integer attack;
+    expose Integer defense;
+    expose Integer speed;
 }
 
 func baseCharacter(name: String) -> Character {
@@ -1666,15 +1643,15 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
 bind Viper.Terminal;
 
 struct Person {
-    name: String;
-    age: Integer;
+    expose String name;
+    expose Integer age;
 
     func toString() -> String {
         return self.name + " (age " + self.age + ")";
     }
 }
 
-var p = Person { name: "Alice", age: 30 };
+var p = Person("Alice", 30);
 Say(p.toString());  // "Alice (age 30)"
 ```
 
@@ -1685,8 +1662,8 @@ Say(p.toString());  // "Alice (age 30)"
 ### Forgetting to Initialize All Fields
 
 ```rust
-var p = Point { x: 5.0 };  // Error: y is not initialized
-var p = Point { x: 5.0, y: 0.0 };  // Correct
+var p = Point(5.0);       // Error: missing second argument
+var p = Point(5.0, 0.0);  // Correct: all fields provided
 ```
 
 Every field must have a value. If you want "optional" fields, use default values in factory functions.
@@ -1695,7 +1672,7 @@ Every field must have a value. If you want "optional" fields, use default values
 
 ```rust
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
-var p = Point { x: 5.0, y: 3.0 };  // Create an instance
+var p = Point(5.0, 3.0);  // Create an instance
 p.x = 5.0;  // Now you can access fields
 ```
 
@@ -1710,7 +1687,7 @@ func birthday(person: Person) {
     person.age = person.age + 1;  // Modifies a copy!
 }
 
-var alice = Person { name: "Alice", age: 30 };
+var alice = Person("Alice", 30);
 birthday(alice);
 Say(alice.age);  // Still 30!
 ```
@@ -1725,7 +1702,7 @@ func birthday(person: Person) -> Person {
     return person;
 }
 
-var alice = Person { name: "Alice", age: 30 };
+var alice = Person("Alice", 30);
 alice = birthday(alice);  // Assign the returned copy back
 Say(alice.age);  // 31
 ```
@@ -1733,7 +1710,7 @@ Say(alice.age);  // 31
 ### Misspelling Field Names
 
 ```rust
-var p = Point { x: 5.0, Y: 3.0 };  // Error: 'Y' is not a field (it's 'y')
+p.Y = 3.0;  // Error: 'Y' is not a field (it's 'y')
 ```
 
 Field names are case-sensitive. The compiler will catch this.
@@ -1741,7 +1718,7 @@ Field names are case-sensitive. The compiler will catch this.
 ### Modifying Through the Wrong Variable
 
 ```rust
-var p1 = Point { x: 10.0, y: 20.0 };
+var p1 = Point(10.0, 20.0);
 var p2 = p1;  // Copy
 p2.x = 99.0;
 // Don't expect p1 to change!
@@ -1757,8 +1734,8 @@ Structures are fundamental to organizing data in programs. Here's what you've le
 
 **Core Concepts:**
 - Structures bundle related data under a single name
-- Define with `struct TypeName { fields... }`
-- Create instances with `TypeName { field: value, ... }`
+- Define with `struct TypeName { expose Type field; ... }`
+- Create instances with `TypeName(value, ...)`
 - Access fields with `instance.field`
 
 **Value Semantics:**

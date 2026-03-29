@@ -96,6 +96,7 @@ void inline_handle_ErrGetKind(ExecState &st);
 void inline_handle_ErrGetCode(ExecState &st);
 void inline_handle_ErrGetIp(ExecState &st);
 void inline_handle_ErrGetLine(ExecState &st);
+void inline_handle_ErrGetMsg(ExecState &st);
 void inline_handle_EhPush(ExecState &st);
 void inline_handle_EhPop(ExecState &st);
 void inline_handle_ResumeSame(ExecState &st);

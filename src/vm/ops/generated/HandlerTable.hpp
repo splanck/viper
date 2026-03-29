@@ -109,6 +109,7 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers() {
         &il::vm::detail::handleErrGet,
         &il::vm::detail::handleErrGet,
         &il::vm::detail::handleErrGet,
+        &il::vm::detail::handleErrGet,
         &il::vm::detail::handleEhPush,
         &il::vm::detail::handleEhPop,
         &il::vm::detail::handleResumeSame,

@@ -25,6 +25,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,6 +72,15 @@ static inline int8_t rt_ok(RtError error) {
 
 /// @brief Constant representing a successful runtime operation.
 extern const RtError RT_ERROR_NONE;
+
+/// @brief Store the thrown message string for retrieval by catch handlers.
+/// @param msg The message string (ownership is NOT transferred; the string is copied).
+void rt_throw_msg_set(rt_string msg);
+
+/// @brief Retrieve the last thrown message string.
+/// @return The message string, or an empty string if none was stored.
+///         Caller receives a new reference (must release).
+rt_string rt_throw_msg_get(void);
 
 #ifdef __cplusplus
 }

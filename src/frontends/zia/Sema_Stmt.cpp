@@ -112,7 +112,7 @@ void Sema::analyzeStmt(Stmt *stmt) {
                     Symbol sym;
                     sym.kind = Symbol::Kind::Variable;
                     sym.name = tryStmt->catchVar;
-                    sym.type = types::ptr();
+                    sym.type = types::string();
                     defineSymbol(tryStmt->catchVar, sym, tryStmt->loc);
                 }
                 analyzeStmt(tryStmt->catchBody.get());

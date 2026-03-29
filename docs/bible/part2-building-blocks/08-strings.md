@@ -547,7 +547,7 @@ if text.Contains("quick") {
 }
 ```
 
-This is cleaner than checking `indexOf(...) != -1`.
+This is cleaner than checking `IndexOf(...) != 0`.
 
 ### startsWith and endsWith
 
@@ -1070,10 +1070,10 @@ func parseCSVLine(line: String) -> List[String] {
 var line = "Alice,30,Engineer,Boston";
 var fields = parseCSVLine(line);
 
-Say("Name: " + fields[0]);       // Alice
-Say("Age: " + fields[1]);        // 30
-Say("Job: " + fields[2]);        // Engineer
-Say("City: " + fields[3]);       // Boston
+Say("Name: " + fields.Get(0));       // Alice
+Say("Age: " + fields.Get(1));        // 30
+Say("Job: " + fields.Get(2));        // Engineer
+Say("City: " + fields.Get(3));       // Boston
 ```
 
 **Processing multiple lines:**
@@ -1085,9 +1085,9 @@ var lines = csvData.Split("\n");
 
 for line in lines {
     var fields = line.Split(",");
-    var name = fields[0];
-    var age = fields[1];
-    var city = fields[2];
+    var name = fields.Get(0);
+    var age = fields.Get(1);
+    var city = fields.Get(2);
     Say(name + " is " + age + " years old, lives in " + city);
 }
 ```

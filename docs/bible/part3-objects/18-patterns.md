@@ -142,11 +142,11 @@ class GameEngine {
     }
 
     // Instance methods
-    func run() {
+    expose func run() {
         Say("Game engine running");
     }
 
-    func getFrameRate() -> Integer {
+    expose func getFrameRate() -> Integer {
         return 60;
     }
 }
@@ -204,22 +204,22 @@ class Config {
         return Config.instance;
     }
 
-    func get(key: String) -> String? {
+    expose func get(key: String) -> String? {
         return self.settings[key];
     }
 
-    func set(key: String, value: String) {
+    expose func set(key: String, value: String) {
         self.settings[key] = value;
     }
 
-    func loadFromFile(path: String) {
+    expose func loadFromFile(path: String) {
         // Load settings from disk
         var content = read(path);
         // Parse and populate self.settings...
         Say("Loaded settings from " + path);
     }
 
-    func saveToFile(path: String) {
+    expose func saveToFile(path: String) {
         // Save settings to disk
         Say("Saved settings to " + path);
     }
@@ -330,67 +330,67 @@ interface Enemy {
 }
 
 class Goblin implements Enemy {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
 
-    func attack() {
+    expose func attack() {
         Say("Goblin scratches!");
     }
 
-    func getHealth() -> Integer {
+    expose func getHealth() -> Integer {
         return 30;
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Goblin";
     }
 }
 
 class Orc implements Enemy {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
 
-    func attack() {
+    expose func attack() {
         Say("Orc smashes!");
     }
 
-    func getHealth() -> Integer {
+    expose func getHealth() -> Integer {
         return 50;
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Orc";
     }
 }
 
 class Dragon implements Enemy {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
     expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
 
-    func attack() {
+    expose func attack() {
         Say("Dragon breathes fire!");
     }
 
-    func getHealth() -> Integer {
+    expose func getHealth() -> Integer {
         return 200;
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Dragon";
     }
 }
@@ -537,19 +537,19 @@ The Builder pattern constructs objects step by step:
 bind Viper.Terminal;
 
 class Character {
-    name: String;
-    characterClass: String;
-    health: Integer;
-    mana: Integer;
-    strength: Integer;
-    dexterity: Integer;
-    intelligence: Integer;
-    race: String;
-    canUseMagic: Boolean;
-    isUndead: Boolean;
-    weapon: String;
-    armor: String;
-    mount: String;
+    expose String name;
+    expose String characterClass;
+    expose Integer health;
+    expose Integer mana;
+    expose Integer strength;
+    expose Integer dexterity;
+    expose Integer intelligence;
+    expose String race;
+    expose Boolean canUseMagic;
+    expose Boolean isUndead;
+    expose String weapon;
+    expose String armor;
+    expose String mount;
 
     // Internal constructor — don't call directly
     expose func init(
@@ -573,7 +573,7 @@ class Character {
         self.mount = mount;
     }
 
-    func describe() {
+    expose func describe() {
         Say(self.name + " the " + self.race + " " + self.characterClass);
         Say("  HP: " + self.health + " MP: " + self.mana);
         Say("  STR: " + self.strength + " DEX: " + self.dexterity + " INT: " + self.intelligence);
@@ -602,73 +602,73 @@ class CharacterBuilder {
     }
 
     // Each setter returns self for chaining
-    func named(name: String) -> CharacterBuilder {
+    expose func named(name: String) -> CharacterBuilder {
         self.name = name;
         return self;
     }
 
-    func ofClass(characterClass: String) -> CharacterBuilder {
+    expose func ofClass(characterClass: String) -> CharacterBuilder {
         self.characterClass = characterClass;
         return self;
     }
 
-    func withHealth(health: Integer) -> CharacterBuilder {
+    expose func withHealth(health: Integer) -> CharacterBuilder {
         self.health = health;
         return self;
     }
 
-    func withMana(mana: Integer) -> CharacterBuilder {
+    expose func withMana(mana: Integer) -> CharacterBuilder {
         self.mana = mana;
         return self;
     }
 
-    func withStrength(strength: Integer) -> CharacterBuilder {
+    expose func withStrength(strength: Integer) -> CharacterBuilder {
         self.strength = strength;
         return self;
     }
 
-    func withDexterity(dexterity: Integer) -> CharacterBuilder {
+    expose func withDexterity(dexterity: Integer) -> CharacterBuilder {
         self.dexterity = dexterity;
         return self;
     }
 
-    func withIntelligence(intelligence: Integer) -> CharacterBuilder {
+    expose func withIntelligence(intelligence: Integer) -> CharacterBuilder {
         self.intelligence = intelligence;
         return self;
     }
 
-    func ofRace(race: String) -> CharacterBuilder {
+    expose func ofRace(race: String) -> CharacterBuilder {
         self.race = race;
         return self;
     }
 
-    func withMagic() -> CharacterBuilder {
+    expose func withMagic() -> CharacterBuilder {
         self.canUseMagic = true;
         return self;
     }
 
-    func asUndead() -> CharacterBuilder {
+    expose func asUndead() -> CharacterBuilder {
         self.isUndead = true;
         return self;
     }
 
-    func wielding(weapon: String) -> CharacterBuilder {
+    expose func wielding(weapon: String) -> CharacterBuilder {
         self.weapon = weapon;
         return self;
     }
 
-    func wearing(armor: String) -> CharacterBuilder {
+    expose func wearing(armor: String) -> CharacterBuilder {
         self.armor = armor;
         return self;
     }
 
-    func riding(mount: String) -> CharacterBuilder {
+    expose func riding(mount: String) -> CharacterBuilder {
         self.mount = mount;
         return self;
     }
 
     // Preset configurations
-    func asWarrior() -> CharacterBuilder {
+    expose func asWarrior() -> CharacterBuilder {
         self.characterClass = "Warrior";
         self.strength = 15;
         self.dexterity = 10;
@@ -678,7 +678,7 @@ class CharacterBuilder {
         return self;
     }
 
-    func asMage() -> CharacterBuilder {
+    expose func asMage() -> CharacterBuilder {
         self.characterClass = "Mage";
         self.strength = 5;
         self.dexterity = 8;
@@ -689,7 +689,7 @@ class CharacterBuilder {
         return self;
     }
 
-    func asRogue() -> CharacterBuilder {
+    expose func asRogue() -> CharacterBuilder {
         self.characterClass = "Rogue";
         self.strength = 8;
         self.dexterity = 15;
@@ -700,7 +700,7 @@ class CharacterBuilder {
     }
 
     // Build the final object
-    func build() -> Character {
+    expose func build() -> Character {
         return Character(
             self.name, self.characterClass, self.health, self.mana,
             self.strength, self.dexterity, self.intelligence, self.race,
@@ -820,66 +820,66 @@ interface RouteStrategy {
 }
 
 class DrivingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> List[Point] {
+    expose func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating driving route...");
         // Prefer highways, avoid pedestrian zones
         // Returns list of waypoints
         return [start, end];  // Simplified
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Driving";
     }
 
-    func getEstimatedTime(distance: Number) -> Number {
+    expose func getEstimatedTime(distance: Number) -> Number {
         return distance / 50.0;  // 50 km/h average
     }
 }
 
 class WalkingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> List[Point] {
+    expose func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating walking route...");
         // Use sidewalks, can cut through parks
         return [start, end];
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Walking";
     }
 
-    func getEstimatedTime(distance: Number) -> Number {
+    expose func getEstimatedTime(distance: Number) -> Number {
         return distance / 5.0;  // 5 km/h
     }
 }
 
 class BikingStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> List[Point] {
+    expose func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating biking route...");
         // Use bike lanes, avoid steep hills
         return [start, end];
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Biking";
     }
 
-    func getEstimatedTime(distance: Number) -> Number {
+    expose func getEstimatedTime(distance: Number) -> Number {
         return distance / 15.0;  // 15 km/h
     }
 }
 
 class TransitStrategy implements RouteStrategy {
-    func calculateRoute(start: Point, end: Point) -> List[Point] {
+    expose func calculateRoute(start: Point, end: Point) -> List[Point] {
         Say("Calculating transit route...");
         // Follow bus and train routes
         return [start, end];
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Public Transit";
     }
 
-    func getEstimatedTime(distance: Number) -> Number {
+    expose func getEstimatedTime(distance: Number) -> Number {
         return distance / 25.0;  // 25 km/h with stops
     }
 }
@@ -892,12 +892,12 @@ class Navigator {
         self.strategy = strategy;
     }
 
-    func setStrategy(strategy: RouteStrategy) {
+    expose func setStrategy(strategy: RouteStrategy) {
         self.strategy = strategy;
         Say("Switched to " + strategy.getName());
     }
 
-    func navigate(start: Point, end: Point) {
+    expose func navigate(start: Point, end: Point) {
         var route = self.strategy.calculateRoute(start, end);
         var distance = self.calculateDistance(route);
         var time = self.strategy.getEstimatedTime(distance);
@@ -972,7 +972,7 @@ interface SortStrategy {
 }
 
 class BubbleSort implements SortStrategy {
-    func sort(items: List[Integer]) -> List[Integer] {
+    expose func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation
         var result = items.copy();
         var n = result.Length;
@@ -988,11 +988,11 @@ class BubbleSort implements SortStrategy {
         return result;
     }
 
-    func getName() -> String { return "Bubble Sort"; }
+    expose func getName() -> String { return "Bubble Sort"; }
 }
 
 class QuickSort implements SortStrategy {
-    func sort(items: List[Integer]) -> List[Integer] {
+    expose func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation (simplified)
         if items.Length <= 1 {
             return items;
@@ -1001,7 +1001,7 @@ class QuickSort implements SortStrategy {
         return items;
     }
 
-    func getName() -> String { return "Quick Sort"; }
+    expose func getName() -> String { return "Quick Sort"; }
 }
 
 class DataProcessor {
@@ -1011,11 +1011,11 @@ class DataProcessor {
         self.sortStrategy = strategy;
     }
 
-    func setSortStrategy(strategy: SortStrategy) {
+    expose func setSortStrategy(strategy: SortStrategy) {
         self.sortStrategy = strategy;
     }
 
-    func processData(data: List[Integer]) -> List[Integer] {
+    expose func processData(data: List[Integer]) -> List[Integer] {
         Say("Sorting with " + self.sortStrategy.getName());
         return self.sortStrategy.Sort(data);
     }
@@ -1069,11 +1069,11 @@ class Subject {
         self.observers = [];
     }
 
-    func subscribe(observer: Observer) {
+    expose func subscribe(observer: Observer) {
         self.observers.Push(observer);
     }
 
-    func unsubscribe(observer: Observer) {
+    expose func unsubscribe(observer: Observer) {
         // Remove observer from list
         var newList: List[Observer] = [];
         for obs in self.observers {
@@ -1084,7 +1084,7 @@ class Subject {
         self.observers = newList;
     }
 
-    func notify(event: String, data: any) {
+    expose func notify(event: String, data: any) {
         for observer in self.observers {
             observer.onUpdate(event, data);
         }
@@ -1110,15 +1110,15 @@ class StockPrice extends Subject {
         self.price = initialPrice;
     }
 
-    func getPrice() -> Number {
+    expose func getPrice() -> Number {
         return self.price;
     }
 
-    func getSymbol() -> String {
+    expose func getSymbol() -> String {
         return self.symbol;
     }
 
-    func setPrice(newPrice: Number) {
+    expose func setPrice(newPrice: Number) {
         var oldPrice = self.price;
         self.price = newPrice;
 
@@ -1140,7 +1140,7 @@ class PriceDisplay implements Observer {
         self.name = name;
     }
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "price_change" {
             Say(
                 "[" + self.name + "] " +
@@ -1158,7 +1158,7 @@ class AlertSystem implements Observer {
         self.threshold = threshold;
     }
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "price_change" {
             if Math.Abs(data.change) > self.threshold {
                 Say(
@@ -1177,7 +1177,7 @@ class TradeLogger implements Observer {
         self.logFile = logFile;
     }
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "price_change" {
             // In real code, use Time.DateTime.Now() for timestamp
             var logEntry = data.symbol + "," + data.oldPrice + "," + data.newPrice;
@@ -1196,7 +1196,7 @@ class AutoTrader implements Observer {
         self.sellThreshold = sellThreshold;
     }
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "price_change" {
             if data.newPrice < self.buyThreshold {
                 Say(
@@ -1271,18 +1271,18 @@ class GameEventSystem extends Subject {
     }
 
     // Convenience methods for common events
-    func playerDied() {
+    expose func playerDied() {
         self.notify("player_died", {});
     }
 
-    func enemyKilled(enemyType: String, points: Integer) {
+    expose func enemyKilled(enemyType: String, points: Integer) {
         self.notify("enemy_killed", {
             "type": enemyType,
             "points": points
         });
     }
 
-    func levelCompleted(level: Integer, time: Number) {
+    expose func levelCompleted(level: Integer, time: Number) {
         self.notify("level_completed", {
             "level": level,
             "time": time
@@ -1293,7 +1293,7 @@ class GameEventSystem extends Subject {
 class ScoreManager implements Observer {
     hide score: Integer = 0;
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "enemy_killed" {
             self.score += data.points;
             Say("Score: " + self.score);
@@ -1308,7 +1308,7 @@ class ScoreManager implements Observer {
 }
 
 class SoundManager implements Observer {
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "player_died" {
             Say("Playing: death_sound.wav");
         } else if event == "enemy_killed" {
@@ -1322,7 +1322,7 @@ class SoundManager implements Observer {
 class AchievementSystem implements Observer {
     hide enemiesKilled: Integer = 0;
 
-    func onUpdate(event: String, data: any) {
+    expose func onUpdate(event: String, data: any) {
         if event == "enemy_killed" {
             self.enemiesKilled += 1;
             if self.enemiesKilled == 10 {
@@ -1388,23 +1388,23 @@ class TextEditor {
         self.content = "";
     }
 
-    func getText() -> String {
+    expose func getText() -> String {
         return self.content;
     }
 
-    func insertAt(position: Integer, text: String) {
+    expose func insertAt(position: Integer, text: String) {
         var before = self.content.Substring(0, position);
         var after = self.content.Substring(position);
         self.content = before + text + after;
     }
 
-    func deleteAt(position: Integer, length: Integer) {
+    expose func deleteAt(position: Integer, length: Integer) {
         var before = self.content.Substring(0, position);
         var after = self.content.Substring(position + length);
         self.content = before + after;
     }
 
-    func display() {
+    expose func display() {
         Say("Document: \"" + self.content + "\"");
     }
 }
@@ -1421,15 +1421,15 @@ class InsertCommand implements Command {
         self.text = text;
     }
 
-    func execute() {
+    expose func execute() {
         self.editor.insertAt(self.position, self.text);
     }
 
-    func undo() {
+    expose func undo() {
         self.editor.deleteAt(self.position, self.text.Length);
     }
 
-    func describe() -> String {
+    expose func describe() -> String {
         return "Insert \"" + self.text + "\" at position " + self.position;
     }
 }
@@ -1447,15 +1447,15 @@ class DeleteCommand implements Command {
         self.deletedText = editor.getText().Substring(position, position + length);
     }
 
-    func execute() {
+    expose func execute() {
         self.editor.deleteAt(self.position, self.deletedText.Length);
     }
 
-    func undo() {
+    expose func undo() {
         self.editor.insertAt(self.position, self.deletedText);
     }
 
-    func describe() -> String {
+    expose func describe() -> String {
         return "Delete \"" + self.deletedText + "\" at position " + self.position;
     }
 }
@@ -1474,17 +1474,17 @@ class ReplaceCommand implements Command {
         self.newText = newText;
     }
 
-    func execute() {
+    expose func execute() {
         self.editor.deleteAt(self.position, self.oldText.Length);
         self.editor.insertAt(self.position, self.newText);
     }
 
-    func undo() {
+    expose func undo() {
         self.editor.deleteAt(self.position, self.newText.Length);
         self.editor.insertAt(self.position, self.oldText);
     }
 
-    func describe() -> String {
+    expose func describe() -> String {
         return "Replace \"" + self.oldText + "\" with \"" + self.newText + "\"";
     }
 }
@@ -1499,7 +1499,7 @@ class CommandHistory {
         self.undoneCommands = [];
     }
 
-    func execute(command: Command) {
+    expose func execute(command: Command) {
         command.execute();
         self.commands.Push(command);
         // Clear redo stack when new command is executed
@@ -1507,7 +1507,7 @@ class CommandHistory {
         Say("Executed: " + command.describe());
     }
 
-    func undo() {
+    expose func undo() {
         if self.commands.Length == 0 {
             Say("Nothing to undo");
             return;
@@ -1518,7 +1518,7 @@ class CommandHistory {
         Say("Undone: " + command.describe());
     }
 
-    func redo() {
+    expose func redo() {
         if self.undoneCommands.Length == 0 {
             Say("Nothing to redo");
             return;
@@ -1529,7 +1529,7 @@ class CommandHistory {
         Say("Redone: " + command.describe());
     }
 
-    func showHistory() {
+    expose func showHistory() {
         Say("Command history:");
         for i, cmd in self.commands.Enumerate() {
             Say("  " + i + ": " + cmd.describe());
@@ -1593,24 +1593,24 @@ class MacroCommand implements Command {
         self.commands = [];
     }
 
-    func add(command: Command) {
+    expose func add(command: Command) {
         self.commands.Push(command);
     }
 
-    func execute() {
+    expose func execute() {
         for cmd in self.commands {
             cmd.execute();
         }
     }
 
-    func undo() {
+    expose func undo() {
         // Undo in reverse order
         for i in (self.commands.Length - 1)..(-1) {
             self.commands[i].undo();
         }
     }
 
-    func describe() -> String {
+    expose func describe() -> String {
         return "Macro: " + self.name + " (" + self.commands.Length + " commands)";
     }
 }
@@ -1705,34 +1705,34 @@ interface VendingState {
 }
 
 class IdleState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: Integer) {
+    expose func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say("Inserted: $" + amount + ". Balance: $" + machine.getBalance());
         machine.setState(HasMoneyState());
     }
 
-    func selectItem(machine: VendingMachine, item: String) {
+    expose func selectItem(machine: VendingMachine, item: String) {
         Say("Please insert coins first");
     }
 
-    func dispense(machine: VendingMachine) {
+    expose func dispense(machine: VendingMachine) {
         Say("No item selected");
     }
 
-    func returnCoins(machine: VendingMachine) {
+    expose func returnCoins(machine: VendingMachine) {
         Say("No coins to return");
     }
 
-    func getName() -> String { return "Idle"; }
+    expose func getName() -> String { return "Idle"; }
 }
 
 class HasMoneyState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: Integer) {
+    expose func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Say("Added: $" + amount + ". Balance: $" + machine.getBalance());
     }
 
-    func selectItem(machine: VendingMachine, item: String) {
+    expose func selectItem(machine: VendingMachine, item: String) {
         var price = machine.getPrice(item);
         if price == null {
             Say("Item not found: " + item);
@@ -1754,31 +1754,31 @@ class HasMoneyState implements VendingState {
         machine.getState().dispense(machine);  // Trigger dispensing
     }
 
-    func dispense(machine: VendingMachine) {
+    expose func dispense(machine: VendingMachine) {
         Say("Please select an item first");
     }
 
-    func returnCoins(machine: VendingMachine) {
+    expose func returnCoins(machine: VendingMachine) {
         var balance = machine.getBalance();
         machine.setBalance(0);
         Say("Returning $" + balance);
         machine.setState(IdleState());
     }
 
-    func getName() -> String { return "Has Money"; }
+    expose func getName() -> String { return "Has Money"; }
 }
 
 class DispensingState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: Integer) {
+    expose func insertCoin(machine: VendingMachine, amount: Integer) {
         Say("Please wait, dispensing in progress");
         // Could queue the coin for later
     }
 
-    func selectItem(machine: VendingMachine, item: String) {
+    expose func selectItem(machine: VendingMachine, item: String) {
         Say("Please wait, dispensing in progress");
     }
 
-    func dispense(machine: VendingMachine) {
+    expose func dispense(machine: VendingMachine) {
         var item = machine.getSelectedItem();
         var price = machine.getPrice(item);
 
@@ -1803,31 +1803,31 @@ class DispensingState implements VendingState {
         }
     }
 
-    func returnCoins(machine: VendingMachine) {
+    expose func returnCoins(machine: VendingMachine) {
         Say("Please wait, dispensing in progress");
     }
 
-    func getName() -> String { return "Dispensing"; }
+    expose func getName() -> String { return "Dispensing"; }
 }
 
 class OutOfStockState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: Integer) {
+    expose func insertCoin(machine: VendingMachine, amount: Integer) {
         Say("Sorry, machine is empty. Returning your $" + amount);
     }
 
-    func selectItem(machine: VendingMachine, item: String) {
+    expose func selectItem(machine: VendingMachine, item: String) {
         Say("Sorry, machine is empty");
     }
 
-    func dispense(machine: VendingMachine) {
+    expose func dispense(machine: VendingMachine) {
         Say("Nothing to dispense");
     }
 
-    func returnCoins(machine: VendingMachine) {
+    expose func returnCoins(machine: VendingMachine) {
         Say("No coins inserted");
     }
 
-    func getName() -> String { return "Out of Stock"; }
+    expose func getName() -> String { return "Out of Stock"; }
 }
 
 class VendingMachine {
@@ -1845,7 +1845,7 @@ class VendingMachine {
         self.prices = {};
     }
 
-    func stock(item: String, quantity: Integer, price: Integer) {
+    expose func stock(item: String, quantity: Integer, price: Integer) {
         self.inventory[item] = quantity;
         self.prices[item] = price;
 
@@ -1856,45 +1856,45 @@ class VendingMachine {
     }
 
     // Delegate all actions to current state
-    func insertCoin(amount: Integer) {
+    expose func insertCoin(amount: Integer) {
         Say("[" + self.state.getName() + "] Insert coin: $" + amount);
         self.state.insertCoin(self, amount);
     }
 
-    func selectItem(item: String) {
+    expose func selectItem(item: String) {
         Say("[" + self.state.getName() + "] Select: " + item);
         self.state.selectItem(self, item);
     }
 
-    func returnCoins() {
+    expose func returnCoins() {
         Say("[" + self.state.getName() + "] Return coins");
         self.state.returnCoins(self);
     }
 
     // Internal methods used by states
-    func setState(newState: VendingState) {
+    expose func setState(newState: VendingState) {
         self.state = newState;
     }
 
-    func getState() -> VendingState {
+    expose func getState() -> VendingState {
         return self.state;
     }
 
-    func getBalance() -> Integer { return self.balance; }
-    func setBalance(amount: Integer) { self.balance = amount; }
-    func addBalance(amount: Integer) { self.balance += amount; }
+    expose func getBalance() -> Integer { return self.balance; }
+    expose func setBalance(amount: Integer) { self.balance = amount; }
+    expose func addBalance(amount: Integer) { self.balance += amount; }
 
-    func getSelectedItem() -> String? { return self.selectedItem; }
-    func setSelectedItem(item: String?) { self.selectedItem = item; }
+    expose func getSelectedItem() -> String? { return self.selectedItem; }
+    expose func setSelectedItem(item: String?) { self.selectedItem = item; }
 
-    func getPrice(item: String) -> Integer? { return self.prices[item]; }
-    func getStock(item: String) -> Integer { return self.inventory[item] ?? 0; }
+    expose func getPrice(item: String) -> Integer? { return self.prices[item]; }
+    expose func getStock(item: String) -> Integer { return self.inventory[item] ?? 0; }
 
-    func decrementStock(item: String) {
+    expose func decrementStock(item: String) {
         self.inventory[item] = self.inventory[item] - 1;
     }
 
-    func isEmpty() -> Boolean {
+    expose func isEmpty() -> Boolean {
         for item, qty in self.inventory {
             if qty > 0 { return false; }
         }
@@ -1988,8 +1988,8 @@ You run a coffee shop with a software ordering system. You start with simple cof
 
 ```rust
 class Coffee {
-    func cost() -> Number { return 2.00; }
-    func description() -> String { return "Coffee"; }
+    expose func cost() -> Number { return 2.00; }
+    expose func description() -> String { return "Coffee"; }
 }
 ```
 
@@ -2024,23 +2024,23 @@ interface Beverage {
 
 // Base beverages
 class Espresso implements Beverage {
-    func cost() -> Number { return 2.00; }
-    func description() -> String { return "Espresso"; }
+    expose func cost() -> Number { return 2.00; }
+    expose func description() -> String { return "Espresso"; }
 }
 
 class HouseBlend implements Beverage {
-    func cost() -> Number { return 1.50; }
-    func description() -> String { return "House Blend Coffee"; }
+    expose func cost() -> Number { return 1.50; }
+    expose func description() -> String { return "House Blend Coffee"; }
 }
 
 class Decaf implements Beverage {
-    func cost() -> Number { return 1.75; }
-    func description() -> String { return "Decaf Coffee"; }
+    expose func cost() -> Number { return 1.75; }
+    expose func description() -> String { return "Decaf Coffee"; }
 }
 
 class Tea implements Beverage {
-    func cost() -> Number { return 1.25; }
-    func description() -> String { return "Tea"; }
+    expose func cost() -> Number { return 1.25; }
+    expose func description() -> String { return "Tea"; }
 }
 
 // Abstract decorator
@@ -2051,11 +2051,11 @@ class BeverageDecorator implements Beverage {
         self.beverage = beverage;
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost();
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description();
     }
 }
@@ -2066,11 +2066,11 @@ class Milk extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost() + 0.50;
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description() + ", Milk";
     }
 }
@@ -2080,11 +2080,11 @@ class Sugar extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost() + 0.20;
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description() + ", Sugar";
     }
 }
@@ -2094,11 +2094,11 @@ class WhippedCream extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost() + 0.75;
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description() + ", Whipped Cream";
     }
 }
@@ -2108,11 +2108,11 @@ class Vanilla extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost() + 0.60;
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description() + ", Vanilla";
     }
 }
@@ -2122,11 +2122,11 @@ class ExtraShot extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> Number {
+    expose func cost() -> Number {
         return self.beverage.cost() + 0.80;
     }
 
-    func description() -> String {
+    expose func description() -> String {
         return self.beverage.description() + ", Extra Shot";
     }
 }
@@ -2191,11 +2191,11 @@ interface DataStream {
 class FileStream implements DataStream {
     hide content: String = "";
 
-    func write(data: String) {
+    expose func write(data: String) {
         self.content += data;
     }
 
-    func read() -> String {
+    expose func read() -> String {
         return self.content;
     }
 }
@@ -2207,12 +2207,12 @@ class EncryptionDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: String) {
+    expose func write(data: String) {
         var encrypted = self.encrypt(data);
         self.stream.write(encrypted);
     }
 
-    func read() -> String {
+    expose func read() -> String {
         var encrypted = self.stream.read();
         return self.decrypt(encrypted);
     }
@@ -2242,12 +2242,12 @@ class CompressionDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: String) {
+    expose func write(data: String) {
         var compressed = self.compress(data);
         self.stream.write(compressed);
     }
 
-    func read() -> String {
+    expose func read() -> String {
         var compressed = self.stream.read();
         return self.decompress(compressed);
     }
@@ -2270,12 +2270,12 @@ class LoggingDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: String) {
+    expose func write(data: String) {
         Say("Writing " + data.Length + " bytes");
         self.stream.write(data);
     }
 
-    func read() -> String {
+    expose func read() -> String {
         var data = self.stream.read();
         Say("Read " + data.Length + " bytes");
         return data;
@@ -2354,11 +2354,11 @@ class GameEvents {
         return GameEvents.instance;
     }
 
-    func subscribe(observer: GameObserver) {
+    expose func subscribe(observer: GameObserver) {
         self.observers.Push(observer);
     }
 
-    func emit(event: String, data: any) {
+    expose func emit(event: String, data: any) {
         for obs in self.observers {
             obs.onEvent(event, data);
         }
@@ -2371,7 +2371,7 @@ interface AIStrategy {
 }
 
 class AggressiveAI implements AIStrategy {
-    func decide(class: GameEntity, world: World) -> String {
+    expose func decide(class: GameEntity, world: World) -> String {
         var player = world.getPlayer();
         if class.distanceTo(player) < 100 {
             return "attack";
@@ -2381,7 +2381,7 @@ class AggressiveAI implements AIStrategy {
 }
 
 class DefensiveAI implements AIStrategy {
-    func decide(class: GameEntity, world: World) -> String {
+    expose func decide(class: GameEntity, world: World) -> String {
         var player = world.getPlayer();
         if class.health < 30 {
             return "flee";
@@ -2394,7 +2394,7 @@ class DefensiveAI implements AIStrategy {
 }
 
 class PassiveAI implements AIStrategy {
-    func decide(class: GameEntity, world: World) -> String {
+    expose func decide(class: GameEntity, world: World) -> String {
         return "wander";
     }
 }
@@ -2406,7 +2406,7 @@ interface EntityState {
 }
 
 class AliveState implements EntityState {
-    func update(class: GameEntity, world: World) {
+    expose func update(class: GameEntity, world: World) {
         if class.health <= 0 {
             class.setState(DeadState());
             GameEvents.getInstance().emit("class_died", { "class": class });
@@ -2418,15 +2418,15 @@ class AliveState implements EntityState {
         class.executeAction(action);
     }
 
-    func getName() -> String { return "Alive"; }
+    expose func getName() -> String { return "Alive"; }
 }
 
 class DeadState implements EntityState {
-    func update(class: GameEntity, world: World) {
+    expose func update(class: GameEntity, world: World) {
         // Dead classes don't update
     }
 
-    func getName() -> String { return "Dead"; }
+    expose func getName() -> String { return "Dead"; }
 }
 
 class StunnedState implements EntityState {
@@ -2436,7 +2436,7 @@ class StunnedState implements EntityState {
         self.duration = duration;
     }
 
-    func update(class: GameEntity, world: World) {
+    expose func update(class: GameEntity, world: World) {
         self.duration -= 1;
         if self.duration <= 0 {
             class.setState(AliveState());
@@ -2444,15 +2444,15 @@ class StunnedState implements EntityState {
         // Stunned classes can't act
     }
 
-    func getName() -> String { return "Stunned"; }
+    expose func getName() -> String { return "Stunned"; }
 }
 
 // The game class
 class GameEntity {
-    name: String;
-    health: Integer;
-    x: Number;
-    y: Number;
+    expose String name;
+    expose Integer health;
+    expose Number x;
+    expose Number y;
     hide ai: AIStrategy;
     hide state: EntityState;
 
@@ -2465,31 +2465,31 @@ class GameEntity {
         self.y = 0.0;
     }
 
-    func setState(newState: EntityState) {
+    expose func setState(newState: EntityState) {
         Say(self.name + " state: " + self.state.getName() + " -> " + newState.getName());
         self.state = newState;
     }
 
-    func setAI(ai: AIStrategy) {
+    expose func setAI(ai: AIStrategy) {
         self.ai = ai;
     }
 
-    func update(world: World) {
+    expose func update(world: World) {
         self.state.update(self, world);
     }
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         Say(self.name + " takes " + amount + " damage. Health: " + self.health);
     }
 
-    func distanceTo(other: GameEntity) -> Number {
+    expose func distanceTo(other: GameEntity) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
         return Math.Sqrt(dx * dx + dy * dy);
     }
 
-    func executeAction(action: String) {
+    expose func executeAction(action: String) {
         Say(self.name + " performs: " + action);
     }
 }
@@ -2529,7 +2529,7 @@ class EntityFactory {
 class ScoreTracker implements GameObserver {
     hide score: Integer = 0;
 
-    func onEvent(event: String, data: any) {
+    expose func onEvent(event: String, data: any) {
         if event == "class_died" {
             self.score += 100;
             Say("Score: " + self.score);

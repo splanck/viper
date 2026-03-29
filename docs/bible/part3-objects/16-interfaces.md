@@ -159,18 +159,18 @@ interface Drawable {
 }
 
 class Circle implements Drawable {
-    radius: Number;
+    expose Number radius;
 
-    func draw() {
+    expose func draw() {
         Say("Drawing a circle with radius " + self.radius);
     }
 }
 
 class Rectangle implements Drawable {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 
-    func draw() {
+    expose func draw() {
         Say("Drawing a rectangle " + self.width + "x" + self.height);
     }
 }
@@ -191,7 +191,7 @@ interface Drawable {
 }
 
 class Circle implements Drawable {
-    func draw() {
+    expose func draw() {
         Say("Drawing circle");
     }
     // ERROR: Circle claims to implement Drawable but doesn't implement getColor()!
@@ -214,25 +214,25 @@ interface DataStore {
 class MemoryStore implements DataStore {
     data: {String: String};
 
-    func save(key: String, value: String) {
+    expose func save(key: String, value: String) {
         self.data[key] = value;
     }
 
-    func load(key: String) -> String {
+    expose func load(key: String) -> String {
         return self.data[key];
     }
 }
 
 // Store in a file
 class FileStore implements DataStore {
-    basePath: String;
+    expose String basePath;
 
-    func save(key: String, value: String) {
+    expose func save(key: String, value: String) {
         var path = self.basePath + "/" + key + ".txt";
         File.WriteAllText(path, value);
     }
 
-    func load(key: String) -> String {
+    expose func load(key: String) -> String {
         var path = self.basePath + "/" + key + ".txt";
         return File.ReadAllText(path);
     }
@@ -242,14 +242,14 @@ class FileStore implements DataStore {
 class DatabaseStore implements DataStore {
     connection: DBConnection;
 
-    func save(key: String, value: String) {
+    expose func save(key: String, value: String) {
         self.connection.execute(
             "INSERT INTO store (key, value) VALUES (?, ?)",
             [key, value]
         );
     }
 
-    func load(key: String) -> String {
+    expose func load(key: String) -> String {
         var result = self.connection.query(
             "SELECT value FROM store WHERE key = ?",
             [key]
@@ -430,20 +430,20 @@ interface Clickable {
 }
 
 class Button implements Drawable, Movable, Clickable {
-    x: Number;
-    y: Number;
-    label: String;
+    expose Number x;
+    expose Number y;
+    expose String label;
 
-    func draw() {
+    expose func draw() {
         Say("Drawing button: " + self.label);
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func onClick() {
+    expose func onClick() {
         Say("Button clicked: " + self.label);
     }
 }
@@ -469,19 +469,19 @@ Different classes can implement different combinations:
 ```rust
 // A tree can be drawn but not moved or clicked
 class Tree implements Drawable {
-    func draw() { ... }
+    expose func draw() { ... }
 }
 
 // A player can be drawn and moved, but not clicked
 class Player implements Drawable, Movable {
-    func draw() { ... }
-    func move(dx: Number, dy: Number) { ... }
+    expose func draw() { ... }
+    expose func move(dx: Number, dy: Number) { ... }
 }
 
 // An invisible trigger can be moved and clicked, but not drawn
 class InvisibleTrigger implements Movable, Clickable {
-    func move(dx: Number, dy: Number) { ... }
-    func onClick() { ... }
+    expose func move(dx: Number, dy: Number) { ... }
+    expose func onClick() { ... }
 }
 ```
 
@@ -497,9 +497,9 @@ You can combine inheritance and interfaces. This is common and powerful.
 bind Viper.Terminal;
 
 class Enemy {
-    health: Integer;
+    expose Integer health;
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
     }
 }
@@ -513,11 +513,11 @@ interface Attackable {
 }
 
 class Goblin extends Enemy implements Drawable, Attackable {
-    func draw() {
+    expose func draw() {
         Say("Drawing a goblin");
     }
 
-    func attack() -> Integer {
+    expose func attack() -> Integer {
         return 5;
     }
 }
@@ -546,16 +546,16 @@ class Goblin implements Drawable extends Enemy { ... }
 bind Viper.Terminal;
 
 class GameObject {
-    id: Integer;
-    x: Number;
-    y: Number;
-    active: Boolean;
+    expose Integer id;
+    expose Number x;
+    expose Number y;
+    expose Boolean active;
 
-    func getPosition() -> (Number, Number) {
+    expose func getPosition() -> (Number, Number) {
         return (self.x, self.y);
     }
 
-    func setPosition(x: Number, y: Number) {
+    expose func setPosition(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
@@ -581,23 +581,23 @@ class Player extends GameObject implements Renderable, Collidable, Updatable {
     velocity: Vector2;
     hitbox: Rectangle;
 
-    func render(screen: Screen) {
+    expose func render(screen: Screen) {
         screen.draw(self.sprite, self.x, self.y);
     }
 
-    func getLayer() -> Integer {
+    expose func getLayer() -> Integer {
         return 5;  // Player renders on layer 5
     }
 
-    func getBounds() -> Rectangle {
+    expose func getBounds() -> Rectangle {
         return self.hitbox;
     }
 
-    func onCollision(other: Collidable) {
+    expose func onCollision(other: Collidable) {
         Say("Player hit something!");
     }
 
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         self.x += self.velocity.x * deltaTime;
         self.y += self.velocity.y * deltaTime;
     }
@@ -607,11 +607,11 @@ class Player extends GameObject implements Renderable, Collidable, Updatable {
 class Background extends GameObject implements Renderable {
     image: Image;
 
-    func render(screen: Screen) {
+    expose func render(screen: Screen) {
         screen.draw(self.image, 0, 0);
     }
 
-    func getLayer() -> Integer {
+    expose func getLayer() -> Integer {
         return 0;  // Background is layer 0 (behind everything)
     }
 }
@@ -629,7 +629,7 @@ Consider a UserService that needs to store user data:
 
 ```rust
 class UserService {
-    func saveUser(user: User) {
+    expose func saveUser(user: User) {
         var db = MySQLDatabase();  // Hardcoded!
         db.save("users", user);
     }
@@ -656,11 +656,11 @@ class UserService {
         self.db = database;  // Receive dependency from outside
     }
 
-    func saveUser(user: User) {
+    expose func saveUser(user: User) {
         self.db.save("users", user);
     }
 
-    func getUser(id: Integer) -> User {
+    expose func getUser(id: Integer) -> User {
         return self.db.load("users", id);
     }
 }
@@ -723,7 +723,7 @@ class OrderService {
         self.email = email;
     }
 
-    func processOrder(order: Order) {
+    expose func processOrder(order: Order) {
         self.logger.log("Processing order " + order.id);
 
         var success = self.payments.charge(order.total, order.cardNumber);
@@ -770,7 +770,7 @@ interface EmailSender {
 
 // Real implementation for production
 class SmtpEmailSender implements EmailSender {
-    func send(to: String, subject: String, body: String) {
+    expose func send(to: String, subject: String, body: String) {
         // Actually send email via SMTP
         Viper.Net.SMTP.send(to, subject, body);
     }
@@ -778,19 +778,19 @@ class SmtpEmailSender implements EmailSender {
 
 // Fake implementation for testing
 class FakeEmailSender implements EmailSender {
-    sentEmails: List[Email];
+    expose List[Email] sentEmails;
 
     expose func init() {
         self.sentEmails = [];
     }
 
-    func send(to: String, subject: String, body: String) {
+    expose func send(to: String, subject: String, body: String) {
         // Don't actually send. Just record that we would have.
         self.sentEmails.Push(Email { to: to, subject: subject, body: body });
     }
 
     // Helper method for tests
-    func getSentEmails() -> List[Email] {
+    expose func getSentEmails() -> List[Email] {
         return self.sentEmails;
     }
 }
@@ -828,11 +828,11 @@ Fakes let you simulate scenarios that are hard to create with real systems:
 
 ```rust
 class AlwaysFailingPaymentProcessor implements PaymentProcessor {
-    func charge(amount: Number, cardNumber: String) -> Boolean {
+    expose func charge(amount: Number, cardNumber: String) -> Boolean {
         return false;  // Simulate payment failure
     }
 
-    func refund(transactionId: String) -> Boolean {
+    expose func refund(transactionId: String) -> Boolean {
         return false;
     }
 }
@@ -1026,55 +1026,55 @@ interface Plugin {
 
 // Some plugins
 class UppercasePlugin implements Plugin {
-    func getName() -> String {
+    expose func getName() -> String {
         return "Uppercase";
     }
 
-    func execute(input: String) -> String {
+    expose func execute(input: String) -> String {
         return input.ToUpper();
     }
 }
 
 class ReversePlugin implements Plugin {
-    func getName() -> String {
+    expose func getName() -> String {
         return "Reverse";
     }
 
-    func execute(input: String) -> String {
+    expose func execute(input: String) -> String {
         return reverse(input);
     }
 }
 
 class RepeatPlugin implements Plugin {
-    times: Integer;
+    expose Integer times;
 
     expose func init(times: Integer) {
         self.times = times;
     }
 
-    func getName() -> String {
+    expose func getName() -> String {
         return "Repeat x" + self.times;
     }
 
-    func execute(input: String) -> String {
+    expose func execute(input: String) -> String {
         return repeat(input, self.times);
     }
 }
 
 // Plugin manager doesn't need to know about specific plugins
 class PluginManager {
-    plugins: List[Plugin];
+    expose List[Plugin] plugins;
 
     expose func init() {
         self.plugins = [];
     }
 
-    func register(plugin: Plugin) {
+    expose func register(plugin: Plugin) {
         self.plugins.Push(plugin);
         Say("Registered: " + plugin.getName());
     }
 
-    func process(input: String) -> String {
+    expose func process(input: String) -> String {
         var result = input;
         for plugin in self.plugins {
             result = plugin.execute(result);
@@ -1082,7 +1082,7 @@ class PluginManager {
         return result;
     }
 
-    func listPlugins() {
+    expose func listPlugins() {
         Say("Installed plugins:");
         for plugin in self.plugins {
             Say("  - " + plugin.getName());
@@ -1127,7 +1127,7 @@ interface Printable {
 }
 
 class Document implements Printable {
-    func print() {
+    expose func print() {
         Say("Printing document");
     }
 }
@@ -1160,21 +1160,21 @@ interface SortStrategy {
 }
 
 class QuickSort implements SortStrategy {
-    func sort(items: List[Integer]) -> List[Integer] {
+    expose func sort(items: List[Integer]) -> List[Integer] {
         // Quick sort implementation
         ...
     }
 }
 
 class MergeSort implements SortStrategy {
-    func sort(items: List[Integer]) -> List[Integer] {
+    expose func sort(items: List[Integer]) -> List[Integer] {
         // Merge sort implementation
         ...
     }
 }
 
 class BubbleSort implements SortStrategy {
-    func sort(items: List[Integer]) -> List[Integer] {
+    expose func sort(items: List[Integer]) -> List[Integer] {
         // Bubble sort implementation (slow but simple)
         ...
     }
@@ -1205,21 +1205,21 @@ interface Observer {
 }
 
 class Subject {
-    observers: List[Observer];
+    expose List[Observer] observers;
 
     expose func init() {
         self.observers = [];
     }
 
-    func subscribe(obs: Observer) {
+    expose func subscribe(obs: Observer) {
         self.observers.Push(obs);
     }
 
-    func unsubscribe(obs: Observer) {
+    expose func unsubscribe(obs: Observer) {
         self.observers.Remove(obs);
     }
 
-    func notify(event: String) {
+    expose func notify(event: String) {
         for obs in self.observers {
             obs.onEvent(event);
         }
@@ -1228,15 +1228,15 @@ class Subject {
 
 // Different observers respond differently
 class LoggingObserver implements Observer {
-    func onEvent(event: String) {
+    expose func onEvent(event: String) {
         Say("LOG: " + event);
     }
 }
 
 class EmailObserver implements Observer {
-    adminEmail: String;
+    expose String adminEmail;
 
-    func onEvent(event: String) {
+    expose func onEvent(event: String) {
         Email.send(self.adminEmail, "Event: " + event);
     }
 }
@@ -1265,13 +1265,13 @@ interface UserRepository {
 // In-memory implementation for development/testing
 class InMemoryUserRepository implements UserRepository {
     users: {Integer: User};
-    nextId: Integer;
+    expose Integer nextId;
 
-    func findById(id: Integer) -> User {
+    expose func findById(id: Integer) -> User {
         return self.users[id];
     }
 
-    func findByEmail(email: String) -> User {
+    expose func findByEmail(email: String) -> User {
         for user in self.users.Values() {
             if user.email == email {
                 return user;
@@ -1280,7 +1280,7 @@ class InMemoryUserRepository implements UserRepository {
         return null;
     }
 
-    func save(user: User) {
+    expose func save(user: User) {
         if user.id == 0 {
             user.id = self.nextId;
             self.nextId += 1;
@@ -1288,11 +1288,11 @@ class InMemoryUserRepository implements UserRepository {
         self.users[user.id] = user;
     }
 
-    func delete(id: Integer) {
+    expose func delete(id: Integer) {
         self.users.Remove(id);
     }
 
-    func findAll() -> List[User] {
+    expose func findAll() -> List[User] {
         return self.users.Values();
     }
 }
@@ -1301,7 +1301,7 @@ class InMemoryUserRepository implements UserRepository {
 class PostgresUserRepository implements UserRepository {
     connection: PGConnection;
 
-    func findById(id: Integer) -> User {
+    expose func findById(id: Integer) -> User {
         var row = self.connection.queryOne(
             "SELECT * FROM users WHERE id = ?", [id]
         );

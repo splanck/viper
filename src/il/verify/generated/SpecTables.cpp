@@ -955,6 +955,18 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         VerifyStrategy::Default,
         nullptr,
     },
+    { // ErrGetMsg — returns Str, takes Error, 0 successors
+        il::core::ResultArity::One,
+        il::core::TypeCategory::Str,
+        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(1),
+        {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
+        false,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Default,
+        nullptr,
+    },
     {
         il::core::ResultArity::None,
         il::core::TypeCategory::None,

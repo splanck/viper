@@ -29,6 +29,10 @@
 #include <cassert>
 #include <string>
 
+extern "C" {
+#include "runtime/core/rt_string.h"
+}
+
 namespace il::vm::detail::control {
 
 /// @brief Extract fields from a VmError record and store them into registers.
@@ -77,6 +81,15 @@ VM::ExecResult handleErrGet(VM &vm,
         case il::core::Opcode::ErrGetLine:
             out.i64 = static_cast<int64_t>(static_cast<int32_t>(error->line));
             break;
+        case il::core::Opcode::ErrGetMsg: {
+            // Retrieve the trap message stored by trap.err / vm_store_trap_token_message.
+            // The message persists in vm->trapToken.message even after the token
+            // valid flag is cleared during handler dispatch.
+            std::string msg = vm_current_trap_message();
+            out.str = msg.empty() ? rt_str_empty()
+                                  : rt_string_from_bytes(msg.c_str(), msg.size());
+            break;
+        }
         default:
             out.i64 = 0;
             break;

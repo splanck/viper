@@ -20,8 +20,8 @@ Consider a simple `BankAccount` structure:
 
 ```rust
 struct BankAccount {
-    ownerName: String;
-    balance: Number;
+    expose String ownerName;
+    expose Number balance;
 }
 
 var account = BankAccount("Alice", 1000.0);
@@ -72,8 +72,8 @@ A structure is just raw data. There's no built-in way to ensure it starts in a v
 
 ```rust
 struct Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 }
 
 var rect = Rectangle(0.0, 0.0);  // Created with default values
@@ -88,9 +88,9 @@ Say you have a structure for representing colors:
 
 ```rust
 struct Color {
-    red: Integer;    // 0-255
-    green: Integer;  // 0-255
-    blue: Integer;   // 0-255
+    expose Integer red;    // 0-255
+    expose Integer green;  // 0-255
+    expose Integer blue;   // 0-255
 }
 ```
 
@@ -124,8 +124,8 @@ A struct groups data:
 
 ```rust
 struct Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 }
 ```
 
@@ -133,19 +133,19 @@ A *class* groups data *and* behavior:
 
 ```rust
 class Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 
     expose func init(width: Number, height: Number) {
         self.width = width;
         self.height = height;
     }
 
-    func area() -> Number {
+    expose func area() -> Number {
         return self.width * self.height;
     }
 
-    func perimeter() -> Number {
+    expose func perimeter() -> Number {
         return 2 * (self.width + self.height);
     }
 }
@@ -216,19 +216,19 @@ Both `fido` and `rex` are Dogs -- they follow the same template. But they're sep
 bind Viper.Terminal;
 
 class Dog {
-    name: String;
-    age: Integer;
+    expose String name;
+    expose Integer age;
 
     expose func init(name: String, age: Integer) {
         self.name = name;
         self.age = age;
     }
 
-    func bark() {
+    expose func bark() {
         Say(self.name + " says woof!");
     }
 
-    func haveBirthday() {
+    expose func haveBirthday() {
         self.age += 1;
         Say(self.name + " is now " + self.age + "!");
     }
@@ -290,8 +290,8 @@ The initializer is a special method that runs when you create a new object. Its 
 
 ```rust
 class Person {
-    name: String;
-    age: Integer;
+    expose String name;
+    expose Integer age;
 
     expose func init(name: String, age: Integer) {
         self.name = name;
@@ -319,9 +319,9 @@ You can define multiple initializers with different parameter lists. This is cal
 
 ```rust
 class Person {
-    name: String;
-    age: Integer;
-    email: String;
+    expose String name;
+    expose Integer age;
+    expose String email;
 
     // Full initialization
     expose func init(name: String, age: Integer, email: String) {
@@ -360,8 +360,8 @@ Initializers are the perfect place to validate input and ensure objects start in
 bind Viper.Terminal;
 
 class Rectangle {
-    width: Number;
-    height: Number;
+    expose Number width;
+    expose Number height;
 
     expose func init(width: Number, height: Number) {
         // Ensure dimensions are positive
@@ -393,12 +393,12 @@ Initializers can do more than just assign fields. They can perform any setup log
 
 ```rust
 class GameCharacter {
-    name: String;
-    health: Integer;
-    maxHealth: Integer;
-    level: Integer;
-    experience: Integer;
-    inventory: List[String];
+    expose String name;
+    expose Integer health;
+    expose Integer maxHealth;
+    expose Integer level;
+    expose Integer experience;
+    expose List[String] inventory;
 
     expose func init(name: String) {
         self.name = name;
@@ -425,9 +425,9 @@ Some fields have values that depend on other fields. The initializer is where yo
 bind Viper.Math as Math;
 
 class Circle {
-    radius: Number;
-    diameter: Number;
-    circumference: Number;
+    expose Number radius;
+    expose Number diameter;
+    expose Number circumference;
 
     expose func init(radius: Number) {
         self.radius = radius;
@@ -443,17 +443,17 @@ However, this pattern can be dangerous -- if `radius` changes later, `diameter` 
 bind Viper.Math as Math;
 
 class Circle {
-    radius: Number;
+    expose Number radius;
 
     expose func init(radius: Number) {
         self.radius = radius;
     }
 
-    func diameter() -> Number {
+    expose func diameter() -> Number {
         return self.radius * 2;  // Always computed fresh
     }
 
-    func circumference() -> Number {
+    expose func circumference() -> Number {
         return 2 * PI * self.radius;  // Always accurate
     }
 }
@@ -469,17 +469,17 @@ Inside a method, you need a way to refer to the specific object the method was c
 
 ```rust
 class Counter {
-    count: Integer;
+    expose Integer count;
 
     expose func init() {
         self.count = 0;
     }
 
-    func increment() {
+    expose func increment() {
         self.count += 1;
     }
 
-    func getCount() -> Integer {
+    expose func getCount() -> Integer {
         return self.count;
     }
 }
@@ -569,8 +569,8 @@ Consider what happens when anyone can modify an object's fields directly:
 
 ```rust
 class BankAccount {
-    ownerName: String;
-    balance: Number;  // Completely exposed!
+    expose String ownerName;
+    expose Number balance;  // Completely exposed!
 
     expose func init(owner: String, initial: Number) {
         self.ownerName = owner;
@@ -595,7 +595,7 @@ Zia lets you control what's visible from outside the class:
 ```rust
 class BankAccount {
     hide balance: Number;
-    ownerName: String;
+    expose String ownerName;
 
     expose func init(owner: String, initialDeposit: Number) {
         self.ownerName = owner;
@@ -759,25 +759,25 @@ Methods define what objects can *do*. They're functions that belong to a class a
 bind Viper.Math as Math;
 
 class Circle {
-    radius: Number;
+    expose Number radius;
 
     expose func init(radius: Number) {
         self.radius = radius;
     }
 
-    func area() -> Number {
+    expose func area() -> Number {
         return PI * self.radius * self.radius;
     }
 
-    func circumference() -> Number {
+    expose func circumference() -> Number {
         return 2 * PI * self.radius;
     }
 
-    func scale(factor: Number) {
+    expose func scale(factor: Number) {
         self.radius *= factor;
     }
 
-    func diameter() -> Number {
+    expose func diameter() -> Number {
         return self.radius * 2;
     }
 }
@@ -866,7 +866,7 @@ bind Viper.Math as Math;
 
 // Good as a method - operates on the circle's own data
 class Circle {
-    func area() -> Number {
+    expose func area() -> Number {
         return PI * self.radius * self.radius;
     }
 }
@@ -1468,13 +1468,13 @@ Notice how:
 bind Viper.Terminal;
 
 class Dog {
-    name: String;
+    expose String name;
 
     expose func init(name: String) {
         self.name = name;
     }
 
-    func bark() {
+    expose func bark() {
         Say(self.name + " says woof!");
     }
 }
@@ -1524,7 +1524,7 @@ A class should have one primary responsibility. If a class is doing too many thi
 // Too much responsibility
 class Game {
     player: Player;
-    enemies: List[Enemy];
+    expose List[Enemy] enemies;
     graphics: GraphicsSystem;
     sound: SoundSystem;
     input: InputHandler;
@@ -1601,9 +1601,9 @@ func processOrder() {
 
 ```rust
 class Counter {
-    count: Integer;
+    expose Integer count;
 
-    func increment() {
+    expose func increment() {
         count += 1;  // Error: should be self.count
     }
 }
@@ -1615,7 +1615,7 @@ Inside a method, you must use `self` to access the object's fields. Without it, 
 
 ```rust
 class BankAccount {
-    balance: Number;  // Bad: anyone can modify directly
+    expose Number balance;  // Bad: anyone can modify directly
 }
 
 var account = BankAccount();

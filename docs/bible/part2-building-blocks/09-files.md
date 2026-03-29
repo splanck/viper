@@ -964,8 +964,8 @@ func loadConfig() -> Map[String, String] {
 
         var parts = line.Split("=");
         if parts.Length == 2 {
-            var key = parts[0].Trim();
-            var value = parts[1].Trim();
+            var key = parts.Get(0).Trim();
+            var value = parts.Get(1).Trim();
             config[key] = value;
         }
     }
@@ -1128,8 +1128,8 @@ func load(slot: Integer) -> SaveData? {
         var parts = line.Split("=");
         if parts.Length != 2 { continue; }
 
-        var key = parts[0];
-        var value = parts[1];
+        var key = parts.Get(0);
+        var value = parts.Get(1);
 
         if key == "name" { data.playerName = value; }
         else if key == "level" { data.level = Convert.ToInt64(value); }

@@ -281,8 +281,13 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         const auto &bp = currentFunc_->blocks[errBlockIdx].params;
 
         if (!stmt->catchVar.empty() && !bp.empty()) {
-            createSlot(stmt->catchVar, Type(Type::Kind::Error));
-            storeToSlot(stmt->catchVar, Value::temp(bp[0].id), Type(Type::Kind::Error));
+            // Retrieve the thrown message via the runtime function.
+            // For user throws, this returns the message from throw "msg".
+            // For system errors (div by zero etc.), returns empty string.
+            Value msgStr = emitCallRet(Type(Type::Kind::Str),
+                                       "Viper.Error.GetThrowMsg", {});
+            createSlot(stmt->catchVar, Type(Type::Kind::Str));
+            storeToSlot(stmt->catchVar, msgStr, Type(Type::Kind::Str));
         }
     }
 
@@ -327,13 +332,18 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
 
-    // Lower the thrown expression
+    // Lower the thrown expression and store the message via the runtime
+    // so catch handlers can retrieve it.
     if (stmt->value) {
         auto result = lowerExpr(stmt->value.get());
-        (void)result; // Value is not used — throw triggers a trap
+        TypeRef throwType = sema_.typeOf(stmt->value.get());
+        Value msgStr = emitToString(result.value, throwType);
+
+        // Store the message via rt_throw_msg_set for catch(e) retrieval.
+        emitCall("Viper.Error.SetThrowMsg", {msgStr});
     }
 
-    // Emit trap instruction to abort execution
+    // Emit trap instruction to raise the exception.
     il::core::Instr trapInstr;
     trapInstr.op = Opcode::Trap;
     trapInstr.type = Type(Type::Kind::Void);

@@ -295,15 +295,16 @@ When creating an empty array, you must specify the type because Viper can't infe
 
 ### Repeating a Value
 
-If you need many copies of the same value:
+If you need many copies of the same value, build the array with a loop:
 
 ```rust
-var zeros = [0; 10];      // Ten zeros: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-var dashes = ["-"; 50];   // Fifty dashes
-var defaults = [false; 100]; // 100 false values
+var zeros: List[Integer] = [];
+for i in 0..10 {
+    zeros.Push(0);           // Ten zeros
+}
 ```
 
-The syntax `[value; count]` creates an array with `count` copies of `value`. This is especially useful for initializing game boards, buffers, or any structure where you need a known size filled with default values.
+This is especially useful for initializing game boards, buffers, or any structure where you need a known size filled with default values.
 
 ---
 

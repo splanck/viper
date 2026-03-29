@@ -58,19 +58,19 @@ interface PaymentMethod {
 }
 
 class CashPayment implements PaymentMethod {
-    func pay(amount: Number) -> Boolean {
+    expose func pay(amount: Number) -> Boolean {
         // Count bills, make change
     }
 }
 
 class CreditCard implements PaymentMethod {
-    func pay(amount: Number) -> Boolean {
+    expose func pay(amount: Number) -> Boolean {
         // Contact bank, authorize transaction
     }
 }
 
 class MobilePayment implements PaymentMethod {
-    func pay(amount: Number) -> Boolean {
+    expose func pay(amount: Number) -> Boolean {
         // Communicate with phone, verify fingerprint
     }
 }
@@ -157,7 +157,7 @@ Want to test your payment processing without actually charging credit cards? Wit
 bind Viper.Terminal;
 
 class MockPayment implements PaymentMethod {
-    func pay(amount: Number) -> Boolean {
+    expose func pay(amount: Number) -> Boolean {
         Say("[Test] Would charge: " + amount);
         return true;  // Always succeeds for testing
     }
@@ -184,25 +184,25 @@ This is what we've been discussing: the decision about which method to call happ
 bind Viper.Terminal;
 
 class Animal {
-    func speak() {
+    expose func speak() {
         Say("...");
     }
 }
 
 class Dog extends Animal {
-    func speak() {
+    expose func speak() {
         Say("Woof!");
     }
 }
 
 class Cat extends Animal {
-    func speak() {
+    expose func speak() {
         Say("Meow!");
     }
 }
 
 class Cow extends Animal {
-    func speak() {
+    expose func speak() {
         Say("Moo!");
     }
 }
@@ -258,25 +258,25 @@ bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
 class Printer {
-    func print(text: String) {
+    expose func print(text: String) {
         Say(text);
     }
 
-    func print(number: Integer) {
+    expose func print(number: Integer) {
         Say(Fmt.Int(number));
     }
 
-    func print(number: Number) {
+    expose func print(number: Number) {
         Say(Fmt.Num(number));
     }
 
-    func print(items: List[String]) {
+    expose func print(items: List[String]) {
         for item in items {
             Say(item);
         }
     }
 
-    func print(item: String, times: Integer) {
+    expose func print(item: String, times: Integer) {
         for i in 0..times {
             Say(item);
         }
@@ -331,31 +331,31 @@ interface Updatable {
 }
 
 class Player implements Updatable {
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         // Read input, move character, check interactions
     }
 }
 
 class Enemy implements Updatable {
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         // Run AI, chase player, attack if in range
     }
 }
 
 class Projectile implements Updatable {
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         // Move forward, check for collisions
     }
 }
 
 class Particle implements Updatable {
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         // Fade out, drift, disappear when expired
     }
 }
 
 class AnimatedDecoration implements Updatable {
-    func update(deltaTime: Number) {
+    expose func update(deltaTime: Number) {
         // Advance animation frame
     }
 }
@@ -399,28 +399,28 @@ interface Drawable {
 }
 
 class Background implements Drawable {
-    func draw() { /* Draw sky, mountains */ }
-    func getDepth() -> Integer { return 0; }  // Furthest back
+    expose func draw() { /* Draw sky, mountains */ }
+    expose func getDepth() -> Integer { return 0; }  // Furthest back
 }
 
 class Ground implements Drawable {
-    func draw() { /* Draw terrain */ }
-    func getDepth() -> Integer { return 1; }
+    expose func draw() { /* Draw terrain */ }
+    expose func getDepth() -> Integer { return 1; }
 }
 
 class Character implements Drawable {
-    func draw() { /* Draw sprite */ }
-    func getDepth() -> Integer { return 2; }
+    expose func draw() { /* Draw sprite */ }
+    expose func getDepth() -> Integer { return 2; }
 }
 
 class Foreground implements Drawable {
-    func draw() { /* Draw trees, buildings in front */ }
-    func getDepth() -> Integer { return 3; }
+    expose func draw() { /* Draw trees, buildings in front */ }
+    expose func getDepth() -> Integer { return 3; }
 }
 
 class UIOverlay implements Drawable {
-    func draw() { /* Draw health bar, score */ }
-    func getDepth() -> Integer { return 100; }  // Always on top
+    expose func draw() { /* Draw health bar, score */ }
+    expose func getDepth() -> Integer { return 100; }  // Always on top
 }
 ```
 
@@ -455,24 +455,24 @@ interface Exporter {
 }
 
 class PDFExporter implements Exporter {
-    func export(document: Document) -> String {
+    expose func export(document: Document) -> String {
         // Convert to PDF format
     }
-    func getExtension() -> String { return "pdf"; }
+    expose func getExtension() -> String { return "pdf"; }
 }
 
 class HTMLExporter implements Exporter {
-    func export(document: Document) -> String {
+    expose func export(document: Document) -> String {
         // Convert to HTML
     }
-    func getExtension() -> String { return "html"; }
+    expose func getExtension() -> String { return "html"; }
 }
 
 class MarkdownExporter implements Exporter {
-    func export(document: Document) -> String {
+    expose func export(document: Document) -> String {
         // Convert to Markdown
     }
-    func getExtension() -> String { return "md"; }
+    expose func getExtension() -> String { return "md"; }
 }
 ```
 
@@ -482,7 +482,7 @@ The export menu:
 bind Viper.Terminal;
 
 class ExportMenu {
-    exporters: List[Exporter];
+    expose List[Exporter] exporters;
 
     expose func init() {
         self.exporters = [
@@ -492,11 +492,11 @@ class ExportMenu {
         ];
     }
 
-    func addExporter(exporter: Exporter) {
+    expose func addExporter(exporter: Exporter) {
         self.exporters.Push(exporter);
     }
 
-    func showOptions() {
+    expose func showOptions() {
         Say("Export as:");
         var i = 1;
         for exporter in self.exporters {
@@ -505,7 +505,7 @@ class ExportMenu {
         }
     }
 
-    func exportAs(index: Integer, document: Document) -> String {
+    expose func exportAs(index: Integer, document: Document) -> String {
         var exporter = self.exporters[index];
         return exporter.export(document);
     }
@@ -516,10 +516,10 @@ Later, someone wants to add Word export. They create a `WordExporter` class:
 
 ```rust
 class WordExporter implements Exporter {
-    func export(document: Document) -> String {
+    expose func export(document: Document) -> String {
         // Convert to Word format
     }
-    func getExtension() -> String { return "docx"; }
+    expose func getExtension() -> String { return "docx"; }
 }
 ```
 
@@ -546,15 +546,15 @@ interface Plugin {
 }
 
 class PluginManager {
-    plugins: List[Plugin];
+    expose List[Plugin] plugins;
 
-    func loadPlugin(plugin: Plugin) {
+    expose func loadPlugin(plugin: Plugin) {
         self.plugins.Push(plugin);
         Say("Loaded: " + plugin.getName() + " v" + plugin.getVersion());
         plugin.initialize();
     }
 
-    func runAll(context: PluginContext) {
+    expose func runAll(context: PluginContext) {
         for plugin in self.plugins {
             plugin.execute(context);
         }
@@ -581,24 +581,24 @@ interface CompressionStrategy {
 }
 
 class NoCompression implements CompressionStrategy {
-    func compress(data: String) -> String { return data; }
-    func decompress(data: String) -> String { return data; }
+    expose func compress(data: String) -> String { return data; }
+    expose func decompress(data: String) -> String { return data; }
 }
 
 class GzipCompression implements CompressionStrategy {
-    func compress(data: String) -> String {
+    expose func compress(data: String) -> String {
         // Apply gzip algorithm
     }
-    func decompress(data: String) -> String {
+    expose func decompress(data: String) -> String {
         // Reverse gzip
     }
 }
 
 class LZ4Compression implements CompressionStrategy {
-    func compress(data: String) -> String {
+    expose func compress(data: String) -> String {
         // Apply LZ4 - faster but less compression
     }
-    func decompress(data: String) -> String {
+    expose func decompress(data: String) -> String {
         // Reverse LZ4
     }
 }
@@ -610,12 +610,12 @@ class FileManager {
         self.compression = compression;
     }
 
-    func save(filename: String, data: String) {
+    expose func save(filename: String, data: String) {
         var compressed = self.compression.compress(data);
         File.WriteText(filename, compressed);
     }
 
-    func load(filename: String) -> String {
+    expose func load(filename: String) -> String {
         var compressed = File.ReadText(filename);
         return self.compression.decompress(compressed);
     }
@@ -649,39 +649,39 @@ interface EventHandler {
 }
 
 class KeyPressHandler implements EventHandler {
-    func canHandle(event: Event) -> Boolean {
+    expose func canHandle(event: Event) -> Boolean {
         return event.type == "keypress";
     }
 
-    func handle(event: Event) {
+    expose func handle(event: Event) {
         Say("Key pressed: " + event.key);
     }
 }
 
 class MouseClickHandler implements EventHandler {
-    func canHandle(event: Event) -> Boolean {
+    expose func canHandle(event: Event) -> Boolean {
         return event.type == "click";
     }
 
-    func handle(event: Event) {
+    expose func handle(event: Event) {
         Say("Click at: " + event.x + ", " + event.y);
     }
 }
 
 class ResizeHandler implements EventHandler {
-    func canHandle(event: Event) -> Boolean {
+    expose func canHandle(event: Event) -> Boolean {
         return event.type == "resize";
     }
 
-    func handle(event: Event) {
+    expose func handle(event: Event) {
         Say("Window resized to: " + event.width + "x" + event.height);
     }
 }
 
 class EventDispatcher {
-    handlers: List[EventHandler];
+    expose List[EventHandler] handlers;
 
-    func dispatch(event: Event) {
+    expose func dispatch(event: Event) {
         for handler in self.handlers {
             if handler.canHandle(event) {
                 handler.handle(event);
@@ -706,52 +706,52 @@ interface Command {
 
 class InsertTextCommand implements Command {
     document: Document;
-    position: Integer;
-    text: String;
+    expose Integer position;
+    expose String text;
 
-    func execute() {
+    expose func execute() {
         self.document.insertAt(self.position, self.text);
     }
 
-    func undo() {
+    expose func undo() {
         self.document.deleteRange(self.position, self.position + self.text.Length);
     }
 
-    func getDescription() -> String {
+    expose func getDescription() -> String {
         return "Insert '" + self.text + "'";
     }
 }
 
 class DeleteTextCommand implements Command {
     document: Document;
-    position: Integer;
-    deletedText: String;
+    expose Integer position;
+    expose String deletedText;
 
-    func execute() {
+    expose func execute() {
         self.deletedText = self.document.getRange(self.position, self.position + 1);
         self.document.deleteAt(self.position);
     }
 
-    func undo() {
+    expose func undo() {
         self.document.insertAt(self.position, self.deletedText);
     }
 
-    func getDescription() -> String {
+    expose func getDescription() -> String {
         return "Delete '" + self.deletedText + "'";
     }
 }
 
 class CommandHistory {
-    executed: List[Command];
-    undone: List[Command];
+    expose List[Command] executed;
+    expose List[Command] undone;
 
-    func execute(command: Command) {
+    expose func execute(command: Command) {
         command.execute();
         self.executed.Push(command);
         self.undone = [];  // Clear redo stack
     }
 
-    func undo() {
+    expose func undo() {
         if self.executed.Length > 0 {
             var command = self.executed.Pop();
             command.undo();
@@ -760,7 +760,7 @@ class CommandHistory {
         }
     }
 
-    func redo() {
+    expose func redo() {
         if self.undone.Length > 0 {
             var command = self.undone.Pop();
             command.execute();
@@ -864,33 +864,33 @@ interface Movable {
 
 // Base class: provides shared implementation
 class GameEntity {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
 
-    func getPosition() -> (Number, Number) {
+    expose func getPosition() -> (Number, Number) {
         return (self.x, self.y);
     }
 }
 
 // Derived classes: inherit code AND implement interfaces
 class Player extends GameEntity implements Attackable, Drawable, Movable {
-    health: Integer;
+    expose Integer health;
     sprite: Sprite;
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         self.playHurtAnimation();
     }
 
-    func isAlive() -> Boolean {
+    expose func isAlive() -> Boolean {
         return self.health > 0;
     }
 
-    func draw() {
+    expose func draw() {
         self.sprite.drawAt(self.x, self.y);
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
         self.playWalkAnimation();
@@ -899,28 +899,28 @@ class Player extends GameEntity implements Attackable, Drawable, Movable {
 
 class Tree extends GameEntity implements Drawable {
     // Trees don't move or take damage - just Drawable
-    func draw() {
+    expose func draw() {
         drawTreeSprite(self.x, self.y);
     }
 }
 
 class Enemy extends GameEntity implements Attackable, Drawable, Movable {
-    health: Integer;
+    expose Integer health;
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         self.health -= amount;
         self.flashRed();
     }
 
-    func isAlive() -> Boolean {
+    expose func isAlive() -> Boolean {
         return self.health > 0;
     }
 
-    func draw() {
+    expose func draw() {
         drawEnemySprite(self.x, self.y);
     }
 
-    func move(dx: Number, dy: Number) {
+    expose func move(dx: Number, dy: Number) {
         // AI-controlled movement
         self.x += dx;
         self.y += dy;
@@ -960,22 +960,22 @@ interface Drawable {
 }
 
 struct Rect {
-    x: Number;
-    y: Number;
-    width: Number;
-    height: Number;
+    expose Number x;
+    expose Number y;
+    expose Number width;
+    expose Number height;
 
-    func contains(px: Number, py: Number) -> Boolean {
+    expose func contains(px: Number, py: Number) -> Boolean {
         return px >= self.x && px <= self.x + self.width &&
                py >= self.y && py <= self.y + self.height;
     }
 }
 
 class Circle implements Drawable {
-    x: Number;
-    y: Number;
-    radius: Number;
-    color: String;
+    expose Number x;
+    expose Number y;
+    expose Number radius;
+    expose String color;
 
     expose func init(x: Number, y: Number, radius: Number, color: String) {
         self.x = x;
@@ -984,12 +984,12 @@ class Circle implements Drawable {
         self.color = color;
     }
 
-    func draw() {
+    expose func draw() {
         Say("Drawing " + self.color + " circle at (" +
             self.x + ", " + self.y + ") radius " + self.radius);
     }
 
-    func getBounds() -> Rect {
+    expose func getBounds() -> Rect {
         return Rect {
             x: self.x - self.radius,
             y: self.y - self.radius,
@@ -1000,11 +1000,11 @@ class Circle implements Drawable {
 }
 
 class Rectangle implements Drawable {
-    x: Number;
-    y: Number;
-    width: Number;
-    height: Number;
-    color: String;
+    expose Number x;
+    expose Number y;
+    expose Number width;
+    expose Number height;
+    expose String color;
 
     expose func init(x: Number, y: Number, w: Number, h: Number, color: String) {
         self.x = x;
@@ -1014,21 +1014,21 @@ class Rectangle implements Drawable {
         self.color = color;
     }
 
-    func draw() {
+    expose func draw() {
         Say("Drawing " + self.color + " rectangle at (" +
             self.x + ", " + self.y + ") size " + self.width + "x" + self.height);
     }
 
-    func getBounds() -> Rect {
+    expose func getBounds() -> Rect {
         return Rect { x: self.x, y: self.y, width: self.width, height: self.height };
     }
 }
 
 class Text implements Drawable {
-    x: Number;
-    y: Number;
-    content: String;
-    fontSize: Number;
+    expose Number x;
+    expose Number y;
+    expose String content;
+    expose Number fontSize;
 
     expose func init(x: Number, y: Number, content: String) {
         self.x = x;
@@ -1037,12 +1037,12 @@ class Text implements Drawable {
         self.fontSize = 16.0;
     }
 
-    func draw() {
+    expose func draw() {
         Say("Drawing text '" + self.content + "' at (" +
             self.x + ", " + self.y + ")");
     }
 
-    func getBounds() -> Rect {
+    expose func getBounds() -> Rect {
         var width = self.content.Length * self.fontSize * 0.6;  // Approximate
         return Rect { x: self.x, y: self.y, width: width, height: self.fontSize };
     }
@@ -1050,19 +1050,19 @@ class Text implements Drawable {
 
 // Group of drawables - demonstrates the Composite Pattern
 class Group implements Drawable {
-    children: List[Drawable];
-    name: String;
+    expose List[Drawable] children;
+    expose String name;
 
     expose func init(name: String) {
         self.children = [];
         self.name = name;
     }
 
-    func add(item: Drawable) {
+    expose func add(item: Drawable) {
         self.children.Push(item);
     }
 
-    func draw() {
+    expose func draw() {
         Say("--- Drawing group: " + self.name + " ---");
         for child in self.children {
             child.draw();
@@ -1070,7 +1070,7 @@ class Group implements Drawable {
         Say("--- End group: " + self.name + " ---");
     }
 
-    func getBounds() -> Rect {
+    expose func getBounds() -> Rect {
         if self.children.Length == 0 {
             return Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
         }
@@ -1155,13 +1155,13 @@ interface Animal {
 }
 
 class Dog implements Animal {
-    func speak() {
+    expose func speak() {
         Say("Woof!");
     }
 }
 
 class Cat implements Animal {
-    func speak() {
+    expose func speak() {
         Say("Meow!");
     }
 }

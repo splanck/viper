@@ -479,6 +479,12 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
             inline_handle_ErrGetLine(state);
             break;
         }
+        case il::core::Opcode::ErrGetMsg:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_ErrGetMsg(state);
+            break;
+        }
         case il::core::Opcode::EhPush:
         {
             traceInstruction(instr, state.fr);

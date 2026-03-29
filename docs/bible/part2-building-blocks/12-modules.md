@@ -365,7 +365,7 @@ func hasValidDomain(email: String) -> Boolean {
     if parts.Length != 2 {
         return false;
     }
-    return parts[1].Contains(".");
+    return parts.Get(1).Contains(".");
 }
 ```
 

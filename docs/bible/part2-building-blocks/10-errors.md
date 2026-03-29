@@ -205,9 +205,9 @@ try {
     // Code that might fail
     var x = 10 / y;
     Say("Result: " + x);
-} catch e {
+} catch {
     // Code that runs if an error occurred
-    Say("Something went wrong: " + e.message);
+    Say("Something went wrong: " + "an error occurred");
 }
 
 Say("Program continues...");
@@ -234,8 +234,8 @@ try {
     var x = 10 / 0;                    // Error here!
     Say("Step 2");      // Never runs
     Say("Step 3");      // Never runs
-} catch e {
-    Say("Caught: " + e.message);
+} catch {
+    Say("Caught: " + "an error occurred");
 }
 Say("Done");
 ```
@@ -263,8 +263,8 @@ try {
     var value = Convert.ToInt64(content);        // Could fail: not a number
     var result = 1000 / value;         // Could fail: zero
     Say("Result: " + result);
-} catch e {
-    Say("Error: " + e.message);
+} catch {
+    Say("Error: " + "an error occurred");
 }
 ```
 
@@ -280,8 +280,8 @@ try {
     var value = Convert.ToInt64(content);
     var result = 1000 / value;
     Say("Result: " + result);
-} catch e {
-    Say("Something went wrong: " + e.message);
+} catch {
+    Say("Something went wrong: " + "an error occurred");
 }
 ```
 
@@ -295,7 +295,7 @@ bind Viper.Terminal;
 var content = "";
 try {
     content = File.ReadAllText(filename);
-} catch e {
+} catch {
     Say("File doesn't exist: " + filename);
     return;
 }
@@ -303,7 +303,7 @@ try {
 var value = 0;
 try {
     value = Convert.ToInt64(content);
-} catch e {
+} catch {
     Say("File doesn't contain a valid number");
     return;
 }
@@ -337,7 +337,7 @@ Don't use try-catch when:
 // Unnecessary try-catch
 try {
     var value = arr[index];
-} catch e {
+} catch {
     value = defaultValue;
 }
 
@@ -421,8 +421,8 @@ var connection = Database.connect("localhost");
 try {
     var data = connection.query("SELECT * FROM users");
     processData(data);
-} catch e {
-    Say("Database error: " + e.message);
+} catch {
+    Say("Database error: " + "an error occurred");
 } finally {
     connection.Close();  // Always runs, error or not
 }
@@ -479,8 +479,8 @@ bind Viper.Terminal;
 
 try {
     loadConfiguration();
-} catch e {
-    Say("Configuration error: " + e.message);
+} catch {
+    Say("Configuration error: " + "an error occurred");
     Say("Using defaults instead");
     useDefaults();
 }
@@ -612,7 +612,7 @@ bind File = Viper.IO.File;
 func loadData() -> String {
     try {
         return File.ReadAllText("data.txt");
-    } catch e {
+    } catch {
         return File.ReadAllText("data.backup.txt");
     }
 }
@@ -621,8 +621,8 @@ func loadData() -> String {
 func getUser(id: Integer) -> User {
     try {
         return database.query("SELECT * FROM users WHERE id = " + id);
-    } catch e {
-        throw Error("Unable to load user " + id + ": " + e.message);
+    } catch {
+        throw Error("Unable to load user " + id + ": " + "an error occurred");
     }
 }
 
@@ -630,8 +630,8 @@ func getUser(id: Integer) -> User {
 func processItem(item: Item) {
     try {
         sendNotification(item);
-    } catch e {
-        log("Failed to send notification: " + e.message);
+    } catch {
+        log("Failed to send notification: " + "an error occurred");
         // Continue anyway — notification failure isn't fatal
     }
 }
@@ -661,8 +661,8 @@ func start() {
     try {
         var config = loadConfig();
         runApplication(config);
-    } catch e {
-        Say("Failed to start: " + e.message);
+    } catch {
+        Say("Failed to start: " + "an error occurred");
     }
 }
 ```
@@ -814,7 +814,7 @@ func fetchUserData(userId: Integer) -> UserData {
     for attempt in 1..maxRetries+1 {
         try {
             return HttpClient.Get("https://api.example.com/users/" + userId);
-        } catch e {
+        } catch {
             if attempt < maxRetries {
                 Say("Network error, retrying in " + retryDelay + "ms...");
                 Time.Clock.Sleep(retryDelay);
@@ -857,7 +857,7 @@ func getValidAge() -> Integer {
             }
 
             return age;
-        } catch e {
+        } catch {
             Say("That's not a valid number. Please try again.");
         }
     }
@@ -887,7 +887,7 @@ func processLargeFile(filename: String) {
 
             try {
                 processChunk(chunk);
-            } catch e {
+            } catch {
                 Say("Memory low, pausing to free resources...");
                 gc();  // Force garbage collection
                 processChunk(chunk);  // Try again
@@ -930,7 +930,7 @@ func loadConfiguration() -> Config {
     try {
         var content = File.ReadAllText(CONFIG_FILE);
         return Config.fromJson(content);
-    } catch e {
+    } catch {
         Say("Config file is corrupted, using defaults");
         return DEFAULT_CONFIG;
     }
@@ -966,7 +966,7 @@ func log(message: String) {
 
     try {
         File.Append(LOG_FILE, entry);
-    } catch e {
+    } catch {
         // If we can't log, print to console at least
         Say("LOG: " + message);
     }
@@ -997,7 +997,7 @@ func readDataFile(filename: String) -> List[Integer] {
         try {
             var num = Convert.ToInt64(trimmed);
             numbers.Push(num);
-        } catch e {
+        } catch {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
         }
     }
@@ -1053,10 +1053,10 @@ func processFile(filename: String) {
 
         log("Successfully processed " + filename);
 
-    } catch e {
-        Say("Error: " + e.message);
+    } catch {
+        Say("Error: " + "an error occurred");
         Say("Please check the file and try again.");
-        log("Error processing " + filename + ": " + e.message);
+        log("Error processing " + filename + ": " + "an error occurred");
     }
 }
 
@@ -1098,8 +1098,8 @@ bind Viper.Terminal;
 
 try {
     riskyOperation();
-} catch e {
-    Say("Error: " + e.message);
+} catch {
+    Say("Error: " + "an error occurred");
 } finally {
     cleanup();
 }
@@ -1138,7 +1138,7 @@ The worst thing you can do with exceptions:
 // TERRIBLE: Silently ignoring errors
 try {
     riskyOperation();
-} catch e {
+} catch {
     // Nothing here — errors vanish without a trace
 }
 ```
@@ -1148,8 +1148,8 @@ This makes debugging nearly impossible. If something goes wrong, you'll never kn
 ```rust
 try {
     riskyOperation();
-} catch e {
-    log("Error ignored: " + e.message);
+} catch {
+    log("Error ignored: " + "an error occurred");
 }
 ```
 
@@ -1164,7 +1164,7 @@ try {
     var result = complexOperation(data);
     saveResult(result);
     sendNotification(result);
-} catch e {
+} catch {
     Say("Something went wrong");  // Which operation? What error?
 }
 ```
@@ -1178,15 +1178,15 @@ var result = complexOperation(data);  // Let validation errors propagate
 
 try {
     saveResult(result);
-} catch e {
-    Say("Could not save: " + e.message);
+} catch {
+    Say("Could not save: " + "an error occurred");
     return;
 }
 
 try {
     sendNotification(result);
-} catch e {
-    log("Notification failed: " + e.message);
+} catch {
+    log("Notification failed: " + "an error occurred");
     // Notification failure is not fatal, continue
 }
 ```
@@ -1227,15 +1227,15 @@ When catching and re-throwing, preserve the original error:
 // BAD: Original error is lost
 try {
     loadData();
-} catch e {
+} catch {
     throw Error("Data loading failed");
 }
 
 // GOOD: Chain the original error
 try {
     loadData();
-} catch e {
-    throw Error("Data loading failed: " + e.message);
+} catch {
+    throw Error("Data loading failed: " + "an error occurred");
 }
 ```
 

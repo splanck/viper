@@ -633,6 +633,14 @@ void VM::inline_handle_ErrGetLine(ExecState &st)
     handleInlineResult(st, exec);
 }
 
+void VM::inline_handle_ErrGetMsg(ExecState &st)
+{
+    assert(st.currentInstr && "currentInstr set by dispatch loop");
+    const Instr &instr = *st.currentInstr;
+    ExecResult exec = il::vm::detail::handleErrGet(*this, st.fr, instr, *st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
 void VM::inline_handle_EhPush(ExecState &st)
 {
     assert(st.currentInstr && "currentInstr set by dispatch loop");

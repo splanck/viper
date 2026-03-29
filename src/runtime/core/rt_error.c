@@ -39,6 +39,29 @@ extern "C" {
 ///          for pointer identity or performing atomic replacements.
 const RtError RT_ERROR_NONE = {Err_None, 0};
 
+/// Thread-local storage for the most recently thrown message.
+/// This enables catch(e) handlers to retrieve the throw message
+/// without requiring new IL opcodes.
+static _Thread_local rt_string tls_throw_msg = NULL;
+
+void rt_throw_msg_set(rt_string msg) {
+    // Release previous message if any
+    if (tls_throw_msg) {
+        rt_str_release_maybe(tls_throw_msg);
+        tls_throw_msg = NULL;
+    }
+    if (msg) {
+        tls_throw_msg = rt_string_ref(msg);
+    }
+}
+
+rt_string rt_throw_msg_get(void) {
+    if (tls_throw_msg) {
+        return rt_string_ref(tls_throw_msg);
+    }
+    return rt_str_empty();
+}
+
 #ifdef __cplusplus
 }
 #endif

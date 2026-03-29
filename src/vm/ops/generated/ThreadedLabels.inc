@@ -36,5 +36,5 @@
     &&LBL_AddrOf, &&LBL_ConstStr, &&LBL_GAddr, &&LBL_ConstNull, &&LBL_ConstF64, &&LBL_Call,
     &&LBL_CallIndirect, &&LBL_SwitchI32, &&LBL_Br, &&LBL_CBr, &&LBL_Ret, &&LBL_TrapKind,
     &&LBL_TrapFromErr, &&LBL_TrapErr, &&LBL_ErrGetKind, &&LBL_ErrGetCode, &&LBL_ErrGetIp,
-    &&LBL_ErrGetLine, &&LBL_EhPush, &&LBL_EhPop, &&LBL_ResumeSame, &&LBL_ResumeNext,
+    &&LBL_ErrGetLine, &&LBL_ErrGetMsg, &&LBL_EhPush, &&LBL_EhPop, &&LBL_ResumeSame, &&LBL_ResumeNext,
     &&LBL_ResumeLabel, &&LBL_EhEntry, &&LBL_Trap, &&LBL_UNIMPL,

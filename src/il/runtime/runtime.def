@@ -2982,6 +2982,10 @@ RT_FUNC(StrFromI16,            rt_str_i16_alloc, "Viper.String.FromI16",        
 RT_FUNC(StrFromI32,            rt_str_i32_alloc, "Viper.String.FromI32",           "str(i32)")
 RT_FUNC(StrFromSingle,         rt_str_f_alloc,   "Viper.String.FromSingle",        "str(f64)") // Formats with single precision (truncates to f32)
 RT_FUNC(StrFromStr,            rt_str_clone,      "Viper.String.FromStr",           "str(str)",  always)
+
+// Throw message storage for catch(e) variable binding
+RT_FUNC(ThrowMsgSet,           rt_throw_msg_set,  "Viper.Error.SetThrowMsg",        "void(str)")
+RT_FUNC(ThrowMsgGet,           rt_throw_msg_get,  "Viper.Error.GetThrowMsg",        "str()")
 RT_FUNC(StringsJoin,           rt_str_join,  "Viper.String.Join",              "str(str,obj)", always)
 RT_FUNC(StrCapitalize,         rt_str_capitalize,     "Viper.String.Capitalize",     "str(str)")
 RT_FUNC(StrTitle,              rt_str_title,          "Viper.String.Title",          "str(str)")
@@ -7986,6 +7990,7 @@ RT_CLASS_BEGIN("Viper.String", String, "opaque*", StrFromStr)
     RT_METHOD("Count", "i64(str)", StrCount)
     RT_METHOD("EndsWith", "i1(str)", StrEndsWith)
     RT_METHOD("Flip", "str()", StrFlip)
+    RT_METHOD("Contains", "i1(str)", StrHas)
     RT_METHOD("Has", "i1(str)", StrHas)
     RT_METHOD("IndexOf", "i64(str)", IndexOf)
     RT_METHOD("IndexOfFrom", "i64(i64,str)", IndexOfFrom)

@@ -621,6 +621,14 @@ LBL_ErrGetLine:
     DISPATCH_NEXT_FAST();
 }
 
+LBL_ErrGetMsg:
+{
+    vm.inline_handle_ErrGetMsg(state);
+    if (state.exitRequested) [[unlikely]]
+        goto LBL_SLOW_PATH;
+    DISPATCH_NEXT_FAST();
+}
+
 LBL_EhPush:
 {
     vm.inline_handle_EhPush(state);
