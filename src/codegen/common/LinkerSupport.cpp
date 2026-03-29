@@ -135,6 +135,7 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
     // MSVC/Clang-CL static libraries use .lib; MinGW uses .a (prefix lib).
     // Default to the MSVC convention when building on Windows.
     const std::string libName = std::string(libBaseName) + ".lib";
+    const std::string objLibName = std::string(libBaseName) + "_obj.lib";
 
     auto pickFirstExisting =
         [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
@@ -150,11 +151,19 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 #ifdef _WIN32
     if (!buildDir.empty()) {
 #if defined(NDEBUG)
-        return pickFirstExisting({buildDir / "src/runtime/Release" / libName,
+        return pickFirstExisting({buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
+                                      "Release" / objLibName,
+                                  buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
+                                      "Debug" / objLibName,
+                                  buildDir / "src/runtime/Release" / libName,
                                   buildDir / "src/runtime/Debug" / libName,
                                   buildDir / "src/runtime" / libName});
 #else
-        return pickFirstExisting({buildDir / "src/runtime/Debug" / libName,
+        return pickFirstExisting({buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
+                                      "Debug" / objLibName,
+                                  buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
+                                      "Release" / objLibName,
+                                  buildDir / "src/runtime/Debug" / libName,
                                   buildDir / "src/runtime/Release" / libName,
                                   buildDir / "src/runtime" / libName});
 #endif

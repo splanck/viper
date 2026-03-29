@@ -22,6 +22,7 @@ set(_viper_codegen_x86_64_tests
         varargs_al
         diff_vm_native
         div_trap
+        ovf_trap
         udiv_urem
         i1_normalization
         pro_epi

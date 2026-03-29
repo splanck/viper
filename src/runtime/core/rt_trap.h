@@ -33,6 +33,9 @@ extern "C" {
 /// @brief Traps the runtime on division by zero.
 void rt_trap_div0(void);
 
+/// @brief Traps the runtime on checked integer overflow.
+void rt_trap_ovf(void);
+
 /// @brief Trap when @p condition is false with the supplied diagnostic.
 /// @param condition Non-zero when the assertion passes.
 /// @param message Runtime string describing the assertion; falls back to a

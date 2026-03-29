@@ -117,22 +117,34 @@ bool isWindowsHelperSymbol(const std::string &name) {
            name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
            name == "_RTC_CheckStackVars" || name == "__report_rangecheckfailure" ||
            name == "__chkstk" || name == "_tls_index" ||
+           name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
+           name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
+           name == "__vcrt_thread_attach" || name == "__vcrt_thread_detach" ||
+           name == "__vcrt_uninitialize" || name == "__vcrt_uninitialize_critical" ||
+           name == "__acrt_initialize" || name == "__acrt_thread_attach" ||
+           name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
+           name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
+           name == "__scrt_exe_initialize_mta" ||
            name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
            name == "vm_trap" || name == "rt_audio_shutdown";
 }
 
 std::string dllForImport(const std::string &name, bool debugRuntime) {
     static const std::unordered_set<std::string> kernel32 = {
-        "ExitProcess",          "GetCurrentThreadId",   "GetEnvironmentVariableA",
-        "GetLastError",         "GetStdHandle",         "InitOnceExecuteOnce",
-        "InitializeCriticalSection",
-        "LeaveCriticalSection", "DeleteCriticalSection", "EnterCriticalSection",
-        "SetEnvironmentVariableA",
-        "SetErrorMode",         "SwitchToThread",       "WriteFile",
-        "GetTickCount64",       "AddVectoredExceptionHandler",
-        "InitializeSRWLock",    "AcquireSRWLockExclusive",
-        "AcquireSRWLockShared", "ReleaseSRWLockExclusive",
-        "ReleaseSRWLockShared",
+        "ExitProcess",               "FreeLibrary",              "GetCurrentProcessId",
+        "GetCurrentThreadId",        "GetEnvironmentVariableA",  "GetLastError",
+        "GetModuleHandleW",          "GetProcAddress",           "GetProcessHeap",
+        "GetStartupInfoW",           "GetStdHandle",             "GetSystemTimeAsFileTime",
+        "HeapAlloc",                 "HeapFree",                 "IsDebuggerPresent",
+        "InitOnceExecuteOnce",       "InitializeCriticalSection","InitializeSListHead",
+        "LeaveCriticalSection",      "DeleteCriticalSection",    "EnterCriticalSection",
+        "MultiByteToWideChar",       "RaiseException",
+        "SetEnvironmentVariableA",   "SetUnhandledExceptionFilter",
+        "SetErrorMode",              "SwitchToThread",           "WriteFile",
+        "GetTickCount64",            "AddVectoredExceptionHandler",
+        "InitializeSRWLock",         "AcquireSRWLockExclusive",  "AcquireSRWLockShared",
+        "ReleaseSRWLockExclusive",   "ReleaseSRWLockShared",     "QueryPerformanceCounter",
+        "VirtualQuery",              "WideCharToMultiByte",
     };
     static const std::unordered_set<std::string> advapi32 = {
         "CryptAcquireContextA",
@@ -201,9 +213,11 @@ WindowsImportPlan generateWindowsX64Imports(const std::unordered_set<std::string
     std::unordered_map<std::string, std::vector<std::string>> dllToFuncs;
     std::unordered_set<std::string> seenFuncs;
     for (const auto &sym : dynamicSyms) {
-        if (isWindowsHelperSymbol(sym) || sym == "__ImageBase")
+        if (sym == "__ImageBase")
             continue;
         const std::string base = stripImpPrefix(sym);
+        if (isWindowsHelperSymbol(sym) || isWindowsHelperSymbol(base))
+            continue;
         if (base.rfind("rt_", 0) == 0)
             continue;
         if (!seenFuncs.insert(base).second)
@@ -275,7 +289,8 @@ WindowsImportPlan generateWindowsX64Imports(const std::unordered_set<std::string
 }
 
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
-                                  bool haveVmTrapDefault) {
+                                  bool haveVmTrapDefault,
+                                  bool needTlsIndex) {
     ObjFile obj;
     obj.name = "<win64-helpers>";
     obj.format = ObjFileFormat::COFF;
@@ -297,6 +312,10 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
     dataSec.alloc = true;
     dataSec.alignment = 8;
 
+    auto needsHelper = [&](const std::string &name) {
+        return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
+    };
+
     auto addRetFn = [&](const std::string &name, std::initializer_list<uint8_t> bytes) {
         const size_t off = textSec.data.size();
         textSec.data.insert(textSec.data.end(), bytes.begin(), bytes.end());
@@ -306,6 +325,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
     };
 
     auto addData = [&](const std::string &name, const std::vector<uint8_t> &bytes, uint32_t align) {
@@ -319,37 +339,161 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 2;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
     };
 
-    if (dynamicSyms.count("_fltused"))
-        addData("_fltused", {1, 0, 0, 0}, 4);
-    if (dynamicSyms.count("__security_cookie"))
-        addData("__security_cookie", {0x32, 0xA2, 0xDF, 0x2D, 0x99, 0x2B, 0x00, 0x00}, 8);
-    if (dynamicSyms.count("_tls_index"))
-        addData("_tls_index", {0, 0, 0, 0}, 4);
-    if (dynamicSyms.count("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9"))
-        addData("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
-                {0, 0, 0, 0, 0, 0, 0, 0},
-                8);
+    auto addAbs64DataRef =
+        [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
+            while ((dataSec.data.size() % align) != 0)
+                dataSec.data.push_back(0);
+            const size_t off = dataSec.data.size();
+            dataSec.data.resize(off + 8, 0);
+            ObjSymbol sym;
+            sym.name = name;
+            sym.binding = ObjSymbol::Global;
+            sym.sectionIndex = 2;
+            sym.offset = off;
+            obj.symbols.push_back(std::move(sym));
 
-    if (dynamicSyms.count("__security_check_cookie"))
-        addRetFn("__security_check_cookie", {0xC3});
-    if (dynamicSyms.count("__security_init_cookie"))
-        addRetFn("__security_init_cookie", {0xC3});
-    if (dynamicSyms.count("__GSHandlerCheck"))
-        addRetFn("__GSHandlerCheck", {0xC3});
-    if (dynamicSyms.count("_RTC_CheckStackVars"))
-        addRetFn("_RTC_CheckStackVars", {0xC3});
-    if (dynamicSyms.count("_RTC_InitBase"))
-        addRetFn("_RTC_InitBase", {0x31, 0xC0, 0xC3});
-    if (dynamicSyms.count("_RTC_Shutdown"))
-        addRetFn("_RTC_Shutdown", {0xC3});
-    if (dynamicSyms.count("__report_rangecheckfailure"))
-        addRetFn("__report_rangecheckfailure", {0xCC, 0xC3});
-    if (dynamicSyms.count("__chkstk"))
-        addRetFn("__chkstk", {0xC3});
-    if (dynamicSyms.count("rt_audio_shutdown"))
-        addRetFn("rt_audio_shutdown", {0xC3});
+            ObjReloc reloc;
+            reloc.offset = off;
+            reloc.type = coff_x64::kAddr64;
+            reloc.symIndex = targetSymIdx;
+            reloc.addend = 0;
+            dataSec.relocs.push_back(reloc);
+            return static_cast<uint32_t>(obj.symbols.size() - 1);
+        };
+
+    auto addImportAlias = [&](const std::string &name, uint32_t targetSymIdx) {
+        if (dynamicSyms.count("__imp_" + name))
+            addAbs64DataRef("__imp_" + name, 8, targetSymIdx);
+    };
+
+    if (needsHelper("_fltused")) {
+        const uint32_t idx = addData("_fltused", {1, 0, 0, 0}, 4);
+        addImportAlias("_fltused", idx);
+    }
+    if (needsHelper("__security_cookie")) {
+        const uint32_t idx =
+            addData("__security_cookie", {0x32, 0xA2, 0xDF, 0x2D, 0x99, 0x2B, 0x00, 0x00}, 8);
+        addImportAlias("__security_cookie", idx);
+    }
+    if (needsHelper("__security_cookie_complement")) {
+        const uint32_t idx = addData(
+            "__security_cookie_complement", {0xCD, 0x5D, 0x20, 0xD2, 0x66, 0xD4, 0xFF, 0xFF}, 8);
+        addImportAlias("__security_cookie_complement", idx);
+    }
+    if (needTlsIndex || needsHelper("_tls_index")) {
+        const uint32_t idx = addData("_tls_index", {0, 0, 0, 0}, 4);
+        addImportAlias("_tls_index", idx);
+    }
+    if (needsHelper("_is_c_termination_complete")) {
+        const uint32_t idx = addData("_is_c_termination_complete", {0, 0, 0, 0}, 4);
+        addImportAlias("_is_c_termination_complete", idx);
+    }
+    if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
+        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
+                                     {0, 0, 0, 0, 0, 0, 0, 0},
+                                     8);
+        addImportAlias("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", idx);
+    }
+
+    if (needsHelper("__security_check_cookie")) {
+        const uint32_t idx = addRetFn("__security_check_cookie", {0xC3});
+        addImportAlias("__security_check_cookie", idx);
+    }
+    if (needsHelper("__security_init_cookie")) {
+        const uint32_t idx = addRetFn("__security_init_cookie", {0xC3});
+        addImportAlias("__security_init_cookie", idx);
+    }
+    if (needsHelper("__GSHandlerCheck")) {
+        const uint32_t idx = addRetFn("__GSHandlerCheck", {0xC3});
+        addImportAlias("__GSHandlerCheck", idx);
+    }
+    if (needsHelper("_RTC_CheckStackVars")) {
+        const uint32_t idx = addRetFn("_RTC_CheckStackVars", {0xC3});
+        addImportAlias("_RTC_CheckStackVars", idx);
+    }
+    if (needsHelper("_RTC_InitBase")) {
+        const uint32_t idx = addRetFn("_RTC_InitBase", {0x31, 0xC0, 0xC3});
+        addImportAlias("_RTC_InitBase", idx);
+    }
+    if (needsHelper("_RTC_Shutdown")) {
+        const uint32_t idx = addRetFn("_RTC_Shutdown", {0xC3});
+        addImportAlias("_RTC_Shutdown", idx);
+    }
+    if (needsHelper("__report_rangecheckfailure")) {
+        const uint32_t idx = addRetFn("__report_rangecheckfailure", {0xCC, 0xC3});
+        addImportAlias("__report_rangecheckfailure", idx);
+    }
+    if (needsHelper("__chkstk")) {
+        const uint32_t idx = addRetFn("__chkstk", {0xC3});
+        addImportAlias("__chkstk", idx);
+    }
+    if (needsHelper("rt_audio_shutdown")) {
+        const uint32_t idx = addRetFn("rt_audio_shutdown", {0xC3});
+        addImportAlias("rt_audio_shutdown", idx);
+    }
+    if (needsHelper("__vcrt_initialize")) {
+        const uint32_t idx = addRetFn("__vcrt_initialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__vcrt_initialize", idx);
+    }
+    if (needsHelper("__vcrt_thread_attach")) {
+        const uint32_t idx =
+            addRetFn("__vcrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__vcrt_thread_attach", idx);
+    }
+    if (needsHelper("__vcrt_thread_detach")) {
+        const uint32_t idx =
+            addRetFn("__vcrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__vcrt_thread_detach", idx);
+    }
+    if (needsHelper("__vcrt_uninitialize")) {
+        const uint32_t idx =
+            addRetFn("__vcrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__vcrt_uninitialize", idx);
+    }
+    if (needsHelper("__vcrt_uninitialize_critical")) {
+        const uint32_t idx = addRetFn("__vcrt_uninitialize_critical", {0xC3});
+        addImportAlias("__vcrt_uninitialize_critical", idx);
+    }
+    if (needsHelper("__acrt_initialize")) {
+        const uint32_t idx = addRetFn("__acrt_initialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__acrt_initialize", idx);
+    }
+    if (needsHelper("__acrt_thread_attach")) {
+        const uint32_t idx =
+            addRetFn("__acrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__acrt_thread_attach", idx);
+    }
+    if (needsHelper("__acrt_thread_detach")) {
+        const uint32_t idx =
+            addRetFn("__acrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__acrt_thread_detach", idx);
+    }
+    if (needsHelper("__acrt_uninitialize")) {
+        const uint32_t idx =
+            addRetFn("__acrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        addImportAlias("__acrt_uninitialize", idx);
+    }
+    if (needsHelper("__acrt_uninitialize_critical")) {
+        const uint32_t idx = addRetFn("__acrt_uninitialize_critical", {0xC3});
+        addImportAlias("__acrt_uninitialize_critical", idx);
+    }
+    if (needsHelper("__isa_available_init")) {
+        const uint32_t idx = addRetFn("__isa_available_init", {0xC3});
+        addImportAlias("__isa_available_init", idx);
+    }
+    if (needsHelper("__scrt_exe_initialize_mta")) {
+        const uint32_t idx = addRetFn("__scrt_exe_initialize_mta", {0x31, 0xC0, 0xC3});
+        addImportAlias("__scrt_exe_initialize_mta", idx);
+    }
+
+    if (needsHelper("__guard_dispatch_icall_fptr")) {
+        const uint32_t dispatchIdx = addRetFn("__guard_dispatch_icall_stub", {0xFF, 0xE0});
+        const uint32_t ptrIdx = addAbs64DataRef("__guard_dispatch_icall_fptr", 8, dispatchIdx);
+        addImportAlias("__guard_dispatch_icall_fptr", ptrIdx);
+    }
 
     if (dynamicSyms.count("vm_trap")) {
         const size_t off = textSec.data.size();
@@ -459,8 +603,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::X86_64) {
         dynamicSyms.erase("__ImageBase");
         const bool haveVmTrapDefault = globalSyms.find("vm_trap_default") != globalSyms.end();
+        const bool needTlsIndex =
+            std::any_of(allObjects.begin(), allObjects.end(), [](const ObjFile &obj) {
+                return std::any_of(obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
+                    return sec.alloc && sec.tls && !sec.data.empty();
+                });
+            });
 
-        ObjFile helperObj = generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault);
+        ObjFile helperObj = generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
         if (!helperObj.sections.empty()) {
             const size_t helperIdx = allObjects.size();
             allObjects.push_back(std::move(helperObj));

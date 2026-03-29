@@ -678,10 +678,8 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.objPath = objPath.string();
     linkOpts.exePath = exePath.string();
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
-    for (const auto &archive : linkOpts.archivePaths)
-        err << "debug-native-archive: " << archive << "\n";
 #if defined(_WIN32)
-    linkOpts.entrySymbol = "mainCRTStartup";
+    linkOpts.entrySymbol = "main";
     linkOpts.platform = linker::LinkPlatform::Windows;
     linkOpts.arch = linker::LinkArch::X86_64;
 #endif

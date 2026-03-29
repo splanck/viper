@@ -351,6 +351,7 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "VirtualAlloc",
         "VirtualFree",
         "GetLastError",
+        "BCryptGenRandom",
         "__acrt_iob_func",
         "__local_stdio_printf_options",
         "__local_stdio_scanf_options",
@@ -362,6 +363,15 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "__security_init_cookie",
         "__GSHandlerCheck",
         "__chkstk",
+        "_CrtDbgReport",
+        "_CrtDbgReportW",
+        "strcpy_s",
+        "strcat_s",
+        "_wsplitpath_s",
+        "_wmakepath_s",
+        "wcscpy_s",
+        "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
+        "rt_audio_shutdown",
     };
 
     for (const char *sym : kDynSymExact) {
@@ -430,6 +440,9 @@ static bool isKnownDynamicSymbol(const std::string &name) {
 /// formatting functions. Those definitions must participate in archive
 /// resolution instead of being forced down the dynamic-import path.
 static bool preferArchiveDefinition(const std::string &name) {
+    if (name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")
+        return false;
+
     if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" ||
         name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
         name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||

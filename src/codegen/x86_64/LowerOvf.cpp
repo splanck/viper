@@ -17,7 +17,7 @@
 //   ADDrr / SUBrr / IMULrr  dest, lhs, rhs
 //   JO  .Ltrap_ovf_<funcname>
 //
-// The trap block calls rt_trap to abort execution.
+// The trap block calls rt_trap_ovf to abort execution.
 //
 //===----------------------------------------------------------------------===//
 
@@ -56,7 +56,8 @@ namespace {
 /// @details Walks each machine basic block looking for ADDOvfrr, SUBOvfrr, and
 ///          IMULOvfrr pseudo-ops. Each is replaced with the real arithmetic
 ///          instruction (ADDrr, SUBrr, IMULrr) followed by a JCC with overflow
-///          condition to a shared trap block. The trap block calls rt_trap.
+///          condition to a shared trap block. The trap block calls
+///          rt_trap_ovf, which matches the no-argument lowering pattern.
 ///
 /// @param fn Machine IR function being rewritten in place.
 void lowerOverflowOps(MFunction &fn) {
@@ -76,7 +77,7 @@ void lowerOverflowOps(MFunction &fn) {
         MBasicBlock trapBlock{};
         trapBlock.label = trapLabel;
         trapBlock.append(
-            MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap")}));
+            MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_ovf")}));
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;

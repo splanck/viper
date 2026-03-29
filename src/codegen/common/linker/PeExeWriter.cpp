@@ -53,6 +53,7 @@ struct ImportLayout {
     uint32_t iatRva = 0;
     uint32_t iatSize = 0;
     std::unordered_map<std::string, uint32_t> slotRvas;
+    std::vector<std::pair<uint32_t, uint64_t>> slotInitializers;
 };
 
 struct TlsLayout {
@@ -194,6 +195,7 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
                 const auto slotIt = externalSlotRvas.find(fn);
                 if (slotIt != externalSlotRvas.end()) {
                     result.slotRvas[fn] = slotIt->second;
+                    result.slotInitializers.push_back({slotIt->second, hintNameRva});
                     minIatRva = std::min(minIatRva, slotIt->second);
                     maxIatEndRva = std::max(maxIatEndRva, slotIt->second + 8);
                 }
@@ -377,6 +379,9 @@ bool writePeExe(const std::string &path,
         return false;
     }
 
+    std::vector<std::vector<uint8_t>> ownedSectionData;
+    ownedSectionData.reserve(layout.sections.size());
+
     std::vector<PeSection> sections;
     sections.reserve(layout.sections.size() + 2);
 
@@ -387,12 +392,13 @@ bool writePeExe(const std::string &path,
 
         PeSection ps;
         ps.name = sectionNameFor(sec);
-        ps.data = &sec.data;
+        ownedSectionData.push_back(sec.data);
+        ps.data = &ownedSectionData.back();
         ps.alloc = sec.alloc;
         ps.executable = sec.executable;
         ps.writable = sec.writable;
         ps.virtualAddress = sec.alloc ? static_cast<uint32_t>(sec.virtualAddr - imageBase) : 0;
-        ps.virtualSize = static_cast<uint32_t>(sec.data.size());
+        ps.virtualSize = static_cast<uint32_t>(ownedSectionData.back().size());
         ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc);
         sections.push_back(ps);
 
@@ -413,6 +419,30 @@ bool writePeExe(const std::string &path,
         const uint32_t importRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
         importLayout = buildImportTables(imports, importRva, slotRvas);
         generatedImportData = importLayout.data;
+
+        auto patchExternalIatSlot = [&](uint32_t slotRva, uint64_t thunkValue) -> bool {
+            for (auto &sec : sections) {
+                if (!sec.alloc || sec.data == nullptr)
+                    continue;
+                if (slotRva < sec.virtualAddress || slotRva + 8 > sec.virtualAddress + sec.virtualSize)
+                    continue;
+                auto *bytes = const_cast<std::vector<uint8_t> *>(sec.data);
+                const size_t off = static_cast<size_t>(slotRva - sec.virtualAddress);
+                if (off + 8 > bytes->size())
+                    return false;
+                putLE64(*bytes, off, thunkValue);
+                return true;
+            }
+            return false;
+        };
+
+        for (const auto &[slotRva, thunkValue] : importLayout.slotInitializers) {
+            if (!patchExternalIatSlot(slotRva, thunkValue)) {
+                err << "error: PE import slot RVA 0x" << std::hex << slotRva << std::dec
+                    << " does not map to a writable output section\n";
+                return false;
+            }
+        }
 
         PeSection importSec;
         importSec.name = ".idata";

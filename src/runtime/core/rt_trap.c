@@ -54,6 +54,15 @@ void rt_trap_div0(void) {
     exit(1); // Match VM behavior if your VM uses a specific code; adjust here later if needed.
 }
 
+/// @brief Report an integer-overflow trap and terminate the process.
+/// @details Mirrors the checked-arithmetic trap path used by the VM/native
+///          backends so backend lowering can call a no-argument helper.
+void rt_trap_ovf(void) {
+    fprintf(stderr, "Viper runtime trap: integer overflow\n");
+    fflush(stderr);
+    exit(1);
+}
+
 /// @brief Assert that @p condition holds; otherwise trap with @p message.
 /// @details When @p condition is zero, evaluates @p message and raises a runtime
 ///          trap using @ref rt_trap. Empty or null messages use the default

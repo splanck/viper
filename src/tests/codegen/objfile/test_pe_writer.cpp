@@ -168,6 +168,31 @@ LinkLayout makeExceptionLayout() {
     return layout;
 }
 
+LinkLayout makeExternalIatLayout() {
+    constexpr uint64_t kImageBase = 0x140000000ULL;
+
+    LinkLayout layout;
+
+    OutputSection text;
+    text.name = ".text";
+    text.alloc = true;
+    text.executable = true;
+    text.data = {0xC3};
+    text.virtualAddr = kImageBase + 0x1000;
+    layout.sections.push_back(std::move(text));
+
+    OutputSection data;
+    data.name = ".data";
+    data.alloc = true;
+    data.writable = true;
+    data.data.resize(16, 0);
+    data.virtualAddr = kImageBase + 0x2000;
+    layout.sections.push_back(std::move(data));
+
+    layout.entryAddr = kImageBase + 0x1000;
+    return layout;
+}
+
 } // namespace
 
 TEST(PeWriter, ProducesDosStub) {
@@ -309,6 +334,49 @@ TEST(PeWriter, StartupStubBecomesEntryPoint) {
 
     EXPECT_NE(entryRva, 0x1000U);
     EXPECT_GT(entryRva, 0x1000U);
+}
+
+TEST(PeWriter, ExternalIatSlotsAreSeededWithLookupEntries) {
+    auto layout = makeExternalIatLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_external_iat.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path,
+                         layout,
+                         LinkArch::X86_64,
+                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         {{"ExitProcess", 0x2000}},
+                         false,
+                         err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t importRva = readU32(data, optOffset + 112 + 8);
+    uint32_t iatRva = readU32(data, optOffset + 112 + 12 * 8);
+    uint32_t iatSize = readU32(data, optOffset + 112 + 12 * 8 + 4);
+
+    EXPECT_EQ(iatRva, 0x2000U);
+    EXPECT_EQ(iatSize, 16U);
+
+    size_t importOff = rvaToOffset(data, importRva);
+    ASSERT_NE(importOff, static_cast<size_t>(-1));
+    uint32_t firstThunk = readU32(data, importOff + 16);
+    uint32_t originalFirstThunk = readU32(data, importOff + 0);
+    EXPECT_EQ(firstThunk, 0x2000U);
+
+    size_t iltOff = rvaToOffset(data, originalFirstThunk);
+    size_t iatOff = rvaToOffset(data, firstThunk);
+    ASSERT_NE(iltOff, static_cast<size_t>(-1));
+    ASSERT_NE(iatOff, static_cast<size_t>(-1));
+
+    const uint64_t iltEntry = readU64(data, iltOff);
+    const uint64_t iatEntry = readU64(data, iatOff);
+    EXPECT_NE(iltEntry, 0U);
+    EXPECT_EQ(iatEntry, iltEntry);
+    EXPECT_EQ(readU64(data, iatOff + 8), 0U);
 }
 
 TEST(PeWriter, TlsDirectoryIsWritten) {
