@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 
@@ -73,7 +74,10 @@ void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char
 
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     //=========================================================================
     // I32 Checked Overflow (IAddOvf, ISubOvf, IMulOvf at i32)
     //=========================================================================

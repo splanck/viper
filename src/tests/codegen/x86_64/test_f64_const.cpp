@@ -45,7 +45,10 @@ namespace {
 }
 
 [[nodiscard]] bool rodataContainsF64Label(const std::string &asmText) {
-    const std::size_t rodataPos = asmText.find(".section .rodata");
+    // Accept both .rodata (ELF/Mach-O) and .rdata (COFF/Windows).
+    std::size_t rodataPos = asmText.find(".section .rodata");
+    if (rodataPos == std::string::npos)
+        rodataPos = asmText.find(".section .rdata");
     if (rodataPos == std::string::npos) {
         return false;
     }

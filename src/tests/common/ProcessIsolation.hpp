@@ -88,5 +88,18 @@ bool dispatchChild(int argc, char *argv[]);
 /// On POSIX, this is unused (fork inherits the function pointer).
 void setChildFunction(std::function<void()> fn);
 
+/// @brief Pre-register a child function for Windows indexed dispatch.
+///
+/// On Windows, runIsolated() cannot transfer a function pointer across
+/// CreateProcess because the child starts with a fresh address space.
+/// Tests that use runIsolated() must call registerChildFunction() for
+/// each function (in call order) at the top of main(), before
+/// dispatchChild(). The child process re-executes main(), re-registers
+/// the same functions, and dispatchChild() dispatches by index.
+///
+/// On POSIX, this stores the function but fork-based dispatch doesn't
+/// need it.
+void registerChildFunction(std::function<void()> fn);
+
 } // namespace tests
 } // namespace viper

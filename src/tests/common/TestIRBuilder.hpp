@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Instr.hpp"
@@ -129,8 +130,11 @@ class TestIRBuilder {
 } // namespace viper::tests
 
 /// @brief Macro wrapper that instantiates a TestIRBuilder and executes @p BODY.
+/// Includes dispatchChild() for Windows process-isolation compatibility.
 #define TEST_WITH_IL(NAME, BODY)                                                                   \
-    int main() {                                                                                   \
+    int main(int argc, char *argv[]) {                                                             \
+        if (viper::tests::dispatchChild(argc, argv))                                               \
+            return 0;                                                                              \
         viper::tests::TestIRBuilder NAME;                                                          \
         BODY return 0;                                                                             \
     }

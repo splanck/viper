@@ -38,7 +38,28 @@ static void times2_handler(void **args, void *result) {
         *reinterpret_cast<int64_t *>(result) = y;
 }
 
+static void callUnknownExtern() {
+    il::vm::RuntimeCallContext ctx{};
+    il::vm::Slot arg{};
+    arg.i64 = 7;
+    (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
+}
+
+static void callWrongArgCount() {
+    // Register the extern so we test arg-count mismatch, not "unknown helper".
+    il::vm::ExternDesc ext;
+    ext.name = "times2";
+    ext.signature = make_signature("times2", {SigParam::Kind::I64}, {SigParam::Kind::I64});
+    ext.fn = reinterpret_cast<void *>(&times2_handler);
+    il::vm::RuntimeBridge::registerExtern(ext);
+
+    il::vm::RuntimeCallContext ctx{};
+    (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
+}
+
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(callUnknownExtern);
+    viper::tests::registerChildFunction(callWrongArgCount);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -66,12 +87,7 @@ int main(int argc, char *argv[]) {
 
     // Case 2: Unknown extern -> trap (capture in child).
     {
-        auto result = viper::tests::runIsolated([]() {
-            il::vm::RuntimeCallContext ctx{};
-            il::vm::Slot arg{};
-            arg.i64 = 7;
-            (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
-        });
+        auto result = viper::tests::runIsolated(callUnknownExtern);
         assert(result.trapped());
         assert(result.stderrText.find("unknown runtime helper 'times2'") != std::string::npos);
     }
@@ -84,11 +100,7 @@ int main(int argc, char *argv[]) {
         ext.fn = reinterpret_cast<void *>(&times2_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
 
-        auto result = viper::tests::runIsolated([]() {
-            il::vm::RuntimeCallContext ctx{};
-            // Provide wrong number of args (0 instead of 1)
-            (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
-        });
+        auto result = viper::tests::runIsolated(callWrongArgCount);
         assert(result.trapped());
         assert(result.stderrText.find("expected 1 argument(s), got 0") != std::string::npos);
 

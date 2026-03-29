@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 
@@ -186,7 +187,10 @@ void expectInvalidCastTrap(double val, bool isSigned) {
 
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const double nan = std::numeric_limits<double>::quiet_NaN();

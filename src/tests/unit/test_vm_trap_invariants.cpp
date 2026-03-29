@@ -16,6 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 
@@ -296,7 +297,10 @@ static int testSuccessfulExecutionNoTrap() {
 // Main
 //===----------------------------------------------------------------------===//
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     std::printf("Running trap invariant tests...\n");
 
     int failures = 0;

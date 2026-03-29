@@ -23,6 +23,7 @@ static void call_chr_negative() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_chr_negative);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

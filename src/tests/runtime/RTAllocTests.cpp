@@ -23,6 +23,7 @@ static void call_alloc_negative() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_alloc_negative);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

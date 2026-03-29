@@ -71,6 +71,10 @@ static void expect_oob_message(const std::string &stderr_output) {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(invoke_oob_get);
+    viper::tests::registerChildFunction(invoke_oob_set);
+    viper::tests::registerChildFunction(invoke_copy_null_src);
+    viper::tests::registerChildFunction(invoke_copy_null_dst);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

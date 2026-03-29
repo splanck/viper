@@ -65,19 +65,17 @@ static void testLargeStackAllocation() {
     assert(result == 0 && "Large allocation with large stack should succeed");
 }
 
+/// Child function for test 2: 32KB alloc on 16KB stack.
+static void runSmallStackOverflow() {
+    auto m = buildAllocaModule(32 * 1024);
+    il::vm::RunConfig config;
+    config.stackBytes = 16 * 1024;
+    (void)il::vm::runModule(m, config);
+}
+
 /// Test 2: Small stack size triggers overflow on allocations that fit in default.
 static void testSmallStackOverflow() {
-    // Allocate 32KB - would fit in default 64KB but not in 16KB stack.
-    constexpr int64_t allocSize = 32 * 1024;     // 32KB
-    constexpr std::size_t stackSize = 16 * 1024; // 16KB
-
-    auto m = buildAllocaModule(allocSize);
-
-    auto result = viper::tests::runIsolated([&]() {
-        il::vm::RunConfig config;
-        config.stackBytes = stackSize;
-        (void)il::vm::runModule(m, config);
-    });
+    auto result = viper::tests::runIsolated(runSmallStackOverflow);
     assert(result.trapped());
     bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Small stack should trap on large allocation");
@@ -97,24 +95,25 @@ static void testDefaultStackSize() {
     assert(result == 0 && "Default stack should handle 32KB allocation");
 }
 
+/// Child function for test 4: 512-byte alloc on 256-byte stack.
+static void runVerySmallStack() {
+    auto m = buildAllocaModule(512);
+    il::vm::RunConfig config;
+    config.stackBytes = 256;
+    (void)il::vm::runModule(m, config);
+}
+
 /// Test 4: Very small stack (256 bytes) traps on any significant allocation.
 static void testVerySmallStack() {
-    constexpr int64_t allocSize = 512;     // 512 bytes
-    constexpr std::size_t stackSize = 256; // 256 bytes
-
-    auto m = buildAllocaModule(allocSize);
-
-    auto result = viper::tests::runIsolated([&]() {
-        il::vm::RunConfig config;
-        config.stackBytes = stackSize;
-        (void)il::vm::runModule(m, config);
-    });
+    auto result = viper::tests::runIsolated(runVerySmallStack);
     assert(result.trapped());
     bool hasOverflow = result.stderrText.find("stack overflow in alloca") != std::string::npos;
     assert(hasOverflow && "Very small stack should trap on 512-byte allocation");
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(runSmallStackOverflow);
+    viper::tests::registerChildFunction(runVerySmallStack);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

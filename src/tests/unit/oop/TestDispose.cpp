@@ -17,6 +17,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
+#include "tests/common/ProcessIsolation.hpp"
 #include "tests/common/VmFixture.hpp"
 
 using namespace il::frontends::basic;
@@ -84,6 +85,8 @@ END
 }
 
 int main(int argc, char **argv) {
+    if (viper::tests::dispatchChild(argc, const_cast<char **>(argv)))
+        return 0;
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

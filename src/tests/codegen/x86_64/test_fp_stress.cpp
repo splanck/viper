@@ -273,9 +273,10 @@ TestResult testFpConstSpecialVals() {
         return r;
     }
 
-    // Verify .rodata section exists
-    if (cg.asmText.find(".section .rodata") == std::string::npos) {
-        r.failReason = "No .rodata section found";
+    // Verify .rodata/.rdata section exists
+    if (cg.asmText.find(".section .rodata") == std::string::npos &&
+        cg.asmText.find(".section .rdata") == std::string::npos) {
+        r.failReason = "No .rodata/.rdata section found";
         return r;
     }
 

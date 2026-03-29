@@ -71,6 +71,8 @@ static void test_thread_join_for_timeout() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_thread_start_null);
+    viper::tests::registerChildFunction(call_thread_join_null);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

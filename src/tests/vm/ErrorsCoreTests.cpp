@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/TestIRBuilder.hpp"
 #include "vm/err_bridge.hpp"
 
@@ -67,7 +68,10 @@ std::string captureTrap(il::vm::TrapKind kind, int line) {
 }
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     struct Sample {
         il::vm::TrapKind kind;
         int line;

@@ -28,6 +28,8 @@ static void call_input_7_5foo() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_input_12abc);
+    viper::tests::registerChildFunction(call_input_7_5foo);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

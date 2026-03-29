@@ -54,7 +54,10 @@ namespace {
 }
 
 [[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText) {
-    const auto rodataPos = asmText.find(".section .rodata");
+    // Accept both .rodata (ELF/Mach-O) and .rdata (COFF/Windows).
+    auto rodataPos = asmText.find(".section .rodata");
+    if (rodataPos == std::string::npos)
+        rodataPos = asmText.find(".section .rdata");
     if (rodataPos == std::string::npos) {
         return false;
     }

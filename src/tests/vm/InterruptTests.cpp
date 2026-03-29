@@ -162,6 +162,7 @@ static int testNormalProgramAfterClear() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(runInterruptChild);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

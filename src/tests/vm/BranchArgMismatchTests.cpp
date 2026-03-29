@@ -13,8 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "common/VmFixture.hpp"
+#include "common/ProcessIsolation.hpp"
 #include "il/build/IRBuilder.hpp"
+#include "vm/VM.hpp"
 
 #include <cassert>
 #include <cerrno>
@@ -23,9 +24,9 @@
 
 using namespace il::core;
 
-int main() {
-    using viper::tests::VmFixture;
-
+/// Build the malformed module and run it in the VM (used as child function).
+/// The module has a branch with cleared args → branch argument count mismatch.
+static void buildAndRunMalformedBranch() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -33,7 +34,6 @@ int main() {
     builder.createBlock(fn, "target", {Param{"x", Type(Type::Kind::I64), 0}});
     auto &entry = fn.blocks.front();
     auto &target = fn.blocks.back();
-    assert(target.params.size() == 1);
 
     builder.setInsertPoint(entry);
     builder.br(target, {Value::constInt(42)});
@@ -44,8 +44,19 @@ int main() {
     builder.setInsertPoint(target);
     builder.emitRet(std::optional<Value>(Value::constInt(0)), {1, 2, 1});
 
-    VmFixture fixture;
-    const std::string diag = fixture.captureTrap(module);
+    il::vm::VM vm(module);
+    vm.run();
+}
+
+int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(buildAndRunMalformedBranch);
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    auto result = viper::tests::runIsolated(buildAndRunMalformedBranch);
+    assert(result.trapped());
+    const std::string &diag = result.stderrText;
+
     const bool hasMessage = diag.find("branch argument count mismatch") != std::string::npos;
     assert(hasMessage && "expected branch argument mismatch diagnostic");
 

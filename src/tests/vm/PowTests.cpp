@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -89,7 +90,10 @@ void buildPowOverflow(Module &module) {
 
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     using viper::tests::VmFixture;
 
     VmFixture fixture;

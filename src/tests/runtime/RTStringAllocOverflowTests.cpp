@@ -25,6 +25,7 @@ static void call_string_len_overflow() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_string_len_overflow);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

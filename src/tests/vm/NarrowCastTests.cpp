@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 
@@ -101,7 +102,10 @@ void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind) {
 
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     //=========================================================================
     // CastSiNarrowChk to I32 tests
     //=========================================================================

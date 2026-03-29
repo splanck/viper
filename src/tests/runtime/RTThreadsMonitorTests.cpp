@@ -87,6 +87,7 @@ static void test_wait_for_timeout() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_enter_null);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

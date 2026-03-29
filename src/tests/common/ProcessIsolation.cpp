@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <vector>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -58,11 +59,17 @@ namespace viper::tests {
 // ─── Shared state for Windows child dispatch ────────────────────────────────
 
 static std::function<void()> g_childFunction;
+static std::vector<std::function<void()>> g_registeredChildFunctions;
+static int g_nextRunIsolatedIndex = 0;
 static const char *const kChildRunFlag = "--viper-child-run";
 static const char *const kChildILFlag = "--viper-child-il=";
 
 void setChildFunction(std::function<void()> fn) {
     g_childFunction = std::move(fn);
+}
+
+void registerChildFunction(std::function<void()> fn) {
+    g_registeredChildFunctions.push_back(std::move(fn));
 }
 
 // ─── Windows implementation ─────────────────────────────────────────────────
@@ -244,7 +251,11 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs) 
 
 ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
     setChildFunction(std::move(childFn));
-    return launchChild(kChildRunFlag, timeoutMs);
+    // Pass the call index so the child can dispatch to the correct
+    // pre-registered function (function pointers don't survive CreateProcess).
+    int idx = g_nextRunIsolatedIndex++;
+    std::string arg = std::string(kChildRunFlag) + "=" + std::to_string(idx);
+    return launchChild(arg, timeoutMs);
 }
 
 ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
@@ -276,9 +287,17 @@ ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
 
 bool dispatchChild(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], kChildRunFlag) == 0) {
+        // Match --viper-child-run or --viper-child-run=N
+        if (std::strncmp(argv[i], kChildRunFlag, std::strlen(kChildRunFlag)) == 0) {
             suppressDialogs();
-            if (g_childFunction) {
+            const char *rest = argv[i] + std::strlen(kChildRunFlag);
+            if (*rest == '=') {
+                // Indexed dispatch: call the pre-registered function at index N.
+                int idx = std::atoi(rest + 1);
+                if (idx >= 0 && idx < static_cast<int>(g_registeredChildFunctions.size())) {
+                    g_registeredChildFunctions[idx]();
+                }
+            } else if (g_childFunction) {
                 g_childFunction();
             }
             _exit(0);

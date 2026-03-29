@@ -27,6 +27,8 @@ static void call_mid_negative() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_left_negative);
+    viper::tests::registerChildFunction(call_mid_negative);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

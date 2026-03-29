@@ -75,12 +75,7 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
 
     return true;
 }
-} // namespace
-
-int main(int argc, char *argv[]) {
-    if (viper::tests::dispatchChild(argc, argv))
-        return 0;
-
+Module buildEntryArgModule() {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -94,30 +89,41 @@ int main(int argc, char *argv[]) {
         module.functions.back(), "entry", std::vector<Param>{{"p0", Type(Type::Kind::I64), 0}});
     builder.setInsertPoint(tooFewEntry);
     builder.emitRet(std::optional<Value>{}, {1, 1, 1});
+    return module;
+}
 
-    auto &tooManyFn = module.functions.front();
-    auto &tooFewFn = module.functions.back();
-
+void runTooManyArgs() {
+    auto module = buildEntryArgModule();
     il::vm::Slot slot{};
     slot.i64 = 42;
+    il::vm::VM vm(module);
+    il::vm::VMTestHook::run(vm, module.functions.front(), {slot});
+}
 
-    // Capture: too many args
+void runTooFewArgs() {
+    auto module = buildEntryArgModule();
+    il::vm::VM vm(module);
+    il::vm::VMTestHook::run(vm, module.functions.back(), {});
+}
+} // namespace
+
+int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(runTooManyArgs);
+    viper::tests::registerChildFunction(runTooFewArgs);
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
+    // Too many args
     {
-        auto result = viper::tests::runIsolated([&]() {
-            il::vm::VM vm(module);
-            il::vm::VMTestHook::run(vm, tooManyFn, {slot});
-        });
+        auto result = viper::tests::runIsolated(runTooManyArgs);
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_many_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);
     }
 
-    // Capture: too few args
+    // Too few args
     {
-        auto result = viper::tests::runIsolated([&]() {
-            il::vm::VM vm(module);
-            il::vm::VMTestHook::run(vm, tooFewFn, {});
-        });
+        auto result = viper::tests::runIsolated(runTooFewArgs);
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_few_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);

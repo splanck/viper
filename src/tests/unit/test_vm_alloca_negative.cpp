@@ -36,6 +36,7 @@ static void buildAndRun() {
 }
 
 int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(buildAndRun);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
