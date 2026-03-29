@@ -65,6 +65,13 @@ extern rt_string rt_const_cstr(const char *s);
 /* Forward declarations for Canvas3D draw functions */
 extern void rt_canvas3d_begin(void *obj, void *camera);
 extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
+                                               void *mesh,
+                                               const double *model_matrix,
+                                               void *material,
+                                               const void *motion_key,
+                                               const float *prev_bone_palette,
+                                               const float *prev_morph_weights);
 extern void rt_canvas3d_end(void *obj);
 
 #define NODE_INIT_CHILDREN 4
@@ -276,7 +283,7 @@ static void draw_node(rt_scene_node3d *node,
                 }
             }
         }
-        rt_canvas3d_draw_mesh_matrix(canvas3d, draw_mesh, m, node->material);
+        rt_canvas3d_draw_mesh_matrix_keyed(canvas3d, draw_mesh, m, node->material, node, NULL, NULL);
     }
 
     for (int32_t i = 0; i < node->child_count; i++)

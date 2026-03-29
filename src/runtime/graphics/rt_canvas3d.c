@@ -78,6 +78,15 @@ typedef struct {
     float sort_key; /* squared distance from camera (for transparent sorting) */
 } deferred_draw_t;
 
+typedef struct {
+    const void *key;
+    float current_model[16];
+    float prev_model[16];
+    int64_t last_frame_seen;
+    int8_t has_current;
+    int8_t has_prev;
+} canvas_motion_history_t;
+
 static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed) {
     if (!buf || !capacity || needed <= 0)
         return 0;
@@ -160,6 +169,75 @@ static void mat4_d2f(const double *src, float *dst) {
         dst[i] = (float)src[i];
 }
 
+static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
+    if (!c || needed <= 0)
+        return 0;
+    if (c->motion_history_capacity >= needed)
+        return 1;
+
+    int32_t new_cap = c->motion_history_capacity > 0 ? c->motion_history_capacity : 32;
+    while (new_cap < needed) {
+        if (new_cap > INT32_MAX / 2)
+            new_cap = needed;
+        else
+            new_cap *= 2;
+    }
+
+    canvas_motion_history_t *new_hist = (canvas_motion_history_t *)realloc(
+        c->motion_history, (size_t)new_cap * sizeof(canvas_motion_history_t));
+    if (!new_hist)
+        return 0;
+    c->motion_history = new_hist;
+    c->motion_history_capacity = new_cap;
+    return 1;
+}
+
+static void canvas3d_resolve_previous_model(rt_canvas3d *c,
+                                            const void *motion_key,
+                                            const float *current_model,
+                                            float *out_prev_model,
+                                            int8_t *out_has_prev) {
+    if (out_has_prev)
+        *out_has_prev = 0;
+    if (out_prev_model)
+        memset(out_prev_model, 0, sizeof(float) * 16);
+    if (!c || !motion_key || !current_model || !out_prev_model || !out_has_prev)
+        return;
+
+    canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
+    for (int32_t i = 0; i < c->motion_history_count; i++) {
+        if (hist[i].key != motion_key)
+            continue;
+
+        if (hist[i].last_frame_seen != c->frame_serial) {
+            if (hist[i].has_current) {
+                memcpy(hist[i].prev_model, hist[i].current_model, sizeof(hist[i].prev_model));
+                hist[i].has_prev = 1;
+            }
+            memcpy(hist[i].current_model, current_model, sizeof(hist[i].current_model));
+            hist[i].has_current = 1;
+            hist[i].last_frame_seen = c->frame_serial;
+        }
+
+        if (hist[i].has_prev) {
+            memcpy(out_prev_model, hist[i].prev_model, sizeof(hist[i].prev_model));
+            *out_has_prev = 1;
+        }
+        return;
+    }
+
+    if (!ensure_motion_history_capacity(c, c->motion_history_count + 1))
+        return;
+
+    hist = (canvas_motion_history_t *)c->motion_history;
+    canvas_motion_history_t *entry = &hist[c->motion_history_count++];
+    memset(entry, 0, sizeof(*entry));
+    entry->key = motion_key;
+    memcpy(entry->current_model, current_model, sizeof(entry->current_model));
+    entry->has_current = 1;
+    entry->last_frame_seen = c->frame_serial;
+}
+
 /* Build light params array from canvas light pointers */
 static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
@@ -204,6 +282,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->trans_cmds);
     c->trans_cmds = NULL;
     c->trans_capacity = 0;
+    free(c->motion_history);
+    c->motion_history = NULL;
+    c->motion_history_count = c->motion_history_capacity = 0;
     /* Free any leftover temp buffers (e.g., from skinned draws) */
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
@@ -293,6 +374,10 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->shadow_resolution = 1024;
     c->shadow_bias = 0.005f;
     c->shadow_rt = NULL;
+    c->frame_serial = 0;
+    c->motion_history = NULL;
+    c->motion_history_count = 0;
+    c->motion_history_capacity = 0;
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -642,6 +727,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->cached_cam_pos[2] = params.position[2];
 
     /* Reset draw command queue for this frame */
+    c->frame_serial++;
     c->draw_count = 0;
 
     /* Cache VP matrix for debug drawing (backend-agnostic) */
@@ -661,10 +747,17 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->in_frame = 1;
 }
 
-void rt_canvas3d_draw_mesh_matrix(void *obj,
-                                  void *mesh_obj,
-                                  const double *model_matrix,
-                                  void *material_obj) {
+int64_t rt_canvas3d_get_frame_serial(void *obj) {
+    return obj ? ((rt_canvas3d *)obj)->frame_serial : 0;
+}
+
+void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
+                                        void *mesh_obj,
+                                        const double *model_matrix,
+                                        void *material_obj,
+                                        const void *motion_key,
+                                        const float *prev_bone_palette,
+                                        const float *prev_morph_weights) {
     if (!obj || !mesh_obj || !model_matrix || !material_obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -682,6 +775,7 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
         return;
 
     deferred_draw_t *dd = &((deferred_draw_t *)c->draw_cmds)[c->draw_count++];
+    memset(dd, 0, sizeof(*dd));
 
     /* Build draw command */
     dd->cmd.vertices = mesh->vertices;
@@ -689,6 +783,8 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     dd->cmd.indices = mesh->indices;
     dd->cmd.index_count = mesh->index_count;
     mat4_d2f(model_matrix, dd->cmd.model_matrix);
+    canvas3d_resolve_previous_model(
+        c, motion_key, dd->cmd.model_matrix, dd->cmd.prev_model_matrix, &dd->cmd.has_prev_model_matrix);
     dd->cmd.diffuse_color[0] = (float)mat->diffuse[0];
     dd->cmd.diffuse_color[1] = (float)mat->diffuse[1];
     dd->cmd.diffuse_color[2] = (float)mat->diffuse[2];
@@ -726,6 +822,7 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
 
     /* Pass through bone palette for GPU skinning (MTL-09) */
     dd->cmd.bone_palette = mesh->bone_palette;
+    dd->cmd.prev_bone_palette = prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette;
     dd->cmd.bone_count = mesh->bone_count;
 
     /* GPU morph payloads are supplied by DrawMeshMorphed via transient mesh fields.
@@ -733,6 +830,7 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     dd->cmd.morph_deltas = mesh->morph_deltas;
     dd->cmd.morph_normal_deltas = mesh->morph_normal_deltas;
     dd->cmd.morph_weights = mesh->morph_weights;
+    dd->cmd.prev_morph_weights = prev_morph_weights ? prev_morph_weights : mesh->prev_morph_weights;
     dd->cmd.morph_shape_count = mesh->morph_shape_count;
 
     /* Build light params */
@@ -755,10 +853,18 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     }
 }
 
+void rt_canvas3d_draw_mesh_matrix(void *obj,
+                                  void *mesh_obj,
+                                  const double *model_matrix,
+                                  void *material_obj) {
+    rt_canvas3d_draw_mesh_matrix_keyed(obj, mesh_obj, model_matrix, material_obj, NULL, NULL, NULL);
+}
+
 void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
     if (!transform_obj)
         return;
-    rt_canvas3d_draw_mesh_matrix(obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj);
+    rt_canvas3d_draw_mesh_matrix_keyed(
+        obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj, transform_obj, NULL, NULL);
 }
 
 void rt_canvas3d_end(void *obj) {
@@ -783,28 +889,31 @@ void rt_canvas3d_end(void *obj) {
                                       float *out_g,
                                       float *out_b);
 
-        /* Determine output buffer: render target or window framebuffer */
         uint8_t *out_pixels = NULL;
         int32_t out_w = 0, out_h = 0, out_stride = 0;
 
-        if (c->render_target) {
-            out_pixels = c->render_target->color_buf;
-            out_w = c->render_target->width;
-            out_h = c->render_target->height;
-            out_stride = c->render_target->stride;
+        if (c->backend && c->backend->draw_skybox) {
+            c->backend->draw_skybox(c->backend_ctx, c->skybox);
         } else {
-            vgfx_framebuffer_t fb;
-            if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb)) {
-                out_pixels = fb.pixels;
-                out_w = fb.width;
-                out_h = fb.height;
-                out_stride = fb.stride;
+            /* Determine output buffer: render target or window framebuffer */
+            if (c->render_target) {
+                out_pixels = c->render_target->color_buf;
+                out_w = c->render_target->width;
+                out_h = c->render_target->height;
+                out_stride = c->render_target->stride;
+            } else {
+                vgfx_framebuffer_t fb;
+                if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb)) {
+                    out_pixels = fb.pixels;
+                    out_w = fb.width;
+                    out_h = fb.height;
+                    out_stride = fb.stride;
+                }
             }
         }
 
-        if (c->backend && c->backend->draw_skybox) {
-            c->backend->draw_skybox(c->backend_ctx, c->skybox);
-        } else if (out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
+        if (!c->backend || !c->backend->draw_skybox) {
+            if (out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
             float vp_rot[16];
             memcpy(vp_rot, c->cached_vp, sizeof(float) * 16);
             vp_rot[3] = 0.0f;
@@ -829,6 +938,7 @@ void rt_canvas3d_end(void *obj) {
                     dst[2] = (uint8_t)(b * 255.0f);
                     dst[3] = 0xFF;
                 }
+            }
             }
         }
     }

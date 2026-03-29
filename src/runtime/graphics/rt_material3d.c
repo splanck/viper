@@ -15,8 +15,9 @@
 //     pointers to GC-managed Pixels/CubeMap3D objects (not owned).
 //   - Alpha [0.0=invisible, 1.0=opaque] controls transparency sorting
 //     in Canvas3D.End() — opaque draws first, transparent back-to-front.
-//   - env_map and reflectivity are reserved for future environment reflection
-//     support. The setters store values but no backend currently uses them.
+//   - env_map and reflectivity are forwarded through the backend draw command.
+//     OpenGL consumes them for cubemap reflections; other backends may ignore
+//     them until their reflection paths are implemented.
 //
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h
 //

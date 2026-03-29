@@ -1,4 +1,8 @@
-# OGL-19: GPU Morph Normal-Delta Parity
+# OGL-19: GPU Morph Normal-Delta Parity — DONE
+
+## Status
+
+Implemented through shared morph-normal payload packing in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c) and OpenGL vertex-shader consumption in [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c).
 
 ## Depends On
 

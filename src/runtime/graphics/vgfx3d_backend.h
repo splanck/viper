@@ -38,6 +38,7 @@ typedef struct {
     const uint32_t *indices;
     uint32_t index_count;
     float model_matrix[16];   /* row-major float */
+    float prev_model_matrix[16]; /* previous-frame row-major float */
     float diffuse_color[4];   /* RGBA material color */
     float specular[3];        /* RGB specular color */
     float shininess;          /* specular exponent */
@@ -57,12 +58,17 @@ typedef struct {
     int8_t has_splat;              /* 1 = terrain splat active */
     /* GPU skeletal skinning (MTL-09): set by rt_skeleton3d.c for GPU path */
     const float *bone_palette;     /* bone_count * 16 floats (4x4 row-major) */
+    const float *prev_bone_palette; /* previous-frame palette or NULL */
     int32_t bone_count;            /* number of bones (0 = no skinning) */
     /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
     const float *morph_deltas;     /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats or NULL */
     const float *morph_weights;    /* shape_count floats */
+    const float *prev_morph_weights; /* previous-frame shape_count floats or NULL */
     int32_t morph_shape_count;     /* number of active morph shapes (0 = none) */
+    const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
+    int8_t has_prev_model_matrix;  /* 1 when prev_model_matrix is valid */
+    int8_t has_prev_instance_matrices; /* 1 when prev_instance_matrices matches instance_count */
 } vgfx3d_draw_cmd_t;
 
 /*==========================================================================

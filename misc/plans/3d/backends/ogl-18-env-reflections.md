@@ -1,4 +1,8 @@
-# OGL-18: Environment Reflections From CubeMap Materials
+# OGL-18: Environment Reflections From CubeMap Materials — DONE
+
+## Status
+
+Implemented through shared `env_map` / `reflectivity` draw-command forwarding in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) and cubemap sampling in the OpenGL material shader at [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c).
 
 ## Depends On
 

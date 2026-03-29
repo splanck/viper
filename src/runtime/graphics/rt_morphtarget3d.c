@@ -52,8 +52,12 @@ typedef struct {
     void *vptr;
     vgfx3d_morph_shape_t shapes[VGFX3D_MAX_MORPH_SHAPES];
     float weights[VGFX3D_MAX_MORPH_SHAPES];
+    float prev_weights[VGFX3D_MAX_MORPH_SHAPES];
+    float motion_weight_snapshot[VGFX3D_MAX_MORPH_SHAPES];
     int32_t shape_count;
     int32_t vertex_count;
+    int64_t last_motion_frame;
+    int8_t has_prev_weights;
 } rt_morphtarget3d;
 
 static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name) {
@@ -87,8 +91,12 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
     mt->vptr = NULL;
     memset(mt->shapes, 0, sizeof(mt->shapes));
     memset(mt->weights, 0, sizeof(mt->weights));
+    memset(mt->prev_weights, 0, sizeof(mt->prev_weights));
+    memset(mt->motion_weight_snapshot, 0, sizeof(mt->motion_weight_snapshot));
     mt->shape_count = 0;
     mt->vertex_count = (int32_t)vertex_count;
+    mt->last_motion_frame = 0;
+    mt->has_prev_weights = 0;
     rt_obj_set_finalizer(mt, rt_morphtarget3d_finalize);
     return mt;
 }
@@ -231,6 +239,20 @@ int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
 }
 
+static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64_t frame_serial) {
+    if (!mt)
+        return NULL;
+    if (mt->last_motion_frame != frame_serial) {
+        if (mt->last_motion_frame != 0) {
+            memcpy(mt->prev_weights, mt->motion_weight_snapshot, sizeof(mt->prev_weights));
+            mt->has_prev_weights = 1;
+        }
+        memcpy(mt->motion_weight_snapshot, mt->weights, sizeof(mt->motion_weight_snapshot));
+        mt->last_motion_frame = frame_serial;
+    }
+    return mt->has_prev_weights ? mt->prev_weights : NULL;
+}
+
 /*==========================================================================
  * Mesh integration (placeholder — morph targets passed at draw time)
  *=========================================================================*/
@@ -264,6 +286,8 @@ void rt_canvas3d_draw_mesh_morphed(
 
     rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
+        const float *prev_weights =
+            morphtarget_prepare_prev_weights(mt, rt_canvas3d_get_frame_serial(canvas));
         size_t delta_count = (size_t)mt->shape_count * (size_t)mt->vertex_count * 3;
         float *packed_deltas = NULL;
         float *packed_normal_deltas = NULL;
@@ -315,8 +339,15 @@ void rt_canvas3d_draw_mesh_morphed(
         tmp.morph_deltas = packed_deltas;
         tmp.morph_normal_deltas = packed_normal_deltas;
         tmp.morph_weights = packed_weights;
+        tmp.prev_morph_weights = prev_weights;
         tmp.morph_shape_count = mt->shape_count;
-        rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
+                                           &tmp,
+                                           ((mat4_impl *)transform)->m,
+                                           material,
+                                           transform,
+                                           NULL,
+                                           prev_weights);
         return;
     }
 

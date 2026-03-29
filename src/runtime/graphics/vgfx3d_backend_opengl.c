@@ -90,6 +90,7 @@ typedef unsigned int GLbitfield;
 #define GL_FRAMEBUFFER 0x8D40
 #define GL_RENDERBUFFER 0x8D41
 #define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_COLOR_ATTACHMENT1 0x8CE1
 #define GL_DEPTH_ATTACHMENT 0x8D00
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
 #define GL_LINE 0x1B01
@@ -170,6 +171,7 @@ typedef void (*PFNGLRENDERBUFFERSTORAGEPROC)(GLenum, GLenum, GLsizei, GLsizei);
 typedef void (*PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum, GLenum, GLenum, GLuint);
 typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *);
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
+typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
 
 static struct {
@@ -246,6 +248,7 @@ static struct {
     PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
     PFNGLREADPIXELSPROC ReadPixels;
     PFNGLDRAWBUFFERPROC DrawBuffer;
+    PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
 } gl;
 
@@ -319,8 +322,11 @@ typedef struct {
 
     GLuint instance_vbo;
     size_t instance_vbo_capacity;
+    GLuint prev_instance_vbo;
+    size_t prev_instance_vbo_capacity;
 
     GLuint bone_ubo;
+    GLuint prev_bone_ubo;
 
     GLuint morph_buffer;
     GLuint morph_tbo;
@@ -332,6 +338,7 @@ typedef struct {
 
     GLuint scene_fbo;
     GLuint scene_color_tex;
+    GLuint scene_motion_tex;
     GLuint scene_depth_tex;
     int32_t scene_width;
     int32_t scene_height;
@@ -374,14 +381,15 @@ typedef struct {
     float fog_color[3];
     float clearR, clearG, clearB;
 
-    GLint uModelMatrix, uViewProjection, uNormalMatrix, uShadowVP;
+    GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix, uShadowVP;
     GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
     GLint uUnlit, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap, uHasEmissiveMap;
     GLint uHasEnvMap, uReflectivity;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
     GLint uShadowEnabled, uShadowBias;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
-    GLint uMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
+    GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
+    GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
     GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex, uEnvMap;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[8], uLightDir[8], uLightPos[8], uLightColor[8], uLightIntensity[8];
@@ -395,7 +403,7 @@ typedef struct {
     GLint skybox_uViewRotation;
     GLint skybox_uSkybox;
 
-    GLint postfx_uSceneTex, postfx_uSceneDepthTex, postfx_uInvResolution;
+    GLint postfx_uSceneTex, postfx_uSceneDepthTex, postfx_uSceneMotionTex, postfx_uInvResolution;
     GLint postfx_uBloomEnabled, postfx_uBloomThreshold, postfx_uBloomIntensity;
     GLint postfx_uTonemapMode, postfx_uTonemapExposure, postfx_uFxaaEnabled;
     GLint postfx_uColorGradeEnabled, postfx_uCgBrightness, postfx_uCgContrast, postfx_uCgSaturation;
@@ -573,6 +581,7 @@ static int load_gl(void) {
     LOADP(FramebufferRenderbuffer);
     LOADP(ReadPixels);
     LOADP(DrawBuffer);
+    LOADP(DrawBuffers);
     LOADP(ReadBuffer);
 
 #undef LOAD
@@ -596,32 +605,47 @@ static const char *glsl_vertex_src =
     "layout(location=8) in vec4 aInstanceRow1;\n"
     "layout(location=9) in vec4 aInstanceRow2;\n"
     "layout(location=10) in vec4 aInstanceRow3;\n"
+    "layout(location=11) in vec4 aPrevInstanceRow0;\n"
+    "layout(location=12) in vec4 aPrevInstanceRow1;\n"
+    "layout(location=13) in vec4 aPrevInstanceRow2;\n"
+    "layout(location=14) in vec4 aPrevInstanceRow3;\n"
     "layout(std140) uniform Bones { mat4 uBonePalette[128]; };\n"
+    "layout(std140) uniform PrevBones { mat4 uPrevBonePalette[128]; };\n"
     "uniform mat4 uModelMatrix;\n"
+    "uniform mat4 uPrevModelMatrix;\n"
     "uniform mat4 uViewProjection;\n"
+    "uniform mat4 uPrevViewProjection;\n"
     "uniform mat4 uNormalMatrix;\n"
     "uniform int uUseInstancing;\n"
+    "uniform int uHasPrevModelMatrix;\n"
+    "uniform int uHasPrevInstanceMatrices;\n"
     "uniform int uHasSkinning;\n"
+    "uniform int uHasPrevSkinning;\n"
     "uniform int uMorphShapeCount;\n"
     "uniform int uVertexCount;\n"
     "uniform samplerBuffer uMorphDeltas;\n"
     "uniform samplerBuffer uMorphNormalDeltas;\n"
     "uniform float uMorphWeights[32];\n"
+    "uniform float uPrevMorphWeights[32];\n"
     "uniform int uHasMorphNormalDeltas;\n"
+    "uniform int uHasPrevMorphWeights;\n"
     "out vec3 vWorldPos;\n"
     "out vec3 vNormal;\n"
     "out vec3 vTangent;\n"
     "out vec2 vUV;\n"
     "out vec4 vColor;\n"
-    "void applyMorph(inout vec3 pos, inout vec3 nrm) {\n"
+    "out vec4 vCurrClip;\n"
+    "out vec4 vPrevClip;\n"
+    "flat out float vHasObjectHistory;\n"
+    "void applyMorph(inout vec3 pos, inout vec3 nrm, int usePrevWeights) {\n"
     "    for (int s = 0; s < uMorphShapeCount; s++) {\n"
-    "        float w = uMorphWeights[s];\n"
+    "        float w = (usePrevWeights != 0) ? uPrevMorphWeights[s] : uMorphWeights[s];\n"
     "        if (abs(w) > 0.0001) {\n"
     "            int base = (s * uVertexCount + gl_VertexID) * 3;\n"
     "            pos.x += texelFetch(uMorphDeltas, base + 0).r * w;\n"
     "            pos.y += texelFetch(uMorphDeltas, base + 1).r * w;\n"
     "            pos.z += texelFetch(uMorphDeltas, base + 2).r * w;\n"
-    "            if (uHasMorphNormalDeltas != 0) {\n"
+    "            if (uHasMorphNormalDeltas != 0 && usePrevWeights == 0) {\n"
     "                nrm.x += texelFetch(uMorphNormalDeltas, base + 0).r * w;\n"
     "                nrm.y += texelFetch(uMorphNormalDeltas, base + 1).r * w;\n"
     "                nrm.z += texelFetch(uMorphNormalDeltas, base + 2).r * w;\n"
@@ -629,39 +653,66 @@ static const char *glsl_vertex_src =
     "        }\n"
     "    }\n"
     "}\n"
+    "vec4 skinPosition(vec4 localPos, int usePrevPalette) {\n"
+    "    if (uHasSkinning == 0) return localPos;\n"
+    "    vec4 skinnedPos = vec4(0.0);\n"
+    "    for (int i = 0; i < 4; i++) {\n"
+    "        float bw = aBoneWt[i];\n"
+    "        if (bw > 0.0001) {\n"
+    "            int b = min(int(aBoneIdx[i]), 127);\n"
+    "            mat4 bm = (usePrevPalette != 0 && uHasPrevSkinning != 0) ? uPrevBonePalette[b] : uBonePalette[b];\n"
+    "            skinnedPos += bm * localPos * bw;\n"
+    "        }\n"
+    "    }\n"
+    "    return skinnedPos;\n"
+    "}\n"
+    "vec3 skinNormal(vec3 localNormal) {\n"
+    "    if (uHasSkinning == 0) return localNormal;\n"
+    "    vec3 skinnedNormal = vec3(0.0);\n"
+    "    for (int i = 0; i < 4; i++) {\n"
+    "        float bw = aBoneWt[i];\n"
+    "        if (bw > 0.0001) {\n"
+    "            int b = min(int(aBoneIdx[i]), 127);\n"
+    "            mat4 bm = uBonePalette[b];\n"
+    "            skinnedNormal += (bm * vec4(localNormal, 0.0)).xyz * bw;\n"
+    "        }\n"
+    "    }\n"
+    "    return skinnedNormal;\n"
+    "}\n"
     "void main() {\n"
     "    vec3 pos = aPosition;\n"
     "    vec3 nrm = aNormal;\n"
-    "    applyMorph(pos, nrm);\n"
+    "    vec3 prevPos = aPosition;\n"
+    "    vec3 prevNrm = aNormal;\n"
+    "    applyMorph(pos, nrm, 0);\n"
+    "    applyMorph(prevPos, prevNrm, uHasPrevMorphWeights);\n"
     "    vec4 localPos = vec4(pos, 1.0);\n"
+    "    vec4 prevLocalPos = vec4(prevPos, 1.0);\n"
     "    vec3 localNormal = normalize(nrm);\n"
-    "    if (uHasSkinning != 0) {\n"
-    "        vec4 skinnedPos = vec4(0.0);\n"
-    "        vec3 skinnedNormal = vec3(0.0);\n"
-    "        for (int i = 0; i < 4; i++) {\n"
-    "            float bw = aBoneWt[i];\n"
-    "            if (bw > 0.0001) {\n"
-    "                int b = min(int(aBoneIdx[i]), 127);\n"
-    "                mat4 bm = uBonePalette[b];\n"
-    "                skinnedPos += bm * localPos * bw;\n"
-    "                skinnedNormal += (bm * vec4(localNormal, 0.0)).xyz * bw;\n"
-    "            }\n"
-    "        }\n"
-    "        localPos = skinnedPos;\n"
-    "        localNormal = skinnedNormal;\n"
-    "    }\n"
+    "    localPos = skinPosition(localPos, 0);\n"
+    "    prevLocalPos = skinPosition(prevLocalPos, 1);\n"
+    "    localNormal = skinNormal(localNormal);\n"
     "    mat4 model = uModelMatrix;\n"
+    "    mat4 prevModel = (uHasPrevModelMatrix != 0) ? uPrevModelMatrix : uModelMatrix;\n"
     "    if (uUseInstancing != 0) {\n"
     "        model = transpose(mat4(aInstanceRow0, aInstanceRow1, aInstanceRow2, aInstanceRow3));\n"
+    "        prevModel = (uHasPrevInstanceMatrices != 0)\n"
+    "            ? transpose(mat4(aPrevInstanceRow0, aPrevInstanceRow1, aPrevInstanceRow2, aPrevInstanceRow3))\n"
+    "            : model;\n"
     "    }\n"
     "    mat3 normalMatrix = (uUseInstancing != 0) ? transpose(inverse(mat3(model))) : mat3(uNormalMatrix);\n"
     "    vec4 wp = model * localPos;\n"
+    "    vec4 prevWp = prevModel * prevLocalPos;\n"
     "    gl_Position = uViewProjection * wp;\n"
     "    vWorldPos = wp.xyz;\n"
     "    vNormal = normalMatrix * localNormal;\n"
     "    vTangent = mat3(model) * aTangent;\n"
     "    vUV = aUV;\n"
     "    vColor = aColor;\n"
+    "    vCurrClip = gl_Position;\n"
+    "    vPrevClip = uPrevViewProjection * prevWp;\n"
+    "    vHasObjectHistory = float((uHasPrevModelMatrix != 0) || (uHasPrevInstanceMatrices != 0) ||\n"
+    "                             (uHasPrevSkinning != 0) || (uHasPrevMorphWeights != 0));\n"
     "}\n";
 
 static const char *glsl_fragment_src =
@@ -671,7 +722,11 @@ static const char *glsl_fragment_src =
     "in vec3 vTangent;\n"
     "in vec2 vUV;\n"
     "in vec4 vColor;\n"
-    "out vec4 FragColor;\n"
+    "in vec4 vCurrClip;\n"
+    "in vec4 vPrevClip;\n"
+    "flat in float vHasObjectHistory;\n"
+    "layout(location=0) out vec4 FragColor;\n"
+    "layout(location=1) out vec4 MotionColor;\n"
     "uniform vec3 uCameraPos;\n"
     "uniform vec3 uAmbientColor;\n"
     "uniform vec4 uDiffuseColor;\n"
@@ -777,6 +832,10 @@ static const char *glsl_fragment_src =
     "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
     "        }\n"
     "        FragColor = vec4(unlitColor, finalAlpha);\n"
+    "        vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
+    "        vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+    "        vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
+    "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
     "        return;\n"
     "    }\n"
     "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
@@ -826,6 +885,10 @@ static const char *glsl_fragment_src =
     "        result = mix(result, uFogColor, fogFactor);\n"
     "    }\n"
     "    FragColor = vec4(result, finalAlpha);\n"
+    "    vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
+    "    vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+    "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
+    "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
     "}\n";
 
 static const char *glsl_shadow_vertex_src =
@@ -928,6 +991,7 @@ static const char *glsl_postfx_fragment_src =
     "out vec4 FragColor;\n"
     "uniform sampler2D uSceneTex;\n"
     "uniform sampler2D uSceneDepthTex;\n"
+    "uniform sampler2D uSceneMotionTex;\n"
     "uniform vec2 uInvResolution;\n"
     "uniform int uBloomEnabled;\n"
     "uniform float uBloomThreshold;\n"
@@ -958,6 +1022,7 @@ static const char *glsl_postfx_fragment_src =
     "uniform mat4 uPrevViewProjection;\n"
     "vec3 sampleScene(vec2 uv) { return texture(uSceneTex, uv).rgb; }\n"
     "float sampleDepth(vec2 uv) { return texture(uSceneDepthTex, uv).r; }\n"
+    "vec3 sampleMotion(vec2 uv) { return texture(uSceneMotionTex, uv).rgb; }\n"
     "vec3 reconstructWorld(vec2 uv, float depth) {\n"
     "    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
     "    vec4 world = uInvViewProjection * clip;\n"
@@ -988,11 +1053,17 @@ static const char *glsl_postfx_fragment_src =
     "    acc += sampleScene(uv - vec2(0.0, stepUv.y)) * 0.15;\n"
     "    return acc;\n"
     "}\n"
-    "vec3 applyMotionBlur(vec2 uv, vec3 color, vec3 worldPos) {\n"
+    "vec2 cameraVelocity(vec2 uv, vec3 worldPos) {\n"
     "    vec4 prevClip = uPrevViewProjection * vec4(worldPos, 1.0);\n"
     "    float invW = 1.0 / max(prevClip.w, 0.0001);\n"
     "    vec2 prevUv = prevClip.xy * invW * 0.5 + 0.5;\n"
-    "    vec2 velocity = (uv - prevUv) * uMotionBlurIntensity;\n"
+    "    return (uv - prevUv);\n"
+    "}\n"
+    "vec3 applyMotionBlur(vec2 uv, vec3 color, vec3 worldPos) {\n"
+    "    vec3 motionSample = sampleMotion(uv);\n"
+    "    vec2 velocity = motionSample.xy * 2.0 - 1.0;\n"
+    "    if (motionSample.z < 0.5) velocity = cameraVelocity(uv, worldPos);\n"
+    "    velocity *= uMotionBlurIntensity;\n"
     "    float vlen = length(velocity);\n"
     "    if (vlen < 0.0005) return color;\n"
     "    int taps = clamp(uMotionBlurSamples, 2, 8);\n"
@@ -1253,12 +1324,15 @@ static void destroy_scene_targets(gl_context_t *ctx) {
         return;
     if (ctx->scene_depth_tex)
         gl.DeleteTextures(1, &ctx->scene_depth_tex);
+    if (ctx->scene_motion_tex)
+        gl.DeleteTextures(1, &ctx->scene_motion_tex);
     if (ctx->scene_color_tex)
         gl.DeleteTextures(1, &ctx->scene_color_tex);
     if (ctx->scene_fbo)
         gl.DeleteFramebuffers(1, &ctx->scene_fbo);
     ctx->scene_fbo = 0;
     ctx->scene_color_tex = 0;
+    ctx->scene_motion_tex = 0;
     ctx->scene_depth_tex = 0;
     ctx->scene_width = 0;
     ctx->scene_height = 0;
@@ -1284,7 +1358,19 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.FramebufferTexture2D(
         GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->scene_color_tex, 0);
-    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.GenTextures(1, &ctx->scene_motion_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->scene_motion_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.FramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, ctx->scene_motion_tex, 0);
+    {
+        const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+        gl.DrawBuffers(2, attachments);
+    }
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
 
     gl.GenTextures(1, &ctx->scene_depth_tex);
@@ -1420,9 +1506,14 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 static void bind_main_framebuffer(gl_context_t *ctx) {
     if (ctx->rtt_active) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
     } else {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+        {
+            const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+            gl.DrawBuffers(2, attachments);
+        }
         gl.Viewport(0, 0, ctx->scene_width, ctx->scene_height);
     }
 }
@@ -1455,14 +1546,26 @@ static void set_identity_instance_constants(void) {
     gl.DisableVertexAttribArray(8);
     gl.DisableVertexAttribArray(9);
     gl.DisableVertexAttribArray(10);
+    gl.DisableVertexAttribArray(11);
+    gl.DisableVertexAttribArray(12);
+    gl.DisableVertexAttribArray(13);
+    gl.DisableVertexAttribArray(14);
     gl.VertexAttribDivisor(7, 0);
     gl.VertexAttribDivisor(8, 0);
     gl.VertexAttribDivisor(9, 0);
     gl.VertexAttribDivisor(10, 0);
+    gl.VertexAttribDivisor(11, 0);
+    gl.VertexAttribDivisor(12, 0);
+    gl.VertexAttribDivisor(13, 0);
+    gl.VertexAttribDivisor(14, 0);
     gl.VertexAttrib4f(7, 1.0f, 0.0f, 0.0f, 0.0f);
     gl.VertexAttrib4f(8, 0.0f, 1.0f, 0.0f, 0.0f);
     gl.VertexAttrib4f(9, 0.0f, 0.0f, 1.0f, 0.0f);
     gl.VertexAttrib4f(10, 0.0f, 0.0f, 0.0f, 1.0f);
+    gl.VertexAttrib4f(11, 1.0f, 0.0f, 0.0f, 0.0f);
+    gl.VertexAttrib4f(12, 0.0f, 1.0f, 0.0f, 0.0f);
+    gl.VertexAttrib4f(13, 0.0f, 0.0f, 1.0f, 0.0f);
+    gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 static void configure_mesh_attributes(gl_context_t *ctx) {
@@ -1489,6 +1592,7 @@ static void configure_mesh_attributes(gl_context_t *ctx) {
 
 static void configure_instance_attributes(gl_context_t *ctx,
                                           const float *instance_matrices,
+                                          const float *prev_instance_matrices,
                                           int32_t instance_count) {
     size_t bytes = (size_t)instance_count * 16 * sizeof(float);
     ensure_buffer_capacity(GL_ARRAY_BUFFER,
@@ -1512,9 +1616,51 @@ static void configure_instance_attributes(gl_context_t *ctx,
     gl.VertexAttribDivisor(8, 1);
     gl.VertexAttribDivisor(9, 1);
     gl.VertexAttribDivisor(10, 1);
+
+    if (prev_instance_matrices) {
+        ensure_buffer_capacity(GL_ARRAY_BUFFER,
+                               ctx->prev_instance_vbo,
+                               &ctx->prev_instance_vbo_capacity,
+                               bytes,
+                               64u * 1024u,
+                               GL_STREAM_DRAW);
+        gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
+        gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, prev_instance_matrices);
+        gl.EnableVertexAttribArray(11);
+        gl.EnableVertexAttribArray(12);
+        gl.EnableVertexAttribArray(13);
+        gl.EnableVertexAttribArray(14);
+        gl.VertexAttribPointer(11, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)0);
+        gl.VertexAttribPointer(
+            12, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(4 * sizeof(float)));
+        gl.VertexAttribPointer(
+            13, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(8 * sizeof(float)));
+        gl.VertexAttribPointer(
+            14, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(12 * sizeof(float)));
+        gl.VertexAttribDivisor(11, 1);
+        gl.VertexAttribDivisor(12, 1);
+        gl.VertexAttribDivisor(13, 1);
+        gl.VertexAttribDivisor(14, 1);
+    } else {
+        gl.DisableVertexAttribArray(11);
+        gl.DisableVertexAttribArray(12);
+        gl.DisableVertexAttribArray(13);
+        gl.DisableVertexAttribArray(14);
+        gl.VertexAttribDivisor(11, 0);
+        gl.VertexAttribDivisor(12, 0);
+        gl.VertexAttribDivisor(13, 0);
+        gl.VertexAttribDivisor(14, 0);
+        gl.VertexAttrib4f(11, 1.0f, 0.0f, 0.0f, 0.0f);
+        gl.VertexAttrib4f(12, 0.0f, 1.0f, 0.0f, 0.0f);
+        gl.VertexAttrib4f(13, 0.0f, 0.0f, 1.0f, 0.0f);
+        gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
 }
 
-static void upload_bone_palette(gl_context_t *ctx, const float *bone_palette, int32_t bone_count) {
+static void upload_bone_palette(gl_context_t *ctx,
+                                GLuint ubo,
+                                const float *bone_palette,
+                                int32_t bone_count) {
     if (!ctx || !bone_palette || bone_count <= 0)
         return;
 
@@ -1524,10 +1670,23 @@ static void upload_bone_palette(gl_context_t *ctx, const float *bone_palette, in
     for (int32_t i = 0; i < bone_count; i++)
         transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
 
-    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->bone_ubo);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ubo);
     gl.BufferSubData(
         GL_UNIFORM_BUFFER, 0, (GLsizeiptr)((size_t)bone_count * 16 * sizeof(float)), upload);
+}
+
+static void upload_active_bone_palettes(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    if (!ctx || !cmd || !cmd->bone_palette || cmd->bone_count <= 0)
+        return;
+    upload_bone_palette(ctx, ctx->bone_ubo, cmd->bone_palette, cmd->bone_count);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->bone_ubo);
+    if (cmd->prev_bone_palette) {
+        upload_bone_palette(ctx, ctx->prev_bone_ubo, cmd->prev_bone_palette, cmd->bone_count);
+        gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
+    } else {
+        upload_bone_palette(ctx, ctx->prev_bone_ubo, cmd->bone_palette, cmd->bone_count);
+        gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
+    }
 }
 
 static void bind_morph_payload(gl_context_t *ctx,
@@ -1536,6 +1695,7 @@ static void bind_morph_payload(gl_context_t *ctx,
                                GLint uMorphShapeCount,
                                GLint uVertexCount,
                                GLint uMorphWeights,
+                               GLint uPrevMorphWeights,
                                GLint uMorphDeltas,
                                GLint uHasMorphNormalDeltas,
                                GLint uMorphNormalDeltas) {
@@ -1551,9 +1711,13 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl.Uniform1i(uVertexCount, morph_count > 0 ? (GLint)cmd->vertex_count : 0);
     if (morph_count > 0 && uMorphWeights >= 0)
         gl.Uniform1fv(uMorphWeights, morph_count, cmd->morph_weights);
+    if (morph_count > 0 && uPrevMorphWeights >= 0)
+        gl.Uniform1fv(uPrevMorphWeights,
+                      morph_count,
+                      cmd->prev_morph_weights ? cmd->prev_morph_weights : cmd->morph_weights);
 
     if (use_skinning)
-        upload_bone_palette(ctx, cmd->bone_palette, cmd->bone_count);
+        upload_active_bone_palettes(ctx, cmd);
 
     gl.ActiveTexture(GL_TEXTURE0 + 10);
     if (morph_count > 0) {
@@ -1634,7 +1798,12 @@ static void upload_main_uniforms(gl_context_t *ctx,
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
 
     gl.UniformMatrix4fv(ctx->uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
+    gl.UniformMatrix4fv(ctx->uPrevModelMatrix,
+                        1,
+                        GL_TRUE,
+                        cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix);
     gl.UniformMatrix4fv(ctx->uViewProjection, 1, GL_TRUE, ctx->vp);
+    gl.UniformMatrix4fv(ctx->uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
     gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, normal_matrix);
     gl.UniformMatrix4fv(ctx->uShadowVP, 1, GL_TRUE, ctx->shadow_vp);
 
@@ -1656,6 +1825,10 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
+    gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
+    gl.Uniform1i(ctx->uHasPrevInstanceMatrices, cmd->has_prev_instance_matrices ? 1 : 0);
+    gl.Uniform1i(ctx->uHasPrevSkinning, cmd->prev_bone_palette ? 1 : 0);
+    gl.Uniform1i(ctx->uHasPrevMorphWeights, cmd->prev_morph_weights ? 1 : 0);
     gl.Uniform1i(ctx->uFogEnabled, ctx->fog_enabled ? 1 : 0);
     gl.Uniform1f(ctx->uFogNear, ctx->fog_near);
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
@@ -1671,6 +1844,7 @@ static void upload_main_uniforms(gl_context_t *ctx,
                        ctx->uMorphShapeCount,
                        ctx->uVertexCount,
                        ctx->uMorphWeights,
+                       ctx->uPrevMorphWeights,
                        ctx->uMorphDeltas,
                        ctx->uHasMorphNormalDeltas,
                        ctx->uMorphNormalDeltas);
@@ -1740,6 +1914,7 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
                        ctx->shadow_uMorphShapeCount,
                        ctx->shadow_uVertexCount,
                        ctx->shadow_uMorphWeights,
+                       -1,
                        ctx->shadow_uMorphDeltas,
                        -1,
                        -1);
@@ -1759,6 +1934,7 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
     gl.BindVertexArray(ctx->fullscreen_vao);
     bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, ctx->scene_color_tex);
     bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
+    bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
     gl.Uniform2f(ctx->postfx_uInvResolution,
                  1.0f / (float)ctx->scene_width,
                  1.0f / (float)ctx->scene_height);
@@ -1856,7 +2032,9 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
 static void query_main_uniforms(gl_context_t *ctx) {
 #define U(name) ctx->name = gl.GetUniformLocation(ctx->program, #name)
     U(uModelMatrix);
+    U(uPrevModelMatrix);
     U(uViewProjection);
+    U(uPrevViewProjection);
     U(uNormalMatrix);
     U(uShadowVP);
     U(uCameraPos);
@@ -1881,10 +2059,15 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uShadowEnabled);
     U(uShadowBias);
     U(uUseInstancing);
+    U(uHasPrevModelMatrix);
+    U(uHasPrevInstanceMatrices);
     U(uHasSkinning);
+    U(uHasPrevSkinning);
     U(uMorphShapeCount);
     U(uVertexCount);
+    U(uHasPrevMorphWeights);
     ctx->uMorphWeights = gl.GetUniformLocation(ctx->program, "uMorphWeights[0]");
+    ctx->uPrevMorphWeights = gl.GetUniformLocation(ctx->program, "uPrevMorphWeights[0]");
     U(uMorphDeltas);
     U(uMorphNormalDeltas);
     U(uHasMorphNormalDeltas);
@@ -1942,6 +2125,7 @@ static void query_skybox_uniforms(gl_context_t *ctx) {
 static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uSceneTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneTex");
     ctx->postfx_uSceneDepthTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneDepthTex");
+    ctx->postfx_uSceneMotionTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneMotionTex");
     ctx->postfx_uInvResolution = gl.GetUniformLocation(ctx->postfx_program, "uInvResolution");
     ctx->postfx_uBloomEnabled = gl.GetUniformLocation(ctx->postfx_program, "uBloomEnabled");
     ctx->postfx_uBloomThreshold = gl.GetUniformLocation(ctx->postfx_program, "uBloomThreshold");
@@ -2129,11 +2313,15 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.UseProgram(ctx->postfx_program);
     gl.Uniform1i(ctx->postfx_uSceneTex, 0);
     gl.Uniform1i(ctx->postfx_uSceneDepthTex, 1);
+    gl.Uniform1i(ctx->postfx_uSceneMotionTex, 2);
 
     GLuint main_block = gl.GetUniformBlockIndex(ctx->program, "Bones");
+    GLuint prev_main_block = gl.GetUniformBlockIndex(ctx->program, "PrevBones");
     GLuint shadow_block = gl.GetUniformBlockIndex(ctx->shadow_program, "Bones");
     if (main_block != GL_INVALID_INDEX)
         gl.UniformBlockBinding(ctx->program, main_block, 0);
+    if (prev_main_block != GL_INVALID_INDEX)
+        gl.UniformBlockBinding(ctx->program, prev_main_block, 1);
     if (shadow_block != GL_INVALID_INDEX)
         gl.UniformBlockBinding(ctx->shadow_program, shadow_block, 0);
 
@@ -2143,7 +2331,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.GenBuffers(1, &ctx->mesh_vbo);
     gl.GenBuffers(1, &ctx->mesh_ibo);
     gl.GenBuffers(1, &ctx->instance_vbo);
+    gl.GenBuffers(1, &ctx->prev_instance_vbo);
     gl.GenBuffers(1, &ctx->bone_ubo);
+    gl.GenBuffers(1, &ctx->prev_bone_ubo);
     gl.GenBuffers(1, &ctx->morph_buffer);
     gl.GenBuffers(1, &ctx->morph_normal_buffer);
     gl.GenBuffers(1, &ctx->skybox_vbo);
@@ -2160,6 +2350,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
     ctx->instance_vbo_capacity = 64u * 1024u;
+    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
+    gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
+    ctx->prev_instance_vbo_capacity = 64u * 1024u;
     gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_buffer);
     gl.BufferData(GL_TEXTURE_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
     ctx->morph_capacity_bytes = 64u * 1024u;
@@ -2170,6 +2363,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->bone_ubo);
     gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ctx->bone_ubo);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->prev_bone_ubo);
+    gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
+    gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
 
     gl.BindVertexArray(ctx->skybox_vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->skybox_vbo);
@@ -2225,10 +2421,14 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->morph_normal_buffer);
     if (ctx->bone_ubo)
         gl.DeleteBuffers(1, &ctx->bone_ubo);
+    if (ctx->prev_bone_ubo)
+        gl.DeleteBuffers(1, &ctx->prev_bone_ubo);
     if (ctx->morph_buffer)
         gl.DeleteBuffers(1, &ctx->morph_buffer);
     if (ctx->instance_vbo)
         gl.DeleteBuffers(1, &ctx->instance_vbo);
+    if (ctx->prev_instance_vbo)
+        gl.DeleteBuffers(1, &ctx->prev_instance_vbo);
     if (ctx->mesh_vbo)
         gl.DeleteBuffers(1, &ctx->mesh_vbo);
     if (ctx->mesh_ibo)
@@ -2300,9 +2500,23 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         ensure_scene_targets(ctx, ctx->width, ctx->height);
     bind_main_framebuffer(ctx);
 
-    gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
-    gl.ClearDepth(1.0);
-    gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (ctx->rtt_active) {
+        gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
+        gl.ClearDepth(1.0);
+        gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    } else {
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
+        gl.ClearDepth(1.0);
+        gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT1);
+        gl.ClearColor(0.5f, 0.5f, 0.0f, 1.0f);
+        gl.Clear(GL_COLOR_BUFFER_BIT);
+        {
+            const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+            gl.DrawBuffers(2, attachments);
+        }
+    }
     gl.Enable(GL_BLEND);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.Enable(GL_DEPTH_TEST);
@@ -2462,7 +2676,10 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     bind_material_textures(ctx, cmd);
     prepare_mesh_buffers(ctx, cmd);
     configure_mesh_attributes(ctx);
-    configure_instance_attributes(ctx, instance_matrices, instance_count);
+    configure_instance_attributes(ctx,
+                                  instance_matrices,
+                                  cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices : NULL,
+                                  instance_count);
     gl.DrawElementsInstanced(
         GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
     set_identity_instance_constants();

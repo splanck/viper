@@ -257,6 +257,9 @@ static void gc_rehash(int64_t new_cap) {
     free(old);
 }
 
+/// @brief Register an object for cycle detection.
+/// @details Inserts @p obj into the GC hash table. If already tracked, updates
+///          the traverse function. The table grows when load exceeds 5/8.
 void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     if (!obj || !traverse)
         return;
@@ -294,6 +297,8 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     gc_unlock();
 }
 
+/// @brief Remove an object from cycle tracking.
+/// @details Tombstones the hash table slot so probe chains remain intact.
 void rt_gc_untrack(void *obj) {
     if (!obj)
         return;
@@ -311,6 +316,7 @@ void rt_gc_untrack(void *obj) {
     gc_unlock();
 }
 
+/// @brief Check if an object is in the tracking table.
 int8_t rt_gc_is_tracked(void *obj) {
     if (!obj)
         return 0;
@@ -321,6 +327,7 @@ int8_t rt_gc_is_tracked(void *obj) {
     return found;
 }
 
+/// @brief Return the number of objects currently in the tracking table.
 int64_t rt_gc_tracked_count(void) {
     gc_lock();
     int64_t n = g_gc.count;
@@ -394,6 +401,8 @@ static void unregister_weak_ref(void *target, rt_weakref *ref) {
 // Zeroing Weak References (Public API)
 //=============================================================================
 
+/// @brief Create a zeroing weak reference. The target's refcount is NOT bumped.
+/// @details When the target is freed, the reference automatically becomes NULL.
 rt_weakref *rt_weakref_new(void *target) {
     rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(0, (int64_t)sizeof(rt_weakref));
     memset(ref, 0, sizeof(rt_weakref));
@@ -408,6 +417,7 @@ rt_weakref *rt_weakref_new(void *target) {
     return ref;
 }
 
+/// @brief Dereference a weak ref, returning the target or NULL if freed.
 void *rt_weakref_get(rt_weakref *ref) {
     if (!ref)
         return NULL;
@@ -418,6 +428,7 @@ void *rt_weakref_get(rt_weakref *ref) {
     return t;
 }
 
+/// @brief Check if a weak reference's target is still alive.
 int8_t rt_weakref_alive(rt_weakref *ref) {
     if (!ref)
         return 0;
@@ -428,6 +439,7 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
     return alive;
 }
 
+/// @brief Destroy a weak reference handle. Does NOT affect the target.
 void rt_weakref_free(rt_weakref *ref) {
     if (!ref)
         return;
@@ -438,6 +450,9 @@ void rt_weakref_free(rt_weakref *ref) {
     gc_unlock();
 }
 
+/// @brief Zero all weak references pointing to a target being freed.
+/// @details Called internally by rt_obj_free before deallocating. Walks the
+///          per-target chain in the weak bucket and sets each ref's target to NULL.
 void rt_gc_clear_weak_refs(void *target) {
     if (!target)
         return;
@@ -507,6 +522,16 @@ typedef struct {
     rt_gc_traverse_fn traverse;
 } gc_snap_entry;
 
+/// @brief Run one synchronous cycle-collection pass.
+/// @details Implements a four-phase trial-deletion algorithm:
+///   Phase 1: Initialize trial refcounts (assume 1 external ref per object).
+///   Phase 2: Trial-decrement children — objects whose trial_rc drops to 0 are
+///            referenced only by other tracked objects (potential cycle members).
+///   Phase 3: Restore reachable objects (trial_rc > 0) by marking them black and
+///            recursively marking all their children.
+///   Phase 4: Collect white objects (unreachable cycle members). Clear their weak
+///            refs and invoke finalizers outside the lock to avoid deadlock.
+/// @return Number of objects freed.
 int64_t rt_gc_collect(void) {
     int64_t freed = 0;
 
@@ -637,14 +662,22 @@ int64_t rt_gc_collect(void) {
 // Auto-Trigger
 //=============================================================================
 
+/// @brief Configure the auto-collection allocation threshold.
+/// @details When n > 0, every n-th heap allocation triggers rt_gc_collect().
+///          Set to 0 (default) to disable automatic collection.
 void rt_gc_set_threshold(int64_t n) {
     __atomic_store_n(&g_gc_threshold, n > 0 ? n : 0, __ATOMIC_RELAXED);
 }
 
+/// @brief Read the current auto-collection threshold (0 = disabled).
 int64_t rt_gc_get_threshold(void) {
     return __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
 }
 
+/// @brief Called by rt_heap_alloc on every allocation.
+/// @details Increments an internal counter and triggers collection when the
+///          counter reaches the configured threshold. Uses CAS to ensure exactly
+///          one thread claims the reset (CONC-003 fix — prevents double-collect).
 void rt_gc_notify_alloc(void) {
     int64_t threshold = __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
     if (threshold <= 0)
@@ -665,6 +698,7 @@ void rt_gc_notify_alloc(void) {
 // Statistics
 //=============================================================================
 
+/// @brief Return cumulative count of objects freed by cycle collection.
 int64_t rt_gc_total_collected(void) {
     gc_lock();
     int64_t n = g_gc.total_collected;
@@ -672,6 +706,7 @@ int64_t rt_gc_total_collected(void) {
     return n;
 }
 
+/// @brief Return the number of collection passes run since startup.
 int64_t rt_gc_pass_count(void) {
     gc_lock();
     int64_t n = g_gc.pass_count;

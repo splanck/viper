@@ -1,4 +1,8 @@
-# OGL-17: Backend-Owned CubeMap Skybox Rendering
+# OGL-17: Backend-Owned CubeMap Skybox Rendering — DONE
+
+## Status
+
+Implemented in [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c) plus the shared backend hook in [`vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h) and the Canvas3D dispatch change in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c).
 
 ## Depends On
 

@@ -1,4 +1,8 @@
-# OGL-20: Depth/History-Based GPU PostFX
+# OGL-20: Depth/History-Based GPU PostFX — DONE
+
+## Status
+
+Implemented in the OpenGL GPU presentation path with scene-depth sampling plus a velocity-buffer motion-blur path. Shared snapshot export now includes SSAO, DOF, and motion-blur parameters via [`rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c), and the shared 3D draw producers now preserve previous-frame transform / skinning / morph / instancing state for motion-vector generation.
 
 ## Depends On
 
@@ -21,9 +25,9 @@ The runtime still exposes additional PostFX APIs:
 - [`rt_postfx3d_add_dof()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h#L45)
 - [`rt_postfx3d_add_motion_blur()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h#L46)
 
-But the backend-facing snapshot currently drops them:
+The backend-facing snapshot now exports them:
 
-- [`vgfx3d_postfx_get_snapshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c#L631) ignores SSAO, DOF, and motion blur
+- [`vgfx3d_postfx_get_snapshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c#L631) includes SSAO, DOF, and motion blur
 
 So the public API surface is broader than the current OpenGL GPU implementation.
 
@@ -63,9 +67,8 @@ Minimum viable inputs:
   - scene color texture
 - motion blur:
   - scene depth texture
-  - previous-frame camera transform at minimum
-
-Full per-object motion blur is not implementable from the current API alone. If that level of correctness is required, shared runtime work must preserve previous model transforms or provide a velocity buffer path.
+  - previous-frame camera transform
+  - previous-frame object transforms or equivalent per-pixel velocity data
 
 ### 3. Scene-depth availability on the GPU postfx path
 
@@ -94,12 +97,13 @@ Suggested ordering:
 
 ### Phase B: Motion blur
 
-Define v1 explicitly:
+Implement motion blur from a dedicated scene motion-vector attachment:
 
-- recommended v1: camera-motion blur only
-- required shared state: previous frame view-projection matrix
-
-If product requirements demand object-motion blur, split that into another prerequisite plan rather than pretending it is free.
+- render motion vectors during the main scene pass
+- preserve previous-frame model matrices for keyed draws
+- preserve previous-frame instance matrices for hardware instancing
+- preserve previous-frame skinning palettes and morph weights for GPU animated meshes
+- keep camera reprojection as a fallback when no object history is available for a pixel
 
 ### Phase C: Present path ownership
 
@@ -126,7 +130,7 @@ Compute blur strength from focus distance, aperture, and max blur. Keep the impl
 
 ### Motion blur
 
-Camera-only blur can be derived by reprojection from current depth plus previous/current camera transforms. That still requires a depth texture and previous frame matrices.
+The shipped path uses a velocity buffer generated in the main scene pass. Motion vectors combine previous/current camera transforms with previous/current object state when that history exists, and fall back to camera reprojection when it does not.
 
 ## Files
 
@@ -138,5 +142,6 @@ Camera-only blur can be derived by reprojection from current depth plus previous
 ## Done When
 
 - SSAO, DOF, and the chosen motion-blur scope all render on the OpenGL GPU presentation path
+- motion blur uses real per-pixel motion vectors rather than camera-only reprojection when object history is available
 - depth-based effects sample real GPU depth rather than the software framebuffer
 - the advanced effects are represented in the exported backend-facing PostFX snapshot

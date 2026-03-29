@@ -53,11 +53,13 @@ typedef struct {
     uint32_t index_capacity;
     /* Transient: set by skinning path before draw, zero otherwise */
     const float *bone_palette; /* bone_count * 16 floats (4x4 row-major) */
+    const float *prev_bone_palette; /* previous-frame palette for motion blur */
     int32_t bone_count;        /* 0 = not skinned */
     /* Transient: set by DrawMeshMorphed GPU path before draw, zero otherwise */
     const float *morph_deltas;  /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats */
     const float *morph_weights; /* shape_count floats */
+    const float *prev_morph_weights; /* previous-frame weights for motion blur */
     int32_t morph_shape_count;
 } rt_mesh3d;
 
@@ -231,10 +233,16 @@ typedef struct {
     int8_t occlusion_culling;
 
     /* Timing */
+    int64_t frame_serial;
     int64_t last_flip_us;
     int64_t delta_time_ms;
     int64_t dt_max_ms;
     int8_t should_close;
+
+    /* Previous-frame transform history for motion blur */
+    void *motion_history;
+    int32_t motion_history_count;
+    int32_t motion_history_capacity;
 } rt_canvas3d;
 
 //=============================================================================
@@ -249,5 +257,13 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
                                   void *mesh_obj,
                                   const double *model_matrix,
                                   void *material_obj);
+void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
+                                        void *mesh_obj,
+                                        const double *model_matrix,
+                                        void *material_obj,
+                                        const void *motion_key,
+                                        const float *prev_bone_palette,
+                                        const float *prev_morph_weights);
+int64_t rt_canvas3d_get_frame_serial(void *obj);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

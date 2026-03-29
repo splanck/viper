@@ -29,6 +29,10 @@ Implemented as of 2026-03-28:
 - Terrain splatting
 - Persistent dynamic mesh/index/instance/morph buffers
 - Full OpenGL shader consumption for GPU skinning / GPU morph payloads
+- Backend-owned cubemap skybox rendering
+- Material environment reflections
+- GPU morph normal-delta parity
+- Depth/history-based GPU postfx: SSAO, depth of field, velocity-buffer motion blur
 
 ## Important Corrections To The Older Sketch
 
@@ -54,18 +58,23 @@ These shared prerequisites are now implemented:
   - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L934) now bypasses CPU pre-skinning for GPU-capable backends and forwards the bone palette through the draw command.
 - GPU morph targets:
   - [`rt_canvas3d_draw_mesh_morphed()`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L251) now packs morph payloads for GPU-capable backends, and [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L729) propagates them into `vgfx3d_draw_cmd_t`.
+- GPU morph normal deltas:
+  - [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c) now packs optional normal-delta payloads for GPU-capable backends, and [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L729) forwards them through `vgfx3d_draw_cmd_t`.
 - GPU render-to-texture + skybox:
   - [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L772) now skips the CPU skybox write when a GPU backend owns an active render target, preventing the RTT readback path from silently clobbering the buffer.
+- Material environment reflection payloads:
+  - [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L664) now forwards `env_map` and `reflectivity` through `vgfx3d_draw_cmd_t`.
+- Backend-owned skybox pass:
+  - [`rt_canvas3d_end()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L762) now delegates skybox rendering through the optional backend `draw_skybox` hook when available.
+- Advanced GPU postfx snapshot:
+  - [`vgfx3d_postfx_get_snapshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c) now exports SSAO, DOF, and motion-blur parameters for GPU backends.
+- Motion-vector prerequisites:
+  - [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c), and [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) now preserve previous-frame state so OpenGL can generate per-pixel motion vectors instead of relying on camera reprojection alone.
 
-Known remaining follow-up:
+OpenGL follow-on status:
 
-- OGL-01 through OGL-16 are implemented, but a smaller follow-on set still remains:
-  - OGL-17: backend-owned cubemap skybox rendering
-  - OGL-18: material environment reflections from `CubeMap3D`
-  - OGL-19: GPU morph normal-delta parity
-  - OGL-20: depth/history-based GPU postfx (SSAO, DOF, motion blur)
-
-Those are real remaining OpenGL gaps because the shared runtime already exposes the relevant APIs or data models, but the current OpenGL path still lacks the end-to-end backend ownership.
+- OGL-17 through OGL-20 are now implemented in the Linux backend.
+- OGL-20 now includes a velocity-buffer motion-blur path backed by shared previous-frame model, instancing, skinning, and morph history where available.
 
 ## Backend-Local Work
 
@@ -82,7 +91,7 @@ The detailed implementation work is split across the OpenGL backend plan set in 
 9. `OGL-17`: backend-owned cubemap skybox rendering
 10. `OGL-18`: material environment reflections
 11. `OGL-19`: GPU morph normal-delta parity
-12. `OGL-20`: depth/history-based GPU postfx follow-ons
+12. `OGL-20`: depth/history-based GPU postfx
 
 ## Execution Principle
 
@@ -97,5 +106,6 @@ This phase is now implemented against the current runtime, not against the older
 
 Focused runtime coverage added for this implementation:
 
-- [`test_rt_canvas3d_gpu_paths.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d_gpu_paths.cpp) validates the shared GPU skinning / morph producer paths and their CPU fallbacks.
+- [`test_rt_canvas3d_gpu_paths.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d_gpu_paths.cpp) validates the shared GPU skinning / morph producer paths, previous-frame motion-history propagation, and their CPU fallbacks.
 - [`test_vgfx3d_backend_utils.c`](/Users/stephen/git/viper/src/tests/unit/test_vgfx3d_backend_utils.c) validates pixel unpacking, RTT row-flip, and inverse-transpose normal-matrix helpers.
+- [`test_rt_postfx3d_snapshot.c`](/Users/stephen/git/viper/src/tests/unit/test_rt_postfx3d_snapshot.c) validates advanced GPU PostFX snapshot export for SSAO, DOF, and motion blur.

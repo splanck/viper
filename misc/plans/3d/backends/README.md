@@ -118,12 +118,12 @@ Implemented shared prerequisites now available to every backend:
 - Producer-side morph payload packing in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L251) plus draw-command propagation in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L664).
 - GPU RTT ownership fix in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L761) so the CPU skybox path is not clobbered during GPU render-target readback.
 
-Known remaining cross-cutting gaps:
+Recently implemented shared prerequisites:
 
-- Skybox rendering itself is still CPU-owned. The RTT overwrite bug is fixed, but GPU-visible cubemap skybox rendering for onscreen GPU backends remains a separate follow-up.
-- `Material3D.env_map` / `reflectivity` are stored by the runtime but not forwarded through `vgfx3d_draw_cmd_t`, so GPU environment reflections are still absent.
-- The GPU morph producer path is position-only. CPU morphing still supports `nrm_deltas`, so GPU morph normal-delta parity remains unfinished.
-- The GPU postfx snapshot intentionally omits SSAO, DOF, and motion blur; depth/history-based postfx remains a follow-on across GPU backends.
+- `Material3D.env_map` / `reflectivity` now forward through `vgfx3d_draw_cmd_t`.
+- The GPU morph producer now packs optional morph normal deltas.
+- The backend vtable now exposes an optional `draw_skybox` hook.
+- The GPU PostFX snapshot now includes SSAO, DOF, and motion-blur parameters.
 
 ## Software Backend Implementation Plans
 
@@ -221,16 +221,16 @@ Metal is no longer the blocking backend for parity. Remaining work is primarily 
 | [OGL-14](ogl-14-vbo-optimization.md) | Persistent dynamic VBO/IBO | — | Medium |
 | [OGL-15](ogl-15-instanced-rendering.md) | True hardware instancing | Shared hook, OGL-14 recommended | Medium |
 | [OGL-16](ogl-16-terrain-splat.md) | Terrain splatting | OGL-03, OGL-04, shared terrain payload | Medium |
-| [OGL-17](ogl-17-cubemap-skybox.md) | Backend-owned cubemap skybox rendering | Shared skybox submission hook, OGL-04 recommended | Medium |
-| [OGL-18](ogl-18-env-reflections.md) | Material environment reflections | OGL-17, shared draw-command payload for env-map data | Medium |
-| [OGL-19](ogl-19-morph-normal-deltas.md) | GPU morph normal-delta parity | OGL-11, shared morph-normal payload | Medium |
-| [OGL-20](ogl-20-advanced-postfx.md) | SSAO / DOF / motion blur on GPU | OGL-10, OGL-13, shared advanced PostFX snapshot | Large |
+| [OGL-17](ogl-17-cubemap-skybox.md) | Backend-owned cubemap skybox rendering | Shared skybox submission hook, OGL-04 recommended | **DONE** |
+| [OGL-18](ogl-18-env-reflections.md) | Material environment reflections | OGL-17, shared draw-command payload for env-map data | **DONE** |
+| [OGL-19](ogl-19-morph-normal-deltas.md) | GPU morph normal-delta parity | OGL-11, shared morph-normal payload | **DONE** |
+| [OGL-20](ogl-20-advanced-postfx.md) | SSAO / DOF / motion blur on GPU | OGL-10, OGL-13, shared advanced PostFX snapshot | **DONE** |
 
 ### OpenGL status
 
-OGL-01 through OGL-16 are implemented in [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c) plus the shared runtime prerequisite work in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), and [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c).
+OGL-01 through OGL-20 are now implemented in [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c) plus the shared runtime work in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c), and [`rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c).
 
-The remaining OpenGL follow-on set is now tracked explicitly in OGL-17 through OGL-20 rather than being left as loose notes.
+The advanced postfx path now uses a real velocity-buffer motion-blur implementation. Shared runtime history in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c), and [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) now supplies previous-frame object state so OpenGL can emit per-pixel motion vectors instead of falling back to camera-only reprojection.
 
 ### OpenGL recommended execution order
 
@@ -250,13 +250,6 @@ The remaining OpenGL follow-on set is now tracked explicitly in OGL-17 through O
 14. **OGL-15** — real instancing once buffer management is cleaned up
 15. **OGL-11** — backend shader work plus producer-side skinning/morph prerequisites
 16. **OGL-13** — last because it needs both RTT and shared flip ownership changes
-
-### OpenGL remaining follow-up order
-
-1. **OGL-17** — cubemap upload + backend-owned skybox pass
-2. **OGL-18** — reflective material consumption once cubemaps are live
-3. **OGL-19** — morph normal-delta parity after the current GPU morph path
-4. **OGL-20** — advanced postfx last because it needs new depth/history inputs
 
 ### SW recommended execution order
 

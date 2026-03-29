@@ -564,6 +564,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_vgfx3d_backend_utils PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_vgfx3d_backend_utils test_vgfx3d_backend_utils)
 
+    viper_add_test(test_rt_postfx3d_snapshot ${VIPER_TESTS_DIR}/unit/test_rt_postfx3d_snapshot.c)
+    target_link_libraries(test_rt_postfx3d_snapshot PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_postfx3d_snapshot test_rt_postfx3d_snapshot)
+
     viper_add_test(test_rt_raycast3d ${VIPER_TESTS_DIR}/unit/test_rt_raycast3d.cpp)
     target_link_libraries(test_rt_raycast3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_raycast3d test_rt_raycast3d)

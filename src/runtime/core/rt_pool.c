@@ -284,6 +284,13 @@ static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block) {
 #endif
 }
 
+/// @brief Allocate a zeroed block from the pool or fall back to malloc.
+/// @details Selects the smallest size class that fits @p size, pops a block from
+///          the class freelist if available, or allocates a fresh slab of 64 blocks
+///          and returns the first one (pushing the rest onto the freelist for future use).
+///          Large allocations (> 512 bytes) bypass the pool entirely and use malloc.
+/// @param size Number of bytes requested; rounded up to the enclosing size class.
+/// @return Pointer to zeroed memory, or NULL on failure.
 void *rt_pool_alloc(size_t size) {
     if (size == 0)
         size = 1; // Minimum allocation
@@ -380,6 +387,12 @@ void *rt_pool_alloc(size_t size) {
     return block;
 }
 
+/// @brief Return a block to the pool freelist, or free via the system allocator.
+/// @details Zeros the block for security and debugging (prevents data leaks from
+///          recycled memory), then pushes it back onto the size class freelist.
+///          Large allocations that bypassed the pool are freed via free().
+/// @param ptr Pointer previously returned by rt_pool_alloc; NULL is a no-op.
+/// @param size Original allocation size (determines which size class to return to).
 void rt_pool_free(void *ptr, size_t size) {
     if (!ptr)
         return;
@@ -407,6 +420,10 @@ void rt_pool_free(void *ptr, size_t size) {
 #endif
 }
 
+/// @brief Query per-class allocation statistics for monitoring and diagnostics.
+/// @param class_idx Size class to query (0 = 64B, 1 = 128B, 2 = 256B, 3 = 512B).
+/// @param out_allocated Receives the number of blocks currently in use.
+/// @param out_free Receives the number of blocks sitting on the freelist.
 void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out_free) {
     if (class_idx >= RT_POOL_COUNT) {
         if (out_allocated)
@@ -431,6 +448,11 @@ void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out
 #endif
 }
 
+/// @brief Release all slab memory back to the system allocator.
+/// @details Walks every slab in every size class and frees it. Resets all pool
+///          state (freelist, counts) to zero. Called only during process shutdown
+///          after rt_gc_run_all_finalizers and rt_string_intern_drain have already
+///          released all live references — calling earlier causes use-after-free.
 void rt_pool_shutdown(void) {
     for (int i = 0; i < RT_POOL_COUNT; i++) {
         rt_pool_state_t *pool = &g_pools[i];

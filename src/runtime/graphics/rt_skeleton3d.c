@@ -140,8 +140,12 @@ typedef struct {
     float speed;
     int8_t playing;
     float *bone_palette;     /* bone_count * 16 floats */
+    float *prev_bone_palette; /* previous-frame palette for motion blur */
+    float *motion_palette_snapshot; /* last submitted palette snapshot */
     float *local_transforms; /* bone_count * 16 floats (workspace) */
     float *globals_buf;      /* bone_count * 16 floats (reused across frames) */
+    int64_t last_motion_frame;
+    int8_t has_prev_motion_palette;
 } rt_anim_player3d;
 
 /*==========================================================================
@@ -634,6 +638,10 @@ static void rt_anim_player3d_finalize(void *obj) {
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
     free(p->bone_palette);
     p->bone_palette = NULL;
+    free(p->prev_bone_palette);
+    p->prev_bone_palette = NULL;
+    free(p->motion_palette_snapshot);
+    p->motion_palette_snapshot = NULL;
     free(p->local_transforms);
     p->local_transforms = NULL;
     free(p->globals_buf);
@@ -662,14 +670,27 @@ void *rt_anim_player3d_new(void *skeleton) {
     p->crossfade_from_time = 0.0f;
     p->speed = 1.0f;
     p->playing = 0;
+    p->last_motion_frame = 0;
+    p->has_prev_motion_palette = 0;
 
     size_t palette_size = (size_t)skel->bone_count * 16 * sizeof(float);
     p->bone_palette = (float *)calloc(1, palette_size);
+    p->prev_bone_palette = (float *)calloc(1, palette_size);
+    p->motion_palette_snapshot = (float *)calloc(1, palette_size);
     p->local_transforms = (float *)calloc(1, palette_size);
+    if (!p->bone_palette || !p->prev_bone_palette || !p->motion_palette_snapshot ||
+        !p->local_transforms) {
+        rt_anim_player3d_finalize(p);
+        rt_trap("AnimPlayer3D.New: memory allocation failed");
+        return NULL;
+    }
 
     /* Initialize palette to identity */
-    for (int32_t i = 0; i < skel->bone_count; i++)
+    for (int32_t i = 0; i < skel->bone_count; i++) {
         mat4f_identity(&p->bone_palette[i * 16]);
+        mat4f_identity(&p->prev_bone_palette[i * 16]);
+        mat4f_identity(&p->motion_palette_snapshot[i * 16]);
+    }
 
     rt_obj_set_finalizer(p, rt_anim_player3d_finalize);
     return p;
@@ -683,6 +704,8 @@ void rt_anim_player3d_play(void *obj, void *animation) {
     p->current_time = 0.0f;
     p->playing = animation ? 1 : 0;
     p->crossfade_from = NULL;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
 }
 
 void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
@@ -696,6 +719,8 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     p->crossfade_time = 0.0f;
     p->crossfade_duration = (float)duration;
     p->playing = 1;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
 }
 
 void rt_anim_player3d_stop(void *obj) {
@@ -703,6 +728,8 @@ void rt_anim_player3d_stop(void *obj) {
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
     p->playing = 0;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
 }
 
 /// @brief Compute the bone palette from the current animation state.
@@ -861,8 +888,29 @@ double rt_anim_player3d_get_time(void *obj) {
 }
 
 void rt_anim_player3d_set_time(void *obj, double time) {
-    if (obj)
-        ((rt_anim_player3d *)obj)->current_time = (float)time;
+    if (obj) {
+        rt_anim_player3d *p = (rt_anim_player3d *)obj;
+        p->current_time = (float)time;
+        p->has_prev_motion_palette = 0;
+        p->last_motion_frame = 0;
+    }
+}
+
+static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_t frame_serial) {
+    if (!p || !p->bone_palette)
+        return NULL;
+    int32_t bone_count = p->skeleton ? p->skeleton->bone_count : 0;
+    size_t palette_size = (size_t)bone_count * 16 * sizeof(float);
+    if (p->last_motion_frame != frame_serial) {
+        if (p->motion_palette_snapshot && bone_count > 0 && p->last_motion_frame != 0) {
+            memcpy(p->prev_bone_palette, p->motion_palette_snapshot, palette_size);
+            p->has_prev_motion_palette = 1;
+        }
+        if (p->motion_palette_snapshot && bone_count > 0)
+            memcpy(p->motion_palette_snapshot, p->bone_palette, palette_size);
+        p->last_motion_frame = frame_serial;
+    }
+    return p->has_prev_motion_palette ? p->prev_bone_palette : NULL;
 }
 
 void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
@@ -946,10 +994,19 @@ void rt_canvas3d_draw_mesh_skinned(
     rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c && c->backend &&
         vgfx3d_backend_prefers_gpu_skinning(c->backend->name, p->skeleton->bone_count)) {
+        const float *prev_palette =
+            anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
         rt_mesh3d tmp = *m;
         tmp.bone_palette = p->bone_palette;
+        tmp.prev_bone_palette = prev_palette;
         tmp.bone_count = p->skeleton->bone_count;
-        rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
+                                           &tmp,
+                                           ((mat4_impl *)transform)->m,
+                                           material,
+                                           transform,
+                                           prev_palette,
+                                           NULL);
         return;
     }
 

@@ -42,15 +42,28 @@ typedef struct {
     void *mesh;        /* borrowed Mesh3D */
     void *material;    /* borrowed Material3D */
     float *transforms; /* N * 16 floats */
+    float *current_snapshot; /* current-frame snapshot for motion history */
+    float *prev_transforms;  /* previous-frame transforms */
     int32_t instance_count;
     int32_t instance_capacity;
+    int32_t motion_snapshot_count;
+    int32_t prev_count;
+    int64_t last_motion_frame;
+    int8_t has_prev_snapshot;
 } rt_instbatch3d;
 
 static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
     free(b->transforms);
+    free(b->current_snapshot);
+    free(b->prev_transforms);
     b->transforms = NULL;
+    b->current_snapshot = NULL;
+    b->prev_transforms = NULL;
     b->instance_count = b->instance_capacity = 0;
+    b->motion_snapshot_count = b->prev_count = 0;
+    b->last_motion_frame = 0;
+    b->has_prev_snapshot = 0;
 }
 
 void *rt_instbatch3d_new(void *mesh, void *material) {
@@ -65,8 +78,19 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
     b->mesh = mesh;
     b->material = material;
     b->transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+    b->current_snapshot = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+    b->prev_transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
     b->instance_count = 0;
     b->instance_capacity = INST_INIT_CAP;
+    b->motion_snapshot_count = 0;
+    b->prev_count = 0;
+    b->last_motion_frame = 0;
+    b->has_prev_snapshot = 0;
+    if (!b->transforms || !b->current_snapshot || !b->prev_transforms) {
+        instbatch_finalizer(b);
+        rt_trap("InstanceBatch3D.New: allocation failed");
+        return NULL;
+    }
     rt_obj_set_finalizer(b, instbatch_finalizer);
     return b;
 }
@@ -79,6 +103,12 @@ void rt_instbatch3d_add(void *obj, void *transform) {
     if (b->instance_count >= b->instance_capacity) {
         int32_t new_cap = b->instance_capacity * 2;
         b->transforms = (float *)realloc(b->transforms, (size_t)new_cap * 16 * sizeof(float));
+        b->current_snapshot =
+            (float *)realloc(b->current_snapshot, (size_t)new_cap * 16 * sizeof(float));
+        b->prev_transforms =
+            (float *)realloc(b->prev_transforms, (size_t)new_cap * 16 * sizeof(float));
+        if (!b->transforms || !b->current_snapshot || !b->prev_transforms)
+            return;
         b->instance_capacity = new_cap;
     }
 
@@ -104,6 +134,10 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
                &b->transforms[(b->instance_count - 1) * 16],
                16 * sizeof(float));
     b->instance_count--;
+    if (b->motion_snapshot_count > b->instance_count)
+        b->motion_snapshot_count = b->instance_count;
+    if (b->prev_count > b->instance_count)
+        b->prev_count = b->instance_count;
 }
 
 void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
@@ -122,7 +156,11 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
 void rt_instbatch3d_clear(void *obj) {
     if (!obj)
         return;
-    ((rt_instbatch3d *)obj)->instance_count = 0;
+    rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    b->instance_count = 0;
+    b->motion_snapshot_count = 0;
+    b->prev_count = 0;
+    b->has_prev_snapshot = 0;
 }
 
 int64_t rt_instbatch3d_count(void *obj) {
@@ -148,6 +186,18 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
 
     /* Try GPU instanced path if the backend supports it (MTL-13) */
     if (c->backend->submit_draw_instanced) {
+        if (b->last_motion_frame != rt_canvas3d_get_frame_serial(canvas_obj)) {
+            if (b->motion_snapshot_count > 0) {
+                memcpy(b->prev_transforms,
+                       b->current_snapshot,
+                       (size_t)b->motion_snapshot_count * 16 * sizeof(float));
+                b->prev_count = b->motion_snapshot_count;
+                b->has_prev_snapshot = 1;
+            }
+            memcpy(b->current_snapshot, b->transforms, (size_t)b->instance_count * 16 * sizeof(float));
+            b->motion_snapshot_count = b->instance_count;
+            b->last_motion_frame = rt_canvas3d_get_frame_serial(canvas_obj);
+        }
         vgfx3d_draw_cmd_t cmd;
         memset(&cmd, 0, sizeof(cmd));
         cmd.vertices = mesh->vertices;
@@ -169,6 +219,10 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
         cmd.emissive_color[0] = (float)mat->emissive[0];
         cmd.emissive_color[1] = (float)mat->emissive[1];
         cmd.emissive_color[2] = (float)mat->emissive[2];
+        cmd.prev_instance_matrices =
+            (b->has_prev_snapshot && b->prev_count == b->instance_count) ? b->prev_transforms : NULL;
+        cmd.has_prev_instance_matrices =
+            (cmd.prev_instance_matrices && b->instance_count > 0) ? 1 : 0;
 
         vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
         int32_t lc = 0;
