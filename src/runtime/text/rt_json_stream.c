@@ -441,14 +441,14 @@ int64_t rt_json_stream_next(void *parser) {
     }
 }
 
-/// @brief Return the type of the most recently parsed JSON token.
+/// @brief Token the type of the stream.
 int64_t rt_json_stream_token_type(void *parser) {
     if (!parser)
         return RT_JSON_TOK_ERROR;
     return ((rt_json_stream_impl *)parser)->current_type;
 }
 
-/// @brief Return the string value of the current JSON token (for string tokens).
+/// @brief String the value of the stream.
 rt_string rt_json_stream_string_value(void *parser) {
     if (!parser)
         return rt_const_cstr("");
@@ -458,28 +458,28 @@ rt_string rt_json_stream_string_value(void *parser) {
     return rt_const_cstr("");
 }
 
-/// @brief Return the numeric value of the current JSON token (for number tokens).
+/// @brief Number the value of the stream.
 double rt_json_stream_number_value(void *parser) {
     if (!parser)
         return 0.0;
     return ((rt_json_stream_impl *)parser)->num_value;
 }
 
-/// @brief Return the boolean value of the current JSON token (for true/false tokens).
+/// @brief Bool the value of the stream.
 int8_t rt_json_stream_bool_value(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->bool_value;
 }
 
-/// @brief Return the current nesting depth (0 = top level).
+/// @brief Depth the stream.
 int64_t rt_json_stream_depth(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->depth;
 }
 
-/// @brief Skip the current value; if it's an object/array, skips all nested content.
+/// @brief Skip the stream.
 void rt_json_stream_skip(void *parser) {
     if (!parser)
         return;
@@ -499,7 +499,7 @@ void rt_json_stream_skip(void *parser) {
     /* Primitive values are already consumed */
 }
 
-/// @brief Check whether there are more tokens to consume (not at END or ERROR).
+/// @brief Has the next of the stream.
 int8_t rt_json_stream_has_next(void *parser) {
     if (!parser)
         return 0;

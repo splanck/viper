@@ -392,10 +392,7 @@ static void solve_rope(ph_joint *j, double dt) {
     body_set_center(b, body_cx(b) - cx_b, body_cy(b) - cy_b);
 }
 
-/// @brief Run iterative constraint solving on all active joints in the physics world.
-/// @details Iterates PH_JOINT_ITERATIONS times over the joint list, dispatching
-///          each joint type (distance, spring, hinge, rope) to its specialized
-///          solver. Multiple iterations improve convergence for stiff constraints.
+/// @brief Solve the joints of the physics2d.
 void rt_physics2d_solve_joints(void *world, double dt) {
     if (!world)
         return;
@@ -457,14 +454,14 @@ void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double m
     return b;
 }
 
-/// @brief Return the collision radius of a circle body (0 for rectangle bodies).
+/// @brief Body the radius of the physics2d.
 double rt_physics2d_body_radius(void *body) {
     if (!body)
         return 0.0;
     return ((rt_body_impl *)body)->radius;
 }
 
-/// @brief Check whether a physics body uses circle collision (vs rectangle).
+/// @brief Body the is circle of the physics2d.
 int8_t rt_physics2d_body_is_circle(void *body) {
     if (!body)
         return 0;

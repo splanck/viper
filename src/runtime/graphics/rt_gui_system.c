@@ -42,11 +42,7 @@
 // Clipboard Functions (Phase 1)
 //=============================================================================
 
-/// @brief Copy a Viper string into the system clipboard as plain text.
-/// @details Converts the runtime string to a heap-allocated C string, passes it
-///          to the platform clipboard API, then frees the temporary C string.
-///          Must be called from the main thread because clipboard access is
-///          tied to the window system's event loop.
+/// @brief Set the text of the clipboard.
 void rt_clipboard_set_text(rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
@@ -56,11 +52,7 @@ void rt_clipboard_set_text(rt_string text) {
     }
 }
 
-/// @brief Retrieve the current clipboard contents as a Viper runtime string.
-/// @details Calls the platform clipboard API to get a malloc'd C string, wraps
-///          it in an rt_string, then frees the platform buffer. Returns an empty
-///          string if the clipboard is empty or contains non-text data. The
-///          caller owns the returned string reference.
+/// @brief Get the text of the clipboard.
 rt_string rt_clipboard_get_text(void) {
     RT_ASSERT_MAIN_THREAD();
     char *text = vgfx_clipboard_get_text();
@@ -71,10 +63,7 @@ rt_string rt_clipboard_get_text(void) {
     return result;
 }
 
-/// @brief Check whether the system clipboard currently contains text data.
-/// @details Queries the platform clipboard for the VGFX_CLIPBOARD_TEXT format
-///          without actually reading the content. Useful for enabling/disabling
-///          a "Paste" button in the UI based on clipboard availability.
+/// @brief Has the text of the clipboard.
 int64_t rt_clipboard_has_text(void) {
     RT_ASSERT_MAIN_THREAD();
     return vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT) ? 1 : 0;
@@ -182,13 +171,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
     return (*key != 0);
 }
 
-/// @brief Register a keyboard shortcut with the global shortcut table.
-/// @details Parses a human-readable key combo string like "Ctrl+Shift+S" into
-///          modifier flags and a key code, then stores the parsed result in a
-///          static table slot for frame-based polling. The id string is used
-///          later to query which shortcut was triggered. Silently ignores
-///          registrations beyond MAX_SHORTCUTS (256). Cmd is mapped to Ctrl
-///          for cross-platform compatibility.
+/// @brief Register the shortcuts.
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     RT_ASSERT_MAIN_THREAD();
     if (g_shortcut_count >= MAX_SHORTCUTS)
@@ -237,10 +220,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     g_shortcut_count++;
 }
 
-/// @brief Remove a keyboard shortcut by its string ID.
-/// @details Searches the static shortcut table for a matching ID, frees its
-///          strdup'd strings (id, keys, description), then shifts all later
-///          entries down to fill the gap so the table stays compact.
+/// @brief Unregister the shortcuts.
 void rt_shortcuts_unregister(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
@@ -265,10 +245,7 @@ void rt_shortcuts_unregister(rt_string id) {
     free(cid);
 }
 
-/// @brief Unregister all keyboard shortcuts and free their string storage.
-/// @details Iterates the entire shortcut table freeing every strdup'd string,
-///          resets the count to 0, and clears the triggered-shortcut pointer.
-///          Called during GUI teardown or when the shortcut context changes.
+/// @brief Remove all entries from the shortcuts.
 void rt_shortcuts_clear(void) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_shortcut_count; i++) {
@@ -280,11 +257,7 @@ void rt_shortcuts_clear(void) {
     g_triggered_shortcut_id = NULL;
 }
 
-/// @brief Check whether a specific shortcut was triggered during this frame.
-/// @details Looks up the shortcut by its string ID and returns 1 if its
-///          triggered flag was set by rt_shortcuts_check_key during the
-///          current frame's input processing. Returns 0 if not found, not
-///          triggered, or shortcuts are globally disabled.
+/// @brief Was the triggered of the shortcuts.
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
@@ -305,10 +278,8 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
     return 0;
 }
 
-/// @brief Reset all shortcut triggered flags at the start of a new frame.
-/// @details Called once per frame before input processing so that each
-///          shortcut's triggered flag is edge-detected: set only during the
-///          frame when the key combo is first pressed, not held down.
+// Clear all shortcut triggered flags (call at start of each frame)
+/// @brief Clear the triggered of the shortcuts.
 void rt_shortcuts_clear_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_shortcut_count; i++) {
@@ -317,13 +288,9 @@ void rt_shortcuts_clear_triggered(void) {
     g_triggered_shortcut_id = NULL;
 }
 
-/// @brief Test a key-down event against all registered shortcuts.
-/// @details Called by the input system when a key is pressed. Compares the
-///          key code and modifier flags (Ctrl/Shift/Alt) against each shortcut's
-///          pre-parsed values. On macOS, Cmd is treated as Ctrl. When a match
-///          is found, the shortcut's triggered flag is set and its ID is stored
-///          in g_triggered_shortcut_id for retrieval by was_triggered/get_triggered.
-/// @return 1 if a shortcut was matched, 0 otherwise.
+// Check if a key event matches any registered shortcut.
+// Returns 1 if a shortcut was triggered, 0 otherwise.
+/// @brief Check the key of the shortcuts.
 int8_t rt_shortcuts_check_key(int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
@@ -355,9 +322,7 @@ int8_t rt_shortcuts_check_key(int key, int mods) {
     return 0;
 }
 
-/// @brief Return the ID of the most recently triggered shortcut, or empty string.
-/// @details The ID is set by rt_shortcuts_check_key when a matching key combo is
-///          detected and cleared on the next frame by clear_triggered.
+/// @brief Get the triggered of the shortcuts.
 rt_string rt_shortcuts_get_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_triggered_shortcut_id) {
@@ -366,10 +331,7 @@ rt_string rt_shortcuts_get_triggered(void) {
     return rt_str_empty();
 }
 
-/// @brief Enable or disable an individual shortcut by its string ID.
-/// @details When disabled, the shortcut's key combo is still registered but
-///          rt_shortcuts_check_key skips it during matching. This is useful for
-///          context-dependent shortcuts (e.g., disabling "Delete" when nothing is selected).
+/// @brief Set the enabled of the shortcuts.
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
@@ -386,8 +348,7 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     free(cid);
 }
 
-/// @brief Check whether an individual shortcut is currently enabled.
-/// @details Returns 0 if the shortcut ID is not found or is disabled.
+/// @brief Is the enabled of the shortcuts.
 int64_t rt_shortcuts_is_enabled(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
@@ -405,15 +366,13 @@ int64_t rt_shortcuts_is_enabled(rt_string id) {
     return 0;
 }
 
-/// @brief Enable or disable all shortcut processing globally.
-/// @details When disabled (e.g., while a text input has focus), check_key
-///          always returns 0 regardless of what keys are pressed.
+/// @brief Set the global enabled of the shortcuts.
 void rt_shortcuts_set_global_enabled(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     g_shortcuts_global_enabled = enabled != 0;
 }
 
-/// @brief Check whether global shortcut processing is enabled.
+/// @brief Get the global enabled of the shortcuts.
 int64_t rt_shortcuts_get_global_enabled(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_shortcuts_global_enabled ? 1 : 0;
@@ -423,10 +382,7 @@ int64_t rt_shortcuts_get_global_enabled(void) {
 // Window Management (Phase 1)
 //=============================================================================
 
-/// @brief Set the window title bar text.
-/// @details Converts the runtime string to a C string, updates the platform
-///          window title via vgfx, and keeps a strdup'd copy in gui_app->title
-///          because there is no vgfx_get_title API to read it back later.
+/// @brief Set the title of the app.
 void rt_app_set_title(void *app, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -444,9 +400,7 @@ void rt_app_set_title(void *app, rt_string title) {
     }
 }
 
-/// @brief Return the current window title as a runtime string.
-/// @details Reads from the cached gui_app->title copy, not the platform window,
-///          because vgfx has no get-title API. Returns empty if app is NULL.
+/// @brief Get the title of the app.
 rt_string rt_app_get_title(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -457,10 +411,7 @@ rt_string rt_app_get_title(void *app) {
     return rt_str_empty();
 }
 
-/// @brief Resize the application window to the given pixel dimensions.
-/// @details Delegates to vgfx_set_window_size. The root widget layout is NOT
-///          explicitly resized here — it is recalculated in the next render
-///          frame by rt_gui_app_render using the new physical window size.
+/// @brief Return the size of the app.
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -474,7 +425,7 @@ void rt_app_set_size(void *app, int64_t width, int64_t height) {
     }
 }
 
-/// @brief Return the current window width in pixels.
+/// @brief Get the width of the app.
 int64_t rt_app_get_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -487,7 +438,7 @@ int64_t rt_app_get_width(void *app) {
     return w;
 }
 
-/// @brief Return the current window height in pixels.
+/// @brief Get the height of the app.
 int64_t rt_app_get_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -500,7 +451,7 @@ int64_t rt_app_get_height(void *app) {
     return h;
 }
 
-/// @brief Move the application window to screen coordinates (x, y).
+/// @brief Set the position of the app.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -510,7 +461,7 @@ void rt_app_set_position(void *app, int64_t x, int64_t y) {
         vgfx_set_position(gui_app->window, (int32_t)x, (int32_t)y);
 }
 
-/// @brief Return the window's current X position on screen.
+/// @brief Get the x of the app.
 int64_t rt_app_get_x(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -523,7 +474,7 @@ int64_t rt_app_get_x(void *app) {
     return x;
 }
 
-/// @brief Return the window's current Y position on screen.
+/// @brief Get the y of the app.
 int64_t rt_app_get_y(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -566,7 +517,7 @@ void rt_app_restore(void *app) {
         vgfx_restore(gui_app->window);
 }
 
-/// @brief Check whether the window is currently minimized (iconified).
+/// @brief Is the minimized of the app.
 int64_t rt_app_is_minimized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -575,7 +526,7 @@ int64_t rt_app_is_minimized(void *app) {
     return gui_app->window ? vgfx_is_minimized(gui_app->window) : 0;
 }
 
-/// @brief Check whether the window is currently maximized.
+/// @brief Is the maximized of the app.
 int64_t rt_app_is_maximized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -584,7 +535,7 @@ int64_t rt_app_is_maximized(void *app) {
     return gui_app->window ? vgfx_is_maximized(gui_app->window) : 0;
 }
 
-/// @brief Enter or exit fullscreen mode for the application window.
+/// @brief Set the fullscreen of the app.
 void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -594,7 +545,7 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
         vgfx_set_fullscreen(gui_app->window, (int32_t)fullscreen);
 }
 
-/// @brief Check whether the window is currently in fullscreen mode.
+/// @brief Is the fullscreen of the app.
 int64_t rt_app_is_fullscreen(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -613,7 +564,7 @@ void rt_app_focus(void *app) {
         vgfx_focus(gui_app->window);
 }
 
-/// @brief Check whether the application window currently has input focus.
+/// @brief Is the focused of the app.
 int64_t rt_app_is_focused(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -622,10 +573,7 @@ int64_t rt_app_is_focused(void *app) {
     return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
 }
 
-/// @brief Enable or disable close prevention (the X button asks but doesn't close).
-/// @details When enabled, clicking the window close button sets should_close
-///          but does not actually destroy the window, letting the app handle
-///          confirmation dialogs or save prompts.
+/// @brief Set the prevent close of the app.
 void rt_app_set_prevent_close(void *app, int64_t prevent) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -635,9 +583,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent) {
         vgfx_set_prevent_close(gui_app->window, (int32_t)prevent);
 }
 
-/// @brief Check whether the user attempted to close the window (pending close request).
-/// @details Only meaningful when prevent_close is enabled. The app should check
-///          this flag each frame and show a confirmation dialog before closing.
+/// @brief Was the close requested of the app.
 int64_t rt_app_was_close_requested(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -646,7 +592,7 @@ int64_t rt_app_was_close_requested(void *app) {
     return gui_app->should_close;
 }
 
-/// @brief Return the primary monitor's width in pixels.
+/// @brief Get the monitor width of the app.
 int64_t rt_app_get_monitor_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -659,7 +605,7 @@ int64_t rt_app_get_monitor_width(void *app) {
     return (int64_t)w;
 }
 
-/// @brief Return the primary monitor's height in pixels.
+/// @brief Get the monitor height of the app.
 int64_t rt_app_get_monitor_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -672,7 +618,7 @@ int64_t rt_app_get_monitor_height(void *app) {
     return (int64_t)h;
 }
 
-/// @brief Resize the application window (alternative entry point to set_size).
+/// @brief Return the size of the app.
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -686,9 +632,7 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     // dimensions passed from Zia, as that would corrupt the layout geometry.
 }
 
-/// @brief Return the default UI font size in logical points (HiDPI-adjusted).
-/// @details Divides the internally stored physical-pixel font size by the
-///          window's HiDPI scale factor to produce a logical-point value.
+/// @brief Return the size of the app.
 double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -701,9 +645,7 @@ double rt_app_get_font_size(void *app) {
     return (double)(gui_app->default_font_size / _s);
 }
 
-/// @brief Set the default UI font size in logical points (6-72), stored as physical pixels.
-/// @details Multiplies the logical point size by the HiDPI scale factor before
-///          storing, so all internal font rendering uses physical-pixel sizes.
+/// @brief Return the size of the app.
 void rt_app_set_font_size(void *app, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -724,21 +666,20 @@ void rt_app_set_font_size(void *app, double size) {
 // Cursor Styles (Phase 1)
 //=============================================================================
 
-/// @brief Change the mouse cursor to a platform standard style (arrow, hand, beam, etc.).
-/// @details The type constant maps directly to VGFX_CURSOR_* enum values.
+/// @brief Set a value in the cursor.
 void rt_cursor_set(int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
         vgfx_set_cursor(s_current_app->window, (int32_t)type);
 }
 
-/// @brief Reset the mouse cursor to the default arrow style.
+/// @brief Set a value in the cursor.
 void rt_cursor_reset(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
 }
 
-/// @brief Show or hide the mouse cursor within the application window.
+/// @brief Set the visible of the cursor.
 void rt_cursor_set_visible(int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
@@ -759,58 +700,249 @@ void rt_widget_reset_cursor(void *widget) {
     rt_cursor_reset();
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS — no-op stubs for headless/test builds */
+#else /* !VIPER_ENABLE_GRAPHICS */
 
-void rt_clipboard_set_text(rt_string text) { (void)text; }
-rt_string rt_clipboard_get_text(void) { return rt_str_empty(); }
-int64_t rt_clipboard_has_text(void) { return 0; }
+/// @brief Set the text of the clipboard.
+void rt_clipboard_set_text(rt_string text) {
+    (void)text;
+}
+
+/// @brief Get the text of the clipboard.
+rt_string rt_clipboard_get_text(void) {
+    return rt_str_empty();
+}
+
+/// @brief Has the text of the clipboard.
+int64_t rt_clipboard_has_text(void) {
+    return 0;
+}
+
+/// @brief Remove all entries from the clipboard.
 void rt_clipboard_clear(void) {}
 
+/// @brief Register the shortcuts.
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
-    (void)id; (void)keys; (void)description;
+    (void)id;
+    (void)keys;
+    (void)description;
 }
-void rt_shortcuts_unregister(rt_string id) { (void)id; }
+
+/// @brief Unregister the shortcuts.
+void rt_shortcuts_unregister(rt_string id) {
+    (void)id;
+}
+
+/// @brief Remove all entries from the shortcuts.
 void rt_shortcuts_clear(void) {}
-int64_t rt_shortcuts_was_triggered(rt_string id) { (void)id; return 0; }
-void rt_shortcuts_clear_triggered(void) {}
-int8_t rt_shortcuts_check_key(int key, int mods) { (void)key; (void)mods; return 0; }
-rt_string rt_shortcuts_get_triggered(void) { return rt_str_empty(); }
-void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) { (void)id; (void)enabled; }
-int64_t rt_shortcuts_is_enabled(rt_string id) { (void)id; return 0; }
-void rt_shortcuts_set_global_enabled(int64_t enabled) { (void)enabled; }
-int64_t rt_shortcuts_get_global_enabled(void) { return 0; }
 
-void rt_app_set_title(void *app, rt_string title) { (void)app; (void)title; }
-rt_string rt_app_get_title(void *app) { (void)app; return rt_str_empty(); }
-void rt_app_set_size(void *app, int64_t width, int64_t height) {
-    (void)app; (void)width; (void)height;
+/// @brief Was the triggered of the shortcuts.
+int64_t rt_shortcuts_was_triggered(rt_string id) {
+    (void)id;
+    return 0;
 }
-int64_t rt_app_get_width(void *app) { (void)app; return 0; }
-int64_t rt_app_get_height(void *app) { (void)app; return 0; }
-void rt_app_set_position(void *app, int64_t x, int64_t y) { (void)app; (void)x; (void)y; }
-int64_t rt_app_get_x(void *app) { (void)app; return 0; }
-int64_t rt_app_get_y(void *app) { (void)app; return 0; }
-void rt_app_minimize(void *app) { (void)app; }
-void rt_app_maximize(void *app) { (void)app; }
-void rt_app_restore(void *app) { (void)app; }
-int64_t rt_app_is_minimized(void *app) { (void)app; return 0; }
-int64_t rt_app_is_maximized(void *app) { (void)app; return 0; }
-void rt_app_set_fullscreen(void *app, int64_t fullscreen) { (void)app; (void)fullscreen; }
-int64_t rt_app_is_fullscreen(void *app) { (void)app; return 0; }
-void rt_app_focus(void *app) { (void)app; }
-int64_t rt_app_is_focused(void *app) { (void)app; return 0; }
-void rt_app_set_prevent_close(void *app, int64_t prevent) { (void)app; (void)prevent; }
-int64_t rt_app_was_close_requested(void *app) { (void)app; return 0; }
-int64_t rt_app_get_monitor_width(void *app) { (void)app; return 0; }
-int64_t rt_app_get_monitor_height(void *app) { (void)app; return 0; }
-void rt_app_set_window_size(void *app, int64_t w, int64_t h) { (void)app; (void)w; (void)h; }
-double rt_app_get_font_size(void *app) { (void)app; return 14.0; }
-void rt_app_set_font_size(void *app, double size) { (void)app; (void)size; }
 
-void rt_cursor_set(int64_t type) { (void)type; }
+/// @brief Clear the triggered of the shortcuts.
+void rt_shortcuts_clear_triggered(void) {}
+
+/// @brief Check the key of the shortcuts.
+int8_t rt_shortcuts_check_key(int key, int mods) {
+    (void)key;
+    (void)mods;
+    return 0;
+}
+
+/// @brief Get the triggered of the shortcuts.
+rt_string rt_shortcuts_get_triggered(void) {
+    return rt_str_empty();
+}
+
+/// @brief Set the enabled of the shortcuts.
+void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
+    (void)id;
+    (void)enabled;
+}
+
+/// @brief Is the enabled of the shortcuts.
+int64_t rt_shortcuts_is_enabled(rt_string id) {
+    (void)id;
+    return 0;
+}
+
+/// @brief Set the global enabled of the shortcuts.
+void rt_shortcuts_set_global_enabled(int64_t enabled) {
+    (void)enabled;
+}
+
+/// @brief Get the global enabled of the shortcuts.
+int64_t rt_shortcuts_get_global_enabled(void) {
+    return 0;
+}
+
+/// @brief Set the title of the app.
+void rt_app_set_title(void *app, rt_string title) {
+    (void)app;
+    (void)title;
+}
+
+/// @brief Get the title of the app.
+rt_string rt_app_get_title(void *app) {
+    (void)app;
+    return rt_str_empty();
+}
+
+/// @brief Return the size of the app.
+void rt_app_set_size(void *app, int64_t width, int64_t height) {
+    (void)app;
+    (void)width;
+    (void)height;
+}
+
+/// @brief Get the width of the app.
+int64_t rt_app_get_width(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Get the height of the app.
+int64_t rt_app_get_height(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Set the position of the app.
+void rt_app_set_position(void *app, int64_t x, int64_t y) {
+    (void)app;
+    (void)x;
+    (void)y;
+}
+
+/// @brief Get the x of the app.
+int64_t rt_app_get_x(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Get the y of the app.
+int64_t rt_app_get_y(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Minimize the app.
+void rt_app_minimize(void *app) {
+    (void)app;
+}
+
+/// @brief Maximize the app.
+void rt_app_maximize(void *app) {
+    (void)app;
+}
+
+/// @brief Restore the app.
+void rt_app_restore(void *app) {
+    (void)app;
+}
+
+/// @brief Is the minimized of the app.
+int64_t rt_app_is_minimized(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Is the maximized of the app.
+int64_t rt_app_is_maximized(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Set the fullscreen of the app.
+void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
+    (void)app;
+    (void)fullscreen;
+}
+
+/// @brief Is the fullscreen of the app.
+int64_t rt_app_is_fullscreen(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Focus the app.
+void rt_app_focus(void *app) {
+    (void)app;
+}
+
+/// @brief Is the focused of the app.
+int64_t rt_app_is_focused(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Set the prevent close of the app.
+void rt_app_set_prevent_close(void *app, int64_t prevent) {
+    (void)app;
+    (void)prevent;
+}
+
+/// @brief Was the close requested of the app.
+int64_t rt_app_was_close_requested(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Get the monitor width of the app.
+int64_t rt_app_get_monitor_width(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Get the monitor height of the app.
+int64_t rt_app_get_monitor_height(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Return the size of the app.
+void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
+    (void)app;
+    (void)w;
+    (void)h;
+}
+
+/// @brief Return the size of the app.
+double rt_app_get_font_size(void *app) {
+    (void)app;
+    return 14.0;
+}
+
+/// @brief Return the size of the app.
+void rt_app_set_font_size(void *app, double size) {
+    (void)app;
+    (void)size;
+}
+
+/// @brief Set a value in the cursor.
+void rt_cursor_set(int64_t type) {
+    (void)type;
+}
+
+/// @brief Set a value in the cursor.
 void rt_cursor_reset(void) {}
-void rt_cursor_set_visible(int64_t visible) { (void)visible; }
-void rt_widget_set_cursor(void *widget, int64_t type) { (void)widget; (void)type; }
-void rt_widget_reset_cursor(void *widget) { (void)widget; }
+
+/// @brief Set the visible of the cursor.
+void rt_cursor_set_visible(int64_t visible) {
+    (void)visible;
+}
+
+/// @brief Set the cursor of the widget.
+void rt_widget_set_cursor(void *widget, int64_t type) {
+    (void)widget;
+    (void)type;
+}
+
+/// @brief Reset the cursor of the widget.
+void rt_widget_reset_cursor(void *widget) {
+    (void)widget;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

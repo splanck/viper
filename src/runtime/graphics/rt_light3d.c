@@ -131,18 +131,14 @@ void *rt_light3d_new_spot(void *position, void *direction, double r, double g, d
     return light;
 }
 
-/// @brief Set the brightness multiplier for this light source.
-/// @details Intensity scales the light's contribution to the scene. 0 effectively
-///          turns the light off; values above 1 create over-bright lighting.
+/// @brief Set the intensity of the light3d.
 void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!obj)
         return;
     ((rt_light3d *)obj)->intensity = intensity;
 }
 
-/// @brief Set the RGB color of the light (each component in [0, 1] range).
-/// @details The light color is multiplied with surface diffuse/specular colors
-///          during Phong shading. White (1,1,1) is a neutral light.
+/// @brief Set the color of the light3d.
 void rt_light3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;

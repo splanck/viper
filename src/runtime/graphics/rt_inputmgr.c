@@ -84,26 +84,19 @@ void rt_inputmgr_update(rt_inputmgr mgr) {
 // Keyboard
 //=============================================================================
 
-/// @brief Check whether a key was pressed this frame (edge-triggered, not held).
-/// @details Delegates to the global keyboard state rather than per-manager state
-///          because the platform input system maintains a single key-state array.
-///          The mgr parameter is accepted for API consistency but unused.
+/// @brief Key the pressed of the inputmgr.
 int8_t rt_inputmgr_key_pressed(rt_inputmgr mgr, int64_t key) {
     (void)mgr; // Uses global keyboard state
     return rt_keyboard_was_pressed(key);
 }
 
-/// @brief Check whether a key was released this frame (edge-triggered).
-/// @details Returns 1 only on the single frame when the key transitions from
-///          down to up. Delegates to the global keyboard state.
+/// @brief Key the released of the inputmgr.
 int8_t rt_inputmgr_key_released(rt_inputmgr mgr, int64_t key) {
     (void)mgr;
     return rt_keyboard_was_released(key);
 }
 
-/// @brief Check whether a key is currently held down (level-triggered).
-/// @details Returns 1 every frame the key is down, not just on the initial press.
-///          Useful for continuous movement or held actions in game loops.
+/// @brief Key the held of the inputmgr.
 int8_t rt_inputmgr_key_held(rt_inputmgr mgr, int64_t key) {
     (void)mgr;
     return rt_keyboard_is_down(key);
@@ -140,11 +133,7 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
     return oldest_slot;
 }
 
-/// @brief Check whether a key press should fire, applying a per-key debounce timer.
-/// @details Prevents rapid repeat-firing when a key is held. The first press fires
-///          immediately, then the key is suppressed for debounce_delay frames. Once
-///          the key is physically released the timer resets so the next press is
-///          immediate again. Uses a fixed-size slot table with LRU eviction when full.
+/// @brief Key the pressed debounced of the inputmgr.
 int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key) {
     if (!mgr)
         return 0;
@@ -165,14 +154,14 @@ int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key) {
     return 0;
 }
 
-/// @brief Set how many frames a key must be released before it can fire again.
+/// @brief Set the debounce delay of the inputmgr.
 void rt_inputmgr_set_debounce_delay(rt_inputmgr mgr, int64_t frames) {
     if (mgr && frames >= 0) {
         mgr->debounce_delay = frames;
     }
 }
 
-/// @brief Return the current debounce delay in frames.
+/// @brief Get the debounce delay of the inputmgr.
 int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr) {
     return mgr ? mgr->debounce_delay : 0;
 }
@@ -181,55 +170,55 @@ int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr) {
 // Mouse
 //=============================================================================
 
-/// @brief Check whether a mouse button was clicked this frame (edge-triggered).
+/// @brief Mouse the pressed of the inputmgr.
 int8_t rt_inputmgr_mouse_pressed(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_was_pressed(button);
 }
 
-/// @brief Check whether a mouse button was released this frame (edge-triggered).
+/// @brief Mouse the released of the inputmgr.
 int8_t rt_inputmgr_mouse_released(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_was_released(button);
 }
 
-/// @brief Check whether a mouse button is currently held down (level-triggered).
+/// @brief Mouse the held of the inputmgr.
 int8_t rt_inputmgr_mouse_held(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_is_down(button);
 }
 
-/// @brief Return the current mouse X position in window coordinates.
+/// @brief Mouse the x of the inputmgr.
 int64_t rt_inputmgr_mouse_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_x();
 }
 
-/// @brief Return the current mouse Y position in window coordinates.
+/// @brief Mouse the y of the inputmgr.
 int64_t rt_inputmgr_mouse_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_y();
 }
 
-/// @brief Return the horizontal mouse movement since the last frame (pixels).
+/// @brief Mouse the delta x of the inputmgr.
 int64_t rt_inputmgr_mouse_delta_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_delta_x();
 }
 
-/// @brief Return the vertical mouse movement since the last frame (pixels).
+/// @brief Mouse the delta y of the inputmgr.
 int64_t rt_inputmgr_mouse_delta_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_delta_y();
 }
 
-/// @brief Return the vertical scroll wheel delta since the last frame.
+/// @brief Scroll the y of the inputmgr.
 int64_t rt_inputmgr_scroll_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_y();
 }
 
-/// @brief Return the horizontal scroll wheel delta since the last frame.
+/// @brief Scroll the x of the inputmgr.
 int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_x();
@@ -239,9 +228,7 @@ int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
 // Gamepad
 //=============================================================================
 
-/// @brief Check whether a gamepad button was pressed this frame (edge-triggered).
-/// @details When pad is -1, checks ALL connected gamepads (up to 4) and returns 1
-///          if any of them pressed the button. This is the "any player" convenience.
+/// @brief Pad the pressed of the inputmgr.
 int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -258,8 +245,7 @@ int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button) {
     return rt_pad_was_pressed(pad, button);
 }
 
-/// @brief Check whether a gamepad button was released this frame (edge-triggered).
-/// @details When pad is -1, checks all connected gamepads.
+/// @brief Pad the released of the inputmgr.
 int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -275,8 +261,7 @@ int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button) {
     return rt_pad_was_released(pad, button);
 }
 
-/// @brief Check whether a gamepad button is currently held (level-triggered).
-/// @details When pad is -1, checks all connected gamepads.
+/// @brief Pad the held of the inputmgr.
 int8_t rt_inputmgr_pad_held(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -452,11 +437,7 @@ int8_t rt_inputmgr_cancel(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Return a combined horizontal axis value in [-1, 1] from keyboard and gamepad.
-/// @details Merges WASD/arrow keys (digital -1/+1) with the first connected
-///          gamepad's left stick and D-pad. Gamepad analog values override
-///          keyboard when more extreme (further from center). A 0.1 deadzone
-///          is applied to the analog stick to suppress drift.
+/// @brief Axis the x of the inputmgr.
 double rt_inputmgr_axis_x(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -497,9 +478,7 @@ double rt_inputmgr_axis_x(rt_inputmgr mgr) {
     return value;
 }
 
-/// @brief Return a combined vertical axis value in [-1, 1] from keyboard and gamepad.
-/// @details Same merging logic as axis_x but for the vertical axis. W/Up = -1
-///          (upward), S/Down = +1 (downward), matching screen-coordinate convention.
+/// @brief Axis the y of the inputmgr.
 double rt_inputmgr_axis_y(rt_inputmgr mgr) {
     (void)mgr;
 

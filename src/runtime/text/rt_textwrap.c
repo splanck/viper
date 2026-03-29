@@ -295,7 +295,7 @@ rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
     return rt_textwrap_truncate_with(text, width, rt_const_cstr("..."));
 }
 
-/// @brief Truncate text to a maximum width, appending a custom suffix (e.g., "...").
+/// @brief Truncate the with of the textwrap.
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix) {
     int64_t text_len = rt_str_len(text);
     int64_t suffix_len = rt_str_len(suffix);

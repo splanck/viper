@@ -113,10 +113,7 @@ double rt_ray3d_intersect_triangle(
  * Ray-AABB intersection (slab method)
  *=========================================================================*/
 
-/// @brief Test a ray against an axis-aligned bounding box using the slab method.
-/// @details Computes the ray parameter t at which the ray enters the box.
-///          Returns -1.0 if the ray misses entirely. The slab method tests
-///          each axis independently and takes the intersection of the intervals.
+/// @brief Intersect the aabb of the ray3d.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     if (!origin || !dir || !aabb_min || !aabb_max)
         return -1.0;
@@ -163,9 +160,7 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
  * Ray-sphere intersection (quadratic formula)
  *=========================================================================*/
 
-/// @brief Test a ray against a sphere, returning the distance to the nearest hit.
-/// @details Solves the quadratic equation for ray-sphere intersection. Returns
-///          -1.0 if the ray misses or starts inside the sphere with no forward hit.
+/// @brief Intersect the sphere of the ray3d.
 double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
     if (!origin || !dir || !center)
         return -1.0;
@@ -368,7 +363,7 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
  * RayHit3D accessors
  *=========================================================================*/
 
-/// @brief Return the distance along the ray to the hit point (ray parameter t).
+/// @brief Hit the distance of the ray3d.
 double rt_ray3d_hit_distance(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->distance : -1.0;
 }
@@ -387,7 +382,7 @@ void *rt_ray3d_hit_normal(void *hit) {
     return rt_vec3_new(h->normal[0], h->normal[1], h->normal[2]);
 }
 
-/// @brief Return the index of the triangle that was hit, or -1 if no hit.
+/// @brief Hit the triangle of the ray3d.
 int64_t rt_ray3d_hit_triangle(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->triangle_index : -1;
 }
@@ -435,9 +430,7 @@ void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     return rt_vec3_new(cx, cy, cz);
 }
 
-/// @brief Test whether a sphere overlaps an axis-aligned bounding box.
-/// @details Finds the closest point on the AABB to the sphere center, then checks
-///          if the distance to that point is less than the sphere's radius.
+/// @brief Sphere the overlaps of the aabb3d.
 int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
     if (!aabb_min || !aabb_max || !center)
         return 0;

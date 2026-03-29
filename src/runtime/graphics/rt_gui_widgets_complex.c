@@ -117,7 +117,7 @@ int64_t rt_tabbar_get_active_index(void *tabbar) {
     return vg_tabbar_get_tab_index(tb, tb->active_tab);
 }
 
-/// @brief Check whether the selected tab changed this frame (edge-triggered).
+/// @brief Was the changed of the tabbar.
 int64_t rt_tabbar_was_changed(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
@@ -290,7 +290,7 @@ int64_t rt_codeeditor_get_line_count(void *editor) {
     return vg_codeeditor_get_line_count((vg_codeeditor_t *)editor);
 }
 
-/// @brief Check whether the editor content has been modified since last save.
+/// @brief Is the modified of the codeeditor.
 int64_t rt_codeeditor_is_modified(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
@@ -441,7 +441,7 @@ void rt_container_set_padding(void *container, double padding) {
 // Widget State Functions
 //=============================================================================
 
-/// @brief Check whether the mouse cursor is currently over this widget.
+/// @brief Is the hovered of the widget.
 int64_t rt_widget_is_hovered(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -449,7 +449,7 @@ int64_t rt_widget_is_hovered(void *widget) {
     return (((vg_widget_t *)widget)->state & VG_STATE_HOVERED) ? 1 : 0;
 }
 
-/// @brief Check whether the mouse button is currently pressed on this widget.
+/// @brief Is the pressed of the widget.
 int64_t rt_widget_is_pressed(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -457,7 +457,7 @@ int64_t rt_widget_is_pressed(void *widget) {
     return (((vg_widget_t *)widget)->state & VG_STATE_PRESSED) ? 1 : 0;
 }
 
-/// @brief Check whether this widget currently has keyboard focus.
+/// @brief Is the focused of the widget.
 int64_t rt_widget_is_focused(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -475,7 +475,7 @@ void rt_gui_set_last_clicked(void *widget) {
     g_last_clicked_widget = (vg_widget_t *)widget;
 }
 
-/// @brief Check whether this widget was clicked this frame (edge-triggered, resets after read).
+/// @brief Was the clicked of the widget.
 int64_t rt_widget_was_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -808,7 +808,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     return radio;
 }
 
-/// @brief Check whether this radio button is the currently selected one in its group.
+/// @brief Is the selected of the radiobutton.
 int64_t rt_radiobutton_is_selected(void *radio) {
     RT_ASSERT_MAIN_THREAD();
     if (!radio)
@@ -965,21 +965,25 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     return NULL;
 }
 
+/// @brief Remove the tab of the tabbar.
 void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     (void)tabbar;
     (void)tab;
 }
 
+/// @brief Set the active of the tabbar.
 void rt_tabbar_set_active(void *tabbar, void *tab) {
     (void)tabbar;
     (void)tab;
 }
 
+/// @brief Set the title of the tab.
 void rt_tab_set_title(void *tab, rt_string title) {
     (void)tab;
     (void)title;
 }
 
+/// @brief Set the modified of the tab.
 void rt_tab_set_modified(void *tab, int64_t modified) {
     (void)tab;
     (void)modified;
@@ -990,26 +994,31 @@ void *rt_tabbar_get_active(void *tabbar) {
     return NULL;
 }
 
+/// @brief Get the active index of the tabbar.
 int64_t rt_tabbar_get_active_index(void *tabbar) {
     (void)tabbar;
     return -1;
 }
 
+/// @brief Was the changed of the tabbar.
 int64_t rt_tabbar_was_changed(void *tabbar) {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Return the count of elements in the tabbar.
 int64_t rt_tabbar_get_tab_count(void *tabbar) {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Was the close clicked of the tabbar.
 int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     (void)tabbar;
     return 0;
 }
 
+/// @brief Get the close clicked index of the tabbar.
 int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     (void)tabbar;
     return -1;
@@ -1021,6 +1030,7 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     return NULL;
 }
 
+/// @brief Set the auto close of the tabbar.
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     (void)tabbar;
     (void)auto_close;
@@ -1032,11 +1042,13 @@ void *rt_splitpane_new(void *parent, int64_t horizontal) {
     return NULL;
 }
 
+/// @brief Set the position of the splitpane.
 void rt_splitpane_set_position(void *split, double position) {
     (void)split;
     (void)position;
 }
 
+/// @brief Get the position of the splitpane.
 double rt_splitpane_get_position(void *split) {
     (void)split;
     return 0.5;
@@ -1057,66 +1069,80 @@ void *rt_codeeditor_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the text of the codeeditor.
 void rt_codeeditor_set_text(void *editor, rt_string text) {
     (void)editor;
     (void)text;
 }
 
+/// @brief Get the text of the codeeditor.
 rt_string rt_codeeditor_get_text(void *editor) {
     (void)editor;
     return rt_str_empty();
 }
 
+/// @brief Get the selected text of the codeeditor.
 rt_string rt_codeeditor_get_selected_text(void *editor) {
     (void)editor;
     return rt_str_empty();
 }
 
+/// @brief Set the cursor of the codeeditor.
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
     (void)editor;
     (void)line;
     (void)col;
 }
 
+/// @brief Scroll the to line of the codeeditor.
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     (void)editor;
     (void)line;
 }
 
+/// @brief Return the count of elements in the codeeditor.
 int64_t rt_codeeditor_get_line_count(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Is the modified of the codeeditor.
 int64_t rt_codeeditor_is_modified(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Clear the modified of the codeeditor.
 void rt_codeeditor_clear_modified(void *editor) {
     (void)editor;
 }
 
+/// @brief Set the font of the codeeditor.
 void rt_codeeditor_set_font(void *editor, void *font, double size) {
     (void)editor;
     (void)font;
     (void)size;
 }
 
+/// @brief Return the size of the codeeditor.
 double rt_codeeditor_get_font_size(void *editor) {
     (void)editor;
     return 14.0;
 }
 
+/// @brief Return the size of the codeeditor.
 void rt_codeeditor_set_font_size(void *editor, double size) {
     (void)editor;
     (void)size;
 }
 
+/// @brief Set the dark of the theme.
 void rt_theme_set_dark(void) {}
 
+/// @brief Set the light of the theme.
 void rt_theme_set_light(void) {}
 
+/// @brief Get the name of the theme.
 rt_string rt_theme_get_name(void) {
     return rt_string_from_bytes("dark", 4);
 }
@@ -1129,41 +1155,49 @@ void *rt_hbox_new(void) {
     return NULL;
 }
 
+/// @brief Set the spacing of the container.
 void rt_container_set_spacing(void *container, double spacing) {
     (void)container;
     (void)spacing;
 }
 
+/// @brief Set the padding of the container.
 void rt_container_set_padding(void *container, double padding) {
     (void)container;
     (void)padding;
 }
 
+/// @brief Is the hovered of the widget.
 int64_t rt_widget_is_hovered(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Is the pressed of the widget.
 int64_t rt_widget_is_pressed(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Is the focused of the widget.
 int64_t rt_widget_is_focused(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Set the last clicked value.
 /// @param widget
 void rt_gui_set_last_clicked(void *widget) {
     (void)widget;
 }
 
+/// @brief Was the clicked of the widget.
 int64_t rt_widget_was_clicked(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Set the position of the widget.
 void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     (void)widget;
     (void)x;
@@ -1175,36 +1209,43 @@ void *rt_dropdown_new(void *parent) {
     return NULL;
 }
 
+/// @brief Add the item of the dropdown.
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     (void)dropdown;
     (void)text;
     return -1;
 }
 
+/// @brief Remove the item of the dropdown.
 void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     (void)dropdown;
     (void)index;
 }
 
+/// @brief Remove all entries from the dropdown.
 void rt_dropdown_clear(void *dropdown) {
     (void)dropdown;
 }
 
+/// @brief Set the selected of the dropdown.
 void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     (void)dropdown;
     (void)index;
 }
 
+/// @brief Get the selected of the dropdown.
 int64_t rt_dropdown_get_selected(void *dropdown) {
     (void)dropdown;
     return -1;
 }
 
+/// @brief Get the selected text of the dropdown.
 rt_string rt_dropdown_get_selected_text(void *dropdown) {
     (void)dropdown;
     return rt_str_empty();
 }
 
+/// @brief Set the placeholder of the dropdown.
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     (void)dropdown;
     (void)placeholder;
@@ -1216,22 +1257,26 @@ void *rt_slider_new(void *parent, int64_t horizontal) {
     return NULL;
 }
 
+/// @brief Set the value of the slider.
 void rt_slider_set_value(void *slider, double value) {
     (void)slider;
     (void)value;
 }
 
+/// @brief Get the value of the slider.
 double rt_slider_get_value(void *slider) {
     (void)slider;
     return 0.0;
 }
 
+/// @brief Set the range of the slider.
 void rt_slider_set_range(void *slider, double min_val, double max_val) {
     (void)slider;
     (void)min_val;
     (void)max_val;
 }
 
+/// @brief Set the step of the slider.
 void rt_slider_set_step(void *slider, double step) {
     (void)slider;
     (void)step;
@@ -1242,11 +1287,13 @@ void *rt_progressbar_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the value of the progressbar.
 void rt_progressbar_set_value(void *progress, double value) {
     (void)progress;
     (void)value;
 }
 
+/// @brief Get the value of the progressbar.
 double rt_progressbar_get_value(void *progress) {
     (void)progress;
     return 0.0;
@@ -1263,15 +1310,18 @@ void *rt_listbox_add_item(void *listbox, rt_string text) {
     return NULL;
 }
 
+/// @brief Remove the item of the listbox.
 void rt_listbox_remove_item(void *listbox, void *item) {
     (void)listbox;
     (void)item;
 }
 
+/// @brief Remove all entries from the listbox.
 void rt_listbox_clear(void *listbox) {
     (void)listbox;
 }
 
+/// @brief Select the listbox.
 void rt_listbox_select(void *listbox, void *item) {
     (void)listbox;
     (void)item;
@@ -1282,46 +1332,55 @@ void *rt_listbox_get_selected(void *listbox) {
     return NULL;
 }
 
+/// @brief Return the count of elements in the listbox.
 int64_t rt_listbox_get_count(void *listbox) {
     (void)listbox;
     return 0;
 }
 
+/// @brief Get the selected index of the listbox.
 int64_t rt_listbox_get_selected_index(void *listbox) {
     (void)listbox;
     return -1;
 }
 
+/// @brief Select the index of the listbox.
 void rt_listbox_select_index(void *listbox, int64_t index) {
     (void)listbox;
     (void)index;
 }
 
+/// @brief Was the selection changed of the listbox.
 int64_t rt_listbox_was_selection_changed(void *listbox) {
     (void)listbox;
     return 0;
 }
 
+/// @brief Item the get text of the listbox.
 rt_string rt_listbox_item_get_text(void *item) {
     (void)item;
     return rt_str_empty();
 }
 
+/// @brief Item the set text of the listbox.
 void rt_listbox_item_set_text(void *item, rt_string text) {
     (void)item;
     (void)text;
 }
 
+/// @brief Item the set data of the listbox.
 void rt_listbox_item_set_data(void *item, rt_string data) {
     (void)item;
     (void)data;
 }
 
+/// @brief Item the get data of the listbox.
 rt_string rt_listbox_item_get_data(void *item) {
     (void)item;
     return rt_str_empty();
 }
 
+/// @brief Set the font of the listbox.
 void rt_listbox_set_font(void *listbox, void *font, double size) {
     (void)listbox;
     (void)font;
@@ -1332,6 +1391,7 @@ void *rt_radiogroup_new(void) {
     return NULL;
 }
 
+/// @brief Release resources and destroy the radiogroup.
 void rt_radiogroup_destroy(void *group) {
     (void)group;
 }
@@ -1343,11 +1403,13 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     return NULL;
 }
 
+/// @brief Is the selected of the radiobutton.
 int64_t rt_radiobutton_is_selected(void *radio) {
     (void)radio;
     return 0;
 }
 
+/// @brief Set the selected of the radiobutton.
 void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     (void)radio;
     (void)selected;
@@ -1358,27 +1420,32 @@ void *rt_spinner_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the value of the spinner.
 void rt_spinner_set_value(void *spinner, double value) {
     (void)spinner;
     (void)value;
 }
 
+/// @brief Get the value of the spinner.
 double rt_spinner_get_value(void *spinner) {
     (void)spinner;
     return 0.0;
 }
 
+/// @brief Set the range of the spinner.
 void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     (void)spinner;
     (void)min_val;
     (void)max_val;
 }
 
+/// @brief Set the step of the spinner.
 void rt_spinner_set_step(void *spinner, double step) {
     (void)spinner;
     (void)step;
 }
 
+/// @brief Set the decimals of the spinner.
 void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     (void)spinner;
     (void)decimals;
@@ -1389,6 +1456,7 @@ void *rt_image_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the pixels of the image.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     (void)image;
     (void)pixels;
@@ -1396,15 +1464,18 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
     (void)height;
 }
 
+/// @brief Remove all entries from the image.
 void rt_image_clear(void *image) {
     (void)image;
 }
 
+/// @brief Set the scale mode of the image.
 void rt_image_set_scale_mode(void *image, int64_t mode) {
     (void)image;
     (void)mode;
 }
 
+/// @brief Set the opacity of the image.
 void rt_image_set_opacity(void *image, double opacity) {
     (void)image;
     (void)opacity;
@@ -1415,23 +1486,27 @@ void *rt_floatingpanel_new(void *root) {
     return NULL;
 }
 
+/// @brief Set the position of the floatingpanel.
 void rt_floatingpanel_set_position(void *panel, double x, double y) {
     (void)panel;
     (void)x;
     (void)y;
 }
 
+/// @brief Return the size of the floatingpanel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {
     (void)panel;
     (void)w;
     (void)h;
 }
 
+/// @brief Set the visible of the floatingpanel.
 void rt_floatingpanel_set_visible(void *panel, int64_t visible) {
     (void)panel;
     (void)visible;
 }
 
+/// @brief Add the child of the floatingpanel.
 void rt_floatingpanel_add_child(void *panel, void *child) {
     (void)panel;
     (void)child;

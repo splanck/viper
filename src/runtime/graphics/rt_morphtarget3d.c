@@ -106,11 +106,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
  * Shape management
  *=========================================================================*/
 
-/// @brief Register a new named blend shape and allocate its per-vertex delta arrays.
-/// @details Each shape stores position deltas (and optionally normal deltas) for
-///          every vertex in the base mesh. When blended, vertex_final = base +
-///          sum(weight_i * delta_i). Returns the shape index, or -1 if the max
-///          shape limit (32) is reached.
+/// @brief Add the shape of the morphtarget3d.
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!obj)
         return -1;
@@ -189,9 +185,7 @@ void rt_morphtarget3d_set_normal_delta(
  * Weight control
  *=========================================================================*/
 
-/// @brief Set the blend weight for a shape by index (0 = no effect, 1 = full deformation).
-/// @details During apply(), each vertex is displaced by weight * position_delta.
-///          Weights can exceed 1.0 for exaggeration or be negative for inverse deformation.
+/// @brief Set the weight of the morphtarget3d.
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     if (!obj)
         return;
@@ -201,7 +195,7 @@ void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     mt->weights[shape] = (float)weight;
 }
 
-/// @brief Return the current blend weight for a shape by index.
+/// @brief Get the weight of the morphtarget3d.
 double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     if (!obj)
         return 0.0;
@@ -211,7 +205,7 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     return mt->weights[shape];
 }
 
-/// @brief Set the blend weight for a shape looked up by its string name.
+/// @brief Set the weight by name of the morphtarget3d.
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     if (!obj || !name)
         return;

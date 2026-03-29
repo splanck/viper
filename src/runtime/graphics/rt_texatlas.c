@@ -225,8 +225,7 @@ int8_t rt_texatlas_has(void *atlas, void *name) {
     return find_region(impl, cname) >= 0 ? 1 : 0;
 }
 
-/// @brief Return the X pixel offset of a named region within the atlas texture.
-/// @details Looks up the region by name via linear scan; returns 0 if not found.
+/// @brief Get the x of the texatlas.
 int64_t rt_texatlas_get_x(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
@@ -238,7 +237,7 @@ int64_t rt_texatlas_get_x(void *atlas, void *name) {
     return idx >= 0 ? impl->regions[idx].x : 0;
 }
 
-/// @brief Return the Y pixel offset of a named region within the atlas texture.
+/// @brief Get the y of the texatlas.
 int64_t rt_texatlas_get_y(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
@@ -250,7 +249,7 @@ int64_t rt_texatlas_get_y(void *atlas, void *name) {
     return idx >= 0 ? impl->regions[idx].y : 0;
 }
 
-/// @brief Return the width in pixels of a named region within the atlas texture.
+/// @brief Get the w of the texatlas.
 int64_t rt_texatlas_get_w(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
@@ -262,7 +261,7 @@ int64_t rt_texatlas_get_w(void *atlas, void *name) {
     return idx >= 0 ? impl->regions[idx].w : 0;
 }
 
-/// @brief Return the height in pixels of a named region within the atlas texture.
+/// @brief Get the h of the texatlas.
 int64_t rt_texatlas_get_h(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
@@ -382,10 +381,33 @@ int8_t rt_texatlas_has(void *a, void *n) {
     return 0;
 }
 
-int64_t rt_texatlas_get_x(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_y(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_w(void *a, void *n) { (void)a; (void)n; return 0; }
-int64_t rt_texatlas_get_h(void *a, void *n) { (void)a; (void)n; return 0; }
+/// @brief Get the x of the texatlas.
+int64_t rt_texatlas_get_x(void *a, void *n) {
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Get the y of the texatlas.
+int64_t rt_texatlas_get_y(void *a, void *n) {
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Get the w of the texatlas.
+int64_t rt_texatlas_get_w(void *a, void *n) {
+    (void)a;
+    (void)n;
+    return 0;
+}
+
+/// @brief Get the h of the texatlas.
+int64_t rt_texatlas_get_h(void *a, void *n) {
+    (void)a;
+    (void)n;
+    return 0;
+}
 
 void *rt_texatlas_get_pixels(void *a) {
     (void)a;
@@ -398,7 +420,7 @@ int64_t rt_texatlas_region_count(void *a) {
     return 0;
 }
 
-/// @brief Draw a named atlas region at (x, y) using the sprite batch. (stub)
+/// @brief Draw the atlas of the spritebatch.
 void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y) {
     (void)b;
     (void)a;
@@ -407,7 +429,7 @@ void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y) 
     (void)y;
 }
 
-/// @brief Draw a named atlas region at (x, y) with scale using the sprite batch. (stub)
+/// @brief Draw the atlas scaled of the spritebatch.
 void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s) {
     (void)b;
     (void)a;

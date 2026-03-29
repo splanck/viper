@@ -216,9 +216,7 @@ void rt_tilemap_set_autotile_hi(void *tm,
     r->active = 1;
 }
 
-/// @brief Deactivate the autotile rule for a given base tile ID.
-/// @details Marks the rule as inactive so apply_autotile no longer processes it.
-///          The rule slot is not freed — it can be reconfigured later.
+/// @brief Clear the autotile of the tilemap.
 void rt_tilemap_clear_autotile(void *tm, int64_t base_tile) {
     (void)tm;
     for (int32_t i = 0; i < s_autotile_count; i++) {
@@ -304,8 +302,7 @@ void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t 
     }
 }
 
-/// @brief Apply autotile rules to the entire tilemap, selecting variants based on neighbors.
-/// @details Convenience wrapper that calls apply_autotile_region over the full map dimensions.
+/// @brief Apply the autotile of the tilemap.
 void rt_tilemap_apply_autotile(void *tm) {
     if (!tm)
         return;
@@ -316,9 +313,7 @@ void rt_tilemap_apply_autotile(void *tm) {
 // JSON Save/Load
 //=============================================================================
 
-/// @brief Serialize the tilemap to a JSON file at the given path.
-/// @details Writes dimensions, tile size, layer count, and all layer tile data
-///          as a JSON object. Returns 1 on success, 0 on I/O or allocation failure.
+/// @brief Save the to file of the tilemap.
 int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     if (!tm || !path)
         return 0;

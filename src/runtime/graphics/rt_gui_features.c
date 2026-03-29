@@ -101,9 +101,7 @@ void rt_commandpalette_destroy(void *palette) {
         free(data->selected_command);
 }
 
-/// @brief Register a command in the palette's searchable list.
-/// @details Prepends the category as "[Category] Label" if a category is provided.
-///          The command can later be found via fuzzy search and selected by the user.
+/// @brief Add the command of the commandpalette.
 void rt_commandpalette_add_command(void *palette,
                                    rt_string id,
                                    rt_string label,
@@ -168,7 +166,7 @@ void rt_commandpalette_add_command_with_shortcut(
     free(cshort);
 }
 
-/// @brief Remove a command from the palette by its string ID.
+/// @brief Remove the command of the commandpalette.
 void rt_commandpalette_remove_command(void *palette, rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -208,7 +206,7 @@ void rt_commandpalette_hide(void *palette) {
     vg_commandpalette_hide(data->palette);
 }
 
-/// @brief Check whether the command palette overlay is currently shown.
+/// @brief Is the visible of the commandpalette.
 int64_t rt_commandpalette_is_visible(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -217,7 +215,7 @@ int64_t rt_commandpalette_is_visible(void *palette) {
     return data->palette->base.visible ? 1 : 0;
 }
 
-/// @brief Set the search input's placeholder text (e.g., "Type a command...").
+/// @brief Set the placeholder of the commandpalette.
 void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -281,9 +279,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
         free(ctext);
 }
 
-/// @brief Show a tooltip with a title and body at the given screen position.
-/// @details Combines title and body with a newline separator since the
-///          underlying vg_tooltip only supports plain text currently.
+/// @brief Show the rich of the tooltip.
 void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
@@ -323,7 +319,7 @@ void rt_tooltip_hide(void) {
     }
 }
 
-/// @brief Set how many milliseconds the mouse must hover before the tooltip appears.
+/// @brief Set the delay of the tooltip.
 void rt_tooltip_set_delay(int64_t delay_ms) {
     RT_ASSERT_MAIN_THREAD();
     if (delay_ms < 0)
@@ -334,7 +330,7 @@ void rt_tooltip_set_delay(int64_t delay_ms) {
     }
 }
 
-/// @brief Assign a plain-text tooltip that appears when the user hovers this widget.
+/// @brief Set the tooltip of the widget.
 void rt_widget_set_tooltip(void *widget, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -371,7 +367,7 @@ void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
         free(cbody);
 }
 
-/// @brief Remove the tooltip from a widget so hovering no longer shows one.
+/// @brief Clear the tooltip of the widget.
 void rt_widget_clear_tooltip(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -511,9 +507,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     return data;
 }
 
-/// @brief Assign an action button label to the toast (e.g., "Undo", "Retry").
-/// @details The button appears alongside the toast message. When clicked,
-///          was_action_clicked returns 1 on the next poll.
+/// @brief Set the action of the toast.
 void rt_toast_set_action(void *toast, rt_string label) {
     RT_ASSERT_MAIN_THREAD();
     if (!toast)
@@ -534,9 +528,7 @@ int64_t rt_toast_was_action_clicked(void *toast) {
     return result;
 }
 
-/// @brief Check whether the toast has been dismissed (by timeout, user click, or dismiss()).
-/// @details Once dismissed, this returns 1 permanently. Also checks the notification
-///          manager for toasts that auto-expired by timeout.
+/// @brief Was the dismissed of the toast.
 int64_t rt_toast_was_dismissed(void *toast) {
     RT_ASSERT_MAIN_THREAD();
     if (!toast)
@@ -583,7 +575,7 @@ void rt_toast_dismiss(void *toast) {
     }
 }
 
-/// @brief Set the screen corner where toast notifications appear (top-right, bottom-left, etc.).
+/// @brief Set the position of the toast.
 void rt_toast_set_position(int64_t position) {
     RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
@@ -605,7 +597,7 @@ void rt_toast_set_max_visible(int64_t count) {
     }
 }
 
-/// @brief Dismiss all currently visible toast notifications at once.
+/// @brief Dismiss the all of the toast.
 void rt_toast_dismiss_all(void) {
     RT_ASSERT_MAIN_THREAD();
     vg_notification_manager_t *mgr = rt_get_notification_manager();
@@ -684,9 +676,7 @@ void rt_breadcrumb_destroy(void *crumb) {
         free(data->clicked_data);
 }
 
-/// @brief Populate the breadcrumb by splitting a path string on a separator.
-/// @details Clears existing items, then tokenizes the path (e.g., "Home/Documents/file.txt"
-///          with separator "/") and adds each segment as a clickable breadcrumb item.
+/// @brief Set the path of the breadcrumb.
 void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -717,9 +707,7 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
         free(csep);
 }
 
-/// @brief Populate the breadcrumb from a comma-separated list of items.
-/// @details Clears existing items, splits on commas, trims whitespace from each
-///          segment, and adds them in order.
+/// @brief Set the items of the breadcrumb.
 void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -752,7 +740,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     }
 }
 
-/// @brief Append a single clickable item to the end of the breadcrumb trail.
+/// @brief Add the item of the breadcrumb.
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -799,7 +787,7 @@ int64_t rt_breadcrumb_get_clicked_index(void *crumb) {
     return data->clicked_index;
 }
 
-/// @brief Return the user data string of the last clicked breadcrumb item.
+/// @brief Get the clicked data of the breadcrumb.
 rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -811,7 +799,7 @@ rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
     return rt_str_empty();
 }
 
-/// @brief Set the visual separator character displayed between breadcrumb items (e.g., "/", ">").
+/// @brief Set the separator of the breadcrumb.
 void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -873,7 +861,7 @@ void rt_minimap_destroy(void *minimap) {
     }
 }
 
-/// @brief Connect the minimap to a code editor widget so it shows a scaled preview.
+/// @brief Bind the editor of the minimap.
 void rt_minimap_bind_editor(void *minimap, void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap || !editor)
@@ -882,7 +870,7 @@ void rt_minimap_bind_editor(void *minimap, void *editor) {
     vg_minimap_set_editor(data->minimap, (vg_codeeditor_t *)editor);
 }
 
-/// @brief Disconnect the minimap from its code editor (stops showing the preview).
+/// @brief Unbind the editor of the minimap.
 void rt_minimap_unbind_editor(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -891,7 +879,7 @@ void rt_minimap_unbind_editor(void *minimap) {
     vg_minimap_set_editor(data->minimap, NULL);
 }
 
-/// @brief Set the pixel width of the minimap sidebar.
+/// @brief Set the width of the minimap.
 void rt_minimap_set_width(void *minimap, int64_t width) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -901,7 +889,7 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
     data->minimap->base.width = (float)width;
 }
 
-/// @brief Return the current pixel width of the minimap sidebar.
+/// @brief Get the width of the minimap.
 int64_t rt_minimap_get_width(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -910,7 +898,7 @@ int64_t rt_minimap_get_width(void *minimap) {
     return data->width;
 }
 
-/// @brief Set the zoom scale factor for the minimap rendering (smaller = more content visible).
+/// @brief Set the scale of the minimap.
 void rt_minimap_set_scale(void *minimap, double scale) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -928,9 +916,7 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     vg_minimap_set_show_viewport(data->minimap, show != 0);
 }
 
-/// @brief Add a colored marker at a specific line number in the minimap.
-/// @details Markers highlight lines of interest (errors, breakpoints, search results).
-///          Grows the marker array by doubling when full.
+/// @brief Add the marker of the minimap.
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -953,7 +939,7 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
     mm->base.needs_paint = true;
 }
 
-/// @brief Remove all markers on a specific line number from the minimap.
+/// @brief Remove the markers of the minimap.
 void rt_minimap_remove_markers(void *minimap, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -971,7 +957,7 @@ void rt_minimap_remove_markers(void *minimap, int64_t line) {
     }
 }
 
-/// @brief Remove all markers from the minimap and free their storage.
+/// @brief Clear the markers of the minimap.
 void rt_minimap_clear_markers(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -1003,7 +989,7 @@ typedef struct rt_drag_drop_data {
     char *drop_data;
 } rt_drag_drop_data_t;
 
-/// @brief Enable or disable drag-and-drop for this widget as a drag source.
+/// @brief Set the draggable of the widget.
 void rt_widget_set_draggable(void *widget, int64_t draggable) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1023,7 +1009,7 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
     w->drag_data = rt_string_to_cstr(data);
 }
 
-/// @brief Check whether this widget is currently being dragged by the user.
+/// @brief Is the being dragged of the widget.
 int64_t rt_widget_is_being_dragged(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1031,7 +1017,7 @@ int64_t rt_widget_is_being_dragged(void *widget) {
     return ((vg_widget_t *)widget)->_is_being_dragged ? 1 : 0;
 }
 
-/// @brief Mark this widget as a drop target that can accept dragged items.
+/// @brief Get a value from the widget.
 void rt_widget_set_drop_target(void *widget, int64_t target) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1049,7 +1035,7 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
     w->accepted_drop_types = rt_string_to_cstr(types);
 }
 
-/// @brief Check whether a dragged item is currently hovering over this drop target.
+/// @brief Is the drag over of the widget.
 int64_t rt_widget_is_drag_over(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1057,8 +1043,7 @@ int64_t rt_widget_is_drag_over(void *widget) {
     return ((vg_widget_t *)widget)->_is_drag_over ? 1 : 0;
 }
 
-/// @brief Check whether a drag item was dropped onto this widget this frame (edge-triggered).
-/// @details Returns 1 once, then clears the flag — poll each frame in the event loop.
+/// @brief Was the dropped of the widget.
 int64_t rt_widget_was_dropped(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1167,99 +1152,396 @@ void rt_gui_features_cleanup(void) {
     g_file_drop = (rt_file_drop_data_t){0};
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS — no-op stubs for headless builds */
+#else /* !VIPER_ENABLE_GRAPHICS */
 
-// CommandPalette stubs
-void *rt_commandpalette_new(void *p) { (void)p; return NULL; }
-void rt_commandpalette_destroy(void *p) { (void)p; }
-void rt_commandpalette_add_command(void *p, rt_string i, rt_string l, rt_string c) {
-    (void)p; (void)i; (void)l; (void)c;
+void *rt_commandpalette_new(void *parent) {
+    (void)parent;
+    return NULL;
 }
+
+/// @brief Release resources and destroy the commandpalette.
+void rt_commandpalette_destroy(void *palette) {
+    (void)palette;
+}
+
+/// @brief Add the command of the commandpalette.
+void rt_commandpalette_add_command(void *palette,
+                                   rt_string id,
+                                   rt_string label,
+                                   rt_string category) {
+    (void)palette;
+    (void)id;
+    (void)label;
+    (void)category;
+}
+
 void rt_commandpalette_add_command_with_shortcut(
-    void *p, rt_string i, rt_string l, rt_string c, rt_string s) {
-    (void)p; (void)i; (void)l; (void)c; (void)s;
+    void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut) {
+    (void)palette;
+    (void)id;
+    (void)label;
+    (void)category;
+    (void)shortcut;
 }
-void rt_commandpalette_remove_command(void *p, rt_string i) { (void)p; (void)i; }
-void rt_commandpalette_clear(void *p) { (void)p; }
-void rt_commandpalette_show(void *p) { (void)p; }
-void rt_commandpalette_hide(void *p) { (void)p; }
-int64_t rt_commandpalette_is_visible(void *p) { (void)p; return 0; }
-void rt_commandpalette_set_placeholder(void *p, rt_string t) { (void)p; (void)t; }
-rt_string rt_commandpalette_get_selected_command(void *p) { (void)p; return rt_str_empty(); }
-int64_t rt_commandpalette_was_command_selected(void *p) { (void)p; return 0; }
 
-// Tooltip stubs
-void rt_tooltip_show(rt_string t, int64_t x, int64_t y) { (void)t; (void)x; (void)y; }
-void rt_tooltip_show_rich(rt_string t, rt_string b, int64_t x, int64_t y) {
-    (void)t; (void)b; (void)x; (void)y;
+/// @brief Remove the command of the commandpalette.
+void rt_commandpalette_remove_command(void *palette, rt_string id) {
+    (void)palette;
+    (void)id;
 }
+
+/// @brief Remove all entries from the commandpalette.
+void rt_commandpalette_clear(void *palette) {
+    (void)palette;
+}
+
+/// @brief Show the commandpalette.
+void rt_commandpalette_show(void *palette) {
+    (void)palette;
+}
+
+/// @brief Hide the commandpalette.
+void rt_commandpalette_hide(void *palette) {
+    (void)palette;
+}
+
+/// @brief Is the visible of the commandpalette.
+int64_t rt_commandpalette_is_visible(void *palette) {
+    (void)palette;
+    return 0;
+}
+
+/// @brief Set the placeholder of the commandpalette.
+void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
+    (void)palette;
+    (void)text;
+}
+
+/// @brief Get the selected command of the commandpalette.
+rt_string rt_commandpalette_get_selected_command(void *palette) {
+    (void)palette;
+    return rt_str_empty();
+}
+
+/// @brief Was the command selected of the commandpalette.
+int64_t rt_commandpalette_was_command_selected(void *palette) {
+    (void)palette;
+    return 0;
+}
+
+/// @brief Show the tooltip.
+void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
+    (void)text;
+    (void)x;
+    (void)y;
+}
+
+/// @brief Show the rich of the tooltip.
+void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) {
+    (void)title;
+    (void)body;
+    (void)x;
+    (void)y;
+}
+
+/// @brief Hide the tooltip.
 void rt_tooltip_hide(void) {}
-void rt_tooltip_set_delay(int64_t d) { (void)d; }
-void rt_widget_set_tooltip(void *w, rt_string t) { (void)w; (void)t; }
-void rt_widget_set_tooltip_rich(void *w, rt_string t, rt_string b) { (void)w; (void)t; (void)b; }
-void rt_widget_clear_tooltip(void *w) { (void)w; }
 
-// Toast stubs
-void rt_toast_info(rt_string m) { (void)m; }
-void rt_toast_success(rt_string m) { (void)m; }
-void rt_toast_warning(rt_string m) { (void)m; }
-void rt_toast_error(rt_string m) { (void)m; }
+/// @brief Set the delay of the tooltip.
+void rt_tooltip_set_delay(int64_t delay_ms) {
+    (void)delay_ms;
+}
 
-// Toast stubs (continued)
-void *rt_toast_new(rt_string m, int64_t t, int64_t d) { (void)m; (void)t; (void)d; return NULL; }
-void rt_toast_set_action(void *t, rt_string l) { (void)t; (void)l; }
-int64_t rt_toast_was_action_clicked(void *t) { (void)t; return 0; }
-int64_t rt_toast_was_dismissed(void *t) { (void)t; return 0; }
-void rt_toast_dismiss(void *t) { (void)t; }
-void rt_toast_set_position(int64_t p) { (void)p; }
-void rt_toast_set_max_visible(int64_t c) { (void)c; }
+/// @brief Set the tooltip of the widget.
+void rt_widget_set_tooltip(void *widget, rt_string text) {
+    (void)widget;
+    (void)text;
+}
+
+/// @brief Set the tooltip rich of the widget.
+void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
+    (void)widget;
+    (void)title;
+    (void)body;
+}
+
+/// @brief Clear the tooltip of the widget.
+void rt_widget_clear_tooltip(void *widget) {
+    (void)widget;
+}
+
+/// @brief Info the toast.
+void rt_toast_info(rt_string message) {
+    (void)message;
+}
+
+/// @brief Success the toast.
+void rt_toast_success(rt_string message) {
+    (void)message;
+}
+
+/// @brief Warning the toast.
+void rt_toast_warning(rt_string message) {
+    (void)message;
+}
+
+/// @brief Error the toast.
+void rt_toast_error(rt_string message) {
+    (void)message;
+}
+
+void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
+    (void)message;
+    (void)type;
+    (void)duration_ms;
+    return NULL;
+}
+
+/// @brief Set the action of the toast.
+void rt_toast_set_action(void *toast, rt_string label) {
+    (void)toast;
+    (void)label;
+}
+
+/// @brief Was the action clicked of the toast.
+int64_t rt_toast_was_action_clicked(void *toast) {
+    (void)toast;
+    return 0;
+}
+
+/// @brief Was the dismissed of the toast.
+int64_t rt_toast_was_dismissed(void *toast) {
+    (void)toast;
+    return 0;
+}
+
+/// @brief Dismiss the toast.
+void rt_toast_dismiss(void *toast) {
+    (void)toast;
+}
+
+/// @brief Set the position of the toast.
+void rt_toast_set_position(int64_t position) {
+    (void)position;
+}
+
+/// @brief Set the max visible of the toast.
+void rt_toast_set_max_visible(int64_t count) {
+    (void)count;
+}
+
+/// @brief Dismiss the all of the toast.
 void rt_toast_dismiss_all(void) {}
 
-// Breadcrumb stubs
-void *rt_breadcrumb_new(void *p) { (void)p; return NULL; }
-void rt_breadcrumb_destroy(void *c) { (void)c; }
-void rt_breadcrumb_set_path(void *c, rt_string p, rt_string s) { (void)c; (void)p; (void)s; }
-void rt_breadcrumb_set_items(void *c, rt_string i) { (void)c; (void)i; }
-void rt_breadcrumb_add_item(void *c, rt_string t, rt_string d) { (void)c; (void)t; (void)d; }
-void rt_breadcrumb_clear(void *c) { (void)c; }
-int64_t rt_breadcrumb_was_item_clicked(void *c) { (void)c; return 0; }
-int64_t rt_breadcrumb_get_clicked_index(void *c) { (void)c; return -1; }
-rt_string rt_breadcrumb_get_clicked_data(void *c) { (void)c; return rt_str_empty(); }
-void rt_breadcrumb_set_separator(void *c, rt_string s) { (void)c; (void)s; }
-void rt_breadcrumb_set_max_items(void *c, int64_t m) { (void)c; (void)m; }
-
-// Minimap stubs
-void *rt_minimap_new(void *p) { (void)p; return NULL; }
-void rt_minimap_destroy(void *m) { (void)m; }
-void rt_minimap_bind_editor(void *m, void *e) { (void)m; (void)e; }
-void rt_minimap_unbind_editor(void *m) { (void)m; }
-void rt_minimap_set_width(void *m, int64_t w) { (void)m; (void)w; }
-int64_t rt_minimap_get_width(void *m) { (void)m; return 0; }
-void rt_minimap_set_scale(void *m, double s) { (void)m; (void)s; }
-void rt_minimap_set_show_slider(void *m, int64_t s) { (void)m; (void)s; }
-void rt_minimap_add_marker(void *m, int64_t l, int64_t c, int64_t t) {
-    (void)m; (void)l; (void)c; (void)t;
+void *rt_breadcrumb_new(void *parent) {
+    (void)parent;
+    return NULL;
 }
-void rt_minimap_remove_markers(void *m, int64_t l) { (void)m; (void)l; }
-void rt_minimap_clear_markers(void *m) { (void)m; }
 
-// Drag & Drop stubs
-void rt_widget_set_draggable(void *w, int64_t d) { (void)w; (void)d; }
-void rt_widget_set_drag_data(void *w, rt_string t, rt_string d) { (void)w; (void)t; (void)d; }
-int64_t rt_widget_is_being_dragged(void *w) { (void)w; return 0; }
-void rt_widget_set_drop_target(void *w, int64_t t) { (void)w; (void)t; }
+/// @brief Release resources and destroy the breadcrumb.
+void rt_breadcrumb_destroy(void *crumb) {
+    (void)crumb;
+}
 
-void rt_widget_set_accepted_drop_types(void *w, rt_string t) { (void)w; (void)t; }
-int64_t rt_widget_is_drag_over(void *w) { (void)w; return 0; }
-int64_t rt_widget_was_dropped(void *w) { (void)w; return 0; }
-rt_string rt_widget_get_drop_type(void *w) { (void)w; return rt_str_empty(); }
-rt_string rt_widget_get_drop_data(void *w) { (void)w; return rt_str_empty(); }
+/// @brief Set the path of the breadcrumb.
+void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
+    (void)crumb;
+    (void)path;
+    (void)separator;
+}
 
-// File drop stubs
-int64_t rt_app_was_file_dropped(void *a) { (void)a; return 0; }
-int64_t rt_app_get_dropped_file_count(void *a) { (void)a; return 0; }
-rt_string rt_app_get_dropped_file(void *a, int64_t i) { (void)a; (void)i; return rt_str_empty(); }
-void rt_gui_file_drop_add(const char *p) { (void)p; }
+/// @brief Set the items of the breadcrumb.
+void rt_breadcrumb_set_items(void *crumb, rt_string items) {
+    (void)crumb;
+    (void)items;
+}
+
+/// @brief Add the item of the breadcrumb.
+void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
+    (void)crumb;
+    (void)text;
+    (void)item_data;
+}
+
+/// @brief Remove all entries from the breadcrumb.
+void rt_breadcrumb_clear(void *crumb) {
+    (void)crumb;
+}
+
+/// @brief Was the item clicked of the breadcrumb.
+int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
+    (void)crumb;
+    return 0;
+}
+
+/// @brief Get the clicked index of the breadcrumb.
+int64_t rt_breadcrumb_get_clicked_index(void *crumb) {
+    (void)crumb;
+    return -1;
+}
+
+/// @brief Get the clicked data of the breadcrumb.
+rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
+    (void)crumb;
+    return rt_str_empty();
+}
+
+/// @brief Set the separator of the breadcrumb.
+void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
+    (void)crumb;
+    (void)sep;
+}
+
+/// @brief Set the max items of the breadcrumb.
+void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
+    (void)crumb;
+    (void)max;
+}
+
+void *rt_minimap_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+
+/// @brief Release resources and destroy the minimap.
+void rt_minimap_destroy(void *minimap) {
+    (void)minimap;
+}
+
+/// @brief Bind the editor of the minimap.
+void rt_minimap_bind_editor(void *minimap, void *editor) {
+    (void)minimap;
+    (void)editor;
+}
+
+/// @brief Unbind the editor of the minimap.
+void rt_minimap_unbind_editor(void *minimap) {
+    (void)minimap;
+}
+
+/// @brief Set the width of the minimap.
+void rt_minimap_set_width(void *minimap, int64_t width) {
+    (void)minimap;
+    (void)width;
+}
+
+/// @brief Get the width of the minimap.
+int64_t rt_minimap_get_width(void *minimap) {
+    (void)minimap;
+    return 0;
+}
+
+/// @brief Set the scale of the minimap.
+void rt_minimap_set_scale(void *minimap, double scale) {
+    (void)minimap;
+    (void)scale;
+}
+
+/// @brief Set the show slider of the minimap.
+void rt_minimap_set_show_slider(void *minimap, int64_t show) {
+    (void)minimap;
+    (void)show;
+}
+
+/// @brief Add the marker of the minimap.
+void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
+    (void)minimap;
+    (void)line;
+    (void)color;
+    (void)type;
+}
+
+/// @brief Remove the markers of the minimap.
+void rt_minimap_remove_markers(void *minimap, int64_t line) {
+    (void)minimap;
+    (void)line;
+}
+
+/// @brief Clear the markers of the minimap.
+void rt_minimap_clear_markers(void *minimap) {
+    (void)minimap;
+}
+
+/// @brief Set the draggable of the widget.
+void rt_widget_set_draggable(void *widget, int64_t draggable) {
+    (void)widget;
+    (void)draggable;
+}
+
+/// @brief Set the drag data of the widget.
+void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
+    (void)widget;
+    (void)type;
+    (void)data;
+}
+
+/// @brief Is the being dragged of the widget.
+int64_t rt_widget_is_being_dragged(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get a value from the widget.
+void rt_widget_set_drop_target(void *widget, int64_t target) {
+    (void)widget;
+    (void)target;
+}
+
+/// @brief Set the accepted drop types of the widget.
+void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
+    (void)widget;
+    (void)types;
+}
+
+/// @brief Is the drag over of the widget.
+int64_t rt_widget_is_drag_over(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Was the dropped of the widget.
+int64_t rt_widget_was_dropped(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the drop type of the widget.
+rt_string rt_widget_get_drop_type(void *widget) {
+    (void)widget;
+    return rt_str_empty();
+}
+
+/// @brief Get the drop data of the widget.
+rt_string rt_widget_get_drop_data(void *widget) {
+    (void)widget;
+    return rt_str_empty();
+}
+
+/// @brief Was the file dropped of the app.
+int64_t rt_app_was_file_dropped(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Return the count of elements in the app.
+int64_t rt_app_get_dropped_file_count(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Get the dropped file of the app.
+rt_string rt_app_get_dropped_file(void *app, int64_t index) {
+    (void)app;
+    (void)index;
+    return rt_str_empty();
+}
+
+/// @brief Add an element to the file.
+void rt_gui_file_drop_add(const char *path) {
+    (void)path;
+}
+
+/// @brief Cleanup the features.
 void rt_gui_features_cleanup(void) {}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

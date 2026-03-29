@@ -77,7 +77,7 @@ void rt_widget_destroy(void *widget) {
     }
 }
 
-/// @brief Show or hide a widget and all its children in the layout tree.
+/// @brief Set the visible of the widget.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -85,7 +85,7 @@ void rt_widget_set_visible(void *widget, int64_t visible) {
     }
 }
 
-/// @brief Enable or disable a widget; disabled widgets are grayed out and ignore input.
+/// @brief Set the enabled of the widget.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -93,7 +93,7 @@ void rt_widget_set_enabled(void *widget, int64_t enabled) {
     }
 }
 
-/// @brief Set the widget's fixed pixel size, overriding flex layout for this widget.
+/// @brief Return the size of the widget.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -101,9 +101,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     }
 }
 
-/// @brief Set the flex grow factor for this widget in its parent's layout.
-/// @details A flex of 0 means the widget keeps its fixed size; positive values
-///          distribute remaining space proportionally among siblings.
+/// @brief Set the flex of the widget.
 void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -111,7 +109,7 @@ void rt_widget_set_flex(void *widget, double flex) {
     }
 }
 
-/// @brief Append a child widget to this parent's layout tree.
+/// @brief Add the child of the widget.
 void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (parent && child) {
@@ -120,7 +118,7 @@ void rt_widget_add_child(void *parent, void *child) {
 }
 
 // API-005: SetMargin
-/// @brief Set the outer margin (spacing from siblings) on all four sides in pixels.
+/// @brief Set the margin of the widget.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
@@ -135,7 +133,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx) {
 }
 
 // BINDING-003: GuiWidget read accessors
-/// @brief Check whether the widget is currently visible in the layout tree.
+/// @brief Is the visible of the widget.
 int64_t rt_widget_is_visible(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -143,7 +141,7 @@ int64_t rt_widget_is_visible(void *widget) {
     return ((vg_widget_t *)widget)->visible ? 1 : 0;
 }
 
-/// @brief Check whether the widget accepts user input (not grayed out).
+/// @brief Is the enabled of the widget.
 int64_t rt_widget_is_enabled(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -151,7 +149,7 @@ int64_t rt_widget_is_enabled(void *widget) {
     return ((vg_widget_t *)widget)->enabled ? 1 : 0;
 }
 
-/// @brief Return the widget's current rendered width in pixels (after layout).
+/// @brief Get the width of the widget.
 int64_t rt_widget_get_width(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -159,7 +157,7 @@ int64_t rt_widget_get_width(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->width;
 }
 
-/// @brief Return the widget's current rendered height in pixels (after layout).
+/// @brief Get the height of the widget.
 int64_t rt_widget_get_height(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -167,7 +165,7 @@ int64_t rt_widget_get_height(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->height;
 }
 
-/// @brief Return the widget's X position within its parent (after layout).
+/// @brief Get the x of the widget.
 int64_t rt_widget_get_x(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -175,7 +173,7 @@ int64_t rt_widget_get_x(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->x;
 }
 
-/// @brief Return the widget's Y position within its parent (after layout).
+/// @brief Get the y of the widget.
 int64_t rt_widget_get_y(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -183,7 +181,7 @@ int64_t rt_widget_get_y(void *widget) {
     return (int64_t)((vg_widget_t *)widget)->y;
 }
 
-/// @brief Return the widget's flex grow factor.
+/// @brief Get the flex of the widget.
 double rt_widget_get_flex(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -573,80 +571,96 @@ void *rt_font_load(rt_string path) {
     return NULL;
 }
 
+/// @brief Release resources and destroy the font.
 void rt_font_destroy(void *font) {
     (void)font;
 }
 
+/// @brief Release resources and destroy the widget.
 void rt_widget_destroy(void *widget) {
     (void)widget;
 }
 
+/// @brief Set the visible of the widget.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     (void)widget;
     (void)visible;
 }
 
+/// @brief Set the enabled of the widget.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     (void)widget;
     (void)enabled;
 }
 
+/// @brief Return the size of the widget.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     (void)widget;
     (void)width;
     (void)height;
 }
 
+/// @brief Set the flex of the widget.
 void rt_widget_set_flex(void *widget, double flex) {
     (void)widget;
     (void)flex;
 }
 
+/// @brief Add the child of the widget.
 void rt_widget_add_child(void *parent, void *child) {
     (void)parent;
     (void)child;
 }
 
+/// @brief Set the margin of the widget.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     (void)widget;
     (void)margin;
 }
 
+/// @brief Set the tab index of the widget.
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     (void)widget;
     (void)idx;
 }
 
+/// @brief Is the visible of the widget.
 int64_t rt_widget_is_visible(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Is the enabled of the widget.
 int64_t rt_widget_is_enabled(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Get the width of the widget.
 int64_t rt_widget_get_width(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Get the height of the widget.
 int64_t rt_widget_get_height(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Get the x of the widget.
 int64_t rt_widget_get_x(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Get the y of the widget.
 int64_t rt_widget_get_y(void *widget) {
     (void)widget;
     return 0;
 }
 
+/// @brief Get the flex of the widget.
 double rt_widget_get_flex(void *widget) {
     (void)widget;
     return 0.0;
@@ -658,17 +672,20 @@ void *rt_label_new(void *parent, rt_string text) {
     return NULL;
 }
 
+/// @brief Set the text of the label.
 void rt_label_set_text(void *label, rt_string text) {
     (void)label;
     (void)text;
 }
 
+/// @brief Set the font of the label.
 void rt_label_set_font(void *label, void *font, double size) {
     (void)label;
     (void)font;
     (void)size;
 }
 
+/// @brief Set the color of the label.
 void rt_label_set_color(void *label, int64_t color) {
     (void)label;
     (void)color;
@@ -680,27 +697,32 @@ void *rt_button_new(void *parent, rt_string text) {
     return NULL;
 }
 
+/// @brief Set the text of the button.
 void rt_button_set_text(void *button, rt_string text) {
     (void)button;
     (void)text;
 }
 
+/// @brief Set the font of the button.
 void rt_button_set_font(void *button, void *font, double size) {
     (void)button;
     (void)font;
     (void)size;
 }
 
+/// @brief Set the style of the button.
 void rt_button_set_style(void *button, int64_t style) {
     (void)button;
     (void)style;
 }
 
+/// @brief Set the icon of the button.
 void rt_button_set_icon(void *button, rt_string icon) {
     (void)button;
     (void)icon;
 }
 
+/// @brief Set the icon pos of the button.
 void rt_button_set_icon_pos(void *button, int64_t pos) {
     (void)button;
     (void)pos;
@@ -711,21 +733,25 @@ void *rt_textinput_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the text of the textinput.
 void rt_textinput_set_text(void *input, rt_string text) {
     (void)input;
     (void)text;
 }
 
+/// @brief Get the text of the textinput.
 rt_string rt_textinput_get_text(void *input) {
     (void)input;
     return rt_str_empty();
 }
 
+/// @brief Set the placeholder of the textinput.
 void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     (void)input;
     (void)placeholder;
 }
 
+/// @brief Set the font of the textinput.
 void rt_textinput_set_font(void *input, void *font, double size) {
     (void)input;
     (void)font;
@@ -738,6 +764,7 @@ void *rt_checkbox_new(void *parent, rt_string text) {
     return NULL;
 }
 
+/// @brief Check checkbox set checked.
 /// @param checkbox
 /// @param checked
 void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
@@ -745,6 +772,7 @@ void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
     (void)checked;
 }
 
+/// @brief Check checkbox is checked.
 /// @param checkbox
 /// @return Result value.
 int64_t rt_checkbox_is_checked(void *checkbox) {
@@ -752,6 +780,7 @@ int64_t rt_checkbox_is_checked(void *checkbox) {
     return 0;
 }
 
+/// @brief Check checkbox set text.
 /// @param checkbox
 /// @param text
 void rt_checkbox_set_text(void *checkbox, rt_string text) {
@@ -764,23 +793,27 @@ void *rt_scrollview_new(void *parent) {
     return NULL;
 }
 
+/// @brief Set the scroll of the scrollview.
 void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     (void)scroll;
     (void)x;
     (void)y;
 }
 
+/// @brief Return the size of the scrollview.
 void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     (void)scroll;
     (void)width;
     (void)height;
 }
 
+/// @brief Get the scroll x of the scrollview.
 double rt_scrollview_get_scroll_x(void *scroll) {
     (void)scroll;
     return 0.0;
 }
 
+/// @brief Get the scroll y of the scrollview.
 double rt_scrollview_get_scroll_y(void *scroll) {
     (void)scroll;
     return 0.0;
@@ -798,30 +831,36 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     return NULL;
 }
 
+/// @brief Remove the node of the treeview.
 void rt_treeview_remove_node(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
+/// @brief Remove all entries from the treeview.
 void rt_treeview_clear(void *tree) {
     (void)tree;
 }
 
+/// @brief Expand the treeview.
 void rt_treeview_expand(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
+/// @brief Collapse the treeview.
 void rt_treeview_collapse(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
+/// @brief Select the treeview.
 void rt_treeview_select(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
+/// @brief Set the font of the treeview.
 void rt_treeview_set_font(void *tree, void *font, double size) {
     (void)tree;
     (void)font;
@@ -833,26 +872,31 @@ void *rt_treeview_get_selected(void *tree) {
     return NULL;
 }
 
+/// @brief Was the selection changed of the treeview.
 int64_t rt_treeview_was_selection_changed(void *tree) {
     (void)tree;
     return 0;
 }
 
+/// @brief Node the get text of the treeview.
 rt_string rt_treeview_node_get_text(void *node) {
     (void)node;
     return rt_str_empty();
 }
 
+/// @brief Node the set data of the treeview.
 void rt_treeview_node_set_data(void *node, rt_string data) {
     (void)node;
     (void)data;
 }
 
+/// @brief Node the get data of the treeview.
 rt_string rt_treeview_node_get_data(void *node) {
     (void)node;
     return rt_str_empty();
 }
 
+/// @brief Node the is expanded of the treeview.
 int64_t rt_treeview_node_is_expanded(void *node) {
     (void)node;
     return 0;

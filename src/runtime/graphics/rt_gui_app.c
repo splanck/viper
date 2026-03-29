@@ -144,10 +144,8 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return app;
 }
 
-/// @brief Lazily load the default UI font on first use.
-/// @details Tries the embedded JetBrains Mono Regular first (always available),
-///          then falls back to platform system fonts. The font is rasterized at
-///          14pt × HiDPI scale so glyphs render at native resolution on Retina displays.
+// Ensure the default font is loaded (lazy init on first use).
+/// @brief Default the font of the ensure.
 void rt_gui_ensure_default_font(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
@@ -217,9 +215,7 @@ void rt_gui_app_destroy(void *app_ptr) {
     }
 }
 
-/// @brief Check whether the application's main loop should exit.
-/// @details Returns 1 when the window close button was clicked or the app
-///          programmatically requested termination. Returns 1 for NULL (safe default).
+/// @brief Should the close of the app.
 int64_t rt_gui_app_should_close(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -561,10 +557,7 @@ void *rt_gui_app_get_root(void *app_ptr) {
     return app->root;
 }
 
-/// @brief Replace the application's default font and set its raster size.
-/// @details Destroys the previous font (if any) and takes ownership of the
-///          provided font handle. All widgets that use the default font will
-///          pick up the change on their next render cycle.
+/// @brief Set the font of the app.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -633,15 +626,40 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return NULL;
 }
 
-// --- Stubs (no-ops for headless builds) ---
+/// @brief Default the font of the ensure.
 void rt_gui_ensure_default_font(void) {}
-void rt_gui_app_destroy(void *app_ptr) { (void)app_ptr; }
-int64_t rt_gui_app_should_close(void *app_ptr) { (void)app_ptr; return 1; }
-void rt_gui_app_poll(void *app_ptr) { (void)app_ptr; }
-void rt_gui_app_render(void *app_ptr) { (void)app_ptr; }
-void *rt_gui_app_get_root(void *app_ptr) { (void)app_ptr; return NULL; }
+
+/// @brief Release resources and destroy the app.
+void rt_gui_app_destroy(void *app_ptr) {
+    (void)app_ptr;
+}
+
+/// @brief Should the close of the app.
+int64_t rt_gui_app_should_close(void *app_ptr) {
+    (void)app_ptr;
+    return 1;
+}
+
+/// @brief Poll the app.
+void rt_gui_app_poll(void *app_ptr) {
+    (void)app_ptr;
+}
+
+/// @brief Render the app.
+void rt_gui_app_render(void *app_ptr) {
+    (void)app_ptr;
+}
+
+void *rt_gui_app_get_root(void *app_ptr) {
+    (void)app_ptr;
+    return NULL;
+}
+
+/// @brief Set the font of the app.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
-    (void)app_ptr; (void)font; (void)size;
+    (void)app_ptr;
+    (void)font;
+    (void)size;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */
