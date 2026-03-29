@@ -8,7 +8,7 @@ last-verified: 2026-03-04
 
 ## Status
 
-- AArch64: Validated end‑to‑end on Apple Silicon (ran full Frogger demo).
+- AArch64: Validated end‑to‑end on Apple Silicon across all demo games.
 - x86_64: Validated on Windows with full codegen test suite passing. Supports System V AMD64 and Windows x64 ABIs.
 
 Native code generation backends for x86_64 and AArch64.
@@ -53,9 +53,11 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 
 | File                      | Purpose                              |
 |---------------------------|--------------------------------------|
-| `LivenessAnalysis.hpp/cpp`| Liveness analysis for register alloc |
-| `Peephole.hpp/cpp`        | Peephole optimizations               |
-| `RegAllocLinear.hpp/cpp`  | Linear scan register allocator       |
+| `ra/Allocator.hpp/cpp`    | Linear scan register allocator       |
+| `ra/Liveness.hpp/cpp`     | Liveness analysis for register alloc |
+| `Coalescer.hpp/cpp`       | Pre-RA register coalescer            |
+| `Peephole.hpp/cpp`        | Top-level peephole dispatcher        |
+| `peephole/*.hpp/cpp`      | 6 peephole sub-passes (branch, copy-prop, identity, loop, memory, strength-reduce) |
 
 ### Emission
 

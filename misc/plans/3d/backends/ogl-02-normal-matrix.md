@@ -1,37 +1,41 @@
 # OGL-02: Fix Normal Matrix Bug
 
-## Context
-Line 653 copies model matrix as normal matrix. Same bug as D3D-02.
+## Problem
 
-## Current Code
-```c
-gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, cmd->model_matrix);
-```
+The backend currently uploads `cmd->model_matrix` as `uNormalMatrix`. That is only correct for rigid transforms and uniform scale. Non-uniform scale produces visibly wrong lighting.
 
-## Fix
-Same approach as D3D-02 — compute inverse-transpose for non-uniform scaling:
-```c
-float nm[16];
-memcpy(nm, cmd->model_matrix, 16 * sizeof(float));
+## Correction To The Earlier Plan
 
-// Extract scale per axis
-float sx = sqrtf(nm[0]*nm[0] + nm[1]*nm[1] + nm[2]*nm[2]);
-float sy = sqrtf(nm[4]*nm[4] + nm[5]*nm[5] + nm[6]*nm[6]);
-float sz = sqrtf(nm[8]*nm[8] + nm[9]*nm[9] + nm[10]*nm[10]);
+Do not use the earlier scale-length heuristic. It only approximates inverse-transpose for a narrow class of matrices and does not correctly handle general affine transforms.
 
-// If non-uniform scale, adjust by inverse scale²
-if (fabsf(sx - sy) > 0.001f || fabsf(sy - sz) > 0.001f) {
-    float isx2 = 1.0f / (sx * sx), isy2 = 1.0f / (sy * sy), isz2 = 1.0f / (sz * sz);
-    nm[0] *= isx2; nm[1] *= isx2; nm[2] *= isx2;
-    nm[4] *= isy2; nm[5] *= isy2; nm[6] *= isy2;
-    nm[8] *= isz2; nm[9] *= isz2; nm[10] *= isz2;
-}
+The OpenGL plan should compute the true inverse-transpose of the upper-left 3x3 of the model matrix.
 
-gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, nm);
-```
+## Implementation
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — normal matrix computation at line 653
+Add a helper in [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c):
 
-## Testing
-- Non-uniformly scaled box → lighting correct on all faces
+1. Extract the upper-left 3x3 from the row-major model matrix.
+2. Compute its determinant and inverse.
+3. Transpose the inverse to build the normal matrix.
+4. Repack it into a 4x4 matrix with:
+   - last column = `0, 0, 0, 1`
+   - translation row/column zeroed
+5. Upload that 4x4 with `GL_TRUE` transpose, matching the backend's row-major convention.
+
+Fallback behavior:
+
+- If the 3x3 is singular or nearly singular, fall back to the model matrix upper-left 3x3 rather than emitting NaNs.
+
+## Integration Points
+
+- Replace the current `uNormalMatrix` upload in the main draw path.
+- Reuse the same helper in the future instanced path rather than duplicating matrix logic in OGL-15.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Non-uniformly scaled meshes shade correctly
+- No NaNs or wild lighting on singular transforms

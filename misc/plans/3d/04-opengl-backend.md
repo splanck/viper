@@ -2,91 +2,78 @@
 
 ## Goal
 
-GPU-accelerated 3D rendering on Linux using OpenGL 3.3 Core Profile via Mesa.
+Bring the existing Linux OpenGL backend to feature parity with the current 3D runtime architecture. This is no longer a greenfield backend plan: [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c) already creates a GLX context, compiles GLSL, uploads per-draw vertex/index buffers, and renders a basic lit path.
 
-## Prerequisites
+The work now is closing the parity gap with software and Metal without fighting the current runtime structure.
 
-- Phase 2 complete (backend abstraction provides `vgfx3d_backend_t` vtable)
+## Current Baseline
 
-Implements `vgfx3d_opengl_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
+Already implemented in the OpenGL backend:
 
-## Custom GL Loader
+- Custom `dlopen`/`glXGetProcAddress` loader embedded in the backend file
+- GLX context creation on the existing X11 window
+- One GLSL program with basic lighting
+- Depth test, blending, backface culling toggle
+- Deferred draw replay through [`vgfx3d_backend_t`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h)
 
-Since GLAD/GLEW are external dependencies, implement a minimal custom loader (~500 LOC):
+Still missing or incomplete:
 
-**`src/lib/graphics/src/vgfx3d_opengl_loader.c`** / `.h`
-```c
-// Load libGL.so via dlopen
-// Resolve glXGetProcAddressARB
-// Load all GL 3.3 Core functions (~150 function pointers):
-//   glCreateShader, glShaderSource, glCompileShader,
-//   glCreateProgram, glAttachShader, glLinkProgram,
-//   glGenVertexArrays, glBindVertexArray,
-//   glGenBuffers, glBindBuffer, glBufferData,
-//   glGenTextures, glBindTexture, glTexImage2D,
-//   glDrawElements, glDrawArrays,
-//   glEnable, glDisable, glDepthFunc, glBlendFunc,
-//   glViewport, glClear, glClearColor, glClearDepth,
-//   ... etc
-// Return 0 on success, -1 if libGL not found
-```
+- Diffuse / normal / specular / emissive texture sampling
+- Correct normal matrix
+- Spot lights, fog, wireframe
+- Render-to-texture
+- Shadow mapping
+- GPU post-processing
+- Real OpenGL instancing
+- Terrain splatting
+- Efficient dynamic buffer reuse
+- Full GPU skinning / GPU morph support
 
-## New Files
+## Important Corrections To The Older Sketch
 
-**`src/lib/graphics/src/vgfx3d_opengl.c`** (~700 LOC)
-- GLX context creation on existing X11 window
-- Choose visual with depth buffer + double buffering
-- VAO/VBO/IBO management
-- Shader compilation (GLSL from C string)
-- Uniform buffer objects (UBOs) for camera, lights, material
-- Texture upload (glTexImage2D from Pixels RGBA)
-- Mipmap generation (glGenerateMipmap)
-- MSAA via glRenderbufferStorageMultisample (FBO-based)
-- Present via glXSwapBuffers
+The earlier phase note is stale in several ways and should not be used as the implementation spec:
 
-**`src/lib/graphics/src/vgfx3d_opengl_shaders.c`** (~200 LOC)
-```c
-// GLSL shaders as C string literals
-static const char *vertex_shader_src =
-    "#version 330 core\n"
-    "layout(location = 0) in vec3 aPosition;\n"
-    "layout(location = 1) in vec3 aNormal;\n"
-    "layout(location = 2) in vec2 aUV;\n"
-    "layout(location = 3) in vec4 aColor;\n"
-    "\n"
-    "uniform mat4 uModelMatrix;\n"
-    "uniform mat4 uViewProjection;\n"
-    "uniform mat4 uNormalMatrix;\n"
-    // ... same logic as Metal/D3D11 versions
-    ;
+- The implementation lives in [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c), not in `src/lib/graphics/...`.
+- There is already a backend abstraction and a functioning OpenGL backend. This phase is an expansion plan, not a new backend bootstrap.
+- The current backend does not use UBOs, separate shader source files, or a standalone loader module. None of those are prerequisites for parity.
+- The runtime already contains shared 3D infrastructure that the OpenGL plans must reuse:
+  - draw-command fields for textures, terrain splat data, bone palettes, and morph payloads
+  - the optional instanced backend hook
+  - Canvas3D shadow-pass scheduling
+  - backend-facing PostFX snapshot export
+  - render-target binding through [`rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c)
 
-static const char *fragment_shader_src =
-    "#version 330 core\n"
-    // ... Blinn-Phong shading, same logic
-    ;
-```
+## Shared Runtime Prerequisites
 
-## Platform Integration
+Some OpenGL feature plans require work outside the backend file:
 
-**`src/lib/graphics/src/vgfx_platform_linux.c`**:
-- When Canvas3D created: create GLX context on existing X11 window
-- Choose GLXFBConfig with depth buffer, double buffer, RGBA
-- `glXMakeCurrent` before rendering, `glXSwapBuffers` to present
-- Existing 2D XImage path continues for regular Canvas
+- GPU post-processing:
+  - [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993) currently always runs the CPU PostFX path before `backend->present()`. A shared handoff is required so GPU backends can own postfx presentation when enabled.
+- GPU skinning:
+  - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins vertices before enqueueing the draw. The OpenGL backend can consume `bone_palette`, but true GPU skinning also needs a producer-side bypass of that CPU pre-skin step.
+- GPU morph targets:
+  - `vgfx3d_draw_cmd_t` already has morph fields, but [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722) still leaves them null. A producer path is required before the OpenGL morph shader path can be considered complete.
+- GPU render-to-texture + skybox:
+  - Canvas3D currently paints the skybox directly into the CPU render-target buffer when `render_target` is active. A GPU RTT implementation must not silently overwrite that behavior.
 
-**`src/lib/graphics/CMakeLists.txt`**:
-- Add `vgfx3d_opengl.c`, `vgfx3d_opengl_loader.c`, `vgfx3d_opengl_shaders.c` (Linux only)
-- Link `-ldl` (for dlopen/dlsym)
-- Optional: `find_package(OpenGL)` for build-time check, graceful disable if not found
+## Backend-Local Work
 
-## Wayland Consideration
+The detailed implementation work is split across the OpenGL backend plan set in [`misc/plans/3d/backends`](/Users/stephen/git/viper/misc/plans/3d/backends):
 
-- Initial implementation: GLX (X11) only
-- Future: EGL backend for Wayland compositors
-- XWayland compatibility layer handles most cases today
+1. `OGL-01` through `OGL-09`: correctness and material parity
+2. `OGL-10`: render-to-texture and FBO ownership
+3. `OGL-11`: GPU skinning and morph consumption
+4. `OGL-12`: shadow mapping
+5. `OGL-13`: GPU post-processing
+6. `OGL-14`: persistent dynamic buffers
+7. `OGL-15`: real hardware instancing
+8. `OGL-16`: terrain splatting
 
-## Fallback
+## Execution Principle
 
-If libGL.so not found (headless servers, minimal installs):
-- `dlopen("libGL.so.1", RTLD_LAZY)` returns NULL → fall back to software
+Implement against the current runtime, not against the older phase sketch. That means:
 
+- keep the existing backend file unless a refactor is clearly warranted
+- reuse the current Canvas3D scheduling and backend vtable
+- document every shared prerequisite explicitly
+- preserve the software fallback until each GPU feature is fully wired end to end

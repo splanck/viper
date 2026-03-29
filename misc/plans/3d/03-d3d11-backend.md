@@ -2,118 +2,77 @@
 
 ## Goal
 
-GPU-accelerated 3D rendering on Windows using Direct3D 11 (Windows SDK, ships with Windows 7+).
+Bring the existing Windows D3D11 backend to parity with the current 3D runtime architecture. This is not a greenfield backend plan anymore: [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c) already creates a device and swap chain, compiles HLSL at runtime, uploads per-draw buffers, and renders a basic lit path.
 
-## Prerequisites
+The remaining work is expanding that backend to match the shared runtime and the feature set already present in software and partially present in Metal.
 
-- Phase 2 complete (backend abstraction provides `vgfx3d_backend_t` vtable)
+## Current Baseline
 
-Implements `vgfx3d_d3d11_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
+Already implemented:
 
-## Critical: NDC Depth Range Mismatch
+- `D3D11CreateDeviceAndSwapChain`
+- runtime HLSL compilation via `D3DCompile`
+- one vertex shader + one pixel shader
+- depth test, alpha blending, back-buffer presentation
+- basic directional / point lighting
+- row-major matrix upload convention
+- clip-space Z remap from OpenGL-style `[-1, 1]` to D3D `[0, 1]`
 
-Mat4.Perspective uses OpenGL convention (Z: [-1,1]) but D3D11 expects Z: [0,1]. Two options:
-- **Option A (recommended):** Add `rt_mat4_perspective_d3d()` that outputs Z [0,1] range, called only by the D3D11 backend internally
-- **Option B:** Transform Z in the vertex shader: `output.z = output.z * 0.5 + output.w * 0.5`
+Still missing or incomplete:
 
-The HLSL vertex shader must apply the correction so user code always uses the standard Mat4.Perspective.
+- diffuse / normal / specular / emissive texture sampling
+- vertex-color modulation
+- correct normal matrix
+- spot lights, fog, wireframe, two-sided control
+- render-to-texture
+- shadow mapping
+- GPU post-processing
+- real hardware instancing
+- terrain splatting
+- efficient dynamic vertex/index buffers
+- full GPU skinning / GPU morph support
 
-## Architecture
+## Important Corrections To The Older Sketch
 
-```
-Canvas3D.Begin(camera)
-  → Map constant buffers (MVP, lights)
-Canvas3D.DrawMesh(mesh, transform, material)
-  → IASetVertexBuffers, IASetIndexBuffer, VSSetConstantBuffers, PSSetConstantBuffers
-  → DrawIndexed
-Canvas3D.End()
-  → IDXGISwapChain::Present
-```
+The older phase note should not be used as the implementation spec:
 
-## New Files
+- the implementation lives in [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c), not in `src/lib/graphics/...`
+- shaders are compiled at runtime from a C string today; the plan does not require a separate `.hlsl` file or build-time `fxc` step
+- there is already a working backend abstraction and a functioning D3D11 backend; this phase is an expansion plan, not an initial bootstrap
+- the D3D NDC depth remap is already implemented in the vertex shader and must remain in place unless the matrix convention changes globally
 
-**`src/lib/graphics/src/vgfx3d_d3d11.c`** (~900 LOC)
-- Device creation: `D3D11CreateDeviceAndSwapChain` with feature level 11_0
-- Swap chain attached to existing HWND from vgfx_platform_win32
-- Render target view from swap chain back buffer
-- Depth-stencil buffer (DXGI_FORMAT_D24_UNORM_S8_UINT)
-- Vertex buffer creation: `ID3D11Buffer` with D3D11_USAGE_DEFAULT
-- Index buffer creation
-- Constant buffers: per-frame, per-object, per-material (D3D11_USAGE_DYNAMIC, Map/Unmap)
-- Input layout matching HLSL vertex shader
-- Rasterizer state (back-face culling, wireframe toggle)
-- Blend state (alpha blending)
-- Sampler state (linear filtering with anisotropy)
-- Texture creation: ID3D11Texture2D + ShaderResourceView from Pixels RGBA
-- Mipmap generation: `ID3D11DeviceContext::GenerateMips`
-- MSAA: swap chain sample desc
-- Resize: `IDXGISwapChain::ResizeBuffers` on WM_SIZE
+## Shared Runtime Prerequisites
 
-**`src/lib/graphics/src/vgfx3d_d3d11_shaders.hlsl`** (~200 LOC)
-```hlsl
-// Viper's Mat4 is row-major. HLSL float4x4 defaults to column-major storage.
-// The row_major qualifier ensures matrix data uploaded from C matches the HLSL
-// layout without transposition. Without this, all matrix operations produce wrong results.
-cbuffer PerObject : register(b0) {
-    row_major float4x4 modelMatrix;
-    row_major float4x4 viewProjection;
-    row_major float4x4 normalMatrix;
-};
+Some D3D11 feature plans require work outside the backend file:
 
-cbuffer PerScene : register(b1) {
-    float3 cameraPosition;
-    float3 ambientColor;
-    // Light array...
-    int lightCount;
-};
+- GPU post-processing:
+  - [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993) still always applies CPU PostFX before `backend->present()`
+- GPU skinning:
+  - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins before enqueueing
+- GPU morph targets:
+  - draw-command morph fields exist, but [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722) does not populate them yet
+- GPU render-to-texture + skybox:
+  - Canvas3D currently writes the skybox directly into the CPU render-target buffer when `render_target` is active
 
-cbuffer PerMaterial : register(b2) {
-    float4 diffuseColor;
-    float3 specularColor;
-    float shininess;
-    bool hasTexture;
-    bool unlit;
-};
+## Backend-Local Work
 
-struct VS_INPUT {
-    float3 pos    : POSITION;
-    float3 normal : NORMAL;
-    float2 uv     : TEXCOORD0;
-    float4 color  : COLOR;
-};
+The detailed implementation work is split across the D3D11 backend plan set in [`misc/plans/3d/backends`](/Users/stephen/git/viper/misc/plans/3d/backends):
 
-struct PS_INPUT {
-    float4 pos      : SV_POSITION;
-    float3 worldPos : TEXCOORD0;
-    float3 normal   : TEXCOORD1;
-    float2 uv       : TEXCOORD2;
-    float4 color    : COLOR;
-};
+1. `D3D-01` through `D3D-08`: material and render-state parity
+2. `D3D-09`: render-to-texture and readback ownership
+3. `D3D-10`: GPU skinning and morph consumption
+4. `D3D-11`: GPU post-processing
+5. `D3D-12`: persistent dynamic buffers
+6. `D3D-13`: HRESULT / failure-path rigor
+7. `D3D-14`: shadow mapping
+8. `D3D-15`: true hardware instancing
+9. `D3D-16`: terrain splatting
 
-// vertex_main and fragment_main similar to Metal version
-```
+## Execution Principle
 
-**Shader compilation**:
-- Build-time: `fxc.exe /T vs_5_0 /E vertex_main shaders.hlsl /Fh vs_bytecode.h`
-- Embed as `const BYTE g_vs_main[] = { ... };`
-- Load at runtime: `ID3D11Device::CreateVertexShader(g_vs_main, sizeof(g_vs_main), ...)`
+Implement against the current runtime, not against the earlier architecture sketch:
 
-**`src/lib/graphics/src/vgfx3d_d3d11_internal.h`** (~50 LOC)
-- COM interface declarations, D3D11 includes
-
-## Platform Integration Changes
-
-**`src/lib/graphics/src/vgfx_platform_win32.c`**:
-- When Canvas3D is created, attach DXGI swap chain to existing HWND
-- Existing 2D GDI path continues for regular Canvas
-- Handle WM_SIZE for swap chain resize
-
-**`src/lib/graphics/CMakeLists.txt`**:
-- Add `vgfx3d_d3d11.c` to sources (Windows only)
-- Link `d3d11.lib dxgi.lib d3dcompiler.lib` (all ship with Windows SDK)
-
-## Fallback
-
-If D3D11 unavailable (rare, pre-Windows 7 SP1):
-- `D3D11CreateDeviceAndSwapChain` fails → fall back to software
-
+- keep the existing backend file unless a refactor is clearly justified
+- reuse the current Canvas3D scheduling and backend vtable
+- document shared prerequisites explicitly
+- preserve software fallbacks until each D3D11 feature is wired end to end

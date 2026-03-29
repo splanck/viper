@@ -14,8 +14,8 @@ Last updated: 2026-02-17
 
 ## Overview
 
-- **Total source files**: 27 (.hpp/.cpp)
-  - support/: 20 files
+- **Total source files**: 26 (.hpp/.cpp)
+  - support/: 19 files
   - common/: 5 files
   - parse/: 1 file
   - pass/: 1 file
@@ -62,7 +62,6 @@ Last updated: 2026-02-17
 |-------------------|-----------------------------------------|
 | `alignment.hpp`   | Alignment utilities                     |
 | `options.hpp`     | Global compile-time options and toggles |
-| `result.hpp`      | Minimal Result<T> helper                |
 | `small_vector.hpp`| Small-buffer-optimized vector type      |
 
 ## Common Utilities (`src/common/`)

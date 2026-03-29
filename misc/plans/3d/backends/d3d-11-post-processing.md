@@ -1,145 +1,73 @@
 # D3D-11: GPU Post-Processing Pipeline
 
-## Context
-Same gap as Metal (MTL-11). Post-processing only works on software backend. D3D11 renders directly to swap chain back buffer with no post-process pass.
+## Depends On
 
-As with Metal, the backend should not inspect private `rt_postfx3d.c` internals directly. Export a compact backend-facing snapshot/helper API from [`src/runtime/graphics/rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c) and [`src/runtime/graphics/rt_postfx3d.h`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h) first.
+- D3D-09
+- shared flip/present handoff
 
-## Implementation
+## Current State
 
-### Step 1: Offscreen render target
-In `d3d11_begin_frame()`, when post-processing is enabled, cache and reuse offscreen texture (only recreate on size change):
-```c
-if (ctx->postfx_enabled) {
-    // Cache offscreen texture — only recreate on size change
-    if (!ctx->postfx_color_tex || ctx->postfx_w != ctx->width || ctx->postfx_h != ctx->height) {
-        if (ctx->postfx_color_tex) ID3D11Texture2D_Release(ctx->postfx_color_tex);
-        if (ctx->postfx_rtv) ID3D11RenderTargetView_Release(ctx->postfx_rtv);
-        if (ctx->postfx_offscreen_srv) ID3D11ShaderResourceView_Release(ctx->postfx_offscreen_srv);
-        // Create offscreen BGRA8 texture (render target + shader resource)
-        D3D11_TEXTURE2D_DESC desc = {0};
-        desc.Width = ctx->width; desc.Height = ctx->height;
-        desc.MipLevels = 1; desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-        ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->postfx_color_tex);
-        ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)ctx->postfx_color_tex,
-                                            NULL, &ctx->postfx_rtv);
-        ID3D11Device_CreateShaderResourceView(ctx->device, (ID3D11Resource *)ctx->postfx_color_tex,
-                                              NULL, &ctx->postfx_offscreen_srv);
-        ctx->postfx_w = ctx->width;
-        ctx->postfx_h = ctx->height;
-    }
-    // Render pass targets offscreen instead of swap chain
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->context, 1, &ctx->postfx_rtv, ctx->dsv);
-}
-```
+The runtime already exports a backend-facing PostFX snapshot via [`vgfx3d_postfx_get_snapshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h#L65). The missing piece is not just the D3D11 fullscreen-quad pass, but also shared presentation ownership:
 
-### Step 2: Fullscreen quad shader
-Add a second HLSL shader pair:
-```hlsl
-struct FS_VS_OUT {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
+- [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993) still always applies the CPU PostFX path before calling `backend->present()`
 
-FS_VS_OUT FullscreenVS(uint vid : SV_VertexID) {
-    float2 positions[4] = {float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1)};
-    float2 uvs[4] = {float2(0,1), float2(1,1), float2(0,0), float2(1,0)};
-    FS_VS_OUT out;
-    out.pos = float4(positions[vid], 0, 1);
-    out.uv = uvs[vid];
-    return out;
-}
+As written, that prevents a D3D11 GPU postfx path from owning the final image end to end.
 
-cbuffer PostFXParams : register(b0) {
-    int bloomEnabled;
-    float bloomThreshold, bloomStrength;
-    int tonemapMode;
-    float tonemapExposure;
-    int colorGradeEnabled;
-    float4 colorMult;
-    int vignetteEnabled;
-    float vignetteIntensity, vignetteRadius;
-    int fxaaEnabled;
-};
+## Required Shared Prerequisite
 
-Texture2D sceneColor : register(t0);
-SamplerState sceneSampler : register(s0);
+Before D3D-11 can be finished, the runtime must define one of these shared mechanisms:
 
-float4 PostFXPS(FS_VS_OUT input) : SV_Target {
-    float4 color = sceneColor.Sample(sceneSampler, input.uv);
+1. add a backend hook that receives the PostFX snapshot and owns GPU postfx presentation, or
+2. extend `present()` so Canvas3D can pass the PostFX snapshot into it
 
-    // Bloom (simplified bright-pass boost)
-    if (bloomEnabled) {
-        float brightness = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
-        if (brightness > bloomThreshold) {
-            color.rgb += (color.rgb - bloomThreshold) * bloomStrength;
-        }
-    }
+Either way, `rt_canvas3d_flip()` must skip the CPU postfx path when the active backend is handling postfx on the GPU.
 
-    // Tonemap
-    if (tonemapMode == 1) { // Reinhard
-        color.rgb = color.rgb / (color.rgb + 1.0);
-    } else if (tonemapMode == 2) { // ACES
-        float3 x = color.rgb * tonemapExposure;
-        color.rgb = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
-    }
+## D3D11 Backend Scope
 
-    // Color grading
-    if (colorGradeEnabled) color.rgb *= colorMult.rgb;
+v1 should implement:
 
-    // Vignette
-    if (vignetteEnabled) {
-        float2 center = input.uv - 0.5;
-        float dist = length(center);
-        float vig = 1.0 - smoothstep(vignetteRadius, vignetteRadius + 0.2, dist);
-        color.rgb *= lerp(1.0, vig, vignetteIntensity);
-    }
+- bloom
+- tone mapping
+- FXAA
+- color grade
+- vignette
 
-    return color;
-}
-```
+Do not expand this plan to SSAO, DOF, or motion blur without adding the required depth/history inputs.
 
-### Step 3: Compile post-process shaders in create_ctx
-Compile `FullscreenVS` and `PostFXPS` alongside the main shaders. Create a second pipeline state (input layout not needed — SV_VertexID only).
+## Rendering Model
 
-### Step 4: Post-process pass in end_frame
-```c
-if (ctx->postfx_enabled && ctx->postfx_offscreen_srv) {
-    // Switch render target to swap chain back buffer
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->context, 1, &ctx->rtv, NULL);
-    // Bind offscreen as shader resource
-    ID3D11DeviceContext_PSSetShaderResources(ctx->context, 0, 1, &ctx->postfx_offscreen_srv);
-    ID3D11DeviceContext_PSSetSamplers(ctx->context, 0, 1, &ctx->sampler);
-    // Set postfx cbuffer
-    // ... map/unmap PostFXParams ...
-    // Set postfx shaders
-    ID3D11DeviceContext_VSSetShader(ctx->context, ctx->postfx_vs, NULL, 0);
-    ID3D11DeviceContext_PSSetShader(ctx->context, ctx->postfx_ps, NULL, 0);
-    // Draw fullscreen quad (4 vertices, triangle strip, no VBO — SV_VertexID)
-    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    ID3D11DeviceContext_Draw(ctx->context, 4, 0);
-    // Unbind offscreen SRV to avoid D3D11 resource hazard warning
-    // (texture can't be bound as both RTV and SRV simultaneously)
-    ID3D11ShaderResourceView *nullSRV = NULL;
-    ID3D11DeviceContext_PSSetShaderResources(ctx->context, 0, 1, &nullSRV);
-    // Restore main shaders for next frame
-}
-```
+For onscreen rendering with GPU postfx enabled:
 
-### Step 5: Wire PostFX3D params
-Same as MTL-11 — export a backend-facing PostFX snapshot from `rt_postfx3d.c` and translate that into the D3D11 `PostFXParams` cbuffer.
+1. render the scene into an offscreen color target
+2. in `present()`, bind the swap-chain RTV
+3. draw a fullscreen quad
+4. present the swap chain
 
-## Scope Note
-v1 should explicitly target bloom, tone mapping, FXAA, color grade, and vignette. SSAO, DOF, and motion blur require extra depth/history inputs and should be deferred unless this plan grows to include those resources.
+For `RenderTarget3D`:
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — offscreen texture, postfx shaders, fullscreen quad draw, end_frame post-pass
-- `src/runtime/graphics/rt_postfx3d.c` — export backend-facing PostFX snapshot/helper
-- `src/runtime/graphics/rt_postfx3d.h` — declare backend-facing PostFX snapshot/helper
+- do not apply GPU postfx unless the product requirement explicitly changes
+- preserve the current behavior where RTT readback represents the scene render, not an implicit postfx composite
 
-## Testing
-- Same tests as MTL-11
+## D3D11 Implementation
+
+Add:
+
+- offscreen color texture + RTV + SRV
+- postfx vertex shader / pixel shader
+- postfx constant buffer
+- cached shader/resource state for the fullscreen pass
+
+Use `SV_VertexID` for the fullscreen quad so no vertex buffer is required.
+
+Remember to unbind the offscreen SRV after the postfx pass to avoid the standard D3D11 RTV/SRV hazard.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+- shared runtime change in [`src/runtime/graphics/rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c)
+
+## Done When
+
+- GPU postfx owns the onscreen final image
+- CPU postfx is skipped for the D3D11 path when GPU postfx is active
+- RTT output remains well-defined

@@ -13,7 +13,7 @@ Last updated: 2026-02-17
 
 ## Overview
 
-- **Total source files**: 388 (.c/.h/.cpp/.hpp)
+- **Total source files**: 522 (.c/.h/.cpp/.hpp/.m)
 
 ## Memory Management
 
@@ -232,6 +232,69 @@ Last updated: 2026-02-17
 | `rt_spritesheet.h`  | Sprite sheet declarations            |
 | `rt_tilemap.c`      | Tilemap rendering for 2D games       |
 | `rt_tilemap.h`      | Tilemap declarations                 |
+
+## 3D Graphics Engine
+
+> **Directory:** `src/runtime/graphics/` — 28-class 3D rendering engine with 4 backends
+
+### Core Rendering
+
+| File | Purpose |
+|------|---------|
+| `rt_canvas3d.c` / `.h` | Canvas3D lifecycle, vtable dispatch, deferred draw queue |
+| `rt_canvas3d_internal.h` | Internal struct definitions (rt_mesh3d, rt_camera3d, rt_material3d, etc.) |
+| `rt_mesh3d.c` | Mesh3D construction, generators (box, sphere, plane, cylinder), OBJ loader |
+| `rt_camera3d.c` | Camera3D (perspective, orthographic, orbit, FPS, ray cast) |
+| `rt_material3d.c` | Material3D (color, texture, shininess, normal/specular/emissive maps) |
+| `rt_light3d.c` | Light3D (directional, point, ambient, spot) |
+
+### Rendering Backends
+
+| File | Purpose |
+|------|---------|
+| `vgfx3d_backend.h` | Backend vtable interface (all backends implement this) |
+| `vgfx3d_backend_sw.c` | Software rasterizer (always available) |
+| `vgfx3d_backend_metal.m` | Metal GPU backend (macOS, 94% feature parity) |
+| `vgfx3d_backend_d3d11.c` | D3D11 GPU backend (Windows) |
+| `vgfx3d_backend_opengl.c` | OpenGL 3.3 GPU backend (Linux) |
+
+### Scene Graph & Physics
+
+| File | Purpose |
+|------|---------|
+| `rt_scene3d.c` / `.h` | Scene3D + SceneNode3D hierarchy, frustum culling, LOD |
+| `rt_transform3d.c` / `.h` | Transform3D (standalone TRS) |
+| `rt_physics3d.c` / `.h` | Physics3DWorld + Body3D (AABB, sphere, capsule) |
+| `rt_raycast3d.c` / `.h` | Ray3D + RayHit3D intersection tests |
+| `rt_joints3d.c` / `.h` | DistanceJoint3D, SpringJoint3D |
+| `vgfx3d_frustum.c` / `.h` | Frustum culling math |
+
+### Animation
+
+| File | Purpose |
+|------|---------|
+| `rt_skeleton3d.c` / `.h` | Skeleton3D, Animation3D, AnimPlayer3D, AnimBlend3D |
+| `rt_morphtarget3d.c` / `.h` | MorphTarget3D blend shapes |
+| `vgfx3d_skinning.c` / `.h` | CPU vertex skinning math |
+
+### Effects & Advanced
+
+| File | Purpose |
+|------|---------|
+| `rt_particles3d.c` / `.h` | Particles3D emitter system |
+| `rt_postfx3d.c` / `.h` | PostFX3D (bloom, FXAA, tonemap, vignette, color grading) |
+| `rt_sprite3d.c` / `.h` | Sprite3D billboards |
+| `rt_decal3d.c` / `.h` | Decal3D surface projections |
+| `rt_water3d.c` / `.h` | Water3D animated surface |
+| `rt_terrain3d.c` / `.h` | Terrain3D heightmap with splat mapping |
+| `rt_instbatch3d.c` / `.h` | InstanceBatch3D instanced rendering |
+| `rt_cubemap3d.c` | CubeMap3D environment/skybox |
+| `rt_rendertarget3d.c` | RenderTarget3D offscreen rendering |
+| `rt_texatlas3d.c` / `.h` | TextureAtlas3D texture arrays |
+| `rt_audio3d.c` / `.h` | Audio3D spatial audio |
+| `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
+| `rt_path3d.c` / `.h` | Path3D spline following |
+| `rt_fbx_loader.c` / `.h` | FBX binary format loader |
 
 ## Audio
 

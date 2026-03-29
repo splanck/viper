@@ -12,9 +12,8 @@ and source code organization.
 
 > Status
 >
-> - AArch64: The native backend has been validated end‑to‑end on Apple Silicon by running a full "Frogger" demo.
-> - x86_64: The backend is implemented with both System V (Linux/macOS) and Windows x64 ABI support. Validated on
-    Windows with all codegen tests passing.
+> - AArch64: Validated end-to-end on Apple Silicon across all demo games. Register coalescer, post-RA scheduler, peephole optimizer.
+> - x86_64: Implemented with System V (Linux/macOS) and Windows x64 ABI support. Validated on Windows with all codegen tests passing.
 
 ---
 
@@ -1113,7 +1112,7 @@ src/codegen/
 
 - SIMD instruction generation
 - Position-independent code (PIC)
-- Debug info (DWARF)
+- ~~Debug info (DWARF)~~ — **Implemented** (DWARF v5 via native assembler/linker)
 - Link-time optimization (LTO)
 
 **Phase D: Production**
@@ -1158,11 +1157,12 @@ src/codegen/
 - **[IL Reference](il-reference.md)** — Complete opcode catalog
 - **[VM Architecture](vm.md)** — VM execution model
 
-**Developer Documentation** (in `/devdocs`):**
+**Developer Documentation:**
 
-- `codegen/x86_64.md` — Additional x86-64 backend notes
-- `architecture.md` — Overall system architecture
-- `abi/` — ABI specification details
+- [x86-64 Backend](codegen/x86_64.md) — Additional x86-64 backend notes
+- [AArch64 Backend](codegen/aarch64.md) — ARM64 backend notes
+- [Architecture](architecture.md) — Overall system architecture
+- [Object Layout](abi/object-layout.md) — ABI specification details
 
 **External References:**
 

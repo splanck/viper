@@ -1,57 +1,39 @@
 # D3D-05: Wireframe Mode + Backface Culling Toggle
 
-## Context
-Both `wireframe` and `backface_cull` parameters are void-cast at line 497. D3D11 requires different rasterizer states for each combination.
+## Current State
 
-## Current Code (line 497)
-```c
-(void)wireframe;
-(void)backface_cull;
-```
+The D3D11 backend still ignores both `wireframe` and `backface_cull`.
 
 ## Implementation
 
-### Pre-create 4 rasterizer states in create_ctx
-```c
-// Solid + back-cull (default)
-D3D11_RASTERIZER_DESC rs = {0};
-rs.FillMode = D3D11_FILL_SOLID;
-rs.CullMode = D3D11_CULL_BACK;
-rs.FrontCounterClockwise = FALSE; // Must match existing convention (line 323)
-CreateRasterizerState(&rs, &ctx->rs_solid_cull);
+Pre-create four rasterizer states in `create_ctx()`:
 
-// Solid + no cull (two-sided)
-rs.CullMode = D3D11_CULL_NONE;
-CreateRasterizerState(&rs, &ctx->rs_solid_nocull);
+- solid + back-cull
+- solid + no-cull
+- wireframe + back-cull
+- wireframe + no-cull
 
-// Wireframe + back-cull
-rs.FillMode = D3D11_FILL_WIREFRAME;
-rs.CullMode = D3D11_CULL_BACK;
-CreateRasterizerState(&rs, &ctx->rs_wire_cull);
+Important: preserve the existing winding convention:
 
-// Wireframe + no cull
-rs.CullMode = D3D11_CULL_NONE;
-CreateRasterizerState(&rs, &ctx->rs_wire_nocull);
-```
+- `FrontCounterClockwise = FALSE`
 
-### Select per draw in submit_draw
-```c
-ID3D11RasterizerState *rs;
-if (wireframe) {
-    rs = backface_cull ? ctx->rs_wire_cull : ctx->rs_wire_nocull;
-} else {
-    rs = backface_cull ? ctx->rs_solid_cull : ctx->rs_solid_nocull;
-}
-ID3D11DeviceContext_RSSetState(ctx->context, rs);
-```
+That matches the backend's current clip-to-screen winding behavior.
 
-### Clean up in destroy_ctx
-Release all 4 rasterizer states.
+## Draw Path
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — 4 rasterizer states in context, create in create_ctx, select in submit_draw, release in destroy_ctx
+In `submit_draw()`:
 
-## Testing
-- wireframe=true → mesh renders as wireframe
-- backface_cull=false → both sides of a plane visible
-- Combination: wireframe + two-sided → wireframe from both directions
+- choose the correct rasterizer state from the two booleans
+- bind it with `RSSetState`
+
+Release all four rasterizer states in `destroy_ctx()`.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+
+## Done When
+
+- wireframe mode renders lines
+- disabling backface cull makes planes visible from both sides
+- both toggles work in all combinations

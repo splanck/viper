@@ -189,7 +189,7 @@ END TRY
 ```
 
 - `CATCH` without a variable is valid; use `ERR()` inside the block to retrieve the code.
-- `FINALLY` is a reserved keyword for future use; it is not yet parsed as part of TRY blocks.
+- `FINALLY` is supported: the finally block always executes after try/catch regardless of whether an exception occurred. At least one of CATCH or FINALLY must be present.
 - TRY/CATCH composes with `ON ERROR GOTO`: a TRY installs a handler on top of any active `ON ERROR` handler and pops it at `END TRY`.
 
 ## Interfaces and conformance

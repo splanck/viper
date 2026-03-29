@@ -1,135 +1,104 @@
-# D3D-10: GPU Skeletal Skinning + Morph Targets
+# D3D-10: GPU Skinning + Morph Targets
 
-## Context
-Same gap as Metal (MTL-09 + MTL-10). Bone indices/weights defined in VS_INPUT but unused. CPU skinning works but GPU would be faster. Combining skinning + morph since both modify the vertex shader.
+## Current State
 
-The producer-side work is split today:
-- Skinning data and CPU fallback live in [`src/runtime/graphics/rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c)
-- Morph target data and CPU fallback live in [`src/runtime/graphics/rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c)
+This plan covers two different categories of work:
 
-Keep those ownership boundaries. The backend should consume shared draw-command payloads, not reach into private runtime objects.
+1. backend shader consumption of draw-command payloads
+2. producer-side runtime work required to populate those payloads end to end
 
-## Implementation
+Those must be documented separately.
 
-### GPU Skinning
+## What Already Exists
 
-#### Step 1: Add bone palette as structured buffer
+Already present in shared code:
+
+- `vgfx3d_draw_cmd_t` has `bone_palette`, `bone_count`, `morph_deltas`, `morph_weights`, and `morph_shape_count`
+- the Metal backend already consumes those fields
+
+Still missing in shared code:
+
+- [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins into a temporary vertex buffer before enqueueing
+- morph payload fields are still left null by [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722)
+
+That means the D3D11 backend alone cannot make this feature complete.
+
+## Phase A: Backend GPU Skinning
+
+### HLSL
+
+Add:
+
 ```hlsl
 StructuredBuffer<float4x4> bonePalette : register(t4);
-// Add to PerObject cbuffer:
-int hasSkinning;
-int vertexCount;
-int morphShapeCount;
-int _objPad;
 ```
 
-Update the C struct to match:
-```c
-typedef struct {
-    float m[16];
-    float vp[16];
-    float nm[16];
-    int32_t has_skinning;
-    int32_t vertex_count;
-    int32_t morph_shape_count;
-    int32_t _obj_pad;
-} d3d_per_object_t; // 208 bytes (was 192)
-```
+Extend the per-object cbuffer with:
 
-#### Step 2: Apply skinning in vertex shader
-```hlsl
-PS_INPUT VSMain(VS_INPUT input) {
-    float4 pos = float4(input.pos, 1.0);
-    float3 norm = input.normal;
+- `hasSkinning`
+- `morphShapeCount`
+- `vertexCount`
 
-    if (hasSkinning) {
-        float4 skinnedPos = float4(0, 0, 0, 0);
-        float3 skinnedNorm = float3(0, 0, 0);
-        for (int i = 0; i < 4; i++) {
-            uint boneIdx = input.boneIdx[i];
-            float weight = input.boneWt[i];
-            if (weight > 0.001) {
-                float4x4 bm = bonePalette[boneIdx];
-                skinnedPos += mul(pos, bm) * weight;
-                skinnedNorm += mul(float4(norm, 0), bm).xyz * weight;
-            }
-        }
-        pos = skinnedPos;
-        norm = skinnedNorm;
-    }
+When skinning is enabled:
 
-    PS_INPUT output;
-    float4 wp = mul(pos, modelMatrix);
-    // ...
-    output.normal = mul(float4(norm, 0.0), normalMatrix).xyz;
-    // ...
-}
-```
+- blend position from `input.pos`
+- blend normal from `input.normal`
+- use up to four influences
 
-#### Step 3: Upload bone palette as SRV
-```c
-if (cmd->bone_palette && cmd->bone_count > 0) {
-    // Create structured buffer with bone_count float4x4 matrices
-    D3D11_BUFFER_DESC desc = {0};
-    desc.ByteWidth = cmd->bone_count * 64; // 4x4 float = 64 bytes
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-    desc.StructureByteStride = 64;
-    D3D11_SUBRESOURCE_DATA init = {.pSysMem = cmd->bone_palette};
-    ID3D11Buffer *boneBuf;
-    ID3D11Device_CreateBuffer(ctx->device, &desc, &init, &boneBuf);
-    // Create SRV for StructuredBuffer
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {0};
-    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-    srvDesc.Buffer.NumElements = cmd->bone_count;
-    ID3D11ShaderResourceView *boneSRV;
-    ID3D11Device_CreateShaderResourceView(ctx->device, (ID3D11Resource *)boneBuf, &srvDesc, &boneSRV);
-    ID3D11DeviceContext_VSSetShaderResources(ctx->context, 4, 1, &boneSRV);
-    obj.hasSkinning = 1;
-    // Release after draw
-}
-```
+### Runtime Limits
 
-### GPU Morph Targets
+Define an explicit policy for very large bone palettes:
 
-#### Step 4: Add morph delta buffer
+- recommended behavior: if the palette would exceed the chosen shader/resource limit, fall back to the existing CPU-skinned path
+
+Do not leave the overflow case unspecified.
+
+## Phase B: Shared Producer Work For True GPU Skinning
+
+To make the D3D path real rather than redundant:
+
+- add a producer path in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c) that can enqueue the original mesh plus `bone_palette` for GPU-capable backends instead of always pre-skinning on the CPU
+
+Until that lands, the D3D11 shader path can exist, but it will still consume already-skinned vertices on the main runtime path.
+
+## Phase C: Backend Morph Consumption
+
+Use a vertex-shader-readable structured buffer:
+
 ```hlsl
 StructuredBuffer<float3> morphDeltas : register(t5);
-Buffer<float> morphWeights : register(t6);
 ```
 
-#### Step 5: Apply morph in vertex shader (before skinning)
+Keep morph weights in a small constant-buffer array:
+
 ```hlsl
-if (morphShapeCount > 0) {
-    uint vid = input_vertex_id; // Need SV_VertexID
-    for (int s = 0; s < morphShapeCount; s++) {
-        float w = morphWeights[s];
-        if (w > 0.001) {
-            uint offset = s * vertexCount + vid;
-            pos.xyz += morphDeltas[offset] * w;
-        }
-    }
-}
+float morphWeights[16];
 ```
 
-Note: Need to add `uint vid : SV_VertexID` to VS_INPUT.
+Add `uint vid : SV_VertexID` to the vertex-shader input and apply morphs before skinning:
 
-#### Step 6: Upload morph data as SRVs
-Similar to bone palette — create structured buffer for deltas, buffer for weights, bind to t5/t6.
+- `offset = shape * vertexCount + vid`
+- `pos.xyz += morphDeltas[offset] * morphWeights[shape]`
 
-## Depends On
-- D3D-01 (texture/SRV infrastructure)
+This avoids a second SRV just for weights and keeps the common small-weight-count case simple.
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — HLSL vertex shader skinning + morph, PerObject flags, SRV creation + binding
-- `src/runtime/graphics/vgfx3d_backend.h` — bone_palette/bone_count + morph fields in draw command (shared with MTL-09/10)
-- `src/runtime/graphics/rt_skeleton3d.c` — GPU-skinning producer path + CPU fallback
-- `src/runtime/graphics/rt_morphtarget3d.c` — GPU-morph producer path + CPU fallback
+## Phase D: Shared Producer Work For Morphs
 
-## Testing
-- Animated character → bones move correctly
-- Same animation CPU vs GPU → visual parity
-- Morph blend shape (face expression) → smooth deformation
-- Static mesh → hasSkinning=0, no performance cost
+Add a producer path in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c) that populates:
+
+- `cmd->morph_deltas`
+- `cmd->morph_weights`
+- `cmd->morph_shape_count`
+
+The current runtime does not do this anywhere, so backend shader work alone is not enough.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+- [`src/runtime/graphics/rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c)
+- [`src/runtime/graphics/rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c)
+
+## Done When
+
+- the D3D11 shader can consume bone palettes and morph payloads
+- the runtime can actually supply those payloads without mandatory CPU pre-application

@@ -550,9 +550,9 @@ func getNextGuess() -> Integer {
 }
 ```
 
-For more complete examples, see the `demos/zia/` directory:
-- `frogger/main.zia` — Full Frogger game with entities and collision detection
-- `centipede/` — Centipede arcade game with entities and game loop
+For more complete examples, see the `examples/games/` directory:
+- `frogger/` — Full Frogger game with classes and collision detection
+- `centipede/` — Centipede arcade game with classes and game loop
 - `pacman/` — Pac-Man game demonstrating movement and collision
 
 ---

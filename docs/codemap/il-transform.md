@@ -10,7 +10,7 @@ Optimization passes (`src/il/transform/`) for IL programs.
 
 ## Overview
 
-- **Total source files**: 62 (.hpp/.cpp)
+- **Total source files**: 72 (.hpp/.cpp)
 - **Subdirectories**: SimplifyCFG/, analysis/
 
 ## Pass Infrastructure
@@ -46,6 +46,12 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `GVN.hpp`        | Global value numbering with load elimination                   |
 | `Inline.cpp`     | Function inlining implementation                               |
 | `Inline.hpp`     | Function inlining with enhanced cost model                     |
+| `EHOpt.cpp`      | Exception handling optimization implementation                 |
+| `EHOpt.hpp`      | Exception handling optimization (dead handler removal)         |
+| `Reassociate.cpp`| Reassociation pass implementation                              |
+| `Reassociate.hpp`| Reassociation for improved constant folding                    |
+| `SiblingRecursion.cpp` | Sibling recursion optimization implementation            |
+| `SiblingRecursion.hpp` | Sibling recursion / tail call optimization               |
 
 ## Utility Passes
 
@@ -58,6 +64,8 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `CallEffects.hpp` | Call effect analysis with early-exit optimization |
 | `ValueKey.cpp`    | Value keying with cached commutative normalization |
 | `ValueKey.hpp`    | Value keying for CSE and GVN                      |
+| `AnalysisIDs.hpp` | String identifiers for analysis registration      |
+| `OverflowArithmetic.hpp` | Overflow arithmetic helper utilities       |
 
 ## Loop Passes
 
@@ -69,6 +77,8 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `LoopSimplify.hpp`    | Loop normalization (preheaders, single backedges)      |
 | `LoopUnroll.cpp`      | Loop unrolling implementation                          |
 | `LoopUnroll.hpp`      | Loop unrolling for small constant-bound loops          |
+| `LoopRotate.cpp`      | Loop rotation implementation                           |
+| `LoopRotate.hpp`      | Loop rotation (header duplication for better analysis) |
 | `IndVarSimplify.cpp`  | Induction variable optimization implementation         |
 | `IndVarSimplify.hpp`  | Induction variable optimization and strength reduction |
 | `SCCP.cpp`            | Sparse conditional constant propagation implementation |

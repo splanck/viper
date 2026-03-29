@@ -10,7 +10,7 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 
 ## Overview
 
-- **Total source files**: 57 (.hpp/.cpp)
+- **Total source files**: 58 (.hpp/.cpp)
 - **Subdirectories**: debug/, ops/, ops/common/, ops/generated/, ops/schema/
 
 ## Core Infrastructure
@@ -25,6 +25,7 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 | `VMContext.cpp`   | Execution context: function/block maps, global string tables             |
 | `VMContext.hpp`   | VMContext declarations                                                   |
 | `VMInit.cpp`      | VM construction, function table setup, per-execution initialization      |
+| `FunctionExecCache.cpp` | Pre-resolved operand arrays per (function, block) for fast dispatch |
 
 ## Dispatch Strategies
 

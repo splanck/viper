@@ -44,13 +44,13 @@ The REPL supports both the **Zia** and **BASIC** languages.
 
 ### Zia — What Works
 
-- **Expression auto-print**: Expressions are automatically evaluated and printed with type-aware coloring (integers in blue, strings in yellow, booleans in magenta, entities/objects in cyan)
+- **Expression auto-print**: Expressions are automatically evaluated and printed with type-aware coloring (integers in blue, strings in yellow, booleans in magenta, objects in cyan)
 - **Variable persistence**: Variables declared in one input are available in subsequent inputs, including reassignment
 - **Statements**: Any Zia statement (function calls, variable declarations, control flow)
 - **Function definitions**: Define functions and call them in subsequent inputs
 - **Function redefinition**: Redefine a function to update its behavior
 - **Bind statements**: Import runtime modules with `bind`
-- **Entity/value/interface definitions**: Define types for use in subsequent inputs
+- **Class/struct/interface definitions**: Define types for use in subsequent inputs
 - **Type inspection**: Use `.type <expr>` to see the inferred type of any expression
 - **Error recovery**: Syntax and type errors are reported without losing session state
 
@@ -333,7 +333,7 @@ When connected to a terminal, the REPL displays colorized output:
 - **Integer/Number results**: Blue
 - **String results**: Yellow
 - **Boolean results**: Magenta
-- **Object/Entity results**: Cyan
+- **Object results**: Cyan
 - **Statement output**: Bold green
 - **Errors**: Bold red
 - **Warnings**: Bold yellow

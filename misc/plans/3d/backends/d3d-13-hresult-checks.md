@@ -1,43 +1,49 @@
-# D3D-13: HRESULT Error Checking
+# D3D-13: HRESULT Error Handling
 
-## Context
-~10 D3D11 creation calls don't check HRESULT. If any fail silently, subsequent code operates on NULL pointers.
+## Current State
 
-## Unchecked Calls (from audit)
-- Line 269: `IDXGISwapChain_GetBuffer`
-- Line 270: `CreateRenderTargetView`
-- Line 285: `CreateTexture2D` (depth buffer)
-- Line 286: `CreateDepthStencilView`
-- Line 295: `CreateDepthStencilState` (opaque)
-- Line 299: `CreateDepthStencilState` (transparent)
-- Line 312: `CreateBlendState`
-- Line 325: `CreateRasterizerState`
-- Lines 366-375: `CreateVertexShader` / `CreatePixelShader`
-- Lines 387-392: `CreateInputLayout`
-- Lines 405-411: `CreateBuffer` (4 cbuffers)
+The D3D11 backend still has several resource-creation calls that assume success and continue with null COM pointers on failure.
 
-## Fix
-Wrap each call with FAILED() check. On failure, clean up already-created objects and return NULL from create_ctx:
+## Plan Goal
+
+Establish one consistent failure-handling pattern and use it everywhere new D3D resource creation is added, not only in the current `create_ctx()` body.
+
+## Implementation
+
+Add a small helper macro or function:
 
 ```c
-#define D3D_CHECK(hr, msg) do { \
-    if (FAILED(hr)) { \
-        /* Log error message */ \
-        d3d11_destroy_ctx(ctx); \
-        return NULL; \
-    } \
-} while(0)
-
-// Example:
-hr = ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)backBuf, NULL, &ctx->rtv);
-D3D_CHECK(hr, "CreateRenderTargetView failed");
+#define D3D_TRY(hr_expr, msg) do { \
+    HRESULT _hr = (hr_expr);       \
+    if (FAILED(_hr)) {             \
+        /* log msg + _hr */        \
+        d3d11_destroy_ctx(ctx);    \
+        return NULL;               \
+    }                              \
+} while (0)
 ```
 
-Apply to all 10+ unchecked calls. The macro calls destroy_ctx which already handles NULL checks on all COM objects, so partial cleanup is safe.
+Use it on:
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — add FAILED() checks to all creation calls in create_ctx
+- swap-chain back-buffer acquisition
+- RTV / DSV creation
+- blend / depth / rasterizer state creation
+- shader creation
+- input-layout creation
+- constant-buffer creation
+- any later RTT / shadow / postfx resource creation helpers introduced by the plan set
 
-## Testing
-- Normal creation path → no change in behavior
-- Simulated failure (e.g., invalid format) → returns NULL instead of crashing
+For `D3DCompile`, keep and log the error blob text before cleanup.
+
+For `Map()` in runtime draw paths:
+
+- check the HRESULT and bail out of that draw cleanly instead of assuming success
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+
+## Done When
+
+- resource-creation failures return cleanly instead of cascading through null pointers
+- error-blob text is surfaced for shader compile failures

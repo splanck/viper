@@ -32,14 +32,13 @@ Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](
 ## 1. First Steps: Printing and Expressions
 
 ```basic
-10 PRINT "Hello, world!"
-20 PRINT 1 + 2 * 3       ' 7
-30 PRINT "A"; "B"        ' "AB" (no newline)
+PRINT "Hello, world!"
+PRINT 1 + 2 * 3       ' 7
+PRINT "A"; "B"        ' "AB" (no newline)
 ```
 
 **Key points:**
 
-- Line numbers are optional
 - Use `:` to put multiple statements on one line
 - `'` starts a single-line comment
 - `;` in PRINT suppresses the newline between values
@@ -54,9 +53,9 @@ Assignments **require** `LET`. Variables can be declared implicitly by assigning
 type.
 
 ```basic
-10 LET I = 42
-20 DIM Flag AS BOOLEAN
-30 LET Flag = TRUE
+LET I = 42
+DIM Flag AS BOOLEAN
+LET Flag = TRUE
 ```
 
 ### Arrays
@@ -64,10 +63,10 @@ type.
 Arrays **require** `DIM` and are zero-based:
 
 ```basic
-10 DIM A(3)              ' indices 0..2
-20 LET A(0) = 42
-30 LET A(1) = 100
-40 PRINT A(0)            ' 42
+DIM A(3)              ' indices 0..2
+LET A(0) = 42
+LET A(1) = 100
+PRINT A(0)            ' 42
 ```
 
 ### Type Suffixes
@@ -81,9 +80,9 @@ Arrays **require** `DIM` and are zero-based:
 | `&`    | Integer |
 
 ```basic
-10 LET S$ = "hello"
-20 LET F# = 3.14
-30 LET I% = 42
+LET S$ = "hello"
+LET F# = 3.14
+LET I% = 42
 ```
 
 ---
@@ -93,53 +92,53 @@ Arrays **require** `DIM` and are zero-based:
 ### IF ... THEN ... ELSE
 
 ```basic
-10 IF N = 0 THEN
-20   PRINT "zero"
-30 ELSEIF N < 0 THEN
-40   PRINT "negative"
-50 ELSE
-60   PRINT "positive"
-70 END IF
+IF N = 0 THEN
+  PRINT "zero"
+ELSEIF N < 0 THEN
+  PRINT "negative"
+ELSE
+  PRINT "positive"
+END IF
 ```
 
 ### FOR ... NEXT
 
 ```basic
-10 FOR I = 1 TO 5
-20   PRINT I
-30 NEXT
+FOR I = 1 TO 5
+  PRINT I
+NEXT
 
 ' With STEP
-40 FOR I = 10 TO 1 STEP -2
-50   PRINT I
-60 NEXT
+FOR I = 10 TO 1 STEP -2
+  PRINT I
+NEXT
 ```
 
 ### DO ... LOOP
 
 ```basic
 ' Condition at start
-10 DO WHILE X < 10
-20   PRINT X
-30   LET X = X + 1
-40 LOOP
+DO WHILE X < 10
+  PRINT X
+  LET X = X + 1
+LOOP
 
 ' Condition at end
-50 LET I = 3
-60 DO
-70   LET I = I - 1
-80   PRINT I
-90 LOOP UNTIL I = 0
+LET I = 3
+DO
+  LET I = I - 1
+  PRINT I
+LOOP UNTIL I = 0
 ```
 
 ### WHILE ... WEND
 
 ```basic
-10 LET X = 0
-20 WHILE X < 3
-30   PRINT X
-40   LET X = X + 1
-50 WEND
+LET X = 0
+WHILE X < 3
+  PRINT X
+  LET X = X + 1
+WEND
 ```
 
 ### Short-Circuit Operators
@@ -147,13 +146,13 @@ Arrays **require** `DIM` and are zero-based:
 Use `ANDALSO` and `ORELSE` for short-circuit evaluation:
 
 ```basic
-10 IF A <> 0 ANDALSO (B / A) > 2 THEN
-20   PRINT "Safe division"
-30 END IF
+IF A <> 0 ANDALSO (B / A) > 2 THEN
+  PRINT "Safe division"
+END IF
 
-40 IF X = 0 ORELSE Y / X > 1 THEN
-50   PRINT "Conditional evaluation"
-60 END IF
+IF X = 0 ORELSE Y / X > 1 THEN
+  PRINT "Conditional evaluation"
+END IF
 ```
 
 > **Note:** `AND` and `OR` always evaluate both operands. Use `ANDALSO` and `ORELSE` to avoid errors like division by
@@ -170,12 +169,12 @@ arguments. For zero-argument SUBs, the parser also accepts the legacy form witho
 parentheses in statement position.
 
 ```basic
-10 SUB GREET(NAME$)
-20   PRINT "Hello, "; NAME$
-30 END SUB
+SUB GREET(NAME$)
+  PRINT "Hello, "; NAME$
+END SUB
 
-40 GREET("Ada")          ' Statement call with parentheses
-50 GREET                 ' Legacy: zero-arg call without parentheses (statement form)
+GREET("Ada")          ' Statement call with parentheses
+GREET                 ' Legacy: zero-arg call without parentheses (statement form)
 ```
 
 ### Functions (FUNCTION)
@@ -183,12 +182,12 @@ parentheses in statement position.
 Functions return values and are used in expressions:
 
 ```basic
-10 FUNCTION SQUARE(N)
-20   RETURN N * N
-30 END FUNCTION
+FUNCTION SQUARE(N)
+  RETURN N * N
+END FUNCTION
 
-40 LET X = SQUARE(9)     ' X = 81
-50 PRINT SQUARE(5)       ' 25
+LET X = SQUARE(9)     ' X = 81
+PRINT SQUARE(5)       ' 25
 ```
 
 ### Exporting Functions
@@ -236,15 +235,15 @@ Fields may be scalars or arrays. Declare array fields with dimensions inside `CL
 it to that length; otherwise, assign an array handle at runtime before use.
 
 ```basic
-10 CLASS Board
-20   DIM cells(4) AS INTEGER   ' array field
-30 END CLASS
+CLASS Board
+  DIM cells(4) AS INTEGER   ' array field
+END CLASS
 
-40 DIM b AS Board
-50 LET b = NEW Board()               ' cells() allocated length 4 by constructor
-60 LET b.cells(0) = 1
-70 LET b.cells(1) = 2
-80 PRINT b.cells(0) + b.cells(1)     ' 3
+DIM b AS Board
+LET b = NEW Board()               ' cells() allocated length 4 by constructor
+LET b.cells(0) = 1
+LET b.cells(1) = 2
+PRINT b.cells(0) + b.cells(1)     ' 3
 ```
 
 Notes:
@@ -256,28 +255,28 @@ Notes:
 ### Basic Class
 
 ```basic
-10 CLASS Counter
-20   X AS INTEGER
+CLASS Counter
+  X AS INTEGER
 30
-40   SUB NEW()
-50     LET ME.X = 0
-60   END SUB
+  SUB NEW()
+   LET ME.X = 0
+  END SUB
 70
-80   SUB INCREMENT()
-90     LET ME.X = ME.X + 1
-100  END SUB
+  SUB INCREMENT()
+   LET ME.X = ME.X + 1
+END SUB
 110
-120  FUNCTION VALUE()
-130    RETURN ME.X
-140  END FUNCTION
-150 END CLASS
+FUNCTION VALUE()
+  RETURN ME.X
+END FUNCTION
+END CLASS
 
-160 DIM C AS Counter
-170 LET C = NEW Counter()
-180 C.INCREMENT()
-190 C.INCREMENT()
-200 PRINT C.VALUE()        ' 2
-210 DELETE C
+DIM C AS Counter
+LET C = NEW Counter()
+C.INCREMENT()
+C.INCREMENT()
+PRINT C.VALUE()        ' 2
+DELETE C
 ```
 
 **Key points:**
@@ -300,18 +299,18 @@ Common mistakes and tips:
 ### Destructors
 
 ```basic
-10 CLASS FileHandler
-20   FH AS INTEGER
+CLASS FileHandler
+  FH AS INTEGER
 30
-40   SUB NEW(FILENAME$)
-50     OPEN FILENAME$ FOR OUTPUT AS #1
-60     LET ME.FH = 1
-70   END SUB
+  SUB NEW(FILENAME$)
+   OPEN FILENAME$ FOR OUTPUT AS #1
+   LET ME.FH = 1
+  END SUB
 80
-90   DESTRUCTOR()
-100    IF ME.FH <> 0 THEN CLOSE #ME.FH
-110  END DESTRUCTOR
-120 END CLASS
+  DESTRUCTOR()
+  IF ME.FH <> 0 THEN CLOSE #ME.FH
+END DESTRUCTOR
+END CLASS
 ```
 
 **Note:** Destructors are automatically called when an object is deleted or goes out of scope.
@@ -427,28 +426,28 @@ DIM H3 AS mylib.helper
 ### Console Input/Output
 
 ```basic
-10 INPUT "What is your name? ", NAME$
-20 PRINT "Hello, "; NAME$
+INPUT "What is your name? ", NAME$
+PRINT "Hello, "; NAME$
 
 ' LINE INPUT reads an entire line
-30 LINE INPUT "Enter a line: ", LINE$
-40 PRINT "You entered: "; LINE$
+LINE INPUT "Enter a line: ", LINE$
+PRINT "You entered: "; LINE$
 ```
 
 ### File Operations
 
 ```basic
-10 OPEN "output.txt" FOR OUTPUT AS #1
-20 PRINT #1, "Hello, file!"
-30 PRINT #1, "Line 2"
-40 CLOSE #1
+OPEN "output.txt" FOR OUTPUT AS #1
+PRINT #1, "Hello, file!"
+PRINT #1, "Line 2"
+CLOSE #1
 
-50 OPEN "output.txt" FOR INPUT AS #2
-60 WHILE NOT EOF(#2)
-70   LINE INPUT #2, L$
-80   PRINT L$
-90 WEND
-100 CLOSE #2
+OPEN "output.txt" FOR INPUT AS #2
+WHILE NOT EOF(#2)
+  LINE INPUT #2, L$
+  PRINT L$
+WEND
+CLOSE #2
 ```
 
 **File modes:**
@@ -465,22 +464,22 @@ DIM H3 AS mylib.helper
 ### ON ERROR GOTO
 
 ```basic
-10 ON ERROR GOTO 100
-20 OPEN "missing.txt" FOR INPUT AS #1
-30 PRINT "File opened successfully"
-40 CLOSE #1
-50 END
+ON ERROR GOTO ErrHandler
+OPEN "missing.txt" FOR INPUT AS #1
+PRINT "File opened successfully"
+CLOSE #1
+END
 
-100 REM Error handler
-110 PRINT "Error: Could not open file"
-120 RESUME 0
+ErrHandler:
+PRINT "Error: Could not open file"
+RESUME 0
 ```
 
 **Resume options:**
 
 - `RESUME` — Retry the statement that caused the error
 - `RESUME NEXT` — Continue with the next statement
-- `RESUME <line>` — Jump to a specific line (use `RESUME 0` to end)
+- `RESUME 0` — End the program
 
 ---
 
@@ -489,49 +488,49 @@ DIM H3 AS mylib.helper
 ### Example A: Number Guessing Game
 
 ```basic
-10 RANDOMIZE TIMER
-20 LET SECRET = INT(RND() * 100) + 1
-30 LET ATTEMPTS = 0
+RANDOMIZE TIMER
+LET SECRET = INT(RND() * 100) + 1
+LET ATTEMPTS = 0
 
-40 DO
-50   INPUT "Guess a number (1-100): ", GUESS
-60   LET ATTEMPTS = ATTEMPTS + 1
+DO
+  INPUT "Guess a number (1-100): ", GUESS
+  LET ATTEMPTS = ATTEMPTS + 1
 70
-80   IF GUESS = SECRET THEN
-90     PRINT "Correct! You won in "; ATTEMPTS; " attempts!"
-100    EXIT DO
-110  ELSEIF GUESS < SECRET THEN
-120    PRINT "Higher!"
-130  ELSE
-140    PRINT "Lower!"
-150  END IF
-160 LOOP
+  IF GUESS = SECRET THEN
+   PRINT "Correct! You won in "; ATTEMPTS; " attempts!"
+  EXIT DO
+ELSEIF GUESS < SECRET THEN
+  PRINT "Higher!"
+ELSE
+  PRINT "Lower!"
+END IF
+LOOP
 ```
 
 ### Example B: File Copy Utility
 
 ```basic
-10 LINE INPUT "Source file: ", SOURCE$
-20 LINE INPUT "Destination file: ", DEST$
+LINE INPUT "Source file: ", SOURCE$
+LINE INPUT "Destination file: ", DEST$
 
-30 ON ERROR GOTO 200
+ON ERROR GOTO CopyErr
 
-40 OPEN SOURCE$ FOR INPUT AS #1
-50 OPEN DEST$ FOR OUTPUT AS #2
+OPEN SOURCE$ FOR INPUT AS #1
+OPEN DEST$ FOR OUTPUT AS #2
 
-60 WHILE NOT EOF(#1)
-70   LINE INPUT #1, LINE$
-80   PRINT #2, LINE$
-90 WEND
+WHILE NOT EOF(#1)
+  LINE INPUT #1, LINE$
+  PRINT #2, LINE$
+WEND
 
-100 CLOSE #1
-110 CLOSE #2
-120 PRINT "File copied successfully!"
-130 END
+CLOSE #1
+CLOSE #2
+PRINT "File copied successfully!"
+END
 
-200 REM Error handler
-210 PRINT "Error: Could not copy file"
-220 RESUME 0
+CopyErr:
+PRINT "Error: Could not copy file"
+RESUME 0
 ```
 
 ---

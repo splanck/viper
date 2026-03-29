@@ -1,93 +1,111 @@
-# OGL-11: GPU Skeletal Skinning + Morph Targets
+# OGL-11: GPU Skinning + Morph Targets
 
-## Context
-Same gap as MTL-09/10 and D3D-10. Bone inputs defined but unused. OpenGL uses UBOs or SSBOs for bone palette.
+## Current State
 
-Producer-side integration belongs in [`src/runtime/graphics/rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c) and [`src/runtime/graphics/rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c). The backend should consume flattened draw-command payloads rather than reading private runtime objects.
+This plan actually covers two different kinds of work:
 
-## Implementation
+1. backend shader consumption of already-populated draw-command payloads
+2. producer-side runtime work needed to populate those payloads end to end
 
-### GPU Skinning via SSBO (Shader Storage Buffer)
-OpenGL 4.3+ supports SSBOs. For GL 3.3 compatibility, use a Uniform Buffer Object (UBO) or texture buffer.
+Those must be documented separately.
 
-**UBO approach (GL 3.3 compatible):**
+## What Already Exists
+
+Already present in shared code:
+
+- `vgfx3d_draw_cmd_t` has `bone_palette`, `bone_count`, `morph_deltas`, `morph_weights`, and `morph_shape_count`
+- the Metal backend already consumes those fields
+
+Still missing in shared code:
+
+- [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins into a temporary vertex buffer before enqueueing the draw
+- morph payload fields are still left null by [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722)
+
+That means the OpenGL backend alone cannot make this feature complete.
+
+## Phase A: Backend GPU Skinning
+
+### GLSL
+
+Add to the vertex shader:
+
 ```glsl
-// Max 128 bones × 64 bytes = 8KB (well within UBO limit)
 uniform mat4 uBonePalette[128];
 uniform int uHasSkinning;
-
-// In vertex shader:
-if (uHasSkinning != 0) {
-    vec4 skinnedPos = vec4(0);
-    vec3 skinnedNorm = vec3(0);
-    for (int i = 0; i < 4; i++) {
-        uint boneIdx = aBoneIdx[i];
-        float weight = aBoneWt[i];
-        if (weight > 0.001) {
-            mat4 bm = uBonePalette[boneIdx];
-            skinnedPos += bm * vec4(aPosition, 1.0) * weight;
-            skinnedNorm += (bm * vec4(aNormal, 0.0)).xyz * weight;
-        }
-    }
-    // Use skinnedPos/skinnedNorm instead of aPosition/aNormal
-}
 ```
 
-C-side upload:
-```c
-if (cmd->bone_palette && cmd->bone_count > 0) {
-    GLint loc = gl.GetUniformLocation(ctx->program, "uBonePalette");
-    gl.UniformMatrix4fv(loc, cmd->bone_count, GL_TRUE, cmd->bone_palette);
-    gl.Uniform1i(ctx->uHasSkinning, 1);
-}
-```
+When skinning is enabled:
 
-**Important:** `GL_TRUE` is required to match the existing row-major convention used by all other matrix uploads in this backend (model, VP, normal at lines 651-653). `cmd->bone_palette` stores row-major matrices, and OpenGL's `GL_TRUE` transpose parameter converts them to column-major for GLSL.
+- blend position from `aPosition`
+- blend normal from `aNormal`
+- use up to 4 bone influences
 
-### GPU Morph Targets via Texture Buffer
-For morph deltas, use a texture buffer (GL 3.1+):
+Upload the palette with `glUniformMatrix4fv(..., GL_TRUE, ...)` to preserve the existing row-major convention.
+
+### Runtime Limits
+
+Define an explicit policy for `bone_count > 128`:
+
+- recommended behavior: fall back to the existing CPU-skinned path
+
+Do not leave the overflow case unspecified.
+
+## Phase B: Shared Producer Work For True GPU Skinning
+
+To make the OpenGL skinning path real rather than redundant:
+
+- add a producer path in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c) that can enqueue the original mesh plus `bone_palette` for GPU-capable backends instead of always pre-skinning on the CPU
+
+Until that lands, the OpenGL shader path can exist, but it will still consume already-skinned vertices on the main runtime path.
+
+## Phase C: Backend Morph Consumption
+
+Use a GL 3.3-compatible texture-buffer path:
+
+- buffer target: `GL_TEXTURE_BUFFER`
+- texture format: `GL_R32F`
+- shader fetches morph deltas via `texelFetch`
+- index by `gl_VertexID`
+
+Required shader inputs:
+
 ```glsl
 uniform samplerBuffer uMorphDeltas;
+uniform float uMorphWeights[16];
 uniform int uMorphShapeCount;
-uniform float uMorphWeights[16]; // max 16 shapes
-
-// In vertex shader:
-if (uMorphShapeCount > 0) {
-    for (int s = 0; s < uMorphShapeCount; s++) {
-        float w = uMorphWeights[s];
-        if (w > 0.001) {
-            int offset = s * vertexCount + gl_VertexID;
-            vec3 delta = vec3(
-                texelFetch(uMorphDeltas, offset * 3 + 0).r,
-                texelFetch(uMorphDeltas, offset * 3 + 1).r,
-                texelFetch(uMorphDeltas, offset * 3 + 2).r
-            );
-            pos.xyz += delta * w;
-        }
-    }
-}
+uniform int uVertexCount;
 ```
 
-C-side: create buffer texture from morph delta float array:
-```c
-GLuint morphBuf, morphTex;
-gl.GenBuffers(1, &morphBuf);
-gl.BindBuffer(GL_TEXTURE_BUFFER, morphBuf);
-gl.BufferData(GL_TEXTURE_BUFFER, size, cmd->morph_deltas, GL_DYNAMIC_DRAW);
-gl.GenTextures(1, &morphTex);
-gl.BindTexture(GL_TEXTURE_BUFFER, morphTex);
-gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, morphBuf);
-```
+Create and delete the morph buffer/texture pair around the draw until a persistent streaming policy is justified.
 
-## Depends On
-- OGL-03 (texture infrastructure)
-- Shared draw command bone_palette/morph fields (from MTL-09/D3D-10)
+## Phase D: Shared Producer Work For Morphs
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — GLSL bone palette UBO, morph texture buffer, vertex shader skinning/morph, C upload
-- `src/runtime/graphics/vgfx3d_backend.h` — bone_palette/morph fields in draw command (shared)
-- `src/runtime/graphics/rt_skeleton3d.c` — GPU-skinning producer path + CPU fallback
-- `src/runtime/graphics/rt_morphtarget3d.c` — GPU-morph producer path + CPU fallback
+Add a producer path in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c) that populates:
 
-## Testing
-- Same tests as MTL-09/10 and D3D-10
+- `cmd->morph_deltas`
+- `cmd->morph_weights`
+- `cmd->morph_shape_count`
+
+The current runtime does not do this anywhere, so backend shader work alone is not enough.
+
+## Loader And Constant Additions
+
+For the morph path, load:
+
+- `TexBuffer`
+
+Add constants:
+
+- `GL_TEXTURE_BUFFER`
+- `GL_R32F`
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+- [`src/runtime/graphics/rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c)
+- [`src/runtime/graphics/rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c)
+
+## Done When
+
+- The OpenGL shader can consume bone palettes and morph payloads
+- The runtime can actually supply those payloads without mandatory CPU pre-application

@@ -1,120 +1,93 @@
 # D3D-14: Shadow Mapping
 
-## Context
-No backend implements shadow mapping. D3D11 needs a depth-only render pass from the light's perspective, then a shadow comparison in the main pixel shader.
+## Depends On
 
-Shared constraint: [`src/runtime/graphics/rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) owns the deferred draw queue and currently replays it only once. D3D11 cannot implement the full feature purely inside `submit_draw()`. Canvas3D needs to schedule the shadow prepass.
+- D3D-09
 
-## Implementation
+## Correction To The Earlier Plan
 
-### Step 1: Shadow map depth texture
-```c
-// Add to d3d11_context_t:
-ID3D11Texture2D *shadow_tex;
-ID3D11DepthStencilView *shadow_dsv;
-ID3D11ShaderResourceView *shadow_srv;
-int32_t shadow_resolution;  // default 1024
-float shadow_vp[16];        // light view-projection matrix
-int8_t shadow_enabled;
-```
+Canvas3D shadow-pass scheduling already exists in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c). This plan does not need a new replay system. The D3D11 work is implementing the backend's `shadow_begin`, `shadow_draw`, and `shadow_end` hooks and integrating the resulting depth texture into the main shader.
 
-Create in `d3d11_enable_shadows()`:
-```c
-D3D11_TEXTURE2D_DESC desc = {0};
-desc.Width = desc.Height = resolution;
-desc.MipLevels = 1;
-desc.ArraySize = 1;
-desc.Format = DXGI_FORMAT_R32_TYPELESS;
-desc.SampleDesc.Count = 1;
-desc.Usage = D3D11_USAGE_DEFAULT;
-desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->shadow_tex);
+## Backend State
 
-// DSV for depth writing
-D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {0};
-dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-ID3D11Device_CreateDepthStencilView(ctx->device, (ID3D11Resource *)ctx->shadow_tex, &dsvDesc, &ctx->shadow_dsv);
+Add to `d3d11_context_t`:
 
-// SRV for shadow comparison in main pass
-D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {0};
-srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-srvDesc.Texture2D.MipLevels = 1;
-ID3D11Device_CreateShaderResourceView(ctx->device, (ID3D11Resource *)ctx->shadow_tex, &srvDesc, &ctx->shadow_srv);
-```
+- typeless shadow depth texture
+- shadow DSV
+- shadow SRV
+- comparison sampler
+- shadow vertex shader
+- cached shadow light VP matrix
+- shadow bias
+- shadow-active flag
 
-### Step 2: Shadow depth-only shader
+## Shadow Pass
+
+### `shadow_begin()`
+
+- ignore the CPU `depth_buf` argument, as Metal already does
+- create or resize the shadow texture resources
+- bind the shadow DSV with no color RTV
+- set the shadow viewport
+- clear depth
+- bind the shadow VS and set PS to `NULL`
+- store the light VP matrix
+
+Use:
+
+- texture format: `DXGI_FORMAT_R32_TYPELESS`
+- DSV format: `DXGI_FORMAT_D32_FLOAT`
+- SRV format: `DXGI_FORMAT_R32_FLOAT`
+
+### `shadow_draw()`
+
+Render opaque geometry depth-only into the shadow map.
+
+Use the same vertex format as the main draw path. A fragment/pixel shader is not required for a depth-only pass.
+
+### `shadow_end()`
+
+- store the bias
+- mark shadowing active
+- restore state needed by the regular draw path:
+  - main RTV/DSV or RTT RTV/DSV
+  - main viewport
+  - main vertex shader / pixel shader
+
+That state restoration is required because the current Canvas3D end-of-frame flow runs the shadow pass before the opaque/transparent replay, not as a separate frame.
+
+## Main Pass Shader Work
+
+Add:
+
 ```hlsl
-// Separate VS/PS for shadow pass (depth only, no lighting)
-float4 ShadowVS(VS_INPUT input) : SV_POSITION {
-    float4 wp = mul(float4(input.pos, 1.0), modelMatrix);
-    return mul(wp, shadowViewProjection);
-}
-// No pixel shader needed — depth-only pass (or minimal PS that returns nothing)
-```
-
-Compile this as a second shader pair in `create_ctx()`.
-
-### Step 3: Shadow pass in begin_frame / end_frame
-Before the main draw pass, re-render all opaque geometry with the shadow shaders to the shadow DSV:
-```c
-// Set shadow render target (depth-only, no color)
-ID3D11DeviceContext_OMSetRenderTargets(ctx->context, 0, NULL, ctx->shadow_dsv);
-// Set shadow viewport (shadow_resolution x shadow_resolution)
-// For each opaque draw command: draw with shadow VS, skip PS
-```
-
-This requires a shared scheduling change in `rt_canvas3d.c`. The simplest approach is to add explicit shadow-pass hooks or an equivalent replay path that walks the opaque deferred draws twice: once for shadow depth, once for the main pass.
-
-### Step 4: Shadow comparison in main pixel shader
-```hlsl
-Texture2D shadowMap : register(t5);
+Texture2D shadowMap : register(t4);
 SamplerComparisonState shadowSampler : register(s1);
-
-// In PerScene cbuffer:
-row_major float4x4 shadowVP;
-float shadowBias;
-int shadowEnabled;
-
-// In PSMain, after computing lighting:
-if (shadowEnabled) {
-    float4 lightClip = mul(float4(input.worldPos, 1.0), shadowVP);
-    float3 shadowUV = lightClip.xyz / lightClip.w;
-    shadowUV.xy = shadowUV.xy * 0.5 + 0.5;
-    shadowUV.y = 1.0 - shadowUV.y; // D3D UV flip
-    if (shadowUV.x >= 0 && shadowUV.x <= 1 && shadowUV.y >= 0 && shadowUV.y <= 1) {
-        float shadow = shadowMap.SampleCmpLevelZero(shadowSampler, shadowUV.xy, shadowUV.z - shadowBias);
-        // shadow = 0 (in shadow) or 1 (lit)
-        atten *= lerp(0.15, 1.0, shadow); // 15% ambient in shadow
-    }
-}
 ```
 
-### Step 5: Light VP matrix computation
-Build orthographic projection from the first directional light:
-```c
-// View: lookAt(scene_center - light_dir * dist, scene_center, up)
-// Projection: ortho covering scene bounding box
-```
+Extend `PerScene` with:
 
-Store in `ctx->shadow_vp[16]` and pass to PerScene cbuffer.
+- `shadowVP`
+- `shadowBias`
+- `shadowEnabled`
 
-### Step 6: Comparison sampler state
-```c
-D3D11_SAMPLER_DESC cmpDesc = {0};
-cmpDesc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-cmpDesc.AddressU = cmpDesc.AddressV = cmpDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
-cmpDesc.BorderColor[0] = 1.0f; // Outside shadow map = lit
-cmpDesc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
-ID3D11Device_CreateSamplerState(ctx->device, &cmpDesc, &ctx->shadow_sampler);
-```
+For directional lights, sample the shadow map with `SampleCmpLevelZero` and attenuate direct light.
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — shadow texture/DSV/SRV, shadow shader, shadow pass, comparison in PSMain, sampler state
-- `src/runtime/graphics/rt_canvas3d.c` — shared shadow-pass scheduling before main replay
+Recommended comparison sampler:
 
-## Testing
-- Directional light + ground plane + box → box casts shadow on plane
-- Shadow bias test: too low = acne, too high = peter-panning
-- No shadow when disabled → identical to before
+- filter: comparison linear
+- address mode: border
+- border color: white
+- comparison func: `LESS_EQUAL`
+
+Using `t4` here is deliberate so the shadow map does not collide with the terrain-splat texture range used by D3D-16 (`t5`-`t9` in the pixel shader).
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+
+## Done When
+
+- directional lights cast shadows in the main pass
+- state is correctly restored after the shadow prepass
+- RTT and onscreen rendering both still work after shadowing is enabled

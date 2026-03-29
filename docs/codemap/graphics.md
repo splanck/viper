@@ -6,9 +6,9 @@ last-verified: 2026-03-04
 
 # CODEMAP: Graphics Library
 
-Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/rt_*.c`).
+Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/graphics/`).
 
-## Runtime Classes (`src/runtime/`)
+## Runtime Classes (`src/runtime/graphics/`)
 
 The Viper.Graphics.* namespace is implemented by these C runtime files:
 

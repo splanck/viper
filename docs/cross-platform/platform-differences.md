@@ -26,7 +26,7 @@ For a contributor-oriented checklist of which source files to modify when adding
 | Graphics | ✅ Full (GDI) | ✅ Full (Cocoa) | ⚠️ Partial [2] |
 | Audio | ✅ Full (WASAPI) | ✅ Full (AudioQueue) | ⚠️ Partial [3] |
 | Game Controllers | ✅ Full (XInput) | ✅ Full (IOKit HID) | ⚠️ Partial [4] |
-| Native Codegen (x86-64) | ⚠️ Partial [5] | ✅ Full | ✅ Full |
+| Native Codegen (x86-64) | ✅ Full | ✅ Full | ✅ Full |
 | Native Codegen (AArch64) | ⚠️ Partial [6] | ✅ Full | ✅ Full |
 | Process Execution | ✅ Full | ✅ Full | ✅ Full |
 
@@ -36,7 +36,7 @@ For a contributor-oriented checklist of which source files to modify when adding
 2. Requires `libx11-dev` at build time. If missing, graphics library is silently omitted.
 3. Requires `libasound2-dev` at build time. If missing, audio library is silently omitted.
 4. Linux evdev backend lacks vibration/rumble support.
-5. x86-64 native codegen emits SysV ABI only. Win64 ABI (shadow space, different register order) is not yet implemented.
+5. ~~x86-64 native codegen emits SysV ABI only.~~ **Fixed:** Both System V AMD64 and Windows x64 ABIs are implemented.
 6. AArch64 Windows PE/COFF target is defined but not tested in CI.
 7. ~~Resolved.~~ Windows test infrastructure uses `CreateProcess` self-relaunch + Job Object instead of `fork()`.
 

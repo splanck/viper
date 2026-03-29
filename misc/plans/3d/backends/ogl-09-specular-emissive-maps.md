@@ -1,43 +1,38 @@
 # OGL-09: Specular + Emissive Map Sampling
 
-## Context
-Same gap as MTL-05/06 and D3D-08. Uniforms only, no texture maps.
+## Depends On
 
-## Implementation
+- OGL-03
+- OGL-04
 
-### Specular map on texture unit 2
+## Current State
+
+The OpenGL backend only supports uniform specular and emissive material terms. Texture-driven modulation is missing.
+
+## GLSL Changes
+
+Add:
+
 ```glsl
 uniform sampler2D uSpecularTex;
 uniform int uHasSpecularMap;
-// In fragment:
+uniform sampler2D uEmissiveTex;
+uniform int uHasEmissiveMap;
+```
+
+Specular setup:
+
+```glsl
 vec3 specColor = uSpecularColor.rgb;
 float shine = uSpecularColor.w;
 if (uHasSpecularMap != 0) {
-    vec4 specSample = texture(uSpecularTex, vUV);
-    specColor *= specSample.rgb;
+    specColor *= texture(uSpecularTex, vUV).rgb;
 }
 ```
 
-Keep `shine` uniform in v1 unless the engine adopts one shared gloss-map convention for all backends.
+Emissive setup:
 
-C binding:
-```c
-if (cmd->specular_map) {
-    GLuint specTex = get_or_create_texture(ctx, cmd->specular_map);
-    gl.ActiveTexture(GL_TEXTURE2);
-    gl.BindTexture(GL_TEXTURE_2D, specTex);
-    gl.Uniform1i(ctx->uSpecularTex, 2);
-    gl.Uniform1i(ctx->uHasSpecularMap, 1);
-} else {
-    gl.Uniform1i(ctx->uHasSpecularMap, 0); // must clear — stale value from prior draw would be wrong
-}
-```
-
-### Emissive map on texture unit 3
 ```glsl
-uniform sampler2D uEmissiveTex;
-uniform int uHasEmissiveMap;
-// In fragment:
 vec3 emissive = uEmissiveColor;
 if (uHasEmissiveMap != 0) {
     emissive *= texture(uEmissiveTex, vUV).rgb;
@@ -45,25 +40,26 @@ if (uHasEmissiveMap != 0) {
 result += emissive;
 ```
 
-C binding:
-```c
-if (cmd->emissive_map) {
-    GLuint emisTex = get_or_create_texture(ctx, cmd->emissive_map);
-    gl.ActiveTexture(GL_TEXTURE3);
-    gl.BindTexture(GL_TEXTURE_2D, emisTex);
-    gl.Uniform1i(ctx->uEmissiveTex, 3);
-    gl.Uniform1i(ctx->uHasEmissiveMap, 1);
-} else {
-    gl.Uniform1i(ctx->uHasEmissiveMap, 0);
-}
-```
+Keep shininess uniform-driven in v1. This plan does not introduce a gloss map convention.
 
-## Depends On
-- OGL-03 (texture infrastructure)
-- OGL-04 (texture cache)
+## C-Side Binding
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — GLSL sampler uniforms, fragment sampling, C binding on units 2-3
+- bind specular map on unit `2`
+- bind emissive map on unit `3`
+- set `uSpecularTex = 2`, `uEmissiveTex = 3`
+- clear `uHasSpecularMap` / `uHasEmissiveMap` and unbind stale textures when absent
+- restore active texture to `GL_TEXTURE0` before the draw
 
-## Testing
-- Same tests as MTL-05/06 and D3D-08
+## Notes
+
+- This plan should not change diffuse or normal-map behavior.
+- Emissive texture contribution remains additive on top of lit shading and fog.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Specular highlights can be masked or tinted per texel
+- Emissive maps add light independent of scene lighting

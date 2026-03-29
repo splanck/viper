@@ -86,7 +86,7 @@ Avoid repeating type information or restating obvious details.
 
 ### Spacing and indentation
 
-Use 4-space indentation, Allman braces, and blank lines to keep code readable.
+Use 4-space indentation, Attach (K&R) braces, and blank lines to keep code readable.
 
 #### Good
 
@@ -99,8 +99,7 @@ Use 4-space indentation, Allman braces, and blank lines to keep code readable.
 namespace il {
 
 /// @brief Adds two numbers.
-int add(int a, int b)
-{
+int add(int a, int b) {
     return a + b;
 }
 
@@ -115,8 +114,8 @@ int add(int a, int b)
 namespace il{int add(int a,int b){return a+b;}}
 ```
 
-The bad example lacks blank lines, uses cramped K&R braces, and omits the standard
-4-space indentation, making it difficult to read.
+The bad example lacks blank lines, omits the standard 4-space indentation, and
+crams everything onto one line, making it difficult to read.
 
 ### Examples
 
@@ -424,14 +423,3 @@ the function, the program may have been lowered incorrectly.
 
 No active migrations are in flight. Follow release notes and ADRs for future migration plans.
 
-Sources:
-
-- docs/contributor-guide.md#contributing
-- docs/contributor-guide.md#style-guide
-- docs/contributor-guide.md#testing
-- docs/contributor-guide.md#frontend-internals-parser
-- docs/contributor-guide.md#frontend-internals-semantics
-- docs/contributor-guide.md#frontend-internals-analysis
-- docs/contributor-guide.md#frontend-internals-ir-builder
-- archive/docs/debugging.md
-- archive/docs/dev/debug-recursion.md

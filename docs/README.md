@@ -60,7 +60,6 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 ## 📚 Runtime Library
 
 - [Runtime Library Index](viperlib/README.md) — All `Viper.*` classes and methods
-- [Runtime API Reference](runtime-api-complete.md) — Complete runtime API
 - [Runtime Architecture](viperlib/architecture.md) — Runtime design and structure
 - [Runtime Extension How-To](runtime_extend_howto.md) — Add new classes and functions
 - [Adding a Runtime Class](runtime_class_howto.md) — Deep dive: 8-step guide
@@ -109,7 +108,6 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [Code Map](codemap.md) — Source directory layout and subsystem overview
 - [VM Guide](vm.md) — VM design, dispatch, profiling, and runtime ABI
 - [Bytecode VM Design](BYTECODE_VM_DESIGN.md) — Bytecode format and dispatch internals
-- [VM Code Review](vm-code-review.md) — VM implementation review
 - [Backend Guide](backend.md) — x86-64 and ARM64 native code generation
 - [Threading and Globals](threading-and-globals.md) — VM threading model
 - [Generated Files](generated-files.md) — Auto-generated C++ sources
@@ -154,8 +152,6 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 A comprehensive learning resource organized as a 5-part book covering the entire Viper platform.
 
 - [Bible Index](bible/README.md) — Table of contents and chapter list
-- [Writing Guide](bible/WRITING-GUIDE.md) — Style guide for Bible chapters
-- [Content Inventory](bible/INVENTORY.md) — Chapter-to-source mapping
 
 ---
 

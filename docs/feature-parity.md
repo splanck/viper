@@ -87,7 +87,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce function pointers |
 | Lambda / closure | **Full** (`(x) => x + 1`) | None | **Major gap** — Zia only |
 
-### 1.4 Classes, Entities & OOP
+### 1.4 Classes & OOP
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|

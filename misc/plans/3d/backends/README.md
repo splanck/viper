@@ -11,13 +11,13 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Position input | ✅ | ✅ | ✅ | ✅ |
 | Normal input | ✅ | ✅ | ✅ | ✅ |
 | UV input | ✅ | ✅ | ✅ | ✅ |
-| Color input | ✅ | ✅ | ✅ | ✅ |
+| Color input | ✅ | ✅ attribute passed, unused | ✅ attribute passed, unused | ✅ attribute passed, unused |
 | Tangent input | ✅ | ✅ | ✅ | ✅ |
 | Bone indices (defined) | ✅ | ✅ | ✅ | ✅ |
 | Bone weights (defined) | ✅ | ✅ | ✅ | ✅ |
 | MVP transform | ✅ | ✅ | ✅ | ✅ |
 | Normal matrix | ✅ | ✅ | 🐛 BUG: uses model matrix | 🐛 BUG: uses model matrix |
-| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ (inputs unused in shader) | ❌ (inputs unused in shader) |
+| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ shader path missing | ❌ shader path missing |
 | Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ | ❌ |
 
 ### Texture Sampling
@@ -27,11 +27,11 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ❌ NONE | ❌ NONE |
 | Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ❌ | ❌ |
 | Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ❌ | ❌ |
-| Emissive map | ✅ additive blend | ✅ additive map sample (slot 3) | ❌ | ❌ |
+| Emissive map | ✅ additive map/sample | ✅ additive map sample (slot 3) | ❌ | ❌ |
 | Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ❌ | ❌ |
 | Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ❌ | ❌ |
-| Texture cache | N/A | ✅ per-frame NSDict by Pixels ptr | N/A | N/A |
-| Sampler state | N/A | ✅ shared (created once) | ❌ | ❌ |
+| Texture cache | N/A | ✅ per-frame cache by Pixels ptr | ❌ | ❌ |
+| Sampler state | N/A | ✅ shared sampler | ❌ | ❌ |
 
 ### Lighting
 
@@ -42,7 +42,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Directional specular (Blinn-Phong) | ✅ | ✅ | ✅ | ✅ |
 | Point light + attenuation | ✅ | ✅ | ✅ | ✅ |
 | Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ❌ falls to ambient | ❌ falls to ambient |
-| Lighting model | Gouraud (per-vertex) + per-pixel with normal maps | Per-pixel (fragment) | Per-pixel (fragment) | Per-pixel (fragment) |
+| Lighting model | Gouraud + per-pixel normal-map path | Per-pixel | Per-pixel | Per-pixel |
 | Max light slots | 8 | 8 | 8 | 8 |
 
 ### Material Properties
@@ -51,111 +51,75 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 |---------|----------|-------|--------|-------|
 | Diffuse color | ✅ | ✅ | ✅ | ✅ |
 | Specular color + shininess | ✅ | ✅ | ✅ | ✅ |
-| Alpha/transparency | ✅ | ✅ | 🐛 BUG: uAlpha undeclared | ✅ |
+| Alpha/transparency | ✅ | ✅ | 🐛 BUG: shader misses `uAlpha` declaration | ✅ |
 | Emissive color | ✅ | ✅ | ✅ | ✅ |
 | Unlit mode | ✅ | ✅ | ✅ | ✅ |
-| Two-sided rendering | ✅ (backface_cull=0) | ✅ (cull mode toggle) | ✅ (cull mode toggle) | ❌ (always back-cull) |
+| Two-sided rendering | ✅ | ✅ | ✅ | ❌ toggle missing |
 
 ### Rendering Features
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
 | Depth testing | ✅ float Z-buffer | ✅ Depth32Float | ✅ GL_LESS | ✅ D3D11_COMPARISON_LESS |
-| Alpha blending | ✅ src*a + dst*(1-a) | ✅ MTLBlend | ✅ GL_BLEND | ✅ D3D11 blend state |
-| Transparency sorting | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) | ✅ (Canvas3D two-pass) |
+| Alpha blending | ✅ src*a + dst*(1-a) | ✅ | ✅ | ✅ |
+| Transparency sorting | ✅ | ✅ | ✅ | ✅ |
 | Depth write disabled for transparent | ✅ | ✅ | ✅ | ✅ |
-| Backface culling | ✅ screen-space area | ✅ per-draw toggle | ✅ per-draw toggle | ❌ always on, no toggle |
-| Wireframe mode | ✅ Bresenham lines | ✅ MTLTriangleFillModeLines | ❌ param ignored | ❌ param ignored |
-| Fog (linear distance) | ✅ per-pixel | ✅ per-pixel linear | ❌ | ❌ |
-| Shadow mapping | ✅ directional light, 1024x1024 depth map | ✅ GPU depth pass + comparison sampler | ❌ | ❌ |
-| Render-to-texture | ✅ CPU color_buf | ✅ GPU→CPU readback | ❌ stub | ❌ stub |
+| Backface culling | ✅ | ✅ | ✅ | ❌ toggle missing |
+| Wireframe mode | ✅ | ✅ | ❌ param ignored | ❌ param ignored |
+| Fog (linear distance) | ✅ | ✅ | ❌ | ❌ |
+| Shadow mapping | ✅ | ✅ | ❌ | ❌ |
+| Render-to-texture | ✅ | ✅ GPU offscreen + readback | ❌ stub | ❌ stub |
 
 ### Advanced Features
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Instanced rendering | ❌ | ✅ N draws via instanced hook | ❌ | ❌ |
-| Terrain splat (per-pixel) | ✅ 4-layer weight blend | ✅ GPU 4-layer splat (slots 5-9) | ❌ | ❌ |
-| Post-processing | ✅ CPU (bloom, FXAA, etc.) | ✅ GPU fullscreen quad (bloom, FXAA, tonemap, vignette, color grade) | ❌ | ❌ |
-| VBO/buffer strategy | N/A (CPU arrays) | Per-draw MTL buffers | Per-draw VBO/IBO (wasteful) | Per-draw VB/IB (wasteful) |
-
----
+| Instanced rendering | ❌ | ⚠️ backend-side multi-draw hook, not true instancing | ❌ | ❌ |
+| Terrain splat (per-pixel) | ✅ | ✅ | ❌ | ❌ |
+| Post-processing | ✅ CPU | ⚠️ shader/pipeline pieces exist, shared flip handoff still needed | ❌ | ❌ |
+| VBO/buffer strategy | N/A | Per-draw MTL buffers | ❌ per-draw VBO/IBO | ❌ per-draw VB/IB |
 
 ### Per-Vertex Color
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Vertex color used in shading | ✅ multiplied with diffuse_color | ✅ passed to fragment | ✅ passed to fragment | ✅ passed to fragment |
+| Vertex color used in shading | ✅ multiplied into diffuse | ❌ passed through, unused | ❌ passed through, unused | ❌ passed through, unused |
 
 ---
 
 ## Bugs Found
 
-| ID | Backend | Severity | Description | Line |
-|----|---------|----------|-------------|------|
-| OGL-1 | OpenGL | 🔴 CRITICAL | `uAlpha` used in GLSL fragment shader but never declared as uniform. Location is -1. Alpha undefined. | 388, 414 |
-| OGL-2 | OpenGL | 🟡 HIGH | Normal matrix = model matrix (no inverse-transpose). Lighting wrong on scaled objects. | 653 |
-| D3D-1 | D3D11 | 🟡 HIGH | Normal matrix = model matrix. Same bug as OGL-2. | 537 |
-| D3D-2 | D3D11 | 🟡 HIGH | Backface culling + wireframe params void-cast. No per-draw render state toggle. | 497 |
-| MTL-1 | Metal | ✅ FIXED | ~~Spot lights (type 3) fall through to ambient.~~ Now smoothstep cone attenuation. | MTL-02 |
-| MTL-2 | Metal | ✅ FIXED | ~~Diffuse texture only sampled in unlit path.~~ Now `baseColor` in both paths. | MTL-01 |
-| MTL-3 | Metal | ✅ FIXED | ~~Texture + sampler recreated every draw.~~ Per-frame cache + shared sampler. | MTL-03 |
-| OGL-3 | OpenGL | 🟠 MEDIUM | VBO/IBO created+destroyed per draw. | 694-732 |
-| D3D-3 | D3D11 | 🟠 MEDIUM | VBO/IBO created+destroyed per draw. | 508-598 |
-| D3D-4 | D3D11 | 🟠 MEDIUM | ~10 unchecked HRESULTs on D3D11 creation calls. | various |
-| MTL-2b | Metal | ✅ FIXED | ~~Diffuse texture only sampled in unlit path.~~ `baseColor` computed before lit/unlit branch. | MTL-01 |
-| SW-1 | Software | ✅ FIXED | ~~Ignores per-vertex colors~~ — now multiplies vertex color with diffuse_color. | compute_lighting |
-| ALL-1 | SW ✅ MTL ✅ / OGL ❌ D3D ❌ | 🟡 PARTIAL | Normal/specular/emissive maps: sampled by software and Metal backends. Still unused by OpenGL and D3D11. | — |
-| ALL-2 | SW ✅ MTL ✅ / OGL ❌ D3D ❌ | 🟡 PARTIAL | Fog: works in software and Metal backends. Still ignored by OpenGL and D3D11. | begin_frame |
-
-## Corrections from Previous Audit
-
-| Claim | Correction |
-|-------|-----------|
-| "Software does per-pixel lighting" | **WRONG.** Gouraud (per-vertex). Colors interpolated per-pixel. |
-| "Metal samples diffuse in lit + unlit" | **FIXED (MTL-01).** Was wrong — only unlit path checked `hasTexture`. Now `baseColor` computed before branch. |
-| "OpenGL has working alpha" | **WRONG.** `uAlpha` uniform undeclared. Alpha is undefined. |
-| "Normal/specular maps not used in SW+Metal" | **FIXED for SW+Metal.** Both now sample normal/specular/emissive maps. OGL+D3D still ignore them. |
-| "Fog works on software" | **FIXED for SW+Metal.** Metal now implements linear distance fog. OGL+D3D still drop fog params. |
-| "Software does per-vertex lighting only" | **UPDATED.** Software now supports both Gouraud (default) and per-pixel (when normal map present). Shadow mapping also implemented. |
-| "Vertex colors work everywhere" | **WRONG.** Software backend ignores vertex colors, uses diffuse_color only. |
-
-## Verified Cross-Backend Facts
-
-| Fact | Status |
-|------|--------|
-| All backends share same vtable signature | ✅ Confirmed |
-| Transparency sorting done in Canvas3D (not backends) | ✅ Confirmed — two-pass opaque/transparent |
-| Spot light cone data correctly passed to all backends | ✅ Confirmed — inner_cos/outer_cos in light params |
-| Backend selection: Metal(macOS) → D3D11(Win) → OpenGL(Linux) → Software(fallback) | ✅ Confirmed |
-| Canvas3D.New traps when graphics disabled; all other funcs silently return | ✅ Confirmed |
-
-## Feature Parity Score (out of 34 features)
-
-| Backend | Implemented | Partial/Buggy | Missing | Score |
-|---------|------------|---------------|---------|-------|
-| **Software** | 22 | 1 (no vertex colors) | 11 | 65% |
-| **Metal** | 32 | 0 | 2 | 94% |
-| **OpenGL** | 14 | 2 (uAlpha, normal matrix) | 18 | 41% |
-| **D3D11** | 14 | 2 (normal matrix, no cull toggle) | 18 | 41% |
+| ID | Backend | Severity | Description |
+|----|---------|----------|-------------|
+| OGL-1 | OpenGL | 🔴 CRITICAL | `uAlpha` is used in GLSL but never declared. |
+| OGL-2 | OpenGL | 🟡 HIGH | Normal matrix incorrectly uses model matrix. |
+| OGL-3 | OpenGL | 🟠 MEDIUM | Per-draw VBO/IBO creation and deletion. |
+| D3D-1 | D3D11 | 🟡 HIGH | Normal matrix = model matrix. |
+| D3D-2 | D3D11 | 🟡 HIGH | Backface culling and wireframe params ignored. |
+| D3D-3 | D3D11 | 🟠 MEDIUM | Per-draw VB/IB creation. |
+| D3D-4 | D3D11 | 🟠 MEDIUM | Unchecked HRESULTs on several creation paths. |
+| GPU-VC | Metal/OpenGL/D3D11 | 🟠 MEDIUM | Vertex color is forwarded from the vertex stage but not used in shading. |
 
 ---
 
-## Shared Integration Notes
+## Shared Cross-Cutting Notes
 
-The backend plans are intentionally split by renderer, but several implementation details are shared and should only be solved once:
+Several backend plans depend on shared runtime infrastructure rather than backend-local work alone.
 
-- `vgfx3d_draw_cmd_t` in [`src/runtime/graphics/vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h) does not yet carry skinning, morph-target, or terrain-splat payloads. Those feature families need one shared draw-command extension before any backend can consume them.
-- Producer-side integration belongs in the feature owner, not in generic Canvas3D code:
-  - Skinning: [`src/runtime/graphics/rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c)
-  - Morph targets: [`src/runtime/graphics/rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c)
-  - Terrain splat: [`src/runtime/graphics/rt_terrain3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_terrain3d.c)
-  - Render-target binding: [`src/runtime/graphics/rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c)
-  - PostFX ownership: [`src/runtime/graphics/rt_postfx3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.c)
-- `InstanceBatch3D` in [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) already bypasses Canvas3D's deferred queue and loops `submit_draw()` directly. A future instanced backend hook still helps, but it reduces per-instance backend/shader work, not deferred-queue overhead.
-- Shadow mapping needs a shared pass-scheduling change in [`src/runtime/graphics/rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), because Canvas3D owns the deferred queue and currently replays it only once. Do not try to hide the whole shadow pass inside a backend `submit_draw()` call.
-- GPU post-processing should not read `rt_postfx3d.c` private structs directly from a backend. Export a compact backend-facing snapshot/helper API from [`src/runtime/graphics/rt_postfx3d.h`](/Users/stephen/git/viper/src/runtime/graphics/rt_postfx3d.h) first.
-- Keep existing CPU/software fallbacks until the equivalent GPU path is fully wired. Terrain splat, skinning, morph targets, and postfx already have correctness fallbacks that should remain available.
+Already present:
+
+- `vgfx3d_draw_cmd_t` carries texture, splat, bone palette, and morph payload fields.
+- `InstanceBatch3D` already uses the optional `submit_draw_instanced()` backend hook when available.
+- Canvas3D already schedules the shadow prepass through `shadow_begin` / `shadow_draw` / `shadow_end`.
+- `vgfx3d_postfx_get_snapshot()` already exports a compact backend-facing PostFX snapshot.
+- Render-target binding already flows through [`rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c).
+
+Still missing and explicitly required by the OpenGL and D3D11 plan sets:
+
+- GPU postfx presentation handoff in [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993), which currently always applies the CPU PostFX path first.
+- A producer-side GPU skinning bypass in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), because the current skinned draw path still CPU-skins vertices before enqueueing.
+- Producer-side morph payload population in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c); the draw command fields exist but are not populated.
+- A defined fix for GPU render-to-texture interacting with the current CPU skybox path when `render_target` is active.
 
 ## Software Backend Implementation Plans
 
@@ -182,114 +146,103 @@ The backend plans are intentionally split by renderer, but several implementatio
 | [MTL-06](mtl-06-emissive-map.md) | Emissive map sampling | MTL-03 | **DONE** |
 | [MTL-07](mtl-07-fog.md) | Linear distance fog | — | **DONE** |
 | [MTL-08](mtl-08-wireframe.md) | Wireframe mode | — | **DONE** |
-| [MTL-09](mtl-09-skinning.md) | GPU skeletal skinning (bone palette) | Shared draw-cmd extension | **DONE** |
-| [MTL-10](mtl-10-morph-targets.md) | GPU morph targets | Shared draw-cmd extension | **DONE** |
-| [MTL-11](mtl-11-post-processing.md) | GPU post-processing pipeline | — | **DONE** |
+| [MTL-09](mtl-09-skinning.md) | GPU skeletal skinning (bone palette) | Shared producer bypass for true end-to-end GPU path | **BACKEND DONE** |
+| [MTL-10](mtl-10-morph-targets.md) | GPU morph targets | Shared producer payload | **BACKEND DONE** |
+| [MTL-11](mtl-11-post-processing.md) | GPU post-processing pipeline | Shared flip handoff | **PARTIAL** |
 | [MTL-12](mtl-12-shadow-mapping.md) | Shadow mapping (depth pass + comparison) | — | **DONE** |
-| [MTL-13](mtl-13-instanced-rendering.md) | Instanced rendering (instance_id) | Shared instanced backend hook | **DONE** |
-| [MTL-14](mtl-14-terrain-splat.md) | Per-pixel terrain splatting (5 extra textures) | Shared draw-cmd extension, MTL-03 | **DONE** |
+| [MTL-13](mtl-13-instanced-rendering.md) | Instanced rendering hook | Shared hook | **PARTIAL** |
+| [MTL-14](mtl-14-terrain-splat.md) | Per-pixel terrain splatting (5 extra textures) | Shared terrain payload, MTL-03 | **DONE** |
 
 ### Metal recommended execution order
-1. ✅ **MTL-01** (lit texture) — DONE
-2. ✅ **MTL-08** (wireframe) — DONE
-3. ✅ **MTL-02** (spot lights) — DONE
-4. ✅ **MTL-07** (fog) — DONE
-5. ✅ **MTL-03** (texture cache) — DONE
-6. ✅ **MTL-04** (normal map) — DONE
-7. ✅ **MTL-05** (specular map) — DONE
-8. ✅ **MTL-06** (emissive map) — DONE
-9. ✅ **MTL-09** (skinning) — DONE
-10. ✅ **MTL-10** (morph targets) — DONE
-11. ✅ **MTL-12** (shadow mapping) — DONE
-12. ✅ **MTL-13** (instanced rendering) — DONE
-13. ✅ **MTL-14** (terrain splat) — DONE
-14. ✅ **MTL-11** (post-processing) — DONE
+
+Metal is no longer the blocking backend for parity. Remaining work is primarily in shared GPU postfx presentation, true GPU skinning bypass, morph payload production, true hardware instancing if desired, and vertex-color support.
 
 ## D3D11 Backend Implementation Plans
 
 | Plan | Feature | Depends On | Effort |
 |------|---------|-----------|--------|
-| [D3D-01](d3d-01-diffuse-texture.md) | Diffuse texture sampling (SRV + sampler + HLSL) | — | Medium |
-| [D3D-02](d3d-02-normal-matrix.md) | Fix normal matrix (inverse-transpose) | — | Small |
-| [D3D-03](d3d-03-texture-cache.md) | Texture SRV caching | D3D-01 | Medium |
+| [D3D-01](d3d-01-diffuse-texture.md) | Diffuse texture pipeline + vertex color modulation | — | Medium |
+| [D3D-02](d3d-02-normal-matrix.md) | True inverse-transpose normal matrix | — | Small |
+| [D3D-03](d3d-03-texture-cache.md) | Per-frame texture cache | D3D-01 | Medium |
 | [D3D-04](d3d-04-spot-lights.md) | Spot light cone attenuation | — | Small |
-| [D3D-05](d3d-05-wireframe-cull.md) | Wireframe mode + backface culling toggle | — | Small |
+| [D3D-05](d3d-05-wireframe-cull.md) | Wireframe mode + cull toggle | — | Small |
 | [D3D-06](d3d-06-fog.md) | Linear distance fog | — | Small |
-| [D3D-07](d3d-07-normal-map.md) | Normal map sampling (tangent + TBN) | D3D-01, D3D-03 | Medium |
-| [D3D-08](d3d-08-specular-emissive-maps.md) | Specular + emissive map sampling | D3D-01, D3D-03 | Small |
-| [D3D-09](d3d-09-render-to-texture.md) | Render-to-texture (offscreen + readback) | — | Large |
-| [D3D-10](d3d-10-skinning-morph.md) | GPU skeletal skinning + morph targets | D3D-01, Shared draw-cmd extension | Large |
-| [D3D-11](d3d-11-post-processing.md) | GPU post-processing pipeline | D3D-09 | Large |
-| [D3D-12](d3d-12-vbo-optimization.md) | Dynamic VBO/IBO (Map/Discard) | — | Medium |
-| [D3D-13](d3d-13-hresult-checks.md) | HRESULT error checking | — | Small |
-| [D3D-14](d3d-14-shadow-mapping.md) | Shadow mapping (depth pass + comparison) | D3D-01 | Large |
-| [D3D-15](d3d-15-instanced-rendering.md) | Instanced rendering (DrawIndexedInstanced) | Shared instanced backend hook | Medium |
-| [D3D-16](d3d-16-terrain-splat.md) | Per-pixel terrain splatting (5 extra SRVs) | D3D-01, D3D-03, Shared draw-cmd extension | Medium |
+| [D3D-07](d3d-07-normal-map.md) | Normal map sampling | D3D-01, D3D-03 | Medium |
+| [D3D-08](d3d-08-specular-emissive-maps.md) | Specular + emissive maps | D3D-01, D3D-03 | Small |
+| [D3D-09](d3d-09-render-to-texture.md) | Render-to-texture + readback | Shared render-target path, skybox interaction fix | Large |
+| [D3D-10](d3d-10-skinning-morph.md) | GPU skinning + morph consumption | Shared producer work | Large |
+| [D3D-11](d3d-11-post-processing.md) | GPU post-processing | D3D-09, shared flip handoff | Large |
+| [D3D-12](d3d-12-vbo-optimization.md) | Persistent dynamic VB/IB | — | Medium |
+| [D3D-13](d3d-13-hresult-checks.md) | HRESULT / failure-path rigor | — | Small |
+| [D3D-14](d3d-14-shadow-mapping.md) | Shadow mapping | D3D-09 | Large |
+| [D3D-15](d3d-15-instanced-rendering.md) | True hardware instancing | Shared hook, D3D-12 recommended | Medium |
+| [D3D-16](d3d-16-terrain-splat.md) | Terrain splatting | D3D-01, D3D-03, shared terrain payload | Medium |
 
 ### D3D11 recommended execution order
-1. **D3D-02** (normal matrix fix) — bug fix, small
-2. **D3D-13** (HRESULT checks) — safety, small
-3. **D3D-05** (wireframe + cull toggle) — small, 4 pre-created rasterizer states
-4. **D3D-01** (diffuse texture) — critical missing feature, establishes SRV pattern
-5. **D3D-04** (spot lights) — small shader branch
-6. **D3D-06** (fog) — small, PerScene cbuffer extension
-7. **D3D-03** (texture cache) — medium, prerequisite for maps
-8. **D3D-12** (VBO optimization) — medium, eliminates per-draw allocation
-9. **D3D-07** (normal map) — medium, tangent passthrough + TBN
-10. **D3D-08** (specular + emissive maps) — small, texture slots t2/t3
-11. **D3D-09** (render-to-texture) — large, offscreen + staging + readback
-12. **D3D-10** (skinning + morph) — large, shared draw payload + VS modification
-13. **D3D-14** (shadow mapping) — large, shared pass scheduling + comparison sampler
-14. **D3D-15** (instanced rendering) — medium, shared hook + `DrawIndexedInstanced`
-15. **D3D-16** (terrain splat) — medium, shared terrain payload + pixel shader blend
-16. **D3D-11** (post-processing) — large, offscreen + backend-facing PostFX snapshot
+
+1. **D3D-02** — fix the normal-matrix bug first
+2. **D3D-13** — harden failure paths before more D3D resource creation lands
+3. **D3D-05** — cheap render-state parity
+4. **D3D-01** — establish texture upload/bind path and fix missing vertex-color modulation
+5. **D3D-04** — complete light-type parity
+6. **D3D-06** — add scene fog
+7. **D3D-03** — make texture-heavy draws practical
+8. **D3D-08** — specular/emissive build cheaply on the same SRV path
+9. **D3D-07** — normal maps build on the same texture path
+10. **D3D-12** — remove per-draw buffer churn before larger features pile on
+11. **D3D-09** — offscreen render target foundation
+12. **D3D-14** — shadow pass builds cleanly on RTT ownership
+13. **D3D-16** — terrain splat is straightforward after texture/cache work
+14. **D3D-15** — true instancing once buffer management is cleaned up
+15. **D3D-10** — backend shader work plus producer-side skinning/morph prerequisites
+16. **D3D-11** — last because it needs both RTT and shared flip ownership changes
 
 ## OpenGL Backend Implementation Plans
 
 | Plan | Feature | Depends On | Effort |
 |------|---------|-----------|--------|
-| [OGL-01](ogl-01-alpha-fix.md) | Fix uAlpha undeclared (CRITICAL) | — | Trivial (1 line) |
-| [OGL-02](ogl-02-normal-matrix.md) | Fix normal matrix (inverse-transpose) | — | Small |
-| [OGL-03](ogl-03-diffuse-texture.md) | Diffuse texture sampling (full GL texture pipeline) | — | Medium |
-| [OGL-04](ogl-04-texture-cache.md) | Texture caching | OGL-03 | Medium |
+| [OGL-01](ogl-01-alpha-fix.md) | Fix missing `uAlpha` declaration | — | Trivial |
+| [OGL-02](ogl-02-normal-matrix.md) | True inverse-transpose normal matrix | — | Small |
+| [OGL-03](ogl-03-diffuse-texture.md) | Diffuse texture pipeline + vertex color modulation | — | Medium |
+| [OGL-04](ogl-04-texture-cache.md) | Per-frame texture cache | OGL-03 | Medium |
 | [OGL-05](ogl-05-spot-lights.md) | Spot light cone attenuation | — | Small |
-| [OGL-06](ogl-06-wireframe.md) | Wireframe mode (glPolygonMode) | — | Trivial |
-| [OGL-07](ogl-07-fog.md) | Linear distance fog | — | Small |
-| [OGL-08](ogl-08-normal-map.md) | Normal map sampling (tangent + TBN) | OGL-03, OGL-04 | Medium |
-| [OGL-09](ogl-09-specular-emissive-maps.md) | Specular + emissive map sampling | OGL-03, OGL-04 | Small |
-| [OGL-10](ogl-10-render-to-texture.md) | Render-to-texture (FBO + readback) | — | Large |
-| [OGL-11](ogl-11-skinning-morph.md) | GPU skeletal skinning + morph targets | OGL-03, Shared draw-cmd extension | Large |
-| [OGL-12](ogl-12-shadow-mapping.md) | Shadow mapping (FBO depth + comparison) | OGL-10 | Large |
-| [OGL-13](ogl-13-post-processing.md) | GPU post-processing pipeline | OGL-10 | Large |
-| [OGL-14](ogl-14-vbo-optimization.md) | Dynamic VBO/IBO (orphan + sub-upload) | — | Medium |
-| [OGL-15](ogl-15-instanced-rendering.md) | Instanced rendering (`glDrawElementsInstanced`) | Shared instanced backend hook | Medium |
-| [OGL-16](ogl-16-terrain-splat.md) | Per-pixel terrain splatting (5 extra samplers) | OGL-03, OGL-04, Shared draw-cmd extension | Medium |
+| [OGL-06](ogl-06-wireframe.md) | Wireframe mode via `glPolygonMode` | — | Trivial |
+| [OGL-07](ogl-07-fog.md) | Linear distance fog | OGL-01 | Small |
+| [OGL-08](ogl-08-normal-map.md) | Normal map sampling | OGL-03, OGL-04 | Medium |
+| [OGL-09](ogl-09-specular-emissive-maps.md) | Specular + emissive maps | OGL-03, OGL-04 | Small |
+| [OGL-10](ogl-10-render-to-texture.md) | Render-to-texture + readback | Shared render-target path, skybox interaction fix | Large |
+| [OGL-11](ogl-11-skinning-morph.md) | GPU skinning + morph consumption | Shared producer work | Large |
+| [OGL-12](ogl-12-shadow-mapping.md) | Shadow mapping | OGL-10 | Large |
+| [OGL-13](ogl-13-post-processing.md) | GPU post-processing | OGL-10, shared flip handoff | Large |
+| [OGL-14](ogl-14-vbo-optimization.md) | Persistent dynamic VBO/IBO | — | Medium |
+| [OGL-15](ogl-15-instanced-rendering.md) | True hardware instancing | Shared hook, OGL-14 recommended | Medium |
+| [OGL-16](ogl-16-terrain-splat.md) | Terrain splatting | OGL-03, OGL-04, shared terrain payload | Medium |
 
 ### OpenGL recommended execution order
-1. **OGL-01** (alpha fix) — CRITICAL bug, 1-line shader fix
-2. **OGL-02** (normal matrix) — bug fix, small
-3. **OGL-06** (wireframe) — trivial, glPolygonMode
-4. **OGL-03** (diffuse texture) — critical missing feature, establishes GL texture pipeline
-5. **OGL-05** (spot lights) — small, shader branch + 2 uniform arrays
-6. **OGL-07** (fog) — small, 4 uniforms + fragment fog
-7. **OGL-04** (texture cache) — medium, prerequisite for maps
-8. **OGL-08** (normal map) — medium, tangent varying + orthonormal TBN
-9. **OGL-09** (specular + emissive maps) — small, texture units 2-3
-10. **OGL-10** (render-to-texture) — large, FBO + readback
-11. **OGL-13** (post-processing) — large, offscreen FBO + backend-facing PostFX snapshot
-12. **OGL-14** (VBO optimization) — medium, orphan + sub-upload
-13. **OGL-11** (skinning + morph) — large, shared draw payload + shader variants
-14. **OGL-12** (shadow mapping) — large, shared pass scheduling + `sampler2DShadow`
-15. **OGL-15** (instanced rendering) — medium, shared hook + `glDrawElementsInstanced`
-16. **OGL-16** (terrain splat) — medium, shared terrain payload + extra samplers
 
----
+1. **OGL-01** — fix the critical alpha bug first
+2. **OGL-02** — correct lighting on scaled geometry
+3. **OGL-06** — cheap render-state parity
+4. **OGL-03** — establish texture upload/bind path and fix missing vertex-color modulation
+5. **OGL-05** — complete light-type parity
+6. **OGL-07** — add scene fog
+7. **OGL-04** — make texture-heavy draws practical
+8. **OGL-09** — specular/emissive are cheap once texture units exist
+9. **OGL-08** — normal maps build on the same texture path
+10. **OGL-14** — remove per-draw buffer churn before larger features pile on
+11. **OGL-10** — offscreen render target foundation
+12. **OGL-12** — shadow pass builds cleanly on RTT/FBO ownership
+13. **OGL-16** — terrain splat is straightforward after texture/cache work
+14. **OGL-15** — real instancing once buffer management is cleaned up
+15. **OGL-11** — backend shader work plus producer-side skinning/morph prerequisites
+16. **OGL-13** — last because it needs both RTT and shared flip ownership changes
 
 ### SW recommended execution order
-1. **SW-08** (vertex colors) — smallest, fixes parity with GPU backends
-2. **SW-03** (bilinear filtering) — small, visible quality improvement
-3. **SW-01** (normal maps) — large but foundational (upgrades to per-pixel lighting)
-4. **SW-02** (specular maps) — small, builds on SW-01
-5. **SW-07** (terrain splat) — medium, add backend path first and keep baked fallback until parity is preserved
-6. **SW-05** (shadow mapping) — large, shared shadow-pass scheduling + software depth pass
-7. **SW-06** (instanced rendering) — mostly documentation/correctness fallback unless a shared backend hook lands
+
+1. **SW-08**
+2. **SW-03**
+3. **SW-01**
+4. **SW-02**
+5. **SW-07**
+6. **SW-05**
+7. **SW-06**

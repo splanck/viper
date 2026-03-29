@@ -69,7 +69,7 @@ For architecture and layering, see [architecture.md](architecture.md).
 |------------------------------------------------|--------------------------------------------|
 | [BASIC Frontend](codemap/front-end-basic.md)   | Lexer, parser, semantic analysis, lowering |
 | [Frontend Common](codemap/front-end-common.md) | Shared utilities across frontends          |
-| [Zia Frontend](codemap/front-end-zia.md)       | Zia compiler with entities, generics       |
+| [Zia Frontend](codemap/front-end-zia.md)       | Zia compiler with classes, generics        |
 
 ### Execution & Codegen
 

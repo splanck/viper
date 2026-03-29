@@ -1,11 +1,27 @@
 # OGL-04: Texture Caching
 
-## Context
-OGL-03 creates and destroys GL textures per draw. Need a cache like MTL-03 and D3D-03.
+## Depends On
+
+- OGL-03
+
+## Current State
+
+Once OGL-03 lands, the backend can upload textures, but doing so per draw is too expensive and makes normal/specular/emissive/splat maps much more costly than necessary.
+
+## Required Cache Behavior
+
+Match the current Metal strategy:
+
+- cache by raw `Pixels` object pointer identity
+- invalidate the cache every frame
+- destroy all cached GL textures on context teardown
+
+This conservative invalidation is intentional because `Pixels` contents can mutate in place and there is no texture versioning yet.
 
 ## Implementation
 
-### Cache structure
+Add to `gl_context_t`:
+
 ```c
 #define OGL_TEX_CACHE_SIZE 64
 typedef struct {
@@ -13,49 +29,51 @@ typedef struct {
     GLuint tex_id;
 } ogl_tex_cache_entry_t;
 
-// Add to gl_context_t:
 ogl_tex_cache_entry_t tex_cache[OGL_TEX_CACHE_SIZE];
 int32_t tex_cache_count;
 ```
 
-### Lookup + insert
+Add a helper:
+
 ```c
-static GLuint get_or_create_texture(gl_context_t *ctx, const void *pixels) {
-    for (int i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels)
-            return ctx->tex_cache[i].tex_id;
-    }
-    // Cache miss — create texture
-    GLuint tex;
-    gl.GenTextures(1, &tex);
-    // ... bind, upload, set params (from OGL-03) ...
-    if (ctx->tex_cache_count < OGL_TEX_CACHE_SIZE) {
-        ctx->tex_cache[ctx->tex_cache_count].pixels_ptr = pixels;
-        ctx->tex_cache[ctx->tex_cache_count].tex_id = tex;
-        ctx->tex_cache_count++;
-    }
-    return tex;
-}
+static GLuint ogl_get_or_create_texture(gl_context_t *ctx,
+                                        const void *pixels,
+                                        int *out_temporary);
 ```
 
-### Per-frame invalidation
-In `gl_begin_frame()`:
-```c
-for (int i = 0; i < ctx->tex_cache_count; i++)
-    gl.DeleteTextures(1, &ctx->tex_cache[i].tex_id);
-ctx->tex_cache_count = 0;
-```
+Behavior:
 
-This conservative invalidation policy is deliberate because `Pixels` data can mutate in place. A persistent cache needs explicit texture-version tracking first.
+1. Return cached texture on pointer hit.
+2. On miss, create via the OGL-03 upload helper.
+3. If cache has room:
+   - insert into cache
+   - set `*out_temporary = 0`
+4. If cache is full:
+   - return a temporary uncached texture
+   - set `*out_temporary = 1`
+   - caller deletes it after the draw
 
-### Cleanup in destroy_ctx
-Release all cached textures on context teardown (same loop as begin_frame invalidation).
+## Frame Lifetime
 
-## Depends On
-- OGL-03 (diffuse texture)
+At the top of `gl_begin_frame()`:
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — cache struct, lookup, begin_frame invalidation
+- delete every cached texture from the previous frame
+- clear `tex_cache_count`
 
-## Testing
-- 100 textured objects same Pixels → only 1 GL texture created
+At `gl_destroy_ctx()`:
+
+- delete any remaining cached textures
+
+## Why This Plan Is Explicit About Overflow
+
+The earlier plan did not define what happens when more than 64 unique textures are used in one frame. That needs a deterministic rule so the implementation does not silently leak or stop rendering.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Repeated use of the same `Pixels` object within one frame reuses one GL texture
+- Cache entries are destroyed at frame boundaries and on teardown
+- Cache overflow does not leak textures

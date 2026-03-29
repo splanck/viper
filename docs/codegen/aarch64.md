@@ -11,21 +11,14 @@ programs, and the development roadmap. It is kept developer-focused with concret
 
 ## Executive Summary
 
-### Current Status (February 2026)
+### Current Status (March 2026)
 
-- **End-to-end path validated on Apple Silicon**: IL → AArch64 assembly → native binary → runs (Frogger demo)
-- **Core operations execute**: Arithmetic, control flow, calls, memory, strings, floating-point, and OOP sufficient
-  for non-trivial programs
-- **Full pipeline implemented**: MIR layer, instruction selection, register allocation, frame lowering, peephole
-  optimization, linker integration
-- **Remaining work**: Broader opcode coverage, more address modes, EH polish, performance tuning
-
-### Test Case: Frogger Demo
-
-The frogger demo (`examples/games/frogger-basic/frogger.bas`) serves as a benchmark for backend completeness:
-
-- **Compiles and links successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
-- **Runs successfully**: Verified end-to-end on Apple Silicon
+- **End-to-end validated on Apple Silicon**: All demo games compile and run natively
+- **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
+- **Immediate utils**: Extracted `A64ImmediateUtils.hpp` for consistent immediate encoding
+- **Binary encoder**: Direct object code emission (bypassing assembler text)
+- **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
+- **121 codegen tests passing**
 
 ## Source File Map
 
@@ -113,8 +106,12 @@ MIR opcode categories:
 
 | File | Purpose |
 |------|---------|
-| `src/codegen/aarch64/RegAllocLinear.hpp`/`.cpp` | `allocate(fn, ti)` — linear-scan register allocator |
-| `src/codegen/aarch64/LivenessAnalysis.hpp`/`.cpp` | Live variable analysis used by register allocator |
+| `src/codegen/aarch64/ra/Allocator.hpp`/`.cpp` | Linear-scan register allocator |
+| `src/codegen/aarch64/ra/Liveness.hpp`/`.cpp` | Live variable analysis |
+| `src/codegen/aarch64/ra/RegPools.hpp`/`.cpp` | Physical register pools (GPR/FPR) |
+| `src/codegen/aarch64/ra/OperandRoles.hpp`/`.cpp` | Operand use/def classification |
+| `src/codegen/aarch64/ra/VState.hpp` | Virtual register state tracking |
+| `src/codegen/aarch64/Coalescer.hpp`/`.cpp` | Pre-RA register coalescer (~270 LOC) |
 
 ### Frame layout
 
@@ -127,7 +124,13 @@ MIR opcode categories:
 
 | File | Purpose |
 |------|---------|
-| `src/codegen/aarch64/Peephole.hpp`/`.cpp` | Post-RA peephole passes (CBZ/CBNZ fusion, MADD fusion, LDP/STP merging, branch inversion, immediate folding) |
+| `src/codegen/aarch64/Peephole.hpp`/`.cpp` | Top-level peephole dispatcher |
+| `src/codegen/aarch64/peephole/BranchOpt.hpp`/`.cpp` | CBZ/CBNZ fusion, branch inversion |
+| `src/codegen/aarch64/peephole/CopyPropDCE.hpp`/`.cpp` | Copy propagation + dead code elimination |
+| `src/codegen/aarch64/peephole/IdentityElim.hpp`/`.cpp` | Identity operation removal |
+| `src/codegen/aarch64/peephole/LoopOpt.hpp`/`.cpp` | Loop-specific optimizations |
+| `src/codegen/aarch64/peephole/MemoryOpt.hpp`/`.cpp` | LDP/STP merging |
+| `src/codegen/aarch64/peephole/StrengthReduce.hpp`/`.cpp` | MADD fusion, immediate folding |
 
 ### CLI driver integration
 
@@ -160,18 +163,20 @@ codegen review.
 
 ## Backend Pipeline
 
-The AArch64 backend uses a monolithic function in `cmd_codegen_arm64.cpp` rather than a formal PassManager. The
-pipeline stages are:
+The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline stages are:
 
 1. **IL loading** — load module from disk
 2. **Rodata pool construction** (`RodataPool`) — scan globals, deduplicate string literals
 3. **IL to MIR lowering** (`LowerILToMIR::lowerFunction`) — instruction selection via `InstrLowering` + `TerminatorLowering` + fast paths
-4. **Register allocation** (`RegAllocLinear::allocate`) — linear scan, spill/reload insertion
-5. **Frame finalization** (`FrameBuilder`) — stack slot layout, frame size computation
-6. **Peephole optimization** (`Peephole`) — post-RA pattern rewrites
-7. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
-8. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
-9. **Assembly + linking** (`LinkerSupport`) — invoke assembler, link with runtime archives
+4. **Register coalescing** (`Coalescer`) — pre-RA copy elimination
+5. **Register allocation** (`ra/Allocator`) — linear scan, spill/reload insertion
+6. **Frame finalization** (`FrameBuilder`) — stack slot layout, frame size computation
+7. **Peephole optimization** (`Peephole` + 6 sub-passes) — post-RA pattern rewrites
+8. **Post-RA scheduling** — instruction reordering for pipeline utilization
+9. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
+10. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
+11. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
+12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with runtime archives
 
 ## Calling Convention (AAPCS64 / Darwin)
 
@@ -236,7 +241,7 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 
 ## Tests
 
-65 AArch64-specific test files live in `src/tests/unit/codegen/`. Selected coverage:
+89 AArch64-specific test files live in `src/tests/unit/codegen/`. Selected coverage:
 
 | Test file | Coverage |
 |-----------|---------|
@@ -297,7 +302,7 @@ All test artifacts are written under `build/test-out/arm64/` (created on demand)
 
 ```bash
 cat > /tmp/test.il << 'EOF'
-il 0.1.2
+il 0.2.0
 func @main() -> i64 {
 entry:
   ret 15
@@ -311,17 +316,7 @@ clang++ /tmp/test.o -o /tmp/test_native
 echo "Exit code: $?"  # Should print 15
 ```
 
-### Test Frogger Compilation
-
-```bash
-./build/src/tools/viper/viper front basic -emit-il examples/games/frogger-basic/frogger.bas > /tmp/frogger.il
-./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
-as /tmp/frogger.s -o /tmp/frogger.o
-clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
-/tmp/frogger_native  # Run on Apple Silicon
-```
-
-## Critical Bugs Fixed
+## Critical Bugs Fixed (Historical)
 
 ### BUG 1: Incorrect Section Directive for macOS (FIXED)
 
@@ -404,10 +399,10 @@ New MIR opcodes added to support these patterns: `Cbnz`, `MAddRRRR`, `Csel`, `Ld
 
 ### Architectural Gaps
 
-- **AArch64 PassManager**: Pipeline is a monolithic function; no formal pass manager with per-pass error checking
+- **AArch64 PassManager**: `CodegenPipeline` orchestrates passes but lacks per-pass error checking and verification hooks
 - **Darwin symbol fixup**: Uses string search-and-replace on full assembly output (fragile); needs redesign
-- **Debug information**: No DWARF support; compiled programs cannot be debugged with LLDB/GDB
-- **Instruction scheduling**: No scheduling pass; instructions emitted in lowering order
+- **Debug information**: DWARF v5 emitted by native linker; source-level debugging available
+- **Instruction scheduling**: Post-RA scheduler implemented; further scheduling opportunities remain
 - **MIR verification**: No inter-pass MIR invariant checker
 - **Stack size configuration**: No `--stack-size` flag equivalent to x86-64 backend
 

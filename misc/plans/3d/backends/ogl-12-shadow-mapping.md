@@ -1,64 +1,104 @@
 # OGL-12: Shadow Mapping
 
-## Context
-Same as SW-05, MTL-12, D3D-14. OpenGL implementation uses FBO with depth-only attachment for shadow pass, then samples depth texture in main pass.
+## Depends On
 
-Shared constraint: Canvas3D owns the deferred queue, so shadow mapping needs a scheduling change in [`src/runtime/graphics/rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) in addition to backend work. Do not try to make `submit_draw()` secretly manage a complete prepass on its own.
+- OGL-10
 
-## Implementation
+## Correction To The Earlier Plan
 
-### Shadow depth FBO
-```c
-GLuint shadow_fbo, shadow_depth_tex;
-gl.GenFramebuffers(1, &shadow_fbo);
-gl.BindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
+Canvas3D shadow-pass scheduling already exists in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c). This plan does not need to invent a new shadow replay system. The OpenGL work is implementing the backend's `shadow_begin`, `shadow_draw`, and `shadow_end` hooks and integrating the resulting depth texture into the main shader.
 
-gl.GenTextures(1, &shadow_depth_tex);
-gl.BindTexture(GL_TEXTURE_2D, shadow_depth_tex);
-gl.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F,
-              resolution, resolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-float borderColor[] = {1,1,1,1};
-gl.TexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+## Backend State
 
-gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow_depth_tex, 0);
-gl.DrawBuffer(GL_NONE); // no color attachment
-gl.ReadBuffer(GL_NONE);
-```
+Add to `gl_context_t`:
 
-### Shadow pass
-Separate shader program (depth-only VS, no FS) or minimal FS. Render all opaque geometry with light VP matrix.
+- shadow framebuffer
+- shadow depth texture
+- shadow shader program
+- cached shadow light VP matrix
+- shadow bias
+- shadow-active flag
 
-### GLSL shadow comparison in main fragment
+## Shadow Pass
+
+### `shadow_begin()`
+
+- ignore the CPU `depth_buf` argument, as Metal already does
+- create or resize a depth-only framebuffer and texture
+- bind the shadow FBO
+- set the shadow viewport
+- clear depth
+- use the shadow shader program
+- store the light VP matrix
+
+### `shadow_draw()`
+
+Render opaque geometry depth-only into the shadow texture.
+
+Recommended implementation:
+
+- separate shadow vertex shader
+- no fragment shader, or the minimal fragment path required by the driver
+- reuse the normal vertex format
+- use the same model matrix upload convention as the main pass
+
+### `shadow_end()`
+
+- end the shadow pass
+- store the bias
+- mark shadowing active for later main-pass sampling
+- restore state needed by the regular draw path:
+  - main framebuffer or RTT framebuffer
+  - main viewport
+  - main GLSL program
+
+That state restoration is required because the current Canvas3D end-of-frame flow runs the shadow pass before the opaque/transparent replay, not as a separate frame.
+
+## Main Pass Shader Work
+
+Add:
+
 ```glsl
 uniform sampler2DShadow uShadowMap;
 uniform mat4 uShadowVP;
 uniform float uShadowBias;
 uniform int uShadowEnabled;
-
-// In fragment:
-if (uShadowEnabled != 0) {
-    vec4 lightClip = uShadowVP * vec4(vWorldPos, 1.0);
-    vec3 shadowUV = lightClip.xyz / lightClip.w;
-    shadowUV = shadowUV * 0.5 + 0.5;
-    float shadow = texture(uShadowMap, vec3(shadowUV.xy, shadowUV.z - uShadowBias));
-    atten *= mix(0.15, 1.0, shadow);
-}
 ```
 
-`sampler2DShadow` + `GL_COMPARE_REF_TO_TEXTURE` gives hardware PCF on supporting drivers.
+For directional lights, sample the shadow map and attenuate direct light.
 
-## Depends On
-- OGL-10 (FBO infrastructure)
+Use hardware depth comparison via:
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — shadow FBO, shadow pass, GLSL shadow sampler, comparison
-- `src/runtime/graphics/rt_canvas3d.c` — shared shadow-pass scheduling before normal opaque replay
+- `GL_TEXTURE_COMPARE_MODE = GL_COMPARE_REF_TO_TEXTURE`
+- `GL_TEXTURE_COMPARE_FUNC = GL_LEQUAL`
 
-## Testing
-- Same tests as SW-05, MTL-12, D3D-14
+Recommended shadow texture wrap/filter:
+
+- `GL_LINEAR`
+- `GL_CLAMP_TO_BORDER`
+- white border color
+
+## Loader And Constant Additions
+
+Load:
+
+- `TexParameterfv`
+
+Add constants for:
+
+- `GL_DEPTH_COMPONENT`
+- `GL_TEXTURE_COMPARE_MODE`
+- `GL_COMPARE_REF_TO_TEXTURE`
+- `GL_TEXTURE_COMPARE_FUNC`
+- `GL_CLAMP_TO_BORDER`
+- `GL_TEXTURE_BORDER_COLOR`
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Directional lights cast shadows in the main pass
+- State is correctly restored after the shadow prepass
+- RTT and onscreen rendering both still work after shadowing is enabled

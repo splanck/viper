@@ -7,12 +7,12 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-380K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-382K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
 
-**[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with entities, generics, enums, modules, and pattern matching, designed for building real applications on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
+**[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with classes, generics, enums, modules, and pattern matching, designed for building real applications on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -73,14 +73,14 @@ zia> Say(Fmt.Int(2 + 3))
 
 | Component | Description |
 |-----------|-------------|
-| **[Zia](docs/zia-reference.md)** | Modern, statically typed language with entities, generics, enums, modules, and pattern matching |
+| **[Zia](docs/zia-reference.md)** | Modern, statically typed language with classes, generics, enums, modules, and pattern matching |
 | **[BASIC](docs/basic-reference.md)** | Educational frontend for rapid prototyping |
 | **[Viper IL](docs/il-guide.md)** | Typed, SSA-based intermediate representation |
 | **[Optimizer](docs/il-passes.md)** | 38-pass pipeline: GVN, LICM, SCCP, loop opts, inlining, and more |
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 270+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 275+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -89,7 +89,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) — zero external tool dependencies for native compilation
-- **Full runtime** — 272 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
+- **Full runtime** — 275+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
 
@@ -99,7 +99,7 @@ Viper is in **early development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
-| [Zia Frontend](docs/zia-reference.md) | Entities, generics, enums, pattern matching with exhaustiveness, try/catch, modules |
+| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, pattern matching with exhaustiveness, try/catch, modules |
 | [BASIC Frontend](docs/basic-reference.md) | Core language + OOP; enums, select-case, namespaces |
 | [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
 | [Optimizer](docs/il-passes.md) | 38 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
@@ -107,8 +107,8 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
-| [Runtime](docs/viperlib/README.md) | 270+ classes across 22 modules; 1,355+ tests |
-| [3D Graphics](docs/graphics3d-guide.md) | 28 classes; Metal, D3D11, OpenGL, software backends |
+| [Runtime](docs/viperlib/README.md) | 275+ classes across 22 modules; 1,358 tests |
+| [3D Graphics](docs/graphics3d-guide.md) | 28 classes; Metal (94% parity), D3D11, OpenGL, software backends |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
@@ -127,7 +127,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [Paint](examples/apps/paint/) | Drawing app with 8 tools, shapes, color palette |
 | [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, drag-and-drop GUI |
 | [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
-| [Sidescroller](examples/games/sidescroller/) | Platform game engine: physics, camera, enemies, particles, menus |
+| [XENOSCAPE](examples/games/sidescroller/) | Metroid-style sidescroller: 10 levels, 30+ enemies, bosses, abilities, saves (17K LOC) |
 | [Dungeon of Viper](examples/games/dungeon/) | 3D first-person dungeon crawler using the Graphics3D engine |
 
 > **[See all demos →](examples/README.md)** — 6 applications, 16 games, API coverage audits, IL examples, and C++ embedding demos.
@@ -223,7 +223,7 @@ entry_0:
 
 ## 📚 Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 270+ classes across 22 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 275+ classes across 22 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
@@ -231,7 +231,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 270+ cl
 | [Core](docs/viperlib/core.md) | 6 | Base types, string operations, messaging |
 | [Crypto](docs/viperlib/crypto.md) | 10 | AES, AES-GCM, SHA, HMAC, HKDF, PBKDF2, TLS, ECDSA, secure RNG |
 | [Data](docs/viperlib/README.md) | 3 | XML, YAML, binary serialization |
-| [Game](docs/viperlib/game/README.md) | 17 | Collision, pathfinding, tweening, particles, state machines |
+| [Game](docs/viperlib/game/README.md) | 22 | Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements |
 | [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
 | [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels) |
 | [Graphics](docs/viperlib/graphics/README.md) | 11 | Canvas, sprites, tilemaps, cameras, bitmap fonts |

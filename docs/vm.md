@@ -1094,7 +1094,7 @@ already active on the same thread triggers an assertion.
 ## Runtime ABI Reference
 
 Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. This section documents the core ABI surface
-available to both the VM and native backends. For the complete list see [runtime-api-complete.md](runtime-api-complete.md).
+available to both the VM and native backends. For the complete list see the [Runtime Library Reference](viperlib/README.md).
 
 ### Runtime symbol naming
 

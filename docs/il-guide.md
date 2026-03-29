@@ -311,8 +311,8 @@ and `trap.from_err` to terminate with it.
 A tiny BASIC program:
 
 ```basic
-10 PRINT 2 + 2
-20 END
+PRINT 2 + 2
+END
 ```
 
 Lowered IL:
@@ -1081,16 +1081,16 @@ names across runs.
 Example BASIC and corresponding IL excerpt:
 
 ```basic
-10 FUNCTION F(X)
-20 FOR I = 0 TO 1
-30   WHILE X < 10
-40     IF X THEN CALL P
-50     X = X + 1
-60   WEND
-70 NEXT I
-80 F = X
-90 RETURN
-100 END FUNCTION
+FUNCTION F(X)
+FOR I = 0 TO 1
+ WHILE X < 10
+   IF X THEN CALL P
+   X = X + 1
+ WEND
+NEXT I
+F = X
+RETURN
+END FUNCTION
 ```
 
 ```il
@@ -1402,16 +1402,18 @@ the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). Ne
 **BASIC**
 
 ```basic
-10 PRINT "HELLO"
-20 LET X = 2 + 3
-30 LET Y = X * 2
-35 PRINT "READY"
-40 PRINT Y
-50 IF Y > 8 THEN GOTO 80
-60 PRINT 4
-70 GOTO 90
-80 PRINT Y
-90 END
+PRINT "HELLO"
+LET X = 2 + 3
+LET Y = X * 2
+PRINT "READY"
+PRINT Y
+IF Y > 8 THEN GOTO PrintY
+PRINT 4
+GOTO Done
+PrintY:
+PRINT Y
+Done:
+END
 ```
 
 **IL**
@@ -1458,16 +1460,16 @@ done:
 **BASIC**
 
 ```basic
-10 PRINT "SUM 1..10"
-20 LET I = 1
-30 LET S = 0
-40 WHILE I <= 10
-50 LET S = S + I
-60 LET I = I + 1
-70 WEND
-80 PRINT S
-90 PRINT "DONE"
-100 END
+PRINT "SUM 1..10"
+LET I = 1
+LET S = 0
+WHILE I <= 10
+LET S = S + I
+LET I = I + 1
+WEND
+PRINT S
+PRINT "DONE"
+END
 ```
 
 **IL**
@@ -1514,18 +1516,18 @@ done:
 **BASIC**
 
 ```basic
-10 PRINT "TABLE 5x5"
-20 LET N = 5
-30 LET I = 1
-40 WHILE I <= N
-50 LET J = 1
-60 WHILE J <= N
-70 PRINT I * J
-80 LET J = J + 1
-90 WEND
-100 LET I = I + 1
-110 WEND
-120 END
+PRINT "TABLE 5x5"
+LET N = 5
+LET I = 1
+WHILE I <= N
+LET J = 1
+WHILE J <= N
+PRINT I * J
+LET J = J + 1
+WEND
+LET I = I + 1
+WEND
+END
 ```
 
 **IL**
@@ -1581,17 +1583,17 @@ outer_done:
 **BASIC**
 
 ```basic
-10 PRINT "FACTORIAL"
-20 PRINT "ENTER N:"
-30 LET S$ = INPUT$
-40 LET N = VAL(S$)
-50 LET R = 1
-60 WHILE N > 1
-70 LET R = R * N
-80 LET N = N - 1
-90 WEND
-100 PRINT R
-110 END
+PRINT "FACTORIAL"
+PRINT "ENTER N:"
+LET S$ = INPUT$
+LET N = VAL(S$)
+LET R = 1
+WHILE N > 1
+LET R = R * N
+LET N = N - 1
+WEND
+PRINT R
+END
 ```
 
 **IL**
@@ -1645,16 +1647,16 @@ done:
 **BASIC**
 
 ```basic
-10 LET A$ = "JOHN"
-20 LET B$ = "DOE"
-30 LET C$ = A$ + " "
-40 LET C$ = C$ + B$
-50 PRINT C$
-60 LET L = LEN(C$)
-70 PRINT L
-80 PRINT MID$(C$, 1, 1)
-90 IF C$ = "JOHN DOE" THEN PRINT 1 ELSE PRINT 0
-100 END
+LET A$ = "JOHN"
+LET B$ = "DOE"
+LET C$ = A$ + " "
+LET C$ = C$ + B$
+PRINT C$
+LET L = LEN(C$)
+PRINT L
+PRINT MID$(C$, 1, 1)
+IF C$ = "JOHN DOE" THEN PRINT 1 ELSE PRINT 0
+END
 ```
 
 **IL**
@@ -1715,19 +1717,19 @@ exit:
 **BASIC**
 
 ```basic
-10 LET N = 5
-20 DIM A(N)
-30 LET I = 0
-40 LET SUM = 0
-50 WHILE I < N
-60 LET A(I) = I * I
-70 LET SUM = SUM + A(I)
-80 LET I = I + 1
-90 WEND
-100 LET AVG = SUM / N
-110 PRINT AVG
-120 PRINT "DONE"
-130 END
+LET N = 5
+DIM A(N)
+LET I = 0
+LET SUM = 0
+WHILE I < N
+LET A(I) = I * I
+LET SUM = SUM + A(I)
+LET I = I + 1
+WEND
+LET AVG = SUM / N
+PRINT AVG
+PRINT "DONE"
+END
 ```
 
 **IL**

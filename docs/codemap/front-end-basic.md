@@ -10,7 +10,7 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 
 ## Overview
 
-- **Total source files**: 269 (.hpp/.cpp) plus `TokenKinds.def`
+- **Total source files**: 278 (.hpp/.cpp/.def)
 - **Subdirectories**: ast/, builtins/, constfold/, detail/, diag/, lower/, lower/builtins/, lower/common/, lower/detail/, lower/oop/, passes/, print/, sem/, types/
 
 ## Core Infrastructure

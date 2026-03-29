@@ -10,45 +10,22 @@ Source files for `zia-server`, the dual-protocol language server for Zia (`src/t
 
 ## Overview
 
-- **Total source files**: 16 (.hpp/.cpp)
+- **Total source files**: 3 (.hpp/.cpp) in `zia-server/` + 19 shared in `lsp-common/`
 - **Architecture**: 3 layers — Transport/JSON-RPC → Protocol Handlers → Compiler Bridge
 - **Protocols**: MCP (newline-delimited) and LSP (Content-Length framed)
 
-## Source Files
+## Source Files (`src/tools/zia-server/`)
 
-### Foundation Layer
+The foundation layer (JSON, transports, protocol handlers, document store) was extracted to
+`src/tools/lsp-common/` for reuse by `vbasic-server`. See [codemap/tools.md](tools.md) for the
+shared files.
 
-| File | Purpose |
-|------|---------|
-| `Json.hpp` | JSON value type (`std::variant`-based), parser, and emitter |
-| `Json.cpp` | Recursive-descent JSON parser, RFC 8259 compliance |
-| `Transport.hpp` | Abstract transport + `McpTransport` / `LspTransport` |
-| `Transport.cpp` | Newline-delimited (MCP) and Content-Length framed (LSP) I/O |
-| `JsonRpc.hpp` | JSON-RPC 2.0 request/response types, error codes |
-| `JsonRpc.cpp` | JSON-RPC parsing and response building |
-
-### Protocol Handlers
+### Zia-Specific Files
 
 | File | Purpose |
 |------|---------|
-| `McpHandler.hpp` | MCP lifecycle + 11 tool definitions |
-| `McpHandler.cpp` | MCP dispatch: initialize, tools/list, tools/call |
-| `LspHandler.hpp` | LSP capabilities, request/notification handlers |
-| `LspHandler.cpp` | LSP dispatch: initialize, completion, hover, symbols, diagnostics |
-| `DocumentStore.hpp` | In-memory URI→content map for LSP open files |
-| `DocumentStore.cpp` | URI management, %XX decoding, document lifecycle |
-
-### Compiler Bridge
-
-| File | Purpose |
-|------|---------|
-| `CompilerBridge.hpp` | Protocol-agnostic facade, data transfer structs |
-| `CompilerBridge.cpp` | Wraps `fe_zia` APIs: analysis, completion, IL dump, runtime queries |
-
-### Entry Point
-
-| File | Purpose |
-|------|---------|
+| `CompilerBridge.hpp` | Zia-specific compiler bridge (wraps `fe_zia` APIs) |
+| `CompilerBridge.cpp` | Analysis, completion, IL dump, runtime queries |
 | `main.cpp` | CLI parsing, auto-detection, event loop for MCP/LSP |
 
 ## Dependencies

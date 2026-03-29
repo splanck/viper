@@ -1,67 +1,72 @@
-# OGL-15: Instanced Rendering
+# OGL-15: Hardware Instanced Rendering
 
-## Context
-Same as MTL-13 and D3D-15. OpenGL supports `glDrawElementsInstanced` with per-instance data in a second VBO. The current `InstanceBatch3D` path already bypasses Canvas3D's deferred queue, so the win here is fewer backend calls and a single instanced draw, not queue overhead.
+## Depends On
 
-## Implementation
+- shared `submit_draw_instanced()` hook
+- OGL-14 recommended
 
-### Phase 1: shared optional instanced hook
-Add a shared optional `submit_draw_instanced()` entry to [`src/runtime/graphics/vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h), and update [`src/runtime/graphics/rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c) to use it when present. Unsupported backends keep the current loop.
+## Correction To The Earlier Plan
 
-### Hardware instancing (v2)
-```c
-// Reuse a cached instance buffer — grow only when needed (avoid per-draw gen/delete)
-if (!ctx->inst_buf) gl.GenBuffers(1, &ctx->inst_buf);
-gl.BindBuffer(GL_ARRAY_BUFFER, ctx->inst_buf);
-size_t needed = instance_count * 64;
-if (needed > ctx->inst_buf_size) {
-    gl.BufferData(GL_ARRAY_BUFFER, needed, instance_matrices, GL_STREAM_DRAW);
-    ctx->inst_buf_size = needed;
-} else {
-    gl.BufferData(GL_ARRAY_BUFFER, needed, NULL, GL_STREAM_DRAW); // orphan
-    gl.BufferSubData(GL_ARRAY_BUFFER, 0, needed, instance_matrices);
-}
+The shared instanced hook is already present in [`vgfx3d_backend.h`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h) and already used by [`rt_instbatch3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_instbatch3d.c). This plan is not about adding that hook anymore. It is about making the OpenGL backend implement it with real hardware instancing rather than a backend-side loop.
 
-// Bind instance matrix as 4 vec4 attributes (mat4 = 4 × vec4)
-for (int i = 0; i < 4; i++) {
-    GLuint loc = 7 + i; // attributes 7-10 for instance matrix rows
-    gl.EnableVertexAttribArray(loc);
-    gl.VertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE, 64, (void *)(i * 16));
-    gl.VertexAttribDivisor(loc, 1); // per-instance
-}
+## Backend Work
 
-gl.DrawElementsInstanced(GL_TRIANGLES, cmd->index_count,
-                         GL_UNSIGNED_INT, NULL, instance_count);
+Add to `gl_context_t`:
 
-// Reset divisors for non-instanced draws (buffer stays cached)
-for (int i = 0; i < 4; i++)
-    gl.VertexAttribDivisor(7 + i, 0);
-```
+- persistent instance buffer
+- instance buffer capacity
 
-### GLSL vertex shader modification
+Implement `submit_draw_instanced()` using:
+
+- one vertex buffer
+- one index buffer
+- one instance buffer containing `instance_count * 16` floats
+- `glDrawElementsInstanced`
+
+## GLSL Changes
+
+Add:
+
 ```glsl
 layout(location=7) in mat4 aInstanceMatrix;
 uniform int uUseInstancing;
-
-void main() {
-    mat4 model = (uUseInstancing != 0) ? aInstanceMatrix : uModelMatrix;
-    vec4 wp = model * vec4(aPosition, 1.0);
-    // ...
-}
 ```
 
-### Load additional GL functions
-```c
-LOAD(VertexAttribDivisor);
-LOAD(DrawElementsInstanced);
+Vertex shader model selection:
+
+```glsl
+mat4 model = (uUseInstancing != 0) ? aInstanceMatrix : uModelMatrix;
 ```
 
-Core GL 3.3.
+## Normal Handling
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend.h` — optional shared instanced hook
-- `src/runtime/graphics/rt_instbatch3d.c` — hook dispatch
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — instanced draw, GLSL instance matrix, GL function loading
+This plan must not reintroduce the normal-matrix bug for instanced draws.
 
-## Testing
-- Same tests as MTL-13 and D3D-15
+Recommended v1 approach:
+
+- compute `transpose(inverse(mat3(model)))` in the vertex shader for the instanced path
+
+That avoids extending the instance payload with a second normal-matrix stream. If profiling later shows this is too expensive, a follow-up optimization can precompute per-instance normal matrices on the CPU.
+
+## GL API Additions
+
+Load:
+
+- `VertexAttribDivisor`
+- `DrawElementsInstanced`
+
+Configure the instance matrix as four `vec4` attributes with divisor `1`.
+
+After an instanced draw:
+
+- reset divisors to `0` or maintain a dedicated VAO/state path so normal draws are unaffected
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- One draw call renders N instances
+- Per-instance transforms work
+- Instanced lighting stays correct under non-uniform scale

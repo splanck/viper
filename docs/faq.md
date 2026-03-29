@@ -94,7 +94,7 @@ Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch6
 Zia is Viper's primary language, designed as a modern, clean systems programming language. It includes:
 
 - Module system for code organization
-- Entity types (similar to classes) with methods and fields
+- Classes and structs with methods and fields
 - Strong static typing (Integer, Boolean, String, etc.)
 - Structured control flow (if/else, while, for, match)
 - Functions with type annotations
@@ -117,9 +117,9 @@ Run it with:
 ./build/src/tools/zia/zia hello.zia
 ```
 
-### 10. What are entities in Zia?
+### 10. What are classes in Zia?
 
-Entities are Zia's object-oriented construct, similar to classes:
+Classes are Zia's object-oriented construct:
 
 ```rust
 class Counter {
@@ -191,7 +191,7 @@ Key limitations to be aware of:
 - **No SET/CALL keywords** (direct assignment only)
 - **Type suffixes required** for string functions (use `Str$`, `Chr$`, not `Str`, `Chr`)
 
-See `/docs/bugs/viper_bugs.md` for documented issues and workarounds.
+See `/docs/bugs/language_audit_2026_03_25.md` for documented issues and workarounds.
 
 ### 15. How do I use the AddFile keyword for modular programs?
 
@@ -298,7 +298,7 @@ See `/docs/frontend-howto.md` for detailed guidance.
 
 ### 26. How do I report bugs or request features?
 
-- **Bugs**: Add to `/docs/bugs/viper_bugs.md` or open an issue
+- **Bugs**: Open a GitHub issue
 - **Features**: Open a discussion or create an issue describing the use case
 - **Contributing**: Follow the Conventional Commits format for commit messages
 

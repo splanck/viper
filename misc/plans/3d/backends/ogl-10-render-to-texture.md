@@ -1,15 +1,25 @@
-# OGL-10: Render-to-Texture
+# OGL-10: Render-To-Texture
 
-## Context
-`gl_set_render_target()` is an empty stub. Need FBO (framebuffer object) for offscreen rendering.
+## Current State
 
-Binding and unbinding already route through [`src/runtime/graphics/rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c). The OpenGL work here is implementing the backend stub and managing FBO lifetime sensibly.
+`gl_set_render_target()` is still a stub. The shared runtime already routes render-target binding through [`rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c), so the missing work is backend-local FBO ownership plus one shared behavior clarification.
 
-## Implementation
+## Shared Prerequisite
 
-### Step 1: Add FBO state to context
+Canvas3D currently draws the skybox directly into `render_target->color_buf` when a CPU render target is bound. A GPU render-to-texture path will overwrite that buffer during readback unless this is addressed.
+
+Before OGL-10 is considered complete, pick and implement one of these behaviors:
+
+1. move skybox rendering for GPU RTT into the backend, or
+2. skip the current CPU skybox write when a GPU backend owns the render target
+
+The plan should not silently accept skybox loss.
+
+## Backend State
+
+Add to `gl_context_t`:
+
 ```c
-// Add to gl_context_t:
 GLuint rtt_fbo;
 GLuint rtt_color_tex;
 GLuint rtt_depth_rbo;
@@ -18,109 +28,72 @@ int8_t rtt_active;
 vgfx3d_rendertarget_t *rtt_target;
 ```
 
-### Step 2: Implement set_render_target
-```c
-static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
-    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (rt) {
-        // Release old FBO resources before creating new ones (prevents leaks on re-bind)
-        if (ctx->rtt_fbo) {
-            gl.DeleteFramebuffers(1, &ctx->rtt_fbo);
-            gl.DeleteTextures(1, &ctx->rtt_color_tex);
-            gl.DeleteRenderbuffers(1, &ctx->rtt_depth_rbo);
-        }
-        // Create FBO
-        gl.GenFramebuffers(1, &ctx->rtt_fbo);
-        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
+## `set_render_target()`
 
-        // Color texture attachment
-        gl.GenTextures(1, &ctx->rtt_color_tex);
-        gl.BindTexture(GL_TEXTURE_2D, ctx->rtt_color_tex);
-        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0,
-                      GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                GL_TEXTURE_2D, ctx->rtt_color_tex, 0);
+Implement `gl_set_render_target()` so that:
 
-        // Depth renderbuffer attachment
-        gl.GenRenderbuffers(1, &ctx->rtt_depth_rbo);
-        gl.BindRenderbuffer(GL_RENDERBUFFER, ctx->rtt_depth_rbo);
-        gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F,
-                               rt->width, rt->height);
-        gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                                   GL_RENDERBUFFER, ctx->rtt_depth_rbo);
+- `rt != NULL`
+  - destroys any previous RTT resources
+  - creates a framebuffer
+  - creates a color texture attachment (`GL_RGBA8`)
+  - creates a depth renderbuffer attachment (`GL_DEPTH_COMPONENT32F`)
+  - validates `GL_FRAMEBUFFER_COMPLETE`
+  - stores `rtt_target`, `rtt_width`, `rtt_height`, `rtt_active`
+- `rt == NULL`
+  - binds the default framebuffer
+  - destroys RTT resources
+  - clears RTT state
 
-        // Check completeness
-        GLenum status = gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
-        if (status != GL_FRAMEBUFFER_COMPLETE) {
-            // Log error, clean up
-        }
+## Frame Ownership
 
-        ctx->rtt_width = rt->width;
-        ctx->rtt_height = rt->height;
-        ctx->rtt_active = 1;
-        ctx->rtt_target = rt;
-    } else {
-        // Unbind FBO → back to default framebuffer
-        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (ctx->rtt_fbo) {
-            gl.DeleteFramebuffers(1, &ctx->rtt_fbo);
-            gl.DeleteTextures(1, &ctx->rtt_color_tex);
-            gl.DeleteRenderbuffers(1, &ctx->rtt_depth_rbo);
-        }
-        ctx->rtt_fbo = 0;
-        ctx->rtt_active = 0;
-        ctx->rtt_target = NULL;
-    }
-}
-```
+`gl_begin_frame()` must bind the correct framebuffer and viewport:
 
-### Step 3: Use FBO in begin_frame
-```c
-if (ctx->rtt_active && ctx->rtt_fbo) {
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
-    gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
-} else {
-    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-    // normal viewport
-}
-```
+- RTT active:
+  - bind `ctx->rtt_fbo`
+  - set viewport to `rtt_width`/`rtt_height`
+- RTT inactive:
+  - bind framebuffer `0`
+  - set viewport to window size
 
-### Step 4: Readback in end_frame
-```c
-if (ctx->rtt_active && ctx->rtt_target) {
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
-    uint8_t *dst = ctx->rtt_target->color_buf;
-    gl.ReadPixels(0, 0, ctx->rtt_width, ctx->rtt_height,
-                  GL_RGBA, GL_UNSIGNED_BYTE, dst);
-    // Flip vertically (OpenGL origin is bottom-left)
-    // ... row swap loop ...
-}
-```
+`gl_end_frame()` must:
 
-### Step 5: Load FBO GL functions
-```c
-LOAD(GenFramebuffers);
-LOAD(DeleteFramebuffers);
-LOAD(BindFramebuffer);
-LOAD(FramebufferTexture2D);
-LOAD(FramebufferRenderbuffer);
-LOAD(CheckFramebufferStatus);
-LOAD(GenRenderbuffers);
-LOAD(DeleteRenderbuffers);
-LOAD(BindRenderbuffer);
-LOAD(RenderbufferStorage);
-LOAD(ReadPixels);
-```
+- read the RTT color texture back into `rt->color_buf` with `glReadPixels`
+- vertically flip the readback because OpenGL's origin is bottom-left
+- avoid swapping the window backbuffer; presentation still belongs to `present()`
 
-All core GL 3.3.
+No public API currently consumes render-target depth on the CPU side, so color readback is the required correctness path.
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — FBO state, set_render_target, begin_frame FBO binding, end_frame readback, GL function loading
-- `src/runtime/graphics/rt_rendertarget3d.c` — no API change expected; only verify it remains the single binding path
+## Loader And Constant Additions
 
-## Testing
-- Render to 256x256 FBO → AsPixels returns correct image
-- Switch between FBO and screen → both correct
-- Depth testing in FBO → occluded objects hidden
+Load:
+
+- `GenFramebuffers`
+- `DeleteFramebuffers`
+- `BindFramebuffer`
+- `CheckFramebufferStatus`
+- `FramebufferTexture2D`
+- `GenRenderbuffers`
+- `DeleteRenderbuffers`
+- `BindRenderbuffer`
+- `RenderbufferStorage`
+- `FramebufferRenderbuffer`
+- `ReadPixels`
+
+Add constants for:
+
+- `GL_FRAMEBUFFER`
+- `GL_RENDERBUFFER`
+- `GL_COLOR_ATTACHMENT0`
+- `GL_DEPTH_ATTACHMENT`
+- `GL_FRAMEBUFFER_COMPLETE`
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+- shared follow-up in [`src/runtime/graphics/rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) for skybox/RTT behavior
+
+## Done When
+
+- Rendering to `RenderTarget3D` produces a correct `AsPixels()` result
+- Switching between offscreen and onscreen rendering works repeatedly
+- GPU RTT does not silently drop the skybox path

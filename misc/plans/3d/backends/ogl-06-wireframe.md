@@ -1,15 +1,13 @@
 # OGL-06: Wireframe Mode
 
-## Context
-`wireframe` parameter void-cast at line 642. OpenGL supports wireframe via `glPolygonMode`.
+## Current State
 
-## Current Code
-```c
-(void)wireframe;
-```
+`wireframe` is ignored in the OpenGL draw path.
 
-## Fix
-Replace with:
+## Implementation
+
+Add:
+
 ```c
 if (wireframe)
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -17,16 +15,26 @@ else
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 ```
 
-Need to add `PolygonMode` to the GL function loader:
-```c
-LOAD(PolygonMode);
-```
+Required loader addition:
 
-This is core GL 3.3 — no extension needed.
+- `PolygonMode`
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — replace void-cast with glPolygonMode, load function pointer
+Required constants:
 
-## Testing
-- wireframe=true → wireframe edges
-- wireframe=false → solid fill
+- `GL_FRONT_AND_BACK`
+- `GL_LINE`
+- `GL_FILL`
+
+## Notes
+
+- Apply the mode in the main draw path before `glDrawElements`.
+- Keep the shadow pass depth-only and unaffected by this toggle unless an explicit shadow-wireframe mode is ever added.
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- `wireframe=true` renders lines
+- `wireframe=false` renders filled triangles

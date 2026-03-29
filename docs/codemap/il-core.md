@@ -10,7 +10,7 @@ Core IL data structures (`src/il/core/`) representing modules, functions, blocks
 
 ## Overview
 
-- **Total source files**: 23 (.hpp/.cpp/.def)
+- **Total source files**: 24 (.hpp/.cpp/.def)
 
 ## Module Structure
 

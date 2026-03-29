@@ -1,47 +1,49 @@
 # OGL-05: Spot Light Cone Attenuation
 
-## Context
-Same as MTL-02 and D3D-04. Spot lights (type 3) fall to ambient. Light uniform arrays lack cone fields.
+## Current State
 
-## Implementation
+The OpenGL fragment shader handles directional and point lights, but spot lights still fall through to the ambient branch.
 
-### Step 1: Add cone uniforms to GLSL
+## Shared State
+
+No new shared runtime work is required:
+
+- `vgfx3d_light_params_t` already carries `inner_cos` and `outer_cos`
+- Canvas3D already fills those fields when building light params
+
+## GLSL Changes
+
+Add:
+
 ```glsl
 uniform float uLightInnerCos[8];
 uniform float uLightOuterCos[8];
 ```
 
-### Step 2: Add spot branch in fragment shader
-Replace `else` clause:
+Implement a `uLightType == 3` branch using:
+
+- point-light style distance attenuation
+- cone attenuation based on `inner_cos` / `outer_cos`
+- smooth interpolation between the inner and outer cone
+
+Use the same smoothstep-style Hermite blend already used by the software and Metal paths:
+
 ```glsl
-} else if (uLightType[i] == 3) {
-    vec3 tl = uLightPos[i] - vWorldPos;
-    float d = length(tl); L = tl / max(d, 0.0001);
-    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);
-    float spotDot = dot(-L, normalize(uLightDir[i]));
-    if (spotDot < uLightOuterCos[i]) {
-        atten = 0.0;
-    } else if (spotDot < uLightInnerCos[i]) {
-        float t = (spotDot - uLightOuterCos[i]) /
-                  (uLightInnerCos[i] - uLightOuterCos[i]);
-        atten *= t * t * (3.0 - 2.0 * t);
-    }
-} else {
-    result += uLightColor[i] * uLightIntensity[i] * baseColor;
-    continue;
-}
+float t = (spotDot - outerCos) / (innerCos - outerCos);
+atten *= t * t * (3.0 - 2.0 * t);
 ```
 
-### Step 3: Get uniform locations + upload in C
-```c
-ctx->uLightInnerCos[i] = gl.GetUniformLocation(ctx->program, name);
-// In submit_draw:
-gl.Uniform1f(ctx->uLightInnerCos[i], lights[i].inner_cos);
-gl.Uniform1f(ctx->uLightOuterCos[i], lights[i].outer_cos);
-```
+## C-Side Changes
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — GLSL cone uniforms, fragment spot branch, C uniform upload
+- fetch uniform locations for both arrays
+- upload `inner_cos` and `outer_cos` for every active light
 
-## Testing
-- Same tests as MTL-02 and D3D-04
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Spot lights brighten inside the inner cone
+- Fade smoothly between inner and outer cone
+- Contribute nothing outside the outer cone

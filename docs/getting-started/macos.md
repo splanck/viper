@@ -152,7 +152,7 @@ Hello, World!
 
 ## What to Read Next
 
-- **[Zia Tutorial](../zia-getting-started.md)** — Learn Zia by example: variables, control flow, functions, entities, and generics
+- **[Zia Tutorial](../zia-getting-started.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
 - **[Zia Reference](../zia-reference.md)** — Complete language reference
 - **[BASIC Tutorial](../basic-language.md)** — Viper also ships a BASIC frontend
 - **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference

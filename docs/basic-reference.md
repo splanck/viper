@@ -48,8 +48,8 @@ Complete language reference for Viper BASIC. This document describes **statement
 Comment. A leading apostrophe starts a comment.
 
 ```basic
-10 ' Single-line comment
-20 PRINT "Hello"
+' Single-line comment
+PRINT "Hello"
 ```
 
 ### CLASS / NEW / DELETE
@@ -58,34 +58,34 @@ Defines classes with scalar or array fields; construct with NEW, optionally free
 declared with dimensions and accessed using `obj.field(index)`.
 
 ```basic
-10 CLASS Counter
-20   X AS INTEGER
-30   SUB NEW()
-40     LET ME.X = 0
-50   END SUB
-60   SUB INC()
-70     LET ME.X = ME.X + 1
-80   END SUB
-90 END CLASS
+CLASS Counter
+  X AS INTEGER
+  SUB NEW()
+   LET ME.X = 0
+  END SUB
+  SUB INC()
+   LET ME.X = ME.X + 1
+  END SUB
+END CLASS
 
-100 DIM c AS Counter
-110 LET c = NEW Counter()
-120 c.INC()
-130 PRINT c.X
-140 DELETE c
+DIM c AS Counter
+LET c = NEW Counter()
+c.INC()
+PRINT c.X
+DELETE c
 ```
 
 Array fields:
 
 ```basic
-10 CLASS Buffer
-20   DIM data(8) AS INTEGER
-30 END CLASS
+CLASS Buffer
+  DIM data(8) AS INTEGER
+END CLASS
 
-40 DIM b AS Buffer
-50 LET b = NEW Buffer()      ' data() allocated length 8 by constructor
-60 LET b.data(0) = 42
-70 PRINT b.data(0)
+DIM b AS Buffer
+LET b = NEW Buffer()      ' data() allocated length 8 by constructor
+LET b.data(0) = 42
+PRINT b.data(0)
 ```
 
 Notes:
@@ -99,8 +99,8 @@ Notes:
 Emits a beep or bell sound.
 
 ```basic
-10 BEEP
-20 PRINT "Alert!"
+BEEP
+PRINT "Alert!"
 ```
 
 ### CLS
@@ -108,8 +108,8 @@ Emits a beep or bell sound.
 Clears the screen and moves the cursor home (1,1). No-op when stdout is not a TTY.
 
 ```basic
-10 CLS
-20 PRINT "Clean screen"
+CLS
+PRINT "Clean screen"
 ```
 
 ### CLOSE
@@ -117,9 +117,9 @@ Clears the screen and moves the cursor home (1,1). No-op when stdout is not a TT
 Closes an open file number.
 
 ```basic
-10 OPEN "out.txt" FOR OUTPUT AS #1
-20 PRINT #1, "Hello"
-30 CLOSE #1
+OPEN "out.txt" FOR OUTPUT AS #1
+PRINT #1, "Hello"
+CLOSE #1
 ```
 
 ### COLOR
@@ -128,9 +128,9 @@ Sets terminal foreground and background colors. Uses values 0-7 for normal color
 leave unchanged.
 
 ```basic
-10 COLOR 15, 1   ' Bright white on blue
-20 PRINT "Colored text"
-30 COLOR -1, -1  ' Reset to defaults
+COLOR 15, 1   ' Bright white on blue
+PRINT "Colored text"
+COLOR -1, -1  ' Reset to defaults
 ```
 
 ### DESTRUCTOR
@@ -138,15 +138,15 @@ leave unchanged.
 Optional destructor called on DELETE and finalization.
 
 ```basic
-10 CLASS WithFile
-20   FH AS INTEGER
-30   SUB NEW()
-40     OPEN "out.txt" FOR OUTPUT AS #1
-50   END SUB
-60   DESTRUCTOR()
-70     CLOSE #1
-80   END DESTRUCTOR
-90 END CLASS
+CLASS WithFile
+  FH AS INTEGER
+  SUB NEW()
+   OPEN "out.txt" FOR OUTPUT AS #1
+  END SUB
+  DESTRUCTOR()
+   CLOSE #1
+  END DESTRUCTOR
+END CLASS
 ```
 
 ### DIM
@@ -154,8 +154,8 @@ Optional destructor called on DELETE and finalization.
 Declares a variable or array. Required for arrays; optional for scalars (to pin type).
 
 ```basic
-10 DIM A(5)           ' array 0..4
-20 DIM Flag AS BOOLEAN
+DIM A(5)           ' array 0..4
+DIM Flag AS BOOLEAN
 ```
 
 ### DO ... LOOP
@@ -163,10 +163,10 @@ Declares a variable or array. Required for arrays; optional for scalars (to pin 
 Loop with condition at start or end (DO WHILE/UNTIL … LOOP or DO … LOOP UNTIL/WHILE).
 
 ```basic
-10 LET I = 3
-20 DO
-30   LET I = I - 1
-40 LOOP UNTIL I = 0
+LET I = 3
+DO
+  LET I = I - 1
+LOOP UNTIL I = 0
 ```
 
 ### END
@@ -174,9 +174,9 @@ Loop with condition at start or end (DO WHILE/UNTIL … LOOP or DO … LOOP UNTI
 Terminates program execution immediately.
 
 ```basic
-10 PRINT "before end"
-20 END
-30 PRINT "this never prints"
+PRINT "before end"
+END
+PRINT "this never prints"
 ```
 
 ### ENUM
@@ -212,10 +212,10 @@ Negative values are supported (`BACKWARD = -1`). Duplicate variant names produce
 Exits the nearest loop (EXIT FOR / EXIT DO).
 
 ```basic
-10 FOR I = 1 TO 10
-20   IF I = 3 THEN EXIT FOR
-30   PRINT I
-40 NEXT
+FOR I = 1 TO 10
+  IF I = 3 THEN EXIT FOR
+  PRINT I
+NEXT
 ```
 
 ### FOR ... NEXT
@@ -223,9 +223,9 @@ Exits the nearest loop (EXIT FOR / EXIT DO).
 Counted loop; optional STEP.
 
 ```basic
-10 FOR I = 1 TO 5
-20   PRINT I
-30 NEXT
+FOR I = 1 TO 5
+  PRINT I
+NEXT
 ```
 
 ### GOSUB
@@ -233,11 +233,12 @@ Counted loop; optional STEP.
 Subroutine call to a line label; returns with RETURN (statement-form).
 
 ```basic
-10 GOSUB 100
-20 PRINT "back"
-30 END
-100 PRINT "in subroutine"
-110 RETURN
+GOSUB MySub
+PRINT "back"
+END
+MySub:
+PRINT "in subroutine"
+RETURN
 ```
 
 ---
@@ -256,12 +257,12 @@ instance) is passed as the first argument when lowering to the runtime.
 ### Example: `Viper.String`
 
 ```basic
-10 DIM s AS Viper.String
-20 LET s = "hello"
-30 PRINT s.Length              ' prints 5
-40 PRINT s.Substring(1, 3)     ' zero-based start, length → "ell"
-45 PRINT s.Mid(1)              ' suffix from index 1 → "ello"
-50 LET s2 = NEW Viper.String("abc")  ' optional: requires ctor helper
+DIM s AS Viper.String
+LET s = "hello"
+PRINT s.Length              ' prints 5
+PRINT s.Substring(1, 3)     ' zero-based start, length → "ell"
+PRINT s.Mid(1)              ' suffix from index 1 → "ello"
+LET s2 = NEW Viper.String("abc")  ' optional: requires ctor helper
 ```
 
 Lowering equivalence (receiver as first argument):
@@ -279,9 +280,9 @@ Null and bounds:
 BASIC `STRING` alias:
 
 ```basic
-10 DIM s AS STRING
-20 LET s = "abcd"
-30 PRINT s.Length   ' same as Viper.String
+DIM s AS STRING
+LET s = "abcd"
+PRINT s.Length   ' same as Viper.String
 ```
 
 ### `Viper.String` API
@@ -326,12 +327,13 @@ Semantics:
 
 ### GOTO
 
-Unconditional jump to a numeric line label.
+Unconditional jump to a label.
 
 ```basic
-10 GOTO 40
-20 PRINT "skipped"
-40 PRINT "landed"
+GOTO Skip
+PRINT "skipped"
+Skip:
+PRINT "landed"
 ```
 
 ### IF ... THEN
@@ -339,13 +341,13 @@ Unconditional jump to a numeric line label.
 Conditional execution; optional ELSEIF / ELSE; terminated by END IF.
 
 ```basic
-10 IF X = 0 THEN
-20   PRINT "zero"
-30 ELSEIF X < 0 THEN
-40   PRINT "negative"
-50 ELSE
-60   PRINT "positive"
-70 END IF
+IF X = 0 THEN
+  PRINT "zero"
+ELSEIF X < 0 THEN
+  PRINT "negative"
+ELSE
+  PRINT "positive"
+END IF
 ```
 
 ### INPUT
@@ -353,8 +355,8 @@ Conditional execution; optional ELSEIF / ELSE; terminated by END IF.
 Reads tokens from standard input into variables.
 
 ```basic
-10 INPUT "Name? ", N$
-20 PRINT "Hello, "; N$
+INPUT "Name? ", N$
+PRINT "Hello, "; N$
 ```
 
 ### LET
@@ -362,9 +364,9 @@ Reads tokens from standard input into variables.
 Assignment to a variable, array element, or field. Required for assignment statements.
 
 ```basic
-10 LET X = 2
-20 DIM A(3)
-30 LET A(0) = X
+LET X = 2
+DIM A(3)
+LET A(0) = X
 ```
 
 ### LINE INPUT
@@ -372,8 +374,8 @@ Assignment to a variable, array element, or field. Required for assignment state
 Reads an entire line into a string variable.
 
 ```basic
-10 LINE INPUT "Line? ", L$
-20 PRINT "You typed: "; L$
+LINE INPUT "Line? ", L$
+PRINT "You typed: "; L$
 ```
 
 ### LOCATE
@@ -381,22 +383,23 @@ Reads an entire line into a string variable.
 Moves the terminal cursor to a 1-based row and column position. No-op when stdout is not a TTY.
 
 ```basic
-10 CLS
-20 LOCATE 10, 20
-30 PRINT "Centered"
+CLS
+LOCATE 10, 20
+PRINT "Centered"
 ```
 
 ### ON ERROR GOTO
 
-Installs an error handler at a line label.
+Installs an error handler at a label.
 
 ```basic
-10 ON ERROR GOTO 100
-20 OPEN "missing.txt" FOR INPUT AS #1
-30 PRINT "opened"
-40 END
-100 PRINT "failed to open"
-110 RESUME 0
+ON ERROR GOTO ErrHandler
+OPEN "missing.txt" FOR INPUT AS #1
+PRINT "opened"
+END
+ErrHandler:
+PRINT "failed to open"
+RESUME 0
 ```
 
 ### TRY … CATCH
@@ -428,14 +431,14 @@ Examples
 Divide by zero is caught and control resumes after the block:
 
 ```basic
-10 TRY
-20   LET Z = 0
-25   LET X = 1 / Z
-30   PRINT "nope"
-40 CATCH e
-50   PRINT "caught "; STR$(ERR())
-60 END TRY
-70 PRINT "after"
+TRY
+  LET Z = 0
+  LET X = 1 / Z
+  PRINT "nope"
+CATCH e
+  PRINT "caught "; STR$(ERR())
+END TRY
+PRINT "after"
 ```
 
 Output:
@@ -448,17 +451,17 @@ after
 Nested TRY where the inner handler fires and does not leak outward:
 
 ```basic
-10 TRY
-20   TRY
-30     OPEN "missing.txt" FOR INPUT AS #1
-40     PRINT "opened"
-50   CATCH
-60     PRINT "inner"
-70   END TRY
-80   PRINT "outer-body"
-90 CATCH
-100  PRINT "outer"
-110 END TRY
+TRY
+  TRY
+   OPEN "missing.txt" FOR INPUT AS #1
+   PRINT "opened"
+  CATCH
+   PRINT "inner"
+  END TRY
+  PRINT "outer-body"
+CATCH
+PRINT "outer"
+END TRY
 ```
 
 Output:
@@ -473,9 +476,9 @@ outer-body
 Opens a file and assigns it a file number (#).
 
 ```basic
-10 OPEN "out.txt" FOR OUTPUT AS #1
-20 PRINT #1, "Hello"
-30 CLOSE #1
+OPEN "out.txt" FOR OUTPUT AS #1
+PRINT #1, "Hello"
+CLOSE #1
 ```
 
 ### PRINT
@@ -483,9 +486,9 @@ Opens a file and assigns it a file number (#).
 Writes to the console. ';' suppresses newline; ',' aligns to columns.
 
 ```basic
-10 PRINT "Hello, world"
-20 PRINT "A"; "B"      ' prints AB (no newline between)
-30 PRINT "A", "B"      ' prints in columns
+PRINT "Hello, world"
+PRINT "A"; "B"      ' prints AB (no newline between)
+PRINT "A", "B"      ' prints in columns
 ```
 
 ### PRINT #
@@ -493,9 +496,9 @@ Writes to the console. ';' suppresses newline; ',' aligns to columns.
 Writes to a file using PRINT formatting.
 
 ```basic
-10 OPEN "log.txt" FOR OUTPUT AS #1
-20 PRINT #1, "Started"
-30 CLOSE #1
+OPEN "log.txt" FOR OUTPUT AS #1
+PRINT #1, "Started"
+CLOSE #1
 ```
 
 ### RANDOMIZE
@@ -503,13 +506,13 @@ Writes to a file using PRINT formatting.
 Seeds the random number generator with a given value or current time.
 
 ```basic
-10 RANDOMIZE 12345    ' Use specific seed
-20 PRINT RND()        ' Reproducible sequence
+RANDOMIZE 12345    ' Use specific seed
+PRINT RND()        ' Reproducible sequence
 ```
 
 ```basic
-10 RANDOMIZE TIMER    ' Seed from current time
-20 PRINT RND()        ' Different each run
+RANDOMIZE TIMER    ' Seed from current time
+PRINT RND()        ' Different each run
 ```
 
 ### REDIM
@@ -517,8 +520,8 @@ Seeds the random number generator with a given value or current time.
 Resizes an existing array (contents may be reinitialized).
 
 ```basic
-10 DIM A(2)           ' 0..1
-20 REDIM A(10)        ' 0..9
+DIM A(2)           ' 0..1
+REDIM A(10)        ' 0..9
 ```
 
 ### RESUME
@@ -526,8 +529,8 @@ Resizes an existing array (contents may be reinitialized).
 Resumes execution after an error; forms: RESUME, RESUME NEXT, RESUME 0.
 
 ```basic
-100 PRINT "failed to open"
-110 RESUME 0
+PRINT "failed to open"
+RESUME 0
 ```
 
 ### RETURN
@@ -535,18 +538,19 @@ Resumes execution after an error; forms: RESUME, RESUME NEXT, RESUME 0.
 Returns from a FUNCTION to its caller, or from a GOSUB subroutine to its call site.
 
 ```basic
-10 FUNCTION F(N)
-20   IF N < 0 THEN RETURN -1
-30   RETURN N * 2
-40 END FUNCTION
+FUNCTION F(N)
+  IF N < 0 THEN RETURN -1
+  RETURN N * 2
+END FUNCTION
 ```
 
 ```basic
-10 GOSUB 100
-20 PRINT "back"
-30 END
-100 PRINT "in subroutine"
-110 RETURN   ' RETURN with no value in GOSUB context
+GOSUB MySub
+PRINT "back"
+END
+MySub:
+PRINT "in subroutine"
+RETURN   ' RETURN with no value in GOSUB context
 ```
 
 ### SEEK
@@ -554,9 +558,9 @@ Returns from a FUNCTION to its caller, or from a GOSUB subroutine to its call si
 Sets or queries the file position for a file number.
 
 ```basic
-10 OPEN "data.bin" FOR BINARY AS #1
-20 SEEK #1, 0        ' go to start
-30 CLOSE #1
+OPEN "data.bin" FOR BINARY AS #1
+SEEK #1, 0        ' go to start
+CLOSE #1
 ```
 
 ### SELECT CASE
@@ -564,12 +568,12 @@ Sets or queries the file position for a file number.
 Multi-way branch on a value; range and relational cases supported.
 
 ```basic
-10 SELECT CASE N
-20 CASE < 0: PRINT "neg"
-30 CASE 0:   PRINT "zero"
-40 CASE 1 TO 9: PRINT "small"
-50 CASE ELSE: PRINT "big"
-60 END SELECT
+SELECT CASE N
+CASE < 0: PRINT "neg"
+CASE 0:   PRINT "zero"
+CASE 1 TO 9: PRINT "small"
+CASE ELSE: PRINT "big"
+END SELECT
 ```
 
 ### SUB / FUNCTION
@@ -577,16 +581,16 @@ Multi-way branch on a value; range and relational cases supported.
 Declares procedures and functions. Functions return a value via RETURN.
 
 ```basic
-10 SUB HELLO(S$)
-20   PRINT "Hello, "; S$
-30 END SUB
+SUB HELLO(S$)
+  PRINT "Hello, "; S$
+END SUB
 
-40 FUNCTION SQUARE(N)
-50   RETURN N * N
-60 END FUNCTION
+FUNCTION SQUARE(N)
+  RETURN N * N
+END FUNCTION
 
-70 HELLO("Ada")            ' statement call (parentheses required)
-80 LET X = SQUARE(9)       ' function in expression
+HELLO("Ada")            ' statement call (parentheses required)
+LET X = SQUARE(9)       ' function in expression
 ```
 
 ### WHILE ... WEND
@@ -594,11 +598,11 @@ Declares procedures and functions. Functions return a value via RETURN.
 Loop while a condition is true.
 
 ```basic
-10 LET I = 0
-20 WHILE I < 3
-30   PRINT I
-40   LET I = I + 1
-50 WEND
+LET I = 0
+WHILE I < 3
+  PRINT I
+  LET I = I + 1
+WEND
 ```
 
 ### WRITE #
@@ -606,9 +610,9 @@ Loop while a condition is true.
 Writes comma-delimited data with quotes, to a file number.
 
 ```basic
-10 OPEN "out.csv" FOR OUTPUT AS #1
-20 WRITE #1, 1, "two", 3.0
-30 CLOSE #1
+OPEN "out.csv" FOR OUTPUT AS #1
+WRITE #1, 1, "two", 3.0
+CLOSE #1
 ```
 
 ## Expressions & operators
@@ -673,70 +677,70 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 **Numeric**
 
 ```basic
-10 PRINT ABS(-3)         ' 3
-20 PRINT SQR(9)          ' 3
-30 PRINT INT(3.9)        ' 3
-40 PRINT FIX(-3.9)       ' -3
-50 PRINT ROUND(2.6)      ' 3
-60 PRINT FLOOR(2.6)      ' 2
-70 PRINT CEIL(2.1)       ' 3
-80 PRINT POW(2, 10)      ' 1024
-90 PRINT SIN(0), COS(0)  ' 0  1
-100 PRINT TAN(0)          ' 0
-110 PRINT ATN(1) * 4      ' 3.14159... (pi)
-120 PRINT EXP(1)          ' 2.71828... (e)
-130 PRINT LOG(2.71828)    ' ~1  (natural log)
-140 PRINT SGN(-5)         ' -1
-150 PRINT SGN(0)          ' 0
-160 PRINT TIMER           ' seconds since midnight
-170 PRINT ERR()           ' current error code (0 = none)
+PRINT ABS(-3)         ' 3
+PRINT SQR(9)          ' 3
+PRINT INT(3.9)        ' 3
+PRINT FIX(-3.9)       ' -3
+PRINT ROUND(2.6)      ' 3
+PRINT FLOOR(2.6)      ' 2
+PRINT CEIL(2.1)       ' 3
+PRINT POW(2, 10)      ' 1024
+PRINT SIN(0), COS(0)  ' 0  1
+PRINT TAN(0)          ' 0
+PRINT ATN(1) * 4      ' 3.14159... (pi)
+PRINT EXP(1)          ' 2.71828... (e)
+PRINT LOG(2.71828)    ' ~1  (natural log)
+PRINT SGN(-5)         ' -1
+PRINT SGN(0)          ' 0
+PRINT TIMER           ' seconds since midnight
+PRINT ERR()           ' current error code (0 = none)
 ```
 
 **String**
 
 ```basic
-10 PRINT LEN("abc")            ' 3
-20 PRINT LEFT$("hello", 2)     ' "he"
-30 PRINT RIGHT$("hello", 3)    ' "llo"
-40 PRINT MID$("hello", 2, 2)   ' "el"
-50 PRINT INSTR("banana", "na") ' 3
-60 PRINT LTRIM$("  hi")        ' "hi"
-70 PRINT RTRIM$("hi  ")        ' "hi"
-80 PRINT TRIM$("  hi  ")       ' "hi"
-90 PRINT UCASE$("hi")          ' "HI"
-100 PRINT LCASE$("HI")         ' "hi"
-110 PRINT CHR$(65)             ' "A"
-120 PRINT ASC("A")             ' 65
+PRINT LEN("abc")            ' 3
+PRINT LEFT$("hello", 2)     ' "he"
+PRINT RIGHT$("hello", 3)    ' "llo"
+PRINT MID$("hello", 2, 2)   ' "el"
+PRINT INSTR("banana", "na") ' 3
+PRINT LTRIM$("  hi")        ' "hi"
+PRINT RTRIM$("hi  ")        ' "hi"
+PRINT TRIM$("  hi  ")       ' "hi"
+PRINT UCASE$("hi")          ' "HI"
+PRINT LCASE$("HI")         ' "hi"
+PRINT CHR$(65)             ' "A"
+PRINT ASC("A")             ' 65
 ```
 
 **Conversion & random**
 
 ```basic
-10 PRINT CINT(3.9)             ' 4
-20 PRINT CLNG(3.9)             ' 4
-30 PRINT CSNG(3.5)             ' 3.5
-40 PRINT CDBL(3.5)             ' 3.5
-50 PRINT VAL("42")             ' 42
-60 PRINT STR$(42)              ' " 42"
-70 PRINT RND()                 ' 0 <= x < 1
+PRINT CINT(3.9)             ' 4
+PRINT CLNG(3.9)             ' 4
+PRINT CSNG(3.5)             ' 3.5
+PRINT CDBL(3.5)             ' 3.5
+PRINT VAL("42")             ' 42
+PRINT STR$(42)              ' " 42"
+PRINT RND()                 ' 0 <= x < 1
 ```
 
 **Keyboard**
 
 ```basic
-10 LET K$ = INKEY$()
-20 IF K$ = "" THEN K$ = GETKEY$()
-30 PRINT "Key: "; K$
+LET K$ = INKEY$()
+IF K$ = "" THEN K$ = GETKEY$()
+PRINT "Key: "; K$
 ```
 
 **File query**
 
 ```basic
-10 OPEN "in.txt" FOR INPUT AS #1
-20 PRINT EOF(#1)         ' 0 until end of file
-30 PRINT LOF(#1)         ' file length in bytes
-40 PRINT LOC(#1)         ' current byte position
-50 CLOSE #1
+OPEN "in.txt" FOR INPUT AS #1
+PRINT EOF(#1)         ' 0 until end of file
+PRINT LOF(#1)         ' file length in bytes
+PRINT LOC(#1)         ' current byte position
+CLOSE #1
 ```
 
 ## ViperLib & Namespaces
@@ -1111,20 +1115,23 @@ TRY/CATCH composes with legacy `ON ERROR GOTO` as a nested handler:
 
 Example:
 
-10 ON ERROR GOTO Outer
-20 TRY
-30   ' protected code
-40 CATCH err
-50   ' handle inner error (err is i64 here)
-60 END TRY
-70 ' Outer ON ERROR handler still active
-80 END
-100 Outer:
-110 RESUME NEXT
+```basic
+ON ERROR GOTO Outer
+TRY
+  ' protected code
+CATCH err
+  ' handle inner error (err is i64 here)
+END TRY
+' Outer ON ERROR handler still active
+END
+
+Outer:
+RESUME NEXT
+```
 
 Semantics:
 
-- Inner exceptions raised between lines 20–39 are caught by the TRY handler.
+- Exceptions raised in the TRY body are caught by the TRY handler.
 - After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.
 
 ## Runtime Classes Usage Examples
@@ -1141,18 +1148,18 @@ compiler lowers property and method calls to the corresponding extern with the r
 Examples:
 
 ```basic
-10 DIM s AS STRING                 ' STRING is an alias of Viper.String
-20 LET s = "hello"
-30 Viper.Terminal.PrintI64(s.Length)
-40 Viper.Terminal.PrintStr(s.Substring(2, 3))  ' zero-based start, length 3
+DIM s AS STRING                 ' STRING is an alias of Viper.String
+LET s = "hello"
+Viper.Terminal.PrintI64(s.Length)
+Viper.Terminal.PrintStr(s.Substring(2, 3))  ' zero-based start, length 3
 
-100 DIM sb AS Viper.Text.StringBuilder
-110 LET sb = NEW Viper.Text.StringBuilder()
-120 ' Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
-130 ' sb.Append("X")
-140 ' or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, "X")
-150 Viper.Terminal.PrintI64(sb.Length)
-160 Viper.Terminal.PrintStr(sb.ToString())
+DIM sb AS Viper.Text.StringBuilder
+LET sb = NEW Viper.Text.StringBuilder()
+' Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
+' sb.Append("X")
+' or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, "X")
+Viper.Terminal.PrintI64(sb.Length)
+Viper.Terminal.PrintStr(sb.ToString())
 ```
 
 Conventions and semantics:

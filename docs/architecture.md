@@ -7,7 +7,7 @@ last-verified: 2026-03-04
 # Viper Architecture Overview
 
 **Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (Zia, BASIC) →
-intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges
+intermediate language (IL) → optimization passes → execution on the VM → native code generation. It merges
 prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked
 pages.
 
@@ -136,10 +136,10 @@ signatures.
 Example:
 
 ```llvm
-il 0.1
+il 0.2.0
 func @main() -> i64 {
 entry:
-  %v0 = add 2, 2
+  %v0 = iadd 2, 2
   ret %v0
 }
 ```
@@ -214,9 +214,9 @@ Additional runtime details live in the [VM Documentation](vm.md).
 Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI. The ABI is
 versioned and may evolve; breaking changes require coordinated updates.
 
-### VM interpreter
+### VM
 
-The VM is a register-file interpreter that dispatches opcodes using a pluggable strategy (function-table, switch, or
+The VM is a register-file engine that dispatches opcodes using a pluggable strategy (function-table, switch, or
 threaded/computed-goto). Each call creates a frame holding registers, an evaluation stack, and block state. Values are
 stored in a tagged `Slot` that represents integers, floats, pointers, and strings.
 
@@ -260,7 +260,7 @@ function, block, and source location information.
 - **x86-64** (`src/codegen/x86_64/`) — Implemented backend targeting System V AMD64 and Windows x64 ABIs (linear-scan).
   Validated on Windows with full codegen test suite passing.
 - **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated
-  end‑to‑end on Apple Silicon by running a full Frogger demo.
+  end‑to‑end on Apple Silicon across all demo games.
 
 Pipeline expectations:
 
@@ -287,8 +287,8 @@ The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 Handlers live in `src/tools/viper/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/viper/main.cpp`
 merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
 
-Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors, and a REPL (
-`viper repl`) is a nice-to-have backed by the VM.
+Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors. The REPL (
+`viper repl`) provides interactive evaluation backed by the VM.
 
 ### CLI tools (built targets)
 
@@ -323,7 +323,7 @@ tests from drifting and make builds reproducible, so the IR builder interns symb
 
 ### Performance notes
 
-Interpreter hot spots include opcode dispatch and string routines. Constant folding and dead code elimination have the
+VM hot spots include opcode dispatch and string routines. Constant folding and dead code elimination have the
 largest impact on throughput. Current optimizations and future improvements:
 
 - Threaded/computed-goto dispatch is already implemented and selected by default when supported.

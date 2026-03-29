@@ -350,7 +350,7 @@ without `malloc`/`free` overhead.
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |
 | **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Unbox does not consume the box |
-| **Objects/Entities** | malloc | Refcounted | Optional finalizer | Optional GC tracking for cycles |
+| **Objects** | malloc | Refcounted | Optional finalizer | Optional GC tracking for cycles |
 | **Vec2/Vec3** | Thread-local pool (cap 32) | Refcounted + resurrection | Immutable values | Pool recycling via finalizer |
 | **Files** | Stack (`RtFile`) | Caller-owned | POSIX fd | Manual close or finalizer-based cleanup |
 | **Network** | malloc | Refcounted | N/A | Manual `close()` available |

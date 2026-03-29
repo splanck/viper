@@ -169,9 +169,9 @@ operations.
 BASIC:
 
 ```basic
-10 ON ERROR GOTO handler
-20 ...
-30 handler:
+ON ERROR GOTO handler
+...
+handler:
 ```
 
 Lowered IL (excerpt):

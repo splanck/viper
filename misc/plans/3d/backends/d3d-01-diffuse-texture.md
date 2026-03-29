@@ -1,94 +1,78 @@
-# D3D-01: Diffuse Texture Sampling
+# D3D-01: Diffuse Texture Sampling + Vertex Color Modulation
 
-## Context
-The D3D11 pixel shader has NO texture sampling at all. The `hasTexture` flag (line 75) is set in the cbuffer but the shader never reads a texture. Every textured mesh renders as solid color on Windows GPU.
+## Current State
 
-## Implementation
+The D3D11 pixel shader does not sample a texture at all, and it also ignores `input.color`. That means:
 
-### Step 1: Add texture + sampler declarations to HLSL
-After the cbuffer declarations, before VS_INPUT:
+- textured meshes render as flat material color
+- per-vertex color is silently dropped on the GPU path
+
+This plan fixes both problems because they belong to the same `baseColor` setup.
+
+## HLSL Changes
+
+Add:
+
 ```hlsl
 Texture2D diffuseTex : register(t0);
 SamplerState texSampler : register(s0);
 ```
 
-### Step 2: Sample in pixel shader
-Replace line 116 and add texture sampling in the lit path:
+Restructure the pixel shader so `baseColor` and final alpha are built once:
+
 ```hlsl
-float4 PSMain(PS_INPUT input) : SV_Target {
-    float3 baseColor = diffuseColor.rgb;
-    float texAlpha = 1.0;
-    if (hasTexture) {
-        float4 texSample = diffuseTex.Sample(texSampler, input.uv);
-        baseColor *= texSample.rgb;
-        texAlpha = texSample.a;
-    }
-    if (unlit) return float4(baseColor, alpha * texAlpha);
-    // ... use baseColor instead of diffuseColor.rgb throughout ...
+float3 baseColor = diffuseColor.rgb * input.color.rgb;
+float texAlpha = 1.0;
+float finalAlpha = alpha * input.color.a;
+if (hasTexture) {
+    float4 texSample = diffuseTex.Sample(texSampler, input.uv);
+    baseColor *= texSample.rgb;
+    texAlpha = texSample.a;
 }
+finalAlpha *= texAlpha;
 ```
 
-### Step 3: Create sampler state in create_ctx
-```c
-D3D11_SAMPLER_DESC sampDesc = {0};
-sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
-HRESULT hr = ID3D11Device_CreateSamplerState(ctx->device, &sampDesc, &ctx->sampler);
-```
+Then:
 
-Store `ctx->sampler` and bind in submit_draw:
-```c
-ID3D11DeviceContext_PSSetSamplers(ctx->context, 0, 1, &ctx->sampler);
-```
+- use `baseColor` in both lit and unlit paths
+- return `finalAlpha` instead of plain `alpha`
 
-### Step 4: Create SRV from Pixels in submit_draw
-When `cmd->texture` is non-NULL:
-```c
-// Convert Pixels RGBA → BGRA (D3D11 expects BGRA)
-// Create D3D11_TEXTURE2D_DESC
-// CreateTexture2D → CreateShaderResourceView
-// PSSetShaderResources(0, 1, &srv)
-```
+This layout is intentionally compatible with D3D-07, D3D-08, and D3D-16.
 
-Full texture creation:
-```c
-D3D11_TEXTURE2D_DESC texDesc = {0};
-texDesc.Width = pw;
-texDesc.Height = ph;
-texDesc.MipLevels = 1;
-texDesc.ArraySize = 1;
-texDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-texDesc.SampleDesc.Count = 1;
-texDesc.Usage = D3D11_USAGE_DEFAULT;
-texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+## Sampler State
 
-D3D11_SUBRESOURCE_DATA initData = {0};
-initData.pSysMem = bgra_buffer;
-initData.SysMemPitch = pw * 4;
+Create one shared sampler in `create_ctx()`:
 
-ID3D11Texture2D *tex;
-ID3D11Device_CreateTexture2D(ctx->device, &texDesc, &initData, &tex);
+- filter: `D3D11_FILTER_MIN_MAG_MIP_LINEAR`
+- wrap: `D3D11_TEXTURE_ADDRESS_WRAP`
+- `MaxLOD = D3D11_FLOAT32_MAX`
 
-ID3D11ShaderResourceView *srv;
-ID3D11Device_CreateShaderResourceView(ctx->device, (ID3D11Resource *)tex, NULL, &srv);
-ID3D11DeviceContext_PSSetShaderResources(ctx->context, 0, 1, &srv);
+Bind it at slot `s0` during draws.
 
-// Release tex and srv after draw (or cache — see D3D-03)
-ID3D11Texture2D_Release(tex);
-ID3D11ShaderResourceView_Release(srv);
-```
+## Texture Upload Path
 
-### Step 5: RGBA → BGRA conversion
-Same pattern as Metal backend — allocate temp buffer, swap R and B channels, upload, free.
+Add a helper that converts a `Pixels` object into a `Texture2D + ShaderResourceView` pair:
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_d3d11.c` — HLSL shader source, sampler creation, SRV creation + binding, pixel format conversion
+1. read `w`, `h`, and packed `0xRRGGBBAA` pixels from the runtime object
+2. unpack into a sequential RGBA byte buffer
+3. create a `DXGI_FORMAT_R8G8B8A8_UNORM` texture
+4. create an SRV for that texture
 
-## Testing
-- Textured box → texture visible (was solid color)
-- Untextured box → still renders with diffuse color
-- Textured + lit → texture modulated by lighting
-- Textured + unlit → texture * diffuseColor only
+Until D3D-03 lands, textures created for a draw may be temporary and released after the draw.
+
+## Draw Path Rules
+
+- bind diffuse texture SRV at `t0`
+- when no texture is present:
+  - set `hasTexture = 0`
+  - bind a null SRV at `t0` to avoid stale state
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_d3d11.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11.c)
+
+## Done When
+
+- textured meshes sample correctly
+- untextured meshes still render correctly
+- vertex color visibly modulates the material color

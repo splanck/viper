@@ -10,7 +10,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ## Overview
 
-- **Total source files**: 61 (.hpp/.cpp)
+- **Total source files**: 113 (.hpp/.cpp)
 
 ## User-Facing Tools
 
@@ -66,6 +66,32 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 For full details, see [codemap/zia-server.md](zia-server.md).
 
+### lsp-common (`lsp-common/`)
+
+Shared infrastructure for both Zia and BASIC language servers.
+
+| File | Purpose |
+|------|---------|
+| `Json.hpp` / `Json.cpp` | Zero-dependency JSON value type, parser, emitter |
+| `JsonRpc.hpp` / `JsonRpc.cpp` | JSON-RPC 2.0 request/response types |
+| `Transport.hpp` / `Transport.cpp` | MCP and LSP transports |
+| `LspHandler.hpp` / `LspHandler.cpp` | Shared LSP protocol handling |
+| `McpHandler.hpp` / `McpHandler.cpp` | Shared MCP protocol handling |
+| `ICompilerBridge.hpp` / `ICompilerBridge.cpp` | Abstract compiler bridge interface |
+| `DocumentStore.hpp` / `DocumentStore.cpp` | In-memory open file tracking |
+| `DiagnosticUtils.hpp` / `DiagnosticUtils.cpp` | Diagnostic formatting for LSP |
+| `TextUtils.hpp` / `TextUtils.cpp` | Text manipulation helpers |
+| `ServerTypes.hpp` | Shared types (CompletionItem, Diagnostic, etc.) |
+
+### vbasic-server (`vbasic-server/`)
+
+BASIC language server (reuses lsp-common infrastructure).
+
+| File | Purpose |
+|------|---------|
+| `BasicCompilerBridge.hpp` / `BasicCompilerBridge.cpp` | BASIC-specific compiler bridge |
+| `main.cpp` | Entry point |
+
 ## Advanced Tools
 
 ### viper (`viper/`)
@@ -85,6 +111,8 @@ For full details, see [codemap/zia-server.md](zia-server.md).
 | `cmd_front_zia.cpp`     | Zia frontend subcommand             |
 | `cmd_il_opt.cpp`        | IL optimization subcommand          |
 | `cmd_init.cpp`          | Init subcommand implementation      |
+| `cmd_package.cpp`       | Package subcommand (VAPS)           |
+| `cmd_repl.cpp`          | Interactive REPL subcommand         |
 | `cmd_run.cpp`           | Run subcommand implementation       |
 | `cmd_run_il.cpp`        | IL execution subcommand             |
 | `main.cpp`              | Unified compiler driver entry point |

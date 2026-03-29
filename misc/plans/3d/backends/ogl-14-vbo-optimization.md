@@ -1,54 +1,71 @@
-# OGL-14: VBO/IBO Per-Draw Optimization
+# OGL-14: Persistent Dynamic VBO/IBO
 
-## Context
-Same issue as D3D-12. Lines 694-732 create + destroy VBO/IBO every draw call. OpenGL equivalent of Map/Discard is `glBufferData` with `GL_STREAM_DRAW` (orphan + re-upload).
+## Current State
+
+The OpenGL backend creates and destroys a VBO and IBO for every draw. That is needlessly expensive and makes later features pile onto an already wasteful path.
 
 ## Implementation
 
-### Persistent dynamic buffers
+Add persistent dynamic buffers to `gl_context_t`:
+
 ```c
-// In create_ctx:
-gl.GenBuffers(1, &ctx->dynamic_vbo);
-gl.GenBuffers(1, &ctx->dynamic_ibo);
-
-// Large enough for typical meshes
-#define OGL_MAX_VBO_SIZE (4 * 1024 * 1024)  // 4MB
-#define OGL_MAX_IBO_SIZE (1 * 1024 * 1024)  // 1MB
-
-gl.BindBuffer(GL_ARRAY_BUFFER, ctx->dynamic_vbo);
-gl.BufferData(GL_ARRAY_BUFFER, OGL_MAX_VBO_SIZE, NULL, GL_STREAM_DRAW);
-gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->dynamic_ibo);
-gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, OGL_MAX_IBO_SIZE, NULL, GL_STREAM_DRAW);
+GLuint dynamic_vbo;
+GLuint dynamic_ibo;
+size_t dynamic_vbo_size;
+size_t dynamic_ibo_size;
 ```
 
-### Per-draw: orphan + sub-upload
-```c
-GLsizei vbo_size = cmd->vertex_count * sizeof(vgfx3d_vertex_t);
-GLsizei ibo_size = cmd->index_count * sizeof(uint32_t);
+Recommended initial sizes:
 
-if (vbo_size <= OGL_MAX_VBO_SIZE && ibo_size <= OGL_MAX_IBO_SIZE) {
-    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->dynamic_vbo);
-    // Orphan: passing NULL + GL_STREAM_DRAW tells driver to allocate new storage
-    gl.BufferData(GL_ARRAY_BUFFER, vbo_size, NULL, GL_STREAM_DRAW);
-    gl.BufferSubData(GL_ARRAY_BUFFER, 0, vbo_size, cmd->vertices);
+- VBO: 4 MiB
+- IBO: 1 MiB
 
-    gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->dynamic_ibo);
-    gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, ibo_size, NULL, GL_STREAM_DRAW);
-    gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, ibo_size, cmd->indices);
-} else {
-    // Fallback: per-draw temp buffers for oversized meshes
-}
-```
+## Upload Strategy
 
-### Remove per-draw GenBuffers/DeleteBuffers
-Delete the `gl.GenBuffers` / `gl.DeleteBuffers` calls in submit_draw (lines 694-696, 731-732). Use the persistent buffers instead.
+For meshes that fit:
 
-### Clean up
-Delete dynamic buffers in `gl_destroy_ctx()`.
+1. bind the persistent VBO/IBO
+2. orphan with `glBufferData(..., NULL, GL_STREAM_DRAW)`
+3. upload with `glBufferSubData`
+4. draw from the persistent buffers
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — persistent buffers in context, orphan+sub-upload per draw, remove per-draw gen/delete
+For oversized meshes:
 
-## Testing
-- Same visual output
-- Fewer GL API calls per frame
+- either grow the persistent buffers, or
+- fall back to temporary per-draw buffers
+
+The earlier plan did not define the oversize behavior. This needs to be explicit.
+
+Recommended behavior:
+
+- grow the persistent buffers to the largest seen size and keep them
+
+## VAO Setup
+
+Once the persistent buffers exist:
+
+- create/bind the VAO once in `create_ctx()`
+- configure all vertex attributes against the persistent VBO there
+- later draws only need to bind the VAO and refresh buffer contents
+
+If a temporary oversize fallback is retained, remember that VAO attribute bindings are buffer-specific and must be updated accordingly.
+
+## Loader And Constant Additions
+
+Load:
+
+- `BufferSubData`
+
+Add:
+
+- `GL_STREAM_DRAW`
+
+## Files
+
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Regular draws no longer call `glGenBuffers` / `glDeleteBuffers`
+- Output is unchanged
+- Oversized meshes still render correctly

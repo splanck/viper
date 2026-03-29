@@ -1,41 +1,30 @@
-# OGL-01: Fix uAlpha Undeclared Uniform (CRITICAL)
+# OGL-01: Fix `uAlpha` Undeclared Uniform
 
-## Context
-The GLSL fragment shader uses `uAlpha` on lines 388 and 414 but never declares it as `uniform float uAlpha`. `glGetUniformLocation` returns -1. Alpha is undefined — surfaces are either fully opaque or invisible depending on driver behavior. This is the only critical bug across all backends.
+## Current State
 
-## Current GLSL (broken)
-```glsl
-// Line 388 (unlit path):
-if (uUnlit != 0) { FragColor = vec4(uDiffuseColor.rgb, uAlpha); return; }
-// Line 414 (lit path):
-FragColor = vec4(result, uAlpha);
-```
+The fragment shader uses `uAlpha` but does not declare it. The C side already looks up and uploads the uniform, so the GLSL declaration is the only missing piece.
 
-But `uAlpha` is never declared. The uniform list has:
-```glsl
-uniform vec4 uDiffuseColor;  // alpha could be in .w
-uniform vec4 uSpecularColor;
-uniform vec3 uEmissiveColor;
-uniform int uUnlit;
-// NO: uniform float uAlpha;
-```
+## Required Change
 
-## Fix
-Add the missing declaration:
+Add:
+
 ```glsl
 uniform float uAlpha;
 ```
 
-Place it after `uniform int uUnlit;` in the fragment shader string.
+Place it with the other fragment uniforms in [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c).
 
-The C-side code already retrieves the location (line 562: `ctx->uAlpha = gl.GetUniformLocation(ctx->program, "uAlpha")`) and sets it (line 667: `gl.Uniform1f(ctx->uAlpha, cmd->alpha)`). The only missing piece is the GLSL declaration.
+## Notes
 
-**This is a one-line fix.**
+- No C-side API or vtable changes are required.
+- This plan should land before OGL-07 because fog uses the same final alpha path.
+- Keep `uAlpha` separate from `uDiffuseColor.a`; later plans layer texture alpha and fog on top of it.
 
-## Files Modified
-- `src/runtime/graphics/vgfx3d_backend_opengl.c` — add `uniform float uAlpha;` to fragment shader source string
+## Files
 
-## Testing
-- Transparent object (alpha=0.5) → semi-transparent (was either invisible or opaque)
-- Opaque object (alpha=1.0) → solid (no change)
-- Alpha=0 → invisible (was random)
+- [`src/runtime/graphics/vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c)
+
+## Done When
+
+- Transparent draws respect `cmd->alpha`
+- `glGetUniformLocation(..., "uAlpha")` is no longer `-1`

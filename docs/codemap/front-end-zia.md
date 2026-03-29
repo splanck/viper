@@ -8,13 +8,13 @@ last-verified: 2026-03-04
 
 The Zia frontend (`src/frontends/zia/`) compiles Zia source to IL.
 
-Zia is Viper's native language with entities, value types, generics, lambdas, and imports.
+Zia is Viper's native language with classes, structs, generics, lambdas, and imports.
 
 Last updated: 2026-02-17
 
 ## Overview
 
-- **Total source files**: 50 (.hpp/.cpp)
+- **Total source files**: 74 (.hpp/.cpp)
 
 ## Core Infrastructure
 
@@ -32,8 +32,10 @@ Last updated: 2026-02-17
 | `Lexer.cpp`         | Tokenizer implementation                  |
 | `Lexer.hpp`         | Tokenizer for Zia source                  |
 | `Parser.hpp`        | Recursive-descent parser core             |
-| `Parser_Decl.cpp`   | Declaration parsing (func, class, value) |
+| `Parser_Decl.cpp`   | Declaration parsing (func, class, struct) |
 | `Parser_Expr.cpp`   | Expression parsing                        |
+| `Parser_Expr_Pattern.cpp` | Pattern expression parsing (match arms) |
+| `Parser_Expr_Primary.cpp` | Primary expression parsing              |
 | `Parser_Stmt.cpp`   | Statement parsing                         |
 | `Parser_Tokens.cpp` | Token handling utilities                  |
 | `Parser_Type.cpp`   | Type declaration parsing                  |
@@ -55,7 +57,7 @@ Last updated: 2026-02-17
 | File         | Purpose                                                          |
 |--------------|------------------------------------------------------------------|
 | `Types.cpp`  | Type system implementation                                       |
-| `Types.hpp`  | Type system (primitives, entities, collections, optionals, funcs)|
+| `Types.hpp`  | Type system (primitives, classes, collections, optionals, funcs) |
 
 ## Semantic Analysis
 
@@ -94,7 +96,7 @@ Last updated: 2026-02-17
 |-------------------------------|------------------------------------------------------------------|
 | `Lowerer.cpp`                 | Main lowering coordinator impl                                   |
 | `Lowerer.hpp`                 | Main lowering coordinator and BlockManager                       |
-| `LowererTypes.hpp`            | Type layout structs (FieldLayout, ValueTypeInfo, EntityTypeInfo, InterfaceTypeInfo) |
+| `LowererTypes.hpp`            | Type layout structs (FieldLayout, StructTypeInfo, ClassTypeInfo, InterfaceTypeInfo) |
 | `LowererTypeLayout.hpp`       | Type layout computation and registry class                       |
 | `LowererTypeLayout.cpp`       | Type layout registration implementation                          |
 | `Lowerer_Decl.cpp`            | Declaration lowering (functions, types)                          |
@@ -108,7 +110,33 @@ Last updated: 2026-02-17
 | `Lowerer_Expr_Literals.cpp`   | Literal expression lowering                                      |
 | `Lowerer_Expr_Match.cpp`      | Match expression lowering                                        |
 | `Lowerer_Expr_Method.cpp`     | Method call and type construction lowering                       |
+| `Lowerer_Decl_Functions.cpp`  | Function declaration lowering (split from Lowerer_Decl)          |
+| `Lowerer_Decl_Types.cpp`     | Type declaration lowering (split from Lowerer_Decl)              |
+| `Lowerer_Expr_Lambda.cpp`    | Lambda/closure expression lowering                               |
+| `Lowerer_Expr_Optional.cpp`  | Optional type expression lowering                                |
+| `Lowerer_Stmt_EH.cpp`        | Exception handling statement lowering                            |
 | `Lowerer_Stmt.cpp`            | Statement lowering                                               |
+| `LowererSymbolTable.hpp`     | Symbol table for the lowerer                                     |
+
+## Warnings
+
+| File                  | Purpose                                |
+|-----------------------|----------------------------------------|
+| `Warnings.hpp`        | Warning system declarations            |
+| `Warnings.cpp`        | Warning emission implementation        |
+| `WarningSuppressions.hpp` | Warning suppression infrastructure |
+
+## IDE / Completion
+
+| File                  | Purpose                                |
+|-----------------------|----------------------------------------|
+| `ZiaCompletion.hpp`   | Code completion engine declarations    |
+| `ZiaCompletion.cpp`   | Code completion engine implementation  |
+| `ZiaAnalysis.hpp`     | Analysis facade for IDE integration    |
+| `ZiaLocationScope.hpp`| Location-based scope tracking          |
+| `ZiaLocationScope.cpp`| Location scope implementation          |
+| `Sema_Completion.cpp` | Semantic analysis for completions      |
+| `rt_zia_completion.cpp`| Runtime completion bridge (C API)     |
 
 ## Debugging and Inspection
 
@@ -133,7 +161,7 @@ Programmatic equivalents are in `CompilerOptions` (`Options.hpp`).
 ## Key Features
 
 - Full type inference with Unknown type propagation
-- Entity and Value type support with vtables
+- Class and Struct type support with vtables
 - Generic types (List<T>, Map<K,V>)
 - Lambda expressions with closures
 - Pattern matching with match expressions

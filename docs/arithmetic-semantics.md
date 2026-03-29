@@ -39,7 +39,8 @@ These support sub-width type annotations (I32, I16). The overflow check uses
 the type's range: `iadd.ovf : i32` traps when the result exceeds `INT32_MAX` or
 falls below `INT32_MIN`.
 
-Zia uses checked variants when `overflowChecks` is enabled in compiler options.
+Zia uses checked variants by default (`overflowChecks` is `true`). Disable with
+`--no-overflow-checks` for wrapping semantics.
 
 ### Division
 
