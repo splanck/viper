@@ -104,14 +104,15 @@ template <std::size_t N>
     // We verify GPR registers that require shuffling are present.
     constexpr std::array<std::string_view, 4> kGprPatterns{"%rdi", "%rsi", "%rcx", "%r9"};
 #endif
-    constexpr std::array<std::string_view, 1> kAlignmentPattern{"addq $-8, %rsp"};
 
+    // Stack alignment is now handled statically by FrameLowering (outgoing arg
+    // area folded into frameSize), so no dynamic "addq $-8, %rsp" is expected.
     return asmText.find("callq rt_probe_echo") != std::string::npos &&
-           containsAll(asmText, kGprPatterns) &&
+           containsAll(asmText, kGprPatterns)
 #ifdef _WIN32
-           containsAll(asmText, kXmmPatterns) &&
+           && containsAll(asmText, kXmmPatterns)
 #endif
-           containsAll(asmText, kAlignmentPattern);
+           ;
 }
 
 } // namespace

@@ -74,7 +74,6 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
                         auto it = blockIndex_.find(*lbl);
                         if (it != blockIndex_.end()) {
                             succs_[bi].push_back(it->second);
-                            preds_[it->second].push_back(bi);
                         }
                     }
                 }
@@ -87,14 +86,12 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
                         auto it = blockIndex_.find(*lbl);
                         if (it != blockIndex_.end()) {
                             succs_[bi].push_back(it->second);
-                            preds_[it->second].push_back(bi);
                         }
                     }
                 }
                 // JCC always has a fallthrough to the next block.
                 if (bi + 1 < func.blocks.size()) {
                     succs_[bi].push_back(bi + 1);
-                    preds_[bi + 1].push_back(bi);
                 }
                 hasExplicitSucc = true;
             } else if (instr.opcode == MOpcode::RET) {
@@ -105,7 +102,6 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
         // If no explicit terminator, fall through to the next block.
         if (!hasExplicitSucc && bi + 1 < func.blocks.size()) {
             succs_[bi].push_back(bi + 1);
-            preds_[bi + 1].push_back(bi);
         }
     }
 }

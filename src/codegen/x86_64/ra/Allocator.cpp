@@ -391,22 +391,25 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
 
         // Before processing operands, check if this instruction writes to a physical
         // register. This handles two cases:
-        // 1. Call argument setup (MOVrr/MOVri to arg registers): reserve the register
-        //    so spill reloads don't clobber it before the CALL.
+        // 1. Call argument setup (MOVrr/MOVri/MOVSDrr to arg registers): reserve the
+        //    register so spill reloads don't clobber it before the CALL.
         // 2. Any write to a physical register: if a vreg is currently assigned to that
         //    register and is still live, spill it to avoid corruption.
         std::vector<MInstr> prefix{};
         if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVri ||
-             instr.opcode == MOpcode::LEA) &&
+             instr.opcode == MOpcode::LEA || instr.opcode == MOpcode::MOVSDrr ||
+             instr.opcode == MOpcode::MOVZXrr32 || instr.opcode == MOpcode::MOVQrx) &&
             !instr.operands.empty()) {
             if (const auto *destReg = std::get_if<OpReg>(&instr.operands[0])) {
                 if (destReg->isPhys) {
                     const PhysReg physDest = static_cast<PhysReg>(destReg->idOrPhys);
+                    const RegClass destCls = isXMM(physDest) ? RegClass::XMM : RegClass::GPR;
 
-                    // For MOVrr, check if source is the same vreg assigned to dest.
+                    // For MOVrr/MOVSDrr, check if source is the same vreg assigned to dest.
                     // If so, no spill is needed (we're copying a value to its own register).
                     uint16_t srcVreg = std::numeric_limits<uint16_t>::max();
-                    if (instr.opcode == MOpcode::MOVrr && instr.operands.size() > 1) {
+                    if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVSDrr) &&
+                        instr.operands.size() > 1) {
                         if (const auto *srcReg = std::get_if<OpReg>(&instr.operands[1])) {
                             if (!srcReg->isPhys) {
                                 srcVreg = srcReg->idOrPhys;
@@ -415,8 +418,10 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                     }
 
                     // Check if any vreg is currently assigned to this physical register
-                    // and spill it before we clobber the register.
-                    for (auto vreg : activeGPR_) {
+                    // and spill it before we clobber the register.  Scan both GPR and
+                    // XMM active sets depending on the destination class.
+                    auto &activeSet = activeFor(destCls);
+                    for (auto vreg : activeSet) {
                         auto it = states_.find(vreg);
                         if (it != states_.end() && it->second.hasPhys &&
                             it->second.phys == physDest) {
@@ -435,23 +440,23 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                                 // Use lifetime-based slot reuse when interval is available
                                 if (interval) {
                                     spiller_.ensureSpillSlotWithReuse(
-                                        RegClass::GPR, state.spill, interval->start, interval->end);
+                                        destCls, state.spill, interval->start, interval->end);
                                 } else {
-                                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                                    spiller_.ensureSpillSlot(destCls, state.spill);
                                 }
                                 state.spill.needsSpill = true;
                                 prefix.push_back(
-                                    spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+                                    spiller_.makeStore(destCls, state.spill, state.phys));
                             }
-                            releaseRegister(state.phys, RegClass::GPR);
+                            releaseRegister(state.phys, destCls);
                             state.hasPhys = false;
                             state.cachedInBlock = false;
-                            removeActive(RegClass::GPR, vreg);
+                            removeActive(destCls, vreg);
                             break; // Only one vreg can be in a physical register
                         }
                     }
 
-                    // Reserve argument registers for call setup
+                    // Reserve argument registers for call setup (both GPR and XMM)
                     if (isArgumentRegister(physDest)) {
                         reserveForCall(physDest);
                     }
@@ -975,7 +980,9 @@ MInstr LinearScanAllocator::makeMove(RegClass cls, PhysReg dst, PhysReg src) con
 
 /// @brief Check if a physical register is an argument register for the current ABI.
 /// @details Used to detect when call argument registers are being set so they can be
-///          reserved and not used for spill reloads during call setup.
+///          reserved and not used for spill reloads during call setup.  Checks both
+///          GPR and FP argument registers to prevent spill reloads from clobbering
+///          marshalled arguments of either class before the CALL executes.
 /// @param reg Physical register to check.
 /// @return @c true if @p reg is an argument-passing register.
 bool LinearScanAllocator::isArgumentRegister(PhysReg reg) const {
@@ -984,36 +991,45 @@ bool LinearScanAllocator::isArgumentRegister(PhysReg reg) const {
             return true;
         }
     }
+    for (std::size_t i = 0; i < target_.maxFPArgs && i < target_.f64ArgOrder.size(); ++i) {
+        if (target_.f64ArgOrder[i] == reg) {
+            return true;
+        }
+    }
     return false;
 }
 
 /// @brief Reserve an argument register during call setup.
-/// @details Removes the register from the free pool and records it so it can be
-///          released after the CALL instruction is processed. This prevents spill
-///          reloads from clobbering argument values during call setup.
+/// @details Removes the register from the appropriate free pool (GPR or XMM) and
+///          records it so it can be released after the CALL instruction is processed.
+///          This prevents spill reloads from clobbering argument values during call
+///          setup for both integer and floating-point arguments.
 /// @param reg Physical register to reserve.
 void LinearScanAllocator::reserveForCall(PhysReg reg) {
-    // Linear search is fine: reservedForCall_ holds at most 6 argument
-    // registers on x86-64, so O(n) with n<=6 beats any fancier structure.
-    if (std::find(reservedForCall_.begin(), reservedForCall_.end(), reg) !=
-        reservedForCall_.end()) {
-        return;
+    // Linear search is fine: reservedForCall_ holds at most 6+8 argument
+    // registers on x86-64, so O(n) with n<=14 beats any fancier structure.
+    for (const auto &r : reservedForCall_) {
+        if (r.phys == reg)
+            return;
     }
-    // Remove from free pool
-    auto &pool = poolFor(RegClass::GPR);
+    // Determine the class from the register itself.
+    const RegClass cls = isXMM(reg) ? RegClass::XMM : RegClass::GPR;
+    // Remove from the appropriate free pool.
+    auto &pool = poolFor(cls);
     auto it = std::find(pool.begin(), pool.end(), reg);
     if (it != pool.end()) {
         pool.erase(it);
-        reservedForCall_.push_back(reg);
+        reservedForCall_.push_back({reg, cls});
     }
 }
 
 /// @brief Release all reserved argument registers back to the pool.
 /// @details Called after a CALL instruction is processed to make argument
-///          registers available for subsequent allocations.
+///          registers available for subsequent allocations.  Returns each
+///          register to its original class pool (GPR or XMM).
 void LinearScanAllocator::releaseCallReserved() {
-    for (auto reg : reservedForCall_) {
-        poolFor(RegClass::GPR).push_back(reg);
+    for (const auto &r : reservedForCall_) {
+        poolFor(r.cls).push_back(r.phys);
     }
     reservedForCall_.clear();
 }

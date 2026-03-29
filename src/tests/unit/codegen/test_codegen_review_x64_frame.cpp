@@ -60,6 +60,25 @@ static int countStackProbes(const MFunction &func) {
 // Fix: Large frame stack probing now emits actual probe code on Unix/macOS
 // ---------------------------------------------------------------------------
 
+// Helper to compute the total bytes subtracted from RSP by ADDri instructions
+// (which use negative immediates for subtraction).
+static int totalRspSubtraction(const MFunction &func) {
+    int total = 0;
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode != MOpcode::ADDri || instr.operands.size() < 2)
+                continue;
+            const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+            if (!dst || !dst->isPhys || static_cast<PhysReg>(dst->idOrPhys) != PhysReg::RSP)
+                continue;
+            const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
+            if (imm && imm->val < 0)
+                total += static_cast<int>(-imm->val);
+        }
+    }
+    return total;
+}
+
 TEST(X64FrameLowering, LargeFrameEmitsProbeLoop) {
     MFunction func;
     func.name = "test_large_frame";
@@ -79,7 +98,59 @@ TEST(X64FrameLowering, LargeFrameEmitsProbeLoop) {
 #if !defined(_WIN32)
     // On Unix/macOS, the large frame should emit at least one probe (MOVmr from (%rsp))
     int probeCount = countStackProbes(func);
-    EXPECT_TRUE(probeCount >= 2); // 8192 bytes = 2 pages = at least 2 probes
+    EXPECT_TRUE(probeCount >= 1); // 8192 bytes = 2 pages, at least 1 probe
+#endif
+}
+
+TEST(X64FrameLowering, LargeFrameExactProbeDepth) {
+    // A frame of 4097 bytes should probe exactly 4097 bytes below RBP,
+    // not round up to 8192.
+    MFunction func;
+    func.name = "test_exact_probe";
+    MBasicBlock block;
+    block.label = "entry";
+    block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+    func.blocks.push_back(std::move(block));
+
+    FrameInfo frame;
+    frame.frameSize = 4097;
+
+    const auto &target = sysvTarget();
+    insertPrologueEpilogue(func, target, frame);
+
+#if !defined(_WIN32)
+    // Exactly one probe for 4097 bytes (one full page, then 1-byte tail)
+    int probeCount = countStackProbes(func);
+    EXPECT_EQ(probeCount, 1);
+
+    // The total RSP subtraction for the frame should be exactly frameSize + 8
+    // (8 for the push %rbp at the start of the prologue).
+    int totalSub = totalRspSubtraction(func);
+    EXPECT_EQ(totalSub, 4097 + 8); // frame + push rbp
+#endif
+}
+
+TEST(X64FrameLowering, LargeFrame8193ExactDepth) {
+    // 8193 = 2 full pages + 1 byte tail.  Should emit 2 probes, not 3.
+    MFunction func;
+    func.name = "test_8193_probe";
+    MBasicBlock block;
+    block.label = "entry";
+    block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+    func.blocks.push_back(std::move(block));
+
+    FrameInfo frame;
+    frame.frameSize = 8193;
+
+    const auto &target = sysvTarget();
+    insertPrologueEpilogue(func, target, frame);
+
+#if !defined(_WIN32)
+    int probeCount = countStackProbes(func);
+    EXPECT_EQ(probeCount, 2);
+
+    int totalSub = totalRspSubtraction(func);
+    EXPECT_EQ(totalSub, 8193 + 8); // frame + push rbp
 #endif
 }
 

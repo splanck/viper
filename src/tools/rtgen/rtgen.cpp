@@ -762,6 +762,16 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
             if (result.find(funcName) != result.end())
                 continue;
 
+            // Strip storage-class specifiers and attributes from the return
+            // type.  The regex can capture these when scanning .c files that
+            // contain forward declarations like "extern void rt_trap(...);"
+            // or "_Noreturn void rt_trap(...);" etc.
+            for (const char *kw : {"extern ", "_Noreturn ", "static ", "inline "}) {
+                std::string kwStr(kw);
+                if (retType.substr(0, kwStr.size()) == kwStr)
+                    retType = trim(retType.substr(kwStr.size()));
+            }
+
             CSignature sig;
             sig.returnType = retType;
             std::vector<std::string> args = splitTopLevel(argsStr, ',');

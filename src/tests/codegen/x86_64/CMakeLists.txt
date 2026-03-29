@@ -58,7 +58,7 @@ foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
             NAME codegen_x86_64_${_viper_codegen_case}
             COMMAND ${_viper_codegen_target})
 
-    target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64 viper_test_common)
+    target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64 viper_test_common il_tools_common)
 
     if (_viper_codegen_case STREQUAL "object_only_cli")
         target_compile_definitions(${_viper_codegen_target}

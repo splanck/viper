@@ -29,7 +29,7 @@
 
 namespace il {
 namespace core {
-class Module;
+struct Module;
 }
 } // namespace il
 

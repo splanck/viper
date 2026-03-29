@@ -173,16 +173,10 @@ void lowerCall(MBasicBlock &block,
         }
     }
 
-    // When stack arguments are present (or when alignment demands), ensure the
-    // stack is 16-byte aligned at the call boundary by inserting a dynamic
-    // padding subtraction before writing stack slots and restoring it after the
-    // call. The padding accounts for the return address pushed by CALL.
-    const int32_t padBytes = static_cast<int32_t>((16 - (preStackBytes % 16)) % 16);
-    if (padBytes != 0) {
-        insertInstr(MInstr::make(MOpcode::ADDri,
-                                 {makePhysOperand(RegClass::GPR, PhysReg::RSP),
-                                  makeImmOperand(-static_cast<int64_t>(padBytes))}));
-    }
+    // Stack alignment is handled statically by FrameLowering which folds
+    // outgoingArgArea into frameSize and rounds up to kStackAlignment (16).
+    // No dynamic padding subtraction is needed here — the frame-resident
+    // outgoing arg space is already correctly aligned.
 
     // Two-pass approach to avoid clobbering vreg values during argument setup:
     // Pass 1: Copy all vreg arguments to their destinations (reading vregs first)
@@ -321,29 +315,6 @@ void lowerCall(MBasicBlock &block,
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
         insertInstr(
             MInstr::make(MOpcode::MOVri, {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
-    }
-
-    // Debug alignment check removed - was clobbering R11 which may be in use
-    // for intermediate values during argument setup.
-
-    // If we inserted dynamic padding earlier, restore %rsp immediately after
-    // the CALL. Advance insertion point past the CALL placeholder and emit ADD.
-    if (padBytes != 0) {
-        // Find the CALL at or after the current insertion position.
-        auto seekIt = insertIt;
-        while (seekIt != block.instructions.end() && seekIt->opcode != MOpcode::CALL) {
-            ++seekIt;
-        }
-        if (seekIt != block.instructions.end()) {
-            ++seekIt; // position after CALL
-            seekIt = block.instructions.insert(
-                seekIt,
-                MInstr::make(MOpcode::ADDri,
-                             {makePhysOperand(RegClass::GPR, PhysReg::RSP),
-                              makeImmOperand(static_cast<int64_t>(padBytes))}));
-            // Maintain insertIt validity if we inserted exactly at insertIt
-            // (not strictly required for remaining code paths).
-        }
     }
 
     (void)plan;

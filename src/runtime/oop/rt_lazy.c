@@ -32,6 +32,7 @@
 
 #include "rt_lazy.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -43,7 +44,7 @@
 typedef enum { VALUE_PTR = 0, VALUE_STR = 1, VALUE_I64 = 2 } ValueType;
 
 typedef struct {
-    int8_t evaluated;
+    int evaluated; /* widened from int8_t for MSVC _Generic atomic compat */
     ValueType value_type;
     void *(*supplier)(void);
 

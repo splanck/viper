@@ -20,6 +20,7 @@
 #include "rt_scene3d.h"
 #include "rt_string.h"
 #include <cassert>
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstdio>
 #include <cstring>

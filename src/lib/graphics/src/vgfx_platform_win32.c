@@ -1161,4 +1161,21 @@ void *vgfx_get_native_view(vgfx_window_t window) {
     return (void *)w32->hwnd;
 }
 
+void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
+    if (!window || !window->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)window->platform_data;
+    POINT pt = {(LONG)x, (LONG)y};
+    ClientToScreen(w32->hwnd, &pt);
+    SetCursorPos(pt.x, pt.y);
+}
+
+void vgfx_platform_hide_cursor(void) {
+    ShowCursor(FALSE);
+}
+
+void vgfx_platform_show_cursor(void) {
+    ShowCursor(TRUE);
+}
+
 #endif /* _WIN32 */

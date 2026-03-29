@@ -29,12 +29,20 @@
 
 #include "codegen/common/ICE.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 
 #include <cassert>
 #include <cstring>
 #include <string>
 
 namespace viper::codegen::x64::binenc {
+
+/// Map IL extern names to C runtime symbol names.
+static std::string mapRuntimeSymbol(const std::string &name) {
+    if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
+        return std::string(*mapped);
+    return name;
+}
 
 // === Helper: extract PhysReg from an OpReg operand ===
 
@@ -835,7 +843,8 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
 void X64BinaryEncoder::encodeCallExternal(const std::string &name,
                                           objfile::CodeSection &cs,
                                           bool isDarwin) {
-    std::string symName = isDarwin ? ("_" + name) : name;
+    std::string mapped = mapRuntimeSymbol(name);
+    std::string symName = isDarwin ? ("_" + mapped) : mapped;
     uint32_t symIdx = cs.findOrDeclareSymbol(symName);
 
     cs.emit8(0xE8); // CALL rel32

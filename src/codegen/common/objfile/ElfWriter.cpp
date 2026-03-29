@@ -354,6 +354,19 @@ bool ElfWriter::write(const std::string &path,
         ++elfGlobalIdx;
     }
 
+    // Build name→ELF index map for defined rodata symbols.
+    // Used to redirect text relocations that reference undefined symbols
+    // which are actually defined in rodata (cross-section references).
+    std::unordered_map<std::string, uint32_t> definedRodataByName;
+    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+        const Symbol &s = rodata.symbols().at(i);
+        if (s.binding != SymbolBinding::External) {
+            auto elfIt = rodataSymMap.find(i);
+            if (elfIt != rodataSymMap.end())
+                definedRodataByName[s.name] = elfIt->second;
+        }
+    }
+
     // --- 3. Build .rela.text ---
     std::vector<uint8_t> relaBytes;
     for (const auto &rel : text.relocations()) {
@@ -361,15 +374,19 @@ bool ElfWriter::write(const std::string &path,
         uint32_t elfSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
         if (it != textSymMap.end()) {
-            elfSymIdx = it->second;
+            // Check if this undefined symbol is actually defined in rodata.
+            const Symbol &sym = text.symbols().at(rel.symbolIndex);
+            if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+                auto nameIt = definedRodataByName.find(sym.name);
+                if (nameIt != definedRodataByName.end())
+                    elfSymIdx = nameIt->second;
+                else
+                    elfSymIdx = it->second;
+            } else {
+                elfSymIdx = it->second;
+            }
         } else {
-            // Symbol might be in rodata (cross-section reference).
-            // For cross-section relocs, use the .rodata section symbol.
-            auto rit = rodataSymMap.find(rel.symbolIndex);
-            if (rit != rodataSymMap.end())
-                elfSymIdx = rit->second;
-            else
-                elfSymIdx = textSecSymIdx; // fallback
+            elfSymIdx = textSecSymIdx; // fallback
         }
 
         uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -734,6 +751,17 @@ bool ElfWriter::write(const std::string &path,
         ++elfGlobalIdx;
     }
 
+    // Build name→ELF index map for defined rodata symbols (cross-section refs).
+    std::unordered_map<std::string, uint32_t> definedRodataByName;
+    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+        const auto &s = rodata.symbols().at(i);
+        if (s.binding != SymbolBinding::External) {
+            auto elfIt = rodataSymMap.find(i);
+            if (elfIt != rodataSymMap.end())
+                definedRodataByName[s.name] = elfIt->second;
+        }
+    }
+
     // --- 5. Build .rela.text.* entries ---
     std::vector<std::vector<uint8_t>> allRelaBytes(N);
     for (size_t ti = 0; ti < N; ++ti) {
@@ -741,14 +769,19 @@ bool ElfWriter::write(const std::string &path,
             uint32_t elfSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
             if (it != textSymMaps[ti].end()) {
-                elfSymIdx = it->second;
+                // Check if this undefined symbol is actually defined in rodata.
+                const Symbol &sym = textSections[ti].symbols().at(rel.symbolIndex);
+                if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+                    auto nameIt = definedRodataByName.find(sym.name);
+                    if (nameIt != definedRodataByName.end())
+                        elfSymIdx = nameIt->second;
+                    else
+                        elfSymIdx = it->second;
+                } else {
+                    elfSymIdx = it->second;
+                }
             } else {
-                // Fallback: check rodata map (cross-section reference).
-                auto rit = rodataSymMap.find(rel.symbolIndex);
-                if (rit != rodataSymMap.end())
-                    elfSymIdx = rit->second;
-                else
-                    elfSymIdx = static_cast<uint32_t>(ti + 1); // section sym
+                elfSymIdx = static_cast<uint32_t>(ti + 1); // section sym
             }
             uint32_t relocType = elfRelocType(rel.kind, arch_);
             uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;

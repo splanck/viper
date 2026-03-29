@@ -38,6 +38,7 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "dxguid.lib")
 
 //=============================================================================
 // HLSL shader source (compiled at runtime)
@@ -221,6 +222,10 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
 //=============================================================================
 // Backend vtable implementation
 //=============================================================================
+
+/* Forward declaration — used by d3d11_create_ctx error paths before the
+   full definition appears below. */
+static void d3d11_destroy_ctx(void *ctx_ptr);
 
 static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     HWND hwnd = (HWND)vgfx_get_native_view(win);

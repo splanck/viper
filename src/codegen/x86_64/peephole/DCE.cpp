@@ -115,7 +115,6 @@ namespace {
         case MOpcode::REMS64rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
-        case MOpcode::SETcc:
         case MOpcode::MOVZXrr32:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:
@@ -130,6 +129,16 @@ namespace {
             const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
             if (reg && reg->isPhys)
                 return reg->idOrPhys;
+            return std::nullopt;
+        }
+        // SETcc has operands: (condCode:Imm, dest:RegOrMem).
+        // The destination is operand 1, not operand 0.
+        case MOpcode::SETcc: {
+            if (instr.operands.size() >= 2) {
+                const auto *reg = std::get_if<OpReg>(&instr.operands[1]);
+                if (reg && reg->isPhys)
+                    return reg->idOrPhys;
+            }
             return std::nullopt;
         }
         default:
@@ -234,8 +243,32 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
                 addMemRegs(instr.operands[1]);
             break;
 
+        case MOpcode::SETcc:
+            // SETcc: (condCode:Imm, dest:Reg) — no register uses.
+            // The condition code is an immediate and the destination is def-only.
+            // Flags (read implicitly) are not tracked as registers.
+            break;
+
         case MOpcode::CALL:
-            // Calls may use all argument registers
+            // Calls may use all argument registers.  Mark GPR and FP argument
+            // registers live so DCE does not delete their setup instructions.
+            // The FP register set is ABI-dependent:
+            //   SysV:  XMM0-XMM7 (up to 8 FP args in registers)
+            //   Win64: XMM0-XMM3 (up to 4 FP args in registers)
+#if defined(_WIN32)
+            // Win64 GPR args: RCX, RDX, R8, R9
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RCX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::R8));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::R9));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+            // Win64 FP args: XMM0-XMM3
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM1));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM2));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM3));
+#else
+            // SysV GPR args: RDI, RSI, RDX, RCX, R8, R9
             usedRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
             usedRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
             usedRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
@@ -243,9 +276,18 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
             usedRegs.insert(static_cast<uint16_t>(PhysReg::R8));
             usedRegs.insert(static_cast<uint16_t>(PhysReg::R9));
             usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
-            // XMM0-1 for float args
+            // SysV FP args: XMM0-XMM7
             usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
             usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM1));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM2));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM3));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM4));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM5));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM6));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM7));
+#endif
+            // RAX holds the FP arg count for SysV varargs
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
             break;
 
         case MOpcode::RET:

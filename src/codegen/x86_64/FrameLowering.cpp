@@ -389,24 +389,28 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         // Unix/macOS: emit inline stack probing for large frames.
         // Touch each page from RSP downward so the OS can grow the stack and detect
         // overflows via the guard page rather than jumping past it.
+        // Probe toward the exact final target: subtract/touch full pages while
+        // remaining > kPageSize, then subtract the final tail once.  This avoids
+        // overshooting the real frame depth and touching a guard page the frame
+        // would never actually reach.
         if (frame.frameSize > kPageSize) {
             const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-            // Iterative probe: subtract kPageSize at a time and touch, then set
-            // RSP to the final target.  Since MIR has no loop construct, we unroll
-            // the probe sequence (bounded by frame.frameSize / kPageSize which is
-            // capped by real-world stack sizes, typically < 256 iterations for 1MB).
-            const int pages = (frame.frameSize + kPageSize - 1) / kPageSize;
-            for (int p = 0; p < pages; ++p) {
+            int remaining = frame.frameSize;
+            while (remaining > kPageSize) {
                 prologue.push_back(
                     MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
                 // Touch the page via: mov (%rsp), %rax  (load to clobber-safe register)
                 prologue.push_back(
                     MInstr::make(MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
+                remaining -= kPageSize;
             }
-            // Set RSP to exact target position (may differ from page-aligned probe)
-            prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
-            prologue.push_back(
-                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            // Subtract the final tail (<= kPageSize).  The page was already probed
+            // by the preceding iteration or is within the first page below the
+            // prior probe, so no additional touch is needed.
+            if (remaining > 0) {
+                prologue.push_back(
+                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-remaining)}));
+            }
         } else {
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));

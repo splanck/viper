@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/ProcessIsolation.hpp"
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/io/Serializer.hpp"
@@ -552,6 +553,8 @@ TEST(CrossLayerArith, URemTreatAsUnsigned) {
 //=============================================================================
 
 int main(int argc, char **argv) {
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

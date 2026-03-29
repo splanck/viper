@@ -444,6 +444,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     // Add Windows system libraries needed for graphics, input, and audio
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
+    cmd.push_back("-lshell32");  // Required by vipergfx (DragQueryFile, DragAcceptFiles)
     cmd.push_back("-lxinput");
     cmd.push_back("-lole32");    // Required by viperaud (WASAPI/COM)
     cmd.push_back("-liphlpapi"); // Required by rt_network (GetAdaptersAddresses)

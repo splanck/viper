@@ -13,6 +13,8 @@
 
 #include "frontends/zia/Sema.hpp"
 
+#include <functional>
+
 namespace il::frontends::zia {
 
 //=============================================================================

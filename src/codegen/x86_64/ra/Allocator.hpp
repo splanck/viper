@@ -90,8 +90,14 @@ class LinearScanAllocator {
     std::unordered_set<uint16_t> activeGPR_{};
     /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.
     std::unordered_set<uint16_t> activeXMM_{};
-    std::size_t currentInstrIdx_{0};         ///< Current instruction index for liveness checks.
-    std::vector<PhysReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
+    std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
+
+    /// @brief Argument registers reserved during call setup, with their class.
+    struct ReservedReg {
+        PhysReg phys{PhysReg::RAX};
+        RegClass cls{RegClass::GPR};
+    };
+    std::vector<ReservedReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
 
     /// @brief Precomputed bitset of caller-saved GPR registers for O(1) lookup.
     /// @details Indexed by static_cast<int>(PhysReg). Avoids linear search in CALL handling.

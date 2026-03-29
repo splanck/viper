@@ -25,7 +25,11 @@
 #include <cstring>
 #include <string>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <io.h>
+#define close _close
+#define fileno _fileno
+#else
 #include <unistd.h>
 #endif
 

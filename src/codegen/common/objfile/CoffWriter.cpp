@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -228,9 +229,61 @@ bool CoffWriter::write(const std::string &path,
         return offset;
     };
 
-    // Process text section symbols.
+    // Process rodata section symbols FIRST so we can build a name→COFF index
+    // map. Text symbols that are undefined but have a matching rodata definition
+    // are skipped (cross-section references like .LC_str_* rodata labels).
+    std::unordered_map<std::string, uint32_t> rodataDefinedNames;
+    if (hasRodata) {
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            int16_t secNum = 0;
+            uint32_t value = 0;
+            uint8_t storageClass = kImageSymClassExternal;
+
+            if (s.binding == SymbolBinding::External) {
+                secNum = kImageSymUndefined;
+            } else if (s.binding == SymbolBinding::Local) {
+                secNum = static_cast<int16_t>(secIdxRdata);
+                value = static_cast<uint32_t>(s.offset);
+                storageClass = kImageSymClassStatic;
+            } else {
+                secNum = static_cast<int16_t>(secIdxRdata);
+                value = static_cast<uint32_t>(s.offset);
+            }
+
+            uint32_t strOff = 0;
+            if (s.name.size() > 8)
+                strOff = addToStrTab(s.name);
+
+            writeSymbol(symtabBytes,
+                        s.name,
+                        strOff,
+                        value,
+                        secNum,
+                        0, // type: 0 = not a function (data)
+                        storageClass);
+            uint32_t coffIdx = coffSymCount++;
+            rodataSymMap[i] = coffIdx;
+            if (s.binding != SymbolBinding::External)
+                rodataDefinedNames[s.name] = coffIdx;
+        }
+    }
+
+    // Process text section symbols. Skip undefined symbols that have a
+    // matching definition in rodata — map them to the rodata COFF index.
     for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
+
+        // Cross-section reference: text declares an external for a rodata symbol.
+        // Skip the undefined COFF entry and map directly to the rodata definition.
+        if (s.binding == SymbolBinding::External) {
+            auto rdIt = rodataDefinedNames.find(s.name);
+            if (rdIt != rodataDefinedNames.end()) {
+                textSymMap[i] = rdIt->second;
+                continue;
+            }
+        }
+
         int16_t secNum = 0;
         uint32_t value = 0;
         uint8_t storageClass = kImageSymClassExternal;
@@ -261,40 +314,6 @@ bool CoffWriter::write(const std::string &path,
         textSymMap[i] = coffSymCount++;
     }
 
-    // Process rodata section symbols.
-    if (hasRodata) {
-        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
-            const Symbol &s = rodata.symbols().at(i);
-            int16_t secNum = 0;
-            uint32_t value = 0;
-            uint8_t storageClass = kImageSymClassExternal;
-
-            if (s.binding == SymbolBinding::External) {
-                secNum = kImageSymUndefined;
-            } else if (s.binding == SymbolBinding::Local) {
-                secNum = static_cast<int16_t>(secIdxRdata);
-                value = static_cast<uint32_t>(s.offset);
-                storageClass = kImageSymClassStatic;
-            } else {
-                secNum = static_cast<int16_t>(secIdxRdata);
-                value = static_cast<uint32_t>(s.offset);
-            }
-
-            uint32_t strOff = 0;
-            if (s.name.size() > 8)
-                strOff = addToStrTab(s.name);
-
-            writeSymbol(symtabBytes,
-                        s.name,
-                        strOff,
-                        value,
-                        secNum,
-                        0, // type: 0 = not a function (data)
-                        storageClass);
-            rodataSymMap[i] = coffSymCount++;
-        }
-    }
-
     // Add .debug_line section name to string table if needed (> 8 chars).
     uint32_t debugLineStrOff = 0;
     if (hasDebugLine)
@@ -314,13 +333,8 @@ bool CoffWriter::write(const std::string &path,
     for (const auto &rel : text.relocations()) {
         uint32_t coffSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        if (it != textSymMap.end()) {
+        if (it != textSymMap.end())
             coffSymIdx = it->second;
-        } else if (hasRodata) {
-            auto rit = rodataSymMap.find(rel.symbolIndex);
-            if (rit != rodataSymMap.end())
-                coffSymIdx = rit->second;
-        }
 
         uint16_t relocType = coffRelocType(rel.kind);
         writeReloc(textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, relocType);
