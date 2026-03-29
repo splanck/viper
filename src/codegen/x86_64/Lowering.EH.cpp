@@ -42,6 +42,20 @@ void emitTrap(const ILInstr &, MIRBuilder &builder) {
     // recovery point if one is set, or abort the process otherwise.
     // The trap message (if any) is not forwarded in the current implementation;
     // rt_trap(NULL) emits the generic "Trap" diagnostic.
+
+    // Record a call plan so lowerPendingCalls matches this CALL correctly.
+    // Without a plan, the sequential plan-to-CALL matching drifts and
+    // subsequent calls receive the wrong argument setup.
+    CallLoweringPlan plan{};
+    plan.calleeLabel = "rt_trap";
+    // Pass NULL as the message argument.
+    CallArg nullArg{};
+    nullArg.kind = CallArg::GPR;
+    nullArg.isImm = true;
+    nullArg.imm = 0;
+    plan.args.push_back(nullArg);
+    builder.recordCallPlan(std::move(plan));
+
     builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap")}));
     // rt_trap does not return (either longjmp or _Exit), but emit UD2 as a
     // safety net so the CPU faults if we somehow fall through.

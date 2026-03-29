@@ -81,6 +81,11 @@ class X64BinaryEncoder {
     // === Instruction encoding by category ===
 
     /// Encode nullary instructions (RET, CQO, UD2).
+    void encodeInstructionImpl(const MInstr &instr,
+                               objfile::CodeSection &text,
+                               objfile::CodeSection &rodata,
+                               bool isDarwin);
+
     void encodeNullary(MOpcode op, objfile::CodeSection &cs);
 
     /// Encode reg-reg GPR instructions (MOVrr, ADDrr, SUBrr, etc.).
@@ -119,6 +124,13 @@ class X64BinaryEncoder {
 
     /// Encode SSE memory instructions (MOVSDrm/MOVSDmr/MOVUPSrm/MOVUPSmr).
     void encodeSseMem(MOpcode op, PhysReg reg, const OpMem &mem, objfile::CodeSection &cs);
+
+    /// Encode SSE load from RIP-relative label (MOVSD xmm, [rip+label]).
+    void encodeSseRipLoad(PhysReg dst,
+                          const OpRipLabel &rip,
+                          objfile::CodeSection &text,
+                          objfile::CodeSection &rodata,
+                          bool isDarwin);
 
     /// Encode SETcc instruction.
     void encodeSETcc(int condCode, PhysReg dst, objfile::CodeSection &cs);

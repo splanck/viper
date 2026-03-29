@@ -163,7 +163,17 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
 
     builder.recordCallPlan(std::move(plan));
     // Use GPR as preferred class when materialising the callee pointer.
-    const Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    // The CALL instruction requires a register, memory, or label operand.
+    // If the callee materialised as an immediate (e.g. null function pointer),
+    // load it into a register so the encoder can emit an indirect call.
+    if (std::holds_alternative<OpImm>(calleeOp)) {
+        const VReg tmp = builder.makeTempVReg(RegClass::GPR);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+        builder.append(
+            MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, calleeOp}));
+        calleeOp = makeVRegOperand(tmp.cls, tmp.id);
+    }
     builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{calleeOp}));
 
     // Emit MOV to capture return value from ABI return register to result virtual register

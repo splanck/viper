@@ -402,7 +402,9 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
-    const Operand cond = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
+    // TESTrr requires register operands — materialise the condition if it is
+    // an immediate (constant-folded select condition).
+    const Operand cond = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
     const Operand trueVal = builder().makeOperandForValue(instr.ops[1], destReg.cls);
     const Operand falseVal = builder().makeOperandForValue(instr.ops[2], destReg.cls);
 
@@ -467,7 +469,9 @@ void EmitCommon::emitCondBranch(const ILInstr &instr) {
         phaseAUnsupported("cond branch: missing operands");
     }
 
-    const Operand cond = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
+    // TESTrr requires register operands — materialise the condition if it is
+    // an immediate (constant-folded branch condition).
+    const Operand cond = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
     const Operand trueLabel = builder().makeLabelOperand(instr.ops[1]);
     const Operand falseLabel = builder().makeLabelOperand(instr.ops[2]);
 

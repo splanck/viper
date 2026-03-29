@@ -65,7 +65,13 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
     opts.optimize = 0;
 
     viper::codegen::x64::CodegenPipeline pipeline(opts);
-    PipelineResult result = pipeline.run();
+    PipelineResult result;
+    try {
+        result = pipeline.run();
+    } catch (const std::exception &e) {
+        std::cerr << "error: " << e.what() << "\n";
+        return 2;
+    }
 
     if (!result.stdout_text.empty())
         std::cout << result.stdout_text;

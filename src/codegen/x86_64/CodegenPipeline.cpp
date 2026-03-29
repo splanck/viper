@@ -366,7 +366,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
     // Link all runtime libraries that exist (simpler than symbol detection).
     // Note: viper_rt_audio must appear before viper_rt_base because
     // rt_global_shutdown() in base calls rt_audio_shutdown() in audio.
-    const std::vector<std::string_view> rtLibs = {"viper_rt_graphics",
+    const std::vector<std::string_view> rtLibs = {"viper_rt_game",
+                                                  "viper_rt_graphics",
                                                   "viper_rt_network",
                                                   "viper_rt_exec",
                                                   "viper_rt_io_fs",

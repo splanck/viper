@@ -33,7 +33,9 @@
 
 #include <cassert>
 #include <cstring>
+#include <stdexcept>
 #include <string>
+#include <variant>
 
 namespace viper::codegen::x64::binenc {
 
@@ -117,6 +119,24 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                                          objfile::CodeSection &text,
                                          objfile::CodeSection &rodata,
                                          bool isDarwin) {
+    try {
+        encodeInstructionImpl(instr, text, rodata, isDarwin);
+    } catch (const std::bad_variant_access &) {
+        std::string msg = "bad variant access encoding opcode " +
+                          std::to_string(static_cast<int>(instr.opcode)) + " with " +
+                          std::to_string(instr.operands.size()) + " operand(s):";
+        for (std::size_t i = 0; i < instr.operands.size(); ++i) {
+            msg += " [" + std::to_string(i) + "]=idx" +
+                   std::to_string(instr.operands[i].index());
+        }
+        throw std::runtime_error(msg);
+    }
+}
+
+void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
+                                             objfile::CodeSection &text,
+                                             objfile::CodeSection &rodata,
+                                             bool isDarwin) {
     const auto &ops = instr.operands;
     const auto op = instr.opcode;
 
@@ -300,11 +320,15 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
             encodeSseMem(op, src, mem, text);
             return;
         }
-        case MOpcode::MOVSDmr: // load: xmm, [mem]
+        case MOpcode::MOVSDmr: // load: xmm, [mem] or xmm, [rip+label]
         {
             PhysReg dst = regFromOperand(ops[0]);
-            const auto &mem = memFromOperand(ops[1]);
-            encodeSseMem(op, dst, mem, text);
+            if (std::holds_alternative<OpRipLabel>(ops[1])) {
+                encodeSseRipLoad(dst, ripFromOperand(ops[1]), text, rodata, isDarwin);
+            } else {
+                const auto &mem = memFromOperand(ops[1]);
+                encodeSseMem(op, dst, mem, text);
+            }
             return;
         }
         case MOpcode::MOVUPSrm: // store: [mem], xmm
@@ -358,6 +382,11 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                     // External call — generate relocation.
                     encodeCallExternal(label.name, text, isDarwin);
                 }
+            } else if (std::holds_alternative<OpRipLabel>(ops[0])) {
+                // RIP-relative label — treat as external call (same relocation).
+                // This arises from call.indirect when the callee is a global label.
+                const auto &rip = ripFromOperand(ops[0]);
+                encodeCallExternal(rip.name, text, isDarwin);
             } else if (std::holds_alternative<OpReg>(ops[0])) {
                 encodeBranchReg(op, regFromOperand(ops[0]), text);
             } else if (std::holds_alternative<OpMem>(ops[0])) {
@@ -661,6 +690,32 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
     text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
 }
 
+void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
+                                        const OpRipLabel &rip,
+                                        objfile::CodeSection &text,
+                                        objfile::CodeSection &rodata,
+                                        bool isDarwin) {
+    const auto hwDst = hwEncode(dst);
+
+    // F2 prefix (mandatory for MOVSD).
+    text.emit8(0xF2);
+    // REX prefix if dst needs the R extension bit.
+    if (hwDst.rexBit != 0) {
+        text.emit8(computeRex(false, hwDst.rexBit != 0, false, false));
+    }
+    // 0F 10 = MOVSD xmm, m64 (load form, reg=dst).
+    text.emit8(0x0F);
+    text.emit8(0x10);
+    // ModR/M: mod=00, reg=dst, r/m=101 (RIP-relative).
+    text.emit8(makeModRM(0b00, hwDst.bits3, 0b101));
+    // Emit placeholder disp32 and record relocation.
+    std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
+    uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    size_t dispOffset = text.currentOffset();
+    text.emit32LE(0); // Placeholder.
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
+}
+
 // === SSE reg-reg ===
 
 void X64BinaryEncoder::encodeSseRegReg(MOpcode op,
@@ -712,9 +767,13 @@ void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSecti
     const auto hw = hwEncode(dst);
     uint8_t cc = x86CC(condCode);
 
-    // SETcc needs REX only if dst is R8-R15 (to access r/m field extension).
-    // SETcc does NOT use REX.W.
-    if (needsRex(false, false, false, hw.rexBit != 0)) {
+    // SETcc operates on 8-bit registers. A REX prefix is needed in two cases:
+    //   1. dst is R8-R15 (hw.rexBit) — to set the REX.B extension bit.
+    //   2. dst is RSP/RBP/RSI/RDI (hw.bits3 4-7, rexBit=0) — without REX
+    //      these encodings select the legacy high-byte registers AH/CH/DH/BH
+    //      instead of SPL/BPL/SIL/DIL.
+    const bool needsRexForByte = (hw.bits3 >= 4 && hw.rexBit == 0);
+    if (needsRex(false, false, false, hw.rexBit != 0) || needsRexForByte) {
         cs.emit8(computeRex(false, false, false, hw.rexBit != 0));
     }
 
