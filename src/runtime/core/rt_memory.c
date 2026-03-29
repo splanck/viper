@@ -44,6 +44,7 @@
 #include "rt_internal.h"
 #include <stdlib.h>
 
+/// @brief Default allocator: validates size, calls calloc, traps on failure.
 static void *rt_alloc_impl(int64_t bytes) {
     if (bytes < 0)
         return rt_trap("negative allocation"), NULL;

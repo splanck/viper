@@ -498,7 +498,8 @@ typedef long long ssize_t;
 #define RT_PATH_SEPARATOR '\\'
 #define RT_PATH_SEPARATOR_STR "\\"
 
-// High-resolution time for Windows
+/// @brief Return milliseconds since Unix epoch (Windows implementation).
+/// @details Converts Windows FILETIME (100-ns ticks since 1601) to Unix epoch ms.
 static inline int64_t rt_windows_time_ms(void) {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
@@ -509,6 +510,7 @@ static inline int64_t rt_windows_time_ms(void) {
     return (int64_t)(time / 10000);
 }
 
+/// @brief Return microseconds since Unix epoch (Windows implementation).
 static inline int64_t rt_windows_time_us(void) {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
@@ -517,6 +519,7 @@ static inline int64_t rt_windows_time_us(void) {
     return (int64_t)(time / 10);
 }
 
+/// @brief Sleep for @p ms milliseconds (Windows implementation).
 static inline void rt_windows_sleep_ms(int64_t ms) {
     if (ms > 0)
         Sleep((DWORD)ms);
