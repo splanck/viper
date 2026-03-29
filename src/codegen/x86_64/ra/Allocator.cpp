@@ -437,13 +437,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                             const auto *interval = intervals_.lookup(vreg);
                             const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
                             if (valueNeeded) {
-                                // Use lifetime-based slot reuse when interval is available
-                                if (interval) {
-                                    spiller_.ensureSpillSlotWithReuse(
-                                        destCls, state.spill, interval->start, interval->end);
-                                } else {
-                                    spiller_.ensureSpillSlot(destCls, state.spill);
-                                }
+                                spiller_.ensureSpillSlot(destCls, state.spill);
                                 state.spill.needsSpill = true;
                                 prefix.push_back(
                                     spiller_.makeStore(destCls, state.spill, state.phys));
@@ -560,13 +554,10 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             // Phase 2: Spill remaining GPR values to memory.
             for (auto vreg : gprStillNeedSpill) {
                 auto &state = states_[vreg];
-                const auto *interval = intervals_.lookup(vreg);
-                if (interval) {
-                    spiller_.ensureSpillSlotWithReuse(
-                        RegClass::GPR, state.spill, interval->start, interval->end);
-                } else {
-                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
-                }
+                // Spill slot reuse is disabled: the interval analysis does not
+                // account for cross-block liveness, causing values still live in
+                // successor blocks to be overwritten when a slot is recycled.
+                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
                 state.spill.needsSpill = true;
                 prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::GPR);
@@ -594,13 +585,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             // Phase 2: Spill remaining XMM values to memory.
             for (auto vreg : xmmStillNeedSpill) {
                 auto &state = states_[vreg];
-                const auto *interval = intervals_.lookup(vreg);
-                if (interval) {
-                    spiller_.ensureSpillSlotWithReuse(
-                        RegClass::XMM, state.spill, interval->start, interval->end);
-                } else {
-                    spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
-                }
+                spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
                 state.spill.needsSpill = true;
                 prefix.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::XMM);

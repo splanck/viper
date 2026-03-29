@@ -72,6 +72,11 @@ void rt_init_stack_safety(void) {
     if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
         return;
 
+    // Suppress Windows crash/assert dialog boxes so programs fail silently
+    // to stderr instead of blocking on a modal dialog.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+
     // Add vectored exception handler (called before structured handlers)
     // Use 1 to make it first in the handler chain
     AddVectoredExceptionHandler(1, stack_overflow_handler);
