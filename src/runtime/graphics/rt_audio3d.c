@@ -74,7 +74,11 @@ static double lookup_voice_distance(int64_t voice) {
     return 50.0; /* default fallback */
 }
 
-/// @brief Set the listener of the audio3d.
+/// @brief Set the 3D audio listener position and forward direction.
+/// @details Stores the listener's world-space position and forward vector, then
+///          computes a right vector via cross(forward, world_up) for stereo panning.
+///          All subsequent play_at and update_voice calls use these cached vectors
+///          to compute distance attenuation and left/right pan.
 void rt_audio3d_set_listener(void *position, void *forward) {
     if (!position || !forward)
         return;
@@ -121,7 +125,10 @@ static void compute_3d_params(
     }
 }
 
-/// @brief Play the at of the audio3d.
+/// @brief Play a sound at a 3D position with distance-based volume and stereo panning.
+/// @details Computes volume attenuation (linear falloff to max_distance) and stereo
+///          pan (dot product of source direction with listener right vector), then
+///          plays the sound through the 2D audio system with those parameters.
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     if (!sound || !position)
         return 0;
@@ -134,7 +141,9 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     return voice;
 }
 
-/// @brief Update the voice of the audio3d.
+/// @brief Recompute volume and pan for a playing voice at a new 3D position.
+/// @details Call each frame for moving sound sources. Recalculates distance
+///          attenuation and stereo pan relative to the current listener position.
 void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance) {
     if (!position || voice <= 0)
         return;

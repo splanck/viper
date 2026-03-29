@@ -190,7 +190,10 @@ void rt_keychord_define(void *obj, rt_string name, void *keys) {
     add_entry(kc, cstr, KC_TYPE_CHORD, keys, 0);
 }
 
-/// @brief Define the combo of the keychord.
+/// @brief Register a timed key combo (sequence of keys pressed within a window).
+/// @details Unlike a chord (simultaneous keys), a combo requires keys to be pressed
+///          sequentially within window_frames frames. Defaults to 15 frames (~250ms
+///          at 60fps) if window_frames <= 0.
 void rt_keychord_define_combo(void *obj, rt_string name, void *keys, int64_t window_frames) {
     if (!obj || !keys)
         return;

@@ -216,7 +216,9 @@ double rt_quat_len(void *q) {
     return sqrt(qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w);
 }
 
-/// @brief Len the sq of the quat.
+/// @brief Return the squared length (norm) of the quaternion.
+/// @details Avoids the sqrt call — useful for comparing magnitudes or checking
+///          whether a quaternion is unit-length (len_sq ≈ 1.0).
 double rt_quat_len_sq(void *q) {
     if (!q) {
         rt_trap("Quat.LenSq: null quaternion");

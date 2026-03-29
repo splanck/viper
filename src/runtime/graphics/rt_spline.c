@@ -358,7 +358,10 @@ void *rt_spline_point_at(void *spline, int64_t index) {
     return rt_vec2_new(s->xs[index], s->ys[index]);
 }
 
-/// @brief Arc the length of the spline.
+/// @brief Approximate the arc length of the spline between parameters t0 and t1.
+/// @details Uses numerical integration: evaluates the spline at `steps` evenly
+///          spaced points and sums the Euclidean distances between consecutive
+///          samples. More steps = more accurate but slower.
 double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
     if (!spline) {
         rt_trap("Spline.ArcLength: null spline");

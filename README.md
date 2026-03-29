@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-382K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-388K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -108,7 +108,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
 | [Runtime](docs/viperlib/README.md) | 275+ classes across 22 modules; 1,358 tests |
-| [3D Graphics](docs/graphics3d-guide.md) | 28 classes; feature-rich Metal + OpenGL + D3D11 GPU backends with software fallback |
+| [3D Graphics](docs/graphics3d-guide.md) | 28 classes; Metal (94% parity), D3D11 (20 features), OpenGL GPU backends + software fallback |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
@@ -130,7 +130,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [XENOSCAPE](examples/games/sidescroller/) | Metroid-style sidescroller: 10 levels, 30+ enemies, bosses, abilities, saves (17K LOC) |
 | [Dungeon of Viper](examples/games/dungeon/) | 3D first-person dungeon crawler using the Graphics3D engine |
 
-> **[See all demos →](examples/README.md)** — 6 applications, 16 games, API coverage audits, IL examples, and C++ embedding demos.
+> **[See all demos →](examples/README.md)** — 6 applications, 15 games, API coverage audits, IL examples, and C++ embedding demos.
 
 ---
 

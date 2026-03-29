@@ -157,7 +157,10 @@ void *rt_sse_connect(rt_string url) {
     return sse;
 }
 
-/// @brief Recv the sse.
+/// @brief Block until the next Server-Sent Event arrives and return its data field.
+/// @details Reads lines from the TCP connection, parsing the SSE protocol (data:,
+///          event:, id: prefixes). Returns the concatenated data payload, or empty
+///          string if the connection is closed or an error occurs.
 rt_string rt_sse_recv(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);

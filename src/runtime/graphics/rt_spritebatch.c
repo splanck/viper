@@ -347,7 +347,7 @@ void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, 100, 100, 0);
 }
 
-/// @brief Draw the scaled of the spritebatch.
+/// @brief Draw a sprite at (x, y) with uniform scaling (convenience wrapper for draw_ex).
 void rt_spritebatch_draw_scaled(
     void *batch_ptr, void *sprite, int64_t x, int64_t y, int64_t scale) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
@@ -380,7 +380,9 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
     add_item(batch, &item);
 }
 
-/// @brief Draw the pixels of the spritebatch.
+/// @brief Draw a raw Pixels image at (x, y) through the sprite batch pipeline.
+/// @details Unlike draw() which takes a Sprite (with animation state), this
+///          accepts a bare Pixels object and renders it as a single static image.
 void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y) {
     if (!batch_ptr || !pixels)
         return;
@@ -467,7 +469,7 @@ int64_t rt_spritebatch_capacity(void *batch_ptr) {
     return ((spritebatch_impl *)batch_ptr)->capacity;
 }
 
-/// @brief Is the active of the spritebatch.
+/// @brief Check whether the batch is currently between begin() and end() calls.
 int8_t rt_spritebatch_is_active(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
@@ -478,21 +480,24 @@ int8_t rt_spritebatch_is_active(void *batch_ptr) {
 // SpriteBatch Settings
 //=============================================================================
 
-/// @brief Set the sort by depth of the spritebatch.
+/// @brief Enable or disable depth-based draw order sorting (back-to-front).
 void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->sort_by_depth = enabled ? 1 : 0;
 }
 
-/// @brief Set the tint of the spritebatch.
+/// @brief Set a color tint applied to all sprites drawn in this batch.
+/// @details The tint color is multiplied with each sprite's pixel colors during
+///          rendering. Set to 0 (black) to disable tinting.
 void rt_spritebatch_set_tint(void *batch_ptr, int64_t color) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->tint_color = color;
 }
 
-/// @brief Set the alpha of the spritebatch.
+/// @brief Set the global opacity for all sprites in the batch (0-255, clamped).
+/// @details This is a batch-wide multiplier applied on top of each sprite's own alpha.
 void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
     if (!batch_ptr)
         return;
@@ -503,7 +508,7 @@ void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
     ((spritebatch_impl *)batch_ptr)->alpha = alpha;
 }
 
-/// @brief Reset the settings of the spritebatch.
+/// @brief Reset tint, alpha, and sort settings to defaults (no tint, full opacity, no sort).
 void rt_spritebatch_reset_settings(void *batch_ptr) {
     if (!batch_ptr)
         return;

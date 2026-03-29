@@ -171,14 +171,16 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 // Canvas3D skybox
 //=============================================================================
 
-/// @brief Set the skybox of the canvas3d.
+/// @brief Assign a cubemap as the scene's skybox background.
+/// @details The skybox is rendered behind all geometry as a surrounding environment.
+///          Pass a cubemap created from 6 face textures.
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (!canvas)
         return;
     ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
 }
 
-/// @brief Clear the skybox of the canvas3d.
+/// @brief Remove the skybox so the background reverts to the clear color.
 void rt_canvas3d_clear_skybox(void *canvas) {
     if (!canvas)
         return;
@@ -189,21 +191,25 @@ void rt_canvas3d_clear_skybox(void *canvas) {
 // Material3D env map + reflectivity
 //=============================================================================
 
-/// @brief Set the env map of the material3d.
+/// @brief Assign an environment cubemap for reflective rendering on this material.
+/// @details When combined with a non-zero reflectivity, the renderer samples this
+///          cubemap using the reflected view direction to simulate mirror-like surfaces.
 void rt_material3d_set_env_map(void *obj, void *cubemap) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->env_map = cubemap;
 }
 
-/// @brief Set the reflectivity of the material3d.
+/// @brief Set how much the material reflects the environment map (0.0 = none, 1.0 = mirror).
+/// @details Blended with the diffuse color during shading. Only has visible effect
+///          when an environment map cubemap is assigned to the material.
 void rt_material3d_set_reflectivity(void *obj, double r) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->reflectivity = r;
 }
 
-/// @brief Get the reflectivity of the material3d.
+/// @brief Return the material's current environment reflectivity (0.0 to 1.0).
 double rt_material3d_get_reflectivity(void *obj) {
     if (!obj)
         return 0.0;

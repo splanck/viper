@@ -245,7 +245,7 @@ void *rt_spritesheet_get_region(void *obj, rt_string name) {
     return dst;
 }
 
-/// @brief Has the region of the spritesheet.
+/// @brief Check whether a named region exists in the sprite sheet.
 int8_t rt_spritesheet_has_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;
@@ -294,7 +294,7 @@ void *rt_spritesheet_region_names(void *obj) {
     return seq;
 }
 
-/// @brief Remove the region of the spritesheet.
+/// @brief Remove a named region from the sprite sheet, shifting remaining entries down.
 int8_t rt_spritesheet_remove_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;

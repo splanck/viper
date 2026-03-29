@@ -97,7 +97,9 @@ void *rt_sprite3d_new(void *texture) {
     return s;
 }
 
-/// @brief Set the position of the sprite3d.
+/// @brief Set the 3D billboard sprite's world-space position.
+/// @details The sprite is rendered as a camera-facing quad at this position.
+///          x/y/z are in the same coordinate system as the 3D scene.
 void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -107,7 +109,9 @@ void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     s->position[2] = z;
 }
 
-/// @brief Set the scale of the sprite3d.
+/// @brief Set the billboard quad's size in world units (width, height).
+/// @details Controls how large the sprite appears in 3D space. The sprite
+///          texture is stretched to fill this rectangle.
 void rt_sprite3d_set_scale(void *obj, double w, double h) {
     if (!obj)
         return;
@@ -116,7 +120,9 @@ void rt_sprite3d_set_scale(void *obj, double w, double h) {
     s->scale_wh[1] = h;
 }
 
-/// @brief Set the anchor of the sprite3d.
+/// @brief Set the anchor point for positioning (0,0 = top-left, 0.5,0.5 = center).
+/// @details The anchor determines which point of the sprite sits at the world
+///          position. A center anchor makes the sprite pivot around its middle.
 void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     if (!obj)
         return;
@@ -125,7 +131,10 @@ void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     s->anchor[1] = ay;
 }
 
-/// @brief Set the frame of the sprite3d.
+/// @brief Select a sub-rectangle of the source texture for sprite-sheet animation.
+/// @details (fx, fy) is the top-left corner and (fw, fh) the dimensions of the
+///          frame within the full texture, in pixels. Used to display one frame
+///          from a multi-frame sprite sheet.
 void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     if (!obj)
         return;
@@ -136,7 +145,10 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     s->frame_h = (int32_t)fh;
 }
 
-/// @brief Draw the sprite3d of the canvas3d.
+/// @brief Render the 3D billboard sprite onto the canvas, projected through the camera.
+/// @details Computes screen-space coordinates by projecting the sprite's world
+///          position through the camera's view-projection matrix, then blits the
+///          texture frame at the computed position and scale.
 void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;

@@ -78,7 +78,9 @@ void *rt_material3d_new_textured(void *pixels) {
     return mat;
 }
 
-/// @brief Set the color of the material3d.
+/// @brief Set the diffuse color of the material as (r, g, b) in [0, 1] range.
+/// @details This is the base color used in Phong/Blinn lighting calculations.
+///          Combined with the diffuse texture when one is assigned.
 void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -88,42 +90,52 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
     mat->diffuse[2] = b;
 }
 
-/// @brief Set the texture of the material3d.
+/// @brief Assign a diffuse texture (Pixels object) to the material.
+/// @details The texture is sampled during rendering and modulated by the diffuse color.
+///          Pass NULL to use the solid diffuse color only.
 void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->texture = pixels;
 }
 
-/// @brief Set the shininess of the material3d.
+/// @brief Set the specular shininess exponent for Phong highlights.
+/// @details Higher values create a smaller, tighter specular highlight.
+///          Typical values: 1 (matte) to 128 (glossy plastic/metal).
 void rt_material3d_set_shininess(void *obj, double s) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->shininess = s;
 }
 
-/// @brief Set the unlit of the material3d.
+/// @brief Mark the material as unlit (ignores all lighting, renders at full diffuse color).
+/// @details Useful for UI elements, skyboxes, or pre-baked lightmapped surfaces
+///          that should not be affected by scene lights.
 void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->unlit = unlit;
 }
 
-/// @brief Set the alpha of the material3d.
+/// @brief Set the overall opacity of the material (0.0 = fully transparent, 1.0 = opaque).
+/// @details When alpha < 1.0 the renderer must handle this surface as translucent,
+///          which typically means sorting back-to-front and enabling blending.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->alpha = alpha;
 }
 
-/// @brief Get the alpha of the material3d.
+/// @brief Return the current opacity of the material (1.0 = fully opaque).
 double rt_material3d_get_alpha(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->alpha;
 }
 
-/// @brief Set the normal map of the material3d.
+/// @brief Assign a tangent-space normal map texture for per-pixel lighting detail.
+/// @details The normal map perturbs surface normals during lighting to create
+///          the illusion of surface detail without additional geometry.
 void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!obj)
         return;

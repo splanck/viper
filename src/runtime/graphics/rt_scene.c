@@ -230,14 +230,14 @@ static void update_world_transform(scene_node_impl *node) {
 // Scene Node Properties - Position
 //=============================================================================
 
-/// @brief Get the x of the node.
+/// @brief Return the node's local X position relative to its parent.
 int64_t rt_scene_node_get_x(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->x;
 }
 
-/// @brief Set the x of the node.
+/// @brief Set the node's local X position and mark its world transform as dirty.
 void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     if (!node_ptr)
         return;
@@ -246,14 +246,14 @@ void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the y of the node.
+/// @brief Return the node's local Y position relative to its parent.
 int64_t rt_scene_node_get_y(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->y;
 }
 
-/// @brief Set the y of the node.
+/// @brief Set the node's local Y position and mark its world transform as dirty.
 void rt_scene_node_set_y(void *node_ptr, int64_t y) {
     if (!node_ptr)
         return;
@@ -338,14 +338,14 @@ int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
 // Scene Node Properties - Rotation
 //=============================================================================
 
-/// @brief Get the rotation of the node.
+/// @brief Return the node's local rotation in degrees.
 int64_t rt_scene_node_get_rotation(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->rotation;
 }
 
-/// @brief Set the rotation of the node.
+/// @brief Set the node's local rotation in degrees and mark its world transform as dirty.
 void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
     if (!node_ptr)
         return;
@@ -367,28 +367,28 @@ int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
 // Scene Node Properties - Visibility & Depth
 //=============================================================================
 
-/// @brief Get the visible of the node.
+/// @brief Check whether the node (and its children) will be rendered.
 int8_t rt_scene_node_get_visible(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->visible;
 }
 
-/// @brief Set the visible of the node.
+/// @brief Show or hide the node and all its descendants during scene rendering.
 void rt_scene_node_set_visible(void *node_ptr, int8_t visible) {
     if (!node_ptr)
         return;
     ((scene_node_impl *)node_ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Get the depth of the node.
+/// @brief Return the node's draw-order depth (higher = drawn later / on top).
 int64_t rt_scene_node_get_depth(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->depth;
 }
 
-/// @brief Set the depth of the node.
+/// @brief Set the node's draw-order depth (higher = drawn later / on top).
 void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
     if (!node_ptr)
         return;
@@ -399,14 +399,14 @@ void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
 // Scene Node Properties - Name & Sprite
 //=============================================================================
 
-/// @brief Get the name of the node.
+/// @brief Return the node's string identifier (for lookup by name).
 rt_string rt_scene_node_get_name(void *node_ptr) {
     if (!node_ptr)
         return rt_const_cstr("");
     return ((scene_node_impl *)node_ptr)->name;
 }
 
-/// @brief Set the name of the node.
+/// @brief Assign a string identifier to the node for find-by-name queries.
 void rt_scene_node_set_name(void *node_ptr, rt_string name) {
     if (!node_ptr)
         return;
@@ -419,7 +419,7 @@ void *rt_scene_node_get_sprite(void *node_ptr) {
     return ((scene_node_impl *)node_ptr)->sprite;
 }
 
-/// @brief Set the sprite of the node.
+/// @brief Assign a Sprite to be drawn at this node's position during scene rendering.
 void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     if (!node_ptr)
         return;
@@ -430,7 +430,10 @@ void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
 // Scene Node Hierarchy
 //=============================================================================
 
-/// @brief Add the child of the node.
+/// @brief Attach a child node to this parent, establishing a transform hierarchy.
+/// @details Detaches the child from its previous parent (if any), guards against
+///          creating cycles by walking the ancestor chain, then appends the child
+///          to this node's children list and marks its world transform dirty.
 void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -454,7 +457,7 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     mark_transform_dirty(child);
 }
 
-/// @brief Remove the child of the node.
+/// @brief Detach a child node from this parent, clearing its parent pointer.
 void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -663,7 +666,7 @@ void rt_scene_node_move(void *node_ptr, int64_t dx, int64_t dy) {
     mark_transform_dirty(node);
 }
 
-/// @brief Set the position of the node.
+/// @brief Set the node's local X and Y in one call, marking the world transform dirty.
 void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
     if (!node_ptr)
         return;
@@ -673,7 +676,7 @@ void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
     mark_transform_dirty(node);
 }
 
-/// @brief Set the scale of the node.
+/// @brief Set uniform scale for both axes and mark the world transform dirty.
 void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;

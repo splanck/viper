@@ -84,7 +84,9 @@ void *rt_water3d_new(double width, double depth) {
     return w;
 }
 
-/// @brief Set the height of the water3d.
+/// @brief Set the base Y-level of the water plane in world space.
+/// @details Individual vertex heights oscillate around this value based on the
+///          sine wave displacement computed during update().
 void rt_water3d_set_height(void *obj, double y) {
     if (obj)
         ((rt_water3d *)obj)->height = y;
@@ -100,7 +102,9 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     w->wave_frequency = frequency;
 }
 
-/// @brief Set the color of the water3d.
+/// @brief Set the water surface color (RGBA, each component in [0, 1]).
+/// @details Alpha controls transparency — translucent water (a < 1) is rendered
+///          with blending enabled so the terrain beneath is partially visible.
 void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     if (!obj)
         return;
@@ -176,7 +180,10 @@ void rt_water3d_update(void *obj, double dt) {
     rt_material3d_set_alpha(w->material, w->alpha);
 }
 
-/// @brief Draw the water of the canvas3d.
+/// @brief Render the water surface mesh into the 3D canvas.
+/// @details Temporarily disables backface culling so the water plane is visible
+///          from both above and below, draws the mesh with the water material,
+///          then re-enables culling for subsequent draw calls.
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj)
         return;

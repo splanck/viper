@@ -127,7 +127,9 @@ void rt_mesh3d_add_vertex(
     vt->color[3] = 1.0f;
 }
 
-/// @brief Add the triangle of the mesh3d.
+/// @brief Append a triangle (3 vertex indices) to the mesh's index buffer.
+/// @details Validates that all indices are in range, grows the index buffer by
+///          doubling if needed. Indices reference vertices added by add_vertex.
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     if (!obj)
         return;
@@ -167,7 +169,10 @@ int64_t rt_mesh3d_get_triangle_count(void *obj) {
     return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
 }
 
-/// @brief Recalc the normals of the mesh3d.
+/// @brief Recompute smooth vertex normals by averaging face normals.
+/// @details Zeros all normals, accumulates each triangle's face normal (via cross
+///          product of two edges) into its three vertices, then normalizes each
+///          vertex normal. This produces smooth shading across shared vertices.
 void rt_mesh3d_recalc_normals(void *obj) {
     if (!obj)
         return;
@@ -520,7 +525,10 @@ static double obj_parse_double(const char **p) {
     return val;
 }
 
-/// @brief Calc the tangents of the mesh3d.
+/// @brief Compute tangent vectors for normal-mapped rendering (Lengyel's method).
+/// @details Derives tangent and bitangent from UV-space edge vectors, accumulates
+///          per-vertex, then orthogonalizes against the normal using Gram-Schmidt.
+///          Required for correct tangent-space normal map sampling in shaders.
 void rt_mesh3d_calc_tangents(void *obj) {
     if (!obj)
         return;
