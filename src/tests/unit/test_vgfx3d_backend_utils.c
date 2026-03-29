@@ -1,0 +1,129 @@
+#include "vgfx3d_backend_utils.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int tests_run = 0;
+static int tests_passed = 0;
+
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (!(cond)) {                                                                             \
+            fprintf(stderr, "FAIL: %s\n", msg);                                                    \
+        } else {                                                                                   \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
+
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (fabs((double)(a) - (double)(b)) > (eps)) {                                             \
+            fprintf(stderr, "FAIL: %s (got %.6f expected %.6f)\n", msg, (double)(a), (double)(b)); \
+        } else {                                                                                   \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
+
+typedef struct {
+    int64_t w;
+    int64_t h;
+    uint32_t *data;
+} fake_pixels_t;
+
+static void test_unpack_pixels_rgba_success(void) {
+    uint32_t data[2] = {0x11223344u, 0xAABBCCDDu};
+    fake_pixels_t px = {2, 1, data};
+    int32_t w = 0;
+    int32_t h = 0;
+    uint8_t *rgba = NULL;
+
+    EXPECT_TRUE(vgfx3d_unpack_pixels_rgba(&px, &w, &h, &rgba) == 0, "Pixels unpack succeeds");
+    EXPECT_TRUE(w == 2 && h == 1, "Pixels unpack preserves dimensions");
+    EXPECT_TRUE(rgba != NULL, "Pixels unpack allocates output");
+    if (rgba) {
+        EXPECT_TRUE(rgba[0] == 0x11 && rgba[1] == 0x22 && rgba[2] == 0x33 && rgba[3] == 0x44,
+                    "Pixels unpack converts first texel to RGBA bytes");
+        EXPECT_TRUE(rgba[4] == 0xAA && rgba[5] == 0xBB && rgba[6] == 0xCC && rgba[7] == 0xDD,
+                    "Pixels unpack converts second texel to RGBA bytes");
+    }
+
+    free(rgba);
+}
+
+static void test_unpack_pixels_rgba_rejects_invalid(void) {
+    fake_pixels_t px = {0, 1, NULL};
+    int32_t w = 0;
+    int32_t h = 0;
+    uint8_t *rgba = NULL;
+
+    EXPECT_TRUE(vgfx3d_unpack_pixels_rgba(&px, &w, &h, &rgba) != 0,
+                "Pixels unpack rejects invalid input");
+}
+
+static void test_flip_rgba_rows(void) {
+    uint8_t rgba[16] = {
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+        13, 14, 15, 16,
+    };
+
+    vgfx3d_flip_rgba_rows(rgba, 2, 2);
+
+    EXPECT_TRUE(rgba[0] == 9 && rgba[1] == 10 && rgba[2] == 11 && rgba[3] == 12,
+                "Row flip swaps the first row");
+    EXPECT_TRUE(rgba[8] == 1 && rgba[9] == 2 && rgba[10] == 3 && rgba[11] == 4,
+                "Row flip swaps the second row");
+}
+
+static void test_compute_normal_matrix_inverse_transpose(void) {
+    const float model[16] = {
+        2.0f, 0.0f, 0.0f, 5.0f,
+        0.0f, 3.0f, 0.0f, 6.0f,
+        0.0f, 0.0f, 4.0f, 7.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    float normal[16];
+
+    vgfx3d_compute_normal_matrix4(model, normal);
+
+    EXPECT_NEAR(normal[0], 0.5f, 1e-5f, "Normal matrix inverts X scale");
+    EXPECT_NEAR(normal[5], 1.0f / 3.0f, 1e-5f, "Normal matrix inverts Y scale");
+    EXPECT_NEAR(normal[10], 0.25f, 1e-5f, "Normal matrix inverts Z scale");
+    EXPECT_NEAR(normal[3], 0.0f, 1e-6f, "Normal matrix removes translation");
+    EXPECT_NEAR(normal[15], 1.0f, 1e-6f, "Normal matrix keeps homogeneous identity");
+}
+
+static void test_compute_normal_matrix_singular_fallback(void) {
+    const float model[16] = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        4.0f, 5.0f, 6.0f, 7.0f,
+        7.0f, 8.0f, 9.0f, 10.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    float normal[16];
+
+    vgfx3d_compute_normal_matrix4(model, normal);
+
+    EXPECT_NEAR(normal[0], 1.0f, 1e-6f, "Singular fallback copies row 0 col 0");
+    EXPECT_NEAR(normal[1], 2.0f, 1e-6f, "Singular fallback copies row 0 col 1");
+    EXPECT_NEAR(normal[2], 3.0f, 1e-6f, "Singular fallback copies row 0 col 2");
+    EXPECT_NEAR(normal[4], 4.0f, 1e-6f, "Singular fallback copies row 1 col 0");
+    EXPECT_NEAR(normal[10], 9.0f, 1e-6f, "Singular fallback copies row 2 col 2");
+}
+
+int main(void) {
+    test_unpack_pixels_rgba_success();
+    test_unpack_pixels_rgba_rejects_invalid();
+    test_flip_rgba_rows();
+    test_compute_normal_matrix_inverse_transpose();
+    test_compute_normal_matrix_singular_fallback();
+
+    printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
+    return tests_passed == tests_run ? 0 : 1;
+}

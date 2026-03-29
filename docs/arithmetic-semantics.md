@@ -126,17 +126,17 @@ All floating-point operations use **F64** (IEEE-754 binary64, double precision).
 
 | Opcode | `NaN` behavior | Meaning |
 |--------|---------------|---------|
-| `fcmp.eq` | `false` | Ordered equal |
-| `fcmp.ne` | `true` | Unordered not-equal |
-| `fcmp.lt` | `false` | Ordered less-than |
-| `fcmp.le` | `false` | Ordered less-or-equal |
-| `fcmp.gt` | `false` | Ordered greater-than |
-| `fcmp.ge` | `false` | Ordered greater-or-equal |
-| `fcmp.ord` | `false` | Both operands are not NaN |
-| `fcmp.uno` | `true` | At least one operand is NaN |
+| `fcmp_eq` | `false` | Ordered equal |
+| `fcmp_ne` | `true` | Unordered not-equal |
+| `fcmp_lt` | `false` | Ordered less-than |
+| `fcmp_le` | `false` | Ordered less-or-equal |
+| `fcmp_gt` | `false` | Ordered greater-than |
+| `fcmp_ge` | `false` | Ordered greater-or-equal |
+| `fcmp_ord` | `false` | Both operands are not NaN |
+| `fcmp_uno` | `true` | At least one operand is NaN |
 
 All ordered comparisons return `false` when either operand is NaN.
-`fcmp.ne` is unordered: returns `true` when either operand is NaN.
+`fcmp_ne` is unordered: returns `true` when either operand is NaN.
 
 ## Type Conversions
 

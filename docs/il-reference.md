@@ -595,8 +595,7 @@ global const str @.L1 = "DOE"
 **`il`** — Specify IL version (header directive at top of file).
 
 ```llvm
-il 0.1
-il 0.1.2
+il 0.2.0
 ```
 
 **`lshr`** — Logical shift right; fills with zeros (unsigned shift).

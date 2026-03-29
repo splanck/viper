@@ -556,6 +556,14 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_morphtarget3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_morphtarget3d test_rt_morphtarget3d)
 
+    viper_add_test(test_rt_canvas3d_gpu_paths ${VIPER_TESTS_DIR}/unit/test_rt_canvas3d_gpu_paths.cpp)
+    target_link_libraries(test_rt_canvas3d_gpu_paths PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_canvas3d_gpu_paths test_rt_canvas3d_gpu_paths)
+
+    viper_add_test(test_vgfx3d_backend_utils ${VIPER_TESTS_DIR}/unit/test_vgfx3d_backend_utils.c)
+    target_link_libraries(test_vgfx3d_backend_utils PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_vgfx3d_backend_utils test_vgfx3d_backend_utils)
+
     viper_add_test(test_rt_raycast3d ${VIPER_TESTS_DIR}/unit/test_rt_raycast3d.cpp)
     target_link_libraries(test_rt_raycast3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_raycast3d test_rt_raycast3d)

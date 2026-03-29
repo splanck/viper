@@ -11,27 +11,27 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Position input | ✅ | ✅ | ✅ | ✅ |
 | Normal input | ✅ | ✅ | ✅ | ✅ |
 | UV input | ✅ | ✅ | ✅ | ✅ |
-| Color input | ✅ | ✅ attribute passed, unused | ✅ attribute passed, unused | ✅ attribute passed, unused |
+| Color input | ✅ | ✅ attribute passed, unused | ✅ multiplied into diffuse/alpha | ✅ attribute passed, unused |
 | Tangent input | ✅ | ✅ | ✅ | ✅ |
 | Bone indices (defined) | ✅ | ✅ | ✅ | ✅ |
 | Bone weights (defined) | ✅ | ✅ | ✅ | ✅ |
 | MVP transform | ✅ | ✅ | ✅ | ✅ |
-| Normal matrix | ✅ | ✅ | 🐛 BUG: uses model matrix | 🐛 BUG: uses model matrix |
-| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ shader path missing | ❌ shader path missing |
-| Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader | ❌ | ❌ |
+| Normal matrix | ✅ | ✅ | ✅ inverse-transpose helper | 🐛 BUG: uses model matrix |
+| Skeletal skinning | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer bypass | ✅ GPU vertex shader + shared producer bypass | ❌ shader path missing |
+| Morph targets | ✅ (CPU, pre-backend) | ✅ GPU vertex shader + shared producer payload | ✅ GPU vertex shader + shared producer payload | ❌ |
 
 ### Texture Sampling
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ❌ NONE | ❌ NONE |
-| Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ❌ | ❌ |
-| Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ❌ | ❌ |
-| Emissive map | ✅ additive map/sample | ✅ additive map sample (slot 3) | ❌ | ❌ |
-| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ❌ | ❌ |
-| Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ❌ | ❌ |
-| Texture cache | N/A | ✅ per-frame cache by Pixels ptr | ❌ | ❌ |
-| Sampler state | N/A | ✅ shared sampler | ❌ | ❌ |
+| Diffuse texture | ✅ perspective-correct | ✅ lit + unlit paths | ✅ lit + unlit paths | ❌ NONE |
+| Normal map | ✅ per-pixel TBN perturbation | ✅ TBN perturbation (slot 1) | ✅ TBN perturbation (slot 1) | ❌ |
+| Specular map | ✅ per-pixel modulation | ✅ per-texel modulation (slot 2) | ✅ per-texel modulation (slot 2) | ❌ |
+| Emissive map | ✅ additive map/sample | ✅ additive map sample (slot 3) | ✅ emissive color * map, added after lighting | ❌ |
+| Texture wrapping | ✅ repeat (modulo) | ✅ repeat (shared sampler) | ✅ repeat | ❌ |
+| Texture filtering | ✅ bilinear | ✅ bilinear (shared sampler) | ✅ linear | ❌ |
+| Texture cache | N/A | ✅ per-frame cache by Pixels ptr | ✅ per-frame cache by Pixels ptr | ❌ |
+| Sampler state | N/A | ✅ shared sampler | ✅ fixed repeat/clamp + linear state per texture type | ❌ |
 
 ### Lighting
 
@@ -41,7 +41,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Directional diffuse | ✅ | ✅ | ✅ | ✅ |
 | Directional specular (Blinn-Phong) | ✅ | ✅ | ✅ | ✅ |
 | Point light + attenuation | ✅ | ✅ | ✅ | ✅ |
-| Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ❌ falls to ambient | ❌ falls to ambient |
+| Spot light + cone | ✅ smoothstep | ✅ smoothstep cone | ✅ smoothstep cone | ❌ falls to ambient |
 | Lighting model | Gouraud + per-pixel normal-map path | Per-pixel | Per-pixel | Per-pixel |
 | Max light slots | 8 | 8 | 8 | 8 |
 
@@ -51,7 +51,7 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 |---------|----------|-------|--------|-------|
 | Diffuse color | ✅ | ✅ | ✅ | ✅ |
 | Specular color + shininess | ✅ | ✅ | ✅ | ✅ |
-| Alpha/transparency | ✅ | ✅ | 🐛 BUG: shader misses `uAlpha` declaration | ✅ |
+| Alpha/transparency | ✅ | ✅ | ✅ | ✅ |
 | Emissive color | ✅ | ✅ | ✅ | ✅ |
 | Unlit mode | ✅ | ✅ | ✅ | ✅ |
 | Two-sided rendering | ✅ | ✅ | ✅ | ❌ toggle missing |
@@ -65,25 +65,25 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 | Transparency sorting | ✅ | ✅ | ✅ | ✅ |
 | Depth write disabled for transparent | ✅ | ✅ | ✅ | ✅ |
 | Backface culling | ✅ | ✅ | ✅ | ❌ toggle missing |
-| Wireframe mode | ✅ | ✅ | ❌ param ignored | ❌ param ignored |
-| Fog (linear distance) | ✅ | ✅ | ❌ | ❌ |
-| Shadow mapping | ✅ | ✅ | ❌ | ❌ |
-| Render-to-texture | ✅ | ✅ GPU offscreen + readback | ❌ stub | ❌ stub |
+| Wireframe mode | ✅ | ✅ | ✅ | ❌ param ignored |
+| Fog (linear distance) | ✅ | ✅ | ✅ | ❌ |
+| Shadow mapping | ✅ | ✅ | ✅ | ❌ |
+| Render-to-texture | ✅ | ✅ GPU offscreen + readback | ✅ GPU offscreen + readback | ❌ stub |
 
 ### Advanced Features
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Instanced rendering | ❌ | ⚠️ backend-side multi-draw hook, not true instancing | ❌ | ❌ |
-| Terrain splat (per-pixel) | ✅ | ✅ | ❌ | ❌ |
-| Post-processing | ✅ CPU | ⚠️ shader/pipeline pieces exist, shared flip handoff still needed | ❌ | ❌ |
-| VBO/buffer strategy | N/A | Per-draw MTL buffers | ❌ per-draw VBO/IBO | ❌ per-draw VB/IB |
+| Instanced rendering | ❌ | ⚠️ backend-side multi-draw hook, not true instancing | ✅ hardware instancing | ❌ |
+| Terrain splat (per-pixel) | ✅ | ✅ | ✅ | ❌ |
+| Post-processing | ✅ CPU | ⚠️ shader/pipeline pieces exist, shared flip handoff still needed | ✅ GPU fullscreen pass + shared flip handoff | ❌ |
+| VBO/buffer strategy | N/A | Per-draw MTL buffers | ✅ persistent dynamic VBO/IBO/instance/morph buffers | ❌ per-draw VB/IB |
 
 ### Per-Vertex Color
 
 | Feature | Software | Metal | OpenGL | D3D11 |
 |---------|----------|-------|--------|-------|
-| Vertex color used in shading | ✅ multiplied into diffuse | ❌ passed through, unused | ❌ passed through, unused | ❌ passed through, unused |
+| Vertex color used in shading | ✅ multiplied into diffuse | ❌ passed through, unused | ✅ multiplied into diffuse/alpha | ❌ passed through, unused |
 
 ---
 
@@ -91,14 +91,11 @@ Two-pass audit: initial scan + deep verification reading actual shader source an
 
 | ID | Backend | Severity | Description |
 |----|---------|----------|-------------|
-| OGL-1 | OpenGL | 🔴 CRITICAL | `uAlpha` is used in GLSL but never declared. |
-| OGL-2 | OpenGL | 🟡 HIGH | Normal matrix incorrectly uses model matrix. |
-| OGL-3 | OpenGL | 🟠 MEDIUM | Per-draw VBO/IBO creation and deletion. |
 | D3D-1 | D3D11 | 🟡 HIGH | Normal matrix = model matrix. |
 | D3D-2 | D3D11 | 🟡 HIGH | Backface culling and wireframe params ignored. |
 | D3D-3 | D3D11 | 🟠 MEDIUM | Per-draw VB/IB creation. |
 | D3D-4 | D3D11 | 🟠 MEDIUM | Unchecked HRESULTs on several creation paths. |
-| GPU-VC | Metal/OpenGL/D3D11 | 🟠 MEDIUM | Vertex color is forwarded from the vertex stage but not used in shading. |
+| GPU-VC | Metal/D3D11 | 🟠 MEDIUM | Vertex color is forwarded from the vertex stage but not used in shading. |
 
 ---
 
@@ -114,12 +111,16 @@ Already present:
 - `vgfx3d_postfx_get_snapshot()` already exports a compact backend-facing PostFX snapshot.
 - Render-target binding already flows through [`rt_rendertarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c).
 
-Still missing and explicitly required by the OpenGL and D3D11 plan sets:
+Implemented shared prerequisites now available to every backend:
 
-- GPU postfx presentation handoff in [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993), which currently always applies the CPU PostFX path first.
-- A producer-side GPU skinning bypass in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), because the current skinned draw path still CPU-skins vertices before enqueueing.
-- Producer-side morph payload population in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c); the draw command fields exist but are not populated.
-- A defined fix for GPU render-to-texture interacting with the current CPU skybox path when `render_target` is active.
+- GPU postfx presentation handoff in [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L1001) through `present_postfx`.
+- Producer-side GPU skinning bypass in [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L934) with backend-name gating and CPU fallback.
+- Producer-side morph payload packing in [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L251) plus draw-command propagation in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L664).
+- GPU RTT ownership fix in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L761) so the CPU skybox path is not clobbered during GPU render-target readback.
+
+Known remaining cross-backend gap:
+
+- Skybox rendering itself is still CPU-owned. The RTT overwrite bug is fixed, but GPU-visible skybox rendering for onscreen GPU backends remains a separate follow-up.
 
 ## Software Backend Implementation Plans
 
@@ -217,6 +218,10 @@ Metal is no longer the blocking backend for parity. Remaining work is primarily 
 | [OGL-14](ogl-14-vbo-optimization.md) | Persistent dynamic VBO/IBO | — | Medium |
 | [OGL-15](ogl-15-instanced-rendering.md) | True hardware instancing | Shared hook, OGL-14 recommended | Medium |
 | [OGL-16](ogl-16-terrain-splat.md) | Terrain splatting | OGL-03, OGL-04, shared terrain payload | Medium |
+
+### OpenGL status
+
+All OpenGL plans are now implemented in [`vgfx3d_backend_opengl.c`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_opengl.c) plus the shared runtime prerequisite work in [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c), [`rt_skeleton3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c), and [`rt_morphtarget3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c).
 
 ### OpenGL recommended execution order
 

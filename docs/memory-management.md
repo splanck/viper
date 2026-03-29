@@ -260,10 +260,11 @@ object by calling `visitor(child, ctx)` for each one.
 
 ### Triggering
 
-The collector **never runs automatically**. It must be explicitly invoked:
+By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled). At program shutdown, `rt_gc_run_all_finalizers()` runs a final collection pass.
 
 ```c
 int64_t freed = rt_gc_collect();  // Run one collection pass
+rt_gc_set_threshold(1000);        // Auto-collect every 1000 allocations
 ```
 
 Exposed to Viper programs as `Viper.Memory.GC.Collect()`.

@@ -25,6 +25,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "vgfx3d_backend.h"
 
 #include <math.h>
 #include <stdint.h>

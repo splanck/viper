@@ -244,13 +244,15 @@ The software renderer is always available. It uses Gouraud shading by default bu
 
 The Metal backend (macOS) has near-full feature parity with the software renderer (94%). It supports: diffuse texture in both lit and unlit paths, spot light cone attenuation with smoothstep falloff, normal/specular/emissive map sampling (4 texture slots), linear distance fog, wireframe mode, per-frame texture caching, GPU skeletal skinning (4-bone vertex shader), GPU morph targets (vertex shader delta accumulation), shadow mapping (depth-only pass + comparison sampler), instanced rendering (shared vertex/index buffers), per-pixel terrain splatting (4-layer weight blend), and GPU post-processing (bloom, FXAA, tone mapping, vignette, color grading via fullscreen quad).
 
+The OpenGL backend (Linux) now implements the full current OpenGL plan set: diffuse/normal/specular/emissive textures, vertex-color modulation, inverse-transpose normal matrices, spot lights, fog, wireframe mode, render-to-texture readback, shadow mapping, GPU post-processing, hardware instancing, GPU skinning + morph payload consumption, terrain splatting, and persistent dynamic buffers. GPU-backed skybox rendering is still a separate follow-up; the render-target overwrite bug is fixed.
+
 ## Performance Tips
 
 - **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.
 - **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
 - **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
 - **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
-- **Non-uniform scaling:** Normal vectors are transformed by the model matrix directly (not the inverse-transpose). This is correct for rotation, translation, and uniform scaling. Non-uniform scaling (e.g., squashing one axis) will distort lighting.
+- **Non-uniform scaling:** Metal and OpenGL use a proper inverse-transpose normal matrix. The software and D3D11 paths still use the model matrix directly, so non-uniform scaling can distort lighting there.
 
 ## Resource Limits
 
@@ -484,7 +486,7 @@ Canvas3D.DrawCrosshair(canvas, 0xFFFFFF, 12)  // centered crosshair
 Canvas3D.DrawText2D(canvas, 10, 10, "Score: 100", 0xCCCCCC)
 ```
 
-**Note:** On GPU backends (Metal), these draw to the software framebuffer which is behind the GPU layer. For GPU-visible HUD elements, render as 3D geometry (tiny unlit quads at the camera's near plane).
+**Note:** On GPU backends, these draw to the software framebuffer rather than the GPU scene surface. For GPU-visible HUD elements, render as 3D geometry (tiny unlit quads at the camera's near plane).
 
 ## Audio3D
 
@@ -701,7 +703,7 @@ Heightmap-based terrain with chunked rendering and texture splatting.
 | `GetHeightAt(x, z)` | Query height at world XZ position |
 | `GetNormalAt(x, z)` | Query surface normal at world XZ position |
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software backend performs per-pixel splat sampling; a baked fallback texture is used on GPU backends until they implement their own splat shaders.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software and OpenGL backends perform per-pixel splat sampling. A baked fallback texture is still used on GPU backends that have not implemented splat shaders yet.
 
 Draw via `Canvas3D.DrawTerrain(terrain)`.
 

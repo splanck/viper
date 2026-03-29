@@ -92,7 +92,7 @@ WEND
 
 ### Detection
 
-Viper does not include automatic cycle detection. If you suspect a memory leak from cycles:
+Viper includes a cycle-detecting garbage collector (`rt_gc.c`) that uses a trial-deletion algorithm. Objects must be registered via `rt_gc_track` for cycle detection to apply. The GC runs periodically during allocation and at program shutdown via `rt_gc_run_all_finalizers`. For debugging:
 
 1. Review object relationships for potential cycles
 2. Use debug builds with refcount tracing (`-DVIPER_RC_DEBUG=1`)

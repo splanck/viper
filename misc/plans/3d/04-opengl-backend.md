@@ -16,18 +16,19 @@ Already implemented in the OpenGL backend:
 - Depth test, blending, backface culling toggle
 - Deferred draw replay through [`vgfx3d_backend_t`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend.h)
 
-Still missing or incomplete:
+Implemented as of 2026-03-28:
 
 - Diffuse / normal / specular / emissive texture sampling
-- Correct normal matrix
+- Vertex-color modulation
+- Correct inverse-transpose normal matrix
 - Spot lights, fog, wireframe
-- Render-to-texture
+- Render-to-texture with FBO ownership + CPU readback
 - Shadow mapping
-- GPU post-processing
-- Real OpenGL instancing
+- GPU post-processing presentation hook
+- Hardware instancing
 - Terrain splatting
-- Efficient dynamic buffer reuse
-- Full GPU skinning / GPU morph support
+- Persistent dynamic mesh/index/instance/morph buffers
+- Full OpenGL shader consumption for GPU skinning / GPU morph payloads
 
 ## Important Corrections To The Older Sketch
 
@@ -45,16 +46,20 @@ The earlier phase note is stale in several ways and should not be used as the im
 
 ## Shared Runtime Prerequisites
 
-Some OpenGL feature plans require work outside the backend file:
+These shared prerequisites are now implemented:
 
 - GPU post-processing:
-  - [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L993) currently always runs the CPU PostFX path before `backend->present()`. A shared handoff is required so GPU backends can own postfx presentation when enabled.
+  - [`rt_canvas3d_flip()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L1001) now hands a PostFX snapshot to backends through `present_postfx` and skips the CPU path when the backend owns presentation.
 - GPU skinning:
-  - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L923) still CPU-skins vertices before enqueueing the draw. The OpenGL backend can consume `bone_palette`, but true GPU skinning also needs a producer-side bypass of that CPU pre-skin step.
+  - [`rt_canvas3d_draw_mesh_skinned()`](/Users/stephen/git/viper/src/runtime/graphics/rt_skeleton3d.c#L934) now bypasses CPU pre-skinning for GPU-capable backends and forwards the bone palette through the draw command.
 - GPU morph targets:
-  - `vgfx3d_draw_cmd_t` already has morph fields, but [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L722) still leaves them null. A producer path is required before the OpenGL morph shader path can be considered complete.
+  - [`rt_canvas3d_draw_mesh_morphed()`](/Users/stephen/git/viper/src/runtime/graphics/rt_morphtarget3d.c#L251) now packs morph payloads for GPU-capable backends, and [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L729) propagates them into `vgfx3d_draw_cmd_t`.
 - GPU render-to-texture + skybox:
-  - Canvas3D currently paints the skybox directly into the CPU render-target buffer when `render_target` is active. A GPU RTT implementation must not silently overwrite that behavior.
+  - [`rt_canvas3d.c`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c#L772) now skips the CPU skybox write when a GPU backend owns an active render target, preventing the RTT readback path from silently clobbering the buffer.
+
+Known remaining follow-up:
+
+- Onscreen GPU skybox rendering is still not backend-owned. The RTT ownership bug is fixed, but full GPU-visible skybox rendering remains separate work.
 
 ## Backend-Local Work
 
@@ -71,9 +76,16 @@ The detailed implementation work is split across the OpenGL backend plan set in 
 
 ## Execution Principle
 
-Implement against the current runtime, not against the older phase sketch. That means:
+This phase is now implemented against the current runtime, not against the older phase sketch. The delivered shape is:
 
 - keep the existing backend file unless a refactor is clearly warranted
 - reuse the current Canvas3D scheduling and backend vtable
 - document every shared prerequisite explicitly
 - preserve the software fallback until each GPU feature is fully wired end to end
+
+## Validation
+
+Focused runtime coverage added for this implementation:
+
+- [`test_rt_canvas3d_gpu_paths.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d_gpu_paths.cpp) validates the shared GPU skinning / morph producer paths and their CPU fallbacks.
+- [`test_vgfx3d_backend_utils.c`](/Users/stephen/git/viper/src/tests/unit/test_vgfx3d_backend_utils.c) validates pixel unpacking, RTT row-flip, and inverse-transpose normal-matrix helpers.

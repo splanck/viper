@@ -24,6 +24,7 @@
 #include "rt_skeleton3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "vgfx3d_backend.h"
 #include "vgfx3d_skinning.h"
 
 #include <math.h>
