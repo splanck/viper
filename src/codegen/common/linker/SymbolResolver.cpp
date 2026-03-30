@@ -371,6 +371,7 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "_wmakepath_s",
         "wcscpy_s",
         "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
+        "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
         "rt_audio_shutdown",
     };
 
@@ -440,7 +441,8 @@ static bool isKnownDynamicSymbol(const std::string &name) {
 /// formatting functions. Those definitions must participate in archive
 /// resolution instead of being forced down the dynamic-import path.
 static bool preferArchiveDefinition(const std::string &name) {
-    if (name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")
+    if (name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
+        name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")
         return false;
 
     if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" ||
@@ -451,6 +453,7 @@ static bool preferArchiveDefinition(const std::string &name) {
 
     return name.find("__scrt_") != std::string::npos ||
            name.find("__local_stdio_printf_options") != std::string::npos ||
+           name.find("__local_stdio_scanf_options") != std::string::npos ||
            name.rfind("__xi_", 0) == 0 ||
            name.rfind("__xc_", 0) == 0 || name.rfind("__xl_", 0) == 0 ||
            name.rfind("__dyn_tls_", 0) == 0 || name.rfind("__tls_", 0) == 0;

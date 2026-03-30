@@ -106,6 +106,8 @@ struct DivTrapSequence {
     bool hasTrapBranch{false};
     bool hasCqto{false};
     bool hasIdiv{false};
+    bool hasIdivRcx{false};
+    bool hasScratchDivisorMove{false};
     bool hasTrapCall{false};
 };
 
@@ -126,6 +128,13 @@ struct DivTrapSequence {
         }
         if (!sequence.hasIdiv && line.find("idivq") != std::string::npos) {
             sequence.hasIdiv = true;
+        }
+        if (!sequence.hasIdivRcx && line.find("idivq %rcx") != std::string::npos) {
+            sequence.hasIdivRcx = true;
+        }
+        if (!sequence.hasScratchDivisorMove && line.find("movq") != std::string::npos &&
+            line.find("%rcx") != std::string::npos) {
+            sequence.hasScratchDivisorMove = true;
         }
         if (!sequence.hasTrapCall && line.find("callq") != std::string::npos &&
             line.find("rt_trap_div0") != std::string::npos) {
@@ -302,7 +311,8 @@ int main() {
 
     const DivTrapSequence sequence = analyseDivTrapSequence(result.asmText);
     if (!sequence.hasSelfTest || !sequence.hasTrapBranch || !sequence.hasCqto ||
-        !sequence.hasIdiv || !sequence.hasTrapCall) {
+        !sequence.hasIdiv || !sequence.hasIdivRcx || !sequence.hasScratchDivisorMove ||
+        !sequence.hasTrapCall) {
         std::cerr << "Missing guarded division pattern in assembly:\n" << result.asmText;
         return EXIT_FAILURE;
     }

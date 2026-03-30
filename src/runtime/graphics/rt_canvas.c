@@ -74,10 +74,23 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = (int32_t)width;
     params.height = (int32_t)height;
-    if (title)
-        params.title = rt_string_cstr(title);
+    char *ctitle = NULL;
+    if (title) {
+        size_t title_len = (size_t)rt_str_len(title);
+        ctitle = (char *)malloc(title_len + 1);
+        if (!ctitle) {
+            if (rt_obj_release_check0(canvas))
+                rt_obj_free(canvas);
+            rt_trap("Canvas.New: failed to allocate title buffer");
+            return NULL;
+        }
+        memcpy(ctitle, rt_string_cstr(title), title_len);
+        ctitle[title_len] = '\0';
+        params.title = ctitle;
+    }
 
     canvas->gfx_win = vgfx_create_window(&params);
+    free(ctitle);
     if (!canvas->gfx_win) {
         if (rt_obj_release_check0(canvas))
             rt_obj_free(canvas);

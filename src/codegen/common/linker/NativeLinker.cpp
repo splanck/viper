@@ -126,6 +126,7 @@ bool isWindowsHelperSymbol(const std::string &name) {
            name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
            name == "__scrt_exe_initialize_mta" ||
            name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
+           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" ||
            name == "vm_trap" || name == "rt_audio_shutdown";
 }
 
@@ -142,6 +143,8 @@ std::string dllForImport(const std::string &name, bool debugRuntime) {
         "SetEnvironmentVariableA",   "SetUnhandledExceptionFilter",
         "SetErrorMode",              "SwitchToThread",           "WriteFile",
         "GetTickCount64",            "AddVectoredExceptionHandler",
+        "GlobalAlloc",               "GlobalFree",               "GlobalLock",
+        "GlobalUnlock",
         "InitializeSRWLock",         "AcquireSRWLockExclusive",  "AcquireSRWLockShared",
         "ReleaseSRWLockExclusive",   "ReleaseSRWLockShared",     "QueryPerformanceCounter",
         "VirtualQuery",              "WideCharToMultiByte",      "Beep",
@@ -448,6 +451,12 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
                                      {0, 0, 0, 0, 0, 0, 0, 0},
                                      8);
         addImportAlias("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", idx);
+    }
+    if (needsHelper("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")) {
+        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
+                                     {0, 0, 0, 0, 0, 0, 0, 0},
+                                     8);
+        addImportAlias("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", idx);
     }
 
     if (needsHelper("__security_check_cookie")) {

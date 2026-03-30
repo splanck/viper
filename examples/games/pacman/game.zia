@@ -714,4 +714,3 @@ class Game {
         canvas.Text(config.SCREEN_WIDTH - 100, 5, livesText, config.COLOR_WHITE);
     }
 }
-

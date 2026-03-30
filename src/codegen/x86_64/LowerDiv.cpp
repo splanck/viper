@@ -316,6 +316,7 @@ void lowerSignedDivRem(MFunction &fn) {
 
             const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
             const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);
+            const Operand rcxOp = makePhysRegOperand(PhysReg::RCX);
 
             if (std::holds_alternative<OpImm>(dividendClone)) {
                 currentBlock.append(MInstr::make(
@@ -327,16 +328,23 @@ void lowerSignedDivRem(MFunction &fn) {
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
 
+            // IDIV/DIV implicitly consume RDX:RAX, so the explicit divisor operand
+            // must not be allocated to either register. Materialise it into RCX
+            // first so register allocation cannot place the divisor in RAX/RDX.
+            currentBlock.append(MInstr::make(
+                MOpcode::MOVrr,
+                std::vector<Operand>{cloneOperand(rcxOp), cloneOperand(divisorClone)}));
+
             if (isSigned) {
                 currentBlock.append(MInstr::make(MOpcode::CQO, {}));
-                currentBlock.append(MInstr::make(MOpcode::IDIVrm,
-                                                 std::vector<Operand>{cloneOperand(divisorClone)}));
+                currentBlock.append(
+                    MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(rcxOp)}));
             } else {
                 currentBlock.append(
                     MInstr::make(MOpcode::XORrr32,
                                  std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
                 currentBlock.append(
-                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorClone)}));
+                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(rcxOp)}));
             }
 
             const Operand resultPhys = isDiv ? raxOp : rdxOp;

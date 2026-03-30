@@ -417,6 +417,38 @@ int main() {
         CHECK(patched == 0x00000FFC);
     }
 
+    // --- Windows __ImageBase must use the PE image base, not a dynamic zero ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_imagebase_rel32.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "__ImageBase",
+                           /*IMAGE_REL_AMD64_REL32=*/4,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        // __ImageBase often survives symbol resolution as a dynamic entry.
+        // The relocation applier must still resolve it to the PE image base.
+        GlobalSymEntry entry;
+        entry.name = "__ImageBase";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0;
+        layout.globalSyms["__ImageBase"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(patched == 0xFFFFEFFC);
+    }
+
     // --- COFF x86_64 REL32_4 includes the trailing-byte bias ---
     {
         std::vector<uint8_t> code(8, 0);

@@ -90,6 +90,7 @@ class LinearScanAllocator {
     std::unordered_set<uint16_t> activeGPR_{};
     /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.
     std::unordered_set<uint16_t> activeXMM_{};
+    std::unordered_set<uint16_t> pinnedForInstr_{}; ///< Vregs materialized or referenced by the current instruction.
     std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
 
     /// @brief Argument registers reserved during call setup, with their class.
@@ -162,6 +163,9 @@ class LinearScanAllocator {
     /// @details Walks the block's instructions in order, handles live range transitions, and
     ///          cooperates with the coalescer to apply PX_COPY eliminations.
     void processBlock(MBasicBlock &block, Coalescer &coalescer);
+
+    /// @brief Record vregs referenced by the current instruction so they cannot be spilled mid-rewrite.
+    void pinInstructionVRegs(const MInstr &instr);
 
     /// @brief Release or spill registers at block boundaries using CFG-aware liveOut.
     /// @details Spills vregs that are in the liveOut set for this block, and simply

@@ -267,6 +267,8 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
         auto stateIt = states_.find(vreg);
         if (stateIt == states_.end() || !stateIt->second.hasPhys)
             continue;
+        if (pinnedForInstr_.contains(vreg))
+            continue;
         if (stateIt->second.cachedInBlock)
             continue; // Skip cached vregs in first pass
         const auto *interval = intervals_.lookup(vreg);
@@ -283,6 +285,8 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
         for (uint16_t vreg : active) {
             auto stateIt = states_.find(vreg);
             if (stateIt == states_.end() || !stateIt->second.hasPhys)
+                continue;
+            if (pinnedForInstr_.contains(vreg))
                 continue;
             const auto *interval = intervals_.lookup(vreg);
             const std::size_t end =
@@ -312,6 +316,24 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
             cls, victimId, victim, poolFor(cls), prefix, result_, interval->start, interval->end);
     } else {
         spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
+    }
+}
+
+void LinearScanAllocator::pinInstructionVRegs(const MInstr &instr) {
+    pinnedForInstr_.clear();
+    for (const auto &operand : instr.operands) {
+        if (const auto *reg = std::get_if<OpReg>(&operand)) {
+            if (!reg->isPhys)
+                pinnedForInstr_.insert(reg->idOrPhys);
+            continue;
+        }
+        const auto *mem = std::get_if<OpMem>(&operand);
+        if (!mem)
+            continue;
+        if (!mem->base.isPhys)
+            pinnedForInstr_.insert(mem->base.idOrPhys);
+        if (mem->hasIndex && !mem->index.isPhys)
+            pinnedForInstr_.insert(mem->index.idOrPhys);
     }
 }
 
@@ -382,9 +404,11 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         // Expire vregs whose live intervals have ended before this instruction.
         // This ensures their physical registers are returned to the free pool for reuse.
         expireIntervals();
+        pinInstructionVRegs(instr);
 
         if (instr.opcode == MOpcode::PX_COPY) {
             coalescer.lower(instr, rewritten);
+            pinnedForInstr_.clear();
             ++currentInstrIdx_;
             continue;
         }
@@ -644,9 +668,11 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             releaseRegister(rel.phys, rel.cls);
         }
 
+        pinnedForInstr_.clear();
         ++currentInstrIdx_;
     }
 
+    pinnedForInstr_.clear();
     block.instructions = std::move(rewritten);
 }
 

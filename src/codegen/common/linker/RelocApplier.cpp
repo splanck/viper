@@ -121,6 +121,9 @@ static bool resolveSymAddr(const std::string &symName,
     auto it = globalSyms.find(symName);
     if (it == globalSyms.end())
         return false;
+    if (it->second.binding == GlobalSymEntry::Undefined ||
+        it->second.binding == GlobalSymEntry::Dynamic)
+        return false;
     addr = it->second.resolvedAddr;
     return true;
 }
