@@ -171,26 +171,16 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
             /* Move to next buffer */
             int32_t next_buffer = (music->current_buffer + 1) % VAUD_MUSIC_BUFFER_COUNT;
 
-            /* Refill current buffer in background (simplified: do it inline for now) */
+            /* Refill current buffer (resamples if needed) */
             if (music->file) {
-                int16_t *buf = music->buffers[music->current_buffer];
-                int32_t read = vaud_wav_read_frames(music->file,
-                                                    buf,
-                                                    VAUD_MUSIC_BUFFER_FRAMES,
-                                                    music->channels,
-                                                    music->bits_per_sample);
+                int32_t read = vaud_music_fill_buffer(music, music->current_buffer);
 
                 if (read == 0) {
                     if (music->loop) {
-                        /* Seek to beginning of PCM data (C-4: was incorrectly using
-                         * music->position which is a frame counter, not a byte offset) */
+                        /* Seek to beginning of PCM data */
                         fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
                         music->position = 0;
-                        read = vaud_wav_read_frames(music->file,
-                                                    buf,
-                                                    VAUD_MUSIC_BUFFER_FRAMES,
-                                                    music->channels,
-                                                    music->bits_per_sample);
+                        read = vaud_music_fill_buffer(music, music->current_buffer);
                     }
 
                     if (read == 0) {

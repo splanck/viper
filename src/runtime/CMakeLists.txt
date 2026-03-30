@@ -8,6 +8,8 @@ set(RT_BASE_SOURCES
         core/rt_memory.c
         core/rt_output.c
         core/rt_string_ops.c
+        core/rt_string_advanced.c
+        core/rt_string_specialized.c
         core/rt_string_builder.c
         core/rt_string_format.c
         core/rt_string_encode.c
@@ -76,6 +78,7 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_list.c
         collections/rt_pqueue.c
         collections/rt_seq.c
+        collections/rt_seq_ops.c
         collections/rt_seq_functional.c
         collections/rt_set.c
         collections/rt_sortedset.c
@@ -194,6 +197,9 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_drawing_advanced.c
         graphics/rt_gui_app.c
         graphics/rt_gui_codeeditor.c
+        graphics/rt_gui_messagebox.c
+        graphics/rt_gui_filedialog.c
+        graphics/rt_gui_findbar.c
         graphics/rt_gui_features.c
         graphics/rt_gui_menus.c
         graphics/rt_gui_system.c
@@ -212,6 +218,10 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_physics2d.c
         graphics/rt_physics2d_joint.c
         graphics/rt_pixels.c
+        graphics/rt_pixels_io.c
+        graphics/rt_pixels_transform.c
+        graphics/rt_pixels_draw.c
+        graphics/rt_gif.c
         graphics/rt_sprite.c
         graphics/rt_spritesheet.c
         graphics/rt_camera.c
@@ -273,6 +283,9 @@ set(RT_AUDIO_SOURCES
         audio/rt_synth.c
         audio/rt_audio_codec.c
         audio/rt_musicgen.c
+        audio/rt_ogg.c
+        audio/rt_vorbis.c
+        audio/rt_mp3.c
 )
 
 set(RT_THREADS_SOURCES
@@ -294,6 +307,8 @@ set(RT_THREADS_SOURCES
 
 set(RT_NETWORK_SOURCES
         network/rt_network.c
+        network/rt_network_udp.c
+        network/rt_network_dns.c
         network/rt_network_http.c
         network/rt_http_url.c
         network/rt_restclient.c

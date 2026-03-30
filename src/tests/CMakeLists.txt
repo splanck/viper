@@ -405,6 +405,22 @@ viper_add_test(test_runtime_method_binding
 
 # TODO: Fix arity check for static methods (no receiver param). 1056 false
 # positives because the test unconditionally adds +1 for receiver on all methods.
+viper_add_test(test_jpeg_decode
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestJpegDecode.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_ogg_vorbis
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestOggVorbis.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_gif_decode
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGifDecode.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_mp3_decode
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestMp3Decode.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
         LIBS fe_basic)
@@ -470,10 +486,7 @@ viper_add_test(test_oop_inheritance
 
 ## Removed: test_oop_destructor_dispose (syntax validation; semantics in TestDispose)
 
-# TODO: Destructor chain order bug — derived destructor body doesn't execute
-# before base destructor. g should be 12 (derived:*10+1 then base:*10+2) but
-# DISPOSE doesn't chain correctly. Real BASIC OOP lowering bug.
-viper_add_test(test_oop_destructor_chain NO_CTEST
+viper_add_test(test_oop_destructor_chain
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp
         LIBS fe_basic viper_test_common)
 
@@ -544,7 +557,9 @@ set(ZIA_RUNTIME_TESTS
         test_bugfix_random_new
         test_bugfix_zia_new
         test_sprite_flip
+        test_sprite_png_load
         test_png_io
+        test_png_formats
         test_collision_layers
         test_tilemap_collision
         test_tilemap_layers

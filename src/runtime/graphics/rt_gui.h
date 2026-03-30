@@ -835,6 +835,12 @@ void rt_image_set_scale_mode(void *image, int64_t mode);
 /// @param opacity Opacity (0.0 to 1.0).
 void rt_image_set_opacity(void *image, double opacity);
 
+/// @brief Load an image file (BMP or PNG) into the image widget.
+/// @param image Image widget handle.
+/// @param path File path (runtime string).
+/// @return 1 on success, 0 on failure.
+int64_t rt_image_load_file(void *image, void *path);
+
 //=========================================================================
 // Theme Functions
 //=========================================================================

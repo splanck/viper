@@ -1335,6 +1335,8 @@ RT_FUNC(PixelsTint,      rt_pixels_tint,       "Viper.Graphics.Pixels.Tint",    
 RT_FUNC(PixelsBlur,      rt_pixels_blur,       "Viper.Graphics.Pixels.Blur",      "obj(obj,i64)")
 RT_FUNC(PixelsResize,    rt_pixels_resize,     "Viper.Graphics.Pixels.Resize",    "obj(obj,i64,i64)")
 RT_FUNC(PixelsLoadPng,   rt_pixels_load_png,   "Viper.Graphics.Pixels.LoadPng",   "obj(str)")
+RT_FUNC(PixelsLoadJpeg,  rt_pixels_load_jpeg,  "Viper.Graphics.Pixels.LoadJpeg",  "obj(str)")
+RT_FUNC(PixelsLoadGif,   rt_pixels_load_gif,   "Viper.Graphics.Pixels.LoadGif",   "obj(str)")
 RT_FUNC(PixelsSavePng,         rt_pixels_save_png,            "Viper.Graphics.Pixels.SavePng",          "i64(obj,str)")
 RT_FUNC(PixelsSetRGB,          rt_pixels_set_rgb,             "Viper.Graphics.Pixels.SetRGB",           "void(obj,i64,i64,i64)")
 RT_FUNC(PixelsGetRGB,          rt_pixels_get_rgb,             "Viper.Graphics.Pixels.GetRGB",           "i64(obj,i64,i64)")
@@ -1852,6 +1854,7 @@ RT_FUNC(GuiImageSetPixels,    rt_image_set_pixels,     "Viper.GUI.Image.SetPixel
 RT_FUNC(GuiImageClear,        rt_image_clear,          "Viper.GUI.Image.Clear",        "void(obj)")
 RT_FUNC(GuiImageSetScaleMode, rt_image_set_scale_mode, "Viper.GUI.Image.SetScaleMode", "void(obj,i64)")
 RT_FUNC(GuiImageSetOpacity,   rt_image_set_opacity,    "Viper.GUI.Image.SetOpacity",   "void(obj,f64)")
+RT_FUNC(GuiImageLoadFile,    rt_image_load_file,      "Viper.GUI.Image.LoadFile",     "i64(obj,str)")
 
 //=============================================================================
 // GUI - THEME
@@ -6050,6 +6053,8 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("BlendPixel",       "void(i64,i64,i64,i64)",             PixelsBlendPixel)
     RT_METHOD("LoadBmp", "obj(str)", PixelsLoadBmp)
     RT_METHOD("LoadPng", "obj(str)", PixelsLoadPng)
+    RT_METHOD("LoadJpeg", "obj(str)", PixelsLoadJpeg)
+    RT_METHOD("LoadGif", "obj(str)", PixelsLoadGif)
 RT_CLASS_END()
 
 // Viper.Graphics.Sprite - animated sprite

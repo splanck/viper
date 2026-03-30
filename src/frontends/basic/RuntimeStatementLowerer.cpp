@@ -162,6 +162,25 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
         // Invariant: Slot typing must be refreshed from symbols/sema on each use
         // to avoid stale kinds when crossing complex control flow (e.g., SELECT CASE). (BUG-076)
         Lowerer::SlotType slotInfo = lowerer_.getSlotType(var->name);
+
+        // Detect user-class NEW expressions — their temporary must be released
+        // after assignment to balance the refcount.  rt_obj_new_i64 returns with
+        // refcount 1 (creation ref).  assignScalarSlot retains (+1=2) for the
+        // variable's ownership.  Without this release the creation ref is
+        // never balanced and the object can never reach refcount 0.
+        //
+        // Only user-defined classes (present in the OOP index) go through
+        // rt_obj_new_i64.  Runtime classes (StringBuilder, String, File, etc.)
+        // use dedicated ctors with their own allocation and refcount semantics;
+        // releasing their return values would corrupt the heap.
+        bool isUserClassNew = false;
+        if (const auto *alloc = as<const NewExpr>(*stmt.expr)) {
+            std::string qname = lowerer_.qualify(alloc->className);
+            if (lowerer_.oopIndex_.findClass(qname))
+                isUserClassNew = true;
+        }
+        Lowerer::Value newTempValue = value.value; // save before move
+
         if (slotInfo.isArray) {
             lowerer_.storeArray(storage->pointer,
                                 value.value,
@@ -169,6 +188,16 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
                                 /*isObjectArray*/ slotInfo.isObject);
         } else {
             assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
+        }
+
+        // Release the NEW temporary's creation reference.  After
+        // assignScalarSlot retained the value, refcount is 2.  This release
+        // drops it to 1 — the variable is the sole owner.
+        if (isUserClassNew && slotInfo.isObject) {
+            lowerer_.requestHelper(RuntimeFeature::ObjReleaseChk0);
+            lowerer_.curLoc = {};
+            lowerer_.emitCallRet(
+                lowerer_.ilBoolTy(), "rt_obj_release_check0", {newTempValue});
         }
     } else if (auto *mc = as<const MethodCallExpr>(*stmt.target)) {
         // Handle array field assignment (obj.arrayField(index) = value). (BUG-056)

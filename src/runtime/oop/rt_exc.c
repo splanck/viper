@@ -79,7 +79,7 @@ rt_string rt_exc_get_message(void *exc) {
 }
 
 int64_t rt_exc_is_exception(void *obj) {
-    // Stub: returns 1 for any non-NULL pointer without checking class ID.
-    // A full implementation would use rt_obj_class_id() == RT_EXCEPTION_CLASS_ID.
-    return obj != NULL ? 1 : 0;
+    if (!obj)
+        return 0;
+    return rt_obj_class_id(obj) == RT_EXCEPTION_CLASS_ID ? 1 : 0;
 }

@@ -1,0 +1,1667 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/rt_pixels_io.c
+// Purpose: Image file I/O for Viper.Graphics.Pixels. Supports loading and saving
+//   BMP, PNG, and JPEG image formats. PNG uses zlib compression via rt_compress.
+//   JPEG includes a minimal baseline decoder (no progressive/arithmetic support).
+//
+// Key invariants:
+//   - All loaders return a new GC-managed Pixels object or NULL on failure.
+//   - BMP supports 24-bit uncompressed only (both top-down and bottom-up).
+//   - PNG supports 8-bit and 16-bit grayscale, RGB, RGBA, palette, and tRNS.
+//   - JPEG supports baseline 8-bit YCbCr (4:4:4, 4:2:2, 4:2:0, 4:1:1).
+//   - Pixel format is 32-bit RGBA: 0xRRGGBBAA in row-major order.
+//
+// Ownership/Lifetime:
+//   - Returned Pixels objects are GC-managed via pixels_alloc().
+//   - File handles are opened and closed within each function (no leaks).
+//
+// Links: src/runtime/graphics/rt_pixels_internal.h (shared struct),
+//        src/runtime/graphics/rt_pixels.c (core operations),
+//        src/runtime/graphics/rt_pixels.h (public API)
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_pixels_internal.h"
+#include "rt_pixels.h"
+
+#include "rt_bytes.h"
+#include "rt_compress.h"
+#include "rt_internal.h"
+#include "rt_string.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Use 64-bit seek/tell to support files larger than 2 GB on Windows
+// where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
+#if defined(_WIN32)
+#define px_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define px_ftell(fp) _ftelli64((fp))
+#else
+#define px_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define px_ftell(fp) ftello((fp))
+#endif
+
+//=============================================================================
+// BMP Image I/O
+//=============================================================================
+
+// BMP file format structures (packed)
+#pragma pack(push, 1)
+
+typedef struct bmp_file_header {
+    uint8_t magic[2];     // 'B', 'M'
+    uint32_t file_size;   // Total file size
+    uint16_t reserved1;   // 0
+    uint16_t reserved2;   // 0
+    uint32_t data_offset; // Offset to pixel data
+} bmp_file_header;
+
+typedef struct bmp_info_header {
+    uint32_t header_size;      // 40 for BITMAPINFOHEADER
+    int32_t width;             // Image width
+    int32_t height;            // Image height (positive = bottom-up)
+    uint16_t planes;           // 1
+    uint16_t bit_count;        // Bits per pixel (24 for RGB)
+    uint32_t compression;      // 0 = BI_RGB (uncompressed)
+    uint32_t image_size;       // Can be 0 for uncompressed
+    int32_t x_pels_per_meter;  // Horizontal resolution
+    int32_t y_pels_per_meter;  // Vertical resolution
+    uint32_t colors_used;      // 0 = default
+    uint32_t colors_important; // 0 = all
+} bmp_info_header;
+
+#pragma pack(pop)
+
+void *rt_pixels_load_bmp(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    uint8_t *row_buf = NULL;
+    rt_pixels_impl *pixels = NULL;
+
+    // Read file header
+    bmp_file_header file_hdr;
+    if (fread(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+        goto bmp_cleanup;
+
+    // Check magic
+    if (file_hdr.magic[0] != 'B' || file_hdr.magic[1] != 'M')
+        goto bmp_cleanup;
+
+    // Read info header
+    bmp_info_header info_hdr;
+    if (fread(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+        goto bmp_cleanup;
+
+    // Only support 24-bit uncompressed
+    if (info_hdr.bit_count != 24 || info_hdr.compression != 0)
+        goto bmp_cleanup;
+
+    int32_t width = info_hdr.width;
+    int32_t height = info_hdr.height;
+    int bottom_up = 1;
+
+    // Handle negative height (top-down)
+    if (height < 0) {
+        height = -height;
+        bottom_up = 0;
+    }
+
+    if (width <= 0 || height <= 0 || width > 32768 || height > 32768)
+        goto bmp_cleanup;
+
+    // Calculate row padding (rows must be 4-byte aligned)
+    int row_size = ((width * 3 + 3) / 4) * 4;
+
+    // Allocate row buffer
+    row_buf = (uint8_t *)malloc((size_t)row_size);
+    if (!row_buf)
+        goto bmp_cleanup;
+
+    // Create pixels
+    pixels = pixels_alloc(width, height);
+    if (!pixels)
+        goto bmp_cleanup;
+
+    // Seek to pixel data
+    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0) {
+        pixels = NULL; // signal failure; pixels_alloc object is GC-managed
+        goto bmp_cleanup;
+    }
+
+    // Read pixel data
+    for (int32_t y = 0; y < height; y++) {
+        if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
+            pixels = NULL;
+            goto bmp_cleanup;
+        }
+
+        // Determine destination row (bottom-up reverses row order)
+        int32_t dst_y = bottom_up ? (height - 1 - y) : y;
+        uint32_t *dst_row = pixels->data + dst_y * width;
+
+        // Convert BGR to RGBA
+        for (int32_t x = 0; x < width; x++) {
+            uint8_t b = row_buf[x * 3 + 0];
+            uint8_t g = row_buf[x * 3 + 1];
+            uint8_t r = row_buf[x * 3 + 2];
+            // Pack as 0xRRGGBBAA (alpha = 255 for opaque)
+            dst_row[x] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
+        }
+    }
+
+bmp_cleanup:
+    free(row_buf);
+    fclose(f);
+    return pixels;
+}
+
+int64_t rt_pixels_save_bmp(void *pixels, void *path) {
+    if (!pixels || !path)
+        return 0;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return 0;
+
+    if (p->width <= 0 || p->height <= 0 || p->width > INT32_MAX || p->height > INT32_MAX)
+        return 0;
+
+    int32_t width = (int32_t)p->width;
+    int32_t height = (int32_t)p->height;
+
+    // Calculate row padding
+    int row_size = ((width * 3 + 3) / 4) * 4;
+    int padding = row_size - width * 3;
+
+    // Calculate file size (guard against uint32 overflow for very large images)
+    uint64_t data_size_u64 = (uint64_t)row_size * (uint64_t)height;
+    if (data_size_u64 > (uint64_t)0xFFFFFFC9u) // UINT32_MAX - 54
+        return 0;
+    uint32_t data_size = (uint32_t)data_size_u64;
+    uint32_t file_size = 54 + data_size; // 14 + 40 + data
+
+    FILE *f = fopen(filepath, "wb");
+    if (!f)
+        return 0;
+
+    // Write file header
+    bmp_file_header file_hdr = {
+        .magic = {'B', 'M'},
+        .file_size = file_size,
+        .reserved1 = 0,
+        .reserved2 = 0,
+        .data_offset = 54,
+    };
+    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1) {
+        fclose(f);
+        return 0;
+    }
+
+    // Write info header
+    bmp_info_header info_hdr = {
+        .header_size = 40,
+        .width = width,
+        .height = height, // Positive = bottom-up
+        .planes = 1,
+        .bit_count = 24,
+        .compression = 0,
+        .image_size = data_size,
+        .x_pels_per_meter = 2835, // ~72 DPI
+        .y_pels_per_meter = 2835,
+        .colors_used = 0,
+        .colors_important = 0,
+    };
+    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1) {
+        fclose(f);
+        return 0;
+    }
+
+    // Allocate row buffer
+    uint8_t *row_buf = (uint8_t *)calloc(1, (size_t)row_size);
+    if (!row_buf) {
+        fclose(f);
+        return 0;
+    }
+
+    // Write pixel data (bottom-up)
+    for (int32_t y = height - 1; y >= 0; y--) {
+        uint32_t *src_row = p->data + y * width;
+
+        // Convert RGBA to BGR
+        for (int32_t x = 0; x < width; x++) {
+            uint32_t pixel = src_row[x];
+            // Pixel format is 0xRRGGBBAA
+            row_buf[x * 3 + 0] = (uint8_t)((pixel >> 8) & 0xFF);  // B
+            row_buf[x * 3 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
+            row_buf[x * 3 + 2] = (uint8_t)((pixel >> 24) & 0xFF); // R
+        }
+
+        // Zero padding bytes
+        for (int i = 0; i < padding; i++)
+            row_buf[width * 3 + i] = 0;
+
+        if (fwrite(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
+            free(row_buf);
+            fclose(f);
+            return 0;
+        }
+    }
+
+    free(row_buf);
+    fflush(f);
+    fclose(f);
+    return 1;
+}
+
+//=============================================================================
+// PNG Image I/O
+//=============================================================================
+
+// PNG uses big-endian integers
+static uint32_t png_read_u32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+// Paeth predictor as defined by the PNG spec
+static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
+    int p = (int)a + (int)b - (int)c;
+    int pa = p > (int)a ? p - (int)a : (int)a - p;
+    int pb = p > (int)b ? p - (int)b : (int)b - p;
+    int pc = p > (int)c ? p - (int)c : (int)c - p;
+    if (pa <= pb && pa <= pc)
+        return a;
+    if (pb <= pc)
+        return b;
+    return c;
+}
+
+void *rt_pixels_load_png(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    // Read entire file into memory (64-bit safe)
+    px_fseek(f, 0, SEEK_END);
+    int64_t file_len = px_ftell(f);
+    px_fseek(f, 0, SEEK_SET);
+    if (file_len < 8 || file_len > 256 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
+    if (!file_data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    // Verify PNG signature
+    static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (memcmp(file_data, png_sig, 8) != 0) {
+        free(file_data);
+        return NULL;
+    }
+
+    // Parse IHDR and collect IDAT chunks
+    uint32_t width = 0, height = 0;
+    uint8_t bit_depth = 0, color_type = 0;
+    uint8_t *idat_buf = NULL;
+    size_t idat_len = 0;
+    size_t idat_cap = 0;
+    size_t pos = 8;
+
+    // Palette for indexed color (type 3): up to 256 RGB entries
+    uint8_t palette[256 * 3];
+    int palette_count = 0;
+    // tRNS transparency: per-palette alpha or key color
+    uint8_t trns_alpha[256];
+    int trns_count = 0;
+    uint16_t trns_gray = 0; // key color for grayscale
+    int has_trns_gray = 0;
+
+    while (pos + 12 <= (size_t)file_len) {
+        uint32_t chunk_len = png_read_u32(file_data + pos);
+        const uint8_t *chunk_type = file_data + pos + 4;
+        const uint8_t *chunk_data = file_data + pos + 8;
+
+        if (pos + 12 + chunk_len > (size_t)file_len)
+            break;
+
+        if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13) {
+            width = png_read_u32(chunk_data);
+            height = png_read_u32(chunk_data + 4);
+            bit_depth = chunk_data[8];
+            color_type = chunk_data[9];
+            // Validate per PNG spec: valid color_type + bit_depth combinations
+            int valid = 0;
+            if (color_type == 0) // Grayscale: 1,2,4,8,16
+                valid = (bit_depth == 1 || bit_depth == 2 || bit_depth == 4 || bit_depth == 8 ||
+                         bit_depth == 16);
+            else if (color_type == 2) // RGB: 8,16
+                valid = (bit_depth == 8 || bit_depth == 16);
+            else if (color_type == 3) // Indexed: 1,2,4,8
+                valid = (bit_depth == 1 || bit_depth == 2 || bit_depth == 4 || bit_depth == 8);
+            else if (color_type == 4) // Grayscale+Alpha: 8,16
+                valid = (bit_depth == 8 || bit_depth == 16);
+            else if (color_type == 6) // RGBA: 8,16
+                valid = (bit_depth == 8 || bit_depth == 16);
+            if (!valid) {
+                free(file_data);
+                if (idat_buf)
+                    free(idat_buf);
+                return NULL;
+            }
+        } else if (memcmp(chunk_type, "PLTE", 4) == 0) {
+            palette_count = (int)(chunk_len / 3);
+            if (palette_count > 256)
+                palette_count = 256;
+            memcpy(palette, chunk_data, (size_t)palette_count * 3);
+        } else if (memcmp(chunk_type, "tRNS", 4) == 0) {
+            if (color_type == 3) {
+                // Per-palette-entry alpha values
+                trns_count = (int)chunk_len;
+                if (trns_count > 256)
+                    trns_count = 256;
+                memcpy(trns_alpha, chunk_data, (size_t)trns_count);
+            } else if (color_type == 0 && chunk_len >= 2) {
+                // Grayscale key color (16-bit, even for 8-bit images)
+                trns_gray = (uint16_t)((chunk_data[0] << 8) | chunk_data[1]);
+                has_trns_gray = 1;
+            }
+        } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
+            // Accumulate IDAT data
+            if (chunk_len > SIZE_MAX - idat_len) // overflow guard
+            {
+                free(file_data);
+                if (idat_buf)
+                    free(idat_buf);
+                return NULL;
+            }
+            if (idat_len + chunk_len > idat_cap) {
+                idat_cap = (idat_len + chunk_len) * 2;
+                uint8_t *new_buf = (uint8_t *)realloc(idat_buf, idat_cap);
+                if (!new_buf) {
+                    free(file_data);
+                    if (idat_buf)
+                        free(idat_buf);
+                    return NULL;
+                }
+                idat_buf = new_buf;
+            }
+            memcpy(idat_buf + idat_len, chunk_data, chunk_len);
+            idat_len += chunk_len;
+        } else if (memcmp(chunk_type, "IEND", 4) == 0) {
+            break;
+        }
+
+        pos += 12 + chunk_len; // length + type + data + crc
+    }
+
+    free(file_data);
+
+    if (width == 0 || height == 0 || !idat_buf || idat_len < 2) {
+        if (idat_buf)
+            free(idat_buf);
+        return NULL;
+    }
+
+    // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32
+    // Skip the 2-byte zlib header and use our DEFLATE decompressor
+    size_t deflate_len = idat_len - 2; // skip zlib header, ignore trailing adler32
+    if (deflate_len <= 4) {
+        free(idat_buf);
+        return NULL;
+    }
+    deflate_len -= 4; // strip adler32 checksum
+
+    // Create a Bytes object with the raw DEFLATE data for rt_compress_inflate
+    void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
+    if (!comp_bytes) {
+        free(idat_buf);
+        return NULL;
+    }
+    // Copy deflate data (skip 2-byte zlib header)
+    {
+        // Access internal bytes data
+        typedef struct {
+            int64_t len;
+            uint8_t *data;
+        } bytes_t;
+
+        bytes_t *b = (bytes_t *)comp_bytes;
+        memcpy(b->data, idat_buf + 2, deflate_len);
+    }
+    free(idat_buf);
+
+    // Decompress — all error paths after this point must go through cleanup
+    // to release comp_bytes and raw_bytes (GC-managed, refcount=1).
+    void *raw_bytes = NULL;
+    uint8_t *img = NULL;
+    rt_pixels_impl *pixels = NULL;
+
+    raw_bytes = rt_compress_inflate(comp_bytes);
+    if (!raw_bytes)
+        goto cleanup;
+
+    // Access decompressed data
+    typedef struct {
+        int64_t len;
+        uint8_t *data;
+    } bytes_t;
+
+    bytes_t *raw = (bytes_t *)raw_bytes;
+
+    // Compute bytes-per-pixel at the filter level (before sub-byte unpacking).
+    // For sub-byte depths (1,2,4-bit), each row is ceil(width*bit_depth/8) bytes.
+    int samples_per_pixel = 1; // number of channels
+    if (color_type == 2)
+        samples_per_pixel = 3;
+    else if (color_type == 4)
+        samples_per_pixel = 2;
+    else if (color_type == 6)
+        samples_per_pixel = 4;
+    // types 0 and 3: 1 sample per pixel
+
+    int bpp = samples_per_pixel * (bit_depth >= 8 ? bit_depth / 8 : 1);
+    // For sub-byte depths, bpp is 1 (minimum for filter byte calculations)
+    if (bpp < 1)
+        bpp = 1;
+
+    // Row stride in bytes (after filter byte): for sub-byte, ceil(width*bit_depth*samples/8)
+    size_t stride;
+    if (bit_depth < 8) {
+        size_t bits_per_row = (size_t)width * (size_t)bit_depth * (size_t)samples_per_pixel;
+        stride = (bits_per_row + 7) / 8;
+    } else {
+        stride = (size_t)width * (size_t)samples_per_pixel * ((size_t)bit_depth / 8);
+    }
+
+    if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height)
+        goto cleanup;
+    size_t expected = (stride + 1) * (size_t)height;
+
+    if ((size_t)raw->len < expected)
+        goto cleanup;
+
+    // Reconstruct filtered scanlines
+    uint8_t *scanlines = raw->data;
+    img = (uint8_t *)malloc(stride * height);
+    if (!img)
+        goto cleanup;
+
+    for (uint32_t y = 0; y < height; y++) {
+        uint8_t filter = scanlines[y * (stride + 1)];
+        const uint8_t *src = scanlines + y * (stride + 1) + 1;
+        uint8_t *dst = img + y * stride;
+        const uint8_t *prev = (y > 0) ? img + (y - 1) * stride : NULL;
+
+        for (size_t i = 0; i < stride; i++) {
+            uint8_t raw_byte = src[i];
+            uint8_t a = (i >= (size_t)bpp) ? dst[i - bpp] : 0;
+            uint8_t b_val = prev ? prev[i] : 0;
+            uint8_t c = (prev && i >= (size_t)bpp) ? prev[i - bpp] : 0;
+
+            switch (filter) {
+                case 0:
+                    dst[i] = raw_byte;
+                    break;
+                case 1:
+                    dst[i] = raw_byte + a;
+                    break;
+                case 2:
+                    dst[i] = raw_byte + b_val;
+                    break;
+                case 3:
+                    dst[i] = raw_byte + (uint8_t)(((int)a + (int)b_val) / 2);
+                    break;
+                case 4:
+                    dst[i] = raw_byte + paeth_predict(a, b_val, c);
+                    break;
+                default:
+                    goto cleanup;
+            }
+        }
+    }
+
+    // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
+    pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    if (!pixels)
+        goto cleanup;
+
+    for (uint32_t y = 0; y < height; y++) {
+        const uint8_t *row = img + y * stride;
+        for (uint32_t x = 0; x < width; x++) {
+            uint8_t r = 0, g = 0, b_ch = 0, alpha = 0xFF;
+
+            switch (color_type) {
+                case 0: { // Grayscale
+                    uint8_t gray;
+                    if (bit_depth == 16) {
+                        gray = row[x * 2]; // high byte of 16-bit sample
+                    } else if (bit_depth == 8) {
+                        gray = row[x];
+                    } else {
+                        // Sub-byte: unpack from packed row
+                        int pixels_per_byte = 8 / bit_depth;
+                        int byte_idx = x / pixels_per_byte;
+                        int bit_offset = (pixels_per_byte - 1 - (x % pixels_per_byte)) * bit_depth;
+                        uint8_t mask = (uint8_t)((1 << bit_depth) - 1);
+                        uint8_t val = (row[byte_idx] >> bit_offset) & mask;
+                        // Scale to 8-bit: e.g., 4-bit 0xF -> 0xFF
+                        gray = (uint8_t)(val * 255 / ((1 << bit_depth) - 1));
+                    }
+                    r = g = b_ch = gray;
+                    if (has_trns_gray) {
+                        uint8_t key = (bit_depth == 16) ? (uint8_t)(trns_gray >> 8)
+                                                        : (uint8_t)trns_gray;
+                        if (gray == key)
+                            alpha = 0;
+                    }
+                    break;
+                }
+                case 2: { // RGB
+                    if (bit_depth == 16) {
+                        r = row[x * 6];
+                        g = row[x * 6 + 2];
+                        b_ch = row[x * 6 + 4];
+                    } else {
+                        r = row[x * 3];
+                        g = row[x * 3 + 1];
+                        b_ch = row[x * 3 + 2];
+                    }
+                    break;
+                }
+                case 3: { // Indexed
+                    int idx;
+                    if (bit_depth == 8) {
+                        idx = row[x];
+                    } else {
+                        int pixels_per_byte = 8 / bit_depth;
+                        int byte_idx = x / pixels_per_byte;
+                        int bit_offset = (pixels_per_byte - 1 - (x % pixels_per_byte)) * bit_depth;
+                        uint8_t mask = (uint8_t)((1 << bit_depth) - 1);
+                        idx = (row[byte_idx] >> bit_offset) & mask;
+                    }
+                    if (idx < palette_count) {
+                        r = palette[idx * 3];
+                        g = palette[idx * 3 + 1];
+                        b_ch = palette[idx * 3 + 2];
+                    }
+                    alpha = (idx < trns_count) ? trns_alpha[idx] : 0xFF;
+                    break;
+                }
+                case 4: { // Grayscale + Alpha
+                    if (bit_depth == 16) {
+                        r = g = b_ch = row[x * 4];
+                        alpha = row[x * 4 + 2];
+                    } else {
+                        r = g = b_ch = row[x * 2];
+                        alpha = row[x * 2 + 1];
+                    }
+                    break;
+                }
+                case 6: { // RGBA
+                    if (bit_depth == 16) {
+                        r = row[x * 8];
+                        g = row[x * 8 + 2];
+                        b_ch = row[x * 8 + 4];
+                        alpha = row[x * 8 + 6];
+                    } else {
+                        r = row[x * 4];
+                        g = row[x * 4 + 1];
+                        b_ch = row[x * 4 + 2];
+                        alpha = row[x * 4 + 3];
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+
+            pixels->data[y * width + x] =
+                ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b_ch << 8) | alpha;
+        }
+    }
+
+cleanup:
+    free(img);
+    if (raw_bytes) {
+        rt_obj_release_check0(raw_bytes);
+        rt_obj_free(raw_bytes);
+    }
+    if (comp_bytes) {
+        rt_obj_release_check0(comp_bytes);
+        rt_obj_free(comp_bytes);
+    }
+    return pixels;
+}
+
+int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
+    if (!pixels_ptr || !path)
+        return 0;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels_ptr;
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath || p->width <= 0 || p->height <= 0)
+        return 0;
+
+    uint32_t w = (uint32_t)p->width;
+    uint32_t h = (uint32_t)p->height;
+    size_t stride = (size_t)w * 4; // RGBA
+
+    // Build raw PNG scanline data with filter byte.
+    // First row uses filter=0 (None); subsequent rows use filter=1 (Sub)
+    // which encodes differences from the left neighbor for better compression.
+    size_t raw_len = (stride + 1) * h;
+    uint8_t *raw = (uint8_t *)malloc(raw_len);
+    if (!raw)
+        return 0;
+
+    for (uint32_t y = 0; y < h; y++) {
+        uint8_t *dst = raw + y * (stride + 1) + 1;
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t pixel = p->data[y * w + x];
+            dst[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
+            dst[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
+            dst[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
+            dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);         // A
+        }
+        if (y == 0) {
+            raw[y * (stride + 1)] = 0; // Filter: None (no left neighbor for first row)
+        } else {
+            raw[y * (stride + 1)] = 1; // Filter: Sub
+            for (int32_t i = stride - 1; i >= 4; i--)
+                dst[i] -= dst[i - 4]; // Sub: each byte minus byte at same position 4 bytes left
+        }
+    }
+
+    // Compress the raw data using DEFLATE.
+    // All error paths after raw_bytes/comp_bytes allocation must go through
+    // cleanup to release these GC-managed objects (refcount=1).
+    void *raw_bytes = rt_bytes_new((int64_t)raw_len);
+    if (!raw_bytes) {
+        free(raw);
+        return 0;
+    }
+    {
+        typedef struct {
+            int64_t len;
+            uint8_t *data;
+        } bytes_t;
+
+        bytes_t *b = (bytes_t *)raw_bytes;
+        memcpy(b->data, raw, raw_len);
+    }
+    free(raw);
+
+    void *comp_bytes = NULL;
+    uint8_t *zlib_data = NULL;
+    FILE *out = NULL;
+    int64_t result = 0;
+
+    comp_bytes = rt_compress_deflate(raw_bytes);
+    if (!comp_bytes)
+        goto save_cleanup;
+
+    typedef struct {
+        int64_t len;
+        uint8_t *data;
+    } bytes_t;
+
+    bytes_t *comp = (bytes_t *)comp_bytes;
+
+    // Build zlib stream: 2-byte header + deflate data + 4-byte adler32
+    // Zlib header: CMF=0x78 (deflate, window=32K), FLG=0x01 (no dict, check=1)
+    size_t zlib_len = 2 + (size_t)comp->len + 4;
+    zlib_data = (uint8_t *)malloc(zlib_len);
+    if (!zlib_data)
+        goto save_cleanup;
+
+    zlib_data[0] = 0x78; // CMF
+    zlib_data[1] = 0x01; // FLG
+    memcpy(zlib_data + 2, comp->data, (size_t)comp->len);
+
+    // Compute Adler-32 of the raw (uncompressed) data
+    {
+        bytes_t *raw_b = (bytes_t *)raw_bytes;
+        uint32_t a = 1, b_v = 0;
+        for (int64_t i = 0; i < raw_b->len; i++) {
+            a = (a + raw_b->data[i]) % 65521;
+            b_v = (b_v + a) % 65521;
+        }
+        uint32_t adler = (b_v << 16) | a;
+        zlib_data[2 + comp->len + 0] = (uint8_t)((adler >> 24) & 0xFF);
+        zlib_data[2 + comp->len + 1] = (uint8_t)((adler >> 16) & 0xFF);
+        zlib_data[2 + comp->len + 2] = (uint8_t)((adler >> 8) & 0xFF);
+        zlib_data[2 + comp->len + 3] = (uint8_t)(adler & 0xFF);
+    }
+
+    // CRC-32 table
+    /* CRC-32 lookup table (precomputed, thread-safe — no runtime init needed) */
+    static const uint32_t crc_table[256] = {
+        0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535,
+        0x9E6495A3, 0x0EDB8832, 0x79DCB8A4, 0xE0D5E91B, 0x97D2D988, 0x09B64C2B, 0x7EB17CBE,
+        0xE7B82D09, 0x90BF1D9F, 0x1DB71064, 0x6AB020F2, 0xF3B97148, 0x84BE41DE, 0x1ADAD47D,
+        0x6DDDE4EB, 0xF4D4B551, 0x83D385C7, 0x136C9856, 0x646BA8C0, 0xFD62F97A, 0x8A65C9EC,
+        0x14015C4F, 0x63066CD9, 0xFA0F3D63, 0x8D080DF5, 0x3B6E20C8, 0x4C69105E, 0xD56041E4,
+        0xA2677172, 0x3C03E4D1, 0x4B04D447, 0xD20D85FD, 0xA50AB56B, 0x35B5A8FA, 0x42B2986C,
+        0xDBBBC9D6, 0xACBCF940, 0x32D86CE3, 0x45DF5C75, 0xDCD60DCF, 0xABD13D59, 0x26D930AC,
+        0x51DE003A, 0xC8D75180, 0xBFD06116, 0x21B4F6B5, 0x56B3C423, 0xCFBA9599, 0xB8BDA50F,
+        0x2802B89E, 0x5F058808, 0xC60CD9B2, 0xB10BE924, 0x2F6F7C87, 0x58684C11, 0xC1611DAB,
+        0xB6662D3D, 0x76DC4190, 0x01DB7106, 0x98D220BC, 0xEFD5102A, 0x71B18589, 0x06B6B51F,
+        0x9FBFE4A5, 0xE8B8D433, 0x7807C9A2, 0x0F00F934, 0x9609A88E, 0xE10E9818, 0x7F6A0DBB,
+        0x086D3D2D, 0x91646C97, 0xE6635C01, 0x6B6B51F4, 0x1C6C6162, 0x856530D8, 0xF262004E,
+        0x6C0695ED, 0x1B01A57B, 0x8208F4C1, 0xF50FC457, 0x65B0D9C6, 0x12B7E950, 0x8BBEB8EA,
+        0xFCB9887C, 0x62DD1DDF, 0x15DA2D49, 0x8CD37CF3, 0xFBD44C65, 0x4DB26158, 0x3AB551CE,
+        0xA3BC0074, 0xD4BB30E2, 0x4ADFA541, 0x3DD895D7, 0xA4D1C46D, 0xD3D6F4FB, 0x4369E96A,
+        0x346ED9FC, 0xAD678846, 0xDA60B8D0, 0x44042D73, 0x33031DE5, 0xAA0A4C5F, 0xDD0D7822,
+        0x5005713C, 0x270241AA, 0xBE0B1010, 0xC90C2086, 0x5768B525, 0x206F85B3, 0xB966D409,
+        0xCE61E49F, 0x5EDEF90E, 0x29D9C998, 0xB0D09822, 0xC7D7A8B4, 0x59B33D17, 0x2EB40D81,
+        0xB7BD5C3B, 0xC0BA6CAD, 0xEDB88320, 0x9ABFB3B6, 0x03B6E20C, 0x74B1D29A, 0xEAD54739,
+        0x9DD277AF, 0x04DB2615, 0x73DC1683, 0xE3630B12, 0x94643B84, 0x0D6D6A3E, 0x7A6A5AA8,
+        0xE40ECF0B, 0x9309FF9D, 0x0A00AE27, 0x7D079EB1, 0xF00F9344, 0x8708A3D2, 0x1E01F268,
+        0x6906C2FE, 0xF762575D, 0x806567CB, 0x196C3671, 0x6E6B06E7, 0xFED41B76, 0x89D32BE0,
+        0x10DA7A5A, 0x67DD4ACC, 0xF9B9DF6F, 0x8EBEEFF9, 0x17B7BE43, 0x60B08ED5, 0xD6D6A3E8,
+        0xA1D1937E, 0x38D8C2C4, 0x4FDFF252, 0xD1BB67F1, 0xA6BC5767, 0x3FB506DD, 0x48B2364B,
+        0xD80D2BDA, 0xAF0A1B4C, 0x36034AF6, 0x41047A60, 0xDF60EFC3, 0xA867DF55, 0x316E8EEF,
+        0x4669BE79, 0xCB61B38C, 0xBC66831A, 0x256FD2A0, 0x5268E236, 0xCC0C7795, 0xBB0B4703,
+        0x220216B9, 0x5505262F, 0xC5BA3BBE, 0xB2BD0B28, 0x2BB45A92, 0x5CB36A04, 0xC2D7FFA7,
+        0xB5D0CF31, 0x2CD99E8B, 0x5BDEAE1D, 0x9B64C2B0, 0xEC63F226, 0x756AA39C, 0x026D930A,
+        0x9C0906A9, 0xEB0E363F, 0x72076785, 0x05005713, 0x95BF4A82, 0xE2B87A14, 0x7BB12BAE,
+        0x0CB61B38, 0x92D28E9B, 0xE5D5BE0D, 0x7CDCEFB7, 0x0BDBDF21, 0x86D3D2D4, 0xF1D4E242,
+        0x68DDB3F6, 0x1FDA836E, 0x81BE16CD, 0xF6B9265B, 0x6FB077E1, 0x18B74777, 0x88085AE6,
+        0xFF0F6B70, 0x66063BCA, 0x11010B5C, 0x8F659EFF, 0xF862AE69, 0x616BFFD3, 0x166CCF45,
+        0xA00AE278, 0xD70DD2EE, 0x4E048354, 0x3903B3C2, 0xA7672661, 0xD06016F7, 0x4969474D,
+        0x3E6E77DB, 0xAED16A4A, 0xD9D65ADC, 0x40DF0B66, 0x37D83BF0, 0xA9BCAE53, 0xDEBB9EC5,
+        0x47B2CF7F, 0x30B5FFE9, 0xBDBDF21C, 0xCABAC28A, 0x53B39330, 0x24B4A3A6, 0xBAD03605,
+        0xCDD706FF, 0x54DE5729, 0x23D967BF, 0xB3667A2E, 0xC4614AB8, 0x5D681B02, 0x2A6F2B94,
+        0xB40BBE37, 0xC30C8EA1, 0x5A05DF1B, 0x2D02EF8D,
+    };
+
+// Helper: compute CRC over type + data
+#define PNG_CRC(type_data, len)                                                                    \
+    do {                                                                                           \
+        uint32_t crc = 0xFFFFFFFF;                                                                 \
+        for (size_t _i = 0; _i < (size_t)(len); _i++)                                              \
+            crc = crc_table[(crc ^ (type_data)[_i]) & 0xFF] ^ (crc >> 8);                          \
+        chunk_crc = crc ^ 0xFFFFFFFF;                                                              \
+    } while (0)
+
+    out = fopen(filepath, "wb");
+    if (!out)
+        goto save_cleanup;
+
+    // Track write success — any fwrite failure produces a corrupt PNG.
+    int write_ok = 1;
+
+    // Write PNG signature
+    static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (fwrite(sig, 1, 8, out) != 8)
+        write_ok = 0;
+
+    // Write IHDR chunk
+    if (write_ok) {
+        uint8_t ihdr[13];
+        ihdr[0] = (uint8_t)(w >> 24);
+        ihdr[1] = (uint8_t)(w >> 16);
+        ihdr[2] = (uint8_t)(w >> 8);
+        ihdr[3] = (uint8_t)w;
+        ihdr[4] = (uint8_t)(h >> 24);
+        ihdr[5] = (uint8_t)(h >> 16);
+        ihdr[6] = (uint8_t)(h >> 8);
+        ihdr[7] = (uint8_t)h;
+        ihdr[8] = 8;  // bit depth
+        ihdr[9] = 6;  // color type = RGBA
+        ihdr[10] = 0; // compression
+        ihdr[11] = 0; // filter
+        ihdr[12] = 0; // interlace
+
+        uint8_t len_buf[4] = {0, 0, 0, 13};
+        if (fwrite(len_buf, 1, 4, out) != 4)
+            write_ok = 0;
+
+        uint8_t type_data[4 + 13];
+        memcpy(type_data, "IHDR", 4);
+        memcpy(type_data + 4, ihdr, 13);
+        if (write_ok && fwrite(type_data, 1, 17, out) != 17)
+            write_ok = 0;
+
+        uint32_t chunk_crc;
+        PNG_CRC(type_data, 17);
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24),
+                              (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8),
+                              (uint8_t)chunk_crc};
+        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+            write_ok = 0;
+    }
+
+    // Write IDAT chunk
+    if (write_ok) {
+        uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24),
+                              (uint8_t)(zlib_len >> 16),
+                              (uint8_t)(zlib_len >> 8),
+                              (uint8_t)zlib_len};
+        if (fwrite(len_buf, 1, 4, out) != 4)
+            write_ok = 0;
+
+        size_t td_len = 4 + zlib_len;
+        uint8_t *type_data = (uint8_t *)malloc(td_len);
+        if (!type_data)
+            goto save_cleanup;
+        memcpy(type_data, "IDAT", 4);
+        memcpy(type_data + 4, zlib_data, zlib_len);
+        if (write_ok && fwrite(type_data, 1, td_len, out) != td_len)
+            write_ok = 0;
+
+        uint32_t chunk_crc;
+        PNG_CRC(type_data, td_len);
+        uint8_t crc_buf[4] = {(uint8_t)(chunk_crc >> 24),
+                              (uint8_t)(chunk_crc >> 16),
+                              (uint8_t)(chunk_crc >> 8),
+                              (uint8_t)chunk_crc};
+        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+            write_ok = 0;
+        free(type_data);
+    }
+
+    // Write IEND chunk
+    if (write_ok) {
+        uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
+        if (fwrite(iend, 1, 12, out) != 12)
+            write_ok = 0;
+    }
+
+    result = write_ok;
+
+save_cleanup:
+#undef PNG_CRC
+    free(zlib_data);
+    if (out) {
+        fflush(out);
+        fclose(out);
+        // Remove corrupt PNG if write failed partway through
+        if (!result)
+            remove(filepath);
+    }
+    if (comp_bytes) {
+        rt_obj_release_check0(comp_bytes);
+        rt_obj_free(comp_bytes);
+    }
+    if (raw_bytes) {
+        rt_obj_release_check0(raw_bytes);
+        rt_obj_free(raw_bytes);
+    }
+    return result;
+}
+
+//=============================================================================
+// JPEG Decoder (Baseline DCT, Huffman-coded)
+//=============================================================================
+
+// JPEG marker constants
+#define JPEG_SOI  0xFFD8
+#define JPEG_EOI  0xFFD9
+#define JPEG_SOF0 0xFFC0 // Baseline DCT
+#define JPEG_DHT  0xFFC4
+#define JPEG_DQT  0xFFDB
+#define JPEG_SOS  0xFFDA
+#define JPEG_DRI  0xFFDD
+#define JPEG_RST0 0xFFD0
+
+// Zigzag order for 8x8 block
+static const uint8_t jpeg_zigzag[64] = {
+     0,  1,  8, 16,  9,  2,  3, 10,
+    17, 24, 32, 25, 18, 11,  4,  5,
+    12, 19, 26, 33, 40, 48, 41, 34,
+    27, 20, 13,  6,  7, 14, 21, 28,
+    35, 42, 49, 56, 57, 50, 43, 36,
+    29, 22, 15, 23, 30, 37, 44, 51,
+    58, 59, 52, 45, 38, 31, 39, 46,
+    53, 60, 61, 54, 47, 55, 62, 63
+};
+
+// Huffman table (max 16-bit codes)
+typedef struct {
+    uint8_t bits[17];     // bits[i] = number of codes of length i (1..16)
+    uint8_t huffval[256]; // symbol values
+    // Derived tables for fast decode:
+    int maxcode[18];      // max code value + 1 for each length (-1 if none)
+    int valptr[17];       // index into huffval for first code of each length
+    int mincode[17];      // minimum code for each length
+} jpeg_huff_t;
+
+// JPEG decoder context
+typedef struct {
+    const uint8_t *data;
+    size_t len;
+    size_t pos;
+
+    // Image properties
+    uint16_t width, height;
+    uint8_t num_components;
+    uint8_t comp_id[4];
+    uint8_t comp_h_samp[4]; // horizontal sampling factor
+    uint8_t comp_v_samp[4]; // vertical sampling factor
+    uint8_t comp_qt[4];     // quantization table index
+
+    // Quantization tables (up to 4)
+    int16_t qt[4][64];
+    int qt_valid[4];
+
+    // Huffman tables (DC: 0-1, AC: 2-3)
+    jpeg_huff_t huff[4];
+    int huff_valid[4];
+
+    // SOS component mapping
+    uint8_t scan_comp_count;
+    uint8_t scan_comp_idx[4];   // index into comp_* arrays
+    uint8_t scan_dc_table[4];
+    uint8_t scan_ac_table[4];
+
+    // Restart interval
+    uint16_t restart_interval;
+
+    // Bitstream reader state
+    uint32_t bitbuf;
+    int bits_left;
+
+    // DC prediction per component
+    int16_t dc_pred[4];
+} jpeg_ctx_t;
+
+static int jpeg_read_u8(jpeg_ctx_t *ctx) {
+    if (ctx->pos >= ctx->len)
+        return -1;
+    return ctx->data[ctx->pos++];
+}
+
+static int jpeg_read_u16(jpeg_ctx_t *ctx) {
+    if (ctx->pos + 2 > ctx->len)
+        return -1;
+    int val = (ctx->data[ctx->pos] << 8) | ctx->data[ctx->pos + 1];
+    ctx->pos += 2;
+    return val;
+}
+
+// Bitstream reader: reads next byte, handling 0xFF00 byte-stuffing
+static int jpeg_next_byte(jpeg_ctx_t *ctx) {
+    if (ctx->pos >= ctx->len)
+        return -1;
+    uint8_t b = ctx->data[ctx->pos++];
+    if (b == 0xFF) {
+        if (ctx->pos >= ctx->len)
+            return -1;
+        uint8_t next = ctx->data[ctx->pos];
+        if (next == 0x00) {
+            ctx->pos++; // skip stuffed zero
+        } else if (next >= 0xD0 && next <= 0xD7) {
+            // RST marker — skip it and return next data byte
+            ctx->pos++;
+            return jpeg_next_byte(ctx);
+        } else {
+            return -1; // unexpected marker
+        }
+    }
+    return b;
+}
+
+static int jpeg_get_bits(jpeg_ctx_t *ctx, int count) {
+    while (ctx->bits_left < count) {
+        int b = jpeg_next_byte(ctx);
+        if (b < 0)
+            return -1;
+        ctx->bitbuf = (ctx->bitbuf << 8) | (uint32_t)b;
+        ctx->bits_left += 8;
+    }
+    ctx->bits_left -= count;
+    return (int)((ctx->bitbuf >> ctx->bits_left) & ((1u << count) - 1));
+}
+
+// Build derived Huffman tables for fast decoding
+static void jpeg_build_huff(jpeg_huff_t *h) {
+    int code = 0;
+    int si = 0;
+    for (int i = 1; i <= 16; i++) {
+        h->mincode[i] = code;
+        h->valptr[i] = si;
+        if (h->bits[i] == 0) {
+            h->maxcode[i] = -1;
+        } else {
+            h->maxcode[i] = code + h->bits[i] - 1;
+            si += h->bits[i];
+        }
+        code = (code + h->bits[i]) << 1;
+    }
+    h->maxcode[17] = 0x7FFFFFFF;
+}
+
+// Decode one Huffman symbol
+static int jpeg_huff_decode(jpeg_ctx_t *ctx, jpeg_huff_t *h) {
+    int code = 0;
+    for (int i = 1; i <= 16; i++) {
+        int bit = jpeg_get_bits(ctx, 1);
+        if (bit < 0)
+            return -1;
+        code = (code << 1) | bit;
+        if (h->maxcode[i] >= 0 && code <= h->maxcode[i]) {
+            int idx = h->valptr[i] + (code - h->mincode[i]);
+            return h->huffval[idx];
+        }
+    }
+    return -1; // invalid code
+}
+
+// Extend a partial value to a signed coefficient
+static int jpeg_extend(int val, int bits) {
+    if (bits == 0)
+        return 0;
+    int vt = 1 << (bits - 1);
+    if (val < vt)
+        val += (-1 << bits) + 1;
+    return val;
+}
+
+// Decode one 8x8 block of DCT coefficients
+static int jpeg_decode_block(jpeg_ctx_t *ctx, int16_t block[64],
+                             jpeg_huff_t *dc_ht, jpeg_huff_t *ac_ht,
+                             int16_t *dc_pred, const int16_t qt[64]) {
+    memset(block, 0, sizeof(int16_t) * 64);
+
+    // DC coefficient
+    int s = jpeg_huff_decode(ctx, dc_ht);
+    if (s < 0)
+        return -1;
+    int dc_val = 0;
+    if (s > 0) {
+        dc_val = jpeg_get_bits(ctx, s);
+        if (dc_val < 0)
+            return -1;
+        dc_val = jpeg_extend(dc_val, s);
+    }
+    *dc_pred += (int16_t)dc_val;
+    block[0] = *dc_pred * qt[0];
+
+    // AC coefficients
+    for (int k = 1; k < 64; k++) {
+        int rs = jpeg_huff_decode(ctx, ac_ht);
+        if (rs < 0)
+            return -1;
+        int rrrr = (rs >> 4) & 0x0F; // zero run length
+        int ssss = rs & 0x0F;        // coefficient size
+
+        if (ssss == 0) {
+            if (rrrr == 0)
+                break; // EOB
+            if (rrrr == 15) {
+                k += 15; // ZRL: skip 16 zeros
+                continue;
+            }
+            break;
+        }
+
+        k += rrrr;
+        if (k >= 64)
+            return -1;
+
+        int ac_val = jpeg_get_bits(ctx, ssss);
+        if (ac_val < 0)
+            return -1;
+        ac_val = jpeg_extend(ac_val, ssss);
+        block[jpeg_zigzag[k]] = (int16_t)(ac_val * qt[jpeg_zigzag[k]]);
+    }
+
+    return 0;
+}
+
+// AAN (Arai, Agui, Nakajima) integer IDCT
+// Fixed-point: 12-bit fractional precision
+#define JPEG_FIX_1  4096
+#define JPEG_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
+#define JPEG_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+
+static void jpeg_idct_row(int32_t *row) {
+    int32_t x0 = row[0], x1 = row[1], x2 = row[2], x3 = row[3];
+    int32_t x4 = row[4], x5 = row[5], x6 = row[6], x7 = row[7];
+
+    // Even part
+    int32_t s0 = x0 + x4;
+    int32_t s1 = x0 - x4;
+    int32_t s2 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int32_t s3 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+
+    int32_t e0 = s0 + s3;
+    int32_t e1 = s1 + s2;
+    int32_t e2 = s1 - s2;
+    int32_t e3 = s0 - s3;
+
+    // Odd part
+    int32_t t0 = x1 + x7;
+    int32_t t1 = x5 + x3;
+    int32_t t2 = x1 + x3;
+    int32_t t3 = x5 + x7;
+    int32_t z5 = JPEG_DESCALE((t2 - t3) * JPEG_FIX(1.175875602), 12);
+
+    t0 = JPEG_DESCALE(t0 * JPEG_FIX(-0.899976223), 12);
+    t1 = JPEG_DESCALE(t1 * JPEG_FIX(-2.562915447), 12);
+    t2 = JPEG_DESCALE(t2 * JPEG_FIX(-1.961570560), 12) + z5;
+    t3 = JPEG_DESCALE(t3 * JPEG_FIX(-0.390180644), 12) + z5;
+
+    int32_t o0 = JPEG_DESCALE(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
+    int32_t o1 = JPEG_DESCALE(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
+    int32_t o2 = JPEG_DESCALE(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
+    int32_t o3 = JPEG_DESCALE(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
+
+    row[0] = e0 + o3;
+    row[1] = e1 + o2;
+    row[2] = e2 + o1;
+    row[3] = e3 + o0;
+    row[4] = e3 - o0;
+    row[5] = e2 - o1;
+    row[6] = e1 - o2;
+    row[7] = e0 - o3;
+}
+
+static void jpeg_idct_col(int32_t *workspace, int col) {
+    int32_t x0 = workspace[col + 0 * 8], x1 = workspace[col + 1 * 8];
+    int32_t x2 = workspace[col + 2 * 8], x3 = workspace[col + 3 * 8];
+    int32_t x4 = workspace[col + 4 * 8], x5 = workspace[col + 5 * 8];
+    int32_t x6 = workspace[col + 6 * 8], x7 = workspace[col + 7 * 8];
+
+    int32_t s0 = x0 + x4;
+    int32_t s1 = x0 - x4;
+    int32_t s2 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int32_t s3 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+
+    int32_t e0 = s0 + s3;
+    int32_t e1 = s1 + s2;
+    int32_t e2 = s1 - s2;
+    int32_t e3 = s0 - s3;
+
+    int32_t t0 = x1 + x7;
+    int32_t t1 = x5 + x3;
+    int32_t t2 = x1 + x3;
+    int32_t t3 = x5 + x7;
+    int32_t z5 = JPEG_DESCALE((t2 - t3) * JPEG_FIX(1.175875602), 12);
+
+    t0 = JPEG_DESCALE(t0 * JPEG_FIX(-0.899976223), 12);
+    t1 = JPEG_DESCALE(t1 * JPEG_FIX(-2.562915447), 12);
+    t2 = JPEG_DESCALE(t2 * JPEG_FIX(-1.961570560), 12) + z5;
+    t3 = JPEG_DESCALE(t3 * JPEG_FIX(-0.390180644), 12) + z5;
+
+    int32_t o0 = JPEG_DESCALE(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
+    int32_t o1 = JPEG_DESCALE(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
+    int32_t o2 = JPEG_DESCALE(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
+    int32_t o3 = JPEG_DESCALE(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
+
+    // Descale with rounding and shift for final output
+    workspace[col + 0 * 8] = JPEG_DESCALE(e0 + o3, 5);
+    workspace[col + 1 * 8] = JPEG_DESCALE(e1 + o2, 5);
+    workspace[col + 2 * 8] = JPEG_DESCALE(e2 + o1, 5);
+    workspace[col + 3 * 8] = JPEG_DESCALE(e3 + o0, 5);
+    workspace[col + 4 * 8] = JPEG_DESCALE(e3 - o0, 5);
+    workspace[col + 5 * 8] = JPEG_DESCALE(e2 - o1, 5);
+    workspace[col + 6 * 8] = JPEG_DESCALE(e1 - o2, 5);
+    workspace[col + 7 * 8] = JPEG_DESCALE(e0 - o3, 5);
+}
+
+static void jpeg_idct_block(int16_t block[64], uint8_t out[64]) {
+    int32_t workspace[64];
+    for (int i = 0; i < 64; i++)
+        workspace[i] = (int32_t)block[i];
+
+    // IDCT on rows
+    for (int i = 0; i < 8; i++)
+        jpeg_idct_row(workspace + i * 8);
+
+    // IDCT on columns
+    for (int i = 0; i < 8; i++)
+        jpeg_idct_col(workspace, i);
+
+    // Level shift (+128) and clamp to [0, 255]
+    for (int i = 0; i < 64; i++) {
+        int val = (int)workspace[i] + 128;
+        if (val < 0)
+            val = 0;
+        if (val > 255)
+            val = 255;
+        out[i] = (uint8_t)val;
+    }
+}
+
+// Clamp int to [0, 255]
+static uint8_t jpeg_clamp(int val) {
+    if (val < 0)
+        return 0;
+    if (val > 255)
+        return 255;
+    return (uint8_t)val;
+}
+
+void *rt_pixels_load_jpeg(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (file_len <= 0 || file_len > 256 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
+    if (!file_data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    // Check JPEG signature
+    if ((size_t)file_len < 2 || file_data[0] != 0xFF || file_data[1] != 0xD8) {
+        free(file_data);
+        return NULL;
+    }
+
+    jpeg_ctx_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.data = file_data;
+    ctx.len = (size_t)file_len;
+    ctx.pos = 2; // past SOI
+
+    rt_pixels_impl *pixels = NULL;
+    uint8_t **comp_data = NULL;
+
+    // Parse markers
+    while (ctx.pos + 1 < ctx.len) {
+        int b1 = jpeg_read_u8(&ctx);
+        if (b1 != 0xFF)
+            break;
+
+        // Skip padding 0xFF bytes
+        int marker;
+        do {
+            marker = jpeg_read_u8(&ctx);
+        } while (marker == 0xFF && ctx.pos < ctx.len);
+
+        if (marker < 0)
+            break;
+
+        uint16_t mk = (uint16_t)(0xFF00 | marker);
+
+        if (mk == JPEG_EOI)
+            break;
+
+        // Markers without length
+        if (mk >= JPEG_RST0 && mk <= JPEG_RST0 + 7)
+            continue;
+
+        // Read marker length
+        int seg_len = jpeg_read_u16(&ctx);
+        if (seg_len < 2)
+            break;
+        size_t data_len = (size_t)(seg_len - 2);
+        size_t seg_start = ctx.pos;
+
+        switch (mk) {
+            case JPEG_DQT: {
+                // Parse quantization table(s)
+                while (ctx.pos < seg_start + data_len) {
+                    int info = jpeg_read_u8(&ctx);
+                    if (info < 0)
+                        goto jpeg_fail;
+                    int precision = (info >> 4) & 0x0F; // 0=8bit, 1=16bit
+                    int table_id = info & 0x0F;
+                    if (table_id > 3)
+                        goto jpeg_fail;
+                    for (int i = 0; i < 64; i++) {
+                        if (precision == 0) {
+                            int v = jpeg_read_u8(&ctx);
+                            if (v < 0)
+                                goto jpeg_fail;
+                            ctx.qt[table_id][jpeg_zigzag[i]] = (int16_t)v;
+                        } else {
+                            int v = jpeg_read_u16(&ctx);
+                            if (v < 0)
+                                goto jpeg_fail;
+                            ctx.qt[table_id][jpeg_zigzag[i]] = (int16_t)v;
+                        }
+                    }
+                    ctx.qt_valid[table_id] = 1;
+                }
+                break;
+            }
+            case JPEG_DHT: {
+                // Parse Huffman table(s)
+                while (ctx.pos < seg_start + data_len) {
+                    int info = jpeg_read_u8(&ctx);
+                    if (info < 0)
+                        goto jpeg_fail;
+                    int table_class = (info >> 4) & 0x0F; // 0=DC, 1=AC
+                    int table_id = info & 0x0F;
+                    if (table_id > 1)
+                        goto jpeg_fail;
+                    int idx = table_class * 2 + table_id; // DC0, DC1, AC0, AC1
+                    jpeg_huff_t *ht = &ctx.huff[idx];
+                    int total = 0;
+                    ht->bits[0] = 0;
+                    for (int i = 1; i <= 16; i++) {
+                        int n = jpeg_read_u8(&ctx);
+                        if (n < 0)
+                            goto jpeg_fail;
+                        ht->bits[i] = (uint8_t)n;
+                        total += n;
+                    }
+                    if (total > 256)
+                        goto jpeg_fail;
+                    for (int i = 0; i < total; i++) {
+                        int v = jpeg_read_u8(&ctx);
+                        if (v < 0)
+                            goto jpeg_fail;
+                        ht->huffval[i] = (uint8_t)v;
+                    }
+                    jpeg_build_huff(ht);
+                    ctx.huff_valid[idx] = 1;
+                }
+                break;
+            }
+            case JPEG_SOF0: {
+                // Baseline DCT
+                int prec = jpeg_read_u8(&ctx);
+                if (prec != 8)
+                    goto jpeg_fail; // Only 8-bit precision
+                int h = jpeg_read_u16(&ctx);
+                int w = jpeg_read_u16(&ctx);
+                if (w <= 0 || h <= 0 || w > 32768 || h > 32768)
+                    goto jpeg_fail;
+                ctx.width = (uint16_t)w;
+                ctx.height = (uint16_t)h;
+                int nf = jpeg_read_u8(&ctx);
+                if (nf < 1 || nf > 4)
+                    goto jpeg_fail;
+                ctx.num_components = (uint8_t)nf;
+                for (int i = 0; i < nf; i++) {
+                    ctx.comp_id[i] = (uint8_t)jpeg_read_u8(&ctx);
+                    int samp = jpeg_read_u8(&ctx);
+                    ctx.comp_h_samp[i] = (uint8_t)((samp >> 4) & 0x0F);
+                    ctx.comp_v_samp[i] = (uint8_t)(samp & 0x0F);
+                    ctx.comp_qt[i] = (uint8_t)jpeg_read_u8(&ctx);
+                }
+                break;
+            }
+            case JPEG_DRI: {
+                int ri = jpeg_read_u16(&ctx);
+                if (ri >= 0)
+                    ctx.restart_interval = (uint16_t)ri;
+                break;
+            }
+            case JPEG_SOS: {
+                // Start of Scan — decode the entropy-coded data
+                int ns = jpeg_read_u8(&ctx);
+                if (ns < 1 || ns > 4)
+                    goto jpeg_fail;
+                ctx.scan_comp_count = (uint8_t)ns;
+                for (int i = 0; i < ns; i++) {
+                    int cs = jpeg_read_u8(&ctx);
+                    int td_ta = jpeg_read_u8(&ctx);
+                    if (cs < 0 || td_ta < 0)
+                        goto jpeg_fail;
+                    // Find component index
+                    int ci = -1;
+                    for (int j = 0; j < ctx.num_components; j++) {
+                        if (ctx.comp_id[j] == (uint8_t)cs) {
+                            ci = j;
+                            break;
+                        }
+                    }
+                    if (ci < 0)
+                        goto jpeg_fail;
+                    ctx.scan_comp_idx[i] = (uint8_t)ci;
+                    ctx.scan_dc_table[i] = (uint8_t)((td_ta >> 4) & 0x0F);
+                    ctx.scan_ac_table[i] = (uint8_t)(td_ta & 0x0F);
+                }
+                // Skip Ss, Se, Ah/Al (spectral selection — always 0,63,0 for baseline)
+                jpeg_read_u8(&ctx);
+                jpeg_read_u8(&ctx);
+                jpeg_read_u8(&ctx);
+
+                // Now at the start of entropy-coded data
+                ctx.bitbuf = 0;
+                ctx.bits_left = 0;
+                memset(ctx.dc_pred, 0, sizeof(ctx.dc_pred));
+
+                // Determine MCU layout
+                int max_h = 1, max_v = 1;
+                for (int i = 0; i < ctx.num_components; i++) {
+                    if (ctx.comp_h_samp[i] > max_h)
+                        max_h = ctx.comp_h_samp[i];
+                    if (ctx.comp_v_samp[i] > max_v)
+                        max_v = ctx.comp_v_samp[i];
+                }
+
+                int mcu_w = max_h * 8;
+                int mcu_h = max_v * 8;
+                int mcus_x = (ctx.width + mcu_w - 1) / mcu_w;
+                int mcus_y = (ctx.height + mcu_h - 1) / mcu_h;
+
+                // Allocate component buffers (full-resolution for each component's
+                // sampled size)
+                comp_data = (uint8_t **)calloc((size_t)ctx.num_components, sizeof(uint8_t *));
+                if (!comp_data)
+                    goto jpeg_fail;
+                for (int i = 0; i < ctx.num_components; i++) {
+                    int cw = mcus_x * ctx.comp_h_samp[i] * 8;
+                    int ch = mcus_y * ctx.comp_v_samp[i] * 8;
+                    comp_data[i] = (uint8_t *)calloc((size_t)cw * (size_t)ch, 1);
+                    if (!comp_data[i])
+                        goto jpeg_fail;
+                }
+
+                // Decode MCUs
+                int16_t block[64];
+                uint8_t idct_out[64];
+                int restart_count = 0;
+
+                for (int mcu_y = 0; mcu_y < mcus_y; mcu_y++) {
+                    for (int mcu_x = 0; mcu_x < mcus_x; mcu_x++) {
+                        // Handle restart markers
+                        if (ctx.restart_interval > 0 && restart_count > 0 &&
+                            (restart_count % ctx.restart_interval) == 0) {
+                            // Align to byte boundary
+                            ctx.bits_left = 0;
+                            ctx.bitbuf = 0;
+                            memset(ctx.dc_pred, 0, sizeof(ctx.dc_pred));
+                            // Skip any RST marker bytes (handled in jpeg_next_byte)
+                        }
+                        restart_count++;
+
+                        // For each component in the scan
+                        for (int si = 0; si < ctx.scan_comp_count; si++) {
+                            int ci = ctx.scan_comp_idx[si];
+                            int h_samp = ctx.comp_h_samp[ci];
+                            int v_samp = ctx.comp_v_samp[ci];
+                            int qt_idx = ctx.comp_qt[ci];
+                            int dc_idx = ctx.scan_dc_table[si];
+                            int ac_idx = ctx.scan_ac_table[si] + 2;
+
+                            if (!ctx.qt_valid[qt_idx] || !ctx.huff_valid[dc_idx] ||
+                                !ctx.huff_valid[ac_idx])
+                                goto jpeg_fail;
+
+                            // Decode each block in this component's MCU contribution
+                            for (int bv = 0; bv < v_samp; bv++) {
+                                for (int bh = 0; bh < h_samp; bh++) {
+                                    if (jpeg_decode_block(&ctx, block, &ctx.huff[dc_idx],
+                                                          &ctx.huff[ac_idx], &ctx.dc_pred[ci],
+                                                          ctx.qt[qt_idx]) != 0)
+                                        goto jpeg_fail;
+
+                                    jpeg_idct_block(block, idct_out);
+
+                                    // Place decoded 8x8 block into component buffer
+                                    int comp_stride = mcus_x * h_samp * 8;
+                                    int bx = (mcu_x * h_samp + bh) * 8;
+                                    int by = (mcu_y * v_samp + bv) * 8;
+                                    for (int yy = 0; yy < 8; yy++) {
+                                        for (int xx = 0; xx < 8; xx++) {
+                                            comp_data[ci][(by + yy) * comp_stride + (bx + xx)] =
+                                                idct_out[yy * 8 + xx];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Convert component buffers to RGBA pixels
+                pixels = pixels_alloc((int64_t)ctx.width, (int64_t)ctx.height);
+                if (!pixels)
+                    goto jpeg_fail;
+
+                if (ctx.num_components == 1) {
+                    // Grayscale
+                    int comp_stride = mcus_x * ctx.comp_h_samp[0] * 8;
+                    for (int y = 0; y < ctx.height; y++) {
+                        for (int x = 0; x < ctx.width; x++) {
+                            uint8_t gray = comp_data[0][y * comp_stride + x];
+                            pixels->data[y * ctx.width + x] =
+                                ((uint32_t)gray << 24) | ((uint32_t)gray << 16) |
+                                ((uint32_t)gray << 8) | 0xFF;
+                        }
+                    }
+                } else if (ctx.num_components >= 3) {
+                    // YCbCr -> RGB with chroma upsampling
+                    int y_stride = mcus_x * ctx.comp_h_samp[0] * 8;
+                    int cb_stride = mcus_x * ctx.comp_h_samp[1] * 8;
+                    int cr_stride = mcus_x * ctx.comp_h_samp[2] * 8;
+                    int h_ratio = max_h / ctx.comp_h_samp[1]; // chroma upsample factor
+                    int v_ratio = max_v / ctx.comp_v_samp[1];
+
+                    for (int y = 0; y < ctx.height; y++) {
+                        for (int x = 0; x < ctx.width; x++) {
+                            int yy_val = comp_data[0][y * y_stride + x];
+                            int cb_x = x / h_ratio;
+                            int cb_y = y / v_ratio;
+                            int cb_val = comp_data[1][cb_y * cb_stride + cb_x] - 128;
+                            int cr_val = comp_data[2][cb_y * cr_stride + cb_x] - 128;
+
+                            // YCbCr -> RGB (ITU-R BT.601)
+                            int r = yy_val + ((cr_val * 359) >> 8);
+                            int g = yy_val - ((cb_val * 88 + cr_val * 183) >> 8);
+                            int b = yy_val + ((cb_val * 454) >> 8);
+
+                            pixels->data[y * ctx.width + x] =
+                                ((uint32_t)jpeg_clamp(r) << 24) |
+                                ((uint32_t)jpeg_clamp(g) << 16) |
+                                ((uint32_t)jpeg_clamp(b) << 8) | 0xFF;
+                        }
+                    }
+                }
+
+                // Finished SOS — skip to after entropy data (already consumed via bitstream)
+                break;
+            }
+            default:
+                // Skip unknown markers
+                ctx.pos = seg_start + data_len;
+                break;
+        }
+    }
+
+    // Cleanup
+    if (comp_data) {
+        for (int i = 0; i < ctx.num_components; i++)
+            free(comp_data[i]);
+        free(comp_data);
+    }
+    free(file_data);
+    return pixels;
+
+jpeg_fail:
+    if (comp_data) {
+        for (int i = 0; i < ctx.num_components; i++)
+            free(comp_data[i]);
+        free(comp_data);
+    }
+    free(file_data);
+    return NULL;
+}
+
+//=============================================================================
+// GIF Loading (first frame convenience wrapper)
+//=============================================================================
+
+#include "rt_gif.h"
+
+void *rt_pixels_load_gif(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    gif_frame_t *frames = NULL;
+    int frame_count = 0, w = 0, h = 0;
+    if (gif_decode_file(filepath, &frames, &frame_count, &w, &h) <= 0)
+        return NULL;
+
+    // Take ownership of the first frame's Pixels, free the rest
+    void *result = frames[0].pixels;
+    for (int i = 1; i < frame_count; i++) {
+        // Release extra frames (GC-managed)
+        if (frames[i].pixels) {
+            if (rt_obj_release_check0(frames[i].pixels))
+                rt_obj_free(frames[i].pixels);
+        }
+    }
+    free(frames);
+    return result;
+}

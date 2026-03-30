@@ -50,6 +50,8 @@
 #include <crtdbg.h>
 #endif
 #else
+#include <csignal>
+#include <ctime>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -329,8 +331,6 @@ bool dispatchChild(int argc, char *argv[]) {
 #else
 
 ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
-    (void)timeoutMs; // POSIX: waitpid blocks; timeout not implemented
-
     ChildResult result;
 
     std::array<int, 2> fds{};
@@ -364,7 +364,7 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
         _exit(0);
     }
 
-    // Parent: read stderr from child, wait for exit
+    // Parent: read stderr from child, wait for exit with timeout
     ::close(fds[1]);
     std::string buffer;
     std::array<char, 512> temp{};
@@ -377,15 +377,58 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
     ::close(fds[0]);
 
     int status = 0;
-    ::waitpid(pid, &status, 0);
+    bool timedOut = false;
+
+    if (timeoutMs > 0) {
+        // Poll with WNOHANG in a loop, checking elapsed time
+        struct timespec start;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        const unsigned long long deadlineNs =
+            static_cast<unsigned long long>(timeoutMs) * 1000000ULL;
+
+        while (true) {
+            pid_t w = ::waitpid(pid, &status, WNOHANG);
+            if (w == pid)
+                break; // Child exited
+            if (w < 0)
+                break; // Error
+
+            // Check elapsed time
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            unsigned long long elapsedNs =
+                static_cast<unsigned long long>(now.tv_sec - start.tv_sec) * 1000000000ULL +
+                static_cast<unsigned long long>(now.tv_nsec - start.tv_nsec);
+            if (elapsedNs >= deadlineNs) {
+                // Timeout: kill the child
+                ::kill(pid, SIGKILL);
+                ::waitpid(pid, &status, 0);
+                timedOut = true;
+                break;
+            }
+            // Brief sleep to avoid busy-spinning (1ms)
+            struct timespec ts = {0, 1000000};
+            nanosleep(&ts, nullptr);
+        }
+    } else {
+        // No timeout: block indefinitely
+        ::waitpid(pid, &status, 0);
+    }
 
     result.stderrText = std::move(buffer);
-    result.exited = WIFEXITED(status);
-    result.signaled = WIFSIGNALED(status);
-    if (result.exited)
-        result.exitCode = WEXITSTATUS(status);
-    else if (result.signaled)
-        result.exitCode = 128 + WTERMSIG(status);
+    if (timedOut) {
+        result.exited = false;
+        result.signaled = true;
+        result.exitCode = 128 + SIGKILL;
+        result.stderrText += "\nProcessIsolation: child killed after timeout";
+    } else {
+        result.exited = WIFEXITED(status);
+        result.signaled = WIFSIGNALED(status);
+        if (result.exited)
+            result.exitCode = WEXITSTATUS(status);
+        else if (result.signaled)
+            result.exitCode = 128 + WTERMSIG(status);
+    }
 
     return result;
 }

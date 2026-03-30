@@ -38,12 +38,15 @@
 
 #include "rt_sprite.h"
 
+#include "rt_gif.h"
 #include "rt_graphics.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_string.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -133,11 +136,75 @@ void *rt_sprite_new(void *pixels) {
     return sprite;
 }
 
+/// @brief Detect image format from file magic bytes.
+/// @return 1=BMP, 2=PNG, 0=unknown
+static int detect_image_format(const char *filepath) {
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return 0;
+    uint8_t hdr[8];
+    size_t n = fread(hdr, 1, 8, f);
+    fclose(f);
+    if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
+        return 1; // BMP
+    if (n >= 8 && hdr[0] == 137 && hdr[1] == 80 && hdr[2] == 78 && hdr[3] == 71)
+        return 2; // PNG
+    if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
+        return 3; // JPEG
+    if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
+        return 4; // GIF
+    return 0;
+}
+
 void *rt_sprite_from_file(void *path) {
     if (!path)
         return NULL;
 
-    void *pixels = rt_pixels_load_bmp(path);
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    int fmt = detect_image_format(filepath);
+
+    // Animated GIF: decode all frames directly into the sprite
+    if (fmt == 4) {
+        gif_frame_t *gif_frames = NULL;
+        int gif_count = 0, gif_w = 0, gif_h = 0;
+        if (gif_decode_file(filepath, &gif_frames, &gif_count, &gif_w, &gif_h) <= 0)
+            return NULL;
+
+        rt_sprite_impl *sprite = sprite_alloc();
+        if (!sprite) {
+            free(gif_frames);
+            return NULL;
+        }
+        int n = gif_count < MAX_SPRITE_FRAMES ? gif_count : MAX_SPRITE_FRAMES;
+        for (int i = 0; i < n; i++) {
+            sprite->frames[i] = gif_frames[i].pixels;
+            rt_heap_retain(gif_frames[i].pixels);
+        }
+        sprite->frame_count = n;
+        if (gif_count > 0 && gif_frames[0].delay_ms > 0)
+            sprite->frame_delay_ms = gif_frames[0].delay_ms;
+        free(gif_frames);
+        return sprite;
+    }
+
+    // Single-image formats: BMP, PNG, JPEG
+    void *pixels = NULL;
+    switch (fmt) {
+        case 1:
+            pixels = rt_pixels_load_bmp(path);
+            break;
+        case 2:
+            pixels = rt_pixels_load_png(path);
+            break;
+        case 3:
+            pixels = rt_pixels_load_jpeg(path);
+            break;
+        default:
+            return NULL;
+    }
     if (!pixels)
         return NULL;
 

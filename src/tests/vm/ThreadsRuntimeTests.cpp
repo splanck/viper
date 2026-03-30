@@ -12,10 +12,6 @@
 #include <cassert>
 
 int main() {
-#if defined(_WIN32)
-    // Viper.Threads is currently not implemented for Windows targets.
-    return 0;
-#else
     using namespace il::core;
 
     Module m;
@@ -217,5 +213,4 @@ int main() {
     const int64_t rc = vm.run();
     assert(rc == 42);
     return 0;
-#endif
 }

@@ -349,6 +349,24 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     if (const ClassLayout *layout = findClassLayout(klass.name))
         emitFieldReleaseSequence(selfPtr, *layout);
 
+    // Chain to base class destructor if the class inherits from another class.
+    // This ensures derived destructor body runs first, then base destructor body,
+    // matching C++/Java/C# semantics (derived cleanup before base teardown).
+    if (klass.baseName.has_value() && !klass.baseName->empty()) {
+        // Look up the base class in the OOP index to verify it has a destructor
+        const ClassInfo *baseInfo = oopIndex_.findClass(*klass.baseName);
+        if (baseInfo) {
+            // Use the qualified name from the index for mangling
+            const std::string &baseQualified =
+                baseInfo->qualifiedName.empty() ? *klass.baseName : baseInfo->qualifiedName;
+            // Always chain to base destructor — even if the base has no user-defined
+            // destructor body, its synthesized __dtor still handles field cleanup.
+            curLoc = {};
+            std::string baseDtorName = mangleClassDtor(baseQualified);
+            emitCall(baseDtorName, {selfPtr});
+        }
+    }
+
     // Release resources using consolidated epilogue helper (BUG-105 fix)
     helper.emitMethodEpilogue(metadata.paramNames, metadata.paramNames);
     curLoc = {};

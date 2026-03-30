@@ -34,6 +34,7 @@
 
 // Platform-specific trust-store and crypto APIs (CS-1/CS-2/CS-3)
 #if defined(__APPLE__)
+#include <CommonCrypto/CommonDigest.h>
 #include <Security/Security.h>
 #elif defined(_WIN32)
 #ifndef _WINDOWS_
@@ -964,16 +965,44 @@ int tls_verify_chain(rt_tls_session_t *session) {
 // B.5 — CertificateVerify signature verification
 // ---------------------------------------------------------------------------
 
-/// @brief Build the 130-byte signed content for CertificateVerify (RFC 8446 §4.4.3).
+/// @brief Build the 130-byte CertificateVerify message (RFC 8446 §4.4.3).
 /// Content = 64 spaces + "TLS 1.3, server CertificateVerify" + 0x00 + transcript_hash
+/// @param transcript_hash 32-byte SHA-256 transcript hash.
+/// @param out_content Output buffer (must be at least 130 bytes).
+static void build_cert_verify_message(const uint8_t transcript_hash[32], uint8_t out_content[130]) {
+    static const char context_str[] = "TLS 1.3, server CertificateVerify";
+    memset(out_content, 0x20, 64);
+    memcpy(out_content + 64, context_str, 33);
+    out_content[97] = 0x00;
+    memcpy(out_content + 98, transcript_hash, 32);
+}
+
+/// @brief Hash the CertificateVerify content with SHA-256.
+/// Used by the Windows path which always uses SHA-256 for the content hash
+/// (Windows CNG handles the algorithm internally for RSA-PSS schemes).
+#if defined(_WIN32)
 static void build_cert_verify_content(const uint8_t transcript_hash[32], uint8_t content_hash[32]) {
     uint8_t content[130];
-    static const char context_str[] = "TLS 1.3, server CertificateVerify";
-    memset(content, 0x20, 64);
-    memcpy(content + 64, context_str, 33);
-    content[97] = 0x00;
-    memcpy(content + 98, transcript_hash, 32);
+    build_cert_verify_message(transcript_hash, content);
     rt_sha256(content, 130, content_hash);
+}
+#endif
+
+/// @brief Determine the hash output size for a signature scheme.
+/// @return 32 for SHA-256, 48 for SHA-384, 64 for SHA-512, 0 if unknown.
+static size_t sig_scheme_hash_len(uint16_t sig_scheme) {
+    switch (sig_scheme) {
+        case 0x0403: /* ecdsa_secp256r1_sha256 */
+        case 0x0804: /* rsa_pss_rsae_sha256 */
+            return 32;
+        case 0x0503: /* ecdsa_secp384r1_sha384 */
+        case 0x0805: /* rsa_pss_rsae_sha384 */
+            return 48;
+        case 0x0806: /* rsa_pss_rsae_sha512 */
+            return 64;
+        default:
+            return 0;
+    }
 }
 
 #if defined(__APPLE__)
@@ -993,10 +1022,29 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     const uint8_t *sig_bytes = data + 4;
 
-    // Build the content hash (64 bytes to accommodate future SHA-384/SHA-512)
+    // Build the raw 130-byte CertificateVerify message, then hash with the
+    // algorithm matching the signature scheme.
+    uint8_t content[130];
+    build_cert_verify_message(session->cert_transcript_hash, content);
+
     uint8_t content_hash[64];
     memset(content_hash, 0, sizeof(content_hash));
-    build_cert_verify_content(session->cert_transcript_hash, content_hash);
+    size_t hash_len = sig_scheme_hash_len(sig_scheme);
+    if (hash_len == 0)
+        hash_len = 32; // Fallback to SHA-256 for ECDSA and unknown schemes
+
+    switch (hash_len) {
+        case 48:
+            CC_SHA384(content, 130, content_hash);
+            break;
+        case 64:
+            CC_SHA512(content, 130, content_hash);
+            break;
+        default:
+            rt_sha256(content, 130, content_hash);
+            hash_len = 32;
+            break;
+    }
 
     // Reconstruct SecCertificateRef from stored DER
     CFDataRef cert_data = CFDataCreate(
@@ -1050,7 +1098,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     }
 
     CFDataRef sig_data = CFDataCreate(kCFAllocatorDefault, sig_bytes, (CFIndex)sig_len);
-    CFDataRef hash_data = CFDataCreate(kCFAllocatorDefault, content_hash, 32);
+    CFDataRef hash_data = CFDataCreate(kCFAllocatorDefault, content_hash, (CFIndex)hash_len);
 
     if (!sig_data || !hash_data) {
         if (sig_data)
@@ -1407,17 +1455,22 @@ typedef void *(*EVP_sha384_fn)(void);
 typedef void *(*EVP_sha512_fn)(void);
 typedef int (*EVP_PKEY_CTX_set_rsa_padding_fn)(EVP_PKEY_CTX *, int);
 typedef int (*EVP_PKEY_CTX_set_rsa_pss_saltlen_fn)(EVP_PKEY_CTX *, int);
+typedef int (*EVP_Digest_fn)(
+    const void *, size_t, unsigned char *, unsigned int *, const void *, void *);
 
 #define RSA_PKCS1_PSS_PADDING 6
 #define RSA_PSS_SALTLEN_DIGEST -1
 
 /// @brief Fallback to dlopen(libcrypto) for RSA-PSS signature verification.
 /// Used only when the server selects an RSA-PSS scheme (0x0804/0x0805/0x0806).
+/// @param content_hash Digest of the CertificateVerify message (32/48/64 bytes).
+/// @param content_hash_len Length of content_hash matching the scheme's hash algorithm.
 static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
                                      uint16_t sig_scheme,
                                      const uint8_t *sig_bytes,
                                      uint16_t sig_len,
-                                     const uint8_t *content_hash) {
+                                     const uint8_t *content_hash,
+                                     size_t content_hash_len) {
     void *ssl_lib = dlopen("libssl.so.3", RTLD_LAZY | RTLD_LOCAL);
     if (!ssl_lib)
         ssl_lib = dlopen("libssl.so.1.1", RTLD_LAZY | RTLD_LOCAL);
@@ -1526,13 +1579,7 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
         fn_set_pss(ctx, RSA_PSS_SALTLEN_DIGEST);
     }
 
-    // content_hash is always SHA-256 (32 bytes) from build_cert_verify_content.
-    // EVP_PKEY_verify expects the digest matching the scheme's hash algorithm,
-    // but we only have SHA-256 today. Use 32 unconditionally to prevent over-read.
-    // TODO: implement SHA-384/SHA-512 content hashing for full RSA-PSS support
-    size_t hash_len = 32;
-
-    int rc = fn_verify(ctx, sig_bytes, sig_len, content_hash, hash_len);
+    int rc = fn_verify(ctx, sig_bytes, sig_len, content_hash, content_hash_len);
 
     fn_ctx_free(ctx);
     fn_pkey_free(pkey);
@@ -1562,9 +1609,53 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     }
     const uint8_t *sig_bytes = data + 4;
 
+    // Build the raw 130-byte CertificateVerify message
+    uint8_t cv_message[130];
+    build_cert_verify_message(session->cert_transcript_hash, cv_message);
+
+    // Determine hash length from signature scheme
+    size_t hash_len = sig_scheme_hash_len(sig_scheme);
+    if (hash_len == 0)
+        hash_len = 32;
+
+    // Compute the content hash with the correct algorithm.
+    // For SHA-256 we use our built-in rt_sha256; for SHA-384/SHA-512 we use
+    // dlopen'd libcrypto EVP_Digest when the RSA-PSS path needs it.
     uint8_t content_hash[64];
     memset(content_hash, 0, sizeof(content_hash));
-    build_cert_verify_content(session->cert_transcript_hash, content_hash);
+
+    if (hash_len == 32) {
+        rt_sha256(cv_message, 130, content_hash);
+    } else {
+        // SHA-384/SHA-512: use libcrypto EVP_Digest for the content hash
+        void *crypto_lib = dlopen("libcrypto.so.3", RTLD_LAZY | RTLD_LOCAL);
+        if (!crypto_lib)
+            crypto_lib = dlopen("libcrypto.so.1.1", RTLD_LAZY | RTLD_LOCAL);
+        if (!crypto_lib) {
+            session->error = "TLS: CertVerify: libcrypto required for SHA-384/SHA-512 hashing";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        EVP_Digest_fn fn_digest = (EVP_Digest_fn)dlsym(crypto_lib, "EVP_Digest");
+        void *(*fn_md)(void) = NULL;
+        if (hash_len == 48)
+            fn_md = (void *(*)(void))dlsym(crypto_lib, "EVP_sha384");
+        else
+            fn_md = (void *(*)(void))dlsym(crypto_lib, "EVP_sha512");
+
+        if (!fn_digest || !fn_md) {
+            dlclose(crypto_lib);
+            session->error = "TLS: CertVerify: libcrypto missing EVP_Digest/EVP_sha* symbols";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        unsigned int out_len = 0;
+        int ok = fn_digest(cv_message, 130, content_hash, &out_len, fn_md(), NULL);
+        dlclose(crypto_lib);
+        if (ok != 1) {
+            session->error = "TLS: CertVerify: EVP_Digest failed for content hash";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        hash_len = out_len;
+    }
 
     // Native ECDSA P-256 verification (no external dependencies)
     if (sig_scheme == 0x0403) // ecdsa_secp256r1_sha256
@@ -1591,7 +1682,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     // RSA-PSS schemes fall through to dlopen(libcrypto)
     if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) {
-        return tls_verify_rsa_pss_dlopen(session, sig_scheme, sig_bytes, sig_len, content_hash);
+        return tls_verify_rsa_pss_dlopen(
+            session, sig_scheme, sig_bytes, sig_len, content_hash, hash_len);
     }
 
     session->error = "TLS: CertificateVerify: unsupported signature scheme";

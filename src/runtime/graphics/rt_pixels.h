@@ -54,6 +54,11 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 /// @param color Pixel color as packed RGBA (0xRRGGBBAA).
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
+/// @brief Get direct read-only access to the underlying RGBA pixel buffer.
+/// @param pixels Pixels object.
+/// @return Pointer to width*height uint32_t values (0xRRGGBBAA), or NULL.
+const uint32_t *rt_pixels_raw_buffer(void *pixels);
+
 /// @brief Fill entire buffer with a color.
 /// @param pixels Pixels object.
 /// @param color Fill color as packed RGBA.
@@ -111,8 +116,20 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path);
 /// @brief Load a PNG image from file.
 /// @param path File path (runtime string).
 /// @return New Pixels object, or NULL on failure.
-/// @note Supports 8-bit RGB and RGBA PNG files.
+/// @note Supports all PNG color types and bit depths.
 void *rt_pixels_load_png(void *path);
+
+/// @brief Load a JPEG image from a file path.
+/// @param path File path (runtime string).
+/// @return New Pixels object, or NULL on failure.
+/// @note Supports baseline DCT JPEG: 8-bit, YCbCr/grayscale, 4:4:4/4:2:0/4:2:2.
+void *rt_pixels_load_jpeg(void *path);
+
+/// @brief Load a GIF image from a file path (first frame only for static use).
+/// @param path File path (runtime string).
+/// @return New Pixels object (first frame), or NULL on failure.
+/// @note For animated GIFs, use Sprite.FromFile() which loads all frames.
+void *rt_pixels_load_gif(void *path);
 
 /// @brief Save a Pixels buffer to a PNG file.
 /// @param pixels Pixels object to save.

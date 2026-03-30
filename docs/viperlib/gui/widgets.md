@@ -469,6 +469,7 @@ Image display widget.
 | Method                         | Signature                              | Description                    |
 |--------------------------------|----------------------------------------|--------------------------------|
 | `SetPixels(pixels, w, h)`      | `Void(Pixels, Integer, Integer)`       | Set image from Pixels buffer   |
+| `LoadFile(path)`               | `Integer(String)`                      | Load BMP/PNG file directly (1=ok, 0=fail) |
 | `Clear()`                      | `Void()`                               | Clear image                    |
 | `SetScaleMode(mode)`           | `Void(Integer)`                        | 0=none, 1=fit, 2=fill, 3=stretch |
 | `SetOpacity(opacity)`          | `Void(Double)`                         | Set opacity (0.0-1.0)          |
@@ -479,9 +480,8 @@ preview = NEW Viper.GUI.Image(root)
 preview.SetSize(200, 200)
 preview.SetScaleMode(1)  ' Fit
 
-DIM pixels AS Viper.Graphics.Pixels
-pixels = Viper.Graphics.Pixels.LoadBmp("photo.bmp")
-preview.SetPixels(pixels, pixels.Width, pixels.Height)
+' Load directly from file (BMP or PNG)
+preview.LoadFile("photo.png")
 ```
 
 ```rust
@@ -490,8 +490,8 @@ var preview = Image.New(root);
 preview.SetSize(200, 200);
 preview.SetScaleMode(1);  // Fit
 
-var pixels = Pixels.LoadBmp("photo.bmp");
-preview.SetPixels(pixels, pixels.get_Width(), pixels.get_Height());
+// Load directly from file (BMP or PNG)
+preview.LoadFile("photo.png");
 ```
 
 ---

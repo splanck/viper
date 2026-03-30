@@ -126,6 +126,10 @@ struct vaud_music {
     int32_t buffer_frames[VAUD_MUSIC_BUFFER_COUNT]; ///< Frames in each buffer
     int32_t current_buffer;                         ///< Index of buffer being played
     int32_t buffer_position;                        ///< Frame position within current buffer
+
+    // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
+    int16_t *resample_buf;  ///< Temp buffer for raw frames before resampling
+    int64_t resample_cap;   ///< Capacity of resample_buf in frames
 };
 
 //===----------------------------------------------------------------------===//
@@ -271,6 +275,15 @@ void vaud_resample(const int16_t *input,
 /// @param out_rate Output sample rate.
 /// @return Required output frame count.
 int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t out_rate);
+
+/// @brief Fill a music buffer with frames, resampling if necessary.
+/// @details Reads raw frames from the music's WAV file and, when the source
+///          sample rate differs from VAUD_SAMPLE_RATE, resamples via linear
+///          interpolation into the output buffer.
+/// @param music Music stream instance.
+/// @param buf_idx Index of the buffer to fill (0..VAUD_MUSIC_BUFFER_COUNT-1).
+/// @return Number of output frames written to the buffer.
+int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx);
 
 //===----------------------------------------------------------------------===//
 // Platform Backend Interface

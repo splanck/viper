@@ -208,7 +208,7 @@ func start() {
 ### Example
 
 ```basic
-' Load background music (must be 44100 Hz WAV)
+' Load background music (WAV, any sample rate)
 DIM bgMusic AS Viper.Sound.Music
 bgMusic = Viper.Sound.Music.Load("background.wav")
 
@@ -752,26 +752,26 @@ playlist.Crossfade = 1000; // 1-second crossfade between tracks
 
 ## Audio File Format
 
-Viper Audio supports **WAV (PCM) files only**. MP3, OGG, FLAC, and other
-compressed formats are not supported.
+Viper Audio supports **WAV (PCM)** and **OGG Vorbis** files. The format is auto-detected
+from file magic bytes — no extension matching required.
 
-| Property    | Supported values                           |
-|-------------|---------------------------------------------|
-| Format      | PCM (uncompressed) only                    |
-| Bit depth   | 8-bit or 16-bit                            |
-| Channels    | Mono or Stereo                             |
-| Sample rate | **44100 Hz required for Music**; any rate accepted for Sound (resampled at load time) |
+| Property    | WAV                              | OGG Vorbis                          | MP3                                 |
+|-------------|----------------------------------|-------------------------------------|-------------------------------------|
+| Format      | PCM (uncompressed)              | Vorbis I (baseline, Huffman-coded) | MPEG-1/2/2.5 Layer III              |
+| Bit depth   | 8-bit or 16-bit                 | N/A (lossy compressed)             | N/A (lossy compressed)              |
+| Channels    | Mono or Stereo                  | Mono or Stereo                     | Mono, Stereo, or Joint Stereo       |
+| Sample rate | Any (resampled to 44100 Hz)     | Any (resampled to 44100 Hz)        | Any (resampled to 44100 Hz)         |
 
 ### Tips
 
 1. **Sound effects:** Any sample rate works — the engine resamples to 44100 Hz at load time.
-2. **Music streams:** Must be encoded at exactly **44100 Hz**. Files at 48000 Hz or other rates will play at the wrong pitch and speed.
+2. **Music streams:** Any sample rate works — the engine resamples on-the-fly during streaming.
 3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
 4. **Streaming:** Music is streamed from disk, so long tracks use very little memory.
-5. **Encoding:** Use a tool such as ffmpeg to convert audio to the correct format:
+5. **Encoding:** Use a tool such as ffmpeg to convert audio to WAV:
    ```
-   ffmpeg -i input.mp3 -ar 44100 -ac 2 -f wav output.wav      # music
-   ffmpeg -i input.mp3 -ar 44100 -ac 1 -f wav sfx.wav         # mono sound effect
+   ffmpeg -i input.mp3 -ac 2 -f wav output.wav      # stereo music
+   ffmpeg -i input.mp3 -ac 1 -f wav sfx.wav         # mono sound effect
    ```
 
 ---
@@ -782,8 +782,8 @@ compressed formats are not supported.
 |-------|-------|-------|
 | Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
 | Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
-| Supported audio format | **WAV PCM only** | 8/16-bit, mono/stereo |
-| Music sample rate | **44100 Hz** | Other rates play at incorrect pitch |
+| Supported audio formats | **WAV PCM, OGG Vorbis** | 8/16-bit PCM or Vorbis compressed |
+| Music sample rate | **Any** | Automatically resampled to 44100 Hz |
 | Sound sample rate | Any | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
 | Volume range | 0 to 100 | Applies to Sound, Music, and Voice |

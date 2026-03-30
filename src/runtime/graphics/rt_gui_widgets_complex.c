@@ -39,6 +39,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_object.h"
+#include "rt_pixels.h"
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -914,6 +916,67 @@ void rt_image_set_opacity(void *image, double opacity) {
     }
 }
 
+/// @brief Load an image file (BMP or PNG) into the image widget.
+/// @details Auto-detects format from file magic bytes, decodes using rt_pixels,
+///          converts from packed 0xRRGGBBAA to byte RGBA, and sets the widget pixels.
+/// @param image Image widget.
+/// @param path File path (runtime string).
+/// @return 1 on success, 0 on failure.
+int64_t rt_image_load_file(void *image, void *path) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!image || !path)
+        return 0;
+
+    // Try PNG first, then BMP, then JPEG, then GIF
+    void *pixels = rt_pixels_load_png(path);
+    if (!pixels)
+        pixels = rt_pixels_load_bmp(path);
+    if (!pixels)
+        pixels = rt_pixels_load_jpeg(path);
+    if (!pixels)
+        pixels = rt_pixels_load_gif(path);
+    if (!pixels)
+        return 0;
+
+    int64_t w = rt_pixels_width(pixels);
+    int64_t h = rt_pixels_height(pixels);
+    if (w <= 0 || h <= 0) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return 0;
+    }
+
+    // Convert from packed uint32_t (0xRRGGBBAA) to byte RGBA
+    const uint32_t *src = rt_pixels_raw_buffer(pixels);
+    if (!src) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return 0;
+    }
+
+    size_t pixel_count = (size_t)w * (size_t)h;
+    uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
+    if (!rgba) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return 0;
+    }
+
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint32_t px = src[i];
+        rgba[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF); // R
+        rgba[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); // G
+        rgba[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);  // B
+        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);          // A
+    }
+
+    vg_image_set_pixels((vg_image_t *)image, rgba, (int)w, (int)h);
+    free(rgba);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+    return 1;
+}
+
 //=============================================================================
 // FloatingPanel Widget
 //=============================================================================
@@ -1479,6 +1542,13 @@ void rt_image_set_scale_mode(void *image, int64_t mode) {
 void rt_image_set_opacity(void *image, double opacity) {
     (void)image;
     (void)opacity;
+}
+
+/// @brief Load image file stub (graphics disabled).
+int64_t rt_image_load_file(void *image, void *path) {
+    (void)image;
+    (void)path;
+    return 0;
 }
 
 void *rt_floatingpanel_new(void *root) {

@@ -33,11 +33,15 @@
 
 #include "rt_audio.h"
 #include "rt_mixgroup.h"
+#include "rt_mp3.h"
 #include "rt_object.h"
+#include "rt_ogg.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_vorbis.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -272,6 +276,242 @@ void rt_audio_stop_all_sounds(void) {
 // Sound Effects
 //===----------------------------------------------------------------------===//
 
+/// @brief Detect audio file format from magic bytes.
+/// @return 1=WAV/RIFF, 2=OGG, 0=unknown
+static int detect_audio_format(const char *filepath) {
+    FILE *af = fopen(filepath, "rb");
+    if (!af)
+        return 0;
+    uint8_t hdr[4];
+    size_t n = fread(hdr, 1, 4, af);
+    fclose(af);
+    if (n < 4)
+        return 0;
+    if (hdr[0] == 'R' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == 'F')
+        return 1; // WAV
+    if (hdr[0] == 'O' && hdr[1] == 'g' && hdr[2] == 'g' && hdr[3] == 'S')
+        return 2; // OGG
+    if (hdr[0] == 'I' && hdr[1] == 'D' && hdr[2] == '3')
+        return 3; // MP3 with ID3v2 tag
+    if (hdr[0] == 0xFF && (hdr[1] & 0xE0) == 0xE0)
+        return 3; // MP3 frame sync
+    return 0;
+}
+
+/// @brief Decode an entire OGG Vorbis file to a WAV-format memory buffer.
+/// @details Creates a valid RIFF/WAV header followed by raw PCM data.
+/// @param filepath Path to the .ogg file.
+/// @param out_data Receives malloc'd WAV data (caller frees).
+/// @param out_len Receives total WAV data length.
+/// @return 0 on success, -1 on failure.
+static int ogg_decode_to_wav(const char *filepath, uint8_t **out_data, size_t *out_len) {
+    ogg_reader_t *reader = ogg_reader_open_file(filepath);
+    if (!reader)
+        return -1;
+
+    vorbis_decoder_t *dec = vorbis_decoder_new();
+    if (!dec) {
+        ogg_reader_free(reader);
+        return -1;
+    }
+
+    // Read and decode the 3 header packets
+    for (int i = 0; i < 3; i++) {
+        const uint8_t *pkt_data;
+        size_t pkt_len;
+        if (!ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
+            vorbis_decoder_free(dec);
+            ogg_reader_free(reader);
+            return -1;
+        }
+        if (vorbis_decode_header(dec, pkt_data, pkt_len, i) != 0) {
+            vorbis_decoder_free(dec);
+            ogg_reader_free(reader);
+            return -1;
+        }
+    }
+
+    int channels = vorbis_get_channels(dec);
+    int sample_rate = vorbis_get_sample_rate(dec);
+    if (channels <= 0 || sample_rate <= 0) {
+        vorbis_decoder_free(dec);
+        ogg_reader_free(reader);
+        return -1;
+    }
+
+    // Decode all audio packets into a growing PCM buffer
+    int16_t *pcm_buf = NULL;
+    size_t pcm_frames = 0;
+    size_t pcm_cap = 0;
+
+    const uint8_t *pkt_data;
+    size_t pkt_len;
+    while (ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
+        int16_t *frame_pcm = NULL;
+        int frame_samples = 0;
+        if (vorbis_decode_packet(dec, pkt_data, pkt_len, &frame_pcm, &frame_samples) != 0)
+            break;
+        if (frame_samples > 0 && frame_pcm) {
+            size_t needed = pcm_frames + (size_t)frame_samples;
+            if (needed > pcm_cap) {
+                size_t new_cap = pcm_cap ? pcm_cap * 2 : 65536;
+                if (new_cap < needed)
+                    new_cap = needed;
+                int16_t *new_buf =
+                    (int16_t *)realloc(pcm_buf, new_cap * (size_t)channels * sizeof(int16_t));
+                if (!new_buf) {
+                    free(pcm_buf);
+                    vorbis_decoder_free(dec);
+                    ogg_reader_free(reader);
+                    return -1;
+                }
+                pcm_buf = new_buf;
+                pcm_cap = new_cap;
+            }
+            memcpy(pcm_buf + pcm_frames * channels, frame_pcm,
+                   (size_t)frame_samples * (size_t)channels * sizeof(int16_t));
+            pcm_frames += (size_t)frame_samples;
+        }
+    }
+
+    vorbis_decoder_free(dec);
+    ogg_reader_free(reader);
+
+    if (pcm_frames == 0) {
+        free(pcm_buf);
+        return -1;
+    }
+
+    // Build a WAV file in memory: 44-byte header + PCM data
+    size_t data_size = pcm_frames * (size_t)channels * sizeof(int16_t);
+    size_t wav_size = 44 + data_size;
+    uint8_t *wav = (uint8_t *)malloc(wav_size);
+    if (!wav) {
+        free(pcm_buf);
+        return -1;
+    }
+
+    // RIFF header
+    memcpy(wav, "RIFF", 4);
+    uint32_t riff_size = (uint32_t)(wav_size - 8);
+    wav[4] = (uint8_t)(riff_size);
+    wav[5] = (uint8_t)(riff_size >> 8);
+    wav[6] = (uint8_t)(riff_size >> 16);
+    wav[7] = (uint8_t)(riff_size >> 24);
+    memcpy(wav + 8, "WAVE", 4);
+
+    // fmt chunk
+    memcpy(wav + 12, "fmt ", 4);
+    wav[16] = 16;
+    wav[17] = wav[18] = wav[19] = 0; // chunk size = 16
+    wav[20] = 1;
+    wav[21] = 0; // PCM format
+    wav[22] = (uint8_t)channels;
+    wav[23] = 0;
+    wav[24] = (uint8_t)(sample_rate);
+    wav[25] = (uint8_t)(sample_rate >> 8);
+    wav[26] = (uint8_t)(sample_rate >> 16);
+    wav[27] = (uint8_t)(sample_rate >> 24);
+    uint32_t byte_rate = (uint32_t)(sample_rate * channels * 2);
+    wav[28] = (uint8_t)(byte_rate);
+    wav[29] = (uint8_t)(byte_rate >> 8);
+    wav[30] = (uint8_t)(byte_rate >> 16);
+    wav[31] = (uint8_t)(byte_rate >> 24);
+    wav[32] = (uint8_t)(channels * 2); // block align
+    wav[33] = 0;
+    wav[34] = 16; // bits per sample
+    wav[35] = 0;
+
+    // data chunk
+    memcpy(wav + 36, "data", 4);
+    wav[40] = (uint8_t)(data_size);
+    wav[41] = (uint8_t)(data_size >> 8);
+    wav[42] = (uint8_t)(data_size >> 16);
+    wav[43] = (uint8_t)(data_size >> 24);
+    memcpy(wav + 44, pcm_buf, data_size);
+
+    free(pcm_buf);
+    *out_data = wav;
+    *out_len = wav_size;
+    return 0;
+}
+
+/// @brief Decode an MP3 file to a WAV-format memory buffer.
+static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out_len) {
+    FILE *mf = fopen(filepath, "rb");
+    if (!mf)
+        return -1;
+    fseek(mf, 0, SEEK_END);
+    long mf_len = ftell(mf);
+    fseek(mf, 0, SEEK_SET);
+    if (mf_len <= 0 || mf_len > 256 * 1024 * 1024) {
+        fclose(mf);
+        return -1;
+    }
+    uint8_t *mf_data = (uint8_t *)malloc((size_t)mf_len);
+    if (!mf_data) {
+        fclose(mf);
+        return -1;
+    }
+    if (fread(mf_data, 1, (size_t)mf_len, mf) != (size_t)mf_len) {
+        free(mf_data);
+        fclose(mf);
+        return -1;
+    }
+    fclose(mf);
+
+    mp3_decoder_t *dec = mp3_decoder_new();
+    if (!dec) {
+        free(mf_data);
+        return -1;
+    }
+
+    int16_t *pcm = NULL;
+    int samples = 0, channels = 0, sample_rate = 0;
+    int rc = mp3_decode_file(dec, mf_data, (size_t)mf_len,
+                             &pcm, &samples, &channels, &sample_rate);
+    mp3_decoder_free(dec);
+    free(mf_data);
+
+    if (rc != 0 || !pcm || samples == 0)
+        return -1;
+
+    // Build WAV header
+    size_t data_size = (size_t)samples * (size_t)channels * sizeof(int16_t);
+    size_t wav_size = 44 + data_size;
+    uint8_t *wav = (uint8_t *)malloc(wav_size);
+    if (!wav) {
+        free(pcm);
+        return -1;
+    }
+
+    memcpy(wav, "RIFF", 4);
+    uint32_t riff_sz = (uint32_t)(wav_size - 8);
+    wav[4] = (uint8_t)(riff_sz); wav[5] = (uint8_t)(riff_sz >> 8);
+    wav[6] = (uint8_t)(riff_sz >> 16); wav[7] = (uint8_t)(riff_sz >> 24);
+    memcpy(wav + 8, "WAVE", 4);
+    memcpy(wav + 12, "fmt ", 4);
+    wav[16] = 16; wav[17] = wav[18] = wav[19] = 0;
+    wav[20] = 1; wav[21] = 0;
+    wav[22] = (uint8_t)channels; wav[23] = 0;
+    wav[24] = (uint8_t)(sample_rate); wav[25] = (uint8_t)(sample_rate >> 8);
+    wav[26] = (uint8_t)(sample_rate >> 16); wav[27] = (uint8_t)(sample_rate >> 24);
+    uint32_t brate = (uint32_t)(sample_rate * channels * 2);
+    wav[28] = (uint8_t)(brate); wav[29] = (uint8_t)(brate >> 8);
+    wav[30] = (uint8_t)(brate >> 16); wav[31] = (uint8_t)(brate >> 24);
+    wav[32] = (uint8_t)(channels * 2); wav[33] = 0;
+    wav[34] = 16; wav[35] = 0;
+    memcpy(wav + 36, "data", 4);
+    wav[40] = (uint8_t)(data_size); wav[41] = (uint8_t)(data_size >> 8);
+    wav[42] = (uint8_t)(data_size >> 16); wav[43] = (uint8_t)(data_size >> 24);
+    memcpy(wav + 44, pcm, data_size);
+    free(pcm);
+
+    *out_data = wav;
+    *out_len = wav_size;
+    return 0;
+}
+
 void *rt_sound_load(rt_string path) {
     if (!path)
         return NULL;
@@ -283,8 +523,30 @@ void *rt_sound_load(rt_string path) {
     if (!path_str)
         return NULL;
 
-    /* Load the sound via ViperAUD */
-    vaud_sound_t snd = vaud_load_sound(g_audio_ctx, path_str);
+    vaud_sound_t snd = NULL;
+
+    // Detect format and dispatch
+    int fmt = detect_audio_format(path_str);
+    if (fmt == 2) {
+        // OGG Vorbis
+        uint8_t *wav_data = NULL;
+        size_t wav_len = 0;
+        if (ogg_decode_to_wav(path_str, &wav_data, &wav_len) != 0)
+            return NULL;
+        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        free(wav_data);
+    } else if (fmt == 3) {
+        // MP3
+        uint8_t *wav_data = NULL;
+        size_t wav_len = 0;
+        if (mp3_file_to_wav(path_str, &wav_data, &wav_len) != 0)
+            return NULL;
+        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        free(wav_data);
+    } else {
+        /* WAV path */
+        snd = vaud_load_sound(g_audio_ctx, path_str);
+    }
     if (!snd)
         return NULL;
 

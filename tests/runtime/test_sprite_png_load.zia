@@ -1,0 +1,67 @@
+// Test: Sprite loading supports both BMP and PNG formats
+module TestSpritePngLoad;
+
+bind Viper.Terminal;
+
+func start() {
+    // Create a 4x4 pixel buffer with known colors
+    var px = Viper.Graphics.Pixels.New(4, 4);
+    Viper.Graphics.Pixels.Set(px, 0, 0, 0xFF0000FF);  // Red
+    Viper.Graphics.Pixels.Set(px, 1, 0, 0x00FF00FF);  // Green
+    Viper.Graphics.Pixels.Set(px, 2, 0, 0x0000FFFF);  // Blue
+    Viper.Graphics.Pixels.Set(px, 3, 0, 0xFFFFFFFF);  // White
+
+    // Save as PNG
+    var ok = Viper.Graphics.Pixels.SavePng(px, "test_sprite_load.png");
+    if (ok != 1) {
+        Say("FAIL: SavePng failed");
+        return;
+    }
+
+    // Save as BMP
+    ok = Viper.Graphics.Pixels.SaveBmp(px, "test_sprite_load.bmp");
+    if (ok != 1) {
+        Say("FAIL: SaveBmp failed");
+        return;
+    }
+
+    // Load sprite from PNG
+    var spritePng = Viper.Graphics.Sprite.FromFile("test_sprite_load.png");
+    if (spritePng == 0) {
+        Say("FAIL: Sprite.FromFile failed for PNG");
+        return;
+    }
+
+    // Load sprite from BMP
+    var spriteBmp = Viper.Graphics.Sprite.FromFile("test_sprite_load.bmp");
+    if (spriteBmp == 0) {
+        Say("FAIL: Sprite.FromFile failed for BMP");
+        return;
+    }
+
+    // Verify PNG sprite dimensions
+    var w = Viper.Graphics.Sprite.get_Width(spritePng);
+    var h = Viper.Graphics.Sprite.get_Height(spritePng);
+    if (w != 4) {
+        Say("FAIL: PNG sprite width mismatch");
+        return;
+    }
+    if (h != 4) {
+        Say("FAIL: PNG sprite height mismatch");
+        return;
+    }
+
+    // Verify BMP sprite dimensions
+    w = Viper.Graphics.Sprite.get_Width(spriteBmp);
+    h = Viper.Graphics.Sprite.get_Height(spriteBmp);
+    if (w != 4) {
+        Say("FAIL: BMP sprite width mismatch");
+        return;
+    }
+    if (h != 4) {
+        Say("FAIL: BMP sprite height mismatch");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

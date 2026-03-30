@@ -62,7 +62,7 @@ void BytecodeVM::runThreaded() {
         // Constant Loading (0x20-0x2F)
         [0x20] = &&L_LOAD_I8,
         [0x21] = &&L_LOAD_I16,
-        [0x22] = &&L_DEFAULT, // LOAD_I32 - not implemented
+        [0x22] = &&L_LOAD_I32,
         [0x23] = &&L_LOAD_I64,
         [0x24] = &&L_LOAD_F64,
         [0x25] = &&L_LOAD_STR,
@@ -146,14 +146,14 @@ void BytecodeVM::runThreaded() {
         [0xA5] = &&L_LOAD_I64_MEM,
         [0xA6] = &&L_LOAD_F64_MEM,
         [0xA7] = &&L_LOAD_PTR_MEM,
-        [0xA8] = &&L_DEFAULT, // LOAD_STR_MEM
+        [0xA8] = &&L_LOAD_STR_MEM,
         [0xA9] = &&L_STORE_I8_MEM,
         [0xAA] = &&L_STORE_I16_MEM,
         [0xAB] = &&L_STORE_I32_MEM,
         [0xAC] = &&L_STORE_I64_MEM,
         [0xAD] = &&L_STORE_F64_MEM,
         [0xAE] = &&L_STORE_PTR_MEM,
-        [0xAF] = &&L_DEFAULT, // STORE_STR_MEM
+        [0xAF] = &&L_STORE_STR_MEM,
 
         // Control Flow (0xB0-0xBF)
         [0xB0] = &&L_JUMP,
@@ -308,6 +308,14 @@ L_LOAD_I16:
     sp->i64 = decodeArgI16(instr);
     sp++;
     DISPATCH();
+
+L_LOAD_I32: {
+    // Extended format: the 32-bit value is stored in the next code word.
+    int32_t val = static_cast<int32_t>(code[pc++]);
+    sp->i64 = val;
+    sp++;
+    DISPATCH();
+}
 
 L_LOAD_I64:
     sp->i64 = module_->i64Pool[decodeArg16(instr)];
@@ -1008,6 +1016,22 @@ L_STORE_F64_MEM: {
 }
 
 L_STORE_PTR_MEM: {
+    void *val = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
+    std::memcpy(ptr, &val, sizeof(val));
+    DISPATCH();
+}
+
+L_LOAD_STR_MEM: {
+    // String handles are pointer-sized; semantically identical to LOAD_PTR_MEM.
+    void *val;
+    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    sp[-1].ptr = val;
+    DISPATCH();
+}
+
+L_STORE_STR_MEM: {
+    // String handles are pointer-sized; semantically identical to STORE_PTR_MEM.
     void *val = (--sp)->ptr;
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
