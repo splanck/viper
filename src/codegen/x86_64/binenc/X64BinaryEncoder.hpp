@@ -28,6 +28,7 @@
 #pragma once
 
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/x86_64/FrameLowering.hpp"
 #include "codegen/x86_64/MachineIR.hpp"
 
 #include <cstddef>
@@ -66,10 +67,12 @@ class X64BinaryEncoder {
     /// @param text      CodeSection for .text (machine code output).
     /// @param rodata    CodeSection for .rodata (used for RIP-relative symbol lookup).
     /// @param isDarwin  If true, symbol names get underscore-prefixed.
+    /// @param frame     Optional frame metadata used to emit Win64 unwind info.
     void encodeFunction(const MFunction &fn,
                         objfile::CodeSection &text,
                         objfile::CodeSection &rodata,
-                        bool isDarwin);
+                        bool isDarwin,
+                        const FrameInfo *frame = nullptr);
 
   private:
     /// Encode a single MIR instruction.

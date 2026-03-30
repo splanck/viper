@@ -11,11 +11,12 @@
 // Key invariants:
 //   - All multi-byte fields are little-endian
 //   - File layout: COFF header (20B) | section headers (40B each) |
-//     .text data | .text relocs | .rdata data | symbol table | string table
+//     .text data | .text relocs | generated unwind sections | symbol table |
+//     string table
 //   - Symbol names <= 8 chars are stored inline; longer names use string table
-//   - String table starts with 4-byte size (includes the size field itself)
+//   - String table starts with a 4-byte size field (includes itself)
 //   - COFF relocations are 10 bytes: offset(4) + symIdx(4) + type(2)
-//   - No explicit addend field — addends are embedded in instruction bytes
+//   - No explicit addend field; addends are embedded in instruction bytes
 // Ownership/Lifetime:
 //   - Stateless between write() calls
 // Links: codegen/common/objfile/CoffWriter.hpp
@@ -24,12 +25,12 @@
 
 #include "codegen/common/objfile/CoffWriter.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
-#include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -39,64 +40,46 @@ namespace viper::codegen::objfile {
 // COFF Constants
 // =============================================================================
 
-// Machine types
 static constexpr uint16_t kMachineAMD64 = 0x8664;
 static constexpr uint16_t kMachineARM64 = 0xAA64;
 
-// COFF header size (no optional header for .obj files)
 static constexpr uint16_t kCoffHeaderSize = 20;
-
-// Section header size
 static constexpr uint16_t kSectionHeaderSize = 40;
 
-// Section flags
 static constexpr uint32_t kImageScnCntCode = 0x00000020;
 static constexpr uint32_t kImageScnCntInitData = 0x00000040;
-static constexpr uint32_t kImageScnAlignText = 0x00600000; // 16-byte align for x86_64
-static constexpr uint32_t kImageScnAlign4 = 0x00300000;    // 4-byte align for AArch64
-static constexpr uint32_t kImageScnAlign8 = 0x00400000;    // 8-byte align
+static constexpr uint32_t kImageScnAlignText = 0x00600000;
+static constexpr uint32_t kImageScnAlign4 = 0x00300000;
+static constexpr uint32_t kImageScnAlign8 = 0x00400000;
 static constexpr uint32_t kImageScnMemExecute = 0x20000000;
 static constexpr uint32_t kImageScnMemDiscardable = 0x02000000;
 static constexpr uint32_t kImageScnMemRead = 0x40000000;
-static constexpr uint32_t kImageScnAlign1 = 0x00100000; // 1-byte align
+static constexpr uint32_t kImageScnAlign1 = 0x00100000;
 
-// Symbol storage class
 static constexpr uint8_t kImageSymClassExternal = 2;
 static constexpr uint8_t kImageSymClassStatic = 3;
 
-// Symbol section numbers
 static constexpr int16_t kImageSymUndefined = 0;
 
-// COFF relocation size
 static constexpr uint32_t kCoffRelocSize = 10;
 
-// Symbol entry size
-static constexpr uint32_t kCoffSymSize = 18;
-
-// x86_64 COFF relocation types
 static constexpr uint16_t kImageRelAMD64_Addr64 = 1;
+static constexpr uint16_t kImageRelAMD64_Addr32Nb = 3;
 static constexpr uint16_t kImageRelAMD64_Rel32 = 4;
 
-// AArch64 COFF relocation types
 static constexpr uint16_t kImageRelARM64_Branch26 = 3;
 static constexpr uint16_t kImageRelARM64_PagebaseRel21 = 4;
 static constexpr uint16_t kImageRelARM64_Pageoffset12A = 6;
 static constexpr uint16_t kImageRelARM64_Pageoffset12L = 7;
 static constexpr uint16_t kImageRelARM64_Branch19 = 8;
 
-// Helpers: appendLE16/32, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
-
-/// Map RelocKind to COFF relocation type.
 static uint16_t coffRelocType(RelocKind kind) {
     switch (kind) {
-        // x86_64
         case RelocKind::PCRel32:
-            return kImageRelAMD64_Rel32;
         case RelocKind::Branch32:
-            return kImageRelAMD64_Rel32; // COFF uses same type for both
+            return kImageRelAMD64_Rel32;
         case RelocKind::Abs64:
             return kImageRelAMD64_Addr64;
-        // AArch64
         case RelocKind::A64Call26:
         case RelocKind::A64Jump26:
             return kImageRelARM64_Branch26;
@@ -112,7 +95,6 @@ static uint16_t coffRelocType(RelocKind kind) {
     return 0;
 }
 
-/// Write a COFF section header (40 bytes).
 static void writeSectionHeader(std::vector<uint8_t> &out,
                                const char *name,
                                uint32_t virtualSize,
@@ -122,33 +104,27 @@ static void writeSectionHeader(std::vector<uint8_t> &out,
                                uint32_t relocPtr,
                                uint32_t numRelocs,
                                uint32_t characteristics) {
-    // Name: 8 bytes, padded with zeros.
     for (int i = 0; i < 8; ++i) {
-        if (name[i] != '\0')
+        if (name[i] != '\0') {
             out.push_back(static_cast<uint8_t>(name[i]));
-        else {
-            // Fill remaining bytes with zeros.
+        } else {
             for (int j = i; j < 8; ++j)
                 out.push_back(0);
             break;
         }
     }
 
-    appendLE32(out, virtualSize);                      // VirtualSize (0 for .obj)
-    appendLE32(out, virtualAddr);                      // VirtualAddress (0 for .obj)
-    appendLE32(out, rawDataSize);                      // SizeOfRawData
-    appendLE32(out, rawDataPtr);                       // PointerToRawData
-    appendLE32(out, relocPtr);                         // PointerToRelocations
-    appendLE32(out, 0);                                // PointerToLineNumbers
-    appendLE16(out, static_cast<uint16_t>(numRelocs)); // NumberOfRelocations
-    appendLE16(out, 0);                                // NumberOfLinenumbers
+    appendLE32(out, virtualSize);
+    appendLE32(out, virtualAddr);
+    appendLE32(out, rawDataSize);
+    appendLE32(out, rawDataPtr);
+    appendLE32(out, relocPtr);
+    appendLE32(out, 0);
+    appendLE16(out, static_cast<uint16_t>(numRelocs));
+    appendLE16(out, 0);
     appendLE32(out, characteristics);
 }
 
-/// Write a COFF symbol entry (18 bytes).
-/// If the name is <= 8 chars, it's stored inline.
-/// Otherwise, the first 4 bytes are zero and the next 4 bytes are the
-/// string table offset.
 static void writeSymbol(std::vector<uint8_t> &out,
                         const std::string &name,
                         uint32_t strTabOffset,
@@ -157,7 +133,6 @@ static void writeSymbol(std::vector<uint8_t> &out,
                         uint16_t type,
                         uint8_t storageClass) {
     if (name.size() <= 8) {
-        // Inline name (8 bytes, zero-padded).
         for (size_t i = 0; i < 8; ++i) {
             if (i < name.size())
                 out.push_back(static_cast<uint8_t>(name[i]));
@@ -165,7 +140,6 @@ static void writeSymbol(std::vector<uint8_t> &out,
                 out.push_back(0);
         }
     } else {
-        // Long name: 4 zero bytes + 4-byte string table offset.
         appendLE32(out, 0);
         appendLE32(out, strTabOffset);
     }
@@ -174,10 +148,9 @@ static void writeSymbol(std::vector<uint8_t> &out,
     appendLE16(out, static_cast<uint16_t>(sectionNumber));
     appendLE16(out, type);
     out.push_back(storageClass);
-    out.push_back(0); // NumberOfAuxSymbols
+    out.push_back(0);
 }
 
-/// Write a COFF relocation entry (10 bytes).
 static void writeReloc(std::vector<uint8_t> &out,
                        uint32_t virtualAddr,
                        uint32_t symbolTableIndex,
@@ -187,52 +160,177 @@ static void writeReloc(std::vector<uint8_t> &out,
     appendLE16(out, type);
 }
 
-// =============================================================================
-// CoffWriter::write
-// =============================================================================
+struct PendingCoffSymbol {
+    std::string name;
+    uint32_t value{0};
+    uint16_t type{0};
+    uint8_t storageClass{kImageSymClassStatic};
+};
+
+struct PendingCoffReloc {
+    uint32_t offset{0};
+    std::string symbolName;
+    uint16_t type{0};
+};
+
+static size_t win64UnwindSlotCount(const Win64UnwindCode &code) {
+    switch (code.kind) {
+        case Win64UnwindCode::Kind::PushNonVol:
+            return 1;
+        case Win64UnwindCode::Kind::AllocStack:
+            if (code.stackOffset <= 128)
+                return 1;
+            if (code.stackOffset <= 524280)
+                return 2;
+            return 3;
+        case Win64UnwindCode::Kind::SaveNonVol:
+            if ((code.stackOffset / 8) <= 0xFFFF)
+                return 2;
+            return 3;
+        case Win64UnwindCode::Kind::SaveXmm128:
+            if ((code.stackOffset / 16) <= 0xFFFF)
+                return 2;
+            return 3;
+    }
+    return 0;
+}
+
+static void emitWin64UnwindNodes(std::vector<uint8_t> &out, const Win64UnwindCode &code) {
+    constexpr uint8_t kUwopPushNonVol = 0;
+    constexpr uint8_t kUwopAllocLarge = 1;
+    constexpr uint8_t kUwopAllocSmall = 2;
+    constexpr uint8_t kUwopSaveNonVol = 4;
+    constexpr uint8_t kUwopSaveNonVolFar = 5;
+    constexpr uint8_t kUwopSaveXmm128 = 8;
+    constexpr uint8_t kUwopSaveXmm128Far = 9;
+
+    const auto emitNode = [&](uint8_t codeOffset, uint8_t unwindOp, uint8_t opInfo) {
+        out.push_back(codeOffset);
+        out.push_back(static_cast<uint8_t>(unwindOp | (opInfo << 4)));
+    };
+
+    switch (code.kind) {
+        case Win64UnwindCode::Kind::PushNonVol:
+            emitNode(code.codeOffset, kUwopPushNonVol, code.reg);
+            return;
+        case Win64UnwindCode::Kind::AllocStack:
+            if (code.stackOffset <= 128) {
+                emitNode(code.codeOffset,
+                         kUwopAllocSmall,
+                         static_cast<uint8_t>((code.stackOffset - 8) / 8));
+                return;
+            }
+            if (code.stackOffset <= 524280) {
+                emitNode(code.codeOffset, kUwopAllocLarge, 0);
+                appendLE16(out, static_cast<uint16_t>(code.stackOffset / 8));
+                return;
+            }
+            emitNode(code.codeOffset, kUwopAllocLarge, 1);
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset & 0xFFFF));
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset >> 16));
+            return;
+        case Win64UnwindCode::Kind::SaveNonVol:
+            if ((code.stackOffset / 8) <= 0xFFFF) {
+                emitNode(code.codeOffset, kUwopSaveNonVol, code.reg);
+                appendLE16(out, static_cast<uint16_t>(code.stackOffset / 8));
+                return;
+            }
+            emitNode(code.codeOffset, kUwopSaveNonVolFar, code.reg);
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset & 0xFFFF));
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset >> 16));
+            return;
+        case Win64UnwindCode::Kind::SaveXmm128:
+            if ((code.stackOffset / 16) <= 0xFFFF) {
+                emitNode(code.codeOffset, kUwopSaveXmm128, code.reg);
+                appendLE16(out, static_cast<uint16_t>(code.stackOffset / 16));
+                return;
+            }
+            emitNode(code.codeOffset, kUwopSaveXmm128Far, code.reg);
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset & 0xFFFF));
+            appendLE16(out, static_cast<uint16_t>(code.stackOffset >> 16));
+            return;
+    }
+}
+
+static void buildWin64UnwindSections(const CodeSection &text,
+                                     std::vector<uint8_t> &xdataBytes,
+                                     std::vector<PendingCoffSymbol> &xdataSymbols,
+                                     std::vector<uint8_t> &pdataBytes,
+                                     std::vector<PendingCoffReloc> &pdataRelocs) {
+    const auto &entries = text.win64UnwindEntries();
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto &entry = entries[i];
+        const uint32_t xdataOffset = static_cast<uint32_t>(xdataBytes.size());
+        const std::string xdataName = "$xdata$" + std::to_string(i);
+        xdataSymbols.push_back({xdataName, xdataOffset, 0, kImageSymClassStatic});
+
+        std::vector<Win64UnwindCode> codes = entry.codes;
+        std::stable_sort(codes.begin(), codes.end(), [](const auto &lhs, const auto &rhs) {
+            return lhs.codeOffset > rhs.codeOffset;
+        });
+
+        size_t codeSlots = 0;
+        for (const auto &code : codes)
+            codeSlots += win64UnwindSlotCount(code);
+
+        xdataBytes.push_back(1);
+        xdataBytes.push_back(entry.prologueSize);
+        xdataBytes.push_back(static_cast<uint8_t>(codeSlots));
+        xdataBytes.push_back(0);
+        for (const auto &code : codes)
+            emitWin64UnwindNodes(xdataBytes, code);
+        padTo(xdataBytes, alignUp(xdataBytes.size(), 4));
+
+        const uint32_t pdataOffset = static_cast<uint32_t>(pdataBytes.size());
+        appendLE32(pdataBytes, 0);
+        appendLE32(pdataBytes, 0);
+        appendLE32(pdataBytes, 0);
+
+        const auto &funcSym = text.symbols().at(entry.symbolIndex);
+        pdataRelocs.push_back({pdataOffset, funcSym.name, kImageRelAMD64_Addr32Nb});
+        pdataRelocs.push_back({pdataOffset + 4, funcSym.name, kImageRelAMD64_Addr32Nb});
+        pdataRelocs.push_back({pdataOffset + 8, xdataName, kImageRelAMD64_Addr32Nb});
+    }
+}
 
 bool CoffWriter::write(const std::string &path,
                        const CodeSection &text,
                        const CodeSection &rodata,
                        std::ostream &err) {
-    // Determine section count: always .text; .rdata only if rodata has content;
-    // .debug_line only if debug data is present.
+    std::vector<uint8_t> xdataBytes;
+    std::vector<PendingCoffSymbol> xdataSymbols;
+    std::vector<uint8_t> pdataBytes;
+    std::vector<PendingCoffReloc> pdataRelocs;
+    if (arch_ == ObjArch::X86_64 && !text.win64UnwindEntries().empty())
+        buildWin64UnwindSections(text, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs);
+
     const bool hasRodata = !rodata.empty();
+    const bool hasXdata = !xdataBytes.empty();
+    const bool hasPdata = !pdataBytes.empty();
     const bool hasDebugLine = !debugLineData_.empty();
+
+    uint16_t nextSecIndex = 1;
+    const uint16_t secIdxText = nextSecIndex++;
+    const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
+    const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
+    const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
     const uint16_t numSections =
-        static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasDebugLine ? 1 : 0));
-    const uint16_t secIdxText = 1; // COFF sections are 1-based
-    const uint16_t secIdxRdata = hasRodata ? 2 : 0;
+        static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
 
-    // --- 1. Build symbol table and string table ---
-    // COFF string table starts after the symbol table.
-    // The string table begins with a 4-byte size field (includes itself).
-
-    // Build a string table for long symbol names.
-    // COFF string table offset starts at 4 (after the 4-byte size field).
     std::vector<uint8_t> symtabBytes;
-    std::vector<uint8_t> strtabBytes;
-
-    // Reserve the 4-byte size prefix.
-    strtabBytes.resize(4, 0);
-
-    // Track COFF symbol indices for relocation remapping.
+    std::vector<uint8_t> strtabBytes(4, 0);
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+    std::unordered_map<std::string, uint32_t> definedNameMap;
     uint32_t coffSymCount = 0;
 
-    // Helper to add a string to the COFF string table and get its offset.
     auto addToStrTab = [&](const std::string &s) -> uint32_t {
         uint32_t offset = static_cast<uint32_t>(strtabBytes.size());
         strtabBytes.insert(strtabBytes.end(), s.begin(), s.end());
-        strtabBytes.push_back(0); // NUL terminator
+        strtabBytes.push_back(0);
         return offset;
     };
 
-    // Process rodata section symbols FIRST so we can build a name→COFF index
-    // map. Text symbols that are undefined but have a matching rodata definition
-    // are skipped (cross-section references like .LC_str_* rodata labels).
-    std::unordered_map<std::string, uint32_t> rodataDefinedNames;
     if (hasRodata) {
         for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
             const Symbol &s = rodata.symbols().at(i);
@@ -255,31 +353,36 @@ bool CoffWriter::write(const std::string &path,
             if (s.name.size() > 8)
                 strOff = addToStrTab(s.name);
 
-            writeSymbol(symtabBytes,
-                        s.name,
-                        strOff,
-                        value,
-                        secNum,
-                        0, // type: 0 = not a function (data)
-                        storageClass);
-            uint32_t coffIdx = coffSymCount++;
+            writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0, storageClass);
+            const uint32_t coffIdx = coffSymCount++;
             rodataSymMap[i] = coffIdx;
             if (s.binding != SymbolBinding::External)
-                rodataDefinedNames[s.name] = coffIdx;
+                definedNameMap[s.name] = coffIdx;
         }
     }
 
-    // Process text section symbols. Skip undefined symbols that have a
-    // matching definition in rodata — map them to the rodata COFF index.
+    if (hasXdata) {
+        for (const auto &sym : xdataSymbols) {
+            uint32_t strOff = 0;
+            if (sym.name.size() > 8)
+                strOff = addToStrTab(sym.name);
+            writeSymbol(symtabBytes,
+                        sym.name,
+                        strOff,
+                        sym.value,
+                        static_cast<int16_t>(secIdxXdata),
+                        sym.type,
+                        sym.storageClass);
+            definedNameMap[sym.name] = coffSymCount++;
+        }
+    }
+
     for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
-
-        // Cross-section reference: text declares an external for a rodata symbol.
-        // Skip the undefined COFF entry and map directly to the rodata definition.
         if (s.binding == SymbolBinding::External) {
-            auto rdIt = rodataDefinedNames.find(s.name);
-            if (rdIt != rodataDefinedNames.end()) {
-                textSymMap[i] = rdIt->second;
+            auto existing = definedNameMap.find(s.name);
+            if (existing != definedNameMap.end()) {
+                textSymMap[i] = existing->second;
                 continue;
             }
         }
@@ -295,7 +398,6 @@ bool CoffWriter::write(const std::string &path,
             value = static_cast<uint32_t>(s.offset);
             storageClass = kImageSymClassStatic;
         } else {
-            // Global defined symbol.
             secNum = static_cast<int16_t>(secIdxText);
             value = static_cast<uint32_t>(s.offset);
         }
@@ -304,99 +406,93 @@ bool CoffWriter::write(const std::string &path,
         if (s.name.size() > 8)
             strOff = addToStrTab(s.name);
 
-        writeSymbol(symtabBytes,
-                    s.name,
-                    strOff,
-                    value,
-                    secNum,
-                    0x20, // type: 0x20 = function for code symbols
-                    storageClass);
-        textSymMap[i] = coffSymCount++;
+        writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0x20, storageClass);
+        const uint32_t coffIdx = coffSymCount++;
+        textSymMap[i] = coffIdx;
+        if (s.binding != SymbolBinding::External)
+            definedNameMap[s.name] = coffIdx;
     }
 
-    // Add .debug_line section name to string table if needed (> 8 chars).
     uint32_t debugLineStrOff = 0;
     if (hasDebugLine)
         debugLineStrOff = addToStrTab(".debug_line");
 
-    // Finalize string table size.
-    {
-        uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
-        strtabBytes[0] = static_cast<uint8_t>(strtabSize);
-        strtabBytes[1] = static_cast<uint8_t>(strtabSize >> 8);
-        strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
-        strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
-    }
+    const uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
+    strtabBytes[0] = static_cast<uint8_t>(strtabSize);
+    strtabBytes[1] = static_cast<uint8_t>(strtabSize >> 8);
+    strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
+    strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
 
-    // --- 2. Build relocations for .text ---
     std::vector<uint8_t> textRelocBytes;
     for (const auto &rel : text.relocations()) {
-        uint32_t coffSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        if (it != textSymMap.end())
-            coffSymIdx = it->second;
-
-        uint16_t relocType = coffRelocType(rel.kind);
-        writeReloc(textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, relocType);
+        const uint32_t coffSymIdx = (it != textSymMap.end()) ? it->second : 0;
+        writeReloc(
+            textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
     }
+    const uint32_t numTextRelocs = static_cast<uint32_t>(text.relocations().size());
 
-    uint32_t numTextRelocs = static_cast<uint32_t>(text.relocations().size());
+    std::vector<uint8_t> pdataRelocBytes;
+    for (const auto &rel : pdataRelocs) {
+        auto it = definedNameMap.find(rel.symbolName);
+        if (it == definedNameMap.end()) {
+            err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
+            return false;
+        }
+        writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
+    }
+    const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
 
-    // --- 3. Compute file layout ---
-    // Layout: COFF header | section headers | .text data | .text relocs |
-    //         .rdata data | symbol table | string table
+    const uint32_t textSize = static_cast<uint32_t>(text.bytes().size());
+    const uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
+    const uint32_t xdataSize = hasXdata ? static_cast<uint32_t>(xdataBytes.size()) : 0;
+    const uint32_t pdataSize = hasPdata ? static_cast<uint32_t>(pdataBytes.size()) : 0;
+    const uint32_t debugLineDataSize =
+        hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
 
-    uint32_t textSize = static_cast<uint32_t>(text.bytes().size());
-    uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
+    const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
+    const uint32_t textDataOff = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
+    const uint32_t textRelocOff = textDataOff + textSize;
+    const uint32_t textRelocTotalSize = numTextRelocs * kCoffRelocSize;
+    uint32_t cursor = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
 
-    uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
-
-    // .text section data (align to 4 for uniformity)
-    uint32_t textDataOff = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
-    // .text relocations immediately after .text data
-    uint32_t textRelocOff = textDataOff + textSize;
-    uint32_t textRelocTotalSize = numTextRelocs * kCoffRelocSize;
-
-    // .rdata section data
     uint32_t rdataDataOff = 0;
     if (hasRodata) {
-        rdataDataOff = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
+        rdataDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(rdataDataOff + rdataSize, 4));
     }
-
-    // .debug_line section data
-    uint32_t debugLineDataSize = hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
+    uint32_t xdataDataOff = 0;
+    if (hasXdata) {
+        xdataDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(xdataDataOff + xdataSize, 4));
+    }
+    uint32_t pdataDataOff = 0;
+    uint32_t pdataRelocOff = 0;
+    if (hasPdata) {
+        pdataDataOff = cursor;
+        pdataRelocOff = pdataDataOff + pdataSize;
+        cursor =
+            static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+    }
     uint32_t debugLineDataOff = 0;
-
-    uint32_t afterLastSection;
-    if (hasRodata)
-        afterLastSection = rdataDataOff + rdataSize;
-    else
-        afterLastSection = textRelocOff + textRelocTotalSize;
-
     if (hasDebugLine) {
-        debugLineDataOff = static_cast<uint32_t>(alignUp(afterLastSection, 4));
-        afterLastSection = debugLineDataOff + debugLineDataSize;
+        debugLineDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(debugLineDataOff + debugLineDataSize, 4));
     }
+    const uint32_t symtabOff = cursor;
 
-    // Symbol table follows all section data + relocs
-    uint32_t symtabOff = static_cast<uint32_t>(alignUp(afterLastSection, 4));
-
-    // --- 4. Build the file ---
     std::vector<uint8_t> file;
     file.reserve(symtabOff + symtabBytes.size() + strtabBytes.size());
 
-    // COFF header (20 bytes)
-    uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
-    appendLE16(file, machine);      // Machine
-    appendLE16(file, numSections);  // NumberOfSections
-    appendLE32(file, 0);            // TimeDateStamp (0 for reproducibility)
-    appendLE32(file, symtabOff);    // PointerToSymbolTable
-    appendLE32(file, coffSymCount); // NumberOfSymbols
-    appendLE16(file, 0);            // SizeOfOptionalHeader (0 for .obj)
-    appendLE16(file, 0);            // Characteristics
+    const uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
+    appendLE16(file, machine);
+    appendLE16(file, numSections);
+    appendLE32(file, 0);
+    appendLE32(file, symtabOff);
+    appendLE32(file, coffSymCount);
+    appendLE16(file, 0);
+    appendLE16(file, 0);
 
-    // Section headers
-    // .text
     uint32_t textChars = kImageScnCntCode | kImageScnMemExecute | kImageScnMemRead;
     textChars |= (arch_ == ObjArch::X86_64) ? kImageScnAlignText : kImageScnAlign4;
     writeSectionHeader(file,
@@ -409,16 +505,29 @@ bool CoffWriter::write(const std::string &path,
                        numTextRelocs,
                        textChars);
 
-    // .rdata
     if (hasRodata) {
-        uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
+        const uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
         writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
     }
-
-    // .debug_line (long name via string table: /offset format)
+    if (hasXdata) {
+        const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        writeSectionHeader(file, ".xdata", 0, 0, xdataSize, xdataDataOff, 0, 0, xdataChars);
+    }
+    if (hasPdata) {
+        const uint32_t pdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        writeSectionHeader(file,
+                           ".pdata",
+                           0,
+                           0,
+                           pdataSize,
+                           pdataDataOff,
+                           (numPdataRelocs > 0) ? pdataRelocOff : 0,
+                           numPdataRelocs,
+                           pdataChars);
+    }
     if (hasDebugLine) {
-        std::string debugSecName = "/" + std::to_string(debugLineStrOff);
-        uint32_t debugChars =
+        const std::string debugSecName = "/" + std::to_string(debugLineStrOff);
+        const uint32_t debugChars =
             kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
         writeSectionHeader(file,
                            debugSecName.c_str(),
@@ -431,36 +540,38 @@ bool CoffWriter::write(const std::string &path,
                            debugChars);
     }
 
-    // .text section data
     padTo(file, textDataOff);
     file.insert(file.end(), text.bytes().begin(), text.bytes().end());
 
-    // .text relocations
     if (!textRelocBytes.empty()) {
         padTo(file, textRelocOff);
         file.insert(file.end(), textRelocBytes.begin(), textRelocBytes.end());
     }
-
-    // .rdata section data
     if (hasRodata) {
         padTo(file, rdataDataOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
     }
-
-    // .debug_line section data
+    if (hasXdata) {
+        padTo(file, xdataDataOff);
+        file.insert(file.end(), xdataBytes.begin(), xdataBytes.end());
+    }
+    if (hasPdata) {
+        padTo(file, pdataDataOff);
+        file.insert(file.end(), pdataBytes.begin(), pdataBytes.end());
+        if (!pdataRelocBytes.empty()) {
+            padTo(file, pdataRelocOff);
+            file.insert(file.end(), pdataRelocBytes.begin(), pdataRelocBytes.end());
+        }
+    }
     if (hasDebugLine) {
         padTo(file, debugLineDataOff);
         file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
     }
 
-    // Symbol table
     padTo(file, symtabOff);
     file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
-
-    // String table (immediately after symbol table)
     file.insert(file.end(), strtabBytes.begin(), strtabBytes.end());
 
-    // --- 5. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
     if (!ofs) {
         err << "CoffWriter: cannot open " << path << " for writing\n";

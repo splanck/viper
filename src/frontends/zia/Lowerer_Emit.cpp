@@ -365,20 +365,21 @@ LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticTy
 
 Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
-    // Object references (Ptr) are already nullable pointers — wrapping is a no-op.
-    if (ilType.kind == Type::Kind::Ptr)
+    // Reference-like IL values already use null as the optional sentinel.
+    // That includes both object pointers and raw string pointers.
+    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
         return val;
-    // Strings and primitives need boxing to convert to ptr for Optional representation.
+    // Primitive/value payloads need boxing to convert to ptr for Optional representation.
     return emitBox(val, ilType);
 }
 
 LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
-    // Object references (Ptr) are already the underlying value — no unboxing needed.
-    // Optional reference types use null to represent None, so the pointer IS the value.
-    if (ilType.kind == Type::Kind::Ptr)
+    // Reference-like optional payloads use null to represent None, so the
+    // stored IL value is already the underlying value.
+    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
         return {val, ilType};
-    // Strings and primitives need unboxing from ptr back to their concrete type.
+    // Primitive/value payloads need unboxing from ptr back to their concrete type.
     return emitUnbox(val, ilType);
 }
 

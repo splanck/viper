@@ -48,22 +48,6 @@ if not exist "%VIPER%" (
     exit /b 1
 )
 
-REM Ensure clang is on PATH (needed for assembly/linking)
-where clang >nul 2>nul
-if errorlevel 1 (
-    if exist "C:\Program Files\LLVM\bin\clang.exe" (
-        echo Adding LLVM to PATH: C:\Program Files\LLVM\bin
-        set "PATH=C:\Program Files\LLVM\bin;%PATH%"
-    ) else if exist "C:\Program Files (x86)\LLVM\bin\clang.exe" (
-        echo Adding LLVM to PATH: C:\Program Files ^(x86^)\LLVM\bin
-        set "PATH=C:\Program Files (x86)\LLVM\bin;%PATH%"
-    ) else (
-        echo ERROR: clang not found on PATH or in standard locations.
-        echo Install LLVM/Clang from https://releases.llvm.org/ or add it to PATH.
-        exit /b 1
-    )
-)
-
 REM Create directories
 if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 

@@ -57,6 +57,19 @@ bool ObjectFileWriter::write(const std::string &path,
             uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
             merged.addUnwindEntry({mergedSymIdx, ue.functionLength, ue.encoding});
         }
+
+        // Copy Win64 unwind entries, remapping symbol indices.
+        for (const auto &ue : ts.win64UnwindEntries()) {
+            const auto &sym = ts.symbols().at(ue.symbolIndex);
+            uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
+
+            Win64UnwindEntry mergedEntry{};
+            mergedEntry.symbolIndex = mergedSymIdx;
+            mergedEntry.functionLength = ue.functionLength;
+            mergedEntry.prologueSize = ue.prologueSize;
+            mergedEntry.codes = ue.codes;
+            merged.addWin64UnwindEntry(std::move(mergedEntry));
+        }
     }
     return write(path, merged, rodata, err);
 }

@@ -147,8 +147,8 @@ struct OpFmt {
 // Include the generated OpFmt table
 #include "generated/OpFmtTable.inc"
 
-/// @brief Number of MOpcode values (MOVrr=0 to IMULOvfrr=54, plus 1).
-constexpr std::size_t kMOpcodeCount = 55;
+/// @brief Number of MOpcode values in the x86-64 Machine IR.
+constexpr std::size_t kMOpcodeCount = 57;
 
 /// @brief Build a compile-time lookup table mapping MOpcode -> index in kOpFmt.
 /// @details Returns kOpFmt.size() (invalid index) for opcodes not in the table.
@@ -486,6 +486,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         line.push_back('\n');
         os << line;
+        return;
+    }
+
+    if (instr.opcode == MOpcode::PUSH || instr.opcode == MOpcode::POP) {
+        const char *mnemonic = (instr.opcode == MOpcode::PUSH) ? "pushq" : "popq";
+        os << "  " << mnemonic;
+        if (!instr.operands.empty())
+            os << ' ' << formatOperand(instr.operands.front(), target);
+        os << '\n';
         return;
     }
 

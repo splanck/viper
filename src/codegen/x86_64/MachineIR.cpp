@@ -32,6 +32,10 @@ namespace {
 /// @return Null-terminated string naming the opcode.
 [[nodiscard]] const char *opcodeName(MOpcode opc) noexcept {
     switch (opc) {
+        case MOpcode::PUSH:
+            return "PUSH";
+        case MOpcode::POP:
+            return "POP";
         case MOpcode::MOVrr:
             return "MOVrr";
         case MOpcode::MOVri:

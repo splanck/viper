@@ -7,6 +7,7 @@ set(_objfile_tests
         string_table
         symbol_table
         code_section
+        coff_writer
         elf_writer
         macho_writer
         debug_line

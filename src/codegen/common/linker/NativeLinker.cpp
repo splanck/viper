@@ -144,7 +144,49 @@ std::string dllForImport(const std::string &name, bool debugRuntime) {
         "GetTickCount64",            "AddVectoredExceptionHandler",
         "InitializeSRWLock",         "AcquireSRWLockExclusive",  "AcquireSRWLockShared",
         "ReleaseSRWLockExclusive",   "ReleaseSRWLockShared",     "QueryPerformanceCounter",
-        "VirtualQuery",              "WideCharToMultiByte",
+        "VirtualQuery",              "WideCharToMultiByte",      "Beep",
+        "CloseHandle",               "CreateEventA",             "CreateFileA",
+        "CreatePipe",                "CreateProcessA",           "CreateThread",
+        "FindClose",                 "FindFirstFileA",           "FindNextFileA",
+        "GetConsoleMode",            "GetExitCodeProcess",       "GetOverlappedResult",
+        "InitializeConditionVariable","QueryPerformanceFrequency","ReadDirectoryChangesW",
+        "ReadFile",                  "SetConsoleCP",             "SetConsoleMode",
+        "SetConsoleOutputCP",        "SetEvent",                 "SetHandleInformation",
+        "Sleep",                     "SleepConditionVariableCS", "WaitForMultipleObjects",
+        "WaitForSingleObject",       "WakeConditionVariable",
+    };
+    static const std::unordered_set<std::string> user32 = {
+        "AdjustWindowRect",          "BeginPaint",               "ClientToScreen",
+        "CloseClipboard",            "CreateWindowExW",          "DefWindowProcW",
+        "DestroyWindow",             "DispatchMessageW",         "EmptyClipboard",
+        "EndPaint",                  "GetClipboardData",         "GetDC",
+        "GetMonitorInfoA",           "GetSystemMetrics",         "GetWindowLongA",
+        "GetWindowLongPtrA",         "GetWindowRect",            "IsClipboardFormatAvailable",
+        "IsIconic",                  "IsZoomed",                 "LoadCursorA",
+        "MonitorFromWindow",         "OpenClipboard",            "PeekMessageW",
+        "RegisterClassExW",          "RegisterClipboardFormatW", "ReleaseDC",
+        "SetClipboardData",          "SetCursor",                "SetCursorPos",
+        "SetForegroundWindow",       "SetWindowLongA",           "SetWindowLongPtrW",
+        "SetWindowPos",              "SetWindowTextW",           "ShowCursor",
+        "ShowWindow",                "TranslateMessage",         "UpdateWindow",
+    };
+    static const std::unordered_set<std::string> gdi32 = {
+        "CreateCompatibleDC", "CreateDIBSection", "DeleteDC",      "DeleteObject",
+        "GetDeviceCaps",      "GetStockObject",   "SelectObject",  "StretchBlt",
+    };
+    static const std::unordered_set<std::string> shell32 = {
+        "DragAcceptFiles",
+        "DragFinish",
+        "DragQueryFileA",
+    };
+    static const std::unordered_set<std::string> ole32 = {
+        "CoCreateInstance",
+        "CoInitializeEx",
+        "CoUninitialize",
+    };
+    static const std::unordered_set<std::string> xinput = {
+        "XInputGetState",
+        "XInputSetState",
     };
     static const std::unordered_set<std::string> advapi32 = {
         "CryptAcquireContextA",
@@ -155,6 +197,16 @@ std::string dllForImport(const std::string &name, bool debugRuntime) {
 
     if (kernel32.count(name))
         return "kernel32.dll";
+    if (user32.count(name))
+        return "user32.dll";
+    if (gdi32.count(name))
+        return "gdi32.dll";
+    if (shell32.count(name))
+        return "shell32.dll";
+    if (ole32.count(name))
+        return "ole32.dll";
+    if (xinput.count(name))
+        return "xinput1_4.dll";
     if (advapi32.count(name))
         return "advapi32.dll";
     if (bcrypt.count(name))
@@ -427,7 +479,29 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         addImportAlias("__report_rangecheckfailure", idx);
     }
     if (needsHelper("__chkstk")) {
-        const uint32_t idx = addRetFn("__chkstk", {0xC3});
+        std::vector<uint8_t> chkstk = {
+            0x49, 0x89, 0xC2,                   // mov r10, rax
+            0x49, 0x89, 0xE3,                   // mov r11, rsp
+            0x49, 0x81, 0xFA, 0x00, 0x10, 0x00, 0x00, // cmp r10, 0x1000
+            0x72, 0x1B,                         // jb tail
+            0x49, 0x81, 0xEB, 0x00, 0x10, 0x00, 0x00, // sub r11, 0x1000
+            0x41, 0xF6, 0x03, 0x00,             // test byte ptr [r11], 0
+            0x49, 0x81, 0xEA, 0x00, 0x10, 0x00, 0x00, // sub r10, 0x1000
+            0x49, 0x81, 0xFA, 0x00, 0x10, 0x00, 0x00, // cmp r10, 0x1000
+            0x73, 0xE5,                         // jae probe_loop
+            0x4D, 0x29, 0xD3,                   // sub r11, r10
+            0x41, 0xF6, 0x03, 0x00,             // test byte ptr [r11], 0
+            0xC3,                               // ret
+        };
+        const size_t off = textSec.data.size();
+        textSec.data.insert(textSec.data.end(), chkstk.begin(), chkstk.end());
+        ObjSymbol sym;
+        sym.name = "__chkstk";
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
+        const uint32_t idx = static_cast<uint32_t>(obj.symbols.size() - 1);
         addImportAlias("__chkstk", idx);
     }
     if (needsHelper("rt_audio_shutdown")) {

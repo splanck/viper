@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -41,6 +42,29 @@ struct CompactUnwindEntry {
     uint32_t symbolIndex{0};    ///< Symbol index of the function start.
     uint32_t functionLength{0}; ///< Length of the function in bytes.
     uint32_t encoding{0};       ///< ARM64/x86_64 compact unwind encoding.
+};
+
+/// One concrete Win64 unwind opcode emitted into PE `.xdata`.
+struct Win64UnwindCode {
+    enum class Kind : uint8_t {
+        PushNonVol,
+        AllocStack,
+        SaveNonVol,
+        SaveXmm128,
+    };
+
+    Kind kind{Kind::AllocStack};
+    uint8_t codeOffset{0};   ///< End offset of the corresponding prologue instruction.
+    uint8_t reg{0};          ///< Win64 register number for save/push operations.
+    uint32_t stackOffset{0}; ///< Offset from final RSP after the prologue.
+};
+
+/// Per-function Win64 unwind metadata for COFF `.xdata/.pdata`.
+struct Win64UnwindEntry {
+    uint32_t symbolIndex{0};    ///< Symbol index of the function start.
+    uint32_t functionLength{0}; ///< Length of the function in bytes.
+    uint8_t prologueSize{0};    ///< Size of the function prologue in bytes.
+    std::vector<Win64UnwindCode> codes{};
 };
 
 /// A growable byte buffer with relocation and symbol tracking.
@@ -196,11 +220,24 @@ class CodeSection {
         return unwindEntries_;
     }
 
+    // === Win64 unwind tracking ===
+
+    /// Record a Win64 unwind entry for a function.
+    void addWin64UnwindEntry(Win64UnwindEntry entry) {
+        win64UnwindEntries_.push_back(std::move(entry));
+    }
+
+    /// All recorded Win64 unwind entries.
+    const std::vector<Win64UnwindEntry> &win64UnwindEntries() const {
+        return win64UnwindEntries_;
+    }
+
   private:
     std::vector<uint8_t> bytes_;
     std::vector<Relocation> relocations_;
     SymbolTable symbols_;
     std::vector<CompactUnwindEntry> unwindEntries_;
+    std::vector<Win64UnwindEntry> win64UnwindEntries_;
 };
 
 } // namespace viper::codegen::objfile

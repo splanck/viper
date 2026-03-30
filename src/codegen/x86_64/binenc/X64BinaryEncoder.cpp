@@ -35,6 +35,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <optional>
 #include <variant>
 
 namespace viper::codegen::x64::binenc {
@@ -75,22 +76,164 @@ static const OpRipLabel &ripFromOperand(const Operand &op) {
     return std::get<OpRipLabel>(op);
 }
 
+static uint8_t win64RegNumber(PhysReg reg) {
+    switch (reg) {
+        case PhysReg::RAX:
+            return 0;
+        case PhysReg::RCX:
+            return 1;
+        case PhysReg::RDX:
+            return 2;
+        case PhysReg::RBX:
+            return 3;
+        case PhysReg::RSP:
+            return 4;
+        case PhysReg::RBP:
+            return 5;
+        case PhysReg::RSI:
+            return 6;
+        case PhysReg::RDI:
+            return 7;
+        case PhysReg::R8:
+            return 8;
+        case PhysReg::R9:
+            return 9;
+        case PhysReg::R10:
+            return 10;
+        case PhysReg::R11:
+            return 11;
+        case PhysReg::R12:
+            return 12;
+        case PhysReg::R13:
+            return 13;
+        case PhysReg::R14:
+            return 14;
+        case PhysReg::R15:
+            return 15;
+        case PhysReg::XMM0:
+            return 0;
+        case PhysReg::XMM1:
+            return 1;
+        case PhysReg::XMM2:
+            return 2;
+        case PhysReg::XMM3:
+            return 3;
+        case PhysReg::XMM4:
+            return 4;
+        case PhysReg::XMM5:
+            return 5;
+        case PhysReg::XMM6:
+            return 6;
+        case PhysReg::XMM7:
+            return 7;
+        case PhysReg::XMM8:
+            return 8;
+        case PhysReg::XMM9:
+            return 9;
+        case PhysReg::XMM10:
+            return 10;
+        case PhysReg::XMM11:
+            return 11;
+        case PhysReg::XMM12:
+            return 12;
+        case PhysReg::XMM13:
+            return 13;
+        case PhysReg::XMM14:
+            return 14;
+        case PhysReg::XMM15:
+            return 15;
+    }
+    return 0;
+}
+
+static void recordWin64Unwind(const MFunction &fn,
+                              const FrameInfo &frame,
+                              uint32_t funcSymIdx,
+                              size_t funcStartOffset,
+                              const std::vector<size_t> &entryInstrEndOffsets,
+                              objfile::CodeSection &text) {
+    if (!frame.prologueEmitted || entryInstrEndOffsets.size() < 2)
+        return;
+
+    objfile::Win64UnwindEntry unwind{};
+    unwind.symbolIndex = funcSymIdx;
+    unwind.functionLength = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+
+    std::size_t saveStartIndex = 2; // push rbp; mov rbp, rsp
+    std::optional<std::size_t> allocInstrIndex;
+    if (frame.frameSize > 0) {
+        allocInstrIndex = frame.usesChkstk ? 4u : 2u;
+        saveStartIndex = *allocInstrIndex + 1;
+    }
+
+    if (!frame.usedCalleeSaved.empty()) {
+        const std::size_t prologueEndIndex = saveStartIndex + frame.usedCalleeSaved.size() - 1;
+        if (prologueEndIndex < entryInstrEndOffsets.size())
+            unwind.prologueSize =
+                static_cast<uint8_t>(entryInstrEndOffsets[prologueEndIndex] - funcStartOffset);
+    } else if (allocInstrIndex.has_value() && *allocInstrIndex < entryInstrEndOffsets.size()) {
+        unwind.prologueSize =
+            static_cast<uint8_t>(entryInstrEndOffsets[*allocInstrIndex] - funcStartOffset);
+    } else {
+        unwind.prologueSize =
+            static_cast<uint8_t>(entryInstrEndOffsets[1] - funcStartOffset);
+    }
+
+    if (!entryInstrEndOffsets.empty()) {
+        unwind.codes.push_back({objfile::Win64UnwindCode::Kind::PushNonVol,
+                                static_cast<uint8_t>(entryInstrEndOffsets[0] - funcStartOffset),
+                                win64RegNumber(PhysReg::RBP),
+                                0});
+    }
+    if (allocInstrIndex.has_value() && *allocInstrIndex < entryInstrEndOffsets.size()) {
+        unwind.codes.push_back({objfile::Win64UnwindCode::Kind::AllocStack,
+                                static_cast<uint8_t>(entryInstrEndOffsets[*allocInstrIndex] -
+                                                     funcStartOffset),
+                                0,
+                                static_cast<uint32_t>(frame.frameSize)});
+    }
+    for (std::size_t i = 0; i < frame.win64UnwindOps.size(); ++i) {
+        const auto &op = frame.win64UnwindOps[i];
+        if (op.kind == Win64UnwindOpKind::PushNonVol ||
+            op.kind == Win64UnwindOpKind::AllocStack) {
+            continue;
+        }
+        const std::size_t instrIndex = saveStartIndex + i - (frame.frameSize > 0 ? 2u : 1u);
+        if (instrIndex >= entryInstrEndOffsets.size())
+            break;
+        unwind.codes.push_back(
+            {op.kind == Win64UnwindOpKind::SaveXmm128 ? objfile::Win64UnwindCode::Kind::SaveXmm128
+                                                      : objfile::Win64UnwindCode::Kind::SaveNonVol,
+             static_cast<uint8_t>(entryInstrEndOffsets[instrIndex] - funcStartOffset),
+             win64RegNumber(op.reg),
+             op.stackOffset});
+    }
+
+    text.addWin64UnwindEntry(std::move(unwind));
+}
+
 // === Public entry point ===
 
 void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
-                                      bool isDarwin) {
+                                      bool isDarwin,
+                                      const FrameInfo *frame) {
     // Reset per-function state.
     labelOffsets_.clear();
     pendingBranches_.clear();
 
     // Define the function symbol at the current text offset.
+    const size_t funcStartOffset = text.currentOffset();
     std::string symName = isDarwin ? ("_" + fn.name) : fn.name;
-    text.defineSymbol(symName, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
+    const uint32_t funcSymIdx =
+        text.defineSymbol(symName, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
+
+    std::vector<size_t> entryInstrEndOffsets;
 
     // Encode all blocks.
-    for (const auto &block : fn.blocks) {
+    for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
+        const auto &block = fn.blocks[blockIndex];
         // Record label offset for internal branch resolution.
         labelOffsets_[block.label] = text.currentOffset();
 
@@ -99,6 +242,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                 debugLines_->addEntry(
                     text.currentOffset(), instr.loc.file_id, instr.loc.line, instr.loc.column);
             encodeInstruction(instr, text, rodata, isDarwin);
+            if (blockIndex == 0)
+                entryInstrEndOffsets.push_back(text.currentOffset());
         }
     }
 
@@ -111,6 +256,13 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                         static_cast<int64_t>(pb.patchOffset + 4));
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
     }
+
+#if defined(_WIN32)
+    if (!isDarwin && frame)
+        recordWin64Unwind(fn, *frame, funcSymIdx, funcStartOffset, entryInstrEndOffsets, text);
+#else
+    (void)frame;
+#endif
 }
 
 // === Main instruction dispatch ===
@@ -147,6 +299,22 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::UD2:
             encodeNullary(op, text);
             return;
+
+        case MOpcode::PUSH: {
+            const auto hw = hwEncode(regFromOperand(ops[0]));
+            if (hw.rexBit)
+                text.emit8(computeRex(false, false, false, true));
+            text.emit8(static_cast<uint8_t>(0x50 + hw.bits3));
+            return;
+        }
+
+        case MOpcode::POP: {
+            const auto hw = hwEncode(regFromOperand(ops[0]));
+            if (hw.rexBit)
+                text.emit8(computeRex(false, false, false, true));
+            text.emit8(static_cast<uint8_t>(0x58 + hw.bits3));
+            return;
+        }
 
         // --- Pseudo: skip ---
         case MOpcode::PX_COPY:

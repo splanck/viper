@@ -16,9 +16,11 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/SymbolResolver.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using namespace viper::codegen;
@@ -129,6 +131,58 @@ static ObjFile makeWindowsBaseClosureCaller() {
         obj.symbols.push_back(std::move(sym));
     }
 
+    return obj;
+}
+
+static void appendLE16(std::vector<uint8_t> &buf, uint16_t value) {
+    buf.push_back(static_cast<uint8_t>(value & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+static void appendLE32(std::vector<uint8_t> &buf, uint32_t value) {
+    buf.push_back(static_cast<uint8_t>(value & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+}
+
+static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
+    constexpr uint16_t kMachineAmd64 = 0x8664;
+    constexpr uint32_t kScnCntUninitializedData = 0x00000080;
+    constexpr uint32_t kScnMemRead = 0x40000000;
+    constexpr uint32_t kScnMemWrite = 0x80000000;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(20 + 40 + 8 + 4);
+
+    // COFF file header.
+    appendLE16(obj, kMachineAmd64);
+    appendLE16(obj, 1);  // NumberOfSections
+    appendLE32(obj, 0);  // TimeDateStamp
+    appendLE32(obj, 20 + 40 + 8); // PointerToSymbolTable
+    appendLE32(obj, 0);           // NumberOfSymbols
+    appendLE16(obj, 0);           // SizeOfOptionalHeader
+    appendLE16(obj, 0);           // Characteristics
+
+    // Section header for a bogus .bss that advertises raw bytes.
+    const std::string name = ".bss";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < name.size() ? static_cast<uint8_t>(name[i]) : 0);
+    appendLE32(obj, 8);           // VirtualSize
+    appendLE32(obj, 0);           // VirtualAddress
+    appendLE32(obj, 8);           // SizeOfRawData
+    appendLE32(obj, 20 + 40);     // PointerToRawData
+    appendLE32(obj, 0);           // PointerToRelocations
+    appendLE32(obj, 0);           // PointerToLinenumbers
+    appendLE16(obj, 0);           // NumberOfRelocations
+    appendLE16(obj, 0);           // NumberOfLinenumbers
+    appendLE32(obj, kScnCntUninitializedData | kScnMemRead | kScnMemWrite);
+
+    // Bogus bytes that must not be copied into the output section.
+    obj.insert(obj.end(), {0x2E, 0x74, 0x6C, 0x73, 0x24, 0x58, 0x59, 0x5A});
+
+    // Empty COFF string table.
+    appendLE32(obj, 4);
     return obj;
 }
 
@@ -280,6 +334,20 @@ int main() {
         CHECK(dynamicSyms.count(name) == 0);
         CHECK(globalSyms.count(name) == 1);
         CHECK(globalSyms[name].binding == GlobalSymEntry::Global);
+    }
+
+    {
+        ObjFile syntheticObj;
+        std::ostringstream parseErr;
+        const auto bytes = makeSyntheticCoffBssWithBogusRawData();
+        ASSERT(readObjFile(bytes.data(), bytes.size(), "synthetic-bss.obj", syntheticObj, parseErr));
+        CHECK(parseErr.str().empty());
+        ASSERT(syntheticObj.sections.size() >= 2);
+        CHECK(syntheticObj.sections[1].name == ".bss");
+        CHECK(syntheticObj.sections[1].data.size() == 8);
+        CHECK(std::all_of(syntheticObj.sections[1].data.begin(),
+                          syntheticObj.sections[1].data.end(),
+                          [](uint8_t b) { return b == 0; }));
     }
 
     if (gFail == 0) {

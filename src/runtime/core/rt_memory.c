@@ -63,6 +63,8 @@ static void *rt_alloc_impl(int64_t bytes) {
 
 // g_rt_alloc_hook: Set once during startup before any threads are created.
 // No synchronization needed — stores happen-before thread creation.
+static const uint64_t k_rt_alloc_hook_cookie = 0xA110CA7E5EEDBEEFULL;
+static uint64_t g_rt_alloc_hook_armed = 0;
 static rt_alloc_hook_fn g_rt_alloc_hook = NULL;
 
 /// @brief Install a hook that can override @ref rt_alloc for testing.
@@ -73,6 +75,7 @@ static rt_alloc_hook_fn g_rt_alloc_hook = NULL;
 /// @param hook Replacement function or @c NULL to disable overrides.
 void rt_set_alloc_hook(rt_alloc_hook_fn hook) {
     g_rt_alloc_hook = hook;
+    g_rt_alloc_hook_armed = hook ? k_rt_alloc_hook_cookie : 0;
 }
 
 /// @brief Allocate zero-initialised storage for runtime subsystems.
@@ -82,7 +85,11 @@ void rt_set_alloc_hook(rt_alloc_hook_fn hook) {
 /// @return Pointer to zeroed storage on success; @c NULL after reporting a trap
 ///         when the allocation fails.
 void *rt_alloc(int64_t bytes) {
-    if (g_rt_alloc_hook)
+    // The allocation hook exists for tests only. On native Windows builds we
+    // have seen stray writable-data corruption present a non-null function
+    // pointer here; require an explicit arm cookie from rt_set_alloc_hook()
+    // before dispatching through the hook.
+    if (g_rt_alloc_hook_armed == k_rt_alloc_hook_cookie && g_rt_alloc_hook)
         return g_rt_alloc_hook(bytes, rt_alloc_impl);
     return rt_alloc_impl(bytes);
 }

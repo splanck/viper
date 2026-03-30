@@ -184,12 +184,17 @@ bool readCoffObj(
         const uint32_t alignBits = (sh->Characteristics >> 20) & 0xF;
         sec.alignment = (alignBits > 0) ? (1u << (alignBits - 1)) : 1;
 
-        // Read section data.
-        if (sh->SizeOfRawData > 0 && sh->PointerToRawData + sh->SizeOfRawData <= size) {
+        // COFF uninitialized-data sections must be materialized as zero-filled
+        // storage even if SizeOfRawData/PointerToRawData happen to point at
+        // bytes in the object file. Some producers leave non-zero metadata in
+        // those fields, and copying it verbatim corrupts zero-init globals.
+        if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
+            const uint32_t zeroSize =
+                sh->VirtualSize != 0 ? sh->VirtualSize : sh->SizeOfRawData;
+            sec.data.resize(zeroSize, 0);
+        } else if (sh->SizeOfRawData > 0 && sh->PointerToRawData + sh->SizeOfRawData <= size) {
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
-        } else if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
-            sec.data.resize(sh->VirtualSize, 0);
         }
 
         // Read relocations.

@@ -525,9 +525,14 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
 }
 
 void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
+    std::unordered_set<std::string> seenArchives;
+
     auto appendIfExists = [&](const std::filesystem::path &path) {
-        if (common::fileExists(path))
-            archives.push_back(path.string());
+        if (!common::fileExists(path))
+            return;
+        const std::string archivePath = path.lexically_normal().string();
+        if (seenArchives.insert(archivePath).second)
+            archives.push_back(archivePath);
     };
 
     auto appendComponent = [&](RtComponent comp) {

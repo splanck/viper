@@ -74,6 +74,8 @@ using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel, OpRipLabel>;
 
 /// \brief Enumerates the opcode set required for Phase A.
 enum class MOpcode {
+    PUSH,      ///< Push register onto the stack.
+    POP,       ///< Pop register from the stack.
     MOVrr,     ///< Move register to register.
     MOVrm,     ///< Move register to memory.
     MOVmr,     ///< Move memory to register.

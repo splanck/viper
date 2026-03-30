@@ -142,6 +142,12 @@ struct SlotKeyHash {
     return total;
 }
 
+/// @brief Convert an RBP-relative save slot into a positive offset from final RSP.
+[[nodiscard]] uint32_t unwindOffsetFromFinalRsp(int frameSize, int rbpRelativeOffset) {
+    assert(rbpRelativeOffset <= 0 && "callee-saved slots must live below %rbp");
+    return static_cast<uint32_t>(frameSize + rbpRelativeOffset);
+}
+
 } // namespace
 
 /// @brief Assign concrete spill slot displacements and record callee saves.
@@ -313,7 +319,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
 /// @param target Target ABI description (currently unused but kept for
 ///               symmetry with future extensions).
 /// @param frame Frame metadata produced by @ref assignSpillSlots.
-void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const FrameInfo &frame) {
+void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo &frame) {
     if (func.blocks.empty()) {
         return;
     }
@@ -323,8 +329,8 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     // Leaf function frame elimination: skip prologue/epilogue entirely when
     // the function makes no calls, uses no callee-saved registers, and has
     // no frame allocation. This saves 3-5 instructions per leaf function.
+    bool hasCall = false;
     {
-        bool hasCall = false;
         for (const auto &block : func.blocks) {
             for (const auto &instr : block.instructions) {
                 if (instr.opcode == MOpcode::CALL) {
@@ -335,8 +341,12 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             if (hasCall)
                 break;
         }
-        if (!hasCall && frame.usedCalleeSaved.empty() && frame.frameSize == 0)
+        if (!hasCall && frame.usedCalleeSaved.empty() && frame.frameSize == 0) {
+            frame.prologueEmitted = false;
+            frame.usesChkstk = false;
+            frame.win64UnwindOps.clear();
             return; // Leaf function with no frame — skip prologue/epilogue.
+        }
     }
 
     const auto rspOperand = makePhysOperand(RegClass::GPR, PhysReg::RSP);
@@ -346,16 +356,25 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
 
     // The following prologue synthesises the canonical
     //   push %rbp; mov %rsp, %rbp; sub $frameSize, %rsp
-    // sequence using MIR operations. We materialise the push via an explicit
-    // store after decrementing %rsp because the backend models stack slots as
-    // memory operands. The extra 8-byte subtraction keeps the pre-call stack
-    // pointer 16-byte aligned once the optional frame allocation executes.
+    // sequence. Windows uses real PUSH/POP so the native COFF path can emit
+    // matching unwind records; other platforms keep the explicit store form.
     std::vector<MInstr> prologue{};
     prologue.reserve(4 + frame.usedCalleeSaved.size());
-
+#if defined(_WIN32)
+    prologue.push_back(MInstr::make(MOpcode::PUSH, {rbpOperand}));
+#else
     prologue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kSlotSizeBytes)}));
     prologue.push_back(MInstr::make(MOpcode::MOVrm, {makeMemOperand(rspBase, 0), rbpOperand}));
+#endif
     prologue.push_back(MInstr::make(MOpcode::MOVrr, {rbpOperand, rspOperand}));
+
+#if defined(_WIN32)
+    frame.prologueEmitted = true;
+    frame.usesChkstk = false;
+    frame.win64UnwindOps.clear();
+    frame.win64UnwindOps.push_back(
+        {Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
+#endif
 
     if (frame.frameSize > 0) {
         // For large frames (> page size), we need to probe the stack to ensure
@@ -371,20 +390,15 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             prologue.push_back(
                 MInstr::make(MOpcode::MOVri, {raxOperand, makeImmOperand(frame.frameSize)}));
             prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("__chkstk")}));
-            // __chkstk subtracts RAX from RSP, so we just need to copy
-            prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, raxOperand}));
-            // Actually, __chkstk on MSVC doesn't modify RSP - it just probes.
-            // We still need to do the actual allocation.
-            // Correction: ___chkstk_ms (MinGW/clang) probes but doesn't adjust RSP.
-            // We need to subtract after probing.
-            // Remove the MOVrr and do the normal subtraction
-            prologue.pop_back(); // Remove the incorrect MOVrr
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            frame.usesChkstk = true;
         } else {
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
+        frame.win64UnwindOps.push_back(
+            {Win64UnwindOpKind::AllocStack, PhysReg::RAX, static_cast<uint32_t>(frame.frameSize)});
 #else
         // Unix/macOS: emit inline stack probing for large frames.
         // Touch each page from RSP downward so the OS can grow the stack and detect
@@ -432,6 +446,12 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
                 MOpcode::MOVUPSrm,
                 {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
         }
+#if defined(_WIN32)
+        frame.win64UnwindOps.push_back({isGPR(reg) ? Win64UnwindOpKind::SaveNonVol
+                                                   : Win64UnwindOpKind::SaveXmm128,
+                                        reg,
+                                        unwindOffsetFromFinalRsp(frame.frameSize, offset)});
+#endif
     }
 
     // For the main function, inject rt_init_stack_safety() call to set up
@@ -450,9 +470,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
 
     // Epilogue mirrors the canonical
     //   add $frameSize, %rsp; pop %rbp; ret
-    // form by undoing the frame allocation before reloading %rbp from the
-    // spill slot. Using the same explicit memory traffic as the prologue keeps
-    // stack alignment consistent for any intervening callee-saved stores.
+    // form. Windows keeps this shape so the PE unwinder can recognize epilogs.
     std::vector<MInstr> epilogue{};
     epilogue.reserve(3 + frame.usedCalleeSaved.size());
 
@@ -471,9 +489,17 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         }
     }
 
+#if defined(_WIN32)
+    if (frame.frameSize > 0) {
+        epilogue.push_back(
+            MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(frame.frameSize)}));
+    }
+    epilogue.push_back(MInstr::make(MOpcode::POP, {rbpOperand}));
+#else
     epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
     epilogue.push_back(MInstr::make(MOpcode::MOVmr, {rbpOperand, makeMemOperand(rspBase, 0)}));
     epilogue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(kSlotSizeBytes)}));
+#endif
 
     for (auto &block : func.blocks) {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {

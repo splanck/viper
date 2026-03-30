@@ -298,10 +298,10 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
         result.textSections.emplace_back();
         binenc::X64BinaryEncoder funcEncoder;
         funcEncoder.encodeFunction(
-            machineFunc, result.textSections.back(), result.rodata, isDarwin);
+            machineFunc, result.textSections.back(), result.rodata, isDarwin, &frame);
 
         // Also emit into merged text for backward compatibility (symbol extraction).
-        encoder.encodeFunction(machineFunc, result.text, result.rodata, isDarwin);
+        encoder.encodeFunction(machineFunc, result.text, result.rodata, isDarwin, &frame);
     }
 
     // Emit rodata: string literals and f64 constants from RoDataPool into the
