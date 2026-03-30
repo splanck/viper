@@ -372,7 +372,6 @@ static bool isKnownDynamicSymbol(const std::string &name) {
         "wcscpy_s",
         "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
         "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
-        "rt_audio_shutdown",
     };
 
     for (const char *sym : kDynSymExact) {
