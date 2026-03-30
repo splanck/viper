@@ -121,8 +121,12 @@ static bool resolveSymAddr(const std::string &symName,
     auto it = globalSyms.find(symName);
     if (it == globalSyms.end())
         return false;
-    if (it->second.binding == GlobalSymEntry::Undefined ||
-        it->second.binding == GlobalSymEntry::Dynamic)
+    // Skip truly unresolved symbols: Undefined/Dynamic binding with no
+    // address set.  Dynamic symbols that DO have a resolved address (e.g.
+    // GOT stubs, import thunks) must still be resolvable here.
+    if (it->second.resolvedAddr == 0 &&
+        (it->second.binding == GlobalSymEntry::Undefined ||
+         it->second.binding == GlobalSymEntry::Dynamic))
         return false;
     addr = it->second.resolvedAddr;
     return true;
@@ -329,15 +333,25 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             }
 
                             // Offset field ($tlv$init symbols): convert absolute VA to
-                            // TLS-relative offset. _tlv_bootstrap expects offsets relative
-                            // to the TLS template start, not absolute VAs.
+                            // TLS-relative offset.  _tlv_bootstrap expects offsets
+                            // relative to the START of the TLS template (first
+                            // S_THREAD_LOCAL_REGULAR section), not per-section VAs.
+                            // The template spans all non-.tdata TLS sections including
+                            // any alignment gaps between them.
+                            uint64_t templateStartVA = 0;
+                            for (const auto &ls : layout.sections) {
+                                if (ls.tls && ls.name != ".tdata") {
+                                    templateStartVA = ls.virtualAddr;
+                                    break;
+                                }
+                            }
                             bool tlvMatch = false;
                             for (const auto &ls : layout.sections) {
                                 if (!ls.tls || ls.name == ".tdata")
                                     continue; // Skip the descriptor section itself.
                                 if (val >= ls.virtualAddr &&
                                     val < ls.virtualAddr + ls.data.size()) {
-                                    val -= ls.virtualAddr;
+                                    val -= templateStartVA;
                                     tlvMatch = true;
                                     break;
                                 }

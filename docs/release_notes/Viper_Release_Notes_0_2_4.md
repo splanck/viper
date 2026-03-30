@@ -14,12 +14,12 @@
 Version 0.2.4 is a rendering, codegen, language features, documentation, and showcase release. Highlights:
 
 - **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
-- **Zia Language Features** — Type alias declarations (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
+- **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
 - **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, and shadow mapping.
 - **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
-- **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, and 10+ new codegen tests.
+- **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
 - **XENOSCAPE Demo Game** — Flagship Metroid-style sidescroller expanded from 720 LOC to 17K LOC across 26 files with 10 interconnected levels, 30+ enemy types, boss fights, save system, achievement tracking, procedural music, and ability-gated progression.
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
@@ -30,11 +30,10 @@ Version 0.2.4 is a rendering, codegen, language features, documentation, and sho
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 42 | +42 |
-| Files changed | — | 3,154 | — |
-| Source files | 2,671 | 2,706 | +35 |
-| Production SLOC | ~348K | ~390K | +42K |
-| Test count | 1,351 | 1,361+ | +10 |
+| Commits | — | 46 | +46 |
+| Source files | 2,671 | 2,708 | +37 |
+| Production SLOC | ~348K | ~391K | +43K |
+| Test count | 1,351 | 1,363 | +12 |
 
 ---
 
@@ -134,9 +133,10 @@ CodegenPipeline extended with native link mode: assembles COFF `.obj`, discovers
 
 ### Zia Language Features
 
-Six new language features expanding Zia's operator and declaration surface:
+Seven new language features expanding Zia's operator, declaration, and parameter surface:
 
 - **Type alias declarations** — `type Name = TargetType;` creates compile-time aliases resolved during semantic analysis. No runtime representation; `typeAliases_` map in Sema, lookup integrated into `resolveNamedType()`.
+- **Variadic parameters** — `func sum(nums: ...Integer)` accepts zero or more arguments, collected as `List[Integer]` inside the function body. The lowerer packs excess call-site arguments into a runtime List using `kListNew` + `kListAdd`. Only the last parameter may be variadic.
 - **Shift operators** — `<<` (left shift) and `>>` (arithmetic right shift) with correct precedence between additive and comparison. New `parseShift()` precedence level, lowered to `Shl`/`AShr` IL opcodes.
 - **Compound bitwise assignments** — `<<=`, `>>=`, `&=`, `|=`, `^=` follow the existing compound assignment desugaring pattern (read-op-store).
 - **Single-expression functions** — `func f(x: Integer) -> Integer = x * 2;` desugars to a `ReturnStmt` wrapping the body expression. Works for both top-level functions and class methods.
@@ -169,6 +169,9 @@ Six new language features expanding Zia's operator and declaration surface:
 - **`i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
 - **Remove redundant refcount injection** — `emitRefcountedStore` lambda stripped from instruction lowering. String ownership belongs in the IL layer.
 - **Immediate utils extraction** — `A64ImmediateUtils.hpp` helper for immediate encoding, asm emitter hardening, binary encoder fixes, arithmetic/call fastpath improvements, regpool and symbol resolver fixes.
+- **Trap message forwarding** — `TrapErr` now materialises the message string operand into x0 and passes it to `rt_trap()`, enabling catch handlers to display the user's throw message in native executables.
+- **Error field extraction via TLS** — `ErrGetKind`, `ErrGetCode`, and `ErrGetLine` now call runtime TLS accessors (`rt_trap_get_kind/code/line`) instead of returning hardcoded 0. `rt_trap()` auto-classifies the trap kind from the message prefix. Enables typed catch (`catch(e: DivideByZero)`) in native code.
+- **Apple M-series scheduler tuning** — Instruction latency model updated for Firestorm cores: FP divide 3→10 cycles, integer divide 3→7, FP multiply 3→4. Improves instruction scheduling for FP-heavy code.
 
 **Native linker:**
 - `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
@@ -290,3 +293,8 @@ Comprehensive overhaul with 10 improvements:
 - Windows x86_64 spill slot reuse: interval analysis missed cross-block liveness, overwriting live values
 - Windows `CrossLayerArithTests`: missing `dispatchChild()` guard caused infinite process recursion
 - Windows crash dialogs suppressed via `SetErrorMode` + `_set_abort_behavior` in `rt_init_stack_safety`
+- AArch64 TrapErr: message string operand was discarded, native `throw "msg"` produced empty diagnostics
+- AArch64 ErrGetKind/Code/Line: returned hardcoded 0, typed catch (`catch(e: DivideByZero)`) always fell through
+- AArch64 scheduler: FP divide modeled at 3 cycles instead of 10, integer divide at 3 instead of 7 — suboptimal instruction ordering
+- DllImport aggregate initializer missing `importNames` field (pre-existing `-Wmissing-field-initializers` warning)
+- Stale comment in `rt_safe_i64.c` claiming Windows SafeI64 "not yet implemented" (it IS fully implemented)

@@ -135,6 +135,13 @@ bool writeMachOExe(const std::string &path,
     uint32_t nExtDef = 0, nUndef = 0;
     buildSymtab(symtabData, strtabData, layout, dynSyms, symOrdinals, nExtDef, nUndef);
 
+    // Pad string table to pointer alignment so subsequent LINKEDIT sections
+    // (rebase, bind opcodes) start at 8-byte-aligned offsets.  ARM64 dyld
+    // rejects misaligned bind opcodes, which prevents _tlv_bootstrap binding
+    // and causes crashes on TLS access.
+    while (strtabData.size() % 8 != 0)
+        strtabData.push_back(0);
+
     // Bind and rebase opcodes (built with correct VAs after layout computation below).
     std::vector<uint8_t> bindData;
     std::vector<uint8_t> rebaseData;
@@ -450,10 +457,15 @@ bool writeMachOExe(const std::string &path,
                 if (sec.name == ".tdata") {
                     machoSecName = "__thread_vars";
                     secFlags = S_THREAD_LOCAL_VARIABLES;
+                } else if (sec.name == ".tbss") {
+                    // Zero-initialized TLS: use __thread_bss to avoid duplicate
+                    // __thread_data names (Mach-O requires unique section names
+                    // within a segment).  Keep S_THREAD_LOCAL_REGULAR so we don't
+                    // need zerofill layout (offset=0 requirement).
+                    machoSecName = "__thread_bss";
+                    secFlags = S_THREAD_LOCAL_REGULAR;
                 } else {
-                    // Use __thread_data (S_THREAD_LOCAL_REGULAR) for TLS template
-                    // data, even for zero-initialized data. This avoids the zerofill
-                    // offset=0 requirement and ensures dyld finds the TLS template.
+                    // TLS template data (S_THREAD_LOCAL_REGULAR).
                     machoSecName = "__thread_data";
                     secFlags = S_THREAD_LOCAL_REGULAR;
                 }
