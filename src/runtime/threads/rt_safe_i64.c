@@ -15,8 +15,8 @@
 //   - CompareExchange atomically reads, compares, conditionally writes, and
 //     returns the pre-operation value in a single monitor-protected section.
 //   - Add returns the value after the increment (post-increment semantics).
-//   - The Windows path traps on construction as monitor-based sync requires
-//     POSIX primitives; Win32 support is not yet implemented.
+//   - The Windows path uses lock-free InterlockedExchange64/CompareExchange64.
+//   - The POSIX path uses monitors (mutex + condition variable).
 //   - No busy-waiting; all blocking uses the monitor's condition variable.
 //
 // Ownership/Lifetime:

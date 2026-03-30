@@ -345,7 +345,7 @@ TEST(PeWriter, ExternalIatSlotsAreSeededWithLookupEntries) {
     bool ok = writePeExe(path,
                          layout,
                          LinkArch::X86_64,
-                         {DllImport{"kernel32.dll", {"ExitProcess"}}},
+                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
                          {{"ExitProcess", 0x2000}},
                          false,
                          err);

@@ -460,26 +460,80 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::EhEntry:
             return true;
 
-        // TrapKind and TrapErr lower to a plain trap call — the runtime's
-        // rt_trap() performs longjmp-based recovery when a handler is active.
+        // Bare trap — no message available, pass NULL to rt_trap.
         case Opcode::Trap:
         case Opcode::TrapKind:
-        case Opcode::TrapErr:
-            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRI,
+                       {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
             return true;
 
-        // Error field accessors return constant 0 in native codegen.
-        // Full error field extraction requires a runtime bridge that is
-        // not yet implemented; returning 0 is safe and matches x86-64.
+        // TrapErr has operands [I32 code, Str message]. Forward the message
+        // string pointer to rt_trap(const char *msg) so catch handlers and
+        // diagnostics can display the user's throw message.
+        case Opcode::TrapErr: {
+            if (ins.operands.size() > 1) {
+                uint16_t msgV = 0;
+                RegClass msgC = RegClass::GPR;
+                if (materializeValueToVReg(ins.operands[1], bbIn, ctx.ti,
+                                           ctx.fb, bbOut(), ctx.tempVReg,
+                                           ctx.tempRegClass, ctx.nextVRegId,
+                                           msgV, msgC)) {
+                    bbOut().instrs.push_back(
+                        MInstr{MOpcode::MovRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::vregOp(RegClass::GPR, msgV)}});
+                } else {
+                    // Materialization failed — fall back to NULL
+                    bbOut().instrs.push_back(
+                        MInstr{MOpcode::MovRI,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::immOp(0)}});
+                }
+            } else {
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::MovRI,
+                           {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            }
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+            return true;
+        }
+
+        // Error field accessors call runtime TLS bridge functions to retrieve
+        // trap classification stored by rt_trap_fields_set() before the trap.
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
-        case Opcode::ErrGetIp:
         case Opcode::ErrGetLine: {
+            const char *rtFunc = nullptr;
+            switch (ins.op) {
+                case Opcode::ErrGetKind: rtFunc = "rt_trap_get_kind"; break;
+                case Opcode::ErrGetCode: rtFunc = "rt_trap_get_code"; break;
+                case Opcode::ErrGetLine: rtFunc = "rt_trap_get_line"; break;
+                default: rtFunc = "rt_trap_get_kind"; break;
+            }
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::Bl, {MOperand::labelOp(rtFunc)}});
             const uint16_t dst = ctx.nextVRegId++;
             if (ins.result)
                 ctx.tempVReg[*ins.result] = dst;
             bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
+                MInstr{MOpcode::MovRR,
+                       {MOperand::vregOp(RegClass::GPR, dst),
+                        MOperand::regOp(PhysReg::X0)}});
+            return true;
+        }
+        case Opcode::ErrGetIp: {
+            // IP extraction not meaningful in native code — return 0
+            const uint16_t dst = ctx.nextVRegId++;
+            if (ins.result)
+                ctx.tempVReg[*ins.result] = dst;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRI,
+                       {MOperand::vregOp(RegClass::GPR, dst),
+                        MOperand::immOp(0)}});
             return true;
         }
 

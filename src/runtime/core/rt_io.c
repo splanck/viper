@@ -139,6 +139,18 @@ RT_WEAK void vm_trap(const char *msg) {
 /// @param msg Null-terminated string describing the trap condition.
 /// @return This function does not return.
 void rt_trap(const char *msg) {
+    // Classify the trap kind from the message for native codegen's
+    // ErrGetKind/Code/Line. VM traps are classified separately.
+    if (msg) {
+        extern void rt_trap_fields_set(int32_t, int32_t, int32_t);
+        int32_t kind = 3; // DomainError default
+        if (msg[0] == 'D' && msg[1] == 'i') kind = 0;      // "Division by zero" → DivideByZero
+        else if (msg[0] == 'O')              kind = 1;      // "Overflow" → Overflow
+        else if (msg[0] == 'B')              kind = 4;      // "Bounds" → Bounds
+        else if (msg[0] == 'I' && msg[1] == 'n' && msg[2] == 'v')
+                                             kind = 2;      // "Invalid cast" → InvalidCast
+        rt_trap_fields_set(kind, 0, -1);
+    }
     if (rt_trap_recovery_) {
         snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
         longjmp(*rt_trap_recovery_, 1);

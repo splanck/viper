@@ -858,7 +858,8 @@ static bool lowerDivisionChk0(const il::core::Instr &ins,
     // the blocks vector, invalidating the `out` reference.
     ctx.mf.blocks.emplace_back();
     ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+    ctx.mf.blocks.back().instrs.push_back(
+        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }
@@ -987,7 +988,8 @@ bool lowerIdxChk(const il::core::Instr &ins,
     // the blocks vector, invalidating the `out` reference.
     ctx.mf.blocks.emplace_back();
     ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+    ctx.mf.blocks.back().instrs.push_back(
+        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 
     return true;
 }

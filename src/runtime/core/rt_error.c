@@ -62,6 +62,24 @@ rt_string rt_throw_msg_get(void) {
     return rt_str_empty();
 }
 
+/// Thread-local storage for the most recently raised trap's classification.
+/// Populated by rt_trap_fields_set() (called from the Zia lowerer before
+/// trap instructions) and read by rt_trap_get_kind/code/line (called from
+/// ErrGetKind/Code/Line in native codegen).
+static _Thread_local int32_t tls_trap_kind = 0;
+static _Thread_local int32_t tls_trap_code = 0;
+static _Thread_local int32_t tls_trap_line = -1;
+
+void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
+    tls_trap_kind = kind;
+    tls_trap_code = code;
+    tls_trap_line = line;
+}
+
+int64_t rt_trap_get_kind(void) { return (int64_t)tls_trap_kind; }
+int64_t rt_trap_get_code(void) { return (int64_t)tls_trap_code; }
+int64_t rt_trap_get_line(void) { return (int64_t)tls_trap_line; }
+
 #ifdef __cplusplus
 }
 #endif

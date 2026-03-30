@@ -48,6 +48,10 @@ namespace {
 // ---------------------------------------------------------------------------
 
 /// @brief Return the output latency (cycles from write to use) for an opcode.
+///
+/// Latency model tuned for Apple M1/M2/M3 Firestorm (performance) cores.
+/// Values are approximate; actual latencies vary by microarchitecture revision
+/// and operand width but are close enough for effective scheduling.
 static unsigned instrLatency(MOpcode opc) noexcept {
     switch (opc) {
         // Loads: L1 hit ~4 cycles on Apple M-series.
@@ -59,27 +63,36 @@ static unsigned instrLatency(MOpcode opc) noexcept {
         case MOpcode::LdpFprFpImm:
             return 4;
 
-        // Integer multiply / divide: 3 cycles.
+        // Integer multiply + fused multiply-add/sub: 3 cycles.
         case MOpcode::MulRRR:
-        case MOpcode::SDivRRR:
-        case MOpcode::UDivRRR:
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
             return 3;
 
-        // FP arithmetic: 3 cycles.
+        // Integer divide: 7-12 cycles on M1; model as 7 (optimistic).
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
+            return 7;
+
+        // FP add/sub: 3 cycles.
         case MOpcode::FAddRRR:
         case MOpcode::FSubRRR:
-        case MOpcode::FMulRRR:
-        case MOpcode::FDivRRR:
             return 3;
 
-        // Conversions: 3 cycles.
+        // FP multiply: 4 cycles on M1.
+        case MOpcode::FMulRRR:
+            return 4;
+
+        // FP divide: 10-15 cycles on M1 (double precision); model as 10.
+        case MOpcode::FDivRRR:
+            return 10;
+
+        // Int/FP conversions: 3-4 cycles.
         case MOpcode::SCvtF:
         case MOpcode::FCvtZS:
         case MOpcode::UCvtF:
         case MOpcode::FCvtZU:
-            return 3;
+            return 4;
 
         // All other instructions: 1 cycle.
         default:

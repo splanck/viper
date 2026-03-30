@@ -2986,6 +2986,12 @@ RT_FUNC(StrFromStr,            rt_str_clone,      "Viper.String.FromStr",       
 // Throw message storage for catch(e) variable binding
 RT_FUNC(ThrowMsgSet,           rt_throw_msg_set,  "Viper.Error.SetThrowMsg",        "void(str)")
 RT_FUNC(ThrowMsgGet,           rt_throw_msg_get,  "Viper.Error.GetThrowMsg",        "str()")
+
+// Trap field storage for native codegen ErrGetKind/Code/Line
+RT_FUNC(TrapFieldsSet,         rt_trap_fields_set, "Viper.Error.SetTrapFields",     "void(i32,i32,i32)")
+RT_FUNC(TrapGetKind,           rt_trap_get_kind,   "Viper.Error.GetTrapKind",       "i64()")
+RT_FUNC(TrapGetCode,           rt_trap_get_code,   "Viper.Error.GetTrapCode",       "i64()")
+RT_FUNC(TrapGetLine,           rt_trap_get_line,   "Viper.Error.GetTrapLine",       "i64()")
 RT_FUNC(StringsJoin,           rt_str_join,  "Viper.String.Join",              "str(str,obj)", always)
 RT_FUNC(StrCapitalize,         rt_str_capitalize,     "Viper.String.Capitalize",     "str(str)")
 RT_FUNC(StrTitle,              rt_str_title,          "Viper.String.Title",          "str(str)")

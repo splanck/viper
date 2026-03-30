@@ -82,6 +82,21 @@ void rt_throw_msg_set(rt_string msg);
 ///         Caller receives a new reference (must release).
 rt_string rt_throw_msg_get(void);
 
+/// @brief Store trap classification fields for retrieval by catch handlers.
+/// @param kind TrapKind enum value (0=DivByZero, 3=DomainError, 9=RuntimeError, etc.)
+/// @param code Secondary error code.
+/// @param line Source line number (-1 if unknown).
+void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line);
+
+/// @brief Retrieve the last trap's kind classification.
+int64_t rt_trap_get_kind(void);
+
+/// @brief Retrieve the last trap's error code.
+int64_t rt_trap_get_code(void);
+
+/// @brief Retrieve the last trap's source line number.
+int64_t rt_trap_get_line(void);
+
 #ifdef __cplusplus
 }
 #endif

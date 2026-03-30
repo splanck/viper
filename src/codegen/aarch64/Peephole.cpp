@@ -63,6 +63,14 @@ PeepholeStats runPeephole(MFunction &fn) {
     // Re-enable once the pass has proper dominator-based safety checks.
     // stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
 
+    // Pass 0.7: Cross-block dead FP store elimination.
+    // DISABLED: Ordering is complex — must run BEFORE store-load forwarding
+    // (Pass 1.9) but AFTER STP merge (Pass 3+). Since those are in the
+    // per-block loop and this is a cross-block pass, it can't be sandwiched
+    // between them. Needs the per-block loop to be split into pre-merge and
+    // post-merge phases to enable.
+    // ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+
     // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
 
     for (auto &block : fn.blocks) {
@@ -338,11 +346,7 @@ PeepholeStats runPeephole(MFunction &fn) {
         }
     }
 
-    // Pass 4.85: Cross-block dead FP store elimination.
-    // TODO: This pass needs to run before store-load forwarding (Pass 1.9),
-    // otherwise forwarded loads are invisible and their source stores get
-    // incorrectly removed. Disabled until ordering is fixed.
-    // ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+    // (Pass 4.85 moved to Pass 0.7 — runs before per-block loop above)
 
     // Pass 4.9: Eliminate redundant phi-slot spill/reload cycles in loop back-edges.
     // Must run AFTER Pass 4.8 (cross-block store-load forwarding) because that pass
