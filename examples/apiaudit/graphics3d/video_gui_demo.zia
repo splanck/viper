@@ -1,0 +1,44 @@
+// =============================================================================
+// Video GUI Widget Demo — VideoWidget in a Viper.GUI application
+// =============================================================================
+
+module VideoGuiDemo;
+
+bind Viper.GUI;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Video GUI Widget Demo ===");
+
+    var app = App.New("Video Player", 720, 540);
+    var root = App.get_Root(app);
+
+    var video = VideoWidget.New(root, "tests/runtime/assets/test_video.avi");
+    if (video == null) {
+        Say("FAIL: could not create VideoWidget");
+        return;
+    }
+
+    Say("  Duration: " + toString(VideoWidget.get_Duration(video)) + "s");
+
+    VideoWidget.set_Loop(video, true);
+    VideoWidget.Play(video);
+    Say("Playing (looping)...");
+
+    var fc = 0;
+    while (App.get_ShouldClose(app) == false) {
+        App.Poll(app);
+
+        // Update video (advance frames)
+        VideoWidget.Update(video, 0.033);
+
+        App.Render(app);
+
+        fc = fc + 1;
+        if (fc % 60 == 0) {
+            Say("pos=" + toString(VideoWidget.get_Position(video)) + "s playing=" + toString(VideoWidget.get_IsPlaying(video)));
+        }
+    }
+
+    Say("Done.");
+}

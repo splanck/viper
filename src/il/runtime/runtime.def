@@ -10420,6 +10420,68 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Vegetation3D", Vegetation3D, "obj", Veg3DNew)
     RT_METHOD("Update", "void(f64,f64,f64,f64)", Veg3DUpdate)
 RT_CLASS_END()
 
+//=============================================================================
+// GRAPHICS - VIDEOPLAYER
+//=============================================================================
+
+RT_FUNC(VideoPlayerOpen,      rt_videoplayer_open,         "Viper.Graphics.VideoPlayer.Open",         "obj(str)")
+RT_FUNC(VideoPlayerPlay,      rt_videoplayer_play,         "Viper.Graphics.VideoPlayer.Play",         "void(obj)")
+RT_FUNC(VideoPlayerPause,     rt_videoplayer_pause,        "Viper.Graphics.VideoPlayer.Pause",        "void(obj)")
+RT_FUNC(VideoPlayerStop,      rt_videoplayer_stop,         "Viper.Graphics.VideoPlayer.Stop",         "void(obj)")
+RT_FUNC(VideoPlayerSeek,      rt_videoplayer_seek,         "Viper.Graphics.VideoPlayer.Seek",         "void(obj,f64)")
+RT_FUNC(VideoPlayerUpdate,    rt_videoplayer_update,       "Viper.Graphics.VideoPlayer.Update",       "void(obj,f64)")
+RT_FUNC(VideoPlayerSetVol,    rt_videoplayer_set_volume,   "Viper.Graphics.VideoPlayer.SetVolume",    "void(obj,f64)")
+RT_FUNC(VideoPlayerGetW,      rt_videoplayer_get_width,    "Viper.Graphics.VideoPlayer.get_Width",    "i64(obj)")
+RT_FUNC(VideoPlayerGetH,      rt_videoplayer_get_height,   "Viper.Graphics.VideoPlayer.get_Height",   "i64(obj)")
+RT_FUNC(VideoPlayerGetDur,    rt_videoplayer_get_duration, "Viper.Graphics.VideoPlayer.get_Duration", "f64(obj)")
+RT_FUNC(VideoPlayerGetPos,    rt_videoplayer_get_position, "Viper.Graphics.VideoPlayer.get_Position", "f64(obj)")
+RT_FUNC(VideoPlayerGetPlay,   rt_videoplayer_get_is_playing,"Viper.Graphics.VideoPlayer.get_IsPlaying","i64(obj)")
+RT_FUNC(VideoPlayerGetFrame,  rt_videoplayer_get_frame,    "Viper.Graphics.VideoPlayer.get_Frame",    "obj(obj)")
+
+RT_CLASS_BEGIN("Viper.Graphics.VideoPlayer", VideoPlayer, "obj", VideoPlayerOpen)
+    RT_METHOD("Play", "void()", VideoPlayerPlay)
+    RT_METHOD("Pause", "void()", VideoPlayerPause)
+    RT_METHOD("Stop", "void()", VideoPlayerStop)
+    RT_METHOD("Seek", "void(f64)", VideoPlayerSeek)
+    RT_METHOD("Update", "void(f64)", VideoPlayerUpdate)
+    RT_METHOD("SetVolume", "void(f64)", VideoPlayerSetVol)
+    RT_PROP("Width", "i64", VideoPlayerGetW, none)
+    RT_PROP("Height", "i64", VideoPlayerGetH, none)
+    RT_PROP("Duration", "f64", VideoPlayerGetDur, none)
+    RT_PROP("Position", "f64", VideoPlayerGetPos, none)
+    RT_PROP("IsPlaying", "i64", VideoPlayerGetPlay, none)
+    RT_PROP("Frame", "obj", VideoPlayerGetFrame, none)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - VIDEOWIDGET
+//=============================================================================
+
+RT_FUNC(VideoWidgetNew,       rt_videowidget_new,              "Viper.GUI.VideoWidget.New",            "obj(obj,str)")
+RT_FUNC(VideoWidgetPlay,      rt_videowidget_play,             "Viper.GUI.VideoWidget.Play",           "void(obj)")
+RT_FUNC(VideoWidgetPause,     rt_videowidget_pause,            "Viper.GUI.VideoWidget.Pause",          "void(obj)")
+RT_FUNC(VideoWidgetStop,      rt_videowidget_stop,             "Viper.GUI.VideoWidget.Stop",           "void(obj)")
+RT_FUNC(VideoWidgetUpdate,    rt_videowidget_update,           "Viper.GUI.VideoWidget.Update",         "void(obj,f64)")
+RT_FUNC(VideoWidgetSetCtrl,   rt_videowidget_set_show_controls,"Viper.GUI.VideoWidget.set_ShowControls","void(obj,i1)")
+RT_FUNC(VideoWidgetSetLoop,   rt_videowidget_set_loop,         "Viper.GUI.VideoWidget.set_Loop",       "void(obj,i1)")
+RT_FUNC(VideoWidgetSetVol,    rt_videowidget_set_volume,       "Viper.GUI.VideoWidget.SetVolume",      "void(obj,f64)")
+RT_FUNC(VideoWidgetGetPlay,   rt_videowidget_get_is_playing,   "Viper.GUI.VideoWidget.get_IsPlaying",  "i64(obj)")
+RT_FUNC(VideoWidgetGetPos,    rt_videowidget_get_position,     "Viper.GUI.VideoWidget.get_Position",   "f64(obj)")
+RT_FUNC(VideoWidgetGetDur,    rt_videowidget_get_duration,     "Viper.GUI.VideoWidget.get_Duration",   "f64(obj)")
+
+RT_CLASS_BEGIN("Viper.GUI.VideoWidget", VideoWidget, "obj", VideoWidgetNew)
+    RT_METHOD("Play", "void()", VideoWidgetPlay)
+    RT_METHOD("Pause", "void()", VideoWidgetPause)
+    RT_METHOD("Stop", "void()", VideoWidgetStop)
+    RT_METHOD("Update", "void(f64)", VideoWidgetUpdate)
+    RT_METHOD("SetVolume", "void(f64)", VideoWidgetSetVol)
+    RT_PROP("ShowControls", "i1", none, VideoWidgetSetCtrl)
+    RT_PROP("Loop", "i1", none, VideoWidgetSetLoop)
+    RT_PROP("IsPlaying", "i64", VideoWidgetGetPlay, none)
+    RT_PROP("Position", "f64", VideoWidgetGetPos, none)
+    RT_PROP("Duration", "f64", VideoWidgetGetDur, none)
+RT_CLASS_END()
+
 // TextureAtlas3D (F4)
 RT_FUNC(TexAtlas3DNew,       rt_texatlas3d_new,        "Viper.Graphics3D.TextureAtlas3D.New",       "obj(i64,i64)")
 RT_FUNC(TexAtlas3DAdd,       rt_texatlas3d_add,        "Viper.Graphics3D.TextureAtlas3D.Add",       "i64(obj,obj)")

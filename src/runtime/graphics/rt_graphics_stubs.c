@@ -3287,6 +3287,34 @@ void rt_vegetation3d_update(void *v, double dt, double cx, double cy, double cz)
 }
 void rt_canvas3d_draw_vegetation(void *c, void *v) { (void)c; (void)v; }
 
+/* VideoWidget stubs */
+void *rt_videowidget_new(void *p, void *path) { (void)p; (void)path; return NULL; }
+void rt_videowidget_play(void *v) { (void)v; }
+void rt_videowidget_pause(void *v) { (void)v; }
+void rt_videowidget_stop(void *v) { (void)v; }
+void rt_videowidget_update(void *v, double dt) { (void)v; (void)dt; }
+void rt_videowidget_set_show_controls(void *v, int8_t s) { (void)v; (void)s; }
+void rt_videowidget_set_loop(void *v, int8_t l) { (void)v; (void)l; }
+void rt_videowidget_set_volume(void *v, double vol) { (void)v; (void)vol; }
+int64_t rt_videowidget_get_is_playing(void *v) { (void)v; return 0; }
+double rt_videowidget_get_position(void *v) { (void)v; return 0.0; }
+double rt_videowidget_get_duration(void *v) { (void)v; return 0.0; }
+
+/* VideoPlayer stubs */
+void *rt_videoplayer_open(void *p) { (void)p; return NULL; }
+void rt_videoplayer_play(void *v) { (void)v; }
+void rt_videoplayer_pause(void *v) { (void)v; }
+void rt_videoplayer_stop(void *v) { (void)v; }
+void rt_videoplayer_seek(void *v, double s) { (void)v; (void)s; }
+void rt_videoplayer_update(void *v, double dt) { (void)v; (void)dt; }
+void rt_videoplayer_set_volume(void *v, double vol) { (void)v; (void)vol; }
+int64_t rt_videoplayer_get_width(void *v) { (void)v; return 0; }
+int64_t rt_videoplayer_get_height(void *v) { (void)v; return 0; }
+double rt_videoplayer_get_duration(void *v) { (void)v; return 0.0; }
+double rt_videoplayer_get_position(void *v) { (void)v; return 0.0; }
+int64_t rt_videoplayer_get_is_playing(void *v) { (void)v; return 0; }
+void *rt_videoplayer_get_frame(void *v) { (void)v; return NULL; }
+
 /* PostFX F5-F7 stubs */
 /// @brief Add the ssao of the postfx3d.
 void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s) {

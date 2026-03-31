@@ -1337,49 +1337,23 @@ static uint8_t jpeg_clamp(int val) {
     return (uint8_t)val;
 }
 
-void *rt_pixels_load_jpeg(void *path) {
-    if (!path)
+/// @brief Decode a JPEG image from a memory buffer.
+/// @param data Pointer to JPEG data (must start with 0xFFD8 SOI marker).
+/// @param len Length of data in bytes.
+/// @return New Pixels object, or NULL on failure. Caller does NOT free data.
+void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
+    if (!data || len < 2 || data[0] != 0xFF || data[1] != 0xD8)
         return NULL;
 
-    const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
-        return NULL;
-
-    FILE *f = fopen(filepath, "rb");
-    if (!f)
-        return NULL;
-
-    fseek(f, 0, SEEK_END);
-    long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    if (file_len <= 0 || file_len > 256 * 1024 * 1024) {
-        fclose(f);
-        return NULL;
-    }
-
-    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
-    if (!file_data) {
-        fclose(f);
-        return NULL;
-    }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
-        free(file_data);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-
-    // Check JPEG signature
-    if ((size_t)file_len < 2 || file_data[0] != 0xFF || file_data[1] != 0xD8) {
-        free(file_data);
-        return NULL;
-    }
+    /* jpeg_ctx_t.data is uint8_t* but we only read from it. Use memcpy
+     * to reinterpret the pointer without triggering -Wcast-qual. */
+    uint8_t *file_data;
+    memcpy(&file_data, &data, sizeof(file_data));
 
     jpeg_ctx_t ctx;
     memset(&ctx, 0, sizeof(ctx));
     ctx.data = file_data;
-    ctx.len = (size_t)file_len;
+    ctx.len = len;
     ctx.pos = 2; // past SOI
 
     rt_pixels_impl *pixels = NULL;
@@ -1749,7 +1723,6 @@ void *rt_pixels_load_jpeg(void *path) {
             free(comp_data[i]);
         free(comp_data);
     }
-    free(file_data);
     return pixels;
 
 jpeg_fail:
@@ -1758,8 +1731,46 @@ jpeg_fail:
             free(comp_data[i]);
         free(comp_data);
     }
-    free(file_data);
     return NULL;
+}
+
+/// @brief Load a JPEG image from a file path (wrapper around rt_jpeg_decode_buffer).
+void *rt_pixels_load_jpeg(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (file_len <= 0 || file_len > 256 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
+    if (!file_data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    void *result = rt_jpeg_decode_buffer(file_data, (size_t)file_len);
+    free(file_data);
+    return result;
 }
 
 //=============================================================================

@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -124,6 +125,12 @@ void *rt_pixels_load_png(void *path);
 /// @return New Pixels object, or NULL on failure.
 /// @note Supports baseline DCT JPEG: 8-bit, YCbCr/grayscale, 4:4:4/4:2:0/4:2:2.
 void *rt_pixels_load_jpeg(void *path);
+
+/// @brief Decode a JPEG image from a memory buffer.
+/// @param data Pointer to JPEG data (must start with 0xFFD8 SOI marker).
+/// @param len Length of data in bytes.
+/// @return New Pixels object, or NULL on failure. Does NOT take ownership of data.
+void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
 
 /// @brief Load a GIF image from a file path (first frame only for static use).
 /// @param path File path (runtime string).

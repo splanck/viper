@@ -1,0 +1,68 @@
+// =============================================================================
+// Video Playback Demo — Plays an MJPEG AVI file using VideoPlayer
+// =============================================================================
+
+module VideoDemo;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Video Playback Demo ===");
+    Say("Playing MJPEG AVI file via VideoPlayer");
+    Say("ESC to quit");
+
+    // Try Big Buck Bunny MJPEG first, fallback to abstract art
+    var player = VideoPlayer.Open("tests/runtime/assets/test_video.avi");
+    if (player == null) {
+        Say("FAIL: could not open test_video.avi");
+        return;
+    }
+
+    Say("  Width: " + toString(VideoPlayer.get_Width(player)));
+    Say("  Height: " + toString(VideoPlayer.get_Height(player)));
+    Say("  Duration: " + toString(VideoPlayer.get_Duration(player)) + "s");
+
+    // Create canvas at video resolution
+    var w = VideoPlayer.get_Width(player);
+    var h = VideoPlayer.get_Height(player);
+    var canvas = Canvas.New("Video Player", w, h);
+
+    VideoPlayer.Play(player);
+    Say("Playing...");
+
+    var frameCount = 0;
+    while (Canvas.get_ShouldClose(canvas) == 0) {
+        Canvas.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        var dt = Canvas.get_DeltaTime(canvas) / 1000.0;
+        if (dt > 0.05) { dt = 0.05; }
+        if (dt <= 0.0) { dt = 0.016; }
+
+        VideoPlayer.Update(player, dt);
+
+        var frame = VideoPlayer.get_Frame(player);
+        if (frame != null) {
+            Canvas.Blit(canvas, 0, 0, frame);
+        }
+
+        Canvas.Flip(canvas);
+
+        // Check if video ended
+        if (VideoPlayer.get_IsPlaying(player) == 0 && frameCount > 10) {
+            Say("Video finished, restarting...");
+            VideoPlayer.Stop(player);
+            VideoPlayer.Play(player);
+        }
+
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            Say("Frame: " + toString(frameCount) + " pos=" + toString(VideoPlayer.get_Position(player)) + "s");
+        }
+    }
+
+    VideoPlayer.Stop(player);
+    Say("Done.");
+}

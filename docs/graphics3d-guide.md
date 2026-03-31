@@ -825,3 +825,61 @@ Texture array for efficient multi-texture rendering.
 | `New(width, height)` | Create atlas with layer dimensions |
 | `Add(pixels)` | Add texture layer (returns layer index) |
 | `GetTexture()` | Export combined atlas as single Pixels |
+
+---
+
+## VideoPlayer
+
+Video playback for game cutscenes and GUI applications.
+
+| Member | Description |
+|--------|-------------|
+| `Open(path)` | Load video file (`.avi` or `.ogv`) |
+| `Play()` | Start playback |
+| `Pause()` | Pause playback |
+| `Stop()` | Stop and rewind to start |
+| `Seek(seconds)` | Seek to time position |
+| `Update(dt)` | Advance by delta time in seconds (call each game frame) |
+| `SetVolume(vol)` | Set audio volume [0.0-1.0] |
+| `Width` | Frame width in pixels (read-only) |
+| `Height` | Frame height in pixels (read-only) |
+| `Duration` | Total duration in seconds (read-only) |
+| `Position` | Current playback position in seconds (read-only) |
+| `IsPlaying` | Whether playback is active (read-only) |
+| `Frame` | Current decoded Pixels frame (read-only) |
+
+### Supported Formats
+
+| Container | Video Codec | Audio Codec | Extension |
+|-----------|-------------|-------------|-----------|
+| AVI (RIFF) | MJPEG | PCM WAV | `.avi` |
+| OGG | Theora | Vorbis | `.ogv` |
+
+**MJPEG notes:** MJPEG frames in AVI files often omit Huffman tables (DHT markers). The decoder automatically injects standard JPEG Annex K DHT tables when they are missing. MJPEG has no inter-frame compression — each frame is an independent JPEG image. File sizes are large (~100-200 MB per minute at 720p) but seeking is instant since every frame is a keyframe.
+
+**Theora notes:** Theora uses OGG container (same as Vorbis audio). The existing OGG parser handles multi-stream demux by serial number. Theora provides real inter-frame compression (~10-20x smaller than MJPEG). Godot Engine uses Theora as its only built-in video format.
+
+### Game Cutscene Usage
+
+```zia
+var player = VideoPlayer.Open("cutscene.avi");
+VideoPlayer.Play(player);
+
+while (VideoPlayer.get_IsPlaying(player)) {
+    Canvas.Poll(canvas);
+    var dt = Canvas.get_DeltaTime(canvas) / 1000.0;
+    VideoPlayer.Update(player, dt);
+    Canvas.Blit(canvas, 0, 0, VideoPlayer.get_Frame(player));
+    Canvas.Flip(canvas);
+}
+```
+
+### 3D Video Texture Usage
+
+```zia
+VideoPlayer.Update(player, dt);
+Material3D.SetTexture(screenMat, VideoPlayer.get_Frame(player));
+Canvas3D.DrawMesh(canvas, screenMesh, screenXform, screenMat);
+```
+
+See `examples/apiaudit/graphics3d/video_demo.zia` for a complete example.
