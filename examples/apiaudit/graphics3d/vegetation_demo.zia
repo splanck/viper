@@ -1,0 +1,148 @@
+// =============================================================================
+// Vegetation Demo — Instanced grass with wind animation on terrain
+// =============================================================================
+
+module VegetationDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind Viper.Core;
+
+// Generate a simple grass blade texture (green on transparent)
+func createGrassBladeTexture() -> Pixels {
+    var tex = new Pixels(16, 32);
+    var y = 0;
+    while (y < 32) {
+        var x = 0;
+        while (x < 16) {
+            // Blade shape: narrower at top
+            var halfW = 8 - y / 4;
+            if (halfW < 1) { halfW = 1; }
+            var cx = 8;
+            var dx = x - cx;
+            if (dx < 0) { dx = 0 - dx; }
+            if (dx <= halfW) {
+                // Green with variation
+                var noise = ((x * 7 + y * 13) % 20) - 10;
+                var r = 40 + noise;
+                var g = 140 + noise - y;
+                var b = 30 + noise;
+                if (r < 20) { r = 20; }
+                if (g < 60) { g = 60; }
+                if (b < 10) { b = 10; }
+                if (r > 80) { r = 80; }
+                if (g > 200) { g = 200; }
+                if (b > 70) { b = 70; }
+                var alpha = 255;
+                // Fade out at tip
+                if (y > 26) { alpha = 255 - (y - 26) * 40; }
+                if (alpha < 0) { alpha = 0; }
+                var color = (r * 65536 + g * 256 + b) * 256 + alpha;
+                Pixels.Set(tex, x, y, color);
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+func start() {
+    Say("=== Vegetation Demo ===");
+    Say("Controls: WASD=Move, Mouse=Look, Space=Up, Shift=Down, ESC=Quit");
+
+    var canvas = Canvas3D.New("Vegetation Demo", 1280, 720);
+    var camera = Camera3D.New(65.0, 1280.0 / 720.0, 0.1, 300.0);
+    Camera3D.FPSInit(camera);
+
+    // Terrain
+    var pn = PerlinNoise.New(555);
+    var terrain = Terrain3D.New(128, 128);
+    Terrain3D.GeneratePerlin(terrain, pn, 3.0, 5, 0.5);
+    Terrain3D.SetScale(terrain, 2.0, 15.0, 2.0);
+    var tMat = Material3D.NewColor(0.25, 0.4, 0.15);
+    Material3D.SetShininess(tMat, 4.0);
+    Terrain3D.SetMaterial(terrain, tMat);
+
+    // Vegetation
+    Say("Creating grass...");
+    var grassTex = createGrassBladeTexture();
+    var veg = Vegetation3D.New(grassTex);
+    Vegetation3D.SetBladeSize(veg, 0.5, 1.5, 0.4);
+    Vegetation3D.SetWindParams(veg, 2.5, 0.2, 0.6);
+    Vegetation3D.SetLODDistances(veg, 30.0, 80.0);
+
+    // Populate 5000 grass blades on terrain
+    Say("Populating 5000 grass blades...");
+    Vegetation3D.Populate(veg, terrain, 5000);
+
+    // Lighting
+    var sunDir = new Vec3(-0.3, -1.0, -0.5);
+    var sun = Light3D.NewDirectional(sunDir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.3, 0.35, 0.25);
+
+    // Fog
+    Canvas3D.SetFog(canvas, 50.0, 150.0, 0.55, 0.65, 0.75);
+
+    // Camera start
+    var startX = 128.0;
+    var startZ = 128.0;
+    var startY = Terrain3D.GetHeightAt(terrain, startX, startZ) + 3.0;
+    Camera3D.LookAt(camera, new Vec3(startX, startY, startZ),
+                    new Vec3(startX + 1.0, startY, startZ),
+                    new Vec3(0.0, 1.0, 0.0));
+
+    Mouse.Capture();
+    Say("Ready!");
+
+    var frameCount = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        if (dt > 0.05) { dt = 0.05; }
+        if (dt <= 0.0) { dt = 0.016; }
+
+        // Movement
+        var mdx = 1.0 * Mouse.DeltaX();
+        var mdy = 1.0 * Mouse.DeltaY();
+        var fwd = 0.0;
+        var right = 0.0;
+        var updown = 0.0;
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_SPACE())) { updown = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { updown = -1.0; }
+
+        Camera3D.FPSUpdate(camera, mdx * 0.12, 0.0 - mdy * 0.12,
+                           fwd, right, updown, 12.0, dt);
+
+        // Update vegetation wind
+        var pos = Camera3D.get_Position(camera);
+        Vegetation3D.Update(veg, dt, Vec3.get_X(pos), Vec3.get_Y(pos), Vec3.get_Z(pos));
+
+        // Render
+        Canvas3D.Clear(canvas, 0.55, 0.65, 0.75);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawTerrain(canvas, terrain);
+        Canvas3D.DrawVegetation(canvas, veg);
+        Canvas3D.End(canvas);
+
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            Say("FPS: " + toString(Canvas3D.get_Fps(canvas)));
+        }
+
+        Canvas3D.Flip(canvas);
+    }
+
+    Mouse.Release();
+    Say("Done.");
+}

@@ -189,6 +189,16 @@ Surface appearance properties.
 | `SetSpecularMap(pixels)` | Set specular intensity map (Pixels) |
 | `SetEmissiveMap(pixels)` | Set emissive color map (Pixels) |
 | `SetEmissiveColor(r, g, b)` | Set emissive color multiplier (additive glow) |
+| `SetShadingModel(model)` | Set shading model: 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive |
+| `SetCustomParam(index, value)` | Set custom shader parameter (index 0-7, float value) |
+
+**Shading models:** `SetShadingModel` selects how the surface is shaded:
+- **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
+- **1 (Toon)**: Quantized diffuse bands. `custom[0]` = number of bands (default 4).
+- **4 (Fresnel)**: Angle-dependent alpha — edges glow brighter. `custom[0]` = power (default 3), `custom[1]` = bias.
+- **5 (Emissive)**: Boosted emissive glow. `custom[0]` = strength multiplier (default 2).
+
+See `examples/apiaudit/graphics3d/shading_demo.zia` for a complete example.
 
 **Ownership:** Material3D holds a reference to Pixels objects (textures, maps). The user must keep Pixels alive while the material references them. If a Pixels object is collected while still set on a material, rendering may crash.
 
@@ -676,17 +686,28 @@ Draw via `Canvas3D.DrawDecal(decal)`.
 
 ## Water3D
 
-Animated water surface with sine-based waves.
+Animated water surface with Gerstner wave simulation, texture support, and environment reflections.
 
 | Member | Description |
 |--------|-------------|
 | `New(width, depth)` | Create water plane |
 | `SetHeight(y)` | World Y position |
-| `SetWaveParams(speed, amplitude, frequency)` | Wave animation parameters |
+| `SetWaveParams(speed, amplitude, frequency)` | Legacy single-wave parameters |
 | `SetColor(r, g, b, a)` | Water tint (0-1 float RGBA) |
+| `SetTexture(pixels)` | Surface texture |
+| `SetNormalMap(pixels)` | Wave normal map for detail |
+| `SetEnvMap(cubemap)` | Environment cubemap for reflections |
+| `SetReflectivity(r)` | Reflection strength [0.0-1.0] |
+| `SetResolution(n)` | Grid resolution (8-256, default 64) |
+| `AddWave(dirX, dirZ, speed, amplitude, wavelength)` | Add a directional Gerstner wave (max 8) |
+| `ClearWaves()` | Remove all Gerstner waves |
 | `Update(dt)` | Advance wave animation |
 
+**Gerstner waves:** When waves are added via `AddWave`, the water uses a sum of directional Gerstner waves instead of the legacy single sine wave. Each wave has a direction, speed, amplitude, and wavelength. Up to 8 waves can be combined for realistic ocean effects. Normals are computed from wave derivatives for correct lighting.
+
 Draw via `Canvas3D.DrawWater(water, camera)`.
+
+See `examples/apiaudit/graphics3d/water_demo.zia` for a complete example.
 
 ---
 
@@ -697,7 +718,8 @@ Heightmap-based terrain with chunked rendering and texture splatting.
 | Member | Description |
 |--------|-------------|
 | `New(widthSegments, depthSegments)` | Create terrain grid |
-| `SetHeightmap(pixels)` | Load height from red channel of Pixels |
+| `SetHeightmap(pixels)` | Load height from R+G channels of Pixels (16-bit) |
+| `GeneratePerlin(noise, scale, octaves, persistence)` | Generate terrain heights from Perlin noise (native fast path) |
 | `SetMaterial(material)` | Set surface material |
 | `SetScale(sx, sy, sz)` | Set terrain world size (Y = height scale) |
 | `SetSplatMap(pixels)` | Set splat map (RGBA Pixels: R/G/B/A = weight for layers 0-3) |
@@ -706,9 +728,22 @@ Heightmap-based terrain with chunked rendering and texture splatting.
 | `GetHeightAt(x, z)` | Query height at world XZ position |
 | `GetNormalAt(x, z)` | Query surface normal at world XZ position |
 
+**Procedural generation:** Two approaches are supported:
+1. **Zia-only:** Use `PerlinNoise.Octave2D()` to fill a `Pixels` buffer, then call `SetHeightmap()`. The heightmap uses 16-bit precision via R (high byte) + G (low byte) channels in `0xRRGGBBAA` pixel format.
+2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6).
+
 **Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling.
 
+**LOD (Level of Detail):** Terrain chunks use 3 resolution levels based on distance from the camera:
+- LOD 0 (full): 16x16 quads per chunk (nearest chunks)
+- LOD 1 (half): 8x8 quads per chunk (mid-range)
+- LOD 2 (quarter): 4x4 quads per chunk (distant)
+
+Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward.
+
 Draw via `Canvas3D.DrawTerrain(terrain)`.
+
+See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_demo.zia` for complete examples.
 
 ---
 

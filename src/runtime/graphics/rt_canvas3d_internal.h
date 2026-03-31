@@ -106,6 +106,8 @@ typedef struct {
     void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
     double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
+    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
 
 //=============================================================================

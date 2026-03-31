@@ -1,0 +1,313 @@
+// =============================================================================
+// Procedural Terrain Demo — Perlin noise heightmap + splat-based textures
+// =============================================================================
+// Demonstrates: PerlinNoise -> Pixels -> Terrain3D.SetHeightmap
+// Features: Procedural heightmap, slope-based splat map, directional light,
+//   fog, FPS camera with WASD + mouse look, terrain-locked Y position.
+// =============================================================================
+
+module ProceduralTerrainDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind Viper.Core;
+
+// ── Constants ──
+var WINDOW_W: Integer = 1280;
+var WINDOW_H: Integer = 720;
+var TERRAIN_SIZE: Integer = 128;
+var TERRAIN_SCALE_X: Float = 1.0;
+var TERRAIN_SCALE_Y: Float = 30.0;
+var TERRAIN_SCALE_Z: Float = 1.0;
+var NOISE_SCALE: Float = 4.0;
+var NOISE_OCTAVES: Integer = 6;
+var NOISE_PERSIST: Float = 0.45;
+var PLAYER_HEIGHT: Float = 2.5;
+var MOVE_SPEED: Float = 12.0;
+var MOUSE_SENS: Float = 0.12;
+
+// ── Procedural Heightmap Generator ──
+func generateHeightmap(width: Integer, depth: Integer, seed: Integer,
+                       scale: Float, octaves: Integer, persistence: Float) -> Pixels {
+    var pn = PerlinNoise.New(seed);
+    var buf = new Pixels(width, depth);
+
+    var z = 0;
+    while (z < depth) {
+        var x = 0;
+        while (x < width) {
+            var nx = (x + 0.0) * scale / (width + 0.0);
+            var nz = (z + 0.0) * scale / (depth + 0.0);
+            var h = PerlinNoise.Octave2D(pn, nx, nz, octaves, persistence);
+
+            // Remap [-1, 1] -> [0, 65535] for 16-bit height
+            var h16 = Convert.NumToInt((h + 1.0) * 32767.5);
+            if (h16 < 0) { h16 = 0; }
+            if (h16 > 65535) { h16 = 65535; }
+
+            // Pack into 0xRRGGBBAA: R=high byte, G=low byte
+            var hi = h16 / 256;
+            var lo = h16 % 256;
+            var color = (hi * 65536 + lo * 256 + 0) * 256 + 255;
+            Pixels.Set(buf, x, z, color);
+
+            x = x + 1;
+        }
+        z = z + 1;
+    }
+    return buf;
+}
+
+// ── Procedural Splat Map (slope-based) ──
+func generateSplatMap(terrain: Terrain3D, width: Integer, depth: Integer,
+                      scaleX: Float, scaleZ: Float) -> Pixels {
+    var buf = new Pixels(width, depth);
+    var z = 0;
+    while (z < depth) {
+        var x = 0;
+        while (x < width) {
+            var wx = (x + 0.0) * scaleX * TERRAIN_SIZE / (width + 0.0);
+            var wz = (z + 0.0) * scaleZ * TERRAIN_SIZE / (depth + 0.0);
+            var normal = Terrain3D.GetNormalAt(terrain, wx, wz);
+            var ny = Vec3.get_Y(normal);
+
+            // Slope classification:
+            //   ny > 0.85  -> grass (R channel)
+            //   ny > 0.6   -> dirt (B channel)
+            //   else       -> rock (G channel)
+            var grass = 0;
+            var rock = 0;
+            var dirt = 0;
+            if (ny > 0.85) {
+                grass = 255;
+            } else {
+                if (ny > 0.6) {
+                    dirt = 255;
+                } else {
+                    rock = 255;
+                }
+            }
+            var color = (grass * 65536 + rock * 256 + dirt) * 256 + 0;
+            Pixels.Set(buf, x, z, color);
+
+            x = x + 1;
+        }
+        z = z + 1;
+    }
+    return buf;
+}
+
+// ── Procedural Layer Textures ──
+func createGrassTexture(size: Integer) -> Pixels {
+    var tex = new Pixels(size, size);
+    var y = 0;
+    while (y < size) {
+        var x = 0;
+        while (x < size) {
+            var noise = ((x * 7 + y * 13 + x * y) % 30) - 15;
+            var r = 60 + noise;
+            var g = 120 + noise;
+            var b = 40 + noise;
+            if (r < 30) { r = 30; }
+            if (r > 100) { r = 100; }
+            if (g < 80) { g = 80; }
+            if (g > 170) { g = 170; }
+            if (b < 20) { b = 20; }
+            if (b > 80) { b = 80; }
+            var color = (r * 65536 + g * 256 + b) * 256 + 255;
+            Pixels.Set(tex, x, y, color);
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+func createRockTexture(size: Integer) -> Pixels {
+    var tex = new Pixels(size, size);
+    var y = 0;
+    while (y < size) {
+        var x = 0;
+        while (x < size) {
+            var noise = ((x * 11 + y * 17 + x * y * 3) % 24) - 12;
+            var gray = 100 + noise;
+            if (gray < 60) { gray = 60; }
+            if (gray > 140) { gray = 140; }
+            var color = (gray * 65536 + gray * 256 + gray) * 256 + 255;
+            Pixels.Set(tex, x, y, color);
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+func createDirtTexture(size: Integer) -> Pixels {
+    var tex = new Pixels(size, size);
+    var y = 0;
+    while (y < size) {
+        var x = 0;
+        while (x < size) {
+            var noise = ((x * 9 + y * 11) % 20) - 10;
+            var r = 110 + noise;
+            var g = 85 + noise;
+            var b = 55 + noise;
+            if (r < 70) { r = 70; }
+            if (r > 150) { r = 150; }
+            if (g < 50) { g = 50; }
+            if (g > 120) { g = 120; }
+            if (b < 30) { b = 30; }
+            if (b > 90) { b = 90; }
+            var color = (r * 65536 + g * 256 + b) * 256 + 255;
+            Pixels.Set(tex, x, y, color);
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return tex;
+}
+
+// ── Entry Point ──
+func start() {
+    Say("=== Procedural Terrain Demo ===");
+    Say("Controls: WASD=Move, Mouse=Look, Shift=Sprint, ESC=Quit");
+    Say("");
+
+    // Create 3D window
+    var canvas = Canvas3D.New("Procedural Terrain", WINDOW_W, WINDOW_H);
+    var aspect = (WINDOW_W + 0.0) / (WINDOW_H + 0.0);
+    var camera = Camera3D.New(65.0, aspect, 0.1, 500.0);
+    Camera3D.FPSInit(camera);
+
+    // Generate terrain
+    // Two methods are available:
+    //   1. Zia-only: PerlinNoise -> Pixels -> SetHeightmap (portable, slower for large grids)
+    //   2. Native:   Terrain3D.GeneratePerlin (fast path, writes directly to float heightmap)
+    // We use the native fast path here.
+    Say("Generating terrain (native Perlin)...");
+    var pn = PerlinNoise.New(42);
+    var terrain = Terrain3D.New(TERRAIN_SIZE, TERRAIN_SIZE);
+    Terrain3D.GeneratePerlin(terrain, pn, NOISE_SCALE, NOISE_OCTAVES, NOISE_PERSIST);
+    Terrain3D.SetScale(terrain, TERRAIN_SCALE_X, TERRAIN_SCALE_Y, TERRAIN_SCALE_Z);
+    Say("  Terrain: " + toString(TERRAIN_SIZE) + "x" + toString(TERRAIN_SIZE));
+
+    // Create terrain material — simple green color for initial test, then splat layers
+    Say("Generating textures...");
+    var terrainMat = Material3D.NewColor(0.35, 0.55, 0.25);
+    Material3D.SetShininess(terrainMat, 4.0);
+    Terrain3D.SetMaterial(terrain, terrainMat);
+
+    // Splat map disabled for initial test — using solid color material
+    // To enable: uncomment below
+    // var splatMap = generateSplatMap(terrain, 128, 128, TERRAIN_SCALE_X, TERRAIN_SCALE_Z);
+    // Terrain3D.SetSplatMap(terrain, splatMap);
+    // var grassTex = createGrassTexture(64);
+    // var rockTex = createRockTexture(64);
+    // var dirtTex = createDirtTexture(64);
+    // Terrain3D.SetLayerTexture(terrain, 0, grassTex);
+    // Terrain3D.SetLayerTexture(terrain, 1, rockTex);
+    // Terrain3D.SetLayerTexture(terrain, 2, dirtTex);
+    // Terrain3D.SetLayerScale(terrain, 0, 8.0);
+    // Terrain3D.SetLayerScale(terrain, 1, 6.0);
+    // Terrain3D.SetLayerScale(terrain, 2, 7.0);
+
+    // Lighting
+    var sunDir = new Vec3(-0.4, -1.0, -0.6);
+    var sunLight = Light3D.NewDirectional(sunDir, 0.9, 0.85, 0.75);
+    Canvas3D.SetLight(canvas, 0, sunLight);
+    Canvas3D.SetAmbient(canvas, 0.25, 0.28, 0.35);
+
+    // Fog
+    Canvas3D.SetFog(canvas, 60.0, 200.0, 0.55, 0.65, 0.8);
+
+    // Set initial camera position (center of terrain, above ground)
+    var startX = TERRAIN_SIZE * TERRAIN_SCALE_X / 2.0;
+    var startZ = TERRAIN_SIZE * TERRAIN_SCALE_Z / 2.0;
+    var startY = Terrain3D.GetHeightAt(terrain, startX, startZ) + PLAYER_HEIGHT;
+    var eye = new Vec3(startX, startY, startZ);
+    var target = new Vec3(startX + 1.0, startY, startZ);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(camera, eye, target, up);
+
+    // Capture mouse
+    Mouse.Capture();
+
+    Say("Ready! Exploring procedural terrain...");
+    Say("");
+
+    // ── Main Loop ──
+    var frameCount = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+
+        // ESC to quit
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+            break;
+        }
+
+        // Delta time
+        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        if (dt > 0.05) { dt = 0.05; }
+        if (dt <= 0.0) { dt = 0.016; }
+
+        // Mouse look
+        var mdx = 1.0 * Mouse.DeltaX();
+        var mdy = 1.0 * Mouse.DeltaY();
+
+        // WASD movement
+        var fwd = 0.0;
+        var right = 0.0;
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+
+        // Sprint
+        var speed = MOVE_SPEED;
+        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { speed = MOVE_SPEED * 2.0; }
+
+        Camera3D.FPSUpdate(camera, mdx * MOUSE_SENS, 0.0 - mdy * MOUSE_SENS,
+                           fwd, right, 0.0, speed, dt);
+
+        // Lock camera to terrain height
+        var pos = Camera3D.get_Position(camera);
+        var px = Vec3.get_X(pos);
+        var pz = Vec3.get_Z(pos);
+
+        // Clamp to terrain bounds
+        if (px < 1.0) { px = 1.0; }
+        if (pz < 1.0) { pz = 1.0; }
+        var maxX = (TERRAIN_SIZE - 2) * TERRAIN_SCALE_X + 0.0;
+        var maxZ = (TERRAIN_SIZE - 2) * TERRAIN_SCALE_Z + 0.0;
+        if (px > maxX) { px = maxX; }
+        if (pz > maxZ) { pz = maxZ; }
+
+        var groundY = Terrain3D.GetHeightAt(terrain, px, pz);
+        var camY = groundY + PLAYER_HEIGHT;
+        var clamped = new Vec3(px, camY, pz);
+        var lookFwd = Camera3D.get_Forward(camera);
+        var lookTarget = Vec3.Add(clamped, lookFwd);
+        Camera3D.LookAt(camera, clamped, lookTarget, new Vec3(0.0, 1.0, 0.0));
+
+        // Render
+        Canvas3D.Clear(canvas, 0.55, 0.65, 0.8);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawTerrain(canvas, terrain);
+        Canvas3D.End(canvas);
+
+        // FPS display (every 60 frames)
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            var fps = Canvas3D.get_Fps(canvas);
+            Say("FPS: " + toString(fps));
+        }
+
+        Canvas3D.Flip(canvas);
+    }
+
+    Mouse.Release();
+    Say("Demo complete.");
+}

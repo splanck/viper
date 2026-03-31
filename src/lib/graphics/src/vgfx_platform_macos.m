@@ -233,6 +233,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
         return;
     }
 
+
     /* Create CGImage from framebuffer (zero-copy via CGDataProvider) */
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGDataProviderRef provider = CGDataProviderCreateWithData(

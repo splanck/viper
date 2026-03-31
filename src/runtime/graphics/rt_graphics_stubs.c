@@ -1364,6 +1364,9 @@ void rt_material3d_set_unlit(void *o, int8_t u) {
     (void)u;
 }
 
+void rt_material3d_set_shading_model(void *o, int64_t m) { (void)o; (void)m; }
+void rt_material3d_set_custom_param(void *o, int64_t i, double v) { (void)o; (void)i; (void)v; }
+
 /// @brief Set the normal map of the material3d.
 void rt_material3d_set_normal_map(void *o, void *p) {
     (void)o;
@@ -2964,6 +2967,26 @@ void *rt_terrain3d_new(int64_t w, int64_t d) {
     return NULL;
 }
 
+/// @brief Generate terrain from Perlin noise (native fast path).
+void rt_terrain3d_generate_perlin(void *t, void *p, double s, int64_t o, double pe) {
+    (void)t;
+    (void)p;
+    (void)s;
+    (void)o;
+    (void)pe;
+}
+
+void rt_terrain3d_set_lod_distances(void *t, double n, double f) {
+    (void)t;
+    (void)n;
+    (void)f;
+}
+
+void rt_terrain3d_set_skirt_depth(void *t, double d) {
+    (void)t;
+    (void)d;
+}
+
 /// @brief Set the heightmap of the terrain3d.
 void rt_terrain3d_set_heightmap(void *t, void *p) {
     (void)t;
@@ -3221,6 +3244,16 @@ void rt_water3d_set_color(void *w, double r, double g, double b, double a) {
     (void)a;
 }
 
+void rt_water3d_set_texture(void *w, void *p) { (void)w; (void)p; }
+void rt_water3d_set_normal_map(void *w, void *p) { (void)w; (void)p; }
+void rt_water3d_set_env_map(void *w, void *c) { (void)w; (void)c; }
+void rt_water3d_set_reflectivity(void *w, double r) { (void)w; (void)r; }
+void rt_water3d_set_resolution(void *w, int64_t r) { (void)w; (void)r; }
+void rt_water3d_add_wave(void *w, double dx, double dz, double s, double a, double wl) {
+    (void)w; (void)dx; (void)dz; (void)s; (void)a; (void)wl;
+}
+void rt_water3d_clear_waves(void *w) { (void)w; }
+
 /// @brief Update the water3d state (called per frame/tick).
 void rt_water3d_update(void *w, double dt) {
     (void)w;
@@ -3233,6 +3266,26 @@ void rt_canvas3d_draw_water(void *c, void *w, void *cam) {
     (void)w;
     (void)cam;
 }
+
+/* Vegetation3D stubs */
+void *rt_vegetation3d_new(void *t) { (void)t; return NULL; }
+void rt_vegetation3d_set_density_map(void *v, void *p) { (void)v; (void)p; }
+void rt_vegetation3d_set_wind_params(void *v, double s, double st, double t) {
+    (void)v; (void)s; (void)st; (void)t;
+}
+void rt_vegetation3d_set_lod_distances(void *v, double n, double f) {
+    (void)v; (void)n; (void)f;
+}
+void rt_vegetation3d_set_blade_size(void *v, double w, double h, double va) {
+    (void)v; (void)w; (void)h; (void)va;
+}
+void rt_vegetation3d_populate(void *v, void *t, int64_t c) {
+    (void)v; (void)t; (void)c;
+}
+void rt_vegetation3d_update(void *v, double dt, double cx, double cy, double cz) {
+    (void)v; (void)dt; (void)cx; (void)cy; (void)cz;
+}
+void rt_canvas3d_draw_vegetation(void *c, void *v) { (void)c; (void)v; }
 
 /* PostFX F5-F7 stubs */
 /// @brief Add the ssao of the postfx3d.

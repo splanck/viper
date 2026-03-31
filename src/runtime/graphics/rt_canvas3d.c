@@ -704,9 +704,9 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     if (!c->backend)
         return;
 
-    /* Show Metal layer for 3D rendering (in case it was hidden for 2D menu) */
-    extern void vgfx3d_show_gpu_layer(void *backend_ctx);
-    vgfx3d_show_gpu_layer(c->backend_ctx);
+    /* Show GPU layer for 3D rendering (in case it was hidden for 2D menu) */
+    if (c->backend->show_gpu_layer)
+        c->backend->show_gpu_layer(c->backend_ctx);
 
     vgfx3d_camera_params_t params;
     mat4_d2f(cam->view, params.view);
@@ -804,6 +804,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.emissive_color[2] = (float)mat->emissive[2];
     dd->cmd.env_map = mat->env_map;
     dd->cmd.reflectivity = (float)mat->reflectivity;
+    dd->cmd.shading_model = mat->shading_model;
+    for (int pi = 0; pi < 8; pi++)
+        dd->cmd.custom_params[pi] = (float)mat->custom_params[pi];
 
     /* Consume pending terrain splat data (if set by terrain draw path) */
     dd->cmd.has_splat = c->pending_has_splat;

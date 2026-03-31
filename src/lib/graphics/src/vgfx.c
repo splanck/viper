@@ -1398,6 +1398,11 @@ int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_info)
     return 1;
 }
 
+void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled) {
+    if (window)
+        window->skip_software_present = enabled ? 1 : 0;
+}
+
 //===----------------------------------------------------------------------===//
 // End of Core Implementation
 //===----------------------------------------------------------------------===//

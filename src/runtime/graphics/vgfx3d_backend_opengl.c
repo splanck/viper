@@ -173,9 +173,11 @@ typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLen
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
+typedef GLenum (*PFNGLGETERRORPROC)(void);
 
 static struct {
     void *lib;
+    PFNGLGETERRORPROC GetError;
     PFNGLCLEARPROC Clear;
     PFNGLCLEARCOLORPROC ClearColor;
     PFNGLCLEARDEPTHPROC ClearDepth;
@@ -251,6 +253,20 @@ static struct {
     PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
 } gl;
+
+/* Debug GL error checking — enabled in debug builds only */
+#ifndef NDEBUG
+static void gl_check_error(const char *file, int line) {
+    if (!gl.GetError)
+        return;
+    GLenum err = gl.GetError();
+    if (err != GL_NO_ERROR)
+        fprintf(stderr, "GL error 0x%04X at %s:%d\n", (unsigned)err, file, line);
+}
+#define GL_CHECK() gl_check_error(__FILE__, __LINE__)
+#else
+#define GL_CHECK() ((void)0)
+#endif
 
 typedef void *GLXContext;
 typedef unsigned long GLXDrawable;
@@ -498,6 +514,7 @@ static int load_gl(void) {
     if (!gl.name)                                                                                   \
         return -1
 
+    LOAD(GetError);
     LOAD(Clear);
     LOAD(ClearColor);
     LOAD(ClearDepth);

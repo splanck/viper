@@ -69,6 +69,8 @@ typedef struct {
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;  /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices; /* 1 when prev_instance_matrices matches instance_count */
+    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
 
 /*==========================================================================
@@ -163,6 +165,12 @@ typedef struct vgfx3d_backend {
      * skips the CPU postfx pass and lets the backend own the final onscreen
      * composite for the supplied snapshot. */
     void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+
+    /* Show/hide GPU layer. Called from Canvas3D.Begin/End to toggle
+     * visibility of the GPU rendering layer (e.g., CAMetalLayer).
+     * NULL = no-op (software backend has no GPU layer). */
+    void (*show_gpu_layer)(void *ctx);
+    void (*hide_gpu_layer)(void *ctx);
 } vgfx3d_backend_t;
 
 /*==========================================================================

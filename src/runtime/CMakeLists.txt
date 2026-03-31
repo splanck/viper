@@ -259,6 +259,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_decal3d.c
         graphics/rt_sprite3d.c
         graphics/rt_water3d.c
+        graphics/rt_vegetation3d.c
         graphics/rt_texatlas3d.c
         graphics/vgfx3d_frustum.c
         graphics/vgfx3d_skinning.c

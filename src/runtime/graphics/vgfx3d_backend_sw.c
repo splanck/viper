@@ -342,6 +342,37 @@ static void compute_lighting(pipe_vert_t *v,
     g += cmd->emissive_color[1];
     b += cmd->emissive_color[2];
 
+    /* Apply shading model post-processing */
+    switch (cmd->shading_model) {
+    case 1: { /* Toon: quantize diffuse to N bands */
+        float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+        r = floorf(r * bands) / bands;
+        g = floorf(g * bands) / bands;
+        b = floorf(b * bands) / bands;
+        break;
+    }
+    case 4: { /* Fresnel: angle-dependent alpha */
+        float ndv = nx * vx + ny * vy + nz * vz;
+        if (ndv < 0.0f) ndv = 0.0f;
+        float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
+        float bias = cmd->custom_params[1];
+        float fresnel = powf(1.0f - ndv, power) + bias;
+        if (fresnel < 0.0f) fresnel = 0.0f;
+        if (fresnel > 1.0f) fresnel = 1.0f;
+        v->color[3] *= fresnel;
+        break;
+    }
+    case 5: { /* Emissive glow: boost emissive by strength */
+        float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+        r += cmd->emissive_color[0] * (strength - 1.0f);
+        g += cmd->emissive_color[1] * (strength - 1.0f);
+        b += cmd->emissive_color[2] * (strength - 1.0f);
+        break;
+    }
+    default: /* 0=BlinnPhong (already computed), 2=PBR (GPU-only), 3=Unlit (handled above) */
+        break;
+    }
+
     v->color[0] = r;
     v->color[1] = g;
     v->color[2] = b;
@@ -792,7 +823,19 @@ static void raster_triangle(uint8_t *pixels,
                                     syi < fog_ctx->shadow_h) {
                                     float sz_map =
                                         fog_ctx->shadow_depth[syi * fog_ctx->shadow_w + sxi];
-                                    if (sd > sz_map + fog_ctx->shadow_bias) {
+                                    /* Slope-scaled shadow bias: steeper angles get more bias */
+                                    float slope_bias = fog_ctx->shadow_bias;
+                                    {
+                                        /* Approximate slope from depth gradient in shadow map */
+                                        float dz_du = 0.0f, dz_dv = 0.0f;
+                                        if (sxi + 1 < fog_ctx->shadow_w)
+                                            dz_du = fog_ctx->shadow_depth[syi * fog_ctx->shadow_w + sxi + 1] - sz_map;
+                                        if (syi + 1 < fog_ctx->shadow_h)
+                                            dz_dv = fog_ctx->shadow_depth[(syi + 1) * fog_ctx->shadow_w + sxi] - sz_map;
+                                        float slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
+                                        slope_bias += fog_ctx->shadow_bias * slope * 4.0f;
+                                    }
+                                    if (sd > sz_map + slope_bias) {
                                         /* In shadow — keep only ambient contribution */
                                         fr *= 0.3f;
                                         fg *= 0.3f;
@@ -1393,24 +1436,17 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .shadow_draw = sw_shadow_draw,
     .shadow_end = sw_shadow_end,
     .present = NULL, /* software renders to CPU framebuffer; vgfx_update handles display */
+    .show_gpu_layer = NULL,
+    .hide_gpu_layer = NULL,
 };
 
-/* Stub for platforms without a GPU layer to hide */
-#if !defined(__APPLE__)
-void vgfx3d_hide_gpu_layer(void *backend_ctx) {
-    (void)backend_ctx;
-}
-
-void vgfx3d_show_gpu_layer(void *backend_ctx) {
-    (void)backend_ctx;
-}
-#endif
-
 const vgfx3d_backend_t *vgfx3d_select_backend(void) {
-    /* Try GPU backend first, fall back to software.
-     * GPU backend init is tested in create_ctx — if it returns NULL,
-     * Canvas3D.New will detect the failure and we don't get here.
-     * So selection just returns the preferred backend for the platform. */
+    /* Check for VIPER_3D_BACKEND=software override */
+    const char *env = getenv("VIPER_3D_BACKEND");
+    if (env && strcmp(env, "software") == 0)
+        return &vgfx3d_software_backend;
+
+    /* Try GPU backend first, fall back to software. */
 #if defined(__APPLE__)
     return &vgfx3d_metal_backend;
 #elif defined(_WIN32)

@@ -536,6 +536,11 @@ int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_fb);
 /// @return Native view handle, or NULL if unavailable
 void *vgfx_get_native_view(vgfx_window_t window);
 
+/// @brief Tell vgfx that a GPU backend owns display for this window.
+/// @details When set, vgfx_platform_present skips the software framebuffer blit
+///          so the GPU backend's presented content is not overwritten.
+void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled);
+
 /// @brief Get the platform-specific native display/connection handle.
 /// @details On Linux, returns the X11 Display* (as void*). Returns NULL
 ///          on macOS, Windows, and mock backends. Used by the OpenGL backend

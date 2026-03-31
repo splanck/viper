@@ -1,0 +1,88 @@
+// =============================================================================
+// Shading Model Demo — Toon, Fresnel, Emissive, and BlinnPhong side-by-side
+// =============================================================================
+
+module ShadingDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Shading Model Demo ===");
+    Say("4 spheres: BlinnPhong, Toon, Fresnel, Emissive");
+    Say("ESC=Quit");
+
+    var canvas = Canvas3D.New("Shading Models", 1280, 720);
+    var camera = Camera3D.New(50.0, 1280.0 / 720.0, 0.1, 100.0);
+    var eye = new Vec3(0.0, 2.0, 10.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    Camera3D.LookAt(camera, eye, target, new Vec3(0.0, 1.0, 0.0));
+
+    var sphere = Mesh3D.NewSphere(1.5, 24);
+
+    // 1. BlinnPhong (default, model=0)
+    var matPhong = Material3D.NewColor(0.8, 0.2, 0.2);
+    Material3D.SetShininess(matPhong, 32.0);
+
+    // 2. Toon (model=1, 4 bands)
+    var matToon = Material3D.NewColor(0.2, 0.6, 0.8);
+    Material3D.SetShininess(matToon, 32.0);
+    Material3D.SetShadingModel(matToon, 1);
+    Material3D.SetCustomParam(matToon, 0, 4.0);
+
+    // 3. Fresnel (model=4, power=3, bias=0.05)
+    var matFresnel = Material3D.NewColor(0.1, 0.1, 0.3);
+    Material3D.SetShininess(matFresnel, 64.0);
+    Material3D.SetShadingModel(matFresnel, 4);
+    Material3D.SetCustomParam(matFresnel, 0, 3.0);
+    Material3D.SetCustomParam(matFresnel, 1, 0.05);
+
+    // 4. Emissive glow (model=5, strength=3)
+    var matEmissive = Material3D.NewColor(0.1, 0.1, 0.1);
+    Material3D.SetEmissiveColor(matEmissive, 0.8, 0.3, 0.0);
+    Material3D.SetShadingModel(matEmissive, 5);
+    Material3D.SetCustomParam(matEmissive, 0, 3.0);
+
+    // Transforms — 4 spheres in a row
+    var xform1 = Mat4.Translate(-5.0, 0.0, 0.0);
+    var xform2 = Mat4.Translate(-1.7, 0.0, 0.0);
+    var xform3 = Mat4.Translate(1.7, 0.0, 0.0);
+    var xform4 = Mat4.Translate(5.0, 0.0, 0.0);
+
+    // Floor
+    var floor = Mesh3D.NewPlane(20.0, 20.0);
+    var floorMat = Material3D.NewColor(0.3, 0.3, 0.3);
+    var floorXform = Mat4.Translate(0.0, -1.5, 0.0);
+
+    // Lighting
+    var sunDir = new Vec3(-0.5, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 1.0);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
+
+    var frameCount = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        Canvas3D.Clear(canvas, 0.08, 0.08, 0.12);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawMesh(canvas, floor, floorXform, floorMat);
+        Canvas3D.DrawMesh(canvas, sphere, xform1, matPhong);
+        Canvas3D.DrawMesh(canvas, sphere, xform2, matToon);
+        Canvas3D.DrawMesh(canvas, sphere, xform3, matFresnel);
+        Canvas3D.DrawMesh(canvas, sphere, xform4, matEmissive);
+        Canvas3D.End(canvas);
+
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            Say("FPS: " + toString(Canvas3D.get_Fps(canvas)));
+        }
+
+        Canvas3D.Flip(canvas);
+    }
+
+    Say("Done.");
+}

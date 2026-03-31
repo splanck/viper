@@ -1,0 +1,48 @@
+// Minimal 3D test — single box with directional light
+module Minimal3DTest;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Minimal 3D Test ===");
+
+    var canvas = Canvas3D.New("3D Test", 800, 600);
+    Say("Backend: " + Canvas3D.get_Backend(canvas));
+    var camera = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    var eye = new Vec3(3.0, 3.0, 3.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(camera, eye, target, up);
+
+    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
+    var mat = Material3D.NewColor(0.2, 0.6, 0.3);
+    var xform = Mat4.Identity();
+
+    var sunDir = new Vec3(-1.0, -1.0, -0.5);
+    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 1.0);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.2, 0.2, 0.2);
+
+    var frame = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        Canvas3D.Clear(canvas, 0.1, 0.1, 0.15);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawMesh(canvas, box, xform, mat);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+
+        frame = frame + 1;
+        if (frame % 60 == 0) {
+            Say("FPS: " + toString(Canvas3D.get_Fps(canvas)));
+        }
+    }
+
+    Say("Done.");
+}

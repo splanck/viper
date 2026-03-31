@@ -90,6 +90,9 @@
 @property(nonatomic, strong) id<MTLTexture> postfxColorTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> postfxPipeline;
 @property(nonatomic, strong) id<MTLLibrary> postfxLibrary;
+/* Offscreen rendering: render to this texture, readback to vgfx framebuffer */
+@property(nonatomic, strong) id<MTLTexture> offscreenColor;
+@property(nonatomic, assign) vgfx_window_t vgfxWin; /* for framebuffer readback */
 @end
 
 @implementation VGFXMetalContext
@@ -172,6 +175,8 @@ static NSString *metal_shader_source =
      "    int hasEmissiveMap;\n"
      "    int hasSplat;\n"
      "    float4 splatScales;\n"
+     "    int shadingModel;\n"
+     "    float customParams[8];\n"
      "};\n"
      "\n"
      "vertex VertexOut vertex_main(\n"
@@ -349,6 +354,21 @@ static NSString *metal_shader_source =
      "0.0, 1.0);\n"
      "        result = mix(result, scene.fogColor.rgb, fogFactor);\n"
      "    }\n"
+     "    /* Shading model post-processing */\n"
+     "    if (material.shadingModel == 1) {\n"
+     "        float bands = material.customParams[0] > 0.5 ? material.customParams[0] : 4.0;\n"
+     "        result = floor(result * bands) / bands;\n"
+     "    } else if (material.shadingModel == 4) {\n"
+     "        float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
+     "        float ndv = max(dot(N, V), 0.0);\n"
+     "        float power = material.customParams[0] > 0.1 ? material.customParams[0] : 3.0;\n"
+     "        float bias = material.customParams[1];\n"
+     "        float fresnel = pow(1.0 - ndv, power) + bias;\n"
+     "        texAlpha *= clamp(fresnel, 0.0, 1.0);\n"
+     "    } else if (material.shadingModel == 5) {\n"
+     "        float strength = material.customParams[0] > 0.0 ? material.customParams[0] : 2.0;\n"
+     "        result += emissive * (strength - 1.0);\n"
+     "    }\n"
      "    return float4(result, material.alpha * texAlpha);\n"
      "}\n";
 
@@ -409,6 +429,8 @@ typedef struct
     int32_t hasEmissiveMap;
     int32_t hasSplat;
     float splatScales[4];
+    int32_t shadingModel;
+    float customParams[8];
 } mtl_per_material_t;
 
 //=============================================================================
@@ -485,17 +507,21 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         ctx.width = w;
         ctx.height = h;
 
-        view.wantsLayer = YES;
-        CAMetalLayer *layer = [CAMetalLayer layer];
-        layer.device = device;
-        layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-        layer.framebufferOnly = YES;
-        layer.drawableSize = CGSizeMake((CGFloat)w, (CGFloat)h);
-        layer.frame = view.bounds;
-        layer.opaque = NO; /* Allow software renderer to show through when Metal isn't active */
-        /* Add as sublayer on top of existing content (don't replace view.layer) */
-        [view.layer addSublayer:layer];
-        ctx.metalLayer = layer;
+        /* Offscreen rendering approach: render to a GPU texture, then read back
+         * to the vgfx software framebuffer for display via the existing drawRect:
+         * CGImage path. This avoids CAMetalLayer compositing issues on macOS 26+. */
+        {
+            MTLTextureDescriptor *td =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                  width:(NSUInteger)w
+                                                                 height:(NSUInteger)h
+                                                              mipmapped:NO];
+            td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+            td.storageMode = MTLStorageModeManaged;
+            ctx.offscreenColor = [device newTextureWithDescriptor:td];
+        }
+        ctx.metalLayer = nil; /* no CAMetalLayer — offscreen only */
+        ctx.vgfxWin = win;
 
         ctx.commandQueue = [device newCommandQueue];
         if (!ctx.commandQueue)
@@ -789,21 +815,13 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
         }
         else
         {
-            /* On-screen path: reuse existing drawable across multi-pass frames.
-             * Only acquire a new one for the first on-screen pass. */
-            if (!ctx.drawable)
-            {
-                ctx.drawable = [ctx.metalLayer nextDrawable];
-                if (!ctx.drawable)
-                    return;
-            }
-
-            rp.colorAttachments[0].texture = ctx.drawable.texture;
+            /* On-screen path: render to offscreen texture, read back to
+             * vgfx software framebuffer in end_frame/present. */
+            rp.colorAttachments[0].texture = ctx.offscreenColor;
             rp.colorAttachments[0].loadAction = MTLLoadActionClear;
             rp.colorAttachments[0].storeAction = MTLStoreActionStore;
-            /* Clear with alpha=0 so software framebuffer (skybox) shows through */
             rp.colorAttachments[0].clearColor =
-                MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 0.0);
+                MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
             rp.depthAttachment.texture = ctx.depthTexture;
             rp.depthAttachment.loadAction = MTLLoadActionClear;
             rp.depthAttachment.storeAction = MTLStoreActionDontCare;
@@ -826,8 +844,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
             }
             else
             {
-                vw = (double)ctx.drawable.texture.width;
-                vh = (double)ctx.drawable.texture.height;
+                vw = (double)ctx.width;
+                vh = (double)ctx.height;
             }
             MTLViewport viewport = {0, 0, vw, vh, 0.0, 1.0};
             [ctx.encoder setViewport:viewport];
@@ -1031,6 +1049,8 @@ static void metal_submit_draw(void *ctx_ptr,
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
         }
+        mat.shadingModel = cmd->shading_model;
+        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Bind default textures to all 10 slots (shader requires valid textures) */
@@ -1178,26 +1198,37 @@ static void metal_present(void *backend_ctx)
     @autoreleasepool
     {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (ctx.cmdBuf && ctx.drawable)
+        if (ctx.cmdBuf)
         {
-            /* Present + commit the single command buffer that holds all
-             * on-screen render passes encoded during this frame. */
-            [ctx.cmdBuf presentDrawable:ctx.drawable];
+            /* Commit GPU work and wait for completion */
             [ctx.cmdBuf commit];
             [ctx.cmdBuf waitUntilCompleted];
-            ctx.frameBuffers = nil; /* release per-frame buffers after GPU is done */
+
+            /* Read back offscreen texture to vgfx software framebuffer (BGRA → RGBA) */
+            if (ctx.offscreenColor && ctx.vgfxWin) {
+                vgfx_framebuffer_t fb;
+                if (vgfx_get_framebuffer(ctx.vgfxWin, &fb)) {
+                    int32_t tw = (int32_t)ctx.offscreenColor.width;
+                    int32_t th = (int32_t)ctx.offscreenColor.height;
+                    int32_t fw = fb.width < tw ? fb.width : tw;
+                    int32_t fh = fb.height < th ? fb.height : th;
+                    /* Read GPU texture → CPU (BGRA format from Metal) */
+                    uint8_t *dst = fb.pixels;
+                    [ctx.offscreenColor getBytes:dst
+                                      bytesPerRow:(NSUInteger)(fw * 4)
+                                       fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)fw, (NSUInteger)fh)
+                                      mipmapLevel:0];
+                    /* BGRA → RGBA in-place */
+                    for (int32_t i = 0; i < fw * fh; i++) {
+                        uint8_t tmp = dst[i * 4];
+                        dst[i * 4] = dst[i * 4 + 2];
+                        dst[i * 4 + 2] = tmp;
+                    }
+                }
+            }
+
+            ctx.frameBuffers = nil;
             ctx.cmdBuf = nil;
-            ctx.drawable = nil;
-        }
-        else if (ctx.drawable)
-        {
-            /* Edge case: cmdBuf was already committed (e.g., RTT-only frame
-             * followed by Flip without an on-screen pass). Present via a
-             * fresh command buffer. */
-            id<MTLCommandBuffer> cb = [ctx.commandQueue commandBuffer];
-            [cb presentDrawable:ctx.drawable];
-            [cb commit];
-            ctx.drawable = nil;
         }
     }
 }
@@ -1533,12 +1564,99 @@ typedef struct
     float cgBright, cgContrast, cgSat;
     int32_t vignetteEnabled;
     float vigRadius, vigSoftness;
+    /* Extended effects (parity with D3D11) */
+    int32_t dofEnabled;
+    float dofFocusDist, dofAperture, dofMaxBlur;
+    int32_t ssaoEnabled;
+    float ssaoRadius, ssaoIntensity;
+    int32_t ssaoSamples;
+    int32_t motionBlurEnabled;
+    float motionBlurIntensity;
+    int32_t motionBlurSamples;
 } mtl_postfx_params_t;
 
-/* Called from rt_canvas3d_flip via metal_present when PostFX is active */
+/// @brief Metal PostFX presentation: render fullscreen quad with PostFX shader.
+/// Copies the scene (already rendered to postfxColorTexture) to the drawable
+/// with bloom, tonemap, FXAA, color grading, and vignette effects applied.
+static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot_t *postfx)
+{
+    if (!backend_ctx || !postfx)
+        return;
+    @autoreleasepool
+    {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
+        if (!ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.drawable)
+            return;
 
-/* Called from rt_rendertarget3d.c to hide the Metal layer during software RTT */
-void vgfx3d_hide_gpu_layer(void *backend_ctx)
+        /* Create a new render pass targeting the drawable for the final composite */
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        rp.colorAttachments[0].texture = ctx.drawable.texture;
+        rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+        /* End the current scene encoder if still active */
+        if (ctx.encoder)
+        {
+            [ctx.encoder endEncoding];
+            ctx.encoder = nil;
+        }
+
+        id<MTLRenderCommandEncoder> pfxEncoder =
+            [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+        if (!pfxEncoder)
+            return;
+
+        [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
+
+        /* Bind the scene texture and sampler */
+        [pfxEncoder setFragmentTexture:ctx.postfxColorTexture atIndex:0];
+
+        /* Create a simple linear sampler */
+        MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
+        sd.minFilter = MTLSamplerMinMagFilterLinear;
+        sd.magFilter = MTLSamplerMinMagFilterLinear;
+        id<MTLSamplerState> sampler = [ctx.device newSamplerStateWithDescriptor:sd];
+        [pfxEncoder setFragmentSamplerState:sampler atIndex:0];
+
+        /* Fill PostFX uniform params from snapshot */
+        mtl_postfx_params_t params;
+        memset(&params, 0, sizeof(params));
+        params.bloomEnabled = postfx->bloom_enabled ? 1 : 0;
+        params.bloomThreshold = postfx->bloom_threshold;
+        params.bloomStrength = postfx->bloom_intensity;
+        params.tonemapMode = (int32_t)postfx->tonemap_mode;
+        params.tonemapExposure = postfx->tonemap_exposure;
+        params.fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;
+        params.colorGradeEnabled = postfx->color_grade_enabled ? 1 : 0;
+        params.cgBright = postfx->cg_brightness;
+        params.cgContrast = postfx->cg_contrast;
+        params.cgSat = postfx->cg_saturation;
+        params.vignetteEnabled = postfx->vignette_enabled ? 1 : 0;
+        params.vigRadius = postfx->vignette_radius;
+        params.vigSoftness = postfx->vignette_softness;
+        params.dofEnabled = postfx->dof_enabled ? 1 : 0;
+        params.dofFocusDist = postfx->dof_focus_distance;
+        params.dofAperture = postfx->dof_aperture;
+        params.dofMaxBlur = postfx->dof_max_blur;
+        params.ssaoEnabled = postfx->ssao_enabled ? 1 : 0;
+        params.ssaoRadius = postfx->ssao_radius;
+        params.ssaoIntensity = postfx->ssao_intensity;
+        params.ssaoSamples = postfx->ssao_samples;
+        params.motionBlurEnabled = postfx->motion_blur_enabled ? 1 : 0;
+        params.motionBlurIntensity = postfx->motion_blur_intensity;
+        params.motionBlurSamples = postfx->motion_blur_samples;
+        [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
+
+        /* Draw fullscreen quad as triangle strip (4 vertices, no VBO needed) */
+        [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                       vertexStart:0
+                       vertexCount:4];
+        [pfxEncoder endEncoding];
+    }
+}
+
+/* Hide the Metal layer during software RTT or 2D mode */
+static void metal_hide_gpu_layer(void *backend_ctx)
 {
     if (!backend_ctx)
         return;
@@ -1550,7 +1668,7 @@ void vgfx3d_hide_gpu_layer(void *backend_ctx)
     }
 }
 
-void vgfx3d_show_gpu_layer(void *backend_ctx)
+static void metal_show_gpu_layer(void *backend_ctx)
 {
     if (!backend_ctx)
         return;
@@ -1576,6 +1694,9 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .shadow_end = metal_shadow_end,
     .submit_draw_instanced = metal_submit_draw_instanced,
     .present = metal_present,
+    .present_postfx = metal_present_postfx,
+    .show_gpu_layer = metal_show_gpu_layer,
+    .hide_gpu_layer = metal_hide_gpu_layer,
 };
 
 #endif /* __APPLE__ && VIPER_ENABLE_GRAPHICS */

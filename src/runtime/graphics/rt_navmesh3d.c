@@ -391,10 +391,63 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
 
         path = rt_path3d_new();
         rt_path3d_add_point(path, from_v);
-        for (int32_t i = 0; i < count; i++) {
-            float *cen = nm->triangles[seq[i]].centroid;
+
+        /* Simple string-pulling: find portals between adjacent triangles and
+         * walk the funnel to produce smooth waypoints. If portal extraction
+         * fails for any edge, fall back to the centroid for that segment. */
+        if (count >= 2) {
+            float apex[3];
+            apex[0] = rt_vec3_x(from_v);
+            apex[1] = rt_vec3_y(from_v);
+            apex[2] = rt_vec3_z(from_v);
+
+            for (int32_t i = 0; i < count - 1; i++) {
+                int32_t ti = seq[i];
+                int32_t tn = seq[i + 1];
+                /* Find the shared edge (portal) between consecutive triangles */
+                nav_triangle_t *ta = &nm->triangles[ti];
+                int portal_found = 0;
+                for (int e = 0; e < 3; e++) {
+                    if (ta->neighbors[e] == tn) {
+                        /* Shared edge vertices: v[e] and v[(e+1)%3] */
+                        int32_t vi0 = ta->v[e];
+                        int32_t vi1 = ta->v[(e + 1) % 3];
+                        float *p0 = nm->vertices[vi0].position;
+                        float *p1 = nm->vertices[vi1].position;
+                        /* Use the midpoint of the portal as a waypoint.
+                         * A full funnel algorithm would track left/right boundaries
+                         * and only emit waypoints at funnel constrictions. For now,
+                         * the midpoint produces much smoother paths than centroids. */
+                        float mx = (p0[0] + p1[0]) * 0.5f;
+                        float my = (p0[1] + p1[1]) * 0.5f;
+                        float mz = (p0[2] + p1[2]) * 0.5f;
+                        /* Only add waypoint if it's far enough from the last one
+                         * (avoids redundant collinear points) */
+                        float dx = mx - apex[0], dy = my - apex[1], dz = mz - apex[2];
+                        if (dx * dx + dy * dy + dz * dz > 0.01f) {
+                            rt_path3d_add_point(path, rt_vec3_new(mx, my, mz));
+                            apex[0] = mx;
+                            apex[1] = my;
+                            apex[2] = mz;
+                        }
+                        portal_found = 1;
+                        break;
+                    }
+                }
+                if (!portal_found) {
+                    /* Fallback to centroid if shared edge not found */
+                    float *cen = nm->triangles[tn].centroid;
+                    rt_path3d_add_point(path, rt_vec3_new(cen[0], cen[1], cen[2]));
+                    apex[0] = cen[0];
+                    apex[1] = cen[1];
+                    apex[2] = cen[2];
+                }
+            }
+        } else if (count == 1) {
+            float *cen = nm->triangles[seq[0]].centroid;
             rt_path3d_add_point(path, rt_vec3_new(cen[0], cen[1], cen[2]));
         }
+
         rt_path3d_add_point(path, to_v);
         free(seq);
     }

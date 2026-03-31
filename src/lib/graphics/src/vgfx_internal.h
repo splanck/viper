@@ -118,6 +118,11 @@ struct vgfx_window {
     /// @brief Row stride in bytes (always width * 4 for contiguous rows).
     int32_t stride;
 
+    /// @brief When 1, vgfx_platform_present skips the software framebuffer blit.
+    /// @details Set by GPU backends (Metal, D3D11, OpenGL) to prevent the software
+    ///          framebuffer CGImage from being drawn on top of GPU-rendered content.
+    int8_t skip_software_present;
+
     //===------------------------------------------------------------------===//
     // Event Queue (Lock-Free SPSC Ring Buffer)
     //===------------------------------------------------------------------===//

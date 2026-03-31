@@ -1,0 +1,112 @@
+// =============================================================================
+// Terrain LOD Demo — Frustum culling + multi-resolution chunks + skirts
+// =============================================================================
+
+module TerrainLODDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind Viper.Core;
+
+var WINDOW_W: Integer = 1280;
+var WINDOW_H: Integer = 720;
+var TERRAIN_SIZE: Integer = 256;
+var TERRAIN_SCALE_X: Float = 1.5;
+var TERRAIN_SCALE_Y: Float = 40.0;
+var TERRAIN_SCALE_Z: Float = 1.5;
+var PLAYER_HEIGHT: Float = 3.0;
+var MOVE_SPEED: Float = 20.0;
+var MOUSE_SENS: Float = 0.12;
+
+func start() {
+    Say("=== Terrain LOD Demo ===");
+    Say("Controls: WASD=Move, Mouse=Look, Shift=Sprint, ESC=Quit");
+    Say("");
+
+    var canvas = Canvas3D.New("Terrain LOD Demo", WINDOW_W, WINDOW_H);
+    var aspect = (WINDOW_W + 0.0) / (WINDOW_H + 0.0);
+    var camera = Camera3D.New(65.0, aspect, 0.1, 800.0);
+    Camera3D.FPSInit(camera);
+
+    // Generate large terrain
+    Say("Generating 256x256 terrain...");
+    var pn = PerlinNoise.New(12345);
+    var terrain = Terrain3D.New(TERRAIN_SIZE, TERRAIN_SIZE);
+    Terrain3D.GeneratePerlin(terrain, pn, 5.0, 6, 0.45);
+    Terrain3D.SetScale(terrain, TERRAIN_SCALE_X, TERRAIN_SCALE_Y, TERRAIN_SCALE_Z);
+
+    // Configure LOD distances
+    Terrain3D.SetLODDistances(terrain, 80.0, 180.0);
+    Terrain3D.SetSkirtDepth(terrain, 3.0);
+    Say("  LOD: full<80, half<180, quarter beyond");
+
+    // Material
+    var terrainMat = Material3D.NewColor(0.35, 0.55, 0.25);
+    Material3D.SetShininess(terrainMat, 4.0);
+    Terrain3D.SetMaterial(terrain, terrainMat);
+
+    // Lighting
+    var sunDir = new Vec3(-0.4, -1.0, -0.6);
+    var sunLight = Light3D.NewDirectional(sunDir, 0.9, 0.85, 0.75);
+    Canvas3D.SetLight(canvas, 0, sunLight);
+    Canvas3D.SetAmbient(canvas, 0.25, 0.28, 0.35);
+
+    // Fog
+    Canvas3D.SetFog(canvas, 100.0, 350.0, 0.55, 0.65, 0.8);
+
+    // Start position — ground level
+    var startX = TERRAIN_SIZE * TERRAIN_SCALE_X / 2.0;
+    var startZ = TERRAIN_SIZE * TERRAIN_SCALE_Z / 2.0;
+    var startY = Terrain3D.GetHeightAt(terrain, startX, startZ) + PLAYER_HEIGHT;
+    Camera3D.LookAt(camera, new Vec3(startX, startY, startZ),
+                    new Vec3(startX + 1.0, startY, startZ),
+                    new Vec3(0.0, 1.0, 0.0));
+
+    Mouse.Capture();
+    Say("Ready!");
+
+    var frameCount = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        if (dt > 0.05) { dt = 0.05; }
+        if (dt <= 0.0) { dt = 0.016; }
+
+        var mdx = 1.0 * Mouse.DeltaX();
+        var mdy = 1.0 * Mouse.DeltaY();
+        var fwd = 0.0;
+        var right = 0.0;
+        var updown = 0.0;
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_SPACE())) { updown = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { updown = -1.0; }
+        var speed = MOVE_SPEED;
+
+        Camera3D.FPSUpdate(camera, mdx * MOUSE_SENS, 0.0 - mdy * MOUSE_SENS,
+                           fwd, right, updown, speed, dt);
+
+        // Render
+        Canvas3D.Clear(canvas, 0.55, 0.65, 0.8);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawTerrain(canvas, terrain);
+        Canvas3D.End(canvas);
+
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            Say("FPS: " + toString(Canvas3D.get_Fps(canvas)));
+        }
+
+        Canvas3D.Flip(canvas);
+    }
+
+    Mouse.Release();
+    Say("Done.");
+}

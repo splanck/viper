@@ -109,6 +109,20 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     ((rt_material3d *)obj)->unlit = unlit;
 }
 
+void rt_material3d_set_shading_model(void *obj, int64_t model) {
+    if (!obj)
+        return;
+    if (model < 0 || model > 5)
+        model = 0;
+    ((rt_material3d *)obj)->shading_model = (int32_t)model;
+}
+
+void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
+    if (!obj || index < 0 || index >= 8)
+        return;
+    ((rt_material3d *)obj)->custom_params[index] = value;
+}
+
 /// @brief Set the alpha of the material3d.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)

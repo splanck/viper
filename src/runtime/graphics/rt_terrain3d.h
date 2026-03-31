@@ -26,6 +26,8 @@ extern "C" {
 #endif
 
 void *rt_terrain3d_new(int64_t width, int64_t depth);
+void rt_terrain3d_generate_perlin(void *terrain, void *perlin, double scale,
+                                   int64_t octaves, double persistence);
 void rt_terrain3d_set_heightmap(void *terrain, void *pixels);
 void rt_terrain3d_set_material(void *terrain, void *material);
 void rt_terrain3d_set_scale(void *terrain, double sx, double sy, double sz);
@@ -34,6 +36,8 @@ void rt_terrain3d_set_layer_texture(void *terrain, int64_t layer, void *pixels);
 void rt_terrain3d_set_layer_scale(void *terrain, int64_t layer, double scale);
 double rt_terrain3d_get_height_at(void *terrain, double x, double z);
 void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
+void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_dist);
+void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
 void rt_canvas3d_draw_terrain(void *canvas, void *terrain);
 
 #ifdef __cplusplus

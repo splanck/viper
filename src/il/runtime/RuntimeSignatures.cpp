@@ -200,6 +200,7 @@
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
 #include "rt_transform3d.h"
+#include "rt_vegetation3d.h"
 #include "rt_water3d.h"
 // New network classes
 #include "rt_animstate.h"

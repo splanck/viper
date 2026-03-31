@@ -1,0 +1,107 @@
+// =============================================================================
+// Water Demo — Gerstner waves + terrain + lighting
+// =============================================================================
+
+module WaterDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+bind Viper.Core;
+
+func start() {
+    Say("=== Water Demo ===");
+    Say("Controls: WASD=Move, Mouse=Look, Space=Up, Shift=Down, ESC=Quit");
+
+    var canvas = Canvas3D.New("Water Demo", 1280, 720);
+    var camera = Camera3D.New(65.0, 1280.0 / 720.0, 0.1, 500.0);
+    Camera3D.FPSInit(camera);
+
+    // Terrain (island)
+    var pn = PerlinNoise.New(777);
+    var terrain = Terrain3D.New(128, 128);
+    Terrain3D.GeneratePerlin(terrain, pn, 3.0, 5, 0.5);
+    Terrain3D.SetScale(terrain, 2.0, 25.0, 2.0);
+    var tMat = Material3D.NewColor(0.3, 0.5, 0.2);
+    Material3D.SetShininess(tMat, 4.0);
+    Terrain3D.SetMaterial(terrain, tMat);
+
+    // Water plane (larger than terrain, at mid-height)
+    var water = Water3D.New(300.0, 300.0);
+    Water3D.SetHeight(water, 10.0);
+    Water3D.SetColor(water, 0.05, 0.15, 0.35, 0.7);
+
+    // Add 3 Gerstner waves for realistic ocean feel
+    // AddWave(dirX, dirZ, speed, amplitude, wavelength)
+    Water3D.AddWave(water, 1.0, 0.3, 2.0, 0.4, 15.0);
+    Water3D.AddWave(water, 0.5, 1.0, 1.5, 0.25, 10.0);
+    Water3D.AddWave(water, -0.3, 0.7, 3.0, 0.15, 7.0);
+
+    // Lighting
+    var sunDir = new Vec3(-0.3, -1.0, -0.5);
+    var sun = Light3D.NewDirectional(sunDir, 1.0, 0.95, 0.85);
+    Canvas3D.SetLight(canvas, 0, sun);
+    Canvas3D.SetAmbient(canvas, 0.2, 0.25, 0.35);
+
+    // Fog
+    Canvas3D.SetFog(canvas, 80.0, 250.0, 0.5, 0.6, 0.75);
+
+    // Camera start — on the island looking toward water
+    var startX = 128.0;
+    var startZ = 128.0;
+    var startY = Terrain3D.GetHeightAt(terrain, startX, startZ) + 3.0;
+    Camera3D.LookAt(camera, new Vec3(startX, startY, startZ),
+                    new Vec3(startX + 5.0, startY - 1.0, startZ + 5.0),
+                    new Vec3(0.0, 1.0, 0.0));
+
+    Mouse.Capture();
+    Say("Ready!");
+
+    var frameCount = 0;
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        if (dt > 0.05) { dt = 0.05; }
+        if (dt <= 0.0) { dt = 0.016; }
+
+        // Movement (free flight)
+        var mdx = 1.0 * Mouse.DeltaX();
+        var mdy = 1.0 * Mouse.DeltaY();
+        var fwd = 0.0;
+        var right = 0.0;
+        var updown = 0.0;
+        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_SPACE())) { updown = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { updown = -1.0; }
+
+        Camera3D.FPSUpdate(camera, mdx * 0.12, 0.0 - mdy * 0.12,
+                           fwd, right, updown, 15.0, dt);
+
+        // Update water animation
+        Water3D.Update(water, dt);
+
+        // Render
+        Canvas3D.Clear(canvas, 0.5, 0.6, 0.75);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawTerrain(canvas, terrain);
+        Canvas3D.DrawWater(canvas, water, camera);
+        Canvas3D.End(canvas);
+
+        frameCount = frameCount + 1;
+        if (frameCount % 120 == 0) {
+            Say("FPS: " + toString(Canvas3D.get_Fps(canvas)));
+        }
+
+        Canvas3D.Flip(canvas);
+    }
+
+    Mouse.Release();
+    Say("Done.");
+}
