@@ -267,47 +267,98 @@ static const float mp3_synth_d[512] = {
 // decode using a sequential code-length based method.
 //===----------------------------------------------------------------------===//
 
-/// @brief Huffman table properties: {max_xy_value, linbits_extension}
-/// Tables 0-31. Table indices map to table_select values from side info.
-/// linbits: additional bits appended to values >= 15.
+/// @brief Huffman table descriptor.
 typedef struct {
-    int linbits;
-    int max_val; // max x or y value without linbits
+    int linbits;     // extra bits for values >= 15
+    int max_val;     // max x or y before linbits
+    int tree_size;   // number of nodes in binary tree (0 = table 0, use max_val)
 } mp3_huff_table_info_t;
 
+/// @brief Huffman binary tree node.
+/// value >= 0: leaf node, x = value >> 4, y = value & 0xF.
+/// value < 0: branch, left child at index (-value), right child at (-value + 1).
+typedef struct {
+    int16_t value; // leaf (>=0) or branch index (<0)
+} mp3_huff_node_t;
+
+// Table 1: max=1, 4 pairs (0,0)..(1,1)
+static const mp3_huff_node_t mp3_htree_1[] = {
+    {-1},       // 0: root → left=1, right=2
+    {0x00},     // 1: (0,0) — code "1"
+    {-3},       // 2: → left=3, right=4
+    {0x01},     // 3: (0,1)
+    {-5},       // 4: → left=5, right=6
+    {0x10},     // 5: (1,0)
+    {0x11},     // 6: (1,1)
+};
+
+// Table 2: max=2, 9 pairs
+static const mp3_huff_node_t mp3_htree_2[] = {
+    {-1}, {-3}, {0x00},             // root → (left branch, right=0,0)
+    {-5}, {-7},                     // mid branch
+    {0x01}, {0x10},                 // (0,1), (1,0)
+    {-9}, {0x11},                   // (1,1)
+    {-11}, {-13},
+    {0x02}, {0x20},                 // (0,2), (2,0)
+    {0x12}, {-15},
+    {0x21}, {0x22},                 // (2,1), (2,2)
+};
+
+// Table 5: max=3, 16 pairs
+static const mp3_huff_node_t mp3_htree_5[] = {
+    {-1}, {0x00}, {-3},
+    {-5}, {-7},
+    {0x01}, {0x10},
+    {-9}, {-11},
+    {0x11}, {0x02},
+    {0x20}, {-13},
+    {-15}, {0x21},
+    {0x12}, {-17},
+    {0x22}, {-19},
+    {-21}, {0x03},
+    {0x30}, {-23},
+    {0x31}, {0x13},
+    {-25}, {0x32},
+    {0x23}, {0x33},
+};
+
+// Tables 7-15 and 16-31 use larger trees. For a practical implementation,
+// we use a unified decode function that combines tree-walk with the
+// max_val/linbits approach for large tables.
+
 static const mp3_huff_table_info_t mp3_huff_info[32] = {
-    {0, 0},   // table 0: no entries
-    {0, 1},   // table 1: max=1
-    {0, 2},   // table 2: max=2
-    {0, 2},   // table 3: max=2
-    {0, 0},   // table 4: unused
-    {0, 3},   // table 5: max=3
-    {0, 3},   // table 6: max=3
-    {0, 5},   // table 7: max=5
-    {0, 5},   // table 8: max=5
-    {0, 5},   // table 9: max=5
-    {0, 7},   // table 10: max=7
-    {0, 7},   // table 11: max=7
-    {0, 7},   // table 12: max=7
-    {0, 15},  // table 13: max=15
-    {0, 0},   // table 14: unused
-    {0, 15},  // table 15: max=15
-    {1, 15},  // table 16: linbits=1
-    {2, 15},  // table 17: linbits=2
-    {3, 15},  // table 18: linbits=3
-    {4, 15},  // table 19: linbits=4
-    {6, 15},  // table 20: linbits=6
-    {8, 15},  // table 21: linbits=8
-    {10, 15}, // table 22: linbits=10
-    {13, 15}, // table 23: linbits=13
-    {4, 15},  // table 24: linbits=4
-    {5, 15},  // table 25: linbits=5
-    {6, 15},  // table 26: linbits=6
-    {7, 15},  // table 27: linbits=7
-    {8, 15},  // table 28: linbits=8
-    {9, 15},  // table 29: linbits=9
-    {11, 15}, // table 30: linbits=11
-    {13, 15}, // table 31: linbits=13
+    {0, 0, 0},    // table 0: zero (no decode)
+    {0, 1, 7},    // table 1
+    {0, 2, 16},   // table 2
+    {0, 2, 16},   // table 3 (same structure as 2)
+    {0, 0, 0},    // table 4: unused
+    {0, 3, 28},   // table 5
+    {0, 3, 28},   // table 6 (same structure as 5)
+    {0, 5, 0},    // table 7
+    {0, 5, 0},    // table 8
+    {0, 5, 0},    // table 9
+    {0, 7, 0},    // table 10
+    {0, 7, 0},    // table 11
+    {0, 7, 0},    // table 12
+    {0, 15, 0},   // table 13
+    {0, 0, 0},    // table 14: unused
+    {0, 15, 0},   // table 15
+    {1, 15, 0},   // table 16
+    {2, 15, 0},   // table 17
+    {3, 15, 0},   // table 18
+    {4, 15, 0},   // table 19
+    {6, 15, 0},   // table 20
+    {8, 15, 0},   // table 21
+    {10, 15, 0},  // table 22
+    {13, 15, 0},  // table 23
+    {4, 15, 0},   // table 24
+    {5, 15, 0},   // table 25
+    {6, 15, 0},   // table 26
+    {7, 15, 0},   // table 27
+    {8, 15, 0},   // table 28
+    {9, 15, 0},   // table 29
+    {11, 15, 0},  // table 30
+    {13, 15, 0},  // table 31
 };
 
 //===----------------------------------------------------------------------===//

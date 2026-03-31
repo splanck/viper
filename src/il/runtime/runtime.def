@@ -1337,6 +1337,7 @@ RT_FUNC(PixelsResize,    rt_pixels_resize,     "Viper.Graphics.Pixels.Resize",  
 RT_FUNC(PixelsLoadPng,   rt_pixels_load_png,   "Viper.Graphics.Pixels.LoadPng",   "obj(str)")
 RT_FUNC(PixelsLoadJpeg,  rt_pixels_load_jpeg,  "Viper.Graphics.Pixels.LoadJpeg",  "obj(str)")
 RT_FUNC(PixelsLoadGif,   rt_pixels_load_gif,   "Viper.Graphics.Pixels.LoadGif",   "obj(str)")
+RT_FUNC(PixelsLoad,      rt_pixels_load,       "Viper.Graphics.Pixels.Load",      "obj(str)")
 RT_FUNC(PixelsSavePng,         rt_pixels_save_png,            "Viper.Graphics.Pixels.SavePng",          "i64(obj,str)")
 RT_FUNC(PixelsSetRGB,          rt_pixels_set_rgb,             "Viper.Graphics.Pixels.SetRGB",           "void(obj,i64,i64,i64)")
 RT_FUNC(PixelsGetRGB,          rt_pixels_get_rgb,             "Viper.Graphics.Pixels.GetRGB",           "i64(obj,i64,i64)")
@@ -6055,6 +6056,7 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("LoadPng", "obj(str)", PixelsLoadPng)
     RT_METHOD("LoadJpeg", "obj(str)", PixelsLoadJpeg)
     RT_METHOD("LoadGif", "obj(str)", PixelsLoadGif)
+    RT_METHOD("Load", "obj(str)", PixelsLoad)
 RT_CLASS_END()
 
 // Viper.Graphics.Sprite - animated sprite

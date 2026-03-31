@@ -49,6 +49,7 @@
 #define WAV_FMT_ID 0x20746D66  /* "fmt " in little-endian */
 #define WAV_DATA_ID 0x61746164 /* "data" in little-endian */
 #define WAV_FORMAT_PCM 1
+#define WAV_FORMAT_IEEE_FLOAT 3
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -69,24 +70,73 @@ static inline int16_t u8_to_s16(uint8_t sample) {
     return (int16_t)((sample - 128) << 8);
 }
 
+/// @brief Convert 24-bit signed little-endian sample to 16-bit signed.
+static inline int16_t s24_to_s16(const uint8_t *p) {
+    int32_t val = (int32_t)p[0] | ((int32_t)p[1] << 8) | ((int32_t)p[2] << 16);
+    if (val & 0x800000)
+        val |= (int32_t)0xFF000000; // sign extend
+    return (int16_t)(val >> 8);
+}
+
+/// @brief Convert 32-bit IEEE float sample to 16-bit signed.
+static inline int16_t f32_to_s16(const uint8_t *p) {
+    float val;
+    memcpy(&val, p, sizeof(float));
+    if (val > 1.0f)
+        val = 1.0f;
+    if (val < -1.0f)
+        val = -1.0f;
+    return (int16_t)(val * 32767.0f);
+}
+
 /// @brief Convert one PCM frame from raw bytes to stereo 16-bit signed samples.
-/// @details Handles both 8-bit unsigned and 16-bit signed PCM, and mono/stereo
-///          sources. Mono sources are duplicated to both output channels.
+/// @details Handles 8/16/24/32-bit PCM and 32-bit float, mono and stereo.
+///          Mono sources are duplicated to both output channels.
 /// @param src Pointer to raw PCM data for one frame.
-/// @param bits_per_sample Bits per sample (8 or 16).
+/// @param bits_per_sample Bits per sample (8, 16, 24, or 32).
 /// @param channels Number of channels in source (1 or 2).
+/// @param audio_format 1=PCM, 3=IEEE float.
 /// @param left Output: left channel sample.
 /// @param right Output: right channel sample.
-static inline void decode_pcm_frame(
-    const uint8_t *src, int32_t bits_per_sample, int32_t channels, int16_t *left, int16_t *right) {
-    if (bits_per_sample == 8) {
-        *left = u8_to_s16(src[0]);
-        *right = (channels == 2) ? u8_to_s16(src[1]) : *left;
-    } else /* 16-bit */
-    {
-        *left = (int16_t)read_u16_le(src);
-        *right = (channels == 2) ? (int16_t)read_u16_le(src + 2) : *left;
+static inline void decode_pcm_frame(const uint8_t *src, int32_t bits_per_sample,
+                                     int32_t channels, int32_t audio_format,
+                                     int16_t *left, int16_t *right) {
+    int bytes_per_sample = bits_per_sample / 8;
+    switch (bits_per_sample) {
+        case 8:
+            *left = u8_to_s16(src[0]);
+            *right = (channels == 2) ? u8_to_s16(src[1]) : *left;
+            break;
+        case 16:
+            *left = (int16_t)read_u16_le(src);
+            *right = (channels == 2) ? (int16_t)read_u16_le(src + 2) : *left;
+            break;
+        case 24:
+            *left = s24_to_s16(src);
+            *right = (channels == 2) ? s24_to_s16(src + 3) : *left;
+            break;
+        case 32:
+            if (audio_format == WAV_FORMAT_IEEE_FLOAT) {
+                *left = f32_to_s16(src);
+                *right = (channels == 2) ? f32_to_s16(src + 4) : *left;
+            } else {
+                // 32-bit integer PCM: take upper 16 bits
+                int32_t val;
+                memcpy(&val, src, 4);
+                *left = (int16_t)(val >> 16);
+                if (channels == 2) {
+                    memcpy(&val, src + 4, 4);
+                    *right = (int16_t)(val >> 16);
+                } else {
+                    *right = *left;
+                }
+            }
+            break;
+        default:
+            *left = *right = 0;
+            break;
     }
+    (void)bytes_per_sample;
 }
 
 //===----------------------------------------------------------------------===//
@@ -98,8 +148,9 @@ typedef struct {
     int32_t sample_rate;
     int32_t channels;
     int32_t bits_per_sample;
-    int64_t data_offset; /* Byte offset to PCM data */
-    int64_t data_size;   /* Size of PCM data in bytes */
+    int32_t audio_format; /* 1=PCM, 3=IEEE float */
+    int64_t data_offset;  /* Byte offset to PCM data */
+    int64_t data_size;    /* Size of PCM data in bytes */
 } vaud_wav_info;
 
 /// @brief Parse WAV header from memory buffer.
@@ -143,11 +194,12 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             const uint8_t *fmt = data + offset + 8;
             uint16_t audio_format = read_u16_le(fmt);
 
-            if (audio_format != WAV_FORMAT_PCM) {
-                vaud_set_error(VAUD_ERR_FORMAT, "Only PCM format is supported");
+            if (audio_format != WAV_FORMAT_PCM && audio_format != WAV_FORMAT_IEEE_FLOAT) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Only PCM and IEEE float formats supported");
                 return 0;
             }
 
+            info->audio_format = (int32_t)audio_format;
             info->channels = read_u16_le(fmt + 2);
             info->sample_rate = (int32_t)read_u32_le(fmt + 4);
             info->bits_per_sample = read_u16_le(fmt + 14);
@@ -163,9 +215,17 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
                 return 0;
             }
 
-            if (info->bits_per_sample != 8 && info->bits_per_sample != 16) {
-                vaud_set_error(VAUD_ERR_FORMAT, "Only 8-bit and 16-bit PCM supported");
-                return 0;
+            if (audio_format == WAV_FORMAT_IEEE_FLOAT) {
+                if (info->bits_per_sample != 32) {
+                    vaud_set_error(VAUD_ERR_FORMAT, "Only 32-bit IEEE float supported");
+                    return 0;
+                }
+            } else {
+                if (info->bits_per_sample != 8 && info->bits_per_sample != 16 &&
+                    info->bits_per_sample != 24 && info->bits_per_sample != 32) {
+                    vaud_set_error(VAUD_ERR_FORMAT, "Only 8/16/24/32-bit PCM supported");
+                    return 0;
+                }
             }
 
             found_fmt = 1;
@@ -227,7 +287,7 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
 
     for (int64_t i = 0; i < frame_count; i++) {
         int16_t left, right;
-        decode_pcm_frame(src, info->bits_per_sample, info->channels, &left, &right);
+        decode_pcm_frame(src, info->bits_per_sample, info->channels, info->audio_format, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;
@@ -408,7 +468,7 @@ int32_t vaud_wav_read_frames(
 
     for (int32_t i = 0; i < frames_read; i++) {
         int16_t left, right;
-        decode_pcm_frame(src, bits_per_sample, channels, &left, &right);
+        decode_pcm_frame(src, bits_per_sample, channels, WAV_FORMAT_PCM, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;

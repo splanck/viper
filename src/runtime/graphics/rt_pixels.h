@@ -131,6 +131,12 @@ void *rt_pixels_load_jpeg(void *path);
 /// @note For animated GIFs, use Sprite.FromFile() which loads all frames.
 void *rt_pixels_load_gif(void *path);
 
+/// @brief Load an image from a file path, auto-detecting format from magic bytes.
+/// @details Supports PNG, JPEG, BMP, and GIF. Returns first frame for animated GIFs.
+/// @param path File path (runtime string).
+/// @return New Pixels object, or NULL on failure.
+void *rt_pixels_load(void *path);
+
 /// @brief Save a Pixels buffer to a PNG file.
 /// @param pixels Pixels object to save.
 /// @param path File path (runtime string).

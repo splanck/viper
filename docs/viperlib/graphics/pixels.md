@@ -63,6 +63,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | `LoadPng(path)`                   | `Pixels(String)`                  | Load from a PNG file. Returns null on failure          |
 | `LoadJpeg(path)`                  | `Pixels(String)`                  | Load from a JPEG file. Returns null on failure         |
 | `LoadGif(path)`                   | `Pixels(String)`                  | Load first frame from a GIF file. Returns null on failure |
+| `Load(path)`                      | `Pixels(String)`                  | Auto-detect format (PNG/JPEG/BMP/GIF) and load. Returns null on failure |
 
 ### Drawing Primitives
 

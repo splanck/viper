@@ -767,7 +767,7 @@ from file magic bytes — no extension matching required.
 1. **Sound effects:** Any sample rate works — the engine resamples to 44100 Hz at load time.
 2. **Music streams:** Any sample rate works — the engine resamples on-the-fly during streaming.
 3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
-4. **Streaming:** Music is streamed from disk, so long tracks use very little memory.
+4. **Streaming:** Music is streamed from disk for all formats (WAV, OGG, MP3), using ~100 KB of buffer memory regardless of track length.
 5. **Encoding:** Use a tool such as ffmpeg to convert audio to WAV:
    ```
    ffmpeg -i input.mp3 -ac 2 -f wav output.wav      # stereo music

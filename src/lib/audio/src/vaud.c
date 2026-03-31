@@ -24,9 +24,35 @@
 /// @brief Core implementation of the ViperAUD API.
 
 #include "vaud_internal.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Forward declarations for runtime codec APIs (avoids cross-layer #include)
+typedef struct ogg_reader ogg_reader_t;
+typedef struct vorbis_decoder vorbis_decoder_t;
+typedef struct mp3_stream mp3_stream_t;
+
+ogg_reader_t *ogg_reader_open_file(const char *path);
+void ogg_reader_free(ogg_reader_t *r);
+void ogg_reader_rewind(ogg_reader_t *r);
+int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len);
+
+vorbis_decoder_t *vorbis_decoder_new(void);
+void vorbis_decoder_free(vorbis_decoder_t *dec);
+int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len, int num);
+int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
+                         int16_t **out_pcm, int *out_samples);
+int vorbis_get_sample_rate(const vorbis_decoder_t *dec);
+int vorbis_get_channels(const vorbis_decoder_t *dec);
+
+mp3_stream_t *mp3_stream_open(const char *filepath);
+int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm);
+int mp3_stream_sample_rate(const mp3_stream_t *stream);
+int mp3_stream_channels(const mp3_stream_t *stream);
+void mp3_stream_rewind(mp3_stream_t *stream);
+void mp3_stream_free(mp3_stream_t *stream);
 
 //===----------------------------------------------------------------------===//
 // Thread-Local Error State
@@ -475,30 +501,173 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id) {
 }
 
 //===----------------------------------------------------------------------===//
+// Compressed stream read helpers
+//===----------------------------------------------------------------------===//
+
+/// @brief Read decoded PCM frames from an OGG Vorbis stream.
+static int32_t ogg_stream_read_frames(struct vaud_music *music, int16_t *output, int32_t max_frames) {
+    if (!music->ogg_reader || !music->vorbis_dec)
+        return 0;
+    int32_t written = 0;
+
+    // Drain leftover frames from previous decode
+    if (music->leftover_frames > 0) {
+        int32_t n = (music->leftover_frames < max_frames) ? music->leftover_frames : max_frames;
+        memcpy(output, music->leftover_buf, (size_t)n * 2 * sizeof(int16_t));
+        music->leftover_frames -= n;
+        if (music->leftover_frames > 0)
+            memmove(music->leftover_buf, music->leftover_buf + n * 2,
+                    (size_t)music->leftover_frames * 2 * sizeof(int16_t));
+        written += n;
+    }
+
+    // Decode packets until we have enough frames
+    while (written < max_frames) {
+        const uint8_t *pkt;
+        size_t pkt_len;
+        if (!ogg_reader_next_packet((ogg_reader_t *)music->ogg_reader, &pkt, &pkt_len))
+            break;
+
+        int16_t *pcm = NULL;
+        int samples = 0;
+        if (vorbis_decode_packet((vorbis_decoder_t *)music->vorbis_dec, pkt, pkt_len,
+                                  &pcm, &samples) != 0 || samples <= 0 || !pcm)
+            continue;
+
+        int32_t space = max_frames - written;
+        int32_t to_copy = (samples < space) ? samples : space;
+        int ch = vorbis_get_channels((vorbis_decoder_t *)music->vorbis_dec);
+        if (ch < 1) ch = 2;
+        memcpy(output + written * 2, pcm, (size_t)to_copy * (size_t)ch * sizeof(int16_t));
+        written += to_copy;
+
+        // Save excess to leftover
+        if (samples > to_copy) {
+            int excess = samples - to_copy;
+            if (excess > music->leftover_cap) {
+                free(music->leftover_buf);
+                music->leftover_cap = excess + 256;
+                music->leftover_buf = (int16_t *)malloc(
+                    (size_t)music->leftover_cap * 2 * sizeof(int16_t));
+            }
+            if (music->leftover_buf) {
+                memcpy(music->leftover_buf, pcm + to_copy * ch,
+                       (size_t)excess * (size_t)ch * sizeof(int16_t));
+                music->leftover_frames = excess;
+            }
+        }
+    }
+    return written;
+}
+
+/// @brief Read decoded PCM frames from an MP3 stream.
+static int32_t mp3_stream_read_frames_music(struct vaud_music *music, int16_t *output, int32_t max_frames) {
+    if (!music->mp3_stream)
+        return 0;
+    int32_t written = 0;
+
+    // Drain leftover
+    if (music->leftover_frames > 0) {
+        int32_t n = (music->leftover_frames < max_frames) ? music->leftover_frames : max_frames;
+        memcpy(output, music->leftover_buf, (size_t)n * 2 * sizeof(int16_t));
+        music->leftover_frames -= n;
+        if (music->leftover_frames > 0)
+            memmove(music->leftover_buf, music->leftover_buf + n * 2,
+                    (size_t)music->leftover_frames * 2 * sizeof(int16_t));
+        written += n;
+    }
+
+    while (written < max_frames) {
+        int16_t *pcm = NULL;
+        int samples = mp3_stream_decode_frame((mp3_stream_t *)music->mp3_stream, &pcm);
+        if (samples <= 0 || !pcm)
+            break;
+
+        int ch = mp3_stream_channels((mp3_stream_t *)music->mp3_stream);
+        if (ch < 1) ch = 2;
+        int32_t space = max_frames - written;
+        int32_t to_copy = (samples < space) ? samples : space;
+        memcpy(output + written * 2, pcm, (size_t)to_copy * (size_t)ch * sizeof(int16_t));
+        written += to_copy;
+
+        if (samples > to_copy) {
+            int excess = samples - to_copy;
+            if (excess > music->leftover_cap) {
+                free(music->leftover_buf);
+                music->leftover_cap = excess + 256;
+                music->leftover_buf = (int16_t *)malloc(
+                    (size_t)music->leftover_cap * 2 * sizeof(int16_t));
+            }
+            if (music->leftover_buf) {
+                memcpy(music->leftover_buf, pcm + to_copy * ch,
+                       (size_t)excess * (size_t)ch * sizeof(int16_t));
+                music->leftover_frames = excess;
+            }
+        }
+    }
+    return written;
+}
+
+//===----------------------------------------------------------------------===//
 // Music Buffer Fill (with resampling)
 //===----------------------------------------------------------------------===//
 
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
-    if (!music || !music->file || buf_idx < 0 || buf_idx >= VAUD_MUSIC_BUFFER_COUNT)
+    if (!music || buf_idx < 0 || buf_idx >= VAUD_MUSIC_BUFFER_COUNT)
         return 0;
 
     int16_t *out = music->buffers[buf_idx];
 
+    // Compressed format streaming (OGG/MP3) — decode to temp, resample if needed
+    if (music->format == 1 || music->format == 2) {
+        int32_t raw_frames;
+        if (music->sample_rate == VAUD_SAMPLE_RATE) {
+            // Decode directly into output buffer (no resampling)
+            raw_frames = (music->format == 1)
+                ? ogg_stream_read_frames(music, out, VAUD_MUSIC_BUFFER_FRAMES)
+                : mp3_stream_read_frames_music(music, out, VAUD_MUSIC_BUFFER_FRAMES);
+            return raw_frames;
+        }
+        // Need resampling: decode into temp buffer, then resample into output
+        int64_t raw_needed =
+            (int64_t)VAUD_MUSIC_BUFFER_FRAMES * music->sample_rate / VAUD_SAMPLE_RATE + 2;
+        if (!music->resample_buf || music->resample_cap < raw_needed) {
+            free(music->resample_buf);
+            music->resample_cap = raw_needed + 64;
+            music->resample_buf = (int16_t *)malloc(
+                (size_t)music->resample_cap * 2 * sizeof(int16_t));
+            if (!music->resample_buf) { music->resample_cap = 0; return 0; }
+        }
+        raw_frames = (music->format == 1)
+            ? ogg_stream_read_frames(music, music->resample_buf, (int32_t)raw_needed)
+            : mp3_stream_read_frames_music(music, music->resample_buf, (int32_t)raw_needed);
+        if (raw_frames <= 0)
+            return 0;
+        int64_t out_frames = vaud_resample_output_frames(
+            raw_frames, music->sample_rate, VAUD_SAMPLE_RATE);
+        if (out_frames > VAUD_MUSIC_BUFFER_FRAMES)
+            out_frames = VAUD_MUSIC_BUFFER_FRAMES;
+        vaud_resample(music->resample_buf, raw_frames, music->sample_rate,
+                      out, out_frames, VAUD_SAMPLE_RATE, 2);
+        return (int32_t)out_frames;
+    }
+
+    // WAV path (format == 0)
+    if (!music->file)
+        return 0;
+
     if (music->sample_rate == VAUD_SAMPLE_RATE) {
-        // No resampling needed — read directly into the output buffer
         return vaud_wav_read_frames(
             music->file, out, VAUD_MUSIC_BUFFER_FRAMES, music->channels, music->bits_per_sample);
     }
 
-    // Resampling path: compute how many source frames to read to produce
-    // VAUD_MUSIC_BUFFER_FRAMES output frames.
+    // WAV resampling path
     int64_t raw_needed =
         (int64_t)VAUD_MUSIC_BUFFER_FRAMES * music->sample_rate / VAUD_SAMPLE_RATE + 2;
 
-    // Ensure the temp buffer is large enough
     if (!music->resample_buf || music->resample_cap < raw_needed) {
         free(music->resample_buf);
-        music->resample_cap = raw_needed + 64; // slight overalloc
+        music->resample_cap = raw_needed + 64;
         music->resample_buf =
             (int16_t *)malloc((size_t)music->resample_cap * 2 * sizeof(int16_t));
         if (!music->resample_buf) {
@@ -604,6 +773,117 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     return music;
 }
 
+/// @brief Helper: allocate music struct with buffers and add to context.
+static vaud_music_t music_alloc_and_register(vaud_context_t ctx) {
+    vaud_music_t music = (vaud_music_t)calloc(1, sizeof(struct vaud_music));
+    if (!music)
+        return NULL;
+
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {
+        music->buffers[i] = (int16_t *)malloc(VAUD_MUSIC_BUFFER_FRAMES * 2 * sizeof(int16_t));
+        if (!music->buffers[i]) {
+            for (int32_t j = 0; j < i; j++)
+                free(music->buffers[j]);
+            free(music);
+            return NULL;
+        }
+        music->buffer_frames[i] = 0;
+    }
+
+    music->ctx = ctx;
+    music->state = VAUD_MUSIC_STOPPED;
+    music->volume = VAUD_DEFAULT_MUSIC_VOLUME;
+
+    vaud_mutex_lock(&ctx->mutex);
+    if (ctx->music_count < VAUD_MAX_MUSIC) {
+        ctx->active_music[ctx->music_count++] = music;
+        vaud_mutex_unlock(&ctx->mutex);
+    } else {
+        vaud_mutex_unlock(&ctx->mutex);
+        for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
+            free(music->buffers[i]);
+        free(music);
+        return NULL;
+    }
+    return music;
+}
+
+vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
+    if (!ctx || !path)
+        return NULL;
+
+    ogg_reader_t *reader = ogg_reader_open_file(path);
+    if (!reader)
+        return NULL;
+
+    vorbis_decoder_t *dec = vorbis_decoder_new();
+    if (!dec) {
+        ogg_reader_free(reader);
+        return NULL;
+    }
+
+    // Parse 3 Vorbis header packets
+    for (int i = 0; i < 3; i++) {
+        const uint8_t *pkt;
+        size_t pkt_len;
+        if (!ogg_reader_next_packet(reader, &pkt, &pkt_len) ||
+            vorbis_decode_header(dec, pkt, pkt_len, i) != 0) {
+            vorbis_decoder_free(dec);
+            ogg_reader_free(reader);
+            return NULL;
+        }
+    }
+
+    vaud_music_t music = music_alloc_and_register(ctx);
+    if (!music) {
+        vorbis_decoder_free(dec);
+        ogg_reader_free(reader);
+        return NULL;
+    }
+
+    music->format = 1;
+    music->ogg_reader = reader;
+    music->vorbis_dec = dec;
+    music->sample_rate = vorbis_get_sample_rate(dec);
+    music->channels = vorbis_get_channels(dec);
+    music->filepath = strdup(path);
+
+    // Estimate duration (0 if unknown — would need last-page granule scan)
+    music->frame_count = 0;
+
+    // Pre-fill first buffer
+    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    return music;
+}
+
+vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
+    if (!ctx || !path)
+        return NULL;
+
+    mp3_stream_t *stream = mp3_stream_open(path);
+    if (!stream)
+        return NULL;
+
+    vaud_music_t music = music_alloc_and_register(ctx);
+    if (!music) {
+        mp3_stream_free(stream);
+        return NULL;
+    }
+
+    music->format = 2;
+    music->mp3_stream = stream;
+    music->sample_rate = mp3_stream_sample_rate(stream);
+    music->channels = mp3_stream_channels(stream);
+    music->filepath = strdup(path);
+
+    // Estimate frame count from file size (approximate for VBR)
+    music->frame_count = 0;
+
+    // Pre-fill first buffer
+    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    return music;
+}
+
 void vaud_free_music(vaud_music_t music) {
     if (!music)
         return;
@@ -631,6 +911,16 @@ void vaud_free_music(vaud_music_t music) {
     if (music->file) {
         fclose((FILE *)music->file);
     }
+
+    /* Free compressed format decoders */
+    if (music->ogg_reader)
+        ogg_reader_free((ogg_reader_t *)music->ogg_reader);
+    if (music->vorbis_dec)
+        vorbis_decoder_free((vorbis_decoder_t *)music->vorbis_dec);
+    if (music->mp3_stream)
+        mp3_stream_free((mp3_stream_t *)music->mp3_stream);
+    free(music->filepath);
+    free(music->leftover_buf);
 
     /* Free buffers */
     for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {

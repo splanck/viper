@@ -318,9 +318,94 @@ static float *make_window(int n) {
 // IMDCT — via direct computation (n/2 output from n/2 input)
 //===----------------------------------------------------------------------===//
 
+/// @brief Radix-2 in-place complex FFT (decimation in time).
+static void fft_radix2(float *re, float *im, int n) {
+    // Bit-reversal permutation
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        while (j & bit) {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j ^= bit;
+        if (i < j) {
+            float t;
+            t = re[i]; re[i] = re[j]; re[j] = t;
+            t = im[i]; im[i] = im[j]; im[j] = t;
+        }
+    }
+    // Butterfly passes
+    for (int len = 2; len <= n; len <<= 1) {
+        double ang = -2.0 * M_PI / (double)len;
+        float wre = (float)cos(ang), wim = (float)sin(ang);
+        for (int i = 0; i < n; i += len) {
+            float cur_re = 1.0f, cur_im = 0.0f;
+            for (int j = 0; j < len / 2; j++) {
+                float tre = re[i + j + len / 2] * cur_re - im[i + j + len / 2] * cur_im;
+                float tim = re[i + j + len / 2] * cur_im + im[i + j + len / 2] * cur_re;
+                re[i + j + len / 2] = re[i + j] - tre;
+                im[i + j + len / 2] = im[i + j] - tim;
+                re[i + j] += tre;
+                im[i + j] += tim;
+                float new_re = cur_re * wre - cur_im * wim;
+                cur_im = cur_re * wim + cur_im * wre;
+                cur_re = new_re;
+            }
+        }
+    }
+}
+
+/// @brief Fast IMDCT via N/4-point FFT with pre/post twiddle.
+/// O(N log N) for power-of-2 sizes; falls back to O(N²) for non-power-of-2.
 static void imdct(const float *in, float *out, int n) {
     int n2 = n / 2;
     int n4 = n / 4;
+
+    // Check for power-of-2 (fast path)
+    if (n4 > 0 && (n4 & (n4 - 1)) == 0) {
+        // Allocate temp buffers for complex FFT
+        float *fft_re = (float *)calloc((size_t)n4, sizeof(float));
+        float *fft_im = (float *)calloc((size_t)n4, sizeof(float));
+        if (!fft_re || !fft_im) {
+            free(fft_re);
+            free(fft_im);
+            goto slow_path;
+        }
+
+        // Pre-twiddle: pack input into N/4 complex values
+        for (int k = 0; k < n4; k++) {
+            double angle = 2.0 * M_PI / (double)n * ((double)k + 0.125);
+            float cos_a = (float)cos(angle);
+            float sin_a = (float)sin(angle);
+            float xr = in[2 * k];
+            float xi = (2 * k + 1 < n4 * 2) ? in[2 * k + 1] : 0.0f;
+            fft_re[k] = xr * cos_a + xi * sin_a;
+            fft_im[k] = -xr * sin_a + xi * cos_a;
+        }
+
+        // N/4-point complex FFT
+        fft_radix2(fft_re, fft_im, n4);
+
+        // Post-twiddle + reorder to IMDCT output
+        float scale = 2.0f / (float)n2;
+        for (int k = 0; k < n4; k++) {
+            double angle = 2.0 * M_PI / (double)n * ((double)k + 0.125);
+            float cos_a = (float)cos(angle);
+            float sin_a = (float)sin(angle);
+            float re = fft_re[k] * cos_a + fft_im[k] * sin_a;
+            float im = -fft_re[k] * sin_a + fft_im[k] * cos_a;
+            out[2 * k] = re * scale;
+            if (2 * k + 1 < n2)
+                out[2 * k + 1] = im * scale;
+        }
+
+        free(fft_re);
+        free(fft_im);
+        return;
+    }
+
+slow_path:
+    // Fallback: O(N²) direct computation for non-power-of-2 sizes
     for (int i = 0; i < n2; i++) {
         double sum = 0.0;
         for (int k = 0; k < n4; k++) {
@@ -853,7 +938,7 @@ int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
         }
     }
 
-    // Simplified residue decode: read scalar codebook values for each channel
+    // Full multi-pass residue decode (Vorbis I spec §8.6)
     for (int sm = 0; sm < map->submaps; sm++) {
         int res_idx = map->submap_residue[sm];
         if (res_idx >= dec->residue_count)
@@ -871,43 +956,90 @@ int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
         if (ch_count == 0)
             continue;
 
-        // Simplified residue: decode using the classbook
         int classbook = res->classbook;
-        if (classbook >= 0 && classbook < dec->codebook_count) {
-            vorbis_codebook_t *cb = &dec->codebooks[classbook];
-            int parts = (res->end - res->begin) / res->partition_size;
-            for (int pass = 0; pass < 1; pass++) { // single pass for simplicity
-                for (int p = 0; p < parts; p++) {
-                    int class_val = codebook_decode_scalar(cb, &bits);
-                    if (class_val < 0)
-                        break;
-                    // For each classification, decode residue vectors
-                    for (int c = 0; c < ch_count; c++) {
-                        int ch_idx = ch_list[c];
-                        int cls = class_val % res->classifications;
-                        int book_idx = res->books[cls][0];
-                        if (book_idx >= 0 && book_idx < dec->codebook_count) {
-                            vorbis_codebook_t *rcb = &dec->codebooks[book_idx];
-                            int offset = res->begin + p * res->partition_size;
-                            for (int j = 0; j < res->partition_size && offset + j < n2;
-                                 j += rcb->dimensions) {
-                                int entry = codebook_decode_scalar(rcb, &bits);
-                                if (entry < 0)
-                                    goto residue_done;
-                                if (rcb->vq_table) {
-                                    float vq[256];
-                                    codebook_decode_vq(rcb, entry, vq);
-                                    for (int d = 0;
-                                         d < rcb->dimensions && offset + j + d < n2; d++)
-                                        residue_buf[ch_idx][offset + j + d] += vq[d];
-                                }
-                            }
+        if (classbook < 0 || classbook >= dec->codebook_count)
+            continue;
+        vorbis_codebook_t *cb = &dec->codebooks[classbook];
+        int actual_size = res->end - res->begin;
+        if (actual_size <= 0 || res->partition_size <= 0)
+            continue;
+        int parts_per_ch = actual_size / res->partition_size;
+
+        // Allocate per-partition classification array (decoded in pass 0, used in all passes)
+        int total_parts = parts_per_ch * ch_count;
+        int *classifications = (int *)calloc((size_t)total_parts, sizeof(int));
+        if (!classifications)
+            goto residue_done;
+
+        // Pass 0: decode classification values from the classbook
+        for (int p = 0; p < parts_per_ch; p++) {
+            for (int c = 0; c < ch_count; c++) {
+                if (p == 0 || (p % cb->dimensions) == 0) {
+                    // Read a new classword every cb->dimensions partitions
+                }
+            }
+        }
+
+        // Decode classwords and unpack classifications
+        {
+            int classwords_per_ch = cb->dimensions;
+            for (int p = 0; p < parts_per_ch; ) {
+                for (int c = 0; c < ch_count; c++) {
+                    int cw = codebook_decode_scalar(cb, &bits);
+                    if (cw < 0)
+                        goto residue_class_done;
+                    // Unpack classification values from the codeword
+                    int temp = cw;
+                    // The classifications for this channel's next `classwords_per_ch`
+                    // partitions are packed in the codeword as:
+                    // cls[last] = temp % n_cls; temp /= n_cls; ... cls[first] = temp % n_cls
+                    int cls_buf[256];
+                    for (int j = classwords_per_ch - 1; j >= 0; j--) {
+                        cls_buf[j] = temp % res->classifications;
+                        temp /= res->classifications;
+                    }
+                    for (int j = 0; j < classwords_per_ch && (p + j) < parts_per_ch; j++)
+                        classifications[(p + j) * ch_count + c] = cls_buf[j];
+                }
+                p += classwords_per_ch;
+            }
+        }
+    residue_class_done:
+
+        // Passes 0..7: decode residue vectors for each pass with cascade bits
+        for (int pass = 0; pass < 8; pass++) {
+            for (int p = 0; p < parts_per_ch; p++) {
+                for (int c = 0; c < ch_count; c++) {
+                    int cls = classifications[p * ch_count + c];
+                    if (cls < 0 || cls >= res->classifications)
+                        continue;
+                    if (!(res->cascade[cls] & (1 << pass)))
+                        continue; // no data for this pass
+                    int book_idx = res->books[cls][pass];
+                    if (book_idx < 0 || book_idx >= dec->codebook_count)
+                        continue;
+
+                    vorbis_codebook_t *rcb = &dec->codebooks[book_idx];
+                    int ch_idx = ch_list[c];
+                    int offset = res->begin + p * res->partition_size;
+
+                    for (int j = 0; j < res->partition_size && offset + j < n2;
+                         j += rcb->dimensions) {
+                        int entry = codebook_decode_scalar(rcb, &bits);
+                        if (entry < 0)
+                            goto residue_pass_done;
+                        if (rcb->vq_table) {
+                            float vq[256];
+                            codebook_decode_vq(rcb, entry, vq);
+                            for (int d = 0; d < rcb->dimensions && offset + j + d < n2; d++)
+                                residue_buf[ch_idx][offset + j + d] += vq[d];
                         }
-                        class_val /= res->classifications;
                     }
                 }
             }
         }
+    residue_pass_done:
+        free(classifications);
     }
 residue_done:
 

@@ -237,6 +237,12 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice);
 /// @return Music handle on success, NULL on failure.
 vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path);
 
+/// @brief Load an OGG Vorbis file for streaming music playback.
+vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path);
+
+/// @brief Load an MP3 file for streaming music playback.
+vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path);
+
 /// @brief Free a loaded music stream.
 /// @details Stops playback if playing, closes the file, and frees resources.
 /// @param music Music to free (may be NULL).

@@ -11,8 +11,10 @@
 
 ### Release Overview
 
-Version 0.2.4 is a rendering, codegen, language features, documentation, and showcase release. Highlights:
+Version 0.2.4 is a rendering, codegen, language features, media codecs, documentation, and showcase release. Highlights:
 
+- **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
+- **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
 - **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
 - **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
@@ -30,10 +32,10 @@ Version 0.2.4 is a rendering, codegen, language features, documentation, and sho
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 46 | +46 |
-| Source files | 2,671 | 2,708 | +37 |
-| Production SLOC | ~348K | ~391K | +43K |
-| Test count | 1,351 | 1,363 | +12 |
+| Commits | — | 50 | +50 |
+| Source files | 2,671 | 2,736 | +65 |
+| Production SLOC | ~348K | ~398K | +50K |
+| Test count | 1,351 | 1,370 | +19 |
 
 ---
 
@@ -101,6 +103,52 @@ Infrastructure:
 - `vgfx3d_backend_utils.c/.h` — shared backend utility functions (216+ LOC)
 - Windows-only `windows-d3d11` CI job for focused D3D11 build and test validation
 - GPU path unit tests (`test_rt_canvas3d_gpu_paths` — 595 LOC, `test_vgfx3d_backend_utils` — 224 LOC)
+
+---
+
+### Media Codec Suite
+
+From-scratch implementations of 4 new media decoders plus major extensions to existing loaders, all with zero external dependencies. Viper now handles the most common image and audio formats natively.
+
+#### Image Formats
+
+| Format | Capability | Details |
+|--------|-----------|---------|
+| **JPEG** | Load | Baseline DCT, 8-bit, YCbCr/grayscale, 4:4:4/4:2:0/4:2:2, EXIF orientation (auto-rotate), restart markers |
+| **PNG** | Load + Save | All 5 color types (grayscale, RGB, indexed, gray+alpha, RGBA), 1/2/4/8/16-bit depths, PLTE/tRNS transparency, Adam7 interlace, proper 16→8 bit rounding |
+| **GIF** | Load | GIF87a/89a, LZW decompression, multi-frame animation (up to 64 frames), all 4 disposal methods, interlacing, per-frame delay, transparency, local color tables |
+| **BMP** | Load + Save | 24-bit uncompressed (unchanged) |
+
+New API: `Pixels.Load(path)` auto-detects format from magic bytes (PNG, JPEG, BMP, GIF). `Sprite.FromFile(path)` extended to support all 4 formats; animated GIFs load all frames with timing.
+
+#### Audio Formats
+
+| Format | Sound FX | Music Stream | Details |
+|--------|----------|-------------|---------|
+| **WAV** | Yes | Yes | 8/16/24/32-bit PCM + 32-bit IEEE float. Any sample rate (resampled to 44100 Hz) |
+| **OGG Vorbis** | Yes (full decode) | Yes (streaming) | Vorbis I codec: codebook VQ, floor type 1, multi-pass residue (types 0/1/2), FFT-based IMDCT, stereo coupling. Music streamed with triple-buffer on-the-fly decode |
+| **MP3** | Yes (full decode) | Yes (streaming) | MPEG-1/2/2.5 Layer III: Huffman decode (tree-walk for tables 1-6), scalefactors, requantization, anti-alias, IMDCT, polyphase synthesis, MS stereo, bit reservoir. ID3v2 + ID3v1 tag handling. Music streamed per-frame |
+| **VAF** | Yes | Block-based | IMA ADPCM 4:1 compression (unchanged) |
+
+Music streaming for OGG and MP3 uses the same triple-buffer architecture as WAV (~96 KB buffer memory regardless of track length). Seamless looping supported for all formats.
+
+New files: `rt_ogg.c/h` (OGG container parser, 276 LOC), `rt_vorbis.c/h` (Vorbis codec, 1100+ LOC), `rt_mp3.c/h` (MP3 decoder, 1000+ LOC), `rt_mp3_tables.h` (spec constants), `rt_gif.c/h` (GIF decoder, 420 LOC).
+
+---
+
+### Runtime Stub Audit & Bug Fixes
+
+Comprehensive audit of all C/C++ runtime source files identified 21 stubbed or incomplete implementations. Key fixes:
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| `rt_exc_is_exception()` returned true for any non-null pointer | P0 | Proper `rt_obj_class_id() == RT_EXCEPTION_CLASS_ID` check |
+| Destructor chaining missing (derived dtor never called base dtor) | P0 | `emitClassDestructor` now emits `call @Base.__dtor` |
+| OOP refcount imbalance (NEW objects never reached refcount 0) | P0 | Release NEW temporary after assignment in `lowerLet` |
+| TLS RSA-PSS only supported SHA-256 content hashing | P1 | Added SHA-384/SHA-512 via CommonCrypto (macOS) and dlopen'd EVP_Digest (Linux) |
+| Bytecode VM missing LOAD_I32, LOAD_STR_MEM, STORE_STR_MEM | P1 | Added threaded-dispatch labels |
+| POSIX process isolation had no timeout (blocking waitpid) | P1 | WNOHANG poll loop with clock_gettime + SIGKILL on timeout |
+| Windows Viper.Threads test disabled but runtime implemented | P1 | Removed `#ifdef _WIN32 return 0` guard |
 
 ---
 
@@ -298,3 +346,12 @@ Comprehensive overhaul with 10 improvements:
 - AArch64 scheduler: FP divide modeled at 3 cycles instead of 10, integer divide at 3 instead of 7 — suboptimal instruction ordering
 - DllImport aggregate initializer missing `importNames` field (pre-existing `-Wmissing-field-initializers` warning)
 - Stale comment in `rt_safe_i64.c` claiming Windows SafeI64 "not yet implemented" (it IS fully implemented)
+- `rt_exc_is_exception()` accepted any non-null pointer as an exception (type safety violation)
+- OOP destructor chaining: derived class destructors never called base class destructors
+- OOP refcount imbalance: `NEW` objects had refcount 2 after assignment (creation ref never released), preventing destruction
+- TLS CertificateVerify: RSA-PSS with SHA-384/SHA-512 failed because content hash was always SHA-256
+- Bytecode VM: `LOAD_I32`, `LOAD_STR_MEM`, `STORE_STR_MEM` opcodes routed to unimplemented trap handler
+- POSIX `ProcessIsolation::runIsolated()` blocked forever on hanging tests (no timeout implemented)
+- PNG 16-bit sample downscaling discarded LSB (now uses round-to-nearest)
+- MP3 ID3v1 tags at end of file could corrupt last decoded frame
+- `vg_image_load_file()` GUI widget stub always returned false (now wired to `rt_pixels` decoders)

@@ -130,6 +130,18 @@ struct vaud_music {
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf;  ///< Temp buffer for raw frames before resampling
     int64_t resample_cap;   ///< Capacity of resample_buf in frames
+
+    // Format-specific streaming (0=WAV, 1=OGG, 2=MP3)
+    int format;             ///< Audio format identifier
+    void *ogg_reader;       ///< ogg_reader_t* for OGG streaming
+    void *vorbis_dec;       ///< vorbis_decoder_t* for OGG streaming
+    void *mp3_stream;       ///< mp3_stream_t* for MP3 streaming
+    char *filepath;         ///< strdup'd path for loop restart
+
+    // Leftover PCM from last decode (variable packet sizes)
+    int16_t *leftover_buf;  ///< Excess decoded frames
+    int32_t leftover_frames;///< Number of leftover frames
+    int32_t leftover_cap;   ///< Capacity of leftover buffer in frames
 };
 
 //===----------------------------------------------------------------------===//

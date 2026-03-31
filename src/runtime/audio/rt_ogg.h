@@ -77,6 +77,10 @@ void ogg_reader_free(ogg_reader_t *r);
 /// The returned packet data is valid until the next call to ogg_reader_next_packet.
 int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len);
 
+/// @brief Reset reader to the beginning of the file (for looping).
+/// @details Seeks the file to position 0 and resets page/packet state.
+void ogg_reader_rewind(ogg_reader_t *r);
+
 #ifdef __cplusplus
 }
 #endif

@@ -717,8 +717,20 @@ void *rt_music_load(rt_string path) {
     if (!path_str)
         return NULL;
 
-    /* Load the music via ViperAUD */
-    vaud_music_t mus = vaud_load_music(g_audio_ctx, path_str);
+    /* Detect format and load via appropriate ViperAUD function */
+    int fmt = detect_audio_format(path_str);
+    vaud_music_t mus = NULL;
+    switch (fmt) {
+        case 2:
+            mus = vaud_load_music_ogg(g_audio_ctx, path_str);
+            break;
+        case 3:
+            mus = vaud_load_music_mp3(g_audio_ctx, path_str);
+            break;
+        default:
+            mus = vaud_load_music(g_audio_ctx, path_str);
+            break;
+    }
     if (!mus)
         return NULL;
 

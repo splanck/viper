@@ -336,7 +336,7 @@ void *rt_pixels_load_png(void *path) {
 
     // Parse IHDR and collect IDAT chunks
     uint32_t width = 0, height = 0;
-    uint8_t bit_depth = 0, color_type = 0;
+    uint8_t bit_depth = 0, color_type = 0, interlace = 0;
     uint8_t *idat_buf = NULL;
     size_t idat_len = 0;
     size_t idat_cap = 0;
@@ -364,6 +364,7 @@ void *rt_pixels_load_png(void *path) {
             height = png_read_u32(chunk_data + 4);
             bit_depth = chunk_data[8];
             color_type = chunk_data[9];
+            interlace = chunk_data[12];
             // Validate per PNG spec: valid color_type + bit_depth combinations
             int valid = 0;
             if (color_type == 0) // Grayscale: 1,2,4,8,16
@@ -499,66 +500,132 @@ void *rt_pixels_load_png(void *path) {
     if (bpp < 1)
         bpp = 1;
 
-    // Row stride in bytes (after filter byte): for sub-byte, ceil(width*bit_depth*samples/8)
-    size_t stride;
-    if (bit_depth < 8) {
-        size_t bits_per_row = (size_t)width * (size_t)bit_depth * (size_t)samples_per_pixel;
-        stride = (bits_per_row + 7) / 8;
-    } else {
-        stride = (size_t)width * (size_t)samples_per_pixel * ((size_t)bit_depth / 8);
-    }
+    // Helper: compute row stride for a given image width
+    #define PNG_STRIDE(w) (bit_depth < 8 \
+        ? (((size_t)(w) * (size_t)bit_depth * (size_t)samples_per_pixel + 7) / 8) \
+        : ((size_t)(w) * (size_t)samples_per_pixel * ((size_t)bit_depth / 8)))
 
-    if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height)
-        goto cleanup;
-    size_t expected = (stride + 1) * (size_t)height;
+    // Helper: reconstruct one filtered row
+    #define PNG_FILTER_ROW(dst, src, prev, row_stride) do { \
+        uint8_t filt = *(src)++; \
+        for (size_t fi = 0; fi < (row_stride); fi++) { \
+            uint8_t rb = (src)[fi]; \
+            uint8_t fa = (fi >= (size_t)bpp) ? (dst)[fi - bpp] : 0; \
+            uint8_t fb = (prev) ? (prev)[fi] : 0; \
+            uint8_t fc = ((prev) && fi >= (size_t)bpp) ? (prev)[fi - bpp] : 0; \
+            switch (filt) { \
+                case 0: (dst)[fi] = rb; break; \
+                case 1: (dst)[fi] = rb + fa; break; \
+                case 2: (dst)[fi] = rb + fb; break; \
+                case 3: (dst)[fi] = rb + (uint8_t)(((int)fa + (int)fb) / 2); break; \
+                case 4: (dst)[fi] = rb + paeth_predict(fa, fb, fc); break; \
+                default: goto cleanup; \
+            } \
+        } \
+        (src) += (row_stride); \
+    } while(0)
 
-    if ((size_t)raw->len < expected)
-        goto cleanup;
+    size_t stride = PNG_STRIDE(width);
 
-    // Reconstruct filtered scanlines
-    uint8_t *scanlines = raw->data;
-    img = (uint8_t *)malloc(stride * height);
-    if (!img)
-        goto cleanup;
+    if (interlace == 1) {
+        // Adam7 interlaced PNG: 7 passes
+        static const int a7_x0[7] = {0, 4, 0, 2, 0, 1, 0};
+        static const int a7_dx[7] = {8, 8, 4, 4, 2, 2, 1};
+        static const int a7_y0[7] = {0, 0, 4, 0, 2, 0, 1};
+        static const int a7_dy[7] = {8, 8, 8, 4, 4, 2, 2};
 
-    for (uint32_t y = 0; y < height; y++) {
-        uint8_t filter = scanlines[y * (stride + 1)];
-        const uint8_t *src = scanlines + y * (stride + 1) + 1;
-        uint8_t *dst = img + y * stride;
-        const uint8_t *prev = (y > 0) ? img + (y - 1) * stride : NULL;
+        // Allocate full-size image buffer (row-major, sequential)
+        img = (uint8_t *)calloc(stride * height, 1);
+        if (!img)
+            goto cleanup;
 
-        for (size_t i = 0; i < stride; i++) {
-            uint8_t raw_byte = src[i];
-            uint8_t a = (i >= (size_t)bpp) ? dst[i - bpp] : 0;
-            uint8_t b_val = prev ? prev[i] : 0;
-            uint8_t c = (prev && i >= (size_t)bpp) ? prev[i - bpp] : 0;
+        const uint8_t *src_ptr = raw->data;
+        const uint8_t *src_end = raw->data + raw->len;
 
-            switch (filter) {
-                case 0:
-                    dst[i] = raw_byte;
-                    break;
-                case 1:
-                    dst[i] = raw_byte + a;
-                    break;
-                case 2:
-                    dst[i] = raw_byte + b_val;
-                    break;
-                case 3:
-                    dst[i] = raw_byte + (uint8_t)(((int)a + (int)b_val) / 2);
-                    break;
-                case 4:
-                    dst[i] = raw_byte + paeth_predict(a, b_val, c);
-                    break;
-                default:
+        for (int pass = 0; pass < 7; pass++) {
+            uint32_t sub_w = (width + (uint32_t)a7_dx[pass] - 1 - (uint32_t)a7_x0[pass]) / (uint32_t)a7_dx[pass];
+            uint32_t sub_h = (height + (uint32_t)a7_dy[pass] - 1 - (uint32_t)a7_y0[pass]) / (uint32_t)a7_dy[pass];
+            if (sub_w == 0 || sub_h == 0)
+                continue;
+
+            size_t sub_stride = PNG_STRIDE(sub_w);
+            // Allocate temp buffer for this sub-image
+            uint8_t *sub_img = (uint8_t *)calloc(sub_stride * sub_h, 1);
+            if (!sub_img)
+                goto cleanup;
+
+            for (uint32_t sy = 0; sy < sub_h; sy++) {
+                if (src_ptr + 1 + sub_stride > src_end) {
+                    free(sub_img);
                     goto cleanup;
+                }
+                uint8_t *dst_row = sub_img + sy * sub_stride;
+                const uint8_t *prev_row = (sy > 0) ? sub_img + (sy - 1) * sub_stride : NULL;
+                PNG_FILTER_ROW(dst_row, src_ptr, prev_row, sub_stride);
             }
+
+            // Scatter sub-image pixels into full image
+            // Copy raw bytes for each pixel from sub-image row to the correct
+            // position in the full-size img buffer
+            int px_bytes = (bit_depth < 8) ? 1 : (samples_per_pixel * bit_depth / 8);
+            for (uint32_t sy = 0; sy < sub_h; sy++) {
+                uint32_t dy = (uint32_t)a7_y0[pass] + sy * (uint32_t)a7_dy[pass];
+                if (dy >= height) continue;
+                for (uint32_t sx = 0; sx < sub_w; sx++) {
+                    uint32_t dx = (uint32_t)a7_x0[pass] + sx * (uint32_t)a7_dx[pass];
+                    if (dx >= width) continue;
+
+                    if (bit_depth >= 8) {
+                        // Byte-aligned: copy px_bytes
+                        const uint8_t *sp = sub_img + sy * sub_stride + sx * (size_t)px_bytes;
+                        uint8_t *dp = img + dy * stride + dx * (size_t)px_bytes;
+                        memcpy(dp, sp, (size_t)px_bytes);
+                    } else {
+                        // Sub-byte: extract bit value from sub-image, set in full image
+                        int ppb = 8 / bit_depth;
+                        int s_byte = sx / ppb;
+                        int s_bit = (ppb - 1 - (sx % ppb)) * bit_depth;
+                        uint8_t mask = (uint8_t)((1 << bit_depth) - 1);
+                        uint8_t val = (sub_img[sy * sub_stride + s_byte] >> s_bit) & mask;
+
+                        int d_byte = dx / ppb;
+                        int d_bit = (ppb - 1 - (dx % ppb)) * bit_depth;
+                        img[dy * stride + d_byte] =
+                            (img[dy * stride + d_byte] & ~(mask << d_bit)) | (val << d_bit);
+                    }
+                }
+            }
+            free(sub_img);
+        }
+    } else {
+        // Non-interlaced (sequential)
+        if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height)
+            goto cleanup;
+        size_t expected = (stride + 1) * (size_t)height;
+        if ((size_t)raw->len < expected)
+            goto cleanup;
+
+        img = (uint8_t *)malloc(stride * height);
+        if (!img)
+            goto cleanup;
+
+        const uint8_t *src_ptr = raw->data;
+        for (uint32_t y = 0; y < height; y++) {
+            uint8_t *dst_row = img + y * stride;
+            const uint8_t *prev_row = (y > 0) ? img + (y - 1) * stride : NULL;
+            PNG_FILTER_ROW(dst_row, src_ptr, prev_row, stride);
         }
     }
+
+    #undef PNG_STRIDE
 
     // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
     pixels = pixels_alloc((int64_t)width, (int64_t)height);
     if (!pixels)
         goto cleanup;
+
+    // Helper: downscale 16-bit big-endian sample to 8-bit with rounding.
+    #define PNG_DOWN16(p) ((uint8_t)(((((uint16_t)(p)[0] << 8) | (p)[1]) + 128) >> 8))
 
     for (uint32_t y = 0; y < height; y++) {
         const uint8_t *row = img + y * stride;
@@ -569,7 +636,7 @@ void *rt_pixels_load_png(void *path) {
                 case 0: { // Grayscale
                     uint8_t gray;
                     if (bit_depth == 16) {
-                        gray = row[x * 2]; // high byte of 16-bit sample
+                        gray = PNG_DOWN16(row + x * 2);
                     } else if (bit_depth == 8) {
                         gray = row[x];
                     } else {
@@ -593,9 +660,9 @@ void *rt_pixels_load_png(void *path) {
                 }
                 case 2: { // RGB
                     if (bit_depth == 16) {
-                        r = row[x * 6];
-                        g = row[x * 6 + 2];
-                        b_ch = row[x * 6 + 4];
+                        r = PNG_DOWN16(row + x * 6);
+                        g = PNG_DOWN16(row + x * 6 + 2);
+                        b_ch = PNG_DOWN16(row + x * 6 + 4);
                     } else {
                         r = row[x * 3];
                         g = row[x * 3 + 1];
@@ -624,8 +691,8 @@ void *rt_pixels_load_png(void *path) {
                 }
                 case 4: { // Grayscale + Alpha
                     if (bit_depth == 16) {
-                        r = g = b_ch = row[x * 4];
-                        alpha = row[x * 4 + 2];
+                        r = g = b_ch = PNG_DOWN16(row + x * 4);
+                        alpha = PNG_DOWN16(row + x * 4 + 2);
                     } else {
                         r = g = b_ch = row[x * 2];
                         alpha = row[x * 2 + 1];
@@ -634,10 +701,10 @@ void *rt_pixels_load_png(void *path) {
                 }
                 case 6: { // RGBA
                     if (bit_depth == 16) {
-                        r = row[x * 8];
-                        g = row[x * 8 + 2];
-                        b_ch = row[x * 8 + 4];
-                        alpha = row[x * 8 + 6];
+                        r = PNG_DOWN16(row + x * 8);
+                        g = PNG_DOWN16(row + x * 8 + 2);
+                        b_ch = PNG_DOWN16(row + x * 8 + 4);
+                        alpha = PNG_DOWN16(row + x * 8 + 6);
                     } else {
                         r = row[x * 4];
                         g = row[x * 4 + 1];
@@ -1317,6 +1384,7 @@ void *rt_pixels_load_jpeg(void *path) {
 
     rt_pixels_impl *pixels = NULL;
     uint8_t **comp_data = NULL;
+    int exif_orientation = 1; // default: no rotation
 
     // Parse markers
     while (ctx.pos + 1 < ctx.len) {
@@ -1609,9 +1677,69 @@ void *rt_pixels_load_jpeg(void *path) {
                 break;
             }
             default:
-                // Skip unknown markers
+                // APP1 (0xFFE1): EXIF data — extract orientation tag
+                if (mk == 0xFFE1 && data_len >= 14) {
+                    const uint8_t *exif = ctx.data + seg_start;
+                    if (memcmp(exif, "Exif\0\0", 6) == 0) {
+                        const uint8_t *tiff = exif + 6;
+                        size_t tiff_len = data_len - 6;
+                        if (tiff_len >= 8) {
+                            int big = (tiff[0] == 'M' && tiff[1] == 'M');
+                            uint32_t ifd_off = big
+                                ? ((uint32_t)tiff[4] << 24 | (uint32_t)tiff[5] << 16 |
+                                   (uint32_t)tiff[6] << 8 | tiff[7])
+                                : ((uint32_t)tiff[7] << 24 | (uint32_t)tiff[6] << 16 |
+                                   (uint32_t)tiff[5] << 8 | tiff[4]);
+                            if (ifd_off + 2 <= tiff_len) {
+                                uint16_t count = big
+                                    ? (uint16_t)((tiff[ifd_off] << 8) | tiff[ifd_off + 1])
+                                    : (uint16_t)(tiff[ifd_off] | (tiff[ifd_off + 1] << 8));
+                                for (int ei = 0; ei < count; ei++) {
+                                    size_t entry = ifd_off + 2 + (size_t)ei * 12;
+                                    if (entry + 12 > tiff_len) break;
+                                    uint16_t tag = big
+                                        ? (uint16_t)((tiff[entry] << 8) | tiff[entry + 1])
+                                        : (uint16_t)(tiff[entry] | (tiff[entry + 1] << 8));
+                                    if (tag == 0x0112) { // Orientation
+                                        exif_orientation = big
+                                            ? (int)((tiff[entry + 8] << 8) | tiff[entry + 9])
+                                            : (int)(tiff[entry + 8] | (tiff[entry + 9] << 8));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 ctx.pos = seg_start + data_len;
                 break;
+        }
+    }
+
+    // Apply EXIF orientation transform
+    if (pixels && exif_orientation > 1 && exif_orientation <= 8) {
+        rt_pixels_impl *rotated = NULL;
+        switch (exif_orientation) {
+            case 2: rotated = (rt_pixels_impl *)rt_pixels_flip_h(pixels); break;
+            case 3: rotated = (rt_pixels_impl *)rt_pixels_rotate_180(pixels); break;
+            case 4: rotated = (rt_pixels_impl *)rt_pixels_flip_v(pixels); break;
+            case 5: {
+                void *t = rt_pixels_rotate_cw(pixels);
+                if (t) { rotated = (rt_pixels_impl *)rt_pixels_flip_h(t); rt_obj_release_check0(t); rt_obj_free(t); }
+                break;
+            }
+            case 6: rotated = (rt_pixels_impl *)rt_pixels_rotate_cw(pixels); break;
+            case 7: {
+                void *t = rt_pixels_rotate_ccw(pixels);
+                if (t) { rotated = (rt_pixels_impl *)rt_pixels_flip_h(t); rt_obj_release_check0(t); rt_obj_free(t); }
+                break;
+            }
+            case 8: rotated = (rt_pixels_impl *)rt_pixels_rotate_ccw(pixels); break;
+            default: break;
+        }
+        if (rotated) {
+            // Original pixels will be GC'd; return the rotated version
+            pixels = rotated;
         }
     }
 
@@ -1664,4 +1792,34 @@ void *rt_pixels_load_gif(void *path) {
     }
     free(frames);
     return result;
+}
+
+//=============================================================================
+// Auto-detect loader
+//=============================================================================
+
+void *rt_pixels_load(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *af = fopen(filepath, "rb");
+    if (!af)
+        return NULL;
+    uint8_t hdr[8];
+    size_t n = fread(hdr, 1, 8, af);
+    fclose(af);
+
+    if (n >= 8 && hdr[0] == 137 && hdr[1] == 'P' && hdr[2] == 'N' && hdr[3] == 'G')
+        return rt_pixels_load_png(path);
+    if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
+        return rt_pixels_load_jpeg(path);
+    if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
+        return rt_pixels_load_bmp(path);
+    if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
+        return rt_pixels_load_gif(path);
+    return NULL;
 }

@@ -222,6 +222,19 @@ void ogg_reader_free(ogg_reader_t *r) {
     free(r);
 }
 
+void ogg_reader_rewind(ogg_reader_t *r) {
+    if (!r)
+        return;
+    if (r->file)
+        fseek(r->file, 0, SEEK_SET);
+    if (r->mem)
+        r->mem_pos = 0;
+    r->page_valid = 0;
+    r->segment_idx = 0;
+    r->packet.len = 0;
+    r->packet.complete = 0;
+}
+
 int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len) {
     if (!r)
         return 0;
