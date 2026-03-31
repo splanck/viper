@@ -15,6 +15,7 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
+- **Video Playback** — MJPEG/AVI video decoder with `VideoPlayer` runtime class (Open/Play/Pause/Stop/Seek/Update), MJPEG DHT injection for AVI compatibility, AVI RIFF container parser, Theora codec infrastructure (header parsing, YCbCr 4:2:0→RGB conversion, OGG multi-stream demux), GUI `VideoWidget` for Viper.GUI applications, and Image widget paint fix for the GUI library.
 - **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
@@ -35,9 +36,9 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 53 | +53 |
-| Source files | 2,671 | 2,727 | +56 |
-| Production SLOC | ~348K | ~398K | +50K |
+| Commits | — | 56 | +56 |
+| Source files | 2,671 | 2,737 | +66 |
+| Production SLOC | ~348K | ~400K | +52K |
 | Test count | 1,351 | 1,371 | +20 |
 
 ---
@@ -364,9 +365,56 @@ Comprehensive overhaul with 10 improvements:
 
 ---
 
+### Video Playback
+
+Video playback for game cutscenes and GUI media applications. All codecs implemented from scratch with zero external dependencies.
+
+#### VideoPlayer Runtime Class
+
+| Member | Description |
+|--------|-------------|
+| `Open(path)` | Load video file (`.avi` or `.ogv`) |
+| `Play()` / `Pause()` / `Stop()` | Playback control |
+| `Seek(seconds)` | Seek to time position |
+| `Update(dt)` | Advance by delta time (call each game frame) |
+| `SetVolume(vol)` | Audio volume [0.0-1.0] |
+| `Width` / `Height` | Frame dimensions (read-only) |
+| `Duration` / `Position` | Total and current time in seconds (read-only) |
+| `IsPlaying` | Playback active flag (read-only) |
+| `Frame` | Current decoded Pixels frame (read-only) |
+
+#### AVI/MJPEG Decoder
+
+- **AVI RIFF container parser** — Walks RIFF chunk tree: `hdrl` (stream headers), `strl`/`strf` (video/audio format), `movi` (interleaved A/V data), `idx1` (index). Identifies video (`XXdc`) and audio (`XXwb`) chunks by FOURCC.
+- **MJPEG DHT injection** — AVI MJPEG frames typically omit Huffman tables (DHT markers). Decoder detects missing `0xFFC4` markers and injects the 420-byte standard JPEG Annex K tables (2 DC + 2 AC) before the SOS marker. This enables decoding of MJPEG frames using the existing `rt_jpeg_decode_buffer()`.
+- **JPEG buffer decode refactor** — Extracted `rt_jpeg_decode_buffer(data, len)` from file-based `rt_pixels_load_jpeg()` for in-memory frame decoding without file I/O.
+
+#### Theora Codec Infrastructure
+
+- **Header parsing** — Identification (0x80), comment (0x81), and setup (0x82) headers parsed from OGG packets. Extracts frame dimensions, FPS, color space, loop filter limits.
+- **YCbCr 4:2:0 → RGBA conversion** — BT.601 integer-only matrix with chroma upsampling. Separate utility (`rt_ycbcr.c`) reusable by future codecs.
+- **OGG multi-stream demux** — VideoPlayer detects Theora vs Vorbis streams by packet header signature, routing packets to the correct decoder.
+- **Reference frame buffers** — Y/Cb/Cr planes allocated for current, reference, and golden frames. Full DCT/motion compensation decode documented as follow-up.
+
+#### VideoWidget (GUI)
+
+- `VideoWidget.New(parent, path)` — Creates image widget in the GUI widget tree, loads video file internally via VideoPlayer.
+- `VideoWidget.Update(dt)` — Advances playback and refreshes the image widget with the current decoded frame.
+- Converts Viper Pixels (`uint32 0xRRGGBBAA`) to byte-order RGBA for the `vg_image_set_pixels` GUI path.
+- **GUI Image widget paint fix** — Added `image_paint()` vtable function to `vg_image.c` with nearest-neighbor scaled blit to the vgfx framebuffer. Previously, the Image widget stored pixel data but had no rendering code — this fixes `Image.SetPixels()` for all GUI users.
+
+#### Supported Formats
+
+| Container | Video Codec | Audio Codec | Extension | Status |
+|-----------|-------------|-------------|-----------|--------|
+| AVI (RIFF) | MJPEG | PCM WAV | `.avi` | Full decode |
+| OGG | Theora | Vorbis | `.ogv` | Infrastructure (headers + YCbCr) |
+
+---
+
 ### 3D Graphics Demos
 
-Six new demo programs in `examples/apiaudit/graphics3d/`:
+Eight new demo programs in `examples/apiaudit/graphics3d/`:
 
 | Demo | Features Demonstrated |
 |------|----------------------|
@@ -376,6 +424,8 @@ Six new demo programs in `examples/apiaudit/graphics3d/`:
 | `water_demo.zia` | Terrain island + Water3D with 3 Gerstner waves, fog, directional lighting |
 | `vegetation_demo.zia` | Terrain + Vegetation3D with 5000 procedural grass blades, wind animation, LOD thinning |
 | `shading_demo.zia` | 4 spheres with BlinnPhong, Toon, Fresnel, and Emissive shading models side-by-side |
+| `video_demo.zia` | MJPEG AVI playback via VideoPlayer + Canvas.Blit |
+| `video_gui_demo.zia` | VideoWidget in a Viper.GUI application with looping |
 
 ---
 
@@ -428,3 +478,5 @@ Six new demo programs in `examples/apiaudit/graphics3d/`:
 - Software 3D backend crash: `vgfx3d_show_gpu_layer` duplicate symbol — Metal version called with software context, sending `metalLayer` objc message to garbage memory (SIGSEGV). Fixed via vtable dispatch
 - `drawRect:` CGImage blit covered Metal layer content every frame on macOS — software framebuffer overwriting GPU-rendered content
 - Water3D wave normals: single sine wave normal used `dydz = dydx` (identical derivatives), producing incorrect normals for diagonal wave propagation. Gerstner model computes per-direction derivatives correctly
+- GUI Image widget: `vg_image_t` stored pixel data via `SetPixels()` but had no vtable paint function — image content never rendered. Added `image_paint()` with nearest-neighbor scaled blit to framebuffer
+- MJPEG AVI decode: frames missing DHT Huffman tables caused JPEG decode failure (returned NULL). Added automatic injection of standard Annex K DHT tables before SOS marker
