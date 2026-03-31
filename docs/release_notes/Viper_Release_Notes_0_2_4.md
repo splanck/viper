@@ -13,13 +13,16 @@
 
 Version 0.2.4 is a rendering, codegen, language features, media codecs, documentation, and showcase release. Highlights:
 
+- **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
+- **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
+- **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
 - **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
 - **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
-- **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, and shadow mapping.
+- **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, shadow mapping, and material shader hooks (Toon/Fresnel/Emissive shading models).
 - **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
 - **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
@@ -32,10 +35,10 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 51 | +51 |
-| Source files | 2,671 | 2,736 | +65 |
+| Commits | — | 53 | +53 |
+| Source files | 2,671 | 2,727 | +56 |
 | Production SLOC | ~348K | ~398K | +50K |
-| Test count | 1,351 | 1,370 | +19 |
+| Test count | 1,351 | 1,371 | +20 |
 
 ---
 
@@ -236,6 +239,45 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 
 ### 3D Graphics Engine Improvements
 
+#### Terrain System
+
+- **Procedural generation** — `Terrain3D.GeneratePerlin(noise, scale, octaves, persistence)` writes directly to the internal float heightmap from a PerlinNoise object, bypassing the Pixels intermediate for faster terrain generation on large grids
+- **LOD (Level of Detail)** — Three resolution levels per chunk (step 1/2/4) selected by distance to camera. `SetLODDistances(near, far)` configures thresholds. Chunks use 578/162/50 vertices at LOD 0/1/2 respectively
+- **Frustum culling** — Chunks outside the camera view frustum are skipped entirely using the existing `vgfx3d_frustum_t` infrastructure (Gribb-Hartmann plane extraction + AABB p-vertex/n-vertex test). Per-chunk AABBs computed during mesh generation
+- **Skirt geometry** — Downward-facing skirt triangles along chunk edges hide T-junction cracks at LOD boundaries. `SetSkirtDepth(depth)` configures skirt size
+- **16-bit heightmap** — R+G channels for 65536 height levels (was 256). `SetSplatMap` + 4 layer textures with per-layer UV tiling, baked blend fallback
+
+#### Water System
+
+- **Gerstner waves** — `Water3D.AddWave(dirX, dirZ, speed, amplitude, wavelength)` adds directional Gerstner waves (up to 8). Multi-wave sum produces realistic ocean-like displacement with proper derivative-based normals
+- **Material wiring** — `SetTexture`, `SetNormalMap`, `SetEnvMap`, `SetReflectivity` forward to the underlying Material3D, enabling textured water with environment reflections using zero shader changes
+- **Configurable resolution** — `SetResolution(n)` controls grid density (8-256, default 64, up from 32)
+
+#### Vegetation System (New)
+
+- **Vegetation3D** — New runtime class for instanced grass and foliage rendering
+- **Cross-billboard blades** — Two perpendicular quads (8 vertices, 4 triangles) per blade instance, eliminating billboard popping from any angle
+- **Terrain population** — `Populate(terrain, count)` scatters blades on terrain surface using LCG random, filtered by optional density map (R channel = spawn probability)
+- **Wind animation** — Per-blade Y-axis shear via `sin(position + time)`. `SetWindParams(speed, strength, turbulence)` controls wind behavior
+- **Distance LOD** — Progressive blade thinning between near/far thresholds + hard cull beyond far. `SetLODDistances(near, far)` configures
+- **GPU instancing** — Uses `submit_draw_instanced` backend vtable for single-draw-call rendering of all visible blades. Software fallback for non-GPU backends
+
+#### Material Shader Hooks
+
+- **Shading models** — `Material3D.SetShadingModel(model)` selects per-material shading: 0=BlinnPhong (default), 1=Toon (quantized diffuse bands), 4=Fresnel (angle-dependent alpha), 5=Emissive (boosted glow)
+- **Custom parameters** — `Material3D.SetCustomParam(index, value)` passes 8 float parameters to the shader for model-specific tuning (e.g., Toon band count, Fresnel power/bias, Emissive strength)
+- **Cross-backend** — Implemented in Metal MSL fragment shader and software rasterizer `compute_lighting()`. OpenGL GLSL and D3D11 HLSL receive the uniforms (shader-side switch deferred)
+
+#### 3D Format Loaders
+
+- **glTF 2.0** — `.gltf` (JSON + external buffers) and `.glb` (single binary container). Mesh extraction with positions, normals, UVs, tangents. PBR metallic-roughness → Blinn-Phong material conversion. Skeletal animation and morph target support
+- **STL** — Binary and ASCII auto-detection. Normal computation via `rt_mesh3d_recalc_normals`
+- **OBJ .mtl** — Material parser with Kd/Ks/Ns/d properties, texture path resolution relative to OBJ directory, up to 64 materials per file
+- **FBX enhancements** — Texture path extraction via Texture node parsing and connection tracing. Morph target extraction from BlendShape/Shape nodes with sparse position/normal deltas
+- **Scene3D.Save** — JSON serialization of node hierarchy with transforms
+
+#### Other 3D Improvements
+
 - **Light3D.NewSpot** — Spot light with position, direction, inner/outer cone angles, and smoothstep attenuation
 - **Camera3D.NewOrtho** — Orthographic camera for isometric/strategy games
 - **Mesh3D.Clear()** — Reset vertex/index counts without freeing backing arrays (enables mesh reuse)
@@ -245,8 +287,18 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Physics3D collision events** — `CollisionCount`, `GetCollisionBodyA/B`, `GetCollisionNormal/Depth` queue
 - **DistanceJoint3D / SpringJoint3D** — Physics joint constraints with 6-iteration sequential impulse solver
 - **Audio3D** — Per-voice `max_distance` tracking table (replaces shared global that caused cross-voice attenuation bugs)
-- **Terrain3D** — `SetSplatMap` + 4 layer textures with per-layer UV tiling, baked blend fallback
-- **53 backend implementation plans** — Detailed plans across all 4 renderers (SW: 7, Metal: 14, OpenGL: 16, D3D11: 16) plus 4 additional D3D11 plans (cubemap, env reflections, morph normals, advanced post-FX)
+- **SLERP domain clamp** — Prevent NaN from `acosf` with dot products > 1.0 due to rounding
+- **Water3D/Decal3D finalizer leaks** — Free mesh/material on GC
+- **Metal bone count cap** — Enforce 128-bone limit matching D3D11/OpenGL
+- **Cubemap bilinear filtering** — 4-texel interpolation replaces nearest neighbor
+- **VIPER_3D_BACKEND env var** — Set `VIPER_3D_BACKEND=software` to force software renderer
+- **53 backend implementation plans** — Detailed plans across all 4 renderers (SW: 7, Metal: 14, OpenGL: 16, D3D11: 16) plus 4 additional D3D11 plans
+
+#### Metal Backend: macOS 26 Compatibility
+
+- **Offscreen rendering** — Metal now renders to a `MTLStorageModeManaged` offscreen texture and reads back BGRA pixels to the vgfx software framebuffer (BGRA→RGBA conversion). The existing `drawRect:` CGImage blit path displays the content. This replaces CAMetalLayer direct presentation which broke on macOS 26 (Tahoe)
+- **Backend vtable dispatch** — `vgfx3d_show/hide_gpu_layer` moved from duplicate global symbols (Metal `.m` and software `.c` both defined them) to vtable function pointers in `vgfx3d_backend_t`. Fixes SIGSEGV crash when software backend was selected but Metal's version was linked
+- **vgfx_set_gpu_present API** — New public API in `vgfx.h` for backends to signal GPU ownership of display (currently unused with offscreen approach but available for future backends)
 
 ---
 
@@ -312,6 +364,21 @@ Comprehensive overhaul with 10 improvements:
 
 ---
 
+### 3D Graphics Demos
+
+Six new demo programs in `examples/apiaudit/graphics3d/`:
+
+| Demo | Features Demonstrated |
+|------|----------------------|
+| `minimal_3d_test.zia` | Canvas3D, Camera3D, Mesh3D, Material3D, Light3D — basic 3D rendering validation |
+| `procedural_terrain_demo.zia` | PerlinNoise → Terrain3D.GeneratePerlin, splat maps, FPS camera, terrain-locked movement |
+| `terrain_lod_demo.zia` | 256x256 terrain with SetLODDistances, frustum culling, SetSkirtDepth, free flight |
+| `water_demo.zia` | Terrain island + Water3D with 3 Gerstner waves, fog, directional lighting |
+| `vegetation_demo.zia` | Terrain + Vegetation3D with 5000 procedural grass blades, wind animation, LOD thinning |
+| `shading_demo.zia` | 4 spheres with BlinnPhong, Toon, Fresnel, and Emissive shading models side-by-side |
+
+---
+
 ### Bug Fixes
 
 - Particle emitter renders with zero alpha from `Color.RGB()` values (alpha byte = 0 treated as opaque)
@@ -356,3 +423,8 @@ Comprehensive overhaul with 10 improvements:
 - MP3 ID3v1 tags at end of file could corrupt last decoded frame
 - `vg_image_load_file()` GUI widget stub always returned false (now wired to `rt_pixels` decoders)
 - Mach-O linker: `rt_audio_shutdown` exported as dynamic symbol but defined as weak stub, causing link failures on some configurations
+- Metal backend: CAMetalLayer presentation broken on macOS 26 Tahoe — replaced with offscreen texture readback
+- Metal backend clear color alpha: was 0.0 when PostFX inactive (transparent layer), now always 1.0
+- Software 3D backend crash: `vgfx3d_show_gpu_layer` duplicate symbol — Metal version called with software context, sending `metalLayer` objc message to garbage memory (SIGSEGV). Fixed via vtable dispatch
+- `drawRect:` CGImage blit covered Metal layer content every frame on macOS — software framebuffer overwriting GPU-rendered content
+- Water3D wave normals: single sine wave normal used `dydz = dydx` (identical derivatives), producing incorrect normals for diagonal wave propagation. Gerstner model computes per-direction derivatives correctly
