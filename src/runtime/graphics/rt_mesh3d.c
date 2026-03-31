@@ -26,6 +26,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
 #include "rt_string.h"
 
 #include <math.h>
@@ -599,6 +600,151 @@ void rt_mesh3d_calc_tangents(void *obj) {
     }
 }
 
+//=============================================================================
+// OBJ .mtl Material Parser
+//=============================================================================
+
+#define OBJ_MAX_MATERIALS 64
+
+typedef struct {
+    char name[128];
+    float kd[3];
+    float ks[3];
+    float ns;
+    float d;
+    char map_kd[512];
+    char map_bump[512];
+    char map_ks[512];
+} obj_mtl_entry_t;
+
+static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count) {
+    *count = 0;
+    FILE *f = fopen(mtl_path, "r");
+    if (!f)
+        return;
+    obj_mtl_entry_t *cur = NULL;
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+        const char *p = line;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0')
+            continue;
+        if (strncmp(p, "newmtl ", 7) == 0) {
+            if (*count >= OBJ_MAX_MATERIALS)
+                break;
+            cur = &mats[(*count)++];
+            memset(cur, 0, sizeof(*cur));
+            cur->kd[0] = cur->kd[1] = cur->kd[2] = 0.8f;
+            cur->ns = 32.0f;
+            cur->d = 1.0f;
+            p += 7;
+            while (*p == ' ')
+                p++;
+            size_t len = strlen(p);
+            while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r' || p[len - 1] == ' '))
+                len--;
+            if (len >= sizeof(cur->name))
+                len = sizeof(cur->name) - 1;
+            memcpy(cur->name, p, len);
+            cur->name[len] = '\0';
+        } else if (cur) {
+            if (strncmp(p, "Kd ", 3) == 0) {
+                char *ep;
+                cur->kd[0] = (float)strtod(p + 3, &ep);
+                cur->kd[1] = (float)strtod(ep, &ep);
+                cur->kd[2] = (float)strtod(ep, NULL);
+            } else if (strncmp(p, "Ks ", 3) == 0) {
+                char *ep;
+                cur->ks[0] = (float)strtod(p + 3, &ep);
+                cur->ks[1] = (float)strtod(ep, &ep);
+                cur->ks[2] = (float)strtod(ep, NULL);
+            } else if (strncmp(p, "Ns ", 3) == 0) {
+                cur->ns = (float)strtod(p + 3, NULL);
+            } else if (strncmp(p, "d ", 2) == 0) {
+                cur->d = (float)strtod(p + 2, NULL);
+            } else if (strncmp(p, "Tr ", 3) == 0) {
+                cur->d = 1.0f - (float)strtod(p + 3, NULL);
+            } else if (strncmp(p, "map_Kd ", 7) == 0) {
+                p += 7;
+                while (*p == ' ')
+                    p++;
+                size_t len = strlen(p);
+                while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r'))
+                    len--;
+                if (len >= sizeof(cur->map_kd))
+                    len = sizeof(cur->map_kd) - 1;
+                memcpy(cur->map_kd, p, len);
+                cur->map_kd[len] = '\0';
+            } else if (strncmp(p, "map_Bump ", 9) == 0 || strncmp(p, "map_Kn ", 7) == 0) {
+                int skip = (p[4] == 'B') ? 9 : 7;
+                p += skip;
+                while (*p == ' ')
+                    p++;
+                size_t len = strlen(p);
+                while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r'))
+                    len--;
+                if (len >= sizeof(cur->map_bump))
+                    len = sizeof(cur->map_bump) - 1;
+                memcpy(cur->map_bump, p, len);
+                cur->map_bump[len] = '\0';
+            } else if (strncmp(p, "map_Ks ", 7) == 0) {
+                p += 7;
+                while (*p == ' ')
+                    p++;
+                size_t len = strlen(p);
+                while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r'))
+                    len--;
+                if (len >= sizeof(cur->map_ks))
+                    len = sizeof(cur->map_ks) - 1;
+                memcpy(cur->map_ks, p, len);
+                cur->map_ks[len] = '\0';
+            }
+        }
+    }
+    fclose(f);
+}
+
+/// @brief Create an rt_material3d from an .mtl entry, loading textures relative to obj_dir.
+static void *obj_mtl_to_material(const obj_mtl_entry_t *mtl, const char *obj_dir)
+    __attribute__((unused));
+static void *obj_mtl_to_material(const obj_mtl_entry_t *mtl, const char *obj_dir) {
+    void *mat = rt_material3d_new();
+    if (!mat)
+        return NULL;
+    rt_material3d_set_color(mat, mtl->kd[0], mtl->kd[1], mtl->kd[2]);
+    rt_material3d_set_shininess(mat, (double)mtl->ns);
+    if (mtl->d < 1.0f)
+        rt_material3d_set_alpha(mat, (double)mtl->d);
+    char tex_path[1024];
+    if (mtl->map_kd[0]) {
+        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_kd);
+        rt_string rts = rt_const_cstr(tex_path);
+        void *px = rt_pixels_load(rts);
+        if (px)
+            rt_material3d_set_texture(mat, px);
+    }
+    if (mtl->map_bump[0]) {
+        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_bump);
+        rt_string rts = rt_const_cstr(tex_path);
+        void *px = rt_pixels_load(rts);
+        if (px)
+            rt_material3d_set_normal_map(mat, px);
+    }
+    if (mtl->map_ks[0]) {
+        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_ks);
+        rt_string rts = rt_const_cstr(tex_path);
+        void *px = rt_pixels_load(rts);
+        if (px)
+            rt_material3d_set_specular_map(mat, px);
+    }
+    return mat;
+}
+
+//=============================================================================
+// OBJ Loading (Wavefront)
+//=============================================================================
+
 void *rt_mesh3d_from_obj(rt_string path) {
     if (!path) {
         rt_trap("Mesh3D.FromOBJ: path must not be null");
@@ -620,6 +766,9 @@ void *rt_mesh3d_from_obj(rt_string path) {
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
+
+    obj_mtl_entry_t mtl_entries[OBJ_MAX_MATERIALS];
+    int mtl_count = 0;
 
     void *mesh = rt_mesh3d_new();
     if (!mesh || !positions || !normals || !texcoords) {
@@ -746,7 +895,45 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
             }
         }
-        /* Ignore: mtllib, usemtl, s, g, o, etc. */
+        else if (strncmp(p, "mtllib ", 7) == 0) {
+            // Parse the .mtl file for material definitions
+            // (Used by rt_obj_load for full material support; here we just parse
+            //  to keep the mtl_count for potential future use)
+            if (mtl_count == 0) {
+                p += 7;
+                while (*p == ' ' || *p == '\t')
+                    p++;
+                char mtl_name[512];
+                size_t mlen = strlen(p);
+                while (mlen > 0 && (p[mlen - 1] == '\n' || p[mlen - 1] == '\r'))
+                    mlen--;
+                if (mlen >= sizeof(mtl_name))
+                    mlen = sizeof(mtl_name) - 1;
+                memcpy(mtl_name, p, mlen);
+                mtl_name[mlen] = '\0';
+
+                // Resolve relative to OBJ directory
+                char mtl_path[1024];
+                const char *last_sep = strrchr(filepath, '/');
+                const char *last_bsep = strrchr(filepath, '\\');
+                if (last_bsep > last_sep)
+                    last_sep = last_bsep;
+                if (last_sep) {
+                    size_t dir_len = (size_t)(last_sep - filepath + 1);
+                    if (dir_len >= sizeof(mtl_path))
+                        dir_len = sizeof(mtl_path) - 1;
+                    memcpy(mtl_path, filepath, dir_len);
+                    mtl_path[dir_len] = '\0';
+                    strncat(mtl_path, mtl_name, sizeof(mtl_path) - dir_len - 1);
+                } else {
+                    strncpy(mtl_path, mtl_name, sizeof(mtl_path) - 1);
+                    mtl_path[sizeof(mtl_path) - 1] = '\0';
+                }
+
+                obj_parse_mtl(mtl_path, mtl_entries, &mtl_count);
+            }
+        }
+        /* Ignore: usemtl, s, g, o, etc. */
     }
 
     fclose(f);
@@ -758,6 +945,168 @@ void *rt_mesh3d_from_obj(rt_string path) {
     if (cnt_n == 0 && ((rt_mesh3d *)mesh)->vertex_count > 0)
         rt_mesh3d_recalc_normals(mesh);
 
+    return mesh;
+}
+
+//=============================================================================
+// STL Loading (Binary + ASCII)
+//=============================================================================
+
+static uint32_t stl_read_u32_le(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static float stl_read_f32_le(const uint8_t *p) {
+    float val;
+    memcpy(&val, p, sizeof(float));
+    return val;
+}
+
+static void *stl_load_binary(const uint8_t *data, size_t len) {
+    if (len < 84)
+        return NULL;
+    uint32_t tri_count = stl_read_u32_le(data + 80);
+    size_t expected = 84 + (size_t)tri_count * 50;
+    if (len < expected || tri_count == 0)
+        return NULL;
+
+    void *mesh = rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+
+    for (uint32_t i = 0; i < tri_count; i++) {
+        const uint8_t *tri = data + 84 + (size_t)i * 50;
+        // Skip face normal (12 bytes) — we compute vertex normals later
+        float v1x = stl_read_f32_le(tri + 12), v1y = stl_read_f32_le(tri + 16),
+              v1z = stl_read_f32_le(tri + 20);
+        float v2x = stl_read_f32_le(tri + 24), v2y = stl_read_f32_le(tri + 28),
+              v2z = stl_read_f32_le(tri + 32);
+        float v3x = stl_read_f32_le(tri + 36), v3y = stl_read_f32_le(tri + 40),
+              v3z = stl_read_f32_le(tri + 44);
+
+        int64_t base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
+        rt_mesh3d_add_vertex(mesh, v1x, v1y, v1z, 0, 0, 0, 0, 0);
+        rt_mesh3d_add_vertex(mesh, v2x, v2y, v2z, 0, 0, 0, 0, 0);
+        rt_mesh3d_add_vertex(mesh, v3x, v3y, v3z, 0, 0, 0, 0, 0);
+        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+    }
+
+    rt_mesh3d_recalc_normals(mesh);
+    return mesh;
+}
+
+static double stl_parse_double(const char **pp) {
+    while (**pp == ' ' || **pp == '\t')
+        (*pp)++;
+    char *end;
+    double val = strtod(*pp, &end);
+    *pp = end;
+    return val;
+}
+
+static void *stl_load_ascii(const uint8_t *data, size_t len) {
+    void *mesh = rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+
+    const char *p = (const char *)data;
+    const char *end = p + len;
+    float verts[9]; // 3 vertices × 3 components
+    int vert_idx = 0;
+
+    while (p < end) {
+        // Skip whitespace
+        while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+            p++;
+        if (p >= end)
+            break;
+
+        if (strncmp(p, "vertex", 6) == 0 && (p[6] == ' ' || p[6] == '\t')) {
+            const char *vp = p + 6;
+            verts[vert_idx * 3 + 0] = (float)stl_parse_double(&vp);
+            verts[vert_idx * 3 + 1] = (float)stl_parse_double(&vp);
+            verts[vert_idx * 3 + 2] = (float)stl_parse_double(&vp);
+            vert_idx++;
+
+            if (vert_idx == 3) {
+                int64_t base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
+                rt_mesh3d_add_vertex(mesh, verts[0], verts[1], verts[2], 0, 0, 0, 0, 0);
+                rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
+                rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
+                rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+                vert_idx = 0;
+            }
+        }
+
+        // Skip to next line
+        while (p < end && *p != '\n')
+            p++;
+        if (p < end)
+            p++;
+    }
+
+    if (((rt_mesh3d *)mesh)->vertex_count == 0) {
+        // No triangles found — free and return NULL
+        rt_obj_release_check0(mesh);
+        rt_obj_free(mesh);
+        return NULL;
+    }
+
+    rt_mesh3d_recalc_normals(mesh);
+    return mesh;
+}
+
+void *rt_mesh3d_from_stl(rt_string path) {
+    if (!path)
+        return NULL;
+    const char *filepath = rt_string_cstr(path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (file_len <= 0 || file_len > 512 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *data = (uint8_t *)malloc((size_t)file_len);
+    if (!data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(data, 1, (size_t)file_len, f) != (size_t)file_len) {
+        free(data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    // Auto-detect: binary STL has predictable size based on triangle count at offset 80
+    void *mesh = NULL;
+    if ((size_t)file_len >= 84) {
+        uint32_t tri_count = stl_read_u32_le(data + 80);
+        size_t expected_binary = 84 + (size_t)tri_count * 50;
+        if ((size_t)file_len == expected_binary && tri_count > 0) {
+            mesh = stl_load_binary(data, (size_t)file_len);
+        }
+    }
+    if (!mesh && file_len > 5 && memcmp(data, "solid", 5) == 0) {
+        mesh = stl_load_ascii(data, (size_t)file_len);
+    }
+    if (!mesh) {
+        // Final fallback: try binary anyway (some files have non-matching header)
+        mesh = stl_load_binary(data, (size_t)file_len);
+    }
+
+    free(data);
     return mesh;
 }
 

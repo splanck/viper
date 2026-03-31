@@ -27,7 +27,10 @@
 #include "rt_fbx_loader.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_morphtarget3d.h"
+#include "rt_pixels.h"
 #include "rt_skeleton3d.h"
+#include "rt_string.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -104,6 +107,8 @@ typedef struct {
     int32_t animation_count;
     void **materials;
     int32_t material_count;
+    void **morph_targets; // rt_morphtarget3d*[] parallel to meshes[]
+    int32_t morph_count;
 } rt_fbx_asset;
 
 /*==========================================================================
@@ -1285,6 +1290,8 @@ static void rt_fbx_asset_finalize(void *obj) {
     fbx->animations = NULL;
     free(fbx->materials);
     fbx->materials = NULL;
+    free(fbx->morph_targets);
+    fbx->morph_targets = NULL;
 }
 
 void *rt_fbx_load(rt_string path) {
@@ -1404,11 +1411,13 @@ void *rt_fbx_load(rt_string path) {
     asset->animation_count = 0;
     asset->materials = NULL;
     asset->material_count = 0;
+    asset->morph_targets = NULL;
+    asset->morph_count = 0;
     rt_obj_set_finalizer(asset, rt_fbx_asset_finalize);
 
     /* Extract geometry */
     fbx_node_t *objects = fbx_find_child(&root, "Objects");
-    if (objects) {
+    if (objects && objects->children && objects->child_count > 0) {
         for (int32_t i = 0; i < objects->child_count; i++) {
             fbx_node_t *obj = &objects->children[i];
             if (strcmp(obj->name, "Geometry") == 0) {
@@ -1431,6 +1440,254 @@ void *rt_fbx_load(rt_string path) {
                         asset->materials = nm;
                         asset->materials[asset->material_count] = mat;
                         asset->material_count = nc;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Extract textures and link to materials */
+    if (objects && asset->material_count > 0) {
+        // Collect Texture nodes and their filenames
+        for (int32_t i = 0; i < objects->child_count; i++) {
+            fbx_node_t *obj = &objects->children[i];
+            if (strcmp(obj->name, "Texture") != 0)
+                continue;
+            if (obj->prop_count < 1)
+                continue;
+            int64_t tex_id = fbx_prop_i64(obj, 0);
+
+            // Extract RelativeFilename from Properties70
+            fbx_node_t *p70 = fbx_find_child(obj, "Properties70");
+            const char *rel_filename = NULL;
+            if (p70) {
+                for (int32_t pi = 0; pi < p70->child_count; pi++) {
+                    fbx_node_t *p = &p70->children[pi];
+                    if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
+                        continue;
+                    const char *pname = fbx_prop_str(p, 0);
+                    if (strcmp(pname, "RelativeFilename") == 0) {
+                        rel_filename = fbx_prop_str(p, 4);
+                        break;
+                    }
+                }
+            }
+            // Fallback: check for direct RelativeFilename child node
+            if (!rel_filename || !*rel_filename) {
+                fbx_node_t *rfn = fbx_find_child(obj, "RelativeFilename");
+                if (rfn && rfn->prop_count > 0)
+                    rel_filename = fbx_prop_str(rfn, 0);
+            }
+            if (!rel_filename || !*rel_filename)
+                continue;
+
+            // Resolve texture path relative to FBX file directory
+            char tex_path[1024];
+            {
+                // Find last path separator in the FBX file path
+                const char *last_sep = strrchr(cpath, '/');
+                const char *last_bsep = strrchr(cpath, '\\');
+                if (last_bsep > last_sep)
+                    last_sep = last_bsep;
+                if (last_sep) {
+                    size_t dir_len = (size_t)(last_sep - cpath + 1);
+                    if (dir_len >= sizeof(tex_path))
+                        dir_len = sizeof(tex_path) - 1;
+                    memcpy(tex_path, cpath, dir_len);
+                    tex_path[dir_len] = '\0';
+                    // Skip any leading path separators in relative filename
+                    while (*rel_filename == '/' || *rel_filename == '\\')
+                        rel_filename++;
+                    strncat(tex_path, rel_filename, sizeof(tex_path) - dir_len - 1);
+                } else {
+                    strncpy(tex_path, rel_filename, sizeof(tex_path) - 1);
+                    tex_path[sizeof(tex_path) - 1] = '\0';
+                }
+            }
+
+            // Load texture via auto-detect loader
+            rt_string tex_rts = rt_const_cstr(tex_path);
+            void *pixels = rt_pixels_load(tex_rts);
+            if (!pixels)
+                continue;
+
+            // Find which material this texture connects to via Connections
+            for (int32_t ci = 0; ci < ct.count; ci++) {
+                if (ct.entries[ci].child_id != tex_id)
+                    continue;
+                int64_t mat_id = ct.entries[ci].parent_id;
+                const char *prop_name = ct.entries[ci].prop;
+
+                // Find the material by scanning Objects for matching Material ID
+                for (int32_t mi = 0; mi < objects->child_count; mi++) {
+                    fbx_node_t *mobj = &objects->children[mi];
+                    if (strcmp(mobj->name, "Material") != 0 || mobj->prop_count < 1)
+                        continue;
+                    if (fbx_prop_i64(mobj, 0) != mat_id)
+                        continue;
+
+                    // Find this material in the asset's material list
+                    // (match by order — materials were extracted in the same loop order)
+                    int mat_idx = -1;
+                    {
+                        int counter = 0;
+                        for (int32_t oi = 0; oi < objects->child_count; oi++) {
+                            if (strcmp(objects->children[oi].name, "Material") == 0) {
+                                if (objects->children[oi].prop_count > 0 &&
+                                    fbx_prop_i64(&objects->children[oi], 0) == mat_id) {
+                                    mat_idx = counter;
+                                    break;
+                                }
+                                counter++;
+                            }
+                        }
+                    }
+                    if (mat_idx < 0 || mat_idx >= asset->material_count)
+                        break;
+
+                    void *mat = asset->materials[mat_idx];
+                    // Assign based on property name in Connection
+                    if (strcmp(prop_name, "DiffuseColor") == 0 || *prop_name == '\0')
+                        rt_material3d_set_texture(mat, pixels);
+                    else if (strcmp(prop_name, "NormalMap") == 0 ||
+                             strcmp(prop_name, "Bump") == 0)
+                        rt_material3d_set_normal_map(mat, pixels);
+                    else if (strcmp(prop_name, "SpecularColor") == 0)
+                        rt_material3d_set_specular_map(mat, pixels);
+                    else if (strcmp(prop_name, "EmissiveColor") == 0)
+                        rt_material3d_set_emissive_map(mat, pixels);
+                    else
+                        rt_material3d_set_texture(mat, pixels); // default to diffuse
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Extract morph targets (BlendShape deformers) */
+    if (objects && asset->mesh_count > 0) {
+        // Allocate parallel morph_targets array (one per mesh, NULL if no morph)
+        asset->morph_targets = (void **)calloc((size_t)asset->mesh_count, sizeof(void *));
+        asset->morph_count = asset->mesh_count;
+
+        // Collect Shape geometry nodes (type "Shape")
+        for (int32_t i = 0; i < objects->child_count; i++) {
+            fbx_node_t *obj = &objects->children[i];
+            if (strcmp(obj->name, "Geometry") != 0 || obj->prop_count < 3)
+                continue;
+            const char *geo_type = fbx_prop_str(obj, 2);
+            if (strcmp(geo_type, "Shape") != 0)
+                continue;
+
+            int64_t shape_id = fbx_prop_i64(obj, 0);
+            // Get shape name from node (format: "ShapeName\x00\x01Geometry")
+            const char *raw_name = fbx_prop_str(obj, 1);
+            char shape_name[64];
+            {
+                const char *sep = strchr(raw_name, '\x00');
+                size_t nlen = sep ? (size_t)(sep - raw_name) : strlen(raw_name);
+                if (nlen >= sizeof(shape_name))
+                    nlen = sizeof(shape_name) - 1;
+                memcpy(shape_name, raw_name, nlen);
+                shape_name[nlen] = '\0';
+            }
+
+            // Extract Indexes and Vertices arrays
+            fbx_node_t *idx_node = fbx_find_child(obj, "Indexes");
+            fbx_node_t *vtx_node = fbx_find_child(obj, "Vertices");
+            if (!idx_node || !vtx_node || idx_node->prop_count < 1 || vtx_node->prop_count < 1)
+                continue;
+
+            // Trace connections: Shape → BlendShapeChannel → BlendShape → Mesh Geometry
+            // Find which mesh this shape belongs to via the connection chain
+            int64_t channel_id = -1, blendshape_id = -1, mesh_geo_id = -1;
+            for (int32_t ci = 0; ci < ct.count; ci++) {
+                if (ct.entries[ci].child_id == shape_id)
+                    channel_id = ct.entries[ci].parent_id;
+            }
+            if (channel_id >= 0) {
+                for (int32_t ci = 0; ci < ct.count; ci++) {
+                    if (ct.entries[ci].child_id == channel_id)
+                        blendshape_id = ct.entries[ci].parent_id;
+                }
+            }
+            if (blendshape_id >= 0) {
+                for (int32_t ci = 0; ci < ct.count; ci++) {
+                    if (ct.entries[ci].child_id == blendshape_id)
+                        mesh_geo_id = ct.entries[ci].parent_id;
+                }
+            }
+            if (mesh_geo_id < 0)
+                continue;
+
+            // Find which mesh index corresponds to this geometry ID
+            int mesh_idx = -1;
+            {
+                int counter = 0;
+                for (int32_t oi = 0; oi < objects->child_count; oi++) {
+                    fbx_node_t *geo = &objects->children[oi];
+                    if (strcmp(geo->name, "Geometry") != 0 || geo->prop_count < 3)
+                        continue;
+                    const char *gt = fbx_prop_str(geo, 2);
+                    if (strcmp(gt, "Mesh") != 0)
+                        continue;
+                    if (fbx_prop_i64(geo, 0) == mesh_geo_id) {
+                        mesh_idx = counter;
+                        break;
+                    }
+                    counter++;
+                }
+            }
+            if (mesh_idx < 0 || mesh_idx >= asset->mesh_count)
+                continue;
+
+            // Create morph target if not yet created for this mesh
+            rt_mesh3d *mesh = (rt_mesh3d *)asset->meshes[mesh_idx];
+            if (!asset->morph_targets[mesh_idx]) {
+                asset->morph_targets[mesh_idx] =
+                    rt_morphtarget3d_new((int64_t)mesh->vertex_count);
+            }
+            void *morph = asset->morph_targets[mesh_idx];
+            if (!morph)
+                continue;
+
+            // Add this shape
+            rt_string sname = rt_const_cstr(shape_name);
+            int64_t si = rt_morphtarget3d_add_shape(morph, sname);
+            if (si < 0)
+                continue;
+
+            // Read delta data: Indexes (int32[]) and Vertices (double[3*count])
+            // The Indexes array contains affected vertex indices,
+            // Vertices contains corresponding position deltas (3 doubles per index)
+            fbx_prop_t *idx_prop = &idx_node->props[0];
+            fbx_prop_t *vtx_prop = &vtx_node->props[0];
+
+            int32_t delta_count = 0;
+            const int32_t *indices_ptr = NULL;
+            const double *deltas_ptr = NULL;
+
+            if (idx_prop->type == 'i' && idx_prop->v.array.count > 0) {
+                delta_count = idx_prop->v.array.count;
+                indices_ptr = (const int32_t *)idx_prop->v.array.data;
+            }
+            if (vtx_prop->type == 'd' && vtx_prop->v.array.count >= (uint32_t)(delta_count * 3)) {
+                deltas_ptr = (const double *)vtx_prop->v.array.data;
+            }
+
+            if (indices_ptr && deltas_ptr) {
+                for (int32_t di = 0; di < delta_count; di++) {
+                    int32_t vi = indices_ptr[di];
+                    if (vi >= 0 && vi < (int32_t)mesh->vertex_count) {
+                        double dx = deltas_ptr[di * 3 + 0];
+                        double dy = deltas_ptr[di * 3 + 1];
+                        double dz = deltas_ptr[di * 3 + 2];
+                        if (z_up) {
+                            double tmp = dy;
+                            dy = dz;
+                            dz = -tmp;
+                        }
+                        rt_morphtarget3d_set_delta(morph, si, (int64_t)vi, dx, dy, dz);
                     }
                 }
             }
@@ -1504,6 +1761,15 @@ void *rt_fbx_get_material(void *obj, int64_t index) {
     if (index < 0 || index >= a->material_count)
         return NULL;
     return a->materials[index];
+}
+
+void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
+    if (!obj)
+        return NULL;
+    rt_fbx_asset *a = (rt_fbx_asset *)obj;
+    if (!a->morph_targets || mesh_index < 0 || mesh_index >= a->morph_count)
+        return NULL;
+    return a->morph_targets[mesh_index];
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

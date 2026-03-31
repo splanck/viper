@@ -9619,6 +9619,7 @@ RT_FUNC(Mesh3DNewSphere,        rt_mesh3d_new_sphere,       "Viper.Graphics3D.Me
 RT_FUNC(Mesh3DNewPlane,         rt_mesh3d_new_plane,        "Viper.Graphics3D.Mesh3D.NewPlane",         "obj(f64,f64)")
 RT_FUNC(Mesh3DNewCylinder,      rt_mesh3d_new_cylinder,     "Viper.Graphics3D.Mesh3D.NewCylinder",      "obj(f64,f64,i64)")
 RT_FUNC(Mesh3DFromOBJ,          rt_mesh3d_from_obj,         "Viper.Graphics3D.Mesh3D.FromOBJ",          "obj(str)")
+RT_FUNC(Mesh3DFromSTL,          rt_mesh3d_from_stl,         "Viper.Graphics3D.Mesh3D.FromSTL",          "obj(str)")
 RT_FUNC(Mesh3DGetVertexCount,   rt_mesh3d_get_vertex_count, "Viper.Graphics3D.Mesh3D.get_VertexCount",  "i64(obj)")
 RT_FUNC(Mesh3DGetTriangleCount, rt_mesh3d_get_triangle_count,"Viper.Graphics3D.Mesh3D.get_TriangleCount","i64(obj)")
 RT_FUNC(Mesh3DAddVertex,        rt_mesh3d_add_vertex,       "Viper.Graphics3D.Mesh3D.AddVertex",        "void(obj,f64,f64,f64,f64,f64,f64,f64,f64)")
@@ -9733,6 +9734,7 @@ RT_FUNC(Scene3DRemove,       rt_scene3d_remove,         "Viper.Graphics3D.Scene3
 RT_FUNC(Scene3DFind,         rt_scene3d_find,           "Viper.Graphics3D.Scene3D.Find",          "obj(obj,str)")
 RT_FUNC(Scene3DDraw,         rt_scene3d_draw,           "Viper.Graphics3D.Scene3D.Draw",          "void(obj,obj,obj)")
 RT_FUNC(Scene3DClear,        rt_scene3d_clear,          "Viper.Graphics3D.Scene3D.Clear",         "void(obj)")
+RT_FUNC(Scene3DSave,         rt_scene3d_save,           "Viper.Graphics3D.Scene3D.Save",          "i64(obj,str)")
 RT_FUNC(Scene3DNodeCount,    rt_scene3d_get_node_count,   "Viper.Graphics3D.Scene3D.get_NodeCount",   "i64(obj)")
 RT_FUNC(Scene3DCulledCount,  rt_scene3d_get_culled_count, "Viper.Graphics3D.Scene3D.get_CulledCount", "i64(obj)")
 
@@ -9745,6 +9747,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Scene3D", Scene3D, "obj", Scene3DNew)
     RT_METHOD("Find", "obj(str)", Scene3DFind)
     RT_METHOD("Draw", "void(obj,obj)", Scene3DDraw)
     RT_METHOD("Clear", "void()", Scene3DClear)
+    RT_METHOD("Save", "i64(str)", Scene3DSave)
 RT_CLASS_END()
 
 // SceneNode3D
@@ -9868,6 +9871,13 @@ RT_FUNC(FBXGetAnim,       rt_fbx_get_animation,     "Viper.Graphics3D.FBX.GetAni
 RT_FUNC(FBXGetAnimName,   rt_fbx_get_animation_name,"Viper.Graphics3D.FBX.GetAnimationName",  "str(obj,i64)")
 RT_FUNC(FBXMaterialCount, rt_fbx_material_count,    "Viper.Graphics3D.FBX.get_MaterialCount", "i64(obj)")
 RT_FUNC(FBXGetMaterial,   rt_fbx_get_material,      "Viper.Graphics3D.FBX.GetMaterial",       "obj(obj,i64)")
+RT_FUNC(FBXGetMorph,     rt_fbx_get_morph_target,  "Viper.Graphics3D.FBX.GetMorphTarget",   "obj(obj,i64)")
+
+RT_FUNC(GLTFLoad,        rt_gltf_load,             "Viper.Graphics3D.GLTF.Load",            "obj(str)")
+RT_FUNC(GLTFMeshCount,   rt_gltf_mesh_count,       "Viper.Graphics3D.GLTF.get_MeshCount",   "i64(obj)")
+RT_FUNC(GLTFGetMesh,     rt_gltf_get_mesh,         "Viper.Graphics3D.GLTF.GetMesh",         "obj(obj,i64)")
+RT_FUNC(GLTFMatCount,    rt_gltf_material_count,   "Viper.Graphics3D.GLTF.get_MaterialCount","i64(obj)")
+RT_FUNC(GLTFGetMaterial, rt_gltf_get_material,     "Viper.Graphics3D.GLTF.GetMaterial",     "obj(obj,i64)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.FBX", FBX, "obj", FBXLoad)
     RT_PROP("MeshCount", "i64", FBXMeshCount, none)
@@ -9878,6 +9888,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.FBX", FBX, "obj", FBXLoad)
     RT_METHOD("GetAnimation", "obj(i64)", FBXGetAnim)
     RT_METHOD("GetAnimationName", "str(i64)", FBXGetAnimName)
     RT_METHOD("GetMaterial", "obj(i64)", FBXGetMaterial)
+    RT_METHOD("GetMorphTarget", "obj(i64)", FBXGetMorph)
 RT_CLASS_END()
 
 // MorphTarget3D

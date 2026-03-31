@@ -31,6 +31,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int32_t rt_obj_release_check0(void *p);
+extern void rt_obj_free(void *p);
 extern void rt_trap(const char *msg);
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
@@ -57,7 +59,17 @@ typedef struct {
 } rt_water3d;
 
 static void water3d_finalizer(void *obj) {
-    (void)obj;
+    rt_water3d *w = (rt_water3d *)obj;
+    if (w->mesh) {
+        if (rt_obj_release_check0(w->mesh))
+            rt_obj_free(w->mesh);
+        w->mesh = NULL;
+    }
+    if (w->material) {
+        if (rt_obj_release_check0(w->material))
+            rt_obj_free(w->material);
+        w->material = NULL;
+    }
 }
 
 void *rt_water3d_new(double width, double depth) {

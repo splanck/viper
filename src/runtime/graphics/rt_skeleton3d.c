@@ -253,6 +253,7 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
         for (int i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
     } else {
+        if (dot > 1.0f) dot = 1.0f; // clamp for acosf domain safety
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;

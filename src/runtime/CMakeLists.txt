@@ -222,6 +222,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_pixels_transform.c
         graphics/rt_pixels_draw.c
         graphics/rt_gif.c
+        graphics/rt_gltf.c
         graphics/rt_sprite.c
         graphics/rt_spritesheet.c
         graphics/rt_camera.c

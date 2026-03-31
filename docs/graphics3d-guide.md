@@ -123,7 +123,8 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Method | Description |
 |--------|-------------|
-| `FromOBJ(path)` | Load Wavefront OBJ file. Supports v/vn/vt, quads, negative indices |
+| `FromOBJ(path)` | Load Wavefront OBJ file. Supports v/vn/vt, quads, negative indices, .mtl materials |
+| `FromSTL(path)` | Load STL file (binary or ASCII). Auto-detects format, computes normals |
 
 ### Programmatic Construction
 

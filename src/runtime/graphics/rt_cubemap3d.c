@@ -150,21 +150,46 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     int64_t fw = rt_pixels_width(face_pixels);
     int64_t fh = rt_pixels_height(face_pixels);
 
-    int px = (int)(u * (float)fw);
-    int py = (int)(v * (float)fh);
-    if (px < 0)
-        px = 0;
-    if (px >= (int)fw)
-        px = (int)fw - 1;
-    if (py < 0)
-        py = 0;
-    if (py >= (int)fh)
-        py = (int)fh - 1;
+    /* Bilinear interpolation for smooth cubemap sampling */
+    float fx = u * (float)fw - 0.5f;
+    float fy = v * (float)fh - 0.5f;
+    int x0 = (int)floorf(fx);
+    int y0 = (int)floorf(fy);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+    float sx = fx - (float)x0;
+    float sy = fy - (float)y0;
 
-    int64_t pixel = rt_pixels_get(face_pixels, px, py);
-    *out_r = (float)((pixel >> 24) & 0xFF) / 255.0f;
-    *out_g = (float)((pixel >> 16) & 0xFF) / 255.0f;
-    *out_b = (float)((pixel >> 8) & 0xFF) / 255.0f;
+    /* Clamp all 4 sample coordinates */
+    if (x0 < 0) x0 = 0;
+    if (x0 >= (int)fw) x0 = (int)fw - 1;
+    if (x1 < 0) x1 = 0;
+    if (x1 >= (int)fw) x1 = (int)fw - 1;
+    if (y0 < 0) y0 = 0;
+    if (y0 >= (int)fh) y0 = (int)fh - 1;
+    if (y1 < 0) y1 = 0;
+    if (y1 >= (int)fh) y1 = (int)fh - 1;
+
+    /* Sample 4 texels */
+    int64_t p00 = rt_pixels_get(face_pixels, x0, y0);
+    int64_t p10 = rt_pixels_get(face_pixels, x1, y0);
+    int64_t p01 = rt_pixels_get(face_pixels, x0, y1);
+    int64_t p11 = rt_pixels_get(face_pixels, x1, y1);
+
+    /* Extract channels and bilinear blend */
+    #define BL(ch, shift) do { \
+        float c00 = (float)((p00 >> (shift)) & 0xFF); \
+        float c10 = (float)((p10 >> (shift)) & 0xFF); \
+        float c01 = (float)((p01 >> (shift)) & 0xFF); \
+        float c11 = (float)((p11 >> (shift)) & 0xFF); \
+        *(ch) = ((c00 * (1-sx) + c10 * sx) * (1-sy) + \
+                 (c01 * (1-sx) + c11 * sx) * sy) / 255.0f; \
+    } while(0)
+
+    BL(out_r, 24);
+    BL(out_g, 16);
+    BL(out_b, 8);
+    #undef BL
 }
 
 //=============================================================================

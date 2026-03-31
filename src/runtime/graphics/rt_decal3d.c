@@ -30,6 +30,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int32_t rt_obj_release_check0(void *p);
+extern void rt_obj_free(void *p);
 extern void rt_trap(const char *msg);
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -56,7 +58,17 @@ typedef struct {
 } rt_decal3d;
 
 static void decal3d_finalizer(void *obj) {
-    (void)obj;
+    rt_decal3d *d = (rt_decal3d *)obj;
+    if (d->mesh) {
+        if (rt_obj_release_check0(d->mesh))
+            rt_obj_free(d->mesh);
+        d->mesh = NULL;
+    }
+    if (d->material) {
+        if (rt_obj_release_check0(d->material))
+            rt_obj_free(d->material);
+        d->material = NULL;
+    }
 }
 
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {

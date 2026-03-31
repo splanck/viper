@@ -105,6 +105,7 @@
 #include "rt_exec.h"
 #include "rt_fbx_loader.h"
 #include "rt_file.h"
+#include "rt_gltf.h"
 #include "rt_file_ext.h"
 #include "rt_file_path.h"
 #include "rt_fmt.h"

@@ -28,7 +28,9 @@
 #include "vgfx3d_frustum.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -718,6 +720,112 @@ void rt_scene_node3d_clear_lod(void *obj) {
         return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
     node->lod_count = 0;
+}
+
+//=============================================================================
+// Scene save/load (.vscn JSON format)
+//=============================================================================
+
+/// @brief Append a formatted string to a dynamic buffer.
+__attribute__((format(printf, 4, 5)))
+static void vscn_append(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int needed = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (needed < 0)
+        return;
+    while (*len + (size_t)needed + 1 > *cap) {
+        *cap = (*cap == 0) ? 4096 : *cap * 2;
+        char *nb = (char *)realloc(*buf, *cap);
+        if (!nb)
+            return;
+        *buf = nb;
+    }
+    va_start(ap, fmt);
+    vsnprintf(*buf + *len, *cap - *len, fmt, ap);
+    va_end(ap);
+    *len += (size_t)needed;
+}
+
+/// @brief Recursively serialize a scene node to JSON.
+static void vscn_serialize_node(rt_scene_node3d *node, char **buf, size_t *len, size_t *cap,
+                                 int depth) {
+    if (!node)
+        return;
+    char indent[64];
+    int id = depth * 2;
+    if (id > 60)
+        id = 60;
+    memset(indent, ' ', (size_t)id);
+    indent[id] = '\0';
+
+    const char *name = node->name ? rt_string_cstr(node->name) : "node";
+    if (!name)
+        name = "node";
+
+    vscn_append(buf, len, cap, "%s{\n", indent);
+    vscn_append(buf, len, cap, "%s  \"name\": \"%s\",\n", indent, name);
+    vscn_append(buf, len, cap, "%s  \"position\": [%.6f, %.6f, %.6f],\n", indent,
+                node->position[0], node->position[1], node->position[2]);
+    vscn_append(buf, len, cap, "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n", indent,
+                node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
+    vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f]", indent,
+                node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2]);
+
+    if (node->child_count > 0) {
+        vscn_append(buf, len, cap, ",\n%s  \"children\": [\n", indent);
+        for (int32_t i = 0; i < node->child_count; i++) {
+            vscn_serialize_node(node->children[i], buf, len, cap, depth + 2);
+            if (i < node->child_count - 1)
+                vscn_append(buf, len, cap, ",");
+            vscn_append(buf, len, cap, "\n");
+        }
+        vscn_append(buf, len, cap, "%s  ]", indent);
+    }
+
+    vscn_append(buf, len, cap, "\n%s}", indent);
+}
+
+int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
+    if (!scene_obj || !path)
+        return 0;
+    rt_scene3d *scene = (rt_scene3d *)scene_obj;
+    if (!scene->root)
+        return 0;
+
+    const char *filepath = rt_string_cstr(path);
+    if (!filepath)
+        return 0;
+
+    char *buf = NULL;
+    size_t len = 0, cap = 0;
+
+    vscn_append(&buf, &len, &cap, "{\n");
+    vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n");
+    vscn_append(&buf, &len, &cap, "  \"version\": 1,\n");
+    vscn_append(&buf, &len, &cap, "  \"nodes\": [\n");
+
+    // Serialize root's children (root itself is implicit)
+    for (int32_t i = 0; i < scene->root->child_count; i++) {
+        vscn_serialize_node(scene->root->children[i], &buf, &len, &cap, 2);
+        if (i < scene->root->child_count - 1)
+            vscn_append(&buf, &len, &cap, ",");
+        vscn_append(&buf, &len, &cap, "\n");
+    }
+
+    vscn_append(&buf, &len, &cap, "  ]\n");
+    vscn_append(&buf, &len, &cap, "}\n");
+
+    FILE *f = fopen(filepath, "w");
+    if (!f) {
+        free(buf);
+        return 0;
+    }
+    fwrite(buf, 1, len, f);
+    fclose(f);
+    free(buf);
+    return 1;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

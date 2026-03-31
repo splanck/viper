@@ -55,7 +55,7 @@ Usage: scripts/benchmark.sh [options]
 Options:
   -n, --iterations N     Timed iterations per benchmark (default: 5)
   --warmup N             Warmup iterations (default: 1)
-  --set-baseline         Save this run as benchmarks/baseline.jsonl
+  --set-baseline         Save this run as misc/benchmarks/baseline.jsonl
   --no-native            Skip native codegen benchmarks
   --no-vm                Skip VM benchmarks
   --no-reference         Skip C/Rust/Lua/Python/Java/C# reference benchmarks
@@ -288,9 +288,9 @@ has_runtime_deps() {
 # Enumerate benchmark programs
 # ============================================================================
 IL_DIR="$ROOT_DIR/examples/il/benchmarks"
-REF_DIR="$ROOT_DIR/benchmarks/reference"
-ZIA_DIR="$ROOT_DIR/benchmarks/reference/zia"
-BAS_DIR="$ROOT_DIR/benchmarks/reference/basic"
+REF_DIR="$ROOT_DIR/misc/benchmarks/reference"
+ZIA_DIR="$ROOT_DIR/misc/benchmarks/reference/zia"
+BAS_DIR="$ROOT_DIR/misc/benchmarks/reference/basic"
 
 declare -a PROGRAMS=()
 for f in "$IL_DIR"/*.il; do
@@ -653,17 +653,17 @@ log "${YELLOW}${VALIDATION_OUTPUT}${NC}"
 # ============================================================================
 # Store results
 # ============================================================================
-RESULTS_FILE="$ROOT_DIR/benchmarks/results.jsonl"
-BASELINE_FILE="$ROOT_DIR/benchmarks/baseline.jsonl"
+RESULTS_FILE="$ROOT_DIR/misc/benchmarks/results.jsonl"
+BASELINE_FILE="$ROOT_DIR/misc/benchmarks/baseline.jsonl"
 
 # Append to results file
 echo "$RESULT_JSON" >> "$RESULTS_FILE"
-log "  Results appended to: ${DIM}benchmarks/results.jsonl${NC}"
+log "  Results appended to: ${DIM}misc/benchmarks/results.jsonl${NC}"
 
 # Set baseline if requested
 if [[ "$SET_BASELINE" == "1" ]]; then
     echo "$RESULT_JSON" > "$BASELINE_FILE"
-    log "  ${GREEN}Baseline saved to: benchmarks/baseline.jsonl${NC}"
+    log "  ${GREEN}Baseline saved to: misc/benchmarks/baseline.jsonl${NC}"
 fi
 
 # ============================================================================

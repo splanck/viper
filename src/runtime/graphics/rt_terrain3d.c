@@ -123,8 +123,10 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
             if (sz >= sh)
                 sz = sh - 1;
             uint32_t pixel = pv->data[sz * sw + sx]; /* 0xRRGGBBAA */
-            float r = (float)((pixel >> 24) & 0xFF) / 255.0f;
-            t->heights[z * t->width + x] = r;
+            /* 16-bit height from R (high byte) + G (low byte) for smooth terrain */
+            uint32_t hi = (pixel >> 24) & 0xFF;
+            uint32_t lo = (pixel >> 16) & 0xFF;
+            t->heights[z * t->width + x] = (float)((hi << 8) | lo) / 65535.0f;
         }
     }
 

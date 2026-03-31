@@ -32,7 +32,7 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 50 | +50 |
+| Commits | — | 51 | +51 |
 | Source files | 2,671 | 2,736 | +65 |
 | Production SLOC | ~348K | ~398K | +50K |
 | Test count | 1,351 | 1,370 | +19 |
@@ -355,3 +355,4 @@ Comprehensive overhaul with 10 improvements:
 - PNG 16-bit sample downscaling discarded LSB (now uses round-to-nearest)
 - MP3 ID3v1 tags at end of file could corrupt last decoded frame
 - `vg_image_load_file()` GUI widget stub always returned false (now wired to `rt_pixels` decoders)
+- Mach-O linker: `rt_audio_shutdown` exported as dynamic symbol but defined as weak stub, causing link failures on some configurations

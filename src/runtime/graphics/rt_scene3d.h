@@ -38,6 +38,7 @@ void *rt_scene3d_find(void *scene, rt_string name);
 void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
 void rt_scene3d_clear(void *scene);
 int64_t rt_scene3d_get_node_count(void *scene);
+int64_t rt_scene3d_save(void *scene, rt_string path);
 
 /* SceneNode3D */
 void *rt_scene_node3d_new(void);

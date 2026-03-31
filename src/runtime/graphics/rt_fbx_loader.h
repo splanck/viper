@@ -37,6 +37,7 @@ void *rt_fbx_get_animation(void *fbx, int64_t index);
 rt_string rt_fbx_get_animation_name(void *fbx, int64_t index);
 int64_t rt_fbx_material_count(void *fbx);
 void *rt_fbx_get_material(void *fbx, int64_t index);
+void *rt_fbx_get_morph_target(void *fbx, int64_t mesh_index);
 
 #ifdef __cplusplus
 }

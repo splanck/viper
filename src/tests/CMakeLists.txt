@@ -421,6 +421,10 @@ viper_add_test(test_mp3_decode
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestMp3Decode.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_stl_load
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestStlLoad.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
         LIBS fe_basic)

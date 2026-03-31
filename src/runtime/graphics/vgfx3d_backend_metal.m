@@ -948,7 +948,8 @@ static void metal_submit_draw(void *ctx_ptr,
         transpose4x4(ctx->_vp, vp_t);
         memcpy(obj.vp, vp_t, sizeof(float) * 16);
         memcpy(obj.nm, obj.m, sizeof(float) * 16); /* normal matrix = model (transposed) */
-        obj.hasSkinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
+        int capped_bone_count = cmd->bone_count > 128 ? 128 : cmd->bone_count;
+        obj.hasSkinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
         obj.morphShapeCount = cmd->morph_shape_count;
         obj.vertexCount = (int32_t)cmd->vertex_count;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
@@ -956,7 +957,7 @@ static void metal_submit_draw(void *ctx_ptr,
         /* MTL-09: Bind bone palette if skinning active */
         if (obj.hasSkinning)
         {
-            size_t bsz = (size_t)cmd->bone_count * 16 * sizeof(float);
+            size_t bsz = (size_t)capped_bone_count * 16 * sizeof(float);
             id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
                                                             length:bsz
                                                            options:MTLResourceStorageModeShared];
@@ -1478,6 +1479,18 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             }
             int32_t bc = light_count > 0 ? light_count : 1;
             [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * bc atIndex:2];
+        }
+
+        /* Bind bone palette for instanced skinning (Fix 104) */
+        if (cmd->bone_palette && cmd->bone_count > 0) {
+            int bc = cmd->bone_count > 128 ? 128 : cmd->bone_count;
+            size_t bsz = (size_t)bc * 16 * sizeof(float);
+            id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
+                                                            length:bsz
+                                                           options:MTLResourceStorageModeShared];
+            [ctx.encoder setVertexBuffer:boneBuf offset:0 atIndex:3];
+            if (ctx.frameBuffers)
+                [ctx.frameBuffers addObject:boneBuf];
         }
 
         /* Issue N individual draws with per-instance model matrix.

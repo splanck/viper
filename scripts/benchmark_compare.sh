@@ -16,8 +16,8 @@ set -euo pipefail
 # ============================================================================
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-RESULTS_FILE="$ROOT_DIR/benchmarks/results.jsonl"
-BASELINE_FILE="$ROOT_DIR/benchmarks/baseline.jsonl"
+RESULTS_FILE="$ROOT_DIR/misc/benchmarks/results.jsonl"
+BASELINE_FILE="$ROOT_DIR/misc/benchmarks/baseline.jsonl"
 
 # --- Parse arguments ---
 BASE_JSON=""

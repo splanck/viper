@@ -98,6 +98,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments);
 void *rt_mesh3d_new_plane(double sx, double sz);
 void *rt_mesh3d_new_cylinder(double r, double h, int64_t segments);
 void *rt_mesh3d_from_obj(rt_string path);
+void *rt_mesh3d_from_stl(rt_string path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
 int64_t rt_mesh3d_get_triangle_count(void *obj);
 void rt_mesh3d_add_vertex(
