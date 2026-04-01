@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a rendering, codegen, language features, media codecs, documentation, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, codegen, language features, media codecs, documentation, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -27,7 +27,12 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 - **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
 - **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
-- **XENOSCAPE Demo Game** — Flagship Metroid-style sidescroller expanded from 720 LOC to 17K LOC across 26 files with 10 interconnected levels, 30+ enemy types, boss fights, save system, achievement tracking, procedural music, and ability-gated progression.
+- **10 Game Engine APIs** — Entity (2D game object with built-in physics), Behavior (composable AI presets), Raycast2D (tilemap line-of-sight), LevelData (JSON level loader), SceneManager (multi-scene transitions), Camera.SmoothFollow (deadzone + lerp tracking), AnimStateMachine named states (play-by-name), MenuList.HandleInput (input convenience), Config.Load (JSON config), Tilemap.SetTileAnim (per-tile frame animation). 10 new runtime classes, 3,800+ LOC in C.
+- **Asset Embedding System (VPA)** — Compile-time asset packaging via `embed`, `pack`, and `pack-compressed` project directives. VPA binary format with `AssetCompiler` and `VpaWriter` toolchain. `Assets.Load`/`LoadBytes`/`Exists`/`Mount` runtime API. Asset blobs injected into `.rodata` via the native assembler for zero-file-dependency executables. Cross-platform `Path.ExeDir()` for relative asset resolution.
+- **XENOSCAPE Demo Rewrite** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC), 10 JSON level files, JSON-driven entity spawning via `LevelData`, composable enemy AI via `Behavior`, and scene management via `SceneManager`.
+- **Native macOS Menu Bar** — 554-line Objective-C bridge (`rt_gui_macos_menu.m`) mirrors Viper GUI menubars to the native macOS application menu bar. Special item relocation (About → app menu, Preferences → app menu with Cmd+,, Quit → app menu with Cmd+Q). Keyboard accelerator translation, Services submenu, and Hide/Show All standard items.
+- **Bytecode VM CALL_NATIVE Expansion** — Native function index widened from 8-bit to 16-bit (255 → 65,535 max native references) to accommodate the growing runtime. Bytecode format version bumped to v2.
+- **Zia Runtime Extern Signatures** — `rtgen` now emits full parameter types (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. Enables correct string equality comparison for runtime methods returning `str` (e.g., `LevelData.ObjectType() == "enemy"` now emits `Viper.String.Equals` instead of `ICmpEq`).
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
 - **VAPS Packaging Overhaul** — 10 improvements, 57 new tests, Windows installer stub, symlink safety, dry-run mode.
 - **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,706 source files, @brief Doxygen on 98% of runtime functions. Bible code audit across 12 chapters correcting struct field syntax, class method visibility, interface declarations, catch syntax, and collection API calls.
@@ -36,10 +41,10 @@ Version 0.2.4 is a rendering, codegen, language features, media codecs, document
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 56 | +56 |
-| Source files | 2,671 | 2,737 | +66 |
-| Production SLOC | ~348K | ~400K | +52K |
-| Test count | 1,351 | 1,371 | +20 |
+| Commits | — | 57 | +57 |
+| Source files | 2,671 | 2,796 | +125 |
+| Production SLOC | ~348K | ~404K | +56K |
+| Test count | 1,351 | 1,382 | +31 |
 
 ---
 
@@ -317,6 +322,96 @@ Five additions to the `Viper.Game` namespace:
 
 ---
 
+### Game Engine APIs (10 New Systems)
+
+Ten new game engine systems providing high-level abstractions for 2D game development. All implemented as C runtime classes registered via `runtime.def`:
+
+| API | Runtime Class | Key Functions | LOC |
+|-----|---------------|---------------|-----|
+| **Entity** | `Viper.Game.Entity` | `New`, `ApplyGravity`, `MoveAndCollide`, `UpdatePhysics`, `Overlaps`, `AtEdge`, `PatrolReverse` | 282 |
+| **Behavior** | `Viper.Game.Behavior` | `AddPatrol`, `AddChase`, `AddGravity`, `AddEdgeReverse`, `AddShoot`, `AddSineFloat`, `Update` | 227 |
+| **Raycast2D** | `Viper.Game.Raycast` | `HasLineOfSight`, `Collision.LineRect`, `Collision.LineCircle` | 124 |
+| **LevelData** | `Viper.Game.LevelData` | `Load` (JSON), `ObjectCount`, `ObjectType`, `ObjectX/Y`, `PlayerStartX/Y`, `Theme` | 222 |
+| **SceneManager** | `Viper.Game.SceneManager` | `Add`, `Switch`, `SwitchTransition`, `Update`, `Current`, `IsScene` | 183 |
+| **Camera.SmoothFollow** | `Viper.Graphics.Camera` | `SmoothFollow(targetX, targetY, speed)`, `SetDeadzone(w, h)` | 45 |
+| **AnimStateMachine** | `Viper.Game.AnimStateMachine` | `AddNamed`, `Play(name)`, `StateName`, `SetEventFrame`, `EventFired` | 76 |
+| **MenuList.HandleInput** | `Viper.Game.UI.MenuList` | `HandleInput(up, down, confirm)` — returns selected index or -1 | — |
+| **Config.Load** | `Viper.Game.Config` | `Load(path)`, `GetString`, `GetInt`, `GetBool`, `GetFloat`, `Has`, `Keys` | 114 |
+| **Tilemap.SetTileAnim** | `Viper.Graphics.Tilemap` | `SetTileAnim`, `SetTileAnimFrame`, `UpdateAnims`, `ResolveAnimTile` | 76 |
+
+**Entity** is a lightweight 2D game object with built-in position, velocity, direction, HP, AABB collision flags (ground/left/right/ceiling), and tilemap-aware physics (`MoveAndCollide` performs axis-separated sweep with solid tile detection). **Behavior** provides composable AI presets (patrol, chase, gravity, edge/wall reverse, shoot timer, sine float, anim loop) that can be stacked on any Entity. **LevelData** parses a JSON format with tilemap data, spawn objects (type/id/position), player start position, and theme string — enabling data-driven level design.
+
+**GameButton** (`Viper.Game.UI.GameButton`) also added: styled button widget with customizable colors, border, and text for game menus. 132 LOC.
+
+11 new test binaries covering all game engine APIs: `test_rt_entity`, `test_rt_behavior`, `test_rt_raycast_2d`, `test_rt_scene_manager`, `test_rt_animstate_named`, `test_rt_camera_enhance`, `test_rt_game_menu`, `test_rt_tilemap_anim`, `test_rt_vpa_format`, `test_rt_asset_manager`, `test_rt_path_exe_dir`.
+
+---
+
+### Asset Embedding System (VPA Format)
+
+Compile-time asset packaging for zero-file-dependency native executables. Assets are compiled into a binary blob at build time and embedded into the executable's `.rodata` section.
+
+**Project directives** in `viper.project`:
+- `embed <path>` — Embed file as-is (raw bytes)
+- `pack <path>` — Pack file with VPA container framing
+- `pack-compressed <path>` — Pack with DEFLATE compression
+
+**Toolchain components:**
+- `AssetCompiler` (`src/tools/common/asset/AssetCompiler.cpp`, 233 LOC) — Reads project directives, resolves paths, invokes VpaWriter
+- `VpaWriter` (`src/tools/common/asset/VpaWriter.cpp`, 230 LOC) — Produces VPA binary format: magic header, file table (name + offset + size + flags), concatenated file data, optional DEFLATE compression
+- `VpaReader` (`src/runtime/io/rt_vpa_reader.c`, 375 LOC) — Reads VPA archives at runtime, supports mounting multiple archives
+- Asset blob injection — Both x86_64 and AArch64 `CodegenPipeline` inject VPA blobs as `viper_asset_blob` / `viper_asset_blob_size` global symbols in `.rodata`
+- `Path.ExeDir()` (`rt_path_exe.c`, 149 LOC) — Cross-platform executable directory resolution (`_NSGetExecutablePath` on macOS, `/proc/self/exe` on Linux, `GetModuleFileName` on Windows)
+
+**Runtime API** (`Viper.IO.Assets`):
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Assets.Load(name)` | `obj(str)` | Load asset as String |
+| `Assets.LoadBytes(name)` | `obj(str)` | Load asset as Bytes |
+| `Assets.Exists(name)` | `i64(str)` | Check if asset exists |
+| `Assets.Size(name)` | `i64(str)` | Get asset size in bytes |
+| `Assets.List()` | `obj()` | List all asset names |
+| `Assets.Mount(path)` | `i64(str)` | Mount additional VPA archive |
+| `Assets.Unmount(path)` | `i64(str)` | Unmount VPA archive |
+
+Asset resolution order: embedded blob → mounted VPA archives → filesystem fallback relative to executable directory. 9 VPA format tests + 9 asset manager tests.
+
+---
+
+### Native macOS Menu Bar Bridge
+
+New 554-line Objective-C module (`rt_gui_macos_menu.m`) mirrors Viper GUI menubars to the native macOS application menu bar, providing standard macOS application behavior:
+
+- **Special item relocation** — "About" items move to the app menu (prefixed with app name), "Preferences" moves to app menu with Cmd+, accelerator, "Quit"/"Exit" moves to app menu with Cmd+Q
+- **Standard app menu items** — Auto-generated About, Services submenu, Hide/Hide Others/Show All, and Quit entries
+- **Keyboard accelerator translation** — Viper `Ctrl+` accelerators map to `Cmd+` on macOS; full function key, arrow key, and modifier mapping via `rt_gui_macos_key_equivalent_for_key()`
+- **Menu bar suppression** — When `native_main_menu` is active, the Viper-rendered menubar collapses to zero height (no measure/paint/event handling), eliminating double menu bars
+- **Key equivalent routing** — macOS event loop now forwards `NSEventTypeKeyDown` to `[mainMenu performKeyEquivalent:]` before Viper input processing, enabling native Cmd+key shortcuts (Cmd+N, F5, etc.)
+- **Window and Help menu registration** — Menus titled "Window" and "Help" are registered with `NSApp` for standard macOS behavior (window list, Help search)
+
+Infrastructure changes: `vg_menu_item_t` gains `parent_menu` pointer, `vg_menu` gains `owner_menubar` pointer, `vg_menubar_t` gains `native_main_menu` flag. Accelerator table memory leak fixed in `menubar_destroy`.
+
+---
+
+### Bytecode VM CALL_NATIVE Expansion
+
+The `CALL_NATIVE` instruction encoding widened to support the growing runtime library:
+
+- **Before:** `[opcode:8][nativeIdx:8][argCount:8]` — max 255 native functions
+- **After:** `[opcode:8][argCount:8][nativeIdx:16]` — max 65,535 native functions
+
+Bytecode format version bumped from 1 to 2. Both `BytecodeVM.cpp` (switch dispatch) and `BytecodeVM_threaded.cpp` (threaded dispatch) updated. `BytecodeCompiler` now validates argument count ≤ 255 and native index ≤ 65,535 with clear error messages.
+
+---
+
+### Zia Frontend Improvements
+
+- **Runtime extern parameter types** — `rtgen` now generates full ABI-shaped parameter signatures (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. New `ilParamTypeToZiaType()` mapper handles `str`, `i64`, `f64`, `i1`, `obj`, `ptr`, and optional types. This enables Zia sema to correctly identify string-returning runtime methods and emit `Viper.String.Equals` for `==` comparisons instead of `ICmpEq` (which would compare pointer values).
+- **`List[Object]` Push ABI fix** — `List.Push` on user-defined class instances now emits the correct 2-argument `(obj, obj)` extern signature. Verified by new `ListEntityPushUsesAbiArity` lowerer test.
+
+---
+
 ### VAPS Packaging System
 
 Comprehensive overhaul with 10 improvements:
@@ -352,16 +447,8 @@ Comprehensive overhaul with 10 improvements:
 
 ### Demo Games
 
-- **XENOSCAPE** — Flagship Metroid-style action exploration sidescroller:
-  - 10 interconnected levels: Crash Site, Fungal Caverns, Crystal Depths, Surface Ruins, Underground Lake, Thermal Vents, Overgrowth, Frozen Abyss, Corrupted Ruins, The Core
-  - 30+ enemy types across 5 biome families (fungal, crystal, thermal, frozen, corrupted) with unique AI and procedural sprites
-  - 4 boss fights: Spore Mother, Crystal Wyrm, Magma Core, The Architect
-  - Ability system: wall jump, double jump, dash, charge shot, ground pound, grapple hook (progression gates)
-  - Save system (3 slots), world map, lore terminals (30+ entries), achievement tracking (32 achievements)
-  - Procedural music via MusicGen, dynamic lighting, biome crossfade transitions via Color.Lerp
-  - Color.RGB() palette system with constructor injection for theme-swapping
-  - Runtime API migration: PlatformerController, CollisionRect, Tilemap, ObjectPool, Quadtree, Camera, Lighting2D, AchievementTracker, Typewriter
-  - 17,023 LOC across 26 files (was 720 LOC / 5 files)
+- **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking.
+- **Asset Demo** — Minimal example (`examples/apps/asset_demo/`) demonstrating `embed` and `pack` project directives with `Assets.Load()` at runtime.
 
 ---
 
@@ -480,3 +567,7 @@ Eight new demo programs in `examples/apiaudit/graphics3d/`:
 - Water3D wave normals: single sine wave normal used `dydz = dydx` (identical derivatives), producing incorrect normals for diagonal wave propagation. Gerstner model computes per-direction derivatives correctly
 - GUI Image widget: `vg_image_t` stored pixel data via `SetPixels()` but had no vtable paint function — image content never rendered. Added `image_paint()` with nearest-neighbor scaled blit to framebuffer
 - MJPEG AVI decode: frames missing DHT Huffman tables caused JPEG decode failure (returned NULL). Added automatic injection of standard Annex K DHT tables before SOS marker
+- Zia runtime extern signatures only included return type — string-returning methods like `LevelData.ObjectType()` compared as pointer equality instead of string equality. `rtgen` now emits full parameter types
+- Zia `List[Object].Push()` emitted wrong extern arity for user-defined class instances
+- GUI menubar accelerator table leaked on destroy (missing free loop in `menubar_destroy`)
+- macOS key equivalents (Cmd+N, F5) not consumed by native menu bar — arrow keys triggered system beep for unhandled navigation

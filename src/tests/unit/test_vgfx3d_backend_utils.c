@@ -33,6 +33,7 @@ typedef struct {
     int64_t w;
     int64_t h;
     uint32_t *data;
+    uint64_t generation;
 } fake_pixels_t;
 
 typedef struct {
@@ -43,7 +44,7 @@ typedef struct {
 
 static void test_unpack_pixels_rgba_success(void) {
     uint32_t data[2] = {0x11223344u, 0xAABBCCDDu};
-    fake_pixels_t px = {2, 1, data};
+    fake_pixels_t px = {2, 1, data, 7};
     int32_t w = 0;
     int32_t h = 0;
     uint8_t *rgba = NULL;
@@ -62,7 +63,7 @@ static void test_unpack_pixels_rgba_success(void) {
 }
 
 static void test_unpack_pixels_rgba_rejects_invalid(void) {
-    fake_pixels_t px = {0, 1, NULL};
+    fake_pixels_t px = {0, 1, NULL, 0};
     int32_t w = 0;
     int32_t h = 0;
     uint8_t *rgba = NULL;
@@ -110,8 +111,8 @@ static void test_unpack_cubemap_faces_rgba_success(void) {
 
 static void test_unpack_cubemap_faces_rgba_rejects_invalid(void) {
     uint32_t data = 0x11223344u;
-    fake_pixels_t good_face = {1, 1, &data};
-    fake_pixels_t bad_face = {2, 1, &data};
+    fake_pixels_t good_face = {1, 1, &data, 2};
+    fake_pixels_t bad_face = {2, 1, &data, 5};
     fake_cubemap_t cubemap = {0};
     int32_t face_size = 0;
     uint8_t *rgba_faces[6];
@@ -139,6 +140,24 @@ static void test_flip_rgba_rows(void) {
                 "Row flip swaps the first row");
     EXPECT_TRUE(rgba[8] == 1 && rgba[9] == 2 && rgba[10] == 3 && rgba[11] == 4,
                 "Row flip swaps the second row");
+}
+
+static void test_generation_helpers(void) {
+    uint32_t data = 0x11223344u;
+    fake_pixels_t faces[6] = {
+        {1, 1, &data, 1}, {1, 1, &data, 4}, {1, 1, &data, 2},
+        {1, 1, &data, 9}, {1, 1, &data, 3}, {1, 1, &data, 5},
+    };
+    fake_cubemap_t cubemap = {0};
+
+    for (int i = 0; i < 6; i++)
+        cubemap.faces[i] = &faces[i];
+    cubemap.face_size = 1;
+
+    EXPECT_TRUE(vgfx3d_get_pixels_generation(&faces[1]) == 4,
+                "Pixels generation helper exposes the object generation");
+    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) == 9,
+                "Cubemap generation helper returns the max face generation");
 }
 
 static void test_compute_normal_matrix_inverse_transpose(void) {
@@ -214,6 +233,7 @@ int main(void) {
     test_unpack_cubemap_faces_rgba_success();
     test_unpack_cubemap_faces_rgba_rejects_invalid();
     test_flip_rgba_rows();
+    test_generation_helpers();
     test_compute_normal_matrix_inverse_transpose();
     test_compute_normal_matrix_singular_fallback();
     test_invert_matrix4_success();

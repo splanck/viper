@@ -43,6 +43,21 @@ static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
     return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
 }
 
+static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
+    if (!c || w <= 0 || h <= 0)
+        return;
+    if (c->width == w && c->height == h)
+        return;
+    c->width = w;
+    c->height = h;
+    if (c->backend && c->backend->resize)
+        c->backend->resize(c->backend_ctx, w, h);
+}
+
+static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
+    rt_canvas3d_apply_resize((rt_canvas3d *)userdata, w, h);
+}
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
@@ -356,6 +371,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
             return NULL;
         }
     }
+
+    vgfx_set_resize_callback(c->gfx_win, rt_canvas3d_on_resize, c);
 
     c->ambient[0] = 0.1f;
     c->ambient[1] = 0.1f;
@@ -1236,6 +1253,8 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
                                 (int64_t)(evt.data.mouse_button.y / cs));
             rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
+        } else if (evt.type == VGFX_EVENT_RESIZE) {
+            rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
         }
     }
 
@@ -1678,27 +1697,67 @@ rt_string rt_canvas3d_get_backend(void *obj) {
 }
 
 void *rt_canvas3d_screenshot(void *obj) {
+    typedef struct {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } px_view;
+
     if (!obj)
         return NULL;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win)
         return NULL;
 
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+    int32_t shot_w = c->render_target ? c->render_target->width : c->width;
+    int32_t shot_h = c->render_target ? c->render_target->height : c->height;
+    if (shot_w <= 0 || shot_h <= 0)
         return NULL;
 
-    void *pixels = rt_pixels_new((int64_t)fb.width, (int64_t)fb.height);
+    void *pixels = rt_pixels_new((int64_t)shot_w, (int64_t)shot_h);
     if (!pixels)
         return NULL;
+    px_view *pv = (px_view *)pixels;
 
-    for (int32_t y = 0; y < fb.height; y++)
-        for (int32_t x = 0; x < fb.width; x++) {
-            const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
-            int64_t color = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                            ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-            rt_pixels_set(pixels, (int64_t)x, (int64_t)y, color);
+    if (c->render_target && c->render_target->color_buf) {
+        for (int32_t y = 0; y < shot_h; y++)
+            for (int32_t x = 0; x < shot_w; x++) {
+                const uint8_t *src =
+                    &c->render_target->color_buf[y * c->render_target->stride + x * 4];
+                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+            }
+        return pixels;
+    }
+
+    if (c->backend && c->backend != &vgfx3d_software_backend && c->backend->readback_rgba) {
+        size_t row_bytes = (size_t)shot_w * 4u;
+        uint8_t *rgba = (uint8_t *)malloc((size_t)shot_h * row_bytes);
+        if (rgba && c->backend->readback_rgba(c->backend_ctx, rgba, shot_w, shot_h,
+                                              (int32_t)row_bytes)) {
+            for (int32_t y = 0; y < shot_h; y++)
+                for (int32_t x = 0; x < shot_w; x++) {
+                    const uint8_t *src = &rgba[(size_t)y * row_bytes + (size_t)x * 4u];
+                    pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                                              ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+                }
+            free(rgba);
+            return pixels;
         }
+        free(rgba);
+    }
+
+    {
+        vgfx_framebuffer_t fb;
+        if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+            return pixels;
+        for (int32_t y = 0; y < fb.height && y < shot_h; y++)
+            for (int32_t x = 0; x < fb.width && x < shot_w; x++) {
+                const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
+                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+            }
+    }
     return pixels;
 }
 

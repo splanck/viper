@@ -28,6 +28,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
+#include "vgfx3d_backend_utils.h"
 
 #include <math.h>
 #ifndef M_PI
@@ -270,6 +271,12 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
     mat4_impl *xform = (mat4_impl *)mat4_obj;
+    float model_matrix[16];
+    float normal_matrix[16];
+
+    for (int i = 0; i < 16; i++)
+        model_matrix[i] = (float)xform->m[i];
+    vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *p = m->vertices[i].pos;
@@ -278,12 +285,15 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         p[1] = (float)(xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7]);
         p[2] = (float)(xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11]);
 
-        /* Transform normals (no translation, no inverse-transpose for now) */
+        /* Transform normals with the inverse-transpose upper 3x3. */
         float *n = m->vertices[i].normal;
         double nx = n[0], ny = n[1], nz = n[2];
-        n[0] = (float)(xform->m[0] * nx + xform->m[1] * ny + xform->m[2] * nz);
-        n[1] = (float)(xform->m[4] * nx + xform->m[5] * ny + xform->m[6] * nz);
-        n[2] = (float)(xform->m[8] * nx + xform->m[9] * ny + xform->m[10] * nz);
+        n[0] = normal_matrix[0] * (float)nx + normal_matrix[1] * (float)ny +
+               normal_matrix[2] * (float)nz;
+        n[1] = normal_matrix[4] * (float)nx + normal_matrix[5] * (float)ny +
+               normal_matrix[6] * (float)nz;
+        n[2] = normal_matrix[8] * (float)nx + normal_matrix[9] * (float)ny +
+               normal_matrix[10] * (float)nz;
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
         if (len > 1e-8f) {
             n[0] /= len;

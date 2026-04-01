@@ -24,6 +24,7 @@
 
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_utils.h"
 #include "rt_postfx3d.h"
 
 #include <stdint.h>
@@ -38,6 +39,8 @@
 @interface VGFXMetalContext : NSObject
 {
   @public
+    float _view[16];
+    float _projection[16];
     float _vp[16];
     float _camPos[3];
     /* MTL-07: Fog parameters (stored per-frame from begin_frame) */
@@ -74,9 +77,12 @@
 @property(nonatomic) BOOL rttActive;
 @property(nonatomic) int32_t rttWidth, rttHeight;
 @property(nonatomic, assign) vgfx3d_rendertarget_t *rttTarget; /* CPU-side RT for readback */
-/* MTL-03: Texture cache (keyed by Pixels pointer, invalidated per-frame) */
-@property(nonatomic, strong) NSMutableDictionary<NSValue *, id<MTLTexture>> *textureCache;
+/* Generation-aware texture/cubemap caches keyed by runtime object identity. */
+@property(nonatomic, strong) NSMutableDictionary *textureCache;
+@property(nonatomic, strong) NSMutableDictionary *cubemapCache;
 @property(nonatomic, strong) id<MTLSamplerState> sharedSampler;
+@property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
+@property(nonatomic, strong) id<MTLTexture> defaultCubemap;
 /* MTL-12: Shadow mapping state */
 @property(nonatomic, strong) id<MTLTexture> shadowDepthTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipeline;
@@ -92,10 +98,30 @@
 @property(nonatomic, strong) id<MTLLibrary> postfxLibrary;
 /* Offscreen rendering: render to this texture, readback to vgfx framebuffer */
 @property(nonatomic, strong) id<MTLTexture> offscreenColor;
+@property(nonatomic, strong) id<MTLTexture> displayTexture;
+@property(nonatomic, strong) id<MTLRenderPipelineState> skyboxPipeline;
+@property(nonatomic, strong) id<MTLDepthStencilState> skyboxDepthState;
+@property(nonatomic, strong) id<MTLBuffer> skyboxVertexBuffer;
 @property(nonatomic, assign) vgfx_window_t vgfxWin; /* for framebuffer readback */
 @end
 
 @implementation VGFXMetalContext
+@end
+
+@interface VGFXMetalTextureCacheEntry : NSObject
+@property(nonatomic, strong) id<MTLTexture> texture;
+@property(nonatomic) uint64_t generation;
+@end
+
+@implementation VGFXMetalTextureCacheEntry
+@end
+
+@interface VGFXMetalCubemapCacheEntry : NSObject
+@property(nonatomic, strong) id<MTLTexture> texture;
+@property(nonatomic) uint64_t generation;
+@end
+
+@implementation VGFXMetalCubemapCacheEntry
 @end
 
 //=============================================================================
@@ -168,12 +194,15 @@ static NSString *metal_shader_source =
      "    float4 specularColor;\n"
      "    float4 emissiveColor;\n"
      "    float alpha;\n"
+     "    float reflectivity;\n"
      "    int hasTexture;\n"
      "    int unlit;\n"
      "    int hasNormalMap;\n"
      "    int hasSpecularMap;\n"
      "    int hasEmissiveMap;\n"
+     "    int hasEnvMap;\n"
      "    int hasSplat;\n"
+     "    float _matPad[3];\n"
      "    float4 splatScales;\n"
      "    int shadingModel;\n"
      "    float customParams[8];\n"
@@ -248,8 +277,10 @@ static NSString *metal_shader_source =
      "    texture2d<float> splatLayer1 [[texture(7)]],\n"
      "    texture2d<float> splatLayer2 [[texture(8)]],\n"
      "    texture2d<float> splatLayer3 [[texture(9)]],\n"
+     "    texturecube<float> envTex [[texture(10)]],\n"
      "    sampler texSampler [[sampler(0)]],\n"
-     "    sampler shadowSampler [[sampler(1)]]\n"
+     "    sampler shadowSampler [[sampler(1)]],\n"
+     "    sampler envSampler [[sampler(2)]]\n"
      ") {\n"
      /* --- MTL-01: Sample diffuse texture for both lit and unlit paths --- */
      "    float3 baseColor = material.diffuseColor.rgb;\n"
@@ -271,11 +302,9 @@ static NSString *metal_shader_source =
      "        if (sp.a > 0.001) blended += splatLayer3.sample(texSampler, in.uv * material.splatScales.w).rgb * sp.a;\n"
      "        baseColor = blended * material.diffuseColor.rgb;\n"
      "    }\n"
-     "    if (material.unlit) {\n"
-     "        return float4(baseColor, material.alpha * texAlpha);\n"
-     "    }\n"
-     /* --- MTL-04: Normal map sampling with TBN --- */
      "    float3 N = normalize(in.normal);\n"
+     "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
+     /* --- MTL-04: Normal map sampling with TBN --- */
      "    if (material.hasNormalMap) {\n"
      "        float3 T = normalize(in.tangent);\n"
      "        T = normalize(T - N * dot(T, N));\n"
@@ -286,7 +315,15 @@ static NSString *metal_shader_source =
      "            N = normalize(T * mapN.x + B * mapN.y + N * mapN.z);\n"
      "        }\n"
      "    }\n"
-     "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
+     "    if (material.unlit) {\n"
+     "        float3 unlitColor = baseColor + material.emissiveColor.rgb;\n"
+     "        if (material.hasEnvMap != 0) {\n"
+     "            float3 R = reflect(-V, N);\n"
+     "            float3 envColor = envTex.sample(envSampler, R).rgb;\n"
+     "            unlitColor = mix(unlitColor, envColor, clamp(material.reflectivity, 0.0, 1.0));\n"
+     "        }\n"
+     "        return float4(unlitColor, material.alpha * texAlpha);\n"
+     "    }\n"
      "    float3 result = scene.ambientColor.rgb * baseColor;\n"
      /* --- MTL-05: Specular map setup --- */
      "    float3 specColor = material.specularColor.rgb;\n"
@@ -346,6 +383,11 @@ static NSString *metal_shader_source =
      "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
      "    }\n"
      "    result += emissive;\n"
+     "    if (material.hasEnvMap != 0) {\n"
+     "        float3 R = reflect(-V, N);\n"
+     "        float3 envColor = envTex.sample(envSampler, R).rgb;\n"
+     "        result = mix(result, envColor, clamp(material.reflectivity, 0.0, 1.0));\n"
+     "    }\n"
      /* --- MTL-07: Linear distance fog --- */
      "    if (scene.fogColor.a > 0.5) {\n"
      "        float dist = length(in.worldPos - scene.cameraPosition.xyz);\n"
@@ -422,16 +464,25 @@ typedef struct
     float sc[4];
     float ec[4];
     float alpha;
+    float reflectivity;
     int32_t ht;
     int32_t unlit;
     int32_t hasNormalMap;
     int32_t hasSpecularMap;
     int32_t hasEmissiveMap;
+    int32_t hasEnvMap;
     int32_t hasSplat;
+    float _matPad[3];
     float splatScales[4];
     int32_t shadingModel;
     float customParams[8];
 } mtl_per_material_t;
+
+typedef struct
+{
+    float projection[16];
+    float viewRotation[16];
+} mtl_skybox_params_t;
 
 //=============================================================================
 // Helpers
@@ -450,6 +501,184 @@ static void mat4f_mul(const float *a, const float *b, float *out)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
+}
+
+static const float metal_skybox_vertices[] = {
+    -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
+    1.0f, -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
+};
+
+static MTLVertexDescriptor *create_skybox_vertex_descriptor(void)
+{
+    MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
+    d.attributes[0].format = MTLVertexFormatFloat3;
+    d.attributes[0].offset = 0;
+    d.attributes[0].bufferIndex = 0;
+    d.layouts[0].stride = sizeof(float) * 3;
+    d.layouts[0].stepRate = 1;
+    d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+    return d;
+}
+
+static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
+                                              int32_t w,
+                                              int32_t h,
+                                              MTLTextureUsage usage)
+{
+    MTLTextureDescriptor *td;
+    if (!ctx || !ctx.device || w <= 0 || h <= 0)
+        return nil;
+    td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                            width:(NSUInteger)w
+                                                           height:(NSUInteger)h
+                                                        mipmapped:NO];
+    td.usage = usage;
+    td.storageMode = MTLStorageModeManaged;
+    return [ctx.device newTextureWithDescriptor:td];
+}
+
+static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
+                                              int32_t w,
+                                              int32_t h,
+                                              MTLTextureUsage usage)
+{
+    MTLTextureDescriptor *td;
+    if (!ctx || !ctx.device || w <= 0 || h <= 0)
+        return nil;
+    td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                            width:(NSUInteger)w
+                                                           height:(NSUInteger)h
+                                                        mipmapped:NO];
+    td.usage = usage;
+    td.storageMode = MTLStorageModePrivate;
+    return [ctx.device newTextureWithDescriptor:td];
+}
+
+static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h)
+{
+    if (!ctx || w <= 0 || h <= 0)
+        return;
+    ctx.offscreenColor =
+        metal_new_color_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+    ctx.depthTexture = metal_new_depth_texture(ctx, w, h, MTLTextureUsageRenderTarget);
+    if (ctx.postfxPipeline) {
+        ctx.postfxColorTexture =
+            metal_new_color_texture(ctx,
+                                    w,
+                                    h,
+                                    MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+    } else
+        ctx.postfxColorTexture = nil;
+    ctx.displayTexture = nil;
+}
+
+static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
+                                             const uint8_t *rgba,
+                                             int32_t w,
+                                             int32_t h)
+{
+    uint8_t *bgra;
+    size_t pixel_count;
+    if (!tex || !rgba || w <= 0 || h <= 0)
+        return 0;
+    pixel_count = (size_t)w * (size_t)h;
+    bgra = (uint8_t *)malloc(pixel_count * 4u);
+    if (!bgra)
+        return 0;
+    for (size_t i = 0; i < pixel_count; i++) {
+        bgra[i * 4 + 0] = rgba[i * 4 + 2];
+        bgra[i * 4 + 1] = rgba[i * 4 + 1];
+        bgra[i * 4 + 2] = rgba[i * 4 + 0];
+        bgra[i * 4 + 3] = rgba[i * 4 + 3];
+    }
+    [tex replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
+           mipmapLevel:0
+             withBytes:bgra
+           bytesPerRow:(NSUInteger)(w * 4)];
+    free(bgra);
+    return 1;
+}
+
+static int metal_copy_texture_to_rgba(id<MTLTexture> tex,
+                                      uint8_t *dst_rgba,
+                                      int32_t w,
+                                      int32_t h,
+                                      int32_t stride)
+{
+    int32_t copy_w;
+    int32_t copy_h;
+    if (!tex || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        return 0;
+
+    memset(dst_rgba, 0, (size_t)stride * (size_t)h);
+    copy_w = (int32_t)tex.width < w ? (int32_t)tex.width : w;
+    copy_h = (int32_t)tex.height < h ? (int32_t)tex.height : h;
+    if (copy_w <= 0 || copy_h <= 0)
+        return 0;
+
+    [tex getBytes:dst_rgba
+      bytesPerRow:(NSUInteger)stride
+       fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
+      mipmapLevel:0];
+
+    for (int32_t y = 0; y < copy_h; y++) {
+        uint8_t *row = dst_rgba + (size_t)y * (size_t)stride;
+        for (int32_t x = 0; x < copy_w; x++) {
+            uint8_t *px = row + (size_t)x * 4u;
+            uint8_t tmp = px[0];
+            px[0] = px[2];
+            px[2] = tmp;
+        }
+    }
+    return 1;
+}
+
+static void metal_commit_pending(VGFXMetalContext *ctx)
+{
+    if (!ctx)
+        return;
+    if (ctx.encoder) {
+        [ctx.encoder endEncoding];
+        ctx.encoder = nil;
+    }
+    if (ctx.cmdBuf) {
+        [ctx.cmdBuf commit];
+        [ctx.cmdBuf waitUntilCompleted];
+        ctx.cmdBuf = nil;
+        ctx.frameBuffers = nil;
+    }
+}
+
+static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture)
+{
+    vgfx_framebuffer_t fb;
+    if (!ctx || !texture || !ctx.vgfxWin)
+        return;
+    if (!vgfx_get_framebuffer(ctx.vgfxWin, &fb))
+        return;
+    (void)metal_copy_texture_to_rgba(texture, fb.pixels, fb.width, fb.height, fb.stride);
+    ctx.displayTexture = texture;
+}
+
+static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx)
+{
+    if (!ctx)
+        return nil;
+    if (ctx.rttActive && ctx.rttColorTexture)
+        return ctx.rttColorTexture;
+    if (ctx.displayTexture)
+        return ctx.displayTexture;
+    return ctx.offscreenColor;
 }
 
 //=============================================================================
@@ -507,21 +736,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         ctx.width = w;
         ctx.height = h;
 
-        /* Offscreen rendering approach: render to a GPU texture, then read back
-         * to the vgfx software framebuffer for display via the existing drawRect:
-         * CGImage path. This avoids CAMetalLayer compositing issues on macOS 26+. */
-        {
-            MTLTextureDescriptor *td =
-                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                  width:(NSUInteger)w
-                                                                 height:(NSUInteger)h
-                                                              mipmapped:NO];
-            td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-            td.storageMode = MTLStorageModeManaged;
-            ctx.offscreenColor = [device newTextureWithDescriptor:td];
-        }
         ctx.metalLayer = nil; /* no CAMetalLayer — offscreen only */
         ctx.vgfxWin = win;
+        ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
+        ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
 
         ctx.commandQueue = [device newCommandQueue];
         if (!ctx.commandQueue)
@@ -568,16 +786,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         /* Depth state for transparent draws: test ON, write OFF */
         dd.depthWriteEnabled = NO;
         ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
-
-        /* Depth texture */
-        MTLTextureDescriptor *td =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-                                                               width:(NSUInteger)w
-                                                              height:(NSUInteger)h
-                                                           mipmapped:NO];
-        td.usage = MTLTextureUsageRenderTarget;
-        td.storageMode = MTLStorageModePrivate;
-        ctx.depthTexture = [device newTextureWithDescriptor:td];
+        dd.depthCompareFunction = MTLCompareFunctionLessEqual;
+        ctx.skyboxDepthState = [device newDepthStencilStateWithDescriptor:dd];
 
         /* Default 1x1 white texture (bound when no material texture is set,
          * so the shader's texture2d parameter is always valid) */
@@ -600,6 +810,22 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
             sd.minFilter = MTLSamplerMinMagFilterLinear;
             sd.magFilter = MTLSamplerMinMagFilterLinear;
             ctx.defaultSampler = [device newSamplerStateWithDescriptor:sd];
+
+            MTLTextureDescriptor *cubeDesc = [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                                    size:1
+                                                                                               mipmapped:NO];
+            cubeDesc.usage = MTLTextureUsageShaderRead;
+            cubeDesc.storageMode = MTLStorageModeShared;
+            ctx.defaultCubemap = [device newTextureWithDescriptor:cubeDesc];
+            for (NSUInteger face = 0; face < 6; face++) {
+                uint32_t cube_white = 0xFFFFFFFF;
+                [ctx.defaultCubemap replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+                                      mipmapLevel:0
+                                            slice:face
+                                        withBytes:&cube_white
+                                      bytesPerRow:4
+                                    bytesPerImage:4];
+            }
         }
 
         /* MTL-03: Shared sampler (linear filter, repeat wrap) used for all textures */
@@ -610,6 +836,14 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
             sd.sAddressMode = MTLSamplerAddressModeRepeat;
             sd.tAddressMode = MTLSamplerAddressModeRepeat;
             ctx.sharedSampler = [device newSamplerStateWithDescriptor:sd];
+
+            MTLSamplerDescriptor *cubeSd = [[MTLSamplerDescriptor alloc] init];
+            cubeSd.minFilter = MTLSamplerMinMagFilterLinear;
+            cubeSd.magFilter = MTLSamplerMinMagFilterLinear;
+            cubeSd.sAddressMode = MTLSamplerAddressModeClampToEdge;
+            cubeSd.tAddressMode = MTLSamplerAddressModeClampToEdge;
+            cubeSd.rAddressMode = MTLSamplerAddressModeClampToEdge;
+            ctx.cubeSampler = [device newSamplerStateWithDescriptor:cubeSd];
         }
 
         /* MTL-12: Shadow pipeline (depth-only, no fragment shader) */
@@ -729,6 +963,46 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
             /* Non-fatal: postfx disabled if pipeline compilation fails */
         }
 
+        {
+            NSString *skyboxSrc = @
+                "#include <metal_stdlib>\n"
+                "using namespace metal;\n"
+                "struct SkyboxIn { float3 position [[attribute(0)]]; };\n"
+                "struct SkyboxOut { float4 position [[position]]; float3 dir; };\n"
+                "struct SkyboxParams { float4x4 projection; float4x4 viewRotation; };\n"
+                "vertex SkyboxOut skybox_vs(SkyboxIn in [[stage_in]], constant SkyboxParams &p [[buffer(0)]]) {\n"
+                "    SkyboxOut out;\n"
+                "    float4 pos = p.projection * p.viewRotation * float4(in.position, 1.0);\n"
+                "    out.position = float4(pos.x, pos.y, pos.w, pos.w);\n"
+                "    out.dir = in.position;\n"
+                "    return out;\n"
+                "}\n"
+                "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], texturecube<float> skyboxTex [[texture(0)]], sampler s [[sampler(0)]]) {\n"
+                "    return skyboxTex.sample(s, normalize(in.dir));\n"
+                "}\n";
+            NSError *skyErr = nil;
+            id<MTLLibrary> skyLib = [device newLibraryWithSource:skyboxSrc options:nil error:&skyErr];
+            if (skyLib) {
+                id<MTLFunction> skyVS = [skyLib newFunctionWithName:@"skybox_vs"];
+                id<MTLFunction> skyFS = [skyLib newFunctionWithName:@"skybox_fs"];
+                if (skyVS && skyFS) {
+                    MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
+                    spd.vertexFunction = skyVS;
+                    spd.fragmentFunction = skyFS;
+                    spd.vertexDescriptor = create_skybox_vertex_descriptor();
+                    spd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+                    spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+                    ctx.skyboxPipeline = [device newRenderPipelineStateWithDescriptor:spd error:&skyErr];
+                }
+            }
+            ctx.skyboxVertexBuffer =
+                [device newBufferWithBytes:metal_skybox_vertices
+                                    length:sizeof(metal_skybox_vertices)
+                                   options:MTLResourceStorageModeShared];
+        }
+
+        metal_recreate_main_targets(ctx, w, h);
+
         /* Backend initialized successfully */
         return (__bridge_retained void *)ctx;
     }
@@ -764,6 +1038,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
 
         float vp[16];
         mat4f_mul(cam->projection, cam->view, vp);
+        memcpy(ctx->_view, cam->view, sizeof(float) * 16);
+        memcpy(ctx->_projection, cam->projection, sizeof(float) * 16);
         memcpy(ctx->_vp, vp, sizeof(float) * 16);
         memcpy(ctx->_camPos, cam->position, sizeof(float) * 3);
 
@@ -777,15 +1053,10 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
 
         /* Clear per-frame buffer references from previous frame */
         ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
+        ctx.displayTexture = nil;
 
         /* Reset shadow state for this frame (may be re-enabled by shadow_begin) */
         ctx.shadowActive = NO;
-
-        /* MTL-03: Invalidate texture cache each frame (Pixels data can mutate) */
-        if (!ctx.textureCache)
-            ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
-        else
-            [ctx.textureCache removeAllObjects];
 
         /* Reuse the command buffer if one is already open (multi-pass frame).
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
@@ -863,54 +1134,101 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
 /// Cache is keyed by the raw void* (Pixels identity). Conversion is RGBA→BGRA.
 static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr)
 {
+    int32_t tw = 0;
+    int32_t th = 0;
+    uint8_t *rgba = NULL;
+    uint64_t generation;
     NSValue *key = [NSValue valueWithPointer:pixels_ptr];
-    id<MTLTexture> cached = ctx.textureCache[key];
-    if (cached)
-        return cached;
-
-    typedef struct
-    {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view_t;
-
-    const px_view_t *pv = (const px_view_t *)pixels_ptr;
-    if (!pv->data || pv->w <= 0 || pv->h <= 0)
+    VGFXMetalTextureCacheEntry *cached = ctx.textureCache[key];
+    generation = vgfx3d_get_pixels_generation(pixels_ptr);
+    if (cached && cached.texture && cached.generation == generation)
+        return cached.texture;
+    if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &tw, &th, &rgba) != 0 || !rgba)
         return nil;
 
-    int32_t tw = (int32_t)pv->w, th = (int32_t)pv->h;
-    size_t pixel_count = (size_t)tw * (size_t)th;
-    uint8_t *bgra = (uint8_t *)malloc(pixel_count * 4);
-    if (!bgra)
+    if (!cached || !cached.texture || (int32_t)cached.texture.width != tw ||
+        (int32_t)cached.texture.height != th) {
+        MTLTextureDescriptor *texDesc =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                               width:(NSUInteger)tw
+                                                              height:(NSUInteger)th
+                                                           mipmapped:NO];
+        texDesc.usage = MTLTextureUsageShaderRead;
+        texDesc.storageMode = MTLStorageModeShared;
+        if (!cached)
+            cached = [[VGFXMetalTextureCacheEntry alloc] init];
+        cached.texture = [ctx.device newTextureWithDescriptor:texDesc];
+    }
+    if (!metal_upload_rgba_to_bgra_texture(cached.texture, rgba, tw, th)) {
+        free(rgba);
+        return nil;
+    }
+    free(rgba);
+    cached.generation = generation;
+    ctx.textureCache[key] = cached;
+    return cached.texture;
+}
+
+static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap)
+{
+    int32_t face_size = 0;
+    uint8_t *faces[6];
+    uint64_t generation;
+    NSValue *key;
+    VGFXMetalCubemapCacheEntry *cached;
+
+    if (!ctx || !cubemap)
         return nil;
 
-    for (size_t i = 0; i < pixel_count; i++)
-    {
-        uint32_t px = pv->data[i];                      /* 0xRRGGBBAA */
-        bgra[i * 4 + 0] = (uint8_t)((px >> 8) & 0xFF);  /* B */
-        bgra[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); /* G */
-        bgra[i * 4 + 2] = (uint8_t)((px >> 24) & 0xFF); /* R */
-        bgra[i * 4 + 3] = (uint8_t)(px & 0xFF);         /* A */
+    key = [NSValue valueWithPointer:cubemap];
+    cached = ctx.cubemapCache[key];
+    generation = vgfx3d_get_cubemap_generation(cubemap);
+    if (cached && cached.texture && cached.generation == generation)
+        return cached.texture;
+    if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, faces) != 0)
+        return nil;
+
+    if (!cached || !cached.texture || (int32_t)cached.texture.width != face_size) {
+        MTLTextureDescriptor *cubeDesc =
+            [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                  size:(NSUInteger)face_size
+                                                             mipmapped:NO];
+        cubeDesc.usage = MTLTextureUsageShaderRead;
+        cubeDesc.storageMode = MTLStorageModeShared;
+        if (!cached)
+            cached = [[VGFXMetalCubemapCacheEntry alloc] init];
+        cached.texture = [ctx.device newTextureWithDescriptor:cubeDesc];
     }
 
-    MTLTextureDescriptor *texDesc =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                           width:(NSUInteger)tw
-                                                          height:(NSUInteger)th
-                                                       mipmapped:NO];
-    texDesc.usage = MTLTextureUsageShaderRead;
-    texDesc.storageMode = MTLStorageModeShared;
-    id<MTLTexture> tex = [ctx.device newTextureWithDescriptor:texDesc];
-    [tex replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)tw, (NSUInteger)th)
-           mipmapLevel:0
-             withBytes:bgra
-           bytesPerRow:(NSUInteger)(tw * 4)];
-    free(bgra);
+    for (NSUInteger face = 0; face < 6; face++) {
+        size_t pixel_count = (size_t)face_size * (size_t)face_size;
+        uint8_t *bgra = (uint8_t *)malloc(pixel_count * 4u);
+        if (!bgra) {
+            for (int cleanup = 0; cleanup < 6; cleanup++)
+                free(faces[cleanup]);
+            return nil;
+        }
+        for (size_t i = 0; i < pixel_count; i++) {
+            bgra[i * 4 + 0] = faces[face][i * 4 + 2];
+            bgra[i * 4 + 1] = faces[face][i * 4 + 1];
+            bgra[i * 4 + 2] = faces[face][i * 4 + 0];
+            bgra[i * 4 + 3] = faces[face][i * 4 + 3];
+        }
+        [cached.texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)face_size, (NSUInteger)face_size)
+                          mipmapLevel:0
+                                slice:face
+                            withBytes:bgra
+                          bytesPerRow:(NSUInteger)(face_size * 4)
+                        bytesPerImage:(NSUInteger)(face_size * face_size * 4)];
+        free(bgra);
+    }
 
-    if (tex)
-        ctx.textureCache[key] = tex;
-    return tex;
+    for (int cleanup = 0; cleanup < 6; cleanup++)
+        free(faces[cleanup]);
+
+    cached.generation = generation;
+    ctx.cubemapCache[key] = cached;
+    return cached.texture;
 }
 
 static void metal_submit_draw(void *ctx_ptr,
@@ -963,9 +1281,11 @@ static void metal_submit_draw(void *ctx_ptr,
         memset(&obj, 0, sizeof(obj));
         transpose4x4(cmd->model_matrix, obj.m);
         float vp_t[16];
+        float normal_m[16];
         transpose4x4(ctx->_vp, vp_t);
         memcpy(obj.vp, vp_t, sizeof(float) * 16);
-        memcpy(obj.nm, obj.m, sizeof(float) * 16); /* normal matrix = model (transposed) */
+        vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_m);
+        transpose4x4(normal_m, obj.nm);
         int capped_bone_count = cmd->bone_count > 128 ? 128 : cmd->bone_count;
         obj.hasSkinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
         obj.morphShapeCount = cmd->morph_shape_count;
@@ -1039,11 +1359,13 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.ec[2] = cmd->emissive_color[2];
         mat.ec[3] = 0;
         mat.alpha = cmd->alpha;
+        mat.reflectivity = cmd->reflectivity;
         mat.ht = cmd->texture ? 1 : 0;
         mat.unlit = cmd->unlit;
         mat.hasNormalMap = cmd->normal_map ? 1 : 0;
         mat.hasSpecularMap = cmd->specular_map ? 1 : 0;
         mat.hasEmissiveMap = cmd->emissive_map ? 1 : 0;
+        mat.hasEnvMap = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
         mat.hasSplat = cmd->has_splat;
         if (cmd->has_splat) {
             for (int si = 0; si < 4; si++)
@@ -1053,15 +1375,18 @@ static void metal_submit_draw(void *ctx_ptr,
         memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
-        /* Bind default textures to all 10 slots (shader requires valid textures) */
+        /* Bind default textures to all shader slots. */
         for (int slot = 0; slot < 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
+        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
         /* MTL-12: Bind shadow depth texture to slot 4 */
         if (ctx.shadowActive && ctx.shadowDepthTexture)
             [ctx.encoder setFragmentTexture:ctx.shadowDepthTexture atIndex:4];
         [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
+        if (ctx.cubeSampler)
+            [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
 
         /* MTL-03: Bind cached textures for each material map slot */
         if (cmd->texture)
@@ -1103,6 +1428,12 @@ static void metal_submit_draw(void *ctx_ptr,
                         [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
                 }
             }
+        }
+        if (cmd->env_map && cmd->reflectivity > 0.0001f)
+        {
+            id<MTLTexture> envTex = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+            if (envTex)
+                [ctx.encoder setFragmentTexture:envTex atIndex:10];
         }
 
         /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
@@ -1198,38 +1529,45 @@ static void metal_present(void *backend_ctx)
     @autoreleasepool
     {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (ctx.cmdBuf)
-        {
-            /* Commit GPU work and wait for completion */
-            [ctx.cmdBuf commit];
-            [ctx.cmdBuf waitUntilCompleted];
+        metal_commit_pending(ctx);
+        metal_present_texture_to_framebuffer(ctx, ctx.offscreenColor);
+    }
+}
 
-            /* Read back offscreen texture to vgfx software framebuffer (BGRA → RGBA) */
-            if (ctx.offscreenColor && ctx.vgfxWin) {
-                vgfx_framebuffer_t fb;
-                if (vgfx_get_framebuffer(ctx.vgfxWin, &fb)) {
-                    int32_t tw = (int32_t)ctx.offscreenColor.width;
-                    int32_t th = (int32_t)ctx.offscreenColor.height;
-                    int32_t fw = fb.width < tw ? fb.width : tw;
-                    int32_t fh = fb.height < th ? fb.height : th;
-                    /* Read GPU texture → CPU (BGRA format from Metal) */
-                    uint8_t *dst = fb.pixels;
-                    [ctx.offscreenColor getBytes:dst
-                                      bytesPerRow:(NSUInteger)(fw * 4)
-                                       fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)fw, (NSUInteger)fh)
-                                      mipmapLevel:0];
-                    /* BGRA → RGBA in-place */
-                    for (int32_t i = 0; i < fw * fh; i++) {
-                        uint8_t tmp = dst[i * 4];
-                        dst[i * 4] = dst[i * 4 + 2];
-                        dst[i * 4 + 2] = tmp;
-                    }
-                }
-            }
+static void metal_resize(void *ctx_ptr, int32_t w, int32_t h)
+{
+    if (!ctx_ptr || w <= 0 || h <= 0)
+        return;
+    @autoreleasepool
+    {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        if (!ctx || (ctx.width == w && ctx.height == h))
+            return;
+        metal_commit_pending(ctx);
+        ctx.width = w;
+        ctx.height = h;
+        metal_recreate_main_targets(ctx, w, h);
+    }
+}
 
-            ctx.frameBuffers = nil;
-            ctx.cmdBuf = nil;
-        }
+static int metal_readback_rgba(void *ctx_ptr,
+                               uint8_t *dst_rgba,
+                               int32_t w,
+                               int32_t h,
+                               int32_t stride)
+{
+    if (!ctx_ptr)
+        return 0;
+    @autoreleasepool
+    {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        id<MTLTexture> texture;
+        if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+            return 0;
+        if (ctx.cmdBuf && !ctx.rttActive)
+            metal_commit_pending(ctx);
+        texture = metal_active_readback_texture(ctx);
+        return metal_copy_texture_to_rgba(texture, dst_rgba, w, h, stride);
     }
 }
 
@@ -1257,6 +1595,7 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
             ctx.rttColorTexture = nil;
             ctx.rttDepthTexture = nil;
             ctx.rttTarget = NULL;
+            ctx.displayTexture = nil;
             return;
         }
 
@@ -1264,6 +1603,7 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         ctx.rttWidth = rt->width;
         ctx.rttHeight = rt->height;
         ctx.rttTarget = rt;
+        ctx.displayTexture = nil;
 
         /* Color texture: BGRA8Unorm, render target + shader read */
         MTLTextureDescriptor *colorDesc =
@@ -1467,24 +1807,85 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mtl_per_material_t mat;
         memset(&mat, 0, sizeof(mat));
         memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
+        mat.sc[0] = cmd->specular[0];
+        mat.sc[1] = cmd->specular[1];
+        mat.sc[2] = cmd->specular[2];
+        mat.sc[3] = cmd->shininess;
+        mat.ec[0] = cmd->emissive_color[0];
+        mat.ec[1] = cmd->emissive_color[1];
+        mat.ec[2] = cmd->emissive_color[2];
         mat.alpha = cmd->alpha;
+        mat.reflectivity = cmd->reflectivity;
         mat.ht = cmd->texture ? 1 : 0;
         mat.unlit = cmd->unlit;
+        mat.hasNormalMap = cmd->normal_map ? 1 : 0;
+        mat.hasSpecularMap = cmd->specular_map ? 1 : 0;
+        mat.hasEmissiveMap = cmd->emissive_map ? 1 : 0;
+        mat.hasEnvMap = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
+        mat.hasSplat = cmd->has_splat;
+        if (cmd->has_splat) {
+            for (int si = 0; si < 4; si++)
+                mat.splatScales[si] = cmd->splat_layer_scales[si];
+        }
+        mat.shadingModel = cmd->shading_model;
+        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Default textures + sampler */
         for (int slot = 0; slot < 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
+        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
         if (ctx.shadowActive && ctx.shadowDepthTexture)
             [ctx.encoder setFragmentTexture:ctx.shadowDepthTexture atIndex:4];
         [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
+        if (ctx.cubeSampler)
+            [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
         if (cmd->texture)
         {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
+        }
+        if (cmd->normal_map)
+        {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->normal_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:1];
+        }
+        if (cmd->specular_map)
+        {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->specular_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:2];
+        }
+        if (cmd->emissive_map)
+        {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:3];
+        }
+        if (cmd->has_splat && cmd->splat_map)
+        {
+            id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
+            if (sp)
+                [ctx.encoder setFragmentTexture:sp atIndex:5];
+            for (int si = 0; si < 4; si++)
+            {
+                if (cmd->splat_layers[si])
+                {
+                    id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
+                    if (lt)
+                        [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
+                }
+            }
+        }
+        if (cmd->env_map && cmd->reflectivity > 0.0001f)
+        {
+            id<MTLTexture> envTex = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+            if (envTex)
+                [ctx.encoder setFragmentTexture:envTex atIndex:10];
         }
 
         /* Lights */
@@ -1535,9 +1936,11 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             memset(&obj, 0, sizeof(obj));
             transpose4x4(&instance_matrices[i * 16], obj.m);
             float vp_t[16];
+            float normal_m[16];
             transpose4x4(ctx->_vp, vp_t);
             memcpy(obj.vp, vp_t, sizeof(float) * 16);
-            memcpy(obj.nm, obj.m, sizeof(float) * 16);
+            vgfx3d_compute_normal_matrix4(&instance_matrices[i * 16], normal_m);
+            transpose4x4(normal_m, obj.nm);
             [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
             [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                     indexCount:cmd->index_count
@@ -1576,8 +1979,8 @@ typedef struct
 } mtl_postfx_params_t;
 
 /// @brief Metal PostFX presentation: render fullscreen quad with PostFX shader.
-/// Copies the scene (already rendered to postfxColorTexture) to the drawable
-/// with bloom, tonemap, FXAA, color grading, and vignette effects applied.
+/// Runs the fullscreen post-processing pass into an offscreen texture, then
+/// copies the result into the vgfx software framebuffer for presentation.
 static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot_t *postfx)
 {
     if (!backend_ctx || !postfx)
@@ -1585,12 +1988,14 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
     @autoreleasepool
     {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (!ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.drawable)
+        if (!ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor || !ctx.cmdBuf) {
+            metal_present(backend_ctx);
             return;
+        }
 
-        /* Create a new render pass targeting the drawable for the final composite */
+        /* Create a new render pass targeting the postfx output texture. */
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-        rp.colorAttachments[0].texture = ctx.drawable.texture;
+        rp.colorAttachments[0].texture = ctx.postfxColorTexture;
         rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
         rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 
@@ -1609,14 +2014,9 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
         [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
 
         /* Bind the scene texture and sampler */
-        [pfxEncoder setFragmentTexture:ctx.postfxColorTexture atIndex:0];
-
-        /* Create a simple linear sampler */
-        MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
-        sd.minFilter = MTLSamplerMinMagFilterLinear;
-        sd.magFilter = MTLSamplerMinMagFilterLinear;
-        id<MTLSamplerState> sampler = [ctx.device newSamplerStateWithDescriptor:sd];
-        [pfxEncoder setFragmentSamplerState:sampler atIndex:0];
+        [pfxEncoder setFragmentTexture:ctx.offscreenColor atIndex:0];
+        [pfxEncoder setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                                    atIndex:0];
 
         /* Fill PostFX uniform params from snapshot */
         mtl_postfx_params_t params;
@@ -1652,6 +2052,51 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
                        vertexStart:0
                        vertexCount:4];
         [pfxEncoder endEncoding];
+        metal_commit_pending(ctx);
+        metal_present_texture_to_framebuffer(ctx, ctx.postfxColorTexture);
+    }
+}
+
+static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr)
+{
+    if (!ctx_ptr || !cubemap_ptr)
+        return;
+    @autoreleasepool
+    {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        id<MTLTexture> cubemap = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cubemap_ptr);
+        mtl_skybox_params_t params;
+        float view_rot[16];
+
+        if (!ctx || !ctx.encoder || !ctx.skyboxPipeline || !ctx.skyboxVertexBuffer || !cubemap)
+            return;
+
+        memcpy(view_rot, ctx->_view, sizeof(view_rot));
+        view_rot[3] = 0.0f;
+        view_rot[7] = 0.0f;
+        view_rot[11] = 0.0f;
+        view_rot[12] = 0.0f;
+        view_rot[13] = 0.0f;
+        view_rot[14] = 0.0f;
+        view_rot[15] = 1.0f;
+
+        memset(&params, 0, sizeof(params));
+        transpose4x4(ctx->_projection, params.projection);
+        transpose4x4(view_rot, params.viewRotation);
+
+        [ctx.encoder setCullMode:MTLCullModeNone];
+        [ctx.encoder setDepthStencilState:(ctx.skyboxDepthState ? ctx.skyboxDepthState
+                                                                : ctx.depthStateNoWrite)];
+        [ctx.encoder setRenderPipelineState:ctx.skyboxPipeline];
+        [ctx.encoder setVertexBuffer:ctx.skyboxVertexBuffer offset:0 atIndex:0];
+        [ctx.encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
+        [ctx.encoder setFragmentTexture:cubemap atIndex:0];
+        [ctx.encoder setFragmentSamplerState:(ctx.cubeSampler ? ctx.cubeSampler : ctx.sharedSampler)
+                                    atIndex:0];
+        [ctx.encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:36];
+        [ctx.encoder setRenderPipelineState:ctx.pipelineState];
+        [ctx.encoder setDepthStencilState:ctx.depthState];
+        [ctx.encoder setCullMode:MTLCullModeBack];
     }
 }
 
@@ -1685,6 +2130,7 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .create_ctx = metal_create_ctx,
     .destroy_ctx = metal_destroy_ctx,
     .clear = metal_clear,
+    .resize = metal_resize,
     .begin_frame = metal_begin_frame,
     .submit_draw = metal_submit_draw,
     .end_frame = metal_end_frame,
@@ -1692,8 +2138,10 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .shadow_begin = metal_shadow_begin,
     .shadow_draw = metal_shadow_draw,
     .shadow_end = metal_shadow_end,
+    .draw_skybox = metal_draw_skybox,
     .submit_draw_instanced = metal_submit_draw_instanced,
     .present = metal_present,
+    .readback_rgba = metal_readback_rgba,
     .present_postfx = metal_present_postfx,
     .show_gpu_layer = metal_show_gpu_layer,
     .hide_gpu_layer = metal_hide_gpu_layer,

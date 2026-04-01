@@ -64,6 +64,14 @@
 @property(nonatomic, assign) struct vgfx_window *vgfxWindow;
 @end
 
+/// @brief Dispatcher for default macOS application-menu actions.
+/// @details Keeps Cmd+Q on the same close path as the window close button so
+///          Viper apps still see a CLOSE event instead of being hard-terminated.
+@interface VGFXMacAppMenuDispatcher : NSObject
++ (instancetype)shared;
+- (void)quitApplication:(id)sender;
+@end
+
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
 //===----------------------------------------------------------------------===//
@@ -81,6 +89,213 @@ typedef struct
     VGFXWindowDelegate *delegate; ///< Delegate for window events
     int close_requested;          ///< 1 if user clicked close button, 0 otherwise
 } vgfx_macos_platform;
+
+static BOOL g_finish_launching_called = NO;
+static NSMenu *g_default_main_menu = nil;
+
+static NSString *vgfx_macos_app_name(const char *preferred_title)
+{
+    if (preferred_title && preferred_title[0] != '\0')
+    {
+        NSString *title = [NSString stringWithUTF8String:preferred_title];
+        if (title.length > 0)
+        {
+            return title;
+        }
+    }
+
+    NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    if (bundle_name.length > 0)
+    {
+        return bundle_name;
+    }
+
+    NSString *process_name = [[NSProcessInfo processInfo] processName];
+    return process_name.length > 0 ? process_name : @"Viper";
+}
+
+static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name)
+{
+    NSMenu *app_menu = [[NSMenu alloc] initWithTitle:app_name];
+    [app_menu setAutoenablesItems:NO];
+
+    NSMenuItem *about_item =
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"About %@", app_name]
+                                   action:@selector(orderFrontStandardAboutPanel:)
+                            keyEquivalent:@""];
+    [about_item setTarget:NSApp];
+    [app_menu addItem:about_item];
+
+    [app_menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *services_root =
+        [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
+    NSMenu *services_menu = [[NSMenu alloc] initWithTitle:@"Services"];
+    [services_menu setAutoenablesItems:NO];
+    [services_root setSubmenu:services_menu];
+    [NSApp setServicesMenu:services_menu];
+    [app_menu addItem:services_root];
+
+    [app_menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *hide_item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Hide %@", app_name]
+                                                       action:@selector(hide:)
+                                                keyEquivalent:@"h"];
+    [hide_item setTarget:NSApp];
+    [hide_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [app_menu addItem:hide_item];
+
+    NSMenuItem *hide_others_item =
+        [[NSMenuItem alloc] initWithTitle:@"Hide Others"
+                                   action:@selector(hideOtherApplications:)
+                            keyEquivalent:@"h"];
+    [hide_others_item setTarget:NSApp];
+    [hide_others_item
+        setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
+    [app_menu addItem:hide_others_item];
+
+    NSMenuItem *show_all_item =
+        [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:)
+                            keyEquivalent:@""];
+    [show_all_item setTarget:NSApp];
+    [app_menu addItem:show_all_item];
+
+    [app_menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *quit_item =
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", app_name]
+                                   action:@selector(quitApplication:)
+                            keyEquivalent:@"q"];
+    [quit_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [quit_item setTarget:[VGFXMacAppMenuDispatcher shared]];
+    [app_menu addItem:quit_item];
+
+    return app_menu;
+}
+
+static NSMenu *vgfx_macos_build_default_window_menu(void)
+{
+    NSMenu *window_menu = [[NSMenu alloc] initWithTitle:@"Window"];
+    [window_menu setAutoenablesItems:NO];
+
+    NSMenuItem *minimize_item =
+        [[NSMenuItem alloc] initWithTitle:@"Minimize"
+                                   action:@selector(performMiniaturize:)
+                            keyEquivalent:@"m"];
+    [minimize_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [minimize_item setTarget:nil];
+    [minimize_item setEnabled:YES];
+    [window_menu addItem:minimize_item];
+
+    NSMenuItem *zoom_item =
+        [[NSMenuItem alloc] initWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+    [zoom_item setTarget:nil];
+    [zoom_item setEnabled:YES];
+    [window_menu addItem:zoom_item];
+
+    [window_menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *bring_all_to_front_item =
+        [[NSMenuItem alloc] initWithTitle:@"Bring All to Front"
+                                   action:@selector(arrangeInFront:)
+                            keyEquivalent:@""];
+    [bring_all_to_front_item setTarget:NSApp];
+    [bring_all_to_front_item setEnabled:YES];
+    [window_menu addItem:bring_all_to_front_item];
+
+    [NSApp setWindowsMenu:window_menu];
+    return window_menu;
+}
+
+static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title)
+{
+    NSString *app_name = vgfx_macos_app_name(preferred_title);
+    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
+    [main_menu setAutoenablesItems:NO];
+
+    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [app_root setSubmenu:vgfx_macos_build_default_app_menu(app_name)];
+    [main_menu addItem:app_root];
+
+    NSMenuItem *window_root =
+        [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+    [window_root setSubmenu:vgfx_macos_build_default_window_menu()];
+    [window_root setEnabled:YES];
+    [main_menu addItem:window_root];
+
+    return main_menu;
+}
+
+void vgfx_platform_macos_finish_launching_if_needed(void)
+{
+    @autoreleasepool
+    {
+        [NSApplication sharedApplication];
+        if (!g_finish_launching_called)
+        {
+            [NSApp finishLaunching];
+            g_finish_launching_called = YES;
+        }
+    }
+}
+
+void vgfx_platform_macos_install_default_main_menu(const char *preferred_title)
+{
+    @autoreleasepool
+    {
+        [NSApplication sharedApplication];
+        vgfx_platform_macos_finish_launching_if_needed();
+        g_default_main_menu = vgfx_macos_build_default_main_menu(preferred_title);
+        [NSApp setMainMenu:g_default_main_menu];
+    }
+}
+
+void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title)
+{
+    @autoreleasepool
+    {
+        [NSApplication sharedApplication];
+        NSMenu *current_menu = [NSApp mainMenu];
+        if (current_menu && current_menu != g_default_main_menu)
+        {
+            return;
+        }
+        vgfx_platform_macos_install_default_main_menu(preferred_title);
+    }
+}
+
+@implementation VGFXMacAppMenuDispatcher
+
++ (instancetype)shared
+{
+    static VGFXMacAppMenuDispatcher *shared = nil;
+    if (!shared)
+    {
+        shared = [[VGFXMacAppMenuDispatcher alloc] init];
+    }
+    return shared;
+}
+
+- (void)quitApplication:(id)sender
+{
+    (void)sender;
+
+    NSWindow *target_window = [NSApp keyWindow];
+    if (!target_window)
+    {
+        target_window = [NSApp mainWindow];
+    }
+
+    if (target_window)
+    {
+        [target_window performClose:nil];
+        return;
+    }
+
+    [NSApp terminate:nil];
+}
+
+@end
 
 //===----------------------------------------------------------------------===//
 // Key Code Translation
@@ -556,6 +771,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         /* Ensure NSApplication is initialized (singleton) */
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        vgfx_platform_macos_ensure_default_main_menu(params->title);
 
         /* Allocate platform data structure */
         vgfx_macos_platform *platform =
@@ -1105,6 +1321,8 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
         {
             [platform->window setTitle:[NSString stringWithUTF8String:title]];
         }
+
+        vgfx_platform_macos_ensure_default_main_menu(title);
     }
 }
 

@@ -309,11 +309,13 @@ static struct {
 
 typedef struct {
     const void *pixels;
+    uint64_t generation;
     GLuint tex;
 } gl_texture_cache_entry_t;
 
 typedef struct {
     const void *cubemap;
+    uint64_t generation;
     GLuint tex;
 } gl_cubemap_cache_entry_t;
 
@@ -1236,12 +1238,29 @@ static void texture_cache_destroy(gl_context_t *ctx) {
 }
 
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
+    uint64_t generation;
     if (!ctx || !pixels_ptr)
         return 0;
+    generation = vgfx3d_get_pixels_generation(pixels_ptr);
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
-        if (ctx->texture_cache[i].pixels == pixels_ptr)
+        if (ctx->texture_cache[i].pixels == pixels_ptr &&
+            ctx->texture_cache[i].generation == generation)
             return ctx->texture_cache[i].tex;
+    }
+
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        if (ctx->texture_cache[i].pixels == pixels_ptr) {
+            int32_t w = 0, h = 0;
+            uint8_t *rgba = NULL;
+            if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &w, &h, &rgba) != 0)
+                return 0;
+            gl.BindTexture(GL_TEXTURE_2D, ctx->texture_cache[i].tex);
+            gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            free(rgba);
+            ctx->texture_cache[i].generation = generation;
+            return ctx->texture_cache[i].tex;
+        }
     }
 
     int32_t w = 0, h = 0;
@@ -1273,18 +1292,49 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     }
 
     ctx->texture_cache[ctx->texture_cache_count].pixels = pixels_ptr;
+    ctx->texture_cache[ctx->texture_cache_count].generation = generation;
     ctx->texture_cache[ctx->texture_cache_count].tex = tex;
     ctx->texture_cache_count++;
     return tex;
 }
 
 static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
+    uint64_t generation;
     if (!ctx || !cubemap)
         return 0;
+    generation = vgfx3d_get_cubemap_generation(cubemap);
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
-        if (ctx->cubemap_cache[i].cubemap == cubemap)
+        if (ctx->cubemap_cache[i].cubemap == cubemap &&
+            ctx->cubemap_cache[i].generation == generation)
             return ctx->cubemap_cache[i].tex;
+    }
+
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        if (ctx->cubemap_cache[i].cubemap == cubemap) {
+            gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
+            for (int face = 0; face < 6; face++) {
+                int32_t w = 0, h = 0;
+                uint8_t *rgba = NULL;
+                if (vgfx3d_unpack_pixels_rgba(cubemap->faces[face], &w, &h, &rgba) != 0 || !rgba) {
+                    if (rgba)
+                        free(rgba);
+                    return 0;
+                }
+                gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
+                              0,
+                              GL_RGBA8,
+                              w,
+                              h,
+                              0,
+                              GL_RGBA,
+                              GL_UNSIGNED_BYTE,
+                              rgba);
+                free(rgba);
+            }
+            ctx->cubemap_cache[i].generation = generation;
+            return ctx->cubemap_cache[i].tex;
+        }
     }
 
     GLuint tex = 0;
@@ -1331,6 +1381,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
     }
 
     ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap = cubemap;
+    ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
     ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
     ctx->cubemap_cache_count++;
     return tex;
@@ -2490,8 +2541,6 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     if (!ctx || !cam)
         return;
 
-    texture_cache_clear(ctx);
-    cubemap_cache_clear(ctx);
     ctx->shadow_active = 0;
     if (ctx->prev_vp_valid)
         memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
@@ -2593,6 +2642,53 @@ static void gl_end_frame(void *ctx_ptr) {
         memcpy(ctx->rtt_target->color_buf, tmp, bytes);
         free(tmp);
     }
+}
+
+static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx || w <= 0 || h <= 0)
+        return;
+    ctx->width = w;
+    ctx->height = h;
+    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!ctx->rtt_active)
+        destroy_scene_targets(ctx);
+}
+
+static int gl_readback_rgba(void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int32_t copy_w, copy_h;
+    uint8_t *tmp;
+
+    if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        return 0;
+
+    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
+        return 0;
+
+    copy_w = ctx->scene_width < w ? ctx->scene_width : w;
+    copy_h = ctx->scene_height < h ? ctx->scene_height : h;
+    tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
+    if (!tmp)
+        return 0;
+
+    memset(dst_rgba, 0, (size_t)stride * (size_t)h);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+    vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
+    for (int32_t y = 0; y < copy_h; y++)
+        memcpy(dst_rgba + (size_t)y * (size_t)stride,
+               tmp + (size_t)y * (size_t)copy_w * 4u,
+               (size_t)copy_w * 4u);
+    free(tmp);
+
+    if (ctx->rtt_active)
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
+    else
+        bind_main_framebuffer(ctx);
+    return 1;
 }
 
 static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
@@ -2707,6 +2803,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .create_ctx = gl_create_ctx,
     .destroy_ctx = gl_destroy_ctx,
     .clear = gl_clear,
+    .resize = gl_resize,
     .begin_frame = gl_begin_frame,
     .submit_draw = gl_submit_draw,
     .end_frame = gl_end_frame,
@@ -2717,6 +2814,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .draw_skybox = gl_draw_skybox,
     .submit_draw_instanced = gl_submit_draw_instanced,
     .present = gl_present,
+    .readback_rgba = gl_readback_rgba,
     .present_postfx = gl_present_postfx,
 };
 

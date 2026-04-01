@@ -688,12 +688,14 @@ static const char *d3d11_postfx_shader_source =
 
 typedef struct {
     const void *pixels_ptr;
+    uint64_t generation;
     ID3D11Texture2D *tex;
     ID3D11ShaderResourceView *srv;
 } d3d_tex_cache_entry_t;
 
 typedef struct {
     const void *cubemap_ptr;
+    uint64_t generation;
     ID3D11Texture2D *tex;
     ID3D11ShaderResourceView *srv;
 } d3d_cubemap_cache_entry_t;
@@ -1277,15 +1279,29 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
                                                          d3d_temp_srv_t *out_temp) {
     ID3D11Texture2D *tex = NULL;
     ID3D11ShaderResourceView *srv = NULL;
+    uint64_t generation;
 
     if (out_temp)
         memset(out_temp, 0, sizeof(*out_temp));
     if (!ctx || !pixels)
         return NULL;
+    generation = vgfx3d_get_pixels_generation(pixels);
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels)
+        if (ctx->tex_cache[i].pixels_ptr == pixels &&
+            ctx->tex_cache[i].generation == generation)
             return ctx->tex_cache[i].srv;
+    }
+
+    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
+        if (ctx->tex_cache[i].pixels_ptr == pixels) {
+            SAFE_RELEASE(ctx->tex_cache[i].srv);
+            SAFE_RELEASE(ctx->tex_cache[i].tex);
+            if (FAILED(d3d11_create_texture_srv(ctx, pixels, &ctx->tex_cache[i].tex, &ctx->tex_cache[i].srv)))
+                return NULL;
+            ctx->tex_cache[i].generation = generation;
+            return ctx->tex_cache[i].srv;
+        }
     }
 
     if (FAILED(d3d11_create_texture_srv(ctx, pixels, &tex, &srv)))
@@ -1293,6 +1309,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
 
     if (ctx->tex_cache_count < (int32_t)(sizeof(ctx->tex_cache) / sizeof(ctx->tex_cache[0]))) {
         ctx->tex_cache[ctx->tex_cache_count].pixels_ptr = pixels;
+        ctx->tex_cache[ctx->tex_cache_count].generation = generation;
         ctx->tex_cache[ctx->tex_cache_count].tex = tex;
         ctx->tex_cache[ctx->tex_cache_count].srv = srv;
         ctx->tex_cache_count++;
@@ -1364,15 +1381,32 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
                                                                  d3d_temp_srv_t *out_temp) {
     ID3D11Texture2D *tex = NULL;
     ID3D11ShaderResourceView *srv = NULL;
+    uint64_t generation;
 
     if (out_temp)
         memset(out_temp, 0, sizeof(*out_temp));
     if (!ctx || !cubemap)
         return NULL;
+    generation = vgfx3d_get_cubemap_generation(cubemap);
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
-        if (ctx->cubemap_cache[i].cubemap_ptr == cubemap)
+        if (ctx->cubemap_cache[i].cubemap_ptr == cubemap &&
+            ctx->cubemap_cache[i].generation == generation)
             return ctx->cubemap_cache[i].srv;
+    }
+
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        if (ctx->cubemap_cache[i].cubemap_ptr == cubemap) {
+            SAFE_RELEASE(ctx->cubemap_cache[i].srv);
+            SAFE_RELEASE(ctx->cubemap_cache[i].tex);
+            if (FAILED(d3d11_create_cubemap_srv(ctx,
+                                                cubemap,
+                                                &ctx->cubemap_cache[i].tex,
+                                                &ctx->cubemap_cache[i].srv)))
+                return NULL;
+            ctx->cubemap_cache[i].generation = generation;
+            return ctx->cubemap_cache[i].srv;
+        }
     }
 
     if (FAILED(d3d11_create_cubemap_srv(ctx, cubemap, &tex, &srv)))
@@ -1381,6 +1415,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
     if (ctx->cubemap_cache_count <
         (int32_t)(sizeof(ctx->cubemap_cache) / sizeof(ctx->cubemap_cache[0]))) {
         ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap_ptr = cubemap;
+        ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
         ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
         ctx->cubemap_cache[ctx->cubemap_cache_count].srv = srv;
         ctx->cubemap_cache_count++;
@@ -2878,8 +2913,6 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     if (!ctx || !cam)
         return;
 
-    d3d11_release_texture_cache(ctx);
-    d3d11_release_cubemap_cache(ctx);
     ctx->shadow_active = 0;
 
     if (ctx->prev_vp_valid)
@@ -2936,6 +2969,89 @@ static void d3d11_end_frame(void *ctx_ptr) {
                (size_t)row_bytes);
     }
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
+}
+
+static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    ID3D11Texture2D *back_buffer = NULL;
+    HRESULT hr;
+
+    if (!ctx || w <= 0 || h <= 0)
+        return;
+    if (ctx->width == w && ctx->height == h)
+        return;
+
+    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
+    d3d11_destroy_scene_targets(ctx);
+    SAFE_RELEASE(ctx->rtv);
+    SAFE_RELEASE(ctx->dsv);
+    SAFE_RELEASE(ctx->depth_tex);
+
+    hr = IDXGISwapChain_ResizeBuffers(ctx->swap_chain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("IDXGISwapChain::ResizeBuffers", hr);
+        return;
+    }
+
+    hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("IDXGISwapChain::GetBuffer(resize)", hr);
+        return;
+    }
+    hr = ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+    SAFE_RELEASE(back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateRenderTargetView(backbuffer resize)", hr);
+        return;
+    }
+    hr = d3d11_create_depth_target(ctx, w, h, 0, &ctx->depth_tex, &ctx->dsv, NULL);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D/DepthStencilView(main resize)", hr);
+        SAFE_RELEASE(ctx->rtv);
+        return;
+    }
+
+    ctx->width = w;
+    ctx->height = h;
+}
+
+static int d3d11_readback_rgba(void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    ID3D11Texture2D *staging = NULL;
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr;
+    int32_t copy_w, copy_h;
+
+    if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        return 0;
+    if (!ctx->scene_color_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0)
+        return 0;
+
+    hr = d3d11_create_staging_texture(ctx, ctx->scene_width, ctx->scene_height, &staging);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D(sceneStaging)", hr);
+        return 0;
+    }
+
+    memset(dst_rgba, 0, (size_t)stride * (size_t)h);
+    ID3D11DeviceContext_CopyResource(ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)ctx->scene_color_tex);
+    hr = ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(sceneStaging)", hr);
+        SAFE_RELEASE(staging);
+        return 0;
+    }
+
+    copy_w = ctx->scene_width < w ? ctx->scene_width : w;
+    copy_h = ctx->scene_height < h ? ctx->scene_height : h;
+    for (int32_t y = 0; y < copy_h; y++) {
+        memcpy(dst_rgba + (size_t)y * (size_t)stride,
+               (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
+               (size_t)copy_w * 4u);
+    }
+    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
+    SAFE_RELEASE(staging);
+    return 1;
 }
 
 static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
@@ -3157,6 +3273,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .create_ctx = d3d11_create_ctx,
     .destroy_ctx = d3d11_destroy_ctx,
     .clear = d3d11_clear,
+    .resize = d3d11_resize,
     .begin_frame = d3d11_begin_frame,
     .submit_draw = d3d11_submit_draw,
     .end_frame = d3d11_end_frame,
@@ -3167,6 +3284,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .draw_skybox = d3d11_draw_skybox,
     .submit_draw_instanced = d3d11_submit_draw_instanced,
     .present = d3d11_present,
+    .readback_rgba = d3d11_readback_rgba,
     .present_postfx = d3d11_present_postfx,
 };
 

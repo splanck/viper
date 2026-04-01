@@ -19,6 +19,7 @@ extern void *rt_mat4_identity(void);
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
+extern void *rt_canvas3d_screenshot(void *canvas);
 }
 
 static int tests_run = 0;
@@ -58,6 +59,9 @@ static int skybox_draw_calls = 0;
 static vgfx3d_draw_cmd_t last_instanced_cmd;
 static const float *last_instance_matrices = nullptr;
 static int32_t last_instance_count = 0;
+static int32_t last_readback_w = 0;
+static int32_t last_readback_h = 0;
+static int32_t last_readback_stride = 0;
 static void noop_end_frame(void *) {}
 static void record_draw_skybox(void *, const void *) { skybox_draw_calls++; }
 static void record_draw_instanced(void *,
@@ -74,6 +78,19 @@ static void record_draw_instanced(void *,
         last_instanced_cmd = *cmd;
     last_instance_matrices = instance_matrices;
     last_instance_count = instance_count;
+}
+static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    last_readback_w = w;
+    last_readback_h = h;
+    last_readback_stride = stride;
+    if (!dst_rgba || stride < w * 4)
+        return 0;
+    std::memset(dst_rgba, 0, static_cast<size_t>(stride) * static_cast<size_t>(h));
+    dst_rgba[0] = 0x12;
+    dst_rgba[1] = 0x34;
+    dst_rgba[2] = 0x56;
+    dst_rgba[3] = 0x78;
+    return 1;
 }
 
 static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
@@ -573,6 +590,37 @@ static void test_instanced_material_payload_forwarded(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_screenshot_prefers_backend_readback(void) {
+    typedef struct {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } pixels_view_t;
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.readback_rgba = record_readback_rgba;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.width = 2;
+    canvas.height = 2;
+    last_readback_w = 0;
+    last_readback_h = 0;
+    last_readback_stride = 0;
+
+    void *shot = rt_canvas3d_screenshot(&canvas);
+    pixels_view_t *view = (pixels_view_t *)shot;
+    EXPECT_TRUE(shot != nullptr, "Canvas3D.Screenshot produces a Pixels object");
+    EXPECT_TRUE(last_readback_w == 2 && last_readback_h == 2,
+                "Canvas3D.Screenshot requests backend readback at canvas dimensions");
+    EXPECT_TRUE(last_readback_stride == 8, "Canvas3D.Screenshot uses tightly packed RGBA rows");
+    if (view && view->data) {
+        EXPECT_TRUE(view->data[0] == 0x12345678u,
+                    "Canvas3D.Screenshot stores backend RGBA bytes in Pixels order");
+    }
+}
+
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
@@ -589,6 +637,7 @@ int main() {
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
     test_instanced_material_payload_forwarded();
+    test_screenshot_prefers_backend_readback();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

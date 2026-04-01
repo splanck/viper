@@ -115,6 +115,7 @@ typedef struct vgfx3d_backend {
 
     /* Frame */
     void (*clear)(void *ctx, vgfx_window_t win, float r, float g, float b);
+    void (*resize)(void *ctx, int32_t w, int32_t h);
     void (*begin_frame)(void *ctx, const vgfx3d_camera_params_t *cam);
     void (*submit_draw)(void *ctx,
                         vgfx_window_t win,
@@ -160,6 +161,10 @@ typedef struct vgfx3d_backend {
      * For GPU backends, this presents the drawable / swaps the back buffer.
      * NULL = no-op (software backend — vgfx_update handles display). */
     void (*present)(void *ctx);
+
+    /* Optional readback hook for window-backed rendering. When non-NULL, Canvas3D
+     * may request the current scene color in RGBA row-major layout. */
+    int (*readback_rgba)(void *ctx, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride);
 
     /* Optional GPU post-processing presentation hook. When non-NULL, Canvas3D
      * skips the CPU postfx pass and lets the backend own the final onscreen

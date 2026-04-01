@@ -11,9 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #import <Cocoa/Cocoa.h>
-#import <dispatch/dispatch.h>
 
 #include "rt_gui_internal.h"
+#include "../lib/graphics/src/vgfx_internal.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -30,7 +30,6 @@ typedef struct {
 } rt_gui_macos_special_items_t;
 
 static vg_menubar_t *g_main_menubar = NULL;
-static BOOL g_finish_launching_called = NO;
 
 static NSString *rt_gui_macos_app_name(void) {
     if (s_current_app && s_current_app->title && s_current_app->title[0] != '\0') {
@@ -450,10 +449,16 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
 
 static void rt_gui_macos_rebuild_main_menu(void) {
     [NSApplication sharedApplication];
-    if (!g_finish_launching_called) {
-        [NSApp finishLaunching];
-        g_finish_launching_called = YES;
+    if (!(g_main_menubar && g_main_menubar->native_main_menu && g_main_menubar->base.visible)) {
+        const char *preferred_title =
+            (s_current_app && s_current_app->title && s_current_app->title[0] != '\0')
+                ? s_current_app->title
+                : NULL;
+        vgfx_platform_macos_install_default_main_menu(preferred_title);
+        return;
     }
+
+    vgfx_platform_macos_finish_launching_if_needed();
     [NSApp setMainMenu:rt_gui_macos_build_main_menu()];
 }
 
@@ -461,10 +466,9 @@ static void rt_gui_macos_rebuild_main_menu(void) {
 
 + (instancetype)shared {
     static RTGuiMacMenuDispatcher *shared = nil;
-    static dispatch_once_t once_token;
-    dispatch_once(&once_token, ^{
-      shared = [[RTGuiMacMenuDispatcher alloc] init];
-    });
+    if (!shared) {
+        shared = [[RTGuiMacMenuDispatcher alloc] init];
+    }
     return shared;
 }
 

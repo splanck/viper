@@ -70,6 +70,8 @@ void rt_pixels_draw_line(
     int64_t x = x1;
     int64_t y = y1;
 
+    pixels_touch(p);
+
     for (;;) {
         set_pixel_raw(p, x, y, rgba);
         if (x == x2 && y == y2)
@@ -103,6 +105,10 @@ void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h
         x1 = p->width;
     if (y1 > p->height)
         y1 = p->height;
+    if (x0 >= x1 || y0 >= y1)
+        return;
+
+    pixels_touch(p);
 
     for (int64_t row = y0; row < y1; row++)
         for (int64_t col = x0; col < x1; col++)
@@ -119,6 +125,8 @@ void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t
 
     if (w <= 0 || h <= 0)
         return;
+
+    pixels_touch(p);
 
     // Top and bottom rows
     for (int64_t col = x; col < x + w; col++) {
@@ -143,6 +151,8 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     if (r < 0)
         r = 0;
 
+    pixels_touch(p);
+
     for (int64_t dy = -r; dy <= r; dy++) {
         int64_t dx = isqrt64(r * r - dy * dy);
         for (int64_t fx = cx - dx; fx <= cx + dx; fx++)
@@ -160,6 +170,7 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
 
     if (r < 0)
         return;
+    pixels_touch(p);
     if (r == 0) {
         set_pixel_raw(p, cx, cy, rgba);
         return;
@@ -200,9 +211,12 @@ void rt_pixels_draw_ellipse(
     uint32_t rgba = rgb_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
+        pixels_touch(p);
         set_pixel_raw(p, cx, cy, rgba);
         return;
     }
+
+    pixels_touch(p);
 
     // Scanline fill: for each row dy, fill span [cx-dx .. cx+dx]
     // dx = rx * isqrt(ry^2 - dy^2) / ry  (integer arithmetic, no float)
@@ -227,9 +241,12 @@ void rt_pixels_draw_ellipse_frame(
     uint32_t rgba = rgb_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
+        pixels_touch(p);
         set_pixel_raw(p, cx, cy, rgba);
         return;
     }
+
+    pixels_touch(p);
 
     // Midpoint ellipse algorithm — 4-quadrant symmetry
     int64_t rx2 = rx * rx;
@@ -293,6 +310,8 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
 
     if (target == fill_c)
         return;
+
+    pixels_touch(p);
 
     // Iterative scanline flood fill — no recursion, no stack overflow risk
     typedef struct {
@@ -464,6 +483,8 @@ void rt_pixels_draw_triangle(void *pixels,
     if (total_h == 0)
         return;
 
+    pixels_touch(p);
+
     // Upper half: y1 .. y2
     int64_t upper_h = y2 - y1;
     for (int64_t row = 0; row <= upper_h; row++) {
@@ -534,6 +555,8 @@ void rt_pixels_draw_bezier(void *pixels,
     if (steps > 10000)
         steps = 10000; // Cap to prevent excessive loops
 
+    pixels_touch(p);
+
     // Integer de Casteljau: P(t) via linear interpolation at t = i/steps
     for (int64_t i = 0; i <= steps; i++) {
         int64_t lx0 = x1 + (cx_ctrl - x1) * i / steps;
@@ -564,6 +587,7 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
     // Fully opaque fast path — same as set_rgb
     if (alpha == 255) {
         p->data[y * p->width + x] = (uint32_t)((color << 8) | 0xFF);
+        pixels_touch(p);
         return;
     }
 
@@ -589,4 +613,5 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
     uint32_t oa = sa + (da * inv + 127) / 255;
 
     p->data[y * p->width + x] = (or_ << 24) | (og << 16) | (ob << 8) | oa;
+    pixels_touch(p);
 }

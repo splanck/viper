@@ -288,8 +288,8 @@ All shapes render correctly with proper pixel-perfect accuracy.
 2. **Retina/HiDPI:** Currently renders at logical points, not backing pixels. For Retina displays, this means 1 ViperGFX
    pixel = 1 logical point (which may be 2x2 or more backing pixels).
 
-3. **Menu Bar:** No application menu is created. The window can be interacted with, but there's no "About" or "Quit"
-   menu.
+3. **Menu Bar:** A default native app menu is installed automatically for all ViperGFX windows on macOS. Apps that use
+   `GUI.MenuBar` replace that default menu with their own native top-level menu tree.
 
 4. **Key Mapping:** Only supports the Phase 1 key set (A-Z, 0-9, arrows, Enter, Escape, Space). Additional keys require
    extending `translate_keycode()`.

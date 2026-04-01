@@ -8,6 +8,7 @@ typedef struct {
     int64_t w;
     int64_t h;
     uint32_t *data;
+    uint64_t generation;
 } vgfx3d_pixels_view_t;
 
 typedef struct {
@@ -15,6 +16,13 @@ typedef struct {
     void *faces[6];
     int64_t face_size;
 } vgfx3d_cubemap_view_t;
+
+uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
+    const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
+    if (!pv)
+        return 0;
+    return pv->generation;
+}
 
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               int32_t *out_w,
@@ -77,6 +85,22 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
 
     *out_face_size = face_size;
     return 0;
+}
+
+uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
+    const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+    uint64_t max_generation = 0;
+
+    if (!cubemap)
+        return 0;
+
+    for (int face = 0; face < 6; face++) {
+        uint64_t generation = vgfx3d_get_pixels_generation(cubemap->faces[face]);
+        if (generation > max_generation)
+            max_generation = generation;
+    }
+
+    return max_generation;
 }
 
 void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {

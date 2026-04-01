@@ -52,6 +52,12 @@ typedef struct {
     int8_t has_prev_snapshot;
 } rt_instbatch3d;
 
+static void instbatch_copy_matrix_slot(float *dst, int32_t dst_idx, const float *src, int32_t src_idx) {
+    if (!dst || !src || dst_idx < 0 || src_idx < 0)
+        return;
+    memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
+}
+
 static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
     free(b->transforms);
@@ -102,13 +108,27 @@ void rt_instbatch3d_add(void *obj, void *transform) {
 
     if (b->instance_count >= b->instance_capacity) {
         int32_t new_cap = b->instance_capacity * 2;
-        b->transforms = (float *)realloc(b->transforms, (size_t)new_cap * 16 * sizeof(float));
-        b->current_snapshot =
-            (float *)realloc(b->current_snapshot, (size_t)new_cap * 16 * sizeof(float));
-        b->prev_transforms =
-            (float *)realloc(b->prev_transforms, (size_t)new_cap * 16 * sizeof(float));
-        if (!b->transforms || !b->current_snapshot || !b->prev_transforms)
+        size_t old_bytes = (size_t)b->instance_capacity * 16u * sizeof(float);
+        float *new_transforms = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
+        float *new_snapshot = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
+        float *new_prev = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
+        if (!new_transforms || !new_snapshot || !new_prev) {
+            free(new_transforms);
+            free(new_snapshot);
+            free(new_prev);
             return;
+        }
+        if (old_bytes > 0) {
+            memcpy(new_transforms, b->transforms, old_bytes);
+            memcpy(new_snapshot, b->current_snapshot, old_bytes);
+            memcpy(new_prev, b->prev_transforms, old_bytes);
+        }
+        free(b->transforms);
+        free(b->current_snapshot);
+        free(b->prev_transforms);
+        b->transforms = new_transforms;
+        b->current_snapshot = new_snapshot;
+        b->prev_transforms = new_prev;
         b->instance_capacity = new_cap;
     }
 
@@ -125,14 +145,27 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
     if (!obj)
         return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    int32_t last_idx;
     if (index < 0 || index >= b->instance_count)
         return;
+    last_idx = b->instance_count - 1;
 
     /* Swap with last */
-    if (index < b->instance_count - 1)
-        memcpy(&b->transforms[index * 16],
-               &b->transforms[(b->instance_count - 1) * 16],
-               16 * sizeof(float));
+    if (index < last_idx) {
+        instbatch_copy_matrix_slot(b->transforms, (int32_t)index, b->transforms, last_idx);
+        if (last_idx < b->motion_snapshot_count)
+            instbatch_copy_matrix_slot(
+                b->current_snapshot, (int32_t)index, b->current_snapshot, last_idx);
+        else if (index < b->motion_snapshot_count)
+            b->motion_snapshot_count = 0;
+        if (last_idx < b->prev_count)
+            instbatch_copy_matrix_slot(
+                b->prev_transforms, (int32_t)index, b->prev_transforms, last_idx);
+        else if (index < b->prev_count) {
+            b->prev_count = 0;
+            b->has_prev_snapshot = 0;
+        }
+    }
     b->instance_count--;
     if (b->motion_snapshot_count > b->instance_count)
         b->motion_snapshot_count = b->instance_count;

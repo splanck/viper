@@ -75,6 +75,7 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     pixels->height = height;
     pixels->data =
         pixel_count > 0 ? (uint32_t *)((uint8_t *)pixels + sizeof(rt_pixels_impl)) : NULL;
+    pixels->generation = 0;
 
     // Zero-fill (transparent black)
     if (pixels->data && data_size > 0)
@@ -143,6 +144,7 @@ void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
 
     int64_t idx = y * p->width + x;
     p->data[idx] = (uint32_t)color;
+    pixels_touch(p);
 }
 
 const uint32_t *rt_pixels_raw_buffer(void *pixels) {
@@ -167,10 +169,12 @@ void rt_pixels_fill(void *pixels, int64_t color) {
     int64_t count = p->width * p->height;
     if (c == 0) {
         memset(p->data, 0, (size_t)count * sizeof(uint32_t));
+        pixels_touch(p);
         return;
     }
     for (int64_t i = 0; i < count; i++)
         p->data[i] = c;
+    pixels_touch(p);
 }
 
 void rt_pixels_clear(void *pixels) {
@@ -181,8 +185,10 @@ void rt_pixels_clear(void *pixels) {
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     size_t size = (size_t)(p->width * p->height) * sizeof(uint32_t);
-    if (p->data && size > 0)
+    if (p->data && size > 0) {
         memset(p->data, 0, size);
+        pixels_touch(p);
+    }
 }
 
 //=============================================================================
@@ -249,6 +255,7 @@ void rt_pixels_copy(
         else
             memcpy(&d->data[dst_idx], &s->data[src_idx], (size_t)w * sizeof(uint32_t));
     }
+    pixels_touch(d);
 }
 
 void *rt_pixels_clone(void *pixels) {
@@ -318,6 +325,7 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
     if (required_bytes > 0 && p->data) {
         rt_bytes_impl *b = (rt_bytes_impl *)bytes;
         memcpy(p->data, b->data, (size_t)required_bytes);
+        pixels_touch(p);
     }
 
     return p;

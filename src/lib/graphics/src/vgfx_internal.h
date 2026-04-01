@@ -419,6 +419,23 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type);
 /// @brief Show or hide the native mouse cursor.
 void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible);
 
+#ifdef __APPLE__
+/// @brief Ensure the Cocoa app is finished launching before menu installation.
+/// @details Safe to call repeatedly. Used by the macOS platform backend and
+///          the GUI menubar bridge before setting NSApp's main menu.
+void vgfx_platform_macos_finish_launching_if_needed(void);
+
+/// @brief Install the standard macOS app/window menus as the active main menu.
+/// @details Replaces any current main menu with the default Viper menu set.
+///          preferred_title is used for the application menu title when non-empty.
+void vgfx_platform_macos_install_default_main_menu(const char *preferred_title);
+
+/// @brief Ensure a default macOS main menu exists without clobbering custom menus.
+/// @details If the current main menu is absent or is already the default Viper
+///          menu, this rebuilds it. If a custom menu is active, it is preserved.
+void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title);
+#endif
+
 /// @brief Get the screen dimensions of the monitor containing the window.
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h);
 

@@ -20,8 +20,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "rt.hpp"
 #include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_sprite3d.h"
 #include "rt_terrain3d.h"
 #include "rt_internal.h"
@@ -75,6 +80,7 @@ extern "C" double rt_vec3_z(void *v);
 extern "C" void *rt_vec3_new(double x, double y, double z);
 extern "C" void *rt_pixels_new(int64_t width, int64_t height);
 extern "C" void *rt_mat4_identity(void);
+extern "C" void *rt_mat4_scale(double sx, double sy, double sz);
 
 /* Backend selection test */
 extern "C" const void *vgfx3d_select_backend(void);
@@ -165,6 +171,24 @@ static void test_mesh_clone() {
     assert(c);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(c), 12);
+    PASS();
+}
+
+static void test_mesh_transform_uses_inverse_transpose_normals() {
+    TEST("Mesh3D.Transform uses inverse-transpose normals");
+    void *m = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0.70710678, 0.70710678, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0.70710678, 0.70710678, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0.70710678, 0.70710678, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+
+    void *scale = rt_mat4_scale(2.0, 1.0, 1.0);
+    rt_mesh3d_transform(m, scale);
+
+    rt_mesh3d *mesh = (rt_mesh3d *)m;
+    EXPECT_NEAR(mesh->vertices[0].normal[0], 0.44721359, 0.01);
+    EXPECT_NEAR(mesh->vertices[0].normal[1], 0.89442719, 0.01);
+    EXPECT_NEAR(mesh->vertices[0].normal[2], 0.0, 0.01);
     PASS();
 }
 
@@ -1169,6 +1193,7 @@ int main() {
     test_mesh_plane();
     test_mesh_cylinder();
     test_mesh_clone();
+    test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
 

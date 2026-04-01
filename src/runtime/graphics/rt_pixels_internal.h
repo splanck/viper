@@ -39,6 +39,7 @@ typedef struct rt_pixels_impl {
     int64_t width;  ///< Width in pixels.
     int64_t height; ///< Height in pixels.
     uint32_t *data; ///< Pixel storage (RGBA, row-major).
+    uint64_t generation; ///< Monotonic content version for GPU caches.
 } rt_pixels_impl;
 
 /// @brief Convert 0x00RRGGBB canvas color to 0xRRGGBBFF (fully-opaque RGBA).
@@ -50,6 +51,12 @@ static inline uint32_t rgb_to_rgba(int64_t color) {
 static inline void set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c) {
     if (x >= 0 && x < p->width && y >= 0 && y < p->height)
         p->data[y * p->width + x] = c;
+}
+
+/// @brief Bump the image content generation after an in-place mutation.
+static inline void pixels_touch(rt_pixels_impl *p) {
+    if (p)
+        p->generation++;
 }
 
 /// @brief Integer square root (Newton's method, exact for perfect squares).

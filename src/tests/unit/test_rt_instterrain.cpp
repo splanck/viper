@@ -33,6 +33,21 @@ extern void *rt_pixels_new(int64_t w, int64_t h);
 extern void rt_pixels_set(void *px, int64_t x, int64_t y, int64_t color);
 }
 
+typedef struct {
+    void *vptr;
+    void *mesh;
+    void *material;
+    float *transforms;
+    float *current_snapshot;
+    float *prev_transforms;
+    int32_t instance_count;
+    int32_t instance_capacity;
+    int32_t motion_snapshot_count;
+    int32_t prev_count;
+    int64_t last_motion_frame;
+    int8_t has_prev_snapshot;
+} rt_instbatch3d_view;
+
 static int tests_passed = 0;
 static int tests_run = 0;
 
@@ -88,6 +103,36 @@ static void test_instbatch_remove() {
     rt_instbatch3d_add(batch, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_instbatch3d_remove(batch, 0);
     EXPECT_TRUE(rt_instbatch3d_count(batch) == 1, "Batch count = 1 after remove");
+}
+
+static void test_instbatch_remove_keeps_motion_history_aligned() {
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new_color(0.5, 0.5, 0.5);
+    void *batch = rt_instbatch3d_new(mesh, mat);
+    rt_instbatch3d_view *view = (rt_instbatch3d_view *)batch;
+
+    rt_instbatch3d_add(batch, rt_mat4_identity());
+    rt_instbatch3d_add(batch, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_instbatch3d_add(batch, rt_mat4_translate(2.0, 0.0, 0.0));
+
+    view->motion_snapshot_count = 3;
+    view->prev_count = 3;
+    view->has_prev_snapshot = 1;
+    view->current_snapshot[3] = 10.0f;
+    view->current_snapshot[19] = 20.0f;
+    view->current_snapshot[35] = 30.0f;
+    view->prev_transforms[3] = 100.0f;
+    view->prev_transforms[19] = 200.0f;
+    view->prev_transforms[35] = 300.0f;
+
+    rt_instbatch3d_remove(batch, 0);
+
+    EXPECT_TRUE(rt_instbatch3d_count(batch) == 2, "Batch remove keeps the expected instance count");
+    EXPECT_NEAR(view->transforms[3], 2.0, 0.01, "Batch remove swap-moves the last transform");
+    EXPECT_NEAR(view->current_snapshot[3], 30.0, 0.01,
+                "Batch remove keeps current motion history aligned with swapped transforms");
+    EXPECT_NEAR(view->prev_transforms[3], 300.0, 0.01,
+                "Batch remove keeps previous motion history aligned with swapped transforms");
 }
 
 static void test_instbatch_clear() {
@@ -148,6 +193,7 @@ int main() {
     test_instbatch_create();
     test_instbatch_add();
     test_instbatch_remove();
+    test_instbatch_remove_keeps_motion_history_aligned();
     test_instbatch_clear();
 
     /* Terrain3D */

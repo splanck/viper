@@ -80,7 +80,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 285+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 290+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -89,7 +89,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) — zero external tool dependencies for native compilation
-- **Full runtime** — 285+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
+- **Full runtime** — 290+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
 
@@ -107,9 +107,9 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
-| [Runtime](docs/viperlib/README.md) | 285+ classes across 22 modules; 1,371 tests |
+| [Runtime](docs/viperlib/README.md) | 290+ classes across 22 modules; 1,382 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 29 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11/OpenGL/software |
-| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
+| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
 | [Packaging](docs/tools.md) | `viper package` → .app, .deb, .exe, .tar.gz |
@@ -127,7 +127,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [Paint](examples/apps/paint/) | Drawing app with 8 tools, shapes, color palette |
 | [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, drag-and-drop GUI |
 | [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
-| [XENOSCAPE](examples/games/sidescroller/) | Metroid-style sidescroller: 10 levels, 30+ enemies, bosses, abilities, saves (17K LOC) |
+| [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller: 10 levels, 30+ enemies, bosses, abilities, saves, JSON level loading (13K LOC) |
 | [Dungeon of Viper](examples/games/dungeon/) | 3D first-person dungeon crawler using the Graphics3D engine |
 
 > **[See all demos →](examples/README.md)** — 6 applications, 15 games, API coverage audits, IL examples, and C++ embedding demos.
@@ -223,7 +223,7 @@ entry_0:
 
 ## 📚 Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 285+ classes across 22 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 290+ classes across 22 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
@@ -231,13 +231,13 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 285+ cl
 | [Core](docs/viperlib/core.md) | 6 | Base types, string operations, messaging |
 | [Crypto](docs/viperlib/crypto.md) | 10 | AES, AES-GCM, SHA, HMAC, HKDF, PBKDF2, TLS, ECDSA, secure RNG |
 | [Data](docs/viperlib/README.md) | 3 | XML, YAML, binary serialization |
-| [Game](docs/viperlib/game/README.md) | 22 | Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements |
+| [Game](docs/viperlib/game/README.md) | 22 | Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements, entity physics, AI behaviors, level loading, scene management |
 | [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
-| [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels) |
+| [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels, buttons) |
 | [Graphics](docs/viperlib/graphics/README.md) | 12 | Canvas, sprites, tilemaps, cameras, bitmap fonts, video playback |
 | [Graphics3D](docs/graphics3d-guide.md) | 29 | Meshes, materials, lights, skeletal animation, physics, terrain, water, vegetation, particles, FBX |
 | [GUI](docs/viperlib/gui/README.md) | 46 | Desktop widgets, layouts, menus, code editor, tree views |
-| [I/O](docs/viperlib/io) | 15 | Files, directories, archives, compression, streaming |
+| [I/O](docs/viperlib/io) | 16 | Files, directories, archives, compression, streaming, asset embedding |
 | [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, action mapping |
 | [Math](docs/viperlib/math.md) | 12 | Vectors, matrices, quaternions, noise, splines, BigInt |
 | [Network](docs/viperlib/network.md) | 22 | HTTP, TCP, UDP, WebSocket, DNS, TLS, SMTP, SSE, connection pooling, rate limiting |

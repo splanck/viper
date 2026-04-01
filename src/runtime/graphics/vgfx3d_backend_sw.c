@@ -1413,6 +1413,13 @@ static void sw_end_frame(void *ctx_ptr) {
     (void)ctx_ptr;
 }
 
+static void sw_resize(void *ctx_ptr, int32_t w, int32_t h) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || ctx->render_target)
+        return;
+    sw_ensure_zbuf_capacity(ctx, w, h);
+}
+
 static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (ctx)
@@ -1428,6 +1435,7 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .create_ctx = sw_create_ctx,
     .destroy_ctx = sw_destroy_ctx,
     .clear = sw_clear,
+    .resize = sw_resize,
     .begin_frame = sw_begin_frame,
     .submit_draw = sw_submit_draw,
     .end_frame = sw_end_frame,
