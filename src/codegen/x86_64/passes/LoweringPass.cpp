@@ -104,9 +104,10 @@ class ModuleAdapter {
                 return ILValue::Kind::PTR;
             case Type::Kind::Str:
                 return ILValue::Kind::STR;
+            case Type::Kind::Error:
+                return ILValue::Kind::PTR;
             case Type::Kind::Void:
                 reportUnsupported("void-typed value requested by backend adapter");
-            case Type::Kind::Error:
             case Type::Kind::ResumeTok:
                 reportUnsupported("non-scalar IL type encountered during Phase A lowering");
         }
@@ -510,9 +511,7 @@ class ModuleAdapter {
                 out.opcode = "trap";
                 break;
             case il::core::Opcode::TrapFromErr:
-                out.opcode = "trap";
-                // TrapFromErr takes an error code, but for now we just trap
-                convertOperands(instr, {ILValue::Kind::I64}, out);
+                adaptRuntimeCall(instr, out, "rt_trap_raise_error", {ILValue::Kind::I64});
                 break;
 
             // String operations
@@ -554,12 +553,11 @@ class ModuleAdapter {
 
             // === Structured Error Handling ===
             case il::core::Opcode::TrapKind:
+                adaptRuntimeCall(instr, out, "rt_trap_get_kind");
+                break;
             case il::core::Opcode::TrapErr:
-                // Lower to a plain trap — the runtime's rt_trap() handles
-                // longjmp-based recovery when a handler is active.
-                out.opcode = "trap";
-                if (!instr.operands.empty())
-                    convertOperands(instr, {ILValue::Kind::I64}, out);
+                adaptRuntimeCall(
+                    instr, out, "rt_trap_error_make", {ILValue::Kind::I64, ILValue::Kind::STR});
                 break;
             case il::core::Opcode::ResumeLabel:
                 // resume.label is a branch to an explicit target label.
@@ -567,17 +565,16 @@ class ModuleAdapter {
                 adaptBr(instr, out, block);
                 break;
             case il::core::Opcode::ErrGetKind:
+                adaptRuntimeCall(instr, out, "rt_trap_get_kind");
+                break;
             case il::core::Opcode::ErrGetCode:
+                adaptRuntimeCall(instr, out, "rt_trap_get_code");
+                break;
             case il::core::Opcode::ErrGetIp:
+                adaptRuntimeCall(instr, out, "rt_trap_get_ip");
+                break;
             case il::core::Opcode::ErrGetLine:
-                // Return 0 for all error field queries in native codegen.
-                // Full error field extraction requires runtime bridge support.
-                out.opcode = "const";
-                out.resultId = -1;
-                if (!instr.operands.empty())
-                    setResultKind(out, instr, instr.type);
-                out.ops.clear();
-                out.ops.push_back(ILValue{ILValue::Kind::I64, -1, 0.0, 0, {}, {}, 0});
+                adaptRuntimeCall(instr, out, "rt_trap_get_line");
                 break;
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
@@ -655,14 +652,8 @@ class ModuleAdapter {
         if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
         } else if (instr.result) {
-            // Some IL files have call instructions with result SSA ids but type set to void.
-            // This can happen when the IL parser doesn't correctly infer the return type
-            // from extern declarations. In this case, assume PTR as a safe default since
-            // most such calls return pointers (e.g., rt_get_class_vtable).
-            // The VM handles this correctly, so we should too.
-            out.resultId = static_cast<int>(*instr.result);
-            out.resultKind = ILValue::Kind::PTR;
-            valueKinds_[*instr.result] = ILValue::Kind::PTR;
+            reportUnsupported(std::string{"call to '"} + instr.callee +
+                              "' has a result SSA id but void return type");
         }
         out.opcode = "call";
         out.ops.push_back(makeLabelValue(instr.callee));
@@ -675,13 +666,30 @@ class ModuleAdapter {
         if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
         } else if (instr.result) {
-            out.resultId = static_cast<int>(*instr.result);
-            out.resultKind = ILValue::Kind::PTR;
-            valueKinds_[*instr.result] = ILValue::Kind::PTR;
+            reportUnsupported("call.indirect has a result SSA id but void return type");
         }
         out.opcode = "call.indirect";
         for (const auto &operand : instr.operands) {
             out.ops.push_back(convertValue(operand, std::nullopt));
+        }
+    }
+
+    void adaptRuntimeCall(const il::core::Instr &instr,
+                          ILInstr &out,
+                          const char *callee,
+                          std::initializer_list<std::optional<ILValue::Kind>> hints = {}) {
+        if (instr.type.kind != il::core::Type::Kind::Void) {
+            setResultKind(out, instr, instr.type);
+        }
+        out.opcode = "call";
+        out.ops.push_back(makeLabelValue(callee));
+        std::size_t index = 0;
+        for (const auto &operand : instr.operands) {
+            const std::optional<ILValue::Kind> hint =
+                index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
+                                     : std::optional<ILValue::Kind>{};
+            out.ops.push_back(convertValue(operand, hint));
+            ++index;
         }
     }
 
@@ -974,6 +982,18 @@ bool LoweringPass::run(Module &module, Diagnostics &diags) {
     try {
         ModuleAdapter adapter{};
         module.lowered = adapter.adapt(module.il);
+        module.roData = AsmEmitter::RoDataPool{};
+        module.mir.clear();
+        module.frames.clear();
+        module.codegenResult.reset();
+        module.binaryText.reset();
+        module.binaryRodata.reset();
+        module.binaryTextSections.clear();
+        module.debugLineData.clear();
+        module.legalised = false;
+        module.registersAllocated = false;
+        if (!module.target)
+            module.target = &selectTarget(module.options.targetABI);
         return true;
     } catch (const std::exception &e) {
         diags.error(std::string("lowering: ") + e.what());

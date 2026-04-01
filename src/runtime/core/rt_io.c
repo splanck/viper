@@ -38,6 +38,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_file.h"
+#include "rt_error.h"
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
@@ -138,11 +139,25 @@ RT_WEAK void vm_trap(const char *msg) {
 ///          Otherwise forwards the message to @ref vm_trap.
 /// @param msg Null-terminated string describing the trap condition.
 /// @return This function does not return.
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
+static uintptr_t rt_capture_return_address(void) {
+#if defined(_MSC_VER)
+    return (uintptr_t)_ReturnAddress();
+#elif defined(__GNUC__) || defined(__clang__)
+    return (uintptr_t)__builtin_return_address(0);
+#else
+    return (uintptr_t)0;
+#endif
+}
+
 void rt_trap(const char *msg) {
+    rt_trap_set_ip((uint64_t)rt_capture_return_address());
     // Classify the trap kind from the message for native codegen's
     // ErrGetKind/Code/Line. VM traps are classified separately.
     if (msg) {
-        extern void rt_trap_fields_set(int32_t, int32_t, int32_t);
         int32_t kind = 3; // DomainError default
         if (msg[0] == 'D' && msg[1] == 'i') kind = 0;      // "Division by zero" → DivideByZero
         else if (msg[0] == 'O')              kind = 1;      // "Overflow" → Overflow

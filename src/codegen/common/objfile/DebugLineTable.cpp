@@ -47,6 +47,19 @@ void DebugLineTable::addEntry(uint64_t address,
     entries_.push_back({address, fileIndex, line, column});
 }
 
+void DebugLineTable::append(const DebugLineTable &other, uint64_t addressBias) {
+    std::vector<uint32_t> fileRemap(other.files_.size() + 1, 0);
+    for (size_t i = 0; i < other.files_.size(); ++i)
+        fileRemap[i + 1] = addFile(other.files_[i]);
+
+    for (const auto &entry : other.entries_) {
+        addEntry(entry.address + addressBias,
+                 fileRemap[entry.fileIndex],
+                 entry.line,
+                 entry.column);
+    }
+}
+
 // --- DWARF v5 .debug_line constants ---
 
 // Standard opcode numbers (DWARF v5 §6.2.5.2).

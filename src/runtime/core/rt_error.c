@@ -28,6 +28,8 @@
 
 #include "rt_error.h"
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,6 +40,8 @@ extern "C" {
 ///          storage, every consumer observes the same address when checking
 ///          for pointer identity or performing atomic replacements.
 const RtError RT_ERROR_NONE = {Err_None, 0};
+
+extern void rt_trap(const char *msg);
 
 /// Thread-local storage for the most recently thrown message.
 /// This enables catch(e) handlers to retrieve the throw message
@@ -68,6 +72,7 @@ rt_string rt_throw_msg_get(void) {
 /// ErrGetKind/Code/Line in native codegen).
 static _Thread_local int32_t tls_trap_kind = 0;
 static _Thread_local int32_t tls_trap_code = 0;
+static _Thread_local uint64_t tls_trap_ip = 0;
 static _Thread_local int32_t tls_trap_line = -1;
 
 void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
@@ -76,9 +81,59 @@ void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
     tls_trap_line = line;
 }
 
+void rt_trap_set_ip(uint64_t ip) { tls_trap_ip = ip; }
+
 int64_t rt_trap_get_kind(void) { return (int64_t)tls_trap_kind; }
 int64_t rt_trap_get_code(void) { return (int64_t)tls_trap_code; }
+int64_t rt_trap_get_ip(void) { return (int64_t)tls_trap_ip; }
 int64_t rt_trap_get_line(void) { return (int64_t)tls_trap_line; }
+
+int32_t rt_err_to_trap_kind(int32_t code) {
+    switch (code) {
+        case Err_FileNotFound:
+            return 5;
+        case Err_EOF:
+            return 6;
+        case Err_IOError:
+            return 7;
+        case Err_Overflow:
+            return 1;
+        case Err_InvalidCast:
+            return 2;
+        case Err_DomainError:
+            return 3;
+        case Err_Bounds:
+            return 4;
+        case Err_InvalidOperation:
+            return 8;
+        case Err_ConnectionRefused:
+        case Err_HostNotFound:
+        case Err_ConnectionReset:
+        case Err_Timeout:
+        case Err_ConnectionClosed:
+        case Err_DnsError:
+        case Err_InvalidUrl:
+        case Err_TlsError:
+        case Err_NetworkError:
+        case Err_ProtocolError:
+            return 11;
+        case Err_None:
+            return 9;
+        default:
+            return 9;
+    }
+}
+
+void *rt_trap_error_make(int32_t code, rt_string msg) {
+    rt_throw_msg_set(msg);
+    rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
+    return (void *)(uintptr_t)(uint32_t)code;
+}
+
+void rt_trap_raise_error(int32_t code) {
+    rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
+    rt_trap(NULL);
+}
 
 #ifdef __cplusplus
 }

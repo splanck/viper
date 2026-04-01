@@ -108,7 +108,7 @@ int FrameBuilder::localOffset(unsigned tempId) const {
     return fn_->frame.getLocalOffset(tempId);
 }
 
-int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes) {
+int FrameBuilder::ensureSpill(uint32_t vreg, int sizeBytes, int alignBytes) {
     for (const auto &S : fn_->frame.spills)
         if (S.vreg == vreg)
             return S.offset;
@@ -117,7 +117,7 @@ int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes) {
     return off;
 }
 
-int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
+int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
                                        unsigned lastUseInstrIdx,
                                        unsigned currentInstrIdx,
                                        int sizeBytes,

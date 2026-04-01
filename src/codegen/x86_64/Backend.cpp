@@ -41,6 +41,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -118,21 +119,12 @@ void lowerPendingCalls(MFunction &func,
     assert(planIndex == plans.size() && "call plan count mismatch");
 }
 
-} // namespace
-
-/// @brief Execute the per-function Phase A code-generation pipeline.
-///
-/// @details Converts an IL function into Machine IR, lowers complex operations,
-///          performs register allocation, assigns spill slots, and inserts
-///          prologue/epilogue code before optionally running peephole
-///          optimisations.  The resulting Machine IR is ready for assembly
-///          emission and the frame summary reflects the required stack layout.
-static void runFunctionPipeline(const ILFunction &ilFunc,
-                                LowerILToMIR &lowering,
-                                const TargetInfo &target,
-                                const CodegenOptions &options,
-                                FrameInfo &frame,
-                                MFunction &machineFunc) {
+/// @brief Lower one function to MIR and run pre-RA legalization.
+static void legalizeFunctionPipeline(const ILFunction &ilFunc,
+                                     LowerILToMIR &lowering,
+                                     const TargetInfo &target,
+                                     FrameInfo &frame,
+                                     MFunction &machineFunc) {
     machineFunc = lowering.lower(ilFunc);
 
     frame = FrameInfo{};
@@ -146,34 +138,118 @@ static void runFunctionPipeline(const ILFunction &ilFunc,
 
     lowerSignedDivRem(machineFunc);
     lowerOverflowOps(machineFunc);
+}
 
+/// @brief Run register allocation and frame lowering on legalized MIR.
+static void allocateFunctionPipeline(MFunction &machineFunc,
+                                     const TargetInfo &target,
+                                     const CodegenOptions &options,
+                                     FrameInfo &frame) {
+    (void)options;
     const AllocationResult allocResult = allocate(machineFunc, target);
 
     assignSpillSlots(machineFunc, target, frame);
     frame.spillAreaGPR = std::max(frame.spillAreaGPR, allocResult.spillSlotsGPR * kSlotSizeBytes);
     frame.spillAreaXMM = std::max(frame.spillAreaXMM, allocResult.spillSlotsXMM * kSlotSizeBytes);
-    // Phase A: outgoing argument area and dynamic allocations are not tracked yet.
-
     insertPrologueEpilogue(machineFunc, target, frame);
-
-    // Peephole optimizations run at optimize level 1 or higher
-    if (options.optimizeLevel >= 1) {
-        runPeepholes(machineFunc);
-    }
 }
 
-/// @brief Emit assembly for a collection of IL functions.
-///
-/// @details Applies the per-function pipeline to each function in order,
-///          collects emitted assembly into a single stream, and accumulates
-///          diagnostics such as syntax warnings.  The helper underpins both the
-///          single-function and whole-module entry points.
-///
-/// @param functions IL functions to translate.
-/// @param options Backend configuration supplied by the caller.
-/// @return Result structure containing assembly text and diagnostic messages.
-static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
-                                    const CodegenOptions &options) {
+/// @brief Seed a debug line table with enough file entries for MIR source locations.
+static void seedDebugFiles(DebugLineTable &table,
+                           const std::vector<MFunction> &mir,
+                           std::string_view debugSourcePath) {
+    uint32_t maxFileId = 1;
+    for (const auto &fn : mir) {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.loc.file_id > maxFileId)
+                    maxFileId = instr.loc.file_id;
+            }
+        }
+    }
+
+    std::string filePath = std::string(debugSourcePath);
+    if (filePath.empty())
+        filePath = "<source>";
+    else
+        filePath = std::filesystem::path(filePath).lexically_normal().string();
+
+    for (uint32_t fileId = 1; fileId <= maxFileId; ++fileId)
+        table.addFile(filePath);
+}
+
+} // namespace
+
+const TargetInfo &selectTarget(CodegenOptions::TargetABI abi) noexcept {
+    switch (abi) {
+        case CodegenOptions::TargetABI::SysV:
+            return sysvTarget();
+        case CodegenOptions::TargetABI::Win64:
+            return win64Target();
+        case CodegenOptions::TargetABI::Host:
+            return hostTarget();
+    }
+    return hostTarget();
+}
+
+bool legalizeModuleToMIR(const ILModule &mod,
+                         const TargetInfo &target,
+                         const CodegenOptions &options,
+                         AsmEmitter::RoDataPool &roData,
+                         std::vector<MFunction> &mir,
+                         std::vector<FrameInfo> &frames,
+                         std::string &errors) {
+    (void)options;
+    mir.clear();
+    frames.clear();
+    errors.clear();
+
+    LowerILToMIR lowering{target, roData};
+    mir.reserve(mod.funcs.size());
+    frames.reserve(mod.funcs.size());
+
+    for (const auto &func : mod.funcs) {
+        FrameInfo frame{};
+        MFunction machineFunc{};
+        legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
+        mir.push_back(std::move(machineFunc));
+        frames.push_back(frame);
+    }
+    return true;
+}
+
+bool allocateModuleMIR(std::vector<MFunction> &mir,
+                       std::vector<FrameInfo> &frames,
+                       const TargetInfo &target,
+                       const CodegenOptions &options,
+                       std::string &errors) {
+    errors.clear();
+    if (mir.size() != frames.size()) {
+        errors = "frame/MIR count mismatch prior to register allocation";
+        return false;
+    }
+
+    for (std::size_t i = 0; i < mir.size(); ++i)
+        allocateFunctionPipeline(mir[i], target, options, frames[i]);
+    return true;
+}
+
+bool optimizeModuleMIR(std::vector<MFunction> &mir,
+                       const CodegenOptions &options,
+                       std::string &errors) {
+    errors.clear();
+    if (options.optimizeLevel < 1)
+        return true;
+
+    for (auto &fn : mir)
+        runPeepholes(fn);
+    return true;
+}
+
+CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
+                                const AsmEmitter::RoDataPool &roData,
+                                const TargetInfo &target,
+                                const CodegenOptions &options) {
     CodegenResult result{};
 
     std::ostringstream asmStream{};
@@ -183,20 +259,12 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
         errorStream << warning;
     }
 
-    const TargetInfo &target = hostTarget();
-    AsmEmitter::RoDataPool roData{};
-    LowerILToMIR lowering{target, roData};
-    AsmEmitter emitter{roData};
+    AsmEmitter::RoDataPool roDataCopy = roData;
+    AsmEmitter emitter{roDataCopy};
 
-    for (std::size_t index = 0; index < functions.size(); ++index) {
-        const auto &func = functions[index];
-
-        FrameInfo frame{};
-        MFunction machineFunc{};
-        runFunctionPipeline(func, lowering, target, options, frame, machineFunc);
-
-        emitter.emitFunction(asmStream, machineFunc, target);
-        if (index + 1U < functions.size()) {
+    for (std::size_t index = 0; index < mir.size(); ++index) {
+        emitter.emitFunction(asmStream, mir[index], target);
+        if (index + 1U < mir.size()) {
             asmStream << '\n';
         }
     }
@@ -213,9 +281,6 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
     result.asmText = asmStream.str();
     result.errors = errorStream.str();
 
-    // Phase A: diagnostics only capture unsupported options; individual pass failures
-    // are not surfaced yet.
-
     return result;
 }
 
@@ -228,35 +293,20 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 /// @param options Backend configuration to honour.
 /// @return Assembly text and diagnostics for the provided function.
 CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &options) {
-    CodegenResult result{};
-
-    std::ostringstream asmStream{};
-    std::ostringstream errorStream{};
-
-    if (const auto warning = syntaxWarning(options); !warning.empty()) {
-        errorStream << warning;
-    }
-
-    const TargetInfo &target = hostTarget();
+    const TargetInfo &target = selectTarget(options.targetABI);
     AsmEmitter::RoDataPool roData{};
-    LowerILToMIR lowering{target, roData};
-    AsmEmitter emitter{roData};
-
-    FrameInfo frame{};
-    MFunction machineFunc{};
-    runFunctionPipeline(func, lowering, target, options, frame, machineFunc);
-
-    emitter.emitFunction(asmStream, machineFunc, target);
-    emitter.emitRoData(asmStream);
-
-#if !defined(__APPLE__) && !defined(_WIN32)
-    asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
-#endif
-
-    result.asmText = asmStream.str();
-    result.errors = errorStream.str();
-
-    return result;
+    std::vector<MFunction> mir;
+    std::vector<FrameInfo> frames;
+    std::string errors;
+    ILModule module{};
+    module.funcs.push_back(func);
+    if (!legalizeModuleToMIR(module, target, options, roData, mir, frames, errors))
+        return CodegenResult{{}, errors};
+    if (!allocateModuleMIR(mir, frames, target, options, errors))
+        return CodegenResult{{}, errors};
+    if (!optimizeModuleMIR(mir, options, errors))
+        return CodegenResult{{}, errors};
+    return emitMIRToAssembly(mir, roData, target, options);
 }
 
 /// @brief Emit assembly for every function in an IL module.
@@ -268,10 +318,26 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
 /// @param options Backend configuration supplied by the caller.
 /// @return Assembly text and diagnostics for the entire module.
 CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &options) {
-    return emitModuleImpl(mod.funcs, options);
+    const TargetInfo &target = selectTarget(options.targetABI);
+    AsmEmitter::RoDataPool roData{};
+    std::vector<MFunction> mir;
+    std::vector<FrameInfo> frames;
+    std::string errors;
+    if (!legalizeModuleToMIR(mod, target, options, roData, mir, frames, errors))
+        return CodegenResult{{}, errors};
+    if (!allocateModuleMIR(mir, frames, target, options, errors))
+        return CodegenResult{{}, errors};
+    if (!optimizeModuleMIR(mir, options, errors))
+        return CodegenResult{{}, errors};
+    return emitMIRToAssembly(mir, roData, target, options);
 }
 
-BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin) {
+BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
+                                 const std::vector<FrameInfo> &frames,
+                                 const AsmEmitter::RoDataPool &roData,
+                                 const TargetInfo &target,
+                                 const CodegenOptions &opt,
+                                 bool isDarwin) {
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
 
@@ -279,33 +345,29 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
         // Syntax warnings don't apply to binary emission, but keep parity.
     }
 
-    const TargetInfo &target = hostTarget();
-    AsmEmitter::RoDataPool roData{};
-    LowerILToMIR lowering{target, roData};
-    binenc::X64BinaryEncoder encoder{};
-
-    // Set up debug line table for address→line mapping.
     DebugLineTable debugLines;
-    debugLines.addFile("<source>");
-    encoder.setDebugLineTable(&debugLines);
+    seedDebugFiles(debugLines, mir, opt.debugSourcePath);
 
-    for (const auto &func : mod.funcs) {
-        FrameInfo frame{};
-        MFunction machineFunc{};
-        runFunctionPipeline(func, lowering, target, opt, frame, machineFunc);
-
-        // Emit each function into its own CodeSection for per-function dead stripping.
-        result.textSections.emplace_back();
-        binenc::X64BinaryEncoder funcEncoder;
-        funcEncoder.encodeFunction(
-            machineFunc, result.textSections.back(), result.rodata, isDarwin, &frame);
-
-        // Also emit into merged text for backward compatibility (symbol extraction).
-        encoder.encodeFunction(machineFunc, result.text, result.rodata, isDarwin, &frame);
+    if (mir.size() != frames.size()) {
+        result.errors = "frame/MIR count mismatch prior to binary emission";
+        return result;
     }
 
-    // Emit rodata: string literals and f64 constants from RoDataPool into the
-    // rodata CodeSection so they can be referenced via RIP-relative LEA.
+    for (std::size_t i = 0; i < mir.size(); ++i) {
+        objfile::CodeSection funcText;
+        DebugLineTable funcDebugLines;
+        seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
+
+        binenc::X64BinaryEncoder funcEncoder;
+        funcEncoder.setDebugLineTable(&funcDebugLines);
+        funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
+
+        const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
+        debugLines.append(funcDebugLines, debugBias);
+        result.text.appendSection(funcText);
+        result.textSections.push_back(std::move(funcText));
+    }
+
     for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i) {
         std::string label = roData.stringLabel(i);
         if (isDarwin)
@@ -330,12 +392,26 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
         result.rodata.emit64LE(bits);
     }
 
-    // Encode DWARF .debug_line if any entries were recorded.
     if (!debugLines.empty())
         result.debugLineData = debugLines.encodeDwarf5(8);
 
     result.errors = errorStream.str();
     return result;
+}
+
+BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin) {
+    const TargetInfo &target = selectTarget(opt.targetABI);
+    AsmEmitter::RoDataPool roData{};
+    std::vector<MFunction> mir;
+    std::vector<FrameInfo> frames;
+    std::string errors;
+    if (!legalizeModuleToMIR(mod, target, opt, roData, mir, frames, errors))
+        return BinaryEmitResult{{}, {}, errors};
+    if (!allocateModuleMIR(mir, frames, target, opt, errors))
+        return BinaryEmitResult{{}, {}, errors};
+    if (!optimizeModuleMIR(mir, opt, errors))
+        return BinaryEmitResult{{}, {}, errors};
+    return emitMIRToBinary(mir, frames, roData, target, opt, isDarwin);
 }
 
 } // namespace viper::codegen::x64

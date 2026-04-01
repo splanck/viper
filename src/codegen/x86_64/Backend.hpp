@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "AsmEmitter.hpp"
+#include "FrameLowering.hpp"
 #include "LowerILToMIR.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
 
@@ -28,8 +30,16 @@ namespace viper::codegen::x64 {
 
 /// \brief Options controlling backend emission behaviour.
 struct CodegenOptions {
+    enum class TargetABI {
+        Host,
+        SysV,
+        Win64,
+    };
+
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
     int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
+    TargetABI targetABI{TargetABI::Host}; ///< Target ABI used for lowering/allocation.
+    std::string debugSourcePath{}; ///< Source path used for DWARF line table file entries.
 };
 
 /// \brief Aggregated result of a backend emission request.
@@ -58,6 +68,44 @@ struct BinaryEmitResult {
     /// Pre-encoded DWARF .debug_line bytes (empty when no debug info is available).
     std::vector<uint8_t> debugLineData{};
 };
+
+/// \brief Resolve an explicit target ABI selection to a concrete target descriptor.
+[[nodiscard]] const TargetInfo &selectTarget(CodegenOptions::TargetABI abi) noexcept;
+
+/// \brief Lower adapter IL to MIR and run pre-RA legalization passes.
+[[nodiscard]] bool legalizeModuleToMIR(const ILModule &mod,
+                                       const TargetInfo &target,
+                                       const CodegenOptions &options,
+                                       AsmEmitter::RoDataPool &roData,
+                                       std::vector<MFunction> &mir,
+                                       std::vector<FrameInfo> &frames,
+                                       std::string &errors);
+
+/// \brief Run register allocation and frame layout on MIR.
+[[nodiscard]] bool allocateModuleMIR(std::vector<MFunction> &mir,
+                                     std::vector<FrameInfo> &frames,
+                                     const TargetInfo &target,
+                                     const CodegenOptions &options,
+                                     std::string &errors);
+
+/// \brief Run explicit post-RA backend optimizations on MIR.
+[[nodiscard]] bool optimizeModuleMIR(std::vector<MFunction> &mir,
+                                     const CodegenOptions &options,
+                                     std::string &errors);
+
+/// \brief Emit assembly for an already-lowered/register-allocated MIR module.
+[[nodiscard]] CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
+                                              const AsmEmitter::RoDataPool &roData,
+                                              const TargetInfo &target,
+                                              const CodegenOptions &options);
+
+/// \brief Emit binary code for an already-lowered/register-allocated MIR module.
+[[nodiscard]] BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
+                                               const std::vector<FrameInfo> &frames,
+                                               const AsmEmitter::RoDataPool &roData,
+                                               const TargetInfo &target,
+                                               const CodegenOptions &options,
+                                               bool isDarwin);
 
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.
 /// @param mod     The lowered IL module.

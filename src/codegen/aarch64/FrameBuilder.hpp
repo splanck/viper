@@ -88,7 +88,7 @@ class FrameBuilder : public common::FrameLayout {
     /// @param sizeBytes Size of the spill slot (default: 8 bytes).
     /// @param alignBytes Alignment requirement (default: 8 bytes).
     /// @return FP-relative offset of the spill slot.
-    int ensureSpill(uint16_t vreg,
+    int ensureSpill(uint32_t vreg,
                     int sizeBytes = kSlotSizeBytes,
                     int alignBytes = kSlotSizeBytes) override;
 
@@ -107,7 +107,7 @@ class FrameBuilder : public common::FrameLayout {
     /// @param sizeBytes      Slot size in bytes (default: 8).
     /// @param alignBytes     Alignment in bytes (default: 8).
     /// @return FP-relative offset of the (possibly reused) spill slot.
-    int ensureSpillWithReuse(uint16_t vreg,
+    int ensureSpillWithReuse(uint32_t vreg,
                              unsigned lastUseInstrIdx,
                              unsigned currentInstrIdx,
                              int sizeBytes = kSlotSizeBytes,

@@ -50,7 +50,8 @@ namespace viper::codegen::aarch64::peephole {
 ///
 /// Handles two cases:
 /// - SDIV by power-of-2: Replaces with ASR sign-correction sequence (4 instructions).
-/// - SDIV by arbitrary positive constant: Replaces with SMULH magic-number multiply
+/// - SDIV by arbitrary positive constant: currently left unchanged until a
+///   proven-correct magic-number lowering is reinstated
 ///   sequence (4-6 instructions, but each ~1-3 cycles vs ~22 cycles for SDIV).
 ///
 /// @param instrs The instruction vector (may be modified via insertion/deletion).

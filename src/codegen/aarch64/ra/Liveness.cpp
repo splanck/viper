@@ -47,6 +47,8 @@ void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
 void LivenessAnalysis::buildCFG(const MFunction &func) {
     for (std::size_t i = 0; i < func.blocks.size(); ++i) {
         const auto &bb = func.blocks[i];
+        bool hasExplicitSucc = false;
+        bool hasFallthrough = false;
         for (const auto &mi : bb.instrs) {
             if (mi.opc == MOpcode::Br) {
                 if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label) {
@@ -54,20 +56,38 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
                     if (it != blockIndex_.end())
                         succs_[i].push_back(it->second);
                 }
+                hasExplicitSucc = true;
             } else if (mi.opc == MOpcode::BCond) {
                 if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
                     auto it = blockIndex_.find(mi.ops[1].label);
                     if (it != blockIndex_.end())
                         succs_[i].push_back(it->second);
                 }
+                hasExplicitSucc = true;
+                hasFallthrough = true;
             } else if (mi.opc == MOpcode::Cbz) {
                 if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
                     auto it = blockIndex_.find(mi.ops[1].label);
                     if (it != blockIndex_.end())
                         succs_[i].push_back(it->second);
                 }
+                hasExplicitSucc = true;
+                hasFallthrough = true;
+            } else if (mi.opc == MOpcode::Cbnz) {
+                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
+                    auto it = blockIndex_.find(mi.ops[1].label);
+                    if (it != blockIndex_.end())
+                        succs_[i].push_back(it->second);
+                }
+                hasExplicitSucc = true;
+                hasFallthrough = true;
+            } else if (mi.opc == MOpcode::Ret) {
+                hasExplicitSucc = true;
             }
         }
+
+        if ((hasFallthrough || !hasExplicitSucc) && i + 1 < func.blocks.size())
+            succs_[i].push_back(i + 1);
     }
 }
 

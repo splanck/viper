@@ -78,7 +78,7 @@ TEST(Arm64CLI, TrapFromErr) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
 TEST(Arm64CLI, EhMarkersNoop) {
@@ -91,14 +91,16 @@ TEST(Arm64CLI, EhMarkersNoop) {
                            "  trap.from_err i32 6\n"
                            "handler ^handle(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
-                           "  resume.same %tok\n"
+                           "  resume.label %tok, ^done\n"
+                           "done:\n"
+                           "  ret 0\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // We should see the trap helper call; EH markers produce no extra code.
-    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
 int main(int argc, char **argv) {

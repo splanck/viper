@@ -23,6 +23,7 @@
 #include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/common/LabelUtil.hpp"
 
+#include <exception>
 #include <unordered_map>
 
 namespace viper::codegen::aarch64::passes {
@@ -51,79 +52,98 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     LowerILToMIR lowerer{ti};
     const bool uniquify = (ilMod.functions.size() > 1);
 
-    for (const auto &fn : ilMod.functions) {
-        MFunction mir = lowerer.lowerFunction(fn);
+    try {
+        for (const auto &fn : ilMod.functions) {
+            MFunction mir = lowerer.lowerFunction(fn);
 
-        // --- Expand overflow-checked arithmetic pseudo-ops ----
-        lowerOverflowOps(mir);
+            // --- Expand overflow-checked arithmetic pseudo-ops ----
+            lowerOverflowOps(mir);
 
-        // --- Label sanitization: hyphens → underscores, optional suffix ----
-        using viper::codegen::common::sanitizeLabel;
-        std::unordered_map<std::string, std::string> bbMap;
-        bbMap.reserve(mir.blocks.size());
+            // --- Label sanitization: hyphens → underscores, optional suffix ----
+            using viper::codegen::common::sanitizeLabel;
+            std::unordered_map<std::string, std::string> bbMap;
+            bbMap.reserve(mir.blocks.size());
 
-        const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string{};
+            const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string{};
 
-        for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi) {
-            auto &bb = mir.blocks[bi];
-            const std::string old = bb.name;
-            // All block labels use the Mach-O assembler-local "L" prefix so
-            // they stay out of the symbol table and are compatible with
-            // .subsections_via_symbols.  The function's external symbol
-            // (_main, _f, etc.) is emitted separately by AsmEmitter::
-            // emitFunctionHeader, so block labels are purely internal.
-            const std::string neu = "L" + sanitizeLabel(old, suffix);
-            bbMap.emplace(old, neu);
-            bb.name = neu;
-        }
+            for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi) {
+                auto &bb = mir.blocks[bi];
+                const std::string old = bb.name;
+                // All block labels use the Mach-O assembler-local "L" prefix so
+                // they stay out of the symbol table and are compatible with
+                // .subsections_via_symbols.  The function's external symbol
+                // (_main, _f, etc.) is emitted separately by AsmEmitter::
+                // emitFunctionHeader, so block labels are purely internal.
+                const std::string neu = "L" + sanitizeLabel(old, suffix);
+                bbMap.emplace(old, neu);
+                bb.name = neu;
+            }
 
-        // Remap branch target labels to their sanitized names.
-        for (auto &bb : mir.blocks) {
-            for (auto &mi : bb.instrs) {
-                auto remapBB = [&](std::string &lbl) {
-                    auto it = bbMap.find(lbl);
-                    if (it != bbMap.end())
-                        lbl = it->second;
-                };
+            // Remap branch target labels to their sanitized names.
+            for (auto &bb : mir.blocks) {
+                for (auto &mi : bb.instrs) {
+                    auto remapBB = [&](std::string &lbl) {
+                        auto it = bbMap.find(lbl);
+                        if (it != bbMap.end())
+                            lbl = it->second;
+                    };
 
-                switch (mi.opc) {
-                    case MOpcode::Br:
-                        if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
-                            remapBB(mi.ops[0].label);
-                        break;
-                    case MOpcode::BCond:
-                    case MOpcode::Cbz:
-                    case MOpcode::Cbnz:
-                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
-                            remapBB(mi.ops[1].label);
-                        break;
-                    default:
-                        break;
-                }
+                    switch (mi.opc) {
+                        case MOpcode::Br:
+                            if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+                                remapBB(mi.ops[0].label);
+                            break;
+                        case MOpcode::BCond:
+                        case MOpcode::Cbz:
+                        case MOpcode::Cbnz:
+                            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
+                                remapBB(mi.ops[1].label);
+                            break;
+                        default:
+                            break;
+                    }
 
-                // --- Rodata label remapping: IL global names → pool labels --
-                switch (mi.opc) {
-                    case MOpcode::AdrPage:
-                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
-                            auto it = n2l.find(mi.ops[1].label);
-                            if (it != n2l.end())
-                                mi.ops[1].label = it->second;
-                        }
-                        break;
-                    case MOpcode::AddPageOff:
-                        if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Label) {
-                            auto it = n2l.find(mi.ops[2].label);
-                            if (it != n2l.end())
-                                mi.ops[2].label = it->second;
-                        }
-                        break;
-                    default:
-                        break;
+                    // --- Rodata label remapping: IL global names → pool labels --
+                    switch (mi.opc) {
+                        case MOpcode::AdrPage:
+                            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
+                                auto it = n2l.find(mi.ops[1].label);
+                                if (it != n2l.end())
+                                    mi.ops[1].label = it->second;
+                            }
+                            break;
+                        case MOpcode::AddPageOff:
+                            if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Label) {
+                                auto it = n2l.find(mi.ops[2].label);
+                                if (it != n2l.end())
+                                    mi.ops[2].label = it->second;
+                            }
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
-        }
 
-        module.mir.push_back(std::move(mir));
+            mir.isLeaf = true;
+            for (const auto &bb : mir.blocks) {
+                if (bb.name.find(".Ltrap_") == 0)
+                    continue;
+                for (const auto &mi : bb.instrs) {
+                    if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr) {
+                        mir.isLeaf = false;
+                        break;
+                    }
+                }
+                if (!mir.isLeaf)
+                    break;
+            }
+
+            module.mir.push_back(std::move(mir));
+        }
+    } catch (const std::exception &ex) {
+        diags.error(std::string("AArch64 lowering failed: ") + ex.what());
+        return false;
     }
 
     return true;

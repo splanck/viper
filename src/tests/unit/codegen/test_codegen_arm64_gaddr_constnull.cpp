@@ -55,8 +55,8 @@ TEST(Arm64GaddrNull, GlobalAddress) {
                            "  ret %p\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect adrp for page address
     EXPECT_NE(asmText.find("adrp x"), std::string::npos);
@@ -75,8 +75,8 @@ TEST(Arm64GaddrNull, ConstNull) {
                            "  ret %p\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // The const_null loads 0 into a register - could be mov xN, #0 pattern
     bool hasNull = asmText.find("mov x0, #0") != std::string::npos ||
@@ -99,8 +99,8 @@ TEST(Arm64GaddrNull, LoadFromPointer) {
                            "  ret %v\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // After store-load forwarding, the load may be replaced with a mov.
     EXPECT_TRUE(asmText.find("ldr x") != std::string::npos ||
@@ -120,8 +120,8 @@ TEST(Arm64GaddrNull, StoreToPointer) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect str for store
     EXPECT_NE(asmText.find("str x"), std::string::npos);
@@ -142,8 +142,8 @@ TEST(Arm64GaddrNull, CmpWithNull) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have compare (could be cmp with 0 or cbz pattern)
     bool hasCmp =
@@ -166,8 +166,8 @@ TEST(Arm64GaddrNull, MultipleGlobals) {
                            "  ret %pa\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have multiple adrp
     std::size_t adrpCount = 0;
@@ -191,8 +191,8 @@ TEST(Arm64GaddrNull, StringConstant) {
                            "  ret %s\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Should have string data section or reference
     EXPECT_FALSE(asmText.empty());

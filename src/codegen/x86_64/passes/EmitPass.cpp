@@ -39,8 +39,8 @@ EmitPass::EmitPass(CodegenOptions options) noexcept : options_(std::move(options
 /// @details Performs a series of preconditions before calling the backend
 ///          emitter:
 ///          1. Checks that register allocation populated @p module.registersAllocated.
-///          2. Ensures lowering artefacts are present.
-///          3. Invokes @ref emitModuleToAssembly and surfaces any backend errors
+///          2. Ensures MIR, frame, and target artefacts are present.
+///          3. Invokes @ref emitMIRToAssembly and surfaces any backend errors
 ///             through @p diags.
 ///          When emission succeeds the resulting @ref CodegenResult is stored on
 ///          the module so later passes (or CLI drivers) can access the assembly
@@ -53,12 +53,16 @@ bool EmitPass::run(Module &module, Diagnostics &diags) {
         diags.error("emit: register allocation has not completed");
         return false;
     }
-    if (!module.lowered) {
-        diags.error("emit: lowering artefact missing prior to emission");
+    if (module.target == nullptr) {
+        diags.error("emit: target selection is missing prior to emission");
+        return false;
+    }
+    if (module.mir.size() != module.frames.size()) {
+        diags.error("emit: MIR/frame state is inconsistent");
         return false;
     }
 
-    CodegenResult result = emitModuleToAssembly(*module.lowered, options_);
+    CodegenResult result = emitMIRToAssembly(module.mir, module.roData, *module.target, options_);
     if (!result.errors.empty()) {
         std::string message = "error: x64 codegen failed:\n";
         message += result.errors;

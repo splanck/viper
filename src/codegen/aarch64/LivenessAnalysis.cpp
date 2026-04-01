@@ -94,6 +94,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "LivenessAnalysis.hpp"
+#include "LoweringContext.hpp"
 #include "il/core/Instr.hpp"
 
 namespace viper::codegen::aarch64 {
@@ -171,7 +172,7 @@ LivenessInfo analyzeCrossBlockLiveness(const il::core::Function &fn,
     // Step 3: Allocate spill slots for cross-block temps
     // ===========================================================================
     for (unsigned tempId : info.crossBlockTemps) {
-        int offset = fb.ensureSpill(50000 + tempId); // Use high ID range to avoid conflicts
+        int offset = fb.ensureSpill(spillKeyForCrossBlockTemp(tempId));
         info.crossBlockSpillOffset[tempId] = offset;
     }
 

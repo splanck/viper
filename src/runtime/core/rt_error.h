@@ -88,14 +88,34 @@ rt_string rt_throw_msg_get(void);
 /// @param line Source line number (-1 if unknown).
 void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line);
 
+/// @brief Store the native instruction pointer associated with the most recent trap.
+/// @param ip Native return address captured at the trap site.
+void rt_trap_set_ip(uint64_t ip);
+
 /// @brief Retrieve the last trap's kind classification.
 int64_t rt_trap_get_kind(void);
 
 /// @brief Retrieve the last trap's error code.
 int64_t rt_trap_get_code(void);
 
+/// @brief Retrieve the native instruction pointer of the last trap.
+int64_t rt_trap_get_ip(void);
+
 /// @brief Retrieve the last trap's source line number.
 int64_t rt_trap_get_line(void);
+
+/// @brief Map a legacy runtime Err_* code to the canonical trap-kind integer.
+int32_t rt_err_to_trap_kind(int32_t code);
+
+/// @brief Construct the current thread's native trap payload and return an opaque token.
+/// @param code Legacy Err_* code.
+/// @param msg User-visible trap message.
+/// @return Opaque token value suitable for carrying the Error-typed result in native codegen.
+void *rt_trap_error_make(int32_t code, rt_string msg);
+
+/// @brief Raise a trap classified from a legacy runtime Err_* code.
+/// @param code Legacy Err_* code.
+void rt_trap_raise_error(int32_t code);
 
 #ifdef __cplusplus
 }

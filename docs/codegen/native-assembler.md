@@ -308,8 +308,11 @@ The `BinaryEmitPass` is the final pass in the native assembler pipeline. It repl
 native assembler is selected:
 
 ```text
-IL → Lowering → Legalization → RegAlloc → Peephole → BinaryEmitPass → .o file
-                                                  (or EmitPass → .s file)
+x86_64: IL → Lowering → Legalization → RegAlloc → Peephole → BinaryEmitPass → .o file
+                                                    (or EmitPass → .s file)
+
+AArch64: IL → Lowering → RegAlloc → Scheduler → BlockLayout → Peephole → BinaryEmitPass → .o file
+                                                                (and optionally EmitPass → .s text)
 ```
 
 Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:

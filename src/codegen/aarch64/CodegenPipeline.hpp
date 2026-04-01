@@ -47,6 +47,7 @@ struct PipelineOptions {
     bool dumpMirAfterRA = false;
     bool emitAssemblyText = true;
     bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
+    int optimizeLevel = 1;      ///< Backend optimization level: 0 disables post-RA backend passes.
 };
 
 class CodegenPipeline {
@@ -61,6 +62,13 @@ class CodegenPipeline {
         Native,
     };
 
+    enum class TargetPlatform {
+        Host,
+        Darwin,
+        Linux,
+        Windows,
+    };
+
     struct Options {
         std::string input_il_path{};
         std::string output_obj_path{};
@@ -69,9 +77,10 @@ class CodegenPipeline {
         bool run_native = false;
         bool dump_mir_before_ra = false;
         bool dump_mir_after_ra = false;
-        int optimize = 0;
+        int optimize = 1;
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
+        TargetPlatform target_platform = TargetPlatform::Host;
         std::string asset_blob_path{}; ///< Path to VPA asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
     };

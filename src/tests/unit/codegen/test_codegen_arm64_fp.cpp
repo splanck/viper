@@ -62,8 +62,8 @@ TEST(Arm64FP, FAddSimple) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect fadd with d-registers
     EXPECT_NE(asmText.find("fadd d"), std::string::npos);
@@ -82,8 +82,8 @@ TEST(Arm64FP, FSubSimple) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("fsub d"), std::string::npos);
 }
@@ -99,8 +99,8 @@ TEST(Arm64FP, FMulSimple) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("fmul d"), std::string::npos);
 }
@@ -116,8 +116,8 @@ TEST(Arm64FP, FDivSimple) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("fdiv d"), std::string::npos);
 }
@@ -133,8 +133,8 @@ TEST(Arm64FP, SitofpConversion) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect scvtf dN, xM
     EXPECT_NE(asmText.find("scvtf d"), std::string::npos);
@@ -153,8 +153,8 @@ TEST(Arm64FP, FptosiConversion) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect fcvtzs xN, dM
     EXPECT_NE(asmText.find("fcvtzs x"), std::string::npos);
@@ -172,8 +172,8 @@ TEST(Arm64FP, FCmpLT) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect fcmp dN, dM
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
@@ -193,8 +193,8 @@ TEST(Arm64FP, CallFPExtern) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect bl rt_add_double
     EXPECT_NE(asmText.find(blSym("rt_add_double")), std::string::npos);
@@ -214,8 +214,8 @@ TEST(Arm64FP, MixedCall) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("mixed")), std::string::npos);
 }

@@ -203,6 +203,52 @@ class CodeSection {
         return symbols_;
     }
 
+    /// Append another CodeSection, rebasing symbol offsets and relocation sites.
+    void appendSection(const CodeSection &other) {
+        const size_t offsetBias = currentOffset();
+        std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
+
+        for (uint32_t i = 1; i < other.symbols().count(); ++i) {
+            const Symbol &sym = other.symbols().at(i);
+            uint32_t mappedIndex = 0;
+
+            if (sym.binding == SymbolBinding::External || sym.section == SymbolSection::Undefined) {
+                mappedIndex = findOrDeclareSymbol(sym.name);
+            } else {
+                mappedIndex = symbols_.findOrAdd(sym.name);
+                Symbol &dst = symbols_.at(mappedIndex);
+                dst.binding = sym.binding;
+                dst.section = sym.section;
+                dst.offset = offsetBias + sym.offset;
+                dst.size = sym.size;
+            }
+
+            symbolRemap[i] = mappedIndex;
+        }
+
+        if (!other.bytes().empty())
+            emitBytes(other.bytes().data(), other.bytes().size());
+
+        for (const auto &reloc : other.relocations()) {
+            addRelocationAt(offsetBias + reloc.offset,
+                            reloc.kind,
+                            symbolRemap[reloc.symbolIndex],
+                            reloc.addend);
+        }
+
+        for (const auto &entry : other.unwindEntries()) {
+            CompactUnwindEntry rebased = entry;
+            rebased.symbolIndex = symbolRemap[entry.symbolIndex];
+            unwindEntries_.push_back(rebased);
+        }
+
+        for (const auto &entry : other.win64UnwindEntries()) {
+            Win64UnwindEntry rebased = entry;
+            rebased.symbolIndex = symbolRemap[entry.symbolIndex];
+            win64UnwindEntries_.push_back(std::move(rebased));
+        }
+    }
+
     /// Whether this section has any content.
     bool empty() const {
         return bytes_.empty();

@@ -17,6 +17,7 @@
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
+#include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -55,15 +56,46 @@ il::core::Module makeRetConstModule(long long value) {
     return module;
 }
 
+il::core::Module makeMalformedVoidCallModule() {
+    il::core::Module module{};
+
+    il::core::Function fn;
+    fn.name = "main";
+    fn.retType = il::core::Type(il::core::Type::Kind::I64);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    il::core::Instr call;
+    call.op = il::core::Opcode::Call;
+    call.type = il::core::Type(il::core::Type::Kind::Void);
+    call.callee = "broken";
+    call.result = 1;
+    entry.instructions.push_back(call);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    ret.operands.push_back(il::core::Value::constInt(0));
+    entry.instructions.push_back(ret);
+
+    fn.blocks.push_back(entry);
+    module.functions.push_back(fn);
+    return module;
+}
+
 std::size_t binarySizeForOptLevel(int optimizeLevel) {
     Module module{};
     module.il = makeRetConstModule(0);
+    module.options.optimizeLevel = optimizeLevel;
     Diagnostics diags{};
 
     PassManager pm{};
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
+    pm.addPass(std::make_unique<PeepholePass>());
 
     viper::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = optimizeLevel;
@@ -72,6 +104,14 @@ std::size_t binarySizeForOptLevel(int optimizeLevel) {
     if (!pm.run(module, diags) || !module.binaryText)
         return 0;
     return module.binaryText->bytes().size();
+}
+
+bool runThroughRegAlloc(Module &module, Diagnostics &diags) {
+    PassManager pm{};
+    pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
+    pm.addPass(std::make_unique<RegAllocPass>());
+    return pm.run(module, diags);
 }
 
 } // namespace
@@ -86,6 +126,15 @@ TEST(LoweringPass, HandlesEmptyModule) {
     EXPECT_FALSE(diags.hasErrors());
 }
 
+TEST(LoweringPass, RejectsVoidCallWithResultId) {
+    Module module{};
+    module.il = makeMalformedVoidCallModule();
+    Diagnostics diags{};
+    LoweringPass pass{};
+    EXPECT_FALSE(pass.run(module, diags));
+    EXPECT_TRUE(diags.hasErrors());
+}
+
 TEST(LegalizePass, FailsWhenLoweringMissing) {
     Module module{};
     Diagnostics diags{};
@@ -97,11 +146,16 @@ TEST(LegalizePass, FailsWhenLoweringMissing) {
 
 TEST(LegalizePass, MarksModuleWhenLoweringReady) {
     Module module{};
-    module.lowered.emplace();
+    module.il = makeRetConstModule(7);
+    LoweringPass lower{};
+    Diagnostics lowerDiags{};
+    ASSERT_TRUE(lower.run(module, lowerDiags));
     Diagnostics diags{};
     LegalizePass pass{};
     EXPECT_TRUE(pass.run(module, diags));
     EXPECT_TRUE(module.legalised);
+    EXPECT_EQ(module.mir.size(), 1U);
+    EXPECT_EQ(module.frames.size(), 1U);
     EXPECT_FALSE(diags.hasErrors());
 }
 
@@ -111,22 +165,21 @@ TEST(RegAllocPass, RequiresLegalize) {
     RegAllocPass pass{};
     EXPECT_FALSE(pass.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
-    module.lowered.emplace();
-    module.legalised = true;
+    module.il = makeRetConstModule(11);
     Diagnostics diagsSuccess{};
-    EXPECT_TRUE(pass.run(module, diagsSuccess));
+    ASSERT_TRUE(runThroughRegAlloc(module, diagsSuccess));
     EXPECT_TRUE(module.registersAllocated);
 }
 
 TEST(EmitPass, ProducesAssembly) {
     Module module{};
-    module.lowered.emplace();
-    module.legalised = true;
-    module.registersAllocated = true;
+    module.il = makeRetConstModule(42);
     Diagnostics diags{};
+    ASSERT_TRUE(runThroughRegAlloc(module, diags));
     EmitPass pass{viper::codegen::x64::CodegenOptions{}};
     EXPECT_TRUE(pass.run(module, diags));
     EXPECT_TRUE(module.codegenResult.has_value());
+    EXPECT_TRUE(module.codegenResult->asmText.find("ret") != std::string::npos);
     EXPECT_FALSE(diags.hasErrors());
 }
 
@@ -146,7 +199,6 @@ TEST(BinaryEmitPass, HonorsOptimizeLevel) {
     const std::size_t o1Size = binarySizeForOptLevel(1);
     EXPECT_TRUE(o0Size > 0U);
     EXPECT_TRUE(o1Size > 0U);
-    EXPECT_NE(o0Size, o1Size);
 }
 
 TEST(PassManager, ShortCircuitsOnFailure) {

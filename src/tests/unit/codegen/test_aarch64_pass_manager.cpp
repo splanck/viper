@@ -15,7 +15,8 @@
 //   template, matching the architecture already used by the x86_64 backend.
 //
 // What is verified:
-//   1. PipelineRoundtrip   — Full pass sequence (Lower → RegAlloc → Peephole → Emit)
+//   1. PipelineRoundtrip   — Full pass sequence
+//                            (Lower → RegAlloc → Scheduler → BlockLayout → Peephole → Emit)
 //                            produces correct assembly for a simple function.
 //   2. PartialPipeline     — Running only LoweringPass + RegAllocPass populates mir
 //                            but leaves assembly empty.
@@ -30,11 +31,14 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
+#include "codegen/aarch64/passes/SchedulerPass.hpp"
+#include "codegen/aarch64/ra/Liveness.hpp"
 #include "il/io/Parser.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -61,6 +65,8 @@ static PassManager buildFullPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
+    pm.addPass(std::make_unique<SchedulerPass>());
+    pm.addPass(std::make_unique<BlockLayoutPass>());
     pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<EmitPass>());
     return pm;
@@ -248,6 +254,72 @@ TEST(AArch64PassManager, NativeOnlyPipelineSkipsTextEmission) {
     EXPECT_TRUE(ok);
     EXPECT_TRUE(m.assembly.empty());
     EXPECT_TRUE(m.binaryText.has_value());
+}
+
+TEST(AArch64PassManager, ConditionalBranchLivenessTracksFallthroughSuccessor) {
+    MFunction fn;
+    fn.name = "fallthrough_live";
+
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp("then")}});
+
+    MBasicBlock elseBlock;
+    elseBlock.name = "else";
+    elseBlock.instrs.push_back(MInstr{
+        MOpcode::AddRRR,
+        {MOperand::vregOp(RegClass::GPR, 2),
+         MOperand::vregOp(RegClass::GPR, 1),
+         MOperand::vregOp(RegClass::GPR, 1)}});
+    elseBlock.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    MBasicBlock thenBlock;
+    thenBlock.name = "then";
+    thenBlock.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    MBasicBlock exitBlock;
+    exitBlock.name = "exit";
+    exitBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(elseBlock));
+    fn.blocks.push_back(std::move(thenBlock));
+    fn.blocks.push_back(std::move(exitBlock));
+
+    ra::LivenessAnalysis liveness;
+    liveness.run(fn);
+
+    EXPECT_TRUE(liveness.liveOutGPR(0).contains(1));
+}
+
+TEST(AArch64PassManager, OptimizeLevelZeroSkipsBackendOptPasses) {
+    const std::string il = "il 0.1\n"
+                           "func @branch_only() -> i64 {\n"
+                           "entry:\n"
+                           "  br next\n"
+                           "next:\n"
+                           "  ret 0\n"
+                           "}\n";
+
+    il::core::Module mod = parseIL(il);
+    ASSERT_FALSE(mod.functions.empty());
+
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ilMod = &mod;
+    m.ti = &ti;
+
+    PipelineOptions opts;
+    opts.emitAssemblyText = true;
+    opts.useBinaryEmit = false;
+    opts.optimizeLevel = 0;
+
+    std::ostringstream diag;
+    const bool ok = runCodegenPipeline(m, opts, diag);
+
+    EXPECT_TRUE(ok);
+    EXPECT_NE(m.assembly.find("  b Lnext"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

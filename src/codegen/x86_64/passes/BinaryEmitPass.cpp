@@ -32,12 +32,17 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
         diags.error("binary emit: register allocation has not completed");
         return false;
     }
-    if (!module.lowered) {
-        diags.error("binary emit: lowering artefact missing prior to emission");
+    if (module.target == nullptr) {
+        diags.error("binary emit: target selection is missing prior to emission");
+        return false;
+    }
+    if (module.mir.size() != module.frames.size()) {
+        diags.error("binary emit: MIR/frame state is inconsistent");
         return false;
     }
 
-    BinaryEmitResult result = emitModuleToBinary(*module.lowered, options_, isDarwin_);
+    BinaryEmitResult result = emitMIRToBinary(
+        module.mir, module.frames, module.roData, *module.target, options_, isDarwin_);
     if (!result.errors.empty()) {
         std::string message = "error: x64 binary codegen failed:\n";
         message += result.errors;

@@ -31,6 +31,7 @@
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
+#include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "common/RunProcess.hpp"
 #include "il/transform/PassManager.hpp"
@@ -780,12 +781,19 @@ PipelineResult CodegenPipeline::run() {
     pipelineModule.il = std::move(module);
 
     const bool useNativeAsm = (opts_.assembler_mode == AssemblerMode::Native);
+    CodegenOptions codegenOpts{};
+    codegenOpts.optimizeLevel = opts_.optimize;
+    codegenOpts.targetABI = opts_.target_abi;
+    codegenOpts.debugSourcePath = opts_.input_il_path;
+    pipelineModule.options = codegenOpts;
+    pipelineModule.target = &selectTarget(pipelineModule.options.targetABI);
 
     passes::Diagnostics diagnostics{};
     passes::PassManager manager{};
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
+    manager.addPass(std::make_unique<passes::PeepholePass>());
 
     if (useNativeAsm) {
 #if defined(__APPLE__)
@@ -793,12 +801,8 @@ PipelineResult CodegenPipeline::run() {
 #else
         constexpr bool isDarwin = false;
 #endif
-        CodegenOptions codegenOpts{};
-        codegenOpts.optimizeLevel = opts_.optimize;
         manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin, codegenOpts));
     } else {
-        CodegenOptions codegenOpts{};
-        codegenOpts.optimizeLevel = opts_.optimize;
         manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
     }
 

@@ -159,7 +159,7 @@ void lowerTerminators(const il::core::Function &fn,
                                 const int offset = spillOffsets[ai];
                                 if (dstCls == RegClass::FPR) {
                                     if (scls != RegClass::FPR) {
-                                        const uint16_t cvt = nextVRegId++;
+                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::SCvtF,
                                                    {MOperand::vregOp(RegClass::FPR, cvt),
@@ -175,7 +175,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                 MOperand::immOp(offset)}});
                                 } else {
                                     if (scls == RegClass::FPR) {
-                                        const uint16_t cvt = nextVRegId++;
+                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::FCvtZS,
                                                    {MOperand::vregOp(RegClass::GPR, cvt),
@@ -220,7 +220,7 @@ void lowerTerminators(const il::core::Function &fn,
             }
 
             case Opcode::TrapFromErr: {
-                // Phase A: move optional error code into x0 (when available), then call rt_trap.
+                // Raise a classified trap derived from the legacy Err_* code.
                 if (!term.operands.empty()) {
                     const auto &code = term.operands[0];
                     if (code.kind == il::core::Value::Kind::ConstInt) {
@@ -237,8 +237,13 @@ void lowerTerminators(const il::core::Function &fn,
                                            {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
                         }
                     }
+                } else {
+                    outBB.instrs.push_back(
+                        MInstr{MOpcode::MovRI,
+                               {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
                 }
-                outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                outBB.instrs.push_back(
+                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
                 break;
             }
 
@@ -287,7 +292,7 @@ void lowerTerminators(const il::core::Function &fn,
                             const int offset = spillOffsets[ai];
                             if (dstCls == RegClass::FPR) {
                                 if (scls != RegClass::FPR) {
-                                    const uint16_t cvt = nextVRegId++;
+                                    const uint16_t cvt = allocateNextVReg(nextVRegId);
                                     edgeBB.instrs.push_back(
                                         MInstr{MOpcode::SCvtF,
                                                {MOperand::vregOp(RegClass::FPR, cvt),
@@ -303,7 +308,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                                 MOperand::immOp(offset)}});
                             } else {
                                 if (scls == RegClass::FPR) {
-                                    const uint16_t cvt = nextVRegId++;
+                                    const uint16_t cvt = allocateNextVReg(nextVRegId);
                                     edgeBB.instrs.push_back(
                                         MInstr{MOpcode::FCvtZS,
                                                {MOperand::vregOp(RegClass::GPR, cvt),

@@ -62,8 +62,8 @@ TEST(Arm64CLI, RA_ManyTemps_ProducesSpills) {
     const std::string outP = outPath(out);
     writeFile(inP, il.str());
 
-    const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
-    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str(), "-O0"};
+    const int rc = cmd_codegen_arm64(4, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
 
     const std::string asmText = readFile(outP);

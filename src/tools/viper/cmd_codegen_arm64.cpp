@@ -32,7 +32,8 @@ using viper::tools::ArgvView;
 constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
-    "       [--native-asm|--system-asm] [--native-link|--system-link] [-O0|-O1|-O2]\n";
+    "       [--native-asm|--system-asm] [--native-link|--system-link]\n"
+    "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n";
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
 
@@ -117,6 +118,22 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok == "--system-link") {
             opts.link_mode = Pipeline::LinkMode::System;
+            continue;
+        }
+        if (tok == "--target-host") {
+            opts.target_platform = Pipeline::TargetPlatform::Host;
+            continue;
+        }
+        if (tok == "--target-darwin") {
+            opts.target_platform = Pipeline::TargetPlatform::Darwin;
+            continue;
+        }
+        if (tok == "--target-linux") {
+            opts.target_platform = Pipeline::TargetPlatform::Linux;
+            continue;
+        }
+        if (tok == "--target-windows") {
+            opts.target_platform = Pipeline::TargetPlatform::Windows;
             continue;
         }
 

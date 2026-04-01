@@ -61,8 +61,8 @@ TEST(Arm64CallConv, Add3Helper) {
                            "  ret %t2\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect add instructions
     EXPECT_TRUE(asmText.find("add x") != std::string::npos ||
@@ -84,8 +84,8 @@ TEST(Arm64CallConv, CallerWithComputedArgs) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect arithmetic operations before the call
     // mul * 2 may be strength-reduced to lsl #1, so accept either
@@ -112,8 +112,8 @@ TEST(Arm64CallConv, CallResultStoredAndReused) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("twice")), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
@@ -136,8 +136,8 @@ TEST(Arm64CallConv, MultipleCalls) {
                            "  ret %c\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect three calls
     const std::string blInc = blSym("inc");
@@ -163,8 +163,8 @@ TEST(Arm64CallConv, ManyArgsComputed) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect stack allocation for 2 extra args (16 bytes aligned)
     EXPECT_NE(asmText.find("sub sp, sp, #16"), std::string::npos);
@@ -192,8 +192,8 @@ TEST(Arm64CallConv, CallResultInCondition) {
                            "  ret 1\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("check")), std::string::npos);
     // After the call, the result is compared (may use cmp or tst if comparing against 0)

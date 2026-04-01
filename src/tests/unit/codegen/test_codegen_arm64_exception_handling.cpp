@@ -128,10 +128,10 @@ TEST(Arm64EH, TrapFromErr) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect call to trap helper
-    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
-// Test 5: resume.same - resume at same point
+// Test 5: resume.same remains explicitly unsupported in native AArch64 codegen.
 TEST(Arm64EH, ResumeSame) {
     const std::string in = outPath("arm64_eh_resume_same.il");
     const std::string out = outPath("arm64_eh_resume_same.s");
@@ -146,12 +146,10 @@ TEST(Arm64EH, ResumeSame) {
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    EXPECT_FALSE(asmText.empty());
+    ASSERT_NE(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
 }
 
-// Test 6: resume.next - resume at next point
+// Test 6: resume.next remains explicitly unsupported in native AArch64 codegen.
 TEST(Arm64EH, ResumeNext) {
     const std::string in = outPath("arm64_eh_resume_next.il");
     const std::string out = outPath("arm64_eh_resume_next.s");
@@ -169,9 +167,7 @@ TEST(Arm64EH, ResumeNext) {
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    EXPECT_FALSE(asmText.empty());
+    ASSERT_NE(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
 }
 
 // Test 7: Full try-catch pattern

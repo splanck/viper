@@ -72,7 +72,7 @@ struct MagicNumber {
 ///
 /// @param d The divisor (must be >= 2).
 /// @return Magic number parameters, or empty if d is not suitable.
-[[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept {
+[[maybe_unused]] [[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept {
     MagicNumber result{};
 
     if (d < 2)
@@ -348,59 +348,16 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
         return true;
     }
 
-    // SDIV by arbitrary positive constant: Replace with magic number multiply.
-    //
-    // Algorithm: compute magic multiplier M and shift S, then:
-    //   mov  tmp, #M              ; load magic multiplier
-    //   smulh tmp, lhs, tmp       ; high 64 bits of lhs * M
-    //   [add tmp, tmp, lhs]       ; correction if M overflowed (needsAdd)
-    //   asr  tmp, tmp, #S         ; post-shift
-    //   lsr  sign, tmp, #63       ; extract sign bit (0 or 1)
-    //   add  dst, tmp, sign       ; round toward zero for negative values
-    //
-    // We reuse rhsReg as tmp and dst's register for sign when possible.
-
-    MagicNumber magic = computeSignedMagic(divisor);
-    if (magic.multiplier == 0)
-        return false;
-
-    // We need a second temporary for the sign correction. We can use dst if
-    // dst != lhs (common case). If dst == lhs, we cannot do the transform
-    // because we'd clobber lhs before using it.
-    if (samePhysReg(dst, lhs))
-        return false;
-
-    std::vector<MInstr> expansion;
-
-    // mov tmp, #M (magic multiplier)
-    expansion.push_back(MInstr{MOpcode::MovRI, {rhsReg, MOperand::immOp(magic.multiplier)}});
-
-    // smulh tmp, lhs, tmp
-    expansion.push_back(MInstr{MOpcode::SmulhRRR, {rhsReg, lhs, rhsReg}});
-
-    // If needsAdd: add tmp, tmp, lhs
-    if (magic.needsAdd) {
-        expansion.push_back(MInstr{MOpcode::AddRRR, {rhsReg, rhsReg, lhs}});
-    }
-
-    // asr tmp, tmp, #S (if S > 0)
-    if (magic.shift > 0) {
-        expansion.push_back(MInstr{MOpcode::AsrRI, {rhsReg, rhsReg, MOperand::immOp(magic.shift)}});
-    }
-
-    // lsr dst, tmp, #63 (extract sign bit into dst as temp)
-    expansion.push_back(MInstr{MOpcode::LsrRI, {dst, rhsReg, MOperand::immOp(63)}});
-
-    // add dst, tmp, dst (round toward zero)
-    expansion.push_back(MInstr{MOpcode::AddRRR, {dst, rhsReg, dst}});
-
-    // Replace the SDivRRR with the expansion
-    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
-    instrs.insert(
-        instrs.begin() + static_cast<std::ptrdiff_t>(idx), expansion.begin(), expansion.end());
-
-    ++stats.strengthReductions;
-    return true;
+    // Non-power-of-two signed division strength reduction is temporarily
+    // disabled. The magic-number lowering used here was not semantically
+    // correct for all divisors under truncation-toward-zero semantics
+    // (for example 10 / 3 regressed to 2 in native O1 codegen). Keep the
+    // original SDIV until a proven-correct transform is reintroduced.
+    (void)dst;
+    (void)lhs;
+    (void)rhsReg;
+    (void)stats;
+    return false;
 }
 
 bool tryRemainderFusion(std::vector<MInstr> &instrs,

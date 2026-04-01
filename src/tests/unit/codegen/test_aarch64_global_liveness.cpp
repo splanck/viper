@@ -133,8 +133,8 @@ TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills) {
                            "}\n";
 
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O1"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
 
     const std::string asmText = readFile(out);
     const int strCount = countSubstr(asmText, "str x");
@@ -180,8 +180,8 @@ TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills) {
                            "}\n";
 
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O1"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
 
     const std::string asmText = readFile(out);
     const int strCount = countSubstr(asmText, "str x");
@@ -233,8 +233,8 @@ TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled) {
                            "}\n";
 
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O1"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
 
     const std::string asmText = readFile(out);
     const int strCount = countSubstr(asmText, "str x");
@@ -293,8 +293,8 @@ TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled) {
                            "}\n";
 
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O1"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
 
     const std::string asmText = readFile(out);
     const int strCount = countSubstr(asmText, "str x");

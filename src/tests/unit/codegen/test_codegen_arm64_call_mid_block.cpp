@@ -63,8 +63,8 @@ TEST(Arm64CLI, CallMidFunction_ResultReused) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect call, store to FP-rel local, later load and add
     EXPECT_NE(asmText.find(blSym("twice")), std::string::npos);

@@ -130,7 +130,7 @@ The backend implements a **sequential multi-pass pipeline**:
 
 ```cpp
 // High-level pipeline flow
-ILModule → LoweringPass → LegalizePass → RegAllocPass → EmitPass → Assembly
+ILModule → LoweringPass → LegalizePass → RegAllocPass → PeepholePass → EmitPass → Assembly
 ```
 
 Each pass operates on a shared `Module` structure that threads state through the pipeline.
@@ -346,7 +346,8 @@ if (rule) {
 - **Bitwise** (`Lowering.Bitwise.cpp`): `and`, `or`, `xor`, `shl`, `shr`
 - **Control Flow** (`Lowering.CF.cpp`): `br`, `cbr`, `ret`, `switch`
 - **Memory** (`Lowering.Mem.cpp`): `load`, `store`, `alloca`, `gep`
-- **Exception Handling** (`Lowering.EH.cpp`): `eh.push`, `eh.pop`, `trap`
+- **Exception Handling** (`Lowering.EH.cpp`): runtime trap/error bridges plus
+  handler markers; `resume.same` and `resume.next` remain unsupported in native codegen
 
 ### MIRBuilder
 

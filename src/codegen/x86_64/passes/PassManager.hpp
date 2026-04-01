@@ -32,6 +32,11 @@ namespace viper::codegen::x64::passes {
 struct Module {
     il::core::Module il;                        ///< Original IL module loaded from disk.
     std::optional<ILModule> lowered;            ///< Adapter module produced by lowering.
+    const TargetInfo *target = nullptr;         ///< Target descriptor for lowering/allocation.
+    CodegenOptions options{};                   ///< Backend configuration for later passes.
+    AsmEmitter::RoDataPool roData{};            ///< Module-level literal pool built during MIR lowering.
+    std::vector<MFunction> mir{};               ///< Per-function MIR after legalization.
+    std::vector<FrameInfo> frames{};            ///< Per-function frame summaries aligned with mir.
     bool legalised = false;                     ///< Flag toggled once legalisation completes.
     bool registersAllocated = false;            ///< Flag toggled once register allocation runs.
     std::optional<CodegenResult> codegenResult; ///< Backend assembly emission artefacts.

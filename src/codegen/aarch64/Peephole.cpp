@@ -55,21 +55,14 @@ PeepholeStats runPeephole(MFunction &fn) {
     // Pass 0: Reorder blocks for better code layout
     stats.blocksReordered = static_cast<int>(ph::reorderBlocks(fn));
 
-    // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies
-    // DISABLED: hoistLoopConstants lacks dominator analysis and incorrectly
-    // identifies non-loop control flow (if/else merges, function exits) as loops,
-    // removing MovRI instructions from blocks on mutually exclusive paths.
-    // This caused black ghosts in pacman and crashes in paint at -O1.
-    // Re-enable once the pass has proper dominator-based safety checks.
-    // stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
+    // Pass 0.5: Hoist loop-invariant MovRI out of loop bodies.
+    // LoopOpt now rejects merge-like headers, non-preheader entries, and uses
+    // that can observe the value before a dominating definition inside the loop.
+    stats.loopConstsHoisted = static_cast<int>(ph::hoistLoopConstants(fn));
 
-    // Pass 0.7: Cross-block dead FP store elimination.
-    // DISABLED: Ordering is complex — must run BEFORE store-load forwarding
-    // (Pass 1.9) but AFTER STP merge (Pass 3+). Since those are in the
-    // per-block loop and this is a cross-block pass, it can't be sandwiched
-    // between them. Needs the per-block loop to be split into pre-merge and
-    // post-merge phases to enable.
-    // ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+    // Pass 0.7: Cross-block dead spill-store elimination.
+    // Run after the local rewrites below so merged loads/stores are visible,
+    // but before the later block-pair forwarding stage mutates cross-block uses.
 
     // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
 
@@ -219,6 +212,8 @@ PeepholeStats runPeephole(MFunction &fn) {
         ph::removeDeadFlagSetters(instrs, stats);
     }
 
+    ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+
     // Pass 4.8: Cross-block store-load forwarding for phi stores/loads.
     // When block A ends with str Rx, [fp, #off] and its layout successor B
     // starts with ldr Ry, [fp, #off], replace the load with mov Ry, Rx.
@@ -353,6 +348,12 @@ PeepholeStats runPeephole(MFunction &fn) {
     // may convert phi loads to register movs, changing the header's instruction mix.
     // Running after 4.8 ensures we see the final form of the header instructions.
     stats.loopConstsHoisted += static_cast<int>(ph::eliminateLoopPhiSpills(fn));
+
+    // Pass 4.95: Re-run cross-block dead spill-store elimination after forwarding
+    // and loop phi cleanup. Pass 4.8 can replace the only remaining reload from a
+    // phi slot with a register move, which leaves the predecessor spill dead only
+    // after the earlier Pass 0.7 has already run.
+    ph::eliminateDeadFpStoresCrossBlock(fn, stats);
 
     // Pass 5: Branch inversion and branch-to-next removal.
     // This must be done after per-block passes since it looks at adjacent blocks.

@@ -65,6 +65,33 @@ TEST(Arm64CLI, RetZeroEmitsMovX0Zero) {
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
+TEST(Arm64CLI, TargetFlagsSelectAssemblyABI) {
+    const std::string in = "arm64_cli_target.il";
+    const std::string outDarwin = "arm64_cli_target_darwin.s";
+    const std::string outLinux = "arm64_cli_target_linux.s";
+    const std::string il = "il 0.1\n\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
+    const std::string inP = outPath(in);
+    const std::string darwinP = outPath(outDarwin);
+    const std::string linuxP = outPath(outLinux);
+    writeFile(inP, il);
+
+    const char *darwinArgv[] = {inP.c_str(), "-S", darwinP.c_str(), "--target-darwin"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(darwinArgv)), 0);
+
+    const char *linuxArgv[] = {inP.c_str(), "-S", linuxP.c_str(), "--target-linux"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(linuxArgv)), 0);
+
+    const std::string darwinAsm = readFile(darwinP);
+    const std::string linuxAsm = readFile(linuxP);
+
+    EXPECT_NE(darwinAsm.find(".globl _main"), std::string::npos);
+    EXPECT_NE(linuxAsm.find(".globl main"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

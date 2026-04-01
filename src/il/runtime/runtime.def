@@ -3026,6 +3026,7 @@ RT_FUNC(ThrowMsgGet,           rt_throw_msg_get,  "Viper.Error.GetThrowMsg",    
 RT_FUNC(TrapFieldsSet,         rt_trap_fields_set, "Viper.Error.SetTrapFields",     "void(i32,i32,i32)")
 RT_FUNC(TrapGetKind,           rt_trap_get_kind,   "Viper.Error.GetTrapKind",       "i64()")
 RT_FUNC(TrapGetCode,           rt_trap_get_code,   "Viper.Error.GetTrapCode",       "i64()")
+RT_FUNC(TrapGetIp,             rt_trap_get_ip,     "Viper.Error.GetTrapIp",         "i64()")
 RT_FUNC(TrapGetLine,           rt_trap_get_line,   "Viper.Error.GetTrapLine",       "i64()")
 RT_FUNC(StringsJoin,           rt_str_join,  "Viper.String.Join",              "str(str,obj)", always)
 RT_FUNC(StrCapitalize,         rt_str_capitalize,     "Viper.String.Capitalize",     "str(str)")

@@ -58,8 +58,8 @@ TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue) {
     const std::string outP = outPath("arm64_leaf_func.s");
     writeFile(inP, il);
 
-    const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
-    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str(), "-O0"};
+    const int rc = cmd_codegen_arm64(4, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
 
     const std::string asmText = readFile(outP);
@@ -108,8 +108,8 @@ TEST(Arm64LeafFunc, NonLeafFunctionHasPrologue) {
     const std::string outP = outPath("arm64_nonleaf_func.s");
     writeFile(inP, il);
 
-    const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
-    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str(), "-O0"};
+    const int rc = cmd_codegen_arm64(4, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
 
     const std::string asmText = readFile(outP);

@@ -99,8 +99,8 @@
 
 #include "il/core/Opcode.hpp"
 
-#include <cstdio>
 #include <cstring>
+#include <stdexcept>
 
 namespace viper::codegen::aarch64 {
 
@@ -108,6 +108,34 @@ using il::core::Opcode;
 
 static const char *condForOpcode(Opcode op) {
     return lookupCondition(op);
+}
+
+static void moveValueToArg(const il::core::Value &value,
+                           const il::core::BasicBlock &bbIn,
+                           LoweringContext &ctx,
+                           PhysReg dstReg,
+                           MBasicBlock &out,
+                           const char *what) {
+    uint16_t src = 0;
+    RegClass cls = RegClass::GPR;
+    if (!materializeValueToVReg(value, bbIn, ctx, out, src, cls))
+        throw std::runtime_error(std::string("AArch64 lowering: failed to materialize ") + what);
+    if (cls != RegClass::GPR)
+        throw std::runtime_error(std::string("AArch64 lowering: expected GPR for ") + what);
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::regOp(dstReg), MOperand::vregOp(RegClass::GPR, src)}});
+}
+
+static void captureGprCallResult(const il::core::Instr &ins, LoweringContext &ctx, MBasicBlock &out) {
+    if (!ins.result)
+        return;
+    const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+    ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
 }
 
 bool lowerInstruction(const il::core::Instr &ins,
@@ -136,9 +164,9 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         sv,
                                         scls))
                 return true;
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
-            const uint16_t one = ctx.nextVRegId++;
+            const uint16_t one = allocateNextVReg(ctx.nextVRegId);
             bbOut().instrs.push_back(
                 MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, one), MOperand::immOp(1)}});
             bbOut().instrs.push_back(MInstr{MOpcode::AndRRR,
@@ -170,7 +198,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         sv,
                                         scls))
                 return true;
-            const uint16_t vt = ctx.nextVRegId++;
+            const uint16_t vt = allocateNextVReg(ctx.nextVRegId);
             if (sh > 0) {
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::MovRR,
@@ -209,7 +237,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.mf.blocks.back().name = trapLabel;
             ctx.mf.blocks.back().instrs.push_back(
                 MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             bbOut().instrs.push_back(MInstr{
                 MOpcode::MovRR,
@@ -237,13 +265,13 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
 
             // Round to nearest even first (frintn)
-            const uint16_t rounded = ctx.nextVRegId++;
+            const uint16_t rounded = allocateNextVReg(ctx.nextVRegId);
             bbOut().instrs.push_back(MInstr{
                 MOpcode::FRintN,
                 {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, fv)}});
 
             // Convert rounded value to integer
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             if (ins.op == Opcode::CastFpToSiRteChk) {
                 bbOut().instrs.push_back(MInstr{MOpcode::FCvtZS,
@@ -273,7 +301,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         sv,
                                         scls))
                 return true;
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
             if (ins.op == Opcode::CastSiToFp)
@@ -339,7 +367,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             if (!ins.result || ins.operands.empty())
                 return true;
 
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
 
@@ -354,7 +382,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return false;
             }
 
-            const uint16_t tmpGpr = ctx.nextVRegId++;
+            const uint16_t tmpGpr = allocateNextVReg(ctx.nextVRegId);
             bbOut().instrs.push_back(MInstr{MOpcode::MovRI,
                                             {MOperand::vregOp(RegClass::GPR, tmpGpr),
                                              MOperand::immOp(static_cast<long long>(bits))}});
@@ -367,7 +395,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             // const_null produces a null pointer (0)
             if (!ins.result)
                 return true;
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             bbOut().instrs.push_back(
@@ -382,7 +410,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
             const std::string &sym = ins.operands[0].str;
             // Materialize address of global symbol using adrp+add
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             bbOut().instrs.push_back(MInstr{
@@ -403,7 +431,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
             const std::string &sym = ins.operands[0].str;
             // Materialize address of pooled literal label
-            const uint16_t litPtrV = ctx.nextVRegId++;
+            const uint16_t litPtrV = allocateNextVReg(ctx.nextVRegId);
             bbOut().instrs.push_back(
                 MInstr{MOpcode::AdrPage,
                        {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
@@ -417,7 +445,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                        {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, litPtrV)}});
             bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
             // Move x0 (rt_string) into a fresh vreg as the const_str result
-            const uint16_t dst = ctx.nextVRegId++;
+            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             bbOut().instrs.push_back(
                 MInstr{MOpcode::MovRR,
@@ -462,7 +490,6 @@ bool lowerInstruction(const il::core::Instr &ins,
 
         // Bare trap — no message available, pass NULL to rt_trap.
         case Opcode::Trap:
-        case Opcode::TrapKind:
             bbOut().instrs.push_back(
                 MInstr{MOpcode::MovRI,
                        {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
@@ -470,35 +497,20 @@ bool lowerInstruction(const il::core::Instr &ins,
                 MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
             return true;
 
-        // TrapErr has operands [I32 code, Str message]. Forward the message
-        // string pointer to rt_trap(const char *msg) so catch handlers and
-        // diagnostics can display the user's throw message.
+        case Opcode::TrapKind:
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_get_kind")}});
+            captureGprCallResult(ins, ctx, bbOut());
+            return true;
+
+        // trap.err constructs the current error payload and returns an opaque token.
         case Opcode::TrapErr: {
-            if (ins.operands.size() > 1) {
-                uint16_t msgV = 0;
-                RegClass msgC = RegClass::GPR;
-                if (materializeValueToVReg(ins.operands[1], bbIn, ctx.ti,
-                                           ctx.fb, bbOut(), ctx.tempVReg,
-                                           ctx.tempRegClass, ctx.nextVRegId,
-                                           msgV, msgC)) {
-                    bbOut().instrs.push_back(
-                        MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0),
-                                MOperand::vregOp(RegClass::GPR, msgV)}});
-                } else {
-                    // Materialization failed — fall back to NULL
-                    bbOut().instrs.push_back(
-                        MInstr{MOpcode::MovRI,
-                               {MOperand::regOp(PhysReg::X0),
-                                MOperand::immOp(0)}});
-                }
-            } else {
-                bbOut().instrs.push_back(
-                    MInstr{MOpcode::MovRI,
-                           {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
-            }
+            if (ins.operands.size() < 2)
+                throw std::runtime_error("AArch64 lowering: trap.err expects code and text operands");
+            moveValueToArg(ins.operands[0], bbIn, ctx, PhysReg::X0, bbOut(), "trap.err code");
+            moveValueToArg(ins.operands[1], bbIn, ctx, PhysReg::X1, bbOut(), "trap.err message");
             bbOut().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_error_make")}});
+            captureGprCallResult(ins, ctx, bbOut());
             return true;
         }
 
@@ -514,32 +526,21 @@ bool lowerInstruction(const il::core::Instr &ins,
                 case Opcode::ErrGetLine: rtFunc = "rt_trap_get_line"; break;
                 default: rtFunc = "rt_trap_get_kind"; break;
             }
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp(rtFunc)}});
-            const uint16_t dst = ctx.nextVRegId++;
-            if (ins.result)
-                ctx.tempVReg[*ins.result] = dst;
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRR,
-                       {MOperand::vregOp(RegClass::GPR, dst),
-                        MOperand::regOp(PhysReg::X0)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(rtFunc)}});
+            captureGprCallResult(ins, ctx, bbOut());
             return true;
         }
         case Opcode::ErrGetIp: {
-            // IP extraction not meaningful in native code — return 0
-            const uint16_t dst = ctx.nextVRegId++;
-            if (ins.result)
-                ctx.tempVReg[*ins.result] = dst;
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRI,
-                       {MOperand::vregOp(RegClass::GPR, dst),
-                        MOperand::immOp(0)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_get_ip")}});
+            captureGprCallResult(ins, ctx, bbOut());
             return true;
         }
 
         // resume.label is a branch to an explicit target label.
         // The resume token operand is ignored in native codegen.
         // Handled as a terminator in TerminatorLowering.cpp.
+        case Opcode::TrapFromErr:
+            return true;
         case Opcode::ResumeLabel:
             return true;
 
@@ -547,11 +548,8 @@ bool lowerInstruction(const il::core::Instr &ins,
         // that is not yet implemented in either backend.
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
-            fprintf(stderr,
-                    "ERROR: AArch64 native codegen does not yet support %s. "
-                    "Use resume.label instead.\n",
-                    il::core::toString(ins.op));
-            return false;
+            throw std::runtime_error(std::string("AArch64 native codegen does not yet support ") +
+                                     il::core::toString(ins.op) + ". Use resume.label instead.");
 
         default:
             // Opcode not handled - caller should process

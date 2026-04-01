@@ -62,7 +62,7 @@ class FrameLayout {
     /// @param sizeBytes Size of the spill slot (typically 8 bytes).
     /// @param alignBytes Alignment requirement (typically 8 bytes).
     /// @return Frame-relative offset of the spill slot.
-    virtual int ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes) = 0;
+    virtual int ensureSpill(uint32_t vreg, int sizeBytes, int alignBytes) = 0;
 
     /// @brief Reserve space for outgoing arguments passed on the stack.
     /// @param bytes Maximum bytes needed for any call's stack arguments.

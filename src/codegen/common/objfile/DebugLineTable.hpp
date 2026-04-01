@@ -42,6 +42,9 @@ class DebugLineTable {
     /// Add an address-to-line mapping (entries must be in address order).
     void addEntry(uint64_t address, uint32_t fileIndex, uint32_t line, uint32_t column = 0);
 
+    /// Append entries from another table, rebasing addresses by @p addressBias.
+    void append(const DebugLineTable &other, uint64_t addressBias = 0);
+
     /// Return true if no entries have been recorded.
     [[nodiscard]] bool empty() const {
         return entries_.empty();

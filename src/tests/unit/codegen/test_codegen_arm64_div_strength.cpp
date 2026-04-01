@@ -93,9 +93,10 @@ TEST(AArch64DivStrength, SDivByPowerOf2BecomesShift) {
     EXPECT_EQ(bb.instrs[1].opc, MOpcode::AsrRI);
 }
 
-/// Signed division by arbitrary constant should be reduced to magic multiply.
-/// For x / 7: smulh tmp, x, M; asr tmp, tmp, #S; lsr sign, tmp, #63; add dst, tmp, sign
-TEST(AArch64DivStrength, SDivByConstantBecomesMagicMultiply) {
+/// Signed division by arbitrary non-power-of-2 constant currently remains as SDIV.
+/// The previous magic-number lowering was disabled after it regressed truncation-
+/// toward-zero semantics in native O1 codegen.
+TEST(AArch64DivStrength, SDivByConstantNotReducedYet) {
     MFunction fn{};
     fn.name = "test_sdiv_const";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -110,16 +111,8 @@ TEST(AArch64DivStrength, SDivByConstantBecomesMagicMultiply) {
 
     auto stats = runPeephole(fn);
 
-    // SDivRRR should be expanded to magic multiply sequence:
-    // [0] mov x1, #7 (original)
-    // [1] mov x1, #M (magic multiplier)
-    // [2] smulh x1, x2, x1
-    // [3...] possible add, asr, lsr, add
-    EXPECT_TRUE(stats.strengthReductions >= 1);
-    // The SDivRRR should no longer exist -- first expansion instr is MovRI
-    EXPECT_EQ(bb.instrs[1].opc, MOpcode::MovRI);
-    // Verify smulh follows
-    EXPECT_EQ(bb.instrs[2].opc, MOpcode::SmulhRRR);
+    EXPECT_EQ(stats.strengthReductions, 0);
+    EXPECT_EQ(bb.instrs[1].opc, MOpcode::SDivRRR);
 }
 
 /// Non-power-of-2 divisor for UDIV should not be reduced (unsigned magic not implemented).

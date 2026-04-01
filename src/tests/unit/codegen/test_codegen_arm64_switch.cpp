@@ -57,8 +57,8 @@ TEST(Arm64CLI, SwitchSmall) {
                            "  ret 0\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect cmp <reg>, #1; b.eq L1 and cmp <reg>, #2; b.eq L2 then branch to default
     EXPECT_NE(asmText.find("cmp"), std::string::npos);
@@ -86,8 +86,8 @@ TEST(Arm64CLI, SwitchMany) {
     }
     il << "Ld():\n  ret 0\n}\n";
     writeFile(in, il.str());
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Spot-check a few cases
     EXPECT_NE(asmText.find("cmp"), std::string::npos);
@@ -107,8 +107,8 @@ TEST(Arm64CLI, SwitchDefaultOnly) {
                            "  ret 0\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // For a switch with only a default, the compiler may emit either:
     // 1. An explicit branch "b Ld" to the default block

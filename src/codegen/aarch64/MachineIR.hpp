@@ -182,7 +182,7 @@ struct MFunction {
 
     /// @brief Describes a spill slot for a virtual register.
     struct SpillSlot {
-        uint16_t vreg{0}; ///< Virtual register ID.
+        uint32_t vreg{0}; ///< Virtual register or spill-key identifier.
         int size{8};      ///< Size in bytes.
         int align{8};     ///< Alignment requirement.
         int offset{0};    ///< FP-relative offset (negative).

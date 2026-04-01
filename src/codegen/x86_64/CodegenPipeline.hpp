@@ -58,6 +58,7 @@ class CodegenPipeline {
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
         std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
+        CodegenOptions::TargetABI target_abi = CodegenOptions::TargetABI::Host;
     };
 
     /// \brief Construct a pipeline configured with @p opts.

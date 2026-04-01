@@ -25,6 +25,9 @@
 #include "codegen/aarch64/A64ImmediateUtils.hpp"
 #include "codegen/aarch64/LoweringContext.hpp"
 
+#include <unordered_map>
+#include <unordered_set>
+
 namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
@@ -54,6 +57,27 @@ bool isParamTemp(const il::core::BasicBlock &bb,
         return true;
     }
     return false;
+}
+
+std::unordered_map<unsigned, unsigned> buildParamHomeAllocaMap(const il::core::BasicBlock &bb) {
+    std::unordered_set<unsigned> localAllocas;
+    for (const auto &instr : bb.instructions) {
+        if (instr.op == Opcode::Alloca && instr.result)
+            localAllocas.insert(*instr.result);
+    }
+
+    std::unordered_map<unsigned, unsigned> homes;
+    for (const auto &instr : bb.instructions) {
+        if (instr.op != Opcode::Store || instr.operands.size() < 2)
+            continue;
+        if (instr.operands[0].kind != il::core::Value::Kind::Temp ||
+            instr.operands[1].kind != il::core::Value::Kind::Temp)
+            continue;
+        if (!localAllocas.contains(instr.operands[0].id))
+            continue;
+        homes.try_emplace(instr.operands[1].id, instr.operands[0].id);
+    }
+    return homes;
 }
 
 /// @brief Compute a temporary value into a destination register.
@@ -278,6 +302,8 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     // LowerILToMIR.cpp:220-320). We must emit those stores here first so that the
     // alloca slots contain valid data when the loads execute.
     if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg) {
+        const auto paramHomeAllocas = buildParamHomeAllocaMap(bb);
+
         // Emit param→alloca stores: for each IL `store TYPE, %alloca, %param`,
         // emit the corresponding MIR store from the ABI register to the alloca's
         // FP-relative frame slot.
@@ -288,23 +314,13 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
             const auto &param = bb.params[pi];
             const bool isFP = param.type.kind == il::core::Type::Kind::F64;
 
-            // Find the alloca ID for this param from the IL store instructions
-            unsigned allocaId = 0;
-            bool foundAlloca = false;
-            for (const auto &instr : bb.instructions) {
-                if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
-                    instr.operands[0].kind == il::core::Value::Kind::Temp &&
-                    instr.operands[1].kind == il::core::Value::Kind::Temp &&
-                    instr.operands[1].id == param.id) {
-                    allocaId = instr.operands[0].id;
-                    foundAlloca = true;
-                    break;
-                }
-            }
-            if (!foundAlloca)
+            const auto homeIt = paramHomeAllocas.find(param.id);
+            if (homeIt == paramHomeAllocas.end())
                 return std::nullopt; // Can't map param to alloca, bail
 
-            const int offset = ctx.fb.localOffset(allocaId);
+            const int offset = ctx.fb.localOffset(homeIt->second);
+            if (offset == 0)
+                return std::nullopt;
 
             if (isFP) {
                 if (fprIdx < ctx.ti.f64ArgOrder.size()) {
@@ -346,7 +362,7 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
         LoweredCall seq{};
         std::unordered_map<unsigned, uint16_t> tempVReg;
         std::unordered_map<unsigned, RegClass> tempRegClass;
-        uint16_t nextVRegId = 1;
+        uint16_t nextVRegId = kFirstVirtualRegId;
         if (lowerCallWithArgs(
                 binI, bb, ctx.ti, ctx.fb, bbMir, seq, tempVReg, tempRegClass, nextVRegId)) {
             for (auto &mi : seq.prefix)

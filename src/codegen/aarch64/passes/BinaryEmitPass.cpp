@@ -24,9 +24,38 @@
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
+#include <filesystem>
+#include <string_view>
 #include <utility>
 
 namespace viper::codegen::aarch64::passes {
+
+namespace {
+
+void seedDebugFiles(DebugLineTable &table,
+                    const std::vector<MFunction> &mir,
+                    std::string_view debugSourcePath) {
+    uint32_t maxFileId = 1;
+    for (const auto &fn : mir) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &mi : bb.instrs) {
+                if (mi.loc.file_id > maxFileId)
+                    maxFileId = mi.loc.file_id;
+            }
+        }
+    }
+
+    std::string filePath = std::string(debugSourcePath);
+    if (filePath.empty())
+        filePath = "<source>";
+    else
+        filePath = std::filesystem::path(filePath).lexically_normal().string();
+
+    for (uint32_t fileId = 1; fileId <= maxFileId; ++fileId)
+        table.addFile(filePath);
+}
+
+} // namespace
 
 bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     if (!module.ti) {
@@ -48,21 +77,22 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
 
     objfile::CodeSection text;
     objfile::CodeSection rodata;
-    binenc::A64BinaryEncoder encoder;
 
     // Set up debug line table for address→line mapping.
     viper::codegen::DebugLineTable debugLines;
-    debugLines.addFile("<source>");
-    encoder.setDebugLineTable(&debugLines);
+    seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
 
     for (const auto &fn : module.mir) {
         // Emit each function into its own CodeSection for per-function dead stripping.
         module.binaryTextSections.emplace_back();
+        viper::codegen::DebugLineTable funcDebugLines;
+        seedDebugFiles(funcDebugLines, std::vector<MFunction>{fn}, module.debugSourcePath);
         binenc::A64BinaryEncoder funcEncoder;
+        funcEncoder.setDebugLineTable(&funcDebugLines);
         funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
-
-        // Also emit into merged text for backward compatibility (symbol extraction).
-        encoder.encodeFunction(fn, text, rodata, abi);
+        const uint64_t debugBias = static_cast<uint64_t>(text.currentOffset());
+        debugLines.append(funcDebugLines, debugBias);
+        text.appendSection(module.binaryTextSections.back());
     }
 
     // Emit rodata pool entries as raw bytes into the rodata CodeSection.

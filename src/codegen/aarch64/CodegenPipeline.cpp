@@ -17,6 +17,7 @@
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
+#include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -253,6 +254,41 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     if (optimizeLevel < 1)
         return true;
 
+    auto hasEhSensitiveControl = [](const il::core::Module &module) {
+        for (const auto &fn : module.functions) {
+            for (const auto &bb : fn.blocks) {
+                if (bb.params.size() >= 2 &&
+                    bb.params[0].type.kind == il::core::Type::Kind::Error &&
+                    bb.params[1].type.kind == il::core::Type::Kind::ResumeTok) {
+                    return true;
+                }
+
+                for (const auto &instr : bb.instructions) {
+                    switch (instr.op) {
+                        case il::core::Opcode::EhPush:
+                        case il::core::Opcode::EhPop:
+                        case il::core::Opcode::EhEntry:
+                        case il::core::Opcode::ResumeSame:
+                        case il::core::Opcode::ResumeNext:
+                        case il::core::Opcode::ResumeLabel:
+                            return true;
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+
+    if (hasEhSensitiveControl(mod)) {
+        // The generic IL optimization pipelines still do not preserve all
+        // handler/resume structural invariants. Keep O1/O2 as the CLI default,
+        // but bypass unsafe IL rewrites for EH-bearing modules and rely on the
+        // backend cleanup passes instead.
+        return true;
+    }
+
     constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
     auto totalInstructionCount = [](const il::core::Module &module) {
         std::size_t totalInstrs = 0;
@@ -305,85 +341,71 @@ static const TargetInfo &hostAArch64Target() {
 #endif
 }
 
+static const TargetInfo &selectAArch64Target(CodegenPipeline::TargetPlatform platform) {
+    switch (platform) {
+        case CodegenPipeline::TargetPlatform::Darwin:
+            return darwinTarget();
+        case CodegenPipeline::TargetPlatform::Linux:
+            return linuxTarget();
+        case CodegenPipeline::TargetPlatform::Windows:
+            return windowsTarget();
+        case CodegenPipeline::TargetPlatform::Host:
+            return hostAArch64Target();
+    }
+    return hostAArch64Target();
+}
+
 } // namespace
 
 bool runCodegenPipeline(passes::AArch64Module &module,
                         const PipelineOptions &opts,
                         std::ostream &diagOut) {
     passes::Diagnostics diags;
+    auto flushOnFailure = [&]() {
+        diags.flush(diagOut);
+        return false;
+    };
 
     {
-        passes::LoweringPass pass;
-        if (!pass.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
-    }
-
-    for (auto &fn : module.mir) {
-        fn.isLeaf = true;
-        for (const auto &bb : fn.blocks) {
-            if (bb.name.find(".Ltrap_") == 0)
-                continue;
-
-            for (const auto &mi : bb.instrs) {
-                if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr) {
-                    fn.isLeaf = false;
-                    break;
-                }
-            }
-            if (!fn.isLeaf)
-                break;
-        }
+        passes::PassManager manager;
+        manager.addPass(std::make_unique<passes::LoweringPass>());
+        if (!manager.run(module, diags))
+            return flushOnFailure();
     }
 
     if (opts.dumpMirBeforeRA)
         dumpMir(module, "before RA", diagOut);
 
     {
-        passes::RegAllocPass pass;
-        if (!pass.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
+        passes::PassManager manager;
+        manager.addPass(std::make_unique<passes::RegAllocPass>());
+        if (!manager.run(module, diags))
+            return flushOnFailure();
     }
 
     if (opts.dumpMirAfterRA)
         dumpMir(module, "after RA", diagOut);
 
-    {
-        passes::PeepholePass pass;
-        if (!pass.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
+    if (opts.optimizeLevel >= 1) {
+        passes::PassManager manager;
+        manager.addPass(std::make_unique<passes::SchedulerPass>());
+        manager.addPass(std::make_unique<passes::BlockLayoutPass>());
+        manager.addPass(std::make_unique<passes::PeepholePass>());
+        if (!manager.run(module, diags))
+            return flushOnFailure();
     }
 
-    if (opts.dumpMirAfterRA)
+    if (opts.dumpMirAfterRA && opts.optimizeLevel >= 1)
         dumpMir(module, "after peephole", diagOut);
 
     {
-        passes::SchedulerPass sched;
-        if (!sched.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
-    }
-
-    if (opts.emitAssemblyText) {
-        passes::EmitPass pass;
-        if (!pass.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
-    }
-
-    if (opts.useBinaryEmit) {
-        passes::BinaryEmitPass pass;
-        if (!pass.run(module, diags)) {
-            diags.flush(diagOut);
-            return false;
-        }
+        passes::PassManager manager;
+        if (opts.emitAssemblyText)
+            manager.addPass(std::make_unique<passes::EmitPass>());
+        if (opts.useBinaryEmit)
+            manager.addPass(std::make_unique<passes::BinaryEmitPass>());
+        if (!manager.run(module, diags))
+            return flushOnFailure();
     }
 
     diags.flush(diagOut);
@@ -428,6 +450,13 @@ PipelineResult CodegenPipeline::run() {
     }
 
     if (opts_.run_native) {
+        if (opts_.target_platform != TargetPlatform::Host) {
+            err << "error: --run-native requires --target-host on the AArch64 backend\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
+        }
 #if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
         err << "error: --run-native is only supported on macOS arm64 hosts\n";
         result.exit_code = 1;
@@ -437,11 +466,12 @@ PipelineResult CodegenPipeline::run() {
 #endif
     }
 
-    const TargetInfo &ti = hostAArch64Target();
+    const TargetInfo &ti = selectAArch64Target(opts_.target_platform);
 
     passes::AArch64Module pipelineModule;
     pipelineModule.ilMod = &mod;
     pipelineModule.ti = &ti;
+    pipelineModule.debugSourcePath = opts_.input_il_path;
 
     PipelineOptions pipeOpts;
     pipeOpts.dumpMirBeforeRA = opts_.dump_mir_before_ra;
@@ -449,6 +479,7 @@ PipelineResult CodegenPipeline::run() {
     pipeOpts.emitAssemblyText = opts_.assembler_mode == AssemblerMode::System || opts_.emit_asm ||
                                 (opts_.output_obj_path.empty() && !opts_.run_native);
     pipeOpts.useBinaryEmit = opts_.assembler_mode == AssemblerMode::Native;
+    pipeOpts.optimizeLevel = opts_.optimize;
 
     if (!runCodegenPipeline(pipelineModule, pipeOpts, err)) {
         result.exit_code = 1;

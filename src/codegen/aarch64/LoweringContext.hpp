@@ -25,10 +25,37 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 
+#include <limits>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace viper::codegen::aarch64 {
+
+inline constexpr uint16_t kFirstVirtualRegId = 1;
+inline constexpr uint16_t kPhiVRegStart = 40000;
+inline constexpr uint32_t kCrossBlockSpillKeyStart = 50000;
+
+inline uint16_t allocateNextVReg(uint16_t &nextVRegId) {
+    if (nextVRegId >= kPhiVRegStart)
+        throw std::runtime_error(
+            "AArch64 lowering: virtual register space exhausted before phi spill range");
+    return nextVRegId++;
+}
+
+inline uint16_t allocatePhiVReg(uint16_t &phiNextId) {
+    if (phiNextId >= kCrossBlockSpillKeyStart)
+        throw std::runtime_error(
+            "AArch64 lowering: phi virtual register space exhausted before spill-key range");
+    return phiNextId++;
+}
+
+inline uint32_t spillKeyForCrossBlockTemp(unsigned tempId) {
+    if (tempId > (std::numeric_limits<uint32_t>::max)() - kCrossBlockSpillKeyStart)
+        throw std::runtime_error("AArch64 lowering: cross-block spill key overflow");
+    return kCrossBlockSpillKeyStart + tempId;
+}
 
 /// @brief Encapsulates all mutable state needed during IL->MIR lowering.
 ///
