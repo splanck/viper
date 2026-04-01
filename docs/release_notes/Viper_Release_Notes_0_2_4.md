@@ -26,6 +26,7 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
 - **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, shadow mapping, and material shader hooks (Toon/Fresnel/Emissive shading models).
+- **Codegen Pipeline Decomposition** — Both x86_64 and AArch64 backends refactored from monolithic per-function pipelines into composable pass-based architectures. x86_64 exposes `legalizeModuleToMIR`/`allocateModuleMIR`/`optimizeModuleMIR`/`emitMIRToAssembly`/`emitMIRToBinary` public APIs. AArch64 uses `PassManager`-based composition with Scheduler and BlockLayout passes at O1+. EH-sensitive modules bypass IL optimizations. New `CodeSection::appendSection()` and `DebugLineTable::append()` for per-function section merging.
 - **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
 - **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
@@ -43,8 +44,8 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 59 | +59 |
-| Source files | 2,671 | 2,786 | +115 |
+| Commits | — | 61 | +61 |
+| Source files | 2,671 | 2,788 | +117 |
 | Production SLOC | ~348K | ~407K | +59K |
 | Test count | 1,351 | 1,383 | +32 |
 
@@ -273,6 +274,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Binary encoder diagnostics** — `bad_variant_access` handler wraps encoding with instruction context for cleaner error reporting.
 - **Pipeline error handling** — `pipeline.run()` wrapped in try/catch for cleaner error reporting.
 - **Branch relaxation** — Short JMP (`EB`, 2 bytes) and short Jcc (`75`/`74`/etc., 2 bytes) encodings for near branches, replacing always-near JMP (`E9`, 5 bytes) and always-long Jcc (`0F 8x`, 6 bytes) forms. Reduces code size for small functions with nearby branch targets.
+- **Pipeline decomposition** — Monolithic `runFunctionPipeline` split into composable module-level phases: `legalizeModuleToMIR` (IL→MIR lowering + legalization), `allocateModuleMIR` (register allocation + frame lowering), `optimizeModuleMIR` (peephole), `emitMIRToAssembly` (text output), and `emitMIRToBinary` (native object output). `selectTarget()` made public. New `PeepholePass.cpp/hpp` (60 LOC) as a proper pass in the pass manager. Each phase can be invoked independently, enabling MIR inspection at any pipeline stage.
 
 **AArch64 backend:**
 - **`i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
@@ -282,6 +284,13 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Error field extraction via TLS** — `ErrGetKind`, `ErrGetCode`, and `ErrGetLine` now call runtime TLS accessors (`rt_trap_get_kind/code/line`) instead of returning hardcoded 0. `rt_trap()` auto-classifies the trap kind from the message prefix. Enables typed catch (`catch(e: DivideByZero)`) in native code.
 - **Apple M-series scheduler tuning** — Instruction latency model updated for Firestorm cores: FP divide 3→10 cycles, integer divide 3→7, FP multiply 3→4. Improves instruction scheduling for FP-heavy code.
 - **Secondary scratch register (kScratchGPR2)** — X16 (IP0) formalized as `kScratchGPR2` for post-RA helper sequences that need a second temporary while `kScratchGPR` (X9) holds the base value. X16 excluded from register allocator pool. AsmEmitter and A64BinaryEncoder updated to use the named constant instead of hardcoded `PhysReg::X16`.
+- **Pipeline decomposition** — `PassManager`-based pass composition replacing direct function calls in `runCodegenPipeline`. Scheduler and BlockLayout passes added to the O1+ pipeline (previously only peephole ran post-RA). EH-sensitive modules (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext` opcodes) bypass IL optimizations to avoid structural invariant violations. Virtual register space partitioned into three ranges: general vregs (`kFirstVirtualRegId`=1), phi-inserted vregs (`kPhiVRegStart`=40000), and cross-block spill keys (`kCrossBlockSpillKeyStart`=50000) with overflow guards.
+
+**Common codegen infrastructure:**
+- **`CodeSection::appendSection()`** — Merge two `CodeSection` objects with automatic symbol and relocation index rebasing. External symbols are deduped via `findOrDeclareSymbol`; defined symbols get offset-biased entries. Compact unwind and Win64 unwind entries are also rebased. Enables per-function binary emission followed by a single merged section for backward-compatible symbol extraction.
+- **`DebugLineTable::append()`** — Merge debug line entries from another table with address bias and file index remapping. Both x86_64 and AArch64 `BinaryEmitPass` now emit per-function debug tables and merge them, producing correct DWARF `.debug_line` across function boundaries.
+- **`seedDebugFiles()` helper** — Scans MIR for maximum file ID and populates debug table file entries from `debugSourcePath`, normalizing paths via `std::filesystem::path::lexically_normal()`. Replaces hardcoded `addFile("<source>")`.
+- **`FrameLayout::ensureSpill` vreg widened** — Parameter type changed from `uint16_t` to `uint32_t` to accommodate the expanded virtual register space.
 
 **Native linker:**
 - `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
@@ -289,6 +298,8 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 
 **Runtime:**
 - `SetErrorMode` + `_set_abort_behavior` added to `rt_init_stack_safety` on Windows to suppress crash/assert dialog boxes in natively compiled programs.
+- **Trap IP recovery** — `rt_trap_set_ip()`/`rt_trap_get_ip()` store and retrieve the native instruction pointer associated with the most recent trap. `TrapGetIp` added to `runtime.def`.
+- **Error code classification** — `rt_err_to_trap_kind()` maps `RtError` codes to trap kind integers (overflow=1, invalid cast=2, domain=3, bounds=4, file-not-found=5, etc.). `rt_trap_error_make()` and `rt_trap_raise_error()` convenience functions combine message storage, field classification, and trap invocation.
 
 **Windows test infrastructure:**
 - ProcessIsolation framework reworked: function pointers don't survive `CreateProcess`, so `registerChildFunction()` with indexed dispatch (`--viper-child-run=N`) replaces direct pointer passing. `dispatchChild()` added to `TEST_WITH_IL` macro and all 16 VM/conformance tests. Windows test failures reduced from 48 to 4.

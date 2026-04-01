@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-400K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-407K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -106,8 +106,8 @@ Viper is in **early development**. All components are functional but evolving:
 | [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling |
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
-| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
-| [Runtime](docs/viperlib/README.md) | 290+ classes across 22 modules; 1,382 tests |
+| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing) |
+| [Runtime](docs/viperlib/README.md) | 290+ classes across 22 modules; 1,383 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 29 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11/OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
@@ -303,7 +303,7 @@ This configures, builds, tests, and installs Viper in one step.
 
 **Language References** — [Zia Reference](docs/zia-reference.md) · [BASIC Reference](docs/basic-reference.md) · [IL Guide](docs/il-guide.md) · [IL Quickstart](docs/il-quickstart.md)
 
-**Runtime & APIs** — [Runtime Library](docs/viperlib/README.md) · [3D Graphics](docs/graphics3d-guide.md) · [Game Engine](docs/viperlib/game/README.md) · [GUI](docs/viperlib/gui/README.md)
+**Runtime & APIs** — [Runtime Library](docs/viperlib/README.md) · [3D Graphics](docs/graphics3d-guide.md) · [Game Engine](docs/gameengine/README.md) · [GUI](docs/viperlib/gui/README.md)
 
 **Internals** — [Architecture](docs/architecture.md) · [VM Design](docs/vm.md) · [Code Map](docs/codemap.md) · [Backend](docs/backend.md) · [IL Passes](docs/il-passes.md)
 
