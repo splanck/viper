@@ -36,12 +36,19 @@ static int tests_passed = 0;
     } while (0)
 
 typedef struct {
+    int kind;
+    int pass_kind;
     vgfx3d_draw_cmd_t cmd;
+    const float *instance_matrices;
+    int32_t instance_count;
     vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
     int32_t light_count;
     float ambient[3];
     int8_t wireframe;
     int8_t backface_cull;
+    int8_t has_local_bounds;
+    float local_bounds_min[3];
+    float local_bounds_max[3];
     float sort_key;
 } test_deferred_draw_t;
 
@@ -56,14 +63,40 @@ static vgfx3d_backend_t kD3D11Backend = make_backend("d3d11");
 static vgfx3d_backend_t kSoftwareBackend = make_backend("software");
 
 static int skybox_draw_calls = 0;
+static int shadow_begin_calls = 0;
+static int shadow_draw_calls = 0;
+static int shadow_end_calls = 0;
 static vgfx3d_draw_cmd_t last_instanced_cmd;
 static const float *last_instance_matrices = nullptr;
 static int32_t last_instance_count = 0;
+static float *last_instance_matrices_copy = nullptr;
+static float *last_prev_instance_matrices_copy = nullptr;
 static int32_t last_readback_w = 0;
 static int32_t last_readback_h = 0;
 static int32_t last_readback_stride = 0;
 static void noop_end_frame(void *) {}
 static void record_draw_skybox(void *, const void *) { skybox_draw_calls++; }
+static void reset_shadow_counts(void) {
+    shadow_begin_calls = 0;
+    shadow_draw_calls = 0;
+    shadow_end_calls = 0;
+}
+static void record_shadow_begin(void *, float *, int32_t, int32_t, const float *) {
+    shadow_begin_calls++;
+}
+static void record_shadow_draw(void *, const vgfx3d_draw_cmd_t *) {
+    shadow_draw_calls++;
+}
+static void record_shadow_end(void *, float) { shadow_end_calls++; }
+static void reset_recorded_instancing(void) {
+    std::free(last_instance_matrices_copy);
+    std::free(last_prev_instance_matrices_copy);
+    last_instance_matrices_copy = nullptr;
+    last_prev_instance_matrices_copy = nullptr;
+    last_instance_matrices = nullptr;
+    last_instance_count = 0;
+    std::memset(&last_instanced_cmd, 0, sizeof(last_instanced_cmd));
+}
 static void record_draw_instanced(void *,
                                   vgfx_window_t,
                                   const vgfx3d_draw_cmd_t *cmd,
@@ -74,10 +107,28 @@ static void record_draw_instanced(void *,
                                   const float *,
                                   int8_t,
                                   int8_t) {
+    reset_recorded_instancing();
     if (cmd)
         last_instanced_cmd = *cmd;
-    last_instance_matrices = instance_matrices;
     last_instance_count = instance_count;
+    if (instance_matrices && instance_count > 0) {
+        size_t bytes = static_cast<size_t>(instance_count) * 16u * sizeof(float);
+        last_instance_matrices_copy = (float *)std::malloc(bytes);
+        if (last_instance_matrices_copy) {
+            std::memcpy(last_instance_matrices_copy, instance_matrices, bytes);
+            last_instance_matrices = last_instance_matrices_copy;
+        }
+    }
+    if (cmd && cmd->prev_instance_matrices && cmd->has_prev_instance_matrices && instance_count > 0) {
+        size_t bytes = static_cast<size_t>(instance_count) * 16u * sizeof(float);
+        last_prev_instance_matrices_copy = (float *)std::malloc(bytes);
+        if (last_prev_instance_matrices_copy) {
+            std::memcpy(last_prev_instance_matrices_copy, cmd->prev_instance_matrices, bytes);
+            last_instanced_cmd.prev_instance_matrices = last_prev_instance_matrices_copy;
+        } else {
+            last_instanced_cmd.prev_instance_matrices = nullptr;
+        }
+    }
 }
 static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     last_readback_w = w;
@@ -93,11 +144,22 @@ static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h,
     return 1;
 }
 
+static void set_identity4x4(float *m) {
+    std::memset(m, 0, sizeof(float) * 16);
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 1.0f;
+}
+
 static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
     std::memset(canvas, 0, sizeof(*canvas));
     canvas->backend = backend;
     canvas->gfx_win = (vgfx_window_t)1;
     canvas->in_frame = 1;
+    set_identity4x4(canvas->cached_vp);
+    std::memcpy(canvas->last_scene_vp, canvas->cached_vp, sizeof(canvas->last_scene_vp));
+    canvas->has_last_scene_vp = 1;
 }
 
 static void cleanup_fake_canvas(rt_canvas3d *canvas) {
@@ -105,15 +167,21 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
         std::free(canvas->temp_buffers[i]);
     std::free(canvas->temp_buffers);
     std::free(canvas->draw_cmds);
+    std::free(canvas->motion_history);
     canvas->temp_buffers = nullptr;
     canvas->draw_cmds = nullptr;
+    canvas->motion_history = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
     canvas->draw_count = canvas->draw_capacity = 0;
+    canvas->motion_history_count = canvas->motion_history_capacity = 0;
+    reset_recorded_instancing();
 }
 
 static void reset_canvas_frame(rt_canvas3d *canvas, int64_t frame_serial) {
     canvas->draw_count = 0;
     canvas->frame_serial = frame_serial;
+    canvas->in_frame = 1;
+    canvas->frame_is_2d = 0;
 }
 
 static void *make_test_mesh(void) {
@@ -328,6 +396,33 @@ static void test_gpu_morph_normal_payload_for_opengl(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_attached_morph_targets_route_through_draw_mesh(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+    rt_mesh3d_set_morph_targets(mesh, morph);
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Attached morph targets still enqueue one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 2,
+                "Attached morph targets allocate transient GPU morph payload buffers");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
+                "Attached morph targets route DrawMesh through the morph payload path");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1,
+                "Attached morph targets preserve the shape count on DrawMesh");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_cpu_morph_fallback_for_software(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kSoftwareBackend);
@@ -400,6 +495,42 @@ static void test_backend_skybox_hook_used(void) {
     EXPECT_TRUE(skybox_draw_calls == 1,
                 "Canvas3D.End delegates skybox rendering to the backend hook when available");
     EXPECT_TRUE(canvas.in_frame == 0, "Canvas3D.End completes cleanly for skybox-only scenes");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_static_mesh_geometry_identity_forwarded(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Static mesh draw enqueues one draw");
+    EXPECT_TRUE(draws[0].cmd.geometry_key == mesh,
+                "Static mesh draw forwards a stable geometry identity for backend caches");
+    EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
+                "Static mesh draw forwards the current geometry revision");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_rect2d_queues_overlay_pass(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    rt_canvas3d_draw_rect2d(&canvas, 10, 20, 30, 40, 0xFFAA00FF);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Rect2D enqueues one overlay draw");
+    EXPECT_TRUE(draws[0].pass_kind == 1,
+                "Rect2D routes through the screen-overlay deferred pass during 3D frames");
+    EXPECT_TRUE(draws[0].cmd.unlit == 1, "Rect2D overlay draw is submitted as unlit geometry");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -488,40 +619,41 @@ static void test_skinning_palette_history_forwarded(void) {
 static void test_instanced_transform_history_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
-    last_instance_matrices = nullptr;
-    last_instance_count = 0;
-    std::memset(&last_instanced_cmd, 0, sizeof(last_instanced_cmd));
+    reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
     void *batch = rt_instbatch3d_new(mesh, material);
     void *t0 = rt_mat4_identity();
     void *t1 = rt_mat4_identity();
-    ((mat4_impl *)t0)->m[3] = 1.0;
-    ((mat4_impl *)t1)->m[3] = 3.0;
+    ((mat4_impl *)t0)->m[3] = -0.75;
+    ((mat4_impl *)t1)->m[3] = -0.25;
     rt_instbatch3d_add(batch, t0);
     rt_instbatch3d_add(batch, t1);
 
     reset_canvas_frame(&canvas, 1);
     rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
     EXPECT_TRUE(last_instance_count == 2, "Instanced draw submits both instances");
     EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 0,
                 "First instanced draw has no previous transform history");
 
-    ((mat4_impl *)t0)->m[3] = 2.0;
+    ((mat4_impl *)t0)->m[3] = 0.0;
     rt_instbatch3d_set(batch, 0, t0);
     reset_canvas_frame(&canvas, 2);
     rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
     EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
                 "Second instanced draw forwards previous instance transforms");
     EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr,
                 "Instanced draw exposes previous instance matrix payload");
     if (last_instanced_cmd.prev_instance_matrices)
-        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[3] == 1.0f,
+        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[3] == -0.75f,
                     "Previous instance matrix preserves the prior translation");
 
     cleanup_fake_canvas(&canvas);
@@ -530,13 +662,12 @@ static void test_instanced_transform_history_forwarded(void) {
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "d3d11";
+    backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
-    last_instance_matrices = nullptr;
-    last_instance_count = 0;
-    std::memset(&last_instanced_cmd, 0, sizeof(last_instanced_cmd));
+    reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
@@ -570,22 +701,123 @@ static void test_instanced_material_payload_forwarded(void) {
 
     reset_canvas_frame(&canvas, 1);
     rt_canvas3d_draw_instanced(&canvas, batch);
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
 
-    EXPECT_TRUE(last_instance_count == 1, "Instanced material draw submits one instance");
-    EXPECT_TRUE(last_instanced_cmd.texture == px, "Instanced draw forwards diffuse texture");
-    EXPECT_TRUE(last_instanced_cmd.normal_map == px, "Instanced draw forwards normal map");
-    EXPECT_TRUE(last_instanced_cmd.specular_map == px, "Instanced draw forwards specular map");
-    EXPECT_TRUE(last_instanced_cmd.emissive_map == px, "Instanced draw forwards emissive map");
-    EXPECT_TRUE(last_instanced_cmd.env_map == cubemap, "Instanced draw forwards environment map");
-    EXPECT_TRUE(last_instanced_cmd.reflectivity == 0.55f,
+    EXPECT_TRUE(canvas.draw_count == 1, "Transparent instanced material draw enqueues one mesh draw");
+    EXPECT_TRUE(last_instance_count == 0,
+                "Transparent instanced material draw avoids backend instancing so it can sort");
+    EXPECT_TRUE(draws[0].cmd.texture == px, "Instanced draw forwards diffuse texture");
+    EXPECT_TRUE(draws[0].cmd.normal_map == px, "Instanced draw forwards normal map");
+    EXPECT_TRUE(draws[0].cmd.specular_map == px, "Instanced draw forwards specular map");
+    EXPECT_TRUE(draws[0].cmd.emissive_map == px, "Instanced draw forwards emissive map");
+    EXPECT_TRUE(draws[0].cmd.env_map == cubemap, "Instanced draw forwards environment map");
+    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.55f,
                 "Instanced draw forwards reflectivity");
-    EXPECT_TRUE(last_instanced_cmd.specular[0] == 0.9f &&
-                    last_instanced_cmd.specular[1] == 0.7f &&
-                    last_instanced_cmd.specular[2] == 0.5f,
+    EXPECT_TRUE(draws[0].cmd.specular[0] == 0.9f &&
+                    draws[0].cmd.specular[1] == 0.7f &&
+                    draws[0].cmd.specular[2] == 0.5f,
                 "Instanced draw forwards specular color");
-    EXPECT_TRUE(last_instanced_cmd.diffuse_color[3] == 0.8f,
+    EXPECT_TRUE(draws[0].cmd.diffuse_color[3] == 0.8f,
                 "Instanced draw preserves diffuse alpha separate from material alpha");
-    EXPECT_TRUE(last_instanced_cmd.alpha == 0.65f, "Instanced draw forwards material opacity");
+    EXPECT_TRUE(draws[0].cmd.alpha == 0.65f, "Instanced draw forwards material opacity");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_instanced_runtime_culls_outside_frustum(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *visible = rt_mat4_identity();
+    void *hidden = rt_mat4_identity();
+    ((mat4_impl *)hidden)->m[3] = 4.0;
+    rt_instbatch3d_add(batch, visible);
+    rt_instbatch3d_add(batch, hidden);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(last_instance_count == 1,
+                "Runtime instanced path drops off-frustum instances before backend submission");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Instanced-only frames release culled-instance temp buffers at End()");
+    EXPECT_TRUE(last_instance_matrices != nullptr && last_instance_matrices[3] == 0.0f,
+                "Instanced culling preserves the visible instance transform payload");
+
+    ((mat4_impl *)visible)->m[3] = 0.5;
+    rt_instbatch3d_set(batch, 0, visible);
+    reset_canvas_frame(&canvas, 2);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
+                "Instanced culling keeps previous-transform history enabled for surviving instances");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr &&
+                    last_instanced_cmd.prev_instance_matrices[3] == 0.0f,
+                "Instanced culling keeps previous-transform history aligned to surviving instances");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Instanced culling cleanup remains correct on later frames");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_instanced_shadow_pass_includes_instances(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt = {};
+    float shadow_depth[16] = {};
+    rt_light3d light = {};
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+    reset_shadow_counts();
+
+    shadow_rt.depth_buf = shadow_depth;
+    shadow_rt.width = 4;
+    shadow_rt.height = 4;
+    canvas.shadow_rt = &shadow_rt;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+    light.type = 0;
+    light.direction[1] = -1.0;
+    light.color[0] = 1.0;
+    light.color[1] = 1.0;
+    light.color[2] = 1.0;
+    light.intensity = 1.0;
+    canvas.lights[0] = &light;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *t0 = rt_mat4_identity();
+    void *t1 = rt_mat4_identity();
+    ((mat4_impl *)t0)->m[3] = -0.5;
+    ((mat4_impl *)t1)->m[3] = 0.5;
+    rt_instbatch3d_add(batch, t0);
+    rt_instbatch3d_add(batch, t1);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 1, "Instanced draws participate in the shadow-map pass");
+    EXPECT_TRUE(shadow_draw_calls == 2,
+                "Shadow rendering expands instanced draws so each visible instance casts a shadow");
+    EXPECT_TRUE(shadow_end_calls == 1, "Instanced shadow rendering finalizes the shadow pass once");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -629,14 +861,19 @@ int main() {
     test_gpu_morph_payload_for_d3d11();
     test_gpu_morph_normal_payload_for_opengl();
     test_gpu_morph_normal_payload_for_d3d11();
+    test_attached_morph_targets_route_through_draw_mesh();
     test_cpu_morph_fallback_for_software();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
+    test_static_mesh_geometry_identity_forwarded();
+    test_rect2d_queues_overlay_pass();
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
     test_instanced_material_payload_forwarded();
+    test_instanced_runtime_culls_outside_frustum();
+    test_instanced_shadow_pass_includes_instances();
     test_screenshot_prefers_backend_readback();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);

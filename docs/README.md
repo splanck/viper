@@ -91,6 +91,15 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 ---
 
+## 🎮 Game Engine
+
+- [Game Engine Documentation](gameengine/README.md) — Complete guide to the Viper game engine
+- [Getting Started](gameengine/getting-started.md) — Your first game in 15 minutes
+- [Architecture](gameengine/architecture.md) — Engine systems and zero-dependency design
+- [Example Games](gameengine/examples/README.md) — 15 example games from arcade to Metroidvania
+
+---
+
 ## 🔧 Tools & CLI
 
 - [CLI Tools Reference](tools.md) — `viper`, `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`
@@ -157,7 +166,8 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 
 ## 📋 Release Notes
 
-- [v0.2.3](release_notes/Viper_Release_Notes_0_2_3.md) *(DRAFT)*
+- [v0.2.4](release_notes/Viper_Release_Notes_0_2_4.md) *(DRAFT)*
+- [v0.2.3](release_notes/Viper_Release_Notes_0_2_3.md)
 - [v0.2.2](release_notes/Viper_Release_Notes_0_2_2.md)
 - [v0.2.1](release_notes/Viper_Release_Notes_0_2_1.md)
 - [v0.2.0](release_notes/Viper_Release_Notes_0_2_0.md)

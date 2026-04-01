@@ -118,6 +118,55 @@ int main() {
     CHECK(pdataSec->relocs[1].symIndex == mainIdx);
     CHECK(pdataSec->relocs[2].symIndex == xdataIdx);
 
+    {
+        CodeSection armText;
+        CodeSection armRodata;
+        armText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t calleeIdx = armText.findOrDeclareSymbol("callee");
+        armText.addRelocation(RelocKind::A64Call26, calleeIdx, 0);
+        armText.emit32LE(0x94000000); // bl placeholder
+        armText.emit32LE(0xD65F03C0); // ret
+
+        std::ostringstream armErr;
+        CoffWriter armWriter(ObjArch::AArch64);
+        const std::string armPath = "build/test-out/coff_arm64.obj";
+        ASSERT(armWriter.write(armPath, armText, armRodata, armErr));
+
+        ObjFile armObj;
+        ASSERT(readObjFile(armPath, armObj, armErr));
+        CHECK(armObj.machine == 0xAA64);
+
+        const ObjSection *armTextSec = findSection(armObj, ".text");
+        ASSERT(armTextSec != nullptr);
+        CHECK(armTextSec->relocs.size() == 1);
+        CHECK(armTextSec->relocs[0].type == 3);
+        CHECK(armObj.symbols[armTextSec->relocs[0].symIndex].name == "callee");
+        CHECK(findSection(armObj, ".xdata") == nullptr);
+        CHECK(findSection(armObj, ".pdata") == nullptr);
+    }
+
+    {
+        CodeSection textA;
+        CodeSection textB;
+        CodeSection rodataMulti;
+
+        textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+        textA.emit32LE(0xD65F03C0); // ret
+
+        textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+        textB.emit32LE(0xD65F03C0); // ret
+
+        std::ostringstream multiErr;
+        CoffWriter multiWriter(ObjArch::AArch64);
+        const std::string multiPath = "build/test-out/coff_arm64_multitext.obj";
+        ASSERT(multiWriter.write(multiPath, std::vector<CodeSection>{textA, textB}, rodataMulti, multiErr));
+
+        ObjFile multiObj;
+        ASSERT(readObjFile(multiPath, multiObj, multiErr));
+        CHECK(findSection(multiObj, ".text.func_a") != nullptr);
+        CHECK(findSection(multiObj, ".text.func_b") != nullptr);
+    }
+
     if (gFail == 0) {
         std::cout << "All CoffWriter tests passed.\n";
         return EXIT_SUCCESS;

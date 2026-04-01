@@ -1,0 +1,187 @@
+---
+status: active
+audience: public
+last-verified: 2026-03-31
+---
+
+# Viper Game Engine
+
+> Build 2D and 3D games entirely from scratch — zero external dependencies.
+
+**Part of [Viper Documentation](../README.md)**
+
+---
+
+The Viper Game Engine is a comprehensive game development platform built into the Viper runtime. Every system — from PNG decoding and MP3 playback to OpenGL rendering and A* pathfinding — is implemented from scratch in pure C with **zero external dependencies**. The engine runs on macOS, Windows, and Linux with full feature parity across all platforms.
+
+Two language frontends are supported: **Zia** (modern, expressive) and **BASIC** (classic, beginner-friendly). Both compile to the same IL and have access to the full engine API.
+
+The engine powers games ranging from a simple bouncing ball to [XENOSCAPE](../../examples/games/xenoscape/), a 13,000-line Metroidvania with 25+ enemy types, 10 levels, parallax scrolling, particle effects, and a full save system.
+
+---
+
+## Quick Start
+
+Create a window, draw shapes, and respond to input — all in under 20 lines.
+
+### Zia
+
+```zia
+module MyGame;
+
+bind Viper.Graphics.Canvas;
+
+func start() {
+    var c = Canvas.New("My Game", 640, 480);
+    var x = 320;
+
+    while c.BeginFrame() != 0 {
+        if c.KeyHeld(262) != 0 { x = x + 4; }   // RIGHT arrow
+        if c.KeyHeld(263) != 0 { x = x - 4; }   // LEFT arrow
+
+        c.Clear(0x1a1a2e);
+        c.Disc(x, 240, 20, 0xe94560);
+        c.Text(10, 10, "Arrow keys to move", 0xffffff);
+        c.Flip();
+    }
+}
+```
+
+### BASIC
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("My Game", 640, 480)
+DIM x AS INTEGER = 320
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    IF canvas.KeyHeld(262) <> 0 THEN x = x + 4  ' RIGHT arrow
+    IF canvas.KeyHeld(263) <> 0 THEN x = x - 4  ' LEFT arrow
+
+    canvas.Clear(&H001A1A2E)
+    canvas.Disc(x, 240, 20, &H00E94560)
+    canvas.Text(10, 10, "Arrow keys to move", &H00FFFFFF)
+    canvas.Flip()
+LOOP
+```
+
+**Next step:** [Your First Game in 15 Minutes](getting-started.md) walks through building a complete mini-game with sprites, sound, and collision.
+
+---
+
+## Engine at a Glance
+
+| System | Classes | Highlights |
+|--------|---------|------------|
+| **2D Graphics** | Canvas, Pixels, SpriteBatch, TextureAtlas, BitmapFont | 40+ drawing primitives, BMP/PNG/JPEG/GIF/WebP I/O |
+| **3D Graphics** | Canvas3D, Mesh3D, Scene3D, Material3D, Light3D, Skeleton3D | Metal, D3D11, OpenGL 3.3 + software rasterizer |
+| **Sprites & Animation** | SpriteAnimation, AnimStateMachine, SpriteBatch | State machines, frame events, ping-pong, depth sorting |
+| **Tilemap** | Tilemap | Layers, auto-tiling, tile animation, collision, CSV I/O |
+| **Camera** | Camera2D, Camera3D | Smooth follow, deadzone, parallax, bounds clamping |
+| **Entity & AI** | Entity, Behavior | Composable AI presets (patrol, chase, shoot), built-in physics |
+| **Physics** | Physics2D, CollisionRect, Quadtree | AABB + circle bodies, joints, collision layers, spatial queries |
+| **Audio** | Sound, Music, Synth, SoundBank, Playlist, MusicGen | WAV/MP3/OGG, 32 voices, procedural synthesis, spatial audio |
+| **Input** | Keyboard, Mouse, Pad, Action, InputManager | 4 gamepads, rumble, rebindable actions, key chords |
+| **Scene Management** | GameBase, IScene, SceneManager, LevelData, Config | JSON levels, scene transitions, typed configuration |
+| **Game UI** | UILabel, UIBar, UIPanel, NineSlice, MenuList, Dialogue | HUD widgets, typewriter text, health bars |
+| **Effects** | ScreenFX, ParticleEmitter, Lighting2D | Shake, fade, wipe, dissolve, particles, dynamic lighting |
+| **Pathfinding** | Pathfinder, Quadtree, Raycast2D | A* grid, spatial partitioning, line-of-sight |
+| **Persistence** | SaveData, Assets, VPA | Cross-platform saves, embed/pack assets, VPA archives |
+| **Utilities** | Timer, Tween, StateMachine, ObjectPool, PlatformerController | Easing curves, coyote time, jump buffer, achievement tracking |
+| **Math** | Vec2, Vec3, Mat3, Mat4, Quaternion | Full vector/matrix/quaternion ops, slerp, easing functions |
+| **3D Advanced** | Terrain3D, Water3D, NavMesh3D, InstanceBatch3D, Particles3D | Vegetation, decals, post-processing, morph targets |
+
+For a deeper look at how these systems connect, see [Architecture](architecture.md).
+
+---
+
+## Guides by Topic
+
+### Rendering
+
+- [2D Graphics](2d-graphics.md) — Canvas drawing, Pixels image buffers, bitmap fonts, color utilities
+- [3D Graphics](3d-graphics.md) — Canvas3D, meshes, materials, lighting, scene graph, skeletal animation
+- [Sprites & Animation](sprites-and-animation.md) — SpriteSheet, SpriteBatch, SpriteAnimation, AnimStateMachine
+- [Tilemaps](tilemap-guide.md) — Creation, layers, auto-tiling, tile collision, CSV import/export
+- [Camera](camera-guide.md) — Camera2D (follow, zoom, parallax, bounds) and Camera3D (perspective, orbit)
+
+### Gameplay
+
+- [Entity System](entity-system.md) — Entity (position, velocity, health, collision) and composable Behaviors
+- [Physics & Collision](physics-guide.md) — Physics2D world, rigid bodies, joints, raycasting, quadtree
+- [Pathfinding & AI](pathfinding-and-ai.md) — A* grid pathfinder, quadtree spatial queries, behavior presets
+- [Scene Management](scene-management.md) — GameBase, IScene lifecycle, SceneManager, LevelData, Config
+
+### Presentation
+
+- [Audio](audio-guide.md) — Sound effects, music streaming, procedural synthesis, playlists, spatial audio
+- [Screen Effects](screen-effects.md) — ScreenFX (shake, fade, wipe), ParticleEmitter, Lighting2D
+- [Game UI](game-ui.md) — Labels, health bars, panels, nine-slice, menus, dialogue system
+
+### Infrastructure
+
+- [Input](input-guide.md) — Keyboard, mouse, gamepad, action mapping, InputManager
+- [Persistence & Assets](persistence-and-assets.md) — SaveData, VPA archives, asset embedding and loading
+- [Game Utilities](game-utilities.md) — Timer, Tween, StateMachine, ObjectPool, PlatformerController, and more
+- [Math for Games](math-for-games.md) — Vec2/3, Mat3/4, Quaternion, easing functions, noise
+- [Cross-Platform](cross-platform.md) — macOS/Windows/Linux differences, GPU backend selection
+
+---
+
+## Tutorials
+
+Step-by-step guides that build complete games from scratch:
+
+- [Your First Platformer](examples/your-first-platformer.md) — Entity + Tilemap + Camera + Animation
+- [Arcade Shooter](examples/arcade-shooter.md) — ObjectPool + Particles + ScreenFX + Score tracking
+- [3D Dungeon Crawler](examples/3d-dungeon-crawler.md) — Canvas3D + Mesh loading + Lighting + FPS controls
+
+---
+
+## Example Games
+
+Viper ships with 15 example games demonstrating the engine at every scale:
+
+| Game | LOC | Genre | Key Engine Features |
+|------|-----|-------|---------------------|
+| [XENOSCAPE](../../examples/games/xenoscape/) | 13,176 | Metroidvania | Entity, AnimState, Camera, Tilemap, Particles, ScreenFX, Audio, SceneManager, Save |
+| [Sidescroller](../../examples/games/sidescroller/) | 17,005 | Platformer | Full engine showcase (original XENOSCAPE architecture) |
+| [Graphics Show](../../examples/games/graphics-show/) | 8,000+ | Demo collection | Canvas primitives, particles, physics, fractals (10 sub-demos) |
+| [Chess](../../examples/games/chess/) | 2,937 | Board game | Canvas rendering, AI evaluation, StateMachine |
+| [Centipede](../../examples/games/centipede/) | 2,553 | Arcade shooter | Grid2D, Timer, ScreenFX, ParticleEmitter, ObjectPool |
+| [Pac-Man](../../examples/games/pacman/) | 2,230 | Arcade | Ghost AI, StateMachine, ButtonGroup, Tween, SmoothValue |
+| [Dungeon](../../examples/games/dungeon/) | 2,160 | 3D crawler | Canvas3D, Physics3D, FBX models, Material3D, Camera3D |
+| [Frogger](../../examples/games/frogger/) | ~1,500 | Arcade | Entity, grid movement, collision, AI traffic |
+| [VTris](../../examples/games/vtris/) | 1,132 | Puzzle (BASIC) | Terminal rendering, OOP classes, matrix rotation |
+| [Frogger BASIC](../../examples/games/frogger-basic/) | 1,320 | Arcade (BASIC) | OOP stress test, nested objects, collision |
+| [Chess BASIC](../../examples/games/chess-basic/) | 1,100+ | Board game (BASIC) | Complex game logic, AI, terminal rendering |
+| [Monopoly](../../examples/games/monopoly/) | 600 | Board game (BASIC) | Turn-based mechanics, property management |
+| [Pac-Man BASIC](../../examples/games/pacman-basic/) | 450 | Arcade (BASIC) | Ghost pathfinding, ANSI rendering |
+| [Centipede BASIC](../../examples/games/centipede-basic/) | 450 | Arcade (BASIC) | Class-based architecture, grid field |
+| [Fade Test](../../examples/games/fade-test/) | 168 | Test harness | ScreenFX, Canvas coverage verification |
+
+See the [Example Games Gallery](examples/README.md) for detailed descriptions and engine feature breakdowns.
+
+---
+
+## API Reference
+
+The topical guides above explain concepts and patterns. For exhaustive method signatures, see the runtime library API docs:
+
+- [Game Utilities API](../viperlib/game/README.md) — 28 game classes (Entity, Timer, Tween, Physics2D, etc.)
+- [Graphics API](../viperlib/graphics/README.md) — Canvas, Pixels, Scene, Fonts
+- [3D Graphics API](../graphics3d-guide.md) — 28 classes (Canvas3D, Mesh3D, Scene3D, etc.)
+- [Audio API](../viperlib/audio.md) — Sound, Music, Synth, SoundBank, Playlist
+- [Input API](../viperlib/input.md) — Keyboard, Mouse, Pad, Action, InputManager
+- [Math API](../viperlib/math.md) — Vec2/3, Mat3/4, Quaternion, Easing, Noise
+- [GUI API](../viperlib/gui/README.md) — 46 desktop GUI widgets (distinct from game UI)
+
+---
+
+## See Also
+
+- [The Viper Bible](../bible/README.md) — Chapters 19-21 cover graphics, input, and building a complete game project
+- [Zia Reference](../zia-reference.md) — Complete Zia language specification
+- [BASIC Reference](../basic-reference.md) — Complete BASIC language specification
+- [Architecture Overview](../architecture.md) — Full Viper system architecture (compiler, VM, codegen, runtime)

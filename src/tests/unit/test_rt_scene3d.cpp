@@ -14,11 +14,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "rt.hpp"
 #include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
 #include "rt_scene3d.h"
 #include "rt_string.h"
+#include "vgfx3d_backend.h"
 #include <cassert>
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -30,11 +36,26 @@ extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
+extern rt_string rt_const_cstr(const char *s);
 extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
 extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
+extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
+extern void *rt_material3d_new_color(double r, double g, double b);
+extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
+extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_add_vertex(void *obj,
+                                 double x,
+                                 double y,
+                                 double z,
+                                 double nx,
+                                 double ny,
+                                 double nz,
+                                 double u,
+                                 double v);
+extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2);
 }
 
 static int tests_passed = 0;
@@ -308,10 +329,103 @@ static void test_default_transform() {
 
 extern "C" {
 extern void *rt_mesh3d_new_box(double w, double h, double d);
-extern void *rt_material3d_new_color(double r, double g, double b);
-extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
-extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
+extern void *rt_mesh3d_new_sphere(double r, int64_t seg);
+extern void *rt_mesh3d_new_plane(double sx, double sz);
 extern int64_t rt_scene3d_get_culled_count(void *scene);
+}
+
+static int g_scene_submit_count = 0;
+static int g_scene_begin_count = 0;
+static int g_scene_end_count = 0;
+static const void *g_scene_last_vertices = nullptr;
+
+static void scene_test_begin_frame(void *, const vgfx3d_camera_params_t *) { g_scene_begin_count++; }
+static void scene_test_end_frame(void *) { g_scene_end_count++; }
+static void scene_test_submit_draw(void *,
+                                   vgfx_window_t,
+                                   const vgfx3d_draw_cmd_t *cmd,
+                                   const vgfx3d_light_params_t *,
+                                   int32_t,
+                                   const float *,
+                                   int8_t,
+                                   int8_t) {
+    g_scene_submit_count++;
+    g_scene_last_vertices = cmd ? cmd->vertices : nullptr;
+}
+
+static void init_scene_test_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
+    std::memset(canvas, 0, sizeof(*canvas));
+    canvas->backend = backend;
+    canvas->gfx_win = (vgfx_window_t)1;
+}
+
+static void reset_scene_capture(void) {
+    g_scene_submit_count = 0;
+    g_scene_begin_count = 0;
+    g_scene_end_count = 0;
+    g_scene_last_vertices = nullptr;
+}
+
+static void test_scene_draw_reuses_active_frame() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.in_frame = 1;
+    canvas.frame_is_2d = 0;
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_begin_count == 0, "Scene3D.Draw does not nest Begin when a 3D frame is already active");
+    EXPECT_TRUE(g_scene_end_count == 0, "Scene3D.Draw does not end an externally-owned frame");
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Scene3D.Draw queues scene geometry inside an externally-owned frame");
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D.Draw defers backend submission until the caller ends the frame");
+    EXPECT_TRUE(canvas.in_frame == 1, "Scene3D.Draw leaves the caller-owned frame active");
+}
+
+static void test_scene_save_escapes_json_names() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    const char *path = "/tmp/viper_scene_escape_test.vscn";
+    const char *name = "quote\"slash\\line\nbreak";
+
+    rt_scene_node3d_set_name(node, rt_const_cstr(name));
+    rt_scene3d_add(scene, node);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1, "Scene3D.Save writes the scene file");
+
+    FILE *f = fopen(path, "rb");
+    EXPECT_TRUE(f != nullptr, "Scene3D.Save output can be reopened");
+    if (!f)
+        return;
+    char buf[1024];
+    size_t bytes = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[bytes] = '\0';
+
+    EXPECT_TRUE(std::strstr(buf, "\"name\": \"quote\\\"slash\\\\line\\nbreak\"") != nullptr,
+                "Scene3D.Save escapes quotes, backslashes, and newlines in node names");
 }
 
 static void test_frustum_aabb_inside() {
@@ -373,6 +487,46 @@ static void test_frustum_culled_count_initial() {
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0, "Initial culled count = 0");
 }
 
+static void test_lod_culling_uses_selected_mesh_bounds() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *base_mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *lod_mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(lod_mesh, 5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 6.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 5.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(lod_mesh, 0, 1, 2);
+
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_scene_node3d_set_mesh(node, base_mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_add_lod(node, 0.0, lod_mesh);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D culls against the selected LOD mesh bounds, not the base mesh bounds");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
+                "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
+}
+
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
@@ -395,6 +549,9 @@ int main() {
     test_frustum_plane_aabb();
     test_frustum_no_mesh_no_aabb();
     test_frustum_culled_count_initial();
+    test_lod_culling_uses_selected_mesh_bounds();
+    test_scene_draw_reuses_active_frame();
+    test_scene_save_escapes_json_names();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

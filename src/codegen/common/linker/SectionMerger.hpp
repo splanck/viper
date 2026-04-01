@@ -30,6 +30,11 @@
 
 namespace viper::codegen::linker {
 
+/// Recompute virtual addresses for the current output-section order.
+/// The caller is responsible for ensuring @p layout.sections is already in the
+/// desired final order.
+void assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform);
+
 /// Merge sections from all object files and compute virtual address layout.
 /// @param objects     All object files (including archive extracts).
 /// @param platform    Target platform.

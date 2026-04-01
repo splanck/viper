@@ -9,7 +9,7 @@
 // Purpose: Register classification predicates for the AArch64 register
 //          allocator (allocatable GPR test, argument register test).
 // Key invariants:
-//   - isAllocatableGPR excludes X29, X30, SP, X18, and X9 (scratch).
+//   - isAllocatableGPR excludes X29, X30, SP, X18, X9, and X16 (scratch).
 //   - isArgRegister checks both integer and FP argument orders.
 // Ownership/Lifetime:
 //   - Stateless free functions; no ownership.
@@ -27,15 +27,16 @@ namespace viper::codegen::aarch64::ra {
 /// @param r The physical register to check.
 /// @return True if the register can be allocated to virtual registers.
 /// @details Excludes frame pointer (X29), link register (X30), stack pointer (SP),
-///          platform reserved (X18), and global scratch register (X9).
+///          platform reserved (X18), and the global scratch registers (X9/X16).
 inline bool isAllocatableGPR(PhysReg r) {
     switch (r) {
         case PhysReg::X29:
         case PhysReg::X30:
         case PhysReg::SP:
         case PhysReg::X18:
-        // Reserve the global scratch register so the allocator never hands it out
+        // Reserve the global scratch registers so the allocator never hands them out.
         case PhysReg::X9:
+        case PhysReg::X16:
             return false;
         default:
             return isGPR(r);

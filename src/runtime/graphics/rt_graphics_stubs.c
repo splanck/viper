@@ -3345,8 +3345,8 @@ int vgfx3d_postfx_get_snapshot(void *postfx, void *out) {
     return 0;
 }
 
-/* Occlusion culling stub (F3) */
-/// @brief Set the occlusion culling of the canvas3d.
+/* Opaque front-to-back sorting stub */
+/// @brief Set the depth-order sorting hint of the canvas3d.
 void rt_canvas3d_set_occlusion_culling(void *c, int8_t e) {
     (void)c;
     (void)e;

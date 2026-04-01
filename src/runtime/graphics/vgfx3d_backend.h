@@ -37,6 +37,10 @@ typedef struct {
     uint32_t vertex_count;
     const uint32_t *indices;
     uint32_t index_count;
+    /* Stable identity for backend-side static geometry caches. NULL means the
+     * geometry is transient and should use the streaming upload path. */
+    const void *geometry_key;
+    uint32_t geometry_revision;
     float model_matrix[16];   /* row-major float */
     float prev_model_matrix[16]; /* previous-frame row-major float */
     float diffuse_color[4];   /* RGBA material color */
@@ -69,7 +73,7 @@ typedef struct {
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;  /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices; /* 1 when prev_instance_matrices matches instance_count */
-    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
 
@@ -85,6 +89,10 @@ typedef struct {
     int8_t fog_enabled;
     float fog_near, fog_far;
     float fog_color[3];
+    /* Secondary passes can preserve the previous scene color while resetting
+     * depth for overlays or UI. */
+    int8_t load_existing_color;
+    int8_t load_existing_depth;
 } vgfx3d_camera_params_t;
 
 /*==========================================================================

@@ -253,6 +253,7 @@ static void emitWin64UnwindNodes(std::vector<uint8_t> &out, const Win64UnwindCod
 }
 
 static void buildWin64UnwindSections(const CodeSection &text,
+                                     uint32_t xdataNameBase,
                                      std::vector<uint8_t> &xdataBytes,
                                      std::vector<PendingCoffSymbol> &xdataSymbols,
                                      std::vector<uint8_t> &pdataBytes,
@@ -261,7 +262,7 @@ static void buildWin64UnwindSections(const CodeSection &text,
     for (size_t i = 0; i < entries.size(); ++i) {
         const auto &entry = entries[i];
         const uint32_t xdataOffset = static_cast<uint32_t>(xdataBytes.size());
-        const std::string xdataName = "$xdata$" + std::to_string(i);
+        const std::string xdataName = "$xdata$" + std::to_string(xdataNameBase + i);
         xdataSymbols.push_back({xdataName, xdataOffset, 0, kImageSymClassStatic});
 
         std::vector<Win64UnwindCode> codes = entry.codes;
@@ -302,7 +303,7 @@ bool CoffWriter::write(const std::string &path,
     std::vector<uint8_t> pdataBytes;
     std::vector<PendingCoffReloc> pdataRelocs;
     if (arch_ == ObjArch::X86_64 && !text.win64UnwindEntries().empty())
-        buildWin64UnwindSections(text, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs);
+        buildWin64UnwindSections(text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs);
 
     const bool hasRodata = !rodata.empty();
     const bool hasXdata = !xdataBytes.empty();
@@ -547,6 +548,375 @@ bool CoffWriter::write(const std::string &path,
         padTo(file, textRelocOff);
         file.insert(file.end(), textRelocBytes.begin(), textRelocBytes.end());
     }
+    if (hasRodata) {
+        padTo(file, rdataDataOff);
+        file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+    }
+    if (hasXdata) {
+        padTo(file, xdataDataOff);
+        file.insert(file.end(), xdataBytes.begin(), xdataBytes.end());
+    }
+    if (hasPdata) {
+        padTo(file, pdataDataOff);
+        file.insert(file.end(), pdataBytes.begin(), pdataBytes.end());
+        if (!pdataRelocBytes.empty()) {
+            padTo(file, pdataRelocOff);
+            file.insert(file.end(), pdataRelocBytes.begin(), pdataRelocBytes.end());
+        }
+    }
+    if (hasDebugLine) {
+        padTo(file, debugLineDataOff);
+        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+    }
+
+    padTo(file, symtabOff);
+    file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
+    file.insert(file.end(), strtabBytes.begin(), strtabBytes.end());
+
+    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    if (!ofs) {
+        err << "CoffWriter: cannot open " << path << " for writing\n";
+        return false;
+    }
+    ofs.write(reinterpret_cast<const char *>(file.data()),
+              static_cast<std::streamsize>(file.size()));
+    if (!ofs) {
+        err << "CoffWriter: write failed for " << path << "\n";
+        return false;
+    }
+    return true;
+}
+
+static std::string inferTextSectionName(const CodeSection &text, size_t index) {
+    std::string funcName = "func_" + std::to_string(index);
+    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+        const Symbol &sym = text.symbols().at(i);
+        if (sym.binding == SymbolBinding::Global && sym.section == SymbolSection::Text) {
+            funcName = sym.name;
+            break;
+        }
+    }
+    return ".text." + funcName;
+}
+
+bool CoffWriter::write(const std::string &path,
+                       const std::vector<CodeSection> &textSections,
+                       const CodeSection &rodata,
+                       std::ostream &err) {
+    if (textSections.size() <= 1) {
+        if (textSections.empty()) {
+            CodeSection empty;
+            return write(path, empty, rodata, err);
+        }
+        return write(path, textSections[0], rodata, err);
+    }
+
+    std::vector<uint8_t> xdataBytes;
+    std::vector<PendingCoffSymbol> xdataSymbols;
+    std::vector<uint8_t> pdataBytes;
+    std::vector<PendingCoffReloc> pdataRelocs;
+    if (arch_ == ObjArch::X86_64) {
+        uint32_t xdataNameBase = 0;
+        for (const auto &text : textSections) {
+            if (!text.win64UnwindEntries().empty()) {
+                buildWin64UnwindSections(
+                    text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs);
+                xdataNameBase += static_cast<uint32_t>(text.win64UnwindEntries().size());
+            }
+        }
+    }
+
+    const bool hasRodata = !rodata.empty();
+    const bool hasXdata = !xdataBytes.empty();
+    const bool hasPdata = !pdataBytes.empty();
+    const bool hasDebugLine = !debugLineData_.empty();
+
+    const size_t textCount = textSections.size();
+    std::vector<uint16_t> secIdxText(textCount, 0);
+    uint16_t nextSecIndex = 1;
+    for (size_t i = 0; i < textCount; ++i)
+        secIdxText[i] = nextSecIndex++;
+    const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
+    const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
+    const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
+    const uint16_t numSections =
+        static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
+
+    std::vector<uint8_t> symtabBytes;
+    std::vector<uint8_t> strtabBytes(4, 0);
+    std::vector<std::unordered_map<uint32_t, uint32_t>> textSymMaps(textCount);
+    std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+    std::unordered_map<std::string, uint32_t> definedNameMap;
+    std::unordered_map<std::string, uint32_t> externalNameMap;
+    uint32_t coffSymCount = 0;
+
+    auto addToStrTab = [&](const std::string &s) -> uint32_t {
+        const uint32_t offset = static_cast<uint32_t>(strtabBytes.size());
+        strtabBytes.insert(strtabBytes.end(), s.begin(), s.end());
+        strtabBytes.push_back(0);
+        return offset;
+    };
+
+    auto encodeSectionHeaderName = [&](const std::string &name) -> std::string {
+        if (name.size() <= 8)
+            return name;
+        return "/" + std::to_string(addToStrTab(name));
+    };
+
+    struct PendingExternal {
+        bool fromText = false;
+        size_t textIdx = SIZE_MAX;
+        uint32_t origIdx = 0;
+        std::string name;
+        uint16_t type = 0;
+    };
+    std::vector<PendingExternal> pendingExternals;
+
+    std::vector<std::string> textSectionNames(textCount);
+    std::vector<std::string> textHeaderNames(textCount);
+    for (size_t i = 0; i < textCount; ++i) {
+        textSectionNames[i] = inferTextSectionName(textSections[i], i);
+        textHeaderNames[i] = encodeSectionHeaderName(textSectionNames[i]);
+    }
+    std::string debugHeaderName;
+    if (hasDebugLine)
+        debugHeaderName = encodeSectionHeaderName(".debug_line");
+
+    if (hasRodata) {
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            if (s.binding == SymbolBinding::External) {
+                pendingExternals.push_back({false, SIZE_MAX, i, s.name, 0});
+                continue;
+            }
+
+            const int16_t secNum = static_cast<int16_t>(secIdxRdata);
+            const uint32_t value = static_cast<uint32_t>(s.offset);
+            const uint8_t storageClass =
+                (s.binding == SymbolBinding::Local) ? kImageSymClassStatic : kImageSymClassExternal;
+            const uint32_t strOff = (s.name.size() > 8) ? addToStrTab(s.name) : 0;
+
+            writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0, storageClass);
+            const uint32_t coffIdx = coffSymCount++;
+            rodataSymMap[i] = coffIdx;
+            definedNameMap[s.name] = coffIdx;
+        }
+    }
+
+    if (hasXdata) {
+        for (const auto &sym : xdataSymbols) {
+            const uint32_t strOff = (sym.name.size() > 8) ? addToStrTab(sym.name) : 0;
+            writeSymbol(symtabBytes,
+                        sym.name,
+                        strOff,
+                        sym.value,
+                        static_cast<int16_t>(secIdxXdata),
+                        sym.type,
+                        sym.storageClass);
+            definedNameMap[sym.name] = coffSymCount++;
+        }
+    }
+
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        const auto &text = textSections[ti];
+        for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+            const Symbol &s = text.symbols().at(i);
+            if (s.binding == SymbolBinding::External) {
+                pendingExternals.push_back({true, ti, i, s.name, 0x20});
+                continue;
+            }
+
+            const int16_t secNum = static_cast<int16_t>(secIdxText[ti]);
+            const uint32_t value = static_cast<uint32_t>(s.offset);
+            const uint8_t storageClass =
+                (s.binding == SymbolBinding::Local) ? kImageSymClassStatic : kImageSymClassExternal;
+            const uint32_t strOff = (s.name.size() > 8) ? addToStrTab(s.name) : 0;
+
+            writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0x20, storageClass);
+            const uint32_t coffIdx = coffSymCount++;
+            textSymMaps[ti][i] = coffIdx;
+            definedNameMap[s.name] = coffIdx;
+        }
+    }
+
+    for (const auto &ext : pendingExternals) {
+        const auto definedIt = definedNameMap.find(ext.name);
+        if (definedIt != definedNameMap.end()) {
+            if (ext.fromText)
+                textSymMaps[ext.textIdx][ext.origIdx] = definedIt->second;
+            else
+                rodataSymMap[ext.origIdx] = definedIt->second;
+            continue;
+        }
+
+        auto extIt = externalNameMap.find(ext.name);
+        if (extIt == externalNameMap.end()) {
+            const uint32_t strOff = (ext.name.size() > 8) ? addToStrTab(ext.name) : 0;
+            writeSymbol(symtabBytes,
+                        ext.name,
+                        strOff,
+                        0,
+                        kImageSymUndefined,
+                        ext.type,
+                        kImageSymClassExternal);
+            extIt = externalNameMap.emplace(ext.name, coffSymCount++).first;
+        }
+
+        if (ext.fromText)
+            textSymMaps[ext.textIdx][ext.origIdx] = extIt->second;
+        else
+            rodataSymMap[ext.origIdx] = extIt->second;
+    }
+
+    const uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
+    strtabBytes[0] = static_cast<uint8_t>(strtabSize);
+    strtabBytes[1] = static_cast<uint8_t>(strtabSize >> 8);
+    strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
+    strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
+
+    std::vector<std::vector<uint8_t>> textRelocBytes(textCount);
+    std::vector<uint32_t> numTextRelocs(textCount, 0);
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        const auto &text = textSections[ti];
+        auto &relocBytes = textRelocBytes[ti];
+        for (const auto &rel : text.relocations()) {
+            auto it = textSymMaps[ti].find(rel.symbolIndex);
+            const uint32_t coffSymIdx = (it != textSymMaps[ti].end()) ? it->second : 0;
+            writeReloc(
+                relocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
+        }
+        numTextRelocs[ti] = static_cast<uint32_t>(text.relocations().size());
+    }
+
+    std::vector<uint8_t> pdataRelocBytes;
+    for (const auto &rel : pdataRelocs) {
+        auto it = definedNameMap.find(rel.symbolName);
+        if (it == definedNameMap.end()) {
+            err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
+            return false;
+        }
+        writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
+    }
+    const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
+
+    std::vector<uint32_t> textSizes(textCount, 0);
+    for (size_t ti = 0; ti < textCount; ++ti)
+        textSizes[ti] = static_cast<uint32_t>(textSections[ti].bytes().size());
+    const uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
+    const uint32_t xdataSize = hasXdata ? static_cast<uint32_t>(xdataBytes.size()) : 0;
+    const uint32_t pdataSize = hasPdata ? static_cast<uint32_t>(pdataBytes.size()) : 0;
+    const uint32_t debugLineDataSize =
+        hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
+
+    const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
+    uint32_t cursor = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
+
+    std::vector<uint32_t> textDataOff(textCount, 0);
+    std::vector<uint32_t> textRelocOff(textCount, 0);
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        textDataOff[ti] = cursor;
+        cursor += textSizes[ti];
+        if (numTextRelocs[ti] > 0) {
+            textRelocOff[ti] = cursor;
+            cursor += numTextRelocs[ti] * kCoffRelocSize;
+        }
+        cursor = static_cast<uint32_t>(alignUp(cursor, 4));
+    }
+
+    uint32_t rdataDataOff = 0;
+    if (hasRodata) {
+        rdataDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(rdataDataOff + rdataSize, 4));
+    }
+    uint32_t xdataDataOff = 0;
+    if (hasXdata) {
+        xdataDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(xdataDataOff + xdataSize, 4));
+    }
+    uint32_t pdataDataOff = 0;
+    uint32_t pdataRelocOff = 0;
+    if (hasPdata) {
+        pdataDataOff = cursor;
+        pdataRelocOff = pdataDataOff + pdataSize;
+        cursor =
+            static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+    }
+    uint32_t debugLineDataOff = 0;
+    if (hasDebugLine) {
+        debugLineDataOff = cursor;
+        cursor = static_cast<uint32_t>(alignUp(debugLineDataOff + debugLineDataSize, 4));
+    }
+    const uint32_t symtabOff = cursor;
+
+    std::vector<uint8_t> file;
+    file.reserve(symtabOff + symtabBytes.size() + strtabBytes.size());
+
+    const uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
+    appendLE16(file, machine);
+    appendLE16(file, numSections);
+    appendLE32(file, 0);
+    appendLE32(file, symtabOff);
+    appendLE32(file, coffSymCount);
+    appendLE16(file, 0);
+    appendLE16(file, 0);
+
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        uint32_t textChars = kImageScnCntCode | kImageScnMemExecute | kImageScnMemRead;
+        textChars |= (arch_ == ObjArch::X86_64) ? kImageScnAlignText : kImageScnAlign4;
+        writeSectionHeader(file,
+                           textHeaderNames[ti].c_str(),
+                           0,
+                           0,
+                           textSizes[ti],
+                           textDataOff[ti],
+                           (numTextRelocs[ti] > 0) ? textRelocOff[ti] : 0,
+                           numTextRelocs[ti],
+                           textChars);
+    }
+
+    if (hasRodata) {
+        const uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
+        writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
+    }
+    if (hasXdata) {
+        const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        writeSectionHeader(file, ".xdata", 0, 0, xdataSize, xdataDataOff, 0, 0, xdataChars);
+    }
+    if (hasPdata) {
+        const uint32_t pdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        writeSectionHeader(file,
+                           ".pdata",
+                           0,
+                           0,
+                           pdataSize,
+                           pdataDataOff,
+                           (numPdataRelocs > 0) ? pdataRelocOff : 0,
+                           numPdataRelocs,
+                           pdataChars);
+    }
+    if (hasDebugLine) {
+        const uint32_t debugChars =
+            kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
+        writeSectionHeader(file,
+                           debugHeaderName.c_str(),
+                           0,
+                           0,
+                           debugLineDataSize,
+                           debugLineDataOff,
+                           0,
+                           0,
+                           debugChars);
+    }
+
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        padTo(file, textDataOff[ti]);
+        file.insert(file.end(), textSections[ti].bytes().begin(), textSections[ti].bytes().end());
+        if (!textRelocBytes[ti].empty()) {
+            padTo(file, textRelocOff[ti]);
+            file.insert(file.end(), textRelocBytes[ti].begin(), textRelocBytes[ti].end());
+        }
+    }
+
     if (hasRodata) {
         padTo(file, rdataDataOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());

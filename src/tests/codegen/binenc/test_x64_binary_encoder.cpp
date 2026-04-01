@@ -583,7 +583,7 @@ int main() {
     }
 
     // ================================================================
-    // 26. Internal branch resolution (forward + backward)
+    // 26. Internal branch resolution with short forward/backward relaxation
     // ================================================================
     {
         MFunction fn;
@@ -611,21 +611,15 @@ int main() {
         CodeSection text, rodata;
         enc.encodeFunction(fn, text, rodata, false);
 
-        // Block 0: E9 xx xx xx xx  (5 bytes, offset 0) — forward JMP (near)
-        // Block 1: C3              (1 byte, offset 5)
-        // Block 2: EB xx           (2 bytes, offset 6) — backward JMP (short, rel8)
-        CHECK(text.bytes().size() == 8);
-        CHECK(text.bytes()[0] == 0xE9); // JMP near (forward)
-        CHECK(text.bytes()[5] == 0xC3); // RET
-        CHECK(text.bytes()[6] == 0xEB); // JMP short (backward)
-
-        // Forward: target=6, patch=1, rel = 6-(1+4) = 1
-        int32_t fwd_rel;
-        std::memcpy(&fwd_rel, text.bytes().data() + 1, 4);
-        CHECK(fwd_rel == 1);
-
-        // Backward short: target=5, disp = 5-(6+2) = -3
-        CHECK(static_cast<int8_t>(text.bytes()[7]) == -3);
+        // Block 0: EB xx  (2 bytes, offset 0) — forward JMP (short)
+        // Block 1: C3     (1 byte, offset 2)
+        // Block 2: EB xx  (2 bytes, offset 3) — backward JMP (short)
+        CHECK(text.bytes().size() == 5);
+        CHECK(text.bytes()[0] == 0xEB); // forward short JMP
+        CHECK(static_cast<int8_t>(text.bytes()[1]) == 1);
+        CHECK(text.bytes()[2] == 0xC3); // RET
+        CHECK(text.bytes()[3] == 0xEB); // backward short JMP
+        CHECK(static_cast<int8_t>(text.bytes()[4]) == -3);
     }
 
     // ================================================================
@@ -650,10 +644,10 @@ int main() {
         CodeSection text, rodata;
         enc.encodeFunction(fn, text, rodata, false);
 
-        // JCC = 0F 85 xx xx xx xx (6 bytes) + RET (1 byte) + RET (1 byte)
-        CHECK(text.bytes().size() == 8);
-        CHECK(text.bytes()[0] == 0x0F);
-        CHECK(text.bytes()[1] == 0x85); // JNE
+        // JCC short = 75 xx (2 bytes) + RET (1 byte) + RET (1 byte)
+        CHECK(text.bytes().size() == 4);
+        CHECK(text.bytes()[0] == 0x75); // JNE short
+        CHECK(static_cast<int8_t>(text.bytes()[1]) == 1);
     }
 
     // ================================================================

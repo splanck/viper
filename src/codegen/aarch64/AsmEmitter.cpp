@@ -451,9 +451,8 @@ void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const {
         // Negative immediates in cmn range - emit directly, assembler handles it
         os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
     } else {
-        // Use x16 (IP0) as scratch register - it's caller-saved and not used for args
-        emitMovImm64(os, PhysReg::X16, imm);
-        os << "  cmp " << rn(lhs) << ", " << rn(PhysReg::X16) << "\n";
+        emitMovImm64(os, kScratchGPR2, imm);
+        os << "  cmp " << rn(lhs) << ", " << rn(kScratchGPR2) << "\n";
     }
 }
 
@@ -501,9 +500,9 @@ void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) co
         return;
     }
 
-    os << "  mov " << rn(PhysReg::X16) << ", sp\n";
-    emitAddRI(os, PhysReg::X16, PhysReg::X16, offset);
-    os << "  str " << rn(src) << ", [" << rn(PhysReg::X16) << "]\n";
+    os << "  mov " << rn(kScratchGPR2) << ", sp\n";
+    emitAddRI(os, kScratchGPR2, kScratchGPR2, offset);
+    os << "  str " << rn(src) << ", [" << rn(kScratchGPR2) << "]\n";
 }
 
 void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const {
@@ -514,11 +513,11 @@ void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset)
         return;
     }
 
-    os << "  mov " << rn(PhysReg::X16) << ", sp\n";
-    emitAddRI(os, PhysReg::X16, PhysReg::X16, offset);
+    os << "  mov " << rn(kScratchGPR2) << ", sp\n";
+    emitAddRI(os, kScratchGPR2, kScratchGPR2, offset);
     os << "  str ";
     printD(os, src);
-    os << ", [" << rn(PhysReg::X16) << "]\n";
+    os << ", [" << rn(kScratchGPR2) << "]\n";
 }
 
 /// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
@@ -740,8 +739,8 @@ void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const {
     unsigned long long bits = 0;
     static_assert(sizeof(bits) == sizeof(imm), "unexpected f64 size");
     std::memcpy(&bits, &imm, sizeof(bits));
-    emitMovImm64(os, PhysReg::X16, bits);
-    emitFMovGR(os, dst, PhysReg::X16);
+    emitMovImm64(os, kScratchGPR2, bits);
+    emitFMovGR(os, dst, kScratchGPR2);
 }
 
 void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const {
@@ -994,9 +993,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
                     os << ", lsl #12";
                 os << "\n";
             } else {
-                emitMovImm64(os, PhysReg::X16, static_cast<unsigned long long>(imm));
+                emitMovImm64(os, kScratchGPR2, static_cast<unsigned long long>(imm));
                 os << "  " << (isAdds ? "adds " : "subs ") << rn(dst) << ", " << rn(lhs) << ", "
-                   << rn(PhysReg::X16) << "\n";
+                   << rn(kScratchGPR2) << "\n";
             }
             return;
         }

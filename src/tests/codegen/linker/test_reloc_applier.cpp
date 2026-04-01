@@ -479,6 +479,60 @@ int main() {
         CHECK(patched == 0x00000FF8);
     }
 
+    // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        code[3] = 0x94; // BL = 0x94000000
+        auto caller = makeObj("test_branch26.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target",
+                              /*IMAGE_REL_ARM64_BRANCH26=*/3,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetText;
+        targetText.name = ".text";
+        targetText.data.resize(8, 0);
+        targetText.executable = true;
+        targetText.alloc = true;
+        targetText.alignment = 4;
+        target.sections.push_back(targetText);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        targetSym.offset = 0;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        entry.resolvedAddr = 0;
+        layout.globalSyms["target"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK((patched & 0xFC000000) == 0x94000000);
+        CHECK((patched & 0x03FFFFFF) == 1);
+    }
+
     // --- Unknown reloc type produces error ---
     {
         std::vector<uint8_t> code(8, 0);

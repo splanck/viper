@@ -8,14 +8,17 @@
 // File: codegen/common/linker/BranchTrampoline.hpp
 // Purpose: AArch64 branch trampoline insertion for the native linker.
 //          Detects out-of-range B/BL (Branch26) relocations after section
-//          merging and inserts ADRP+ADD+BR x16 trampolines at the end of
-//          the .text segment.
+//          merging and inserts ADRP+ADD+BR x16 trampolines at reachable
+//          executable-section chunk boundaries.
 // Key invariants:
 //   - Only activates on AArch64 (no-op on x86-64)
 //   - Only handles Branch26 (B/BL); B.cond (CondBr19) is left as-is
 //   - Trampoline relocations (Page21+PageOff12) are applied inline
 //   - Multiple branches to the same out-of-range target share one trampoline
-//   - VA re-assignment for sections after .text after trampoline insertion
+//     per reachable island boundary
+//   - Original Branch26 relocations are rewritten to synthetic trampoline
+//     symbols so applyRelocations() preserves the patch
+//   - VA re-assignment reuses the same logic as SectionMerger
 // Links: codegen/common/linker/RelocApplier.cpp
 //        codegen/common/linker/RelocClassify.hpp
 //

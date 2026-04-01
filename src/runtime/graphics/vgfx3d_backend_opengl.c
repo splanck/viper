@@ -319,6 +319,18 @@ typedef struct {
     GLuint tex;
 } gl_cubemap_cache_entry_t;
 
+#define GL_MESH_CACHE_CAPACITY 128
+
+typedef struct {
+    const void *key;
+    uint32_t revision;
+    uint32_t vertex_count;
+    uint32_t index_count;
+    GLuint vbo;
+    GLuint ibo;
+    uint64_t last_used_frame;
+} gl_mesh_cache_entry_t;
+
 typedef struct {
     Display *display;
     Window window;
@@ -383,6 +395,8 @@ typedef struct {
     gl_cubemap_cache_entry_t *cubemap_cache;
     int32_t cubemap_cache_count;
     int32_t cubemap_cache_capacity;
+    gl_mesh_cache_entry_t mesh_cache[GL_MESH_CACHE_CAPACITY];
+    uint64_t frame_serial;
 
     int32_t width;
     int32_t height;
@@ -401,8 +415,9 @@ typedef struct {
 
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix, uShadowVP;
     GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
-    GLint uUnlit, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap, uHasEmissiveMap;
+    GLint uUnlit, uShadingModel, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap, uHasEmissiveMap;
     GLint uHasEnvMap, uReflectivity;
+    GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
     GLint uShadowEnabled, uShadowBias;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
@@ -753,6 +768,7 @@ static const char *glsl_fragment_src =
     "uniform vec3 uEmissiveColor;\n"
     "uniform float uAlpha;\n"
     "uniform int uUnlit;\n"
+    "uniform int uShadingModel;\n"
     "uniform int uLightCount;\n"
     "uniform int uHasTexture;\n"
     "uniform int uHasNormalMap;\n"
@@ -788,6 +804,7 @@ static const char *glsl_fragment_src =
     "uniform sampler2D uSplatLayer2;\n"
     "uniform sampler2D uSplatLayer3;\n"
     "uniform vec4 uSplatScales;\n"
+    "uniform float uCustomParams[8];\n"
     "float sampleShadow(vec3 worldPos) {\n"
     "    if (uShadowEnabled == 0) return 1.0;\n"
     "    vec4 lc = uShadowVP * vec4(worldPos, 1.0);\n"
@@ -885,10 +902,15 @@ static const char *glsl_fragment_src =
     "            continue;\n"
     "        }\n"
     "        float NdotL = max(dot(N, L), 0.0);\n"
+    "        if (uShadingModel == 1) {\n"
+    "            float bands = max(uCustomParams[0], 2.0);\n"
+    "            NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+    "        }\n"
     "        result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * atten;\n"
     "        if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
     "            vec3 H = normalize(L + V);\n"
     "            float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
+    "            if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? 1.0 : 0.0;\n"
     "            result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
     "        }\n"
     "    }\n"
@@ -897,6 +919,15 @@ static const char *glsl_fragment_src =
     "        vec3 R = reflect(-V, N);\n"
     "        vec3 envColor = texture(uEnvMap, R).rgb;\n"
     "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
+    "    }\n"
+    "    if (uShadingModel == 4) {\n"
+    "        float ndv = clamp(dot(N, V), 0.0, 1.0);\n"
+    "        float power = max(uCustomParams[0], 1.0);\n"
+    "        float bias = uCustomParams[1];\n"
+    "        finalAlpha *= clamp(pow(1.0 - ndv, power) + bias, 0.0, 1.0);\n"
+    "    } else if (uShadingModel == 5) {\n"
+    "        float strength = max(uCustomParams[0], 1.0);\n"
+    "        result += emissive * (strength - 1.0);\n"
     "    }\n"
     "    if (uFogEnabled != 0) {\n"
     "        float dist = length(uCameraPos - vWorldPos);\n"
@@ -1586,9 +1617,87 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
     }
 }
 
-static void prepare_mesh_buffers(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
+static void gl_destroy_mesh_cache(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < GL_MESH_CACHE_CAPACITY; i++) {
+        if (ctx->mesh_cache[i].vbo)
+            gl.DeleteBuffers(1, &ctx->mesh_cache[i].vbo);
+        if (ctx->mesh_cache[i].ibo)
+            gl.DeleteBuffers(1, &ctx->mesh_cache[i].ibo);
+        memset(&ctx->mesh_cache[i], 0, sizeof(ctx->mesh_cache[i]));
+    }
+}
+
+static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
+                                         const vgfx3d_draw_cmd_t *cmd,
+                                         GLuint *out_vbo,
+                                         GLuint *out_ibo) {
+    gl_mesh_cache_entry_t *slot = NULL;
+    gl_mesh_cache_entry_t *oldest = NULL;
+
+    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->geometry_key || cmd->geometry_revision == 0)
+        return 0;
+
+    for (int32_t i = 0; i < GL_MESH_CACHE_CAPACITY; i++) {
+        gl_mesh_cache_entry_t *entry = &ctx->mesh_cache[i];
+        if (entry->key == cmd->geometry_key) {
+            slot = entry;
+            break;
+        }
+        if (!entry->key && !slot)
+            slot = entry;
+        if (!oldest || entry->last_used_frame < oldest->last_used_frame)
+            oldest = entry;
+    }
+
+    if (!slot)
+        slot = oldest;
+    if (!slot)
+        return 0;
+
+    if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
+        slot->vertex_count != cmd->vertex_count || slot->index_count != cmd->index_count ||
+        !slot->vbo || !slot->ibo) {
+        size_t vbytes;
+        size_t ibytes;
+
+        if (slot->vbo)
+            gl.DeleteBuffers(1, &slot->vbo);
+        if (slot->ibo)
+            gl.DeleteBuffers(1, &slot->ibo);
+        memset(slot, 0, sizeof(*slot));
+
+        gl.GenBuffers(1, &slot->vbo);
+        gl.GenBuffers(1, &slot->ibo);
+        vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
+        ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
+        gl.BindBuffer(GL_ARRAY_BUFFER, slot->vbo);
+        gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)vbytes, cmd->vertices, GL_STATIC_DRAW);
+        gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, slot->ibo);
+        gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)ibytes, cmd->indices, GL_STATIC_DRAW);
+
+        slot->key = cmd->geometry_key;
+        slot->revision = cmd->geometry_revision;
+        slot->vertex_count = cmd->vertex_count;
+        slot->index_count = cmd->index_count;
+    }
+
+    slot->last_used_frame = ctx->frame_serial;
+    *out_vbo = slot->vbo;
+    *out_ibo = slot->ibo;
+    return 1;
+}
+
+static void prepare_mesh_buffers(gl_context_t *ctx,
+                                 const vgfx3d_draw_cmd_t *cmd,
+                                 GLuint *out_vbo,
+                                 GLuint *out_ibo) {
     size_t vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
     size_t ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
+
+    if (gl_lookup_cached_mesh_buffers(ctx, cmd, out_vbo, out_ibo))
+        return;
 
     ensure_buffer_capacity(GL_ARRAY_BUFFER,
                            ctx->mesh_vbo,
@@ -1607,6 +1716,8 @@ static void prepare_mesh_buffers(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd
                            GL_STREAM_DRAW);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
     gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, (GLsizeiptr)ibytes, cmd->indices);
+    *out_vbo = ctx->mesh_vbo;
+    *out_ibo = ctx->mesh_ibo;
 }
 
 static void set_identity_instance_constants(void) {
@@ -1636,11 +1747,11 @@ static void set_identity_instance_constants(void) {
     gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-static void configure_mesh_attributes(gl_context_t *ctx) {
+static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo) {
     GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
     gl.BindVertexArray(ctx->vao);
-    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
-    gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
+    gl.BindBuffer(GL_ARRAY_BUFFER, mesh_vbo);
+    gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_ibo);
     gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
     gl.EnableVertexAttribArray(0);
     gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void *)12);
@@ -1892,6 +2003,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
+    gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
+    gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevInstanceMatrices, cmd->has_prev_instance_matrices ? 1 : 0);
@@ -2112,6 +2225,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uEmissiveColor);
     U(uAlpha);
     U(uUnlit);
+    U(uShadingModel);
     U(uLightCount);
     U(uHasTexture);
     U(uHasNormalMap);
@@ -2119,6 +2233,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasEmissiveMap);
     U(uHasEnvMap);
     U(uReflectivity);
+    U(uCustomParams);
     U(uHasSplat);
     U(uFogEnabled);
     U(uFogNear);
@@ -2475,6 +2590,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
 
     texture_cache_destroy(ctx);
+    gl_destroy_mesh_cache(ctx);
     destroy_scene_targets(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
@@ -2541,6 +2657,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     if (!ctx || !cam)
         return;
 
+    ctx->frame_serial++;
     ctx->shadow_active = 0;
     if (ctx->prev_vp_valid)
         memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
@@ -2567,17 +2684,31 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     bind_main_framebuffer(ctx);
 
     if (ctx->rtt_active) {
-        gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
-        gl.ClearDepth(1.0);
-        gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        GLbitfield clear_mask = 0;
+        if (!cam->load_existing_color) {
+            gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
+            clear_mask |= GL_COLOR_BUFFER_BIT;
+        }
+        if (!cam->load_existing_depth) {
+            gl.ClearDepth(1.0);
+            clear_mask |= GL_DEPTH_BUFFER_BIT;
+        }
+        if (clear_mask)
+            gl.Clear(clear_mask);
     } else {
-        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
-        gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
-        gl.ClearDepth(1.0);
-        gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        gl.DrawBuffer(GL_COLOR_ATTACHMENT1);
-        gl.ClearColor(0.5f, 0.5f, 0.0f, 1.0f);
-        gl.Clear(GL_COLOR_BUFFER_BIT);
+        if (!cam->load_existing_color) {
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+            gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
+            gl.Clear(GL_COLOR_BUFFER_BIT);
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT1);
+            gl.ClearColor(0.5f, 0.5f, 0.0f, 1.0f);
+            gl.Clear(GL_COLOR_BUFFER_BIT);
+        }
+        if (!cam->load_existing_depth) {
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+            gl.ClearDepth(1.0);
+            gl.Clear(GL_DEPTH_BUFFER_BIT);
+        }
         {
             const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
             gl.DrawBuffers(2, attachments);
@@ -2605,6 +2736,7 @@ static void gl_submit_draw(void *ctx_ptr,
                            int8_t backface_cull) {
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    GLuint mesh_vbo, mesh_ibo;
     if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
 
@@ -2618,8 +2750,8 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
-    prepare_mesh_buffers(ctx, cmd);
-    configure_mesh_attributes(ctx);
+    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
 }
 
@@ -2742,10 +2874,11 @@ static void gl_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32_t 
 
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    GLuint mesh_vbo, mesh_ibo;
     if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
-    prepare_mesh_buffers(ctx, cmd);
-    configure_mesh_attributes(ctx);
+    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
     gl.UniformMatrix4fv(ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp);
     bind_shadow_anim(ctx, cmd);
@@ -2774,6 +2907,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
                                      int8_t backface_cull) {
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    GLuint mesh_vbo, mesh_ibo;
     if (!ctx || !cmd || !instance_matrices || instance_count <= 0)
         return;
 
@@ -2787,8 +2921,8 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
-    prepare_mesh_buffers(ctx, cmd);
-    configure_mesh_attributes(ctx);
+    prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     configure_instance_attributes(ctx,
                                   instance_matrices,
                                   cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices : NULL,

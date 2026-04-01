@@ -67,6 +67,7 @@ static constexpr uint64_t kShfInfoLink = 0x40;
 static constexpr uint8_t kStbLocal = 0;
 static constexpr uint8_t kStbGlobal = 1;
 static constexpr uint8_t kSttNotype = 0;
+static constexpr uint8_t kSttObject = 1;
 static constexpr uint8_t kSttFunc = 2;
 static constexpr uint8_t kSttSection = 3;
 static constexpr uint8_t kStvDefault = 0;
@@ -98,6 +99,18 @@ static constexpr uint16_t kSecNoteGnuStack = 7;
 // kNumSections is computed dynamically in write() based on whether debug data is present.
 
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
+
+static uint8_t elfSymbolType(const Symbol &sym) {
+    switch (sym.section) {
+        case SymbolSection::Text:
+            return kSttFunc;
+        case SymbolSection::Rodata:
+            return kSttObject;
+        case SymbolSection::Undefined:
+        default:
+            return kSttNotype;
+    }
+}
 
 /// Map RelocKind to ELF relocation type.
 static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
@@ -319,7 +332,7 @@ bool ElfWriter::write(const std::string &path,
     // Write local symbols first.
     for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = (ps.sym->section == SymbolSection::Undefined) ? kSttNotype : kSttFunc;
+        uint8_t type = elfSymbolType(*ps.sym);
         writeSym(symtabBytes,
                  nameOff,
                  (kStbLocal << 4) | type,
@@ -341,7 +354,8 @@ bool ElfWriter::write(const std::string &path,
     uint32_t elfGlobalIdx = elfLocalCount;
     for (const auto &ps : pendingGlobals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = (ps.sym->binding == SymbolBinding::External) ? kSttNotype : kSttFunc;
+        uint8_t type =
+            (ps.sym->binding == SymbolBinding::External) ? kSttNotype : elfSymbolType(*ps.sym);
         uint16_t shndx = (ps.sym->binding == SymbolBinding::External) ? kShnUndef : ps.shndx;
         uint64_t value = (ps.sym->binding == SymbolBinding::External)
                              ? 0
@@ -684,7 +698,7 @@ bool ElfWriter::write(const std::string &path,
     // Write local symbols first (ELF requires locals before globals).
     for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = (ps.sym->section == SymbolSection::Undefined) ? kSttNotype : kSttFunc;
+        uint8_t type = elfSymbolType(*ps.sym);
         writeSym(symtabBytes,
                  nameOff,
                  (kStbLocal << 4) | type,
@@ -717,7 +731,7 @@ bool ElfWriter::write(const std::string &path,
         uint32_t nameOff = strtab.add(ps.sym->name);
         writeSym(symtabBytes,
                  nameOff,
-                 (kStbGlobal << 4) | kSttFunc,
+                 (kStbGlobal << 4) | elfSymbolType(*ps.sym),
                  kStvDefault,
                  ps.shndx,
                  static_cast<uint64_t>(ps.sym->offset),

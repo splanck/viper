@@ -444,7 +444,7 @@ void A64BinaryEncoder::encodeSpOffsetStore(
         return;
     }
 
-    const uint32_t scratch = hwGPR(PhysReg::X16);
+    const uint32_t scratch = hwGPR(kScratchGPR2);
     emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
     if (offset > 0)
         emitAddSubImmSmart(kAddRI, scratch, scratch, static_cast<uint32_t>(offset), cs);
@@ -682,8 +682,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 // cmn = adds XZR, Xn, #(-imm)
                 emit32(encodeAddSubImm(kAddsRI, 31, rn, static_cast<uint32_t>(-imm)), cs);
             } else {
-                // Large: movz x16, #imm; cmp Xn, x16
-                uint32_t scratch = hwGPR(PhysReg::X16);
+                // Large: materialize the immediate into the reserved secondary scratch.
+                uint32_t scratch = hwGPR(kScratchGPR2);
                 encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
                 emit32(encode3Reg(kSubsRRR, 31, rn, scratch), cs);
             }

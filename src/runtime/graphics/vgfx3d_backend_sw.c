@@ -369,7 +369,7 @@ static void compute_lighting(pipe_vert_t *v,
         b += cmd->emissive_color[2] * (strength - 1.0f);
         break;
     }
-    default: /* 0=BlinnPhong (already computed), 2=PBR (GPU-only), 3=Unlit (handled above) */
+    default: /* 0=BlinnPhong (already computed), 2=reserved, 3=Unlit (handled above) */
         break;
     }
 

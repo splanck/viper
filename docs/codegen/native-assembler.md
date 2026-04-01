@@ -74,9 +74,11 @@ The native assembler has three layers:
 | x86_64 | COFF | Windows | Complete |
 | AArch64 | ELF | Linux | Complete |
 | AArch64 | Mach-O | macOS | Complete |
-| AArch64 | COFF | Windows | Complete |
+| AArch64 | COFF | Windows | Object emission only |
 
-All 6 combinations ({x86_64, AArch64} × {ELF, Mach-O, COFF}) are implemented.
+All 6 object-file combinations ({x86_64, AArch64} × {ELF, Mach-O, COFF}) are implemented.
+End-to-end native executable linking remains incomplete on Windows ARM64 because the PE startup,
+import, and unwind path is still x86_64-specific.
 
 ---
 

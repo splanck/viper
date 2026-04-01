@@ -225,6 +225,45 @@ static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *tar
     return 0;
 }
 
+static void scene_mesh_bounds(rt_mesh3d *mesh,
+                              float out_min[3],
+                              float out_max[3],
+                              float *out_radius) {
+    if (!mesh) {
+        if (out_min)
+            out_min[0] = out_min[1] = out_min[2] = 0.0f;
+        if (out_max)
+            out_max[0] = out_max[1] = out_max[2] = 0.0f;
+        if (out_radius)
+            *out_radius = 0.0f;
+        return;
+    }
+    rt_mesh3d_refresh_bounds(mesh);
+    if (out_min) {
+        out_min[0] = mesh->aabb_min[0];
+        out_min[1] = mesh->aabb_min[1];
+        out_min[2] = mesh->aabb_min[2];
+    }
+    if (out_max) {
+        out_max[0] = mesh->aabb_max[0];
+        out_max[1] = mesh->aabb_max[1];
+        out_max[2] = mesh->aabb_max[2];
+    }
+    if (out_radius)
+        *out_radius = mesh->bsphere_radius;
+}
+
+static void scene_world_point(const double *world_matrix, const float local[3], float out[3]) {
+    if (!world_matrix || !local || !out)
+        return;
+    out[0] = (float)(world_matrix[0] * (double)local[0] + world_matrix[1] * (double)local[1] +
+                     world_matrix[2] * (double)local[2] + world_matrix[3]);
+    out[1] = (float)(world_matrix[4] * (double)local[0] + world_matrix[5] * (double)local[1] +
+                     world_matrix[6] * (double)local[2] + world_matrix[7]);
+    out[2] = (float)(world_matrix[8] * (double)local[0] + world_matrix[9] * (double)local[1] +
+                     world_matrix[10] * (double)local[2] + world_matrix[11]);
+}
+
 /// @brief Recursive depth-first search by name.
 extern const char *rt_string_cstr(rt_string s);
 
@@ -256,12 +295,40 @@ static void draw_node(rt_scene_node3d *node,
     recompute_world_matrix(node);
 
     int draw_self = 1;
+    void *draw_mesh = node->mesh;
+    float draw_min[3] = {0.0f, 0.0f, 0.0f};
+    float draw_max[3] = {0.0f, 0.0f, 0.0f};
+    float draw_radius = 0.0f;
+
+    if (draw_mesh) {
+        if (node->lod_count > 0 && cam_pos) {
+            float local_center[3];
+            float world_center[3];
+            scene_mesh_bounds((rt_mesh3d *)node->mesh, draw_min, draw_max, &draw_radius);
+            local_center[0] = 0.5f * (draw_min[0] + draw_max[0]);
+            local_center[1] = 0.5f * (draw_min[1] + draw_max[1]);
+            local_center[2] = 0.5f * (draw_min[2] + draw_max[2]);
+            scene_world_point(node->world_matrix, local_center, world_center);
+            {
+                float dx = world_center[0] - cam_pos[0];
+                float dy = world_center[1] - cam_pos[1];
+                float dz = world_center[2] - cam_pos[2];
+                float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+                for (int32_t l = node->lod_count - 1; l >= 0; l--) {
+                    if (dist >= (float)node->lod_levels[l].distance) {
+                        draw_mesh = node->lod_levels[l].mesh;
+                        break;
+                    }
+                }
+            }
+        }
+        scene_mesh_bounds((rt_mesh3d *)draw_mesh, draw_min, draw_max, &draw_radius);
+    }
 
     /* Frustum cull: test world-space AABB if the node has a mesh */
-    if (frustum && node->mesh && node->bsphere_radius > 0.0f) {
+    if (frustum && draw_mesh && draw_radius > 0.0f) {
         float world_min[3], world_max[3];
-        vgfx3d_transform_aabb(
-            node->aabb_min, node->aabb_max, node->world_matrix, world_min, world_max);
+        vgfx3d_transform_aabb(draw_min, draw_max, node->world_matrix, world_min, world_max);
         if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
             draw_self = 0;
             if (culled)
@@ -269,23 +336,9 @@ static void draw_node(rt_scene_node3d *node,
         }
     }
 
-    if (draw_self && node->mesh && node->material) {
-        const double *m = node->world_matrix;
-        /* LOD selection: pick mesh by distance from camera */
-        void *draw_mesh = node->mesh;
-        if (node->lod_count > 0 && cam_pos) {
-            float dx = (float)m[3] - cam_pos[0];
-            float dy = (float)m[7] - cam_pos[1];
-            float dz = (float)m[11] - cam_pos[2];
-            float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-            for (int32_t l = node->lod_count - 1; l >= 0; l--) {
-                if (dist >= (float)node->lod_levels[l].distance) {
-                    draw_mesh = node->lod_levels[l].mesh;
-                    break;
-                }
-            }
-        }
-        rt_canvas3d_draw_mesh_matrix_keyed(canvas3d, draw_mesh, m, node->material, node, NULL, NULL);
+    if (draw_self && draw_mesh && node->material) {
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas3d, draw_mesh, node->world_matrix, node->material, node, NULL, NULL);
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
@@ -518,14 +571,7 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
 
     /* Compute object-space AABB from mesh vertices */
     if (mesh) {
-        rt_mesh3d *m = (rt_mesh3d *)mesh;
-        vgfx3d_compute_mesh_aabb(
-            m->vertices, m->vertex_count, sizeof(vgfx3d_vertex_t), n->aabb_min, n->aabb_max);
-        /* Bounding sphere radius = half-diagonal of AABB */
-        float dx = n->aabb_max[0] - n->aabb_min[0];
-        float dy = n->aabb_max[1] - n->aabb_min[1];
-        float dz = n->aabb_max[2] - n->aabb_min[2];
-        n->bsphere_radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+        scene_mesh_bounds((rt_mesh3d *)mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
     } else {
         n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
         n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
@@ -638,7 +684,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     if (!obj || !canvas3d || !camera)
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
+    rt_canvas3d *canvas = (rt_canvas3d *)canvas3d;
     rt_camera3d *cam = (rt_camera3d *)camera;
+    int8_t started_frame = 0;
 
     /* Build VP matrix and extract frustum planes */
     float vf[16], pf[16], vp[16];
@@ -654,10 +702,19 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     vgfx3d_frustum_extract(&frustum, vp);
 
     int32_t culled = 0;
-    rt_canvas3d_begin(canvas3d, camera);
+    if (canvas->in_frame) {
+        if (canvas->frame_is_2d) {
+            rt_trap("Scene3D.Draw: cannot draw a 3D scene during Begin2D/End");
+            return;
+        }
+    } else {
+        rt_canvas3d_begin(canvas3d, camera);
+        started_frame = 1;
+    }
     float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
     draw_node(s->root, canvas3d, &frustum, &culled, cam_pos);
-    rt_canvas3d_end(canvas3d);
+    if (started_frame)
+        rt_canvas3d_end(canvas3d);
     s->last_culled_count = culled;
 }
 
@@ -726,33 +783,103 @@ void rt_scene_node3d_clear_lod(void *obj) {
 // Scene save/load (.vscn JSON format)
 //=============================================================================
 
+static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src, size_t src_len) {
+    char *nb;
+
+    if (!buf || !len || !cap || (!src && src_len > 0))
+        return 0;
+    while (*len + src_len + 1 > *cap) {
+        *cap = (*cap == 0) ? 4096 : *cap * 2;
+        nb = (char *)realloc(*buf, *cap);
+        if (!nb)
+            return 0;
+        *buf = nb;
+    }
+    if (src_len > 0)
+        memcpy(*buf + *len, src, src_len);
+    *len += src_len;
+    (*buf)[*len] = '\0';
+    return 1;
+}
+
 /// @brief Append a formatted string to a dynamic buffer.
 __attribute__((format(printf, 4, 5)))
-static void vscn_append(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
+static int vscn_append(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
     va_list ap;
+    char *nb;
     va_start(ap, fmt);
     int needed = vsnprintf(NULL, 0, fmt, ap);
     va_end(ap);
     if (needed < 0)
-        return;
+        return 0;
     while (*len + (size_t)needed + 1 > *cap) {
         *cap = (*cap == 0) ? 4096 : *cap * 2;
-        char *nb = (char *)realloc(*buf, *cap);
+        nb = (char *)realloc(*buf, *cap);
         if (!nb)
-            return;
+            return 0;
         *buf = nb;
     }
     va_start(ap, fmt);
     vsnprintf(*buf + *len, *cap - *len, fmt, ap);
     va_end(ap);
     *len += (size_t)needed;
+    return 1;
 }
 
-/// @brief Recursively serialize a scene node to JSON.
-static void vscn_serialize_node(rt_scene_node3d *node, char **buf, size_t *len, size_t *cap,
-                                 int depth) {
+static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const char *text) {
+    if (!vscn_append_raw(buf, len, cap, "\"", 1))
+        return 0;
+    if (text) {
+        for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+            char unicode_escape[7];
+            switch (*p) {
+                case '\"':
+                    if (!vscn_append_raw(buf, len, cap, "\\\"", 2))
+                        return 0;
+                    break;
+                case '\\':
+                    if (!vscn_append_raw(buf, len, cap, "\\\\", 2))
+                        return 0;
+                    break;
+                case '\b':
+                    if (!vscn_append_raw(buf, len, cap, "\\b", 2))
+                        return 0;
+                    break;
+                case '\f':
+                    if (!vscn_append_raw(buf, len, cap, "\\f", 2))
+                        return 0;
+                    break;
+                case '\n':
+                    if (!vscn_append_raw(buf, len, cap, "\\n", 2))
+                        return 0;
+                    break;
+                case '\r':
+                    if (!vscn_append_raw(buf, len, cap, "\\r", 2))
+                        return 0;
+                    break;
+                case '\t':
+                    if (!vscn_append_raw(buf, len, cap, "\\t", 2))
+                        return 0;
+                    break;
+                default:
+                    if (*p < 0x20u) {
+                        snprintf(unicode_escape, sizeof(unicode_escape), "\\u%04x", (unsigned)*p);
+                        if (!vscn_append_raw(buf, len, cap, unicode_escape, 6))
+                            return 0;
+                    } else if (!vscn_append_raw(buf, len, cap, (const char *)p, 1)) {
+                        return 0;
+                    }
+                    break;
+            }
+        }
+    }
+    return vscn_append_raw(buf, len, cap, "\"", 1);
+}
+
+static int vscn_serialize_node(rt_scene_node3d *node, char **buf, size_t *len, size_t *cap,
+                                int depth) {
     if (!node)
-        return;
+        return 1;
     char indent[64];
     int id = depth * 2;
     if (id > 60)
@@ -764,27 +891,34 @@ static void vscn_serialize_node(rt_scene_node3d *node, char **buf, size_t *len, 
     if (!name)
         name = "node";
 
-    vscn_append(buf, len, cap, "%s{\n", indent);
-    vscn_append(buf, len, cap, "%s  \"name\": \"%s\",\n", indent, name);
-    vscn_append(buf, len, cap, "%s  \"position\": [%.6f, %.6f, %.6f],\n", indent,
-                node->position[0], node->position[1], node->position[2]);
-    vscn_append(buf, len, cap, "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n", indent,
-                node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
-    vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f]", indent,
-                node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2]);
-
-    if (node->child_count > 0) {
-        vscn_append(buf, len, cap, ",\n%s  \"children\": [\n", indent);
-        for (int32_t i = 0; i < node->child_count; i++) {
-            vscn_serialize_node(node->children[i], buf, len, cap, depth + 2);
-            if (i < node->child_count - 1)
-                vscn_append(buf, len, cap, ",");
-            vscn_append(buf, len, cap, "\n");
-        }
-        vscn_append(buf, len, cap, "%s  ]", indent);
+    if (!vscn_append(buf, len, cap, "%s{\n", indent) ||
+        !vscn_append(buf, len, cap, "%s  \"name\": ", indent) ||
+        !vscn_append_json_string(buf, len, cap, name) ||
+        !vscn_append(buf, len, cap, ",\n%s  \"position\": [%.6f, %.6f, %.6f],\n", indent,
+                     node->position[0], node->position[1], node->position[2]) ||
+        !vscn_append(buf, len, cap, "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n", indent,
+                     node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]) ||
+        !vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f]", indent,
+                     node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2])) {
+        return 0;
     }
 
-    vscn_append(buf, len, cap, "\n%s}", indent);
+    if (node->child_count > 0) {
+        if (!vscn_append(buf, len, cap, ",\n%s  \"children\": [\n", indent))
+            return 0;
+        for (int32_t i = 0; i < node->child_count; i++) {
+            if (!vscn_serialize_node(node->children[i], buf, len, cap, depth + 2))
+                return 0;
+            if (i < node->child_count - 1 && !vscn_append(buf, len, cap, ","))
+                return 0;
+            if (!vscn_append(buf, len, cap, "\n"))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, "%s  ]", indent))
+            return 0;
+    }
+
+    return vscn_append(buf, len, cap, "\n%s}", indent);
 }
 
 int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
@@ -801,29 +935,48 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     char *buf = NULL;
     size_t len = 0, cap = 0;
 
-    vscn_append(&buf, &len, &cap, "{\n");
-    vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n");
-    vscn_append(&buf, &len, &cap, "  \"version\": 1,\n");
-    vscn_append(&buf, &len, &cap, "  \"nodes\": [\n");
+    if (!vscn_append(&buf, &len, &cap, "{\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": 1,\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"nodes\": [\n")) {
+        free(buf);
+        return 0;
+    }
 
     // Serialize root's children (root itself is implicit)
     for (int32_t i = 0; i < scene->root->child_count; i++) {
-        vscn_serialize_node(scene->root->children[i], &buf, &len, &cap, 2);
-        if (i < scene->root->child_count - 1)
-            vscn_append(&buf, &len, &cap, ",");
-        vscn_append(&buf, &len, &cap, "\n");
+        if (!vscn_serialize_node(scene->root->children[i], &buf, &len, &cap, 2) ||
+            (i < scene->root->child_count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
+            !vscn_append(&buf, &len, &cap, "\n")) {
+            free(buf);
+            return 0;
+        }
     }
 
-    vscn_append(&buf, &len, &cap, "  ]\n");
-    vscn_append(&buf, &len, &cap, "}\n");
+    if (!vscn_append(&buf, &len, &cap, "  ]\n") || !vscn_append(&buf, &len, &cap, "}\n")) {
+        free(buf);
+        return 0;
+    }
 
-    FILE *f = fopen(filepath, "w");
+    FILE *f = fopen(filepath, "wb");
     if (!f) {
         free(buf);
         return 0;
     }
-    fwrite(buf, 1, len, f);
-    fclose(f);
+    size_t written = 0;
+    while (written < len) {
+        size_t chunk = fwrite(buf + written, 1, len - written, f);
+        if (chunk == 0) {
+            fclose(f);
+            free(buf);
+            return 0;
+        }
+        written += chunk;
+    }
+    if (fflush(f) != 0 || fclose(f) != 0) {
+        free(buf);
+        return 0;
+    }
     free(buf);
     return 1;
 }

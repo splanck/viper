@@ -75,6 +75,9 @@ void *rt_mesh3d_new(void) {
     m->morph_deltas = NULL;
     m->morph_weights = NULL;
     m->morph_shape_count = 0;
+    m->morph_targets_ref = NULL;
+    m->geometry_revision = 1;
+    rt_mesh3d_reset_bounds(m);
     if (!m->vertices || !m->indices) {
         free(m->vertices);
         free(m->indices);
@@ -95,6 +98,9 @@ void rt_mesh3d_clear(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
     m->vertex_count = 0;
     m->index_count = 0;
+    m->morph_targets_ref = NULL;
+    rt_mesh3d_touch_geometry(m);
+    rt_mesh3d_reset_bounds(m);
 }
 
 void rt_mesh3d_add_vertex(
@@ -127,6 +133,7 @@ void rt_mesh3d_add_vertex(
     vt->color[1] = 1.0f;
     vt->color[2] = 1.0f;
     vt->color[3] = 1.0f;
+    rt_mesh3d_touch_geometry(m);
 }
 
 /// @brief Add the triangle of the mesh3d.
@@ -153,6 +160,7 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     m->indices[m->index_count++] = (uint32_t)v0;
     m->indices[m->index_count++] = (uint32_t)v1;
     m->indices[m->index_count++] = (uint32_t)v2;
+    rt_mesh3d_touch_geometry(m);
 }
 
 /// @brief Return the count of elements in the mesh3d.
@@ -221,6 +229,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
             n[2] /= len;
         }
     }
+    rt_mesh3d_touch_geometry(m);
 }
 
 void *rt_mesh3d_clone(void *obj) {
@@ -261,6 +270,17 @@ void *rt_mesh3d_clone(void *obj) {
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
+    dst->morph_targets_ref = src->morph_targets_ref;
+    dst->geometry_revision = src->geometry_revision;
+    dst->aabb_min[0] = src->aabb_min[0];
+    dst->aabb_min[1] = src->aabb_min[1];
+    dst->aabb_min[2] = src->aabb_min[2];
+    dst->aabb_max[0] = src->aabb_max[0];
+    dst->aabb_max[1] = src->aabb_max[1];
+    dst->aabb_max[2] = src->aabb_max[2];
+    dst->bsphere_radius = src->bsphere_radius;
+    dst->bounds_dirty = src->bounds_dirty;
+    rt_mesh3d_refresh_bounds(dst);
 
     return dst;
 }
@@ -301,6 +321,8 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             n[2] /= len;
         }
     }
+    rt_mesh3d_touch_geometry(m);
+    rt_mesh3d_refresh_bounds(m);
 }
 
 /* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
@@ -485,7 +507,8 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
  *
  * Supports: v, vn, vt, f (v, v/vt, v/vt/vn, v//vn), # comments,
  *           negative indices, quad auto-triangulation.
- * Does NOT support: .mtl materials, groups, smooth shading directives.
+ * Viper-specific limitation: geometry-only import. Authored OBJ material/group
+ * splits must be pre-flattened before reaching this runtime loader.
  *=========================================================================*/
 
 /* Parse one integer from a face index string, advancing *p past it.
@@ -608,6 +631,7 @@ void rt_mesh3d_calc_tangents(void *obj) {
             t[2] = 0.0f;
         }
     }
+    rt_mesh3d_touch_geometry(m);
 }
 
 //=============================================================================
@@ -627,6 +651,8 @@ typedef struct {
     char map_ks[512];
 } obj_mtl_entry_t;
 
+static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count)
+    __attribute__((unused));
 static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count) {
     *count = 0;
     FILE *f = fopen(mtl_path, "r");
@@ -715,42 +741,6 @@ static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *coun
     fclose(f);
 }
 
-/// @brief Create an rt_material3d from an .mtl entry, loading textures relative to obj_dir.
-static void *obj_mtl_to_material(const obj_mtl_entry_t *mtl, const char *obj_dir)
-    __attribute__((unused));
-static void *obj_mtl_to_material(const obj_mtl_entry_t *mtl, const char *obj_dir) {
-    void *mat = rt_material3d_new();
-    if (!mat)
-        return NULL;
-    rt_material3d_set_color(mat, mtl->kd[0], mtl->kd[1], mtl->kd[2]);
-    rt_material3d_set_shininess(mat, (double)mtl->ns);
-    if (mtl->d < 1.0f)
-        rt_material3d_set_alpha(mat, (double)mtl->d);
-    char tex_path[1024];
-    if (mtl->map_kd[0]) {
-        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_kd);
-        rt_string rts = rt_const_cstr(tex_path);
-        void *px = rt_pixels_load(rts);
-        if (px)
-            rt_material3d_set_texture(mat, px);
-    }
-    if (mtl->map_bump[0]) {
-        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_bump);
-        rt_string rts = rt_const_cstr(tex_path);
-        void *px = rt_pixels_load(rts);
-        if (px)
-            rt_material3d_set_normal_map(mat, px);
-    }
-    if (mtl->map_ks[0]) {
-        snprintf(tex_path, sizeof(tex_path), "%s%s", obj_dir, mtl->map_ks);
-        rt_string rts = rt_const_cstr(tex_path);
-        void *px = rt_pixels_load(rts);
-        if (px)
-            rt_material3d_set_specular_map(mat, px);
-    }
-    return mat;
-}
-
 //=============================================================================
 // OBJ Loading (Wavefront)
 //=============================================================================
@@ -776,9 +766,6 @@ void *rt_mesh3d_from_obj(rt_string path) {
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
-
-    obj_mtl_entry_t mtl_entries[OBJ_MAX_MATERIALS];
-    int mtl_count = 0;
 
     void *mesh = rt_mesh3d_new();
     if (!mesh || !positions || !normals || !texcoords) {
@@ -904,46 +891,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
                 rt_mesh3d_add_triangle(
                     mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
             }
+        } else if (strncmp(p, "mtllib ", 7) == 0 || strncmp(p, "usemtl ", 7) == 0 ||
+                   strncmp(p, "g ", 2) == 0 || strncmp(p, "o ", 2) == 0) {
+            continue;
         }
-        else if (strncmp(p, "mtllib ", 7) == 0) {
-            // Parse the .mtl file for material definitions
-            // (Used by rt_obj_load for full material support; here we just parse
-            //  to keep the mtl_count for potential future use)
-            if (mtl_count == 0) {
-                p += 7;
-                while (*p == ' ' || *p == '\t')
-                    p++;
-                char mtl_name[512];
-                size_t mlen = strlen(p);
-                while (mlen > 0 && (p[mlen - 1] == '\n' || p[mlen - 1] == '\r'))
-                    mlen--;
-                if (mlen >= sizeof(mtl_name))
-                    mlen = sizeof(mtl_name) - 1;
-                memcpy(mtl_name, p, mlen);
-                mtl_name[mlen] = '\0';
-
-                // Resolve relative to OBJ directory
-                char mtl_path[1024];
-                const char *last_sep = strrchr(filepath, '/');
-                const char *last_bsep = strrchr(filepath, '\\');
-                if (last_bsep > last_sep)
-                    last_sep = last_bsep;
-                if (last_sep) {
-                    size_t dir_len = (size_t)(last_sep - filepath + 1);
-                    if (dir_len >= sizeof(mtl_path))
-                        dir_len = sizeof(mtl_path) - 1;
-                    memcpy(mtl_path, filepath, dir_len);
-                    mtl_path[dir_len] = '\0';
-                    strncat(mtl_path, mtl_name, sizeof(mtl_path) - dir_len - 1);
-                } else {
-                    strncpy(mtl_path, mtl_name, sizeof(mtl_path) - 1);
-                    mtl_path[sizeof(mtl_path) - 1] = '\0';
-                }
-
-                obj_parse_mtl(mtl_path, mtl_entries, &mtl_count);
-            }
-        }
-        /* Ignore: usemtl, s, g, o, etc. */
+        /* Ignore: s and other non-geometry directives. */
     }
 
     fclose(f);

@@ -32,11 +32,21 @@
 #include "rt_internal.h"
 #include "rt_string.h"
 #include <cassert>
+#include <csetjmp>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
+namespace {
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
@@ -234,6 +244,34 @@ static void test_mesh_obj_loader() {
     assert(m);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 12);
+    PASS();
+}
+
+static void test_mesh_obj_loader_flattens_material_groups() {
+    TEST("Mesh3D.FromOBJ — flattens material/group directives");
+    const char *path = "/tmp/viper_obj_material_group_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("mtllib test.mtl\n"
+          "o Mesh\n"
+          "g Front\n"
+          "v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n"
+          "vt 0 0\n"
+          "vt 1 0\n"
+          "vt 0 1\n"
+          "vn 0 0 1\n"
+          "usemtl Material0\n"
+          "f 1/1/1 2/2/1 3/3/1\n",
+          f);
+    fclose(f);
+
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    void *mesh = rt_mesh3d_from_obj(obj_path);
+    assert(mesh);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
     PASS();
 }
 
@@ -1196,6 +1234,7 @@ int main() {
     test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
+    test_mesh_obj_loader_flattens_material_groups();
 
     /* Mesh3D — extended */
     test_mesh_many_vertices();

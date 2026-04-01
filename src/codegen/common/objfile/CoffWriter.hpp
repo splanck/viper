@@ -37,6 +37,11 @@ class CoffWriter : public ObjectFileWriter {
                const CodeSection &rodata,
                std::ostream &err) override;
 
+    bool write(const std::string &path,
+               const std::vector<CodeSection> &textSections,
+               const CodeSection &rodata,
+               std::ostream &err) override;
+
   private:
     ObjArch arch_;
 };

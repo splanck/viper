@@ -12,7 +12,7 @@
 // Key invariants:
 //   - build() must be called before any take/release operations.
 //   - Callee-saved usage arrays are indexed by PhysReg ordinal.
-//   - GPR pool never hands out X9 (global scratch), X18, X29, X30, or SP.
+//   - GPR pool never hands out X9/X16 (global scratch), X18, X29, X30, or SP.
 // Ownership/Lifetime:
 //   - Owned by the LinearAllocator; one RegPools per allocation run.
 // Links: docs/codemap.md

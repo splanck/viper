@@ -34,7 +34,51 @@ bool isWindowsTlsSubsection(const std::string &name) {
     return name.rfind(".tls", 0) == 0;
 }
 
+uint64_t imageBaseForPlatform(LinkPlatform platform) {
+    switch (platform) {
+        case LinkPlatform::macOS:
+            return 0x100000000ULL;
+        case LinkPlatform::Windows:
+            return 0x140000000ULL;
+        case LinkPlatform::Linux:
+        default:
+            return 0x400000ULL;
+    }
+}
+
+int permClass(const OutputSection &s) {
+    if (!s.alloc)
+        return 4; // Non-alloc sections (debug) sort last.
+    if (s.executable)
+        return 0;
+    if (s.tls)
+        return 3;
+    if (s.writable)
+        return 2;
+    return 1; // readonly
+}
+
 } // namespace
+
+void assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform) {
+    uint64_t currentAddr = imageBaseForPlatform(platform) + layout.pageSize;
+    int prevClass = -1;
+    for (auto &sec : layout.sections) {
+        if (!sec.alloc)
+            continue;
+        const int cls = permClass(sec);
+        if (platform == LinkPlatform::Windows) {
+            currentAddr = alignUp(currentAddr, layout.pageSize);
+            prevClass = cls;
+        } else if (cls != prevClass) {
+            currentAddr = alignUp(currentAddr, layout.pageSize);
+            prevClass = cls;
+        }
+        currentAddr = alignUp(currentAddr, sec.alignment);
+        sec.virtualAddr = currentAddr;
+        currentAddr += sec.data.size();
+    }
+}
 
 bool mergeSections(const std::vector<ObjFile> &objects,
                    LinkPlatform platform,
@@ -368,39 +412,6 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     }
 
     // Assign virtual addresses.
-    uint64_t baseAddr;
-    switch (platform) {
-        case LinkPlatform::macOS:
-            baseAddr = 0x100000000ULL;
-            break;
-        case LinkPlatform::Windows:
-            baseAddr = 0x140000000ULL;
-            break;
-        case LinkPlatform::Linux:
-        default:
-            baseAddr = 0x400000ULL;
-            break;
-    }
-
-    uint64_t currentAddr = baseAddr;
-    // Skip first page (null page / __PAGEZERO).
-    currentAddr += layout.pageSize;
-
-    // Permission class: only page-align when switching between segments
-    // (executable → readonly → writable → TLS). Within a segment, sections
-    // pack tightly with only their natural alignment respected.
-    auto permClass = [](const OutputSection &s) -> int {
-        if (!s.alloc)
-            return 4; // Non-alloc sections (debug) sort last.
-        if (s.executable)
-            return 0;
-        if (s.tls)
-            return 3;
-        if (s.writable)
-            return 2;
-        return 1; // readonly
-    };
-
     // Sort sections by permission class before VA assignment.
     // ObjC metadata sections are appended after the standard sections above,
     // but their permission class (writable vs readonly) must be respected so
@@ -410,32 +421,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // the Mach-O executable (SIGKILL on macOS ARM64).
     std::stable_sort(layout.sections.begin(),
                      layout.sections.end(),
-                     [&permClass](const OutputSection &a, const OutputSection &b) {
+                     [](const OutputSection &a, const OutputSection &b) {
                          return permClass(a) < permClass(b);
                      });
 
-    int prevClass = -1;
-    for (auto &sec : layout.sections) {
-        if (!sec.alloc)
-            continue; // Non-alloc sections (debug) have no VA.
-        int cls = permClass(sec);
-        if (platform == LinkPlatform::Windows) {
-            // PE section headers must start on SectionAlignment boundaries.
-            // Packing multiple output sections into one 4KB page produces an
-            // invalid image once the PE writer emits one section header per
-            // OutputSection.
-            currentAddr = alignUp(currentAddr, layout.pageSize);
-            prevClass = cls;
-        } else if (cls != prevClass) {
-            // Segment boundary — page-align.
-            currentAddr = alignUp(currentAddr, layout.pageSize);
-            prevClass = cls;
-        }
-        // Respect section's internal alignment.
-        currentAddr = alignUp(currentAddr, sec.alignment);
-        sec.virtualAddr = currentAddr;
-        currentAddr += sec.data.size();
-    }
+    assignSectionVirtualAddresses(layout, platform);
 
     return true;
 }

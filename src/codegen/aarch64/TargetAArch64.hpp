@@ -170,8 +170,15 @@ inline constexpr std::size_t kMaxGPRArgs = 8;
 /// @brief Maximum number of FPR arguments passed in registers (v0-v7).
 inline constexpr std::size_t kMaxFPRArgs = 8;
 
-/// @brief Scratch register for codegen (not used for allocation, safe to clobber).
+/// @brief Primary scratch register for codegen (not used for allocation, safe to clobber).
 inline constexpr PhysReg kScratchGPR = PhysReg::X9;
+
+/// @brief Secondary scratch register for post-RA helper sequences.
+///
+/// Some late emission paths need a second temporary while @c kScratchGPR holds
+/// either the base value or a materialized immediate. Reserve IP0 globally so
+/// those helpers never clobber an allocated value.
+inline constexpr PhysReg kScratchGPR2 = PhysReg::X16;
 
 /// @brief Scratch FPR register for codegen (not used for allocation).
 inline constexpr PhysReg kScratchFPR = PhysReg::V16;

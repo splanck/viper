@@ -13,6 +13,7 @@ set(_linker_tests
         reloc_edge_cases
         elf_exe_writer
         linker_integration
+        native_linker
         icf
         branch_trampoline
         debug_sections)

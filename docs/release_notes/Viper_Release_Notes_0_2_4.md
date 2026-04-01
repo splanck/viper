@@ -16,6 +16,7 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, language featu
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
 - **Video Playback** — MJPEG/AVI video decoder with `VideoPlayer` runtime class (Open/Play/Pause/Stop/Seek/Update), MJPEG DHT injection for AVI compatibility, AVI RIFF container parser, Theora codec infrastructure (header parsing, YCbCr 4:2:0→RGB conversion, OGG multi-stream demux), GUI `VideoWidget` for Viper.GUI applications, and Image widget paint fix for the GUI library.
+- **Graphics Backend Hardening** — Generation-aware texture/cubemap caching across all 4 backends (Metal/D3D11/OpenGL/SW), Canvas3D window resize handling, GPU screenshot readback, InstanceBatch3D memory safety, Mesh3D inverse-transpose normal transform, Pixels mutation tracking, and macOS default application menu.
 - **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
@@ -41,9 +42,9 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, language featu
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 57 | +57 |
-| Source files | 2,671 | 2,796 | +125 |
-| Production SLOC | ~348K | ~404K | +56K |
+| Commits | — | 65 | +65 |
+| Source files | 2,671 | 2,785 | +114 |
+| Production SLOC | ~348K | ~405K | +57K |
 | Test count | 1,351 | 1,382 | +31 |
 
 ---
@@ -308,6 +309,74 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 
 ---
 
+### Graphics Backend Hardening
+
+Cross-backend improvements to texture caching, Canvas3D robustness, instanced rendering safety, and mesh normal transformations.
+
+#### Generation-Aware Texture Caching
+
+All GPU backends (Metal, D3D11, OpenGL) now track a `generation` counter on `Pixels` and `CubeMap3D` objects. Every in-place mutation (Set, Fill, Clear, Copy, DrawBox, DrawDisc, FloodFill, BlendPixel, etc.) bumps the generation via `pixels_touch()`. GPU texture caches compare the stored generation against the current value — if they match, the cached GPU texture is reused; if stale, the texture is re-uploaded in place without allocating a new GPU resource. This replaces per-frame cache invalidation and fixes the "modified texture not updating on screen" bug class across all backends.
+
+- `rt_pixels_internal.h`: `uint64_t generation` field added to `rt_pixels_impl`, `pixels_touch()` inline helper
+- `vgfx3d_backend_utils.c/h`: `vgfx3d_get_pixels_generation()`, `vgfx3d_get_cubemap_generation()` (max across 6 faces)
+- Metal: `VGFXMetalTextureCacheEntry` / `VGFXMetalCubemapCacheEntry` classes with generation field
+- D3D11: `d3d_tex_cache_entry_t` / `d3d_cubemap_cache_entry_t` with generation field, stale SRV release + recreation
+- OpenGL: `gl_texture_cache_entry_t` / `gl_cubemap_cache_entry_t` with generation field, in-place `glTexImage2D` update
+
+#### Canvas3D Improvements
+
+- **Window resize handling** — `vgfx_set_resize_callback()` propagates OS resize events to Canvas3D, which updates its width/height and calls `backend->resize()`. Resize events from `Poll()` also handled.
+- **Screenshot GPU readback** — `rt_canvas3d_screenshot()` now supports three paths: render target color buffer direct copy, GPU backend readback via `backend->readback_rgba()`, and software framebuffer fallback. Previously only the software framebuffer path existed.
+
+#### InstanceBatch3D Memory Safety
+
+- **Allocation hardening** — `realloc` for `transforms`/`current_snapshot`/`prev_transforms` arrays replaced with `calloc` + `memcpy` + `free` pattern. If any allocation fails, all three are freed and the add is aborted (no partial state corruption).
+- **Swap-remove correctness** — `rt_instbatch3d_remove()` now copies `current_snapshot` and `prev_transforms` slots alongside `transforms` during swap-remove, preventing stale motion data from persisting in the wrong instance slot. Snapshot/prev counts reset when the removed instance was within tracked range but its replacement was not.
+
+#### Mesh3D Normal Transform
+
+`rt_mesh3d_transform()` now uses the inverse-transpose of the upper 3x3 model matrix for normal transformation (via `vgfx3d_compute_normal_matrix4()`), replacing the previous incorrect direct-multiply approach. This fixes lighting artifacts on non-uniformly scaled meshes.
+
+#### Metal Backend Enhancements
+
+- **Skybox pipeline** — Dedicated `skyboxPipeline` render pipeline state with depth test enabled but depth write disabled, separate `skyboxDepthState`, pre-built `skyboxVertexBuffer` (36-vertex unit cube). Skybox drawn first in render pass before scene geometry.
+- **Cubemap sampler** — Separate `cubeSampler` with linear min/mag/mip filtering for environment maps. `defaultCubemap` (1x1 black) serves as fallback when no cubemap is bound.
+- **Separate view/projection matrices** — `_view[16]` and `_projection[16]` stored alongside combined `_vp[16]` for shader passes that need individual matrices (e.g., skybox strips translation from view).
+
+#### macOS Default Application Menu
+
+New `VGFXMacAppMenuDispatcher` class and `vgfx_macos_build_default_app_menu()` in `vgfx_platform_macos.m` (218 LOC). When a ViperGFX window is created, a standard macOS application menu is automatically generated with:
+
+- About (`orderFrontStandardAboutPanel:`)
+- Separator
+- Services submenu
+- Separator
+- Hide (`Cmd+H`), Hide Others (`Cmd+Alt+H`), Show All
+- Separator
+- Quit (`Cmd+Q`) via `quitApplication:` which posts a `VGFX_EVENT_CLOSE` instead of hard-terminating
+
+The app name is resolved from the window title, `CFBundleName`, or process name (in that order).
+
+#### New Tests
+
+- `test_rt_instterrain` — InstanceBatch3D + Terrain3D integration (46 LOC)
+- `test_rt_canvas3d` — Canvas3D screenshot and resize handling (25 LOC added)
+- `test_rt_canvas3d_gpu_paths` — GPU backend readback and texture cache invalidation (49 LOC added)
+- `test_vgfx3d_backend_utils` — Pixels generation tracking, cubemap generation (28 LOC added)
+
+---
+
+### Game Engine Documentation
+
+New `/docs/gameengine/` documentation section providing topical game engine guides organized by game development topic (not by runtime namespace):
+
+- **README.md** — Landing page with quick start code (Zia + BASIC), feature summary table (17 systems), topical guide links (Rendering/Gameplay/Presentation/Infrastructure), 15-game example gallery, and API reference cross-links
+- **getting-started.md** — Progressive 5-step tutorial building a paddle-bounce game from zero (window → movement → ball physics → sound → screen effects)
+- **architecture.md** — System layer diagram, data flow per frame, zero-dependency manifesto, GPU backend selection, source code layout
+- **examples/README.md** — Gallery of all 15 example games with engine feature coverage matrix
+
+---
+
 ### New Game Runtime Classes
 
 Five additions to the `Viper.Game` namespace:
@@ -442,6 +511,7 @@ Comprehensive overhaul with 10 improvements:
 - **Clang-format** — `BreakBeforeBraces` switched from Allman to Attach across all 2,669 source files
 - **SLOC script** — `scripts/count_sloc.sh` with `--summary`, `--subsystem`, `--all`, `--json` modes
 - **3D architecture docs** — Metal shader feature table, backend parity matrix, terrain splat pipeline, D3D11 backend guide
+- **Game engine documentation** — New `/docs/gameengine/` section with landing page (feature table, quick start, topical guide links), getting-started tutorial (5-step paddle game in Zia + BASIC), architecture overview (system layers, data flow, zero-dependency design), and example games gallery (15 games with feature coverage matrix). `/docs/README.md` updated with Game Engine section.
 
 ---
 
@@ -571,3 +641,10 @@ Eight new demo programs in `examples/apiaudit/graphics3d/`:
 - Zia `List[Object].Push()` emitted wrong extern arity for user-defined class instances
 - GUI menubar accelerator table leaked on destroy (missing free loop in `menubar_destroy`)
 - macOS key equivalents (Cmd+N, F5) not consumed by native menu bar — arrow keys triggered system beep for unhandled navigation
+- GPU texture caches (Metal/D3D11/OpenGL) served stale textures when Pixels content was modified in-place — generation-based invalidation now detects mutations across all backends
+- InstanceBatch3D `realloc` could leave partial state (transforms allocated, snapshot NULL) on allocation failure — replaced with `calloc`+copy+free pattern that aborts cleanly
+- InstanceBatch3D swap-remove only moved `transforms` array, leaving `current_snapshot` and `prev_transforms` pointing at the removed instance's data — now copies all three arrays
+- Mesh3D `rt_mesh3d_transform()` used direct model matrix multiply for normals, producing incorrect lighting on non-uniformly scaled meshes — now uses inverse-transpose of upper 3x3
+- Canvas3D `rt_canvas3d_screenshot()` returned NULL when using a GPU backend (only software framebuffer path existed) — now supports render target readback and `backend->readback_rgba()` GPU path
+- Canvas3D did not propagate OS window resize events — added resize callback and `VGFX_EVENT_RESIZE` handling in `Poll()`
+- macOS ViperGFX windows had no application menu (no About, no Cmd+Q) — default app menu now generated automatically with standard items

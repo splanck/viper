@@ -8,7 +8,7 @@
 // File: tests/codegen/linker/test_branch_trampoline.cpp
 // Purpose: Unit tests for AArch64 branch trampoline insertion.
 // Key invariants:
-//   - Out-of-range Branch26 gets a trampoline appended to .text
+//   - Out-of-range Branch26 gets a trampoline inserted at a reachable text boundary
 //   - In-range branches are untouched
 //   - x86_64 is a no-op
 //   - Multiple branches to same target share one trampoline
@@ -46,6 +46,15 @@ static void check(bool cond, const char *msg, int line) {
 static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+static size_t countInsn(const std::vector<uint8_t> &data, uint32_t word) {
+    size_t count = 0;
+    for (size_t off = 0; off + 4 <= data.size(); off += 4) {
+        if (readLE32(data.data() + off) == word)
+            ++count;
+    }
+    return count;
 }
 
 /// Helper: create a minimal ObjFile with a .text section containing code.
@@ -261,12 +270,13 @@ int main() {
             // Should grow by 12 bytes (one trampoline).
             const size_t baseSize = 4 + 140 * 1024 * 1024 + 4;
             CHECK(layout.sections[0].data.size() >= baseSize + 12);
+            CHECK(countInsn(layout.sections[0].data, 0xD61F0200) == 1);
 
-            // Verify BR x16 at trampoline offset+8.
-            size_t tramOff = layout.sections[0].data.size() - 12;
-            const uint8_t *tramp = layout.sections[0].data.data() + tramOff;
-            uint32_t brInsn = readLE32(tramp + 8);
-            CHECK(brInsn == 0xD61F0200);
+            std::unordered_set<std::string> dynamicSyms;
+            std::ostringstream relocErr;
+            CHECK(applyRelocations(
+                objs, layout, dynamicSyms, LinkPlatform::Linux, LinkArch::AArch64, relocErr));
+            CHECK(relocErr.str().empty());
         }
     }
 
@@ -396,9 +406,8 @@ int main() {
             const size_t baseSize =
                 4 + 140 * 1024 * 1024 + 4 + 4; // funcB + padding + funcA + funcC
             size_t growth = layout.sections[0].data.size() - baseSize;
-            // Should have exactly 12 extra bytes (one trampoline), not 24.
-            // Allow for alignment padding (up to 3 bytes).
-            CHECK(growth >= 12 && growth < 24);
+            CHECK(growth == 12);
+            CHECK(countInsn(layout.sections[0].data, 0xD61F0200) == 1);
         }
     }
 

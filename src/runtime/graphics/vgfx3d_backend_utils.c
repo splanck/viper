@@ -89,18 +89,19 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
 
 uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
-    uint64_t max_generation = 0;
+    uint64_t signature = 1469598103934665603ull;
+    int any_face = 0;
 
     if (!cubemap)
         return 0;
 
     for (int face = 0; face < 6; face++) {
         uint64_t generation = vgfx3d_get_pixels_generation(cubemap->faces[face]);
-        if (generation > max_generation)
-            max_generation = generation;
+        signature ^= generation + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+        any_face |= (cubemap->faces[face] != NULL);
     }
 
-    return max_generation;
+    return any_face ? signature : 0;
 }
 
 void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {

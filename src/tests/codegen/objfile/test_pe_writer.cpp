@@ -96,6 +96,22 @@ LinkLayout makeMinimalLayout() {
     return layout;
 }
 
+LinkLayout makeMinimalArm64Layout() {
+    LinkLayout layout;
+    constexpr uint64_t kImageBase = 0x140000000ULL;
+
+    OutputSection text;
+    text.name = ".text";
+    text.alloc = true;
+    text.executable = true;
+    text.data = {0xC0, 0x03, 0x5F, 0xD6}; // arm64 ret
+    text.virtualAddr = kImageBase + 0x1000;
+    layout.sections.push_back(std::move(text));
+
+    layout.entryAddr = kImageBase + 0x1000;
+    return layout;
+}
+
 LinkLayout makeTlsLayout() {
     constexpr uint64_t kImageBase = 0x140000000ULL;
 
@@ -250,6 +266,23 @@ TEST(PeWriter, CoffHeaderMachineX64) {
     uint16_t machine = readU16(data, peOffset + 4);
     // IMAGE_FILE_MACHINE_AMD64 = 0x8664
     EXPECT_EQ(machine, 0x8664);
+}
+
+TEST(PeWriter, CoffHeaderMachineArm64) {
+    auto layout = makeMinimalArm64Layout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_coff_arm64.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::AArch64, {}, err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    ASSERT_LT(peOffset + 24, data.size());
+
+    uint16_t machine = readU16(data, peOffset + 4);
+    EXPECT_EQ(machine, 0xAA64);
 }
 
 TEST(PeWriter, OptionalHeaderPE32Plus) {

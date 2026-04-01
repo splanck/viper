@@ -416,6 +416,52 @@ static void testRodataSection() {
     std::remove(path.c_str());
 }
 
+static void testRodataSymbolType() {
+    CodeSection text, rodata;
+    text.emit8(0xC3);
+
+    rodata.defineSymbol("const_data", SymbolBinding::Global, SymbolSection::Rodata);
+    const char bytes[] = "abc";
+    rodata.emitBytes(bytes, sizeof(bytes));
+
+    std::string path = "/tmp/viper_test_rodata_symbol.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    bool ok = writer.write(path, text, rodata, errStream);
+    CHECK(ok);
+
+    auto data = readFile(path);
+    uint64_t shoff = readLE64(data, 40);
+    size_t symHdr = static_cast<size_t>(shoff) + 4 * 64;
+    size_t strHdr = static_cast<size_t>(shoff) + 5 * 64;
+
+    uint64_t symOff = readLE64(data, symHdr + 24);
+    uint64_t symSize = readLE64(data, symHdr + 32);
+    uint64_t symEntSize = readLE64(data, symHdr + 56);
+    uint64_t strOff = readLE64(data, strHdr + 24);
+    uint64_t strSize = readLE64(data, strHdr + 32);
+
+    std::string strtab(reinterpret_cast<const char *>(data.data() + static_cast<size_t>(strOff)),
+                       static_cast<size_t>(strSize));
+
+    bool found = false;
+    for (size_t off = static_cast<size_t>(symOff); off < symOff + symSize; off += symEntSize) {
+        uint32_t nameOff = readLE32(data, off);
+        if (nameOff >= strtab.size())
+            continue;
+        const char *name = strtab.c_str() + nameOff;
+        if (std::string(name) != "const_data")
+            continue;
+        found = true;
+        CHECK((data[off + 4] & 0x0F) == 1); // STT_OBJECT
+        break;
+    }
+    CHECK(found);
+
+    std::remove(path.c_str());
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -425,6 +471,7 @@ int main() {
     testFactory();
     testSectionNames();
     testRodataSection();
+    testRodataSymbolType();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";

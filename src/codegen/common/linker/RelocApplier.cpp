@@ -23,6 +23,7 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace viper::codegen::linker {
 
@@ -46,6 +47,23 @@ static void writeLE64(uint8_t *p, uint64_t v) {
 static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+static bool writeCheckedRel32(uint8_t *patch,
+                              int64_t value,
+                              const ObjFile &obj,
+                              const std::string &symName,
+                              const char *kind,
+                              std::ostream &err) {
+    if (value < std::numeric_limits<int32_t>::min() || value > std::numeric_limits<int32_t>::max()) {
+        err << "error: " << obj.name << ": " << kind << " relocation out of range";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    writeLE32(patch, static_cast<uint32_t>(static_cast<int32_t>(value)));
+    return true;
 }
 
 static bool findSectionByAddr(const LinkLayout &layout, uint64_t addr, size_t &outSecIdx) {
@@ -288,7 +306,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                 : static_cast<int64_t>(rel.type - coff_x64::kRel32);
                         const int64_t val = static_cast<int64_t>(S) + A -
                                             static_cast<int64_t>(P) - 4 - extraBias;
-                        writeLE32(patch, static_cast<uint32_t>(val));
+                        if (!writeCheckedRel32(patch, val, obj, symName, "COFF REL32", err))
+                            return false;
                         continue;
                     }
                 }
@@ -298,7 +317,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                 switch (action) {
                     case RelocAction::PCRel32: {
                         int64_t val = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
-                        writeLE32(patch, static_cast<uint32_t>(val));
+                        if (!writeCheckedRel32(patch, val, obj, symName, "PC-relative", err))
+                            return false;
                         break;
                     }
                     case RelocAction::Abs64: {

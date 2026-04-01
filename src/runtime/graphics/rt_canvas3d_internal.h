@@ -22,6 +22,8 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "vgfx.h"
+#include "vgfx3d_frustum.h"
+#include <math.h>
 #include <float.h>
 #include <stdint.h>
 
@@ -61,7 +63,55 @@ typedef struct {
     const float *morph_weights; /* shape_count floats */
     const float *prev_morph_weights; /* previous-frame weights for motion blur */
     int32_t morph_shape_count;
+    float aabb_min[3];
+    float aabb_max[3];
+    float bsphere_radius;
+    int8_t bounds_dirty;
+    void *morph_targets_ref;    /* attached MorphTarget3D (or NULL) */
+    uint32_t geometry_revision; /* increments when CPU geometry changes */
 } rt_mesh3d;
+
+static inline void rt_mesh3d_reset_bounds(rt_mesh3d *mesh) {
+    if (!mesh)
+        return;
+    mesh->aabb_min[0] = mesh->aabb_min[1] = mesh->aabb_min[2] = 0.0f;
+    mesh->aabb_max[0] = mesh->aabb_max[1] = mesh->aabb_max[2] = 0.0f;
+    mesh->bsphere_radius = 0.0f;
+    mesh->bounds_dirty = 0;
+}
+
+static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
+    if (mesh)
+        mesh->bounds_dirty = 1;
+}
+
+static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
+    if (!mesh)
+        return;
+    mesh->bounds_dirty = 1;
+    if (mesh->geometry_revision == UINT32_MAX)
+        mesh->geometry_revision = 1;
+    else
+        mesh->geometry_revision++;
+}
+
+static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
+    if (!mesh || !mesh->bounds_dirty)
+        return;
+    if (!mesh->vertices || mesh->vertex_count == 0) {
+        rt_mesh3d_reset_bounds(mesh);
+        return;
+    }
+    vgfx3d_compute_mesh_aabb(
+        mesh->vertices, mesh->vertex_count, sizeof(vgfx3d_vertex_t), mesh->aabb_min, mesh->aabb_max);
+    {
+        float dx = mesh->aabb_max[0] - mesh->aabb_min[0];
+        float dy = mesh->aabb_max[1] - mesh->aabb_min[1];
+        float dz = mesh->aabb_max[2] - mesh->aabb_min[2];
+        mesh->bsphere_radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+    }
+    mesh->bounds_dirty = 0;
+}
 
 //=============================================================================
 // Camera3D
@@ -106,7 +156,7 @@ typedef struct {
     void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
     double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
-    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
 
@@ -176,8 +226,12 @@ typedef struct {
 
     /* Frame state */
     int8_t in_frame;         /* 1 = between Begin/End */
+    int8_t frame_is_2d;      /* 1 = active frame uses orthographic 2D projection */
     float cached_vp[16];     /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3]; /* camera position cached for sort key computation */
+    float last_scene_vp[16]; /* most recent 3D VP matrix (preserved across 2D passes) */
+    float last_scene_cam_pos[3];
+    int8_t has_last_scene_vp;
 
     /* Deferred draw command queue (for transparency sorting) */
     void *draw_cmds; /* dynamic array of deferred_draw_t */
@@ -266,6 +320,13 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
+                                       void *mesh_obj,
+                                       void *material_obj,
+                                       const float *instance_matrices,
+                                       int32_t instance_count,
+                                       const float *prev_instance_matrices,
+                                       int8_t has_prev_instance_matrices);
 int64_t rt_canvas3d_get_frame_serial(void *obj);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

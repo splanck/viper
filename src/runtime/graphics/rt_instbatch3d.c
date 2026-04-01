@@ -34,6 +34,7 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
+extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 #define INST_INIT_CAP 64
 
@@ -56,6 +57,23 @@ static void instbatch_copy_matrix_slot(float *dst, int32_t dst_idx, const float 
     if (!dst || !src || dst_idx < 0 || src_idx < 0)
         return;
     memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
+}
+
+static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
+                                      const float mesh_min[3],
+                                      const float mesh_max[3],
+                                      const float *model_matrix) {
+    double world_matrix[16];
+    float world_min[3];
+    float world_max[3];
+
+    if (!frustum || !mesh_min || !mesh_max || !model_matrix)
+        return 1;
+
+    for (int i = 0; i < 16; i++)
+        world_matrix[i] = (double)model_matrix[i];
+    vgfx3d_transform_aabb(mesh_min, mesh_max, world_matrix, world_min, world_max);
+    return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
 }
 
 static void instbatch_finalizer(void *obj) {
@@ -213,139 +231,79 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     rt_mesh3d *mesh = (rt_mesh3d *)b->mesh;
     if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
+    rt_mesh3d_refresh_bounds(mesh);
+
+    float mesh_min[3] = {mesh->aabb_min[0], mesh->aabb_min[1], mesh->aabb_min[2]};
+    float mesh_max[3] = {mesh->aabb_max[0], mesh->aabb_max[1], mesh->aabb_max[2]};
+    vgfx3d_frustum_t frustum;
+    vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
     /* Build draw command from batch mesh/material */
     rt_material3d *mat = (rt_material3d *)b->material;
 
-    /* Try GPU instanced path if the backend supports it (MTL-13) */
-    if (c->backend->submit_draw_instanced) {
-        if (b->last_motion_frame != rt_canvas3d_get_frame_serial(canvas_obj)) {
-            if (b->motion_snapshot_count > 0) {
-                memcpy(b->prev_transforms,
-                       b->current_snapshot,
-                       (size_t)b->motion_snapshot_count * 16 * sizeof(float));
-                b->prev_count = b->motion_snapshot_count;
-                b->has_prev_snapshot = 1;
-            }
-            memcpy(b->current_snapshot, b->transforms, (size_t)b->instance_count * 16 * sizeof(float));
-            b->motion_snapshot_count = b->instance_count;
-            b->last_motion_frame = rt_canvas3d_get_frame_serial(canvas_obj);
+    if (b->last_motion_frame != rt_canvas3d_get_frame_serial(canvas_obj)) {
+        if (b->motion_snapshot_count > 0) {
+            memcpy(b->prev_transforms,
+                   b->current_snapshot,
+                   (size_t)b->motion_snapshot_count * 16 * sizeof(float));
+            b->prev_count = b->motion_snapshot_count;
+            b->has_prev_snapshot = 1;
         }
-        vgfx3d_draw_cmd_t cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.vertices = mesh->vertices;
-        cmd.vertex_count = mesh->vertex_count;
-        cmd.indices = mesh->indices;
-        cmd.index_count = mesh->index_count;
-        /* Use identity model matrix — per-instance transforms in instance buffer */
-        cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] =
-            cmd.model_matrix[15] = 1.0f;
-        cmd.diffuse_color[0] = (float)mat->diffuse[0];
-        cmd.diffuse_color[1] = (float)mat->diffuse[1];
-        cmd.diffuse_color[2] = (float)mat->diffuse[2];
-        cmd.diffuse_color[3] = (float)mat->diffuse[3];
-        cmd.specular[0] = (float)mat->specular[0];
-        cmd.specular[1] = (float)mat->specular[1];
-        cmd.specular[2] = (float)mat->specular[2];
-        cmd.shininess = (float)mat->shininess;
-        cmd.alpha = (float)mat->alpha;
-        cmd.unlit = mat->unlit;
-        cmd.texture = mat->texture;
-        cmd.normal_map = mat->normal_map;
-        cmd.specular_map = mat->specular_map;
-        cmd.emissive_map = mat->emissive_map;
-        cmd.emissive_color[0] = (float)mat->emissive[0];
-        cmd.emissive_color[1] = (float)mat->emissive[1];
-        cmd.emissive_color[2] = (float)mat->emissive[2];
-        cmd.env_map = mat->env_map;
-        cmd.reflectivity = (float)mat->reflectivity;
-        cmd.prev_instance_matrices =
-            (b->has_prev_snapshot && b->prev_count == b->instance_count) ? b->prev_transforms : NULL;
-        cmd.has_prev_instance_matrices =
-            (cmd.prev_instance_matrices && b->instance_count > 0) ? 1 : 0;
-
-        vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
-        int32_t lc = 0;
-        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++) {
-            const rt_light3d *l = c->lights[li];
-            if (!l)
-                continue;
-            lp[lc].type = l->type;
-            lp[lc].direction[0] = (float)l->direction[0];
-            lp[lc].direction[1] = (float)l->direction[1];
-            lp[lc].direction[2] = (float)l->direction[2];
-            lp[lc].position[0] = (float)l->position[0];
-            lp[lc].position[1] = (float)l->position[1];
-            lp[lc].position[2] = (float)l->position[2];
-            lp[lc].color[0] = (float)l->color[0];
-            lp[lc].color[1] = (float)l->color[1];
-            lp[lc].color[2] = (float)l->color[2];
-            lp[lc].intensity = (float)l->intensity;
-            lp[lc].attenuation = (float)l->attenuation;
-            lp[lc].inner_cos = (float)l->inner_cos;
-            lp[lc].outer_cos = (float)l->outer_cos;
-            lc++;
-        }
-        c->backend->submit_draw_instanced(
-            c->backend_ctx, c->gfx_win, &cmd,
-            b->transforms, b->instance_count,
-            lp, lc, c->ambient, c->wireframe, c->backface_cull);
-        return;
+        memcpy(b->current_snapshot, b->transforms, (size_t)b->instance_count * 16 * sizeof(float));
+        b->motion_snapshot_count = b->instance_count;
+        b->last_motion_frame = rt_canvas3d_get_frame_serial(canvas_obj);
     }
 
-    /* Software fallback: issue N individual draw calls */
-    for (int32_t i = 0; i < b->instance_count; i++) {
-        /* Convert float[16] back to a Mat4 object for DrawMesh */
-        float *src = &b->transforms[i * 16];
-
-        /* Build a draw command using the existing submit_draw path */
-        vgfx3d_draw_cmd_t cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.vertices = mesh->vertices;
-        cmd.vertex_count = mesh->vertex_count;
-        cmd.indices = mesh->indices;
-        cmd.index_count = mesh->index_count;
-
-        /* Model matrix from instance transform */
-        memcpy(cmd.model_matrix, src, 16 * sizeof(float));
-
-        /* Material properties */
-        cmd.diffuse_color[0] = (float)mat->diffuse[0];
-        cmd.diffuse_color[1] = (float)mat->diffuse[1];
-        cmd.diffuse_color[2] = (float)mat->diffuse[2];
-        cmd.diffuse_color[3] = (float)mat->alpha;
-        cmd.shininess = (float)mat->shininess;
-        cmd.alpha = (float)mat->alpha;
-        cmd.unlit = mat->unlit;
-        cmd.texture = mat->texture;
-        cmd.emissive_map = mat->emissive_map;
-        cmd.emissive_color[0] = (float)mat->emissive[0];
-        cmd.emissive_color[1] = (float)mat->emissive[1];
-        cmd.emissive_color[2] = (float)mat->emissive[2];
-
-        /* Build light params from pointer array (same as rt_canvas3d_draw_mesh) */
-        vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
-        int32_t lc = 0;
-        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++) {
-            const rt_light3d *l = c->lights[li];
-            if (!l)
-                continue;
-            lp[lc].type = l->type;
-            lp[lc].direction[0] = (float)l->direction[0];
-            lp[lc].direction[1] = (float)l->direction[1];
-            lp[lc].direction[2] = (float)l->direction[2];
-            lp[lc].position[0] = (float)l->position[0];
-            lp[lc].position[1] = (float)l->position[1];
-            lp[lc].position[2] = (float)l->position[2];
-            lp[lc].color[0] = (float)l->color[0];
-            lp[lc].color[1] = (float)l->color[1];
-            lp[lc].color[2] = (float)l->color[2];
-            lp[lc].intensity = (float)l->intensity;
-            lp[lc].attenuation = (float)l->attenuation;
-            lc++;
+    {
+        const float *submit_transforms = b->transforms;
+        const float *submit_prev = (b->has_prev_snapshot && b->prev_count == b->instance_count)
+                                       ? b->prev_transforms
+                                       : NULL;
+        int8_t has_prev = submit_prev ? 1 : 0;
+        int32_t submit_count = b->instance_count;
+        if (mesh->bsphere_radius > 0.0f && b->instance_count > 0) {
+            float *visible_transforms =
+                (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
+            float *visible_prev =
+                has_prev ? (float *)malloc((size_t)b->instance_count * 16u * sizeof(float)) : NULL;
+            if (visible_transforms && (!has_prev || visible_prev)) {
+                int32_t visible_count = 0;
+                for (int32_t i = 0; i < b->instance_count; i++) {
+                    const float *src = &b->transforms[(size_t)i * 16u];
+                    if (!instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
+                        continue;
+                    memcpy(&visible_transforms[(size_t)visible_count * 16u], src, 16u * sizeof(float));
+                    if (visible_prev) {
+                        memcpy(&visible_prev[(size_t)visible_count * 16u],
+                               &submit_prev[(size_t)i * 16u],
+                               16u * sizeof(float));
+                    }
+                    visible_count++;
+                }
+                if (visible_count == 0) {
+                    free(visible_transforms);
+                    free(visible_prev);
+                    return;
+                }
+                if (visible_count < b->instance_count) {
+                    rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
+                    if (visible_prev)
+                        rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev);
+                    submit_transforms = visible_transforms;
+                    submit_prev = visible_prev;
+                    submit_count = visible_count;
+                    has_prev = visible_prev ? 1 : 0;
+                } else {
+                    free(visible_transforms);
+                    free(visible_prev);
+                }
+            } else {
+                free(visible_transforms);
+                free(visible_prev);
+            }
         }
-        c->backend->submit_draw(
-            c->backend_ctx, c->gfx_win, &cmd, lp, lc, c->ambient, c->wireframe, c->backface_cull);
+        rt_canvas3d_queue_instanced_batch(
+            canvas_obj, mesh, mat, submit_transforms, submit_count, submit_prev, has_prev);
     }
 }
 

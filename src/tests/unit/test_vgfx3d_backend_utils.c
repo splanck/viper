@@ -149,6 +149,8 @@ static void test_generation_helpers(void) {
         {1, 1, &data, 9}, {1, 1, &data, 3}, {1, 1, &data, 5},
     };
     fake_cubemap_t cubemap = {0};
+    uint64_t base_generation;
+    uint64_t mutated_generation;
 
     for (int i = 0; i < 6; i++)
         cubemap.faces[i] = &faces[i];
@@ -156,8 +158,19 @@ static void test_generation_helpers(void) {
 
     EXPECT_TRUE(vgfx3d_get_pixels_generation(&faces[1]) == 4,
                 "Pixels generation helper exposes the object generation");
-    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) == 9,
-                "Cubemap generation helper returns the max face generation");
+    base_generation = vgfx3d_get_cubemap_generation(&cubemap);
+    EXPECT_TRUE(base_generation != 0,
+                "Cubemap generation helper returns a non-zero signature for populated cubemaps");
+
+    faces[0].generation = 11;
+    mutated_generation = vgfx3d_get_cubemap_generation(&cubemap);
+    EXPECT_TRUE(mutated_generation != base_generation,
+                "Cubemap generation signature changes when a non-max face mutates");
+
+    faces[0].generation = 1;
+    faces[4].generation = 12;
+    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) != base_generation,
+                "Cubemap generation signature depends on per-face generations, not just their max");
 }
 
 static void test_compute_normal_matrix_inverse_transpose(void) {

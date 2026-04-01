@@ -37,8 +37,14 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
-extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
+                                               void *mesh,
+                                               const double *model_matrix,
+                                               void *material,
+                                               const void *motion_key,
+                                               const float *prev_bone_palette,
+                                               const float *prev_morph_weights);
 
 #define VGFX3D_MAX_MORPH_SHAPES 32
 
@@ -241,24 +247,34 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
 }
 
 /*==========================================================================
- * Mesh integration (placeholder — morph targets passed at draw time)
+ * Mesh integration
  *=========================================================================*/
 
-/// @brief Set the morph targets of the mesh3d.
 void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
-    (void)mesh;
-    (void)morph_targets;
-    /* Morph target reference stored conceptually. In practice, morph targets
-     * are passed directly to DrawMeshMorphed at draw time. */
+    if (!mesh)
+        return;
+    rt_mesh3d *m = (rt_mesh3d *)mesh;
+    if (!morph_targets) {
+        m->morph_targets_ref = NULL;
+        return;
+    }
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)morph_targets;
+    if ((int32_t)m->vertex_count != mt->vertex_count)
+        return;
+    m->morph_targets_ref = morph_targets;
 }
 
 /*==========================================================================
  * CPU morph application + drawing
  *=========================================================================*/
 
-void rt_canvas3d_draw_mesh_morphed(
-    void *canvas, void *mesh, void *transform, void *material, void *morph_targets) {
-    if (!canvas || !mesh || !transform || !material || !morph_targets)
+static void morphtarget_draw_mesh_matrix(void *canvas,
+                                         void *mesh,
+                                         const double *model_matrix,
+                                         void *material,
+                                         const void *motion_key,
+                                         void *morph_targets) {
+    if (!canvas || !mesh || !model_matrix || !material || !morph_targets)
         return;
 
     rt_mesh3d *m = (rt_mesh3d *)mesh;
@@ -328,9 +344,9 @@ void rt_canvas3d_draw_mesh_morphed(
         tmp.morph_shape_count = mt->shape_count;
         rt_canvas3d_draw_mesh_matrix_keyed(canvas,
                                            &tmp,
-                                           ((mat4_impl *)transform)->m,
+                                           model_matrix,
                                            material,
-                                           transform,
+                                           motion_key,
                                            NULL,
                                            prev_weights);
         return;
@@ -391,7 +407,24 @@ void rt_canvas3d_draw_mesh_morphed(
     /* Submit via normal draw pipeline */
     rt_mesh3d tmp = *m;
     tmp.vertices = morphed;
-    rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+    rt_canvas3d_draw_mesh_matrix_keyed(canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+}
+
+void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
+                                          void *mesh,
+                                          const double *model_matrix,
+                                          void *material,
+                                          const void *motion_key,
+                                          void *morph_targets) {
+    morphtarget_draw_mesh_matrix(canvas, mesh, model_matrix, material, motion_key, morph_targets);
+}
+
+void rt_canvas3d_draw_mesh_morphed(
+    void *canvas, void *mesh, void *transform, void *material, void *morph_targets) {
+    if (!transform)
+        return;
+    morphtarget_draw_mesh_matrix(
+        canvas, mesh, ((mat4_impl *)transform)->m, material, transform, morph_targets);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

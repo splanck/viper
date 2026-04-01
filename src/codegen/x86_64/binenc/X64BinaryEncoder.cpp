@@ -32,7 +32,9 @@
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <cassert>
+#include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <optional>
@@ -74,6 +76,17 @@ static const OpLabel &labelFromOperand(const Operand &op) {
 
 static const OpRipLabel &ripFromOperand(const Operand &op) {
     return std::get<OpRipLabel>(op);
+}
+
+static int32_t checkedRel32(int64_t disp, const char *context) {
+    if (disp < std::numeric_limits<int32_t>::min() || disp > std::numeric_limits<int32_t>::max()) {
+        throw std::runtime_error(std::string(context) + " rel32 displacement out of range");
+    }
+    return static_cast<int32_t>(disp);
+}
+
+static bool isInternalBranchOpcode(MOpcode op) {
+    return op == MOpcode::JMP || op == MOpcode::JCC;
 }
 
 static uint8_t win64RegNumber(PhysReg reg) {
@@ -214,17 +227,81 @@ static void recordWin64Unwind(const MFunction &fn,
 
 // === Public entry point ===
 
+size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
+                                                const LabelOffsetMap &knownLabelOffsets,
+                                                bool isDarwin) {
+    X64BinaryEncoder measureEncoder;
+    measureEncoder.labelOffsets_ = knownLabelOffsets;
+
+    objfile::CodeSection text, rodata;
+    measureEncoder.encodeInstructionImpl(instr, text, rodata, isDarwin);
+    return text.currentOffset();
+}
+
+X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn,
+                                                                               bool isDarwin) {
+    LabelOffsetMap estimated;
+
+    size_t relaxCandidates = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (isInternalBranchOpcode(instr.opcode))
+                ++relaxCandidates;
+        }
+    }
+
+    const size_t maxIterations = std::max<size_t>(2, relaxCandidates + 1);
+    for (size_t iter = 0; iter < maxIterations; ++iter) {
+        bool changed = false;
+        LabelOffsetMap known = estimated;
+        LabelOffsetMap next;
+        next.reserve(estimated.size() + fn.blocks.size());
+
+        auto assignLabel = [&](const std::string &name, size_t offset) {
+            auto prevIt = estimated.find(name);
+            if (prevIt == estimated.end() || prevIt->second != offset)
+                changed = true;
+            known[name] = offset;
+            next[name] = offset;
+        };
+
+        size_t offset = 0;
+        for (const auto &block : fn.blocks) {
+            assignLabel(block.label, offset);
+
+            for (const auto &instr : block.instructions) {
+                if (instr.opcode == MOpcode::LABEL) {
+                    assignLabel(labelFromOperand(instr.operands[0]).name, offset);
+                    continue;
+                }
+                offset += measureInstructionSize(instr, known, isDarwin);
+            }
+        }
+
+        if (!changed && next.size() == estimated.size())
+            return next;
+        estimated = std::move(next);
+    }
+
+    return estimated;
+}
+
 void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
                                       bool isDarwin,
                                       const FrameInfo *frame) {
     // Reset per-function state.
-    labelOffsets_.clear();
     pendingBranches_.clear();
 
     // Define the function symbol at the current text offset.
     const size_t funcStartOffset = text.currentOffset();
+    const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn, isDarwin);
+    labelOffsets_.clear();
+    labelOffsets_.reserve(relativeLabelOffsets.size());
+    for (const auto &[label, offset] : relativeLabelOffsets)
+        labelOffsets_[label] = funcStartOffset + offset;
+
     std::string symName = isDarwin ? ("_" + fn.name) : fn.name;
     const uint32_t funcSymIdx =
         text.defineSymbol(symName, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
@@ -252,8 +329,9 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
         auto it = labelOffsets_.find(pb.target);
         assert(it != labelOffsets_.end() && "unresolved internal branch target");
         // rel32 = target - (patchOffset + 4)
-        auto rel = static_cast<int32_t>(static_cast<int64_t>(it->second) -
-                                        static_cast<int64_t>(pb.patchOffset + 4));
+        const int64_t disp = static_cast<int64_t>(it->second) -
+                             static_cast<int64_t>(pb.patchOffset + 4);
+        const int32_t rel = checkedRel32(disp, "internal branch");
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
     }
 
@@ -973,11 +1051,11 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
                                          const std::string &label,
                                          int condCode,
                                          objfile::CodeSection &cs) {
-    // --- Short-form relaxation (backward JMP/JCC only) ---
+    // --- Short-form relaxation (any resolved internal JMP/JCC) ---
     // Short JMP  = 0xEB + rel8 (2 bytes, saves 3 over near form)
     // Short JCC  = 0x7x + rel8 (2 bytes, saves 4 over near form)
-    // Only for backward branches where the target offset is already known and
-    // the displacement fits in a signed byte [-128, 127].
+    // When the target offset is already known, use rel8 if the displacement
+    // fits in a signed byte [-128, 127].
     if (op == MOpcode::JMP || op == MOpcode::JCC) {
         auto it = labelOffsets_.find(label);
         if (it != labelOffsets_.end()) {
@@ -1027,8 +1105,9 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
     // Check if target is already known (backward branch, near form).
     auto it = labelOffsets_.find(label);
     if (it != labelOffsets_.end()) {
-        auto rel = static_cast<int32_t>(static_cast<int64_t>(it->second) -
-                                        static_cast<int64_t>(patchOffset + 4));
+        const int64_t disp =
+            static_cast<int64_t>(it->second) - static_cast<int64_t>(patchOffset + 4);
+        const int32_t rel = checkedRel32(disp, "branch");
         cs.patch32LE(patchOffset, static_cast<uint32_t>(rel));
     } else {
         // Forward branch — record for later patching.

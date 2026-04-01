@@ -23,7 +23,7 @@
 
 namespace viper::codegen::linker {
 
-static bool isKnownDynamicSymbol(const std::string &name);
+static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform);
 static bool preferArchiveDefinition(const std::string &name);
 
 /// Add symbols from a single object file into the global table.
@@ -37,6 +37,7 @@ static bool addObjSymbols(const ObjFile &obj,
                           size_t objIdx,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                           std::unordered_set<std::string> &undefined,
+                          LinkPlatform platform,
                           std::ostream &err) {
     for (size_t i = 1; i < obj.symbols.size(); ++i) {
         const auto &sym = obj.symbols[i];
@@ -64,7 +65,7 @@ static bool addObjSymbols(const ObjFile &obj,
         // shims for symbols that still need to be resolved dynamically. Let
         // those remain external imports instead of treating archive-local
         // definitions as link-time providers.
-        if (isKnownDynamicSymbol(sym.name) && !preferArchiveDefinition(sym.name))
+        if (isKnownDynamicSymbol(sym.name, platform) && !preferArchiveDefinition(sym.name))
             continue;
 
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
@@ -108,7 +109,7 @@ static bool addObjSymbols(const ObjFile &obj,
 }
 
 /// Known system/dynamic library symbols that won't be in archives.
-static bool isKnownDynamicSymbol(const std::string &name) {
+static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform) {
     // Common C library and platform functions (exact matches).
     static const char *const kDynSymExact[] = {
         // C library
@@ -380,52 +381,48 @@ static bool isKnownDynamicSymbol(const std::string &name) {
     }
 
     // Prefix-based matching for platform framework symbols.
-    static const char *const kDynSymPrefixes[] = {
-        // C library internal symbols
-        "__", // __libc_start_main, __stack_chk_fail, etc.
-        // macOS CoreFoundation
-        "CF",
-        "kCF",
-        // macOS CoreGraphics
-        "CG",
-        "kCG",
-        // macOS AppKit / Cocoa / Foundation
-        "NS",
-        // macOS IOKit
-        "IOKit",
-        "IOHID",
-        "IOService",
-        "IORegistryEntry",
-        // macOS ObjC runtime
-        "objc_",
-        "OBJC_",
-        "_objc_",
-        // macOS UniformTypeIdentifiers
-        "UTType",
-        "UTCopy",
-        // macOS AudioToolbox
-        "AudioQueue",
-        "AudioServices",
-        "AudioComponent",
-        // macOS Security
-        "Sec",
-        // macOS kernel/Mach
-        "mach_",
-        "task_",
-        "host_",
-        "vm_",
-        "kern_",
+    static const char *const kCommonDynPrefixes[] = {
+        "__libc_",
+        "__stack_chk_",
+    };
+    static const char *const kMacDynPrefixes[] = {
+        "CF",          "kCF",         "CG",         "kCG",         "NS",
+        "IOKit",       "IOHID",       "IOService",  "IORegistryEntry",
+        "objc_",       "OBJC_",       "_objc_",     "UTType",      "UTCopy",
+        "AudioQueue",  "AudioServices","AudioComponent",
+        "Sec",         "mach_",       "task_",      "host_",       "vm_",
+        "kern_",       "dispatch_",   "MTL",        "AudioObject", "AudioDevice",
+    };
+    static const char *const kWindowsDynPrefixes[] = {
         "__imp_",
-        // macOS dispatch (GCD)
-        "dispatch_",
-        // macOS Metal
-        "MTL",
-        // macOS CoreAudio
-        "AudioObject",
-        "AudioDevice",
     };
 
-    for (const char *prefix : kDynSymPrefixes) {
+    for (const char *prefix : kCommonDynPrefixes) {
+        size_t plen = 0;
+        while (prefix[plen] != '\0')
+            ++plen;
+        if (name.size() >= plen && name.compare(0, plen, prefix) == 0)
+            return true;
+    }
+
+    const char *const *platformPrefixes = nullptr;
+    size_t prefixCount = 0;
+    switch (platform) {
+        case LinkPlatform::macOS:
+            platformPrefixes = kMacDynPrefixes;
+            prefixCount = sizeof(kMacDynPrefixes) / sizeof(kMacDynPrefixes[0]);
+            break;
+        case LinkPlatform::Windows:
+            platformPrefixes = kWindowsDynPrefixes;
+            prefixCount = sizeof(kWindowsDynPrefixes) / sizeof(kWindowsDynPrefixes[0]);
+            break;
+        case LinkPlatform::Linux:
+        default:
+            break;
+    }
+
+    for (size_t i = 0; i < prefixCount; ++i) {
+        const char *prefix = platformPrefixes[i];
         size_t plen = 0;
         while (prefix[plen] != '\0')
             ++plen;
@@ -463,13 +460,14 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                     std::vector<ObjFile> &allObjects,
                     std::unordered_set<std::string> &dynamicSyms,
-                    std::ostream &err) {
+                    std::ostream &err,
+                    LinkPlatform platform) {
     // Start with initial objects.
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
-        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, err))
+        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, platform, err))
             return false;
     }
 
@@ -489,7 +487,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
             for (const auto &undef : undefSnapshot) {
-                if (isKnownDynamicSymbol(undef) && !preferArchiveDefinition(undef))
+                if (isKnownDynamicSymbol(undef, platform) && !preferArchiveDefinition(undef))
                     continue;
 
                 // Mach-O archives use underscore-prefixed symbol names.
@@ -521,7 +519,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
                 size_t newIdx = allObjects.size();
                 allObjects.push_back(std::move(memberObj));
-                if (!addObjSymbols(allObjects[newIdx], newIdx, globalSyms, undefined, err))
+                if (!addObjSymbols(allObjects[newIdx], newIdx, globalSyms, undefined, platform, err))
                     return false;
                 changed = true;
             }
@@ -541,7 +539,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         if (it != globalSyms.end())
             it->second.binding = GlobalSymEntry::Dynamic;
 
-        if (!isKnownDynamicSymbol(undef) || preferArchiveDefinition(undef))
+        if (!isKnownDynamicSymbol(undef, platform) || preferArchiveDefinition(undef))
             err << "warning: treating undefined symbol '" << undef << "' as dynamic\n";
     }
 

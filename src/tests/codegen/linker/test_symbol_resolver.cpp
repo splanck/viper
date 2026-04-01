@@ -259,11 +259,38 @@ int main() {
         std::unordered_set<std::string> dynamicSyms;
         std::ostringstream err;
 
-        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        bool ok = resolveSymbols(initObjs,
+                                 archives,
+                                 globalSyms,
+                                 allObjects,
+                                 dynamicSyms,
+                                 err,
+                                 LinkPlatform::macOS);
         CHECK(ok);
         CHECK(dynamicSyms.count("CFStringCreateWithCString") == 1);
         // CF* prefix is known — no warning expected.
         CHECK(err.str().empty());
+    }
+
+    // --- Double-underscore names are not treated as universally dynamic ---
+    {
+        auto obj = makeObj("main.o", {".text"});
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, "__user_defined_helper", 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Linux);
+        CHECK(ok);
+        CHECK(dynamicSyms.count("__user_defined_helper") == 1);
+        CHECK(err.str().find("treating undefined symbol '__user_defined_helper'") !=
+              std::string::npos);
     }
 
     // --- Unknown undefined symbol produces warning ---

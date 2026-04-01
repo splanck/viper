@@ -107,7 +107,8 @@ static const char *d3d11_shader_source =
     "    int unlit;\n"
     "    int hasEnvMap;\n"
     "    int hasSplat;\n"
-    "    float _matPad0;\n"
+    "    int shadingModel;\n"
+    "    float customParams[8];\n"
     "    float4 splatScales;\n"
     "};\n"
     "\n"
@@ -434,20 +435,36 @@ static const char *d3d11_shader_source =
     "                continue;\n"
     "            }\n"
     "            float NdotL = max(dot(N, L), 0.0);\n"
+    "            if (shadingModel == 1) {\n"
+    "                float bands = max(customParams[0], 2.0);\n"
+    "                NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+    "            }\n"
     "            result += lights[i].color.rgb * lights[i].intensity * NdotL * baseColor * atten;\n"
     "            if (NdotL > 0.0 && specularColor.w > 0.0) {\n"
     "                float3 H = normalize(L + V);\n"
     "                float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
+    "                if (shadingModel == 1)\n"
+    "                    spec = spec >= max(customParams[1], 0.5) ? 1.0 : 0.0;\n"
     "                result += lights[i].color.rgb * lights[i].intensity * spec * specColor * atten;\n"
     "            }\n"
-    "        }\n"
-    "        result += emissive;\n"
-    "        if (hasEnvMap != 0) {\n"
+        "        }\n"
+        "        result += emissive;\n"
+        "        if (hasEnvMap != 0) {\n"
     "            float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
     "            float3 R = reflect(-V, normalize(N));\n"
-    "            float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
-    "            result = lerp(result, envColor, saturate(reflectivity));\n"
-    "        }\n"
+        "            float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
+        "            result = lerp(result, envColor, saturate(reflectivity));\n"
+        "        }\n"
+    "    }\n"
+    "    if (shadingModel == 4) {\n"
+    "        float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
+    "        float ndv = saturate(dot(N, V));\n"
+    "        float power = max(customParams[0], 1.0);\n"
+        "        float bias = customParams[1];\n"
+    "        finalAlpha *= saturate(pow(1.0 - ndv, power) + bias);\n"
+    "    } else if (shadingModel == 5) {\n"
+    "        float strength = max(customParams[0], 1.0);\n"
+    "        result += emissive * (strength - 1.0);\n"
     "    }\n"
     "    if (fogColor.a > 0.5) {\n"
     "        float dist = length(cameraPosition.xyz - input.worldPos);\n"
@@ -763,7 +780,8 @@ typedef struct {
     int32_t unlit;
     int32_t has_env_map;
     int32_t has_splat;
-    float _pad0;
+    int32_t shading_model;
+    float custom_params[8];
     float splat_scales[4];
 } d3d_per_material_t;
 
@@ -824,6 +842,18 @@ typedef struct {
     float normal[16];
     float prev_model[16];
 } d3d_instance_data_t;
+
+#define D3D11_MESH_CACHE_CAPACITY 128
+
+typedef struct {
+    const void *key;
+    uint32_t revision;
+    uint32_t vertex_count;
+    uint32_t index_count;
+    ID3D11Buffer *vb;
+    ID3D11Buffer *ib;
+    uint64_t last_used_frame;
+} d3d11_mesh_cache_entry_t;
 
 typedef struct {
     ID3D11Device *device;
@@ -917,6 +947,8 @@ typedef struct {
     int32_t tex_cache_count;
     d3d_cubemap_cache_entry_t cubemap_cache[16];
     int32_t cubemap_cache_count;
+    d3d11_mesh_cache_entry_t mesh_cache[D3D11_MESH_CACHE_CAPACITY];
+    uint64_t frame_serial;
 
     ID3D11RenderTargetView *current_rtvs[2];
     UINT current_rtv_count;
@@ -1128,6 +1160,126 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
     memcpy(mapped.pData, data, bytes);
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)*buffer, 0);
     return 1;
+}
+
+static void d3d11_release_mesh_cache_entry(d3d11_mesh_cache_entry_t *entry) {
+    if (!entry)
+        return;
+    SAFE_RELEASE(entry->vb);
+    SAFE_RELEASE(entry->ib);
+    memset(entry, 0, sizeof(*entry));
+}
+
+static void d3d11_release_mesh_cache(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < D3D11_MESH_CACHE_CAPACITY; i++)
+        d3d11_release_mesh_cache_entry(&ctx->mesh_cache[i]);
+}
+
+static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
+                                          UINT bind_flags,
+                                          const void *data,
+                                          size_t bytes,
+                                          ID3D11Buffer **out_buffer) {
+    D3D11_BUFFER_DESC desc;
+    D3D11_SUBRESOURCE_DATA init;
+
+    if (!ctx || !data || bytes == 0 || !out_buffer || bytes > UINT_MAX)
+        return E_INVALIDARG;
+    memset(&desc, 0, sizeof(desc));
+    memset(&init, 0, sizeof(init));
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.ByteWidth = (UINT)bytes;
+    desc.BindFlags = bind_flags;
+    init.pSysMem = data;
+    return ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
+}
+
+static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
+                                      const vgfx3d_draw_cmd_t *cmd,
+                                      ID3D11Buffer **out_vb,
+                                      ID3D11Buffer **out_ib) {
+    size_t vertex_bytes;
+    size_t index_bytes;
+
+    if (!ctx || !cmd || !out_vb || !out_ib || !cmd->vertices || !cmd->indices ||
+        cmd->vertex_count == 0 || cmd->index_count == 0)
+        return 0;
+
+    vertex_bytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
+    index_bytes = (size_t)cmd->index_count * sizeof(uint32_t);
+    if (!cmd->geometry_key || cmd->geometry_revision == 0) {
+        if (!d3d11_upload_dynamic_buffer(ctx,
+                                         &ctx->dynamic_vb,
+                                         &ctx->dynamic_vb_size,
+                                         D3D11_BIND_VERTEX_BUFFER,
+                                         cmd->vertices,
+                                         vertex_bytes,
+                                         D3D11_INITIAL_DYNAMIC_VB_SIZE) ||
+            !d3d11_upload_dynamic_buffer(ctx,
+                                         &ctx->dynamic_ib,
+                                         &ctx->dynamic_ib_size,
+                                         D3D11_BIND_INDEX_BUFFER,
+                                         cmd->indices,
+                                         index_bytes,
+                                         D3D11_INITIAL_DYNAMIC_IB_SIZE))
+            return 0;
+        *out_vb = ctx->dynamic_vb;
+        *out_ib = ctx->dynamic_ib;
+        return 1;
+    }
+
+    {
+        d3d11_mesh_cache_entry_t *slot = NULL;
+        d3d11_mesh_cache_entry_t *oldest = NULL;
+        HRESULT hr;
+
+        for (int32_t i = 0; i < D3D11_MESH_CACHE_CAPACITY; i++) {
+            d3d11_mesh_cache_entry_t *entry = &ctx->mesh_cache[i];
+            if (entry->key == cmd->geometry_key) {
+                slot = entry;
+                break;
+            }
+            if (!entry->key && !slot)
+                slot = entry;
+            if (!oldest || entry->last_used_frame < oldest->last_used_frame)
+                oldest = entry;
+        }
+        if (!slot)
+            slot = oldest;
+        if (!slot)
+            return 0;
+
+        if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
+            slot->vertex_count != cmd->vertex_count || slot->index_count != cmd->index_count ||
+            !slot->vb || !slot->ib) {
+            d3d11_release_mesh_cache_entry(slot);
+            hr = d3d11_create_static_buffer(
+                ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &slot->vb);
+            if (FAILED(hr)) {
+                d3d11_log_hresult("CreateBuffer(static vertex)", hr);
+                d3d11_release_mesh_cache_entry(slot);
+                return 0;
+            }
+            hr = d3d11_create_static_buffer(
+                ctx, D3D11_BIND_INDEX_BUFFER, cmd->indices, index_bytes, &slot->ib);
+            if (FAILED(hr)) {
+                d3d11_log_hresult("CreateBuffer(static index)", hr);
+                d3d11_release_mesh_cache_entry(slot);
+                return 0;
+            }
+            slot->key = cmd->geometry_key;
+            slot->revision = cmd->geometry_revision;
+            slot->vertex_count = cmd->vertex_count;
+            slot->index_count = cmd->index_count;
+        }
+
+        slot->last_used_frame = ctx->frame_serial;
+        *out_vb = slot->vb;
+        *out_ib = slot->ib;
+        return 1;
+    }
 }
 
 static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
@@ -1757,7 +1909,9 @@ static void d3d11_bind_swapchain_target(d3d11_context_t *ctx) {
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
 }
 
-static void d3d11_clear_current_targets(d3d11_context_t *ctx) {
+static void d3d11_clear_current_targets(d3d11_context_t *ctx,
+                                        int8_t load_existing_color,
+                                        int8_t load_existing_depth) {
     float clear_color[4];
     float motion_clear[4] = {0.5f, 0.5f, 0.0f, 1.0f};
 
@@ -1769,11 +1923,11 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx) {
     clear_color[2] = ctx->clear_b;
     clear_color[3] = 1.0f;
 
-    if (ctx->current_rtv_count > 0 && ctx->current_rtvs[0])
+    if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
-    if (ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
+    if (!load_existing_color && ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
-    if (ctx->current_dsv)
+    if (!load_existing_depth && ctx->current_dsv)
         ID3D11DeviceContext_ClearDepthStencilView(ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
@@ -1885,6 +2039,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->unlit = cmd->unlit;
     material_data->has_env_map = has_env_map;
     material_data->has_splat = has_splat;
+    material_data->shading_model = cmd->shading_model;
+    memcpy(material_data->custom_params, cmd->custom_params, sizeof(material_data->custom_params));
     memcpy(material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
 
@@ -2130,6 +2286,8 @@ static void d3d11_submit_draw(void *ctx_ptr,
     HRESULT hr;
     UINT stride = sizeof(vgfx3d_vertex_t);
     UINT offset = 0;
+    ID3D11Buffer *mesh_vb = NULL;
+    ID3D11Buffer *mesh_ib = NULL;
 
     (void)win;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
@@ -2173,27 +2331,14 @@ static void d3d11_submit_draw(void *ctx_ptr,
         return;
     }
 
-    if (!d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_vb,
-                                     &ctx->dynamic_vb_size,
-                                     D3D11_BIND_VERTEX_BUFFER,
-                                     cmd->vertices,
-                                     (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
-                                     D3D11_INITIAL_DYNAMIC_VB_SIZE) ||
-        !d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_ib,
-                                     &ctx->dynamic_ib_size,
-                                     D3D11_BIND_INDEX_BUFFER,
-                                     cmd->indices,
-                                     (size_t)cmd->index_count * sizeof(uint32_t),
-                                     D3D11_INITIAL_DYNAMIC_IB_SIZE)) {
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib)) {
         d3d11_unbind_draw_resources(ctx);
         d3d11_release_temporary_resources(&draw_resources);
         return;
     }
 
-    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &ctx->dynamic_vb, &stride, &offset);
-    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, ctx->dynamic_ib, DXGI_FORMAT_R32_UINT, 0);
+    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
+    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 0);
     ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
 
@@ -2223,6 +2368,8 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     UINT strides[2];
     UINT offsets[2] = {0, 0};
     ID3D11Buffer *vertex_buffers[2];
+    ID3D11Buffer *mesh_vb = NULL;
+    ID3D11Buffer *mesh_ib = NULL;
 
     (void)win;
     if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices || !cmd->indices)
@@ -2286,20 +2433,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         return;
     }
 
-    if (!d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_vb,
-                                     &ctx->dynamic_vb_size,
-                                     D3D11_BIND_VERTEX_BUFFER,
-                                     cmd->vertices,
-                                     (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
-                                     D3D11_INITIAL_DYNAMIC_VB_SIZE) ||
-        !d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_ib,
-                                     &ctx->dynamic_ib_size,
-                                     D3D11_BIND_INDEX_BUFFER,
-                                     cmd->indices,
-                                     (size_t)cmd->index_count * sizeof(uint32_t),
-                                     D3D11_INITIAL_DYNAMIC_IB_SIZE) ||
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
         !d3d11_upload_dynamic_buffer(ctx,
                                      &ctx->instance_buffer,
                                      &ctx->instance_buffer_size,
@@ -2315,10 +2449,10 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
 
     strides[0] = sizeof(vgfx3d_vertex_t);
     strides[1] = sizeof(d3d_instance_data_t);
-    vertex_buffers[0] = ctx->dynamic_vb;
+    vertex_buffers[0] = mesh_vb;
     vertex_buffers[1] = ctx->instance_buffer;
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 2, vertex_buffers, strides, offsets);
-    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, ctx->dynamic_ib, DXGI_FORMAT_R32_UINT, 0);
+    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 1);
     ID3D11DeviceContext_DrawIndexedInstanced(ctx->ctx, cmd->index_count, instance_count, 0, 0, 0);
 
@@ -2845,6 +2979,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
 
     d3d11_release_texture_cache(ctx);
     d3d11_release_cubemap_cache(ctx);
+    d3d11_release_mesh_cache(ctx);
     d3d11_destroy_shadow_targets(ctx);
     d3d11_destroy_rtt_targets(ctx);
     d3d11_destroy_scene_targets(ctx);
@@ -2913,6 +3048,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     if (!ctx || !cam)
         return;
 
+    ctx->frame_serial++;
     ctx->shadow_active = 0;
 
     if (ctx->prev_vp_valid)
@@ -2938,7 +3074,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             d3d11_log_hresult("CreateSceneTargets", hr);
     }
     d3d11_select_scene_targets(ctx);
-    d3d11_clear_current_targets(ctx);
+    d3d11_clear_current_targets(ctx, cam->load_existing_color, cam->load_existing_depth);
     d3d11_bind_common_state(ctx);
 }
 
@@ -3161,6 +3297,8 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     HRESULT hr;
     UINT stride = sizeof(vgfx3d_vertex_t);
     UINT offset = 0;
+    ID3D11Buffer *mesh_vb = NULL;
+    ID3D11Buffer *mesh_ib = NULL;
 
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
@@ -3181,24 +3319,11 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         return;
     }
 
-    if (!d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_vb,
-                                     &ctx->dynamic_vb_size,
-                                     D3D11_BIND_VERTEX_BUFFER,
-                                     cmd->vertices,
-                                     (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
-                                     D3D11_INITIAL_DYNAMIC_VB_SIZE) ||
-        !d3d11_upload_dynamic_buffer(ctx,
-                                     &ctx->dynamic_ib,
-                                     &ctx->dynamic_ib_size,
-                                     D3D11_BIND_INDEX_BUFFER,
-                                     cmd->indices,
-                                     (size_t)cmd->index_count * sizeof(uint32_t),
-                                     D3D11_INITIAL_DYNAMIC_IB_SIZE))
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib))
         return;
 
-    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &ctx->dynamic_vb, &stride, &offset);
-    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, ctx->dynamic_ib, DXGI_FORMAT_R32_UINT, 0);
+    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
+    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_per_object);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 4, 1, &ctx->cb_bones);

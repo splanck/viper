@@ -46,6 +46,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                     std::vector<ObjFile> &allObjects,
                     std::unordered_set<std::string> &dynamicSyms,
-                    std::ostream &err);
+                    std::ostream &err,
+                    LinkPlatform platform = detectLinkPlatform());
 
 } // namespace viper::codegen::linker

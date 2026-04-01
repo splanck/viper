@@ -184,7 +184,8 @@ void rt_canvas3d_enable_shadows(void *canvas, int64_t resolution);
 void rt_canvas3d_disable_shadows(void *canvas);
 void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 
-/* Occlusion culling */
+/* Opaque depth-order hint: enables front-to-back sorting for opaque draws.
+ * This is not full occlusion-query or Hi-Z visibility culling. */
 void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);
 
 /* Instanced rendering + Terrain */

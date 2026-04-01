@@ -616,6 +616,13 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 } // namespace
 
 int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err) {
+    if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::AArch64) {
+        err << "error: native Windows ARM64 executable linking is not implemented yet\n";
+        err << "error: AArch64 COFF object emission is supported, but PE startup/import/unwind "
+               "generation remains x86_64-only\n";
+        return 1;
+    }
+
     // Step 1: Read the user's object file.
     ObjFile userObj;
     if (!readObjFile(opts.objPath, userObj, err)) {
@@ -664,7 +671,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 #endif
         );
 
-    if (!resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, err)) {
+    if (!resolveSymbols(
+            initialObjects, archives, globalSyms, allObjects, dynamicSyms, err, opts.platform)) {
         err << "error: symbol resolution failed\n";
         return 1;
     }

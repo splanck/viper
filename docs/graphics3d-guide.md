@@ -123,7 +123,7 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Method | Description |
 |--------|-------------|
-| `FromOBJ(path)` | Load Wavefront OBJ file. Supports v/vn/vt, quads, negative indices, .mtl materials |
+| `FromOBJ(path)` | Load Wavefront OBJ file. Supports v/vn/vt, quads, and negative indices. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes |
 | `FromSTL(path)` | Load STL file (binary or ASCII). Auto-detects format, computes normals |
 
 ### Programmatic Construction
@@ -189,12 +189,14 @@ Surface appearance properties.
 | `SetSpecularMap(pixels)` | Set specular intensity map (Pixels) |
 | `SetEmissiveMap(pixels)` | Set emissive color map (Pixels) |
 | `SetEmissiveColor(r, g, b)` | Set emissive color multiplier (additive glow) |
-| `SetShadingModel(model)` | Set shading model: 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive |
+| `SetShadingModel(model)` | Set shading model: 0=BlinnPhong, 1=Toon, 2=Reserved, 3=Unlit, 4=Fresnel, 5=Emissive |
 | `SetCustomParam(index, value)` | Set custom shader parameter (index 0-7, float value) |
 
 **Shading models:** `SetShadingModel` selects how the surface is shaded:
 - **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
 - **1 (Toon)**: Quantized diffuse bands. `custom[0]` = number of bands (default 4).
+- **2 (Reserved)**: Accepted for forward compatibility. Current backends fall back to the default Blinn-Phong path.
+- **3 (Unlit)**: Same visual result as `SetUnlit(true)`.
 - **4 (Fresnel)**: Angle-dependent alpha — edges glow brighter. `custom[0]` = power (default 3), `custom[1]` = bias.
 - **5 (Emissive)**: Boosted emissive glow. `custom[0]` = strength multiplier (default 2).
 

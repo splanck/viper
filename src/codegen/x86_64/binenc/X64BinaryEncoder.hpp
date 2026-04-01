@@ -75,6 +75,8 @@ class X64BinaryEncoder {
                         const FrameInfo *frame = nullptr);
 
   private:
+    using LabelOffsetMap = std::unordered_map<std::string, size_t>;
+
     /// Encode a single MIR instruction.
     void encodeInstruction(const MInstr &instr,
                            objfile::CodeSection &text,
@@ -156,6 +158,16 @@ class X64BinaryEncoder {
     /// Encode CALL with external label (generates relocation).
     void encodeCallExternal(const std::string &name, objfile::CodeSection &cs, bool isDarwin);
 
+    /// Measure the encoded byte size of an instruction using the provided
+    /// label offsets for branch relaxation decisions.
+    size_t measureInstructionSize(const MInstr &instr,
+                                  const LabelOffsetMap &knownLabelOffsets,
+                                  bool isDarwin);
+
+    /// Compute a stable set of intra-function label offsets before emission so
+    /// short forward branches can be selected without rewriting section bytes.
+    LabelOffsetMap computeFunctionLabelOffsets(const MFunction &fn, bool isDarwin);
+
     // === Low-level emission helpers ===
 
     /// Emit the ModR/M + optional SIB + displacement for a memory operand.
@@ -185,7 +197,7 @@ class X64BinaryEncoder {
     };
 
     /// Label name -> byte offset in CodeSection.
-    std::unordered_map<std::string, size_t> labelOffsets_;
+    LabelOffsetMap labelOffsets_;
 
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
