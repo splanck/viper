@@ -224,14 +224,6 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
-    // Draw children (clipping would be done by canvas)
-    // Children are already positioned with scroll offset
-    VG_FOREACH_VISIBLE_CHILD(widget, child) {
-        if (child->vtable && child->vtable->paint) {
-            child->vtable->paint(child, canvas);
-        }
-    }
-
     // Draw scrollbars
     float content_area_width =
         widget->width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0);

@@ -42,12 +42,18 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+static uint64_t rt_gui_feature_now_ms(rt_gui_app_t *app) {
+    (void)app;
+    return rt_gui_now_ms();
+}
+
 //=============================================================================
 // Phase 6: CommandPalette
 //=============================================================================
 
 // CommandPalette state tracking
 typedef struct {
+    rt_gui_app_t *app;
     vg_commandpalette_t *palette;
     char *selected_command;
     int64_t was_selected;
@@ -68,6 +74,9 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
 
 void *rt_commandpalette_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
     vg_commandpalette_t *palette = vg_commandpalette_create();
     if (!palette)
         return NULL;
@@ -78,13 +87,17 @@ void *rt_commandpalette_new(void *parent) {
         vg_commandpalette_destroy(palette);
         return NULL;
     }
+    data->app = app;
     data->palette = palette;
     data->selected_command = NULL;
     data->was_selected = 0;
+    palette->base.user_data = app;
 
     vg_commandpalette_set_callbacks(palette, rt_commandpalette_on_execute, NULL, data);
+    if (app && app->default_font)
+        vg_commandpalette_set_font(palette, app->default_font, app->default_font_size);
+    rt_gui_register_command_palette(app, palette);
 
-    (void)parent; // Parent not used in current implementation
     return data;
 }
 
@@ -94,6 +107,7 @@ void rt_commandpalette_destroy(void *palette) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    rt_gui_unregister_command_palette(data->app, data->palette);
     if (data->palette) {
         vg_commandpalette_destroy(data->palette);
     }
@@ -222,9 +236,8 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
     char *ctext = rt_string_to_cstr(text);
-    // Set placeholder on the underlying search text input
-    if (data->palette && data->palette->search_input)
-        vg_textinput_set_placeholder((vg_textinput_t *)data->palette->search_input, ctext);
+    if (data->palette)
+        vg_commandpalette_set_placeholder(data->palette, ctext);
     if (ctext)
         free(ctext);
 }
@@ -256,23 +269,27 @@ int64_t rt_commandpalette_was_command_selected(void *palette) {
 // Phase 7: Tooltip Implementation
 //=============================================================================
 
-// Global tooltip state
-static vg_tooltip_t *g_active_tooltip = NULL;
-static uint32_t g_tooltip_delay_ms = 500;
-
 /// @brief Show the tooltip.
 void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        return;
     char *ctext = rt_string_to_cstr(text);
 
     // Create tooltip if needed
-    if (!g_active_tooltip) {
-        g_active_tooltip = vg_tooltip_create();
+    if (!app->manual_tooltip) {
+        app->manual_tooltip = vg_tooltip_create();
     }
 
-    if (g_active_tooltip && ctext) {
-        vg_tooltip_set_text(g_active_tooltip, ctext);
-        vg_tooltip_show_at(g_active_tooltip, (int)x, (int)y);
+    if (app->manual_tooltip && ctext) {
+        if (app->default_font) {
+            app->manual_tooltip->font = app->default_font;
+            app->manual_tooltip->font_size = app->default_font_size;
+        }
+        vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
+        vg_tooltip_set_text(app->manual_tooltip, ctext);
+        vg_tooltip_show_at(app->manual_tooltip, (int)x, (int)y);
     }
 
     if (ctext)
@@ -282,15 +299,18 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
 /// @brief Show the rich of the tooltip.
 void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        return;
     char *ctitle = rt_string_to_cstr(title);
     char *cbody = rt_string_to_cstr(body);
 
     // Create tooltip if needed
-    if (!g_active_tooltip) {
-        g_active_tooltip = vg_tooltip_create();
+    if (!app->manual_tooltip) {
+        app->manual_tooltip = vg_tooltip_create();
     }
 
-    if (g_active_tooltip) {
+    if (app->manual_tooltip) {
         // Combines title and body as plain text separated by newline.
         // Rich formatting (bold, colors) would require vg_tooltip_t enhancements.
         const char *t = ctitle ? ctitle : "";
@@ -299,10 +319,15 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
         char *combined = (char *)malloc(needed);
         if (combined) {
             snprintf(combined, needed, "%s\n%s", t, b);
-            vg_tooltip_set_text(g_active_tooltip, combined);
+            if (app->default_font) {
+                app->manual_tooltip->font = app->default_font;
+                app->manual_tooltip->font_size = app->default_font_size;
+            }
+            vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
+            vg_tooltip_set_text(app->manual_tooltip, combined);
             free(combined);
         }
-        vg_tooltip_show_at(g_active_tooltip, (int)x, (int)y);
+        vg_tooltip_show_at(app->manual_tooltip, (int)x, (int)y);
     }
 
     if (ctitle)
@@ -314,19 +339,27 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
 /// @brief Hide the tooltip.
 void rt_tooltip_hide(void) {
     RT_ASSERT_MAIN_THREAD();
-    if (g_active_tooltip) {
-        vg_tooltip_hide(g_active_tooltip);
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (app && app->manual_tooltip) {
+        vg_tooltip_hide(app->manual_tooltip);
     }
 }
 
 /// @brief Set the delay of the tooltip.
 void rt_tooltip_set_delay(int64_t delay_ms) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        return;
     if (delay_ms < 0)
         delay_ms = 0;
-    g_tooltip_delay_ms = (uint32_t)delay_ms;
-    if (g_active_tooltip) {
-        vg_tooltip_set_timing(g_active_tooltip, g_tooltip_delay_ms, 100, 0);
+    app->manual_tooltip_delay_ms = (uint32_t)delay_ms;
+    if (app->manual_tooltip) {
+        vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
+    }
+    if (vg_tooltip_manager_get()->active_tooltip) {
+        vg_tooltip_set_timing(
+            vg_tooltip_manager_get()->active_tooltip, app->manual_tooltip_delay_ms, 100, 0);
     }
 }
 
@@ -379,22 +412,33 @@ void rt_widget_clear_tooltip(void *widget) {
 // Phase 7: Toast/Notifications Implementation
 //=============================================================================
 
-// Global notification manager
-static vg_notification_manager_t *g_notification_manager = NULL;
-
 // Wrapper to track toast state
 typedef struct rt_toast_data {
+    rt_gui_app_t *app;
     uint32_t id;
     int64_t was_action_clicked;
     int64_t was_dismissed;
     char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
-static vg_notification_manager_t *rt_get_notification_manager(void) {
-    if (!g_notification_manager) {
-        g_notification_manager = vg_notification_manager_create();
+static void rt_toast_on_action(uint32_t id, void *user_data) {
+    rt_toast_data_t *data = (rt_toast_data_t *)user_data;
+    if (!data || data->id != id)
+        return;
+    data->was_action_clicked = 1;
+}
+
+static vg_notification_manager_t *rt_get_notification_manager(rt_gui_app_t *app) {
+    if (!app)
+        return NULL;
+    if (!app->notification_manager) {
+        app->notification_manager = vg_notification_manager_create();
+        if (app->notification_manager && app->default_font) {
+            vg_notification_manager_set_font(
+                app->notification_manager, app->default_font, app->default_font_size);
+        }
     }
-    return g_notification_manager;
+    return app->notification_manager;
 }
 
 static vg_notification_type_t rt_toast_type_to_vg(int64_t type) {
@@ -434,12 +478,19 @@ static vg_notification_position_t rt_toast_position_to_vg(int64_t position) {
 /// @brief Info the toast.
 void rt_toast_info(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(app);
     if (!mgr)
         return;
 
     char *cmsg = rt_string_to_cstr(message);
-    vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Info", cmsg, 3000);
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Info", cmsg, 3000);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
+            break;
+        }
+    }
     if (cmsg)
         free(cmsg);
 }
@@ -447,12 +498,19 @@ void rt_toast_info(rt_string message) {
 /// @brief Success the toast.
 void rt_toast_success(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(app);
     if (!mgr)
         return;
 
     char *cmsg = rt_string_to_cstr(message);
-    vg_notification_show(mgr, VG_NOTIFICATION_SUCCESS, "Success", cmsg, 3000);
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_SUCCESS, "Success", cmsg, 3000);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
+            break;
+        }
+    }
     if (cmsg)
         free(cmsg);
 }
@@ -460,12 +518,19 @@ void rt_toast_success(rt_string message) {
 /// @brief Warning the toast.
 void rt_toast_warning(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(app);
     if (!mgr)
         return;
 
     char *cmsg = rt_string_to_cstr(message);
-    vg_notification_show(mgr, VG_NOTIFICATION_WARNING, "Warning", cmsg, 5000);
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_WARNING, "Warning", cmsg, 5000);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
+            break;
+        }
+    }
     if (cmsg)
         free(cmsg);
 }
@@ -473,19 +538,27 @@ void rt_toast_warning(rt_string message) {
 /// @brief Error the toast.
 void rt_toast_error(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(app);
     if (!mgr)
         return;
 
     char *cmsg = rt_string_to_cstr(message);
-    vg_notification_show(mgr, VG_NOTIFICATION_ERROR, "Error", cmsg, 0); // Sticky for errors
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_ERROR, "Error", cmsg, 0);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
+            break;
+        }
+    }
     if (cmsg)
         free(cmsg);
 }
 
 void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(app);
     if (!mgr)
         return NULL;
 
@@ -496,11 +569,18 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
         free(cmsg);
         return NULL;
     }
+    data->app = app;
 
     data->id =
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, (uint32_t)duration_ms);
     data->was_action_clicked = 0;
     data->was_dismissed = 0;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == data->id) {
+            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
+            break;
+        }
+    }
 
     if (cmsg)
         free(cmsg);
@@ -515,6 +595,20 @@ void rt_toast_set_action(void *toast, rt_string label) {
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
     free(data->action_label);
     data->action_label = rt_string_to_cstr(label);
+    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
+    if (!mgr)
+        return;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        vg_notification_t *notif = mgr->notifications[i];
+        if (!notif || notif->id != data->id)
+            continue;
+        free(notif->action_label);
+        notif->action_label = data->action_label ? strdup(data->action_label) : NULL;
+        notif->action_callback = rt_toast_on_action;
+        notif->action_user_data = data;
+        mgr->base.needs_paint = true;
+        break;
+    }
 }
 
 /// @brief Was the action clicked of the toast.
@@ -540,7 +634,7 @@ int64_t rt_toast_was_dismissed(void *toast) {
         return 1;
 
     // Check with the notification manager for auto-timeout dismissal
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
     if (mgr) {
         bool found = false;
         for (size_t i = 0; i < mgr->notification_count; i++) {
@@ -568,7 +662,7 @@ void rt_toast_dismiss(void *toast) {
     if (!toast)
         return;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
     if (mgr) {
         vg_notification_dismiss(mgr, data->id);
         data->was_dismissed = 1;
@@ -578,7 +672,7 @@ void rt_toast_dismiss(void *toast) {
 /// @brief Set the position of the toast.
 void rt_toast_set_position(int64_t position) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_gui_get_active_app());
     if (mgr) {
         vg_notification_manager_set_position(mgr, rt_toast_position_to_vg(position));
     }
@@ -591,7 +685,7 @@ void rt_toast_set_max_visible(int64_t count) {
         count = 1;
     if (count > 100)
         count = 100;
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_gui_get_active_app());
     if (mgr) {
         mgr->max_visible = (uint32_t)count;
     }
@@ -600,7 +694,7 @@ void rt_toast_set_max_visible(int64_t count) {
 /// @brief Dismiss the all of the toast.
 void rt_toast_dismiss_all(void) {
     RT_ASSERT_MAIN_THREAD();
-    vg_notification_manager_t *mgr = rt_get_notification_manager();
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_gui_get_active_app());
     if (mgr) {
         vg_notification_dismiss_all(mgr);
     }
@@ -642,6 +736,7 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
 
 void *rt_breadcrumb_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     if (!bc)
         return NULL;
@@ -658,8 +753,13 @@ void *rt_breadcrumb_new(void *parent) {
     data->was_clicked = 0;
 
     vg_breadcrumb_set_on_click(bc, rt_breadcrumb_on_click, data);
+    if (parent) {
+        vg_widget_add_child((vg_widget_t *)parent, &bc->base);
+    }
+    if (app && app->default_font) {
+        vg_breadcrumb_set_font(bc, app->default_font, app->default_font_size);
+    }
 
-    (void)parent; // Parent not used in current implementation
     return data;
 }
 
@@ -845,8 +945,9 @@ void *rt_minimap_new(void *parent) {
     }
     data->minimap = minimap;
     data->width = 80; // Default width
-
-    (void)parent; // Parent not used in current implementation
+    if (parent) {
+        vg_widget_add_child((vg_widget_t *)parent, &minimap->base);
+    }
     return data;
 }
 
@@ -1076,37 +1177,30 @@ rt_string rt_widget_get_drop_data(void *widget) {
     return rt_str_empty();
 }
 
-// File drop state for app
-typedef struct rt_file_drop_data {
-    char **files;
-    int64_t file_count;
-    int64_t was_dropped;
-} rt_file_drop_data_t;
-
-static rt_file_drop_data_t g_file_drop = {0};
-
 /// @brief Was the file dropped of the app.
 int64_t rt_app_was_file_dropped(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    (void)app;
-    int64_t result = g_file_drop.was_dropped;
-    g_file_drop.was_dropped = 0;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (!gui_app)
+        return 0;
+    int64_t result = gui_app->file_drop.was_dropped;
+    gui_app->file_drop.was_dropped = 0;
     return result;
 }
 
 /// @brief Return the count of elements in the app.
 int64_t rt_app_get_dropped_file_count(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    (void)app;
-    return g_file_drop.file_count;
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    return gui_app ? gui_app->file_drop.file_count : 0;
 }
 
 /// @brief Get the dropped file of the app.
 rt_string rt_app_get_dropped_file(void *app, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    (void)app;
-    if (index >= 0 && index < g_file_drop.file_count && g_file_drop.files) {
-        char *file = g_file_drop.files[index];
+    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    if (gui_app && index >= 0 && index < gui_app->file_drop.file_count && gui_app->file_drop.files) {
+        char *file = gui_app->file_drop.files[index];
         if (file) {
             return rt_string_from_bytes(file, strlen(file));
         }
@@ -1115,41 +1209,51 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index) {
 }
 
 /// @brief Add an element to the file.
-void rt_gui_file_drop_add(const char *path) {
+void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
+    if (!app || !path)
+        return;
     // Free old data on first file of a new batch
-    if (!g_file_drop.was_dropped) {
-        for (int64_t i = 0; i < g_file_drop.file_count; i++)
-            free(g_file_drop.files[i]);
-        free(g_file_drop.files);
-        g_file_drop.files = NULL;
-        g_file_drop.file_count = 0;
+    if (!app->file_drop.was_dropped) {
+        for (int64_t i = 0; i < app->file_drop.file_count; i++)
+            free(app->file_drop.files[i]);
+        free(app->file_drop.files);
+        app->file_drop.files = NULL;
+        app->file_drop.file_count = 0;
     }
 
     // Grow array
     char **new_files =
-        (char **)realloc(g_file_drop.files, (size_t)(g_file_drop.file_count + 1) * sizeof(char *));
+        (char **)realloc(app->file_drop.files,
+                         (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
     if (!new_files)
         return;
-    g_file_drop.files = new_files;
-    g_file_drop.files[g_file_drop.file_count++] = strdup(path);
-    g_file_drop.was_dropped = 1;
+    app->file_drop.files = new_files;
+    app->file_drop.files[app->file_drop.file_count++] = strdup(path);
+    app->file_drop.was_dropped = 1;
 }
 
 /// @brief Cleanup the features.
-void rt_gui_features_cleanup(void) {
-    if (g_active_tooltip) {
-        vg_tooltip_destroy(g_active_tooltip);
-        g_active_tooltip = NULL;
+void rt_gui_features_cleanup(rt_gui_app_t *app) {
+    if (!app)
+        return;
+    if (app->manual_tooltip) {
+        vg_tooltip_destroy(app->manual_tooltip);
+        app->manual_tooltip = NULL;
     }
-    if (g_notification_manager) {
-        vg_notification_manager_destroy(g_notification_manager);
-        g_notification_manager = NULL;
+    if (app->notification_manager) {
+        vg_notification_manager_destroy(app->notification_manager);
+        app->notification_manager = NULL;
     }
-    // Free file drop data
-    for (int64_t i = 0; i < g_file_drop.file_count; i++)
-        free(g_file_drop.files[i]);
-    free(g_file_drop.files);
-    g_file_drop = (rt_file_drop_data_t){0};
+    for (int i = 0; i < app->command_palette_count; i++) {
+        if (app->command_palettes[i]) {
+            vg_commandpalette_destroy(app->command_palettes[i]);
+            app->command_palettes[i] = NULL;
+        }
+    }
+    for (int64_t i = 0; i < app->file_drop.file_count; i++)
+        free(app->file_drop.files[i]);
+    free(app->file_drop.files);
+    app->file_drop = (rt_gui_file_drop_data_t){0};
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
@@ -1537,11 +1641,14 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index) {
 }
 
 /// @brief Add an element to the file.
-void rt_gui_file_drop_add(const char *path) {
+void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
+    (void)app;
     (void)path;
 }
 
 /// @brief Cleanup the features.
-void rt_gui_features_cleanup(void) {}
+void rt_gui_features_cleanup(rt_gui_app_t *app) {
+    (void)app;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

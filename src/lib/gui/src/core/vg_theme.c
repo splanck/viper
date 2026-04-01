@@ -223,7 +223,7 @@ vg_theme_t *vg_theme_light(void) {
     return &g_light_theme;
 }
 
-vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base) {
+vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
     vg_theme_t *theme = malloc(sizeof(vg_theme_t));
     if (!theme)
         return NULL;

@@ -34,7 +34,40 @@
 // Phase 5: MessageBox Dialog
 //=============================================================================
 
+static rt_gui_app_t *rt_messagebox_app(void) {
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    return app ? app : s_current_app;
+}
+
+static int rt_messagebox_label_is_cancel(const char *label) {
+    if (!label)
+        return 0;
+    return strcasecmp(label, "cancel") == 0 || strcasecmp(label, "close") == 0 ||
+           strcasecmp(label, "no") == 0;
+}
+
+static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
+    rt_gui_activate_app(app);
+    rt_gui_ensure_default_font();
+    if (app && app->default_font)
+        vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+    vg_dialog_set_modal(dlg, true, app ? app->root : NULL);
+    vg_dialog_show_centered(dlg, app ? app->root : NULL);
+    rt_gui_push_dialog(app, dlg);
+}
+
+static vg_dialog_result_t rt_messagebox_run_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
+    while (dlg && dlg->is_open && app && !app->should_close) {
+        rt_gui_app_poll(app);
+        rt_gui_app_render(app);
+    }
+    if (app)
+        rt_gui_remove_dialog(app, dlg);
+    return dlg ? vg_dialog_get_result(dlg) : VG_DIALOG_RESULT_NONE;
+}
+
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
+    rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_INFO, VG_DIALOG_BUTTONS_OK);
@@ -44,15 +77,14 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_gui_ensure_default_font();
-    if (s_current_app)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
-    vg_dialog_show(dlg);
-    rt_gui_set_active_dialog(dlg);
+    rt_messagebox_prepare_modal(app, dlg);
+    rt_messagebox_run_modal(app, dlg);
+    vg_widget_destroy(&dlg->base);
     return 0;
 }
 
 int64_t rt_messagebox_warning(rt_string title, rt_string message) {
+    rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
@@ -63,15 +95,14 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_gui_ensure_default_font();
-    if (s_current_app)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
-    vg_dialog_show(dlg);
-    rt_gui_set_active_dialog(dlg);
+    rt_messagebox_prepare_modal(app, dlg);
+    rt_messagebox_run_modal(app, dlg);
+    vg_widget_destroy(&dlg->base);
     return 0;
 }
 
 int64_t rt_messagebox_error(rt_string title, rt_string message) {
+    rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_ERROR, VG_DIALOG_BUTTONS_OK);
@@ -81,15 +112,14 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_gui_ensure_default_font();
-    if (s_current_app)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
-    vg_dialog_show(dlg);
-    rt_gui_set_active_dialog(dlg);
+    rt_messagebox_prepare_modal(app, dlg);
+    rt_messagebox_run_modal(app, dlg);
+    vg_widget_destroy(&dlg->base);
     return 0;
 }
 
 int64_t rt_messagebox_question(rt_string title, rt_string message) {
+    rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
@@ -100,26 +130,14 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-
-    rt_gui_ensure_default_font();
-    if (s_current_app)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
-    vg_dialog_show(dlg);
-    rt_gui_set_active_dialog(dlg);
-
-    // Blocking modal loop — runs until user clicks Yes or No
-    while (dlg->is_open && s_current_app && !s_current_app->should_close) {
-        rt_gui_app_poll(s_current_app);
-        rt_gui_app_render(s_current_app);
-    }
-
-    vg_dialog_result_t result = vg_dialog_get_result(dlg);
-    rt_gui_set_active_dialog(NULL);
+    rt_messagebox_prepare_modal(app, dlg);
+    vg_dialog_result_t result = rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return (result == VG_DIALOG_RESULT_YES) ? 1 : 0;
 }
 
 int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
+    rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
     vg_dialog_t *dlg =
@@ -130,21 +148,8 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-
-    rt_gui_ensure_default_font();
-    if (s_current_app)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
-    vg_dialog_show(dlg);
-    rt_gui_set_active_dialog(dlg);
-
-    // Blocking modal loop — runs until user clicks OK or Cancel
-    while (dlg->is_open && s_current_app && !s_current_app->should_close) {
-        rt_gui_app_poll(s_current_app);
-        rt_gui_app_render(s_current_app);
-    }
-
-    vg_dialog_result_t result = vg_dialog_get_result(dlg);
-    rt_gui_set_active_dialog(NULL);
+    rt_messagebox_prepare_modal(app, dlg);
+    vg_dialog_result_t result = rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return (result == VG_DIALOG_RESULT_OK) ? 1 : 0;
 }
@@ -163,8 +168,11 @@ static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data) 
 }
 
 rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
-    if (!s_current_app)
+    rt_gui_app_t *app = rt_messagebox_app();
+    if (!app)
         return rt_str_empty();
+    rt_gui_activate_app(app);
+    rt_gui_ensure_default_font();
 
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -185,18 +193,18 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     }
 
     // Apply app font to dialog
-    if (s_current_app->default_font)
-        vg_dialog_set_font(dlg, s_current_app->default_font, s_current_app->default_font_size);
+    if (app->default_font)
+        vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
 
-    // Create the text input (no parent — set as dialog content, not widget-tree child)
+    // Create the text input and attach it as dialog content.
     vg_textinput_t *input = vg_textinput_create(NULL);
     if (!input) {
         vg_widget_destroy((vg_widget_t *)dlg);
         return rt_str_empty();
     }
 
-    if (s_current_app->default_font)
-        vg_textinput_set_font(input, s_current_app->default_font, s_current_app->default_font_size);
+    if (app->default_font)
+        vg_textinput_set_font(input, app->default_font, app->default_font_size);
 
     // When Enter is pressed inside the input, dismiss as OK
     rt_prompt_commit_data_t commit_data = {.dialog = dlg};
@@ -205,31 +213,22 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     // Place the input as the dialog's content widget
     vg_dialog_set_content(dlg, (vg_widget_t *)input);
     vg_dialog_set_buttons(dlg, VG_DIALOG_BUTTONS_OK_CANCEL);
-    vg_dialog_set_modal(dlg, true, s_current_app->root);
 
-    // Show and focus the input so the user can type immediately
-    vg_dialog_show_centered(dlg, s_current_app->root);
+    // Show and focus the input so the user can type immediately.
+    rt_messagebox_prepare_modal(app, dlg);
     vg_widget_set_focus((vg_widget_t *)input);
 
-    // Modal event loop: pump events and render until dialog is dismissed
-    while (vg_dialog_is_open(dlg)) {
-        rt_gui_app_poll(s_current_app);
-        rt_gui_app_render(s_current_app);
-    }
+    vg_dialog_result_t result_code = rt_messagebox_run_modal(app, dlg);
 
     // Collect result before destroying
     rt_string result = rt_str_empty();
-    if (vg_dialog_get_result(dlg) == VG_DIALOG_RESULT_OK) {
+    if (result_code == VG_DIALOG_RESULT_OK) {
         const char *text = vg_textinput_get_text(input);
         if (text && text[0])
             result = rt_string_from_bytes(text, strlen(text));
     }
 
-    // The dialog does not own the input (created with NULL parent); destroy both.
-    // Clear content pointer first so dialog_destroy doesn't see a stale pointer.
-    dlg->content = NULL;
     vg_widget_destroy((vg_widget_t *)dlg);
-    vg_widget_destroy((vg_widget_t *)input);
     return result;
 }
 
@@ -238,6 +237,7 @@ typedef struct {
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
+    rt_gui_app_t *owner_app;
     // Custom button tracking for rt_messagebox_add_button
     vg_dialog_button_def_t *custom_buttons;
     size_t custom_button_count;
@@ -284,6 +284,7 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     data->dialog = dlg;
     data->result = -1;
     data->default_button = 0;
+    data->owner_app = rt_messagebox_app();
 
     return data;
 }
@@ -309,7 +310,7 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     btn->label = clabel ? clabel : strdup("OK");
     btn->result = (vg_dialog_result_t)id;
     btn->is_default = (id == data->default_button);
-    btn->is_cancel = false;
+    btn->is_cancel = rt_messagebox_label_is_cancel(btn->label);
 }
 
 void rt_messagebox_set_default_button(void *box, int64_t id) {
@@ -317,29 +318,26 @@ void rt_messagebox_set_default_button(void *box, int64_t id) {
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     data->default_button = id;
+    for (size_t i = 0; i < data->custom_button_count; i++) {
+        data->custom_buttons[i].is_default = (data->custom_buttons[i].result == id);
+    }
 }
 
 int64_t rt_messagebox_show(void *box) {
     if (!box)
         return -1;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
+    if (!app)
+        return -1;
 
     // Apply custom buttons if any were added via rt_messagebox_add_button
     if (data->custom_button_count > 0) {
         vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }
 
-    vg_dialog_show(data->dialog);
-    rt_gui_set_active_dialog(data->dialog);
-
-    // Blocking modal loop — same pattern as rt_messagebox_confirm/question.
-    while (data->dialog->is_open && s_current_app && !s_current_app->should_close) {
-        rt_gui_app_poll(s_current_app);
-        rt_gui_app_render(s_current_app);
-    }
-
-    vg_dialog_result_t result = vg_dialog_get_result(data->dialog);
-    rt_gui_set_active_dialog(NULL);
+    rt_messagebox_prepare_modal(app, data->dialog);
+    vg_dialog_result_t result = rt_messagebox_run_modal(app, data->dialog);
 
     // For custom buttons, the result code maps directly to the id passed
     // to rt_messagebox_add_button. For preset buttons, use standard mapping.
@@ -359,11 +357,13 @@ void rt_messagebox_destroy(void *box) {
     if (!box)
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
     // Free custom button labels
     for (size_t i = 0; i < data->custom_button_count; i++)
         free(data->custom_buttons[i].label);
     free(data->custom_buttons);
     if (data->dialog) {
+        rt_gui_remove_dialog(app, data->dialog);
         vg_widget_destroy((vg_widget_t *)data->dialog);
     }
 }

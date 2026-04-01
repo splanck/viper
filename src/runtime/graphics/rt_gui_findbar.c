@@ -48,6 +48,7 @@ typedef struct {
 } rt_findbar_data_t;
 
 void *rt_findbar_new(void *parent) {
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_findreplacebar_t *bar = vg_findreplacebar_create();
     if (!bar)
         return NULL;
@@ -66,8 +67,12 @@ void *rt_findbar_new(void *parent) {
     data->whole_word = 0;
     data->regex = 0;
     data->replace_mode = 0;
-
-    (void)parent; // Parent not used in current implementation
+    if (parent) {
+        vg_widget_add_child((vg_widget_t *)parent, &bar->base);
+    }
+    if (app && app->default_font) {
+        vg_findreplacebar_set_font(bar, app->default_font, app->default_font_size);
+    }
     return data;
 }
 

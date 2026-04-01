@@ -412,9 +412,9 @@ typedef struct vg_commandpalette {
     size_t filtered_count;
     size_t filtered_capacity;
 
-    // Search input (void* to avoid circular deps)
-    void *search_input;  ///< Text input for search
-    char *current_query; ///< Current search query
+    // Search state
+    char *placeholder_text; ///< Placeholder shown when query is empty
+    char *current_query;    ///< Current search query (UTF-8)
 
     // State
     bool is_visible;    ///< Is palette visible
@@ -485,6 +485,9 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
 
 /// @brief Set font
 void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size);
+
+/// @brief Set placeholder text
+void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text);
 
 //=============================================================================
 // Notification Widget

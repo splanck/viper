@@ -205,6 +205,10 @@ void vg_widget_destroy(vg_widget_t *widget) {
         free(widget->impl_data);
     }
 
+    if (widget->tooltip_text) {
+        free(widget->tooltip_text);
+    }
+
     // Free name
     if (widget->name) {
         free(widget->name);
@@ -774,6 +778,26 @@ void vg_widget_release_input_capture(void) {
 
 vg_widget_t *vg_widget_get_input_capture(void) {
     return g_input_capture_widget;
+}
+
+void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state) {
+    if (!state)
+        return;
+    state->focused_widget = g_focused_widget;
+    state->input_capture_widget = g_input_capture_widget;
+    state->modal_root = g_modal_root;
+}
+
+void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
+    if (!state) {
+        g_focused_widget = NULL;
+        g_input_capture_widget = NULL;
+        g_modal_root = NULL;
+        return;
+    }
+    g_focused_widget = state->focused_widget;
+    g_input_capture_widget = state->input_capture_widget;
+    g_modal_root = state->modal_root;
 }
 
 //=============================================================================

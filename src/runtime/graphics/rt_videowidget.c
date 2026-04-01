@@ -39,6 +39,18 @@ extern void *rt_image_new(void *parent);
 extern void rt_image_set_pixels(void *image, void *pixels, int64_t w, int64_t h);
 extern void rt_image_set_scale_mode(void *image, int64_t mode);
 extern void rt_widget_set_size(void *widget, int64_t w, int64_t h);
+extern void rt_widget_set_flex(void *widget, double flex);
+extern void rt_widget_set_visible(void *widget, int64_t visible);
+extern int64_t rt_widget_was_clicked(void *widget);
+extern void *rt_vbox_new(void);
+extern void *rt_hbox_new(void);
+extern void rt_container_set_spacing(void *container, double spacing);
+extern void rt_widget_add_child(void *parent, void *child);
+extern void *rt_button_new(void *parent, void *text);
+extern void *rt_slider_new(void *parent, int64_t horizontal);
+extern void rt_slider_set_value(void *slider, double value);
+extern double rt_slider_get_value(void *slider);
+extern void *rt_string_from_bytes(const char *data, size_t len);
 
 /* VideoPlayer functions */
 extern void *rt_videoplayer_open(void *path);
@@ -46,6 +58,7 @@ extern void rt_videoplayer_play(void *vp);
 extern void rt_videoplayer_pause(void *vp);
 extern void rt_videoplayer_stop(void *vp);
 extern void rt_videoplayer_update(void *vp, double dt);
+extern void rt_videoplayer_seek(void *vp, double seconds);
 extern void rt_videoplayer_set_volume(void *vp, double vol);
 extern int64_t rt_videoplayer_get_width(void *vp);
 extern int64_t rt_videoplayer_get_height(void *vp);
@@ -64,11 +77,18 @@ typedef struct {
     void *vptr;
     /* Owned components */
     void *player;           /* rt_videoplayer */
+    void *root_widget;      /* VBox container attached to parent */
     void *image_widget;     /* vg_image_t for video display */
+    void *controls_widget;  /* HBox container for transport controls */
+    void *play_button;
+    void *pause_button;
+    void *stop_button;
+    void *position_slider;
     /* Config */
     int8_t show_controls;
     int8_t looping;
     double volume;
+    double slider_last_value;
     /* Cached dimensions */
     int32_t video_width;
     int32_t video_height;
@@ -124,12 +144,37 @@ void *rt_videowidget_new(void *parent, void *path) {
     w->show_controls = 1;
     w->looping = 0;
     w->volume = 1.0;
+    w->slider_last_value = 0.0;
+
+    w->root_widget = rt_vbox_new();
+    if (!w->root_widget)
+        return w;
+    rt_widget_add_child(parent, w->root_widget);
+    rt_container_set_spacing(w->root_widget, 8.0);
 
     /* Create image widget for video display */
-    w->image_widget = rt_image_new(parent);
+    w->image_widget = rt_image_new(w->root_widget);
     if (w->image_widget) {
         rt_image_set_scale_mode(w->image_widget, 1); /* VG_IMAGE_SCALE_FIT */
         rt_widget_set_size(w->image_widget, vw, vh);
+        rt_widget_set_flex(w->image_widget, 1.0);
+    }
+
+    w->controls_widget = rt_hbox_new();
+    if (w->controls_widget) {
+        rt_widget_add_child(w->root_widget, w->controls_widget);
+        rt_container_set_spacing(w->controls_widget, 8.0);
+        w->play_button = rt_button_new(
+            w->controls_widget, rt_string_from_bytes("Play", strlen("Play")));
+        w->pause_button = rt_button_new(
+            w->controls_widget, rt_string_from_bytes("Pause", strlen("Pause")));
+        w->stop_button = rt_button_new(
+            w->controls_widget, rt_string_from_bytes("Stop", strlen("Stop")));
+        w->position_slider = rt_slider_new(w->controls_widget, 1);
+        if (w->position_slider) {
+            rt_widget_set_flex(w->position_slider, 1.0);
+            rt_slider_set_value(w->position_slider, 0.0);
+        }
     }
 
     /* Allocate RGBA conversion buffer */
@@ -170,6 +215,13 @@ void rt_videowidget_update(void *obj, double dt) {
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
 
+    if (w->play_button && rt_widget_was_clicked(w->play_button))
+        rt_videoplayer_play(w->player);
+    if (w->pause_button && rt_widget_was_clicked(w->pause_button))
+        rt_videoplayer_pause(w->player);
+    if (w->stop_button && rt_widget_was_clicked(w->stop_button))
+        rt_videoplayer_stop(w->player);
+
     /* Advance video playback */
     if (dt > 0.0)
         rt_videoplayer_update(w->player, dt);
@@ -193,12 +245,37 @@ void rt_videowidget_update(void *obj, double dt) {
         }
     }
 
+    if (w->position_slider) {
+        double duration = rt_videoplayer_get_duration(w->player);
+        if (duration > 0.0) {
+            double slider_value = rt_slider_get_value(w->position_slider);
+            if (slider_value < 0.0)
+                slider_value = 0.0;
+            if (slider_value > 1.0)
+                slider_value = 1.0;
+            if (slider_value != w->slider_last_value) {
+                rt_videoplayer_seek(w->player, slider_value * duration);
+                w->slider_last_value = slider_value;
+            }
+            double playback_value = rt_videoplayer_get_position(w->player) / duration;
+            if (playback_value < 0.0)
+                playback_value = 0.0;
+            if (playback_value > 1.0)
+                playback_value = 1.0;
+            rt_slider_set_value(w->position_slider, playback_value);
+            w->slider_last_value = playback_value;
+        }
+    }
+
 }
 
 void rt_videowidget_set_show_controls(void *obj, int8_t show) {
     if (!obj)
         return;
-    ((rt_videowidget *)obj)->show_controls = show;
+    rt_videowidget *w = (rt_videowidget *)obj;
+    w->show_controls = show;
+    if (w->controls_widget)
+        rt_widget_set_visible(w->controls_widget, show != 0);
 }
 
 void rt_videowidget_set_loop(void *obj, int8_t loop) {

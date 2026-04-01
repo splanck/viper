@@ -202,13 +202,6 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
 static void splitpane_paint(vg_widget_t *widget, void *canvas) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
-    // Paint children first
-    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
-        if (child->visible && child->vtable && child->vtable->paint) {
-            child->vtable->paint(child, canvas);
-        }
-    }
-
     // Draw splitter
     uint32_t color = split->splitter_hovered || split->dragging ? split->splitter_hover_color
                                                                 : split->splitter_color;

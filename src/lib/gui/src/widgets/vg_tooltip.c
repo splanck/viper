@@ -12,6 +12,12 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,6 +46,16 @@ static vg_widget_vtable_t g_tooltip_vtable = {.destroy = tooltip_destroy,
 //=============================================================================
 
 static vg_tooltip_manager_t g_tooltip_manager = {0};
+
+static uint64_t tooltip_now_ms(void) {
+#ifdef _WIN32
+    return (uint64_t)GetTickCount64();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+#endif
+}
 
 vg_tooltip_manager_t *vg_tooltip_manager_get(void) {
     return &g_tooltip_manager;
@@ -203,8 +219,8 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
 
     // Check if pending show should trigger
     if (mgr->pending_show && mgr->hovered_widget) {
-        // For now, just show immediately (delay handled elsewhere)
-        if (mgr->active_tooltip) {
+        if (mgr->active_tooltip &&
+            now_ms >= mgr->hover_start_time + mgr->active_tooltip->show_delay_ms) {
             vg_tooltip_show_at(mgr->active_tooltip, mgr->cursor_x, mgr->cursor_y);
             mgr->pending_show = false;
         }
@@ -233,8 +249,20 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
         }
 
         mgr->hovered_widget = widget;
-        mgr->pending_show = (widget != NULL);
-        // hover_start_time would be set here for delay
+        if (widget && widget->tooltip_text && widget->tooltip_text[0]) {
+            if (!mgr->active_tooltip) {
+                mgr->active_tooltip = vg_tooltip_create();
+            }
+            if (mgr->active_tooltip) {
+                vg_tooltip_set_text(mgr->active_tooltip, widget->tooltip_text);
+                mgr->pending_show = true;
+            } else {
+                mgr->pending_show = false;
+            }
+        } else {
+            mgr->pending_show = false;
+        }
+        mgr->hover_start_time = tooltip_now_ms();
     }
 }
 
@@ -255,15 +283,6 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
     if (!widget)
         return;
-
-    // Create tooltip if needed
-    vg_tooltip_manager_t *mgr = vg_tooltip_manager_get();
-
-    if (!mgr->active_tooltip) {
-        mgr->active_tooltip = vg_tooltip_create();
-    }
-
-    if (mgr->active_tooltip) {
-        vg_tooltip_set_text(mgr->active_tooltip, text);
-    }
+    free(widget->tooltip_text);
+    widget->tooltip_text = (text && text[0]) ? strdup(text) : NULL;
 }

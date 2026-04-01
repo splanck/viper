@@ -133,6 +133,7 @@ typedef enum {
     VGFX_EVENT_NONE = 0,     ///< No event (queue empty)
     VGFX_EVENT_KEY_DOWN,     ///< Keyboard key pressed
     VGFX_EVENT_KEY_UP,       ///< Keyboard key released
+    VGFX_EVENT_TEXT_INPUT,   ///< Translated text input/codepoint event
     VGFX_EVENT_MOUSE_MOVE,   ///< Mouse cursor moved
     VGFX_EVENT_MOUSE_DOWN,   ///< Mouse button pressed
     VGFX_EVENT_MOUSE_UP,     ///< Mouse button released
@@ -239,6 +240,12 @@ typedef struct {
             int is_repeat;  ///< 1 if key repeat, 0 if initial press
             int modifiers;  ///< Modifier flags (VGFX_MOD_SHIFT, VGFX_MOD_CTRL, etc.)
         } key;
+
+        /// @brief Text input event data (TEXT_INPUT).
+        struct {
+            uint32_t codepoint; ///< Unicode codepoint after platform text translation
+            int modifiers;      ///< Modifier flags active while the text was generated
+        } text;
 
         /// @brief Mouse movement event data (MOUSE_MOVE).
         struct {

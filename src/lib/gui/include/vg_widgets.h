@@ -661,7 +661,7 @@ typedef struct vg_dropdown {
 
     vg_font_t *font;         ///< Font for rendering
     float font_size;         ///< Font size
-    const char *placeholder; ///< Placeholder when nothing selected
+    char *placeholder;       ///< Placeholder when nothing selected (owned)
 
     bool open;             ///< Is dropdown list open
     int hovered_index;     ///< Hovered item index
@@ -704,6 +704,8 @@ int vg_dropdown_get_selected(vg_dropdown_t *dropdown);
 const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown);
 
 /// @brief Set placeholder text
+/// @param dropdown Dropdown widget
+/// @param text Placeholder text (copied internally; NULL clears it)
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text);
 
 /// @brief Set font for dropdown

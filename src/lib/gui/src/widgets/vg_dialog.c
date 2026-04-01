@@ -727,8 +727,17 @@ void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
 void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content) {
     if (!dialog)
         return;
+    if (dialog->content == content)
+        return;
+    if (dialog->content && dialog->content->parent == &dialog->base) {
+        vg_widget_remove_child(&dialog->base, dialog->content);
+    }
     dialog->content = content;
+    if (content) {
+        vg_widget_add_child(&dialog->base, content);
+    }
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set message.

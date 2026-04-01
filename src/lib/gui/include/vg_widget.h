@@ -58,6 +58,17 @@ typedef struct vg_widget vg_widget_t;
 typedef struct vg_event vg_event_t;
 typedef struct vg_theme vg_theme_t;
 
+/// @brief Snapshot of toolkit-global widget runtime state.
+///
+/// @details The GUI runtime can save and restore this state when switching
+///          between multiple app windows so focus, modal roots, and input
+///          capture do not bleed across apps.
+typedef struct vg_widget_runtime_state {
+    vg_widget_t *focused_widget;
+    vg_widget_t *input_capture_widget;
+    vg_widget_t *modal_root;
+} vg_widget_runtime_state_t;
+
 //=============================================================================
 // Widget Type Enumeration
 //=============================================================================
@@ -297,6 +308,9 @@ struct vg_widget {
     bool _was_dropped;         ///< Runtime: a drop occurred on this widget this frame.
     char *_drop_received_type; ///< Runtime: type of the last drop (owned).
     char *_drop_received_data; ///< Runtime: data of the last drop (owned).
+
+    // Tooltip
+    char *tooltip_text; ///< Tooltip text associated with this widget (owned, may be NULL).
 
     // User data
     void *user_data; ///< Application-supplied opaque pointer (not touched by the framework).
@@ -723,6 +737,12 @@ void vg_widget_release_input_capture(void);
 ///
 /// @return The widget capturing input, or NULL if no capture is active.
 vg_widget_t *vg_widget_get_input_capture(void);
+
+/// @brief Save the current toolkit-global widget runtime state.
+void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state);
+
+/// @brief Restore toolkit-global widget runtime state from a prior snapshot.
+void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state);
 
 //=============================================================================
 // Focus Management

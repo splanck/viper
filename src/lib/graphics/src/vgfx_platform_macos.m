@@ -904,6 +904,36 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
 ///            - NSEvent coordinates: origin at bottom-left
 ///            - ViperGFX coordinates: origin at top-left
 ///            - Conversion: vgfx_y = (view_height - ns_y - 1)
+static int macos_modifiers(NSEventModifierFlags flags)
+{
+    int mods = 0;
+    if (flags & NSEventModifierFlagShift)
+        mods |= VGFX_MOD_SHIFT;
+    if (flags & NSEventModifierFlagControl)
+        mods |= VGFX_MOD_CTRL;
+    if (flags & NSEventModifierFlagOption)
+        mods |= VGFX_MOD_ALT;
+    if (flags & NSEventModifierFlagCommand)
+        mods |= VGFX_MOD_CMD;
+    return mods;
+}
+
+static uint32_t macos_first_codepoint(NSString *string)
+{
+    if (!string || [string length] == 0)
+        return 0;
+    unichar high = [string characterAtIndex:0];
+    if (high >= 0xD800 && high <= 0xDBFF && [string length] > 1)
+    {
+        unichar low = [string characterAtIndex:1];
+        if (low >= 0xDC00 && low <= 0xDFFF)
+        {
+            return 0x10000 + ((((uint32_t)high - 0xD800) << 10) | ((uint32_t)low - 0xDC00));
+        }
+    }
+    return (uint32_t)high;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win)
 {
     if (!win || !win->platform_data)
@@ -949,23 +979,14 @@ int vgfx_platform_process_events(struct vgfx_window *win)
             {
                 case NSEventTypeKeyDown:
                 {
+                    NSEventModifierFlags flags = [event modifierFlags];
                     vgfx_key_t key =
                         translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
                     if (key != VGFX_KEY_UNKNOWN && key < 512)
                     {
                         win->key_state[key] = 1; /* Update input state */
 
-                        /* Extract modifier flags from NSEvent */
-                        int mods = 0;
-                        NSEventModifierFlags flags = [event modifierFlags];
-                        if (flags & NSEventModifierFlagShift)
-                            mods |= VGFX_MOD_SHIFT;
-                        if (flags & NSEventModifierFlagControl)
-                            mods |= VGFX_MOD_CTRL;
-                        if (flags & NSEventModifierFlagOption)
-                            mods |= VGFX_MOD_ALT;
-                        if (flags & NSEventModifierFlagCommand)
-                            mods |= VGFX_MOD_CMD;
+                        int mods = macos_modifiers(flags);
 
                         vgfx_event_t vgfx_event = {
                             .type = VGFX_EVENT_KEY_DOWN,
@@ -974,6 +995,18 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                                          .is_repeat = [event isARepeat] ? 1 : 0,
                                          .modifiers = mods}};
                         vgfx_internal_enqueue_event(win, &vgfx_event);
+                    }
+
+                    NSString *characters = [event characters];
+                    uint32_t codepoint = macos_first_codepoint(characters);
+                    if (codepoint >= 0x20 && codepoint != 0x7F)
+                    {
+                        vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
+                                                   .time_ms = timestamp,
+                                                   .data.text = {.codepoint = codepoint,
+                                                                 .modifiers =
+                                                                     macos_modifiers(flags)}};
+                        vgfx_internal_enqueue_event(win, &text_event);
                     }
                     break;
                 }
@@ -988,7 +1021,10 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                         vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_UP,
                                                    .time_ms = timestamp,
-                                                   .data.key = {.key = key, .is_repeat = 0}};
+                                                   .data.key = {.key = key,
+                                                                .is_repeat = 0,
+                                                                .modifiers = macos_modifiers(
+                                                                    [event modifierFlags])}};
                         vgfx_internal_enqueue_event(win, &vgfx_event);
                     }
                     break;

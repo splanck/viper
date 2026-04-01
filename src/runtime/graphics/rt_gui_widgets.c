@@ -198,6 +198,7 @@ void *rt_label_new(void *parent, rt_string text) {
     char *ctext = rt_string_to_cstr(text);
     vg_label_t *label = vg_label_create((vg_widget_t *)parent, ctext ? ctext : "");
     free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)label);
     return label;
 }
 
@@ -236,6 +237,7 @@ void *rt_button_new(void *parent, rt_string text) {
     char *ctext = rt_string_to_cstr(text);
     vg_button_t *button = vg_button_create((vg_widget_t *)parent, ctext);
     free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)button);
     return button;
 }
 
@@ -288,7 +290,9 @@ void rt_button_set_icon_pos(void *button, int64_t pos) {
 
 void *rt_textinput_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_textinput_create((vg_widget_t *)parent);
+    vg_textinput_t *input = vg_textinput_create((vg_widget_t *)parent);
+    rt_gui_apply_default_font((vg_widget_t *)input);
+    return input;
 }
 
 /// @brief Set the text of the textinput.
@@ -339,6 +343,7 @@ void *rt_checkbox_new(void *parent, rt_string text) {
     char *ctext = rt_string_to_cstr(text);
     vg_checkbox_t *checkbox = vg_checkbox_create((vg_widget_t *)parent, ctext);
     free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)checkbox);
     return checkbox;
 }
 
@@ -426,11 +431,14 @@ double rt_scrollview_get_scroll_y(void *scroll) {
 
 void *rt_treeview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_treeview_t *tv = vg_treeview_create((vg_widget_t *)parent);
     if (tv) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_treeview_set_font(tv, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_treeview_set_font(tv, app->default_font, app->default_font_size);
     }
     return tv;
 }

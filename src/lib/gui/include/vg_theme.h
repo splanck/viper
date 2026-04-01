@@ -237,7 +237,7 @@ vg_theme_t *vg_theme_light(void);
 /// @param name A name for the new theme (copied internally).
 /// @param base The base theme to copy from (may be a built-in or custom theme).
 /// @return Newly allocated theme, or NULL on failure.
-vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base);
+vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base);
 
 /// @brief Free a custom theme created with vg_theme_create.
 ///

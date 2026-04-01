@@ -63,6 +63,7 @@ typedef struct {
     int width;           ///< Cached window width
     int height;          ///< Cached window height
     int close_requested; ///< 1 if WM_CLOSE received, 0 otherwise
+    WCHAR pending_high_surrogate; ///< Pending UTF-16 high surrogate from WM_CHAR
 } vgfx_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -155,6 +156,19 @@ static vgfx_key_t translate_vk(WPARAM vk) {
         default:
             return VGFX_KEY_UNKNOWN;
     }
+}
+
+static int win32_modifiers(void) {
+    int mods = 0;
+    if (GetKeyState(VK_SHIFT) & 0x8000)
+        mods |= VGFX_MOD_SHIFT;
+    if (GetKeyState(VK_CONTROL) & 0x8000)
+        mods |= VGFX_MOD_CTRL;
+    if (GetKeyState(VK_MENU) & 0x8000)
+        mods |= VGFX_MOD_ALT;
+    if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000))
+        mods |= VGFX_MOD_CMD;
+    return mods;
 }
 
 //===----------------------------------------------------------------------===//
@@ -257,7 +271,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
                 vgfx_event_t event = {.type = VGFX_EVENT_KEY_DOWN,
                                       .time_ms = timestamp,
-                                      .data.key = {.key = key, .is_repeat = is_repeat}};
+                                      .data.key = {.key = key,
+                                                   .is_repeat = is_repeat,
+                                                   .modifiers = win32_modifiers()}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
@@ -271,7 +287,36 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
                 vgfx_event_t event = {.type = VGFX_EVENT_KEY_UP,
                                       .time_ms = timestamp,
-                                      .data.key = {.key = key, .is_repeat = 0}};
+                                      .data.key = {
+                                          .key = key, .is_repeat = 0, .modifiers = win32_modifiers()}};
+                vgfx_internal_enqueue_event(win, &event);
+            }
+            return 0;
+        }
+
+        case WM_CHAR: {
+            uint32_t codepoint = 0;
+            WCHAR ch = (WCHAR)wparam;
+            if (w32 && ch >= 0xD800 && ch <= 0xDBFF) {
+                w32->pending_high_surrogate = ch;
+                return 0;
+            }
+            if (w32 && ch >= 0xDC00 && ch <= 0xDFFF && w32->pending_high_surrogate) {
+                codepoint = 0x10000 +
+                            ((((uint32_t)w32->pending_high_surrogate - 0xD800) << 10) |
+                             ((uint32_t)ch - 0xDC00));
+                w32->pending_high_surrogate = 0;
+            } else {
+                if (w32)
+                    w32->pending_high_surrogate = 0;
+                codepoint = (uint32_t)ch;
+            }
+
+            if (codepoint >= 0x20 && codepoint != 0x7F) {
+                vgfx_event_t event = {.type = VGFX_EVENT_TEXT_INPUT,
+                                      .time_ms = timestamp,
+                                      .data.text = {.codepoint = codepoint,
+                                                    .modifiers = win32_modifiers()}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;

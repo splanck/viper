@@ -79,25 +79,20 @@ void rt_clipboard_clear(void) {
 // Keyboard Shortcuts (Phase 1)
 //=============================================================================
 
-// Internal shortcut storage
-typedef struct {
-    char *id;
-    char *keys;
-    char *description;
-    int enabled;
-    int triggered; // Set to 1 when shortcut is triggered this frame
-    // Pre-parsed modifier/key values (cached at registration time)
-    int parsed_ctrl;
-    int parsed_shift;
-    int parsed_alt;
-    int parsed_key;
-} rt_shortcut_t;
+static rt_gui_app_t *rt_shortcuts_app(void) {
+    return s_current_app ? s_current_app : rt_gui_get_active_app();
+}
 
-#define MAX_SHORTCUTS 256
-static rt_shortcut_t g_shortcuts[MAX_SHORTCUTS];
-static int g_shortcut_count = 0;
-static int g_shortcuts_global_enabled = 1;
-static char *g_triggered_shortcut_id = NULL;
+static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
+    if (!app || app->shortcut_count < app->shortcut_cap)
+        return;
+    int new_cap = app->shortcut_cap ? app->shortcut_cap * 2 : 16;
+    void *p = realloc(app->shortcuts, (size_t)new_cap * sizeof(*app->shortcuts));
+    if (!p)
+        return;
+    app->shortcuts = p;
+    app->shortcut_cap = new_cap;
+}
 
 // Parse modifier keys from string like "Ctrl+Shift+S"
 static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt, int *key) {
@@ -174,7 +169,8 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
 /// @brief Register the shortcuts.
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     RT_ASSERT_MAIN_THREAD();
-    if (g_shortcut_count >= MAX_SHORTCUTS)
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app)
         return;
 
     char *cid = rt_string_to_cstr(id);
@@ -189,25 +185,32 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     }
 
     // Check if already registered and update
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
-            free(g_shortcuts[i].keys);
-            free(g_shortcuts[i].description);
-            g_shortcuts[i].keys = ckeys;
-            g_shortcuts[i].description = cdesc;
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
+            free(app->shortcuts[i].keys);
+            free(app->shortcuts[i].description);
+            app->shortcuts[i].keys = ckeys;
+            app->shortcuts[i].description = cdesc;
             // Re-parse cached modifier/key values for the new keys string
             parse_shortcut_keys(ckeys,
-                                &g_shortcuts[i].parsed_ctrl,
-                                &g_shortcuts[i].parsed_shift,
-                                &g_shortcuts[i].parsed_alt,
-                                &g_shortcuts[i].parsed_key);
+                                &app->shortcuts[i].parsed_ctrl,
+                                &app->shortcuts[i].parsed_shift,
+                                &app->shortcuts[i].parsed_alt,
+                                &app->shortcuts[i].parsed_key);
             free(cid);
             return;
         }
     }
 
     // Add new shortcut
-    rt_shortcut_t *sc = &g_shortcuts[g_shortcut_count];
+    rt_shortcuts_ensure_capacity(app);
+    if (app->shortcut_count >= app->shortcut_cap) {
+        free(cid);
+        free(ckeys);
+        free(cdesc);
+        return;
+    }
+    rt_gui_shortcut_t *sc = &app->shortcuts[app->shortcut_count];
     sc->id = cid;
     sc->keys = ckeys;
     sc->description = cdesc;
@@ -217,27 +220,30 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     // need to re-parse the string on every keypress.
     parse_shortcut_keys(
         ckeys, &sc->parsed_ctrl, &sc->parsed_shift, &sc->parsed_alt, &sc->parsed_key);
-    g_shortcut_count++;
+    app->shortcut_count++;
 }
 
 /// @brief Unregister the shortcuts.
 void rt_shortcuts_unregister(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app)
+        return;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
 
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
-            free(g_shortcuts[i].id);
-            free(g_shortcuts[i].keys);
-            free(g_shortcuts[i].description);
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
+            free(app->shortcuts[i].id);
+            free(app->shortcuts[i].keys);
+            free(app->shortcuts[i].description);
 
             // Shift remaining shortcuts down
-            for (int j = i; j < g_shortcut_count - 1; j++) {
-                g_shortcuts[j] = g_shortcuts[j + 1];
-            }
-            g_shortcut_count--;
+            memmove(&app->shortcuts[i],
+                    &app->shortcuts[i + 1],
+                    (size_t)(app->shortcut_count - i - 1) * sizeof(*app->shortcuts));
+            app->shortcut_count--;
             break;
         }
     }
@@ -248,29 +254,37 @@ void rt_shortcuts_unregister(rt_string id) {
 /// @brief Remove all entries from the shortcuts.
 void rt_shortcuts_clear(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_shortcut_count; i++) {
-        free(g_shortcuts[i].id);
-        free(g_shortcuts[i].keys);
-        free(g_shortcuts[i].description);
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app)
+        return;
+    for (int i = 0; i < app->shortcut_count; i++) {
+        free(app->shortcuts[i].id);
+        free(app->shortcuts[i].keys);
+        free(app->shortcuts[i].description);
     }
-    g_shortcut_count = 0;
-    g_triggered_shortcut_id = NULL;
+    free(app->shortcuts);
+    app->shortcuts = NULL;
+    app->shortcut_count = 0;
+    app->shortcut_cap = 0;
+    free(app->triggered_shortcut_id);
+    app->triggered_shortcut_id = NULL;
 }
 
 /// @brief Was the triggered of the shortcuts.
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
-    if (!g_shortcuts_global_enabled)
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app || !app->shortcuts_global_enabled)
         return 0;
 
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return 0;
 
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
             free(cid);
-            return g_shortcuts[i].triggered ? 1 : 0;
+            return app->shortcuts[i].triggered ? 1 : 0;
         }
     }
 
@@ -280,20 +294,23 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
 
 // Clear all shortcut triggered flags (call at start of each frame)
 /// @brief Clear the triggered of the shortcuts.
-void rt_shortcuts_clear_triggered(void) {
+void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_shortcut_count; i++) {
-        g_shortcuts[i].triggered = 0;
+    if (!app)
+        return;
+    for (int i = 0; i < app->shortcut_count; i++) {
+        app->shortcuts[i].triggered = 0;
     }
-    g_triggered_shortcut_id = NULL;
+    free(app->triggered_shortcut_id);
+    app->triggered_shortcut_id = NULL;
 }
 
 // Check if a key event matches any registered shortcut.
 // Returns 1 if a shortcut was triggered, 0 otherwise.
 /// @brief Check the key of the shortcuts.
-int8_t rt_shortcuts_check_key(int key, int mods) {
+int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
-    if (!g_shortcuts_global_enabled)
+    if (!app || !app->shortcuts_global_enabled)
         return 0;
 
     // On macOS, Cmd is used instead of Ctrl for shortcuts.
@@ -303,19 +320,22 @@ int8_t rt_shortcuts_check_key(int key, int mods) {
     int has_alt = (mods & VGFX_MOD_ALT) ? 1 : 0;
 
     // Only check if at least one modifier is held (plain keys aren't shortcuts)
-    if (!has_ctrl && !has_alt)
+    if (!has_ctrl && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))
         return 0;
 
     int upper_key = (key >= 'a' && key <= 'z') ? key - ('a' - 'A') : key;
 
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (!g_shortcuts[i].enabled || !g_shortcuts[i].parsed_key)
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (!app->shortcuts[i].enabled || !app->shortcuts[i].parsed_key)
             continue;
 
-        if (g_shortcuts[i].parsed_ctrl == has_ctrl && g_shortcuts[i].parsed_shift == has_shift &&
-            g_shortcuts[i].parsed_alt == has_alt && g_shortcuts[i].parsed_key == upper_key) {
-            g_shortcuts[i].triggered = 1;
-            g_triggered_shortcut_id = g_shortcuts[i].id;
+        if (app->shortcuts[i].parsed_ctrl == has_ctrl &&
+            app->shortcuts[i].parsed_shift == has_shift &&
+            app->shortcuts[i].parsed_alt == has_alt &&
+            app->shortcuts[i].parsed_key == upper_key) {
+            app->shortcuts[i].triggered = 1;
+            free(app->triggered_shortcut_id);
+            app->triggered_shortcut_id = app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
             return 1;
         }
     }
@@ -325,8 +345,9 @@ int8_t rt_shortcuts_check_key(int key, int mods) {
 /// @brief Get the triggered of the shortcuts.
 rt_string rt_shortcuts_get_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
-    if (g_triggered_shortcut_id) {
-        return rt_string_from_bytes(g_triggered_shortcut_id, strlen(g_triggered_shortcut_id));
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (app && app->triggered_shortcut_id) {
+        return rt_string_from_bytes(app->triggered_shortcut_id, strlen(app->triggered_shortcut_id));
     }
     return rt_str_empty();
 }
@@ -334,13 +355,16 @@ rt_string rt_shortcuts_get_triggered(void) {
 /// @brief Set the enabled of the shortcuts.
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app)
+        return;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
 
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
-            g_shortcuts[i].enabled = enabled != 0;
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
+            app->shortcuts[i].enabled = enabled != 0;
             break;
         }
     }
@@ -351,14 +375,17 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
 /// @brief Is the enabled of the shortcuts.
 int64_t rt_shortcuts_is_enabled(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (!app)
+        return 0;
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return 0;
 
-    for (int i = 0; i < g_shortcut_count; i++) {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
+    for (int i = 0; i < app->shortcut_count; i++) {
+        if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
             free(cid);
-            return g_shortcuts[i].enabled ? 1 : 0;
+            return app->shortcuts[i].enabled ? 1 : 0;
         }
     }
 
@@ -369,13 +396,16 @@ int64_t rt_shortcuts_is_enabled(rt_string id) {
 /// @brief Set the global enabled of the shortcuts.
 void rt_shortcuts_set_global_enabled(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    g_shortcuts_global_enabled = enabled != 0;
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (app)
+        app->shortcuts_global_enabled = enabled != 0;
 }
 
 /// @brief Get the global enabled of the shortcuts.
 int64_t rt_shortcuts_get_global_enabled(void) {
     RT_ASSERT_MAIN_THREAD();
-    return g_shortcuts_global_enabled ? 1 : 0;
+    rt_gui_app_t *app = rt_shortcuts_app();
+    return app && app->shortcuts_global_enabled ? 1 : 0;
 }
 
 //=============================================================================
@@ -670,8 +700,9 @@ void rt_app_set_font_size(void *app, double size) {
 /// @brief Set a value in the cursor.
 void rt_cursor_set(int64_t type) {
     RT_ASSERT_MAIN_THREAD();
-    if (s_current_app && s_current_app->window)
-        vgfx_set_cursor(s_current_app->window, (int32_t)type);
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (app && app->window)
+        vgfx_set_cursor(app->window, (int32_t)type);
 }
 
 /// @brief Set a value in the cursor.
@@ -683,8 +714,9 @@ void rt_cursor_reset(void) {
 /// @brief Set the visible of the cursor.
 void rt_cursor_set_visible(int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (s_current_app && s_current_app->window)
-        vgfx_set_cursor_visible(s_current_app->window, (int32_t)visible);
+    rt_gui_app_t *app = rt_shortcuts_app();
+    if (app && app->window)
+        vgfx_set_cursor_visible(app->window, (int32_t)visible);
 }
 
 /// @note Cursor is global — not per-widget. The widget parameter is reserved for future use.
@@ -743,10 +775,13 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
 }
 
 /// @brief Clear the triggered of the shortcuts.
-void rt_shortcuts_clear_triggered(void) {}
+void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
+    (void)app;
+}
 
 /// @brief Check the key of the shortcuts.
-int8_t rt_shortcuts_check_key(int key, int mods) {
+int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
+    (void)app;
     (void)key;
     (void)mods;
     return 0;

@@ -67,6 +67,99 @@ static uint32_t type_to_color(vg_notification_manager_t *mgr, vg_notification_ty
     }
 }
 
+static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
+                                          size_t target_index,
+                                          float *out_x,
+                                          float *out_y,
+                                          float *out_w,
+                                          float *out_h,
+                                          float *action_x,
+                                          float *action_y,
+                                          float *action_w,
+                                          float *action_h) {
+    if (!mgr || target_index >= mgr->notification_count)
+        return false;
+
+    float x, y;
+    bool from_top = true;
+
+    switch (mgr->position) {
+        case VG_NOTIFICATION_TOP_LEFT:
+            x = mgr->base.x + mgr->margin;
+            y = mgr->base.y + mgr->margin;
+            break;
+        case VG_NOTIFICATION_TOP_RIGHT:
+            x = mgr->base.x + mgr->base.width - mgr->margin - mgr->notification_width;
+            y = mgr->base.y + mgr->margin;
+            break;
+        case VG_NOTIFICATION_BOTTOM_LEFT:
+            x = mgr->base.x + mgr->margin;
+            y = mgr->base.y + mgr->base.height - mgr->margin;
+            from_top = false;
+            break;
+        case VG_NOTIFICATION_BOTTOM_RIGHT:
+            x = mgr->base.x + mgr->base.width - mgr->margin - mgr->notification_width;
+            y = mgr->base.y + mgr->base.height - mgr->margin;
+            from_top = false;
+            break;
+        case VG_NOTIFICATION_TOP_CENTER:
+            x = mgr->base.x + (mgr->base.width - mgr->notification_width) / 2;
+            y = mgr->base.y + mgr->margin;
+            break;
+        case VG_NOTIFICATION_BOTTOM_CENTER:
+            x = mgr->base.x + (mgr->base.width - mgr->notification_width) / 2;
+            y = mgr->base.y + mgr->base.height - mgr->margin;
+            from_top = false;
+            break;
+    }
+
+    size_t visible_count = 0;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        vg_notification_t *notif = mgr->notifications[i];
+        if (!notif || notif->dismissed)
+            continue;
+        if (visible_count >= mgr->max_visible)
+            break;
+
+        float notif_height = mgr->padding * 2;
+        if (notif->title)
+            notif_height += mgr->title_font_size + 4;
+        if (notif->message)
+            notif_height += mgr->font_size + 4;
+        if (notif->action_label)
+            notif_height += mgr->font_size + 8;
+
+        float notif_y = from_top ? y : y - notif_height;
+        if (i == target_index) {
+            if (out_x)
+                *out_x = x;
+            if (out_y)
+                *out_y = notif_y;
+            if (out_w)
+                *out_w = (float)mgr->notification_width;
+            if (out_h)
+                *out_h = notif_height;
+            if (action_x)
+                *action_x = x + mgr->padding + 4;
+            if (action_y)
+                *action_y = notif_y + notif_height - mgr->padding - mgr->font_size;
+            if (action_w)
+                *action_w = (float)mgr->notification_width - (mgr->padding + 4) * 2;
+            if (action_h)
+                *action_h = mgr->font_size + 4;
+            return true;
+        }
+
+        if (from_top)
+            y += notif_height + mgr->spacing;
+        else
+            y -= notif_height + mgr->spacing;
+        visible_count++;
+    }
+
+    return false;
+}
+
 //=============================================================================
 // Notification Manager Implementation
 //=============================================================================
@@ -178,14 +271,13 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
     (void)from_right;
 
     // Draw visible notifications
-    size_t visible_count = mgr->notification_count;
-    if (visible_count > mgr->max_visible)
-        visible_count = mgr->max_visible;
-
-    for (size_t i = 0; i < visible_count; i++) {
+    size_t visible_count = 0;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
         vg_notification_t *notif = mgr->notifications[i];
         if (!notif || notif->dismissed)
             continue;
+        if (visible_count >= mgr->max_visible)
+            break;
 
         // Calculate notification height
         float notif_height = mgr->padding * 2;
@@ -238,8 +330,13 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
 
         // Draw action button if present
         if (notif->action_label && mgr->font) {
-            // Action button drawing placeholder
-            (void)content_y;
+            vg_font_draw_text(canvas,
+                              mgr->font,
+                              mgr->font_size,
+                              content_x,
+                              content_y,
+                              notif->action_label,
+                              type_color);
         }
 
         // Move to next position
@@ -248,24 +345,35 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
         } else {
             y -= notif_height + mgr->spacing;
         }
+        visible_count++;
     }
 }
 
 static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_notification_manager_t *mgr = (vg_notification_manager_t *)widget;
 
-    if (event->type == VG_EVENT_CLICK) {
-        // Check if click is on a notification or its action button
-        // For now, just dismiss any clicked notification
+    if (event->type == VG_EVENT_CLICK || event->type == VG_EVENT_MOUSE_DOWN) {
         for (size_t i = 0; i < mgr->notification_count; i++) {
             vg_notification_t *notif = mgr->notifications[i];
             if (!notif || notif->dismissed)
                 continue;
-
-            // Simple hit test - check if within notification area
-            // Full implementation would track notification bounds
-            (void)event->mouse.x;
-            (void)event->mouse.y;
+            float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+            float ax = 0.0f, ay = 0.0f, aw = 0.0f, ah = 0.0f;
+            if (!notification_bounds_for_index(
+                    mgr, i, &x, &y, &w, &h, &ax, &ay, &aw, &ah)) {
+                continue;
+            }
+            float px = event->mouse.screen_x;
+            float py = event->mouse.screen_y;
+            if (px < x || px >= x + w || py < y || py >= y + h)
+                continue;
+            if (notif->action_label && px >= ax && px < ax + aw && py >= ay && py < ay + ah &&
+                notif->action_callback) {
+                notif->action_callback(notif->id, notif->action_user_data);
+            }
+            notif->dismissed = true;
+            mgr->base.needs_paint = true;
+            return true;
         }
     }
 
@@ -276,8 +384,6 @@ static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *e
 void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now_ms) {
     if (!mgr)
         return;
-
-    bool needs_cleanup = false;
 
     for (size_t i = 0; i < mgr->notification_count; i++) {
         vg_notification_t *notif = mgr->notifications[i];
@@ -294,7 +400,6 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
                 if (notif->opacity <= 0) {
                     notif->opacity = 0;
                     notif->dismissed = true;
-                    needs_cleanup = true;
                 }
                 mgr->base.needs_paint = true;
             }
@@ -313,17 +418,15 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
     }
 
     // Remove dismissed notifications
-    if (needs_cleanup) {
-        size_t write_idx = 0;
-        for (size_t i = 0; i < mgr->notification_count; i++) {
-            if (mgr->notifications[i] && !mgr->notifications[i]->dismissed) {
-                mgr->notifications[write_idx++] = mgr->notifications[i];
-            } else {
-                free_notification(mgr->notifications[i]);
-            }
+    size_t write_idx = 0;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && !mgr->notifications[i]->dismissed) {
+            mgr->notifications[write_idx++] = mgr->notifications[i];
+        } else {
+            free_notification(mgr->notifications[i]);
         }
-        mgr->notification_count = write_idx;
     }
+    mgr->notification_count = write_idx;
 }
 
 uint32_t vg_notification_show(vg_notification_manager_t *mgr,

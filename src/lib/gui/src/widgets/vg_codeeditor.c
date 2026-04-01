@@ -1022,6 +1022,28 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 return true;
             }
 
+            if (editor->show_line_numbers && event->mouse.x < editor->gutter_width) {
+                float local_y = event->mouse.y + editor->scroll_y;
+                int line = (int)(local_y / editor->line_height);
+                if (line < 0)
+                    line = 0;
+                if (line >= editor->line_count)
+                    line = editor->line_count - 1;
+
+                int slot = -1;
+                for (int i = 0; i < editor->gutter_icon_count; i++) {
+                    if (editor->gutter_icons[i].line == line) {
+                        slot = editor->gutter_icons[i].type;
+                        break;
+                    }
+                }
+                editor->gutter_clicked = true;
+                editor->gutter_clicked_line = line;
+                editor->gutter_clicked_slot = slot;
+                widget->needs_paint = true;
+                return true;
+            }
+
             float content_x = editor->gutter_width;
             float local_x = event->mouse.x - content_x + editor->scroll_x;
             float local_y = event->mouse.y + editor->scroll_y;

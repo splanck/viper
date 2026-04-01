@@ -83,6 +83,8 @@ typedef struct {
     Atom xdnd_type_list; ///< XdndTypeList atom
     Atom text_uri_list;  ///< text/uri-list MIME type atom
     Window xdnd_source;  ///< Source window for current drag
+    XIM xim;             ///< Input method for UTF-8 text input
+    XIC xic;             ///< Input context for UTF-8 text input
 } vgfx_x11_data;
 
 //===----------------------------------------------------------------------===//
@@ -141,6 +143,36 @@ static vgfx_key_t translate_keysym(KeySym keysym) {
         default:
             return VGFX_KEY_UNKNOWN;
     }
+}
+
+static int x11_modifiers(unsigned int state) {
+    int mods = 0;
+    if (state & ShiftMask)
+        mods |= VGFX_MOD_SHIFT;
+    if (state & ControlMask)
+        mods |= VGFX_MOD_CTRL;
+    if (state & Mod1Mask)
+        mods |= VGFX_MOD_ALT;
+    if (state & Mod4Mask)
+        mods |= VGFX_MOD_CMD;
+    return mods;
+}
+
+static uint32_t utf8_first_codepoint(const char *bytes, int len) {
+    const unsigned char *s = (const unsigned char *)bytes;
+    if (!s || len <= 0)
+        return 0;
+    if (s[0] < 0x80)
+        return s[0];
+    if (len >= 2 && (s[0] & 0xE0) == 0xC0)
+        return ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
+    if (len >= 3 && (s[0] & 0xF0) == 0xE0)
+        return ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
+               (uint32_t)(s[2] & 0x3F);
+    if (len >= 4 && (s[0] & 0xF8) == 0xF0)
+        return ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
+               ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -304,6 +336,18 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     XStoreName(x11->display, x11->window, params->title);
     XSetIconName(x11->display, x11->window, params->title);
 
+    x11->xim = XOpenIM(x11->display, NULL, NULL, NULL);
+    if (x11->xim) {
+        x11->xic = XCreateIC(x11->xim,
+                             XNInputStyle,
+                             XIMPreeditNothing | XIMStatusNothing,
+                             XNClientWindow,
+                             x11->window,
+                             XNFocusWindow,
+                             x11->window,
+                             NULL);
+    }
+
     /* Set window size hints (prevents resizing if not resizable) */
     XSizeHints *size_hints = XAllocSizeHints();
     if (size_hints) {
@@ -441,6 +485,15 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
         x11->gc = NULL;
     }
 
+    if (x11->xic) {
+        XDestroyIC(x11->xic);
+        x11->xic = NULL;
+    }
+    if (x11->xim) {
+        XCloseIM(x11->xim);
+        x11->xim = NULL;
+    }
+
     /* Free colormap if we created one (not the default) */
     if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen)) {
         XFreeColormap(x11->display, x11->colormap);
@@ -504,7 +557,22 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
         switch (event.type) {
             case KeyPress: {
-                KeySym keysym = XLookupKeysym(&event.xkey, 0);
+                KeySym keysym = NoSymbol;
+                int mods = x11_modifiers(event.xkey.state);
+                char text_buf[16];
+                int text_len = 0;
+                if (x11->xic) {
+                    Status status = 0;
+                    text_len = Xutf8LookupString(
+                        x11->xic, &event.xkey, text_buf, (int)sizeof(text_buf), &keysym, &status);
+                    if (status == XLookupNone)
+                        text_len = 0;
+                } else {
+                    text_len =
+                        XLookupString(&event.xkey, text_buf, (int)sizeof(text_buf), &keysym, NULL);
+                }
+                if (keysym == NoSymbol)
+                    keysym = XLookupKeysym(&event.xkey, 0);
                 vgfx_key_t key = translate_keysym(keysym);
 
                 if (key != VGFX_KEY_UNKNOWN && key < 512) {
@@ -513,8 +581,18 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_DOWN,
                                                .time_ms = timestamp,
-                                               .data.key = {.key = key, .is_repeat = is_repeat}};
+                                               .data.key = {.key = key,
+                                                            .is_repeat = is_repeat,
+                                                            .modifiers = mods}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
+                }
+                uint32_t codepoint = utf8_first_codepoint(text_buf, text_len);
+                if (codepoint >= 0x20 && codepoint != 0x7F) {
+                    vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
+                                               .time_ms = timestamp,
+                                               .data.text = {.codepoint = codepoint,
+                                                             .modifiers = mods}};
+                    vgfx_internal_enqueue_event(win, &text_event);
                 }
                 break;
             }
@@ -541,7 +619,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_UP,
                                                .time_ms = timestamp,
-                                               .data.key = {.key = key, .is_repeat = 0}};
+                                               .data.key = {.key = key,
+                                                            .is_repeat = 0,
+                                                            .modifiers =
+                                                                x11_modifiers(event.xkey.state)}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
                 break;
@@ -738,12 +819,16 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             }
 
             case FocusIn: {
+                if (x11->xic)
+                    XSetICFocus(x11->xic);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
 
             case FocusOut: {
+                if (x11->xic)
+                    XUnsetICFocus(x11->xic);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;

@@ -51,12 +51,14 @@
 
 void *rt_tabbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_tabbar_t *tabbar = vg_tabbar_create((vg_widget_t *)parent);
     if (tabbar) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_tabbar_set_font(
-                tabbar, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_tabbar_set_font(tabbar, app->default_font, app->default_font_size);
     }
     return tabbar;
 }
@@ -221,12 +223,13 @@ void *rt_splitpane_get_second(void *split) {
 
 void *rt_codeeditor_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_codeeditor_t *editor = vg_codeeditor_create((vg_widget_t *)parent);
-    if (editor && s_current_app) {
+    if (editor && app) {
+        rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app->default_font) {
-            vg_codeeditor_set_font(
-                editor, s_current_app->default_font, s_current_app->default_font_size);
+        if (app->default_font) {
+            vg_codeeditor_set_font(editor, app->default_font, app->default_font_size);
         }
     }
     return editor;
@@ -322,10 +325,9 @@ double rt_codeeditor_get_font_size(void *editor) {
     if (!editor)
         return 14.0;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
+    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
-    float _s = (s_current_app && s_current_app->window)
-                   ? vgfx_window_get_scale(s_current_app->window)
-                   : 1.0f;
+    float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
     if (_s <= 0.0f)
         _s = 1.0f;
     return (double)(ed->font_size / _s);
@@ -338,10 +340,9 @@ void rt_codeeditor_set_font_size(void *editor, double size) {
         return;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
     if (size > 0.0) {
+        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
         // Store physical pixels — multiply logical pt size by HiDPI scale.
-        float _s = (s_current_app && s_current_app->window)
-                       ? vgfx_window_get_scale(s_current_app->window)
-                       : 1.0f;
+        float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
         if (_s <= 0.0f)
             _s = 1.0f;
         ed->font_size = (float)size * _s;
@@ -356,53 +357,43 @@ void rt_codeeditor_set_font_size(void *editor, double size) {
 
 /// @brief Apply the hidpi scale of the theme.
 void rt_theme_apply_hidpi_scale(void) {
-    if (!s_current_app || !s_current_app->window)
-        return;
-    float _s = vgfx_window_get_scale(s_current_app->window);
-    if (_s <= 0.0f)
-        _s = 1.0f;
-    vg_theme_t *_t = vg_theme_get_current();
-    if (!_t)
-        return;
-    _t->ui_scale = _s;
-    /* Re-apply scaling from the base theme values (theme_dark/light return
-     * fresh unscaled copies, so the values are unscaled at this point). */
-    _t->typography.size_small *= _s;
-    _t->typography.size_normal *= _s;
-    _t->typography.size_large *= _s;
-    _t->typography.size_heading *= _s;
-    _t->spacing.xs *= _s;
-    _t->spacing.sm *= _s;
-    _t->spacing.md *= _s;
-    _t->spacing.lg *= _s;
-    _t->spacing.xl *= _s;
-    _t->button.height *= _s;
-    _t->button.padding_h *= _s;
-    _t->input.height *= _s;
-    _t->input.padding_h *= _s;
-    _t->scrollbar.width *= _s;
+    rt_gui_refresh_theme(rt_gui_get_active_app());
 }
 
 /// @brief Set the dark of the theme.
 void rt_theme_set_dark(void) {
     RT_ASSERT_MAIN_THREAD();
-    vg_theme_set_current(vg_theme_dark());
-    rt_theme_apply_hidpi_scale();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app) {
+        vg_theme_set_current(vg_theme_dark());
+        return;
+    }
+    rt_gui_set_theme_kind(app, RT_GUI_THEME_DARK);
 }
 
 /// @brief Set the light of the theme.
 void rt_theme_set_light(void) {
     RT_ASSERT_MAIN_THREAD();
-    vg_theme_set_current(vg_theme_light());
-    rt_theme_apply_hidpi_scale();
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app) {
+        vg_theme_set_current(vg_theme_light());
+        return;
+    }
+    rt_gui_set_theme_kind(app, RT_GUI_THEME_LIGHT);
 }
 
 /// @brief Get the name of the theme.
 rt_string rt_theme_get_name(void) {
     RT_ASSERT_MAIN_THREAD();
-    // Query the vg layer directly rather than maintaining a shadow variable.
-    vg_theme_t *current = vg_theme_get_current();
-    const char *name = (current == vg_theme_dark()) ? "dark" : "light";
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    const char *name = "dark";
+    if (app) {
+        name = (app->theme_kind == RT_GUI_THEME_LIGHT) ? "light" : "dark";
+    } else {
+        vg_theme_t *current = vg_theme_get_current();
+        if (current && current->name && strcasecmp(current->name, "Light") == 0)
+            name = "light";
+    }
     return rt_string_from_bytes(name, strlen(name));
 }
 
@@ -467,14 +458,13 @@ int64_t rt_widget_is_focused(void *widget) {
     return (((vg_widget_t *)widget)->state & VG_STATE_FOCUSED) ? 1 : 0;
 }
 
-// Global for tracking last clicked widget (set by GUI.App.Poll)
-static vg_widget_t *g_last_clicked_widget = NULL;
-
 /// @brief Set the last clicked value.
 /// @param widget
 void rt_gui_set_last_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    g_last_clicked_widget = (vg_widget_t *)widget;
+    rt_gui_app_t *app = widget ? rt_gui_app_from_widget((vg_widget_t *)widget) : rt_gui_get_active_app();
+    if (app)
+        app->last_clicked = (vg_widget_t *)widget;
 }
 
 /// @brief Was the clicked of the widget.
@@ -482,7 +472,8 @@ int64_t rt_widget_was_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
-    return (g_last_clicked_widget == widget) ? 1 : 0;
+    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)widget);
+    return (app && app->last_clicked == widget) ? 1 : 0;
 }
 
 /// @brief Set the position of the widget.
@@ -501,7 +492,9 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
 
 void *rt_dropdown_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_dropdown_create((vg_widget_t *)parent);
+    vg_dropdown_t *dropdown = vg_dropdown_create((vg_widget_t *)parent);
+    rt_gui_apply_default_font((vg_widget_t *)dropdown);
+    return dropdown;
 }
 
 /// @brief Add the item of the dropdown.
@@ -641,7 +634,9 @@ double rt_progressbar_get_value(void *progress) {
 
 void *rt_listbox_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_listbox_create((vg_widget_t *)parent);
+    vg_listbox_t *listbox = vg_listbox_create((vg_widget_t *)parent);
+    rt_gui_apply_default_font((vg_widget_t *)listbox);
+    return listbox;
 }
 
 void *rt_listbox_add_item(void *listbox, rt_string text) {
@@ -807,6 +802,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     vg_radiobutton_t *radio =
         vg_radiobutton_create((vg_widget_t *)parent, ctext, (vg_radiogroup_t *)group);
     free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)radio);
     return radio;
 }
 

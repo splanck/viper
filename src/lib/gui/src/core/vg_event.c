@@ -96,6 +96,19 @@ static vg_key_t translate_vgfx_key(int vgfx_key) {
     }
 }
 
+static uint32_t translate_vgfx_modifiers(int vgfx_modifiers) {
+    uint32_t modifiers = VG_MOD_NONE;
+    if (vgfx_modifiers & VGFX_MOD_SHIFT)
+        modifiers |= VG_MOD_SHIFT;
+    if (vgfx_modifiers & VGFX_MOD_CTRL)
+        modifiers |= VG_MOD_CTRL;
+    if (vgfx_modifiers & VGFX_MOD_ALT)
+        modifiers |= VG_MOD_ALT;
+    if (vgfx_modifiers & VGFX_MOD_CMD)
+        modifiers |= VG_MOD_SUPER;
+    return modifiers;
+}
+
 vg_event_t vg_event_from_platform(void *platform_event) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
@@ -110,11 +123,20 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.type = VG_EVENT_KEY_DOWN;
             event.key.key = translate_vgfx_key(pe->data.key.key);
             event.key.repeat = pe->data.key.is_repeat != 0;
+            event.modifiers = translate_vgfx_modifiers(pe->data.key.modifiers);
             break;
 
         case VGFX_EVENT_KEY_UP:
             event.type = VG_EVENT_KEY_UP;
             event.key.key = translate_vgfx_key(pe->data.key.key);
+            event.modifiers = translate_vgfx_modifiers(pe->data.key.modifiers);
+            break;
+
+        case VGFX_EVENT_TEXT_INPUT:
+            event.type = VG_EVENT_KEY_CHAR;
+            event.key.key = VG_KEY_UNKNOWN;
+            event.key.codepoint = pe->data.text.codepoint;
+            event.modifiers = translate_vgfx_modifiers(pe->data.text.modifiers);
             break;
 
         case VGFX_EVENT_MOUSE_MOVE:

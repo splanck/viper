@@ -550,14 +550,6 @@ static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
             canvas, bar->font, bar->font_size, text_x, text_y, bar->result_text, text_color);
     }
 
-    // Paint child widgets
-    vg_widget_t *child = widget->first_child;
-    while (child) {
-        if (child->visible && child->vtable && child->vtable->paint) {
-            child->vtable->paint(child, canvas);
-        }
-        child = child->next_sibling;
-    }
 }
 
 static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) {

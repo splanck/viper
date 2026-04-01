@@ -59,11 +59,14 @@ static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
 
 void *rt_menubar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_menubar_t *mb = vg_menubar_create((vg_widget_t *)parent);
     if (mb) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_menubar_set_font(mb, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_menubar_set_font(mb, app->default_font, app->default_font_size);
         mb->native_main_menu = rt_gui_macos_menu_register_menubar(mb);
         rt_gui_menu_sync_menubar(mb);
     }
@@ -523,12 +526,14 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
 
 void *rt_statusbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_statusbar_t *sb = vg_statusbar_create((vg_widget_t *)parent);
     if (sb) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_statusbar_set_font(
-                sb, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_statusbar_set_font(sb, app->default_font, app->default_font_size);
     }
     return sb;
 }
@@ -796,14 +801,15 @@ void rt_statusbaritem_set_visible(void *item, int64_t visible) {
     vg_statusbar_item_set_visible((vg_statusbar_item_t *)item, visible != 0);
 }
 
-// Track clicked status bar item
-static vg_statusbar_item_t *g_clicked_statusbar_item = NULL;
-
 /// @brief Set the clicked statusbar item value.
 /// @param item
 void rt_gui_set_clicked_statusbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    g_clicked_statusbar_item = (vg_statusbar_item_t *)item;
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
+    if (app)
+        app->last_statusbar_clicked = (vg_statusbar_item_t *)item;
 }
 
 /// @brief Was the clicked of the statusbaritem.
@@ -811,7 +817,13 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return 0;
-    return (g_clicked_statusbar_item == item) ? 1 : 0;
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
+    if (!app || app->last_statusbar_clicked != item)
+        return 0;
+    app->last_statusbar_clicked = NULL;
+    return 1;
 }
 
 //=============================================================================
@@ -820,22 +832,28 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
 
 void *rt_toolbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_HORIZONTAL);
     if (tb) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_toolbar_set_font(tb, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_toolbar_set_font(tb, app->default_font, app->default_font_size);
     }
     return tb;
 }
 
 void *rt_toolbar_new_vertical(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
     vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_VERTICAL);
     if (tb) {
+        if (app)
+            rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
-        if (s_current_app && s_current_app->default_font)
-            vg_toolbar_set_font(tb, s_current_app->default_font, s_current_app->default_font_size);
+        if (app && app->default_font)
+            vg_toolbar_set_font(tb, app->default_font, app->default_font_size);
     }
     return tb;
 }
@@ -1138,14 +1156,15 @@ int64_t rt_toolbaritem_is_toggled(void *item) {
     return ((vg_toolbar_item_t *)item)->checked ? 1 : 0;
 }
 
-// Track clicked toolbar item
-static vg_toolbar_item_t *g_clicked_toolbar_item = NULL;
-
 /// @brief Set the clicked toolbar item value.
 /// @param item
 void rt_gui_set_clicked_toolbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    g_clicked_toolbar_item = (vg_toolbar_item_t *)item;
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
+    if (app)
+        app->last_toolbar_clicked = (vg_toolbar_item_t *)item;
 }
 
 /// @brief Was the clicked of the toolbaritem.
@@ -1156,6 +1175,18 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
     if (ti->was_clicked) {
         ti->was_clicked = false;
+        rt_gui_app_t *app = rt_gui_get_active_app();
+        if (!app)
+            app = s_current_app;
+        if (app)
+            app->last_toolbar_clicked = NULL;
+        return 1;
+    }
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
+    if (app && app->last_toolbar_clicked == item) {
+        app->last_toolbar_clicked = NULL;
         return 1;
     }
     return 0;

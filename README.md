@@ -14,7 +14,7 @@
 
 **[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with classes, generics, enums, modules, and pattern matching, designed for building real applications on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
 
-> **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
+> **Status:** Active development. APIs, IL, and tooling are still evolving and are subject to change. Ready for experimentation and game prototyping, but not production-ready.
 
 ---
 

@@ -61,19 +61,84 @@
 /// @details Holds the graphics window, root widget, default font, mouse state,
 ///          and close flag. Defined in rt_gui_app.c and shared across split GUI modules.
 typedef struct {
+    char *id;
+    char *keys;
+    char *description;
+    int enabled;
+    int triggered;
+    int parsed_ctrl;
+    int parsed_shift;
+    int parsed_alt;
+    int parsed_key;
+} rt_gui_shortcut_t;
+
+typedef struct {
+    char **files;
+    int64_t file_count;
+    int64_t was_dropped;
+} rt_gui_file_drop_data_t;
+
+typedef enum {
+    RT_GUI_THEME_DARK = 0,
+    RT_GUI_THEME_LIGHT = 1,
+} rt_gui_theme_kind_t;
+
+typedef struct {
     vgfx_window_t window;      ///< Underlying graphics window handle.
     vg_widget_t *root;         ///< Root widget container for the UI hierarchy.
     vg_font_t *default_font;   ///< Default font for widgets (lazily loaded).
     float default_font_size;   ///< Default font size in points.
+    int default_font_owned;    ///< Non-zero when default_font is owned by the app.
+    vg_font_t **retired_fonts;
+    int retired_font_count;
+    int retired_font_cap;
     int64_t should_close;      ///< Non-zero when the application should exit.
     vg_widget_t *last_clicked; ///< Widget clicked during the current frame.
+    vg_statusbar_item_t *last_statusbar_clicked;
+    vg_toolbar_item_t *last_toolbar_clicked;
     int32_t mouse_x;           ///< Current mouse X coordinate in window space.
     int32_t mouse_y;           ///< Current mouse Y coordinate in window space.
+    uint64_t last_event_time_ms;
+    vg_theme_t *theme;
+    const vg_theme_t *theme_base;
+    float theme_scale;
+    rt_gui_theme_kind_t theme_kind;
     char *title;               ///< Window title (owned, heap-allocated).
+    vg_dialog_t **dialog_stack;
+    int dialog_count;
+    int dialog_cap;
+    vg_widget_t *drag_source;
+    vg_widget_t *drag_over_widget;
+    rt_gui_shortcut_t *shortcuts;
+    int shortcut_count;
+    int shortcut_cap;
+    int shortcuts_global_enabled;
+    char *triggered_shortcut_id;
+    rt_gui_file_drop_data_t file_drop;
+    vg_commandpalette_t **command_palettes;
+    int command_palette_count;
+    int command_palette_cap;
+    vg_notification_manager_t *notification_manager;
+    vg_tooltip_manager_t tooltip_manager_state;
+    vg_tooltip_t *manual_tooltip;
+    uint32_t manual_tooltip_delay_ms;
+    vg_widget_runtime_state_t widget_runtime_state;
 } rt_gui_app_t;
 
 /// @brief Global pointer to the current app for widget constructors to access the default font.
 extern rt_gui_app_t *s_current_app;
+
+rt_gui_app_t *rt_gui_get_active_app(void);
+void rt_gui_activate_app(rt_gui_app_t *app);
+rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget);
+uint64_t rt_gui_now_ms(void);
+void rt_gui_refresh_theme(rt_gui_app_t *app);
+void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind);
+void rt_gui_sync_modal_root(rt_gui_app_t *app);
+void rt_gui_apply_default_font(vg_widget_t *widget);
+void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
+void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
+void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path);
 
 //=============================================================================
 // Shared helpers
@@ -109,17 +174,13 @@ void rt_gui_ensure_default_font(void);
 /// @param widget Pointer to the clicked widget (may be NULL to clear).
 void rt_gui_set_last_clicked(void *widget);
 
-/// @brief Set the active modal dialog.
-/// @details When non-NULL, all events are routed to this dialog and the
-///          dialog is rendered as a centered modal overlay above all other
-///          widgets. Set to NULL to dismiss. Defined in rt_gui_app.c.
-/// @param dlg Dialog handle (vg_dialog_t*), or NULL to clear.
-void rt_gui_set_active_dialog(void *dlg);
+void rt_gui_push_dialog(rt_gui_app_t *app, vg_dialog_t *dlg);
+void rt_gui_remove_dialog(rt_gui_app_t *app, vg_dialog_t *dlg);
+vg_dialog_t *rt_gui_top_dialog(rt_gui_app_t *app);
 
-/// @brief Free global resources owned by rt_gui_features.c (tooltip, notification manager, file
-/// drop).
+/// @brief Free per-app feature resources owned by rt_gui_features.c.
 /// @details Called from rt_gui_app_destroy. Defined in rt_gui_features.c.
-void rt_gui_features_cleanup(void);
+void rt_gui_features_cleanup(rt_gui_app_t *app);
 
 /// @brief Re-apply HiDPI scale to the current theme. Called after theme switch.
 void rt_theme_apply_hidpi_scale(void);
@@ -153,15 +214,10 @@ static inline void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app) {
 }
 #endif
 
-/// @brief Record a dropped file path (called from rt_gui_app_poll on FILE_DROP events).
-/// @details Adds the path to the g_file_drop array. The first call after
-///          was_dropped is consumed clears old entries. Defined in rt_gui_features.c.
-void rt_gui_file_drop_add(const char *path);
-
 /// @brief Clear all triggered shortcut flags for the current frame.
 /// @details Called at the start of each poll cycle to reset shortcut state.
 ///          Defined in rt_gui_system.c.
-void rt_shortcuts_clear_triggered(void);
+void rt_shortcuts_clear_triggered(rt_gui_app_t *app);
 
 /// @brief Check whether a key/modifier combination matches any registered shortcut.
 /// @details Called during the poll loop to dispatch keyboard shortcuts.
@@ -169,4 +225,4 @@ void rt_shortcuts_clear_triggered(void);
 /// @param key  The key code that was pressed.
 /// @param mods Active modifier flags (shift, ctrl, alt, etc.).
 /// @return Non-zero if a matching shortcut was triggered; 0 otherwise.
-int8_t rt_shortcuts_check_key(int key, int mods);
+int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods);

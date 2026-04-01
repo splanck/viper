@@ -815,9 +815,17 @@ int64_t rt_codeeditor_get_cursor_col(void *editor) {
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col) {
     if (!editor)
         return;
-    if (index != 0)
-        return; // Only primary cursor supported
-    vg_codeeditor_set_cursor((vg_codeeditor_t *)editor, (int)line, (int)col);
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (index == 0) {
+        vg_codeeditor_set_cursor(ce, (int)line, (int)col);
+        return;
+    }
+    int extra_idx = (int)index - 1;
+    if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
+        return;
+    ce->extra_cursors[extra_idx].line = (int)line;
+    ce->extra_cursors[extra_idx].col = (int)col;
+    ce->base.needs_paint = true;
 }
 
 void rt_codeeditor_set_cursor_selection(void *editor,

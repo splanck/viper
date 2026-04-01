@@ -134,6 +134,69 @@ static void filter_commands(vg_commandpalette_t *palette) {
     palette->base.needs_paint = true;
 }
 
+static size_t utf8_encode_codepoint(uint32_t codepoint, char out[4]) {
+    if (codepoint <= 0x7F) {
+        out[0] = (char)codepoint;
+        return 1;
+    }
+    if (codepoint <= 0x7FF) {
+        out[0] = (char)(0xC0 | (codepoint >> 6));
+        out[1] = (char)(0x80 | (codepoint & 0x3F));
+        return 2;
+    }
+    if (codepoint <= 0xFFFF) {
+        out[0] = (char)(0xE0 | (codepoint >> 12));
+        out[1] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (codepoint & 0x3F));
+        return 3;
+    }
+    if (codepoint <= 0x10FFFF) {
+        out[0] = (char)(0xF0 | (codepoint >> 18));
+        out[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (codepoint & 0x3F));
+        return 4;
+    }
+    return 0;
+}
+
+static void append_query_char(vg_commandpalette_t *palette, uint32_t codepoint) {
+    char encoded[4];
+    size_t encoded_len = 0;
+    if (!palette || codepoint < 0x20 || codepoint == 0x7F)
+        return;
+    encoded_len = utf8_encode_codepoint(codepoint, encoded);
+    if (encoded_len == 0)
+        return;
+    size_t old_len = palette->current_query ? strlen(palette->current_query) : 0;
+    char *next = realloc(palette->current_query, old_len + encoded_len + 1);
+    if (!next)
+        return;
+    memcpy(next + old_len, encoded, encoded_len);
+    next[old_len + encoded_len] = '\0';
+    palette->current_query = next;
+    filter_commands(palette);
+}
+
+static void remove_query_char(vg_commandpalette_t *palette) {
+    if (!palette || !palette->current_query)
+        return;
+    size_t len = strlen(palette->current_query);
+    if (len == 0)
+        return;
+    size_t new_len = len;
+    do {
+        new_len--;
+    } while (new_len > 0 &&
+             (((unsigned char)palette->current_query[new_len] & 0xC0) == 0x80));
+    palette->current_query[new_len] = '\0';
+    if (new_len == 0) {
+        free(palette->current_query);
+        palette->current_query = NULL;
+    }
+    filter_commands(palette);
+}
+
 //=============================================================================
 // CommandPalette Implementation
 //=============================================================================
@@ -160,6 +223,7 @@ vg_commandpalette_t *vg_commandpalette_create(void) {
     palette->is_visible = false;
     palette->selected_index = -1;
     palette->hovered_index = -1;
+    palette->placeholder_text = strdup("Type to search...");
 
     return palette;
 }
@@ -183,6 +247,7 @@ static void commandpalette_destroy(vg_widget_t *widget) {
     }
     free(palette->commands);
     free(palette->filtered);
+    free(palette->placeholder_text);
     free(palette->current_query);
 }
 
@@ -222,7 +287,22 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
 
     // Draw search input area
     float search_height = 36;
-    (void)search_height;
+    if (palette->font) {
+        const char *query = (palette->current_query && palette->current_query[0])
+                                ? palette->current_query
+                                : (palette->placeholder_text ? palette->placeholder_text
+                                                             : "Type to search...");
+        uint32_t query_color =
+            (palette->current_query && palette->current_query[0]) ? palette->text_color
+                                                                  : palette->shortcut_color;
+        vg_font_draw_text(canvas,
+                          palette->font,
+                          palette->font_size,
+                          widget->x + 12,
+                          widget->y + 8,
+                          query,
+                          query_color);
+    }
 
     // Draw filtered results
     float y = widget->y + search_height;
@@ -296,8 +376,46 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
                 }
                 return true;
 
+            case VG_KEY_BACKSPACE:
+                remove_query_char(palette);
+                return true;
+
             default:
                 break;
+        }
+    }
+
+    if (event->type == VG_EVENT_KEY_CHAR) {
+        append_query_char(palette, event->key.codepoint);
+        return true;
+    }
+
+    if (event->type == VG_EVENT_MOUSE_MOVE) {
+        float local_y = event->mouse.y - 36.0f;
+        if (local_y >= 0.0f) {
+            int hovered = (int)(local_y / (float)palette->item_height);
+            if (hovered >= 0 && hovered < (int)palette->filtered_count) {
+                if (palette->hovered_index != hovered) {
+                    palette->hovered_index = hovered;
+                    palette->selected_index = hovered;
+                    palette->base.needs_paint = true;
+                }
+                return true;
+            }
+        }
+    }
+
+    if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
+        float local_y = event->mouse.y - 36.0f;
+        if (local_y >= 0.0f) {
+            int clicked = (int)(local_y / (float)palette->item_height);
+            if (clicked >= 0 && clicked < (int)palette->filtered_count) {
+                palette->selected_index = clicked;
+                palette->base.needs_paint = true;
+                if (event->type == VG_EVENT_CLICK)
+                    vg_commandpalette_execute_selected(palette);
+                return true;
+            }
         }
     }
 
@@ -472,6 +590,14 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
 
     palette->font = font;
     palette->font_size = size;
+    palette->base.needs_paint = true;
+}
+
+void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text) {
+    if (!palette)
+        return;
+    free(palette->placeholder_text);
+    palette->placeholder_text = text ? strdup(text) : NULL;
     palette->base.needs_paint = true;
 }
 

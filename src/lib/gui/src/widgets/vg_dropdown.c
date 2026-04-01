@@ -43,6 +43,7 @@ static void dropdown_destroy(vg_widget_t *widget) {
     for (int i = 0; i < dd->item_count; i++)
         free(dd->items[i]);
     free(dd->items);
+    free(dd->placeholder);
     dd->items = NULL;
     dd->item_count = 0;
     dd->item_capacity = 0;
@@ -367,8 +368,9 @@ const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown) {
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
     if (!dropdown)
         return;
-    // Free existing placeholder if owned
-    dropdown->placeholder = text; // Note: not copying, user must keep string alive
+    free(dropdown->placeholder);
+    dropdown->placeholder = text ? strdup(text) : NULL;
+    dropdown->base.needs_paint = true;
 }
 
 /// @brief Dropdown set font.
