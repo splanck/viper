@@ -11,12 +11,13 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, codegen, language features, media codecs, documentation, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, documentation, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
 - **Video Playback** — MJPEG/AVI video decoder with `VideoPlayer` runtime class (Open/Play/Pause/Stop/Seek/Update), MJPEG DHT injection for AVI compatibility, AVI RIFF container parser, Theora codec infrastructure (header parsing, YCbCr 4:2:0→RGB conversion, OGG multi-stream demux), GUI `VideoWidget` for Viper.GUI applications, and Image widget paint fix for the GUI library.
 - **Graphics Backend Hardening** — Generation-aware texture/cubemap caching across all 4 backends (Metal/D3D11/OpenGL/SW), Canvas3D window resize handling, GPU screenshot readback, InstanceBatch3D memory safety, Mesh3D inverse-transpose normal transform, Pixels mutation tracking, and macOS default application menu.
+- **Native Linker Hardening** — BranchTrampoline rewritten with boundary-based placement, SectionMerger VA logic extracted as shared API, SymbolResolver platform-aware dynamic symbol classification, RelocApplier range-checked REL32, multi-section COFF writer for function-level code sections, and Windows ARM64 native link gating.
 - **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
@@ -42,10 +43,10 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, language featu
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 65 | +65 |
-| Source files | 2,671 | 2,785 | +114 |
-| Production SLOC | ~348K | ~405K | +57K |
-| Test count | 1,351 | 1,382 | +31 |
+| Commits | — | 59 | +59 |
+| Source files | 2,671 | 2,786 | +115 |
+| Production SLOC | ~348K | ~407K | +59K |
+| Test count | 1,351 | 1,383 | +32 |
 
 ---
 
@@ -189,6 +190,55 @@ CodegenPipeline extended with native link mode: assembles COFF `.obj`, discovers
 
 ---
 
+### Native Linker Hardening
+
+Architectural improvements to the native linker pipeline improving correctness, maintainability, and platform awareness.
+
+#### BranchTrampoline Rewrite
+
+AArch64 branch trampolines rewritten with boundary-based placement. The previous implementation duplicated SectionMerger's VA reassignment algorithm (fragile coupling requiring manual synchronization). The new approach queries `.text` chunk boundaries directly via `collectChunkBoundaries()` and selects the nearest reachable boundary for trampoline insertion using `chooseReachableBoundary()`. `branch26Reachable()` validates ±128 MB displacement range at the instruction level.
+
+#### SectionMerger VA Extraction
+
+Virtual address assignment extracted from `mergeSections()` into the public `assignSectionVirtualAddresses()` API. This eliminates code duplication — BranchTrampoline and any future passes that need VA recomputation now call the shared function instead of maintaining parallel implementations. `imageBaseForPlatform()` and `permClass()` promoted from anonymous namespace lambdas to named functions.
+
+#### Platform-Aware Symbol Resolution
+
+`SymbolResolver::resolveSymbols()` now accepts a `LinkPlatform` parameter (defaulting to `detectLinkPlatform()`). Dynamic symbol prefix tables split into platform-specific arrays:
+- **Common**: `__libc_`, `__stack_chk_` (all platforms)
+- **macOS**: `CF`, `kCF`, `CG`, `NS`, `objc_`, `dispatch_`, `MTL`, `AudioObject`, etc.
+- **Windows**: `__imp_`
+
+This prevents macOS-specific prefixes from suppressing legitimate archive symbol resolution on Windows/Linux, and vice versa.
+
+#### RelocApplier Range Checking
+
+New `writeCheckedRel32()` helper validates that PC-relative relocations fit in a signed 32-bit range before patching. Out-of-range relocations now produce a diagnostic naming the object file, relocation kind, and target symbol instead of silently truncating. Applied to both COFF REL32 and generic PC-relative relocation paths.
+
+#### Multi-Section COFF Writer
+
+New `CoffWriter::write(path, vector<CodeSection>, rodata)` overload produces COFF objects with per-function `.text.funcName` sections. Each `CodeSection` gets its own COFF section header, symbol table entries, and relocations. Win64 unwind data (`xdataNameBase` parameter) accumulates across sections to produce correct cross-section `.xdata`/`.pdata` references. Single-section and empty inputs delegate to the existing single-section path.
+
+#### ELF Symbol Types
+
+ELF writer now emits `STT_OBJECT` for rodata symbols (previously `STT_FUNC`). New `elfSymbolType()` helper maps `SymbolSection::Text` → `STT_FUNC`, `SymbolSection::Rodata` → `STT_OBJECT`, and undefined/other → `STT_NOTYPE`, matching ELF spec conventions.
+
+#### Windows ARM64 Gating
+
+`nativeLink()` returns an early error for `LinkPlatform::Windows` + `LinkArch::AArch64`, with a diagnostic explaining that COFF object emission is supported but PE startup/import/unwind generation remains x86_64-specific. `native-assembler.md` updated to reflect "Object emission only" for AArch64 COFF.
+
+#### New Tests
+
+- `test_native_linker` — Windows ARM64 gating diagnostic (53 LOC)
+- `test_branch_trampoline` — Updated for boundary-based placement, added relocation application verification and `countInsn()` helper
+- `test_reloc_applier` — COFF AArch64 BRANCH26 relocation patching (54 LOC added)
+- `test_symbol_resolver` — Platform-aware resolution tests (29 LOC added)
+- `test_coff_writer` — Multi-section COFF output validation (49 LOC added)
+- `test_elf_writer` — STT_OBJECT symbol type verification (47 LOC added)
+- `test_pe_writer` — PE output structure tests (33 LOC added)
+
+---
+
 ### Zia Language Features
 
 Seven new language features expanding Zia's operator, declaration, and parameter surface:
@@ -222,6 +272,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Spill slot reuse disabled** — Interval analysis did not account for cross-block liveness, causing values still live in successor blocks to be overwritten. All three reuse sites now use the safe `ensureSpillSlot` path.
 - **Binary encoder diagnostics** — `bad_variant_access` handler wraps encoding with instruction context for cleaner error reporting.
 - **Pipeline error handling** — `pipeline.run()` wrapped in try/catch for cleaner error reporting.
+- **Branch relaxation** — Short JMP (`EB`, 2 bytes) and short Jcc (`75`/`74`/etc., 2 bytes) encodings for near branches, replacing always-near JMP (`E9`, 5 bytes) and always-long Jcc (`0F 8x`, 6 bytes) forms. Reduces code size for small functions with nearby branch targets.
 
 **AArch64 backend:**
 - **`i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
@@ -230,6 +281,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Trap message forwarding** — `TrapErr` now materialises the message string operand into x0 and passes it to `rt_trap()`, enabling catch handlers to display the user's throw message in native executables.
 - **Error field extraction via TLS** — `ErrGetKind`, `ErrGetCode`, and `ErrGetLine` now call runtime TLS accessors (`rt_trap_get_kind/code/line`) instead of returning hardcoded 0. `rt_trap()` auto-classifies the trap kind from the message prefix. Enables typed catch (`catch(e: DivideByZero)`) in native code.
 - **Apple M-series scheduler tuning** — Instruction latency model updated for Firestorm cores: FP divide 3→10 cycles, integer divide 3→7, FP multiply 3→4. Improves instruction scheduling for FP-heavy code.
+- **Secondary scratch register (kScratchGPR2)** — X16 (IP0) formalized as `kScratchGPR2` for post-RA helper sequences that need a second temporary while `kScratchGPR` (X9) holds the base value. X16 excluded from register allocator pool. AsmEmitter and A64BinaryEncoder updated to use the named constant instead of hardcoded `PhysReg::X16`.
 
 **Native linker:**
 - `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
@@ -512,6 +564,8 @@ Comprehensive overhaul with 10 improvements:
 - **SLOC script** — `scripts/count_sloc.sh` with `--summary`, `--subsystem`, `--all`, `--json` modes
 - **3D architecture docs** — Metal shader feature table, backend parity matrix, terrain splat pipeline, D3D11 backend guide
 - **Game engine documentation** — New `/docs/gameengine/` section with landing page (feature table, quick start, topical guide links), getting-started tutorial (5-step paddle game in Zia + BASIC), architecture overview (system layers, data flow, zero-dependency design), and example games gallery (15 games with feature coverage matrix). `/docs/README.md` updated with Game Engine section.
+- **Native assembler doc corrections** — AArch64 COFF marked as "Object emission only" (PE startup/import/unwind generation remains x86_64-specific). Object-file matrix clarified.
+- **3D graphics guide corrections** — `SetShadingModel` model 2 marked as "Reserved" (forward-compatible, falls back to Blinn-Phong). `FromOBJ` description clarified: `.mtl`/`usemtl`/`g`/`o` directives parsed and flattened but do not create per-material submeshes. Unlit model 3 documented.
 
 ---
 
