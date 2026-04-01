@@ -1,0 +1,259 @@
+// =============================================================================
+// AI Framework — Shared enemy behavior systems
+// =============================================================================
+// Provides reusable AI building blocks for all enemy types:
+//   - Line-of-sight checking (can enemy see the player?)
+//   - Distance-based aggro/deaggro with hysteresis
+//   - Patrol behavior with edge/wall detection
+//   - Chase behavior with obstacle avoidance
+//   - Attack timing with cooldowns and wind-up tells
+//   - Hurt/stagger/death state transitions
+//
+// Each enemy type composes these behaviors rather than reimplementing them.
+// The AI state machine runs per-enemy in the EnemyManager's update loop.
+//
+// Viper APIs: None directly — pure game logic module
+// =============================================================================
+
+module ai;
+
+bind "./config";
+
+// =============================================================================
+// AI States
+// =============================================================================
+final AI_IDLE       = 0;
+final AI_PATROL     = 1;
+final AI_ALERT      = 2;  // Noticed player, wind-up before chase
+final AI_CHASE      = 3;
+final AI_ATTACK     = 4;
+final AI_RETREAT    = 5;
+final AI_HURT       = 6;
+final AI_DYING      = 7;
+final AI_DEAD       = 8;
+final AI_SPECIAL    = 9;  // Type-specific special behavior (charge, burrow, etc.)
+
+// =============================================================================
+// AI Helper Functions
+// =============================================================================
+
+// Check if a point is within a rectangular range of another point.
+func inRange(ax: Integer, ay: Integer, bx: Integer, by: Integer,
+             range: Integer): Boolean {
+    var dx = ax - bx;
+    var dy = ay - by;
+    if dx < 0 { dx = 0 - dx; }
+    if dy < 0 { dy = 0 - dy; }
+    return dx < range and dy < range;
+}
+
+// Get the horizontal distance between two points.
+func distX(ax: Integer, bx: Integer): Integer {
+    var d = ax - bx;
+    if d < 0 { return 0 - d; }
+    return d;
+}
+
+// Get the vertical distance between two points.
+func distY(ay: Integer, by: Integer): Integer {
+    var d = ay - by;
+    if d < 0 { return 0 - d; }
+    return d;
+}
+
+// Squared distance (avoids sqrt for range checks).
+func distSq(ax: Integer, ay: Integer, bx: Integer, by: Integer): Integer {
+    var dx = ax - bx;
+    var dy = ay - by;
+    return dx * dx + dy * dy;
+}
+
+// Check line-of-sight by testing if any solid tile blocks the path.
+// Simple column-based check (not a full ray-cast, but good enough for gameplay).
+// Returns true if there's a clear horizontal line between enemy and player.
+func hasLineOfSight(ex: Integer, ey: Integer,
+                    px: Integer, py: Integer,
+                    tileGrid: List[List[Integer]],
+                    gridW: Integer, gridH: Integer): Boolean {
+    // Only check horizontal LOS (same Y ± 1 tile tolerance)
+    var tileDy = distY(ey / TILE_SIZE, py / TILE_SIZE);
+    if tileDy > 1 { return false; } // Too much vertical separation
+
+    var startTX = ex / TILE_SIZE;
+    var endTX = px / TILE_SIZE;
+    if startTX > endTX {
+        var tmp = startTX;
+        startTX = endTX;
+        endTX = tmp;
+    }
+    var ty = ey / TILE_SIZE;
+    if ty < 0 or ty >= gridH { return false; }
+
+    var tx = startTX;
+    while tx <= endTX {
+        if tx >= 0 and tx < gridW {
+            var tile = tileGrid.get(ty).get(tx);
+            // Check if tile is solid (blocks LOS)
+            if isSolid(tile) { return false; }
+        }
+        tx = tx + 1;
+    }
+    return true;
+}
+
+// Check if a tile ID is solid (blocks movement/LOS).
+func isSolid(tileId: Integer): Boolean {
+    // Tile IDs 1-20 are solid ground types (from config.zia)
+    return tileId >= 1 and tileId <= 20;
+}
+
+// Calculate facing direction toward a target (-1 = left, 1 = right).
+func facingToward(ex: Integer, tx: Integer): Integer {
+    if tx > ex { return 1; }
+    return -1;
+}
+
+// =============================================================================
+// Patrol Behavior
+// =============================================================================
+
+// Move the enemy back and forth between min and max X bounds.
+// Returns new VX (in x100 units).
+func patrol(ex: Integer, vx: Integer, speed: Integer,
+            minX: Integer, maxX: Integer, facing: Integer): Integer {
+    // Reverse at patrol bounds
+    if ex <= minX and facing < 0 { return speed; }
+    if ex >= maxX and facing > 0 { return 0 - speed; }
+    return vx;
+}
+
+// Check if the enemy is at a ledge (no ground below next step).
+// Returns true if stepping forward would go off an edge.
+func atLedge(ex: Integer, ey: Integer, facing: Integer,
+             tileGrid: List[List[Integer]],
+             gridW: Integer, gridH: Integer): Boolean {
+    var checkX = (ex + facing * TILE_SIZE) / TILE_SIZE;
+    var checkY = (ey + TILE_SIZE) / TILE_SIZE; // One tile below feet
+    if checkX < 0 or checkX >= gridW { return true; }
+    if checkY < 0 or checkY >= gridH { return true; }
+    var tile = tileGrid.get(checkY).get(checkX);
+    return not isSolid(tile);
+}
+
+// =============================================================================
+// Chase Behavior
+// =============================================================================
+
+// Move toward the player at chase speed.
+// Returns new VX (in x100 units).
+func chaseHorizontal(ex: Integer, px: Integer, speed: Integer): Integer {
+    if px > ex { return speed; }
+    if px < ex { return 0 - speed; }
+    return 0;
+}
+
+// Aggro check: should this enemy start chasing?
+func shouldAggro(ex: Integer, ey: Integer,
+                 px: Integer, py: Integer,
+                 aggroRange: Integer): Boolean {
+    return distSq(ex, ey, px, py) < aggroRange * aggroRange;
+}
+
+// Deaggro check: should this enemy stop chasing?
+// Uses a larger range than aggro for hysteresis (prevents flickering).
+func shouldDeaggro(ex: Integer, ey: Integer,
+                   px: Integer, py: Integer,
+                   deaggroRange: Integer): Boolean {
+    return distSq(ex, ey, px, py) > deaggroRange * deaggroRange;
+}
+
+// =============================================================================
+// Attack Behavior
+// =============================================================================
+
+// Check if enemy is in attack range of the player.
+func inAttackRange(ex: Integer, ey: Integer,
+                   px: Integer, py: Integer,
+                   attackRange: Integer): Boolean {
+    return distSq(ex, ey, px, py) < attackRange * attackRange;
+}
+
+// Calculate a projectile velocity toward the player.
+// Returns [vx, vy] as x100 units.
+func aimAt(ex: Integer, ey: Integer,
+           px: Integer, py: Integer,
+           speed: Integer): List[Integer] {
+    var dx = px - ex;
+    var dy = py - ey;
+    // Normalize using integer approximation
+    var len = 1;
+    var adx = dx;
+    var ady = dy;
+    if adx < 0 { adx = 0 - adx; }
+    if ady < 0 { ady = 0 - ady; }
+    if adx > ady { len = adx; } else { len = ady; }
+    if len == 0 { len = 1; }
+    var vx = dx * speed / len;
+    var vy = dy * speed / len;
+    return [vx, vy];
+}
+
+// =============================================================================
+// State Transition Helpers
+// =============================================================================
+
+// Standard state transition logic for most enemy types.
+// Called each frame per-enemy. Returns the new state.
+func updateState(currentState: Integer, stateTimer: Integer,
+                 hp: Integer, maxHp: Integer,
+                 ex: Integer, ey: Integer,
+                 px: Integer, py: Integer,
+                 aggroRange: Integer, deaggroRange: Integer,
+                 attackRange: Integer): Integer {
+    // Death check first
+    if hp <= 0 {
+        if currentState != AI_DYING and currentState != AI_DEAD {
+            return AI_DYING;
+        }
+        if currentState == AI_DYING and stateTimer > 30 {
+            return AI_DEAD;
+        }
+        return currentState;
+    }
+
+    // Hurt state auto-transitions back
+    if currentState == AI_HURT {
+        if stateTimer > 10 { return AI_PATROL; }
+        return AI_HURT;
+    }
+
+    // Main state machine
+    if currentState == AI_IDLE or currentState == AI_PATROL {
+        if shouldAggro(ex, ey, px, py, aggroRange) {
+            return AI_ALERT;
+        }
+        return AI_PATROL;
+    }
+
+    if currentState == AI_ALERT {
+        if stateTimer > 15 { return AI_CHASE; } // 240ms alert wind-up
+        return AI_ALERT;
+    }
+
+    if currentState == AI_CHASE {
+        if shouldDeaggro(ex, ey, px, py, deaggroRange) {
+            return AI_PATROL;
+        }
+        if inAttackRange(ex, ey, px, py, attackRange) {
+            return AI_ATTACK;
+        }
+        return AI_CHASE;
+    }
+
+    if currentState == AI_ATTACK {
+        if stateTimer > 20 { return AI_CHASE; } // Attack duration
+        return AI_ATTACK;
+    }
+
+    return currentState;
+}

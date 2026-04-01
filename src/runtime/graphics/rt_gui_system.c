@@ -396,6 +396,7 @@ void rt_app_set_title(void *app, rt_string title) {
         // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
         free(gui_app->title);
         gui_app->title = strdup(cstr);
+        rt_gui_macos_menu_sync_app(gui_app);
         free(cstr);
     }
 }

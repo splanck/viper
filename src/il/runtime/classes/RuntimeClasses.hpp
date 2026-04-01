@@ -174,6 +174,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_SaveData,
     RTCLS_Compress,
     RTCLS_Archive,
+    RTCLS_Assets,
     RTCLS_Log,
     RTCLS_MessageBus,
     RTCLS_Machine,

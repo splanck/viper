@@ -928,9 +928,9 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::CALL_NATIVE: {
-                // Instruction format: CALL_NATIVE nativeIdx, argCount
-                uint8_t nativeIdx = decodeArg8_0(instr);
-                uint8_t argCount = decodeArg8_1(instr);
+                // Instruction format: CALL_NATIVE [argCount:8][nativeIdx:16]
+                uint8_t argCount = decodeArg8_0(instr);
+                uint16_t nativeIdx = decodeArg16_1(instr);
 
                 if (nativeIdx >= module_->nativeFuncs.size()) {
                     trap(TrapKind::RuntimeError, "Invalid native function index");

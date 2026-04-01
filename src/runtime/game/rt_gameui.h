@@ -111,6 +111,22 @@ void rt_uimenulist_set_font(void *menu, void *font);
 void rt_uimenulist_set_visible(void *menu, int8_t visible);
 int64_t rt_uimenulist_get_count(void *menu);
 void rt_uimenulist_draw(void *menu, void *canvas);
+int64_t rt_uimenulist_handle_input(void *menu, int8_t up, int8_t down, int8_t confirm);
+
+//=========================================================================
+// GameButton
+//=========================================================================
+
+void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text);
+void rt_gamebutton_set_text(void *btn, void *text);
+void rt_gamebutton_set_colors(void *btn, int64_t normal, int64_t selected);
+void rt_gamebutton_set_text_colors(void *btn, int64_t normal, int64_t selected);
+void rt_gamebutton_set_border(void *btn, int64_t width, int64_t color);
+void rt_gamebutton_draw(void *btn, void *canvas, int8_t is_selected);
+int64_t rt_gamebutton_get_x(void *btn);
+int64_t rt_gamebutton_get_y(void *btn);
+void rt_gamebutton_set_x(void *btn, int64_t x);
+void rt_gamebutton_set_y(void *btn, int64_t y);
 
 #ifdef __cplusplus
 }

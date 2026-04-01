@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "il/core/Extern.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
@@ -19,6 +20,14 @@ using namespace il::frontends::zia;
 using namespace il::support;
 
 namespace {
+
+static const il::core::Extern *findExtern(const il::core::Module &module, const std::string &name) {
+    for (const auto &ext : module.externs) {
+        if (ext.name == name)
+            return &ext;
+    }
+    return nullptr;
+}
 
 /// @brief Test arithmetic expressions.
 TEST(ZiaExpressions, Arithmetic) {
@@ -289,6 +298,54 @@ func start() {
         }
     }
     EXPECT_TRUE(foundConstStr);
+}
+
+TEST(ZiaExpressions, LevelDataObjectTypeComparisonUsesStringEquality) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var level = Viper.Game.LevelData.Load("test.json");
+    Boolean enemy = level.ObjectType(0) == "enemy";
+}
+)";
+    CompilerInput input{.source = source, .path = "leveldata_compare.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for LevelDataObjectTypeComparisonUsesStringEquality:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundEqualsCall = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name != "main")
+            continue;
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.op == il::core::Opcode::Call &&
+                    instr.callee == "Viper.String.Equals") {
+                    foundEqualsCall = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundEqualsCall);
+
+    const auto *objectTypeExtern = findExtern(result.module, "Viper.Game.LevelData.ObjectType");
+    ASSERT_TRUE(objectTypeExtern != nullptr);
+    EXPECT_EQ(objectTypeExtern->retType.kind, il::core::Type::Kind::Str);
+    ASSERT_EQ(objectTypeExtern->params.size(), 2u);
+    EXPECT_EQ(objectTypeExtern->params[0].kind, il::core::Type::Kind::Ptr);
+    EXPECT_EQ(objectTypeExtern->params[1].kind, il::core::Type::Kind::I64);
 }
 
 } // namespace

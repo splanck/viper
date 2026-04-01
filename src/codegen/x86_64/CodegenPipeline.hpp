@@ -57,6 +57,7 @@ class CodegenPipeline {
         std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default.
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
+        std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
     };
 
     /// \brief Construct a pipeline configured with @p opts.

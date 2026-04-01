@@ -128,6 +128,12 @@ set(RT_GAME_SOURCES
         game/rt_platformer_ctrl.c
         game/rt_achievement.c
         game/rt_typewriter.c
+        game/rt_entity.c
+        game/rt_behavior.c
+        game/rt_leveldata.c
+        game/rt_raycast2d.c
+        game/rt_scenemanager.c
+        game/rt_config.c
 )
 
 set(RT_TEXT_SOURCES
@@ -181,6 +187,10 @@ set(RT_IO_FS_SOURCES
         io/rt_compress.c
         io/rt_archive.c
         io/rt_savedata.c
+        io/rt_vpa_reader.c
+        io/rt_path_exe.c
+        io/rt_asset.c
+        io/rt_asset_decode.c
 )
 
 set(RT_EXEC_SOURCES
@@ -274,7 +284,9 @@ set(RT_GRAPHICS_SOURCES
 # GPU backends (platform-conditional)
 if (APPLE)
     list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_metal.m)
+    list(APPEND RT_GRAPHICS_SOURCES graphics/rt_gui_macos_menu.m)
     set_source_files_properties(graphics/vgfx3d_backend_metal.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
+    set_source_files_properties(graphics/rt_gui_macos_menu.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
 endif ()
 if (WIN32)
     list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_d3d11.c)

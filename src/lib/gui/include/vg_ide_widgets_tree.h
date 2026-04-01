@@ -359,6 +359,7 @@ struct vg_menu_item {
     bool separator;             ///< Is this a separator
     bool was_clicked;           ///< Set true when item is clicked (cleared on read)
     vg_icon_t icon;             ///< Optional icon (VG_ICON_NONE = no icon)
+    struct vg_menu *parent_menu; ///< Owning menu for change propagation.
     struct vg_menu *submenu;    ///< Submenu (if any)
     struct vg_menu_item *next;
     struct vg_menu_item *prev;
@@ -366,7 +367,8 @@ struct vg_menu_item {
 
 /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu {
-    char *title; ///< Menu title (owned, heap-allocated)
+    char *title;                    ///< Menu title (owned, heap-allocated)
+    struct vg_menubar *owner_menubar; ///< Owning menubar for change propagation.
     vg_menu_item_t *first_item;
     vg_menu_item_t *last_item;
     int item_count;
@@ -409,7 +411,8 @@ typedef struct vg_menubar {
     vg_accel_entry_t *accel_table; ///< Accelerator lookup table
 
     // State
-    bool menu_active; ///< Is any menu active
+    bool menu_active;      ///< Is any menu active
+    bool native_main_menu; ///< Mirrors to the native macOS app menubar.
 } vg_menubar_t;
 
 /// @brief Create a new menu bar widget

@@ -1,0 +1,1001 @@
+// enemy.zia — All 30 enemy types via Entity + Behavior + Raycast
+// Engine APIs: Entity (#3) for physics, Behavior (#6) for composable AI,
+//              Raycast.HasLineOfSight (#5) for AI vision checks.
+// Simple enemies (slime, bat) need just 5-8 lines of Behavior config.
+// Complex enemies add custom state logic on top of Behavior.Update.
+module enemy;
+
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Game;
+bind "./config";
+bind "./level";
+bind "./sprites";
+bind "./particles";
+
+// =========================================================================
+// Enemy dimensions and HP lookup tables
+// =========================================================================
+func widthForType(t: Integer) -> Integer {
+    if t == EnemyType.Slime { return SLIME_W; }
+    if t == EnemyType.Bat { return BAT_W; }
+    if t == EnemyType.Turret { return TURRET_W; }
+    if t == EnemyType.Boss { return BOSS_W; }
+    if t == EnemyType.Sporewalker { return SPOREWALKER_W; }
+    if t == EnemyType.Glowmoth { return GLOWMOTH_W; }
+    if t == EnemyType.FungalTurret { return 48; }
+    if t == EnemyType.Mycelium { return 40; }
+    if t == EnemyType.SporeMother { return 96; }
+    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_W; }
+    if t == EnemyType.ShardBat { return 48; }
+    if t == EnemyType.ResonanceOrb { return 40; }
+    if t == EnemyType.MirrorSlime { return MIRROR_SLIME_W; }
+    if t == EnemyType.CrystalWyrm { return 80; }
+    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_W; }
+    if t == EnemyType.EmberWasp { return 28; }
+    if t == EnemyType.ForgeSentinel { return 56; }
+    if t == EnemyType.PistonTrap { return 32; }
+    if t == EnemyType.MagmaCore { return 112; }
+    if t == EnemyType.IceWraith { return 40; }
+    if t == EnemyType.FrostBeetle { return 48; }
+    if t == EnemyType.StalactiteBat { return 24; }
+    if t == EnemyType.VineWhip { return 24; }
+    if t == EnemyType.MossGolem { return 64; }
+    if t == EnemyType.RuinGuardian { return 56; }
+    if t == EnemyType.ShadowClone { return 40; }
+    if t == EnemyType.Corruption { return 32; }
+    if t == EnemyType.Architect { return 96; }
+    if t == EnemyType.PatrolDrone { return 36; }
+    if t == EnemyType.BombCarrier { return 36; }
+    return 40;
+}
+
+func heightForType(t: Integer) -> Integer {
+    if t == EnemyType.Slime { return SLIME_H; }
+    if t == EnemyType.Bat { return BAT_H; }
+    if t == EnemyType.Turret { return TURRET_H; }
+    if t == EnemyType.Boss { return BOSS_H; }
+    if t == EnemyType.Sporewalker { return SPOREWALKER_H; }
+    if t == EnemyType.Glowmoth { return GLOWMOTH_H; }
+    if t == EnemyType.FungalTurret { return 56; }
+    if t == EnemyType.Mycelium { return 24; }
+    if t == EnemyType.SporeMother { return 96; }
+    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_H; }
+    if t == EnemyType.ShardBat { return 36; }
+    if t == EnemyType.ResonanceOrb { return 40; }
+    if t == EnemyType.MirrorSlime { return MIRROR_SLIME_H; }
+    if t == EnemyType.CrystalWyrm { return 80; }
+    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_H; }
+    if t == EnemyType.EmberWasp { return 24; }
+    if t == EnemyType.ForgeSentinel { return 64; }
+    if t == EnemyType.PistonTrap { return 64; }
+    if t == EnemyType.MagmaCore { return 112; }
+    if t == EnemyType.IceWraith { return 48; }
+    if t == EnemyType.FrostBeetle { return 40; }
+    if t == EnemyType.StalactiteBat { return 48; }
+    if t == EnemyType.VineWhip { return 64; }
+    if t == EnemyType.MossGolem { return 72; }
+    if t == EnemyType.RuinGuardian { return 72; }
+    if t == EnemyType.ShadowClone { return 58; }
+    if t == EnemyType.Corruption { return 80; }
+    if t == EnemyType.Architect { return 112; }
+    if t == EnemyType.PatrolDrone { return 32; }
+    if t == EnemyType.BombCarrier { return 36; }
+    return 40;
+}
+
+func hpForType(t: Integer) -> Integer {
+    if t == EnemyType.Slime { return SLIME_HP; }
+    if t == EnemyType.Bat { return BAT_HP; }
+    if t == EnemyType.Turret { return TURRET_HP; }
+    if t == EnemyType.Boss { return BOSS_HP; }
+    if t == EnemyType.Sporewalker { return SPOREWALKER_HP; }
+    if t == EnemyType.Glowmoth { return GLOWMOTH_HP; }
+    if t == EnemyType.FungalTurret { return 4; }
+    if t == EnemyType.Mycelium { return 3; }
+    if t == EnemyType.SporeMother { return SPORE_MOTHER_HP; }
+    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_HP; }
+    if t == EnemyType.ShardBat { return 2; }
+    if t == EnemyType.ResonanceOrb { return 3; }
+    if t == EnemyType.MirrorSlime { return 2; }
+    if t == EnemyType.CrystalWyrm { return CRYSTAL_WYRM_HP; }
+    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_HP; }
+    if t == EnemyType.EmberWasp { return 1; }
+    if t == EnemyType.ForgeSentinel { return 6; }
+    if t == EnemyType.PistonTrap { return 9999; }
+    if t == EnemyType.MagmaCore { return MAGMA_CORE_HP; }
+    if t == EnemyType.IceWraith { return 3; }
+    if t == EnemyType.FrostBeetle { return 4; }
+    if t == EnemyType.StalactiteBat { return 1; }
+    if t == EnemyType.VineWhip { return 2; }
+    if t == EnemyType.MossGolem { return 8; }
+    if t == EnemyType.RuinGuardian { return 6; }
+    if t == EnemyType.ShadowClone { return 1; }
+    if t == EnemyType.Corruption { return 4; }
+    if t == EnemyType.Architect { return ARCHITECT_HP; }
+    if t == EnemyType.PatrolDrone { return 2; }
+    if t == EnemyType.BombCarrier { return 1; }
+    return 1;
+}
+
+// =========================================================================
+// Engine API #6: Behavior — composable AI for each enemy type
+// Each enemy gets its own Behavior instance with the right components.
+// Simple enemies only need Behavior.Update(); complex ones add custom logic.
+// =========================================================================
+func createBehavior(t: Integer) -> Behavior {
+    var b = Behavior.New();
+
+    // ─── Ground patrol enemies ─────────────────────────────────
+    if t == EnemyType.Slime or t == EnemyType.Sporewalker
+       or t == EnemyType.MirrorSlime or t == EnemyType.MagmaSlug {
+        var speed = SLIME_SPEED;
+        if t == EnemyType.Sporewalker { speed = SPOREWALKER_SPEED; }
+        if t == EnemyType.MirrorSlime { speed = MIRROR_SLIME_SPEED; }
+        if t == EnemyType.MagmaSlug { speed = MAGMA_SLUG_SPEED; }
+        b.AddPatrol(speed);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddEdgeReverse();
+        b.AddWallReverse();
+        if t == EnemyType.MagmaSlug { b.AddAnimLoop(2, 300); }
+        else { b.AddAnimLoop(4, SLIME_ANIM_MS); }
+    }
+
+    // ─── Flying/chase enemies ──────────────────────────────────
+    if t == EnemyType.Bat or t == EnemyType.Glowmoth
+       or t == EnemyType.ShardBat or t == EnemyType.EmberWasp {
+        var speed = BAT_SPEED;
+        var range = 400;
+        if t == EnemyType.Glowmoth { speed = GLOWMOTH_SPEED; range = 300; }
+        if t == EnemyType.ShardBat { speed = SHARD_BAT_SPEED; range = 500; }
+        if t == EnemyType.EmberWasp { speed = EMBER_WASP_SPEED; range = 350; }
+        b.AddSineFloat(40, 120);
+        b.AddChase(speed, range);
+        if t == EnemyType.ShardBat { b.AddShoot(1600); }
+        b.AddAnimLoop(3, BAT_ANIM_MS);
+    }
+
+    // ─── Turrets (static shooters) ─────────────────────────────
+    if t == EnemyType.Turret {
+        b.AddShoot(1440);
+        b.AddAnimLoop(2, 480);
+    }
+    if t == EnemyType.FungalTurret {
+        b.AddShoot(2000);
+        b.AddAnimLoop(2, 600);
+    }
+
+    // ─── Patrol drone (flying + shooting) ──────────────────────
+    if t == EnemyType.PatrolDrone {
+        b.AddSineFloat(30, 100);
+        b.AddPatrol(PATROL_DRONE_SPEED);
+        b.AddShoot(1200);
+        b.AddAnimLoop(2, 150);
+    }
+
+    // ─── Crystal Golem (slow chase, gravity) ───────────────────
+    if t == EnemyType.CrystalGolem {
+        b.AddChase(CRYSTAL_GOLEM_SPEED, 500);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(2, 400);
+    }
+
+    // ─── Forge Sentinel (patrol, gravity, wall reverse) ────────
+    if t == EnemyType.ForgeSentinel {
+        b.AddPatrol(FORGE_SENTINEL_SPEED);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(2, 300);
+    }
+
+    // ─── Frost Beetle (patrol, gravity) ────────────────────────
+    if t == EnemyType.FrostBeetle {
+        b.AddPatrol(FROST_BEETLE_SPEED);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddEdgeReverse();
+        b.AddWallReverse();
+        b.AddAnimLoop(2, 250);
+    }
+
+    // ─── Moss Golem (slow chase, gravity) ──────────────────────
+    if t == EnemyType.MossGolem {
+        b.AddChase(MOSS_GOLEM_SPEED, 400);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(2, 400);
+    }
+
+    // ─── Ruin Guardian (slow patrol, gravity) ──────────────────
+    if t == EnemyType.RuinGuardian {
+        b.AddPatrol(RUIN_GUARDIAN_SPEED);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(4, 300);
+    }
+
+    // ─── Ghosts (free movement, no collision) ──────────────────
+    if t == EnemyType.IceWraith or t == EnemyType.ShadowClone {
+        var speed = ICE_WRAITH_SPEED;
+        if t == EnemyType.ShadowClone { speed = 100; }
+        b.AddChase(speed, 600);
+        b.AddAnimLoop(3, 200);
+    }
+
+    // ─── Bomb Carrier (chase on ground) ────────────────────────
+    if t == EnemyType.BombCarrier {
+        b.AddChase(BOMB_CARRIER_SPEED, 9999);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(2, 400);
+    }
+
+    // ─── Environmental (static/special) ────────────────────────
+    if t == EnemyType.PistonTrap {
+        b.AddShoot(1600);
+    }
+    if t == EnemyType.Mycelium or t == EnemyType.StalactiteBat {
+        b.AddAnimLoop(2, 300);
+    }
+    if t == EnemyType.VineWhip {
+        b.AddAnimLoop(4, 300);
+    }
+    if t == EnemyType.Corruption {
+        b.AddAnimLoop(4, 400);
+    }
+    if t == EnemyType.ResonanceOrb {
+        b.AddSineFloat(20, 80);
+        b.AddAnimLoop(2, 1200);
+    }
+
+    // ─── Bosses (basic physics, custom logic handles phases) ───
+    if t == EnemyType.Boss or t == EnemyType.Architect {
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddWallReverse();
+        b.AddAnimLoop(4, 300);
+    }
+    if t == EnemyType.SporeMother {
+        b.AddPatrol(60);
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddEdgeReverse();
+        b.AddAnimLoop(3, 400);
+    }
+    if t == EnemyType.CrystalWyrm {
+        b.AddGravity(GRAVITY, MAX_FALL);
+        b.AddAnimLoop(3, 300);
+    }
+    if t == EnemyType.MagmaCore {
+        b.AddAnimLoop(3, 400);
+    }
+
+    return b;
+}
+
+// =========================================================================
+// Enemy Manager
+// =========================================================================
+class EnemyManager {
+    hide ObjectPool pool;
+    // Engine API #3: Entity per enemy for position/velocity/collision
+    hide List[Entity] entities;
+    // Engine API #6: Behavior per enemy for composable AI
+    hide List[Behavior] behaviors;
+    // Parallel arrays for state that Entity/Behavior don't cover
+    hide List[Integer] etype;      // enemy type ID
+    hide List[Integer] estate;     // 0=active, 1=hurt, 2=dead, 3+=custom
+    hide List[Integer] etimer;     // custom AI timer
+    hide List[Integer] etimer2;    // secondary timer
+
+    // Boss state
+    expose Integer bossIndex;
+    expose Integer bossPhase;
+    expose Integer bossMaxHp;
+
+    // Enemy bullets (turret/boss projectiles)
+    hide List[Integer] ebx;
+    hide List[Integer] eby;
+    hide List[Integer] ebvx;
+    hide List[Integer] ebvy;
+    hide List[Integer] ebactive;
+    hide Integer ebTrailTimer;
+
+    expose func init() {
+        pool = ObjectPool.New(MAX_ENEMIES);
+        entities = [];
+        behaviors = [];
+        etype = []; estate = []; etimer = []; etimer2 = [];
+
+        // Pre-fill lists to pool capacity
+        var dummyEnt = Entity.New(0, 0, 1, 1);
+        var dummyBhv = Behavior.New();
+        for i in 0..MAX_ENEMIES {
+            entities.add(dummyEnt);
+            behaviors.add(dummyBhv);
+            etype.add(0); estate.add(0); etimer.add(0); etimer2.add(0);
+        }
+
+        bossIndex = -1;
+        bossPhase = 0;
+        bossMaxHp = BOSS_HP;
+        ebx = []; eby = []; ebvx = []; ebvy = []; ebactive = [];
+        ebTrailTimer = 0;
+    }
+
+    expose func reset() {
+        pool.Clear();
+        bossIndex = -1;
+        bossPhase = 0;
+        ebx = []; eby = []; ebvx = []; ebvy = []; ebactive = [];
+        ebTrailTimer = 0;
+    }
+
+    // ─── Spawn ─────────────────────────────────────────────────
+    expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
+        var handle = pool.Acquire();
+        if handle < 0 { return; }
+
+        // Engine API #3: Entity.New with type-specific dimensions
+        var ent = Entity.New(wx * 100, wy * 100, widthForType(t), heightForType(t));
+        ent.set_HP(hpForType(t));
+        ent.set_Dir(1);
+        ent.set_Active(true);
+        entities.set(handle, ent);
+
+        // Engine API #6: Behavior preset for this enemy type
+        behaviors.set(handle, createBehavior(t));
+
+        etype.set(handle, t);
+        estate.set(handle, 0);
+        etimer.set(handle, 0);
+        etimer2.set(handle, 0);
+
+        // Track boss
+        if isBossType(t) {
+            bossIndex = handle;
+            bossPhase = 0;
+            bossMaxHp = hpForType(t);
+        }
+    }
+
+    expose func spawnFromLevel(level: Level) {
+        var i = 0;
+        while i < level.enemyTypes.length() {
+            spawnEnemy(level.enemyTypes.get(i), level.enemyX.get(i), level.enemyY.get(i));
+            i = i + 1;
+        }
+        if level.hasBoss {
+            spawnEnemy(level.bossType, level.bossX, level.bossY);
+        }
+    }
+
+    // ─── Update ────────────────────────────────────────────────
+    expose func updateAll(tilemap: Tilemap, playerX: Integer, playerY: Integer, dt: Integer) {
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            var t = etype.get(i);
+            var ent: Entity = entities.get(i);
+            var bhv: Behavior = behaviors.get(i);
+
+            // Skip dead enemies
+            if estate.get(i) == 2 { i = next; }
+            else {
+                // Hurt recovery
+                if estate.get(i) == 1 {
+                    etimer.set(i, etimer.get(i) - dt);
+                    if etimer.get(i) <= 0 { estate.set(i, 0); }
+                }
+
+                // Engine API #6: Behavior.Update handles patrol, chase, gravity,
+                // collision, edge/wall reverse, animation — all in one call
+                bhv.Update(ent, tilemap, playerX, playerY, dt);
+
+                // Engine API #5: Raycast.HasLineOfSight for shooting enemies
+                if bhv.get_ShootReady() {
+                    var ex = ent.get_X() / 100;
+                    var ey = ent.get_Y() / 100;
+                    if Raycast.HasLineOfSight(tilemap, ex, ey, playerX, playerY) {
+                        fireEnemyBullet(ex, ey, playerX, playerY);
+                    }
+                }
+
+                // Custom logic for complex enemy types
+                if t == EnemyType.ForgeSentinel { updateForgeSentinel(i, playerX, playerY, dt); }
+                else if t == EnemyType.FrostBeetle { updateFrostBeetle(i, playerX, playerY, dt); }
+                else if t == EnemyType.RuinGuardian { updateRuinGuardian(i, playerX, playerY, dt); }
+                else if t == EnemyType.Mycelium { updateCeilingDrop(i, playerX, playerY, dt); }
+                else if t == EnemyType.StalactiteBat { updateCeilingDrop(i, playerX, playerY, dt); }
+                else if t == EnemyType.Corruption { updateCorruption(i, playerX, playerY, dt); }
+                else if t == EnemyType.VineWhip { updateVineWhip(i, dt); }
+                else if t == EnemyType.ResonanceOrb { updateResonanceOrb(i, dt); }
+                else if t == EnemyType.MossGolem { updateMossGolem(i, dt); }
+                else if t == EnemyType.BombCarrier { updateBombCarrier(i, playerX, playerY, dt); }
+                // Boss custom logic
+                else if t == EnemyType.Boss { updateGenericBoss(i, playerX, playerY, dt); }
+                else if t == EnemyType.SporeMother { updateSporeMother(i, playerX, playerY, dt); }
+                else if t == EnemyType.CrystalWyrm { updateCrystalWyrm(i, playerX, playerY, dt); }
+                else if t == EnemyType.MagmaCore { updateMagmaCore(i, playerX, playerY, dt); }
+                else if t == EnemyType.Architect { updateArchitect(i, playerX, playerY, dt); }
+
+                i = next;
+            }
+        }
+
+        // Update enemy bullets
+        updateEnemyBullets(tilemap, dt);
+    }
+
+    // ─── Complex enemy updates ─────────────────────────────────
+
+    // Forge Sentinel: patrol → detect → charge → stagger
+    hide func updateForgeSentinel(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var st = estate.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+
+        if st == 0 and dx < 450 {
+            // Detect player — start charge
+            estate.set(i, 3); // charging state
+            ent.set_VX(ent.get_Dir() * FORGE_SENTINEL_CHARGE);
+        }
+        if st == 3 {
+            // Charging — check wall hit for stagger
+            if ent.get_HitLeft() or ent.get_HitRight() {
+                estate.set(i, 4); // staggered
+                etimer.set(i, 800);
+                ent.set_VX(0);
+            }
+        }
+        if st == 4 {
+            // Staggered — wait then resume patrol
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 {
+                estate.set(i, 0);
+            }
+        }
+    }
+
+    // Frost Beetle: patrol → detect → roll toward player
+    hide func updateFrostBeetle(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var st = estate.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+
+        if st == 0 and dx < 350 {
+            estate.set(i, 3); // rolling
+            etimer.set(i, 2000);
+            if px > ex { ent.set_VX(FROST_BEETLE_ROLL); }
+            else { ent.set_VX(0 - FROST_BEETLE_ROLL); }
+        }
+        if st == 3 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 or ent.get_HitLeft() or ent.get_HitRight() {
+                estate.set(i, 0);
+                ent.set_VX(ent.get_Dir() * FROST_BEETLE_SPEED);
+            }
+        }
+    }
+
+    // Ruin Guardian: patrol → windup → pound → recover
+    hide func updateRuinGuardian(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var st = estate.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+
+        if st == 0 and dx < 100 {
+            estate.set(i, 3); // windup
+            etimer.set(i, 600);
+            ent.set_VX(0);
+        }
+        if st == 3 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 {
+                estate.set(i, 4); // pound
+                etimer.set(i, 200);
+            }
+        }
+        if st == 4 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 {
+                estate.set(i, 5); // recover
+                etimer.set(i, 2400);
+            }
+        }
+        if st == 5 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 { estate.set(i, 0); }
+        }
+    }
+
+    // Ceiling drop: Mycelium and Stalactite Bat
+    hide func updateCeilingDrop(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var st = estate.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+
+        if st == 0 and dx < 80 and py > ent.get_Y() / 100 {
+            estate.set(i, 3); // dropping
+            ent.set_VY(400);
+            etimer.set(i, 1500);
+        }
+        if st == 3 {
+            ent.set_VY(400);
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 or ent.get_OnGround() {
+                estate.set(i, 4); // respawn wait
+                etimer.set(i, 3000);
+                ent.set_Active(false);
+            }
+        }
+        if st == 4 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 {
+                estate.set(i, 0);
+                ent.set_Active(true);
+                ent.set_VY(0);
+            }
+        }
+    }
+
+    // Corruption: ground rising tendril
+    hide func updateCorruption(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var st = estate.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+
+        if st == 0 and dx < 64 {
+            estate.set(i, 3); // rising
+            etimer.set(i, 400);
+        }
+        if st == 3 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 { estate.set(i, 4); etimer.set(i, 1600); }
+        }
+        if st == 4 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 { estate.set(i, 5); etimer.set(i, 600); }
+        }
+        if st == 5 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 { estate.set(i, 0); }
+        }
+    }
+
+    // Vine Whip: sweep cycle
+    hide func updateVineWhip(i: Integer, dt: Integer) {
+        etimer.set(i, etimer.get(i) + dt);
+        if etimer.get(i) >= 1200 { etimer.set(i, 0); }
+    }
+
+    // Resonance Orb: pulse invulnerability cycle
+    hide func updateResonanceOrb(i: Integer, dt: Integer) {
+        etimer.set(i, etimer.get(i) + dt);
+        if etimer.get(i) >= 2400 { etimer.set(i, 0); }
+        // Invulnerable 75% of cycle, vulnerable 25%
+        if etimer.get(i) < 1800 {
+            estate.set(i, 6); // invulnerable
+        } else {
+            estate.set(i, 0); // vulnerable
+        }
+    }
+
+    // Moss Golem: regenerates HP
+    hide func updateMossGolem(i: Integer, dt: Integer) {
+        etimer.set(i, etimer.get(i) + dt);
+        if etimer.get(i) >= 960 {
+            etimer.set(i, 0);
+            var ent: Entity = entities.get(i);
+            var hp = ent.get_HP();
+            if hp < 8 { ent.set_HP(hp + 1); }
+        }
+    }
+
+    // Bomb Carrier: blinks faster near player, explodes on contact/death
+    hide func updateBombCarrier(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var ex = ent.get_X() / 100;
+        var dx = px - ex;
+        if dx < 0 { dx = 0 - dx; }
+        // Blink rate based on proximity
+        if dx < 100 { etimer2.set(i, 100); }
+        else if dx < 200 { etimer2.set(i, 200); }
+        else { etimer2.set(i, 400); }
+    }
+
+    // ─── Boss updates ──────────────────────────────────────────
+
+    hide func getBossPhase(currentHp: Integer, maxHp: Integer) -> Integer {
+        if currentHp > maxHp * 2 / 3 { return 0; }
+        if currentHp > maxHp / 3 { return 1; }
+        return 2;
+    }
+
+    hide func updateGenericBoss(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        bossPhase = getBossPhase(ent.get_HP(), BOSS_HP);
+        etimer.set(i, etimer.get(i) + dt);
+        var interval = 2400 - bossPhase * 600;
+        if etimer.get(i) >= interval {
+            etimer.set(i, 0);
+            fireEnemyBullet(ent.get_X()/100, ent.get_Y()/100, px, py);
+        }
+        // Chase player
+        if px > ent.get_X()/100 { ent.set_VX(BOSS_SPEED); }
+        else { ent.set_VX(0 - BOSS_SPEED); }
+    }
+
+    hide func updateSporeMother(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        bossPhase = getBossPhase(ent.get_HP(), SPORE_MOTHER_HP);
+        etimer.set(i, etimer.get(i) + dt);
+
+        if bossPhase == 0 {
+            // Slow patrol, spawn sporewalkers
+            if etimer.get(i) >= 3000 {
+                etimer.set(i, 0);
+                spawnEnemy(EnemyType.Sporewalker, ent.get_X()/100 + 32, ent.get_Y()/100);
+            }
+        } else if bossPhase == 1 {
+            // Rain spores downward
+            if etimer.get(i) >= 1500 {
+                etimer.set(i, 0);
+                var bx = ent.get_X() / 100;
+                var by = ent.get_Y() / 100 + 48;
+                fireEnemyBulletDir(bx - 30, by, -1, 3);
+                fireEnemyBulletDir(bx, by, 0, 3);
+                fireEnemyBulletDir(bx + 30, by, 1, 3);
+            }
+        } else {
+            // Exposed core, 2x speed
+            ent.set_VX(ent.get_Dir() * 120);
+        }
+    }
+
+    hide func updateCrystalWyrm(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        bossPhase = getBossPhase(ent.get_HP(), CRYSTAL_WYRM_HP);
+        var st = estate.get(i);
+
+        // Surface chase → burrow → emerge with shards
+        if st == 0 {
+            // Surface — chase player
+            if px > ent.get_X()/100 { ent.set_VX(250); }
+            else { ent.set_VX(-250); }
+            etimer.set(i, etimer.get(i) + dt);
+            var surfaceTime = 4000 - bossPhase * 1000;
+            if etimer.get(i) >= surfaceTime {
+                estate.set(i, 7); // burrow
+                etimer.set(i, 1200);
+                ent.set_Active(false);
+            }
+        }
+        if st == 7 {
+            // Burrowed — teleport toward player
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 {
+                ent.set_X(px * 100);
+                ent.set_Active(true);
+                estate.set(i, 8); // emerge
+                etimer.set(i, 800);
+                // Fire crystal shards
+                fireEnemyBulletDir(px - 30, ent.get_Y()/100, -5, -3);
+                fireEnemyBulletDir(px, ent.get_Y()/100, 0, -6);
+                fireEnemyBulletDir(px + 30, ent.get_Y()/100, 5, -3);
+            }
+        }
+        if st == 8 {
+            etimer.set(i, etimer.get(i) - dt);
+            if etimer.get(i) <= 0 { estate.set(i, 0); etimer.set(i, 0); }
+        }
+    }
+
+    hide func updateMagmaCore(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        bossPhase = getBossPhase(ent.get_HP(), MAGMA_CORE_HP);
+        etimer.set(i, etimer.get(i) + dt);
+
+        if bossPhase == 0 {
+            // Lava waves from sides
+            if etimer.get(i) >= 3000 {
+                etimer.set(i, 0);
+                var by = ent.get_Y() / 100 + 40;
+                fireEnemyBulletDir(ent.get_X()/100 - 60, by, -4, 0);
+                fireEnemyBulletDir(ent.get_X()/100 + 60, by, 4, 0);
+            }
+        } else if bossPhase == 1 {
+            // Lava waves + stalactite drops
+            if etimer.get(i) >= 2000 {
+                etimer.set(i, 0);
+                var by = ent.get_Y() / 100;
+                fireEnemyBulletDir(ent.get_X()/100 - 60, by, -4, 0);
+                fireEnemyBulletDir(ent.get_X()/100 + 60, by, 4, 0);
+                fireEnemyBulletDir(px, 0, 0, 5); // stalactite from ceiling
+            }
+        } else {
+            // Eye open, rapid fire at player
+            if etimer.get(i) >= 1000 {
+                etimer.set(i, 0);
+                fireEnemyBullet(ent.get_X()/100, ent.get_Y()/100, px, py);
+                fireEnemyBulletDir(ent.get_X()/100, ent.get_Y()/100 - 20, 0, -8);
+            }
+        }
+    }
+
+    hide func updateArchitect(i: Integer, px: Integer, py: Integer, dt: Integer) {
+        var ent: Entity = entities.get(i);
+        var hp = ent.get_HP();
+        if hp > 60 { bossPhase = 0; }
+        else if hp > 40 { bossPhase = 1; }
+        else if hp > 20 { bossPhase = 2; }
+        else { bossPhase = 3; }
+
+        etimer.set(i, etimer.get(i) + dt);
+
+        // Chase player with increasing speed
+        var speed = 200 + bossPhase * 50;
+        if px > ent.get_X()/100 { ent.set_VX(speed); }
+        else { ent.set_VX(0 - speed); }
+
+        // Shoot with increasing frequency
+        var interval = 2400 - bossPhase * 400;
+        if etimer.get(i) >= interval {
+            etimer.set(i, 0);
+            var bx = ent.get_X() / 100;
+            var by = ent.get_Y() / 100;
+            fireEnemyBullet(bx, by, px, py);
+            if bossPhase >= 1 {
+                fireEnemyBulletDir(bx, by, 9, 2);
+                fireEnemyBulletDir(bx, by, 9, -2);
+            }
+            if bossPhase >= 3 {
+                fireEnemyBulletDir(bx, by, 0, -8);
+            }
+        }
+
+        // Jump periodically
+        etimer2.set(i, etimer2.get(i) + dt);
+        var jumpInterval = 2400 - bossPhase * 200;
+        if etimer2.get(i) >= jumpInterval and ent.get_OnGround() {
+            etimer2.set(i, 0);
+            var jumpForce = -1200 - bossPhase * 50;
+            ent.set_VY(jumpForce);
+        }
+    }
+
+    // ─── Damage & collision ────────────────────────────────────
+
+    expose func damageEnemy(handle: Integer, amount: Integer) {
+        if estate.get(handle) == 6 { return; } // invulnerable (resonance orb)
+        var ent: Entity = entities.get(handle);
+        var hp = ent.get_HP() - amount;
+        ent.set_HP(hp);
+        if hp <= 0 {
+            estate.set(handle, 2); // dead
+            pool.Release(handle);
+            if handle == bossIndex { bossIndex = -1; }
+        } else {
+            estate.set(handle, 1); // hurt
+            etimer.set(handle, 200);
+        }
+    }
+
+    // Check player-enemy collision using Entity.Overlaps
+    expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
+        var playerEnt = Entity.New(px * 100, py * 100, PLAYER_W, PLAYER_H);
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            if estate.get(i) != 2 {
+                var ei: Entity = entities.get(i);
+                if ei.Overlaps(playerEnt) {
+                    return i;
+                }
+            }
+            i = next;
+        }
+        return -1;
+    }
+
+    // Check bullet-enemy collision
+    expose func checkBulletHit(bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Integer {
+        var bulletEnt = Entity.New(bx * 100, by * 100, bw, bh);
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            if estate.get(i) != 2 {
+                var ei: Entity = entities.get(i);
+                if ei.Overlaps(bulletEnt) {
+                    return i;
+                }
+            }
+            i = next;
+        }
+        return -1;
+    }
+
+    // Check enemy bullet vs player (uses PLAYER_W/H from config)
+    expose func checkEnemyBulletHit(px: Integer, py: Integer) -> Boolean {
+        var pw = PLAYER_W;
+        var ph = PLAYER_H;
+        var j = 0;
+        while j < ebx.length() {
+            if ebactive.get(j) == 1 {
+                var dx = ebx.get(j) - px;
+                var dy = eby.get(j) - py;
+                if dx < 0 { dx = 0 - dx; }
+                if dy < 0 { dy = 0 - dy; }
+                if dx < pw and dy < ph {
+                    ebactive.set(j, 0);
+                    return true;
+                }
+            }
+            j = j + 1;
+        }
+        return false;
+    }
+
+    // ─── Enemy bullets ─────────────────────────────────────────
+
+    hide func fireEnemyBullet(fromX: Integer, fromY: Integer, toX: Integer, toY: Integer) {
+        var dx = toX - fromX;
+        var dy = toY - fromY;
+        // Approximate normalization: scale by speed / max(|dx|,|dy|)
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var ady = dy; if ady < 0 { ady = 0 - ady; }
+        var maxd = adx; if ady > maxd { maxd = ady; }
+        if maxd < 1 { maxd = 1; }
+        var speed = 5;
+        var bvx = dx * speed / maxd;
+        var bvy = dy * speed / maxd;
+        fireEnemyBulletDir(fromX, fromY, bvx, bvy);
+    }
+
+    hide func fireEnemyBulletDir(fx: Integer, fy: Integer, vx: Integer, vy: Integer) {
+        ebx.add(fx); eby.add(fy);
+        ebvx.add(vx); ebvy.add(vy);
+        ebactive.add(1);
+    }
+
+    hide func updateEnemyBullets(tilemap: Tilemap, dt: Integer) {
+        var j = 0;
+        while j < ebx.length() {
+            if ebactive.get(j) == 1 {
+                ebx.set(j, ebx.get(j) + ebvx.get(j) * dt / DT_BASE);
+                eby.set(j, eby.get(j) + ebvy.get(j) * dt / DT_BASE);
+                // Deactivate if off-screen or hitting solid
+                var tx = ebx.get(j) / TILE_SIZE;
+                var ty = eby.get(j) / TILE_SIZE;
+                if tilemap.IsSolidAt(ebx.get(j), eby.get(j)) { ebactive.set(j, 0); }
+                if ebx.get(j) < -50 or ebx.get(j) > 10000 { ebactive.set(j, 0); }
+                if eby.get(j) < -50 or eby.get(j) > 2000 { ebactive.set(j, 0); }
+            }
+            j = j + 1;
+        }
+    }
+
+    // ─── Drawing ───────────────────────────────────────────────
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            var ent: Entity = entities.get(i);
+            var sx = ent.get_X() / 100 - camX;
+            var sy = ent.get_Y() / 100 - camY;
+            var w = widthForType(etype.get(i));
+
+            // Frustum cull
+            if sx > -w and sx < SCREEN_W + w and sy > -100 and sy < SCREEN_H + 100 {
+                var t = etype.get(i);
+                var bhvDraw: Behavior = behaviors.get(i);
+                var frame = bhvDraw.get_AnimFrame();
+                var dir = ent.get_Dir();
+
+                // Hurt flash: skip every other frame
+                // Hurt flash: skip every other frame
+                var skip = false;
+                if estate.get(i) == 1 { if etimer.get(i) % 4 < 2 { skip = true; } }
+
+                if not skip {
+                    var spr = getEnemySprite(t, frame, sprites);
+                    if dir < 0 {
+                        canvas.BlitFlipAlpha(sx, sy, spr);
+                    } else {
+                        canvas.BlitAlpha(sx, sy, spr);
+                    }
+                }
+                i = next;
+            } else {
+                i = next;
+            }
+        }
+
+        // Draw enemy bullets
+        drawEnemyBullets(canvas, camX, camY);
+    }
+
+    hide func drawEnemyBullets(canvas: Canvas, camX: Integer, camY: Integer) {
+        var j = 0;
+        while j < ebx.length() {
+            if ebactive.get(j) == 1 {
+                var sx = ebx.get(j) - camX;
+                var sy = eby.get(j) - camY;
+                if sx > -10 and sx < SCREEN_W + 10 {
+                    canvas.Disc(sx, sy, 4, Color.RGB(255, 85, 68));
+                    canvas.DiscAlpha(sx, sy, 6, Color.RGB(255, 150, 100), 100);
+                }
+            }
+            j = j + 1;
+        }
+    }
+
+    // ─── Helpers ───────────────────────────────────────────────
+
+    // Map enemy type to its sprite frame from SpriteFactory
+    hide func getEnemySprite(t: Integer, frame: Integer, sprites: SpriteFactory) -> Pixels {
+        if t == EnemyType.Slime or t == EnemyType.MirrorSlime { return sprites.getSlimeFrame(frame); }
+        if t == EnemyType.Bat { return sprites.getBatFrame(frame); }
+        if t == EnemyType.Boss { return sprites.getBossFrame(frame); }
+        if t == EnemyType.Sporewalker { return sprites.getSporewalkerFrame(frame); }
+        if t == EnemyType.Glowmoth { return sprites.getGlowmothFrame(frame); }
+        if t == EnemyType.CrystalGolem { return sprites.getCrystalGolemFrame(frame); }
+        if t == EnemyType.ShardBat { return sprites.getShardBatFrame(frame); }
+        if t == EnemyType.MagmaSlug { return sprites.getMagmaSlugFrame(frame); }
+        if t == EnemyType.EmberWasp { return sprites.getEmberWaspFrame(frame); }
+        if t == EnemyType.ForgeSentinel { return sprites.getForgeSentinelFrame(frame); }
+        if t == EnemyType.FrostBeetle { return sprites.getFrostBeetleFrame(frame); }
+        if t == EnemyType.IceWraith { return sprites.getIceWraithFrame(frame); }
+        if t == EnemyType.MossGolem { return sprites.getMossGolemFrame(frame); }
+        if t == EnemyType.RuinGuardian { return sprites.getRuinGuardianFrame(frame); }
+        if t == EnemyType.ShadowClone { return sprites.getShadowCloneFrame(frame); }
+        if t == EnemyType.SporeMother { return sprites.getSporeMothFrame(frame); }
+        if t == EnemyType.CrystalWyrm { return sprites.getCrystalWyrmFrame(frame); }
+        if t == EnemyType.MagmaCore { return sprites.getMagmaCoreFrame(frame); }
+        if t == EnemyType.Architect { return sprites.getArchitectFrame(frame); }
+        // Fallback for types without unique sprites (turret, fungal turret, etc.)
+        return sprites.getSlimeFrame(frame);
+    }
+
+    hide func isBossType(t: Integer) -> Boolean {
+        return t == EnemyType.Boss or t == EnemyType.SporeMother
+            or t == EnemyType.CrystalWyrm or t == EnemyType.MagmaCore
+            or t == EnemyType.Architect;
+    }
+
+    expose func isBossAlive() -> Boolean {
+        return bossIndex >= 0 and pool.IsActive(bossIndex);
+    }
+
+    expose func getBossHp() -> Integer {
+        if bossIndex < 0 { return 0; }
+        var be: Entity = entities.get(bossIndex);
+        return be.get_HP();
+    }
+
+    expose func getBossMaxHp() -> Integer { return bossMaxHp; }
+
+    expose func getEnemyType(handle: Integer) -> Integer { return etype.get(handle); }
+    expose func isActive(handle: Integer) -> Integer {
+        if pool.IsActive(handle) { return 1; }
+        return 0;
+    }
+    expose func getEntityAt(handle: Integer) -> Entity { return entities.get(handle); }
+    expose func getEnemyPixelX(handle: Integer) -> Integer {
+        var e: Entity = entities.get(handle);
+        return e.get_X() / 100;
+    }
+    expose func getEnemyPixelY(handle: Integer) -> Integer {
+        var e: Entity = entities.get(handle);
+        return e.get_Y() / 100;
+    }
+}

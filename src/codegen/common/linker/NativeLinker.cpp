@@ -623,6 +623,17 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         return 1;
     }
 
+    // Step 1b: Read extra object files (e.g., asset blob).
+    std::vector<ObjFile> extraObjects;
+    for (const auto &extraPath : opts.extraObjPaths) {
+        ObjFile extraObj;
+        if (!readObjFile(extraPath, extraObj, err)) {
+            err << "warning: failed to read extra object '" << extraPath << "', skipping\n";
+            continue;
+        }
+        extraObjects.push_back(std::move(extraObj));
+    }
+
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
     for (const auto &arPath : opts.archivePaths) {
@@ -636,6 +647,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 3: Symbol resolution (iterative archive extraction).
     std::vector<ObjFile> initialObjects = {userObj};
+    for (auto &extra : extraObjects)
+        initialObjects.push_back(std::move(extra));
     if (!opts.entrySymbol.empty())
         initialObjects.push_back(makeUndefinedRootObject(userObj, opts.entrySymbol));
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;

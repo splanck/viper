@@ -8,7 +8,7 @@ bind Viper.Math;
 bind "./config";
 
 class Level {
-    hide Tilemap tilemap;
+    expose Tilemap tilemap;
     expose Integer levelWidth;
     expose Integer levelHeight;
     expose Integer levelTheme;
@@ -113,6 +113,21 @@ class Level {
         return tilemap.GetTile(col, row);
     }
 
+    // Update tile animations (call once per frame from game loop)
+    expose func updateTileAnims(dt: Integer) {
+        tilemap.UpdateAnims(dt);
+    }
+
+    // Get the current display tile for a given tile ID (resolves animation)
+    expose func resolveAnimTile(tileId: Integer) -> Integer {
+        return tilemap.ResolveAnimTile(tileId);
+    }
+
+    // Register tile animations (lava, etc.)
+    hide func registerTileAnims() {
+        tilemap.SetTileAnim(TILE_LAVA, 2, LAVA_ANIM_MS);
+    }
+
     // Register all solid tile types with the Tilemap collision system.
     // Called once after each tilemap creation so IsSolidAt() works.
     hide func registerSolidTiles() {
@@ -209,6 +224,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Player starts in the jungle canopy
         playerStartX = 3 * TILE_SIZE;
@@ -434,6 +450,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -586,6 +603,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -720,6 +738,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         playerStartX = 3 * TILE_SIZE;
         playerStartY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -852,6 +871,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Ground: grass top at row 15, dirt at row 16
         fillRow(GROUND_ROW, 0, levelWidth - 1, TILE_GRASS_TOP);
@@ -1015,6 +1035,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Cave floor and ceiling
         fillRow(0, 0, levelWidth - 1, TILE_CAVE_TOP);
@@ -1175,6 +1196,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Magma rock floor and ceiling
         fillRow(0, 0, levelWidth - 1, TILE_MAGMA);
@@ -1325,6 +1347,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Cloud ground (no bottom row — sky below)
         fillRow(GROUND_ROW, 0, 30, TILE_CLOUD);
@@ -1467,6 +1490,7 @@ class Level {
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Ruin stone floor and vine ceiling
         fillRow(0, 0, levelWidth - 1, TILE_VINE);
@@ -1835,6 +1859,7 @@ class Level {
         levelTheme = 10; // Corrupted core
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
+        registerTileAnims();
 
         // Ground floor
         var c = 0;

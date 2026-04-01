@@ -35,6 +35,7 @@ struct DesktopEntryParams {
     std::string iconName;   ///< Icon name (e.g. "viperide")
     std::string categories; ///< freedesktop.org categories (e.g. "Development;TextEditor;")
     bool terminal{false};   ///< Whether to run in a terminal
+    std::string workingDir; ///< Working directory for asset resolution (Path= in .desktop)
     std::vector<FileAssoc> fileAssociations; ///< For MimeType= field
 };
 

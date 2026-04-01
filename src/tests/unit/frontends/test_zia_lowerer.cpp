@@ -55,6 +55,15 @@ static const Function *findFunction(const Module &mod, const std::string &name) 
     return nullptr;
 }
 
+/// @brief Helper: find an extern declaration by name in the module.
+static const Extern *findExtern(const Module &mod, const std::string &name) {
+    for (const auto &ext : mod.externs) {
+        if (ext.name == name)
+            return &ext;
+    }
+    return nullptr;
+}
+
 /// @brief Helper: check if any instruction in a function uses the given opcode.
 static bool hasOpcode(const Function &fn, Opcode op) {
     for (const auto &block : fn.blocks) {
@@ -219,6 +228,41 @@ func start() {
     const auto *main = findFunction(result.module, "main");
     ASSERT_TRUE(main != nullptr);
     EXPECT_TRUE(hasOpcode(*main, Opcode::Call));
+}
+
+TEST(ZiaLowerer, ListEntityPushUsesAbiArity) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Entity {
+}
+
+func start() {
+    var raw = Viper.Collections.List.New();
+    raw.Push(raw);
+
+    var typed: List[Entity] = [];
+    var entity = new Entity();
+    typed.Push(entity);
+}
+)";
+    auto result = compileAndAssert(source, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    auto verified = il::verify::Verifier::verify(result.module);
+    EXPECT_TRUE(verified.hasValue());
+
+    const auto *main = findFunction(result.module, "main");
+    ASSERT_TRUE(main != nullptr);
+    EXPECT_TRUE(hasCallTo(*main, "Viper.Collections.List.Push"));
+
+    const auto *pushExtern = findExtern(result.module, "Viper.Collections.List.Push");
+    ASSERT_TRUE(pushExtern != nullptr);
+    EXPECT_EQ(pushExtern->retType.kind, Type::Kind::Void);
+    ASSERT_EQ(pushExtern->params.size(), 2u);
+    EXPECT_EQ(pushExtern->params[0].kind, Type::Kind::Ptr);
+    EXPECT_EQ(pushExtern->params[1].kind, Type::Kind::Ptr);
 }
 
 // ============================================================================

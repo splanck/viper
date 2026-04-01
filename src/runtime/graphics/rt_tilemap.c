@@ -76,6 +76,19 @@ typedef struct {
     int8_t owns_tiles;  ///< 1 = tiles was malloc'd (layers 1+), 0 = inline (layer 0)
 } tm_layer;
 
+/// @brief Per-tile animation definition.
+#define TM_MAX_TILE_ANIMS 64
+#define TM_MAX_ANIM_FRAMES 8
+
+typedef struct {
+    int64_t base_tile_id;               ///< Tile ID this animation applies to
+    int64_t frame_tiles[TM_MAX_ANIM_FRAMES]; ///< Tile IDs per frame
+    int32_t frame_count;                ///< Number of frames
+    int64_t ms_per_frame;               ///< Milliseconds per frame
+    int64_t timer;                      ///< Current ms accumulator
+    int32_t current_frame;              ///< Current frame index
+} tm_tile_anim;
+
 /// @brief Tilemap implementation structure.
 typedef struct rt_tilemap_impl {
     int64_t width;                            ///< Width in tiles
@@ -91,6 +104,8 @@ typedef struct rt_tilemap_impl {
     tm_layer layers[TM_MAX_LAYERS];           ///< Layer array
     int32_t layer_count;                      ///< Current number of layers (starts at 1)
     int32_t collision_layer;                  ///< Which layer has collision data (default 0)
+    tm_tile_anim tile_anims[TM_MAX_TILE_ANIMS]; ///< Per-tile animation definitions
+    int32_t tile_anim_count;                 ///< Number of active tile animations
 } rt_tilemap_impl;
 
 //=============================================================================
@@ -922,4 +937,65 @@ int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
     if (!tilemap_ptr)
         return 0;
     return ((rt_tilemap_impl *)tilemap_ptr)->collision_layer;
+}
+
+//=============================================================================
+// Tile Animation
+//=============================================================================
+
+void rt_tilemap_set_tile_anim(void *tilemap_ptr, int64_t base_tile_id,
+                              int64_t frame_count, int64_t ms_per_frame) {
+    if (!tilemap_ptr || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES)
+        return;
+    rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
+    if (tm->tile_anim_count >= TM_MAX_TILE_ANIMS)
+        return;
+
+    tm_tile_anim *anim = &tm->tile_anims[tm->tile_anim_count++];
+    memset(anim, 0, sizeof(tm_tile_anim));
+    anim->base_tile_id = base_tile_id;
+    anim->frame_count = (int32_t)frame_count;
+    anim->ms_per_frame = ms_per_frame;
+    // Default: sequential tile IDs (base, base+1, base+2, ...)
+    for (int32_t i = 0; i < anim->frame_count; i++)
+        anim->frame_tiles[i] = base_tile_id + i;
+}
+
+void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr, int64_t base_tile_id,
+                                    int64_t frame_idx, int64_t tile_id) {
+    if (!tilemap_ptr)
+        return;
+    rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
+    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
+        if (tm->tile_anims[i].base_tile_id == base_tile_id) {
+            if (frame_idx >= 0 && frame_idx < tm->tile_anims[i].frame_count)
+                tm->tile_anims[i].frame_tiles[frame_idx] = tile_id;
+            return;
+        }
+    }
+}
+
+void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
+    if (!tilemap_ptr)
+        return;
+    rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
+    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
+        tm_tile_anim *anim = &tm->tile_anims[i];
+        anim->timer += dt_ms;
+        while (anim->timer >= anim->ms_per_frame) {
+            anim->timer -= anim->ms_per_frame;
+            anim->current_frame = (anim->current_frame + 1) % anim->frame_count;
+        }
+    }
+}
+
+int64_t rt_tilemap_resolve_anim_tile(void *tilemap_ptr, int64_t tile_id) {
+    if (!tilemap_ptr)
+        return tile_id;
+    rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
+    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
+        if (tm->tile_anims[i].base_tile_id == tile_id)
+            return tm->tile_anims[i].frame_tiles[tm->tile_anims[i].current_frame];
+    }
+    return tile_id;
 }

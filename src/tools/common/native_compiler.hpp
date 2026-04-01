@@ -45,13 +45,21 @@ bool isNativeOutputPath(const std::string &path);
 /// @param ilPath Path to the IL text file on disk.
 /// @param outputPath Path for the output native binary.
 /// @param arch Target architecture (defaults to host architecture).
+/// @param assetBlobPath Path to VPA asset blob for .rodata embedding (optional).
+/// @param assetObjPath  Path to extra .o file with asset blob C array (optional).
 /// @return 0 on success, non-zero on failure.
 int compileToNative(const std::string &ilPath,
                     const std::string &outputPath,
-                    TargetArch arch = detectHostArch());
+                    TargetArch arch = detectHostArch(),
+                    const std::string &assetBlobPath = "",
+                    const std::string &assetObjPath = "");
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.
 std::string generateTempIlPath();
+
+/// @brief Generate a unique temporary file path for asset blob.
+/// @return A path in the system temp directory with a .vpa extension.
+std::string generateTempAssetPath();
 
 } // namespace viper::tools

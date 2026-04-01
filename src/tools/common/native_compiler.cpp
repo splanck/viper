@@ -45,12 +45,22 @@ std::string generateTempIlPath() {
 }
 
 /// @brief Compile to native.
-int compileToNative(const std::string &ilPath, const std::string &outputPath, TargetArch arch) {
+int compileToNative(const std::string &ilPath, const std::string &outputPath,
+                    TargetArch arch, const std::string &assetBlobPath,
+                    const std::string &assetObjPath) {
     if (arch == TargetArch::ARM64) {
         // The frontend already emitted the final IL. Do not re-run an IL
         // optimization pipeline here; that can double-optimize build output
         // and introduce correctness regressions.
         std::vector<std::string> storage = {ilPath, "-o", outputPath, "-O0"};
+        if (!assetBlobPath.empty()) {
+            storage.push_back("--asset-blob");
+            storage.push_back(assetBlobPath);
+        }
+        if (!assetObjPath.empty()) {
+            storage.push_back("--extra-obj");
+            storage.push_back(assetObjPath);
+        }
         std::vector<char *> argv;
         argv.reserve(storage.size());
         for (auto &s : storage)
@@ -63,6 +73,7 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
     opts.input_il_path = ilPath;
     opts.output_obj_path = outputPath;
     opts.optimize = 0;
+    opts.asset_blob_path = assetBlobPath;
 
     viper::codegen::x64::CodegenPipeline pipeline(opts);
     PipelineResult result;
@@ -79,6 +90,17 @@ int compileToNative(const std::string &ilPath, const std::string &outputPath, Ta
         std::cerr << result.stderr_text;
 
     return result.exit_code;
+}
+
+/// @brief Generate temp asset path.
+std::string generateTempAssetPath() {
+    auto dir = std::filesystem::temp_directory_path();
+#ifdef _WIN32
+    auto pid = _getpid();
+#else
+    auto pid = getpid();
+#endif
+    return (dir / ("viper_assets_" + std::to_string(pid) + ".vpa")).string();
 }
 
 } // namespace viper::tools

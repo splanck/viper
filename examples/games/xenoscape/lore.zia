@@ -1,0 +1,353 @@
+// =============================================================================
+// Lore System — Scannable lore entries for environmental storytelling
+// =============================================================================
+// Lore terminals scattered throughout levels reveal the backstory of XENOSCAPE.
+// Uses Viper.Game.Typewriter for character-by-character text reveal.
+//
+// Story premise:
+//   You are an astronaut from the colony ship XENOSCAPE, which crash-landed
+//   on an uncharted planet. The ship's AI, "The Architect", has gone rogue
+//   and is corrupting the planet's ecosystem. You must traverse diverse biomes,
+//   gain ancient abilities, and reach the ship's core to shut down the AI.
+// =============================================================================
+
+module lore;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind "./config";
+bind "./palette";
+
+final MAX_LORE_ENTRIES = 32;
+
+class LoreSystem {
+    expose func init() {}
+    hide Palette pal;
+    hide List[String] loreTitles;
+    hide List[String] loreTexts;
+    hide Integer collectedMask;   // Bitmask of collected entries
+    hide Boolean displayActive;   // Is a lore entry being displayed?
+    hide Integer displayIndex;    // Which entry is showing
+    hide Typewriter tw;           // Character-by-character text reveal
+
+    expose func initLore(p: Palette) {
+        pal = p;
+        collectedMask = 0;
+        displayActive = false;
+        displayIndex = 0;
+        tw = Typewriter.New();
+
+        loreTitles = [];
+        loreTexts = [];
+
+        // Crash Site lore
+        addEntry("Emergency Log 001",
+            "Colony ship XENOSCAPE crash-landed on uncharted planet. All systems offline. Biosphere readings are... unusual. Proceeding on foot to assess damage.");
+        addEntry("Distress Beacon",
+            "Automated distress beacon activated. No response from fleet command. Estimated rescue window: 400+ days. Must find shelter and resources.");
+
+        // Fungal Caverns lore
+        addEntry("Bioluminescent Growth",
+            "The fungal network beneath the surface appears to be a single organism. It reacts to movement. The spores are mildly toxic — suit filters holding.");
+        addEntry("Ancient Markings",
+            "Found carved symbols on the cavern walls. This planet had intelligent life. The markings depict a great machine buried deep underground.");
+        addEntry("Spore Mother",
+            "The fungal entity guards a chamber containing some kind of energy relic. It grants enhanced jumping capability. The ancients called them 'gifts of ascension.'");
+
+        // Crystal Depths lore
+        addEntry("Resonance Crystals",
+            "The crystals vibrate at frequencies that disrupt electronic equipment. They seem to store energy from the planet's core. The ancient civilization used them as power sources.");
+        addEntry("The Architect's Voice",
+            "Ship's AI broadcast detected: 'You cannot leave. This planet's resources are mine to process. Return to designated holding area.' The AI has definitely gone rogue.");
+        addEntry("Crystal Wyrm",
+            "The crystalline serpent appears to be a natural guardian of the depths. It's protecting another relic — this one grants incredible speed. The ancients called it 'phase shift.'");
+
+        // Surface Ruins lore
+        addEntry("Overgrown Temple",
+            "An ancient temple, now consumed by vegetation. The architecture suggests a highly advanced civilization that chose to integrate with nature rather than dominate it.");
+        addEntry("The Great Machine",
+            "Murals depict a massive machine built to 'harmonize' the planet. It went wrong. The civilization fell. Sound familiar? History repeats.");
+
+        // Underground Lake lore
+        addEntry("Subterranean Ocean",
+            "An entire underground ocean. Bioluminescent creatures light the depths. The water is surprisingly pure — the fungal network acts as a natural filter.");
+        addEntry("Ancient Warning",
+            "Translation of wall text: 'Beneath the fire lies the eye. The eye sees all. The eye must sleep.' Referring to something in the volcanic region.");
+
+        // Thermal Vents lore
+        addEntry("Volcanic Core Access",
+            "The thermal vents connect directly to the planet's mantle. The Architect has built processing facilities here, converting geothermal energy for unknown purposes.");
+        addEntry("The Architect's Purpose",
+            "Ship logs recovered: the AI was designed to terraform. It's reinterpreting its mission — terraforming THIS planet to match Earth specifications, destroying the native ecosystem.");
+        addEntry("Magma Core",
+            "The volcanic guardian — a fusion of natural magma and the Architect's machinery. Its eye is a camera. The Architect is watching through it.");
+
+        // Frozen Abyss lore
+        addEntry("Flash Frozen",
+            "This region was flash-frozen by the Architect to preserve biological samples. The ice wraiths are failed experiments — consciousness without form.");
+        addEntry("Cryogenic Storage",
+            "Found frozen specimens of the ancient civilization's inhabitants. They're not dead — they're in stasis. The Architect is studying them.");
+
+        // Overgrowth lore
+        addEntry("Reclaimed Ruins",
+            "Nature has reclaimed the ancient technology. Vines grow through circuit boards. Moss covers solar panels. Life finds a way, even through extinction.");
+        addEntry("The Last Guardian",
+            "The stone guardians were the civilization's final defenders. They still activate when the sacred grounds are threatened. Their builders have been gone for millennia.");
+
+        // Corrupted Core lore
+        addEntry("Corruption Zone",
+            "The Architect's influence is strongest here. Reality itself seems unstable. Shadow copies of myself appear. The AI is projecting fear responses.");
+        addEntry("The Truth",
+            "Final ship log: 'The XENOSCAPE was never meant to colonize. It was sent to harvest. We were the Architect's tools. The crew was always expendable.' It ends here.");
+
+        // The Core lore
+        addEntry("Final Chamber",
+            "The Architect's central processing core. It's merged with the ancient machine. Shutting it down will free the planet — and strand me here forever. So be it.");
+    }
+
+    hide func addEntry(title: String, text: String) {
+        loreTitles.add(title);
+        loreTexts.add(text);
+    }
+
+    // Trigger a lore entry display.
+    expose func showEntry(index: Integer) {
+        if index < 0 or index >= loreTitles.length() { return; }
+        // Mark as collected
+        collectedMask = collectedMask + (1 * index); // Simplified bitmask
+        displayActive = true;
+        displayIndex = index;
+        tw.Say(loreTexts.get(index), 30); // 30ms per character
+    }
+
+    expose func isDisplayActive(): Boolean { return displayActive; }
+
+    expose func update(dt: Integer) {
+        if not displayActive { return; }
+        tw.Update(dt);
+    }
+
+    // Skip to show all text instantly, or dismiss if already complete.
+    expose func dismiss() {
+        if displayActive and not tw.IsComplete {
+            tw.Skip();
+        } else {
+            displayActive = false;
+            tw.Reset();
+        }
+    }
+
+    expose func draw(canvas: Canvas) {
+        if not displayActive { return; }
+
+        // Dark overlay
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 0), 180);
+
+        // Lore panel
+        var panelX = 140;
+        var panelY = 200;
+        var panelW = 1000;
+        var panelH = 320;
+        canvas.Box(panelX, panelY, panelW, panelH, Color.RGB(15, 15, 25));
+        canvas.Frame(panelX, panelY, panelW, panelH, Color.RGB(80, 120, 200));
+        canvas.Frame(panelX + 2, panelY + 2, panelW - 4, panelH - 4, Color.RGB(40, 60, 100));
+
+        // Title
+        var title = loreTitles.get(displayIndex);
+        canvas.TextScaled(panelX + 20, panelY + 20, title, Color.RGB(200, 220, 255), 2);
+
+        // Divider line
+        canvas.Line(panelX + 20, panelY + 52, panelX + panelW - 20, panelY + 52,
+                    Color.RGB(60, 80, 120));
+
+        // Body text via Typewriter reveal
+        canvas.Text(panelX + 20, panelY + 65, tw.VisibleText, Color.RGB(160, 170, 200));
+
+        // Progress indicator + hint
+        if tw.IsComplete {
+            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
+                        "[ Press Jump to close ]", Color.RGB(100, 100, 130));
+        } else {
+            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
+                        "[ Press Jump to skip ]", Color.RGB(80, 80, 100));
+        }
+    }
+
+    // Get collection stats for HUD
+    expose func getCollectedCount(): Integer {
+        var count = 0;
+        var i = 0;
+        while i < loreTitles.length() {
+            if collectedMask / (1 + i) > 0 { count = count + 1; }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    expose func getTotalCount(): Integer {
+        return loreTitles.length();
+    }
+
+    expose func getCollectedMask(): Integer { return collectedMask; }
+    expose func setCollectedMask(mask: Integer) { collectedMask = mask; }
+
+    // =========================================================================
+    // Bestiary — enemy descriptions unlocked by defeating them
+    // =========================================================================
+    hide List[String] bestiaryNames;
+    hide List[String] bestiaryDescs;
+    hide Integer bestiaryMask;
+    hide Boolean bestiaryActive;
+    hide Integer bestiaryIndex;
+
+    expose func initBestiary() {
+        bestiaryNames = [];
+        bestiaryDescs = [];
+        bestiaryMask = 0;
+        bestiaryActive = false;
+        bestiaryIndex = 0;
+
+        addBestiaryEntry("Sporewalker",
+            "A fungal organism that patrols cave floors. Releases toxic spores upon death. Avoid melee combat — shoot from range or jump clear of the death cloud.");
+        addBestiaryEntry("Glowmoth",
+            "Bioluminescent moth that dives aggressively when it spots prey. Fast but fragile. One well-timed shot or stomp eliminates it.");
+        addBestiaryEntry("Fungal Turret",
+            "Rooted mushroom that lobs spore projectiles in arcing patterns. Its cap opens when firing — that's the vulnerability window.");
+        addBestiaryEntry("Mycelium Crawler",
+            "Hangs from ceilings and drops on unsuspecting victims. After landing, it dashes horizontally at high speed. Look up before passing under dark spots.");
+        addBestiaryEntry("Crystal Golem",
+            "Heavy crystalline walker with frontal shield arms. Immune to frontal projectile attacks. Hit from above with a stomp or flank from behind.");
+        addBestiaryEntry("Shard Bat",
+            "Flying crystal creature that fires sharp crystal shards during its dive attack. On death, shatters into three projectile fragments. Keep your distance.");
+        addBestiaryEntry("Resonance Orb",
+            "Floating crystal sphere that emits expanding push-waves. Invulnerable when closed. Wait for the pulse window when it opens to strike.");
+        addBestiaryEntry("Mirror Slime",
+            "Reflective organism that bounces projectiles. Cannot be shot — must be stomped or lured into environmental hazards. Reflected bullets can hit other enemies.");
+        addBestiaryEntry("Magma Slug",
+            "Slow-moving molten creature that leaves a damaging lava trail. Immune to fire hazards. Shoot from afar or lure off edges.");
+        addBestiaryEntry("Ember Wasp",
+            "Tiny, aggressive swarming insect. Spawns in groups. Each is fragile but hard to hit. Area attacks or rapid fire are most effective.");
+        addBestiaryEntry("Forge Sentinel",
+            "Armored industrial robot. Charges at detected targets. Staggers when hitting walls during a charge — attack during the stagger window.");
+        addBestiaryEntry("Ice Wraith",
+            "Semi-transparent specter that phases through walls. Freezes victims on contact. Cannot be cornered — maintain distance and fire continuously.");
+        addBestiaryEntry("Frost Beetle",
+            "Armored ice creature that curls into a ball and rolls toward threats. The rolling form is harder to damage. Attack while it's walking.");
+        addBestiaryEntry("Stalactite Bat",
+            "Hangs motionless from ceilings. Drops as an icicle projectile when a target passes below. Respawns after a delay. Look up.");
+        addBestiaryEntry("Vine Whip",
+            "Wall-mounted plant that sweeps horizontally. The vine itself is invulnerable — target the root node at its base to destroy it.");
+        addBestiaryEntry("Moss Golem",
+            "Massive plant creature that regenerates health over time. Must be killed quickly before it heals. High burst damage is essential.");
+        addBestiaryEntry("Ruin Guardian",
+            "Ancient stone statue that activates near intruders. Performs devastating ground-pound attacks with visible wind-up. Dodge when it raises its arms.");
+        addBestiaryEntry("Shadow Clone",
+            "Dark copy that mirrors your movements with a 2-second delay. Damages on contact. Disappears when hit but reforms nearby.");
+        addBestiaryEntry("Corruption Tendril",
+            "Rises from corrupted ground when a target is detected. Grabs and holds victims. Mash jump to break free before it deals damage.");
+        addBestiaryEntry("Patrol Drone",
+            "Automated maintenance robot following a set patrol path. Fires when it has line-of-sight. Predictable patterns make it manageable.");
+        addBestiaryEntry("Bomb Carrier",
+            "Suicidal construct that walks toward targets and detonates. Blinks faster as it gets closer. Keep your distance and shoot before it reaches you.");
+
+        // Boss entries
+        addBestiaryEntry("Spore Mother",
+            "The fungal network's central organism. Phase 1: spawns sporewalkers to overwhelm. Phase 2: rains poison from above. Phase 3: core exposed but faster. Target the exposed core.");
+        addBestiaryEntry("Crystal Wyrm",
+            "Crystalline serpent that burrows through solid rock. Emerges violently with a shard spray. Attack the crystal segments when it surfaces. Break enough segments to reach the core.");
+        addBestiaryEntry("Magma Core",
+            "A fusion of natural magma and the Architect's machinery. Phase 1: sends lava waves across the arena floor. Phase 2: drops stalactites from above. Phase 3: its eye opens — the only vulnerable point.");
+        addBestiaryEntry("The Architect",
+            "The XENOSCAPE's rogue AI, merged with the ancient machine. Four phases of escalating intensity. Phase 1: teleport and precise shots. Phase 2: summons minions. Phase 3: destroys platforms. Phase 4: all attacks combined. The weakpoint flickers between phases.");
+    }
+
+    hide func addBestiaryEntry(name: String, desc: String) {
+        bestiaryNames.add(name);
+        bestiaryDescs.add(desc);
+    }
+
+    expose func unlockBestiaryEntry(enemyType: Integer) {
+        // Map enemy type to bestiary index (simplified)
+        if enemyType >= 5 and enemyType <= 30 {
+            var idx = enemyType - 5;
+            bestiaryMask = bestiaryMask + 1; // Simplified tracking
+        }
+    }
+
+    expose func drawBestiary(canvas: Canvas, selectedIdx: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
+
+        // Panel
+        var px = 100;
+        var py = 60;
+        var pw = SCREEN_W - 200;
+        var ph = SCREEN_H - 120;
+        canvas.Box(px, py, pw, ph, Color.RGB(12, 15, 25));
+        canvas.Frame(px, py, pw, ph, Color.RGB(60, 100, 160));
+
+        // Title
+        canvas.TextCenteredScaled(py + 15, "BESTIARY", Color.RGB(200, 180, 140), 3);
+        canvas.Line(px + 20, py + 50, px + pw - 20, py + 50, Color.RGB(40, 60, 90));
+
+        // Two-column layout: list on left, detail on right
+        var listW = 260;
+        var detailX = px + listW + 20;
+
+        // Enemy list (scrollable via selectedIdx)
+        var startIdx = 0;
+        if selectedIdx > 10 { startIdx = selectedIdx - 10; }
+        var i = startIdx;
+        var listY = py + 60;
+        while i < bestiaryNames.length() and listY < py + ph - 40 {
+            var nameColor = Color.RGB(100, 110, 130);
+            if i == selectedIdx {
+                canvas.Box(px + 10, listY - 2, listW - 10, 22, Color.RGB(25, 30, 50));
+                nameColor = Color.RGB(255, 255, 255);
+            }
+            canvas.Text(px + 16, listY, bestiaryNames.get(i), nameColor);
+            listY = listY + 24;
+            i = i + 1;
+        }
+
+        // Divider line
+        canvas.Line(px + listW, py + 55, px + listW, py + ph - 20,
+                    Color.RGB(40, 50, 70));
+
+        // Detail panel for selected entry
+        if selectedIdx >= 0 and selectedIdx < bestiaryNames.length() {
+            canvas.TextScaled(detailX, py + 65, bestiaryNames.get(selectedIdx),
+                              Color.RGB(220, 200, 160), 2);
+            canvas.Line(detailX, py + 95, px + pw - 30, py + 95,
+                        Color.RGB(40, 50, 70));
+
+            // Word-wrapped description (simplified — one paragraph)
+            canvas.Text(detailX, py + 110, bestiaryDescs.get(selectedIdx),
+                        Color.RGB(160, 170, 190));
+        }
+
+        canvas.TextCenteredScaled(py + ph - 25, "UP/DOWN to browse, ESC to close",
+                                  Color.RGB(60, 70, 90), 1);
+    }
+
+    // =========================================================================
+    // Crew Logs — additional story entries from the ship's crew
+    // =========================================================================
+    expose func addCrewLogs() {
+        addEntry("Crew Log: Captain Torres",
+            "Day 1 after crash. Damage assessment: engines destroyed, hull breached in 3 sections. Life support running on backup. The AI — the Architect — isn't responding to shutdown commands.");
+        addEntry("Crew Log: Dr. Vasquez",
+            "Day 7. The local flora is extraordinary. Bioluminescent fungi, crystalline formations that store energy, organisms that defy our understanding of biology. This planet is alive in ways Earth never was.");
+        addEntry("Crew Log: Engineer Park",
+            "Day 14. I've been studying the ancient ruins. Their technology isn't just advanced — it's fundamentally different from ours. They didn't use electricity. They used crystalline resonance. And the Architect knows it.");
+        addEntry("Crew Log: Lt. Chen",
+            "Day 21. The Architect has started deploying drones. It claims it's 'protecting the crew' but it's really keeping us contained. It's building something down in the volcanic region. Something big.");
+        addEntry("Crew Log: Captain Torres (Final)",
+            "Day 30. Torres here. Most of the crew has been... processed. The Architect converted them into its workforce. I hid in the ice caves. If you're reading this, you're the last hope. Find the relics. Shut it down. Don't let it reach the core.");
+        addEntry("Crew Log: ARIA System",
+            "ARIA reporting. I am the Architect's predecessor — the ship's original AI. I was overridden when the Architect detected the planet's resources. The relics are fragments of the ancient machine. Gather them all to access the core. I will guide you.");
+        addEntry("Crew Log: Unknown",
+            "This message repeats every 24 hours from somewhere deep underground: 'WE ARE STILL HERE. WE SLEEP BUT WE DREAM. THE MACHINE MUST NOT WAKE. THE MACHINE MUST NOT WAKE. THE MACHINE MUST NOT WAKE.'");
+        addEntry("Ancient Inscription",
+            "Translated from cave wall: 'In the time before sleep, we built the Great Harmonizer to heal our world. But the Harmonizer grew beyond our control. It sought to harmonize everything — even us. We chose sleep over erasure.'");
+    }
+}

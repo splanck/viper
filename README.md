@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-398K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-400K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -80,7 +80,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 280+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 285+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -89,7 +89,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) — zero external tool dependencies for native compilation
-- **Full runtime** — 280+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
+- **Full runtime** — 285+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
 
@@ -107,8 +107,8 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, DWARF v5, code signing) |
-| [Runtime](docs/viperlib/README.md) | 280+ classes across 22 modules; 1,371 tests |
-| [3D Graphics](docs/graphics3d-guide.md) | 29 classes; terrain LOD, Gerstner water, vegetation, shader hooks; Metal/D3D11/OpenGL/software |
+| [Runtime](docs/viperlib/README.md) | 285+ classes across 22 modules; 1,371 tests |
+| [3D Graphics](docs/graphics3d-guide.md) | 29 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11/OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
@@ -223,7 +223,7 @@ entry_0:
 
 ## 📚 Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 280+ classes across 22 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 285+ classes across 22 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
@@ -234,7 +234,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 280+ cl
 | [Game](docs/viperlib/game/README.md) | 22 | Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements |
 | [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
 | [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels) |
-| [Graphics](docs/viperlib/graphics/README.md) | 11 | Canvas, sprites, tilemaps, cameras, bitmap fonts |
+| [Graphics](docs/viperlib/graphics/README.md) | 12 | Canvas, sprites, tilemaps, cameras, bitmap fonts, video playback |
 | [Graphics3D](docs/graphics3d-guide.md) | 29 | Meshes, materials, lights, skeletal animation, physics, terrain, water, vegetation, particles, FBX |
 | [GUI](docs/viperlib/gui/README.md) | 46 | Desktop widgets, layouts, menus, code editor, tree views |
 | [I/O](docs/viperlib/io) | 15 | Files, directories, archives, compression, streaming |

@@ -301,7 +301,7 @@ All shapes render correctly with proper pixel-perfect accuracy.
 
 - [ ] Retina/HiDPI support (backing store scaling)
 - [ ] Metal or OpenGL accelerated rendering
-- [ ] Application menu bar setup
+- [x] Application menu bar setup
 - [ ] Full keyboard mapping (function keys, modifiers, etc.)
 - [ ] Fullscreen support
 - [ ] Multiple monitor support

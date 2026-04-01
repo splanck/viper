@@ -13,6 +13,7 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <string>
 
 using namespace il::core;
 using namespace il::build;
@@ -252,6 +253,38 @@ static Module createFibModule() {
     return m;
 }
 
+/// Create a function that calls enough distinct native symbols to require a
+/// native function index wider than 8 bits.
+static Module createWideNativeIndexModule() {
+    Module m;
+    IRBuilder b(m);
+
+    auto &fn = b.startFunction("call_wide_native", Type(Type::Kind::I64), {});
+    auto &entry = b.addBlock(fn, "entry");
+    b.setInsertPoint(entry);
+
+    uint32_t lastResult = 0;
+    for (uint32_t i = 0; i <= 256; ++i) {
+        Instr call;
+        call.result = b.reserveTempId();
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::I64);
+        call.callee = "native_" + std::to_string(i);
+        call.loc = {1, 1, 1};
+        entry.instructions.push_back(call);
+        lastResult = *call.result;
+    }
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(lastResult));
+    ret.loc = {1, 1, 1};
+    entry.instructions.push_back(ret);
+
+    return m;
+}
+
 /// Test basic bytecode encoding/decoding
 static void test_bytecode_encoding() {
     std::cout << "  test_bytecode_encoding: ";
@@ -444,8 +477,8 @@ static void test_native_calls() {
 
     // LOAD_LOCAL 0       ; push %n
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
-    // CALL_NATIVE 0, 1   ; call native[0] with 1 arg
-    func.code.push_back(encodeOp88(BCOpcode::CALL_NATIVE, 0, 1));
+    // CALL_NATIVE [argCount=1][nativeIdx=0]
+    func.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, 0));
     // STORE_LOCAL 1      ; store result to local[1]
     func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
     // LOAD_LOCAL 1       ; push result
@@ -556,8 +589,8 @@ static void test_native_multi_args() {
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0)); // push %a
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1)); // push %b
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2)); // push %c
-    // CALL_NATIVE 0, 3
-    func.code.push_back(encodeOp88(BCOpcode::CALL_NATIVE, 0, 3));
+    // CALL_NATIVE [argCount=3][nativeIdx=0]
+    func.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 3, 0));
     // RET (result is on stack)
     func.code.push_back(encodeOp(BCOpcode::RETURN));
 
@@ -579,6 +612,50 @@ static void test_native_multi_args() {
 
     result = vm.exec("call_add3", {BCSlot::fromInt(1), BCSlot::fromInt(2), BCSlot::fromInt(3)});
     assert(result.i64 == 6);
+
+    std::cout << "PASSED\n";
+}
+
+/// Test native function indices beyond 255 through the compiler and VM.
+static void test_native_wide_index() {
+    std::cout << "  test_native_wide_index: ";
+
+    Module ilModule = createWideNativeIndexModule();
+
+    BytecodeCompiler compiler;
+    BytecodeModule bcModule = compiler.compile(ilModule);
+
+    assert(bcModule.nativeFuncs.size() == 257);
+
+    const BytecodeFunction *func = bcModule.findFunction("call_wide_native");
+    assert(func != nullptr);
+
+    std::vector<uint32_t> nativeCalls;
+    for (uint32_t instr : func->code) {
+        if (decodeOpcode(instr) == BCOpcode::CALL_NATIVE) {
+            nativeCalls.push_back(instr);
+        }
+    }
+
+    assert(nativeCalls.size() == 257);
+    assert(decodeArg8_0(nativeCalls.back()) == 0);
+    assert(decodeArg16_1(nativeCalls.back()) == 256);
+
+    BytecodeVM vm;
+    for (uint32_t i = 0; i <= 256; ++i) {
+        vm.registerNativeHandler(
+            "native_" + std::to_string(i), [i](BCSlot *args, uint32_t argCount, BCSlot *result) {
+                assert(argCount == 0);
+                (void)args;
+                result->i64 = static_cast<int64_t>(i);
+            });
+    }
+
+    vm.load(&bcModule);
+
+    BCSlot result = vm.exec("call_wide_native", {});
+    assert(vm.state() == VMState::Halted);
+    assert(result.i64 == 256);
 
     std::cout << "PASSED\n";
 }
@@ -796,6 +873,7 @@ int main() {
     test_dispatch_benchmark();
     test_native_calls();
     test_native_multi_args();
+    test_native_wide_index();
     test_exception_handling();
     test_unhandled_trap();
     test_eh_pop();

@@ -808,3 +808,135 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
             rt_canvas_text(canvas, menu->x, iy + 2, rtext, color);
     }
 }
+
+/// @brief Handle input for menu navigation. Returns selected index on confirm, -1 otherwise.
+int64_t rt_uimenulist_handle_input(void *ptr, int8_t up, int8_t down, int8_t confirm) {
+    if (!ptr)
+        return -1;
+    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
+    if (menu->count == 0)
+        return -1;
+
+    if (up) {
+        menu->selected--;
+        if (menu->selected < 0)
+            menu->selected = menu->count - 1; // wrap
+    }
+    if (down) {
+        menu->selected++;
+        if (menu->selected >= menu->count)
+            menu->selected = 0; // wrap
+    }
+    if (confirm)
+        return menu->selected;
+    return -1;
+}
+
+//=============================================================================
+// GameButton — standalone styled button for custom layouts
+//=============================================================================
+
+typedef struct {
+    int64_t x, y, width, height;
+    char text[64];
+    int64_t text_scale;
+    int64_t color_normal;
+    int64_t color_selected;
+    int64_t text_color;
+    int64_t text_color_selected;
+    int64_t border_color;
+    int64_t border_width;
+    int8_t visible;
+} rt_gamebutton_impl;
+
+void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) {
+    rt_gamebutton_impl *btn =
+        (rt_gamebutton_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gamebutton_impl));
+    if (!btn)
+        return NULL;
+    memset(btn, 0, sizeof(rt_gamebutton_impl));
+    btn->x = x;
+    btn->y = y;
+    btn->width = w;
+    btn->height = h;
+    btn->text_scale = 1;
+    btn->color_normal = 0x333333;
+    btn->color_selected = 0x4444AA;
+    btn->text_color = 0xCCCCCC;
+    btn->text_color_selected = 0xFFFFFF;
+    btn->border_color = 0x666666;
+    btn->border_width = 1;
+    btn->visible = 1;
+    if (text) {
+        const char *s = rt_string_cstr((rt_string)text);
+        if (s) {
+            strncpy(btn->text, s, 63);
+            btn->text[63] = '\0';
+        }
+    }
+    return btn;
+}
+
+void rt_gamebutton_set_text(void *ptr, void *text) {
+    if (!ptr || !text)
+        return;
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    const char *s = rt_string_cstr((rt_string)text);
+    if (s) {
+        strncpy(btn->text, s, 63);
+        btn->text[63] = '\0';
+    }
+}
+
+void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
+    if (!ptr)
+        return;
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    btn->color_normal = normal;
+    btn->color_selected = selected;
+}
+
+void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) {
+    if (!ptr)
+        return;
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    btn->text_color = normal;
+    btn->text_color_selected = selected;
+}
+
+void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
+    if (!ptr)
+        return;
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    btn->border_width = width;
+    btn->border_color = color;
+}
+
+int64_t rt_gamebutton_get_x(void *ptr) { return ptr ? ((rt_gamebutton_impl *)ptr)->x : 0; }
+int64_t rt_gamebutton_get_y(void *ptr) { return ptr ? ((rt_gamebutton_impl *)ptr)->y : 0; }
+void rt_gamebutton_set_x(void *ptr, int64_t v) { if (ptr) ((rt_gamebutton_impl *)ptr)->x = v; }
+void rt_gamebutton_set_y(void *ptr, int64_t v) { if (ptr) ((rt_gamebutton_impl *)ptr)->y = v; }
+
+void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
+    if (!ptr || !canvas)
+        return;
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    if (!btn->visible)
+        return;
+
+    int64_t bg = is_selected ? btn->color_selected : btn->color_normal;
+    int64_t tc = is_selected ? btn->text_color_selected : btn->text_color;
+
+    // Background
+    rt_canvas_box(canvas, btn->x, btn->y, btn->width, btn->height, bg);
+
+    // Border
+    if (btn->border_width > 0)
+        rt_canvas_frame(canvas, btn->x, btn->y, btn->width, btn->height, btn->border_color);
+
+    // Centered text
+    rt_string rtext = rt_const_cstr(btn->text);
+    int64_t text_x = btn->x + btn->width / 2 - (int64_t)strlen(btn->text) * 4;
+    int64_t text_y = btn->y + btn->height / 2 - 4;
+    rt_canvas_text(canvas, text_x, text_y, rtext, tc);
+}

@@ -705,9 +705,22 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                                              dequeue:YES]))
         { /* Remove from queue */
 
+            NSEventType eventType = [event type];
+            if (eventType == NSEventTypeKeyDown)
+            {
+                /* Let the native app menu consume key equivalents (Cmd+N, F5, etc.)
+                   before we translate the event into Viper input. We still avoid
+                   forwarding arbitrary key presses to NSApp, which prevents the
+                   system beep for unhandled navigation keys. */
+                NSMenu *mainMenu = [NSApp mainMenu];
+                if (mainMenu && [mainMenu performKeyEquivalent:event])
+                {
+                    continue;
+                }
+            }
+
             /* Don't forward keyboard events to NSApp - we handle them directly.
                This prevents the system beep when arrow keys are pressed. */
-            NSEventType eventType = [event type];
             if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp)
             {
                 [NSApp sendEvent:event];

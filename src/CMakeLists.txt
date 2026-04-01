@@ -253,8 +253,9 @@ add_library(il_tools_common STATIC
         tools/common/source_loader.cpp
         tools/common/project_loader.cpp
         tools/common/vm_executor.cpp
+        tools/common/asset/AssetCompiler.cpp
 )
-target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode PRIVATE viper_common_opts)
+target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode PRIVATE viper_common_opts viper_packaging viper_codegen_common)
 
 # Packaging library — self-contained C++, no runtime (viper_rt_*) dependencies.
 # Only links rt_crc32.o directly (no GC dependency, pure function).
@@ -278,11 +279,13 @@ add_library(viper_packaging STATIC
         tools/common/packaging/ZipReader.cpp
         tools/common/packaging/InstallerStubGen.cpp
         tools/common/packaging/InstallerStub.cpp
+        tools/common/asset/VpaWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/core/rt_crc32.c
 )
 target_link_libraries(viper_packaging PRIVATE viper_common_opts)
 target_include_directories(viper_packaging PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tools/common/packaging>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tools/common/asset>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/runtime/core>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )

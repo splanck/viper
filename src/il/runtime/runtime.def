@@ -1460,6 +1460,12 @@ RT_FUNC(TilemapClearAutoTile,    rt_tilemap_clear_autotile,        "Viper.Graphi
 RT_FUNC(TilemapApplyAutoTile,    rt_tilemap_apply_autotile,        "Viper.Graphics.Tilemap.ApplyAutoTile",    "void(obj)")
 RT_FUNC(TilemapApplyAutoTileRgn, rt_tilemap_apply_autotile_region, "Viper.Graphics.Tilemap.ApplyAutoTileRegion","void(obj,i64,i64,i64,i64)")
 
+// Tilemap Tile Animation
+RT_FUNC(TilemapSetTileAnim,      rt_tilemap_set_tile_anim,       "Viper.Graphics.Tilemap.SetTileAnim",      "void(obj,i64,i64,i64)")
+RT_FUNC(TilemapSetTileAnimFrame, rt_tilemap_set_tile_anim_frame, "Viper.Graphics.Tilemap.SetTileAnimFrame", "void(obj,i64,i64,i64)")
+RT_FUNC(TilemapUpdateAnims,      rt_tilemap_update_anims,        "Viper.Graphics.Tilemap.UpdateAnims",      "void(obj,i64)")
+RT_FUNC(TilemapResolveAnimTile,  rt_tilemap_resolve_anim_tile,   "Viper.Graphics.Tilemap.ResolveAnimTile",  "i64(obj,i64)")
+
 // Tilemap Tile Properties
 RT_FUNC(TilemapSetTileProp,  rt_tilemap_set_tile_property,"Viper.Graphics.Tilemap.SetTileProperty","void(obj,i64,str,i64)")
 RT_FUNC(TilemapGetTileProp,  rt_tilemap_get_tile_property,"Viper.Graphics.Tilemap.GetTileProperty","i64(obj,i64,str,i64)")
@@ -1488,6 +1494,8 @@ RT_FUNC(CameraToWorldY,     rt_camera_to_world_y,    "Viper.Graphics.Camera.ToWo
 RT_FUNC(CameraMove,         rt_camera_move,          "Viper.Graphics.Camera.Move",          "void(obj,i64,i64)")
 RT_FUNC(CameraSetBounds,    rt_camera_set_bounds,    "Viper.Graphics.Camera.SetBounds",     "void(obj,i64,i64,i64,i64)")
 RT_FUNC(CameraClearBounds,  rt_camera_clear_bounds,  "Viper.Graphics.Camera.ClearBounds",   "void(obj)")
+RT_FUNC(CameraSmoothFollow, rt_camera_smooth_follow, "Viper.Graphics.Camera.SmoothFollow",  "void(obj,i64,i64,i64)")
+RT_FUNC(CameraSetDeadzone,  rt_camera_set_deadzone,  "Viper.Graphics.Camera.SetDeadzone",   "void(obj,i64,i64)")
 RT_FUNC(CameraAddParallax,    rt_camera_add_parallax,    "Viper.Graphics.Camera.AddParallax",        "i64(obj,obj,i64,i64)")
 RT_FUNC(CameraRemoveParallax, rt_camera_remove_parallax, "Viper.Graphics.Camera.RemoveParallax",     "void(obj,i64)")
 RT_FUNC(CameraClearParallax,  rt_camera_clear_parallax,  "Viper.Graphics.Camera.ClearParallax",      "void(obj)")
@@ -2504,6 +2512,29 @@ RT_FUNC(PathNorm,    rt_path_norm,     "Viper.IO.Path.Norm",    "str(str)")
 RT_FUNC(PathSep,     rt_path_sep,      "Viper.IO.Path.Sep",     "str()")
 RT_FUNC(PathStem,    rt_path_stem,     "Viper.IO.Path.Stem",    "str(str)")
 RT_FUNC(PathWithExt, rt_path_with_ext, "Viper.IO.Path.WithExt", "str(str,str)")
+RT_FUNC(PathExeDir,  rt_path_exe_dir_str, "Viper.IO.Path.ExeDir", "str()")
+
+RT_FUNC(AssetLoad,      rt_asset_load,       "Viper.IO.Assets.Load",      "obj(str)")
+RT_FUNC(AssetLoadBytes, rt_asset_load_bytes, "Viper.IO.Assets.LoadBytes", "obj(str)")
+RT_FUNC(AssetExists,    rt_asset_exists,     "Viper.IO.Assets.Exists",    "i64(str)")
+RT_FUNC(AssetSize,      rt_asset_size,       "Viper.IO.Assets.Size",      "i64(str)")
+RT_FUNC(AssetList,      rt_asset_list,       "Viper.IO.Assets.List",      "obj()")
+RT_FUNC(AssetMount,     rt_asset_mount,      "Viper.IO.Assets.Mount",     "i64(str)")
+RT_FUNC(AssetUnmount,   rt_asset_unmount,    "Viper.IO.Assets.Unmount",   "i64(str)")
+
+//=============================================================================
+// IO - ASSETS
+//=============================================================================
+
+RT_CLASS_BEGIN("Viper.IO.Assets", Assets, "none", none)
+    RT_METHOD("Load",      "obj(str)",     AssetLoad)
+    RT_METHOD("LoadBytes", "obj(str)",     AssetLoadBytes)
+    RT_METHOD("Exists",    "i64(str)",     AssetExists)
+    RT_METHOD("Size",      "i64(str)",     AssetSize)
+    RT_METHOD("List",      "obj()",        AssetList)
+    RT_METHOD("Mount",     "i64(str)",     AssetMount)
+    RT_METHOD("Unmount",   "i64(str)",     AssetUnmount)
+RT_CLASS_END()
 
 //=============================================================================
 // IO - BINFILE
@@ -4237,6 +4268,11 @@ RT_FUNC(AnimStateFramesInState, rt_animstate_frames_in_state,  "Viper.Game.AnimS
 RT_FUNC(AnimStateCurrentFrame,  rt_animstate_current_frame,    "Viper.Game.AnimStateMachine.get_CurrentFrame", "i64(obj)")
 RT_FUNC(AnimStateIsFinished,    rt_animstate_is_anim_finished, "Viper.Game.AnimStateMachine.get_IsAnimFinished","i1(obj)")
 RT_FUNC(AnimStateProgress,      rt_animstate_progress,         "Viper.Game.AnimStateMachine.get_Progress",     "i64(obj)")
+RT_FUNC(AnimStateAddNamed,      rt_animstate_add_named,        "Viper.Game.AnimStateMachine.AddNamed",         "void(obj,str,i64,i64,i64,i1)")
+RT_FUNC(AnimStatePlay,          rt_animstate_play,             "Viper.Game.AnimStateMachine.Play",             "void(obj,str)")
+RT_FUNC(AnimStateCurrentName,   rt_animstate_current_name,     "Viper.Game.AnimStateMachine.get_StateName",   "obj(obj)")
+RT_FUNC(AnimStateSetEventFrame, rt_animstate_set_event_frame,  "Viper.Game.AnimStateMachine.SetEventFrame",   "void(obj,i64)")
+RT_FUNC(AnimStateEventFired,    rt_animstate_event_fired,      "Viper.Game.AnimStateMachine.get_EventFired",  "i1(obj)")
 
 //=============================================================================
 // Viper.Tween - Animation and Interpolation
@@ -4629,6 +4665,107 @@ RT_FUNC(PlatCtrlGetFacing,      rt_platformer_ctrl_get_facing,      "Viper.Game.
 RT_FUNC(PlatCtrlIsMoving,       rt_platformer_ctrl_is_moving,       "Viper.Game.PlatformerController.get_IsMoving",    "i1(obj)")
 RT_FUNC(PlatCtrlSetVX,          rt_platformer_ctrl_set_vx,          "Viper.Game.PlatformerController.set_VX",          "void(obj,i64)")
 RT_FUNC(PlatCtrlSetVY,          rt_platformer_ctrl_set_vy,          "Viper.Game.PlatformerController.set_VY",          "void(obj,i64)")
+
+// Viper.Game.Entity — lightweight 2D game object with built-in physics
+RT_FUNC(EntityNew,            rt_entity_new,             "Viper.Game.Entity.New",             "obj(i64,i64,i64,i64)")
+RT_FUNC(EntityGetX,           rt_entity_get_x,           "Viper.Game.Entity.get_X",           "i64(obj)")
+RT_FUNC(EntityGetY,           rt_entity_get_y,           "Viper.Game.Entity.get_Y",           "i64(obj)")
+RT_FUNC(EntitySetX,           rt_entity_set_x,           "Viper.Game.Entity.set_X",           "void(obj,i64)")
+RT_FUNC(EntitySetY,           rt_entity_set_y,           "Viper.Game.Entity.set_Y",           "void(obj,i64)")
+RT_FUNC(EntityGetVX,          rt_entity_get_vx,          "Viper.Game.Entity.get_VX",          "i64(obj)")
+RT_FUNC(EntityGetVY,          rt_entity_get_vy,          "Viper.Game.Entity.get_VY",          "i64(obj)")
+RT_FUNC(EntitySetVX,          rt_entity_set_vx,          "Viper.Game.Entity.set_VX",          "void(obj,i64)")
+RT_FUNC(EntitySetVY,          rt_entity_set_vy,          "Viper.Game.Entity.set_VY",          "void(obj,i64)")
+RT_FUNC(EntityGetWidth,       rt_entity_get_width,       "Viper.Game.Entity.get_Width",       "i64(obj)")
+RT_FUNC(EntityGetHeight,      rt_entity_get_height,      "Viper.Game.Entity.get_Height",      "i64(obj)")
+RT_FUNC(EntityGetDir,         rt_entity_get_dir,         "Viper.Game.Entity.get_Dir",         "i64(obj)")
+RT_FUNC(EntitySetDir,         rt_entity_set_dir,         "Viper.Game.Entity.set_Dir",         "void(obj,i64)")
+RT_FUNC(EntityGetHP,          rt_entity_get_hp,          "Viper.Game.Entity.get_HP",          "i64(obj)")
+RT_FUNC(EntitySetHP,          rt_entity_set_hp,          "Viper.Game.Entity.set_HP",          "void(obj,i64)")
+RT_FUNC(EntityGetMaxHP,       rt_entity_get_max_hp,      "Viper.Game.Entity.get_MaxHP",       "i64(obj)")
+RT_FUNC(EntitySetMaxHP,       rt_entity_set_max_hp,      "Viper.Game.Entity.set_MaxHP",       "void(obj,i64)")
+RT_FUNC(EntityGetType,        rt_entity_get_type,        "Viper.Game.Entity.get_Type",        "i64(obj)")
+RT_FUNC(EntitySetType,        rt_entity_set_type,        "Viper.Game.Entity.set_Type",        "void(obj,i64)")
+RT_FUNC(EntityGetActive,      rt_entity_get_active,      "Viper.Game.Entity.get_Active",      "i1(obj)")
+RT_FUNC(EntitySetActive,      rt_entity_set_active,      "Viper.Game.Entity.set_Active",      "void(obj,i1)")
+RT_FUNC(EntityOnGround,       rt_entity_on_ground,       "Viper.Game.Entity.get_OnGround",    "i1(obj)")
+RT_FUNC(EntityHitLeft,        rt_entity_hit_left,        "Viper.Game.Entity.get_HitLeft",     "i1(obj)")
+RT_FUNC(EntityHitRight,       rt_entity_hit_right,       "Viper.Game.Entity.get_HitRight",    "i1(obj)")
+RT_FUNC(EntityHitCeiling,     rt_entity_hit_ceiling,     "Viper.Game.Entity.get_HitCeiling",  "i1(obj)")
+RT_FUNC(EntityApplyGravity,   rt_entity_apply_gravity,   "Viper.Game.Entity.ApplyGravity",    "void(obj,i64,i64,i64)")
+RT_FUNC(EntityMoveCollide,    rt_entity_move_and_collide,"Viper.Game.Entity.MoveAndCollide",  "void(obj,obj,i64)")
+RT_FUNC(EntityUpdatePhysics,  rt_entity_update_physics,  "Viper.Game.Entity.UpdatePhysics",   "void(obj,obj,i64,i64,i64)")
+RT_FUNC(EntityAtEdge,         rt_entity_at_edge,         "Viper.Game.Entity.AtEdge",          "i1(obj,obj)")
+RT_FUNC(EntityPatrolReverse,  rt_entity_patrol_reverse,  "Viper.Game.Entity.PatrolReverse",   "void(obj,i64)")
+RT_FUNC(EntityOverlaps,       rt_entity_overlaps,        "Viper.Game.Entity.Overlaps",        "i1(obj,obj)")
+
+// Viper.Game.Behavior — composable AI presets for entities
+RT_FUNC(BehaviorNew,          rt_behavior_new,            "Viper.Game.Behavior.New",            "obj()")
+RT_FUNC(BehaviorAddPatrol,    rt_behavior_add_patrol,     "Viper.Game.Behavior.AddPatrol",      "void(obj,i64)")
+RT_FUNC(BehaviorAddChase,     rt_behavior_add_chase,      "Viper.Game.Behavior.AddChase",       "void(obj,i64,i64)")
+RT_FUNC(BehaviorAddGravity,   rt_behavior_add_gravity,    "Viper.Game.Behavior.AddGravity",     "void(obj,i64,i64)")
+RT_FUNC(BehaviorAddEdgeRev,   rt_behavior_add_edge_reverse,"Viper.Game.Behavior.AddEdgeReverse","void(obj)")
+RT_FUNC(BehaviorAddWallRev,   rt_behavior_add_wall_reverse,"Viper.Game.Behavior.AddWallReverse","void(obj)")
+RT_FUNC(BehaviorAddShoot,     rt_behavior_add_shoot,      "Viper.Game.Behavior.AddShoot",       "void(obj,i64)")
+RT_FUNC(BehaviorAddSineFloat, rt_behavior_add_sine_float, "Viper.Game.Behavior.AddSineFloat",   "void(obj,i64,i64)")
+RT_FUNC(BehaviorAddAnimLoop,  rt_behavior_add_anim_loop,  "Viper.Game.Behavior.AddAnimLoop",    "void(obj,i64,i64)")
+RT_FUNC(BehaviorUpdate,       rt_behavior_update,         "Viper.Game.Behavior.Update",         "void(obj,obj,obj,i64,i64,i64)")
+RT_FUNC(BehaviorShootReady,   rt_behavior_shoot_ready,    "Viper.Game.Behavior.get_ShootReady", "i1(obj)")
+RT_FUNC(BehaviorAnimFrame,    rt_behavior_anim_frame,     "Viper.Game.Behavior.get_AnimFrame",  "i64(obj)")
+
+// Viper.Game.LevelData — JSON level loader with entity spawn objects
+RT_FUNC(LevelDataLoad,          rt_leveldata_load,           "Viper.Game.LevelData.Load",           "obj(str)")
+RT_FUNC(LevelDataGetTilemap,    rt_leveldata_get_tilemap,    "Viper.Game.LevelData.get_Tilemap",    "obj(obj)")
+RT_FUNC(LevelDataObjectCount,   rt_leveldata_object_count,   "Viper.Game.LevelData.get_ObjectCount","i64(obj)")
+RT_FUNC(LevelDataObjectType,    rt_leveldata_object_type,    "Viper.Game.LevelData.ObjectType",     "str(obj,i64)")
+RT_FUNC(LevelDataObjectId,      rt_leveldata_object_id,      "Viper.Game.LevelData.ObjectId",       "str(obj,i64)")
+RT_FUNC(LevelDataObjectX,       rt_leveldata_object_x,       "Viper.Game.LevelData.ObjectX",        "i64(obj,i64)")
+RT_FUNC(LevelDataObjectY,       rt_leveldata_object_y,       "Viper.Game.LevelData.ObjectY",        "i64(obj,i64)")
+RT_FUNC(LevelDataPlayerStartX,  rt_leveldata_player_start_x, "Viper.Game.LevelData.get_PlayerStartX","i64(obj)")
+RT_FUNC(LevelDataPlayerStartY,  rt_leveldata_player_start_y, "Viper.Game.LevelData.get_PlayerStartY","i64(obj)")
+RT_FUNC(LevelDataGetTheme,      rt_leveldata_get_theme,      "Viper.Game.LevelData.get_Theme",      "str(obj)")
+
+// Viper.Game.UI.GameButton — styled button for game menus
+RT_FUNC(GameButtonNew,         rt_gamebutton_new,            "Viper.Game.UI.GameButton.New",          "obj(i64,i64,i64,i64,str)")
+RT_FUNC(GameButtonSetText,     rt_gamebutton_set_text,       "Viper.Game.UI.GameButton.SetText",      "void(obj,str)")
+RT_FUNC(GameButtonSetColors,   rt_gamebutton_set_colors,     "Viper.Game.UI.GameButton.SetColors",    "void(obj,i64,i64)")
+RT_FUNC(GameButtonSetTextClrs, rt_gamebutton_set_text_colors,"Viper.Game.UI.GameButton.SetTextColors","void(obj,i64,i64)")
+RT_FUNC(GameButtonSetBorder,   rt_gamebutton_set_border,     "Viper.Game.UI.GameButton.SetBorder",    "void(obj,i64,i64)")
+RT_FUNC(GameButtonDraw,        rt_gamebutton_draw,           "Viper.Game.UI.GameButton.Draw",         "void(obj,obj,i1)")
+RT_FUNC(GameButtonGetX,        rt_gamebutton_get_x,          "Viper.Game.UI.GameButton.get_X",        "i64(obj)")
+RT_FUNC(GameButtonGetY,        rt_gamebutton_get_y,          "Viper.Game.UI.GameButton.get_Y",        "i64(obj)")
+RT_FUNC(GameButtonSetX,        rt_gamebutton_set_x,          "Viper.Game.UI.GameButton.set_X",        "void(obj,i64)")
+RT_FUNC(GameButtonSetY,        rt_gamebutton_set_y,          "Viper.Game.UI.GameButton.set_Y",        "void(obj,i64)")
+
+// Viper.Game.UI.MenuList.HandleInput — convenience input handler
+RT_FUNC(MenuListHandleInput,   rt_uimenulist_handle_input,   "Viper.Game.UI.MenuList.HandleInput",    "i64(obj,i1,i1,i1)")
+
+// Viper.Game.Raycast — 2D line intersection and tilemap raycasting
+RT_FUNC(RaycastHasLOS,       rt_has_line_of_sight,     "Viper.Game.Raycast.HasLineOfSight",  "i1(obj,i64,i64,i64,i64)")
+RT_FUNC(CollisionLineRect,   rt_collision_line_rect,   "Viper.Game.Collision.LineRect",       "i1(f64,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(CollisionLineCircle, rt_collision_line_circle,  "Viper.Game.Collision.LineCircle",     "i1(f64,f64,f64,f64,f64,f64,f64)")
+
+// Viper.Game.SceneManager — multi-scene management with transitions
+RT_FUNC(SceneMgrNew,           rt_scenemanager_new,                 "Viper.Game.SceneManager.New",                 "obj()")
+RT_FUNC(SceneMgrAdd,           rt_scenemanager_add,                 "Viper.Game.SceneManager.Add",                 "void(obj,str)")
+RT_FUNC(SceneMgrSwitch,        rt_scenemanager_switch,              "Viper.Game.SceneManager.Switch",              "void(obj,str)")
+RT_FUNC(SceneMgrSwitchTrans,   rt_scenemanager_switch_transition,   "Viper.Game.SceneManager.SwitchTransition",    "void(obj,str,i64)")
+RT_FUNC(SceneMgrUpdate,        rt_scenemanager_update,              "Viper.Game.SceneManager.Update",              "void(obj,i64)")
+RT_FUNC(SceneMgrCurrent,       rt_scenemanager_current,             "Viper.Game.SceneManager.get_Current",         "obj(obj)")
+RT_FUNC(SceneMgrPrevious,      rt_scenemanager_previous,            "Viper.Game.SceneManager.get_Previous",        "obj(obj)")
+RT_FUNC(SceneMgrIsScene,       rt_scenemanager_is_scene,            "Viper.Game.SceneManager.IsScene",             "i1(obj,str)")
+RT_FUNC(SceneMgrJustEntered,   rt_scenemanager_just_entered,        "Viper.Game.SceneManager.get_JustEntered",     "i1(obj)")
+RT_FUNC(SceneMgrJustExited,    rt_scenemanager_just_exited,         "Viper.Game.SceneManager.get_JustExited",      "i1(obj)")
+RT_FUNC(SceneMgrTransitioning, rt_scenemanager_is_transitioning,    "Viper.Game.SceneManager.get_Transitioning",   "i1(obj)")
+RT_FUNC(SceneMgrTransProgress, rt_scenemanager_transition_progress, "Viper.Game.SceneManager.get_TransProgress",   "f64(obj)")
+
+// Viper.Game.Config — typed JSON config loader with dotted paths
+RT_FUNC(GameConfigLoad,       rt_config_load,        "Viper.Game.Config.Load",       "obj(str)")
+RT_FUNC(GameConfigFromString, rt_config_from_string, "Viper.Game.Config.FromString", "obj(str)")
+RT_FUNC(GameConfigGetInt,     rt_config_get_int,     "Viper.Game.Config.GetInt",     "i64(obj,str,i64)")
+RT_FUNC(GameConfigGetStr,     rt_config_get_str,     "Viper.Game.Config.GetStr",     "obj(obj,str,str)")
+RT_FUNC(GameConfigGetBool,    rt_config_get_bool,    "Viper.Game.Config.GetBool",    "i1(obj,str,i1)")
+RT_FUNC(GameConfigHas,        rt_config_has,         "Viper.Game.Config.Has",        "i1(obj,str)")
 
 // Viper.Game.AchievementTracker — bitmask unlocks, stat counters, notification popup
 RT_FUNC(AchievementNew,         rt_achievement_new,              "Viper.Game.AchievementTracker.New",              "obj(i64)")
@@ -8967,6 +9104,7 @@ RT_CLASS_BEGIN("Viper.Game.UI.MenuList", UIMenuList, "obj", UIMenuListNew)
     RT_METHOD("MoveDown", "void()", UIMenuListMoveDown)
     RT_METHOD("SetColors", "void(i64,i64,i64)", UIMenuListSetColors)
     RT_METHOD("Draw", "void(obj)", UIMenuListDraw)
+    RT_METHOD("HandleInput", "i64(i1,i1,i1)", MenuListHandleInput)
 RT_CLASS_END()
 
 // Viper.Game.Pathfinder — A* grid pathfinding

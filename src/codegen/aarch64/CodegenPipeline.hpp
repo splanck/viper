@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <iosfwd>
 #include <string>
+#include <vector>
 
 namespace viper::codegen::aarch64 {
 
@@ -71,6 +72,8 @@ class CodegenPipeline {
         int optimize = 0;
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
+        std::string asset_blob_path{}; ///< Path to VPA asset blob for .rodata embedding.
+        std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
     };
 
     explicit CodegenPipeline(Options opts);

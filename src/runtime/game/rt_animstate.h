@@ -106,6 +106,22 @@ int8_t rt_animstate_is_anim_finished(void *asm_);
 /// @brief Animation progress 0-100 within the current clip.
 int64_t rt_animstate_progress(void *asm_);
 
+/// @brief Add a named animation state (auto-assigns integer ID).
+void rt_animstate_add_named(void *asm_, void *name, int64_t start, int64_t end,
+                            int64_t dur, int8_t loop);
+
+/// @brief Transition to a state by name.
+void rt_animstate_play(void *asm_, void *name);
+
+/// @brief Get the name of the current state. Returns "" if no name.
+void *rt_animstate_current_name(void *asm_);
+
+/// @brief Set a frame event (fires when animation reaches this frame).
+void rt_animstate_set_event_frame(void *asm_, int64_t frame);
+
+/// @brief Check and clear the event flag. Returns 1 if event fired since last check.
+int8_t rt_animstate_event_fired(void *asm_);
+
 #ifdef __cplusplus
 }
 #endif

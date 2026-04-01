@@ -1169,6 +1169,28 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
     return "types::ptr()";
 }
 
+/// @brief Map IL parameter type to a Zia types:: expression.
+static std::string ilParamTypeToZiaType(const std::string &ilType) {
+    if (!ilType.empty() && ilType.back() == '?') {
+        std::string inner = ilType.substr(0, ilType.size() - 1);
+        return "types::optional(" + ilParamTypeToZiaType(inner) + ")";
+    }
+
+    if (ilType == "str")
+        return "types::string()";
+    if (ilType == "i64")
+        return "types::integer()";
+    if (ilType == "f64")
+        return "types::number()";
+    if (ilType == "i1" || ilType == "bool")
+        return "types::boolean()";
+    if (ilType == "void")
+        return "types::voidType()";
+    if (ilType == "obj" || ilType == "ptr")
+        return "types::ptr()";
+    return "types::ptr()";
+}
+
 static void generateZiaExterns(const ParseState &state, const fs::path &outDir) {
     // Populate known class names for type inference
     knownClassNames.clear();
@@ -1220,7 +1242,17 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir) 
         for (const auto *func : funcs) {
             ParsedSignature sig = parseSignature(func->signature);
             std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
-            out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType << ");\n";
+            out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType;
+            if (!sig.argTypes.empty()) {
+                out << ", {";
+                for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+                    if (i > 0)
+                        out << ", ";
+                    out << ilParamTypeToZiaType(sig.argTypes[i]);
+                }
+                out << "}";
+            }
+            out << ");\n";
         }
         out << "\n";
     }
@@ -1237,7 +1269,17 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir) 
                 const auto &target = state.functions[it->second];
                 ParsedSignature sig = parseSignature(target.signature);
                 std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
-                out << "defineExternFunction(\"" << alias.canonical << "\", " << ziaType << ");\n";
+                out << "defineExternFunction(\"" << alias.canonical << "\", " << ziaType;
+                if (!sig.argTypes.empty()) {
+                    out << ", {";
+                    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+                        if (i > 0)
+                            out << ", ";
+                        out << ilParamTypeToZiaType(sig.argTypes[i]);
+                    }
+                    out << "}";
+                }
+                out << ");\n";
             }
         }
         out << "\n";

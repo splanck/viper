@@ -290,6 +290,19 @@ merely dispatches to these subcommands. Additional tools (verifier, disassembler
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors. The REPL (
 `viper repl`) provides interactive evaluation backed by the VM.
 
+### Asset Embedding
+
+When a project declares `embed` or `pack` directives in `viper.project`, the build
+pipeline compiles assets into VPA (Viper Pack Archive) format:
+
+- `embed` assets are baked into the executable's `.rodata` section (zero disk I/O at runtime)
+- `pack` assets are written to separate `.vpa` files distributed alongside the executable
+- `pack-compressed` applies DEFLATE compression (pre-compressed formats auto-skip)
+
+The runtime asset manager (`Viper.IO.Assets`) transparently loads from embedded data,
+mounted packs, or the filesystem. Resolution order: embedded → mounted packs → disk.
+See `docs/viperlib/io/assets.md` for the full API reference.
+
 ### CLI tools (built targets)
 
 - `il-dis` — IL disassembler / pretty-printer

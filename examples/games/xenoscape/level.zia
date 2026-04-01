@@ -1,0 +1,420 @@
+// level.zia — Level loading, tile collision, and spawn data
+// Engine APIs: LevelData.Load (#7) replaces procedural builders,
+//              Tilemap.SetTileAnim (#4) for animated tiles (lava, conveyors).
+// Level data is stored in JSON files under levels/*.json.
+module level;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind Viper.Math;
+bind "./config";
+
+class Level {
+    expose Tilemap tilemap;
+    expose Integer levelWidth;
+    expose Integer levelHeight;
+    expose Integer levelTheme;
+
+    // Spawn points (world pixel coordinates)
+    expose Integer playerStartX;
+    expose Integer playerStartY;
+    expose Integer checkpointX;
+    expose Integer checkpointY;
+    expose Boolean hasCheckpoint;
+
+    // Enemy spawn data (populated from JSON objects)
+    expose List[Integer] enemyTypes;
+    expose List[Integer] enemyX;
+    expose List[Integer] enemyY;
+
+    // Pickup spawn data
+    expose List[Integer] pickupTypes;
+    expose List[Integer] pickupX;
+    expose List[Integer] pickupY;
+
+    // Boss spawn
+    expose Integer bossX;
+    expose Integer bossY;
+    expose Boolean hasBoss;
+    expose Integer bossType;
+
+    expose func init() {
+        levelWidth = 0;
+        levelHeight = 0;
+        levelTheme = 0;
+        playerStartX = 0;
+        playerStartY = 0;
+        checkpointX = 0;
+        checkpointY = 0;
+        hasCheckpoint = false;
+        enemyTypes = [];
+        enemyX = [];
+        enemyY = [];
+        pickupTypes = [];
+        pickupX = [];
+        pickupY = [];
+        bossX = 0;
+        bossY = 0;
+        hasBoss = false;
+        bossType = EnemyType.Boss;
+    }
+
+    // =========================================================================
+    // Engine API #7: LevelData.Load — load level from JSON file
+    // Replaces ~2000 lines of procedural buildLevel functions with JSON data.
+    // =========================================================================
+    expose func loadLevel(num: Integer) {
+        // Reset spawn arrays
+        enemyTypes = [];
+        enemyX = [];
+        enemyY = [];
+        pickupTypes = [];
+        pickupX = [];
+        pickupY = [];
+        hasCheckpoint = false;
+        hasBoss = false;
+        bossType = EnemyType.Boss;
+
+        // Load level from JSON using LevelData API
+        var path = "examples/games/xenoscape/levels/" + Int(num) + ".json";
+        var data = LevelData.Load(path);
+
+        // Extract tilemap — LevelData parses the JSON layers into a Tilemap
+        tilemap = data.get_Tilemap();
+
+        // Player spawn position from JSON properties
+        playerStartX = data.get_PlayerStartX();
+        playerStartY = data.get_PlayerStartY();
+
+        // Map theme string to constant
+        levelTheme = themeFromString(data.get_Theme());
+
+        // Read dimensions from JSON (using Config.Load on same file)
+        var cfg = Config.Load(path);
+        levelWidth = cfg.GetInt("width", 100);
+        levelHeight = cfg.GetInt("height", LEVEL_HEIGHT);
+
+        // Register tile collisions and animated tiles
+        registerSolidTiles();
+        registerHazardTiles();
+        registerTileAnims();
+
+        // Populate spawn arrays from JSON object layer
+        var i = 0;
+        while i < data.get_ObjectCount() {
+            var objType = data.ObjectType(i);
+            var objId = data.ObjectId(i);
+            var ox = data.ObjectX(i);
+            var oy = data.ObjectY(i);
+
+            if objType == "enemy" {
+                enemyTypes.add(enemyIdFromString(objId));
+                enemyX.add(ox);
+                enemyY.add(oy);
+            } else if objType == "pickup" {
+                pickupTypes.add(pickupIdFromString(objId));
+                pickupX.add(ox);
+                pickupY.add(oy);
+            } else if objType == "boss" {
+                hasBoss = true;
+                bossType = enemyIdFromString(objId);
+                bossX = ox;
+                bossY = oy;
+            } else if objType == "checkpoint" {
+                hasCheckpoint = true;
+                checkpointX = ox;
+                checkpointY = oy;
+            }
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Tile queries — same interface as before, used by physics and rendering
+    // =========================================================================
+
+    expose func isSolid(col: Integer, row: Integer) -> Boolean {
+        if col < 0 { return true; }
+        if row < 0 { return true; }
+        if col >= levelWidth { return true; }
+        if row >= levelHeight { return true; }
+        return tilemap.IsSolidAt(col * TILE_SIZE, row * TILE_SIZE);
+    }
+
+    expose func isHazard(col: Integer, row: Integer) -> Boolean {
+        if col < 0 { return false; }
+        if row < 0 { return false; }
+        if col >= levelWidth { return false; }
+        if row >= levelHeight { return false; }
+        var t = tilemap.GetTile(col, row);
+        if t == TILE_SPIKE { return true; }
+        if t == TILE_LAVA { return true; }
+        if t == TILE_THORN { return true; }
+        if t == TILE_ELECTRIC { return true; }
+        if t == TILE_COOLANT { return true; }
+        if t == TILE_POISON_POOL { return true; }
+        return false;
+    }
+
+    expose func getTile(col: Integer, row: Integer) -> Integer {
+        if col < 0 { return 0; }
+        if row < 0 { return 0; }
+        if col >= levelWidth { return 0; }
+        if row >= levelHeight { return 0; }
+        return tilemap.GetTile(col, row);
+    }
+
+    // =========================================================================
+    // Tile registration — collision and animation setup after loading
+    // =========================================================================
+
+    hide func registerSolidTiles() {
+        // All terrain tiles that block movement
+        tilemap.SetCollision(TILE_GROUND, 1);
+        tilemap.SetCollision(TILE_GRASS_TOP, 1);
+        tilemap.SetCollision(TILE_STONE, 1);
+        tilemap.SetCollision(TILE_DIRT, 1);
+        tilemap.SetCollision(TILE_BRICK, 1);
+        tilemap.SetCollision(TILE_CAVE_TOP, 1);
+        tilemap.SetCollision(TILE_CAVE_WALL, 1);
+        tilemap.SetCollision(TILE_BRIDGE, 1);
+        tilemap.SetCollision(TILE_MAGMA, 1);
+        tilemap.SetCollision(TILE_OBSIDIAN, 1);
+        tilemap.SetCollision(TILE_CLOUD, 1);
+        tilemap.SetCollision(TILE_SKY_BRICK, 1);
+        tilemap.SetCollision(TILE_RUIN_STONE, 1);
+        tilemap.SetCollision(TILE_MOSS_STONE, 1);
+        tilemap.SetCollision(TILE_JUNGLE_GROUND, 1);
+        tilemap.SetCollision(TILE_CAVE_CRYSTAL, 1);
+        tilemap.SetCollision(TILE_HULL, 1);
+        tilemap.SetCollision(TILE_GIRDER, 1);
+        tilemap.SetCollision(TILE_AIRLOCK, 1);
+        tilemap.SetCollision(TILE_PIPE, 1);
+        tilemap.SetCollision(TILE_CONDUIT, 1);
+        tilemap.SetCollision(TILE_CONSOLE, 1);
+        tilemap.SetCollision(TILE_DESTRUCTIBLE, 1);
+        tilemap.SetCollision(TILE_LOCKED_DOOR, 1);
+        tilemap.SetCollision(TILE_METAL_GRATE, 1);
+        tilemap.SetCollision(TILE_MAGMA_ROCK, 1);
+    }
+
+    hide func registerHazardTiles() {
+        // Hazard tiles are NOT solid — player overlaps and takes damage
+        // (Hazard checking is done in isHazard() by tile ID, not collision)
+    }
+
+    // Engine API #4: Tilemap.SetTileAnim — per-tile animation
+    hide func registerTileAnims() {
+        // Lava: 2-frame glow cycle
+        tilemap.SetTileAnim(TILE_LAVA, 2, LAVA_ANIM_MS);
+        // Conveyor belts: 3-frame animation for visual motion
+        tilemap.SetTileAnim(TILE_CONVEYOR_L, 3, 200);
+        tilemap.SetTileAnim(TILE_CONVEYOR_R, 3, 200);
+        // Crystal shimmer
+        tilemap.SetTileAnim(TILE_CAVE_CRYSTAL, 2, 600);
+        // Electric hazard spark
+        tilemap.SetTileAnim(TILE_ELECTRIC, 2, 400);
+        // Steam vent
+        tilemap.SetTileAnim(TILE_STEAM_VENT, 3, 300);
+        // Coolant bubble
+        tilemap.SetTileAnim(TILE_COOLANT, 2, 500);
+        // Holo bridge flicker
+        tilemap.SetTileAnim(TILE_HOLO_BRIDGE, 2, 800);
+        // Checkpoint beacon
+        tilemap.SetTileAnim(TILE_CHECKPOINT, 2, 500);
+        // Console screen
+        tilemap.SetTileAnim(TILE_CONSOLE, 2, 1000);
+    }
+
+    // Update tile animations each frame (called from renderer)
+    expose func updateTileAnims(dt: Integer) {
+        tilemap.UpdateAnims(dt);
+    }
+
+    // Resolve animated tile — wrapper for Tilemap.ResolveAnimTile
+    expose func resolveAnimTile(tileId: Integer) -> Integer {
+        return tilemap.ResolveAnimTile(tileId);
+    }
+
+    // Placeholder for game.zia compatibility (no-op in JSON-based loading)
+    expose func enrichEnemies(num: Integer) {}
+
+    // =========================================================================
+    // Per-level spawn data (procedural, since Zia doesn't support str comparison)
+    // =========================================================================
+    hide func loadSpawnData(num: Integer) {
+        if num == 1 { spawnLevel1(); }
+        else if num == 2 { spawnLevel2(); }
+        else if num == 3 { spawnLevel3(); }
+        else if num == 4 { spawnLevel4(); }
+        else if num == 5 { spawnLevel5(); }
+        else if num == 6 { spawnLevel6(); }
+        else if num == 7 { spawnLevel7(); }
+        else if num == 8 { spawnLevel8(); }
+        else if num == 9 { spawnLevel9(); }
+        else { spawnLevel10(); }
+    }
+
+    hide func addEnemy(t: Integer, wx: Integer, wy: Integer) {
+        enemyTypes.add(t); enemyX.add(wx); enemyY.add(wy);
+    }
+    hide func addPickup(t: Integer, wx: Integer, wy: Integer) {
+        pickupTypes.add(t); pickupX.add(wx); pickupY.add(wy);
+    }
+    hide func setBoss(t: Integer, wx: Integer, wy: Integer) {
+        hasBoss = true; bossType = t; bossX = wx; bossY = wy;
+    }
+    hide func setCheckpoint(wx: Integer, wy: Integer) {
+        hasCheckpoint = true; checkpointX = wx; checkpointY = wy;
+    }
+
+    hide func spawnLevel1() {
+        addEnemy(EnemyType.Slime, 640, 832); addEnemy(EnemyType.Slime, 960, 832);
+        addEnemy(EnemyType.Bat, 1280, 576); addEnemy(EnemyType.Slime, 1920, 832);
+        addEnemy(EnemyType.Bat, 2560, 512); addEnemy(EnemyType.Slime, 3200, 832);
+        addEnemy(EnemyType.Turret, 4480, 832); addEnemy(EnemyType.Bat, 5120, 448);
+        addPickup(PICKUP_COIN, 448, 768); addPickup(PICKUP_COIN, 512, 768);
+        addPickup(PICKUP_COIN, 576, 768); addPickup(PICKUP_COIN, 1600, 704);
+        addPickup(PICKUP_HEALTH, 2240, 768); addPickup(PICKUP_COIN, 3840, 640);
+        addPickup(PICKUP_SPEED, 5440, 768);
+        setCheckpoint(3200, 832);
+    }
+    hide func spawnLevel2() {
+        addEnemy(EnemyType.Sporewalker, 640, 832); addEnemy(EnemyType.Glowmoth, 1024, 512);
+        addEnemy(EnemyType.Sporewalker, 1600, 832); addEnemy(EnemyType.Glowmoth, 2048, 448);
+        addEnemy(EnemyType.FungalTurret, 2560, 832); addEnemy(EnemyType.Mycelium, 3200, 64);
+        addEnemy(EnemyType.Sporewalker, 3840, 832); addEnemy(EnemyType.Glowmoth, 4480, 384);
+        addPickup(PICKUP_COIN, 384, 768); addPickup(PICKUP_COIN, 1280, 640);
+        addPickup(PICKUP_GEM, 2880, 576); addPickup(PICKUP_HEALTH, 3520, 768);
+        setBoss(EnemyType.SporeMother, 5760, 640); setCheckpoint(3200, 832);
+    }
+    hide func spawnLevel3() {
+        addEnemy(EnemyType.CrystalGolem, 768, 832); addEnemy(EnemyType.ShardBat, 1280, 448);
+        addEnemy(EnemyType.ResonanceOrb, 1920, 384); addEnemy(EnemyType.MirrorSlime, 2560, 832);
+        addEnemy(EnemyType.CrystalGolem, 3200, 832); addEnemy(EnemyType.ShardBat, 3840, 320);
+        addPickup(PICKUP_COIN, 512, 768); addPickup(PICKUP_GEM, 1600, 512);
+        addPickup(PICKUP_HEALTH, 3520, 640); addPickup(PICKUP_HP_UP, 5120, 512);
+        setBoss(EnemyType.CrystalWyrm, 5760, 640); setCheckpoint(3200, 832);
+    }
+    hide func spawnLevel4() {
+        addEnemy(EnemyType.VineWhip, 640, 704); addEnemy(EnemyType.MossGolem, 1280, 832);
+        addEnemy(EnemyType.RuinGuardian, 1920, 832); addEnemy(EnemyType.VineWhip, 2560, 576);
+        addEnemy(EnemyType.MossGolem, 3200, 832); addEnemy(EnemyType.RuinGuardian, 3840, 832);
+        addPickup(PICKUP_COIN, 384, 768); addPickup(PICKUP_HEALTH, 1600, 768);
+        addPickup(PICKUP_GEM, 2880, 576); addPickup(PICKUP_SHIELD, 4480, 640);
+        setCheckpoint(2560, 832);
+    }
+    hide func spawnLevel5() {
+        addEnemy(EnemyType.Slime, 512, 832); addEnemy(EnemyType.Bat, 1024, 448);
+        addEnemy(EnemyType.PatrolDrone, 1536, 320); addEnemy(EnemyType.Slime, 2048, 832);
+        addEnemy(EnemyType.Turret, 2560, 832); addEnemy(EnemyType.BombCarrier, 3584, 832);
+        addPickup(PICKUP_COIN, 320, 768); addPickup(PICKUP_RAPIDFIRE, 1280, 576);
+        addPickup(PICKUP_HEALTH, 2880, 640); addPickup(PICKUP_KEY, 4480, 448);
+        setCheckpoint(2560, 832);
+    }
+    hide func spawnLevel6() {
+        addEnemy(EnemyType.MagmaSlug, 640, 832); addEnemy(EnemyType.EmberWasp, 1280, 384);
+        addEnemy(EnemyType.ForgeSentinel, 1920, 832); addEnemy(EnemyType.PistonTrap, 2560, 704);
+        addEnemy(EnemyType.MagmaSlug, 3200, 832); addEnemy(EnemyType.ForgeSentinel, 4480, 832);
+        addPickup(PICKUP_COIN, 448, 768); addPickup(PICKUP_HEALTH, 1024, 640);
+        addPickup(PICKUP_GEM, 1600, 576); addPickup(PICKUP_SHIELD, 5120, 512);
+        setBoss(EnemyType.MagmaCore, 5760, 576); setCheckpoint(3200, 832);
+    }
+    hide func spawnLevel7() {
+        addEnemy(EnemyType.VineWhip, 512, 640); addEnemy(EnemyType.MossGolem, 1024, 832);
+        addEnemy(EnemyType.ShadowClone, 1536, 576); addEnemy(EnemyType.Corruption, 2048, 832);
+        addEnemy(EnemyType.RuinGuardian, 2560, 832); addEnemy(EnemyType.ShadowClone, 3584, 448);
+        addPickup(PICKUP_COIN, 320, 768); addPickup(PICKUP_GEM, 768, 576);
+        addPickup(PICKUP_HEALTH, 1792, 768); addPickup(PICKUP_HP_UP, 3840, 448);
+        setCheckpoint(2560, 832);
+    }
+    hide func spawnLevel8() {
+        addEnemy(EnemyType.IceWraith, 768, 512); addEnemy(EnemyType.FrostBeetle, 1280, 832);
+        addEnemy(EnemyType.StalactiteBat, 1920, 64); addEnemy(EnemyType.IceWraith, 2560, 384);
+        addEnemy(EnemyType.FrostBeetle, 3200, 832); addEnemy(EnemyType.StalactiteBat, 3840, 64);
+        addPickup(PICKUP_COIN, 448, 768); addPickup(PICKUP_HEALTH, 1600, 576);
+        addPickup(PICKUP_GEM, 2240, 512); addPickup(PICKUP_SPEED, 3520, 640);
+        setCheckpoint(3200, 832);
+    }
+    hide func spawnLevel9() {
+        addEnemy(EnemyType.PatrolDrone, 640, 256); addEnemy(EnemyType.BombCarrier, 1024, 832);
+        addEnemy(EnemyType.Turret, 1536, 832); addEnemy(EnemyType.PatrolDrone, 2048, 192);
+        addEnemy(EnemyType.BombCarrier, 2560, 832); addEnemy(EnemyType.Turret, 3584, 832);
+        addPickup(PICKUP_COIN, 384, 768); addPickup(PICKUP_RAPIDFIRE, 1280, 512);
+        addPickup(PICKUP_GEM, 1792, 448); addPickup(PICKUP_SHIELD, 4480, 512);
+        setCheckpoint(2560, 832);
+    }
+    hide func spawnLevel10() {
+        addEnemy(EnemyType.ShadowClone, 640, 576); addEnemy(EnemyType.Corruption, 1024, 832);
+        addEnemy(EnemyType.IceWraith, 1536, 384); addEnemy(EnemyType.EmberWasp, 2048, 320);
+        addEnemy(EnemyType.ForgeSentinel, 2560, 832); addEnemy(EnemyType.CrystalGolem, 3840, 832);
+        addEnemy(EnemyType.IceWraith, 5120, 384); addEnemy(EnemyType.Corruption, 5760, 832);
+        addPickup(PICKUP_COIN, 384, 768); addPickup(PICKUP_HEALTH, 960, 640);
+        addPickup(PICKUP_GEM, 1600, 512); addPickup(PICKUP_HP_UP, 2240, 448);
+        addPickup(PICKUP_HEALTH, 3520, 576); addPickup(PICKUP_GEM, 6080, 448);
+        setBoss(EnemyType.Architect, 7040, 576); setCheckpoint(3840, 832);
+    }
+
+    // =========================================================================
+    // String → ID mapping (kept for reference, not used due to Zia str limitation)
+    // =========================================================================
+
+    hide func enemyIdFromString(id: String) -> Integer {
+        if id == "slime" { return EnemyType.Slime; }
+        if id == "bat" { return EnemyType.Bat; }
+        if id == "turret" { return EnemyType.Turret; }
+        if id == "sporewalker" { return EnemyType.Sporewalker; }
+        if id == "glowmoth" { return EnemyType.Glowmoth; }
+        if id == "fungal_turret" { return EnemyType.FungalTurret; }
+        if id == "mycelium" { return EnemyType.Mycelium; }
+        if id == "spore_mother" { return EnemyType.SporeMother; }
+        if id == "crystal_golem" { return EnemyType.CrystalGolem; }
+        if id == "shard_bat" { return EnemyType.ShardBat; }
+        if id == "resonance_orb" { return EnemyType.ResonanceOrb; }
+        if id == "mirror_slime" { return EnemyType.MirrorSlime; }
+        if id == "crystal_wyrm" { return EnemyType.CrystalWyrm; }
+        if id == "magma_slug" { return EnemyType.MagmaSlug; }
+        if id == "ember_wasp" { return EnemyType.EmberWasp; }
+        if id == "forge_sentinel" { return EnemyType.ForgeSentinel; }
+        if id == "piston_trap" { return EnemyType.PistonTrap; }
+        if id == "magma_core" { return EnemyType.MagmaCore; }
+        if id == "ice_wraith" { return EnemyType.IceWraith; }
+        if id == "frost_beetle" { return EnemyType.FrostBeetle; }
+        if id == "stalactite_bat" { return EnemyType.StalactiteBat; }
+        if id == "vine_whip" { return EnemyType.VineWhip; }
+        if id == "moss_golem" { return EnemyType.MossGolem; }
+        if id == "ruin_guardian" { return EnemyType.RuinGuardian; }
+        if id == "shadow_clone" { return EnemyType.ShadowClone; }
+        if id == "corruption" { return EnemyType.Corruption; }
+        if id == "architect" { return EnemyType.Architect; }
+        if id == "patrol_drone" { return EnemyType.PatrolDrone; }
+        if id == "bomb_carrier" { return EnemyType.BombCarrier; }
+        return EnemyType.Slime;
+    }
+
+    hide func pickupIdFromString(id: String) -> Integer {
+        if id == "coin" { return PICKUP_COIN; }
+        if id == "health" { return PICKUP_HEALTH; }
+        if id == "speed" { return PICKUP_SPEED; }
+        if id == "shield" { return PICKUP_SHIELD; }
+        if id == "rapidfire" { return PICKUP_RAPIDFIRE; }
+        if id == "gem" { return PICKUP_GEM; }
+        if id == "hp_up" { return PICKUP_HP_UP; }
+        if id == "key" { return PICKUP_KEY; }
+        return PICKUP_COIN;
+    }
+
+    hide func themeFromString(theme: String) -> Integer {
+        if theme == "jungle" { return THEME_JUNGLE; }
+        if theme == "fungal" { return THEME_FUNGAL; }
+        if theme == "crystal" { return THEME_CRYSTAL; }
+        if theme == "grasslands" { return THEME_GRASSLANDS; }
+        if theme == "lake" { return THEME_LAKE; }
+        if theme == "volcano" { return THEME_VOLCANO; }
+        if theme == "ruins" { return THEME_RUINS; }
+        if theme == "frozen" { return THEME_FROZEN; }
+        if theme == "sky" { return THEME_SKY; }
+        if theme == "core" { return THEME_CORE; }
+        return THEME_JUNGLE;
+    }
+}

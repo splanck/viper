@@ -232,74 +232,76 @@ class EnemyManager {
     }
 
     // =========================================================================
-    // Slime AI — patrol on ground, reverse at edges/walls
+    // Entity physics helper — replaces 13-line gravity+collide+response pattern
+    // Creates a temporary Entity, runs physics, writes results back to arrays.
     // =========================================================================
 
-    hide func updateSlime(i: Integer, level: Level, dt: Integer) {
-        // Animation — 4-frame cycle (ms-based, only when not hurt)
-        if estate.get(i) != 1 {
-            var tm = etimer.get(i) + dt;
-            if tm >= SLIME_ANIM_MS {
-                tm = 0;
-                var f = eframe.get(i) + 1;
-                if f > 3 { f = 0; }
-                eframe.set(i, f);
-            }
-            etimer.set(i, tm);
+    hide func applyPhysics(i: Integer, w: Integer, h: Integer,
+                           level: Level, dt: Integer) -> Entity {
+        var ent = Entity.New(ex.get(i), ey.get(i), w, h);
+        ent.set_VX(evx.get(i));
+        ent.set_VY(evy.get(i));
+        ent.set_Dir(edir.get(i));
+        ent.UpdatePhysics(level.tilemap, GRAVITY, MAX_FALL, dt);
+        ex.set(i, ent.get_X());
+        ey.set(i, ent.get_Y());
+        evx.set(i, ent.get_VX());
+        evy.set(i, ent.get_VY());
+        return ent;
+    }
+
+    // Animation helper — 4-frame loop (ms-based)
+    hide func updateAnim(i: Integer, frameCount: Integer, ms: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= ms {
+            tm = 0;
+            var f = eframe.get(i) + 1;
+            if f >= frameCount { f = 0; }
+            eframe.set(i, f);
         }
+        etimer.set(i, tm);
+    }
 
-        // Apply gravity (scaled by dt)
-        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
-        if curVy > MAX_FALL { curVy = MAX_FALL; }
-        evy.set(i, curVy);
-
-        // Compute scaled displacement
-        var curX = ex.get(i);
-        var curY = ey.get(i);
-        var curVx = evx.get(i);
-        var dispX = curVx * dt / DT_BASE;
-        var dispY = curVy * dt / DT_BASE;
-
-        var result = phys.moveAndCollide(curX, curY, dispX, dispY, SLIME_W, SLIME_H, level);
-
-        ex.set(i, result.x);
-        ey.set(i, result.y);
-        // Zero persistent velocity on collision
-        if result.hitLeft { evx.set(i, 0); }   // left wall
-        if result.hitRight { evx.set(i, 0); }   // right wall
-        if result.hitFloor { evy.set(i, 0); }         // floor
-        if result.hitCeiling { evy.set(i, 0); }   // ceiling
-
-        // Reverse on wall hit
-        var hitLeft = result.hitLeft;
-        var hitRight = result.hitRight;
-        if hitLeft {
-            evx.set(i, SLIME_SPEED);
-            edir.set(i, 1);
-        }
-        if hitRight {
-            evx.set(i, 0 - SLIME_SPEED);
-            edir.set(i, -1);
-        }
-
-        // Check if at edge of platform (reverse before falling)
-        var onFloor = result.hitFloor;
-        if onFloor {
-            var px = result.x / 100;
-            var py = result.y / 100;
-            var d = edir.get(i);
-            var checkX = px;
-            if d > 0 {
-                checkX = px + SLIME_W;
-            }
-            var tileX = checkX / TILE_SIZE;
-            var tileY = (py + SLIME_H + 2) / TILE_SIZE;
-            if level.isSolid(tileX, tileY) == false {
-                // Edge detected — reverse
+    // Edge-reverse helper — reverse at platform edges
+    hide func checkEdgeReverse(i: Integer, w: Integer, h: Integer,
+                               speed: Integer, level: Level, ent: Entity) {
+        if ent.get_OnGround() {
+            if ent.AtEdge(level.tilemap) {
+                var d = edir.get(i);
                 evx.set(i, 0 - evx.get(i));
                 edir.set(i, 0 - d);
             }
         }
+    }
+
+    // Wall-reverse helper — reverse on wall hit
+    hide func checkWallReverse(i: Integer, speed: Integer, ent: Entity) {
+        if ent.get_HitLeft() {
+            evx.set(i, speed);
+            edir.set(i, 1);
+        }
+        if ent.get_HitRight() {
+            evx.set(i, 0 - speed);
+            edir.set(i, -1);
+        }
+    }
+
+    // =========================================================================
+    // Slime AI — patrol on ground, reverse at edges/walls
+    // =========================================================================
+
+    hide func updateSlime(i: Integer, level: Level, dt: Integer) {
+        // Animation (skip when hurt)
+        if estate.get(i) != 1 {
+            updateAnim(i, 4, SLIME_ANIM_MS, dt);
+        }
+
+        // Physics: gravity + move + collide (replaces 30+ lines)
+        var ent = applyPhysics(i, SLIME_W, SLIME_H, level, dt);
+
+        // Reverse on wall hit + platform edges
+        checkWallReverse(i, SLIME_SPEED, ent);
+        checkEdgeReverse(i, SLIME_W, SLIME_H, SLIME_SPEED, level, ent);
     }
 
     // =========================================================================
@@ -563,36 +565,10 @@ class EnemyManager {
     // Sporewalker — slow ground patrol, poison cloud on death
     // =========================================================================
     hide func updateSporewalker(i: Integer, level: Level, dt: Integer) {
-        if estate.get(i) != 1 {
-            var tm = etimer.get(i) + dt;
-            if tm >= SLIME_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 4); }
-            etimer.set(i, tm);
-        }
-        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
-        if curVy > MAX_FALL { curVy = MAX_FALL; }
-        evy.set(i, curVy);
-        var curX = ex.get(i); var curY = ey.get(i);
-        var dispX = evx.get(i) * dt / DT_BASE;
-        var dispY = curVy * dt / DT_BASE;
-        var result = phys.moveAndCollide(curX, curY, dispX, dispY, SPOREWALKER_W, SPOREWALKER_H, level);
-        ex.set(i, result.x); ey.set(i, result.y);
-        if result.hitFloor { evy.set(i, 0); }
-        if result.hitCeiling { evy.set(i, 0); }
-        var hitLeft = result.hitLeft;
-        var hitRight = result.hitRight;
-        if hitLeft { evx.set(i, SPOREWALKER_SPEED); edir.set(i, 1); }
-        if hitRight { evx.set(i, 0 - SPOREWALKER_SPEED); edir.set(i, -1); }
-        var onFloor = result.hitFloor;
-        if onFloor {
-            var px2 = result.x / 100; var py2 = result.y / 100;
-            var d = edir.get(i);
-            var checkX = px2; if d > 0 { checkX = px2 + SPOREWALKER_W; }
-            var tileX = checkX / TILE_SIZE;
-            var tileY = (py2 + SPOREWALKER_H + 2) / TILE_SIZE;
-            if level.isSolid(tileX, tileY) == false {
-                evx.set(i, 0 - evx.get(i)); edir.set(i, 0 - d);
-            }
-        }
+        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
+        var ent = applyPhysics(i, SPOREWALKER_W, SPOREWALKER_H, level, dt);
+        checkWallReverse(i, SPOREWALKER_SPEED, ent);
+        checkEdgeReverse(i, SPOREWALKER_W, SPOREWALKER_H, SPOREWALKER_SPEED, level, ent);
     }
 
     // =========================================================================
@@ -781,70 +757,20 @@ class EnemyManager {
     // Mirror Slime — reflects player bullets, must stomp
     // =========================================================================
     hide func updateMirrorSlime(i: Integer, level: Level, dt: Integer) {
-        // Identical to regular slime movement
-        if estate.get(i) != 1 {
-            var tm = etimer.get(i) + dt;
-            if tm >= SLIME_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 4); }
-            etimer.set(i, tm);
-        }
-        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
-        if curVy > MAX_FALL { curVy = MAX_FALL; }
-        evy.set(i, curVy);
-        var dispX = evx.get(i) * dt / DT_BASE;
-        var dispY = curVy * dt / DT_BASE;
-        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, MIRROR_SLIME_W, MIRROR_SLIME_H, level);
-        ex.set(i, result.x); ey.set(i, result.y);
-        if result.hitFloor { evy.set(i, 0); }
-        if result.hitCeiling { evy.set(i, 0); }
-        var hitLeft = result.hitLeft;
-        var hitRight = result.hitRight;
-        if hitLeft { evx.set(i, MIRROR_SLIME_SPEED); edir.set(i, 1); }
-        if hitRight { evx.set(i, 0 - MIRROR_SLIME_SPEED); edir.set(i, -1); }
-        var onFloor = result.hitFloor;
-        if onFloor {
-            var px2 = result.x / 100; var py2 = result.y / 100;
-            var d = edir.get(i);
-            var checkX = px2; if d > 0 { checkX = px2 + MIRROR_SLIME_W; }
-            var tileX = checkX / TILE_SIZE;
-            var tileY = (py2 + MIRROR_SLIME_H + 2) / TILE_SIZE;
-            if level.isSolid(tileX, tileY) == false {
-                evx.set(i, 0 - evx.get(i)); edir.set(i, 0 - d);
-            }
-        }
+        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
+        var ent = applyPhysics(i, MIRROR_SLIME_W, MIRROR_SLIME_H, level, dt);
+        checkWallReverse(i, MIRROR_SLIME_SPEED, ent);
+        checkEdgeReverse(i, MIRROR_SLIME_W, MIRROR_SLIME_H, MIRROR_SLIME_SPEED, level, ent);
     }
 
     // =========================================================================
     // Magma Slug — slow patrol, leaves lava trail
     // =========================================================================
     hide func updateMagmaSlug(i: Integer, level: Level, dt: Integer) {
-        if estate.get(i) != 1 {
-            var tm = etimer.get(i) + dt;
-            if tm >= 300 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
-            etimer.set(i, tm);
-        }
-        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
-        if curVy > MAX_FALL { curVy = MAX_FALL; }
-        evy.set(i, curVy);
-        var dispX = evx.get(i) * dt / DT_BASE;
-        var dispY = curVy * dt / DT_BASE;
-        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, MAGMA_SLUG_W, MAGMA_SLUG_H, level);
-        ex.set(i, result.x); ey.set(i, result.y);
-        if result.hitFloor { evy.set(i, 0); }
-        var hitLeft = result.hitLeft;
-        var hitRight = result.hitRight;
-        if hitLeft { evx.set(i, MAGMA_SLUG_SPEED); edir.set(i, 1); }
-        if hitRight { evx.set(i, 0 - MAGMA_SLUG_SPEED); edir.set(i, -1); }
-        var onFloor = result.hitFloor;
-        if onFloor {
-            var px2 = result.x / 100; var py2 = result.y / 100;
-            var d = edir.get(i);
-            var checkX = px2; if d > 0 { checkX = px2 + MAGMA_SLUG_W; }
-            var tileX = checkX / TILE_SIZE;
-            var tileY = (py2 + MAGMA_SLUG_H + 2) / TILE_SIZE;
-            if level.isSolid(tileX, tileY) == false {
-                evx.set(i, 0 - evx.get(i)); edir.set(i, 0 - d);
-            }
-        }
+        if estate.get(i) != 1 { updateAnim(i, 2, 300, dt); }
+        var ent = applyPhysics(i, MAGMA_SLUG_W, MAGMA_SLUG_H, level, dt);
+        checkWallReverse(i, MAGMA_SLUG_SPEED, ent);
+        checkEdgeReverse(i, MAGMA_SLUG_W, MAGMA_SLUG_H, MAGMA_SLUG_SPEED, level, ent);
     }
 
     // =========================================================================

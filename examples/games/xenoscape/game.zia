@@ -1,0 +1,1220 @@
+// game.zia — Main game entity: loop, state machine, orchestration
+// Sets up Viper.Input.Action bindings for all input, wires subsystems.
+module game;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Fmt;
+bind Viper.Game;
+bind Viper.Game.DebugOverlay as Debug;
+bind "./config";
+bind "./palette";
+bind "./sprites";
+bind "./player";
+bind "./enemy";
+bind "./projectile";
+bind "./level";
+bind "./physics";
+bind "./camera";
+bind "./particles";
+bind "./pickups";
+bind "./hud";
+bind "./menu";
+bind "./renderer";
+bind "./sound";
+bind "./abilities";
+bind "./save";
+bind "./worldmap";
+bind "./lore";
+bind "./transitions";
+bind "./lighting";
+bind "./texture";
+bind "./achievements";
+
+class Game {
+    hide Palette pal;
+    hide Canvas canvas;
+    hide SceneManager sm;
+
+    // Subsystems
+    hide Player player;
+    hide EnemyManager enemies;
+    hide Level level;
+    hide GameCamera camera;
+    hide ParticleSystem particles;
+    hide PickupManager pickups;
+    hide ProjectilePool bullets;
+    hide HUD hudObj;
+    hide MenuSystem menus;
+    hide SpriteFactory sprites;
+    hide Renderer renderObj;
+    hide PhysicsHelper phys;
+    hide SoundManager sfx;
+    hide Debug debugOverlay;
+
+    // New subsystems (XENOSCAPE expansion)
+    hide AbilityManager abilities;
+    hide SaveManager saveManager;
+    hide WorldMap worldMap;
+    hide LoreSystem loreSystem;
+    // hide TransitionManager transitions;
+    hide LightingSystem lighting;
+    hide TextureFactory textures;
+    hide TransitionManager transitions;
+    hide AchievementSystem achSys;
+
+    // Expansion state
+    hide Integer gems;
+    hide Integer bossesDefeated;    // bitmask
+    hide Integer totalPlaytime;     // seconds
+    hide Integer saveSlot;          // active save slot (0-2)
+    hide Boolean showWorldMap;
+    hide Boolean showLore;
+    hide Integer poundImpactTimer;  // ground pound visual timer
+    hide Boolean wasPounding;       // track pound landing (one-shot)
+
+    // Death flash tracking (draw bright circle at kill position)
+    hide Integer killFlashX;       // world pixel X of last kill
+    hide Integer killFlashY;       // world pixel Y of last kill
+    hide Integer killFlashTimer;   // frames remaining (0 = inactive)
+
+    // Game state
+    hide Integer score;
+    hide Integer coins;
+    hide Integer currentLevel;
+    hide Integer levelTimer;     // milliseconds elapsed in level
+    hide Boolean reachedCheckpoint;
+
+    // Level complete state
+    hide Integer levelCompleteTimer;
+    hide Integer timeBonus;
+
+    // Frame timing
+    hide Integer dt;
+
+    // Death/respawn
+    hide Integer deathTimer;
+
+    // Sound: track previous player state for jump detection
+    hide Integer prevPlayerState;
+
+    // Particle effect tracking
+    hide Boolean prevOnGround;
+    hide Integer prevVy;
+    hide Integer wallSparkTimer;   // ms accumulator for wall-slide sparks
+    hide Integer jetFlameTimer;    // ms accumulator for jetpack flame
+
+    // Level intro splash
+    hide Integer introTimer;       // ms countdown for level name splash
+
+    expose func init() {
+        sm = SceneManager.New();
+        sm.Add("menu");
+        sm.Add("playing");
+        sm.Add("paused");
+        sm.Add("gameover");
+        sm.Add("levelcomplete");
+        sm.Add("highscores");
+        sm.Add("controls");
+        sm.Add("bossfight");
+        sm.Add("victory");
+        sm.Add("levelselect");
+        sm.Switch("menu");
+
+        score = 0;
+        coins = 0;
+        currentLevel = 1;
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        levelCompleteTimer = 0;
+        timeBonus = 0;
+        dt = 16;
+        deathTimer = 0;
+        prevPlayerState = PS_IDLE;
+        prevOnGround = false;
+        prevVy = 0;
+        wallSparkTimer = 0;
+        jetFlameTimer = 0;
+        introTimer = 0;
+
+        // Create palette first — passed to all subsystems that use colors
+        pal = new Palette();
+
+        // Create subsystems — palette-aware ones receive pal via constructor
+        sprites = new SpriteFactory(pal);
+        player = new Player();
+        enemies = new EnemyManager();
+        level = new Level();
+        camera = new GameCamera(pal);
+        particles = new ParticleSystem(pal);
+        pickups = new PickupManager();
+        bullets = new ProjectilePool();
+        hudObj = new HUD(pal);
+        menus = new MenuSystem(pal);
+        renderObj = new Renderer(pal);
+        phys = new PhysicsHelper();
+        sfx = new SoundManager();
+        sfx.setup("examples/games/sidescroller/");
+        debugOverlay = Debug.New();
+
+        // Setup input actions via presets + custom bindings
+        setupActions();
+
+        // Load saved high scores from disk
+        menus.loadHighScores();
+
+        // Initialize expansion systems (abilities, save, lighting, etc.)
+        initNewSystems();
+
+        // Define dash action binding (X key = 120 ASCII, LB pad button = 4)
+        Action.Define("dash");
+        Action.BindKey("dash", 120);  // 'x' key
+        Action.BindPadButton("dash", PAD_IDX, 4);
+
+        // Down action already bound by platformer preset as move_down
+        // We reuse it for ground pound detection
+
+        // Start menu music
+        sfx.playMenuMusic();
+    }
+
+    // =========================================================================
+    // Input action setup — binds keyboard keys to named actions
+    // =========================================================================
+
+    hide func setupActions() {
+        // Standard presets: defines move_left, move_right, jump, shoot, pause
+        // with WASD + arrows + gamepad D-pad/A/X/Start
+        Action.LoadPreset("platformer");
+
+        // Menu presets: defines menu_up, menu_down, confirm, back
+        // with arrows + WASD + Enter/Space/Escape + gamepad D-pad/A/B
+        Action.LoadPreset("menu_navigation");
+
+        // Custom additions beyond what presets provide
+        Action.BindKey("shoot", KEY_Z);                    // Z key for shoot
+        Action.BindPadButton("shoot", PAD_IDX, PAD_BTN_RB);     // RB for shoot
+        Action.BindPadButton("back", PAD_IDX, PAD_BTN_START);   // Start for back/pause
+
+        // Debug overlay toggle (F3)
+        Action.Define("debug");
+        Action.BindKey("debug", KEY_F3);
+    }
+
+    // =========================================================================
+    // Main game loop
+    // =========================================================================
+
+    expose func run() {
+        canvas = Canvas.New("XENOSCAPE: The Descent", SCREEN_W, SCREEN_H);
+        canvas.SetFps(60);
+        canvas.SetDTMax(DT_MAX);
+
+        while canvas.BeginFrame() != 0 {
+            dt = canvas.DeltaTime;
+
+            // Debug overlay toggle (F3)
+            if Action.Pressed("debug") {
+                debugOverlay.Toggle();
+            }
+
+            sm.Update(dt);
+
+            if sm.IsScene("menu") {
+                updateMenu();
+            } else {
+            if sm.IsScene("playing") {
+                updatePlaying();
+            } else {
+            if sm.IsScene("paused") {
+                updatePaused();
+            } else {
+            if sm.IsScene("gameover") {
+                updateGameOver();
+            } else {
+            if sm.IsScene("levelcomplete") {
+                updateLevelComplete();
+            } else {
+            if sm.IsScene("highscores") {
+                updateHighScores();
+            } else {
+            if sm.IsScene("controls") {
+                updateControls();
+            } else {
+            if sm.IsScene("victory") {
+                updateVictory();
+            } else {
+            if sm.IsScene("levelselect") {
+                updateLevelSelect();
+            }
+            }}}}}}}}
+
+            // Debug overlay (rendered on top of everything)
+            debugOverlay.Update(dt);
+            debugOverlay.Watch("dt", dt);
+            debugOverlay.Draw(canvas);
+
+            canvas.Flip();
+        }
+    }
+
+    // =========================================================================
+    // State: Menu
+    // =========================================================================
+
+    hide func updateMenu() {
+        var result = menus.updateTitle();
+        menus.drawTitle(canvas);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            startNewGame();
+        }
+        if result == STATE_LEVELSELECT {
+            sfx.playMenuSelect();
+            sm.Switch("levelselect");
+        }
+        if result == STATE_HIGHSCORES {
+            sfx.playMenuSelect();
+            sm.Switch("highscores");
+            menus.resetSelection();
+        }
+        if result == STATE_CONTROLS {
+            sfx.playMenuSelect();
+            sm.Switch("controls");
+        }
+        if result == -2 {
+            canvas.Close();
+            return;
+        }
+    }
+
+    hide func updateLevelSelect() {
+        var result = menus.updateLevelSelect();
+        menus.drawLevelSelect(canvas);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            // Start game at the selected level
+            score = 0;
+            coins = 0;
+            currentLevel = menus.selectedLevel;
+            levelTimer = 0;
+            reachedCheckpoint = false;
+            deathTimer = 0;
+            player.reset();
+            loadLevel(currentLevel);
+            introTimer = 1200;
+            sm.Switch("playing");
+            sfx.playGameMusic();
+        }
+        if result == STATE_MENU {
+            sfx.playMenuMove();
+            sm.Switch("menu");
+            sfx.playMenuMusic();
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Playing
+    // =========================================================================
+
+    hide func updatePlaying() {
+        // Pause check
+        if Action.Pressed("back") {
+            sm.Switch("paused");
+            menus.resetSelection();
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            menus.drawPause(canvas);
+            return;
+        }
+
+        // Update expansion systems (abilities, lighting, achievements, lore, etc.)
+        // Must run BEFORE player.update so abilities affect this frame's physics.
+        updateNewSystems();
+
+        // Update player
+        player.update(level, dt);
+
+        // Check if player wants to shoot
+        if player.wantsToShoot() {
+            var bx = player.pixelX() + PLAYER_W / 2;
+            var by = player.pixelY() + PLAYER_H / 2 - 2;
+            if player.facing > 0 {
+                bx = player.pixelX() + PLAYER_W;
+            } else {
+                bx = player.pixelX() - BULLET_W;
+            }
+            bullets.fire(bx, by, player.facing);
+            sfx.playShoot();
+        }
+
+        // Update camera + background animation
+        camera.follow(player.centerX(), player.centerY());
+        camera.updateBg(dt);
+
+        // Update enemies — Behavior.Update + Raycast.HasLineOfSight handle AI
+        enemies.updateAll(level.tilemap, player.pixelX(), player.pixelY(), dt);
+
+        // Update bullets (with particle trails)
+        bullets.updateAll(level, dt, particles);
+
+        // Update pickups
+        pickups.updateAll();
+
+        // Update particles
+        particles.updateAll();
+
+        // Update renderer effects + tile animations
+        renderObj.update(dt);
+        level.updateTileAnims(dt);
+
+        // Update HUD
+        hudObj.update(score, coins, dt);
+
+        // Level timer (ms-based)
+        levelTimer = levelTimer + dt;
+
+        // Detect jump state transition for sound
+        if player.state == PS_JUMP || player.state == PS_DJUMP {
+            if prevPlayerState != PS_JUMP {
+                if prevPlayerState != PS_DJUMP {
+                    sfx.playJump();
+                }
+            }
+        }
+        prevPlayerState = player.state;
+
+        // --- Particle effects ---
+
+        // Hard landing dust (transition from airborne to grounded with high downward velocity)
+        if player.onGround {
+            if prevOnGround == false {
+                if prevVy > 600 {
+                    particles.burstLandDust(player.pixelX() + PLAYER_W / 2,
+                                            player.pixelY() + PLAYER_H);
+                } else {
+                    // Light landing — small puff
+                    particles.burstDust(player.pixelX() + PLAYER_W / 2,
+                                        player.pixelY() + PLAYER_H);
+                }
+            }
+        }
+
+        // Wall-slide sparks (every 80ms while sliding)
+        if player.state == PS_WALLSLIDE {
+            wallSparkTimer = wallSparkTimer + dt;
+            if wallSparkTimer >= 80 {
+                wallSparkTimer = 0;
+                var sparkX = player.pixelX();
+                if player.wallDir > 0 {
+                    sparkX = sparkX + PLAYER_W;
+                }
+                particles.burstWallSlideSpark(sparkX,
+                                               player.pixelY() + PLAYER_H / 2,
+                                               player.wallDir);
+            }
+        } else {
+            wallSparkTimer = 0;
+        }
+
+        // Jetpack flame (every 50ms while airborne and moving upward)
+        if player.onGround == false {
+            if player.vy < 0 {
+                jetFlameTimer = jetFlameTimer + dt;
+                if jetFlameTimer >= 50 {
+                    jetFlameTimer = 0;
+                    // Flame comes from jetpack (center-back of player)
+                    var flameX = player.pixelX() + PLAYER_W / 2;
+                    particles.burstJetpackFlame(flameX,
+                                                player.pixelY() + PLAYER_H);
+                }
+            } else {
+                jetFlameTimer = 0;
+            }
+        } else {
+            jetFlameTimer = 0;
+        }
+
+        prevOnGround = player.onGround;
+        prevVy = player.vy;
+
+        // --- Collision checks ---
+        checkPlayerEnemyCollision();
+        checkPlayerPickupCollision();
+        checkBulletEnemyCollision();
+        checkPlayerEnemyBullets();
+        checkHazards();
+        checkCheckpoint();
+        checkLevelEnd();
+
+        // Handle player death
+        if player.state == PS_DEAD {
+            handleDeath();
+            return;
+        }
+
+        // Render
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+
+        // Kill flash — bright expanding circle at enemy death position
+        if killFlashTimer > 0 {
+            var fx = killFlashX - camera.x;
+            var fy = killFlashY - camera.y;
+            var flashR = (15 - killFlashTimer) * 6;
+            var flashAlpha = killFlashTimer * 16;
+            if flashAlpha > 255 { flashAlpha = 255; }
+            // Bright white expanding ring
+            canvas.DiscAlpha(fx, fy, flashR, Color.RGB(255, 255, 200), flashAlpha);
+            canvas.Ring(fx, fy, flashR, Color.RGB(255, 200, 50));
+            // Inner bright core
+            if killFlashTimer > 8 {
+                canvas.Disc(fx, fy, 12, Color.RGB(255, 255, 255));
+            }
+            killFlashTimer = killFlashTimer - 1;
+        }
+
+        // Level intro splash overlay
+        if introTimer > 0 {
+            introTimer = introTimer - dt;
+            if introTimer < 0 { introTimer = 0; }
+            drawLevelIntro(currentLevel);
+        }
+    }
+
+    hide func drawLevelIntro(levelNum: Integer) {
+        var levelName = "THE DESCENT";
+        if levelNum == 2 { levelName = "FUNGAL CAVERNS"; }
+        if levelNum == 3 { levelName = "CRYSTAL DEPTHS"; }
+        if levelNum == 4 { levelName = "SURFACE RUINS"; }
+        if levelNum == 5 { levelName = "UNDERGROUND LAKE"; }
+        if levelNum == 6 { levelName = "THERMAL VENTS"; }
+        if levelNum == 7 { levelName = "OVERGROWTH"; }
+        if levelNum == 8 { levelName = "FROZEN ABYSS"; }
+        if levelNum == 9 { levelName = "CORRUPTED RUINS"; }
+        if levelNum == 10 { levelName = "THE CORE"; }
+
+        // Fade: moderate opacity at start, fading out near end
+        var alpha = introTimer * 150 / 1200;
+        if alpha > 150 { alpha = 150; }
+        if alpha < 20 { alpha = 20; }
+
+        // Dark banner across center
+        canvas.BoxAlpha(0, 280, SCREEN_W, 120, pal.black, alpha);
+
+        // Level number + name
+        canvas.TextCenteredScaled(300, "LEVEL ${levelNum}", pal.hudGray, 3);
+        canvas.TextCenteredScaled(340, levelName, pal.white, 4);
+    }
+
+    // =========================================================================
+    // Collision: Player vs Enemies
+    // =========================================================================
+
+    hide func checkPlayerEnemyCollision() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        var hit = enemies.checkPlayerHit(player.pixelX(), player.pixelY());
+        if hit >= 0 {
+            var etype = enemies.getEnemyType(hit);
+
+            if player.vy > 0 {
+                if etype != ENEMY_TURRET {
+                    enemies.damageEnemy(hit, 10);
+                    player.vy = PLAYER_JUMP / 2;
+                    player.syncVelocity();
+                    player.iframes = IFRAMES_STOMP_MS;
+
+                    var ex = enemies.getEnemyPixelX(hit);
+                    var ey = enemies.getEnemyPixelY(hit);
+
+                    // Check if enemy actually died
+                    if enemies.isActive(hit) == 0 {
+                        score = score + ENEMY_SCORE;
+                        particles.burstDeath(ex, ey);
+                        renderObj.shake(8, 4);
+                        sfx.playEnemyDeath();
+                        achSys.onEnemyKilled();
+                        // Trigger visible kill flash
+                        killFlashX = ex;
+                        killFlashY = ey;
+                        killFlashTimer = 15;
+                    } else {
+                        particles.burstSpark(ex, ey, pal.sparkYellow);
+                        renderObj.shake(4, 2);
+                    }
+                    sfx.playStomp();
+                    return;
+                }
+            }
+
+            player.takeDamage(1);
+            renderObj.shake(8, 4);
+            renderObj.flash(pal.hudRed, 6);
+            sfx.playHurt();
+            achSys.onPlayerHit();
+        }
+    }
+
+    // =========================================================================
+    // Collision: Player vs Pickups
+    // =========================================================================
+
+    hide func checkPlayerPickupCollision() {
+        var collected = pickups.checkCollection(player.pixelX(), player.pixelY());
+
+        while collected >= 0 {
+            if collected == PICKUP_COIN {
+                coins = coins + 1;
+                score = score + COIN_SCORE;
+                particles.burstCoinCollect(player.centerX(), player.centerY());
+                sfx.playCoin();
+                achSys.onCoinCollected();
+            } else {
+                player.collectPowerUp(collected);
+                particles.burstSpark(player.centerX(), player.centerY(),
+                                     pal.sparkYellow);
+                sfx.playPowerup();
+            }
+
+            collected = pickups.checkCollection(player.pixelX(), player.pixelY());
+        }
+    }
+
+    // =========================================================================
+    // Collision: Bullets vs Enemies
+    // =========================================================================
+
+    hide func checkBulletEnemyCollision() {
+        var i = 0;
+        while i < bullets.getCount() {
+            if bullets.isActive(i) == 1 {
+                var bx = bullets.getBulletX(i);
+                var by = bullets.getBulletY(i);
+
+                var hit = enemies.checkBulletHit(bx, by, BULLET_W, BULLET_H);
+                if hit >= 0 {
+                    bullets.deactivate(i);
+                    enemies.damageEnemy(hit, 1);
+                    particles.burstSpark(bx, by, pal.bullet);
+
+                    if enemies.isActive(hit) == 0 {
+                        var etype2 = enemies.getEnemyType(hit);
+                        if etype2 == ENEMY_BOSS {
+                            score = score + BOSS_SCORE;
+                            renderObj.shake(15, 8);
+                            particles.burstDeath(bx, by);
+                        } else {
+                            score = score + ENEMY_SCORE;
+                            renderObj.shake(6, 3);
+                            particles.burstEnemyDeath(bx, by, pal.sparkYellow);
+                        }
+                        sfx.playEnemyDeath();
+                        achSys.onEnemyKilled();
+                        // Trigger visible kill flash
+                        killFlashX = bx;
+                        killFlashY = by;
+                        killFlashTimer = 15;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Collision: Enemy bullets vs Player
+    // =========================================================================
+
+    hide func checkPlayerEnemyBullets() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        if enemies.checkEnemyBulletHit(player.pixelX(), player.pixelY()) {
+            player.takeDamage(1);
+            renderObj.shake(8, 4);
+            renderObj.flash(pal.hudRed, 6);
+            sfx.playHurt();
+        }
+    }
+
+    // =========================================================================
+    // Hazard check (spikes, lava)
+    // =========================================================================
+
+    hide func checkHazards() {
+        if player.iframes > 0 { return; }
+        if player.state == PS_DEAD { return; }
+
+        if phys.isOnHazard(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            player.takeDamage(2);
+            renderObj.shake(10, 5);
+            renderObj.flash(pal.lavaBright, 8);
+            sfx.playHurt();
+        }
+    }
+
+    // =========================================================================
+    // Checkpoint
+    // =========================================================================
+
+    hide func checkCheckpoint() {
+        if level.hasCheckpoint == false { return; }
+        if reachedCheckpoint { return; }
+
+        var cpx = level.checkpointX;
+        var cpy = level.checkpointY;
+        var px = player.pixelX();
+        var py = player.pixelY();
+
+        var dx = px - cpx;
+        if dx < 0 { dx = 0 - dx; }
+        var dy = py - cpy;
+        if dy < 0 { dy = 0 - dy; }
+
+        if dx < TILE_SIZE * 2 {
+            if dy < TILE_SIZE * 2 {
+                reachedCheckpoint = true;
+                particles.burstSpark(cpx + 16, cpy + 16, pal.checkpoint);
+                sfx.playCheckpoint();
+            }
+        }
+    }
+
+    // =========================================================================
+    // Level end check
+    // =========================================================================
+
+    hide func checkLevelEnd() {
+        var px = player.pixelX();
+
+        var tileX = px / TILE_SIZE;
+        var tileY = GROUND_ROW - 1;
+
+        if level.getTile(tileX, tileY) == TILE_SIGN_END {
+            if level.hasBoss {
+                if enemies.isBossAlive() {
+                    return;
+                }
+            }
+
+            timeBonus = (600 - levelTimer / 1000) * TIME_BONUS_PER_SEC;
+            if timeBonus < 0 { timeBonus = 0; }
+            levelCompleteTimer = 0;
+            menus.resetSelection();
+            sm.Switch("levelcomplete");
+            sfx.playLevelComplete();
+
+            var totalScore = score + timeBonus;
+            if menus.isHighScore(totalScore) {
+                menus.addHighScore(totalScore, "PLR");
+                menus.saveHighScores();
+            }
+
+            if currentLevel == LEVEL_COUNT {
+                sm.Switch("victory");
+            }
+        }
+    }
+
+    // =========================================================================
+    // Death handling
+    // =========================================================================
+
+    hide func handleDeath() {
+        if deathTimer == 0 {
+            particles.burstDeath(player.centerX(), player.centerY());
+            renderObj.shake(12, 6);
+            renderObj.flash(pal.hudRed, 10);
+            sfx.playDeath();
+            achSys.onPlayerDeath();
+        }
+
+        deathTimer = deathTimer + dt;
+
+        particles.updateAll();
+        renderObj.update(dt);
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+
+        if deathTimer >= DEATH_TIMER_MS {
+            deathTimer = 0;
+            var lives = player.lives - 1;
+
+            if lives <= 0 {
+                var totalScore = score;
+                if menus.isHighScore(totalScore) {
+                    menus.addHighScore(totalScore, "PLR");
+                    menus.saveHighScores();
+                }
+                menus.resetSelection();
+                sfx.stopMusic();
+                sm.Switch("gameover");
+                return;
+            }
+
+            player.reset();
+            player.lives = lives;
+
+            if reachedCheckpoint {
+                player.spawn(level.checkpointX, level.checkpointY);
+            } else {
+                player.spawn(level.playerStartX, level.playerStartY);
+            }
+            camera.snapTo(player.centerX(), player.centerY());
+
+            bullets.reset();
+            renderObj.fadeIn(30);
+        }
+    }
+
+    // =========================================================================
+    // State: Paused
+    // =========================================================================
+
+    hide func updatePaused() {
+        var result = menus.updatePause();
+
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+        menus.drawPause(canvas);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            sm.Switch("playing");
+        }
+        if result == STATE_MENU {
+            sfx.playMenuSelect();
+            sm.Switch("menu");
+            sfx.playMenuMusic();
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Game Over
+    // =========================================================================
+
+    hide func updateGameOver() {
+        var result = menus.updateGameOver();
+        menus.drawGameOver(canvas, score);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            startNewGame();
+            sfx.playGameMusic();
+        }
+        if result == STATE_MENU {
+            sfx.playMenuSelect();
+            sm.Switch("menu");
+            sfx.playMenuMusic();
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Level Complete
+    // =========================================================================
+
+    hide func updateLevelComplete() {
+        levelCompleteTimer = levelCompleteTimer + 1;
+
+        var result = menus.updateLevelComplete();
+
+        renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                bullets, pickups, particles, hudObj, sprites,
+                                score, coins, currentLevel);
+        menus.drawLevelComplete(canvas, score, timeBonus, currentLevel);
+
+        if result == STATE_PLAYING {
+            sfx.playMenuSelect();
+            score = score + timeBonus;
+            currentLevel = currentLevel + 1;
+            if currentLevel > LEVEL_COUNT {
+                currentLevel = 1;
+            }
+            loadLevel(currentLevel);
+            levelCompleteTimer = 0;
+            sm.Switch("playing");
+        }
+    }
+
+    // =========================================================================
+    // State: Victory
+    // =========================================================================
+
+    hide func updateVictory() {
+        var result = menus.updateVictory();
+        menus.drawVictory(canvas, score + timeBonus);
+
+        if result == STATE_MENU {
+            sfx.playMenuSelect();
+            sm.Switch("menu");
+            sfx.playMenuMusic();
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: High Scores
+    // =========================================================================
+
+    hide func updateHighScores() {
+        var result = menus.updateHighScores();
+        menus.drawHighScores(canvas);
+
+        if result == STATE_MENU {
+            sfx.playMenuSelect();
+            sm.Switch("menu");
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // State: Controls
+    // =========================================================================
+
+    hide func updateControls() {
+        var result = menus.updateControls();
+        menus.drawControls(canvas);
+
+        if result == STATE_MENU {
+            sfx.playMenuSelect();
+            sm.Switch("menu");
+            menus.resetSelection();
+        }
+    }
+
+    // =========================================================================
+    // Game initialization helpers
+    // =========================================================================
+
+    hide func startNewGame() {
+        score = 0;
+        coins = 0;
+        currentLevel = 1;
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        deathTimer = 0;
+
+        player.reset();
+        loadLevel(1);
+
+        sm.Switch("playing");
+    }
+
+    hide func loadLevel(num: Integer) {
+        currentLevel = num;
+        // achSys.onLevelReached(num);  // DEBUG
+        level.loadLevel(num);
+        // level.enrichEnemies(num);  // DEBUG
+        camera.setLevelSize(level.levelWidth, level.levelHeight);
+
+        player.spawn(level.playerStartX, level.playerStartY);
+        camera.snapTo(player.centerX(), player.centerY());
+
+        enemies.reset();
+        enemies.spawnFromLevel(level);
+
+        pickups.reset();
+        pickups.spawnFromLevel(level);
+
+        bullets.reset();
+        particles.reset();
+
+        // Set biome-specific lighting
+        if num == 2 { lighting.setDarkness(160); lighting.setDarkColor(Color.RGB(0, 10, 5)); }
+        else if num == 3 { lighting.setDarkness(120); lighting.setDarkColor(Color.RGB(5, 5, 20)); }
+        else if num == 5 { lighting.setDarkness(140); lighting.setDarkColor(Color.RGB(5, 15, 30)); }
+        else if num == 6 { lighting.setDarkness(80); lighting.setDarkColor(Color.RGB(20, 5, 0)); }
+        else if num == 8 { lighting.setDarkness(60); lighting.setDarkColor(Color.RGB(10, 15, 25)); }
+        else if num == 9 { lighting.setDarkness(180); lighting.setDarkColor(Color.RGB(10, 0, 15)); }
+        else if num == 10 { lighting.setDarkness(200); lighting.setDarkColor(Color.RGB(5, 0, 10)); }
+        else { lighting.setDarkness(0); }
+
+        levelTimer = 0;
+        reachedCheckpoint = false;
+        deathTimer = 0;
+        introTimer = 1200;
+    }
+
+    // =========================================================================
+    // New subsystem integration
+    // =========================================================================
+
+    hide func initNewSystems() {
+        abilities = new AbilityManager();
+        abilities.initAbilities(pal);
+
+        lighting = new LightingSystem();
+        lighting.initLighting(pal);
+
+        achSys = new AchievementSystem();
+        achSys.initAchievements(pal);
+
+        transitions = new TransitionManager();
+        transitions.initTransitions(pal);
+
+        textures = new TextureFactory();
+        textures.initFactory(pal);
+
+        loreSystem = new LoreSystem();
+        loreSystem.initLore(pal);
+
+        saveManager = new SaveManager();
+        saveManager.initSave();
+
+        worldMap = new WorldMap();
+        worldMap.initMap(pal);
+
+        gems = 0;
+        bossesDefeated = 0;
+        totalPlaytime = 0;
+        saveSlot = 0;
+        showWorldMap = false;
+        showLore = false;
+        poundImpactTimer = 0;
+        killFlashX = 0;
+        killFlashY = 0;
+        killFlashTimer = 0;
+    }
+
+    // Update all expansion systems each frame
+    hide func updateNewSystems() {
+        abilities.updateUI();
+        lighting.update();
+        achSys.update(dt);
+
+        // Lore display (Typewriter-based text reveal)
+        if loreSystem.isDisplayActive() {
+            loreSystem.update(dt);
+            if Action.Pressed("jump") {
+                loreSystem.dismiss(); // First press skips text, second dismisses
+            }
+            return; // Pause game while reading lore
+        }
+
+        // Transitions
+        if transitions.isActive() {
+            var done = transitions.update(dt);
+            if done {
+                var trans = transitions.getTransition();
+                if trans == 1 { // TRANS_LEVEL_OUT complete
+                    loadLevel(transitions.getTargetLevel());
+                }
+            }
+            return; // Pause game during transitions
+        }
+
+        // Frozen state suppresses all abilities
+        if player.isFrozen() {
+            player.updateFreeze(dt);
+        } else {
+            // Player ability updates (only when not frozen)
+            if player.isDashing {
+                player.updateDash(dt);
+                particles.burstDashTrail(player.pixelX(), player.pixelY() + PLAYER_H / 2, player.facing);
+            }
+            if player.isCharging {
+                player.updateCharge(dt);
+            }
+            if player.isPounding {
+                player.updatePound(dt);
+                if player.onGround and not wasPounding {
+                    // Pound just landed
+                    poundImpactTimer = 12;
+                    particles.burstPoundImpact(player.pixelX(), player.pixelY() + PLAYER_H);
+                    sfx.playGroundPound();
+                }
+            }
+        }
+        wasPounding = player.isPounding;
+        if poundImpactTimer > 0 {
+            poundImpactTimer = poundImpactTimer - 1;
+        }
+
+        // Check for lore terminals
+        var loreIdx = phys.isNearLoreTerminal(player.x, player.y,
+                                                PLAYER_W, PLAYER_H, level);
+        if loreIdx >= 0 and Action.Pressed("jump") {
+            var mappedIdx = loreIdx % loreSystem.getTotalCount();
+            loreSystem.showEntry(mappedIdx);
+            sfx.playLoreFound();
+        }
+
+        // Check for save stations
+        if phys.isNearSaveStation(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            if Action.Pressed("jump") {
+                // Save progress
+                saveManager.saveSlot(saveSlot, currentLevel, abilities.getMask(),
+                                     player.maxHp, gems, levelTimer / 1000);
+                sfx.playSave();
+                // Heal player
+                player.hp = player.maxHp;
+                reachedCheckpoint = true;
+                level.checkpointX = player.pixelX();
+                level.checkpointY = player.pixelY();
+            }
+        }
+
+        // Environmental tile effects
+        var hazard = phys.checkHazardTile(player.x, player.y,
+                                           PLAYER_W, PLAYER_H, level);
+        if hazard == TILE_POISON_POOL {
+            // Poison damage over time (every 500ms)
+            if levelTimer % 500 < dt {
+                if player.iframes <= 0 {
+                    player.hp = player.hp - 1;
+                    player.iframes = 200;
+                }
+            }
+        }
+
+        // Ice physics
+        if phys.isOnIce(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            // Reduced friction — vx decays slower
+            // This is handled by the player physics module
+        }
+
+        // Conveyor belt
+        var convDir = phys.getConveyorDir(player.x, player.y,
+                                            PLAYER_W, PLAYER_H, level);
+        if convDir != 0 {
+            player.vx = player.vx + convDir * 200; // Push player
+            player.syncVelocity();
+        }
+
+        // Steam vent
+        if phys.isOnSteamVent(player.x, player.y, PLAYER_W, PLAYER_H, level) {
+            player.vy = -1800; // Launch upward
+            player.syncVelocity();
+            sfx.playJump();
+        }
+
+        // Ability input handling
+        if Action.Pressed("dash") and abilities.has(ABILITY_DASH) {
+            player.startDash();
+            sfx.playDash();
+        }
+        if Action.Pressed("shoot") and abilities.has(ABILITY_CHARGE_SHOT) {
+            player.startCharge();
+            sfx.playChargeStart();
+        }
+        if Action.Released("shoot") and player.isCharging {
+            var chargeLevel = player.releaseCharge();
+            if chargeLevel > 0 {
+                bullets.fireCharged(player.pixelX() + PLAYER_W / 2,
+                                    player.pixelY() + PLAYER_H / 3,
+                                    player.facing, chargeLevel);
+                sfx.playChargeRelease();
+            }
+        }
+        if Action.Pressed("move_down") and abilities.has(ABILITY_GROUND_POUND) {
+            if not player.onGround {
+                player.startPound();
+            }
+        }
+
+        // Track playtime
+        totalPlaytime = totalPlaytime + dt;
+
+        // Boss defeat tracking
+        if level.hasBoss and not enemies.isBossAlive() {
+            // Boss just died
+            var bossBit = 1;
+            var b = 0;
+            while b < currentLevel {
+                bossBit = bossBit * 2;
+                b = b + 1;
+            }
+            if (bossesDefeated / bossBit) % 2 == 0 {
+                bossesDefeated = bossesDefeated + bossBit;
+                // Grant ability based on which boss
+                if currentLevel == 2 { abilities.grant(2); sfx.playAbilityGet(); } // Double Jump
+                if currentLevel == 3 { abilities.grant(4); sfx.playAbilityGet(); } // Dash
+                if currentLevel == 6 { abilities.grant(16); sfx.playAbilityGet(); } // Ground Pound
+            }
+        }
+    }
+
+    // Draw all expansion system overlays
+    hide func drawNewSystems(canvas: Canvas, camX: Integer, camY: Integer) {
+        // Biome ambient particles
+        renderObj.drawBiomeAmbient(canvas, camX, camY, level.levelTheme, levelTimer);
+
+        // Dash trail
+        renderObj.drawDashTrail(canvas, camX, camY, player);
+
+        // Charge aura
+        renderObj.drawChargeAura(canvas, camX, camY, player);
+
+        // Ground pound impact
+        renderObj.drawPoundImpact(canvas, player.pixelX(), player.pixelY(),
+                                   camX, camY, poundImpactTimer);
+
+        // Freeze overlay
+        renderObj.drawFreezeOverlay(canvas, camX, camY, player);
+
+        // Environmental overlays
+        var hazard = phys.checkHazardTile(player.x, player.y,
+                                           PLAYER_W, PLAYER_H, level);
+        renderObj.drawPoisonOverlay(canvas, hazard == TILE_POISON_POOL);
+        renderObj.drawIceOverlay(canvas, phys.isOnIce(player.x, player.y,
+                                                       PLAYER_W, PLAYER_H, level));
+
+        // Lighting overlay (drawn after everything)
+        lighting.draw(canvas, camX, camY,
+                      player.pixelX() - camX + PLAYER_W / 2,
+                      player.pixelY() - camY + PLAYER_H / 2);
+
+        // Ability icons on HUD
+        abilities.drawHUD(canvas);
+
+        // Extended HUD
+        var biomeName = menus.getBiomeName(currentLevel);
+        hudObj.drawExtendedHud(canvas, pal, gems,
+                                loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
+                                currentLevel, biomeName);
+
+        // Mini-map
+        var playerCol = player.pixelX() / TILE_SIZE;
+        var playerRow = player.pixelY() / TILE_SIZE;
+        hudObj.drawMiniMap(canvas, pal, playerCol, playerRow,
+                           level.levelWidth, level.levelHeight);
+
+        // Power-up timers
+        hudObj.drawPowerupTimers(canvas, pal, player.speedTimer, player.rapidFireTimer,
+                                 player.shieldHits > 0);
+
+        // Transition overlay (on top of everything)
+        if transitions.isActive() {
+            transitions.draw(canvas,
+                              player.pixelX() - camX + PLAYER_W / 2,
+                              player.pixelY() - camY + PLAYER_H / 2);
+        }
+
+        // Ability acquisition UI
+        abilities.drawAcquisitionUI(canvas);
+
+        // Lore display (on top of everything)
+        if loreSystem.isDisplayActive() {
+            loreSystem.draw(canvas);
+        }
+
+        // Achievement notification popup
+        achSys.drawNotification(canvas);
+
+        // World map (if open)
+        if showWorldMap {
+            worldMap.draw(canvas, currentLevel, bossesDefeated, abilities);
+        }
+    }
+}

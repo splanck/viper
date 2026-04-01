@@ -1111,8 +1111,8 @@ L_CALL: {
 }
 
 L_CALL_NATIVE: {
-    uint8_t nativeIdx = decodeArg8_0(instr);
-    uint8_t argCount = decodeArg8_1(instr);
+    uint8_t argCount = decodeArg8_0(instr);
+    uint16_t nativeIdx = decodeArg16_1(instr);
 
     if (nativeIdx >= module_->nativeFuncs.size()) {
         SYNC_STATE();

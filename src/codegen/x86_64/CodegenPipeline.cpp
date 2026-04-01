@@ -812,6 +812,36 @@ PipelineResult CodegenPipeline::run() {
 
     diagnostics.flush(err);
 
+    // --- Inject asset blob into .rodata (if present) ---
+    if (useNativeAsm && pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
+        std::ifstream af(opts_.asset_blob_path, std::ios::binary | std::ios::ate);
+        if (af.is_open()) {
+            auto blobSize = af.tellg();
+            if (blobSize > 0) {
+                af.seekg(0);
+                std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
+                af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
+
+#if defined(__APPLE__)
+                constexpr const char *blobLabel = "_viper_asset_blob";
+                constexpr const char *sizeLabel = "_viper_asset_blob_size";
+#else
+                constexpr const char *blobLabel = "viper_asset_blob";
+                constexpr const char *sizeLabel = "viper_asset_blob_size";
+#endif
+                auto &rodata = *pipelineModule.binaryRodata;
+                rodata.alignTo(16);
+                rodata.defineSymbol(blobLabel, objfile::SymbolBinding::Global,
+                                   objfile::SymbolSection::Rodata);
+                rodata.emitBytes(assetBlob.data(), assetBlob.size());
+                rodata.alignTo(8);
+                rodata.defineSymbol(sizeLabel, objfile::SymbolBinding::Global,
+                                   objfile::SymbolSection::Rodata);
+                rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
+            }
+        }
+    }
+
     // --- Native assembler path: write .o directly via ObjectFileWriter ---
     if (useNativeAsm) {
         if (!pipelineModule.binaryText) {

@@ -35,7 +35,7 @@ bind "./achievements";
 class Game {
     hide Palette pal;
     hide Canvas canvas;
-    hide StateMachine sm;
+    hide SceneManager sm;
 
     // Subsystems
     hide Player player;
@@ -109,18 +109,18 @@ class Game {
     hide Integer introTimer;       // ms countdown for level name splash
 
     expose func init() {
-        sm = StateMachine.New();
-        sm.AddState(STATE_MENU);
-        sm.AddState(STATE_PLAYING);
-        sm.AddState(STATE_PAUSED);
-        sm.AddState(STATE_GAMEOVER);
-        sm.AddState(STATE_LEVELCOMPLETE);
-        sm.AddState(STATE_HIGHSCORES);
-        sm.AddState(STATE_CONTROLS);
-        sm.AddState(STATE_BOSSFIGHT);
-        sm.AddState(STATE_VICTORY);
-        sm.AddState(STATE_LEVELSELECT);
-        sm.SetInitial(STATE_MENU);
+        sm = SceneManager.New();
+        sm.Add("menu");
+        sm.Add("playing");
+        sm.Add("paused");
+        sm.Add("gameover");
+        sm.Add("levelcomplete");
+        sm.Add("highscores");
+        sm.Add("controls");
+        sm.Add("bossfight");
+        sm.Add("victory");
+        sm.Add("levelselect");
+        sm.Switch("menu");
 
         score = 0;
         coins = 0;
@@ -219,33 +219,33 @@ class Game {
                 debugOverlay.Toggle();
             }
 
-            sm.Update();
+            sm.Update(dt);
 
-            if sm.IsState(STATE_MENU) {
+            if sm.IsScene("menu") {
                 updateMenu();
             } else {
-            if sm.IsState(STATE_PLAYING) {
+            if sm.IsScene("playing") {
                 updatePlaying();
             } else {
-            if sm.IsState(STATE_PAUSED) {
+            if sm.IsScene("paused") {
                 updatePaused();
             } else {
-            if sm.IsState(STATE_GAMEOVER) {
+            if sm.IsScene("gameover") {
                 updateGameOver();
             } else {
-            if sm.IsState(STATE_LEVELCOMPLETE) {
+            if sm.IsScene("levelcomplete") {
                 updateLevelComplete();
             } else {
-            if sm.IsState(STATE_HIGHSCORES) {
+            if sm.IsScene("highscores") {
                 updateHighScores();
             } else {
-            if sm.IsState(STATE_CONTROLS) {
+            if sm.IsScene("controls") {
                 updateControls();
             } else {
-            if sm.IsState(STATE_VICTORY) {
+            if sm.IsScene("victory") {
                 updateVictory();
             } else {
-            if sm.IsState(STATE_LEVELSELECT) {
+            if sm.IsScene("levelselect") {
                 updateLevelSelect();
             }
             }}}}}}}}
@@ -273,16 +273,16 @@ class Game {
         }
         if result == STATE_LEVELSELECT {
             sfx.playMenuSelect();
-            sm.Transition(STATE_LEVELSELECT);
+            sm.Switch("levelselect");
         }
         if result == STATE_HIGHSCORES {
             sfx.playMenuSelect();
-            sm.Transition(STATE_HIGHSCORES);
+            sm.Switch("highscores");
             menus.resetSelection();
         }
         if result == STATE_CONTROLS {
             sfx.playMenuSelect();
-            sm.Transition(STATE_CONTROLS);
+            sm.Switch("controls");
         }
         if result == -2 {
             canvas.Close();
@@ -306,12 +306,12 @@ class Game {
             player.reset();
             loadLevel(currentLevel);
             introTimer = 1200;
-            sm.Transition(STATE_PLAYING);
+            sm.Switch("playing");
             sfx.playGameMusic();
         }
         if result == STATE_MENU {
             sfx.playMenuMove();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
         }
@@ -324,7 +324,7 @@ class Game {
     hide func updatePlaying() {
         // Pause check
         if Action.Pressed(ACT_BACK) {
-            sm.Transition(STATE_PAUSED);
+            sm.Switch("paused");
             menus.resetSelection();
             renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                     bullets, pickups, particles, hudObj, sprites,
@@ -369,8 +369,9 @@ class Game {
         // Update particles
         particles.updateAll();
 
-        // Update renderer effects
+        // Update renderer effects + tile animations
         renderObj.update(dt);
+        level.updateTileAnims(dt);
 
         // Update HUD
         hudObj.update(score, coins, dt);
@@ -708,7 +709,7 @@ class Game {
             if timeBonus < 0 { timeBonus = 0; }
             levelCompleteTimer = 0;
             menus.resetSelection();
-            sm.Transition(STATE_LEVELCOMPLETE);
+            sm.Switch("levelcomplete");
             sfx.playLevelComplete();
 
             var totalScore = score + timeBonus;
@@ -718,7 +719,7 @@ class Game {
             }
 
             if currentLevel == LEVEL_COUNT {
-                sm.Transition(STATE_VICTORY);
+                sm.Switch("victory");
             }
         }
     }
@@ -756,7 +757,7 @@ class Game {
                 }
                 menus.resetSelection();
                 sfx.stopMusic();
-                sm.Transition(STATE_GAMEOVER);
+                sm.Switch("gameover");
                 return;
             }
 
@@ -789,11 +790,11 @@ class Game {
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
-            sm.Transition(STATE_PLAYING);
+            sm.Switch("playing");
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
         }
@@ -814,7 +815,7 @@ class Game {
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
         }
@@ -843,7 +844,7 @@ class Game {
             }
             loadLevel(currentLevel);
             levelCompleteTimer = 0;
-            sm.Transition(STATE_PLAYING);
+            sm.Switch("playing");
         }
     }
 
@@ -857,7 +858,7 @@ class Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
         }
@@ -873,7 +874,7 @@ class Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             menus.resetSelection();
         }
     }
@@ -888,7 +889,7 @@ class Game {
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Transition(STATE_MENU);
+            sm.Switch("menu");
             menus.resetSelection();
         }
     }
@@ -908,7 +909,7 @@ class Game {
         player.reset();
         loadLevel(1);
 
-        sm.Transition(STATE_PLAYING);
+        sm.Switch("playing");
     }
 
     hide func loadLevel(num: Integer) {

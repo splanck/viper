@@ -1,0 +1,209 @@
+// pickups.zia — Coins, health, power-ups, collectible logic
+// Uses ObjectPool for slot management with parallel arrays for per-pickup data
+module pickups;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind "./config";
+bind "./level";
+bind "./physics";
+bind "./sprites";
+
+class PickupManager {
+    hide ObjectPool pool;
+    hide List[Integer] ptype;
+    hide List[Integer] px;       // world pixel x
+    hide List[Integer] py;       // world pixel y
+    hide List[Integer] pframe;   // animation frame
+    hide Integer animTimer;
+
+    hide PhysicsHelper phys;
+
+    expose func init() {
+        pool = ObjectPool.New(MAX_PICKUPS);
+        ptype = [];
+        px = [];
+        py = [];
+        pframe = [];
+        animTimer = 0;
+        phys = new PhysicsHelper();
+
+        // Pre-fill parallel arrays to pool capacity
+        for i in 0..MAX_PICKUPS {
+            ptype.add(0); px.add(0); py.add(0); pframe.add(0);
+        }
+    }
+
+    expose func reset() {
+        pool.Clear();
+        animTimer = 0;
+    }
+
+    expose func spawnPickup(t: Integer, wx: Integer, wy: Integer) {
+        var handle = pool.Acquire();
+        if handle < 0 { return; }
+        ptype.set(handle, t);
+        px.set(handle, wx);
+        py.set(handle, wy);
+        pframe.set(handle, 0);
+    }
+
+    expose func spawnFromLevel(level: Level) {
+        var i = 0;
+        while i < level.pickupTypes.length() {
+            spawnPickup(level.pickupTypes.get(i),
+                        level.pickupX.get(i),
+                        level.pickupY.get(i));
+            i = i + 1;
+        }
+    }
+
+    expose func updateAll() {
+        // Animate coins
+        animTimer = animTimer + 1;
+        if animTimer >= 12 {
+            animTimer = 0;
+            var i = pool.FirstActive();
+            while i >= 0 {
+                var next = pool.NextActive(i);
+                if ptype.get(i) == PICKUP_COIN {
+                    var f = pframe.get(i) + 1;
+                    if f >= 4 { f = 0; }
+                    pframe.set(i, f);
+                }
+                i = next;
+            }
+        }
+    }
+
+    // Check collection against player. Returns pickup type if collected, or -1.
+    expose func checkCollection(playerPx: Integer, playerPy: Integer) -> Integer {
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            var t = ptype.get(i);
+            var size = COIN_SIZE;
+            if t != PICKUP_COIN {
+                size = POWERUP_SIZE;
+            }
+
+            if phys.rectOverlapPx(playerPx, playerPy, PLAYER_W, PLAYER_H,
+                                  px.get(i), py.get(i), size, size) {
+                pool.Release(i);
+                return t;
+            }
+            i = next;
+        }
+        return -1;
+    }
+
+    expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer,
+                        sprites: SpriteFactory) {
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            var sx = px.get(i) - camX;
+            var sy = py.get(i) - camY;
+
+            // Skip if off screen
+            if sx > -48 {
+                if sx < SCREEN_W + 48 {
+                    if sy > -48 {
+                        if sy < SCREEN_H + 48 {
+                            var t = ptype.get(i);
+                            var f = pframe.get(i);
+
+                            // Bobbing animation (up/down by 2 pixels)
+                            var bob = animTimer / 6;
+                            if animTimer >= 6 {
+                                bob = 2 - (animTimer - 6) / 6;
+                            }
+                            sy = sy + bob;
+
+                            if t == PICKUP_COIN {
+                                canvas.BlitAlpha(sx, sy, sprites.getCoinFrame(f));
+                            }
+                            if t == PICKUP_HEALTH {
+                                canvas.BlitAlpha(sx, sy, sprites.getHealthOrb());
+                            }
+                            if t == PICKUP_SPEED {
+                                canvas.BlitAlpha(sx, sy, sprites.getSpeedPickup());
+                            }
+                            if t == PICKUP_SHIELD {
+                                canvas.BlitAlpha(sx, sy, sprites.getShieldPickup());
+                            }
+                            if t == PICKUP_RAPIDFIRE {
+                                canvas.BlitAlpha(sx, sy, sprites.getRapidPickup());
+                            }
+                            // New pickup types
+                            if t == PICKUP_GEM {
+                                drawGem(canvas, sx, sy, animTimer);
+                            }
+                            if t == PICKUP_HP_UP {
+                                drawHpUp(canvas, sx, sy, animTimer);
+                            }
+                            if t == PICKUP_KEY {
+                                drawKey(canvas, sx, sy, animTimer);
+                            }
+                        }
+                    }
+                }
+            }
+            i = next;
+        }
+    }
+
+    // =========================================================================
+    // New pickup types
+    // =========================================================================
+
+    // Draw a gem pickup (blue diamond shape)
+    hide func drawGem(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 18;
+        var cy = sy + 18;
+        // Diamond shape
+        canvas.Triangle(cx, cy - 12, cx - 8, cy, cx + 8, cy, Color.RGB(100, 180, 255));
+        canvas.Triangle(cx, cy + 12, cx - 8, cy, cx + 8, cy, Color.RGB(60, 130, 220));
+        // Highlight
+        canvas.Line(cx - 3, cy - 4, cx + 3, cy - 4, Color.RGB(200, 230, 255));
+        // Sparkle (animated)
+        if timer % 8 < 4 {
+            canvas.Disc(cx + 4, cy - 6, 1, Color.RGB(255, 255, 255));
+        }
+    }
+
+    // Draw a max HP upgrade pickup (golden heart)
+    hide func drawHpUp(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 21;
+        var cy = sy + 21;
+        // Heart shape (two circles + triangle)
+        canvas.Disc(cx - 5, cy - 3, 6, Color.RGB(255, 200, 50));
+        canvas.Disc(cx + 5, cy - 3, 6, Color.RGB(255, 200, 50));
+        canvas.Triangle(cx, cy + 10, cx - 11, cy, cx + 11, cy, Color.RGB(255, 180, 30));
+        // Bright center
+        canvas.Disc(cx, cy - 2, 3, Color.RGB(255, 255, 200));
+        // Plus symbol
+        canvas.Box(cx - 1, cy - 5, 3, 7, Color.RGB(255, 255, 255));
+        canvas.Box(cx - 3, cy - 3, 7, 3, Color.RGB(255, 255, 255));
+        // Pulse glow
+        if timer % 12 < 6 {
+            canvas.DiscAlpha(cx, cy, 14, Color.RGB(255, 220, 100), 40);
+        }
+    }
+
+    // Draw a key pickup (golden key shape)
+    hide func drawKey(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+        var cx = sx + 18;
+        var cy = sy + 18;
+        // Key ring (circle at top)
+        canvas.Ring(cx, cy - 6, 6, Color.RGB(255, 200, 50));
+        canvas.Disc(cx, cy - 6, 4, Color.RGB(255, 220, 80));
+        // Key shaft
+        canvas.Box(cx - 1, cy, 3, 14, Color.RGB(200, 160, 40));
+        // Key teeth
+        canvas.Box(cx + 2, cy + 8, 4, 2, Color.RGB(200, 160, 40));
+        canvas.Box(cx + 2, cy + 12, 4, 2, Color.RGB(200, 160, 40));
+        // Shine
+        canvas.Disc(cx - 2, cy - 8, 1, Color.RGB(255, 255, 255));
+    }
+}

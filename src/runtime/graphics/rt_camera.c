@@ -74,6 +74,8 @@ typedef struct rt_camera_impl {
     int64_t max_x;      ///< Maximum X bound
     int64_t max_y;      ///< Maximum Y bound
     int64_t dirty;      ///< 1 if position/zoom/rotation changed since last rt_camera_clear_dirty
+    int64_t deadzone_w; ///< Deadzone width (0 = disabled). Target within zone doesn't move camera.
+    int64_t deadzone_h; ///< Deadzone height (0 = disabled).
     rt_parallax_layer parallax[RT_CAMERA_MAX_PARALLAX]; ///< Fixed parallax layer slots
     int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
@@ -239,6 +241,49 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
     camera->y = y - camera->height / 2;
     camera->dirty = 1;
     camera_clamp_bounds(camera);
+}
+
+void rt_camera_smooth_follow(void *camera_ptr, int64_t target_x, int64_t target_y,
+                             int64_t lerp_pct) {
+    if (!camera_ptr) {
+        rt_trap("Camera.SmoothFollow: null camera");
+        return;
+    }
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+
+    // Desired camera position (center target in viewport)
+    int64_t desired_x = target_x - camera->width / 2;
+    int64_t desired_y = target_y - camera->height / 2;
+
+    // Deadzone: skip if target is within deadzone of current position
+    if (camera->deadzone_w > 0 || camera->deadzone_h > 0) {
+        int64_t dx = desired_x - camera->x;
+        int64_t dy = desired_y - camera->y;
+        int64_t hw = camera->deadzone_w / 2;
+        int64_t hh = camera->deadzone_h / 2;
+        if (dx > -hw && dx < hw && dy > -hh && dy < hh)
+            return;
+    }
+
+    // Lerp toward desired position. lerp_pct: 0-1000 (1000 = instant)
+    if (lerp_pct >= 1000) {
+        camera->x = desired_x;
+        camera->y = desired_y;
+    } else if (lerp_pct > 0) {
+        camera->x += (desired_x - camera->x) * lerp_pct / 1000;
+        camera->y += (desired_y - camera->y) * lerp_pct / 1000;
+    }
+
+    camera->dirty = 1;
+    camera_clamp_bounds(camera);
+}
+
+void rt_camera_set_deadzone(void *camera_ptr, int64_t w, int64_t h) {
+    if (!camera_ptr)
+        return;
+    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    camera->deadzone_w = w > 0 ? w : 0;
+    camera->deadzone_h = h > 0 ? h : 0;
 }
 
 void rt_camera_world_to_screen(

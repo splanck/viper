@@ -88,11 +88,14 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     params.resizable = 1;
 
     app->window = vgfx_create_window(&params);
+    app->title = ctitle ? strdup(ctitle) : NULL;
     free(ctitle);
 
     if (!app->window) {
         // app is GC-allocated (rt_obj_new_i64) so it will be reclaimed by the
         // collector. Zero the struct so the GC finalizer (if any) sees clean state.
+        free(app->title);
+        app->title = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         return NULL;
     }
@@ -141,6 +144,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     }
 
     s_current_app = app;
+    rt_gui_macos_menu_sync_app(app);
     return app;
 }
 
@@ -198,8 +202,10 @@ void rt_gui_app_destroy(void *app_ptr) {
     rt_gui_features_cleanup();
 
     // Clear global pointer before freeing to prevent use-after-free
-    if (s_current_app == app)
+    if (s_current_app == app) {
+        rt_gui_macos_menu_app_destroy(app);
         s_current_app = NULL;
+    }
 
     free(app->title);
     app->title = NULL;

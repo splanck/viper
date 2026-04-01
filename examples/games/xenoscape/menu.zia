@@ -1,0 +1,452 @@
+// menu.zia — Title screen, pause, game over, level select, high scores, controls
+// Engine API #9: MenuList.HandleInput replaces manual ButtonGroup navigation.
+// HandleInput(up, down, confirm) returns selected index or -1 — one call does it all.
+module menu;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Fmt;
+bind Viper.IO;
+bind Viper.Game;
+bind "./config";
+bind "./palette";
+
+// State return codes (game.zia maps these to SceneManager.Switch calls)
+final STATE_MENU = 0;
+final STATE_PLAYING = 1;
+final STATE_PAUSED = 2;
+final STATE_GAMEOVER = 3;
+final STATE_LEVELCOMPLETE = 4;
+final STATE_HIGHSCORES = 5;
+final STATE_CONTROLS = 6;
+final STATE_VICTORY = 7;
+final STATE_LEVELSELECT = 8;
+
+class MenuSystem {
+    hide Palette pal;
+
+    // Engine API #9: MenuList widgets with HandleInput for navigation
+    hide MenuList titleMenu;
+    hide MenuList levelSelectMenu;
+    hide MenuList pauseMenu;
+    hide MenuList gameOverMenu;
+    hide MenuList levelCompleteMenu;
+
+    // Animation/state
+    hide Integer titleTimer;
+    hide Integer bgScroll;
+    expose Integer selectedLevel;
+
+    // High scores
+    hide List[Integer] highScores;
+    hide List[String] highNames;
+    hide SaveData save;
+
+    expose func init(p: Palette) {
+        pal = p;
+
+        // Engine API #9: MenuList — each menu has items, HandleInput does all navigation
+        titleMenu = MenuList.New(HALF_W - 120, 320, 50);
+        titleMenu.AddItem("Play");
+        titleMenu.AddItem("Level Select");
+        titleMenu.AddItem("High Scores");
+        titleMenu.AddItem("Controls");
+        titleMenu.AddItem("Quit");
+        titleMenu.SetColors(pal.menuBg, pal.menuText, pal.menuHighlight);
+
+        levelSelectMenu = MenuList.New(HALF_W - 120, 180, 45);
+        levelSelectMenu.AddItem("1: The Descent");
+        levelSelectMenu.AddItem("2: Fungal Caverns");
+        levelSelectMenu.AddItem("3: Crystal Depths");
+        levelSelectMenu.AddItem("4: Surface Ruins");
+        levelSelectMenu.AddItem("5: Underground Lake");
+        levelSelectMenu.AddItem("6: Thermal Vents");
+        levelSelectMenu.AddItem("7: Overgrowth");
+        levelSelectMenu.AddItem("8: Frozen Abyss");
+        levelSelectMenu.AddItem("9: Sky Fortress");
+        levelSelectMenu.AddItem("10: The Core");
+        levelSelectMenu.SetColors(pal.menuBg, pal.menuText, pal.menuHighlight);
+
+        pauseMenu = MenuList.New(HALF_W - 100, HALF_H - 40, 50);
+        pauseMenu.AddItem("Resume");
+        pauseMenu.AddItem("Quit to Menu");
+        pauseMenu.SetColors(pal.menuBg, pal.menuText, pal.menuHighlight);
+
+        gameOverMenu = MenuList.New(HALF_W - 100, HALF_H + 40, 50);
+        gameOverMenu.AddItem("Try Again");
+        gameOverMenu.AddItem("Main Menu");
+        gameOverMenu.SetColors(pal.menuBg, pal.menuText, pal.menuHighlight);
+
+        levelCompleteMenu = MenuList.New(HALF_W - 100, HALF_H + 60, 50);
+        levelCompleteMenu.AddItem("Continue");
+        levelCompleteMenu.AddItem("Level Select");
+        levelCompleteMenu.AddItem("Main Menu");
+        levelCompleteMenu.SetColors(pal.menuBg, pal.menuText, pal.menuHighlight);
+
+        titleTimer = 0;
+        bgScroll = 0;
+        selectedLevel = 1;
+        save = SaveData.New("xenoscape");
+
+        highScores = [];
+        highNames = [];
+        var i = 0;
+        while i < 10 {
+            highScores.add((10 - i) * 1000);
+            highNames.add("AAA");
+            i = i + 1;
+        }
+    }
+
+    // =========================================================================
+    // Title Screen — HandleInput returns selected index, we map to game state
+    // =========================================================================
+
+    expose func updateTitle() -> Integer {
+        titleTimer = titleTimer + 1;
+        bgScroll = bgScroll + 1;
+
+        // Engine API #9: MenuList.HandleInput replaces manual up/down/confirm
+        var choice = titleMenu.HandleInput(
+            Action.Pressed("menu_up"),
+            Action.Pressed("menu_down"),
+            Action.Pressed("confirm")
+        );
+
+        if choice == 0 { selectedLevel = 1; return STATE_PLAYING; }      // Play
+        if choice == 1 { return STATE_LEVELSELECT; }                      // Level Select
+        if choice == 2 { return STATE_HIGHSCORES; }                       // High Scores
+        if choice == 3 { return STATE_CONTROLS; }                         // Controls
+        if choice == 4 { return -2; }                                     // Quit
+        return -1;
+    }
+
+    expose func drawTitle(canvas: Canvas) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.skyTop, pal.menuBg);
+        drawStarfield(canvas);
+
+        // Scrolling ground silhouette
+        var groundScroll = bgScroll * 2;
+        var gi = 0;
+        while gi < 30 {
+            var gx = (gi * 53) - (groundScroll % 1600);
+            if gx < 0 - 60 { gx = gx + 1600; }
+            var gh = 30 + (gi * 17) % 40;
+            canvas.Box(gx, SCREEN_H - gh, 52, gh, pal.outline);
+            gi = gi + 1;
+        }
+
+        // Title text — bouncing animation
+        var titleBounce = (titleTimer / 3) % 12;
+        if titleBounce > 6 { titleBounce = 12 - titleBounce; }
+        var titleY = 100 - titleBounce;
+
+        // Shadow
+        canvas.TextCenteredScaled(titleY + 3, "XENOSCAPE", pal.outline, 6);
+        // Main title
+        canvas.TextCenteredScaled(titleY, "XENOSCAPE", pal.titleOrange, 6);
+        // Subtitle
+        canvas.TextCenteredScaled(titleY + 55, "THE DESCENT", pal.titleYellow, 3);
+
+        // Glow behind title
+        canvas.DiscAlpha(HALF_W, titleY + 30, 140, pal.titleYellow, 20);
+
+        // Menu list — auto-renders with selection highlight
+        titleMenu.Draw(canvas);
+
+        // Footer
+        canvas.TextCenteredScaled(SCREEN_H - 30, "Arrow Keys + Enter", pal.hudGray, 1);
+    }
+
+    // =========================================================================
+    // Level Select — 10 levels
+    // =========================================================================
+
+    expose func updateLevelSelect() -> Integer {
+        titleTimer = titleTimer + 1;
+
+        var choice = levelSelectMenu.HandleInput(
+            Action.Pressed("menu_up"),
+            Action.Pressed("menu_down"),
+            Action.Pressed("confirm")
+        );
+
+        if choice >= 0 {
+            selectedLevel = choice + 1;
+            return STATE_PLAYING;
+        }
+        if Action.Pressed("back") { return STATE_MENU; }
+        return STATE_LEVELSELECT;
+    }
+
+    expose func drawLevelSelect(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        drawStarfield(canvas);
+        canvas.TextCenteredScaled(60, "SELECT LEVEL", pal.titleOrange, 4);
+        levelSelectMenu.Draw(canvas);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Enter to start, Esc to go back", pal.hudGray, 2);
+    }
+
+    // =========================================================================
+    // Pause Menu
+    // =========================================================================
+
+    expose func updatePause() -> Integer {
+        var choice = pauseMenu.HandleInput(
+            Action.Pressed("menu_up"),
+            Action.Pressed("menu_down"),
+            Action.Pressed("confirm")
+        );
+
+        if choice == 0 { return STATE_PLAYING; }   // Resume
+        if choice == 1 { return STATE_MENU; }       // Quit to Menu
+        if Action.Pressed("back") { return STATE_PLAYING; }
+        return STATE_PAUSED;
+    }
+
+    expose func drawPause(canvas: Canvas) {
+        // Darken gameplay underneath
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 150);
+        canvas.TextCenteredScaled(HALF_H - 80, "PAUSED", pal.titleOrange, 5);
+        pauseMenu.Draw(canvas);
+    }
+
+    // =========================================================================
+    // Game Over
+    // =========================================================================
+
+    expose func updateGameOver() -> Integer {
+        var choice = gameOverMenu.HandleInput(
+            Action.Pressed("menu_up"),
+            Action.Pressed("menu_down"),
+            Action.Pressed("confirm")
+        );
+
+        if choice == 0 { return STATE_PLAYING; }    // Try Again
+        if choice == 1 { return STATE_MENU; }        // Main Menu
+        return STATE_GAMEOVER;
+    }
+
+    expose func drawGameOver(canvas: Canvas, score: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
+        canvas.TextCenteredScaled(HALF_H - 80, "GAME OVER", pal.deathRed, 5);
+        canvas.TextCenteredScaled(HALF_H - 30, "Score: " + Int(score), pal.menuText, 3);
+        gameOverMenu.Draw(canvas);
+    }
+
+    // =========================================================================
+    // Level Complete
+    // =========================================================================
+
+    expose func updateLevelComplete() -> Integer {
+        var choice = levelCompleteMenu.HandleInput(
+            Action.Pressed("menu_up"),
+            Action.Pressed("menu_down"),
+            Action.Pressed("confirm")
+        );
+
+        if choice == 0 { return STATE_PLAYING; }      // Continue (next level)
+        if choice == 1 { return STATE_LEVELSELECT; }   // Level Select
+        if choice == 2 { return STATE_MENU; }           // Main Menu
+        return STATE_LEVELCOMPLETE;
+    }
+
+    expose func drawLevelComplete(canvas: Canvas, score: Integer, timeBonus: Integer, levelNum: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
+        canvas.TextCenteredScaled(HALF_H - 100, "LEVEL COMPLETE!", pal.titleYellow, 5);
+        canvas.TextCenteredScaled(HALF_H - 50, "Score: " + Int(score), pal.menuText, 3);
+        canvas.TextCenteredScaled(HALF_H - 20, "Time Bonus: +" + Int(timeBonus), pal.checkpoint, 2);
+        levelCompleteMenu.Draw(canvas);
+    }
+
+    // =========================================================================
+    // High Scores — display only, no navigation
+    // =========================================================================
+
+    expose func updateHighScores() -> Integer {
+        if Action.Pressed("back") or Action.Pressed("confirm") {
+            return STATE_MENU;
+        }
+        return STATE_HIGHSCORES;
+    }
+
+    expose func drawHighScores(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        canvas.TextCenteredScaled(60, "HIGH SCORES", pal.titleOrange, 4);
+
+        var y = 140;
+        var i = 0;
+        while i < 10 {
+            var rank = Int(i + 1) + ". ";
+            if i + 1 < 10 { rank = " " + rank; }
+            var name = highNames.get(i);
+            var sc = highScores.get(i);
+            var line = rank + name + "  " + Int(sc);
+            var col = pal.menuText;
+            if i < 3 { col = pal.titleYellow; }
+            canvas.TextCenteredScaled(y, line, col, 2);
+            y = y + 40;
+            i = i + 1;
+        }
+
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press any key to return", pal.hudGray, 2);
+    }
+
+    // =========================================================================
+    // Controls Reference — display only
+    // =========================================================================
+
+    expose func updateControls() -> Integer {
+        if Action.Pressed("back") or Action.Pressed("confirm") {
+            return STATE_MENU;
+        }
+        return STATE_CONTROLS;
+    }
+
+    expose func drawControls(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        canvas.TextCenteredScaled(60, "CONTROLS", pal.titleOrange, 4);
+
+        var y = 150;
+        var gap = 35;
+        drawControlLine(canvas, "Move", "Arrow Keys / A,D", y); y = y + gap;
+        drawControlLine(canvas, "Jump", "Space / W", y); y = y + gap;
+        drawControlLine(canvas, "Shoot", "Z", y); y = y + gap;
+        drawControlLine(canvas, "Dash", "X", y); y = y + gap;
+        drawControlLine(canvas, "Down", "Down Arrow / S", y); y = y + gap;
+        drawControlLine(canvas, "Pause", "Escape", y); y = y + gap;
+        drawControlLine(canvas, "Confirm", "Enter", y); y = y + gap;
+
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press any key to return", pal.hudGray, 2);
+    }
+
+    hide func drawControlLine(canvas: Canvas, action: String, key: String, y: Integer) {
+        canvas.TextScaled(350, y, action, 2, pal.titleYellow);
+        canvas.TextScaled(550, y, key, 2, pal.menuText);
+    }
+
+    // =========================================================================
+    // Victory Screen
+    // =========================================================================
+
+    expose func drawVictory(canvas: Canvas, score: Integer) {
+        canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.skyTop, pal.menuBg);
+        drawStarfield(canvas);
+        canvas.TextCenteredScaled(HALF_H - 80, "CONGRATULATIONS!", pal.titleYellow, 5);
+        canvas.TextCenteredScaled(HALF_H - 20, "You have completed XENOSCAPE", pal.menuText, 3);
+        canvas.TextCenteredScaled(HALF_H + 20, "Final Score: " + Int(score), pal.titleOrange, 3);
+        canvas.TextCenteredScaled(SCREEN_H - 40, "Press any key", pal.hudGray, 2);
+    }
+
+    // =========================================================================
+    // High score management
+    // =========================================================================
+
+    expose func loadHighScores() {
+        save.Load();
+        var i = 0;
+        while i < 10 {
+            var sc = save.GetInt("hs" + Int(i), (10 - i) * 1000);
+            highScores.set(i, sc);
+            i = i + 1;
+        }
+    }
+
+    expose func submitScore(score: Integer) {
+        // Find insertion point
+        var pos = 10;
+        var i = 0;
+        while i < 10 {
+            if score > highScores.get(i) {
+                pos = i;
+                i = 10; // break
+            }
+            i = i + 1;
+        }
+        if pos >= 10 { return; }
+
+        // Shift scores down
+        var j = 9;
+        while j > pos {
+            highScores.set(j, highScores.get(j - 1));
+            highNames.set(j, highNames.get(j - 1));
+            j = j - 1;
+        }
+        highScores.set(pos, score);
+        highNames.set(pos, "YOU");
+
+        // Save
+        var k = 0;
+        while k < 10 {
+            save.SetInt("hs" + Int(k), highScores.get(k));
+            k = k + 1;
+        }
+        save.Save();
+    }
+
+    // Reset all menu selections to defaults (called on scene transitions)
+    expose func resetSelection() {
+        titleMenu.set_Selected(0);
+        pauseMenu.set_Selected(0);
+        gameOverMenu.set_Selected(0);
+        levelCompleteMenu.set_Selected(0);
+    }
+
+    // Missing methods referenced by game.zia
+    expose func isHighScore(score: Integer) -> Boolean {
+        if highScores.length() < 10 { return true; }
+        return score > highScores.get(9);
+    }
+
+    expose func addHighScore(score: Integer, name: String) { submitScore(score); }
+    expose func saveHighScores() {
+        var k = 0;
+        while k < 10 {
+            save.SetInt("hs" + Int(k), highScores.get(k));
+            k = k + 1;
+        }
+        save.Save();
+    }
+
+    expose func getBiomeName(theme: Integer) -> String {
+        if theme == THEME_JUNGLE { return "The Descent"; }
+        if theme == THEME_FUNGAL { return "Fungal Caverns"; }
+        if theme == THEME_CRYSTAL { return "Crystal Depths"; }
+        if theme == THEME_GRASSLANDS { return "Surface Ruins"; }
+        if theme == THEME_LAKE { return "Underground Lake"; }
+        if theme == THEME_VOLCANO { return "Thermal Vents"; }
+        if theme == THEME_RUINS { return "Overgrowth"; }
+        if theme == THEME_FROZEN { return "Frozen Abyss"; }
+        if theme == THEME_SKY { return "Sky Fortress"; }
+        if theme == THEME_CORE { return "The Core"; }
+        return "Unknown";
+    }
+
+    expose func updateVictory() -> Integer {
+        if Action.Pressed("confirm") or Action.Pressed("back") {
+            return STATE_MENU;
+        }
+        return STATE_VICTORY;
+    }
+
+    // =========================================================================
+    // Visual effects
+    // =========================================================================
+
+    hide func drawStarfield(canvas: Canvas) {
+        // Procedural starfield using deterministic positions
+        var i = 0;
+        while i < 60 {
+            var sx = ((i * 137 + 29) * 47) % SCREEN_W;
+            var sy = ((i * 89 + 13) * 31) % (SCREEN_H - 100);
+            var bright = 100 + (i * 23) % 156;
+            // Twinkle: modulate brightness by timer
+            var twinkle = (titleTimer + i * 7) % 30;
+            if twinkle < 10 { bright = bright - 40; }
+            if bright < 60 { bright = 60; }
+            var col = Color.RGB(bright, bright, bright + 30);
+            canvas.Disc(sx, sy, 1, col);
+            i = i + 1;
+        }
+    }
+}

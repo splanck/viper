@@ -124,6 +124,35 @@ void rt_gui_features_cleanup(void);
 /// @brief Re-apply HiDPI scale to the current theme. Called after theme switch.
 void rt_theme_apply_hidpi_scale(void);
 
+//=============================================================================
+// macOS native app menubar bridge
+//=============================================================================
+
+#ifdef __APPLE__
+bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar);
+void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar);
+void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar);
+void rt_gui_macos_menu_sync_app(rt_gui_app_t *app);
+void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app);
+#else
+static inline bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar) {
+    (void)menubar;
+    return false;
+}
+static inline void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar) {
+    (void)menubar;
+}
+static inline void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar) {
+    (void)menubar;
+}
+static inline void rt_gui_macos_menu_sync_app(rt_gui_app_t *app) {
+    (void)app;
+}
+static inline void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app) {
+    (void)app;
+}
+#endif
+
 /// @brief Record a dropped file path (called from rt_gui_app_poll on FILE_DROP events).
 /// @details Adds the path to the g_file_drop array. The first call after
 ///          was_dropped is consumed clears old entries. Defined in rt_gui_features.c.

@@ -120,6 +120,25 @@ ParseOutcome parseArgs(const ArgvView &args) {
             continue;
         }
 
+        if (tok == "--asset-blob") {
+            if (i + 1 >= args.argc) {
+                diag << "error: --asset-blob requires a path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.asset_blob_path = std::string(args.at(++i));
+            continue;
+        }
+        if (tok == "--extra-obj") {
+            if (i + 1 >= args.argc) {
+                diag << "error: --extra-obj requires a path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.extra_objects.push_back(std::string(args.at(++i)));
+            continue;
+        }
+
         diag << "error: unknown flag '" << tok << "'\n" << kUsage;
         outcome.diagnostics = diag.str();
         return outcome;

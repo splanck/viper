@@ -489,6 +489,32 @@ PipelineResult CodegenPipeline::run() {
         return result;
     }
 
+    // --- Inject asset blob into .rodata (if present) ---
+    if (pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
+        std::ifstream af(opts_.asset_blob_path, std::ios::binary | std::ios::ate);
+        if (af.is_open()) {
+            auto blobSize = af.tellg();
+            if (blobSize > 0) {
+                af.seekg(0);
+                std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
+                af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
+
+                // AArch64 MachO writer adds _ prefix to global symbols automatically.
+                auto &rodata = *pipelineModule.binaryRodata;
+                rodata.alignTo(16);
+                rodata.defineSymbol("viper_asset_blob",
+                                   objfile::SymbolBinding::Global,
+                                   objfile::SymbolSection::Rodata);
+                rodata.emitBytes(assetBlob.data(), assetBlob.size());
+                rodata.alignTo(8);
+                rodata.defineSymbol("viper_asset_blob_size",
+                                   objfile::SymbolBinding::Global,
+                                   objfile::SymbolSection::Rodata);
+                rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
+            }
+        }
+    }
+
     if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText) {
         std::filesystem::path objPath;
         bool outputIsObj = false;
@@ -586,6 +612,7 @@ PipelineResult CodegenPipeline::run() {
             addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
             addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
 
+            linkOpts.extraObjPaths = opts_.extra_objects;
             lrc = viper::codegen::linker::nativeLink(linkOpts, out, err);
         } else {
             lrc = linkObjToExe(objPath.string(), exe.string(), ctx, out, err);

@@ -1,0 +1,348 @@
+// config.zia — Game constants: enums in code, tunable values from config.json
+module config;
+
+bind Viper.Game;
+
+// ═══ Screen ═══
+final SCREEN_W = 1280;
+final SCREEN_H = 720;
+final TILE_SIZE = 64;
+final FPS_MS = 16;
+final DT_BASE = 16;
+final HALF_W = 640;
+final HALF_H = 360;
+
+// ═══ Physics (loaded from config.json at runtime) ═══
+final GRAVITY = 78;
+final MAX_FALL = 1350;
+final PLAYER_SPEED = 525;
+final PLAYER_JUMP = -1500;
+
+// ═══ Player dimensions ═══
+final PLAYER_W = 40;
+final PLAYER_H = 58;
+final PLAYER_SPRITE_W = 56;
+final PLAYER_SPRITE_H = 72;
+final PLAYER_MAX_HP = 5;
+final PLAYER_START_LIVES = 3;
+
+// ═══ Tile IDs ═══
+final TILE_EMPTY = 0;
+final TILE_GROUND = 1;
+final TILE_GRASS_TOP = 2;
+final TILE_PLATFORM = 3;
+final TILE_SPIKE = 4;
+final TILE_LAVA = 5;
+final TILE_CRYSTAL = 6;
+final TILE_STONE = 7;
+final TILE_DIRT = 8;
+final TILE_BRICK = 9;
+final TILE_CAVE_TOP = 10;
+final TILE_CAVE_WALL = 11;
+final TILE_BRIDGE = 12;
+final TILE_CHECKPOINT = 15;
+final TILE_MAGMA = 16;
+final TILE_OBSIDIAN = 17;
+final TILE_CLOUD = 18;
+final TILE_SKY_BRICK = 19;
+final TILE_RUIN_STONE = 20;
+final TILE_VINE = 21;
+final TILE_MOSS_STONE = 22;
+final TILE_JUNGLE_GROUND = 23;
+final TILE_JUNGLE_PLATFORM = 24;
+final TILE_THORN = 25;
+final TILE_MUSHROOM = 26;
+final TILE_CAVE_CRYSTAL = 27;
+final TILE_METAL_GRATE = 28;
+final TILE_MAGMA_ROCK = 29;
+final TILE_HULL = 30;
+final TILE_GIRDER = 31;
+final TILE_ELECTRIC = 32;
+final TILE_AIRLOCK = 33;
+final TILE_PIPE = 34;
+final TILE_CATWALK = 35;
+final TILE_COOLANT = 36;
+final TILE_CONDUIT = 37;
+final TILE_CONSOLE = 38;
+final TILE_HOLO_BRIDGE = 39;
+final TILE_VIEWPORT = 40;
+final TILE_POISON_POOL = 41;
+final TILE_QUICKSAND = 42;
+final TILE_CRUMBLE = 43;
+final TILE_ICE_FLOOR = 44;
+final TILE_CONVEYOR_L = 45;
+final TILE_CONVEYOR_R = 46;
+final TILE_STEAM_VENT = 47;
+final TILE_DESTRUCTIBLE = 48;
+final TILE_ONE_WAY = 49;
+final TILE_SWITCH = 50;
+final TILE_LOCKED_DOOR = 51;
+final TILE_SAVE_STATION = 52;
+final TILE_ABILITY_SHRINE = 53;
+final TILE_TELEPORTER = 54;
+final TILE_LORE_TERMINAL = 55;
+
+// ═══ Enemy types ═══
+enum EnemyType {
+    Slime, Bat, Turret, Boss,
+    Sporewalker, Glowmoth, FungalTurret, Mycelium, SporeMother,
+    CrystalGolem, ShardBat, ResonanceOrb, MirrorSlime, CrystalWyrm,
+    MagmaSlug, EmberWasp, ForgeSentinel, PistonTrap, MagmaCore,
+    IceWraith, FrostBeetle, StalactiteBat,
+    VineWhip, MossGolem, RuinGuardian,
+    ShadowClone, Corruption, Architect,
+    PatrolDrone, BombCarrier
+}
+
+// ═══ Enemy type aliases (for code that uses ENEMY_* constants) ═══
+final ENEMY_SLIME = 0;
+final ENEMY_BAT = 1;
+final ENEMY_TURRET = 2;
+final ENEMY_BOSS = 3;
+final ENEMY_SPORE_MOTHER = 8;
+final ENEMY_CRYSTAL_WYRM = 13;
+final ENEMY_MAGMA_CORE = 18;
+final ENEMY_ARCHITECT = 27;
+
+// ═══ Gate requirements ═══
+final GATE_NONE = 0;
+final GATE_DOUBLE_JUMP = 2;
+final GATE_DASH = 4;
+final GATE_CHARGE_SHOT = 8;
+final GATE_GROUND_POUND = 16;
+final GATE_GRAPPLE = 32;
+
+// ═══ Stomp iframes ═══
+final IFRAMES_STOMP_MS = 480;
+
+// ═══ Pad input constants ═══
+final PAD_IDX = 0;
+final PAD_BTN_RB = 5;
+final PAD_BTN_START = 7;
+final KEY_Z = 122;
+final KEY_F3 = 292;
+
+// ═══ Enemy stats (width, height, hp, speed — centipixels) ═══
+// Simple enemies
+final SLIME_W = 48;       final SLIME_H = 40;       final SLIME_HP = 1;    final SLIME_SPEED = 120;
+final BAT_W = 56;         final BAT_H = 40;         final BAT_HP = 2;      final BAT_SPEED = 180;
+final TURRET_W = 56;      final TURRET_H = 56;      final TURRET_HP = 3;
+final BOSS_W = 112;       final BOSS_H = 112;       final BOSS_HP = 20;    final BOSS_SPEED = 300;
+
+// Biome 1: Fungal
+final SPOREWALKER_W = 32; final SPOREWALKER_H = 40; final SPOREWALKER_HP = 2;  final SPOREWALKER_SPEED = 80;
+final GLOWMOTH_W = 36;    final GLOWMOTH_H = 28;   final GLOWMOTH_HP = 1;    final GLOWMOTH_SPEED = 200;
+final FUNGAL_TURRET_W = 48; final FUNGAL_TURRET_H = 56;
+final SPORE_MOTHER_W = 96; final SPORE_MOTHER_H = 96; final SPORE_MOTHER_HP = 30;
+
+// Biome 2: Crystal
+final CRYSTAL_GOLEM_W = 56; final CRYSTAL_GOLEM_H = 64; final CRYSTAL_GOLEM_HP = 5; final CRYSTAL_GOLEM_SPEED = 70;
+final SHARD_BAT_W = 48; final SHARD_BAT_H = 36; final SHARD_BAT_SPEED = 220;
+final MIRROR_SLIME_W = 44; final MIRROR_SLIME_H = 36; final MIRROR_SLIME_SPEED = 100;
+final CRYSTAL_WYRM_W = 80; final CRYSTAL_WYRM_H = 80; final CRYSTAL_WYRM_HP = 40;
+
+// Biome 3: Thermal
+final MAGMA_SLUG_W = 48;  final MAGMA_SLUG_H = 32;  final MAGMA_SLUG_HP = 3;  final MAGMA_SLUG_SPEED = 60;
+final EMBER_WASP_W = 28; final EMBER_WASP_H = 24; final EMBER_WASP_SPEED = 300;
+final FORGE_SENTINEL_W = 56; final FORGE_SENTINEL_H = 64;
+final FORGE_SENTINEL_SPEED = 100; final FORGE_SENTINEL_CHARGE = 600;
+final MAGMA_CORE_W = 112; final MAGMA_CORE_H = 112; final MAGMA_CORE_HP = 50;
+
+// Biome 4: Frozen
+final ICE_WRAITH_W = 40; final ICE_WRAITH_H = 48; final ICE_WRAITH_SPEED = 150;
+final FROST_BEETLE_W = 48; final FROST_BEETLE_H = 40;
+final FROST_BEETLE_SPEED = 180; final FROST_BEETLE_ROLL = 500;
+
+// Biome 5: Ruins
+final MOSS_GOLEM_W = 64; final MOSS_GOLEM_H = 72; final MOSS_GOLEM_SPEED = 50;
+final RUIN_GUARDIAN_W = 56; final RUIN_GUARDIAN_H = 72; final RUIN_GUARDIAN_SPEED = 80;
+
+// Biome 6: Corrupted
+final SHADOW_CLONE_W = 40; final SHADOW_CLONE_H = 58;
+final ARCHITECT_W = 96; final ARCHITECT_H = 112; final ARCHITECT_HP = 80;
+
+// Universal
+final PATROL_DRONE_SPEED = 150;
+final BOMB_CARRIER_SPEED = 120;
+
+// ═══ Pickup types ═══
+final PICKUP_COIN = 0;
+final PICKUP_HEALTH = 1;
+final PICKUP_SPEED = 2;
+final PICKUP_SHIELD = 3;
+final PICKUP_RAPIDFIRE = 4;
+final PICKUP_GEM = 5;
+final PICKUP_HP_UP = 6;
+final PICKUP_KEY = 7;
+
+// ═══ Player states ═══
+final PS_IDLE = 0;
+final PS_RUN = 1;
+final PS_JUMP = 2;
+final PS_FALL = 3;
+final PS_DJUMP = 4;
+final PS_WALLSLIDE = 5;
+final PS_HURT = 6;
+final PS_DEAD = 7;
+
+// ═══ Ability flags (bitmask) ═══
+final ABILITY_WALL_JUMP = 1;
+final ABILITY_DOUBLE_JUMP = 2;
+final ABILITY_DASH = 4;
+final ABILITY_CHARGE_SHOT = 8;
+final ABILITY_GROUND_POUND = 16;
+final ABILITY_GRAPPLE = 32;
+
+// ═══ Animation timing ═══
+final ANIM_IDLE_MS = 160;
+final ANIM_RUN_MS = 80;
+final SLIME_ANIM_MS = 320;
+final BAT_ANIM_MS = 200;
+final LAVA_ANIM_MS = 320;
+
+// ═══ Input actions ═══
+final ACT_LEFT = 0;
+final ACT_RIGHT = 1;
+final ACT_UP = 2;
+final ACT_DOWN = 3;
+final ACT_JUMP = 4;
+final ACT_SHOOT = 5;
+final ACT_CONFIRM = 6;
+final ACT_CANCEL = 7;
+
+// ═══ Level count ═══
+final LEVEL_COUNT = 10;
+final LEVEL_HEIGHT = 17;
+final GROUND_ROW = 15;
+final FLOOR_ROW = 16;
+
+// ═══ Biome themes ═══
+final THEME_JUNGLE = 0;
+final THEME_FUNGAL = 1;
+final THEME_CRYSTAL = 2;
+final THEME_GRASSLANDS = 3;
+final THEME_LAKE = 4;
+final THEME_VOLCANO = 5;
+final THEME_RUINS = 6;
+final THEME_FROZEN = 7;
+final THEME_SKY = 8;
+final THEME_CORE = 9;
+// Theme aliases (used by camera backgrounds)
+final THEME_CAVE = 2;
+final THEME_STATION = 8;
+
+// ═══ Parallax / Camera ═══
+final PARA_CLOUD = 8;
+final PARA_BUSH = 70;
+final PARA_CAVE_PILLAR = 40;
+final BIOME_JUNGLE_END = 49;
+final BIOME_CAVE_END = 99;
+final BIOME_HULL_END = 49;
+final BIOME_REACTOR_END = 99;
+final BIOME_BLEND_TILES = 10;
+
+// ═══ Tile aliases ═══
+final TILE_HULL_PLATE = 30;
+final TILE_SIGN_END = 14;
+
+// ═══ Input aliases ═══
+final ACT_BACK = 7;
+
+// ═══ Sound effect IDs ═══
+final SFX_JUMP = 0;
+final SFX_LASER = 1;
+final SFX_HIT = 2;
+final SFX_COIN = 3;
+final SFX_POWERUP = 4;
+final SFX_EXPLODE = 5;
+
+// ═══ Timing ═══
+final DEATH_TIMER_MS = 1500;
+final SPEED_DURATION = 300;
+final RAPIDFIRE_DURATION = 300;
+final EASE_OUT_QUAD = 2;
+final COL_BULLET = 4448511;
+
+// ═══ Physics (extended) ═══
+final DT_MAX = 50;
+final PLAYER_DJUMP = -1200;
+final PLAYER_ACCEL = 68;
+final PLAYER_AIR_ACCEL = 38;
+final PLAYER_DECEL = 83;
+final WALL_SLIDE_SPEED = 225;
+final WALL_JUMP_VX = 750;
+final WALL_JUMP_VY = -1125;
+final COYOTE_MS = 96;
+final JUMP_BUFFER_MS = 128;
+final IFRAMES_MS = 960;
+
+// ═══ Projectiles ═══
+final BULLET_SPEED = 1200;
+final BULLET_W = 12;
+final BULLET_H = 6;
+final MAX_BULLETS = 16;
+final SHOOT_COOLDOWN_MS = 192;
+final SPEED_DURATION_MS = 4800;
+final RAPIDFIRE_DURATION_MS = 4800;
+
+// ═══ Pickup sizes ═══
+final COIN_SIZE = 32;
+final POWERUP_SIZE = 36;
+final MAX_PICKUPS = 48;
+final MAX_ENEMIES = 64;
+
+// ═══ Abilities ═══
+final DASH_SPEED = 2000;
+final DASH_MS = 160;
+final DASH_COOLDOWN_MS = 480;
+final CHARGE_PARTIAL_MS = 320;
+final CHARGE_FULL_MS = 640;
+final POUND_SPEED = 2500;
+
+// ═══ Scoring ═══
+final COIN_SCORE = 100;
+final ENEMY_SCORE = 250;
+final BOSS_SCORE = 5000;
+final TIME_BONUS_PER_SEC = 10;
+
+// ═══ Config.Load — tunable values from JSON ═══
+// Engine API #10: Config.Load reads from config.json with dotted path access
+class GameConfig {
+    expose Integer gravity;
+    expose Integer maxFall;
+    expose Integer playerSpeed;
+    expose Integer playerJump;
+    expose Integer playerDjump;
+    expose Integer playerAccel;
+    expose Integer playerAirAccel;
+    expose Integer playerDecel;
+    expose Integer iframesMs;
+    expose Boolean debug;
+
+    expose func init() {
+        gravity = GRAVITY;
+        maxFall = MAX_FALL;
+        playerSpeed = PLAYER_SPEED;
+        playerJump = PLAYER_JUMP;
+        playerDjump = PLAYER_DJUMP;
+        playerAccel = PLAYER_ACCEL;
+        playerAirAccel = PLAYER_AIR_ACCEL;
+        playerDecel = PLAYER_DECEL;
+        iframesMs = IFRAMES_MS;
+        debug = false;
+    }
+
+    expose func load() {
+        var cfg = Config.Load("examples/games/xenoscape/config.json");
+        gravity = cfg.GetInt("physics.gravity", GRAVITY);
+        maxFall = cfg.GetInt("physics.maxFall", MAX_FALL);
+        playerSpeed = cfg.GetInt("physics.playerSpeed", PLAYER_SPEED);
+        playerJump = cfg.GetInt("physics.playerJump", PLAYER_JUMP);
+        playerDjump = cfg.GetInt("physics.playerDjump", PLAYER_DJUMP);
+        playerAccel = cfg.GetInt("physics.playerAccel", PLAYER_ACCEL);
+        playerAirAccel = cfg.GetInt("physics.playerAirAccel", PLAYER_AIR_ACCEL);
+        playerDecel = cfg.GetInt("physics.playerDecel", PLAYER_DECEL);
+        iframesMs = cfg.GetInt("physics.iframesMs", IFRAMES_MS);
+        debug = cfg.GetBool("debug", false);
+    }
+}

@@ -1,0 +1,345 @@
+// =============================================================================
+// Achievement System — Track and display player accomplishments
+// =============================================================================
+// 30+ achievements across categories: exploration, combat, bosses, collection,
+// speedrunning, and secret challenges. Uses Viper.Game.AchievementTracker for
+// bitmask unlock tracking, stat counters, and notification popup rendering.
+//
+// Custom screen drawing (achievement grid with categories) is kept locally;
+// the tracker handles unlock logic, stats, and notification animations.
+//
+// Viper APIs: Viper.Game.AchievementTracker, Canvas drawing, Color.RGB
+// =============================================================================
+
+module achievements;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind "./config";
+bind "./palette";
+
+// Achievement categories
+final ACH_CAT_EXPLORE = 0;
+final ACH_CAT_COMBAT = 1;
+final ACH_CAT_BOSS = 2;
+final ACH_CAT_COLLECT = 3;
+final ACH_CAT_SPEED = 4;
+final ACH_CAT_SECRET = 5;
+
+// Total number of achievements
+final ACH_COUNT = 32;
+
+// Stat counter IDs (maps to AchievementTracker's 32 stat slots)
+final STAT_ENEMIES_KILLED = 0;
+final STAT_COINS_COLLECTED = 1;
+final STAT_DEATHS = 2;
+final STAT_JUMPS = 3;
+final STAT_BULLETS_SHOT = 4;
+final STAT_DASHES_USED = 5;
+final STAT_POUNDS_USED = 6;
+final STAT_GEMS_COLLECTED = 7;
+final STAT_LORE_FOUND = 8;
+final STAT_BOSSES_DEFEATED = 9;
+final STAT_LONGEST_COMBO = 10;
+final STAT_CURRENT_COMBO = 11;
+final STAT_SPEEDRUN_BEST = 12;
+
+class AchievementSystem {
+    expose func init() {}
+    hide Palette pal;
+    hide AchievementTracker tracker;
+    hide List[Integer] achCats;      // Category per achievement (for screen display)
+    hide List[Integer] achColors;    // Icon color per achievement (for screen display)
+    hide List[String] achNames;      // Cached locally for custom screen rendering
+    hide List[String] achDescs;
+
+    expose func initAchievements(p: Palette) {
+        pal = p;
+        tracker = AchievementTracker.New(ACH_COUNT);
+        achCats = [];
+        achColors = [];
+        achNames = [];
+        achDescs = [];
+        tracker.SetStat(STAT_SPEEDRUN_BEST, 999999);
+        defineAchievements();
+    }
+
+    hide func defineAchievements() {
+        // ─── Exploration (0-5) ────────────────────────────────────────
+        addAch("First Steps", "Complete the Crash Site tutorial.", ACH_CAT_EXPLORE, Color.RGB(80, 160, 200));
+        addAch("Deep Delver", "Reach the Fungal Caverns.", ACH_CAT_EXPLORE, Color.RGB(80, 200, 60));
+        addAch("Crystal Seeker", "Reach the Crystal Depths.", ACH_CAT_EXPLORE, Color.RGB(100, 140, 220));
+        addAch("Into the Fire", "Reach the Thermal Vents.", ACH_CAT_EXPLORE, Color.RGB(220, 100, 30));
+        addAch("Frozen Frontier", "Reach the Frozen Abyss.", ACH_CAT_EXPLORE, Color.RGB(140, 180, 220));
+        addAch("The Core Awaits", "Reach The Core — the final level.", ACH_CAT_EXPLORE, Color.RGB(200, 60, 255));
+
+        // ─── Combat (6-13) ────────────────────────────────────────────
+        addAch("First Blood", "Defeat your first enemy.", ACH_CAT_COMBAT, Color.RGB(255, 100, 80));
+        addAch("Exterminator", "Defeat 50 enemies total.", ACH_CAT_COMBAT, Color.RGB(255, 120, 60));
+        addAch("Slayer", "Defeat 100 enemies total.", ACH_CAT_COMBAT, Color.RGB(255, 80, 40));
+        addAch("Genocide Route", "Defeat 500 enemies total.", ACH_CAT_COMBAT, Color.RGB(255, 50, 30));
+        addAch("Sharpshooter", "Fire 200 bullets.", ACH_CAT_COMBAT, Color.RGB(200, 220, 255));
+        addAch("Combo Master", "Kill 5 enemies without taking damage.", ACH_CAT_COMBAT, Color.RGB(255, 200, 50));
+        addAch("Dasher", "Use the dash ability 50 times.", ACH_CAT_COMBAT, Color.RGB(100, 200, 255));
+        addAch("Ground Breaker", "Use ground pound 25 times.", ACH_CAT_COMBAT, Color.RGB(200, 100, 255));
+
+        // ─── Bosses (14-18) ───────────────────────────────────────────
+        addAch("Fungal Bane", "Defeat the Spore Mother.", ACH_CAT_BOSS, Color.RGB(80, 200, 60));
+        addAch("Crystal Crusher", "Defeat the Crystal Wyrm.", ACH_CAT_BOSS, Color.RGB(100, 140, 220));
+        addAch("Core Meltdown", "Defeat the Magma Core.", ACH_CAT_BOSS, Color.RGB(255, 120, 30));
+        addAch("System Shutdown", "Defeat The Architect.", ACH_CAT_BOSS, Color.RGB(200, 60, 255));
+        addAch("Boss Rush", "Defeat all 4 major bosses.", ACH_CAT_BOSS, Color.RGB(255, 221, 34));
+
+        // ─── Collection (19-24) ───────────────────────────────────────
+        addAch("Coin Collector", "Collect 100 coins.", ACH_CAT_COLLECT, Color.RGB(255, 221, 34));
+        addAch("Coin Hoarder", "Collect 500 coins.", ACH_CAT_COLLECT, Color.RGB(255, 200, 50));
+        addAch("Gem Hunter", "Collect 25 gems.", ACH_CAT_COLLECT, Color.RGB(100, 200, 255));
+        addAch("Gem Connoisseur", "Collect 100 gems.", ACH_CAT_COLLECT, Color.RGB(80, 180, 255));
+        addAch("Lorekeeper", "Find 10 lore entries.", ACH_CAT_COLLECT, Color.RGB(200, 180, 140));
+        addAch("Archivist", "Find all lore entries.", ACH_CAT_COLLECT, Color.RGB(220, 200, 160));
+
+        // ─── Speed (25-27) ────────────────────────────────────────────
+        addAch("Speed Runner", "Complete any level in under 60 seconds.", ACH_CAT_SPEED, Color.RGB(50, 255, 150));
+        addAch("Lightning Fast", "Complete any level in under 30 seconds.", ACH_CAT_SPEED, Color.RGB(100, 255, 200));
+        addAch("Unstoppable", "Complete a level without taking damage.", ACH_CAT_SPEED, Color.RGB(255, 255, 200));
+
+        // ─── Secret (28-31) ───────────────────────────────────────────
+        addAch("Fully Loaded", "Acquire all 6 abilities.", ACH_CAT_SECRET, Color.RGB(255, 200, 100));
+        addAch("Pacifist", "Complete the Crash Site without killing anything.", ACH_CAT_SECRET, Color.RGB(200, 255, 200));
+        addAch("Resilient", "Die 10 times and keep going.", ACH_CAT_SECRET, Color.RGB(180, 100, 100));
+        addAch("True Ending", "Defeat The Architect with all abilities and 100% lore.", ACH_CAT_SECRET, Color.RGB(255, 255, 255));
+    }
+
+    hide func addAch(name: String, desc: String, cat: Integer, color: Integer) {
+        var idx = achNames.length();
+        tracker.Add(idx, name, desc);
+        achNames.add(name);
+        achDescs.add(desc);
+        achCats.add(cat);
+        achColors.add(color);
+    }
+
+    // ─── Stat tracking (called from game.zia) ─────────────────────────
+
+    expose func onEnemyKilled() {
+        tracker.IncrementStat(STAT_ENEMIES_KILLED, 1);
+        tracker.IncrementStat(STAT_CURRENT_COMBO, 1);
+        var combo = tracker.GetStat(STAT_CURRENT_COMBO);
+        if combo > tracker.GetStat(STAT_LONGEST_COMBO) {
+            tracker.SetStat(STAT_LONGEST_COMBO, combo);
+        }
+        checkCombat();
+    }
+
+    expose func onPlayerHit() {
+        tracker.SetStat(STAT_CURRENT_COMBO, 0);
+    }
+
+    expose func onPlayerDeath() {
+        tracker.IncrementStat(STAT_DEATHS, 1);
+        tracker.SetStat(STAT_CURRENT_COMBO, 0);
+        if tracker.GetStat(STAT_DEATHS) == 10 { tracker.Unlock(30); }
+    }
+
+    expose func onCoinCollected() {
+        tracker.IncrementStat(STAT_COINS_COLLECTED, 1);
+        checkCollection();
+    }
+
+    expose func onGemCollected() {
+        tracker.IncrementStat(STAT_GEMS_COLLECTED, 1);
+        checkCollection();
+    }
+
+    expose func onBulletFired() {
+        tracker.IncrementStat(STAT_BULLETS_SHOT, 1);
+        if tracker.GetStat(STAT_BULLETS_SHOT) == 200 { tracker.Unlock(10); }
+    }
+
+    expose func onDashUsed() {
+        tracker.IncrementStat(STAT_DASHES_USED, 1);
+        if tracker.GetStat(STAT_DASHES_USED) == 50 { tracker.Unlock(12); }
+    }
+
+    expose func onPoundUsed() {
+        tracker.IncrementStat(STAT_POUNDS_USED, 1);
+        if tracker.GetStat(STAT_POUNDS_USED) == 25 { tracker.Unlock(13); }
+    }
+
+    expose func onJump() {
+        tracker.IncrementStat(STAT_JUMPS, 1);
+    }
+
+    expose func onLoreFound(count: Integer) {
+        tracker.SetStat(STAT_LORE_FOUND, count);
+        if count >= 10 { tracker.Unlock(23); }
+    }
+
+    expose func onLevelReached(levelNum: Integer) {
+        if levelNum >= 1 { tracker.Unlock(0); }
+        if levelNum >= 2 { tracker.Unlock(1); }
+        if levelNum >= 3 { tracker.Unlock(2); }
+        if levelNum >= 6 { tracker.Unlock(3); }
+        if levelNum >= 8 { tracker.Unlock(4); }
+        if levelNum >= 10 { tracker.Unlock(5); }
+    }
+
+    expose func onBossDefeated(bossType: Integer) {
+        tracker.IncrementStat(STAT_BOSSES_DEFEATED, 1);
+        if bossType == ENEMY_SPORE_MOTHER { tracker.Unlock(14); }
+        if bossType == ENEMY_CRYSTAL_WYRM { tracker.Unlock(15); }
+        if bossType == ENEMY_MAGMA_CORE { tracker.Unlock(16); }
+        if bossType == ENEMY_ARCHITECT { tracker.Unlock(17); }
+        if tracker.GetStat(STAT_BOSSES_DEFEATED) >= 4 { tracker.Unlock(18); }
+    }
+
+    expose func onLevelComplete(timeMs: Integer, damageTaken: Integer) {
+        if timeMs < 60000 { tracker.Unlock(25); }
+        if timeMs < 30000 { tracker.Unlock(26); }
+        if damageTaken == 0 { tracker.Unlock(27); }
+        if timeMs < tracker.GetStat(STAT_SPEEDRUN_BEST) {
+            tracker.SetStat(STAT_SPEEDRUN_BEST, timeMs);
+        }
+    }
+
+    expose func onAllAbilities() { tracker.Unlock(28); }
+    expose func onAllLore() { tracker.Unlock(24); }
+
+    hide func checkCombat() {
+        var kills = tracker.GetStat(STAT_ENEMIES_KILLED);
+        var combo = tracker.GetStat(STAT_CURRENT_COMBO);
+        if kills >= 1 { tracker.Unlock(6); }
+        if kills >= 50 { tracker.Unlock(7); }
+        if kills >= 100 { tracker.Unlock(8); }
+        if kills >= 500 { tracker.Unlock(9); }
+        if combo >= 5 { tracker.Unlock(11); }
+    }
+
+    hide func checkCollection() {
+        var coins = tracker.GetStat(STAT_COINS_COLLECTED);
+        var gems = tracker.GetStat(STAT_GEMS_COLLECTED);
+        if coins >= 100 { tracker.Unlock(19); }
+        if coins >= 500 { tracker.Unlock(20); }
+        if gems >= 25 { tracker.Unlock(21); }
+        if gems >= 100 { tracker.Unlock(22); }
+    }
+
+    // ─── Query (delegates to tracker) ──────────────────────────────────
+
+    expose func isUnlocked(idx: Integer) -> Boolean {
+        return tracker.IsUnlocked(idx);
+    }
+
+    expose func getUnlockedCount() -> Integer {
+        return tracker.UnlockedCount;
+    }
+
+    // ─── Update + Draw (delegates to tracker notification system) ────
+
+    expose func update(dt: Integer) {
+        tracker.Update(dt);
+    }
+
+    // Draw achievement notification popup (rendered by AchievementTracker)
+    expose func drawNotification(canvas: Canvas) {
+        tracker.Draw(canvas);
+    }
+
+    // Draw full achievements screen
+    expose func drawScreen(canvas: Canvas, selectedIdx: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
+
+        // Panel
+        var px = 80;
+        var py = 40;
+        var pw = SCREEN_W - 160;
+        var ph = SCREEN_H - 80;
+        canvas.Box(px, py, pw, ph, Color.RGB(12, 15, 25));
+        canvas.Frame(px, py, pw, ph, Color.RGB(60, 100, 160));
+
+        // Title + progress (via tracker)
+        var unlocked = tracker.UnlockedCount;
+        var total = tracker.TotalCount;
+        canvas.TextCenteredScaled(py + 15, "ACHIEVEMENTS", Color.RGB(200, 210, 240), 3);
+        canvas.Text(px + pw - 120, py + 22, Int(unlocked) + " / " + Int(total),
+                    Color.RGB(140, 150, 170));
+        canvas.Line(px + 20, py + 50, px + pw - 20, py + 50, Color.RGB(40, 60, 90));
+
+        // Progress bar
+        var barX = px + 20;
+        var barY = py + 55;
+        var barW = pw - 40;
+        var barH = 6;
+        canvas.Box(barX, barY, barW, barH, Color.RGB(20, 25, 40));
+        var fillW = unlocked * barW / total;
+        canvas.Box(barX, barY, fillW, barH, Color.RGB(80, 120, 200));
+
+        // Achievement list (scrollable)
+        var startIdx = 0;
+        if selectedIdx > 12 { startIdx = selectedIdx - 12; }
+        var listY = py + 72;
+        var i = startIdx;
+        while i < achNames.length() and listY < py + ph - 40 {
+            var isUnl = isUnlocked(i);
+            var isSelected = (i == selectedIdx);
+
+            // Row background
+            if isSelected {
+                canvas.Box(px + 10, listY - 2, pw - 20, 36, Color.RGB(25, 30, 50));
+            }
+
+            // Icon
+            var iconColor = Color.RGB(40, 40, 55);
+            if isUnl { iconColor = achColors.get(i); }
+            canvas.Disc(px + 30, listY + 14, 10, iconColor);
+            if isUnl {
+                canvas.Disc(px + 30, listY + 14, 6, Color.RGB(255, 255, 255));
+                canvas.Text(px + 27, listY + 9, "!", Color.RGB(0, 0, 0));
+            } else {
+                canvas.Text(px + 27, listY + 9, "?", Color.RGB(60, 60, 80));
+            }
+
+            // Name
+            var nameColor = Color.RGB(60, 60, 80);
+            if isUnl { nameColor = Color.RGB(220, 230, 255); }
+            if isSelected and isUnl { nameColor = Color.RGB(255, 255, 255); }
+            canvas.Text(px + 50, listY + 2, achNames.get(i), nameColor);
+
+            // Description (only if unlocked)
+            if isUnl {
+                canvas.Text(px + 50, listY + 18, achDescs.get(i), Color.RGB(120, 130, 150));
+            } else {
+                canvas.Text(px + 50, listY + 18, "???", Color.RGB(50, 50, 65));
+            }
+
+            // Category tag
+            if isUnl {
+                var catName = getCategoryName(achCats.get(i));
+                canvas.Text(px + pw - 100, listY + 6, catName, Color.RGB(80, 90, 110));
+            }
+
+            listY = listY + 40;
+            i = i + 1;
+        }
+
+        canvas.TextCenteredScaled(py + ph - 25, "UP/DOWN to browse, ESC to close",
+                                  Color.RGB(60, 70, 90), 1);
+    }
+
+    hide func getCategoryName(cat: Integer) -> String {
+        if cat == ACH_CAT_EXPLORE { return "Explore"; }
+        if cat == ACH_CAT_COMBAT { return "Combat"; }
+        if cat == ACH_CAT_BOSS { return "Boss"; }
+        if cat == ACH_CAT_COLLECT { return "Collect"; }
+        if cat == ACH_CAT_SPEED { return "Speed"; }
+        if cat == ACH_CAT_SECRET { return "Secret"; }
+        return "Other";
+    }
+
+    // ─── Persistence (save/load via tracker bitmask) ──────────────────
+    expose func getMask() -> Integer { return tracker.Mask; }
+    expose func setMask(mask: Integer) { tracker.Mask = mask; }
+    expose func getTotalKills() -> Integer { return tracker.GetStat(STAT_ENEMIES_KILLED); }
+    expose func getTotalCoins() -> Integer { return tracker.GetStat(STAT_COINS_COLLECTED); }
+    expose func getTotalDeaths() -> Integer { return tracker.GetStat(STAT_DEATHS); }
+}

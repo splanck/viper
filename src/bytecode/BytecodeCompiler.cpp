@@ -10,6 +10,7 @@
 #include "il/core/Value.hpp"
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace viper {
@@ -1160,11 +1161,20 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
         emit16(BCOpcode::CALL, static_cast<uint16_t>(it->second));
     } else {
         // External/native call
-        uint32_t nativeIdx = module_.addNativeFunc(
-            instr.callee, static_cast<uint32_t>(instr.operands.size()), instr.result.has_value());
-        emit88(BCOpcode::CALL_NATIVE,
-               static_cast<uint8_t>(nativeIdx),
-               static_cast<uint8_t>(instr.operands.size()));
+        const size_t argCount = instr.operands.size();
+        if (argCount > 0xFFu) {
+            throw std::runtime_error("BytecodeCompiler: CALL_NATIVE supports at most 255 arguments");
+        }
+
+        uint32_t nativeIdx =
+            module_.addNativeFunc(instr.callee, static_cast<uint32_t>(argCount), instr.result.has_value());
+        if (nativeIdx > 0xFFFFu) {
+            throw std::runtime_error(
+                "BytecodeCompiler: CALL_NATIVE supports at most 65535 native references");
+        }
+
+        emit(encodeOp8_16(
+            BCOpcode::CALL_NATIVE, static_cast<uint8_t>(argCount), static_cast<uint16_t>(nativeIdx)));
     }
 
     // Pop arguments, push result if any

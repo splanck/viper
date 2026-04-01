@@ -45,6 +45,18 @@
 // MenuBar Widget (Phase 2)
 //=============================================================================
 
+static vg_menubar_t *rt_gui_menu_owner_from_menu(const vg_menu_t *menu) {
+    return menu ? menu->owner_menubar : NULL;
+}
+
+static vg_menubar_t *rt_gui_menu_owner_from_item(const vg_menu_item_t *item) {
+    return item && item->parent_menu ? item->parent_menu->owner_menubar : NULL;
+}
+
+static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
+    rt_gui_macos_menu_sync_for_menubar(menubar);
+}
+
 void *rt_menubar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_menubar_t *mb = vg_menubar_create((vg_widget_t *)parent);
@@ -52,6 +64,8 @@ void *rt_menubar_new(void *parent) {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
             vg_menubar_set_font(mb, s_current_app->default_font, s_current_app->default_font_size);
+        mb->native_main_menu = rt_gui_macos_menu_register_menubar(mb);
+        rt_gui_menu_sync_menubar(mb);
     }
     return mb;
 }
@@ -61,6 +75,7 @@ void rt_menubar_destroy(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
         return;
+    rt_gui_macos_menu_unregister_menubar((vg_menubar_t *)menubar);
     vg_widget_destroy((vg_widget_t *)menubar);
 }
 
@@ -71,6 +86,7 @@ void *rt_menubar_add_menu(void *menubar, rt_string title) {
     char *ctitle = rt_string_to_cstr(title);
     vg_menu_t *menu = vg_menubar_add_menu((vg_menubar_t *)menubar, ctitle);
     free(ctitle);
+    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
     return menu;
 }
 
@@ -80,6 +96,7 @@ void rt_menubar_remove_menu(void *menubar, void *menu) {
     if (!menubar || !menu)
         return;
     vg_menubar_remove_menu((vg_menubar_t *)menubar, (vg_menu_t *)menu);
+    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
 }
 
 /// @brief Return the count of elements in the menubar.
@@ -111,6 +128,7 @@ void rt_menubar_set_visible(void *menubar, int64_t visible) {
     if (!menubar)
         return;
     vg_widget_set_visible(&((vg_menubar_t *)menubar)->base, visible != 0);
+    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
 }
 
 /// @brief Is the visible of the menubar.
@@ -132,6 +150,7 @@ void *rt_menu_add_item(void *menu, rt_string text) {
     char *ctext = rt_string_to_cstr(text);
     vg_menu_item_t *item = vg_menu_add_item((vg_menu_t *)menu, ctext, NULL, NULL, NULL);
     free(ctext);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
     return item;
 }
 
@@ -144,6 +163,7 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
     vg_menu_item_t *item = vg_menu_add_item((vg_menu_t *)menu, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
     return item;
 }
 
@@ -151,7 +171,9 @@ void *rt_menu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
-    return vg_menu_add_separator((vg_menu_t *)menu);
+    void *item = vg_menu_add_separator((vg_menu_t *)menu);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    return item;
 }
 
 void *rt_menu_add_submenu(void *menu, rt_string title) {
@@ -161,6 +183,7 @@ void *rt_menu_add_submenu(void *menu, rt_string title) {
     char *ctitle = rt_string_to_cstr(title);
     vg_menu_t *submenu = vg_menu_add_submenu((vg_menu_t *)menu, ctitle);
     free(ctitle);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
     return submenu;
 }
 
@@ -170,6 +193,7 @@ void rt_menu_remove_item(void *menu, void *item) {
     if (!menu || !item)
         return;
     vg_menu_remove_item((vg_menu_t *)menu, (vg_menu_item_t *)item);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
 }
 
 /// @brief Remove all entries from the menu.
@@ -178,6 +202,7 @@ void rt_menu_clear(void *menu) {
     if (!menu)
         return;
     vg_menu_clear((vg_menu_t *)menu);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
 }
 
 /// @brief Set the title of the menu.
@@ -188,6 +213,7 @@ void rt_menu_set_title(void *menu, rt_string title) {
     vg_menu_t *m = (vg_menu_t *)menu;
     free(m->title);
     m->title = rt_string_to_cstr(title);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
 /// @brief Get the title of the menu.
@@ -230,6 +256,7 @@ void rt_menu_set_enabled(void *menu, int64_t enabled) {
     if (!menu)
         return;
     ((vg_menu_t *)menu)->enabled = enabled != 0;
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
 }
 
 /// @brief Is the enabled of the menu.
@@ -252,6 +279,7 @@ void rt_menuitem_set_text(void *item, rt_string text) {
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
     free(mi->text);
     mi->text = rt_string_to_cstr(text);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
 /// @brief Get the text of the menuitem.
@@ -273,6 +301,7 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
     free(mi->shortcut);
     mi->shortcut = rt_string_to_cstr(shortcut);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
 /// @brief Get the shortcut of the menuitem.
@@ -299,6 +328,7 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
     } else {
         mi->icon.type = VG_ICON_NONE;
     }
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
 /// @brief Set the checkable of the menuitem.
@@ -310,6 +340,7 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable) {
        When checkable is disabled, also clear the checked state. */
     if (!checkable)
         vg_menu_item_set_checked((vg_menu_item_t *)item, false);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
 /// @brief Is the checkable of the menuitem.
@@ -326,6 +357,7 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
     if (!item)
         return;
     ((vg_menu_item_t *)item)->checked = checked != 0;
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
 /// @brief Is the checked of the menuitem.
@@ -342,6 +374,7 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     if (!item)
         return;
     ((vg_menu_item_t *)item)->enabled = enabled != 0;
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
 /// @brief Is the enabled of the menuitem.

@@ -46,7 +46,7 @@ constexpr uint32_t kBytecodeModuleMagic = 0x01434256;
 /// @brief Current bytecode format version.
 /// @details Incremented whenever the instruction encoding, constant pool
 ///          layout, or module structure changes in an incompatible way.
-constexpr uint32_t kBytecodeVersion = 1;
+constexpr uint32_t kBytecodeVersion = 2;
 
 /// @brief Maximum call stack depth before a StackOverflow trap is raised.
 constexpr uint32_t kMaxCallDepth = 4096;
@@ -195,7 +195,7 @@ enum class BCOpcode : uint8_t {
     JUMP_LONG = 0xB3,     ///< Extended unconditional jump (24-bit offset).
     SWITCH = 0xB4,        ///< Table-driven switch dispatch.
     CALL = 0xB5,          ///< Call bytecode function by index [arg0:arg1].
-    CALL_NATIVE = 0xB6,   ///< Call a native/runtime function.
+    CALL_NATIVE = 0xB6,   ///< Call a native/runtime function [argCount:8][nativeIdx:16].
     CALL_INDIRECT = 0xB7, ///< Indirect call through a function pointer.
     RETURN = 0xB8,        ///< Return TOS from the current function.
     RETURN_VOID = 0xB9,   ///< Return void from the current function.

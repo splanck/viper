@@ -95,6 +95,14 @@ rt_string rt_path_norm(rt_string path);
 /// @return Newly allocated string containing "/" (Unix) or "\" (Windows).
 rt_string rt_path_sep(void);
 
+/// @brief Get the directory containing the running executable.
+/// @return Newly allocated runtime string. Returns "." if detection fails.
+rt_string rt_path_exe_dir_str(void);
+
+/// @brief Get the directory containing the running executable (C string).
+/// @return malloc'd C string (caller must free), or NULL on failure.
+char *rt_path_exe_dir_cstr(void);
+
 #ifdef __cplusplus
 }
 #endif

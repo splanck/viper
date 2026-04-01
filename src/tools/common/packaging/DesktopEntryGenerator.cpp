@@ -37,6 +37,8 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
         os << "Icon=" << params.iconName << "\n";
     if (!params.categories.empty())
         os << "Categories=" << params.categories << "\n";
+    if (!params.workingDir.empty())
+        os << "Path=" << params.workingDir << "\n";
     os << "Terminal=" << (params.terminal ? "true" : "false") << "\n";
 
     // MimeType field for file associations

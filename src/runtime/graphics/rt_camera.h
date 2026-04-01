@@ -130,6 +130,21 @@ void rt_camera_set_bounds(void *camera, int64_t min_x, int64_t min_y, int64_t ma
 /// @brief Clear camera bounds (allow unlimited movement).
 void rt_camera_clear_bounds(void *camera);
 
+/// @brief Smoothly follow a target position with linear interpolation.
+/// Respects deadzone if set. Applies bounds clamping after movement.
+/// @param camera Camera object.
+/// @param target_x Target world X (center of follow).
+/// @param target_y Target world Y (center of follow).
+/// @param lerp_pct Interpolation speed 0-1000 (1000 = instant, 100 = slow smooth).
+void rt_camera_smooth_follow(void *camera, int64_t target_x, int64_t target_y,
+                             int64_t lerp_pct);
+
+/// @brief Set camera deadzone size. Target within the deadzone won't move the camera.
+/// @param camera Camera object.
+/// @param w Deadzone width in pixels (0 = disabled).
+/// @param h Deadzone height in pixels (0 = disabled).
+void rt_camera_set_deadzone(void *camera, int64_t w, int64_t h);
+
 //=========================================================================
 // Visibility Culling
 //=========================================================================

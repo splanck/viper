@@ -28,10 +28,12 @@
 
 #include "rt_animstate.h"
 #include "rt_object.h"
+#include "rt_string.h"
 
 #include <string.h>
 
 extern void rt_trap(const char *msg);
+extern rt_string rt_const_cstr(const char *s);
 
 //=============================================================================
 // Internal Types
@@ -46,6 +48,7 @@ typedef struct {
     int64_t frame_duration; // frames per animation frame
     int8_t loop;
     int8_t valid;
+    char name[32];          // String name for named state lookup (null-terminated)
 } anim_clip_t;
 
 typedef struct {
@@ -67,6 +70,10 @@ typedef struct {
 
     // Current clip cache
     int32_t active_clip_idx; // -1 if none
+
+    // Frame event (fires when animation reaches a specific frame)
+    int64_t event_frame;     // Frame to trigger on (-1 = disabled)
+    int8_t event_triggered;  // Set to 1 when event_frame is reached
 } animstate_impl;
 
 //=============================================================================
@@ -110,6 +117,7 @@ void *rt_animstate_new(void) {
     a->current_state = -1;
     a->previous_state = -1;
     a->active_clip_idx = -1;
+    a->event_frame = -1;
     return a;
 }
 
@@ -229,6 +237,10 @@ void rt_animstate_update(void *asm_) {
             }
         }
     }
+
+    // Check frame event
+    if (a->event_frame >= 0 && a->current_frame == a->event_frame)
+        a->event_triggered = 1;
 }
 
 /// @brief Reset the just_entered and just_exited one-shot flags (call once per frame after checking).
@@ -297,4 +309,68 @@ int64_t rt_animstate_progress(void *asm_) {
         elapsed = -elapsed;
     }
     return (elapsed * 100) / total;
+}
+
+//=============================================================================
+// Named State API
+//=============================================================================
+
+void rt_animstate_add_named(void *asm_, void *name_str,
+                            int64_t start, int64_t end, int64_t dur, int8_t loop) {
+    if (!asm_ || !name_str)
+        return;
+    animstate_impl *a = get(asm_);
+    int64_t id = a->clip_count; // auto-assign sequential ID
+    rt_animstate_add_state(asm_, id, start, end, dur, loop);
+    // Store name in the clip (clip_count was incremented by add_state)
+    if (id < ANIMSTATE_MAX_CLIPS) {
+        const char *cname = rt_string_cstr((rt_string)name_str);
+        if (cname) {
+            strncpy(a->clips[id].name, cname, 31);
+            a->clips[id].name[31] = '\0';
+        }
+    }
+}
+
+void rt_animstate_play(void *asm_, void *name_str) {
+    if (!asm_ || !name_str)
+        return;
+    animstate_impl *a = get(asm_);
+    const char *cname = rt_string_cstr((rt_string)name_str);
+    if (!cname)
+        return;
+    for (int32_t i = 0; i < a->clip_count; i++) {
+        if (a->clips[i].valid && strcmp(a->clips[i].name, cname) == 0) {
+            rt_animstate_transition(asm_, a->clips[i].state_id);
+            return;
+        }
+    }
+}
+
+void *rt_animstate_current_name(void *asm_) {
+    if (!asm_)
+        return (void *)rt_const_cstr("");
+    animstate_impl *a = get(asm_);
+    if (a->active_clip_idx >= 0 && a->active_clip_idx < a->clip_count)
+        return (void *)rt_const_cstr(a->clips[a->active_clip_idx].name);
+    return (void *)rt_const_cstr("");
+}
+
+void rt_animstate_set_event_frame(void *asm_, int64_t frame) {
+    if (!asm_)
+        return;
+    animstate_impl *a = get(asm_);
+    a->event_frame = frame;
+    a->event_triggered = 0;
+}
+
+int8_t rt_animstate_event_fired(void *asm_) {
+    if (!asm_)
+        return 0;
+    animstate_impl *a = get(asm_);
+    if (a->event_triggered) {
+        a->event_triggered = 0; // auto-clear
+        return 1;
+    }
+    return 0;
 }

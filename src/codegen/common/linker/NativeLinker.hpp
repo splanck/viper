@@ -38,6 +38,7 @@ struct NativeLinkerOptions {
     LinkPlatform platform = detectLinkPlatform();
     LinkArch arch = detectLinkArch();
     std::string entrySymbol = "main"; ///< Entry point symbol name.
+    std::vector<std::string> extraObjPaths; ///< Additional .o files to link (e.g. asset blob).
 };
 
 /// Run the native linker.

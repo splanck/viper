@@ -425,6 +425,50 @@ viper_add_test(test_stl_load
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestStlLoad.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_rt_behavior
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestBehavior.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_game_menu
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameMenu.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_tilemap_anim
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestTilemapAnim.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_raycast_2d
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRaycast2D.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_scene_manager
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestSceneManager.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_entity
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestEntity.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_animstate_named
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimStateNamed.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_camera_enhance
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestCameraEnhance.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_vpa_format
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestVpaFormat.cpp
+        LIBS viper_runtime viper_packaging viper_test_common)
+
+viper_add_test(test_rt_asset_manager
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAssetManager.cpp
+        LIBS viper_runtime viper_packaging viper_test_common)
+
+viper_add_test(test_rt_path_exe_dir
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestPathExeDir.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
         LIBS fe_basic)

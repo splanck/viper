@@ -22,6 +22,7 @@
 #include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/asset/AssetCompiler.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/project_loader.hpp"
 #include "tools/common/source_loader.hpp"
@@ -462,9 +463,45 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                 return 1;
             }
         }
-        int rc = viper::tools::compileToNative(tempIlPath, config.outputPath, arch);
+
+        // Compile assets (embed → blob, pack → .vpa files)
+        std::string assetBlobPath;
+        std::string assetObjPath;
+        if (!proj.embedAssets.empty() || !proj.packGroups.empty()) {
+            std::string outputDir =
+                std::filesystem::path(config.outputPath).parent_path().string();
+            if (outputDir.empty())
+                outputDir = ".";
+
+            std::string assetErr;
+            auto bundle = viper::asset::compileAssets(proj, outputDir, assetErr);
+            if (!bundle) {
+                std::cerr << "error: asset compilation failed: " << assetErr << "\n";
+                std::filesystem::remove(tempIlPath);
+                return 1;
+            }
+
+            // Write asset blob to .o using Viper's own object file writer
+            if (!bundle->embeddedBlob.empty()) {
+                assetBlobPath = viper::tools::generateTempAssetPath();
+                assetObjPath = assetBlobPath + ".o";
+                if (!viper::asset::writeAssetBlobObject(
+                        bundle->embeddedBlob, assetObjPath, assetErr)) {
+                    std::cerr << "error: " << assetErr << "\n";
+                    std::filesystem::remove(tempIlPath);
+                    return 1;
+                }
+            }
+        }
+
+        int rc = viper::tools::compileToNative(
+            tempIlPath, config.outputPath, arch, assetBlobPath, assetObjPath);
         std::error_code ec;
         std::filesystem::remove(tempIlPath, ec);
+        if (!assetBlobPath.empty())
+            std::filesystem::remove(assetBlobPath, ec);
+        if (!assetObjPath.empty())
+            std::filesystem::remove(assetObjPath, ec);
         return rc;
     }
 

@@ -135,6 +135,7 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent) {
 
     // State
     menubar->menu_active = false;
+    menubar->native_main_menu = false;
 
     // Set size
     menubar->base.constraints.min_height = menubar->height;
@@ -161,18 +162,31 @@ static void menubar_destroy(vg_widget_t *widget) {
         free_menu(menu);
         menu = next;
     }
+
+    vg_accel_entry_t *entry = menubar->accel_table;
+    while (entry) {
+        vg_accel_entry_t *next = entry->next;
+        free(entry);
+        entry = next;
+    }
+    menubar->accel_table = NULL;
 }
 
 static void menubar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     (void)available_height;
 
+    float target_height = menubar->native_main_menu ? 0.0f : menubar->height;
+    widget->constraints.min_height = target_height;
+    widget->constraints.preferred_height = target_height;
     widget->measured_width = available_width > 0 ? available_width : 400;
-    widget->measured_height = menubar->height;
+    widget->measured_height = target_height;
 }
 
 static void menubar_paint(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
+    if (menubar->native_main_menu)
+        return;
     vgfx_window_t win = (vgfx_window_t)canvas;
 
     // Draw menubar background
@@ -233,6 +247,8 @@ static void menubar_paint(vg_widget_t *widget, void *canvas) {
 // Paint overlay - called after all widgets are painted to draw popups on top
 static void menubar_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
+    if (menubar->native_main_menu)
+        return;
 
     // Only draw if a menu is open
     if (!menubar->open_menu || !menubar->font)
@@ -409,6 +425,8 @@ static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x) {
 
 static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
+    if (menubar->native_main_menu)
+        return false;
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
@@ -630,6 +648,7 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
     menu->item_count = 0;
     menu->open = false;
     menu->enabled = true;
+    menu->owner_menubar = menubar;
 
     // Add to end of list
     if (menubar->last_menu) {
@@ -663,6 +682,7 @@ vg_menu_item_t *vg_menu_add_item(
     item->enabled = true;
     item->checked = false;
     item->separator = false;
+    item->parent_menu = menu;
     item->submenu = NULL;
 
     // Add to end of list
@@ -689,6 +709,7 @@ vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu) {
 
     item->separator = true;
     item->enabled = false;
+    item->parent_menu = menu;
 
     // Add to end of list
     if (menu->last_item) {
@@ -717,6 +738,8 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
         return NULL;
 
     item->submenu->title = title ? strdup(title) : strdup("Submenu");
+    item->submenu->owner_menubar = menu->owner_menubar;
+    item->submenu->enabled = true;
 
     return item->submenu;
 }

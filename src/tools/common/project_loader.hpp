@@ -74,6 +74,26 @@ struct ProjectConfig {
 
     /// @brief Package configuration (from package-* directives).
     viper::pkg::PackageConfig packageConfig;
+
+    // ── Asset embedding ─────────────────────────────────────────────────
+
+    /// @brief An asset path to embed directly into the executable.
+    struct EmbedEntry {
+        std::string sourcePath; ///< File or directory, relative to project root.
+    };
+
+    /// @brief A named group of assets to pack into a .vpa file.
+    struct PackGroup {
+        std::string name;                     ///< Pack name → produces <name>.vpa.
+        std::vector<std::string> sources;     ///< File/dir paths relative to project root.
+        bool compressed{false};               ///< DEFLATE compress entries.
+    };
+
+    /// @brief Assets to embed in the executable's .rodata section.
+    std::vector<EmbedEntry> embedAssets;
+
+    /// @brief Named groups of assets to pack into .vpa files.
+    std::vector<PackGroup> packGroups;
 };
 
 /// @brief Resolve a project from a CLI target path.

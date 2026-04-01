@@ -1,0 +1,5 @@
+# XENOSCAPE — Metroidvania sidescroller (engine showcase rewrite)
+project xenoscape
+version 2.0.0
+lang zia
+entry main.zia

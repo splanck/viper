@@ -106,6 +106,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
         dep.iconName = exeName;
         dep.categories = pkg.category;
         dep.terminal = false;
+        dep.workingDir = "/usr/share/" + pkgName;
         dep.fileAssociations = pkg.fileAssociations;
         auto desktop = generateDesktopEntry(dep);
         std::vector<uint8_t> ddata(desktop.begin(), desktop.end());
