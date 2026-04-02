@@ -375,6 +375,24 @@ class Sema {
     /// @return The return type, or nullptr if not found.
     ///
     /// @details Works for both runtime (extern) functions and user-defined functions.
+    TypeRef normalizeRuntimeSurfaceType(TypeRef type) const {
+        if (!type)
+            return nullptr;
+        if (type->kind == TypeKindSem::Optional) {
+            TypeRef inner = normalizeRuntimeSurfaceType(type->innerType());
+            return inner ? types::optional(inner) : type;
+        }
+        if (type->kind != TypeKindSem::Ptr || type->name.empty())
+            return type;
+        if (type->name == "Viper.Collections.List")
+            return types::list(types::unknown());
+        if (type->name == "Viper.Collections.Map")
+            return types::map(types::string(), types::unknown());
+        if (type->name == "Viper.Collections.Set")
+            return types::set(types::unknown());
+        return type;
+    }
+
     TypeRef functionReturnType(const std::string &name) {
         Symbol *sym = lookupSymbol(name);
         if (!sym || sym->kind != Symbol::Kind::Function)
@@ -384,8 +402,8 @@ class Sema {
         // Unwrap it to return the actual return type so callers can decide
         // between emitCall (void) and emitCallRet (non-void).
         if (t && t->kind == TypeKindSem::Function)
-            return t->returnType();
-        return t;
+            return normalizeRuntimeSurfaceType(t->returnType());
+        return normalizeRuntimeSurfaceType(t);
     }
 
     /// @brief Find an extern (runtime) function by name.

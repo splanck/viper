@@ -1,0 +1,284 @@
+// lane.zia — Lane geometry: floor, gutters, walls, approach, foul line,
+// arrow markers, dot guides, oil pattern visualization
+module lane;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind "../config";
+
+class LaneBuilder {
+    // Meshes (created once)
+    hide Mesh3D laneMesh;
+    hide Mesh3D oilMesh;
+    hide Mesh3D gutterMesh;
+    hide Mesh3D wallMesh;
+    hide Mesh3D backWallMesh;
+    hide Mesh3D approachMesh;
+    hide Mesh3D foulLineMesh;
+    hide Mesh3D arrowMesh;
+    hide Mesh3D dotMesh;
+    hide Mesh3D sweepBarMesh;
+
+    // Materials
+    hide Material3D laneMat;
+    hide Material3D oilMat;
+    hide Material3D gutterMat;
+    hide Material3D wallMat;
+    hide Material3D backWallMat;
+    hide Material3D approachMat;
+    hide Material3D foulLineMat;
+    hide Material3D arrowMat;
+    hide Material3D dotMat;
+    hide Material3D sweepBarMat;
+
+    // Pre-computed transforms
+    hide Mat4 laneXform;
+    hide Mat4 oilXform;
+    hide Mat4 gutterLeftXform;
+    hide Mat4 gutterRightXform;
+    hide Mat4 wallLeftXform;
+    hide Mat4 wallRightXform;
+    hide Mat4 backWallXform;
+    hide Mat4 approachXform;
+    hide Mat4 foulLineXform;
+
+    // Arrow and dot transforms (lists)
+    hide List[Mat4] arrowXforms;
+    hide List[Mat4] dot1Xforms;
+    hide List[Mat4] dot2Xforms;
+
+    // Oil zone info
+    hide Float oilEndZ;
+    hide Integer oilPattern;
+
+    // Physics bodies
+    hide Physics3DBody floorBody;
+    hide Physics3DBody wallBodyL;
+    hide Physics3DBody wallBodyR;
+    hide Physics3DBody backWallBody;
+
+    expose func initLane(world: Physics3DWorld, pattern: Integer) {
+        oilPattern = pattern;
+
+        // Determine oil end position based on pattern
+        if (pattern == config.OIL_HOUSE) {
+            oilEndZ = config.OIL_END_HOUSE;
+        } else if (pattern == config.OIL_SPORT) {
+            oilEndZ = config.OIL_END_SPORT;
+        } else {
+            oilEndZ = config.OIL_END_DRY;
+        }
+
+        buildMeshes();
+        buildTransforms();
+        buildPhysics(world);
+    }
+
+    hide func buildMeshes() {
+        var totalLen: Float = config.LANE_LENGTH + config.LANE_APPROACH;
+
+        // ─── Lane surface (dry portion) ───
+        laneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.05, totalLen);
+        laneMat = Material3D.NewColor(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
+        Material3D.SetShininess(laneMat, config.LANE_SHININESS);
+
+        // ─── Oil section (overlaid on lane, slightly above to z-fight-proof) ───
+        var oilLen: Float = oilEndZ - config.OIL_START_Z;
+        if (oilLen < 0.5) { oilLen = 0.5; }
+        oilMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.005, oilLen);
+        oilMat = Material3D.NewColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
+        Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
+        Material3D.SetAlpha(oilMat, 0.6);
+
+        // ─── Gutters ───
+        gutterMesh = Mesh3D.NewBox(config.LANE_GUTTER_W, 0.03, totalLen);
+        gutterMat = Material3D.NewColor(config.GUTTER_COLOR_R, config.GUTTER_COLOR_G, config.GUTTER_COLOR_B);
+
+        // ─── Side walls ───
+        wallMesh = Mesh3D.NewBox(0.05, config.LANE_WALL_H, totalLen);
+        wallMat = Material3D.NewColor(config.WALL_COLOR_R, config.WALL_COLOR_G, config.WALL_COLOR_B);
+
+        // ─── Back wall (behind pins) ───
+        var backW: Float = config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0 + 0.2;
+        backWallMesh = Mesh3D.NewBox(backW, 1.5, 0.1);
+        backWallMat = Material3D.NewColor(config.BACKWALL_COLOR_R, config.BACKWALL_COLOR_G, config.BACKWALL_COLOR_B);
+
+        // ─── Approach area (darker wood) ───
+        approachMesh = Mesh3D.NewBox(config.LANE_WIDTH + 1.0, 0.04, config.LANE_APPROACH);
+        approachMat = Material3D.NewColor(config.APPROACH_COLOR_R, config.APPROACH_COLOR_G, config.APPROACH_COLOR_B);
+
+        // ─── Foul line ───
+        foulLineMesh = Mesh3D.NewBox(config.LANE_WIDTH + 0.1, 0.06, 0.02);
+        foulLineMat = Material3D.NewColor(config.FOUL_LINE_R, config.FOUL_LINE_G, config.FOUL_LINE_B);
+        Material3D.SetEmissiveColor(foulLineMat, config.FOUL_LINE_EMISSIVE, 0.02, 0.02);
+
+        // ─── Arrow guide markers ───
+        arrowMesh = Mesh3D.NewBox(0.03, 0.055, 0.15);
+        arrowMat = Material3D.NewColor(config.ARROW_COLOR_R, config.ARROW_COLOR_G, config.ARROW_COLOR_B);
+
+        // ─── Dot guide markers ───
+        dotMesh = Mesh3D.NewSphere(0.012, 6);
+        dotMat = Material3D.NewColor(0.5, 0.4, 0.3);
+
+        // ─── Sweep bar ───
+        var sweepW: Float = config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0;
+        sweepBarMesh = Mesh3D.NewBox(sweepW, 0.08, 0.15);
+        sweepBarMat = Material3D.NewColor(config.SWEEP_COLOR_R, config.SWEEP_COLOR_G, config.SWEEP_COLOR_B);
+        Material3D.SetShininess(sweepBarMat, 40.0);
+    }
+
+    hide func buildTransforms() {
+        var totalLen: Float = config.LANE_LENGTH + config.LANE_APPROACH;
+        var laneZCenter: Float = (config.LANE_LENGTH - config.LANE_APPROACH) / 2.0;
+
+        // Lane floor
+        laneXform = Mat4.Translate(0.0, -0.025, laneZCenter);
+
+        // Oil overlay
+        var oilLen: Float = oilEndZ - config.OIL_START_Z;
+        if (oilLen < 0.5) { oilLen = 0.5; }
+        var oilZCenter: Float = config.OIL_START_Z + oilLen / 2.0;
+        oilXform = Mat4.Translate(0.0, 0.005, oilZCenter);
+
+        // Gutters
+        var gLeft: Float = -(config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W / 2.0);
+        var gRight: Float = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W / 2.0;
+        gutterLeftXform = Mat4.Translate(gLeft, -0.04, laneZCenter);
+        gutterRightXform = Mat4.Translate(gRight, -0.04, laneZCenter);
+
+        // Walls
+        var wLeft: Float = -(config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W + 0.025);
+        var wRight: Float = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W + 0.025;
+        wallLeftXform = Mat4.Translate(wLeft, config.LANE_WALL_H / 2.0, laneZCenter);
+        wallRightXform = Mat4.Translate(wRight, config.LANE_WALL_H / 2.0, laneZCenter);
+
+        // Back wall
+        backWallXform = Mat4.Translate(0.0, 0.75, config.PIN_Z_OFFSET + 2.0);
+
+        // Approach
+        approachXform = Mat4.Translate(0.0, -0.02, -config.LANE_APPROACH / 2.0);
+
+        // Foul line
+        foulLineXform = Mat4.Translate(0.0, 0.0, 0.0);
+
+        // Arrow markers
+        arrowXforms = [];
+        var halfArrows: Integer = config.LANE_ARROW_COUNT / 2;
+        for (var ai: Integer = -halfArrows; ai <= halfArrows; ai = ai + 1) {
+            arrowXforms.add(Mat4.Translate(
+                toFloat(ai) * config.LANE_ARROW_SPACING,
+                0.0, config.LANE_ARROW_Z));
+        }
+
+        // Dot guides (two rows)
+        dot1Xforms = [];
+        dot2Xforms = [];
+        var halfDots: Integer = config.LANE_DOT_COUNT / 2;
+        for (var di: Integer = -halfDots; di <= halfDots; di = di + 1) {
+            var dx: Float = toFloat(di) * config.LANE_DOT_SPACING;
+            dot1Xforms.add(Mat4.Translate(dx, 0.01, config.LANE_DOT_Z1));
+            dot2Xforms.add(Mat4.Translate(dx, 0.01, config.LANE_DOT_Z2));
+        }
+    }
+
+    hide func buildPhysics(world: Physics3DWorld) {
+        // Static floor
+        floorBody = Physics3DBody.NewAABB(10.0, 0.05, 25.0, 0.0);
+        Physics3DBody.SetStatic(floorBody, true);
+        Physics3DBody.SetPosition(floorBody, 0.0, -0.1, 10.0);
+        Physics3DBody.SetFriction(floorBody, 0.35);
+        Physics3DBody.SetRestitution(floorBody, 0.1);
+        Physics3DBody.set_CollisionLayer(floorBody, config.LAYER_STATIC);
+        Physics3DWorld.Add(world, floorBody);
+
+        // Left wall
+        var wLeft: Float = -(config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W + 0.025);
+        wallBodyL = Physics3DBody.NewAABB(0.1, 0.5, 25.0, 0.0);
+        Physics3DBody.SetStatic(wallBodyL, true);
+        Physics3DBody.SetPosition(wallBodyL, wLeft, 0.25, 10.0);
+        Physics3DBody.SetRestitution(wallBodyL, 0.3);
+        Physics3DBody.set_CollisionLayer(wallBodyL, config.LAYER_STATIC);
+        Physics3DWorld.Add(world, wallBodyL);
+
+        // Right wall
+        var wRight: Float = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W + 0.025;
+        wallBodyR = Physics3DBody.NewAABB(0.1, 0.5, 25.0, 0.0);
+        Physics3DBody.SetStatic(wallBodyR, true);
+        Physics3DBody.SetPosition(wallBodyR, wRight, 0.25, 10.0);
+        Physics3DBody.SetRestitution(wallBodyR, 0.3);
+        Physics3DBody.set_CollisionLayer(wallBodyR, config.LAYER_STATIC);
+        Physics3DWorld.Add(world, wallBodyR);
+
+        // Back wall
+        backWallBody = Physics3DBody.NewAABB(3.0, 1.5, 0.1, 0.0);
+        Physics3DBody.SetStatic(backWallBody, true);
+        Physics3DBody.SetPosition(backWallBody, 0.0, 0.75, config.PIN_Z_OFFSET + 2.0);
+        Physics3DBody.SetRestitution(backWallBody, 0.2);
+        Physics3DBody.set_CollisionLayer(backWallBody, config.LAYER_STATIC);
+        Physics3DWorld.Add(world, backWallBody);
+    }
+
+    // ─── Drawing ───
+
+    expose func draw(canvas: Canvas3D) {
+        // Lane surface
+        Canvas3D.DrawMesh(canvas, laneMesh, laneXform, laneMat);
+
+        // Oil pattern overlay
+        Canvas3D.DrawMesh(canvas, oilMesh, oilXform, oilMat);
+
+        // Gutters
+        Canvas3D.DrawMesh(canvas, gutterMesh, gutterLeftXform, gutterMat);
+        Canvas3D.DrawMesh(canvas, gutterMesh, gutterRightXform, gutterMat);
+
+        // Walls
+        Canvas3D.DrawMesh(canvas, wallMesh, wallLeftXform, wallMat);
+        Canvas3D.DrawMesh(canvas, wallMesh, wallRightXform, wallMat);
+
+        // Back wall
+        Canvas3D.DrawMesh(canvas, backWallMesh, backWallXform, backWallMat);
+
+        // Approach area
+        Canvas3D.DrawMesh(canvas, approachMesh, approachXform, approachMat);
+
+        // Foul line
+        Canvas3D.DrawMesh(canvas, foulLineMesh, foulLineXform, foulLineMat);
+
+        // Arrows
+        for (var i: Integer = 0; i < arrowXforms.Length; i = i + 1) {
+            Canvas3D.DrawMesh(canvas, arrowMesh, arrowXforms.get(i), arrowMat);
+        }
+
+        // Dot guides
+        for (var d1: Integer = 0; d1 < dot1Xforms.Length; d1 = d1 + 1) {
+            Canvas3D.DrawMesh(canvas, dotMesh, dot1Xforms.get(d1), dotMat);
+        }
+        for (var d2: Integer = 0; d2 < dot2Xforms.Length; d2 = d2 + 1) {
+            Canvas3D.DrawMesh(canvas, dotMesh, dot2Xforms.get(d2), dotMat);
+        }
+    }
+
+    // Draw the sweep bar at a given Y position
+    expose func drawSweepBar(canvas: Canvas3D, sweepY: Float) {
+        var sweepXform = Mat4.Translate(0.0, sweepY, config.PIN_Z_OFFSET + 0.3);
+        Canvas3D.DrawMesh(canvas, sweepBarMesh, sweepXform, sweepBarMat);
+    }
+
+    // ─── Oil Pattern Queries ───
+
+    // Get the ball friction at a given Z position (oil reduces friction)
+    expose func getFrictionAtZ(z: Float) -> Float {
+        if (z >= config.OIL_START_Z && z <= oilEndZ) {
+            return config.OIL_FRICTION_OILED;
+        }
+        return config.OIL_FRICTION_DRY;
+    }
+
+    expose func getOilPattern() -> Integer {
+        return oilPattern;
+    }
+
+    expose func getOilEndZ() -> Float {
+        return oilEndZ;
+    }
+}

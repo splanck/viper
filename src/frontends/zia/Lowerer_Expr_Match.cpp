@@ -468,6 +468,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
                             }
                         }
                         storeToSlot(resultSlot, bodyValue, ilResultType);
+                        consumeDeferred(bodyValue);
                     }
                 }
 
@@ -495,6 +496,8 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
             if (hasResult) {
                 Value result = loadFromSlot(resultSlot, ilResultType);
                 removeSlot(resultSlot);
+                if (needsRelease(resultType))
+                    deferRelease(result, isStringType(resultType));
                 return {result, ilResultType};
             }
             return {Value::constInt(0), Type(Type::Kind::Void)};
@@ -568,6 +571,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
                     }
                 }
                 storeToSlot(resultSlot, bodyValue, ilResultType);
+                consumeDeferred(bodyValue);
             }
         }
 
@@ -608,6 +612,8 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
     if (hasResult) {
         Value result = loadFromSlot(resultSlot, ilResultType);
         removeSlot(resultSlot);
+        if (needsRelease(resultType))
+            deferRelease(result, isStringType(resultType));
         return {result, ilResultType};
     }
 

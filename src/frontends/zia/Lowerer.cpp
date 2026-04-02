@@ -77,11 +77,29 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
     module_ = std::make_unique<Module>();
     builder_ = std::make_unique<il::build::IRBuilder>(*module_);
     locals_.clear();
+    localTypes_.clear();
+    slots_.clear();
     usedExterns_.clear();
     definedFunctions_.clear();
+    structTypes_.clear();
+    classTypes_.clear();
+    interfaceTypes_.clear();
+    enumVariantValues_.clear();
+    globalConstants_.clear();
+    globalVariables_.clear();
+    globalInitializers_.clear();
     pendingClassInstantiations_.clear();
     pendingStructInstantiations_.clear();
     pendingFunctionInstantiations_.clear();
+    asyncOwnedValues_.clear();
+    deferredTemps_.clear();
+    currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
+    currentStructType_ = nullptr;
+    currentClassType_ = nullptr;
+    lambdaCounter_ = 0;
+    nextClassId_ = 1;
+    nextIfaceId_ = 1;
 
     // Setup string table emitter
     stringTable_.setEmitter([this](const std::string &label, const std::string &content) {

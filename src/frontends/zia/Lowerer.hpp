@@ -339,11 +339,16 @@ class Lowerer {
     /// Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, TypeRef> globalVariables_;
 
-    /// @brief Initial values for mutable global variables with literal initializers.
-    /// @details Stores literal initializer values that need to be stored to
-    /// runtime storage during module initialization (e.g., `var counter = 10;`).
-    /// Uses unordered_map for O(1) lookup instead of O(log n).
-    std::unordered_map<std::string, Value> globalInitializers_;
+    /// @brief Ordered mutable global initializer entries lowered at module startup.
+    /// @details Preserves declaration order so later global initializers can
+    ///          depend on earlier mutable globals. Each initializer is lowered
+    ///          as a real expression inside `start()`.
+    struct GlobalInitializer {
+        std::string name;
+        TypeRef type;
+        Expr *initializer = nullptr;
+    };
+    std::vector<GlobalInitializer> globalInitializers_;
 
     /// @brief Current expression lowering depth for recursion guard.
     unsigned exprLowerDepth_{0};
@@ -554,6 +559,9 @@ class Lowerer {
     /// @details Handles module-level constants by storing their values in
     /// globalConstants_ for later resolution during identifier lowering.
     void lowerGlobalVarDecl(GlobalVarDecl &decl);
+
+    /// @brief Emit ordered mutable global initializers into the current `start()` body.
+    void emitGlobalInitializers();
 
     /// @brief Lower a method declaration within a type.
     /// @param decl The method declaration.
@@ -810,6 +818,22 @@ class Lowerer {
     /// @param value The i32 value to widen.
     /// @return The widened i64 value.
     Value widenByteToInteger(Value value);
+
+    /// @brief Narrow an Integer (i64) value to Byte (i32) with overflow checking.
+    /// @param value The i64 value to narrow.
+    /// @return The narrowed i32 value.
+    Value narrowIntegerToByte(Value value);
+
+    /// @brief Apply sema-approved coercions to a lowered value.
+    /// @param value The lowered IL value.
+    /// @param valueIlType The current IL type of @p value.
+    /// @param sourceType The semantic source type.
+    /// @param targetType The semantic target type.
+    /// @return The coerced value and IL type.
+    LowerResult coerceValueToType(Value value,
+                                  Type valueIlType,
+                                  TypeRef sourceType,
+                                  TypeRef targetType);
 
     /// @brief Pad missing arguments with default parameter values.
     /// @details Looks up the function declaration and lowers default expressions

@@ -42,15 +42,15 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **Documentation & Code Quality** — 500+ runtime functions documented across all subsystems (GUI, Graphics3D, Game, Sound, Network, Crypto, IO). 39 stale doc files deleted, 70+ factual errors fixed. Bible code audit across 12 chapters. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
+- **Documentation & Code Quality** — 700+ runtime functions documented across all subsystems (GUI, Graphics3D, Game, Sound, Network, Crypto, IO, Input, Threading, Text). All broken auto-generated comment patterns fixed. 39 stale doc files deleted, 70+ factual errors fixed. Bible code audit across 12 chapters. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 73 | +73 |
+| Commits | — | 74 | +74 |
 | Source files | 2,671 | 2,796 | +125 |
-| Production SLOC | ~348K | ~413K | +65K |
+| Production SLOC | ~348K | ~415K | +67K |
 | Test count | 1,351 | 1,388 | +37 |
 
 ---

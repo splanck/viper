@@ -1,0 +1,120 @@
+// renderer.zia — Canvas3D setup, lighting, post-processing, shadows
+module renderer;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+bind "../config";
+
+class Renderer {
+    hide Canvas3D canvas;
+    hide Camera3D cam;
+    hide PostFX3D postfx;
+    hide Light3D sunLight;
+    hide Light3D fillLight;
+    hide Light3D pinSpot;
+
+    expose func initRenderer() {
+        canvas = Canvas3D.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        Say("Backend: " + Canvas3D.get_Backend(canvas));
+
+        var aspect: Float = toFloat(config.WINDOW_WIDTH) / toFloat(config.WINDOW_HEIGHT);
+        cam = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
+
+        // ─── Lighting ───
+        // Main overhead directional (alley ceiling)
+        var mainDir = new Vec3(config.LIGHT_MAIN_DIR_X, config.LIGHT_MAIN_DIR_Y, config.LIGHT_MAIN_DIR_Z);
+        sunLight = Light3D.NewDirectional(mainDir,
+            config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
+        Canvas3D.SetLight(canvas, 0, sunLight);
+
+        // Fill light (soften harsh shadows on pins)
+        var fillDir = new Vec3(config.LIGHT_FILL_DIR_X, config.LIGHT_FILL_DIR_Y, config.LIGHT_FILL_DIR_Z);
+        fillLight = Light3D.NewDirectional(fillDir,
+            config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
+        Canvas3D.SetLight(canvas, 1, fillLight);
+
+        // Pin area spot (warm highlight over pin triangle)
+        var spotPos = new Vec3(config.LIGHT_SPOT_X, config.LIGHT_SPOT_Y, config.LIGHT_SPOT_Z);
+        pinSpot = Light3D.NewPoint(spotPos,
+            config.LIGHT_SPOT_R, config.LIGHT_SPOT_G, config.LIGHT_SPOT_B,
+            config.LIGHT_SPOT_RANGE);
+        Canvas3D.SetLight(canvas, 2, pinSpot);
+
+        // Ambient fill
+        Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
+
+        // ─── Shadows ───
+        Canvas3D.EnableShadows(canvas, 1);
+        Canvas3D.SetShadowBias(canvas, 0.002);
+
+        // ─── Post-processing ───
+        postfx = PostFX3D.New();
+        PostFX3D.AddBloom(postfx, 0.7, 0.3, 3);
+        PostFX3D.AddFXAA(postfx);
+        PostFX3D.AddSSAO(postfx, 0.5, 0.6, 16);
+        PostFX3D.AddVignette(postfx, 0.5, 0.35);
+        PostFX3D.AddColorGrade(postfx, 1.05, 1.1, 1.05);
+        Canvas3D.SetPostFX(canvas, postfx);
+
+        // ─── Fog (subtle, simulates alley depth) ───
+        Canvas3D.SetFog(canvas, 25.0, 80.0,
+            config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
+    }
+
+    expose func getCanvas() -> Canvas3D {
+        return canvas;
+    }
+
+    expose func getCamera() -> Camera3D {
+        return cam;
+    }
+
+    expose func beginFrame() {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
+        Canvas3D.Begin(canvas, cam);
+    }
+
+    expose func endFrame() {
+        Canvas3D.End(canvas);
+    }
+
+    expose func flip() {
+        Canvas3D.Flip(canvas);
+    }
+
+    expose func shouldClose() -> Boolean {
+        return Canvas3D.get_ShouldClose(canvas) != 0;
+    }
+
+    expose func getDeltaTime() -> Float {
+        var raw: Float = toFloat(Canvas3D.get_DeltaTime(canvas)) / 1000.0;
+        if (raw > config.DT_CLAMP) { raw = config.DT_CLAMP; }
+        return raw;
+    }
+
+    expose func getFps() -> Integer {
+        return Canvas3D.get_Fps(canvas);
+    }
+
+    expose func getWidth() -> Integer {
+        return Canvas3D.get_Width(canvas);
+    }
+
+    expose func getHeight() -> Integer {
+        return Canvas3D.get_Height(canvas);
+    }
+
+    // Celebration flash: temporarily boost pin spot intensity
+    expose func flashPinLight(intensity: Float) {
+        Light3D.SetIntensity(pinSpot, intensity);
+        Canvas3D.SetLight(canvas, 2, pinSpot);
+    }
+
+    // Reset pin light to normal
+    expose func resetPinLight() {
+        Light3D.SetIntensity(pinSpot, 1.0);
+        Canvas3D.SetLight(canvas, 2, pinSpot);
+    }
+}

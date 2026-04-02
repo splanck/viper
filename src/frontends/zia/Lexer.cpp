@@ -290,7 +290,7 @@ struct KeywordEntry {
     TokenKind kind;
 };
 
-// Sorted for binary search (48 keywords)
+// Sorted for binary search.
 constexpr std::array<KeywordEntry, 49> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},

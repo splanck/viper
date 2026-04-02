@@ -110,9 +110,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                 // Return the function's return type (the property type)
                 TypeRef funcType = sym->type;
                 if (funcType && funcType->kind == TypeKindSem::Function) {
-                    return funcType->returnType();
+                    return normalizeRuntimeSurfaceType(funcType->returnType());
                 }
-                return funcType;
+                return normalizeRuntimeSurfaceType(funcType);
             }
 
             // Try direct function lookup (e.g., Viper.Result.Ok, Viper.Text.Uuid.New)
@@ -206,8 +206,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                 resolvedFieldGetters_[expr] = getterName;
                 TypeRef funcType = getter->type;
                 if (funcType && funcType->kind == TypeKindSem::Function)
-                    return funcType->returnType();
-                return funcType;
+                    return normalizeRuntimeSurfaceType(funcType->returnType());
+                return normalizeRuntimeSurfaceType(funcType);
             }
         }
 
@@ -343,9 +343,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
             // Return the function's return type (the property type)
             TypeRef funcType = sym->type;
             if (funcType && funcType->kind == TypeKindSem::Function) {
-                return funcType->returnType();
+                return normalizeRuntimeSurfaceType(funcType->returnType());
             }
-            return funcType;
+            return normalizeRuntimeSurfaceType(funcType);
         }
 
         // Fallback: when a runtime function returns obj typed as a different class
@@ -362,8 +362,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                     if (fallbackSym && fallbackSym->kind == Symbol::Kind::Function) {
                         TypeRef funcType = fallbackSym->type;
                         if (funcType && funcType->kind == TypeKindSem::Function)
-                            return funcType->returnType();
-                        return funcType;
+                            return normalizeRuntimeSurfaceType(funcType->returnType());
+                        return normalizeRuntimeSurfaceType(funcType);
                     }
                 }
             }

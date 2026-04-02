@@ -21,6 +21,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
+#include <algorithm>
 #include <functional>
 
 namespace il::frontends::zia {
@@ -108,6 +109,20 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
         }
     }
 
+    std::vector<size_t> captureOffsets(captureInfos.size(), 0);
+    size_t envSize = 0;
+    size_t envAlignment = 1;
+    if (hasCaptures) {
+        for (size_t i = 0; i < captureInfos.size(); ++i) {
+            size_t alignment = getILTypeAlignment(captureInfos[i].type);
+            envAlignment = std::max(envAlignment, alignment);
+            envSize = alignTo(envSize, alignment);
+            captureOffsets[i] = envSize;
+            envSize += getILTypeSize(captureInfos[i].type);
+        }
+        envSize = alignTo(envSize, envAlignment);
+    }
+
     // Save current function context (use index instead of pointer to handle vector reallocation)
     TypeRef savedReturnType = currentReturnType_;
     unsigned savedNextTemp = builder_->saveTempId();
@@ -150,12 +165,11 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
         Value envPtr = Value::temp(blockParams[0].id);
 
         // Load each captured variable from the environment
-        size_t offset = 0;
         for (size_t i = 0; i < captureInfos.size(); ++i) {
             const auto &info = captureInfos[i];
 
             // GEP to get field address within env struct
-            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(offset));
+            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(captureOffsets[i]));
 
             // Load the captured value
             Value capturedVal = emitLoad(fieldAddr, info.type);
@@ -164,9 +178,6 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
             createSlot(info.name, info.type);
             storeToSlot(info.name, capturedVal, info.type);
             localTypes_[info.name] = info.semType ? info.semType : types::unknown();
-
-            // Advance offset by the size of this type
-            offset += getILTypeSize(info.type);
         }
     }
 
@@ -244,21 +255,15 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     // Allocate environment if we have captures
     Value envPtr = Value::null(); // null for no captures
     if (hasCaptures) {
-        size_t envSize = 0;
-        for (const auto &info : captureInfos) {
-            envSize += getILTypeSize(info.type);
-        }
-
         // Allocate environment struct using rt_alloc
         Value envSizeVal = Value::constInt(static_cast<int64_t>(envSize));
         envPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {envSizeVal});
 
         // Store captured values into the environment
-        size_t offset = 0;
-        for (const auto &info : captureInfos) {
-            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(offset));
+        for (size_t i = 0; i < captureInfos.size(); ++i) {
+            const auto &info = captureInfos[i];
+            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(captureOffsets[i]));
             emitStore(fieldAddr, info.value, info.type);
-            offset += getILTypeSize(info.type);
         }
     }
 

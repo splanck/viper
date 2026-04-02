@@ -298,7 +298,9 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr) {
                 Symbol *fnSym = lookupSymbol(fullName);
                 if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern) {
                     autoEvalGetters_[expr] = fullName;
-                    return fnSym->type;
+                    if (fnSym->type && fnSym->type->kind == TypeKindSem::Function)
+                        return normalizeRuntimeSurfaceType(fnSym->type->returnType());
+                    return normalizeRuntimeSurfaceType(fnSym->type);
                 }
                 // For imported runtime classes, return a module-like type so that
                 // field access (e.g., Canvas.New) can be resolved

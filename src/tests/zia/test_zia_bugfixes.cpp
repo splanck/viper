@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "frontends/zia/RuntimeNames.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
@@ -19,9 +20,39 @@
 #include <string>
 
 using namespace il::frontends::zia;
+using namespace il::frontends::zia::runtime;
 using namespace il::support;
 
 namespace {
+
+const il::core::Function *findFunction(const il::core::Module &module, const std::string &name) {
+    for (const auto &fn : module.functions) {
+        if (fn.name == name)
+            return &fn;
+    }
+    return nullptr;
+}
+
+bool hasOpcode(const il::core::Function &fn, il::core::Opcode opcode) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == opcode)
+                return true;
+        }
+    }
+    return false;
+}
+
+size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
+    size_t count = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call && instr.callee == callee)
+                ++count;
+        }
+    }
+    return count;
+}
 
 //===----------------------------------------------------------------------===//
 // Bug #38: Module-Level Mutable Variables
@@ -77,6 +108,29 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Test mutable global initializer expressions lower as ordered startup code.
+TEST(ZiaBugFixes, Bug38_ModuleLevelInitializerExpressionsAreEmitted) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+var seed: Integer = 1;
+var counter: Integer = seed + 2;
+
+func start() {
+}
+)";
+    CompilerInput input{.source = source, .path = "bug38_expr_init.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "rt_modvar_addr_i64"), static_cast<size_t>(3));
+}
+
 //===----------------------------------------------------------------------===//
 // Bug #39: Module-Level Entity Variables
 //===----------------------------------------------------------------------===//
@@ -110,6 +164,56 @@ func start() {
     auto result = compile(input, opts, sm);
 
     EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test qualified zero-argument extern functions remain callable.
+TEST(ZiaBugFixes, ZeroArgExternFunctionsRemainCallable) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Environment;
+
+func start() {
+    var argc = Viper.Environment.GetArgumentCount();
+    Viper.Terminal.SayInt(argc);
+}
+)";
+    CompilerInput input{.source = source, .path = "zero_arg_runtime.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Environment.GetArgumentCount"), static_cast<size_t>(1));
+}
+
+/// @brief Test Byte arguments widen to Integer parameters during lowering.
+TEST(ZiaBugFixes, ByteArgumentsWidenForCalls) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func sink(value: Integer) {
+    Viper.Terminal.SayInt(value);
+}
+
+func start() {
+    var x: Byte = 7;
+    sink(x);
+}
+)";
+    CompilerInput input{.source = source, .path = "byte_call_widen.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "sink"), static_cast<size_t>(1));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1423,6 +1527,139 @@ func greet() {}
         }
     }
     EXPECT_TRUE(sawDuplicate);
+}
+
+/// @brief Test that runtime List.New preserves semantic List behavior.
+TEST(ZiaBugFixes, RuntimeListConstructorPreservesCollectionSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Animal {
+    expose Integer age;
+}
+
+class Dog extends Animal {
+}
+
+func start() {
+    List[Animal] animals = Viper.Collections.List.New();
+    var dog = new Dog();
+    dog.age = 7;
+    animals.Add(dog);
+    Animal first = animals[0];
+    Integer count = animals.Length;
+    Viper.Terminal.SayInt(first.age);
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "runtime_list_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kListNew), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListGet), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListCount), static_cast<size_t>(1));
+}
+
+/// @brief Test that raw List.Get values are contextually unboxed for typed returns.
+TEST(ZiaBugFixes, RawListGetUnboxesToTypedReturn) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Palette {
+    hide List values;
+
+    expose func init() {
+        values = new List();
+        values.Push(42);
+    }
+
+    expose func getFirst() -> Integer {
+        return values.Get(0);
+    }
+}
+
+func start() {
+    var palette = new Palette();
+    Viper.Terminal.SayInt(palette.getFirst());
+}
+)";
+    CompilerInput input{.source = source, .path = "raw_list_get_return.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *getFirstFn = findFunction(result.module, "Palette.getFirst");
+    ASSERT_TRUE(getFirstFn != nullptr);
+    EXPECT_GE(countCallsTo(*getFirstFn, kListGet), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*getFirstFn, kUnboxI64), static_cast<size_t>(1));
+}
+
+/// @brief Test that runtime Map.New preserves semantic Map indexing and properties.
+TEST(ZiaBugFixes, RuntimeMapConstructorPreservesCollectionSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Map[String, Integer] scores = Viper.Collections.Map.New();
+    scores["Ada"] = 42;
+    Integer ada = scores["Ada"];
+    Integer count = scores.Length;
+    Viper.Terminal.SayInt(ada);
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "runtime_map_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kMapNew), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kMapSet), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kMapGet), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kMapCount), static_cast<size_t>(1));
+}
+
+/// @brief Test that runtime Set.New preserves semantic Set methods and properties.
+TEST(ZiaBugFixes, RuntimeSetConstructorPreservesCollectionSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Set[String] names = Viper.Collections.Set.New();
+    Boolean inserted = names.add("Ada");
+    Boolean hasAda = names.contains("Ada");
+    Integer count = names.Length;
+    Viper.Terminal.SayInt(inserted ? 1 : 0);
+    Viper.Terminal.SayInt(hasAda ? 1 : 0);
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "runtime_set_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kSetNew), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kSetPut), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kSetHas), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kSetCount), static_cast<size_t>(1));
 }
 
 } // namespace

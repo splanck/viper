@@ -855,40 +855,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         if (i < paramTypes.size()) {
             TypeRef paramType = paramTypes[i];
             TypeRef argType = sema_.typeOf(arg.value.get());
-            if (paramType && paramType->kind == TypeKindSem::Optional) {
-                TypeRef innerType = paramType->innerType();
-                if (argType && argType->kind == TypeKindSem::Optional) {
-                    argValue = result.value;
-                } else if (argType && argType->kind == TypeKindSem::Unit) {
-                    argValue = Value::null();
-                } else if (innerType) {
-                    argValue = emitOptionalWrap(result.value, innerType);
-                }
-            }
-            // Handle Integer -> Number implicit conversion for function parameters
-            else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
-                     argType->kind == TypeKindSem::Integer) {
-                // Emit sitofp to convert i64 -> f64
-                unsigned convId = nextTempId();
-                il::core::Instr convInstr;
-                convInstr.result = convId;
-                convInstr.op = Opcode::Sitofp;
-                convInstr.type = Type(Type::Kind::F64);
-                convInstr.operands = {argValue};
-                convInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                argValue = Value::temp(convId);
-            }
-            // Handle type coercion when argument type is Unknown but param type is concrete
-            // This happens when indexing into an empty list that was created with []
-            else if (argType && argType->kind == TypeKindSem::Unknown && paramType) {
-                Type ilParamType = mapType(paramType);
-                // If the IL types differ, we need to unbox with the correct target type
-                if (ilParamType.kind != result.type.kind && result.type.kind == Type::Kind::Ptr) {
-                    // The value is boxed (Ptr) but we need the unboxed primitive type
-                    argValue = emitUnbox(result.value, ilParamType).value;
-                }
-            }
+            auto coerced = coerceValueToType(argValue, result.type, argType, paramType);
+            argValue = coerced.value;
         }
 
         args.push_back(argValue);
@@ -1060,14 +1028,10 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
     const auto &paramTypes = funcType->paramTypes();
     for (size_t i = 0; i < expr->args.size(); ++i) {
         auto result = lowerExpr(expr->args[i].value.get());
-        Value argValue = result.value;
-
-        // Widen bytes to integers
-        if (result.type.kind == Type::Kind::I32) {
-            argValue = widenByteToInteger(argValue);
-        }
-
-        args.push_back(argValue);
+        TypeRef argType = sema_.typeOf(expr->args[i].value.get());
+        TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
+        auto coerced = coerceValueToType(result.value, result.type, argType, paramType);
+        args.push_back(coerced.value);
     }
 
     // Queue the instantiated generic function for later lowering

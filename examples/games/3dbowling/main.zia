@@ -1,0 +1,9 @@
+// main.zia — Entry point for 3D Bowling
+module main;
+
+bind "./game";
+
+func start() {
+    var g = new BowlingGame();
+    g.run();
+}

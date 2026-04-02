@@ -322,6 +322,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
             storeInstr.operands = {resultSlot, thenValue};
             storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            consumeDeferred(thenValue);
         }
     }
     emitBr(mergeIdx);
@@ -344,6 +345,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
             storeInstr.operands = {resultSlot, elseValue};
             storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            consumeDeferred(elseValue);
         }
     }
     emitBr(mergeIdx);
@@ -360,8 +362,11 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     loadInstr.operands = {resultSlot};
     loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+    Value resultValue = Value::temp(loadId);
+    if (needsRelease(resultType))
+        deferRelease(resultValue, isStringType(resultType));
 
-    return {Value::temp(loadId), ilResultType};
+    return {resultValue, ilResultType};
 }
 
 //=============================================================================
@@ -410,6 +415,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
             storeInstr.operands = {resultSlot, thenValue};
             storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            consumeDeferred(thenValue);
         }
     }
     emitBr(mergeIdx);
@@ -432,6 +438,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
             storeInstr.operands = {resultSlot, elseValue};
             storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            consumeDeferred(elseValue);
         }
     }
     emitBr(mergeIdx);
@@ -448,8 +455,11 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     loadInstr.operands = {resultSlot};
     loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+    Value resultValue = Value::temp(loadId);
+    if (needsRelease(resultType))
+        deferRelease(resultValue, isStringType(resultType));
 
-    return {Value::temp(loadId), ilResultType};
+    return {resultValue, ilResultType};
 }
 
 } // namespace il::frontends::zia

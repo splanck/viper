@@ -87,8 +87,6 @@ These compiler extensions are **mandatory** for compiling Viper OS. Without them
 
 | Feature | Priority | Usage | Files |
 |---------|----------|-------|-------|
-| GCC-style inline assembly | **CRITICAL** | System calls, exception handling, atomics | `syscall.hpp`, `crt0.c`, `exceptions.cpp` |
-| Explicit register variables | **CRITICAL** | Syscall ABI (`register x0 asm("x0")`) | `syscall.hpp` |
 | `__attribute__((packed))` | **CRITICAL** | ViperFS structures, device drivers | `virtio.hpp`, `ext2.hpp` |
 | `__attribute__((aligned(N)))` | **CRITICAL** | Page tables, DMA buffers | `mmu.cpp`, `virtio.cpp` |
 | `__attribute__((section("...")))` | **CRITICAL** | Linker section placement | `crt0.c`, `kernel.ld` |
@@ -96,8 +94,6 @@ These compiler extensions are **mandatory** for compiling Viper OS. Without them
 | `__attribute__((used))` | High | Prevent dead code elimination | ISR handlers |
 | `__attribute__((naked))` | High | Exception vectors | `exceptions.S` |
 | `__builtin_offsetof(type, member)` | High | VirtIO drivers, struct introspection | `virtio.cpp` |
-
-**Implementation Note:** Inline assembly support is the critical path blocker. Neither chibicc nor cproc support inline assembly, making this a key differentiator for vcpp.
 
 ### ABI Compatibility Requirements
 
@@ -922,102 +918,6 @@ The following builtins are NOT currently used but may be beneficial:
 // DMA access structure requires both
 __attribute__((packed, aligned(8)))
 ```
-
-### 11.7 AArch64 Inline Assembly Requirements
-
-The kernel requires extensive inline assembly support for AArch64. The compiler must support GCC-style extended inline assembly.
-
-#### 11.7.1 Inline Assembly Syntax
-
-```c
-asm volatile("instruction"
-             : output_operands      // "=r"(var), "+r"(var)
-             : input_operands       // "r"(val), "i"(imm)
-             : clobber_list);       // "memory", "cc", register names
-```
-
-#### 11.7.2 Constraint Letters Required
-
-| Constraint | Meaning | Usage |
-|------------|---------|-------|
-| `r` | General purpose register | All register operands |
-| `=r` | Write-only output | Output variables |
-| `+r` | Read-write operand | Modified variables |
-| `=&r` | Early-clobber output | Must differ from inputs |
-| `i` | Immediate constant | Inline constants |
-| `memory` | Memory clobber | Barrier semantics |
-| `cc` | Condition codes clobber | Comparisons |
-
-#### 11.7.3 Register Modifiers
-
-| Modifier | Meaning | Example |
-|----------|---------|---------|
-| `%w0` | 32-bit (word) variant | `ldaxr %w0, [%1]` |
-| `%x0` | 64-bit (default) | `mrs %0, daif` |
-
-#### 11.7.4 Explicit Register Binding
-
-```c
-register u64 x0 asm("x0") = value;
-asm volatile("hvc #0" : "+r"(x0) : : "memory");
-```
-
-#### 11.7.5 System Register Instructions
-
-| Instruction | Purpose | Registers Used |
-|-------------|---------|----------------|
-| `mrs %0, reg` | Read system register | DAIF, MPIDR_EL1, SCTLR_EL1, TCR_EL1, TTBR0/1_EL1, ELR_EL1, SPSR_EL1, ESR_EL1, FAR_EL1, SP_EL0, CNTFRQ_EL0, CNTPCT_EL0, CNTP_CVAL_EL0, CNTP_CTL_EL0, FPCR, FPSR |
-| `msr reg, %0` | Write system register | Same as above |
-| `msr daifset, #N` | Set DAIF bits | Disable interrupts |
-| `msr daifclr, #N` | Clear DAIF bits | Enable interrupts |
-
-#### 11.7.6 Atomic Instructions (Load-Exclusive/Store-Exclusive)
-
-| Instruction | Purpose | Usage |
-|-------------|---------|-------|
-| `ldaxr %w0, [%1]` | Load-Acquire Exclusive (32-bit) | Spinlock ticket acquisition |
-| `ldar %w0, [%1]` | Load-Acquire (32-bit) | Read shared counters |
-| `stxr %w0, %w1, [%2]` | Store-Exclusive (status in %0) | Conditional store |
-| `stlr %w0, [%1]` | Store-Release (32-bit) | Release lock |
-
-**Spinlock Pattern:**
-```c
-asm volatile("1: ldaxr   %w0, [%3]       \n"
-             "   add     %w1, %w0, #1    \n"
-             "   stxr    %w2, %w1, [%3]  \n"
-             "   cbnz    %w2, 1b         \n"
-             : "=&r"(ticket), "=&r"(new_ticket), "=&r"(status)
-             : "r"(&next_ticket_)
-             : "memory");
-```
-
-#### 11.7.7 Memory Barrier Instructions
-
-| Instruction | Type | Purpose | Files |
-|-------------|------|---------|-------|
-| `dmb sy` | Data Memory Barrier | DMA synchronization | VirtIO drivers |
-| `dsb sy` | Data Synchronization Barrier | Cache/TLB operations | MMU, loader |
-| `isb` | Instruction Sync Barrier | Pipeline flush | After system register writes |
-
-#### 11.7.8 Cache and TLB Operations
-
-| Instruction | Purpose | Usage |
-|-------------|---------|-------|
-| `dc cvau, %0` | Data Cache Clean by VA | Before IC invalidate |
-| `ic ivau, %0` | Instruction Cache Invalidate by VA | After loading code |
-| `tlbi vmalle1is` | TLB Invalidate All (Inner Shareable) | MMU setup |
-| `tlbi aside1is, %0` | TLB Invalidate by ASID | Context switch |
-
-#### 11.7.9 Exception and Power Instructions
-
-| Instruction | Purpose | Usage |
-|-------------|---------|-------|
-| `svc #0` | Supervisor Call | Syscall invocation |
-| `hvc #0` | Hypervisor Call | PSCI calls |
-| `eret` | Exception Return | Return from handler |
-| `wfi` | Wait For Interrupt | Idle loop |
-| `yield` | Yield hint | Spinlock busy-wait |
-| `udf #0` | Undefined instruction | Fault testing |
 
 ### 11.8 Assembly File Requirements
 

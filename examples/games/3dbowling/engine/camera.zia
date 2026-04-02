@@ -1,0 +1,164 @@
+// camera.zia — Camera controller with aim, follow, overhead, and cinematic modes
+module camera;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind "../config";
+
+// Camera modes
+var MODE_AIM: Integer = 0;
+var MODE_FOLLOW: Integer = 1;
+var MODE_OVERHEAD: Integer = 2;
+var MODE_CINEMATIC: Integer = 3;
+
+class CameraController {
+    hide Camera3D cam;
+    hide Integer mode;
+
+    // Smooth interpolation state
+    hide Float eyeX;
+    hide Float eyeY;
+    hide Float eyeZ;
+    hide Float targetX;
+    hide Float targetY;
+    hide Float targetZ;
+
+    // Cinematic orbit state
+    hide Float cineTimer;
+    hide Float cineAngle;
+    hide Float cineCenterX;
+    hide Float cineCenterZ;
+
+    expose func initCamera(camera: Camera3D) {
+        cam = camera;
+        mode = MODE_AIM;
+        eyeX = 0.0;
+        eyeY = config.CAM_AIM_HEIGHT;
+        eyeZ = -config.CAM_AIM_BEHIND;
+        targetX = 0.0;
+        targetY = config.CAM_AIM_LOOK_Y;
+        targetZ = config.CAM_AIM_LOOK_Z;
+        cineTimer = 0.0;
+        cineAngle = 0.0;
+        cineCenterX = 0.0;
+        cineCenterZ = config.PIN_Z_OFFSET;
+        applyLookAt();
+    }
+
+    // ─── Mode Transitions ───
+
+    expose func setAimMode(aimX: Float) {
+        mode = MODE_AIM;
+        eyeX = aimX;
+        eyeY = config.CAM_AIM_HEIGHT;
+        eyeZ = -config.CAM_AIM_BEHIND;
+        targetX = aimX * 0.5;
+        targetY = config.CAM_AIM_LOOK_Y;
+        targetZ = config.CAM_AIM_LOOK_Z;
+        applyLookAt();
+    }
+
+    expose func setFollowMode() {
+        mode = MODE_FOLLOW;
+    }
+
+    expose func setOverheadMode() {
+        mode = MODE_OVERHEAD;
+        eyeX = 0.0;
+        eyeY = config.CAM_OVER_HEIGHT;
+        eyeZ = config.PIN_Z_OFFSET - 2.0;
+        targetX = 0.0;
+        targetY = 0.0;
+        targetZ = config.PIN_Z_OFFSET;
+        applyLookAt();
+    }
+
+    expose func startCinematic() {
+        mode = MODE_CINEMATIC;
+        cineTimer = config.CAM_CINE_DURATION;
+        cineAngle = 0.0;
+        cineCenterX = 0.0;
+        cineCenterZ = config.PIN_Z_OFFSET;
+    }
+
+    // ─── Per-Frame Updates ───
+
+    expose func updateAim(aimX: Float, dt: Float) {
+        if (mode != MODE_AIM) { return; }
+
+        // Smoothly track aim position
+        var goalEyeX: Float = aimX;
+        var goalTargetX: Float = aimX * 0.5;
+
+        eyeX = lerp(eyeX, goalEyeX, dt * config.CAM_FOLLOW_SMOOTH);
+        targetX = lerp(targetX, goalTargetX, dt * config.CAM_FOLLOW_SMOOTH);
+        applyLookAt();
+    }
+
+    expose func updateFollow(ballX: Float, ballZ: Float, dt: Float) {
+        if (mode != MODE_FOLLOW) { return; }
+
+        // Chase the ball with smooth interpolation
+        var goalEyeX: Float = ballX * 0.3;
+        var goalEyeY: Float = config.CAM_FOLLOW_HEIGHT;
+        var goalEyeZ: Float = ballZ - config.CAM_FOLLOW_DIST;
+        var goalTargetX: Float = ballX * 0.5;
+        var goalTargetY: Float = 0.2;
+        var goalTargetZ: Float = ballZ + config.CAM_FOLLOW_LOOK_AHEAD;
+
+        var smoothing: Float = dt * config.CAM_FOLLOW_SMOOTH;
+        eyeX = lerp(eyeX, goalEyeX, smoothing);
+        eyeY = lerp(eyeY, goalEyeY, smoothing);
+        eyeZ = lerp(eyeZ, goalEyeZ, smoothing);
+        targetX = lerp(targetX, goalTargetX, smoothing);
+        targetY = lerp(targetY, goalTargetY, smoothing);
+        targetZ = lerp(targetZ, goalTargetZ, smoothing);
+        applyLookAt();
+    }
+
+    expose func updateCinematic(dt: Float) -> Boolean {
+        if (mode != MODE_CINEMATIC) { return true; }
+
+        cineTimer = cineTimer - dt;
+        if (cineTimer <= 0.0) {
+            return true; // Cinematic complete
+        }
+
+        // Orbit around pin area
+        cineAngle = cineAngle + dt * config.CAM_CINE_SPEED;
+        eyeX = cineCenterX + Sin(cineAngle) * config.CAM_CINE_RADIUS;
+        eyeZ = cineCenterZ + Cos(cineAngle) * config.CAM_CINE_RADIUS;
+        eyeY = config.CAM_CINE_HEIGHT;
+        targetX = cineCenterX;
+        targetY = 0.3;
+        targetZ = cineCenterZ;
+        applyLookAt();
+        return false;
+    }
+
+    // ─── Effects ───
+
+    expose func shake(intensity: Float, duration: Float) {
+        Camera3D.Shake(cam, intensity, duration, 6.0);
+    }
+
+    // ─── Helpers ───
+
+    hide func applyLookAt() {
+        var eye = new Vec3(eyeX, eyeY, eyeZ);
+        var target = new Vec3(targetX, targetY, targetZ);
+        var up = new Vec3(0.0, 1.0, 0.0);
+        Camera3D.LookAt(cam, eye, target, up);
+    }
+
+    expose func getMode() -> Integer {
+        return mode;
+    }
+}
+
+// Linear interpolation
+func lerp(a: Float, b: Float, t: Float) -> Float {
+    if (t < 0.0) { t = 0.0; }
+    if (t > 1.0) { t = 1.0; }
+    return a + (b - a) * t;
+}

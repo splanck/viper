@@ -183,6 +183,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                             }
                         }
                         emitFieldStore(field, selfPtr, fieldValue);
+                        consumeDeferred(fieldValue);
                         return right;
                     }
                 }
@@ -229,6 +230,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                             }
                         }
                         emitFieldStore(field, selfPtr, fieldValue);
+                        consumeDeferred(fieldValue);
                         return right;
                     }
                 }
@@ -242,6 +244,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                 Value addr = getGlobalVarAddr(ident->name, globalType);
                 Value storeValue = wrapValueForOptionalField(assignValue, globalType, rightType);
                 emitStore(addr, storeValue, ilType);
+                consumeDeferred(storeValue);
                 return right;
             }
 
@@ -352,6 +355,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                     emitCall(setterName, {setterValue});
                 else
                     emitCall(setterName, {base.value, setterValue});
+                consumeDeferred(setterValue);
                 return right;
             }
 
@@ -379,6 +383,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
                         }
                         emitFieldStore(field, base.value, fieldValue);
+                        consumeDeferred(fieldValue);
                         return right;
                     }
                 }
@@ -397,6 +402,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
                         }
                         emitFieldStore(field, base.value, fieldValue);
+                        consumeDeferred(fieldValue);
                         return right;
                     }
                 }

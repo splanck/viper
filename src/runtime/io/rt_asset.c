@@ -200,6 +200,11 @@ static void ensure_init(void) {
 
 // ─── rt_asset_init ──────────────────────────────────────────────────────────
 
+/// @brief Initialize the asset manager with an optional embedded VPA blob.
+/// @details Parses the embedded blob (from linked .rodata or explicit argument),
+///          then auto-discovers .vpa pack files next to the executable. On macOS,
+///          also scans the .app bundle's Resources directory. Idempotent — safe
+///          to call multiple times; only the first call has effect.
 void rt_asset_init(const uint8_t *blob, uint64_t size) {
     if (g_asset_mgr.initialized)
         return;
@@ -236,6 +241,10 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
 
 // ─── rt_asset_load ──────────────────────────────────────────────────────────
 
+/// @brief Load an asset by name with automatic type dispatch based on file extension.
+/// @details Searches embedded blob → mounted packs (LIFO) → filesystem. For known
+///          extensions (.png, .wav, .json, etc.), decodes to the appropriate runtime
+///          type (Pixels, Sound, Map). Unknown extensions return raw Bytes.
 void *rt_asset_load(rt_string name) {
     if (!name)
         return NULL;
@@ -262,6 +271,7 @@ void *rt_asset_load(rt_string name) {
 
 // ─── rt_asset_load_bytes ────────────────────────────────────────────────────
 
+/// @brief Load an asset as raw Bytes (no type dispatch, always returns Bytes or NULL).
 void *rt_asset_load_bytes(rt_string name) {
     if (!name)
         return NULL;
@@ -280,6 +290,7 @@ void *rt_asset_load_bytes(rt_string name) {
 
 // ─── rt_asset_exists ────────────────────────────────────────────────────────
 
+/// @brief Check whether an asset exists in any source (embedded, packs, or filesystem).
 int64_t rt_asset_exists(rt_string name) {
     if (!name)
         return 0;
@@ -309,6 +320,7 @@ int64_t rt_asset_exists(rt_string name) {
 
 // ─── rt_asset_size ──────────────────────────────────────────────────────────
 
+/// @brief Get the byte size of an asset without loading it.
 int64_t rt_asset_size(rt_string name) {
     if (!name)
         return 0;
@@ -346,6 +358,7 @@ int64_t rt_asset_size(rt_string name) {
 
 // ─── rt_asset_list ──────────────────────────────────────────────────────────
 
+/// @brief List all available asset names from embedded and mounted sources as a sequence.
 void *rt_asset_list(void) {
     ensure_init();
 
@@ -376,6 +389,7 @@ void *rt_asset_list(void) {
 
 // ─── rt_asset_mount ─────────────────────────────────────────────────────────
 
+/// @brief Mount an additional VPA pack file at runtime (assets become available immediately).
 int64_t rt_asset_mount(rt_string path) {
     if (!path)
         return 0;
@@ -397,6 +411,7 @@ int64_t rt_asset_mount(rt_string path) {
 
 // ─── rt_asset_unmount ───────────────────────────────────────────────────────
 
+/// @brief Unmount a previously-mounted VPA pack file (matches by filename, not full path).
 int64_t rt_asset_unmount(rt_string path) {
     if (!path)
         return 0;

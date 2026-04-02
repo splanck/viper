@@ -1,0 +1,574 @@
+// game.zia — Main game class: state machine, subsystem orchestration, game loop
+module game;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Sound;
+bind Viper.Terminal;
+bind "./config";
+bind "./engine/renderer";
+bind "./engine/camera";
+bind "./engine/hud";
+bind "./lane/lane";
+bind "./lane/pins";
+bind "./lane/ball";
+bind "./effects/particles";
+bind "./effects/celebrations";
+bind "./scoring/scoring";
+
+class BowlingGame {
+    // Subsystems
+    hide Renderer render;
+    hide CameraController camCtrl;
+    hide HUD hudObj;
+    hide LaneBuilder laneObj;
+    hide PinManager pinMgr;
+    hide Ball ballObj;
+    hide ParticleManager particleMgr;
+    hide CelebrationManager celebMgr;
+    hide ScoreKeeper scoreKeeper;
+
+    // Physics
+    hide Physics3DWorld physWorld;
+
+    // Game state
+    hide Integer gameState;
+    hide Float settleTimer;
+    hide Float scoreTimer;
+
+    // Input state
+    hide Float aimX;
+    hide Float power;
+    hide Boolean charging;
+    hide Float spin;
+
+    // Oil pattern
+    hide Integer oilPattern;
+
+    // Sound
+    hide SoundBank soundBank;
+    hide Boolean soundReady;
+
+    expose func init() {
+        gameState = config.STATE_AIMING;
+        settleTimer = 0.0;
+        scoreTimer = 0.0;
+        aimX = 0.0;
+        power = 0.0;
+        charging = false;
+        spin = 0.0;
+        oilPattern = config.OIL_HOUSE;
+        soundReady = false;
+    }
+
+    expose func run() {
+        printBanner();
+        initSubsystems();
+        gameLoop();
+        Say("Thanks for playing 3D Bowling!");
+    }
+
+    hide func printBanner() {
+        Say("╔══════════════════════════════════════╗");
+        Say("║         3D BOWLING                   ║");
+        Say("║         A Viper 3D Game              ║");
+        Say("╚══════════════════════════════════════╝");
+        Say("");
+        Say("Controls:");
+        Say("  A/D or Left/Right  = Aim");
+        Say("  Hold SPACE         = Charge power, Release = Throw");
+        Say("  Q / E              = Add left/right spin");
+        Say("  1 / 2 / 3          = Select ball weight");
+        Say("  R                  = Reset game");
+        Say("  ESC                = Quit");
+        Say("");
+    }
+
+    hide func initSubsystems() {
+        // Physics world
+        physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+
+        // Renderer (canvas, lights, postfx)
+        render = new Renderer();
+        render.initRenderer();
+
+        // Camera
+        camCtrl = new CameraController();
+        camCtrl.initCamera(render.getCamera());
+
+        // Lane geometry + physics
+        laneObj = new LaneBuilder();
+        laneObj.initLane(physWorld, oilPattern);
+
+        // Pins
+        pinMgr = new PinManager();
+        pinMgr.initPins(physWorld);
+
+        // Ball
+        ballObj = new Ball();
+        ballObj.initBall(physWorld);
+
+        // Particles
+        particleMgr = new ParticleManager();
+        particleMgr.initParticles();
+
+        // Celebrations
+        celebMgr = new CelebrationManager();
+        celebMgr.initCelebrations();
+
+        // Scoring
+        scoreKeeper = new ScoreKeeper();
+
+        // Sound (optional — graceful if unavailable)
+        initSound();
+
+        // HUD
+        hudObj = new HUD();
+        hudObj.initHUD();
+
+        hudObj.showMessage("Aim and throw!", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
+        Say("Ready! Frame 1, Roll 1");
+    }
+
+    hide func initSound() {
+        var ok = Audio.Init();
+        if (ok == 0) {
+            Say("Audio unavailable — playing without sound");
+            return;
+        }
+        Audio.SetMasterVolume(80);
+        soundBank = SoundBank.New();
+
+        // Register procedural sounds via Synth (zero external assets)
+        soundBank.RegisterSound("roll", Synth.Sfx(SFX_LASER));
+        soundBank.RegisterSound("crash", Synth.Sfx(SFX_EXPLODE));
+        soundBank.RegisterSound("strike", Synth.Sfx(SFX_POWERUP));
+        soundBank.RegisterSound("spare", Synth.Sfx(SFX_COIN));
+        soundBank.RegisterSound("gutter", Synth.Sfx(SFX_HIT));
+        soundBank.RegisterSound("ui", Synth.Sfx(SFX_COIN));
+        soundReady = true;
+    }
+
+    hide func playSound(name: String) {
+        if (soundReady) {
+            soundBank.Play(name);
+        }
+    }
+
+    // =====================================================================
+    // Main Game Loop
+    // =====================================================================
+
+    hide func gameLoop() {
+        while (render.shouldClose() == false) {
+            var dt: Float = render.getDeltaTime();
+
+            // ─── Global Input ───
+            if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+            if (Keyboard.WasPressed(Keyboard.get_KEY_R())) {
+                resetGame();
+            }
+
+            // Ball selection (only during aiming)
+            if (gameState == config.STATE_AIMING) {
+                if (Keyboard.WasPressed(Keyboard.get_KEY_1())) {
+                    ballObj.selectBall(config.BALL_LIGHT);
+                    playSound("ui");
+                    Say("Selected: Light ball (10lb)");
+                }
+                if (Keyboard.WasPressed(Keyboard.get_KEY_2())) {
+                    ballObj.selectBall(config.BALL_MEDIUM);
+                    playSound("ui");
+                    Say("Selected: Medium ball (13lb)");
+                }
+                if (Keyboard.WasPressed(Keyboard.get_KEY_3())) {
+                    ballObj.selectBall(config.BALL_HEAVY);
+                    playSound("ui");
+                    Say("Selected: Heavy ball (16lb)");
+                }
+            }
+
+            // ─── State Machine ───
+            updateState(dt);
+
+            // ─── Update effects ───
+            particleMgr.update(dt);
+            celebMgr.update(dt);
+            hudObj.update(dt);
+
+            // ─── Render ───
+            render.beginFrame();
+            drawScene();
+            render.endFrame();
+            drawOverlays();
+            render.flip();
+        }
+    }
+
+    // =====================================================================
+    // State Machine
+    // =====================================================================
+
+    hide func updateState(dt: Float) {
+
+        if (gameState == config.STATE_AIMING) {
+            updateAiming(dt);
+
+        } else if (gameState == config.STATE_ROLLING) {
+            updateRolling(dt);
+
+        } else if (gameState == config.STATE_SETTLING) {
+            updateSettling(dt);
+
+        } else if (gameState == config.STATE_SCORING) {
+            updateScoring(dt);
+
+        } else if (gameState == config.STATE_SWEEPING) {
+            updateSweeping(dt);
+
+        } else if (gameState == config.STATE_RESETTING) {
+            updateResetting(dt);
+
+        } else if (gameState == config.STATE_CELEBRATING) {
+            updateCelebrating(dt);
+
+        } else if (gameState == config.STATE_GAMEOVER) {
+            // Just wait for R to restart (handled globally)
+        }
+    }
+
+    // ─── AIMING ───
+
+    hide func updateAiming(dt: Float) {
+        // Left/right aim
+        if (Keyboard.IsDown(Keyboard.get_KEY_A()) || Keyboard.IsDown(Keyboard.get_KEY_LEFT())) {
+            aimX = aimX - config.AIM_SPEED * dt;
+            if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
+        }
+        if (Keyboard.IsDown(Keyboard.get_KEY_D()) || Keyboard.IsDown(Keyboard.get_KEY_RIGHT())) {
+            aimX = aimX + config.AIM_SPEED * dt;
+            if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+        }
+
+        // Spin (Q = left, E = right)
+        if (Keyboard.IsDown(Keyboard.get_KEY_Q())) {
+            spin = spin - config.SPIN_RATE * dt;
+            if (spin < -config.SPIN_MAX) { spin = -config.SPIN_MAX; }
+        }
+        if (Keyboard.IsDown(Keyboard.get_KEY_E())) {
+            spin = spin + config.SPIN_RATE * dt;
+            if (spin > config.SPIN_MAX) { spin = config.SPIN_MAX; }
+        }
+
+        // Power charge
+        if (Keyboard.IsDown(Keyboard.get_KEY_SPACE())) {
+            if (charging == false) {
+                charging = true;
+                power = 0.0;
+            }
+            power = power + dt * config.THROW_POWER_RATE;
+            if (power > 1.0) { power = 1.0; }
+        } else {
+            if (charging) {
+                // Release — throw!
+                charging = false;
+                ballObj.setSpin(spin);
+                ballObj.doThrow(aimX, power);
+
+                particleMgr.startLaneDust(aimX, config.BALL_THROW_Z);
+                playSound("roll");
+
+                gameState = config.STATE_ROLLING;
+                camCtrl.setFollowMode();
+            }
+        }
+
+        // Update ball visual position for aiming
+        ballObj.setAimPosition(aimX);
+        camCtrl.updateAim(aimX, dt);
+    }
+
+    // ─── ROLLING ───
+
+    hide func updateRolling(dt: Float) {
+        Physics3DWorld.Step(physWorld, config.PHYSICS_DT);
+
+        // Apply hook force based on lane friction at ball position
+        var bz: Float = ballObj.getPosZ();
+        var friction: Float = laneObj.getFrictionAtZ(bz);
+        ballObj.updateHook(dt, friction);
+
+        // Check gutter
+        ballObj.checkGutter();
+        if (ballObj.gutterBall() && ballObj.thrown()) {
+            particleMgr.stopLaneDust();
+            particleMgr.spawnGutterSplash(ballObj.getPosX(), bz);
+            playSound("gutter");
+        }
+
+        // Update dust position
+        particleMgr.updateLaneDust(ballObj.getPosX(), bz);
+
+        // Update pin knockdowns
+        pinMgr.updateKnockdowns(dt);
+
+        // Check for pin collisions (spawn sparks)
+        checkPinCollisions();
+
+        // Camera follows ball
+        camCtrl.updateFollow(ballObj.getPosX(), bz, dt);
+
+        // Transition to settling when ball passes pins or stops
+        if (ballObj.hasPastPins() || ballObj.isSlow()) {
+            gameState = config.STATE_SETTLING;
+            settleTimer = config.SETTLE_TIME;
+            particleMgr.stopLaneDust();
+            camCtrl.setOverheadMode();
+        }
+    }
+
+    // ─── SETTLING ───
+
+    hide func updateSettling(dt: Float) {
+        Physics3DWorld.Step(physWorld, config.PHYSICS_DT);
+        pinMgr.updateKnockdowns(dt);
+        checkPinCollisions();
+
+        settleTimer = settleTimer - dt;
+
+        // Early settle if all pins stopped
+        if (pinMgr.allSettled() && settleTimer < config.SETTLE_TIME - 0.5) {
+            settleTimer = 0.0;
+        }
+
+        if (settleTimer <= 0.0) {
+            gameState = config.STATE_SCORING;
+        }
+    }
+
+    // ─── SCORING ───
+
+    hide func updateScoring(dt: Float) {
+        var newlyKnocked: Integer = pinMgr.countNewlyKnocked();
+        var totalKnocked: Integer = pinMgr.countTotalKnocked();
+
+        // Handle gutter ball (0 pins)
+        if (ballObj.gutterBall() && newlyKnocked == 0) {
+            newlyKnocked = 0;
+        }
+
+        // Record the roll
+        var frameComplete: Boolean = scoreKeeper.recordRoll(newlyKnocked);
+
+        // Log to terminal
+        var frame: Integer = scoreKeeper.getFrame();
+        if (frameComplete) {
+            frame = frame - 1; // recordRoll already advanced
+        }
+        Say("Frame " + toString(frame) + " Roll: " + toString(newlyKnocked)
+            + " pins (Total: " + toString(scoreKeeper.getTotalScore()) + ")");
+
+        // Trigger celebration
+        if (scoreKeeper.wasStrike()) {
+            celebMgr.onStrike();
+            particleMgr.spawnFireworks();
+            camCtrl.shake(config.SHAKE_STRIKE_INTENSITY, config.SHAKE_STRIKE_DURATION);
+            render.flashPinLight(3.0);
+            playSound("strike");
+
+            if (scoreKeeper.isGameOver() && scoreKeeper.getTotalScore() == config.MAX_SCORE) {
+                celebMgr.onPerfectGame();
+            }
+        } else if (scoreKeeper.wasSpare()) {
+            celebMgr.onSpare();
+            playSound("spare");
+        } else if (scoreKeeper.wasGutter()) {
+            celebMgr.onGutter();
+        } else {
+            celebMgr.onOpenFrame();
+        }
+
+        // Check game over
+        if (scoreKeeper.isGameOver()) {
+            gameState = config.STATE_GAMEOVER;
+            hudObj.showMessage("Game Over! Score: " + toString(scoreKeeper.getTotalScore()),
+                config.HUD_COLOR_GOLD, config.MSG_DURATION_GAMEOVER);
+            Say("=== GAME OVER === Final Score: " + toString(scoreKeeper.getTotalScore()));
+            return;
+        }
+
+        // Start sweep animation
+        if (frameComplete || scoreKeeper.needsFullReset()) {
+            pinMgr.savePinState();
+            pinMgr.startSweep();
+            gameState = config.STATE_SWEEPING;
+        } else {
+            // Second roll — just reset ball, keep standing pins
+            pinMgr.savePinState();
+            gameState = config.STATE_CELEBRATING;
+            scoreTimer = 1.0;
+        }
+    }
+
+    // ─── SWEEPING ───
+
+    hide func updateSweeping(dt: Float) {
+        var sweepDone: Boolean = pinMgr.updateSweep(dt);
+        if (sweepDone) {
+            // Determine if we need full reset or just second roll
+            if (scoreKeeper.needsFullReset()) {
+                pinMgr.startFullReset();
+                gameState = config.STATE_RESETTING;
+            } else {
+                pinMgr.prepareSecondRoll();
+                gameState = config.STATE_CELEBRATING;
+                scoreTimer = 0.5;
+            }
+        }
+    }
+
+    // ─── RESETTING ───
+
+    hide func updateResetting(dt: Float) {
+        var resetDone: Boolean = pinMgr.updateReset(dt);
+        if (resetDone) {
+            gameState = config.STATE_CELEBRATING;
+            scoreTimer = 0.5;
+        }
+    }
+
+    // ─── CELEBRATING ───
+
+    hide func updateCelebrating(dt: Float) {
+        // Run cinematic camera on strikes
+        if (celebMgr.isActive()) {
+            if (celebMgr.getType() == celebrations.STRIKE ||
+                celebMgr.getType() == celebrations.TURKEY ||
+                celebMgr.getType() == celebrations.PERFECT) {
+                camCtrl.startCinematic();
+            }
+            var cineDone: Boolean = camCtrl.updateCinematic(dt);
+        }
+
+        // Wait for celebration to finish (or timeout)
+        scoreTimer = scoreTimer - dt;
+        var celebDone: Boolean = celebMgr.isActive() == false;
+
+        if (scoreTimer <= 0.0 && celebDone) {
+            // Transition to next roll
+            render.resetPinLight();
+            ballObj.resetBall();
+            aimX = 0.0;
+            power = 0.0;
+            spin = 0.0;
+
+            gameState = config.STATE_AIMING;
+            camCtrl.setAimMode(0.0);
+
+            Say("Frame " + toString(scoreKeeper.getFrame())
+                + ", Roll " + toString(scoreKeeper.getRollInFrame()));
+        }
+    }
+
+    // =====================================================================
+    // Collision Detection (for particle spawning)
+    // =====================================================================
+
+    hide func checkPinCollisions() {
+        var collisionCount: Integer = Physics3DWorld.get_CollisionCount(physWorld);
+        for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
+            var normal = Physics3DWorld.GetCollisionNormal(physWorld, ci);
+            var depth: Float = Physics3DWorld.GetCollisionDepth(physWorld, ci);
+
+            // Only spawn sparks for significant collisions
+            if (depth > 0.005) {
+                var bodyA = Physics3DWorld.GetCollisionBodyA(physWorld, ci);
+                var bodyB = Physics3DWorld.GetCollisionBodyB(physWorld, ci);
+
+                // Approximate collision point from one body's position
+                var posA = Physics3DBody.get_Position(bodyA);
+                var ax: Float = Vec3.get_X(posA);
+                var ay: Float = Vec3.get_Y(posA);
+                var az: Float = Vec3.get_Z(posA);
+
+                // Only spark near pin area
+                if (az > config.PIN_Z_OFFSET - 1.0 && az < config.PIN_Z_OFFSET + 2.0) {
+                    particleMgr.spawnCrashSparks(ax, ay, az);
+                    camCtrl.shake(config.SHAKE_PIN_INTENSITY, config.SHAKE_PIN_DURATION);
+                    playSound("crash");
+                }
+            }
+        }
+    }
+
+    // =====================================================================
+    // Rendering
+    // =====================================================================
+
+    hide func drawScene() {
+        var canvas: Canvas3D = render.getCanvas();
+
+        // Lane
+        laneObj.draw(canvas);
+
+        // Sweep bar (if sweeping)
+        if (pinMgr.isSweeping()) {
+            laneObj.drawSweepBar(canvas, pinMgr.getSweepY());
+        }
+
+        // Pins
+        pinMgr.draw(canvas);
+
+        // Ball
+        ballObj.draw(canvas);
+
+        // Particles
+        particleMgr.draw(canvas, render.getCamera());
+    }
+
+    hide func drawOverlays() {
+        var canvas: Canvas3D = render.getCanvas();
+        var cw: Integer = render.getWidth();
+        var ch: Integer = render.getHeight();
+
+        // Celebrations overlay
+        celebMgr.draw(canvas, cw, ch);
+
+        // HUD
+        hudObj.draw(canvas, scoreKeeper,
+            power, charging,
+            spin, aimX,
+            ballObj.getBallType(), gameState,
+            render.getFps());
+    }
+
+    // =====================================================================
+    // Reset
+    // =====================================================================
+
+    hide func resetGame() {
+        gameState = config.STATE_AIMING;
+        aimX = 0.0;
+        power = 0.0;
+        charging = false;
+        spin = 0.0;
+
+        scoreKeeper.reset();
+        ballObj.resetBall();
+        pinMgr.startFullReset();
+        celebMgr.initCelebrations();
+        render.resetPinLight();
+
+        // Wait for pin reset animation before playing
+        while (pinMgr.isResetting()) {
+            pinMgr.updateReset(0.016);
+        }
+
+        camCtrl.setAimMode(0.0);
+        hudObj.showMessage("Game reset! Aim and throw!",
+            config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
+        Say("Game reset! Frame 1, Roll 1");
+    }
+}

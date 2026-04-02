@@ -112,6 +112,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
         storeInstr.operands = {resultSlot, unwrapped};
         storeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        consumeDeferred(unwrapped);
     }
     emitBr(mergeIdx);
 
@@ -125,6 +126,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
         storeInstr.operands = {resultSlot, right.value};
         storeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        consumeDeferred(right.value);
     }
     emitBr(mergeIdx);
 
@@ -138,8 +140,11 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     loadInstr.operands = {resultSlot};
     loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+    Value resultValue = Value::temp(loadId);
+    if (needsRelease(resultType))
+        deferRelease(resultValue, isStringType(resultType));
 
-    return {Value::temp(loadId), ilResultType};
+    return {resultValue, ilResultType};
 }
 
 //=============================================================================
@@ -269,6 +274,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     storeVal.operands = {resultSlot, optionalValue};
     storeVal.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeVal);
+    consumeDeferred(optionalValue);
     emitBr(mergeIdx);
 
     setBlock(mergeIdx);
@@ -280,8 +286,12 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     loadInstr.operands = {resultSlot};
     loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+    Value resultValue = Value::temp(loadId);
+    TypeRef resultType = sema_.typeOf(expr);
+    if (needsRelease(resultType))
+        deferRelease(resultValue, isStringType(resultType));
 
-    return {Value::temp(loadId), Type(Type::Kind::Ptr)};
+    return {resultValue, Type(Type::Kind::Ptr)};
 }
 
 //=============================================================================

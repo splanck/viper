@@ -92,6 +92,78 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value) {
     return emitBinary(Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
 }
 
+Lowerer::Value Lowerer::narrowIntegerToByte(Value value) {
+    return emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), value);
+}
+
+LowerResult Lowerer::coerceValueToType(Value value,
+                                       Type valueIlType,
+                                       TypeRef sourceType,
+                                       TypeRef targetType) {
+    if (!targetType)
+        return {value, valueIlType};
+
+    Type targetIlType = mapType(targetType);
+    TypeRef effectiveSource = sourceType;
+    bool sourceIsUnknownish = !effectiveSource || effectiveSource->kind == TypeKindSem::Unknown ||
+                             effectiveSource->kind == TypeKindSem::Any;
+
+    if (sourceIsUnknownish && valueIlType.kind == Type::Kind::Ptr &&
+        targetIlType.kind != Type::Kind::Ptr) {
+        return emitUnbox(value, targetIlType);
+    }
+
+    if (sourceIsUnknownish) {
+        effectiveSource = reverseMapType(valueIlType);
+    }
+
+    if (targetType->kind == TypeKindSem::Optional) {
+        TypeRef innerType = targetType->innerType();
+        if (effectiveSource && effectiveSource->kind == TypeKindSem::Optional)
+            return {value, mapType(targetType)};
+        if (effectiveSource && effectiveSource->kind == TypeKindSem::Unit)
+            return {Value::null(), mapType(targetType)};
+        if (innerType) {
+            auto coercedInner = coerceValueToType(value, valueIlType, effectiveSource, innerType);
+            return {emitOptionalWrap(coercedInner.value, innerType), mapType(targetType)};
+        }
+        return {value, mapType(targetType)};
+    }
+
+    if (effectiveSource && effectiveSource->kind == TypeKindSem::Unknown &&
+        valueIlType.kind == Type::Kind::Ptr && targetIlType.kind != Type::Kind::Ptr) {
+        return emitUnbox(value, targetIlType);
+    }
+
+    if (effectiveSource) {
+        if (effectiveSource->kind == TypeKindSem::Number &&
+            targetType->kind == TypeKindSem::Integer) {
+            return {emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), value),
+                    Type(Type::Kind::I64)};
+        }
+        if (effectiveSource->kind == TypeKindSem::Integer &&
+            targetType->kind == TypeKindSem::Number) {
+            return {emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), value), Type(Type::Kind::F64)};
+        }
+        if (effectiveSource->kind == TypeKindSem::Integer &&
+            targetType->kind == TypeKindSem::Byte) {
+            return {narrowIntegerToByte(value), Type(Type::Kind::I32)};
+        }
+        if (effectiveSource->kind == TypeKindSem::Byte &&
+            targetType->kind == TypeKindSem::Integer) {
+            return {widenByteToInteger(value), Type(Type::Kind::I64)};
+        }
+        if (effectiveSource->kind == TypeKindSem::Byte &&
+            targetType->kind == TypeKindSem::Number) {
+            Value widened = widenByteToInteger(value);
+            return {emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), widened),
+                    Type(Type::Kind::F64)};
+        }
+    }
+
+    return {value, targetIlType};
+}
+
 /// @brief Check if a string-returning call returns a borrowed reference.
 /// @details These functions return pointers into existing data structures
 ///          rather than newly allocated strings. Releasing them would cause
@@ -737,6 +809,22 @@ bool Lowerer::needsRelease(TypeRef type) const {
     if (!type)
         return false;
     switch (type->kind) {
+        case TypeKindSem::Optional: {
+            TypeRef inner = type->innerType();
+            if (!inner)
+                return false;
+            switch (inner->kind) {
+                case TypeKindSem::Struct:
+                    return false;
+                case TypeKindSem::Integer:
+                case TypeKindSem::Number:
+                case TypeKindSem::Boolean:
+                case TypeKindSem::Byte:
+                    return true; // Optional primitives are boxed.
+                default:
+                    return needsRelease(inner);
+            }
+        }
         case TypeKindSem::String:
         case TypeKindSem::Class:
         case TypeKindSem::List:
@@ -752,7 +840,11 @@ bool Lowerer::needsRelease(TypeRef type) const {
 }
 
 bool Lowerer::isStringType(TypeRef type) const {
-    return type && type->kind == TypeKindSem::String;
+    if (!type)
+        return false;
+    if (type->kind == TypeKindSem::Optional)
+        return isStringType(type->innerType());
+    return type->kind == TypeKindSem::String;
 }
 
 Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString) {

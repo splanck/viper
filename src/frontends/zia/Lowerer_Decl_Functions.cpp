@@ -120,29 +120,37 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
     // For mutable variables, register for runtime storage
     if (!decl.isFinal && type) {
         globalVariables_[qualifiedName] = type;
-
-        // Store literal initializer values for module init
         if (decl.initializer) {
-            Expr *init = decl.initializer.get();
+            GlobalInitializer init;
+            init.name = qualifiedName;
+            init.type = type;
+            init.initializer = decl.initializer.get();
+            globalInitializers_.push_back(std::move(init));
+        }
+    }
+}
 
-            // Handle integer literals
-            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init)) {
-                globalInitializers_[qualifiedName] = Value::constInt(intLit->value);
-            }
-            // Handle number (float) literals
-            else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init)) {
-                globalInitializers_[qualifiedName] = Value::constFloat(numLit->value);
-            }
-            // Handle boolean literals
-            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init)) {
-                globalInitializers_[qualifiedName] = Value::constBool(boolLit->value);
-            }
-            // Handle string literals
-            else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init)) {
-                std::string label = stringTable_.intern(strLit->value);
-                globalInitializers_[qualifiedName] = Value::constStr(label);
+void Lowerer::emitGlobalInitializers() {
+    for (const auto &entry : globalInitializers_) {
+        if (!entry.initializer || !entry.type)
+            continue;
+
+        ZiaLocationScope locScope(*this, entry.initializer->loc);
+
+        auto lowered = lowerExpr(entry.initializer);
+        TypeRef sourceType = sema_.typeOf(entry.initializer);
+
+        if (sourceType && sourceType->kind == TypeKindSem::Struct) {
+            if (const StructTypeInfo *info = getOrCreateStructTypeInfo(sourceType->name)) {
+                lowered.value = emitStructTypeCopy(*info, lowered.value);
+                lowered.type = Type(Type::Kind::Ptr);
             }
         }
+
+        auto coerced = coerceValueToType(lowered.value, lowered.type, sourceType, entry.type);
+        Value addr = getGlobalVarAddr(entry.name, entry.type);
+        emitStore(addr, coerced.value, mapType(entry.type));
+        consumeDeferred(coerced.value);
     }
 }
 
@@ -420,28 +428,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
     }
 
     // Emit global variable initializations at start of start() (Zia entry point)
-    if (decl.name == "start" && !globalInitializers_.empty()) {
-        for (const auto &[name, initValue] : globalInitializers_) {
-            auto typeIt = globalVariables_.find(name);
-            if (typeIt == globalVariables_.end())
-                continue;
-
-            TypeRef varType = typeIt->second;
-            Type ilType = mapType(varType);
-
-            // Get address of global variable
-            Value addr = getGlobalVarAddr(name, varType);
-
-            // Handle string values specially - need to emit conststr to get address
-            Value valueToStore = initValue;
-            if (ilType.kind == Type::Kind::Str && initValue.kind == Value::Kind::ConstStr) {
-                valueToStore = emitConstStr(initValue.str);
-            }
-
-            // Store the initial value
-            emitStore(addr, valueToStore, ilType);
-        }
-    }
+    if (decl.name == "start" && !globalInitializers_.empty())
+        emitGlobalInitializers();
 
     // Lower function body
     if (decl.body) {
@@ -634,17 +622,12 @@ void Lowerer::lowerClassDecl(ClassDecl &decl) {
                 std::string globalName = qualifiedName + "." + field->name;
                 globalVariables_[globalName] = fieldType;
 
-                // Store literal initializer if present
                 if (field->initializer) {
-                    Expr *init = field->initializer.get();
-                    if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
-                        globalInitializers_[globalName] = Value::constInt(intLit->value);
-                    else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
-                        globalInitializers_[globalName] = Value::constFloat(numLit->value);
-                    else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
-                        globalInitializers_[globalName] = Value::constBool(boolLit->value);
-                    else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
-                        globalInitializers_[globalName] = Value::constStr(strLit->value);
+                    GlobalInitializer init;
+                    init.name = globalName;
+                    init.type = fieldType;
+                    init.initializer = field->initializer.get();
+                    globalInitializers_.push_back(std::move(init));
                 }
             }
         }

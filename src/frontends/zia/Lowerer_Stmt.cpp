@@ -117,6 +117,7 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         auto result = lowerExpr(stmt->initializer.get());
         initValue = result.value;
         ilType = result.type;
+        TypeRef initType = sema_.typeOf(stmt->initializer.get());
 
         // In generic contexts, semantic types may be unknown because generic
         // function bodies aren't fully analyzed. Use the lowered expression type.
@@ -124,37 +125,19 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
             varType = reverseMapType(ilType);
         }
 
-        // Handle integer-to-number conversion when declaring Number with Integer initializer
-        if (varType && varType->kind == TypeKindSem::Number && ilType.kind == Type::Kind::I64) {
-            // Convert i64 to f64 using sitofp
-            initValue = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), initValue);
-            ilType = Type(Type::Kind::F64);
-        }
-
         // Handle struct type copy semantics - deep copy on assignment
-        TypeRef initType = sema_.typeOf(stmt->initializer.get());
         if (initType && initType->kind == TypeKindSem::Struct) {
             const StructTypeInfo *info = getOrCreateStructTypeInfo(initType->name);
             if (info) {
                 // Deep copy the struct type
                 initValue = emitStructTypeCopy(*info, initValue);
+                ilType = Type(Type::Kind::Ptr);
             }
         }
 
-        if (varType && varType->kind == TypeKindSem::Optional) {
-            TypeRef optInitType = sema_.typeOf(stmt->initializer.get());
-            TypeRef innerType = varType->innerType();
-            Type optILType = mapType(varType);
-            if (optInitType && optInitType->kind == TypeKindSem::Optional) {
-                ilType = optILType;
-            } else if (optInitType && optInitType->kind == TypeKindSem::Unit) {
-                initValue = Value::null();
-                ilType = optILType;
-            } else if (innerType) {
-                initValue = emitOptionalWrap(initValue, innerType);
-                ilType = optILType;
-            }
-        }
+        auto coerced = coerceValueToType(initValue, ilType, initType, varType);
+        initValue = coerced.value;
+        ilType = coerced.type;
     } else {
         // Default initialization
         ilType = mapType(varType);
@@ -796,59 +779,9 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
 void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
     if (stmt->value) {
         auto result = lowerExpr(stmt->value.get());
-        Value returnValue = result.value;
-
-        // Handle Number -> Integer implicit conversion for return statements
-        // This allows returning Viper.Math.Floor() etc. from Integer-returning functions
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Integer) {
-            TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (valueType && valueType->kind == TypeKindSem::Number) {
-                // Emit cast.fp_to_si.rte.chk to convert f64 -> i64 (rounds-to-nearest-even,
-                // overflow-checked)
-                unsigned convId = nextTempId();
-                il::core::Instr convInstr;
-                convInstr.result = convId;
-                convInstr.op = Opcode::CastFpToSiRteChk;
-                convInstr.type = Type(Type::Kind::I64);
-                convInstr.operands = {returnValue};
-                convInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                returnValue = Value::temp(convId);
-            } else if (result.type.kind == Type::Kind::Ptr) {
-                // Unbox a boxed obj (e.g., from untyped List.Get()) when returning as Integer.
-                // This occurs when an untyped List holds integers: the runtime boxes them as heap
-                // objects, so List.Get() returns Ptr. The return statement must unbox to i64.
-                auto unboxed = emitUnbox(returnValue, Type(Type::Kind::I64));
-                returnValue = unboxed.value;
-            }
-        }
-
-        // Handle Integer -> Number implicit conversion for return statements
-        // This allows returning integer literals/expressions from Number-returning functions
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Number) {
-            TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (valueType && valueType->kind == TypeKindSem::Integer) {
-                // Emit sitofp to convert i64 -> f64
-                unsigned convId = nextTempId();
-                il::core::Instr convInstr;
-                convInstr.result = convId;
-                convInstr.op = Opcode::Sitofp;
-                convInstr.type = Type(Type::Kind::F64);
-                convInstr.operands = {returnValue};
-                convInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                returnValue = Value::temp(convId);
-            }
-        }
-
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Optional) {
-            TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (!valueType || valueType->kind != TypeKindSem::Optional) {
-                TypeRef innerType = currentReturnType_->innerType();
-                if (innerType)
-                    returnValue = emitOptionalWrap(result.value, innerType);
-            }
-        }
+        TypeRef valueType = sema_.typeOf(stmt->value.get());
+        auto coerced = coerceValueToType(result.value, result.type, valueType, currentReturnType_);
+        Value returnValue = coerced.value;
 
         if (currentAsyncWorker_) {
             Type payloadIlType = mapType(currentReturnType_);

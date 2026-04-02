@@ -1,0 +1,164 @@
+// celebrations.zia — Strike/spare/turkey/gutter/perfect celebrations
+// Screen flash, message sequences, timed state machine
+module celebrations;
+
+bind Viper.Graphics3D;
+bind "../config";
+
+// Celebration types
+var NONE: Integer = 0;
+var STRIKE: Integer = 1;
+var SPARE: Integer = 2;
+var TURKEY: Integer = 3;
+var GUTTER: Integer = 4;
+var PERFECT: Integer = 5;
+
+class CelebrationManager {
+    hide Integer activeType;
+    hide Float timer;
+    hide Float flashTimer;
+    hide String message;
+    hide Integer messageColor;
+    hide Boolean active;
+
+    // Streak tracking
+    hide Integer strikeStreak;
+
+    expose func initCelebrations() {
+        activeType = NONE;
+        timer = 0.0;
+        flashTimer = 0.0;
+        message = "";
+        messageColor = config.HUD_COLOR_WHITE;
+        active = false;
+        strikeStreak = 0;
+    }
+
+    // ─── Trigger Celebrations ───
+
+    expose func onStrike() {
+        strikeStreak = strikeStreak + 1;
+
+        if (strikeStreak >= 3) {
+            triggerCelebration(TURKEY, "TURKEY!", config.HUD_COLOR_GOLD, config.CELEBRATE_TURKEY_DURATION);
+        } else {
+            triggerCelebration(STRIKE, "STRIKE!", config.HUD_COLOR_RED, config.CELEBRATE_STRIKE_DURATION);
+        }
+    }
+
+    expose func onSpare() {
+        strikeStreak = 0;
+        triggerCelebration(SPARE, "SPARE!", config.HUD_COLOR_GREEN, config.CELEBRATE_SPARE_DURATION);
+    }
+
+    expose func onGutter() {
+        strikeStreak = 0;
+        triggerCelebration(GUTTER, "GUTTER BALL", config.HUD_COLOR_GRAY, config.CELEBRATE_GUTTER_DURATION);
+    }
+
+    expose func onPerfectGame() {
+        triggerCelebration(PERFECT, "PERFECT GAME! 300!", config.HUD_COLOR_GOLD, config.CELEBRATE_PERFECT_DURATION);
+    }
+
+    expose func onOpenFrame() {
+        strikeStreak = 0;
+    }
+
+    hide func triggerCelebration(ctype: Integer, msg: String, color: Integer, duration: Float) {
+        activeType = ctype;
+        timer = duration;
+        flashTimer = config.CELEBRATE_FLASH_DURATION;
+        message = msg;
+        messageColor = color;
+        active = true;
+    }
+
+    // ─── Update ───
+
+    expose func update(dt: Float) -> Boolean {
+        if (active == false) { return true; }
+
+        timer = timer - dt;
+        if (flashTimer > 0.0) {
+            flashTimer = flashTimer - dt;
+        }
+
+        if (timer <= 0.0) {
+            active = false;
+            activeType = NONE;
+            return true; // Celebration complete
+        }
+        return false;
+    }
+
+    // ─── Queries ───
+
+    expose func isActive() -> Boolean {
+        return active;
+    }
+
+    expose func getMessage() -> String {
+        return message;
+    }
+
+    expose func getMessageColor() -> Integer {
+        return messageColor;
+    }
+
+    expose func getType() -> Integer {
+        return activeType;
+    }
+
+    expose func isFlashing() -> Boolean {
+        return flashTimer > 0.0;
+    }
+
+    expose func getFlashAlpha() -> Float {
+        if (flashTimer <= 0.0) { return 0.0; }
+        return config.CELEBRATE_FLASH_ALPHA * (flashTimer / config.CELEBRATE_FLASH_DURATION);
+    }
+
+    expose func getStrikeStreak() -> Integer {
+        return strikeStreak;
+    }
+
+    // Draw celebration overlay (called after End, before Flip)
+    expose func draw(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
+        if (active == false) { return; }
+
+        // Screen flash overlay
+        if (flashTimer > 0.0) {
+            var flashColor: Integer = config.HUD_COLOR_WHITE;
+            if (activeType == STRIKE || activeType == TURKEY) { flashColor = config.HUD_COLOR_RED; }
+            if (activeType == SPARE) { flashColor = config.HUD_COLOR_GREEN; }
+            if (activeType == PERFECT) { flashColor = config.HUD_COLOR_GOLD; }
+
+            // Semi-transparent flash rectangle
+            Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH / 8, flashColor);
+            Canvas3D.DrawRect2D(canvas, 0, screenH - screenH / 8, screenW, screenH / 8, flashColor);
+        }
+
+        // Center message with pulsing
+        var msgX: Integer = screenW / 2 - message.Length * 5;
+        var msgY: Integer = screenH / 2 - 30;
+
+        // Shadow
+        Canvas3D.DrawText2D(canvas, msgX + 2, msgY + 2, message, config.HUD_COLOR_DARK);
+        // Main text
+        Canvas3D.DrawText2D(canvas, msgX, msgY, message, messageColor);
+
+        // Sub-message for turkey
+        if (activeType == TURKEY) {
+            var streakMsg: String = toString(strikeStreak) + " strikes in a row!";
+            var subX: Integer = screenW / 2 - streakMsg.Length * 4;
+            Canvas3D.DrawText2D(canvas, subX, msgY + 25, streakMsg, config.HUD_COLOR_GOLD);
+        }
+
+        // Perfect game extras
+        if (activeType == PERFECT) {
+            var perfectSub: String = "Flawless Victory!";
+            var subX2: Integer = screenW / 2 - perfectSub.Length * 4;
+            Canvas3D.DrawText2D(canvas, subX2, msgY + 25, perfectSub, config.HUD_COLOR_CYAN);
+        }
+    }
+}

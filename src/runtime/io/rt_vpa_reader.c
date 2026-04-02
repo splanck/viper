@@ -140,6 +140,10 @@ static int entry_cmp(const void *a, const void *b) {
 
 // ─── vpa_open_memory ────────────────────────────────────────────────────────
 
+/// @brief Open a VPA archive from an in-memory buffer (e.g., embedded .rodata blob).
+/// @details The buffer is borrowed, not copied — the caller must keep it alive
+///          for the lifetime of the archive. Parses the header and TOC, then
+///          sorts entries by name for binary search in vpa_find.
 vpa_archive_t *vpa_open_memory(const uint8_t *data, size_t size) {
     if (!data || size < kHeaderSize)
         return NULL;
@@ -188,6 +192,9 @@ vpa_archive_t *vpa_open_memory(const uint8_t *data, size_t size) {
 
 // ─── vpa_open_file ──────────────────────────────────────────────────────────
 
+/// @brief Open a VPA archive from a .vpa file on disk.
+/// @details Reads the header and TOC into memory. Entry data is read on demand
+///          via vpa_read_entry. The file handle is kept open until vpa_close.
 vpa_archive_t *vpa_open_file(const char *path) {
     if (!path)
         return NULL;
@@ -267,6 +274,7 @@ vpa_archive_t *vpa_open_file(const char *path) {
 
 // ─── vpa_find ───────────────────────────────────────────────────────────────
 
+/// @brief Find an entry by name using binary search on the sorted TOC.
 const vpa_entry_t *vpa_find(const vpa_archive_t *archive, const char *name) {
     if (!archive || !name || archive->count == 0)
         return NULL;
@@ -298,6 +306,9 @@ const vpa_entry_t *vpa_find(const vpa_archive_t *archive, const char *name) {
 
 // ─── vpa_read_entry ─────────────────────────────────────────────────────────
 
+/// @brief Read and decompress an entry's data (returns malloc'd buffer, caller frees).
+/// @details For compressed entries, reads the compressed data then inflates via
+///          DEFLATE. For uncompressed entries, copies raw bytes from the archive.
 uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry,
                         size_t *out_size) {
     if (!archive || !entry || !out_size)
@@ -358,6 +369,7 @@ uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry,
 
 // ─── vpa_close ──────────────────────────────────────────────────────────────
 
+/// @brief Close a VPA archive, freeing the TOC entries and closing any file handle.
 void vpa_close(vpa_archive_t *archive) {
     if (!archive)
         return;

@@ -347,7 +347,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
                 // Return the function's return type
                 if (funcType && funcType->kind == TypeKindSem::Function) {
-                    return funcType->returnType();
+                    return normalizeRuntimeSurfaceType(funcType->returnType());
                 }
                 return types::unknown();
             }
@@ -432,7 +432,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
                 // Return the function's return type
                 if (funcType && funcType->kind == TypeKindSem::Function) {
-                    return funcType->returnType();
+                    return normalizeRuntimeSurfaceType(funcType->returnType());
                 }
                 return types::unknown();
             }
@@ -463,9 +463,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
                 // Return the function's return type
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return sym->type->returnType();
+                    return normalizeRuntimeSurfaceType(sym->type->returnType());
                 }
-                return sym->type;
+                return normalizeRuntimeSurfaceType(sym->type);
             }
         }
     }
@@ -491,7 +491,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     TypeRef methodType = getMethodType(resolvedOwner, method);
                     exprTypes_[expr->callee.get()] = methodType;
                     return methodType && methodType->kind == TypeKindSem::Function
-                               ? methodType->returnType()
+                               ? normalizeRuntimeSurfaceType(methodType->returnType())
                                : types::unknown();
                 }
             }
@@ -505,8 +505,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             resolvedFunctionDecls_[expr] = func;
             exprTypes_[expr->callee.get()] = funcType;
             validateCallArgs(expr, funcType, loweredName);
-            return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
-                                                                       : types::unknown();
+            return funcType && funcType->kind == TypeKindSem::Function
+                       ? normalizeRuntimeSurfaceType(funcType->returnType())
+                       : types::unknown();
         }
     }
 
@@ -548,8 +549,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             resolvedFunctionDecls_[expr] = func;
             exprTypes_[expr->callee.get()] = funcType;
             validateCallArgs(expr, funcType, loweredName);
-            return funcType && funcType->kind == TypeKindSem::Function ? funcType->returnType()
-                                                                       : types::unknown();
+            return funcType && funcType->kind == TypeKindSem::Function
+                       ? normalizeRuntimeSurfaceType(funcType->returnType())
+                       : types::unknown();
         }
 
         // Check if it's a known function (runtime or user-defined with qualified name)
@@ -578,30 +580,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             }
             // Bug #023 fix: Return the function's return type, not the function type itself
             if (funcType && funcType->kind == TypeKindSem::Function) {
-                return funcType->returnType();
+                return normalizeRuntimeSurfaceType(funcType->returnType());
             }
 
-            // BUG-007 fix: For extern runtime class constructors, return proper collection types
-            // This enables for-in iteration over runtime lists and maps
-            // For extern functions, sym.type is the return type directly (not wrapped in Function)
-            if (sym->isExtern && funcType && funcType->kind == TypeKindSem::Ptr &&
-                !funcType->name.empty()) {
-                // Check if this is a List runtime class
-                if (funcType->name == "Viper.Collections.List") {
-                    // Return a List type with unknown element type
-                    return types::list(types::unknown());
-                }
-                if (funcType->name == "Viper.Collections.Map") {
-                    // Return a Map type with unknown key/struct types
-                    return types::map(types::unknown(), types::unknown());
-                }
-                if (funcType->name == "Viper.Collections.Set") {
-                    // Return a Set type with unknown element type
-                    return types::set(types::unknown());
-                }
-            }
-
-            return funcType;
+            return normalizeRuntimeSurfaceType(funcType);
         }
     }
 
@@ -628,7 +610,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     TypeRef methodType = getMethodType(resolvedOwner, method);
                     exprTypes_[expr->callee.get()] = methodType;
                     return methodType && methodType->kind == TypeKindSem::Function
-                               ? methodType->returnType()
+                               ? normalizeRuntimeSurfaceType(methodType->returnType())
                                : types::unknown();
                 }
             }
@@ -668,7 +650,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 TypeRef methodType = getMethodType(resolvedOwner, method);
                 exprTypes_[expr->callee.get()] = methodType;
                 return methodType && methodType->kind == TypeKindSem::Function
-                           ? methodType->returnType()
+                           ? normalizeRuntimeSurfaceType(methodType->returnType())
                            : types::unknown();
             }
         }
@@ -757,8 +739,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
                 if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return sym->type->returnType();
-                return sym->type;
+                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                return normalizeRuntimeSurfaceType(sym->type);
             }
         }
 
@@ -827,8 +809,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     runtimeCallees_[expr] = fullMethodName;
 
                 if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return sym->type->returnType();
-                return sym->type;
+                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                return normalizeRuntimeSurfaceType(sym->type);
             }
         }
 
@@ -923,8 +905,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // This is critical for chained method calls (e.g., bytes.Slice(x,y).ToStr())
                 // where the caller needs the return type to resolve the next method.
                 if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return sym->type->returnType();
-                return sym->type;
+                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                return normalizeRuntimeSurfaceType(sym->type);
             }
         }
     }
@@ -939,7 +921,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     // If callee is a function type, validate args and return its return type
     if (calleeType->kind == TypeKindSem::Function) {
         validateCallArgs(expr, calleeType, "function");
-        return calleeType->returnType();
+        return normalizeRuntimeSurfaceType(calleeType->returnType());
     }
 
     // If callee is unknown, return unknown

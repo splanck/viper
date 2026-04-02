@@ -20,6 +20,32 @@ using namespace il::support;
 
 namespace {
 
+const il::core::Function *findLambdaFunction(const il::core::Module &module) {
+    for (const auto &fn : module.functions) {
+        if (fn.name.find("__lambda_") != std::string::npos)
+            return &fn;
+    }
+    return nullptr;
+}
+
+bool hasCallWithConstIntArg(const il::core::Function &fn,
+                            const std::string &callee,
+                            int64_t value) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Call || instr.callee != callee ||
+                instr.operands.empty()) {
+                continue;
+            }
+            for (const auto &operand : instr.operands) {
+                if (operand.kind == il::core::Value::Kind::ConstInt && operand.i64 == value)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
 /// @brief Test that lambda with block body compiles.
 TEST(ZiaLambda, LambdaWithBlockBody) {
     SourceManager sm;
@@ -55,6 +81,42 @@ func start() {
         }
     }
     EXPECT_TRUE(foundLambdaFunc);
+}
+
+/// @brief Test that block-body lambdas capture outer locals and lay out envs with alignment.
+TEST(ZiaLambda, BlockBodyLambdaCapturesAndAlignsEnvironment) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var b: Byte = 1;
+    var i: Integer = 2;
+    var ready: Boolean = true;
+    var f = () => {
+        if ready {
+            Viper.Terminal.SayInt(i);
+        }
+        var copy = b;
+    };
+}
+)";
+    CompilerInput input{.source = source, .path = "lambda_capture_block.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const il::core::Function *mainFn = nullptr;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            mainFn = &fn;
+            break;
+        }
+    }
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(hasCallWithConstIntArg(*mainFn, "rt_alloc", 24));
+    ASSERT_TRUE(findLambdaFunction(result.module) != nullptr);
 }
 
 } // namespace
