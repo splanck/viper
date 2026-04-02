@@ -139,6 +139,31 @@ static RtMonitor *get_monitor_for(void *obj) {
     return &node->monitor;
 }
 
+/// @brief Release the monitor associated with an object (removes it from the monitor table).
+void rt_monitor_forget(void *obj) {
+    if (!obj)
+        return;
+    ensure_table_cs_init();
+    size_t idx = hash_ptr(obj);
+
+    EnterCriticalSection(&g_monitor_table_cs);
+    RtMonitorEntry **link = &g_monitor_table[idx];
+    RtMonitorEntry *node = *link;
+    while (node && node->key != obj) {
+        link = &node->next;
+        node = node->next;
+    }
+    if (!node) {
+        LeaveCriticalSection(&g_monitor_table_cs);
+        return;
+    }
+    *link = node->next;
+    LeaveCriticalSection(&g_monitor_table_cs);
+
+    DeleteCriticalSection(&node->monitor.cs);
+    free(node);
+}
+
 static int monitor_is_owner(const RtMonitor *m, DWORD self) {
     return m->owner_valid && m->owner == self;
 }
@@ -268,6 +293,7 @@ static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, i
     }
 }
 
+/// @brief Acquire the monitor lock on an object (blocks until available, supports reentrancy).
 void rt_monitor_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
@@ -281,6 +307,7 @@ void rt_monitor_enter(void *obj) {
     LeaveCriticalSection(&m->cs);
 }
 
+/// @brief Try to acquire the monitor lock without blocking. Returns 1 if acquired, 0 if busy.
 int8_t rt_monitor_try_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
@@ -308,6 +335,7 @@ int8_t rt_monitor_try_enter(void *obj) {
     return 0;
 }
 
+/// @brief Try to acquire the monitor lock with a timeout. Returns 1 if acquired, 0 on timeout.
 int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
@@ -367,6 +395,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     return 1;
 }
 
+/// @brief Release the monitor lock (must be called once for each enter, respects reentrancy).
 void rt_monitor_exit(void *obj) {
     if (!obj)
         rt_trap("Monitor.Exit: null object");
@@ -395,6 +424,7 @@ void rt_monitor_exit(void *obj) {
     LeaveCriticalSection(&m->cs);
 }
 
+/// @brief Release the lock and wait until another thread calls Pause/PauseAll on this monitor.
 void rt_monitor_wait(void *obj) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
@@ -438,6 +468,7 @@ void rt_monitor_wait(void *obj) {
     LeaveCriticalSection(&m->cs);
 }
 
+/// @brief Wait with a timeout. Returns 1 if woken by Pause, 0 on timeout.
 int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
@@ -509,6 +540,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     return timed_out ? 0 : 1;
 }
 
+/// @brief Wake one thread waiting on this monitor (signal/notify pattern).
 void rt_monitor_pause(void *obj) {
     if (!obj)
         rt_trap("Monitor.Pause: not owner");
@@ -541,6 +573,7 @@ void rt_monitor_pause(void *obj) {
     LeaveCriticalSection(&m->cs);
 }
 
+/// @brief Wake all threads waiting on this monitor (broadcast/notify-all pattern).
 void rt_monitor_pause_all(void *obj) {
     if (!obj)
         rt_trap("Monitor.PauseAll: not owner");
@@ -691,6 +724,29 @@ static RtMonitor *get_monitor_for(void *obj) {
 
     pthread_mutex_unlock(&g_monitor_table_mu);
     return &node->monitor;
+}
+
+void rt_monitor_forget(void *obj) {
+    if (!obj)
+        return;
+    size_t idx = hash_ptr(obj);
+
+    pthread_mutex_lock(&g_monitor_table_mu);
+    RtMonitorEntry **link = &g_monitor_table[idx];
+    RtMonitorEntry *node = *link;
+    while (node && node->key != obj) {
+        link = &node->next;
+        node = node->next;
+    }
+    if (!node) {
+        pthread_mutex_unlock(&g_monitor_table_mu);
+        return;
+    }
+    *link = node->next;
+    pthread_mutex_unlock(&g_monitor_table_mu);
+
+    (void)pthread_mutex_destroy(&node->monitor.mu);
+    free(node);
 }
 
 static int monitor_is_owner(const RtMonitor *m, pthread_t self) {
@@ -936,6 +992,7 @@ int8_t rt_monitor_try_enter(void *obj) {
     return 0;
 }
 
+/// @brief Try to acquire the monitor lock with a timeout. Returns 1 if acquired, 0 on timeout.
 int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
@@ -1010,6 +1067,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
 /// @note FIFO-fair: wakes the thread that has been waiting longest.
 ///
 /// @see rt_monitor_enter For acquiring the monitor
+/// @brief Release the monitor lock (must be called once for each enter, respects reentrancy).
 void rt_monitor_exit(void *obj) {
     if (!obj)
         rt_trap("Monitor.Exit: null object");
@@ -1076,6 +1134,7 @@ void rt_monitor_exit(void *obj) {
 /// @see rt_monitor_pause For waking one waiting thread
 /// @see rt_monitor_pause_all For waking all waiting threads
 /// @see rt_monitor_wait_for For waiting with timeout
+/// @brief Release the lock and wait until another thread calls Pause/PauseAll on this monitor.
 void rt_monitor_wait(void *obj) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
@@ -1120,6 +1179,7 @@ void rt_monitor_wait(void *obj) {
     pthread_mutex_unlock(&m->mu);
 }
 
+/// @brief Wait with a timeout. Returns 1 if woken by Pause, 0 on timeout.
 int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
@@ -1212,6 +1272,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
 ///
 /// @see rt_monitor_pause_all For waking all waiting threads
 /// @see rt_monitor_wait For entering the wait state
+/// @brief Wake one thread waiting on this monitor (signal/notify pattern).
 void rt_monitor_pause(void *obj) {
     if (!obj)
         rt_trap("Monitor.Pause: not owner");
@@ -1275,6 +1336,7 @@ void rt_monitor_pause(void *obj) {
 ///
 /// @see rt_monitor_pause For waking just one thread
 /// @see rt_monitor_wait For entering the wait state
+/// @brief Wake all threads waiting on this monitor (broadcast/notify-all pattern).
 void rt_monitor_pause_all(void *obj) {
     if (!obj)
         rt_trap("Monitor.PauseAll: not owner");

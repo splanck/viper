@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 using namespace viper::codegen::x64;
@@ -893,6 +894,65 @@ int main() {
         auto bytes = encodeOne(MOpcode::MOVri, {gpr(PhysReg::RAX), imm(INT64_MAX)});
         CHECK(bytes.size() == 10);
         CHECK(bytesMatch(bytes, {0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}));
+    }
+
+    // ================================================================
+    // 40. Validation failures report cleanly
+    // ================================================================
+
+    // Invalid SIB scale is rejected by MIR construction.
+    {
+        bool threw = false;
+        try {
+            (void)makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX)),
+                                 makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RCX)),
+                                 3,
+                                 0);
+        } catch (const std::invalid_argument &ex) {
+            threw = std::string(ex.what()).find("scale") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    // RSP is not a legal SIB index register and must be rejected during encoding.
+    {
+        MFunction fn;
+        fn.name = "bad_mem_index";
+        MBasicBlock bb;
+        bb.label = ".Lbad_mem_index";
+
+        OpMem badMem{};
+        badMem.base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+        badMem.index = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RSP));
+        badMem.scale = 1;
+        badMem.disp = 0;
+        badMem.hasIndex = true;
+
+        bb.append(MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), Operand{badMem}}));
+        fn.addBlock(std::move(bb));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        bool threw = false;
+        try {
+            enc.encodeFunction(fn, text, rodata, false);
+        } catch (const std::runtime_error &ex) {
+            threw =
+                std::string(ex.what()).find("%rsp as a SIB index register") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    // Reg-immediate ALU encoding is limited to sign-extended imm32.
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::ADDri,
+                            {gpr(PhysReg::RAX), imm(static_cast<int64_t>(1) << 40)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("32-bit encoding range") != std::string::npos;
+        }
+        CHECK(threw);
     }
 
     // ================================================================

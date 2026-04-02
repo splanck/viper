@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_threads.h"
+#include "rt_object.h"
+#include "rt_seq.h"
 
 #include "common/ProcessIsolation.hpp"
 #include <atomic>
@@ -58,6 +60,13 @@ extern "C" void sleep_then_store(void *arg) {
     p->store(1, std::memory_order_release);
 }
 
+static std::atomic<int64_t> g_owned_thread_arg_len{0};
+
+extern "C" void observe_owned_seq(void *arg) {
+    rt_thread_sleep(20);
+    g_owned_thread_arg_len.store(rt_seq_len(arg), std::memory_order_release);
+}
+
 static void test_thread_join_for_timeout() {
     std::atomic<int> flag{0};
     void *t = rt_thread_start((void *)&sleep_then_store, &flag);
@@ -68,6 +77,54 @@ static void test_thread_join_for_timeout() {
 
     rt_thread_join(t);
     assert(flag.load(std::memory_order_acquire) == 1);
+}
+
+static void test_multiple_join_waiters() {
+    std::atomic<int> waiter_count{0};
+    std::atomic<int> flag{0};
+    void *t = rt_thread_start((void *)&sleep_then_store, &flag);
+    assert(t != nullptr);
+
+    std::thread waiter1([&]() {
+        rt_thread_join(t);
+        waiter_count.fetch_add(1, std::memory_order_acq_rel);
+    });
+    std::thread waiter2([&]() {
+        rt_thread_join(t);
+        waiter_count.fetch_add(1, std::memory_order_acq_rel);
+    });
+
+    waiter1.join();
+    waiter2.join();
+    assert(flag.load(std::memory_order_acquire) == 1);
+    assert(waiter_count.load(std::memory_order_acquire) == 2);
+}
+
+static void test_thread_start_owned_keeps_object_arg_alive() {
+    g_owned_thread_arg_len.store(-1, std::memory_order_release);
+    void *arg = rt_seq_new();
+    void *t = rt_thread_start_owned((void *)&observe_owned_seq, arg);
+    assert(t != nullptr);
+
+    if (rt_obj_release_check0(arg))
+        rt_obj_free(arg);
+
+    rt_thread_join(t);
+    assert(g_owned_thread_arg_len.load(std::memory_order_acquire) == 0);
+}
+
+static void test_thread_start_safe_owned_keeps_object_arg_alive() {
+    g_owned_thread_arg_len.store(-1, std::memory_order_release);
+    void *arg = rt_seq_new();
+    void *t = rt_thread_start_safe_owned((void *)&observe_owned_seq, arg);
+    assert(t != nullptr);
+
+    if (rt_obj_release_check0(arg))
+        rt_obj_free(arg);
+
+    rt_thread_safe_join(t);
+    assert(rt_thread_has_error(t) == 0);
+    assert(g_owned_thread_arg_len.load(std::memory_order_acquire) == 0);
 }
 
 int main(int argc, char *argv[]) {
@@ -84,6 +141,9 @@ int main(int argc, char *argv[]) {
     assert(result.stderrText.find("Thread.Join: null thread") != std::string::npos);
 
     test_thread_join_for_timeout();
+    test_multiple_join_waiters();
+    test_thread_start_owned_keeps_object_arg_alive();
+    test_thread_start_safe_owned_keeps_object_arg_alive();
     test_safe_i64_concurrent_add();
     return 0;
 }

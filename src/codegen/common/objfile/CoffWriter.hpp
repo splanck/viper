@@ -32,11 +32,13 @@ class CoffWriter : public ObjectFileWriter {
   public:
     explicit CoffWriter(ObjArch arch) : arch_(arch) {}
 
+    /// @brief Write a single-section .obj file (one .text section + .rdata).
     bool write(const std::string &path,
                const CodeSection &text,
                const CodeSection &rodata,
                std::ostream &err) override;
 
+    /// @brief Write a multi-section .obj file (multiple .text$F sections for per-function linking).
     bool write(const std::string &path,
                const std::vector<CodeSection> &textSections,
                const CodeSection &rodata,

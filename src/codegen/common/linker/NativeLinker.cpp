@@ -615,6 +615,13 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 
 } // namespace
 
+/// @brief Run the full native link pipeline: parse objects → resolve symbols →
+///        merge sections → apply relocations → write executable.
+/// @details Supports ELF (Linux), Mach-O (macOS), and PE (Windows). The pipeline
+///          reads the user's .o and runtime .a archives, resolves all symbols
+///          (including dynamic stubs on macOS), dead-strips unreachable code,
+///          performs ICF, inserts branch trampolines, applies relocations, and
+///          writes the final executable. Zero external tool dependencies.
 int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err) {
     if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::AArch64) {
         err << "error: native Windows ARM64 executable linking is not implemented yet\n";

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -301,6 +302,47 @@ static void test_synchronous_channel() {
     rt_channel_close(ch);
 }
 
+static void test_synchronous_multi_sender_order() {
+    void *ch = rt_channel_new(0);
+    void *a = make_obj();
+    void *b = make_obj();
+    void *received[2] = {NULL, NULL};
+
+    std::thread receiver([&]() {
+        rt_thread_sleep(30);
+        received[0] = rt_channel_recv(ch);
+        rt_thread_sleep(30);
+        received[1] = rt_channel_recv(ch);
+    });
+
+    std::thread sender1([&]() { rt_channel_send(ch, a); });
+    rt_thread_sleep(5);
+    std::thread sender2([&]() { rt_channel_send(ch, b); });
+
+    sender1.join();
+    sender2.join();
+    receiver.join();
+
+    assert(received[0] == a);
+    assert(received[1] == b);
+    rt_channel_close(ch);
+}
+
+static void test_synchronous_send_for_timeout_budget() {
+    void *ch = rt_channel_new(0);
+    void *item = make_obj();
+
+    auto start = std::chrono::steady_clock::now();
+    assert(rt_channel_send_for(ch, item, 40) == 0);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    assert(elapsed >= 30);
+    assert(elapsed < 150);
+    rt_channel_close(ch);
+}
+
 /// @brief Main.
 int main() {
     test_new_buffered();
@@ -321,6 +363,8 @@ int main() {
     test_producer_consumer();
     test_close_wakes_receiver();
     test_synchronous_channel();
+    test_synchronous_multi_sender_order();
+    test_synchronous_send_for_timeout_budget();
 
     printf("Channel tests: all passed\n");
     return 0;

@@ -958,6 +958,7 @@ static double clamp_axis(double value, double min_val, double max_val) {
 // Initialization
 //=============================================================================
 
+/// @brief Initialize the gamepad subsystem (zeroes all pad state, sets default deadzone).
 void rt_pad_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_pad_initialized)
@@ -987,6 +988,7 @@ void rt_pad_init(void) {
     g_pad_initialized = true;
 }
 
+/// @brief Clear per-frame pressed/released flags for all gamepads. Call once at frame start.
 void rt_pad_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event flags
@@ -998,6 +1000,7 @@ void rt_pad_begin_frame(void) {
     }
 }
 
+/// @brief Poll all gamepads for current state and detect button press/release edges.
 void rt_pad_poll(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_pad_initialized)
@@ -1035,6 +1038,7 @@ void rt_pad_poll(void) {
 // Controller Enumeration
 //=============================================================================
 
+/// @brief Get the number of currently connected gamepads.
 int64_t rt_pad_count(void) {
     RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
@@ -1045,6 +1049,7 @@ int64_t rt_pad_count(void) {
     return count;
 }
 
+/// @brief Check whether a gamepad is connected at the given slot index.
 int8_t rt_pad_is_connected(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1052,6 +1057,7 @@ int8_t rt_pad_is_connected(int64_t index) {
     return g_pads[index].connected ? 1 : 0;
 }
 
+/// @brief Get the name of a connected gamepad (e.g., "Xbox Controller").
 rt_string rt_pad_name(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX || !g_pads[index].connected)
@@ -1064,6 +1070,7 @@ rt_string rt_pad_name(int64_t index) {
 // Button State (Polling)
 //=============================================================================
 
+/// @brief Check whether a gamepad button is currently held down.
 int8_t rt_pad_is_down(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1076,6 +1083,7 @@ int8_t rt_pad_is_down(int64_t index, int64_t button) {
     return g_pads[index].buttons[button] ? 1 : 0;
 }
 
+/// @brief Check whether a gamepad button is currently not held down.
 int8_t rt_pad_is_up(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1092,6 +1100,7 @@ int8_t rt_pad_is_up(int64_t index, int64_t button) {
 // Button Events (Since Last Poll)
 //=============================================================================
 
+/// @brief Check whether a gamepad button was pressed this frame (edge-triggered).
 int8_t rt_pad_was_pressed(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1104,6 +1113,7 @@ int8_t rt_pad_was_pressed(int64_t index, int64_t button) {
     return g_pads[index].pressed[button] ? 1 : 0;
 }
 
+/// @brief Check whether a gamepad button was released this frame (edge-triggered).
 int8_t rt_pad_was_released(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1120,6 +1130,7 @@ int8_t rt_pad_was_released(int64_t index, int64_t button) {
 // Analog Inputs
 //=============================================================================
 
+/// @brief Get the left stick X axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_left_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1130,6 +1141,7 @@ double rt_pad_left_x(int64_t index) {
     return apply_deadzone(clamp_axis(g_pads[index].left_x, -1.0, 1.0));
 }
 
+/// @brief Get the left stick Y axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_left_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1140,6 +1152,7 @@ double rt_pad_left_y(int64_t index) {
     return apply_deadzone(clamp_axis(g_pads[index].left_y, -1.0, 1.0));
 }
 
+/// @brief Get the right stick X axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_right_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1150,6 +1163,7 @@ double rt_pad_right_x(int64_t index) {
     return apply_deadzone(clamp_axis(g_pads[index].right_x, -1.0, 1.0));
 }
 
+/// @brief Get the right stick Y axis value (-1.0 to 1.0, deadzone applied).
 double rt_pad_right_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1160,6 +1174,7 @@ double rt_pad_right_y(int64_t index) {
     return apply_deadzone(clamp_axis(g_pads[index].right_y, -1.0, 1.0));
 }
 
+/// @brief Get the left trigger value (0.0 = released, 1.0 = fully pressed).
 double rt_pad_left_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1170,6 +1185,7 @@ double rt_pad_left_trigger(int64_t index) {
     return clamp_axis(g_pads[index].left_trigger, 0.0, 1.0);
 }
 
+/// @brief Get the right trigger value (0.0 = released, 1.0 = fully pressed).
 double rt_pad_right_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1184,11 +1200,13 @@ double rt_pad_right_trigger(int64_t index) {
 // Deadzone Handling
 //=============================================================================
 
+/// @brief Set the analog stick deadzone radius (0.0 to 1.0, default 0.1).
 void rt_pad_set_deadzone(double radius) {
     RT_ASSERT_MAIN_THREAD();
     g_pad_deadzone = clamp_axis(radius, 0.0, 1.0);
 }
 
+/// @brief Get the current analog stick deadzone radius.
 double rt_pad_get_deadzone(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_pad_deadzone;
@@ -1198,6 +1216,7 @@ double rt_pad_get_deadzone(void) {
 // Vibration/Rumble
 //=============================================================================
 
+/// @brief Set gamepad vibration motor intensities (0.0 to 1.0; platform-dependent).
 void rt_pad_vibrate(int64_t index, double left_motor, double right_motor) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
@@ -1214,6 +1233,7 @@ void rt_pad_vibrate(int64_t index, double left_motor, double right_motor) {
     platform_pad_vibrate(index, left, right);
 }
 
+/// @brief Stop all vibration on a gamepad.
 void rt_pad_stop_vibration(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     rt_pad_vibrate(index, 0.0, 0.0);

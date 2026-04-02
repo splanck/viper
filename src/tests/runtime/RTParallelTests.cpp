@@ -12,11 +12,15 @@
 #include "rt_parallel.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_threadpool.h"
+
+#include "common/ProcessIsolation.hpp"
 
 #include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 static void test_result(bool cond, const char *name) {
     if (!cond) {
@@ -84,6 +88,14 @@ static void test_foreach_null() {
     rt_parallel_foreach(rt_seq_new(), NULL);
 
     test_result(true, "foreach_null: should handle NULL safely");
+}
+
+static void call_foreach_shutdown_pool() {
+    void *seq = rt_seq_new();
+    rt_seq_push(seq, (void *)1);
+    void *pool = rt_threadpool_new(1);
+    rt_threadpool_shutdown(pool);
+    rt_parallel_foreach_pool(seq, (void *)foreach_increment, pool);
 }
 
 //=============================================================================
@@ -228,7 +240,11 @@ static void test_invoke_empty() {
 // Main
 //=============================================================================
 
-int main() {
+int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_foreach_shutdown_pool);
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     // Default workers/pool tests
     test_default_workers();
     test_default_pool();
@@ -237,6 +253,10 @@ int main() {
     test_foreach_basic();
     test_foreach_empty();
     test_foreach_null();
+    auto result = viper::tests::runIsolated(call_foreach_shutdown_pool);
+    test_result(result.stderrText.find("Parallel.ForEach: failed to submit work") !=
+                    std::string::npos,
+                "foreach_shutdown_pool: should trap without hanging");
 
     // Map tests
     test_map_basic();

@@ -14,7 +14,9 @@
 #include "rt_object.h"
 #include "rt_parallel.h"
 #include "rt_seq.h"
+#include "rt_threadpool.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -42,6 +44,20 @@ static void *mul_combine(void *a, void *b) {
     int64_t va = (int64_t)(intptr_t)a;
     int64_t vb = (int64_t)(intptr_t)b;
     return (void *)(intptr_t)(va * vb);
+}
+
+static std::atomic<int> g_identity_hits{0};
+static void *g_reduce_identity_sentinel = (void *)(intptr_t)-1234567;
+
+static void *count_identity_seed_hits(void *a, void *b) {
+    int64_t va = 0;
+    if (a == g_reduce_identity_sentinel) {
+        g_identity_hits.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+        va = (int64_t)(intptr_t)a;
+    }
+    int64_t vb = (int64_t)(intptr_t)b;
+    return (void *)(intptr_t)(va + vb);
 }
 
 static void *make_int_seq(const int64_t *vals, int n) {
@@ -126,6 +142,28 @@ static void test_reduce_null_seq() {
     printf("test_reduce_null_seq: PASSED\n");
 }
 
+static void test_reduce_identity_applied_once() {
+    void *seq = rt_seq_new();
+    int64_t expected = 0;
+    for (int64_t i = 1; i <= 64; i++) {
+        rt_seq_push(seq, (void *)(intptr_t)i);
+        expected += i;
+    }
+
+    void *pool = rt_threadpool_new(4);
+    assert(pool != NULL);
+    g_identity_hits.store(0, std::memory_order_release);
+
+    void *result = rt_parallel_reduce_pool(seq, (void *)count_identity_seed_hits,
+                                           g_reduce_identity_sentinel, pool);
+    int64_t sum = (int64_t)(intptr_t)result;
+    assert(sum == expected);
+    assert(g_identity_hits.load(std::memory_order_acquire) == 1);
+
+    rt_threadpool_shutdown(pool);
+    printf("test_reduce_identity_applied_once: PASSED\n");
+}
+
 int main() {
     printf("=== Parallel.Reduce Tests ===\n\n");
 
@@ -136,6 +174,7 @@ int main() {
     test_reduce_product();
     test_reduce_large();
     test_reduce_null_seq();
+    test_reduce_identity_applied_once();
 
     printf("\nAll Parallel.Reduce tests passed!\n");
     return 0;

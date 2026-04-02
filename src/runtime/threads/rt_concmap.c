@@ -181,6 +181,7 @@ static void cm_finalizer(void *obj) {
 // Public API
 //=============================================================================
 
+/// @brief Create a new thread-safe concurrent hash map (string keys, mutex-per-bucket striping).
 void *rt_concmap_new(void) {
     rt_concmap_impl *cm = (rt_concmap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_concmap_impl));
     if (!cm) {
@@ -192,6 +193,8 @@ void *rt_concmap_new(void) {
     cm->count = 0;
     cm->buckets = (cm_entry **)calloc(CM_INITIAL_CAPACITY, sizeof(cm_entry *));
     if (!cm->buckets) {
+        if (rt_obj_release_check0(cm))
+            rt_obj_free(cm);
         rt_trap("ConcurrentMap: memory allocation failed");
         return NULL;
     }
@@ -285,6 +288,8 @@ void *rt_concmap_get(void *obj, rt_string key) {
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
     void *result = e ? e->value : NULL;
+    if (result)
+        rt_obj_retain_maybe(result);
     CM_UNLOCK(cm);
     return result;
 }
@@ -301,6 +306,8 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
     void *result = e ? e->value : default_value;
+    if (e && result)
+        rt_obj_retain_maybe(result);
     CM_UNLOCK(cm);
     return result;
 }
@@ -409,6 +416,7 @@ void rt_concmap_clear(void *obj) {
 
 void *rt_concmap_keys(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -428,6 +436,7 @@ void *rt_concmap_keys(void *obj) {
 
 void *rt_concmap_values(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;

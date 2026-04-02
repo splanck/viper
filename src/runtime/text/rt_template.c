@@ -262,6 +262,7 @@ static rt_string render_internal(const char *tmpl,
 // Public API
 //=============================================================================
 
+/// @brief Render a Mustache-style template with {{key}} placeholders replaced from a Map.
 rt_string rt_template_render(rt_string tmpl, void *values) {
     if (!tmpl)
         rt_trap("Template.Render: template is null");
@@ -277,6 +278,7 @@ rt_string rt_template_render(rt_string tmpl, void *values) {
     return render_internal(tmpl_str, tmpl_len, values, false, "{{", 2, "}}", 2);
 }
 
+/// @brief Render a template with {{0}}, {{1}} positional placeholders replaced from a Seq.
 rt_string rt_template_render_seq(rt_string tmpl, void *values) {
     if (!tmpl)
         rt_trap("Template.RenderSeq: template is null");
@@ -292,6 +294,7 @@ rt_string rt_template_render_seq(rt_string tmpl, void *values) {
     return render_internal(tmpl_str, tmpl_len, values, true, "{{", 2, "}}", 2);
 }
 
+/// @brief Render a template with custom delimiters (e.g., "<%" and "%>" instead of "{{" / "}}").
 rt_string rt_template_render_with(rt_string tmpl,
                                   void *values,
                                   rt_string prefix,
@@ -330,6 +333,7 @@ rt_string rt_template_render_with(rt_string tmpl,
         tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str, suffix_len);
 }
 
+/// @brief Check whether a template contains a given placeholder key.
 int8_t rt_template_has(rt_string tmpl, rt_string key) {
     if (!tmpl)
         return 0;
@@ -378,6 +382,7 @@ int8_t rt_template_has(rt_string tmpl, rt_string key) {
     return 0;
 }
 
+/// @brief Extract all unique placeholder key names from a template as a sequence.
 void *rt_template_keys(rt_string tmpl) {
     void *bag = rt_bag_new();
 
@@ -418,6 +423,7 @@ void *rt_template_keys(rt_string tmpl) {
     return bag;
 }
 
+/// @brief Escape HTML entities in text (&, <, >, ", ') for safe embedding in HTML.
 rt_string rt_template_escape(rt_string text) {
     if (!text)
         return rt_const_cstr("");

@@ -27,13 +27,12 @@
 #include "codegen/aarch64/A64ImmediateUtils.hpp"
 #include "codegen/aarch64/FrameCodegen.hpp"
 #include "codegen/aarch64/binenc/A64Encoding.hpp"
-#include "codegen/common/ICE.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
-#include <cassert>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 
 namespace viper::codegen::aarch64::binenc {
@@ -55,17 +54,19 @@ static std::string sanitizeLabel(const std::string &name) {
 /// Extract PhysReg from a register operand.
 static PhysReg getReg(const MOperand &op) {
     if (op.kind != MOperand::Kind::Reg)
-        VIPER_ICE("expected register operand in AArch64 binary encoder, got kind=" +
-                  std::to_string(static_cast<int>(op.kind)));
+        throw std::runtime_error("AArch64 binary encoder expected register operand, got kind=" +
+                                 std::to_string(static_cast<int>(op.kind)));
     if (!op.reg.isPhys)
-        VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
-                  " reached AArch64 binary encoder (register allocation bug)");
+        throw std::runtime_error("AArch64 binary encoder cannot encode virtual register v" +
+                                 std::to_string(op.reg.idOrPhys));
     return static_cast<PhysReg>(op.reg.idOrPhys);
 }
 
 /// Extract immediate value from an operand.
 static long long getImm(const MOperand &op) {
-    assert(op.kind == MOperand::Kind::Imm && "expected imm operand");
+    if (op.kind != MOperand::Kind::Imm)
+        throw std::runtime_error("AArch64 binary encoder expected immediate operand, got kind=" +
+                                 std::to_string(static_cast<int>(op.kind)));
     return op.imm;
 }
 
@@ -76,6 +77,28 @@ static bool isInSignedImmRange(long long offset) {
 
 static bool isLegalScaledUImm64(long long offset) {
     return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
+}
+
+static int32_t checkedBranchDispWords(int64_t deltaBytes,
+                                      int immBits,
+                                      const char *kind,
+                                      const char *rangeDesc,
+                                      const std::string &target,
+                                      const std::string &fnName) {
+    if ((deltaBytes & 0x3) != 0) {
+        throw std::runtime_error("AArch64 binary encoder: " + std::string(kind) + " target '" +
+                                 target + "' in function '" + fnName + "' is not 4-byte aligned");
+    }
+
+    const int64_t deltaWords = deltaBytes / 4;
+    const int64_t min = -(int64_t{1} << (immBits - 1));
+    const int64_t max = (int64_t{1} << (immBits - 1)) - 1;
+    if (deltaWords < min || deltaWords > max) {
+        throw std::runtime_error("AArch64 binary encoder: " + std::string(kind) + " target '" +
+                                 target + "' in function '" + fnName + "' exceeds " + rangeDesc);
+    }
+
+    return static_cast<int32_t>(deltaWords);
 }
 
 // =============================================================================
@@ -93,108 +116,118 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     pendingBranches_.clear();
     currentFn_ = &fn;
 
-    // Define function symbol at current offset.
-    const size_t funcStartOffset = text.currentOffset();
-    const uint32_t funcSymIdx =
-        text.defineSymbol(fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
+    try {
+        // Define function symbol at current offset.
+        const size_t funcStartOffset = text.currentOffset();
+        const uint32_t funcSymIdx = text.defineSymbol(
+            fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
 
-    // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
-    // Exclude main because we inject bl calls to runtime init.
-    skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
-                 fn.localFrameSize == 0 && fn.name != "main";
-    usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
+        // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
+        // Exclude main because we inject bl calls to runtime init.
+        skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
+                     fn.localFrameSize == 0 && fn.name != "main";
+        usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
 
-    // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
-    emit32(kBtiC, text);
+        // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
+        emit32(kBtiC, text);
 
-    // Emit prologue.
-    if (!skipFrame_)
-        encodePrologue(fn, text);
+        // Emit prologue.
+        if (!skipFrame_)
+            encodePrologue(fn, text);
 
-    // For main, inject runtime context initialization.
-    if (fn.name == "main")
-        encodeMainInit(text);
+        // For main, inject runtime context initialization.
+        if (fn.name == "main")
+            encodeMainInit(text);
 
-    // Encode all blocks.
-    for (const auto &bb : fn.blocks) {
-        if (!bb.name.empty())
-            labelOffsets_[sanitizeLabel(bb.name)] = text.currentOffset();
+        // Encode all blocks.
+        for (const auto &bb : fn.blocks) {
+            if (!bb.name.empty())
+                labelOffsets_[sanitizeLabel(bb.name)] = text.currentOffset();
 
-        for (const auto &mi : bb.instrs) {
-            if (debugLines_ && mi.loc.hasLine())
-                debugLines_->addEntry(
-                    text.currentOffset(), mi.loc.file_id, mi.loc.line, mi.loc.column);
-            encodeInstruction(mi, text);
+            for (const auto &mi : bb.instrs) {
+                if (debugLines_ && mi.loc.hasLine())
+                    debugLines_->addEntry(
+                        text.currentOffset(), mi.loc.file_id, mi.loc.line, mi.loc.column);
+                encodeInstruction(mi, text);
+            }
         }
-    }
 
-    // Resolve pending internal branches.
-    for (const auto &pb : pendingBranches_) {
-        auto it = labelOffsets_.find(pb.target);
-        assert(it != labelOffsets_.end() && "unresolved internal branch target");
+        // Resolve pending internal branches.
+        for (const auto &pb : pendingBranches_) {
+            auto it = labelOffsets_.find(pb.target);
+            if (it == labelOffsets_.end()) {
+                throw std::runtime_error(
+                    "AArch64 binary encoder: unresolved internal branch target '" + pb.target +
+                    "' in function '" + fn.name + "'");
+            }
 
-        size_t targetOff = it->second;
-        int64_t delta = static_cast<int64_t>(targetOff) - static_cast<int64_t>(pb.offset);
+            const size_t targetOff = it->second;
+            const int64_t delta = static_cast<int64_t>(targetOff) - static_cast<int64_t>(pb.offset);
 
-        // Read existing instruction word.
-        const uint8_t *p = text.bytes().data() + pb.offset;
-        uint32_t word = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-                        (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+            // Read existing instruction word.
+            const uint8_t *p = text.bytes().data() + pb.offset;
+            uint32_t word = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+                            (static_cast<uint32_t>(p[2]) << 16) |
+                            (static_cast<uint32_t>(p[3]) << 24);
 
-        if (pb.kind == MOpcode::Br || pb.kind == MOpcode::Bl) {
-            // B/BL: 26-bit signed offset in units of 4 bytes (±128MB range).
-            int32_t imm26 = static_cast<int32_t>(delta / 4);
-            assert(imm26 >= -0x2000000 && imm26 <= 0x1FFFFFF &&
-                   "B/BL branch offset exceeds ±128MB range");
-            word |= (static_cast<uint32_t>(imm26) & 0x3FFFFFF);
+            if (pb.kind == MOpcode::Br || pb.kind == MOpcode::Bl) {
+                const int32_t imm26 = checkedBranchDispWords(
+                    delta, 26, "branch", "the +/-128MB B/BL range", pb.target, fn.name);
+                word |= (static_cast<uint32_t>(imm26) & 0x3FFFFFF);
+            } else {
+                const int32_t imm19 = checkedBranchDispWords(delta,
+                                                             19,
+                                                             "conditional branch",
+                                                             "the +/-1MB conditional-branch range",
+                                                             pb.target,
+                                                             fn.name);
+                word |= ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5);
+            }
+
+            text.patch32LE(pb.offset, word);
+        }
+
+        // Record compact unwind entry for this function.
+        // ARM64 frame-based encoding: bits [31:28] = 0x4 (UNWIND_ARM64_MODE_FRAME)
+        if (!skipFrame_) {
+            uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
+
+            // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
+            uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
+            if (gprPairs > 5)
+                gprPairs = 5;
+            encoding |= (gprPairs << 20);
+
+            // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
+            uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
+            if (fprPairs > 4)
+                fprPairs = 4;
+            encoding |= (fprPairs << 24);
+
+            const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+
+            objfile::CompactUnwindEntry entry{};
+            entry.symbolIndex = funcSymIdx;
+            entry.functionLength = funcLen;
+            entry.encoding = encoding;
+            text.addUnwindEntry(entry);
         } else {
-            // B.cond/CBZ/CBNZ: 19-bit signed offset in units of 4 bytes (±1MB range).
-            int32_t imm19 = static_cast<int32_t>(delta / 4);
-            assert(imm19 >= -0x40000 && imm19 <= 0x3FFFF &&
-                   "conditional branch offset exceeds ±1MB range");
-            word |= ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5);
+            // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
+            // Still record an entry so the unwinder knows this function exists.
+            const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+
+            objfile::CompactUnwindEntry entry{};
+            entry.symbolIndex = funcSymIdx;
+            entry.functionLength = funcLen;
+            entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
+            text.addUnwindEntry(entry);
         }
 
-        text.patch32LE(pb.offset, word);
+        currentFn_ = nullptr;
+    } catch (...) {
+        currentFn_ = nullptr;
+        throw;
     }
-
-    // Record compact unwind entry for this function.
-    // ARM64 frame-based encoding: bits [31:28] = 0x4 (UNWIND_ARM64_MODE_FRAME)
-    if (!skipFrame_) {
-        uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
-
-        // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
-        uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
-        if (gprPairs > 5)
-            gprPairs = 5;
-        encoding |= (gprPairs << 20);
-
-        // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
-        uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
-        if (fprPairs > 4)
-            fprPairs = 4;
-        encoding |= (fprPairs << 24);
-
-        const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
-
-        objfile::CompactUnwindEntry entry{};
-        entry.symbolIndex = funcSymIdx;
-        entry.functionLength = funcLen;
-        entry.encoding = encoding;
-        text.addUnwindEntry(entry);
-    } else {
-        // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
-        // Still record an entry so the unwinder knows this function exists.
-        const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
-
-        objfile::CompactUnwindEntry entry{};
-        entry.symbolIndex = funcSymIdx;
-        entry.functionLength = funcLen;
-        entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
-        text.addUnwindEntry(entry);
-    }
-
-    currentFn_ = nullptr;
 }
 
 // =============================================================================
@@ -316,71 +349,20 @@ void A64BinaryEncoder::encodeMovImm64(uint32_t rd, uint64_t imm, objfile::CodeSe
     static constexpr uint32_t movnTmpl[4] = {kMovN, kMovN16, kMovN32, kMovN48};
     static constexpr uint32_t movkTmpl[4] = {kMovK, kMovK16, kMovK32, kMovK48};
 
-    uint16_t chunks[4] = {
-        static_cast<uint16_t>(imm & 0xFFFF),
-        static_cast<uint16_t>((imm >> 16) & 0xFFFF),
-        static_cast<uint16_t>((imm >> 32) & 0xFFFF),
-        static_cast<uint16_t>((imm >> 48) & 0xFFFF),
-    };
-
-    // Count non-zero halfwords for MOVZ vs MOVN decision.
-    uint64_t invImm = ~imm;
-    uint16_t invChunks[4] = {
-        static_cast<uint16_t>(invImm & 0xFFFF),
-        static_cast<uint16_t>((invImm >> 16) & 0xFFFF),
-        static_cast<uint16_t>((invImm >> 32) & 0xFFFF),
-        static_cast<uint16_t>((invImm >> 48) & 0xFFFF),
-    };
-
-    int nzCount = 0, invNzCount = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (chunks[i])
-            ++nzCount;
-        if (invChunks[i])
-            ++invNzCount;
-    }
-
-    bool useMovn = (invNzCount < nzCount);
-    const uint16_t *src = useMovn ? invChunks : chunks;
-
-    // Find first non-zero halfword for the initial MOVZ/MOVN.
-    int first = -1;
-    for (int i = 0; i < 4; ++i) {
-        if (src[i]) {
-            first = i;
-            break;
+    forEachMoveWideInst(imm, [&](const MoveWideInst &inst) {
+        const unsigned lane = inst.shift / 16;
+        switch (inst.opcode) {
+            case MoveWideOpcode::MovZ:
+                emit32(movzTmpl[lane] | (static_cast<uint32_t>(inst.imm16) << 5) | rd, cs);
+                break;
+            case MoveWideOpcode::MovN:
+                emit32(movnTmpl[lane] | (static_cast<uint32_t>(inst.imm16) << 5) | rd, cs);
+                break;
+            case MoveWideOpcode::MovK:
+                emit32(movkTmpl[lane] | (static_cast<uint32_t>(inst.imm16) << 5) | rd, cs);
+                break;
         }
-    }
-
-    if (first < 0) {
-        // All halfwords zero: emit MOVZ Xd, #0 (or MOVN Xd, #0 for all-ones).
-        if (useMovn)
-            emit32(kMovN | rd, cs); // MOVN Xd, #0 → 0xFFFFFFFFFFFFFFFF
-        else
-            emit32(kMovZ | rd, cs); // MOVZ Xd, #0 → 0
-        return;
-    }
-
-    // Emit initial MOVZ or MOVN at the first non-zero halfword position.
-    const uint32_t *baseTmpl = useMovn ? movnTmpl : movzTmpl;
-    emit32(baseTmpl[first] | (static_cast<uint32_t>(src[first]) << 5) | rd, cs);
-
-    // Emit MOVK for remaining halfwords that need correction.
-    for (int i = 0; i < 4; ++i) {
-        if (i == first)
-            continue;
-        // For MOVN path: MOVK the original (non-inverted) halfwords that differ from
-        // what MOVN+initial produced. For MOVZ path: MOVK non-zero original halfwords.
-        if (useMovn) {
-            // After MOVN, all halfwords except 'first' are 0xFFFF. We need MOVK for
-            // any halfword that isn't 0xFFFF in the original value.
-            if (chunks[i] != 0xFFFF)
-                emit32(movkTmpl[i] | (static_cast<uint32_t>(chunks[i]) << 5) | rd, cs);
-        } else {
-            if (chunks[i])
-                emit32(movkTmpl[i] | (static_cast<uint32_t>(chunks[i]) << 5) | rd, cs);
-        }
-    }
+    });
 }
 
 /// Emit a single ADD or SUB immediate, using lsl #12 when possible.
@@ -435,8 +417,10 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(
         emit32((isLoad ? kLdrGpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
 }
 
-void A64BinaryEncoder::encodeSpOffsetStore(
-    uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs) {
+void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
+                                           int64_t offset,
+                                           bool isFPR,
+                                           objfile::CodeSection &cs) {
     const uint32_t sp = hwGPR(PhysReg::SP);
     if (isLegalScaledUImm64(offset)) {
         const uint32_t scaled = static_cast<uint32_t>(offset / 8);
@@ -596,12 +580,18 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             const uint32_t rd = hwGPR(getReg(mi.ops[0]));
             const uint32_t rn = hwGPR(getReg(mi.ops[1]));
             const long long immValue = getImm(mi.ops[2]);
-            assert(immValue >= 0 &&
-                   "signed add/sub immediate reached binary encoder without normalization");
+            if (immValue < 0) {
+                throw std::runtime_error(
+                    "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
+                    " immediate reached encoder without sign normalization");
+            }
             const uint64_t imm = static_cast<uint64_t>(immValue);
             const auto enc = classifyAddSubImmEncoding(imm);
-            assert(enc.has_value() &&
-                   "AArch64 add/sub immediate reached binary encoder without legalization");
+            if (!enc.has_value()) {
+                throw std::runtime_error(
+                    "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
+                    " immediate reached encoder without legalization");
+            }
             uint32_t tmpl = kAddRI;
             if (mi.opc == MOpcode::SubRI)
                 tmpl = kSubRI;
@@ -1040,7 +1030,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 // Backward branch — resolve immediately.
                 int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                int32_t imm26 = static_cast<int32_t>(delta / 4);
+                const int32_t imm26 =
+                    checkedBranchDispWords(delta,
+                                           26,
+                                           "branch",
+                                           "the +/-128MB B/BL range",
+                                           target,
+                                           currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Br});
@@ -1055,7 +1051,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (it != labelOffsets_.end()) {
                 int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                int32_t imm19 = static_cast<int32_t>(delta / 4);
+                const int32_t imm19 =
+                    checkedBranchDispWords(delta,
+                                           19,
+                                           "conditional branch",
+                                           "the +/-1MB conditional-branch range",
+                                           target,
+                                           currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kBCond | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | cc, cs);
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::BCond});
@@ -1070,7 +1072,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (it != labelOffsets_.end()) {
                 int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                int32_t imm19 = static_cast<int32_t>(delta / 4);
+                const int32_t imm19 =
+                    checkedBranchDispWords(delta,
+                                           19,
+                                           "conditional branch",
+                                           "the +/-1MB conditional-branch range",
+                                           target,
+                                           currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kCbz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbz});
@@ -1085,7 +1093,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (it != labelOffsets_.end()) {
                 int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                int32_t imm19 = static_cast<int32_t>(delta / 4);
+                const int32_t imm19 =
+                    checkedBranchDispWords(delta,
+                                           19,
+                                           "conditional branch",
+                                           "the +/-1MB conditional-branch range",
+                                           target,
+                                           currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kCbnz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbnz});
@@ -1101,7 +1115,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 // Internal call (rare but possible for local functions).
                 int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                int32_t imm26 = static_cast<int32_t>(delta / 4);
+                const int32_t imm26 =
+                    checkedBranchDispWords(delta,
+                                           26,
+                                           "call",
+                                           "the +/-128MB B/BL range",
+                                           mi.ops[0].label,
+                                           currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kBl | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
             } else {
                 uint32_t symIdx = cs.findOrDeclareSymbol(sym);
@@ -1139,14 +1159,15 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::AddOvfRI:
         case MOpcode::SubOvfRI:
         case MOpcode::MulOvfRRR:
-            assert(false && "Overflow pseudo-instruction reached binary encoder — should be "
-                            "expanded by LowerOvf");
-            return;
+            throw std::runtime_error("AArch64 binary encoder: overflow pseudo-op '" +
+                                     std::string(opcodeName(mi.opc)) +
+                                     "' reached binary emission before LowerOvf");
 
     } // end switch
 
     // If we reach here, the opcode was not handled.
-    assert(false && "Unhandled MOpcode in A64BinaryEncoder");
+    throw std::runtime_error("AArch64 binary encoder: unhandled opcode '" +
+                             std::string(opcodeName(mi.opc)) + "'");
 }
 
 } // namespace viper::codegen::aarch64::binenc

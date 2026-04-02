@@ -11,11 +11,10 @@
 //   - Debouncer resets its timer on each call; fires only after quiet_ms have passed.
 //   - Throttler fires at most once per interval_ms regardless of call frequency.
 //   - Both utilities are time-based using the monotonic clock.
-//   - Callback functions are invoked synchronously from the polling thread.
+//   - Objects are not internally synchronized; callers must serialize shared access.
 //
 // Ownership/Lifetime:
-//   - Debouncer and Throttler objects are heap-allocated; caller manages lifetime.
-//   - No reference counting; explicit destruction is required.
+//   - Debouncer and Throttler objects are heap-allocated runtime objects.
 //
 // Links: src/runtime/threads/rt_debounce.c (implementation)
 //

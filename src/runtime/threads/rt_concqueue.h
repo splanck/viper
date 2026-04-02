@@ -11,11 +11,13 @@
 //   - FIFO ordering; mutex-protected for thread safety.
 //   - rt_concqueue_dequeue blocks on a condition variable when the queue is empty.
 //   - rt_concqueue_try_dequeue returns NULL immediately if the queue is empty.
-//   - rt_concqueue_close wakes all blocked dequeue callers with NULL.
+//   - rt_concqueue_close wakes all blocked dequeue callers with NULL once the
+//     queue is empty and rejects future enqueue attempts.
 //
 // Ownership/Lifetime:
 //   - ConcQueue objects are heap-allocated; caller is responsible for lifetime management.
-//   - Enqueued values are retained; dequeued values are returned with retained reference.
+//   - Enqueued values are retained; dequeued and peeked values are returned
+//     with a stable retained reference.
 //
 // Links: src/runtime/threads/rt_concqueue.c (implementation)
 //
@@ -42,6 +44,11 @@ int64_t rt_concqueue_len(void *obj);
 /// @return 1 if likely empty, 0 otherwise.
 int8_t rt_concqueue_is_empty(void *obj);
 
+/// @brief Check whether the queue has been closed.
+/// @param obj ConcurrentQueue pointer.
+/// @return 1 if closed, 0 otherwise.
+int8_t rt_concqueue_get_is_closed(void *obj);
+
 /// @brief Add item to back of queue (thread-safe).
 /// @param obj ConcurrentQueue pointer.
 /// @param item Value to enqueue (retained).
@@ -65,12 +72,18 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms);
 
 /// @brief Peek at front item without removing (non-blocking).
 /// @param obj ConcurrentQueue pointer.
-/// @return Front item or NULL if empty.
+/// @return Front item or NULL if empty. The returned value is retained.
 void *rt_concqueue_peek(void *obj);
 
 /// @brief Remove all items from queue (thread-safe).
 /// @param obj ConcurrentQueue pointer.
 void rt_concqueue_clear(void *obj);
+
+/// @brief Close the queue and wake blocked dequeuers.
+/// @details Once closed, dequeue operations return NULL when the queue becomes
+///          empty and enqueue attempts trap.
+/// @param obj ConcurrentQueue pointer.
+void rt_concqueue_close(void *obj);
 
 #ifdef __cplusplus
 }

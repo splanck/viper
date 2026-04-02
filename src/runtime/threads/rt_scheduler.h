@@ -14,7 +14,7 @@
 //   - Tasks fire at most once per registration; use rt_scheduler_schedule to re-queue.
 //
 // Ownership/Lifetime:
-//   - Scheduler objects are heap-allocated; caller is responsible for lifetime management.
+//   - Scheduler objects are heap-allocated runtime objects.
 //   - Task callback function pointers must remain valid until the task fires.
 //
 // Links: src/runtime/threads/rt_scheduler.c (implementation), src/runtime/core/rt_string.h

@@ -90,6 +90,12 @@ void rt_monitor_pause(void *obj);
 /// @param obj Object whose monitor to signal (must be owned by caller).
 void rt_monitor_pause_all(void *obj);
 
+/// @brief Internal cleanup hook invoked when a monitored runtime object is freed.
+/// @details Removes the monitor table entry for @p obj if one exists. This is
+///          not part of the public Viper.Threads surface.
+/// @param obj Object whose monitor metadata should be discarded.
+void rt_monitor_forget(void *obj);
+
 // =========================================================================
 // Viper.Threads.Thread
 // =========================================================================
@@ -103,25 +109,29 @@ void rt_monitor_pause_all(void *obj);
 /// @return Thread object handle, or NULL on allocation failure.
 void *rt_thread_start(void *entry, void *arg);
 
+/// @brief Start a new thread and retain a runtime-managed argument for it.
+/// @details Like rt_thread_start, but @p arg must be a runtime-managed object
+///          or string handle and is retained until the entry function returns.
+void *rt_thread_start_owned(void *entry, void *arg);
+
 /// @brief Join a thread, blocking until it finishes.
-/// @details Traps if called on NULL, if the thread is already joined, or if
-///          a thread attempts to join itself.
+/// @details Traps if called on NULL or if a thread attempts to join itself.
 /// @param thread Thread handle returned by rt_thread_start.
 void rt_thread_join(void *thread);
 
 /// @brief Attempt to join a thread without blocking.
 /// @details Returns immediately with success if the thread has finished.
-///          Traps on invalid usage (NULL, already joined, or self-join).
+///          Traps on invalid usage (NULL or self-join).
 /// @param thread Thread handle returned by rt_thread_start.
-/// @return 1 if joined successfully, 0 if still running.
+/// @return 1 if the thread has already finished, 0 if still running.
 int8_t rt_thread_try_join(void *thread);
 
 /// @brief Join a thread with a timeout.
 /// @details Waits up to @p ms milliseconds for completion. Traps on invalid
-///          usage (NULL, already joined, or self-join).
+///          usage (NULL or self-join).
 /// @param thread Thread handle returned by rt_thread_start.
 /// @param ms Timeout in milliseconds.
-/// @return 1 if joined before timeout, 0 if timed out.
+/// @return 1 if the thread finished before timeout, 0 if timed out.
 int8_t rt_thread_join_for(void *thread, int64_t ms);
 
 /// @brief Retrieve the runtime-assigned thread identifier.
@@ -160,6 +170,11 @@ void rt_thread_yield(void);
 /// @param arg Argument passed to the entry function.
 /// @return Thread object handle, or NULL on allocation failure.
 void *rt_thread_start_safe(void *entry, void *arg);
+
+/// @brief Start a safe thread and retain a runtime-managed argument for it.
+/// @details Like rt_thread_start_safe, but retains @p arg until the entry
+///          function returns or traps.
+void *rt_thread_start_safe_owned(void *entry, void *arg);
 
 /// @brief Check whether a safe-started thread exited with a trap error.
 /// @param thread Thread handle returned by rt_thread_start_safe.

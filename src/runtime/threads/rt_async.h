@@ -4,13 +4,16 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_async.h
-// Purpose: Async task combinators built on Future/Promise and threads, providing WhenAll, WhenAny,
-// Delay, and Run wrappers for composing concurrent operations.
+// Purpose: Async task combinators built on Future/Promise and threads, providing
+//          All, Any, Delay, Run, Map, and RunCancellable wrappers for composing
+//          asynchronous operations.
 //
 // Key invariants:
 //   - All functions return Future objects.
-//   - rt_async_when_all waits for all futures; rt_async_when_any waits for the first.
-//   - rt_async_run submits a function to the default thread pool.
+//   - rt_async_all resolves when every input future completes or the first input
+//     error arrives.
+//   - rt_async_any resolves with the first completed input future's value/error.
+//   - rt_async_run and rt_async_run_cancellable spawn background threads.
 //   - All operations are thread-safe.
 //
 // Ownership/Lifetime:
@@ -18,7 +21,7 @@
 //   - Callers should not free Future objects directly.
 //
 // Links: src/runtime/threads/rt_async.c (implementation), src/runtime/threads/rt_future.h,
-// src/runtime/threads/rt_threadpool.h
+// src/runtime/threads/rt_cancellation.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -40,6 +43,11 @@ extern "C" {
 /// @param arg Argument passed to the callback.
 /// @return Future that resolves with the callback's return value.
 void *rt_async_run(void *callback, void *arg);
+
+/// @brief Run a callback asynchronously, retaining a runtime-managed argument.
+/// @details Like rt_async_run, but @p arg must be a runtime-managed object or
+///          string handle and is retained until the callback has finished.
+void *rt_async_run_owned(void *callback, void *arg);
 
 /// @brief Wait for all Futures to complete and collect results.
 /// @details Returns a Future that resolves with a Seq of results once all
@@ -71,6 +79,10 @@ void *rt_async_delay(int64_t ms);
 /// @return New Future resolving to the mapped value.
 void *rt_async_map(void *future, void *mapper, void *arg);
 
+/// @brief Chain a transformation onto a Future with a retained runtime argument.
+/// @details Like rt_async_map, but retains @p arg until the mapper has run.
+void *rt_async_map_owned(void *future, void *mapper, void *arg);
+
 /// @brief Run a callback asynchronously with cancellation support.
 /// @details Like rt_async_run but the callback receives the cancellation
 ///          token as a second argument: void*(*)(void* arg, void* token).
@@ -79,6 +91,11 @@ void *rt_async_map(void *future, void *mapper, void *arg);
 /// @param token Cancellation token (may be NULL).
 /// @return Future that resolves with the callback's return value.
 void *rt_async_run_cancellable(void *callback, void *arg, void *token);
+
+/// @brief Run a cancellable callback asynchronously with a retained runtime argument.
+/// @details Like rt_async_run_cancellable, but retains @p arg until the callback
+///          has finished.
+void *rt_async_run_cancellable_owned(void *callback, void *arg, void *token);
 
 #ifdef __cplusplus
 }

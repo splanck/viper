@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-02
 ---
 
 # Threads
@@ -50,7 +50,9 @@ OS threads for Viper programs (VM and native backends).
 | `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
 | `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
 | `Start(entry, arg)`      | `Thread(Ptr, Ptr)`               | Start a new thread running `entry(arg)`    |
-| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a thread with error boundaries — traps are captured instead of crashing |
+| `StartOwned(entry, arg)` | `Thread(Ptr, Object)`            | Start a new thread and retain a runtime object argument until the entry returns |
+| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a thread with error boundaries; traps are captured instead of crashing |
+| `StartSafeOwned(entry, arg)` | `Thread(Ptr, Object)`        | Safe-thread variant of `StartOwned`        |
 | `TryJoin()`              | `Boolean()`                      | Non-blocking join attempt                  |
 | `Yield()`                | `Void()`                         | Yield the current thread's time slice      |
 
@@ -88,6 +90,7 @@ entry:
 
 - **Native:** `entry` is a raw code pointer with C ABI `void (*)(void *)`.
 - **VM:** `entry` is a VM function pointer (internally `il::core::Function*`) and is invoked by a per-thread VM runner.
+- Use `StartOwned` / `StartSafeOwned` when `arg` is a runtime-managed object or string handle that should stay alive until the callback returns.
 
 ### Safe Threads (Error Boundaries)
 
@@ -130,7 +133,6 @@ for safe thread handles, as they wrap the internal thread structure.
 - `Thread.Start: null entry`
 - `Thread.Start: failed to create thread`
 - `Thread.Join: null thread`
-- `Thread.Join: already joined`
 - `Thread.Join: cannot join self`
 
 ### Zia Example
@@ -654,6 +656,7 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 |------------------|---------------------|--------------------------------------------------|
 | `GetFuture()`    | `Future()`          | Get the linked Future (always returns same one)  |
 | `Set(value)`     | `Void(Object)`      | Complete with a value (can only call once)       |
+| `SetOwned(value)`| `Void(Object)`      | Complete with a retained runtime-managed value   |
 | `SetError(msg)`  | `Void(String)`      | Complete with an error (can only call once)      |
 
 ### Properties
@@ -661,10 +664,6 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 | Property | Type                   | Description                            |
 |----------|------------------------|----------------------------------------|
 | `IsDone` | `Boolean` (read-only)  | True if Set or SetError was called     |
-
-### Zia Example
-
-> Promise is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for Promise/Future patterns.
 
 ### BASIC Example
 
@@ -679,6 +678,9 @@ promise.Set(result)
 
 ' Or complete with an error
 promise.SetError("Operation failed")
+
+' Or transfer ownership of a runtime-managed object result
+promise.SetOwned(someObject)
 ```
 
 ### Errors (Traps)
@@ -702,8 +704,8 @@ Promise which is used to set the value.
 | Method          | Signature           | Description                                          |
 |-----------------|---------------------|------------------------------------------------------|
 | `Get()`         | `Object()`          | Block until resolved, return value (traps on error)  |
-| `TryGetVal()`   | `Object()`          | Non-blocking get: returns value if resolved, NULL otherwise |
-| `GetForVal(ms)` | `Object(Integer)`   | Timed get: returns value if resolved within `ms` milliseconds, NULL on timeout |
+| `TryGet()`      | `Object()`          | Non-blocking get: returns value if resolved, NULL otherwise |
+| `GetFor(ms)`    | `Object(Integer)`   | Timed get: returns value if resolved within `ms` milliseconds, NULL on timeout |
 | `Wait()`        | `Void()`            | Block until resolved (value or error)                |
 | `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
 
@@ -714,10 +716,6 @@ Promise which is used to set the value.
 | `IsDone`  | `Boolean` (read-only)  | True if resolved (value or error)            |
 | `IsError` | `Boolean` (read-only)  | True if resolved with error                  |
 | `Error`   | `String` (read-only)   | Error message (empty if no error)            |
-
-### Zia Example
-
-> Future is obtained via `Promise.GetFuture()`. Since Promise is not yet constructible from Zia, Future is also not accessible. Use BASIC for async result patterns.
 
 ### BASIC Example
 
@@ -943,6 +941,7 @@ pool.Shutdown()
 - **Blocking:** All parallel operations block until work is complete
 - **Thread safety:** Functions passed to parallel operations must be thread-safe
 - **Work distribution:** Work is distributed in small chunks for load balancing
+- **Reduce identity:** `Reduce` applies the identity value once on the calling thread after per-chunk reduction; workers do not share or mutate the identity concurrently
 
 ### Use Cases
 
@@ -964,13 +963,13 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 
 | Property      | Type    | Description                                |
 |---------------|---------|--------------------------------------------|
-| `IsCancelled` | Boolean | True if cancellation has been requested    |
+| `IsCancelled` | Boolean | True if this token or any linked parent has been cancelled |
 
 ### Methods
 
 | Method                    | Signature              | Description                                              |
 |---------------------------|------------------------|----------------------------------------------------------|
-| `Cancel()`                | `Void()`               | Request cancellation (irreversible once set)              |
+| `Cancel()`                | `Void()`               | Request cancellation on this token                        |
 | `Reset()`                 | `Void()`               | Reset the token for reuse                                |
 | `Linked()`                | `CancelToken()`  | Create a child token that cancels when parent cancels    |
 | `Check()`                 | `Boolean()`            | Check if this or parent token is cancelled               |
@@ -979,13 +978,9 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 ### Notes
 
 - **Thread-safe:** All operations use atomic memory operations, safe to call from any thread.
-- **One-way:** Once `Cancel()` is called, `IsCancelled` returns true permanently (until `Reset()`).
-- **Linked tokens:** Child tokens created with `Linked()` are automatically cancelled when the parent is cancelled.
+- **Reusable:** `Reset()` clears this token's local cancelled bit so it can be reused.
+- **Linked tokens:** Child tokens created with `Linked()` report `IsCancelled = true` when either the child or parent has been cancelled.
 - **Cooperative:** Cancellation is advisory. The operation must check the token and respond appropriately.
-
-### Zia Example
-
-> CancelToken is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for cancellation patterns.
 
 ### BASIC Example
 
@@ -1013,7 +1008,8 @@ DIM parentToken AS OBJECT = Viper.Threads.CancelToken.New()
 DIM childToken AS OBJECT = parentToken.Linked()
 
 parentToken.Cancel()
-PRINT childToken.Check()  ' Output: 1 (true - parent was cancelled)
+PRINT childToken.IsCancelled  ' Output: 1 (true - parent was cancelled)
+PRINT childToken.Check()      ' Output: 1
 
 ' ThrowIfCancelled traps if cancelled
 token.ThrowIfCancelled()  ' Traps: "operation cancelled"
@@ -1057,10 +1053,6 @@ Time-based debouncer that delays execution until a quiet period has elapsed. Use
 3. `IsReady` returns true only after the full delay has elapsed with no new signals
 4. This ensures the action fires only after events stop arriving
 
-### Zia Example
-
-> Debouncer is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for debouncing patterns.
-
 ### BASIC Example
 
 ```basic
@@ -1087,6 +1079,7 @@ END IF
 - **Window resize:** Recalculate layout after resizing stops
 - **Auto-save:** Save document after editing pauses
 - **Network requests:** Coalesce rapid updates into a single API call
+- **Synchronization note:** Debouncer state is not internally synchronized; guard it externally if multiple threads share one instance
 
 ---
 
@@ -1119,10 +1112,6 @@ Time-based throttler that limits operations to at most once per interval. Unlike
 2. Returns `true` if enough time has passed since the last allowed operation
 3. Returns `false` if the interval hasn't elapsed yet
 4. The first call always succeeds
-
-### Zia Example
-
-> Throttler is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for throttling patterns.
 
 ### BASIC Example
 
@@ -1162,6 +1151,7 @@ PRINT "Time until next allowed: "; throttle.get_RemainingMs(); "ms"
 - **UI updates:** Throttle expensive re-renders
 - **Logging:** Limit log output rate
 - **Polling:** Control polling frequency
+- **Synchronization note:** Throttler state is not internally synchronized; guard it externally if multiple threads share one instance
 
 ---
 
@@ -1194,10 +1184,7 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 - **Named tasks:** Tasks are identified by name. Scheduling a task with the same name as an existing task replaces it.
 - **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
-
-### Zia Example
-
-> Scheduler is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for task scheduling.
+- **Synchronization note:** Scheduler state is not internally synchronized; guard it externally if multiple threads share one instance
 
 ### BASIC Example
 
@@ -1257,20 +1244,27 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 |-----------------------------------|------------------------------------|-----------------------------------------------------|
 | `Delay(ms)`                       | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
 | `All(futures)`                    | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
-| `Any(futures)`                    | `Future(Seq)`                      | Return a Future that resolves with the value of whichever input future completes first |
+| `Any(futures)`                    | `Future(Object)`                   | Return a Future that resolves with the value of whichever input future completes first |
 | `Run(callback, arg)`              | `Future(Ptr, Ptr)`                 | Spawn a thread to run `callback(arg)`, return Future with result |
+| `RunOwned(callback, arg)`         | `Future(Ptr, Object)`              | `Run` variant that retains a runtime-managed argument while the callback runs |
 | `Map(future, mapper, arg)`        | `Future(Future, Ptr, Ptr)`         | Chain a transformation on a Future's result          |
+| `MapOwned(future, mapper, arg)`   | `Future(Future, Ptr, Object)`      | `Map` variant that retains a runtime-managed mapper argument |
 | `RunCancellable(callback, arg, token)` | `Future(Ptr, Ptr, CancelToken)` | Like `Run` but linked to a cancellation token      |
+| `RunCancellableOwned(callback, arg, token)` | `Future(Ptr, Object, CancelToken)` | `RunCancellable` variant that retains a runtime-managed argument |
 
 ### Notes
 
 - All methods are thread-safe.
 - `Delay` returns a Future that resolves with NULL after the specified delay.
-- `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with an error.
+- `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with that error without waiting for the remaining inputs.
 - `Any` returns a Future resolving with the value of the first completed input future.
 - `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value.
 - `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
 - `RunCancellable` is like `Run` but associates the spawned task with a `CancelToken` for cooperative cancellation.
+- Traps raised inside `Run`, `RunCancellable`, or `Map` callbacks are converted into Future errors.
+- Callback `arg` values are forwarded as raw pointers; if you pass non-global native memory, keep it alive until the callback has run.
+- Use `RunOwned`, `MapOwned`, and `RunCancellableOwned` when the callback argument is a runtime-managed object or string handle that should be retained for the duration of the callback.
+- If a callback wants to transfer ownership of a runtime-managed result explicitly, pair these APIs with `Promise.SetOwned` in custom promise/future flows.
 
 ---
 
@@ -1306,7 +1300,8 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 - Uses mutex protection; safe for concurrent reads and writes from any thread.
 - Keys are copied on insert (not retained by reference).
-- Values are retained (reference count incremented) while in the map.
+- Values are retained while in the map.
+- `Get`, `GetOr`, and `Values` return stable retained references/snapshots that remain valid even if the map is concurrently updated after the call returns.
 - Uses FNV-1a hash with separate chaining for collision resolution.
 - For single-threaded use, prefer `Viper.Collections.Map` which has no locking overhead.
 
@@ -1393,6 +1388,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 |-----------|------------------------|------------------------------------------|
 | `Length`     | `Integer` (read-only)  | Approximate number of elements           |
 | `IsEmpty` | `Boolean` (read-only)  | True if the queue is approximately empty |
+| `IsClosed` | `Boolean` (read-only) | True after `Close()` has been called     |
 
 ### Methods
 
@@ -1404,13 +1400,16 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 | `DequeueTimeout(ms)` | `Object(Integer)`     | Remove item with timeout; returns NULL if timeout expires        |
 | `Peek()`             | `Object()`            | Peek at front item without removing; returns NULL if empty       |
 | `Clear()`            | `Void()`              | Remove all items (thread-safe)                                   |
+| `Close()`            | `Void()`              | Close the queue, wake blocked dequeuers, and reject future enqueues |
 
 ### Notes
 
 - FIFO order is guaranteed.
-- `Dequeue` blocks until an item is available.
-- `TryDequeue` and `Peek` return NULL immediately if the queue is empty.
-- Values are retained (reference count incremented) while in the queue.
+- `Dequeue` blocks until an item is available or the queue is closed and drained.
+- `TryDequeue` returns NULL immediately if the queue is empty.
+- `Peek` returns a stable retained reference to the current front item, or NULL if empty.
+- `Close()` wakes blocked `Dequeue`/`DequeueTimeout` calls; once the queue is empty they return NULL.
+- Values are retained while in the queue.
 
 ### Zia Example
 

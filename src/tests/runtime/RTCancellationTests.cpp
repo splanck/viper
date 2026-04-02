@@ -37,7 +37,7 @@ static void test_linked() {
 
     rt_cancellation_cancel(parent);
     assert(rt_cancellation_check(child) == 1);
-    assert(rt_cancellation_is_cancelled(child) == 0); // Child itself not cancelled
+    assert(rt_cancellation_is_cancelled(child) == 1); // Linked parent cancellation is visible
 }
 
 static void test_linked_self_cancel() {

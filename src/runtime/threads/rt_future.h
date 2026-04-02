@@ -52,6 +52,14 @@ void *rt_promise_get_future(void *promise);
 /// @param value The result value.
 void rt_promise_set(void *promise, void *value);
 
+/// @brief Complete the Promise with a retained runtime-managed value.
+/// @details Retains @p value before resolving the promise and releases it from
+///          the promise finalizer. Only use this when @p value is a runtime-
+///          managed object or string handle.
+/// @param promise Promise object pointer.
+/// @param value Runtime-managed result object.
+void rt_promise_set_owned(void *promise, void *value);
+
 /// @brief Complete the Promise with an error.
 /// @details The associated Future is resolved with an error state.
 ///          Can only be called once; subsequent calls trap.
@@ -131,6 +139,47 @@ void rt_future_wait(void *future);
 /// @param ms Timeout in milliseconds.
 /// @return 1 if resolved, 0 if timed out.
 int8_t rt_future_wait_for(void *future, int64_t ms);
+
+/// @brief Internal extended listener hook with cancellation cleanup.
+/// @details Like rt_future_on_complete, but also records an optional cleanup
+///          callback that runs if the listener is removed before completion.
+int8_t rt_future_on_complete_ex(void *future,
+                                void (*callback)(void *future, void *ctx),
+                                void *ctx,
+                                void (*cancel)(void *ctx));
+
+/// @brief Internal completion-listener hook used by async combinators.
+/// @details Registers @p callback to run exactly once when @p future completes.
+///          If the future is already complete, the callback runs synchronously
+///          before this function returns.
+/// @param future Future object pointer.
+/// @param callback Listener callback receiving the completed future and @p ctx.
+/// @param ctx Opaque listener context.
+/// @return 1 on success, 0 on allocation failure or invalid input.
+int8_t rt_future_on_complete(void *future, void (*callback)(void *future, void *ctx), void *ctx);
+
+/// @brief Internal listener removal hook used by async combinators.
+/// @details Removes the matching completion listener if it is still pending.
+///          When removed, any cancellation cleanup registered with
+///          rt_future_on_complete_ex is invoked exactly once.
+/// @return 1 if a listener was removed, 0 otherwise.
+int8_t rt_future_cancel_listener(void *future,
+                                 void (*callback)(void *future, void *ctx),
+                                 void *ctx);
+
+/// @brief Internal raw-value accessor for completed non-error futures.
+/// @details Returns the stored value without changing ownership. Intended for
+///          runtime combinators that only need to forward or inspect a value
+///          while another future/promise still owns its lifetime.
+/// @param future Future object pointer.
+/// @return Stored value when the future is done and not errored; otherwise NULL.
+void *rt_future_peek_value(void *future);
+
+/// @brief Internal query for whether the stored value is promise-owned.
+/// @details Returns true for results completed via rt_promise_set_owned.
+/// @param future Future object pointer.
+/// @return 1 when the stored value is promise-owned, otherwise 0.
+int8_t rt_future_value_is_owned(void *future);
 
 #ifdef __cplusplus
 }

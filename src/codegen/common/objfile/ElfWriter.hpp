@@ -32,11 +32,13 @@ class ElfWriter : public ObjectFileWriter {
   public:
     explicit ElfWriter(ObjArch arch) : arch_(arch) {}
 
+    /// @brief Write a single-section .o file (one .text section + .rodata).
     bool write(const std::string &path,
                const CodeSection &text,
                const CodeSection &rodata,
                std::ostream &err) override;
 
+    /// @brief Write a multi-section .o file (multiple .text sections for per-function code).
     bool write(const std::string &path,
                const std::vector<CodeSection> &textSections,
                const CodeSection &rodata,

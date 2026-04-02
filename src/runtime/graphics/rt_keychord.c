@@ -160,6 +160,7 @@ static void add_entry(
 // Public API
 //=============================================================================
 
+/// @brief Create a new key chord manager for detecting multi-key combinations and combos.
 void *rt_keychord_new(void) {
     rt_keychord_impl *kc = (rt_keychord_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_keychord_impl));
     if (!kc) {
@@ -179,7 +180,7 @@ void *rt_keychord_new(void) {
     return kc;
 }
 
-/// @brief Define the keychord.
+/// @brief Define a chord — all keys must be held simultaneously to activate.
 void rt_keychord_define(void *obj, rt_string name, void *keys) {
     if (!obj || !keys)
         return;
@@ -190,7 +191,7 @@ void rt_keychord_define(void *obj, rt_string name, void *keys) {
     add_entry(kc, cstr, KC_TYPE_CHORD, keys, 0);
 }
 
-/// @brief Define the combo of the keychord.
+/// @brief Define a combo — keys must be pressed in sequence within the time window.
 void rt_keychord_define_combo(void *obj, rt_string name, void *keys, int64_t window_frames) {
     if (!obj || !keys)
         return;
@@ -261,7 +262,7 @@ void rt_keychord_update(void *obj) {
     }
 }
 
-/// @brief Active the keychord.
+/// @brief Check whether a named chord/combo is currently active (all keys held or combo complete).
 int8_t rt_keychord_active(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -275,7 +276,7 @@ int8_t rt_keychord_active(void *obj, rt_string name) {
     return e->is_active;
 }
 
-/// @brief Triggered the keychord.
+/// @brief Check whether a chord/combo was triggered this frame (edge-triggered).
 int8_t rt_keychord_triggered(void *obj, rt_string name) {
     if (!obj)
         return 0;
@@ -289,7 +290,7 @@ int8_t rt_keychord_triggered(void *obj, rt_string name) {
     return e->triggered;
 }
 
-/// @brief Progress the keychord.
+/// @brief Get the combo progress (0 = not started, count = steps completed so far).
 int64_t rt_keychord_progress(void *obj, rt_string name) {
     if (!obj)
         return 0;

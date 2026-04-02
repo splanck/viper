@@ -25,6 +25,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <stdexcept>
 
 namespace viper::codegen::x64::binenc {
 
@@ -124,7 +125,7 @@ inline constexpr uint8_t makeSIB(uint8_t scale, uint8_t index3, uint8_t base3) {
 
 /// Compute the SIB scale encoding from an integer scale factor.
 ///   1 -> 0, 2 -> 1, 4 -> 2, 8 -> 3.
-inline constexpr uint8_t scaleLog2(uint8_t scale) {
+inline uint8_t scaleLog2(uint8_t scale) {
     switch (scale) {
         case 1:
             return 0;
@@ -135,8 +136,7 @@ inline constexpr uint8_t scaleLog2(uint8_t scale) {
         case 8:
             return 3;
         default:
-            assert(false && "invalid SIB scale factor");
-            return 0;
+            throw std::invalid_argument("x86-64 binary encoder: invalid SIB scale factor");
     }
 }
 

@@ -126,6 +126,7 @@ static bool g_initialized;
 // Initialization
 //=============================================================================
 
+/// @brief Initialize the keyboard subsystem (zeroes all key state, clears event buffers).
 void rt_keyboard_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
@@ -141,6 +142,7 @@ void rt_keyboard_init(void) {
     g_initialized = true;
 }
 
+/// @brief Clear per-frame pressed/released lists and text buffer. Call once at frame start.
 void rt_keyboard_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event lists
@@ -149,6 +151,7 @@ void rt_keyboard_begin_frame(void) {
     g_text_length = 0;
 }
 
+/// @brief Record a key-down event from the platform layer (converts vgfx→GLFW key codes).
 void rt_keyboard_on_key_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
@@ -169,6 +172,7 @@ void rt_keyboard_on_key_down(int64_t key) {
     // Note: caps lock state would need OS query for accurate tracking
 }
 
+/// @brief Record a key-up event from the platform layer.
 void rt_keyboard_on_key_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
@@ -185,6 +189,7 @@ void rt_keyboard_on_key_up(int64_t key) {
     }
 }
 
+/// @brief Append a text-input character to the per-frame text buffer (ASCII only currently).
 void rt_keyboard_text_input(int32_t ch) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_text_input_enabled)
@@ -197,6 +202,7 @@ void rt_keyboard_text_input(int32_t ch) {
     }
 }
 
+/// @brief Bind the keyboard to a canvas window (auto-initializes on first bind).
 void rt_keyboard_set_canvas(void *canvas) {
     RT_ASSERT_MAIN_THREAD();
     g_active_canvas = canvas;
@@ -208,6 +214,7 @@ void rt_keyboard_set_canvas(void *canvas) {
 // Polling Methods
 //=============================================================================
 
+/// @brief Check whether a key is currently held down (continuous — true every frame while held).
 int8_t rt_keyboard_is_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
@@ -216,6 +223,7 @@ int8_t rt_keyboard_is_down(int64_t key) {
     return g_key_state[key] ? 1 : 0;
 }
 
+/// @brief Check whether a key is currently not held down.
 int8_t rt_keyboard_is_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
@@ -224,6 +232,7 @@ int8_t rt_keyboard_is_up(int64_t key) {
     return g_key_state[key] ? 0 : 1;
 }
 
+/// @brief Check whether any key at all is currently held down.
 int8_t rt_keyboard_any_down(void) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < VIPER_KEY_MAX; i++) {
@@ -233,6 +242,7 @@ int8_t rt_keyboard_any_down(void) {
     return 0;
 }
 
+/// @brief Get the key code of the first key currently held down (0 if none).
 int64_t rt_keyboard_get_down(void) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < VIPER_KEY_MAX; i++) {
@@ -246,6 +256,7 @@ int64_t rt_keyboard_get_down(void) {
 // Event Methods
 //=============================================================================
 
+/// @brief Check whether a key was pressed this frame (edge-triggered — true once on key-down).
 int8_t rt_keyboard_was_pressed(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_pressed_count; i++) {
@@ -255,6 +266,7 @@ int8_t rt_keyboard_was_pressed(int64_t key) {
     return 0;
 }
 
+/// @brief Check whether a key was released this frame (edge-triggered — true once on key-up).
 int8_t rt_keyboard_was_released(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     for (int i = 0; i < g_released_count; i++) {
@@ -264,6 +276,7 @@ int8_t rt_keyboard_was_released(int64_t key) {
     return 0;
 }
 
+/// @brief Get a list of all keys pressed this frame as a sequence of key codes.
 void *rt_keyboard_get_pressed(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
@@ -273,6 +286,7 @@ void *rt_keyboard_get_pressed(void) {
     return seq;
 }
 
+/// @brief Get a list of all keys released this frame as a sequence of key codes.
 void *rt_keyboard_get_released(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
@@ -286,6 +300,7 @@ void *rt_keyboard_get_released(void) {
 // Text Input
 //=============================================================================
 
+/// @brief Get the text typed this frame (characters accumulated from text-input events).
 rt_string rt_keyboard_get_text(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_text_length == 0)
@@ -294,11 +309,13 @@ rt_string rt_keyboard_get_text(void) {
     return rt_string_from_bytes(g_text_buffer, g_text_length);
 }
 
+/// @brief Enable text input mode (characters are collected in the text buffer each frame).
 void rt_keyboard_enable_text_input(void) {
     RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = true;
 }
 
+/// @brief Disable text input mode.
 void rt_keyboard_disable_text_input(void) {
     RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = false;
@@ -308,21 +325,25 @@ void rt_keyboard_disable_text_input(void) {
 // Modifier State
 //=============================================================================
 
+/// @brief Check whether either Shift key is currently held.
 int8_t rt_keyboard_shift(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LSHIFT] || g_key_state[VIPER_KEY_RSHIFT]) ? 1 : 0;
 }
 
+/// @brief Check whether either Ctrl key is currently held.
 int8_t rt_keyboard_ctrl(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LCTRL] || g_key_state[VIPER_KEY_RCTRL]) ? 1 : 0;
 }
 
+/// @brief Check whether either Alt key is currently held.
 int8_t rt_keyboard_alt(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LALT] || g_key_state[VIPER_KEY_RALT]) ? 1 : 0;
 }
 
+/// @brief Check whether Caps Lock is active.
 int8_t rt_keyboard_caps_lock(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_caps_lock ? 1 : 0;
@@ -332,6 +353,7 @@ int8_t rt_keyboard_caps_lock(void) {
 // Key Name Helper
 //=============================================================================
 
+/// @brief Get the human-readable name of a key code (e.g., "A", "Space", "F1").
 rt_string rt_keyboard_key_name(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     const char *name = NULL;

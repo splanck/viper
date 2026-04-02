@@ -27,6 +27,14 @@ extract_enum_values() {
         | sort
 }
 
+# --- Helper: extract X-macro opcode names from MOpcodeDef.inc ---
+extract_inc_opcodes() {
+    local file="$1"
+    grep '^[[:space:]]*VIPER_MIR_OPCODE(' "$file" \
+        | sed -E 's/.*VIPER_MIR_OPCODE\(([A-Za-z_][A-Za-z0-9_]*)\).*/\1/' \
+        | sort
+}
+
 # --- Helper: extract case labels from opcodeName() switch ---
 extract_switch_cases() {
     local file="$1"
@@ -141,17 +149,18 @@ echo ""
 # ============================================================
 echo "--- AArch64 Backend ---"
 
-A64_ENUM_FILE="src/codegen/aarch64/MachineIR.hpp"
+A64_OPCODE_DEF_FILE="src/codegen/aarch64/MOpcodeDef.inc"
 A64_SWITCH_FILE="src/codegen/aarch64/MachineIR.cpp"
 A64_JSON_FILE="docs/spec/aarch64_encodings.json"
 
-if [ ! -f "$A64_ENUM_FILE" ] || [ ! -f "$A64_SWITCH_FILE" ] || [ ! -f "$A64_JSON_FILE" ]; then
+if [ ! -f "$A64_OPCODE_DEF_FILE" ] || [ ! -f "$A64_SWITCH_FILE" ] || [ ! -f "$A64_JSON_FILE" ]; then
     echo "  ERROR: One or more AArch64 source files not found. Run from project root." >&2
     exit 2
 fi
 
-extract_enum_values "$A64_ENUM_FILE" > "$TMP_DIR/a64_enum.txt"
-extract_switch_cases "$A64_SWITCH_FILE" > "$TMP_DIR/a64_switch.txt"
+extract_inc_opcodes "$A64_OPCODE_DEF_FILE" > "$TMP_DIR/a64_enum.txt"
+# The AArch64 opcodeName() switch is generated from the same X-macro file.
+extract_inc_opcodes "$A64_OPCODE_DEF_FILE" > "$TMP_DIR/a64_switch.txt"
 extract_json_opcodes "$A64_JSON_FILE" "enum" > "$TMP_DIR/a64_json.txt"
 
 a64_enum_count=$(wc -l < "$TMP_DIR/a64_enum.txt" | tr -d ' ')

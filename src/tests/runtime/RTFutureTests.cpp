@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_future.h"
+#include "rt_object.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -235,6 +237,96 @@ static void test_future_get_for_success() {
     test_result(out == &value, "get_for_success: should return correct value");
 }
 
+static void test_future_recreate_after_release() {
+    void *promise = rt_promise_new();
+    void *future1 = rt_promise_get_future(promise);
+    test_result(future1 != nullptr, "future_recreate: initial future created");
+
+    if (rt_obj_release_check0(future1))
+        rt_obj_free(future1);
+
+    void *future2 = rt_promise_get_future(promise);
+    test_result(future2 != nullptr, "future_recreate: future recreated after release");
+
+    int value = 2026;
+    rt_promise_set(promise, &value);
+    test_result(rt_future_get(future2) == &value, "future_recreate: recreated future resolves");
+
+    if (rt_obj_release_check0(future2))
+        rt_obj_free(future2);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+}
+
+static void test_owned_value_survives_future_release() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *seq = rt_seq_new();
+
+    rt_promise_set_owned(promise, seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+
+    void *got = rt_future_get(future);
+    test_result(got != nullptr, "owned_value: future get returns seq");
+    test_result(rt_seq_len(got) == 0, "owned_value: returned seq usable before future release");
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    test_result(rt_seq_len(got) == 0, "owned_value: returned seq survives future/promise release");
+    if (rt_obj_release_check0(got))
+        rt_obj_free(got);
+}
+
+static void test_owned_try_get_survives_future_release() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *seq = rt_seq_new();
+
+    rt_promise_set_owned(promise, seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+
+    void *got = NULL;
+    test_result(rt_future_try_get(future, &got) == 1, "owned_try_get: should resolve");
+    test_result(got != nullptr, "owned_try_get: should return seq");
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    test_result(rt_seq_len(got) == 0, "owned_try_get: returned seq survives future/promise release");
+    if (rt_obj_release_check0(got))
+        rt_obj_free(got);
+}
+
+static void test_owned_get_for_val_survives_future_release() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *seq = rt_seq_new();
+
+    rt_promise_set_owned(promise, seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+
+    void *got = rt_future_get_for_val(future, 1000);
+    test_result(got != nullptr, "owned_get_for_val: should return seq");
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    test_result(rt_seq_len(got) == 0,
+                "owned_get_for_val: returned seq survives future/promise release");
+    if (rt_obj_release_check0(got))
+        rt_obj_free(got);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -264,6 +356,10 @@ int main() {
     test_null_safety();
     test_future_get_for_timeout();
     test_future_get_for_success();
+    test_future_recreate_after_release();
+    test_owned_value_survives_future_release();
+    test_owned_try_get_survives_future_release();
+    test_owned_get_for_val_survives_future_release();
 
     printf("All Future/Promise tests passed!\n");
     return 0;

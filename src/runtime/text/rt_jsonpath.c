@@ -199,6 +199,7 @@ static void *auto_parse_root(void *root) {
     return root;
 }
 
+/// @brief Navigate a parsed JSON tree by dot-separated path (e.g., "user.name").
 void *rt_jsonpath_get(void *root, rt_string path) {
     if (!root || !path)
         return NULL;
@@ -208,15 +209,18 @@ void *rt_jsonpath_get(void *root, rt_string path) {
     return resolve_path(root, rt_string_cstr(path));
 }
 
+/// @brief Navigate a JSON tree by path, returning a default value if the path doesn't exist.
 void *rt_jsonpath_get_or(void *root, rt_string path, void *def) {
     void *result = rt_jsonpath_get(root, path);
     return result ? result : def;
 }
 
+/// @brief Check whether a path exists in a parsed JSON tree.
 int8_t rt_jsonpath_has(void *root, rt_string path) {
     return rt_jsonpath_get(root, path) != NULL ? 1 : 0;
 }
 
+/// @brief Query a JSON tree with wildcard path support (returns a sequence of matching values).
 void *rt_jsonpath_query(void *root, rt_string path) {
     void *results = rt_seq_new();
     if (!root || !path)
@@ -269,6 +273,7 @@ void *rt_jsonpath_query(void *root, rt_string path) {
     return results;
 }
 
+/// @brief Get a string value at a JSON path (returns empty string if missing or wrong type).
 rt_string rt_jsonpath_get_str(void *root, rt_string path) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)
@@ -299,6 +304,7 @@ rt_string rt_jsonpath_get_str(void *root, rt_string path) {
     return rt_string_from_bytes("", 0);
 }
 
+/// @brief Get an integer value at a JSON path (returns 0 if missing or wrong type).
 int64_t rt_jsonpath_get_int(void *root, rt_string path) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)

@@ -37,7 +37,10 @@ struct DllImport {
         importNames; ///< Optional PE import-name overrides keyed by symbol name.
 };
 
-/// Write a PE executable.
+/// @brief Write a PE32+ executable from linked sections, DLL imports, and relocation data.
+/// @details Produces a valid Windows .exe with DOS stub, PE headers, section data,
+///          and an .idata import directory. Optionally emits an x64 startup shim
+///          that calls main() and terminates via ExitProcess.
 bool writePeExe(const std::string &path,
                 const LinkLayout &layout,
                 LinkArch arch,

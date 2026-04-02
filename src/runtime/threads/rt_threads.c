@@ -81,11 +81,11 @@ typedef struct RtThread {
     HANDLE hThread;           ///< OS thread handle.
     DWORD threadId;           ///< OS thread ID for self-join detection.
     int finished;             ///< 1 when thread has completed.
-    int joined;               ///< 1 after Join() called.
     int64_t id;               ///< Unique Viper thread identifier.
     RtContext *inherited_ctx; ///< Parent's runtime context.
     rt_thread_entry_fn entry; ///< User's entry function.
     void *arg;                ///< Argument to entry function.
+    int8_t owns_arg;          ///< 1 when arg is a retained runtime object.
 } RtThread;
 
 /// @brief Global counter for assigning unique thread IDs.
@@ -97,10 +97,21 @@ static int64_t next_thread_id_win(void) {
 }
 
 /// @brief Finalizer for RtThread objects, called during garbage collection.
+static void rt_thread_release_owned_arg_win(RtThread *t) {
+    if (!t || !t->owns_arg || !t->arg)
+        return;
+    if (rt_obj_release_check0(t->arg))
+        rt_obj_free(t->arg);
+    t->arg = NULL;
+    t->owns_arg = 0;
+}
+
+/// @brief Finalizer for RtThread objects, called during garbage collection.
 static void rt_thread_finalize_win(void *obj) {
     if (!obj)
         return;
     RtThread *t = (RtThread *)obj;
+    rt_thread_release_owned_arg_win(t);
     if (t->hThread)
         CloseHandle(t->hThread);
     DeleteCriticalSection(&t->cs);
@@ -114,6 +125,8 @@ static DWORD WINAPI rt_thread_trampoline_win(LPVOID p) {
         rt_set_current_context(t->inherited_ctx);
     if (t && t->entry)
         t->entry(t->arg);
+    if (t)
+        rt_thread_release_owned_arg_win(t);
     rt_set_current_context(NULL);
 
     if (t) {
@@ -137,7 +150,7 @@ static RtThread *require_thread_win(void *thread, const char *what) {
     return (RtThread *)thread;
 }
 
-void *rt_thread_start(void *entry, void *arg) {
+static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.Start: null entry");
     if (!entry)
@@ -159,11 +172,13 @@ void *rt_thread_start(void *entry, void *arg) {
     t->hThread = NULL;
     t->threadId = 0;
     t->finished = 0;
-    t->joined = 0;
     t->id = next_thread_id_win();
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
     t->arg = arg;
+    t->owns_arg = (retain_arg && arg) ? 1 : 0;
+    if (t->owns_arg)
+        rt_obj_retain_maybe(arg);
 
     rt_obj_set_finalizer(t, rt_thread_finalize_win);
 
@@ -184,6 +199,14 @@ void *rt_thread_start(void *entry, void *arg) {
     return t;
 }
 
+void *rt_thread_start(void *entry, void *arg) {
+    return rt_thread_start_impl_win(entry, arg, 0);
+}
+
+void *rt_thread_start_owned(void *entry, void *arg) {
+    return rt_thread_start_impl_win(entry, arg, 1);
+}
+
 void rt_thread_join(void *thread) {
     RtThread *t = require_thread_win(thread, "Thread.Join: null thread");
     if (!t)
@@ -194,15 +217,9 @@ void rt_thread_join(void *thread) {
     }
 
     EnterCriticalSection(&t->cs);
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return;
-    }
     while (!t->finished) {
         SleepConditionVariableCS(&t->cv, &t->cs, INFINITE);
     }
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
 }
 
@@ -216,16 +233,10 @@ int8_t rt_thread_try_join(void *thread) {
     }
 
     EnterCriticalSection(&t->cs);
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
     if (!t->finished) {
         LeaveCriticalSection(&t->cs);
         return 0;
     }
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -245,17 +256,11 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
     }
 
     EnterCriticalSection(&t->cs);
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
     if (ms == 0) {
         if (!t->finished) {
             LeaveCriticalSection(&t->cs);
             return 0;
         }
-        t->joined = 1;
         LeaveCriticalSection(&t->cs);
         return 1;
     }
@@ -282,7 +287,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         elapsed = GetTickCount64() - start;
     }
 
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -321,6 +325,11 @@ void rt_thread_yield(void) {
 #include <pthread.h>
 #include <sched.h>
 #include <time.h>
+#if defined(__APPLE__)
+extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
+                                              pthread_mutex_t *mutex,
+                                              const struct timespec *rel_time);
+#endif
 
 /// @brief Function pointer type for thread entry functions.
 typedef void (*rt_thread_entry_fn)(void *);
@@ -342,15 +351,13 @@ typedef void (*rt_thread_entry_fn)(void *);
 /// ```
 /// RtThread:
 /// ┌────────────────────┬────────────────────────────────────────┐
-/// │ mu                 │ Mutex protecting finished/joined flags │
+/// │ mu                 │ Mutex protecting finished state         │
 /// ├────────────────────┼────────────────────────────────────────┤
 /// │ cv                 │ Condition variable for Join() waiting  │
 /// ├────────────────────┼────────────────────────────────────────┤
 /// │ pthread            │ OS thread handle                       │
 /// ├────────────────────┼────────────────────────────────────────┤
 /// │ finished           │ 1 when entry function has returned     │
-/// ├────────────────────┼────────────────────────────────────────┤
-/// │ joined             │ 1 after successful Join() call         │
 /// ├────────────────────┼────────────────────────────────────────┤
 /// │ id                 │ Unique thread ID (1, 2, 3, ...)        │
 /// ├────────────────────┼────────────────────────────────────────┤
@@ -366,11 +373,12 @@ typedef struct RtThread {
     pthread_cond_t cv;        ///< Condition var for Join() signaling.
     pthread_t pthread;        ///< OS thread handle.
     int finished;             ///< 1 when thread has completed.
-    int joined;               ///< 1 after Join() called.
     int64_t id;               ///< Unique thread identifier.
     RtContext *inherited_ctx; ///< Parent's runtime context.
     rt_thread_entry_fn entry; ///< User's entry function.
     void *arg;                ///< Argument to entry function.
+    int8_t owns_arg;          ///< 1 when arg is a retained runtime object.
+    int8_t cond_uses_monotonic; ///< 1 when cv uses monotonic timed waits.
 } RtThread;
 
 /// @brief Global counter for assigning unique thread IDs.
@@ -388,6 +396,108 @@ static int64_t next_thread_id(void) {
     return (int64_t)__atomic_fetch_add(&g_next_thread_id, 1, __ATOMIC_RELAXED);
 }
 
+static void rt_thread_release_owned_arg(RtThread *t) {
+    if (!t || !t->owns_arg || !t->arg)
+        return;
+    if (rt_obj_release_check0(t->arg))
+        rt_obj_free(t->arg);
+    t->arg = NULL;
+    t->owns_arg = 0;
+}
+
+static int thread_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
+    if (uses_monotonic)
+        *uses_monotonic = 0;
+#if defined(__APPLE__)
+    if (uses_monotonic)
+        *uses_monotonic = 1;
+    return pthread_cond_init(cond, NULL);
+#elif defined(CLOCK_MONOTONIC)
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0)
+        return pthread_cond_init(cond, NULL);
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0) {
+        pthread_condattr_destroy(&attr);
+        return pthread_cond_init(cond, NULL);
+    }
+    {
+        if (uses_monotonic)
+            *uses_monotonic = 1;
+        const int rc = pthread_cond_init(cond, &attr);
+        if (rc != 0 && uses_monotonic)
+            *uses_monotonic = 0;
+        pthread_condattr_destroy(&attr);
+        return rc;
+    }
+#else
+    return pthread_cond_init(cond, NULL);
+#endif
+}
+
+typedef struct {
+    struct timespec deadline;
+} thread_deadline_t;
+
+static struct timespec thread_now_clock(int8_t use_monotonic) {
+    struct timespec ts;
+    memset(&ts, 0, sizeof(ts));
+#ifdef CLOCK_MONOTONIC
+    if (use_monotonic && clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        return ts;
+#endif
+    (void)clock_gettime(CLOCK_REALTIME, &ts);
+    return ts;
+}
+
+static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monotonic) {
+    thread_deadline_t d;
+    d.deadline = thread_now_clock(use_monotonic);
+    if (ms <= 0)
+        return d;
+
+    const int64_t kNsPerMs = 1000000;
+    int64_t add_ns = ms * kNsPerMs;
+    int64_t sec = (int64_t)d.deadline.tv_sec + add_ns / 1000000000;
+    int64_t ns = (int64_t)d.deadline.tv_nsec + add_ns % 1000000000;
+    if (ns >= 1000000000) {
+        sec += 1;
+        ns -= 1000000000;
+    }
+    d.deadline.tv_sec = (time_t)sec;
+    d.deadline.tv_nsec = (long)ns;
+    return d;
+}
+
+static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monotonic) {
+    struct timespec now = thread_now_clock(use_monotonic);
+    int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
+    int64_t ns = (int64_t)deadline.deadline.tv_nsec - (int64_t)now.tv_nsec;
+    if (ns < 0) {
+        sec--;
+        ns += 1000000000L;
+    }
+    if (sec < 0)
+        return 0;
+    return sec * 1000 + ns / 1000000L;
+}
+
+static int thread_cond_timedwait_deadline(pthread_cond_t *cond,
+                                          pthread_mutex_t *mutex,
+                                          thread_deadline_t deadline,
+                                          int8_t use_monotonic) {
+#if defined(__APPLE__)
+    int64_t remaining = thread_remaining_ms(deadline, use_monotonic);
+    if (remaining <= 0)
+        return ETIMEDOUT;
+    struct timespec rel;
+    rel.tv_sec = (time_t)(remaining / 1000);
+    rel.tv_nsec = (long)((remaining % 1000) * 1000000L);
+    return pthread_cond_timedwait_relative_np(cond, mutex, &rel);
+#else
+    return pthread_cond_timedwait(cond, mutex, &deadline.deadline);
+#endif
+}
+
 /// @brief Finalizer for RtThread objects, called during garbage collection.
 ///
 /// Cleans up the mutex and condition variable allocated during thread creation.
@@ -398,6 +508,7 @@ static void rt_thread_finalize(void *obj) {
     if (!obj)
         return;
     RtThread *t = (RtThread *)obj;
+    rt_thread_release_owned_arg(t);
     (void)pthread_mutex_destroy(&t->mu);
     (void)pthread_cond_destroy(&t->cv);
 }
@@ -408,6 +519,8 @@ static void *rt_thread_trampoline(void *p) {
         rt_set_current_context(t->inherited_ctx);
     if (t && t->entry)
         t->entry(t->arg);
+    if (t)
+        rt_thread_release_owned_arg(t);
     rt_set_current_context(NULL);
 
     if (t) {
@@ -437,32 +550,6 @@ static RtThread *require_thread(void *thread, const char *what) {
         return NULL;
     }
     return (RtThread *)thread;
-}
-
-/// @brief Calculates an absolute timespec for a deadline ms in the future.
-///
-/// Used by JoinFor to compute the deadline for pthread_cond_timedwait.
-///
-/// @param ms Milliseconds from now for the deadline. If <= 0, returns current time.
-///
-/// @return Absolute timespec representing (now + ms milliseconds).
-static struct timespec abs_time_ms_from_now(int64_t ms) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    if (ms <= 0)
-        return ts;
-
-    const int64_t kNsPerMs = 1000000;
-    int64_t add_ns = ms * kNsPerMs;
-    int64_t sec = (int64_t)ts.tv_sec + add_ns / 1000000000;
-    int64_t ns = (int64_t)ts.tv_nsec + add_ns % 1000000000;
-    if (ns >= 1000000000) {
-        sec += 1;
-        ns -= 1000000000;
-    }
-    ts.tv_sec = (time_t)sec;
-    ts.tv_nsec = (long)ns;
-    return ts;
 }
 
 /// @brief Creates and starts a new thread.
@@ -502,7 +589,7 @@ static struct timespec abs_time_ms_from_now(int64_t ms) {
 ///
 /// @see rt_thread_join For waiting for thread completion
 /// @see rt_thread_get_id For getting the thread's unique ID
-void *rt_thread_start(void *entry, void *arg) {
+static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.Start: null entry");
     if (!entry)
@@ -519,14 +606,16 @@ void *rt_thread_start(void *entry, void *arg) {
         return NULL;
 
     (void)pthread_mutex_init(&t->mu, NULL);
-    (void)pthread_cond_init(&t->cv, NULL);
+    (void)thread_cond_init(&t->cv, &t->cond_uses_monotonic);
 
     t->finished = 0;
-    t->joined = 0;
     t->id = next_thread_id();
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
     t->arg = arg;
+    t->owns_arg = (retain_arg && arg) ? 1 : 0;
+    if (t->owns_arg)
+        rt_obj_retain_maybe(arg);
 
     rt_obj_set_finalizer(t, rt_thread_finalize);
 
@@ -548,6 +637,14 @@ void *rt_thread_start(void *entry, void *arg) {
     return t;
 }
 
+void *rt_thread_start(void *entry, void *arg) {
+    return rt_thread_start_impl(entry, arg, 0);
+}
+
+void *rt_thread_start_owned(void *entry, void *arg) {
+    return rt_thread_start_impl(entry, arg, 1);
+}
+
 /// @brief Waits indefinitely for a thread to complete.
 ///
 /// Blocks the calling thread until the specified thread finishes executing
@@ -563,13 +660,11 @@ void *rt_thread_start(void *entry, void *arg) {
 ///
 /// **Error conditions:**
 /// - Traps if thread is NULL
-/// - Traps if thread was already joined (each thread can only be joined once)
 /// - Traps if a thread tries to join itself (deadlock prevention)
 ///
 /// @param thread The Thread object to wait for. Must not be NULL.
 ///
 /// @note Blocks until the thread finishes - use JoinFor for timeouts.
-/// @note Each thread can only be joined once.
 /// @note A thread cannot join itself (would deadlock).
 /// @note Multiple threads can wait on the same thread - all will be notified.
 ///
@@ -585,15 +680,9 @@ void rt_thread_join(void *thread) {
     }
 
     pthread_mutex_lock(&t->mu);
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return;
-    }
     while (!t->finished) {
         (void)pthread_cond_wait(&t->cv, &t->mu);
     }
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
 }
 
@@ -616,13 +705,11 @@ void rt_thread_join(void *thread) {
 ///
 /// @param thread The Thread object to check. Must not be NULL.
 ///
-/// @return 1 (true) if the thread was finished and is now joined.
+/// @return 1 (true) if the thread was already finished.
 ///         0 (false) if the thread is still running.
 ///
 /// @note Traps if thread is NULL.
-/// @note Traps if thread was already joined.
 /// @note Traps if called on self.
-/// @note Once this returns true, the thread is considered joined.
 ///
 /// @see rt_thread_join For blocking wait
 /// @see rt_thread_join_for For waiting with timeout
@@ -636,16 +723,10 @@ int8_t rt_thread_try_join(void *thread) {
     }
 
     pthread_mutex_lock(&t->mu);
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
     if (!t->finished) {
         pthread_mutex_unlock(&t->mu);
         return 0;
     }
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }
@@ -679,13 +760,12 @@ int8_t rt_thread_try_join(void *thread) {
 /// @param thread The Thread object to wait for. Must not be NULL.
 /// @param ms Maximum time to wait in milliseconds.
 ///
-/// @return 1 (true) if the thread finished and was joined.
+/// @return 1 (true) if the thread finished before the timeout elapsed.
 ///         0 (false) if the timeout elapsed before the thread finished.
 ///
 /// @note Traps if thread is NULL.
-/// @note Traps if thread was already joined.
 /// @note Traps if called on self.
-/// @note If timeout occurs, the thread is NOT joined and can be waited on again.
+/// @note If timeout occurs, the caller can wait again later.
 ///
 /// @see rt_thread_join For indefinite waiting
 /// @see rt_thread_try_join For immediate check
@@ -704,31 +784,25 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
     }
 
     pthread_mutex_lock(&t->mu);
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
     if (ms == 0) {
         if (!t->finished) {
             pthread_mutex_unlock(&t->mu);
             return 0;
         }
-        t->joined = 1;
         pthread_mutex_unlock(&t->mu);
         return 1;
     }
 
-    const struct timespec deadline = abs_time_ms_from_now(ms);
+    const thread_deadline_t deadline = thread_deadline_from_now(ms, t->cond_uses_monotonic);
     while (!t->finished) {
-        const int rc = pthread_cond_timedwait(&t->cv, &t->mu, &deadline);
+        const int rc =
+            thread_cond_timedwait_deadline(&t->cv, &t->mu, deadline, t->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !t->finished) {
             pthread_mutex_unlock(&t->mu);
             return 0;
         }
     }
 
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }
@@ -861,16 +935,51 @@ typedef void (*rt_safe_entry_fn)(void *);
 typedef struct SafeThreadCtx {
     rt_safe_entry_fn entry;
     void *arg;
+    int8_t owns_arg;
     void *thread;    // The underlying thread handle from rt_thread_start
+    void *monitor;   // Protects trapped/error state.
     int8_t trapped;  // 1 if the thread exited due to a trap
     char error[512]; // Captured trap error message
 } SafeThreadCtx;
 
+static void safe_thread_release_owned_arg(SafeThreadCtx *ctx) {
+    if (!ctx || !ctx->owns_arg || !ctx->arg)
+        return;
+    if (rt_obj_release_check0(ctx->arg))
+        rt_obj_free(ctx->arg);
+    ctx->arg = NULL;
+    ctx->owns_arg = 0;
+}
+
+static void safe_thread_finalize(void *obj) {
+    SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    if (!ctx)
+        return;
+    safe_thread_release_owned_arg(ctx);
+    if (ctx->thread) {
+        if (rt_obj_release_check0(ctx->thread))
+            rt_obj_free(ctx->thread);
+        ctx->thread = NULL;
+    }
+    if (ctx->monitor) {
+        if (rt_obj_release_check0(ctx->monitor))
+            rt_obj_free(ctx->monitor);
+        ctx->monitor = NULL;
+    }
+}
+
 /// @brief Entry point wrapper that sets up trap recovery.
 static void safe_thread_entry(void *ctx_ptr) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)ctx_ptr;
-    if (!ctx || !ctx->entry)
+    if (!ctx)
         return;
+    if (!ctx->entry) {
+        rt_monitor_enter(ctx->monitor);
+        ctx->trapped = 1;
+        snprintf(ctx->error, sizeof(ctx->error), "%s", "Thread.StartSafe: null entry");
+        rt_monitor_exit(ctx->monitor);
+        goto done;
+    }
 
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -878,15 +987,23 @@ static void safe_thread_entry(void *ctx_ptr) {
     if (setjmp(recovery) == 0) {
         ctx->entry(ctx->arg);
     } else {
-        ctx->trapped = 1;
         const char *err = rt_trap_get_error();
+        rt_monitor_enter(ctx->monitor);
+        ctx->trapped = 1;
         snprintf(ctx->error, sizeof(ctx->error), "%s", err ? err : "Unknown trap");
+        rt_monitor_exit(ctx->monitor);
     }
 
     rt_trap_clear_recovery();
+
+done:
+    safe_thread_release_owned_arg(ctx);
+    if (rt_obj_release_check0(ctx))
+        rt_obj_free(ctx);
 }
 
-void *rt_thread_start_safe(void *entry, void *arg) {
+/// @brief Start a thread with automatic trap/error capture (errors don't crash, they're stored).
+static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.StartSafe: null entry");
     if (!entry)
@@ -899,29 +1016,70 @@ void *rt_thread_start_safe(void *entry, void *arg) {
     if (!ctx)
         return NULL;
 
+    memset(ctx, 0, sizeof(*ctx));
+    rt_obj_set_finalizer(ctx, safe_thread_finalize);
     ctx->entry = (rt_safe_entry_fn)entry;
     ctx->arg = arg;
+    ctx->owns_arg = (retain_arg && arg) ? 1 : 0;
+    if (ctx->owns_arg)
+        rt_obj_retain_maybe(arg);
+    ctx->thread = NULL;
+    ctx->monitor = rt_obj_new_i64(/*class_id=*/0, 1);
+    if (!ctx->monitor) {
+        if (rt_obj_release_check0(ctx))
+            rt_obj_free(ctx);
+        rt_trap("Thread.StartSafe: failed to allocate state");
+        return NULL;
+    }
     ctx->trapped = 0;
     ctx->error[0] = '\0';
 
+    rt_obj_retain_maybe(ctx); // Worker thread holds a self-reference until it exits.
+
     ctx->thread = rt_thread_start((void *)safe_thread_entry, ctx);
+    if (!ctx->thread) {
+        if (rt_obj_release_check0(ctx))
+            rt_obj_free(ctx);
+        if (rt_obj_release_check0(ctx))
+            rt_obj_free(ctx);
+        return NULL;
+    }
     return ctx;
 }
 
+void *rt_thread_start_safe(void *entry, void *arg) {
+    return rt_thread_start_safe_impl(entry, arg, 0);
+}
+
+void *rt_thread_start_safe_owned(void *entry, void *arg) {
+    return rt_thread_start_safe_impl(entry, arg, 1);
+}
+
+/// @brief Check whether a safe thread trapped with an error.
 int8_t rt_thread_has_error(void *obj) {
     if (!obj)
         return 0;
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
-    return ctx->trapped;
+    rt_monitor_enter(ctx->monitor);
+    int8_t trapped = ctx->trapped;
+    rt_monitor_exit(ctx->monitor);
+    return trapped;
 }
 
+/// @brief Get the error message from a trapped safe thread (empty string if no error).
 rt_string rt_thread_get_error(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
-    if (!ctx->trapped || ctx->error[0] == '\0')
+    rt_monitor_enter(ctx->monitor);
+    int8_t trapped = ctx->trapped;
+    int has_error = ctx->error[0] != '\0';
+    rt_string result =
+        (!trapped || !has_error) ? rt_const_cstr("") : rt_string_from_bytes(ctx->error, strlen(ctx->error));
+    rt_monitor_exit(ctx->monitor);
+    if (!trapped || !has_error)
         return rt_const_cstr("");
-    return rt_string_from_bytes(ctx->error, strlen(ctx->error));
+    return result;
 }
 
 /// @brief Join the underlying thread of a safe-started thread.

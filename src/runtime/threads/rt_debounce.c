@@ -79,8 +79,13 @@ static void debounce_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Create a new debouncer — signal() must be followed by delay_ms of quiet before is_ready() returns true.
 void *rt_debounce_new(int64_t delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_debounce_data));
+    if (!obj) {
+        rt_trap("Debouncer.New: memory allocation failed");
+        return NULL;
+    }
     rt_debounce_data *data = (rt_debounce_data *)obj;
     data->delay_ms = delay_ms > 0 ? delay_ms : 0;
     data->last_signal_time = 0;
@@ -144,8 +149,13 @@ static void throttle_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Create a new throttle — try() returns true at most once per interval_ms.
 void *rt_throttle_new(int64_t interval_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_throttle_data));
+    if (!obj) {
+        rt_trap("Throttler.New: memory allocation failed");
+        return NULL;
+    }
     rt_throttle_data *data = (rt_throttle_data *)obj;
     data->interval_ms = interval_ms > 0 ? interval_ms : 0;
     data->last_allowed_time = 0;

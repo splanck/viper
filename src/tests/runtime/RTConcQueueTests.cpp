@@ -8,6 +8,7 @@
 #include "rt_concqueue.h"
 #include "rt_internal.h"
 #include "rt_string.h"
+#include "rt_threads.h"
 
 #include <cassert>
 #include <cstdio>
@@ -75,6 +76,21 @@ static void test_timeout_empty() {
     assert(result == NULL);
 }
 
+static void test_close_wakes_blocked_dequeue() {
+    void *q = rt_concqueue_new();
+    assert(rt_concqueue_get_is_closed(q) == 0);
+
+    void *result = (void *)0x1;
+    std::thread waiter([&]() { result = rt_concqueue_dequeue(q); });
+
+    rt_thread_sleep(30);
+    rt_concqueue_close(q);
+    waiter.join();
+
+    assert(rt_concqueue_get_is_closed(q) == 1);
+    assert(result == NULL);
+}
+
 static void producer_fn(void *queue, int count) {
     for (int i = 0; i < count; i++) {
         char buf[32];
@@ -118,6 +134,7 @@ int main() {
     test_peek();
     test_clear();
     test_timeout_empty();
+    test_close_wakes_blocked_dequeue();
     test_concurrent_produce_consume();
     test_null_safety();
     return 0;

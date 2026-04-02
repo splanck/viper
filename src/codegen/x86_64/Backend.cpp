@@ -41,6 +41,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <sstream>
 #include <string_view>
@@ -360,7 +361,14 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
 
         binenc::X64BinaryEncoder funcEncoder;
         funcEncoder.setDebugLineTable(&funcDebugLines);
-        funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
+        try {
+            funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
+        } catch (const std::exception &ex) {
+            BinaryEmitResult failure{};
+            failure.errors =
+                "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
+            return failure;
+        }
 
         const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
         debugLines.append(funcDebugLines, debugBias);

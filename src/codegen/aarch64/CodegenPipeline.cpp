@@ -357,6 +357,10 @@ static const TargetInfo &selectAArch64Target(CodegenPipeline::TargetPlatform pla
 
 } // namespace
 
+/// @brief Run the full AArch64 codegen pipeline: lower → peephole → regalloc → schedule → emit.
+/// @details Orchestrates all passes via PassManager in order: IL-to-MIR lowering,
+///          peephole optimization, register allocation (with optional coalescing),
+///          post-RA scheduling (O1+), block layout, and assembly/binary emission.
 bool runCodegenPipeline(passes::AArch64Module &module,
                         const PipelineOptions &opts,
                         std::ostream &diagOut) {

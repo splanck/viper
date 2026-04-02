@@ -27,17 +27,16 @@
 #include "X64BinaryEncoder.hpp"
 #include "X64Encoding.hpp"
 
-#include "codegen/common/ICE.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
-#include <optional>
 #include <variant>
 
 namespace viper::codegen::x64::binenc {
@@ -53,8 +52,8 @@ static std::string mapRuntimeSymbol(const std::string &name) {
 
 static PhysReg toPhys(const OpReg &reg) {
     if (!reg.isPhys)
-        VIPER_ICE("virtual register v" + std::to_string(reg.idOrPhys) +
-                  " reached x86-64 binary encoder (register allocation bug)");
+        throw std::runtime_error("x86-64 binary encoder cannot encode virtual register v" +
+                                 std::to_string(reg.idOrPhys));
     return static_cast<PhysReg>(reg.idOrPhys);
 }
 
@@ -87,6 +86,31 @@ static int32_t checkedRel32(int64_t disp, const char *context) {
 
 static bool isInternalBranchOpcode(MOpcode op) {
     return op == MOpcode::JMP || op == MOpcode::JCC;
+}
+
+static void validateEncodedMemOperand(const OpMem &mem, const char *context) {
+    if (mem.base.cls != RegClass::GPR) {
+        throw std::runtime_error(std::string(context) + ": memory base register must be a GPR");
+    }
+    if (!mem.base.isPhys) {
+        throw std::runtime_error(std::string(context) +
+                                 ": virtual base register reached binary encoder");
+    }
+
+    if (!mem.hasIndex)
+        return;
+
+    if (mem.index.cls != RegClass::GPR) {
+        throw std::runtime_error(std::string(context) + ": memory index register must be a GPR");
+    }
+    if (!mem.index.isPhys) {
+        throw std::runtime_error(std::string(context) +
+                                 ": virtual index register reached binary encoder");
+    }
+    if (static_cast<PhysReg>(mem.index.idOrPhys) == PhysReg::RSP) {
+        throw std::runtime_error(std::string(context) +
+                                 ": x86-64 cannot encode %rsp as a SIB index register");
+    }
 }
 
 static uint8_t win64RegNumber(PhysReg reg) {
@@ -188,8 +212,7 @@ static void recordWin64Unwind(const MFunction &fn,
         unwind.prologueSize =
             static_cast<uint8_t>(entryInstrEndOffsets[*allocInstrIndex] - funcStartOffset);
     } else {
-        unwind.prologueSize =
-            static_cast<uint8_t>(entryInstrEndOffsets[1] - funcStartOffset);
+        unwind.prologueSize = static_cast<uint8_t>(entryInstrEndOffsets[1] - funcStartOffset);
     }
 
     if (!entryInstrEndOffsets.empty()) {
@@ -199,16 +222,15 @@ static void recordWin64Unwind(const MFunction &fn,
                                 0});
     }
     if (allocInstrIndex.has_value() && *allocInstrIndex < entryInstrEndOffsets.size()) {
-        unwind.codes.push_back({objfile::Win64UnwindCode::Kind::AllocStack,
-                                static_cast<uint8_t>(entryInstrEndOffsets[*allocInstrIndex] -
-                                                     funcStartOffset),
-                                0,
-                                static_cast<uint32_t>(frame.frameSize)});
+        unwind.codes.push_back(
+            {objfile::Win64UnwindCode::Kind::AllocStack,
+             static_cast<uint8_t>(entryInstrEndOffsets[*allocInstrIndex] - funcStartOffset),
+             0,
+             static_cast<uint32_t>(frame.frameSize)});
     }
     for (std::size_t i = 0; i < frame.win64UnwindOps.size(); ++i) {
         const auto &op = frame.win64UnwindOps[i];
-        if (op.kind == Win64UnwindOpKind::PushNonVol ||
-            op.kind == Win64UnwindOpKind::AllocStack) {
+        if (op.kind == Win64UnwindOpKind::PushNonVol || op.kind == Win64UnwindOpKind::AllocStack) {
             continue;
         }
         const std::size_t instrIndex = saveStartIndex + i - (frame.frameSize > 0 ? 2u : 1u);
@@ -227,6 +249,9 @@ static void recordWin64Unwind(const MFunction &fn,
 
 // === Public entry point ===
 
+/// @brief Predict the encoded byte size of a MIR instruction without emitting it.
+/// @details Used by the label offset pre-computation pass to determine branch
+///          displacement sizes before final encoding. Must match encodeInstruction.
 size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
                                                 const LabelOffsetMap &knownLabelOffsets,
                                                 bool isDarwin) {
@@ -286,6 +311,10 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
     return estimated;
 }
 
+/// @brief Encode an entire MIR function into machine code bytes.
+/// @details Two-pass approach: first pass computes label offsets using instruction
+///          size measurement, second pass emits actual bytes. Branch displacements
+///          are resolved using the pre-computed label-to-offset map.
 void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
@@ -327,10 +356,13 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     // Resolve pending internal branches.
     for (const auto &pb : pendingBranches_) {
         auto it = labelOffsets_.find(pb.target);
-        assert(it != labelOffsets_.end() && "unresolved internal branch target");
+        if (it == labelOffsets_.end()) {
+            throw std::runtime_error("x86-64 binary encoder: unresolved internal branch target '" +
+                                     pb.target + "' in function '" + fn.name + "'");
+        }
         // rel32 = target - (patchOffset + 4)
-        const int64_t disp = static_cast<int64_t>(it->second) -
-                             static_cast<int64_t>(pb.patchOffset + 4);
+        const int64_t disp =
+            static_cast<int64_t>(it->second) - static_cast<int64_t>(pb.patchOffset + 4);
         const int32_t rel = checkedRel32(disp, "internal branch");
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
     }
@@ -345,6 +377,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
 
 // === Main instruction dispatch ===
 
+/// @brief Encode a single MIR instruction into machine code (dispatches by operand form).
 void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                                          objfile::CodeSection &text,
                                          objfile::CodeSection &rodata,
@@ -356,8 +389,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                           std::to_string(static_cast<int>(instr.opcode)) + " with " +
                           std::to_string(instr.operands.size()) + " operand(s):";
         for (std::size_t i = 0; i < instr.operands.size(); ++i) {
-            msg += " [" + std::to_string(i) + "]=idx" +
-                   std::to_string(instr.operands[i].index());
+            msg += " [" + std::to_string(i) + "]=idx" + std::to_string(instr.operands[i].index());
         }
         throw std::runtime_error(msg);
     }
@@ -414,8 +446,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::ADDOvfrr:
         case MOpcode::SUBOvfrr:
         case MOpcode::IMULOvfrr:
-            assert(false && "pseudo-instruction reached binary encoder; pipeline bug");
-            return;
+            throw std::runtime_error("x86-64 binary encoder: pseudo-op reached emission: " +
+                                     toString(instr));
 
         // --- MOVri (64-bit immediate) ---
         case MOpcode::MOVri: {
@@ -521,7 +553,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             } else if (std::holds_alternative<OpMem>(ops[1])) {
                 encodeLEA(dst, memFromOperand(ops[1]), text);
             } else {
-                assert(false && "LEA with unexpected operand type");
+                throw std::runtime_error(
+                    "x86-64 binary encoder: LEA requires a memory or RIP-relative operand");
             }
             return;
         }
@@ -601,7 +634,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
             } else {
-                assert(false && "JMP with unexpected operand type");
+                throw std::runtime_error(
+                    "x86-64 binary encoder: JMP requires a label, register, or memory target");
             }
             return;
         }
@@ -611,7 +645,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             if (std::holds_alternative<OpLabel>(ops[1])) {
                 encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
             } else {
-                assert(false && "JCC with non-label target");
+                throw std::runtime_error("x86-64 binary encoder: JCC requires a label target");
             }
             return;
         }
@@ -638,13 +672,15 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
             } else {
-                VIPER_ICE("CALL instruction has unexpected operand type in x86-64 binary encoder");
+                throw std::runtime_error(
+                    "x86-64 binary encoder: CALL has unsupported operand shape");
             }
             return;
         }
     }
 
-    VIPER_ICE("unhandled MOpcode in x86-64 binary encoder");
+    throw std::runtime_error("x86-64 binary encoder: unhandled opcode value " +
+                             std::to_string(static_cast<int>(instr.opcode)));
 }
 
 // === Nullary instructions ===
@@ -718,8 +754,11 @@ void X64BinaryEncoder::encodeRegImm(MOpcode op,
         cs.emit8(makeModRM(0b11, ext, hw.bits3));
         cs.emit8(static_cast<uint8_t>(static_cast<int8_t>(imm)));
     } else {
-        assert(imm >= -2147483648LL && imm <= 2147483647LL &&
-               "encodeRegImm: immediate exceeds 32-bit range");
+        if (imm < std::numeric_limits<int32_t>::min() ||
+            imm > std::numeric_limits<int32_t>::max()) {
+            throw std::runtime_error(
+                "x86-64 binary encoder: reg-immediate ALU operand exceeds 32-bit encoding range");
+        }
         cs.emit8(0x81);
         cs.emit8(makeModRM(0b11, ext, hw.bits3));
         cs.emit32LE(static_cast<uint32_t>(static_cast<int32_t>(imm)));
@@ -805,6 +844,7 @@ void X64BinaryEncoder::emitWithMemOperand(uint8_t reg3,
                                           uint8_t mandatoryPrefix,
                                           uint8_t opByte1,
                                           uint8_t opByte2) {
+    validateEncodedMemOperand(mem, "x86-64 binary encoder");
     const auto hwBase = hwEncode(toPhys(mem.base));
     bool hasSIB = mem.hasIndex || hwBase.bits3 == 4; // RSP/R12 encoding needs SIB
 
@@ -1098,8 +1138,7 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
             break;
 
         default:
-            assert(false && "not a branch opcode");
-            return;
+            throw std::runtime_error("x86-64 binary encoder: unexpected branch opcode");
     }
 
     // Check if target is already known (backward branch, near form).
@@ -1146,6 +1185,7 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
 
 // === External CALL (generates relocation) ===
 
+/// @brief Emit a CALL to an external symbol via a relocation (linker resolves at link time).
 void X64BinaryEncoder::encodeCallExternal(const std::string &name,
                                           objfile::CodeSection &cs,
                                           bool isDarwin) {

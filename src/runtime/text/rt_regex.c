@@ -1182,6 +1182,7 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str) {
 // Public API
 //=============================================================================
 
+/// @brief Test whether a regex pattern matches anywhere in the text.
 int8_t rt_pattern_is_match(rt_string text, rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1196,6 +1197,7 @@ int8_t rt_pattern_is_match(rt_string text, rt_string pattern) {
     return find_match(cp, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
 }
 
+/// @brief Find the first match of a regex pattern in the text (empty string if no match).
 rt_string rt_pattern_find(rt_string text, rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1215,6 +1217,7 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern) {
     return rt_const_cstr("");
 }
 
+/// @brief Find the first match starting at or after the given byte offset.
 rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1239,6 +1242,7 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
     return rt_const_cstr("");
 }
 
+/// @brief Find the byte position of the first match (-1 if no match).
 int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1257,6 +1261,7 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
     return -1;
 }
 
+/// @brief Find all non-overlapping matches and return them as a sequence of strings.
 void *rt_pattern_find_all(rt_string text, rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1286,6 +1291,7 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern) {
     return seq;
 }
 
+/// @brief Replace all matches of a regex pattern with the replacement string.
 rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replacement) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1350,6 +1356,7 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
     return out;
 }
 
+/// @brief Replace only the first match of a regex pattern with the replacement string.
 rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string replacement) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1387,6 +1394,7 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
     return out;
 }
 
+/// @brief Split a string by a regex pattern, returning a sequence of substrings.
 void *rt_pattern_split(rt_string text, rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     const char *txt_str = rt_string_cstr(text);
@@ -1431,6 +1439,7 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
     return seq;
 }
 
+/// @brief Escape all regex metacharacters in a string so it matches literally.
 rt_string rt_pattern_escape(rt_string text) {
     const char *txt_str = rt_string_cstr(text);
     if (!txt_str)

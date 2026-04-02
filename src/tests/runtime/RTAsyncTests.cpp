@@ -34,6 +34,10 @@ static void *make_obj() {
     return rt_obj_new_i64(0, 8);
 }
 
+static std::atomic<int> g_precancel_calls{0};
+static std::atomic<int> g_trap_calls{0};
+static std::atomic<int64_t> g_owned_arg_len{0};
+
 //=============================================================================
 // Callbacks for testing
 //=============================================================================
@@ -64,6 +68,32 @@ static void *cancellable_cb(void *arg, void *token) {
         rt_thread_sleep(2);
     }
     return make_obj();
+}
+
+static void *precancel_counting_cb(void *arg, void *token) {
+    (void)arg;
+    (void)token;
+    g_precancel_calls.fetch_add(1);
+    return make_obj();
+}
+
+static void *trap_cb(void *arg) {
+    (void)arg;
+    g_trap_calls.fetch_add(1);
+    rt_trap("async trap");
+    return NULL;
+}
+
+static void *owned_arg_observer_cb(void *arg) {
+    rt_thread_sleep(20);
+    g_owned_arg_len.store(rt_seq_len(arg), std::memory_order_release);
+    return (void *)(intptr_t)42;
+}
+
+static void *owned_arg_passthrough_cb(void *arg) {
+    rt_thread_sleep(20);
+    g_owned_arg_len.store(rt_seq_len(arg), std::memory_order_release);
+    return arg;
 }
 
 } // extern "C"
@@ -104,6 +134,41 @@ static void test_async_run_multiple() {
         void *result = rt_future_get(futures[i]);
         assert(result == vals[i]);
     }
+}
+
+static void test_async_run_owned_keeps_object_arg_alive() {
+    g_owned_arg_len.store(-1, std::memory_order_release);
+    void *arg = rt_seq_new();
+    void *future = rt_async_run_owned((void *)owned_arg_observer_cb, arg);
+    assert(future != NULL);
+
+    if (rt_obj_release_check0(arg))
+        rt_obj_free(arg);
+
+    void *result = rt_future_get(future);
+    assert((int64_t)(intptr_t)result == 42);
+    assert(g_owned_arg_len.load(std::memory_order_acquire) == 0);
+}
+
+static void test_async_run_owned_passthrough_preserves_result() {
+    g_owned_arg_len.store(-1, std::memory_order_release);
+    void *arg = rt_seq_new();
+    void *future = rt_async_run_owned((void *)owned_arg_passthrough_cb, arg);
+    assert(future != NULL);
+
+    if (rt_obj_release_check0(arg))
+        rt_obj_free(arg);
+
+    void *result = rt_future_get(future);
+    assert(result != NULL);
+    assert(g_owned_arg_len.load(std::memory_order_acquire) == 0);
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+
+    assert(rt_seq_len(result) == 0);
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
 }
 
 //=============================================================================
@@ -180,6 +245,34 @@ static void test_async_all_null() {
     void *results = rt_future_get(all_future);
     assert(results != NULL);
     assert(rt_seq_len(results) == 0);
+}
+
+static void test_async_all_short_circuits_on_error() {
+    void *pending_promise = rt_promise_new();
+    void *pending_future = rt_promise_get_future(pending_promise);
+    void *error_promise = rt_promise_new();
+    void *error_future = rt_promise_get_future(error_promise);
+    void *futures = rt_seq_new();
+
+    rt_seq_push(futures, pending_future);
+    rt_seq_push(futures, error_future);
+
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+
+    rt_promise_set_error(error_promise, rt_const_cstr("boom"));
+    assert(rt_future_wait_for(all_future, 250) == 1);
+    assert(rt_future_is_error(all_future) == 1);
+    assert(strcmp(rt_string_cstr(rt_future_get_error(all_future)), "boom") == 0);
+
+    if (rt_obj_release_check0(pending_future))
+        rt_obj_free(pending_future);
+    if (rt_obj_release_check0(pending_promise))
+        rt_obj_free(pending_promise);
+    if (rt_obj_release_check0(error_future))
+        rt_obj_free(error_future);
+    if (rt_obj_release_check0(error_promise))
+        rt_obj_free(error_promise);
 }
 
 //=============================================================================
@@ -278,6 +371,31 @@ static void test_cancellable_null_token() {
     assert(rt_future_is_error(future) == 0);
 }
 
+static void test_cancellable_pre_cancelled() {
+    g_precancel_calls.store(0);
+    void *token = rt_cancellation_new();
+    rt_cancellation_cancel(token);
+
+    void *future = rt_async_run_cancellable((void *)precancel_counting_cb, NULL, token);
+    assert(future != NULL);
+    rt_future_wait(future);
+
+    assert(rt_future_is_error(future) == 1);
+    assert(strcmp(rt_string_cstr(rt_future_get_error(future)), "cancelled") == 0);
+    assert(g_precancel_calls.load() == 0);
+}
+
+static void test_async_run_trap_becomes_error() {
+    g_trap_calls.store(0);
+    void *future = rt_async_run((void *)trap_cb, NULL);
+    assert(future != NULL);
+
+    rt_future_wait(future);
+    assert(rt_future_is_error(future) == 1);
+    assert(strcmp(rt_string_cstr(rt_future_get_error(future)), "async trap") == 0);
+    assert(g_trap_calls.load() == 1);
+}
+
 //=============================================================================
 // Timing tests
 //=============================================================================
@@ -310,12 +428,15 @@ int main() {
     test_async_run_basic();
     test_async_run_null_arg();
     test_async_run_multiple();
+    test_async_run_owned_keeps_object_arg_alive();
+    test_async_run_owned_passthrough_preserves_result();
     test_async_delay();
     test_async_delay_zero();
     test_async_delay_negative();
     test_async_all_basic();
     test_async_all_empty();
     test_async_all_null();
+    test_async_all_short_circuits_on_error();
     test_async_any_basic();
     test_async_any_empty();
     test_async_map_basic();
@@ -323,6 +444,8 @@ int main() {
     test_cancellable_normal();
     test_cancellable_cancelled();
     test_cancellable_null_token();
+    test_cancellable_pre_cancelled();
+    test_async_run_trap_becomes_error();
     test_async_runs_concurrently();
 
     printf("Async tests: all passed\n");

@@ -24,6 +24,7 @@
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
+#include <exception>
 #include <filesystem>
 #include <string_view>
 #include <utility>
@@ -89,7 +90,14 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         seedDebugFiles(funcDebugLines, std::vector<MFunction>{fn}, module.debugSourcePath);
         binenc::A64BinaryEncoder funcEncoder;
         funcEncoder.setDebugLineTable(&funcDebugLines);
-        funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
+        try {
+            funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
+        } catch (const std::exception &ex) {
+            module.binaryTextSections.pop_back();
+            diags.error("BinaryEmitPass: failed to encode AArch64 function '" + fn.name +
+                        "': " + ex.what());
+            return false;
+        }
         const uint64_t debugBias = static_cast<uint64_t>(text.currentOffset());
         debugLines.append(funcDebugLines, debugBias);
         text.appendSection(module.binaryTextSections.back());

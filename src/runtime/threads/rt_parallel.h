@@ -84,8 +84,9 @@ void rt_parallel_for(int64_t start, int64_t end, void *func);
 void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool);
 
 /// @brief Reduce a sequence in parallel using a binary combine function.
-/// @details Splits the sequence into chunks, reduces each chunk in parallel,
-/// then combines partial results on the calling thread.
+/// @details Splits the sequence into chunks, reduces each chunk in parallel from
+///          that chunk's first element, then applies @p identity exactly once on
+///          the calling thread while combining partial results.
 /// @param seq Sequence of items to reduce.
 /// @param func Binary function combining two items (signature: void*(*)(void*, void*)).
 /// @param identity Identity element for the reduce operation.

@@ -84,19 +84,19 @@ void rt_inputmgr_update(rt_inputmgr mgr) {
 // Keyboard
 //=============================================================================
 
-/// @brief Key the pressed of the inputmgr.
+/// @brief Check whether a keyboard key was pressed this frame (edge-triggered).
 int8_t rt_inputmgr_key_pressed(rt_inputmgr mgr, int64_t key) {
     (void)mgr; // Uses global keyboard state
     return rt_keyboard_was_pressed(key);
 }
 
-/// @brief Key the released of the inputmgr.
+/// @brief Check whether a keyboard key was released this frame (edge-triggered).
 int8_t rt_inputmgr_key_released(rt_inputmgr mgr, int64_t key) {
     (void)mgr;
     return rt_keyboard_was_released(key);
 }
 
-/// @brief Key the held of the inputmgr.
+/// @brief Check whether a keyboard key is currently held down (continuous).
 int8_t rt_inputmgr_key_held(rt_inputmgr mgr, int64_t key) {
     (void)mgr;
     return rt_keyboard_is_down(key);
@@ -133,7 +133,7 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
     return oldest_slot;
 }
 
-/// @brief Key the pressed debounced of the inputmgr.
+/// @brief Check whether a key was pressed with debounce filtering (prevents rapid re-triggers).
 int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key) {
     if (!mgr)
         return 0;
@@ -154,14 +154,14 @@ int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key) {
     return 0;
 }
 
-/// @brief Set the debounce delay of the inputmgr.
+/// @brief Set the debounce delay in frames (minimum frames between repeated key presses).
 void rt_inputmgr_set_debounce_delay(rt_inputmgr mgr, int64_t frames) {
     if (mgr && frames >= 0) {
         mgr->debounce_delay = frames;
     }
 }
 
-/// @brief Get the debounce delay of the inputmgr.
+/// @brief Get the current debounce delay in frames.
 int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr) {
     return mgr ? mgr->debounce_delay : 0;
 }
@@ -170,55 +170,55 @@ int64_t rt_inputmgr_get_debounce_delay(rt_inputmgr mgr) {
 // Mouse
 //=============================================================================
 
-/// @brief Mouse the pressed of the inputmgr.
+/// @brief Check whether a mouse button was pressed this frame.
 int8_t rt_inputmgr_mouse_pressed(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_was_pressed(button);
 }
 
-/// @brief Mouse the released of the inputmgr.
+/// @brief Check whether a mouse button was released this frame.
 int8_t rt_inputmgr_mouse_released(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_was_released(button);
 }
 
-/// @brief Mouse the held of the inputmgr.
+/// @brief Check whether a mouse button is currently held down.
 int8_t rt_inputmgr_mouse_held(rt_inputmgr mgr, int64_t button) {
     (void)mgr;
     return rt_mouse_is_down(button);
 }
 
-/// @brief Mouse the x of the inputmgr.
+/// @brief Get the current mouse X position in window coordinates.
 int64_t rt_inputmgr_mouse_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_x();
 }
 
-/// @brief Mouse the y of the inputmgr.
+/// @brief Get the current mouse Y position in window coordinates.
 int64_t rt_inputmgr_mouse_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_y();
 }
 
-/// @brief Mouse the delta x of the inputmgr.
+/// @brief Get the mouse X movement since the last frame.
 int64_t rt_inputmgr_mouse_delta_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_delta_x();
 }
 
-/// @brief Mouse the delta y of the inputmgr.
+/// @brief Get the mouse Y movement since the last frame.
 int64_t rt_inputmgr_mouse_delta_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_delta_y();
 }
 
-/// @brief Scroll the y of the inputmgr.
+/// @brief Get the vertical scroll wheel delta this frame.
 int64_t rt_inputmgr_scroll_y(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_y();
 }
 
-/// @brief Scroll the x of the inputmgr.
+/// @brief Get the horizontal scroll wheel delta this frame.
 int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_x();
@@ -228,7 +228,7 @@ int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
 // Gamepad
 //=============================================================================
 
-/// @brief Pad the pressed of the inputmgr.
+/// @brief Check whether a gamepad button was pressed this frame.
 int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -245,7 +245,7 @@ int8_t rt_inputmgr_pad_pressed(rt_inputmgr mgr, int64_t pad, int64_t button) {
     return rt_pad_was_pressed(pad, button);
 }
 
-/// @brief Pad the released of the inputmgr.
+/// @brief Check whether a gamepad button was released this frame.
 int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -261,7 +261,7 @@ int8_t rt_inputmgr_pad_released(rt_inputmgr mgr, int64_t pad, int64_t button) {
     return rt_pad_was_released(pad, button);
 }
 
-/// @brief Pad the held of the inputmgr.
+/// @brief Check whether a gamepad button is currently held down.
 int8_t rt_inputmgr_pad_held(rt_inputmgr mgr, int64_t pad, int64_t button) {
     (void)mgr;
 
@@ -277,37 +277,37 @@ int8_t rt_inputmgr_pad_held(rt_inputmgr mgr, int64_t pad, int64_t button) {
     return rt_pad_is_down(pad, button);
 }
 
-/// @brief Pad the left x of the inputmgr.
+/// @brief Get the gamepad left stick X axis value.
 double rt_inputmgr_pad_left_x(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_left_x(pad);
 }
 
-/// @brief Pad the left y of the inputmgr.
+/// @brief Get the gamepad left stick Y axis value.
 double rt_inputmgr_pad_left_y(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_left_y(pad);
 }
 
-/// @brief Pad the right x of the inputmgr.
+/// @brief Get the gamepad right stick X axis value.
 double rt_inputmgr_pad_right_x(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_right_x(pad);
 }
 
-/// @brief Pad the right y of the inputmgr.
+/// @brief Get the gamepad right stick Y axis value.
 double rt_inputmgr_pad_right_y(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_right_y(pad);
 }
 
-/// @brief Pad the left trigger of the inputmgr.
+/// @brief Get the gamepad left trigger value (0.0–1.0).
 double rt_inputmgr_pad_left_trigger(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_left_trigger(pad);
 }
 
-/// @brief Pad the right trigger of the inputmgr.
+/// @brief Get the gamepad right trigger value (0.0–1.0).
 double rt_inputmgr_pad_right_trigger(rt_inputmgr mgr, int64_t pad) {
     (void)mgr;
     return rt_pad_right_trigger(pad);
@@ -317,7 +317,7 @@ double rt_inputmgr_pad_right_trigger(rt_inputmgr mgr, int64_t pad) {
 // Unified Direction Input
 //=============================================================================
 
-/// @brief Up the inputmgr.
+/// @brief Check unified "up" input (arrow key, W, D-pad up, or left stick up).
 int8_t rt_inputmgr_up(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -339,7 +339,7 @@ int8_t rt_inputmgr_up(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Down the inputmgr.
+/// @brief Check unified "down" input (arrow key, S, D-pad down, or left stick down).
 int8_t rt_inputmgr_down(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -359,7 +359,7 @@ int8_t rt_inputmgr_down(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Left the inputmgr.
+/// @brief Check unified "left" input (arrow key, A, D-pad left, or left stick left).
 int8_t rt_inputmgr_left(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -379,7 +379,7 @@ int8_t rt_inputmgr_left(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Right the inputmgr.
+/// @brief Check unified "right" input (arrow key, D, D-pad right, or left stick right).
 int8_t rt_inputmgr_right(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -399,7 +399,7 @@ int8_t rt_inputmgr_right(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Confirm the inputmgr.
+/// @brief Check unified "confirm" input (Enter, Space, or gamepad A button).
 int8_t rt_inputmgr_confirm(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -418,7 +418,7 @@ int8_t rt_inputmgr_confirm(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Cancel the inputmgr.
+/// @brief Check unified "cancel" input (Escape or gamepad B button).
 int8_t rt_inputmgr_cancel(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -437,7 +437,7 @@ int8_t rt_inputmgr_cancel(rt_inputmgr mgr) {
     return 0;
 }
 
-/// @brief Axis the x of the inputmgr.
+/// @brief Get the unified horizontal axis (-1.0 to 1.0 from keyboard WASD/arrows or left stick).
 double rt_inputmgr_axis_x(rt_inputmgr mgr) {
     (void)mgr;
 
@@ -478,7 +478,7 @@ double rt_inputmgr_axis_x(rt_inputmgr mgr) {
     return value;
 }
 
-/// @brief Axis the y of the inputmgr.
+/// @brief Get the unified vertical axis (-1.0 to 1.0 from keyboard WASD/arrows or left stick).
 double rt_inputmgr_axis_y(rt_inputmgr mgr) {
     (void)mgr;
 

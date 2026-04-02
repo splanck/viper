@@ -73,6 +73,7 @@ static void compiled_pattern_finalizer(void *obj) {
     }
 }
 
+/// @brief Compile a regex pattern for reuse (avoids recompilation on each call).
 void *rt_compiled_pattern_new(rt_string pattern) {
     const char *pat_str = rt_string_cstr(pattern);
     if (!pat_str)
@@ -88,6 +89,7 @@ void *rt_compiled_pattern_new(rt_string pattern) {
     return obj;
 }
 
+/// @brief Get the original regex source string that was compiled.
 rt_string rt_compiled_pattern_get_pattern(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -101,6 +103,7 @@ rt_string rt_compiled_pattern_get_pattern(void *obj) {
 // Matching Operations
 //=============================================================================
 
+/// @brief Test whether the compiled pattern matches anywhere in the text.
 int8_t rt_compiled_pattern_is_match(void *obj, rt_string text) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -115,6 +118,7 @@ int8_t rt_compiled_pattern_is_match(void *obj, rt_string text) {
         cpo->pattern, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
 }
 
+/// @brief Find the first match of the compiled pattern in the text.
 rt_string rt_compiled_pattern_find(void *obj, rt_string text) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -133,6 +137,7 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text) {
     return rt_const_cstr("");
 }
 
+/// @brief Find the first match starting at or after the given byte offset.
 rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -155,6 +160,7 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
     return rt_const_cstr("");
 }
 
+/// @brief Find the byte position of the first match (-1 if no match).
 int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -172,6 +178,7 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
     return -1;
 }
 
+/// @brief Find all non-overlapping matches and return as a sequence of strings.
 void *rt_compiled_pattern_find_all(void *obj, rt_string text) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -203,10 +210,12 @@ void *rt_compiled_pattern_find_all(void *obj, rt_string text) {
 // Capture Groups
 //=============================================================================
 
+/// @brief Extract capture groups from the first match (returns a sequence of group strings).
 void *rt_compiled_pattern_captures(void *obj, rt_string text) {
     return rt_compiled_pattern_captures_from(obj, text, 0);
 }
 
+/// @brief Extract capture groups starting at or after the given byte offset.
 void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -257,6 +266,7 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
 // Replacement Operations
 //=============================================================================
 
+/// @brief Replace all matches of the compiled pattern with the replacement string.
 rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string replacement) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -321,6 +331,7 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
     return out;
 }
 
+/// @brief Replace only the first match of the compiled pattern.
 rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string replacement) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");
@@ -361,10 +372,12 @@ rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string
 // Split Operation
 //=============================================================================
 
+/// @brief Split a string by the compiled pattern (unlimited splits).
 void *rt_compiled_pattern_split(void *obj, rt_string text) {
     return rt_compiled_pattern_split_n(obj, text, 0);
 }
 
+/// @brief Split a string by the compiled pattern, returning at most `limit` pieces (0 = unlimited).
 void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
     if (!obj)
         rt_trap("CompiledPattern: null pattern object");

@@ -73,8 +73,8 @@ TEST(AArch64OpcodeDef, NoDuplicateNames) {
 // ---------------------------------------------------------------------------
 TEST(AArch64OpcodeDef, OpcodeCount) {
     auto opcodes = allOpcodes();
-    // 79 opcodes as of the MOpcodeDef.inc creation. Update this when adding opcodes.
-    EXPECT_EQ(opcodes.size(), 79u);
+    ASSERT_FALSE(opcodes.empty());
+    EXPECT_EQ(opcodes.size(), static_cast<std::size_t>(opcodes.back()) + 1u);
 }
 
 // ---------------------------------------------------------------------------

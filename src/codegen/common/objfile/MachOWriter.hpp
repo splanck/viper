@@ -33,6 +33,7 @@ class MachOWriter : public ObjectFileWriter {
   public:
     explicit MachOWriter(ObjArch arch) : arch_(arch) {}
 
+    /// @brief Write a Mach-O .o file with __TEXT,__text and __TEXT,__const sections.
     bool write(const std::string &path,
                const CodeSection &text,
                const CodeSection &rodata,

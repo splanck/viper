@@ -1071,7 +1071,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_future test_rt_future)
 
     viper_add_test(test_rt_parallel ${VIPER_TESTS_DIR}/runtime/RTParallelTests.cpp)
-    target_link_libraries(test_rt_parallel PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    target_link_libraries(test_rt_parallel PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads viper_test_common)
     viper_add_ctest(test_rt_parallel test_rt_parallel)
 
     viper_add_test(test_rt_parallel_reduce ${VIPER_TESTS_DIR}/runtime/RTParallelReduceTests.cpp)

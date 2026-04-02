@@ -37,6 +37,7 @@
 #include "rt_oop.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_threads.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -206,6 +207,7 @@ void rt_obj_free(void *p) {
         hdr->finalizer = NULL;
         fin(p);
     }
+    rt_monitor_forget(p);
     rt_heap_free_zero_ref(p);
 }
 

@@ -57,6 +57,31 @@ TEST(AArch64MIR, BitwiseRR) {
     }
 }
 
+TEST(AArch64MIR, BitwiseRIFallsBackForNonLogicalImmediate) {
+    {
+        auto text = emit(MInstr{
+            MOpcode::AndRI,
+            {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1), MOperand::immOp(5)}});
+        EXPECT_NE(text.find("and x0, x1,"), std::string::npos);
+        EXPECT_EQ(text.find("and x0, x1, #"), std::string::npos);
+    }
+}
+
+TEST(AArch64MIR, MovRIUsesSharedWideImmediatePlan) {
+    {
+        auto text = emit(
+            MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0x100000000LL)}});
+        EXPECT_NE(text.find("movz x0, #1, lsl #32"), std::string::npos);
+        EXPECT_EQ(text.find("movz x0, #0"), std::string::npos);
+    }
+    {
+        auto text =
+            emit(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(-1)}});
+        EXPECT_NE(text.find("movn x0, #0"), std::string::npos);
+        EXPECT_EQ(text.find("movz x0, #65535"), std::string::npos);
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

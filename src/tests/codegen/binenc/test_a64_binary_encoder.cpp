@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 using namespace viper::codegen::aarch64;
@@ -835,10 +836,55 @@ static void testAddRI_shift12() {
 }
 
 static void testStrRegSpImm_largeOffsetFallback() {
-    const std::vector<uint8_t> bytes = encodeInstrBytes(
-        {MInstr{MOpcode::StrRegSpImm, {gpr(PhysReg::X0), imm(40000)}}});
+    const std::vector<uint8_t> bytes =
+        encodeInstrBytes({MInstr{MOpcode::StrRegSpImm, {gpr(PhysReg::X0), imm(40000)}}});
     // BTI + mov scratch,sp + chunked add + str + ret
     CHECK((bytes.size() / 4) > 4);
+}
+
+static void testAddRI_rejectsNegativeImmediate() {
+    MFunction fn;
+    fn.name = "bad_add_imm";
+    fn.isLeaf = true;
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::AddRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-1)}});
+    fn.blocks.push_back(std::move(bb));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+
+    bool threw = false;
+    try {
+        enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+    } catch (const std::runtime_error &ex) {
+        threw = std::string(ex.what()).find("without sign normalization") != std::string::npos;
+    }
+    CHECK(threw);
+}
+
+static void testBranchRejectsMissingTarget() {
+    MFunction fn;
+    fn.name = "missing_target";
+    fn.isLeaf = true;
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::Br, {label("missing")}});
+    fn.blocks.push_back(std::move(bb));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+
+    bool threw = false;
+    try {
+        enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+    } catch (const std::runtime_error &ex) {
+        threw = std::string(ex.what()).find("unresolved internal branch target 'missing'") !=
+                std::string::npos;
+    }
+    CHECK(threw);
 }
 
 int main() {
@@ -898,6 +944,8 @@ int main() {
     testFMovRI_fallback();
     testAddRI_shift12();
     testStrRegSpImm_largeOffsetFallback();
+    testAddRI_rejectsNegativeImmediate();
+    testBranchRejectsMissingTarget();
 
     // --- Encoding coverage validation (W7 remediation) ---
     // Verify that every non-pseudo MOpcode can be encoded without crashing.

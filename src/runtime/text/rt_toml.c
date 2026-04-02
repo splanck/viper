@@ -267,6 +267,7 @@ void *rt_toml_parse(rt_string src) {
     return root;
 }
 
+/// @brief Check whether a string contains valid TOML syntax.
 int8_t rt_toml_is_valid(rt_string src) {
     /* S-14: rt_toml_parse always returns a (partial) map; check error flag */
     void *result = rt_toml_parse(src);
@@ -275,6 +276,7 @@ int8_t rt_toml_is_valid(rt_string src) {
     return 1;
 }
 
+/// @brief Format a Map as a TOML document string.
 rt_string rt_toml_format(void *map) {
     if (!map)
         return rt_string_from_bytes("", 0);
@@ -331,6 +333,7 @@ rt_string rt_toml_format(void *map) {
     return result;
 }
 
+/// @brief Get a value from a parsed TOML document by dot-separated key path.
 void *rt_toml_get(void *root, rt_string key_path) {
     if (!root || !key_path)
         return NULL;
@@ -377,6 +380,7 @@ void *rt_toml_get(void *root, rt_string key_path) {
     return current;
 }
 
+/// @brief Get a string value from a parsed TOML document by key path.
 rt_string rt_toml_get_str(void *root, rt_string key_path) {
     void *val = rt_toml_get(root, key_path);
     if (!val)

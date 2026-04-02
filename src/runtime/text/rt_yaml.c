@@ -573,6 +573,7 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 // Public API - Parsing
 //=============================================================================
 
+/// @brief Parse a YAML string into Viper values (Map, Seq, String, boxed numbers).
 void *rt_yaml_parse(rt_string text) {
     clear_error();
 
@@ -588,10 +589,12 @@ void *rt_yaml_parse(rt_string text) {
     return parse_value(&p, 0);
 }
 
+/// @brief Get the last YAML parse error message (empty if no error).
 rt_string rt_yaml_error(void) {
     return rt_string_from_bytes(yaml_last_error, strlen(yaml_last_error));
 }
 
+/// @brief Check whether a string contains valid YAML syntax.
 int8_t rt_yaml_is_valid(rt_string text) {
     clear_error();
 
@@ -864,10 +867,12 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 // Public API - Formatting
 //=============================================================================
 
+/// @brief Format a Viper value as a YAML string (default 2-space indent).
 rt_string rt_yaml_format(void *obj) {
     return rt_yaml_format_indent(obj, 2);
 }
 
+/// @brief Format a Viper value as a YAML string with the given indent width.
 rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
     if (indent < 1)
         indent = 2;
@@ -888,6 +893,7 @@ rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
 // Public API - Type Inspection
 //=============================================================================
 
+/// @brief Get the YAML type name of a parsed value ("map", "seq", "string", "number", "bool", "null").
 rt_string rt_yaml_type_of(void *obj) {
     if (!obj)
         return rt_string_from_bytes("null", 4);

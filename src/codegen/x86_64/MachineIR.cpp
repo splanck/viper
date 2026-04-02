@@ -21,6 +21,7 @@
 #include "MachineIR.hpp"
 
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -168,6 +169,31 @@ namespace {
     }
     return "unknown";
 }
+
+void validateMemReg(const OpReg &reg, const char *role) {
+    if (reg.cls != RegClass::GPR) {
+        throw std::invalid_argument(std::string("x86-64 memory operand ") + role +
+                                    " register must be GPR, got " +
+                                    std::string(regClassSuffix(reg.cls)));
+    }
+}
+
+void validateMemScale(uint8_t scale) {
+    switch (scale) {
+        case 1:
+        case 2:
+        case 4:
+        case 8:
+            return;
+        default:
+            throw std::invalid_argument("x86-64 memory operand scale must be one of 1, 2, 4, or 8");
+    }
+}
+
+bool isRspIndex(const OpReg &reg) noexcept {
+    return reg.isPhys && reg.cls == RegClass::GPR &&
+           static_cast<PhysReg>(reg.idOrPhys) == PhysReg::RSP;
+}
 } // namespace
 
 /// @brief Construct an instruction by pairing an opcode with operands.
@@ -279,7 +305,7 @@ Operand makeImmOperand(int64_t value) {
 /// @param disp Signed displacement added to the base register.
 /// @return Operand variant describing the memory access.
 Operand makeMemOperand(OpReg base, int32_t disp) {
-    assert(base.cls == RegClass::GPR && "Phase A expects GPR base registers");
+    validateMemReg(base, "base");
     OpMem m{};
     m.base = std::move(base);
     m.disp = disp;
@@ -287,10 +313,17 @@ Operand makeMemOperand(OpReg base, int32_t disp) {
 }
 
 Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp) {
+    validateMemReg(base, "base");
+    validateMemReg(index, "index");
+    validateMemScale(scale);
+    if (isRspIndex(index)) {
+        throw std::invalid_argument("x86-64 memory operand index register cannot be %rsp");
+    }
+
     OpMem m{};
-    m.base = base;
-    m.index = index;
-    m.scale = (scale == 1 || scale == 2 || scale == 4 || scale == 8) ? scale : 1;
+    m.base = std::move(base);
+    m.index = std::move(index);
+    m.scale = scale;
     m.disp = disp;
     m.hasIndex = true;
     return Operand{m};

@@ -14,7 +14,7 @@
 // Key invariants:
 //   - Tasks are stored as a singly-linked list; Poll scans and removes due ones.
 //   - Due timestamps are computed from CLOCK_MONOTONIC to avoid wall-clock skew.
-//   - Scheduling the same name twice creates two separate entries.
+//   - Scheduling the same name twice replaces the previous due time.
 //   - Poll removes and returns all tasks due at or before the current time.
 //   - The scheduler is not thread-safe; external synchronization is required.
 //   - Task name strings are retained by the scheduler until the task fires.

@@ -12,6 +12,7 @@
 // Links: src/codegen/x86_64/passes
 //
 //===----------------------------------------------------------------------===//
+#include "codegen/x86_64/MachineIR.hpp"
 #include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
@@ -199,6 +200,45 @@ TEST(BinaryEmitPass, HonorsOptimizeLevel) {
     const std::size_t o1Size = binarySizeForOptLevel(1);
     EXPECT_TRUE(o0Size > 0U);
     EXPECT_TRUE(o1Size > 0U);
+}
+
+TEST(BinaryEmitPass, ReportsEncoderValidationFailures) {
+    Module module{};
+    module.target = &viper::codegen::x64::hostTarget();
+    module.registersAllocated = true;
+
+    viper::codegen::x64::MFunction fn{};
+    fn.name = "bad_mem_index";
+
+    viper::codegen::x64::MBasicBlock bb{};
+    bb.label = ".Lbad_mem_index";
+
+    viper::codegen::x64::OpMem badMem{};
+    badMem.base =
+        viper::codegen::x64::makePhysReg(viper::codegen::x64::RegClass::GPR,
+                                         static_cast<uint16_t>(viper::codegen::x64::PhysReg::RAX));
+    badMem.index =
+        viper::codegen::x64::makePhysReg(viper::codegen::x64::RegClass::GPR,
+                                         static_cast<uint16_t>(viper::codegen::x64::PhysReg::RSP));
+    badMem.scale = 1;
+    badMem.hasIndex = true;
+
+    bb.append(viper::codegen::x64::MInstr::make(
+        viper::codegen::x64::MOpcode::MOVmr,
+        {viper::codegen::x64::makePhysRegOperand(
+             viper::codegen::x64::RegClass::GPR,
+             static_cast<uint16_t>(viper::codegen::x64::PhysReg::RAX)),
+         viper::codegen::x64::Operand{badMem}}));
+    fn.addBlock(std::move(bb));
+
+    module.mir.push_back(std::move(fn));
+    module.frames.push_back(viper::codegen::x64::FrameInfo{});
+
+    Diagnostics diags{};
+    viper::codegen::x64::CodegenOptions opts{};
+    BinaryEmitPass pass{false, opts};
+    EXPECT_FALSE(pass.run(module, diags));
+    EXPECT_TRUE(diags.hasErrors());
 }
 
 TEST(PassManager, ShortCircuitsOnFailure) {

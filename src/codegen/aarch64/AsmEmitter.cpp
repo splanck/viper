@@ -137,11 +137,8 @@ inline void emit2RI(std::ostream &os, const char *mnem, PhysReg d, PhysReg s, lo
     os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm << "\n";
 }
 
-inline void emit2RIShift12(std::ostream &os,
-                           const char *mnem,
-                           PhysReg d,
-                           PhysReg s,
-                           uint32_t imm12) {
+inline void emit2RIShift12(
+    std::ostream &os, const char *mnem, PhysReg d, PhysReg s, uint32_t imm12) {
     os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm12
        << ", lsl #12\n";
 }
@@ -402,15 +399,33 @@ void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg 
 }
 
 void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
-    emit2RI(os, "and", dst, src, imm);
+    if (binenc::encodeLogicalImmediate(static_cast<uint64_t>(imm)) >= 0) {
+        emit2RI(os, "and", dst, src, imm);
+        return;
+    }
+
+    emitMovImm64(os, kScratchGPR, static_cast<unsigned long long>(imm));
+    emit3R(os, "and", dst, src, kScratchGPR);
 }
 
 void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
-    emit2RI(os, "orr", dst, src, imm);
+    if (binenc::encodeLogicalImmediate(static_cast<uint64_t>(imm)) >= 0) {
+        emit2RI(os, "orr", dst, src, imm);
+        return;
+    }
+
+    emitMovImm64(os, kScratchGPR, static_cast<unsigned long long>(imm));
+    emit3R(os, "orr", dst, src, kScratchGPR);
 }
 
 void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
-    emit2RI(os, "eor", dst, src, imm);
+    if (binenc::encodeLogicalImmediate(static_cast<uint64_t>(imm)) >= 0) {
+        emit2RI(os, "eor", dst, src, imm);
+        return;
+    }
+
+    emitMovImm64(os, kScratchGPR, static_cast<unsigned long long>(imm));
+    emit3R(os, "eor", dst, src, kScratchGPR);
 }
 
 void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const {
@@ -681,6 +696,18 @@ void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
     os << "\n";
 }
 
+/// @brief Emit a MOVN (move wide with NOT) instruction.
+/// @param os Output stream for assembly text.
+/// @param dst Destination GPR.
+/// @param imm16 16-bit immediate value.
+/// @param lsl Left-shift amount (0, 16, 32, or 48).
+void AsmEmitter::emitMovN(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const {
+    os << "  movn " << rn(dst) << ", #" << imm16;
+    if (lsl)
+        os << ", lsl #" << lsl;
+    os << "\n";
+}
+
 /// @brief Emit a MOVK (move wide with keep) instruction.
 /// @param os Output stream for assembly text.
 /// @param dst Destination GPR (other bits preserved).
@@ -698,19 +725,19 @@ void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
 /// @param dst Destination GPR.
 /// @param value 64-bit immediate to materialise.
 void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const {
-    unsigned chunks[4] = {
-        static_cast<unsigned>(value & 0xFFFFULL),
-        static_cast<unsigned>((value >> 16) & 0xFFFFULL),
-        static_cast<unsigned>((value >> 32) & 0xFFFFULL),
-        static_cast<unsigned>((value >> 48) & 0xFFFFULL),
-    };
-    emitMovZ(os, dst, chunks[0], 0);
-    if (chunks[1])
-        emitMovK(os, dst, chunks[1], 16);
-    if (chunks[2])
-        emitMovK(os, dst, chunks[2], 32);
-    if (chunks[3])
-        emitMovK(os, dst, chunks[3], 48);
+    forEachMoveWideInst(value, [&](const MoveWideInst &inst) {
+        switch (inst.opcode) {
+            case MoveWideOpcode::MovZ:
+                emitMovZ(os, dst, inst.imm16, inst.shift);
+                break;
+            case MoveWideOpcode::MovN:
+                emitMovN(os, dst, inst.imm16, inst.shift);
+                break;
+            case MoveWideOpcode::MovK:
+                emitMovK(os, dst, inst.imm16, inst.shift);
+                break;
+        }
+    });
 }
 
 void AsmEmitter::emitRet(std::ostream &os) const {
@@ -834,7 +861,6 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
     // This is required because runtime functions expect an active RtContext.
     const bool darwin = !target_->isLinux() && !target_->isWindows();
     if (fn.name == "main") {
-        os << "  ; Initialize runtime context for native execution\n";
         os << "  bl " << mangleCallTargetImpl("rt_legacy_context", darwin) << "\n";
         os << "  bl " << mangleCallTargetImpl("rt_set_current_context", darwin) << "\n";
     }

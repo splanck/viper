@@ -39,6 +39,12 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 //=============================================================================
 // Internal Structures
@@ -138,6 +144,10 @@ static void pool_finalizer(void *obj) {
     }
 }
 
+/// @brief Create a thread pool with the given number of worker threads (1–1024).
+/// @details Workers block on a shared work queue until tasks are submitted via
+///          submit(). Tasks execute in FIFO order. The pool must be shut down
+///          explicitly with shutdown() or shutdown_now().
 void *rt_threadpool_new(int64_t size) {
     // Clamp size to valid range
     if (size < 1)
@@ -171,6 +181,7 @@ void *rt_threadpool_new(int64_t size) {
     if (!pool->workers) {
         if (rt_obj_release_check0(pool->monitor))
             rt_obj_free(pool->monitor);
+        pool->monitor = NULL;
         rt_obj_free(pool);
         return NULL;
     }
@@ -192,8 +203,10 @@ void *rt_threadpool_new(int64_t size) {
                     rt_thread_join(pool->workers[j].thread);
             }
             free(pool->workers);
+            pool->workers = NULL;
             if (rt_obj_release_check0(pool->monitor))
                 rt_obj_free(pool->monitor);
+            pool->monitor = NULL;
             rt_obj_free(pool);
             return NULL;
         }
@@ -263,6 +276,7 @@ static void worker_entry(void *arg) {
 // Public API - Task Submission
 //=============================================================================
 
+/// @brief Submit a task (callback + arg) for execution on the next available worker thread.
 int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
     if (!pool_obj || !callback)
         return 0;
@@ -308,6 +322,7 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
 // Public API - Waiting
 //=============================================================================
 
+/// @brief Block until all submitted tasks have completed (queue empty and no active workers).
 void rt_threadpool_wait(void *pool_obj) {
     if (!pool_obj)
         return;
@@ -323,6 +338,7 @@ void rt_threadpool_wait(void *pool_obj) {
     rt_monitor_exit(pool->monitor);
 }
 
+/// @brief Wait for all tasks with a timeout. Returns 1 if all completed, 0 on timeout.
 int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
     if (!pool_obj)
         return 1;
@@ -340,8 +356,32 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
 
     rt_monitor_enter(pool->monitor);
 
+#if defined(_WIN32)
+    ULONGLONG deadline = GetTickCount64() + (ULONGLONG)ms;
+#else
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+#endif
+
     while (pool->pending_count > 0 || pool->active_count > 0) {
-        if (!rt_monitor_wait_for(pool->monitor, ms)) {
+#if defined(_WIN32)
+        ULONGLONG now = GetTickCount64();
+        int64_t remaining = now >= deadline ? 0 : (int64_t)(deadline - now);
+#else
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        int64_t sec = (int64_t)now.tv_sec - (int64_t)start.tv_sec;
+        int64_t ns = (int64_t)now.tv_nsec - (int64_t)start.tv_nsec;
+        if (ns < 0) {
+            sec--;
+            ns += 1000000000L;
+        }
+        int64_t elapsed_ms = sec * 1000 + ns / 1000000L;
+        int64_t remaining = ms - elapsed_ms;
+#endif
+        if (remaining <= 0 || !rt_monitor_wait_for(pool->monitor, remaining)) {
+            if (pool->pending_count == 0 && pool->active_count == 0)
+                break;
             // Timed out
             rt_monitor_exit(pool->monitor);
             return 0;
@@ -356,6 +396,7 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
 // Public API - Shutdown
 //=============================================================================
 
+/// @brief Gracefully shut down the pool — finish pending tasks, then stop workers.
 void rt_threadpool_shutdown(void *pool_obj) {
     if (!pool_obj)
         return;
@@ -376,6 +417,7 @@ void rt_threadpool_shutdown(void *pool_obj) {
     }
 }
 
+/// @brief Immediately shut down the pool — discard pending tasks and stop workers.
 void rt_threadpool_shutdown_now(void *pool_obj) {
     if (!pool_obj)
         return;
@@ -413,6 +455,7 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
 // Public API - Properties
 //=============================================================================
 
+/// @brief Get the number of worker threads in the pool.
 int64_t rt_threadpool_get_size(void *pool_obj) {
     if (!pool_obj)
         return 0;
@@ -421,6 +464,7 @@ int64_t rt_threadpool_get_size(void *pool_obj) {
     return pool->worker_count;
 }
 
+/// @brief Get the number of tasks waiting in the queue (not yet started).
 int64_t rt_threadpool_get_pending(void *pool_obj) {
     if (!pool_obj)
         return 0;
@@ -434,6 +478,7 @@ int64_t rt_threadpool_get_pending(void *pool_obj) {
     return count;
 }
 
+/// @brief Get the number of tasks currently being executed by worker threads.
 int64_t rt_threadpool_get_active(void *pool_obj) {
     if (!pool_obj)
         return 0;
@@ -447,6 +492,7 @@ int64_t rt_threadpool_get_active(void *pool_obj) {
     return count;
 }
 
+/// @brief Check whether the pool has been shut down.
 int8_t rt_threadpool_get_is_shutdown(void *pool_obj) {
     if (!pool_obj)
         return 1;

@@ -170,6 +170,37 @@ static void test_keys_values() {
     printf("test_keys_values: PASSED\n");
 }
 
+static void test_snapshot_values_survive_clear() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_concmap_set(m, make_str("keep"), val);
+
+    void *keys = rt_concmap_keys(m);
+    void *values = rt_concmap_values(m);
+    rt_concmap_clear(m);
+
+    assert(rt_seq_len(keys) == 1);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(keys, 0)), "keep") == 0);
+    assert(rt_seq_len(values) == 1);
+    assert(rt_seq_get(values, 0) == val);
+    assert(rt_obj_class_id(rt_seq_get(values, 0)) == 0);
+
+    printf("test_snapshot_values_survive_clear: PASSED\n");
+}
+
+static void test_get_survives_remove() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_concmap_set(m, make_str("temp"), val);
+
+    void *result = rt_concmap_get(m, make_str("temp"));
+    assert(result == val);
+    assert(rt_concmap_remove(m, make_str("temp")) == 1);
+    assert(rt_obj_class_id(result) == 0);
+
+    printf("test_get_survives_remove: PASSED\n");
+}
+
 static void test_many_entries() {
     void *m = rt_concmap_new();
     char buf[32];
@@ -303,6 +334,8 @@ int main() {
     test_clear();
     test_set_if_missing();
     test_keys_values();
+    test_snapshot_values_survive_clear();
+    test_get_survives_remove();
     test_many_entries();
 
     /* Concurrency */

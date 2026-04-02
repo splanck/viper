@@ -4,6 +4,11 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: frontends/zia/ZiaLocationScope.cpp
+// Purpose: RAII guard that sets/restores source location on the Zia lowerer.
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/zia/ZiaLocationScope.hpp"
 #include "frontends/zia/Lowerer.hpp"

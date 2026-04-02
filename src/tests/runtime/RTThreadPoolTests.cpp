@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -138,6 +139,25 @@ static void test_wait_for_immediate_check() {
     rt_threadpool_shutdown(pool);
 }
 
+static void test_wait_for_timeout_budget() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+    rt_threadpool_submit(pool, (void *)slow_task, NULL);
+
+    auto start = std::chrono::steady_clock::now();
+    int8_t done = rt_threadpool_wait_for(pool, 20);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    assert(done == 0);
+    assert(elapsed >= 10);
+    assert(elapsed < 150);
+
+    rt_threadpool_wait(pool);
+    rt_threadpool_shutdown(pool);
+}
+
 //=============================================================================
 // Shutdown modes
 //=============================================================================
@@ -230,6 +250,7 @@ int main() {
     test_submit_null_callback();
     test_wait_for_success();
     test_wait_for_immediate_check();
+    test_wait_for_timeout_budget();
     test_graceful_shutdown();
     test_shutdown_now();
     test_null_safety();

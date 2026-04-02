@@ -102,7 +102,7 @@ class AsmEmitter {
 
     /// @brief Emit immediate move: `mov dst, #imm`.
     /// @details For small immediates uses single mov; larger values may need
-    ///          movz/movk sequence (see emitMovImm64).
+    ///          movz/movn/movk sequence (see emitMovImm64).
     /// @param os Output stream to write assembly text.
     /// @param dst Destination GPR.
     /// @param imm Immediate value to load.
@@ -395,6 +395,14 @@ class AsmEmitter {
     /// @param lsl Shift amount (0, 16, 32, or 48).
     void emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
 
+    /// @brief Emit move with NOT: `movn dst, #imm16, lsl #shift`.
+    /// @details Moves the bitwise inverse of a 16-bit immediate with shift.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination GPR.
+    /// @param imm16 16-bit immediate value.
+    /// @param lsl Shift amount (0, 16, 32, or 48).
+    void emitMovN(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
+
     /// @brief Emit move with keep: `movk dst, #imm16, lsl #shift`.
     /// @details Moves 16-bit immediate with shift, keeping other bits.
     /// @param os Output stream to write assembly text.
@@ -403,7 +411,7 @@ class AsmEmitter {
     /// @param lsl Shift amount (0, 16, 32, or 48).
     void emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
 
-    /// @brief Emit full 64-bit immediate load using movz/movk sequence.
+    /// @brief Emit full 64-bit immediate load using movz/movn/movk sequence.
     /// @details Uses optimal instruction sequence based on value.
     /// @param os Output stream to write assembly text.
     /// @param dst Destination GPR.

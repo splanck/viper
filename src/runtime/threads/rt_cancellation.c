@@ -14,14 +14,14 @@
 // Key invariants:
 //   - Cancellation state is stored as an atomic_int (POSIX) or volatile LONG
 //     (Win32) to allow lock-free reads from any thread.
-//   - A token can only transition from not-cancelled to cancelled, never back.
+//   - Local cancellation state can be reset for reuse via rt_cancellation_reset.
 //   - Linked parent tokens propagate cancellation down to children on cancel.
 //   - IsCancelled is always safe to call from any thread without locking.
-//   - The finalizer is a no-op; atomic fields require no special cleanup.
+//   - The finalizer releases any retained linked parent token.
 //
 // Ownership/Lifetime:
 //   - Cancellation token objects are heap-allocated and managed by the GC.
-//   - Parent pointers are weak references; the parent is not retained by the child.
+//   - Linked child tokens retain their parent token until finalization.
 //
 // Links: src/runtime/threads/rt_cancellation.h (public API),
 //        src/runtime/threads/rt_future.h (futures accept a cancellation token),
@@ -32,6 +32,7 @@
 #include "rt_cancellation.h"
 
 #include "rt_internal.h"
+#include "rt_object.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -59,8 +60,12 @@ typedef struct {
 } rt_cancellation_data;
 
 static void cancellation_finalizer(void *obj) {
-    (void)obj;
-    // No dynamic allocations to free
+    rt_cancellation_data *data = (rt_cancellation_data *)obj;
+    if (!data || !data->parent)
+        return;
+    if (rt_obj_release_check0(data->parent))
+        rt_obj_free(data->parent);
+    data->parent = NULL;
 }
 
 // --- Platform-specific atomic helpers ---
@@ -91,8 +96,13 @@ static inline void cancel_store(rt_cancellation_data *data, int value) {
 
 // --- Public API ---
 
+/// @brief Create a new cancellation token (initially not cancelled).
 void *rt_cancellation_new(void) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
+    if (!obj) {
+        rt_trap("CancelToken.New: memory allocation failed");
+        return NULL;
+    }
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
     data->parent = NULL;
@@ -105,7 +115,11 @@ int8_t rt_cancellation_is_cancelled(void *token) {
     if (!token)
         return 0;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
-    return cancel_load(data) ? 1 : 0;
+    if (cancel_load(data))
+        return 1;
+    if (data->parent)
+        return rt_cancellation_is_cancelled(data->parent);
+    return 0;
 }
 
 /// @brief Request cancellation on this token, propagating to all child tokens.
@@ -124,8 +138,13 @@ void rt_cancellation_reset(void *token) {
     cancel_store(data, 0);
 }
 
+/// @brief Create a child token that is automatically cancelled when the parent is cancelled.
 void *rt_cancellation_linked(void *parent) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
+    if (!obj) {
+        rt_trap("CancelToken.Linked: memory allocation failed");
+        return NULL;
+    }
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
     data->parent = parent;
@@ -137,14 +156,7 @@ void *rt_cancellation_linked(void *parent) {
 
 /// @brief Check the cancellation.
 int8_t rt_cancellation_check(void *token) {
-    if (!token)
-        return 0;
-    rt_cancellation_data *data = (rt_cancellation_data *)token;
-    if (cancel_load(data))
-        return 1;
-    if (data->parent)
-        return rt_cancellation_is_cancelled(data->parent);
-    return 0;
+    return rt_cancellation_is_cancelled(token);
 }
 
 /// @brief Throw the if cancelled of the cancellation.
