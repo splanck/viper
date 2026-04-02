@@ -41,6 +41,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_tilemap.h"
+#include "rt_tilemap_internal.h"
 
 #include "rt_graphics.h"
 #include "rt_heap.h"
@@ -57,56 +58,6 @@
 #define TILE_COLLISION_NONE RT_TILE_COLLISION_NONE
 #define TILE_COLLISION_SOLID RT_TILE_COLLISION_SOLID
 #define TILE_COLLISION_ONE_WAY RT_TILE_COLLISION_ONE_WAY_UP
-
-/// Maximum distinct tile IDs that can have collision types set
-#define MAX_TILE_COLLISION_IDS 4096
-
-/// Maximum number of layers per tilemap
-#define TM_MAX_LAYERS 16
-
-/// Per-layer metadata and tile grid
-typedef struct {
-    int64_t *tiles; ///< width * height tile indices (NULL if unused)
-    void *tileset;  ///< Per-layer tileset (NULL = use base)
-    int64_t tileset_cols;
-    int64_t tileset_rows;
-    int64_t tile_count; ///< Tiles in this layer's tileset
-    char name[32];      ///< Layer name
-    int8_t visible;     ///< 1 = visible, 0 = hidden
-    int8_t owns_tiles;  ///< 1 = tiles was malloc'd (layers 1+), 0 = inline (layer 0)
-} tm_layer;
-
-/// @brief Per-tile animation definition.
-#define TM_MAX_TILE_ANIMS 64
-#define TM_MAX_ANIM_FRAMES 8
-
-typedef struct {
-    int64_t base_tile_id;               ///< Tile ID this animation applies to
-    int64_t frame_tiles[TM_MAX_ANIM_FRAMES]; ///< Tile IDs per frame
-    int32_t frame_count;                ///< Number of frames
-    int64_t ms_per_frame;               ///< Milliseconds per frame
-    int64_t timer;                      ///< Current ms accumulator
-    int32_t current_frame;              ///< Current frame index
-} tm_tile_anim;
-
-/// @brief Tilemap implementation structure.
-typedef struct rt_tilemap_impl {
-    int64_t width;                            ///< Width in tiles
-    int64_t height;                           ///< Height in tiles
-    int64_t tile_width;                       ///< Tile width in pixels
-    int64_t tile_height;                      ///< Tile height in pixels
-    int64_t tileset_cols;                     ///< Number of columns in base tileset
-    int64_t tileset_rows;                     ///< Number of rows in base tileset
-    int64_t tile_count;                       ///< Total tiles in base tileset
-    void *tileset;                            ///< Base tileset pixels
-    int64_t *tiles;                           ///< Layer 0 tile indices (row-major, inline)
-    int8_t collision[MAX_TILE_COLLISION_IDS]; ///< Collision type per tile ID
-    tm_layer layers[TM_MAX_LAYERS];           ///< Layer array
-    int32_t layer_count;                      ///< Current number of layers (starts at 1)
-    int32_t collision_layer;                  ///< Which layer has collision data (default 0)
-    tm_tile_anim tile_anims[TM_MAX_TILE_ANIMS]; ///< Per-tile animation definitions
-    int32_t tile_anim_count;                 ///< Number of active tile animations
-} rt_tilemap_impl;
 
 //=============================================================================
 // Tilemap Creation
@@ -151,6 +102,7 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     if (!tilemap)
         return NULL;
 
+    memset(tilemap, 0, sizeof(rt_tilemap_impl));
     tilemap->width = width;
     tilemap->height = height;
     tilemap->tile_width = tile_width;
@@ -164,11 +116,7 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     // Initialize all tiles to 0 (empty)
     memset(tilemap->tiles, 0, tiles_size);
 
-    // Initialize collision array to NONE
-    memset(tilemap->collision, TILE_COLLISION_NONE, sizeof(tilemap->collision));
-
     // Initialize layer 0 (base layer)
-    memset(tilemap->layers, 0, sizeof(tilemap->layers));
     tilemap->layer_count = 1;
     tilemap->collision_layer = 0;
     tilemap->layers[0].tiles = tilemap->tiles;
@@ -413,7 +361,8 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
     // Draw visible tiles
     for (int64_t ty = view_y; ty < view_y + view_h; ty++) {
         for (int64_t tx = view_x; tx < view_x + view_w; tx++) {
-            int64_t tile_index = tilemap->tiles[ty * tilemap->width + tx];
+            int64_t tile_index =
+                rt_tilemap_resolve_anim_tile(tilemap_ptr, tilemap->tiles[ty * tilemap->width + tx]);
 
             // Skip empty tiles (index 0)
             if (tile_index <= 0 || tile_index > tilemap->tile_count)
@@ -522,6 +471,7 @@ int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_
     if (cl < 0 || cl >= tilemap->layer_count || !tilemap->layers[cl].tiles)
         return 0;
     int64_t tile_id = tilemap->layers[cl].tiles[ty * tilemap->width + tx];
+    tile_id = rt_tilemap_resolve_anim_tile(tilemap_ptr, tile_id);
     if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
         return 0;
     return tilemap->collision[tile_id] == TILE_COLLISION_SOLID ? 1 : 0;
@@ -573,6 +523,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     for (int64_t ty = top; ty <= bottom; ty++) {
         for (int64_t tx = left; tx <= right; tx++) {
             int64_t tile_id = coll_tiles[ty * tilemap->width + tx];
+            tile_id = rt_tilemap_resolve_anim_tile(tilemap_ptr, tile_id);
             if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
                 continue;
             int8_t ctype = tilemap->collision[tile_id];
@@ -905,7 +856,8 @@ void rt_tilemap_draw_layer(
 
     for (int64_t ty = first_y; ty < first_y + vis_h; ty++) {
         for (int64_t tx = first_x; tx < first_x + vis_w; tx++) {
-            int64_t tile_index = lyr->tiles[ty * tilemap->width + tx];
+            int64_t tile_index =
+                rt_tilemap_resolve_anim_tile(tilemap_ptr, lyr->tiles[ty * tilemap->width + tx]);
             if (tile_index <= 0 || tile_index > tc)
                 continue;
 

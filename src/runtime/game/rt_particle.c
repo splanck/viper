@@ -123,9 +123,13 @@ static void particle_emitter_finalizer(void *obj) {
     }
 }
 
-/// @brief Emit emitter new.
-/// @param max_particles
-/// @return Result value.
+/// @brief Create a new particle emitter with the given maximum particle capacity.
+/// @details Allocates the particle pool array up front. Particles are spawned
+///          via start() (continuous emission at the configured rate) or burst()
+///          (one-shot). Each particle has independent position, velocity, lifetime,
+///          size, and color. Inactive slots are reused via linear scan.
+/// @param max_particles Maximum number of live particles (clamped to [1, RT_PARTICLE_MAX]).
+/// @return Opaque emitter handle, or NULL on allocation failure.
 rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
     if (max_particles < 1)
         max_particles = 1;
@@ -171,8 +175,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
     return e;
 }
 
-/// @brief Emit emitter destroy.
-/// @param emitter
+/// @brief Destroy a particle emitter and free its particle pool.
 void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
     if (!emitter)
         return;
@@ -180,10 +183,7 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
         free(emitter->particles);
 }
 
-/// @brief Emit emitter set position.
-/// @param emitter
-/// @param x
-/// @param y
+/// @brief Set the emission origin point (new particles spawn here).
 void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y) {
     if (!emitter)
         return;
@@ -191,23 +191,17 @@ void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, dou
     emitter->y = y;
 }
 
-/// @brief Emit emitter x.
-/// @param emitter
-/// @return Result value.
+/// @brief Get the emitter's X emission origin.
 double rt_particle_emitter_x(rt_particle_emitter emitter) {
     return emitter ? emitter->x : 0.0;
 }
 
-/// @brief Emit emitter y.
-/// @param emitter
-/// @return Result value.
+/// @brief Get the emitter's Y emission origin.
 double rt_particle_emitter_y(rt_particle_emitter emitter) {
     return emitter ? emitter->y : 0.0;
 }
 
-/// @brief Emit emitter set rate.
-/// @param emitter
-/// @param rate
+/// @brief Set the emission rate in particles per update tick.
 void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
     if (!emitter)
         return;
@@ -216,13 +210,12 @@ void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
     emitter->rate = rate;
 }
 
-/// @brief Emit emitter rate.
-/// @param emitter
-/// @return Result value.
+/// @brief Get the current emission rate (particles per tick).
 double rt_particle_emitter_rate(rt_particle_emitter emitter) {
     return emitter ? emitter->rate : 0.0;
 }
 
+/// @brief Set the particle lifetime range in frames (each particle gets a random value in range).
 void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
                                       int64_t min_frames,
                                       int64_t max_frames) {
@@ -236,6 +229,7 @@ void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
     emitter->max_life = max_frames;
 }
 
+/// @brief Set the initial velocity range for new particles (speed and angle in degrees).
 void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
                                       double min_speed,
                                       double max_speed,
@@ -253,10 +247,7 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
     emitter->max_angle = max_angle;
 }
 
-/// @brief Emit emitter set gravity.
-/// @param emitter
-/// @param gx
-/// @param gy
+/// @brief Set constant gravity acceleration applied to all particles each tick.
 void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, double gy) {
     if (!emitter)
         return;
@@ -264,19 +255,14 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
     emitter->gy = gy;
 }
 
-/// @brief Emit emitter set color.
-/// @param emitter
-/// @param color
+/// @brief Set the color for newly spawned particles (0xRRGGBBAA packed).
 void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
     if (!emitter)
         return;
     emitter->color = color;
 }
 
-/// @brief Emit emitter set size.
-/// @param emitter
-/// @param min_size
-/// @param max_size
+/// @brief Set the initial size range for new particles (each gets a random value).
 void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size) {
     if (!emitter)
         return;
@@ -288,64 +274,50 @@ void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, 
     emitter->max_size = max_size;
 }
 
-/// @brief Emit emitter set fade out.
-/// @param emitter
-/// @param fade_out
+/// @brief Enable or disable alpha fade-out as particles age toward their lifetime end.
 void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_out) {
     if (!emitter)
         return;
     emitter->fade_out = fade_out ? 1 : 0;
 }
 
-/// @brief Emit emitter set shrink.
-/// @param emitter
-/// @param shrink
+/// @brief Enable or disable size shrinking as particles age toward their lifetime end.
 void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink) {
     if (!emitter)
         return;
     emitter->shrink = shrink ? 1 : 0;
 }
 
-/// @brief Emit emitter start.
-/// @param emitter
+/// @brief Begin continuous particle emission at the configured rate.
 void rt_particle_emitter_start(rt_particle_emitter emitter) {
     if (!emitter)
         return;
     emitter->emitting = 1;
 }
 
-/// @brief Emit emitter stop.
-/// @param emitter
+/// @brief Stop continuous emission (existing particles continue to live).
 void rt_particle_emitter_stop(rt_particle_emitter emitter) {
     if (!emitter)
         return;
     emitter->emitting = 0;
 }
 
-/// @brief Emit emitter is emitting.
-/// @param emitter
-/// @return Result value.
+/// @brief Check whether the emitter is currently in continuous emission mode.
 int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter) {
     return emitter ? emitter->emitting : 0;
 }
 
-/// @brief Emit emitter fade out.
-/// @param emitter
-/// @return Result value.
+/// @brief Check whether alpha fade-out is enabled.
 int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter) {
     return emitter ? emitter->fade_out : 0;
 }
 
-/// @brief Emit emitter shrink.
-/// @param emitter
-/// @return Result value.
+/// @brief Check whether size shrinking is enabled.
 int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter) {
     return emitter ? emitter->shrink : 0;
 }
 
-/// @brief Emit emitter color.
-/// @param emitter
-/// @return Result value.
+/// @brief Get the current emission color (0xRRGGBBAA packed).
 int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
     return emitter ? emitter->color : 0;
 }
@@ -379,9 +351,7 @@ static void emit_one(struct rt_particle_emitter_impl *e) {
     }
 }
 
-/// @brief Emit emitter burst.
-/// @param emitter
-/// @param count
+/// @brief Emit a one-shot burst of particles (up to the remaining capacity).
 void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
     if (!emitter || count < 1)
         return;
@@ -390,8 +360,7 @@ void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
     }
 }
 
-/// @brief Emit emitter update.
-/// @param emitter
+/// @brief Advance all particles by one tick — apply gravity, age, fade/shrink, and spawn new ones.
 void rt_particle_emitter_update(rt_particle_emitter emitter) {
     if (!emitter)
         return;
@@ -436,15 +405,12 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
     }
 }
 
-/// @brief Emit emitter count.
-/// @param emitter
-/// @return Result value.
+/// @brief Get the number of currently active (alive) particles.
 int64_t rt_particle_emitter_count(rt_particle_emitter emitter) {
     return emitter ? emitter->active_count : 0;
 }
 
-/// @brief Emit emitter clear.
-/// @param emitter
+/// @brief Kill all active particles immediately, resetting the pool to empty.
 void rt_particle_emitter_clear(rt_particle_emitter emitter) {
     if (!emitter)
         return;
@@ -455,6 +421,7 @@ void rt_particle_emitter_clear(rt_particle_emitter emitter) {
     emitter->rate_accumulator = 0.0;
 }
 
+/// @brief Read the position, size, and color of the Nth active particle (for custom rendering).
 int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                                int64_t index,
                                double *out_x,
@@ -497,6 +464,7 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
     return 0;
 }
 
+/// @brief Render all active particles as filled discs to a Pixels buffer (software renderer).
 int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
                                            void *pixels,
                                            int64_t offset_x,
@@ -546,14 +514,12 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
     return drawn;
 }
 
-/// @brief Emit emitter draw.
-/// @param emitter
-/// @param canvas
-/// @return Result value.
+/// @brief Draw all active particles to a Canvas at their absolute positions.
 int64_t rt_particle_emitter_draw(rt_particle_emitter emitter, void *canvas) {
     return rt_particle_emitter_draw_at(emitter, canvas, 0, 0);
 }
 
+/// @brief Draw all active particles to a Canvas with an (offset_x, offset_y) camera offset.
 int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
                                     void *canvas,
                                     int64_t offset_x,

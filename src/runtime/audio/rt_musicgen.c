@@ -717,6 +717,11 @@ static int16_t mg_soft_clip(int32_t v) {
 // Public API — Song Builder
 //===----------------------------------------------------------------------===//
 
+/// @brief Create a new procedural music song builder at the given BPM (20–300).
+/// @details MusicGen builds chiptune-style music programmatically. Add channels
+///          with different waveforms, set per-channel effects (vibrato, tremolo,
+///          arpeggio, portamento), add notes, then call build() to render to a
+///          playable Sound or Music handle.
 void *rt_musicgen_new(int64_t bpm) {
     mg_song_t *song = (mg_song_t *)rt_obj_new_i64(0, (int64_t)sizeof(mg_song_t));
     if (!song)
@@ -755,6 +760,7 @@ void *rt_musicgen_new(int64_t bpm) {
     return song;
 }
 
+/// @brief Add a synthesis channel with the given waveform (0=sine, 1=square, 2=saw, 3=triangle, 4=noise).
 int64_t rt_musicgen_add_channel(void *song_ptr, int64_t waveform) {
     if (!song_ptr)
         return -1;
@@ -800,6 +806,7 @@ void rt_musicgen_set_envelope(void *song,
     c->envelope.release_ms = mg_clamp(release_ms, 0, 5000);
 }
 
+/// @brief Set the volume of a channel (0–100).
 void rt_musicgen_set_channel_vol(void *song, int64_t ch, int64_t volume) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -807,6 +814,7 @@ void rt_musicgen_set_channel_vol(void *song, int64_t ch, int64_t volume) {
     c->volume = mg_clamp(volume, 0, 100);
 }
 
+/// @brief Set the duty cycle for square wave channels (1–99, default 50).
 void rt_musicgen_set_duty(void *song, int64_t ch, int64_t duty) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -814,6 +822,7 @@ void rt_musicgen_set_duty(void *song, int64_t ch, int64_t duty) {
     c->duty_cycle = mg_clamp(duty, 1, 99);
 }
 
+/// @brief Set the stereo pan for a channel (-100=left, 0=center, 100=right).
 void rt_musicgen_set_pan(void *song, int64_t ch, int64_t pan) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -821,6 +830,7 @@ void rt_musicgen_set_pan(void *song, int64_t ch, int64_t pan) {
     c->pan = mg_clamp(pan, -100, 100);
 }
 
+/// @brief Detune a channel by the given number of cents (-1200 to +1200).
 void rt_musicgen_set_detune(void *song, int64_t ch, int64_t cents) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -828,6 +838,7 @@ void rt_musicgen_set_detune(void *song, int64_t ch, int64_t cents) {
     c->detune_cents = mg_clamp(cents, -1200, 1200);
 }
 
+/// @brief Set vibrato (pitch wobble) depth and speed for a channel.
 void rt_musicgen_set_vibrato(void *song, int64_t ch, int64_t depth, int64_t speed) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -836,6 +847,7 @@ void rt_musicgen_set_vibrato(void *song, int64_t ch, int64_t depth, int64_t spee
     c->vibrato_speed = mg_clamp(speed, 0, 5000);
 }
 
+/// @brief Set tremolo (volume wobble) depth and speed for a channel.
 void rt_musicgen_set_tremolo(void *song, int64_t ch, int64_t depth, int64_t speed) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -844,6 +856,7 @@ void rt_musicgen_set_tremolo(void *song, int64_t ch, int64_t depth, int64_t spee
     c->tremolo_speed = mg_clamp(speed, 0, 5000);
 }
 
+/// @brief Set arpeggio (rapid pitch cycling) intervals and speed for a channel.
 void rt_musicgen_set_arpeggio(void *song, int64_t ch, int64_t semi1, int64_t semi2, int64_t speed) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -853,6 +866,7 @@ void rt_musicgen_set_arpeggio(void *song, int64_t ch, int64_t semi1, int64_t sem
     c->arp_speed = mg_clamp(speed, 0, 5000);
 }
 
+/// @brief Set portamento (pitch slide) speed for a channel (0 = off, ms to reach new pitch).
 void rt_musicgen_set_portamento(void *song, int64_t ch, int64_t speed_ms) {
     mg_channel_t *c = mg_get_channel(song, ch);
     if (!c)
@@ -896,6 +910,7 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
 // Public API — Song Properties
 //===----------------------------------------------------------------------===//
 
+/// @brief Set the total song length in centbeats (100 centbeats = 1 beat).
 void rt_musicgen_set_length(void *song_ptr, int64_t length_centbeats) {
     if (!song_ptr)
         return;
@@ -903,6 +918,7 @@ void rt_musicgen_set_length(void *song_ptr, int64_t length_centbeats) {
     song->length_centbeats = (length_centbeats < 0) ? 0 : length_centbeats;
 }
 
+/// @brief Set the swing amount (0–100; offbeat notes shifted later for groove feel).
 void rt_musicgen_set_swing(void *song_ptr, int64_t swing) {
     if (!song_ptr)
         return;
@@ -910,6 +926,7 @@ void rt_musicgen_set_swing(void *song_ptr, int64_t swing) {
     song->swing = mg_clamp(swing, 0, 100);
 }
 
+/// @brief Mark the song as loopable (seamless loop point at the end).
 void rt_musicgen_set_loopable(void *song_ptr, int64_t loopable) {
     if (!song_ptr)
         return;
@@ -917,18 +934,21 @@ void rt_musicgen_set_loopable(void *song_ptr, int64_t loopable) {
     song->loopable = (loopable != 0) ? 1 : 0;
 }
 
+/// @brief Get the song's beats-per-minute.
 int64_t rt_musicgen_get_bpm(void *song_ptr) {
     if (!song_ptr)
         return 0;
     return ((mg_song_t *)song_ptr)->bpm;
 }
 
+/// @brief Get the song length in centbeats.
 int64_t rt_musicgen_get_length(void *song_ptr) {
     if (!song_ptr)
         return 0;
     return ((mg_song_t *)song_ptr)->length_centbeats;
 }
 
+/// @brief Get the number of channels added to the song.
 int64_t rt_musicgen_get_channel_count(void *song_ptr) {
     if (!song_ptr)
         return 0;
@@ -939,6 +959,11 @@ int64_t rt_musicgen_get_channel_count(void *song_ptr) {
 // Public API — Build (Pre-render to Sound)
 //===----------------------------------------------------------------------===//
 
+/// @brief Render the song to PCM audio and return a playable Sound handle.
+/// @details Mixes all channels into a stereo 44100 Hz WAV buffer. Each note is
+///          synthesized with its channel's waveform, ADSR envelope, and effects
+///          (vibrato, tremolo, arpeggio, portamento). The result can be played
+///          with rt_sound_play or loaded as music.
 void *rt_musicgen_build(void *song_ptr) {
     if (!song_ptr)
         return NULL;

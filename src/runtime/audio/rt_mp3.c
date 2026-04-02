@@ -256,11 +256,13 @@ struct mp3_decoder {
     int reservoir_size;
 };
 
+/// @brief Allocate a new MP3 decoder state (per-frame decode via mp3_stream or batch).
 mp3_decoder_t *mp3_decoder_new(void) {
     mp3_decoder_t *dec = (mp3_decoder_t *)calloc(1, sizeof(mp3_decoder_t));
     return dec;
 }
 
+/// @brief Free an MP3 decoder state.
 void mp3_decoder_free(mp3_decoder_t *dec) {
     free(dec);
 }
@@ -875,6 +877,7 @@ struct mp3_stream {
     int16_t pcm_buf[1152 * 2];
 };
 
+/// @brief Open an MP3 file for per-frame streaming decode (skips ID3v2 tags).
 mp3_stream_t *mp3_stream_open(const char *filepath) {
     if (!filepath)
         return NULL;
@@ -957,6 +960,7 @@ mp3_stream_t *mp3_stream_open(const char *filepath) {
     return s;
 }
 
+/// @brief Decode the next MP3 frame, returning PCM samples. Returns sample count or 0 at EOF.
 int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
     if (!stream || !out_pcm)
         return -1;
@@ -1011,14 +1015,17 @@ int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
     return 0; // EOF
 }
 
+/// @brief Get the sample rate of the MP3 stream (determined from the first frame header).
 int mp3_stream_sample_rate(const mp3_stream_t *stream) {
     return stream ? stream->sample_rate : 0;
 }
 
+/// @brief Get the channel count of the MP3 stream (1=mono, 2=stereo).
 int mp3_stream_channels(const mp3_stream_t *stream) {
     return stream ? stream->channels : 0;
 }
 
+/// @brief Rewind the MP3 stream to the beginning for re-playback.
 void mp3_stream_rewind(mp3_stream_t *stream) {
     if (!stream)
         return;
@@ -1032,6 +1039,7 @@ void mp3_stream_rewind(mp3_stream_t *stream) {
     stream->dec->reservoir_size = 0;
 }
 
+/// @brief Close the MP3 stream and free the decoder, file handle, and read buffer.
 void mp3_stream_free(mp3_stream_t *stream) {
     if (!stream)
         return;

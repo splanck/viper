@@ -138,6 +138,46 @@ static void test_json_save_load(void) {
     PASS();
 }
 
+static void test_json_save_load_preserves_extended_state(void) {
+    TEST("JSON save/load preserves layers, props, autotile, collision, animations");
+    void *tm = rt_tilemap_new(3, 3, 16, 16);
+    int64_t fg = rt_tilemap_add_layer(tm, make_str("fg"));
+    assert(fg == 1);
+    rt_tilemap_set_layer_visible(tm, fg, 0);
+    rt_tilemap_set_tile_layer(tm, fg, 1, 1, 7);
+    rt_tilemap_set_collision_layer(tm, fg);
+    rt_tilemap_set_collision(tm, 7, 2);
+    rt_tilemap_set_tile_property(tm, 7, make_str("damage"), 42);
+
+    rt_tilemap_set_tile(tm, 1, 1, 3);
+    rt_tilemap_set_autotile_lo(tm, 3, 50, 51, 52, 53, 54, 55, 56, 57);
+    rt_tilemap_set_autotile_hi(tm, 3, 58, 59, 60, 61, 62, 63, 64, 65);
+
+    rt_tilemap_set_tile_anim(tm, 7, 2, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 0, 7);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 1, 8);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+
+    rt_string path = make_str("/tmp/test_tilemap_extended_roundtrip.json");
+    assert(rt_tilemap_save_to_file(tm, path) == 1);
+
+    void *loaded = rt_tilemap_load_from_file(path);
+    assert(loaded != NULL);
+    assert(rt_tilemap_get_layer_count(loaded) == 2);
+    assert(rt_tilemap_get_layer_by_name(loaded, make_str("fg")) == 1);
+    assert(rt_tilemap_get_layer_visible(loaded, fg) == 0);
+    assert(rt_tilemap_get_tile_layer(loaded, fg, 1, 1) == 7);
+    assert(rt_tilemap_get_collision_layer(loaded) == fg);
+    assert(rt_tilemap_get_collision(loaded, 7) == 2);
+    assert(rt_tilemap_get_tile_property(loaded, 7, make_str("damage"), -1) == 42);
+    assert(rt_tilemap_resolve_anim_tile(loaded, 7) == 8);
+
+    rt_tilemap_apply_autotile(loaded);
+    assert(rt_tilemap_get_tile(loaded, 1, 1) == 50);
+    PASS();
+}
+
 static void test_csv_import(void) {
     TEST("CSV import");
     // Write a test CSV
@@ -190,6 +230,7 @@ int main() {
     test_autotile_basic();
     test_autotile_isolated();
     test_json_save_load();
+    test_json_save_load_preserves_extended_state();
     test_csv_import();
     test_load_nonexistent();
     test_clear_autotile();

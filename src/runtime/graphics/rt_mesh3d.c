@@ -1034,8 +1034,8 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
 
     if (((rt_mesh3d *)mesh)->vertex_count == 0) {
         // No triangles found — free and return NULL
-        rt_obj_release_check0(mesh);
-        rt_obj_free(mesh);
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
         return NULL;
     }
 

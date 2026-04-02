@@ -420,6 +420,7 @@ slow_path:
 // Public API
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate a new Vorbis decoder state (must receive headers before decoding audio).
 vorbis_decoder_t *vorbis_decoder_new(void) {
     vorbis_decoder_t *dec = (vorbis_decoder_t *)calloc(1, sizeof(vorbis_decoder_t));
     if (!dec)
@@ -428,6 +429,7 @@ vorbis_decoder_t *vorbis_decoder_new(void) {
     return dec;
 }
 
+/// @brief Free a Vorbis decoder and all its codebook/floor/residue tables.
 void vorbis_decoder_free(vorbis_decoder_t *dec) {
     if (!dec)
         return;
@@ -745,6 +747,10 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
     return 0;
 }
 
+/// @brief Decode a Vorbis header packet (identification=0, comment=1, setup=2).
+/// @details Must be called in order for packets 0, 1, 2 before any audio decoding.
+///          Packet 0 sets sample rate and channels. Packet 2 builds all codebook,
+///          floor, residue, and mapping tables needed for audio frame decoding.
 int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len, int packet_num) {
     if (!dec || !data)
         return -1;
@@ -1179,10 +1185,12 @@ residue_done:
     return 0;
 }
 
+/// @brief Get the audio sample rate from the Vorbis identification header.
 int vorbis_get_sample_rate(const vorbis_decoder_t *dec) {
     return dec ? dec->sample_rate : 0;
 }
 
+/// @brief Get the number of audio channels from the Vorbis identification header.
 int vorbis_get_channels(const vorbis_decoder_t *dec) {
     return dec ? dec->channels : 0;
 }

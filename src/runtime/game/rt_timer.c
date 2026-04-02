@@ -49,8 +49,7 @@ struct rt_timer_impl {
     int8_t ms_mode;   // 1 if using millisecond-based timing
 };
 
-/// @brief Create a new new instance.
-/// @return Result value.
+/// @brief Create a new timer (starts stopped with zero duration).
 rt_timer rt_timer_new(void) {
     struct rt_timer_impl *timer =
         (struct rt_timer_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_timer_impl));
@@ -67,16 +66,13 @@ rt_timer rt_timer_new(void) {
     return timer;
 }
 
-/// @brief Destroy and free destroy resources.
-/// @param timer
+/// @brief Destroy a timer and release its GC allocation.
 void rt_timer_destroy(rt_timer timer) {
     if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
 }
 
-/// @brief Start start.
-/// @param timer
-/// @param frames
+/// @brief Start a one-shot timer that expires after the given number of frames.
 void rt_timer_start(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
@@ -87,9 +83,7 @@ void rt_timer_start(rt_timer timer, int64_t frames) {
     timer->repeating = 0;
 }
 
-/// @brief Start repeating.
-/// @param timer
-/// @param frames
+/// @brief Start a repeating timer that auto-restarts when it expires.
 void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
@@ -100,25 +94,21 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
     timer->repeating = 1;
 }
 
-/// @brief Stop stop.
-/// @param timer
+/// @brief Stop the timer (elapsed value is preserved for queries).
 void rt_timer_stop(rt_timer timer) {
     if (!timer)
         return;
     timer->running = 0;
 }
 
-/// @brief Reset reset to initial state.
-/// @param timer
+/// @brief Reset the elapsed counter to zero without changing running/repeating state.
 void rt_timer_reset(rt_timer timer) {
     if (!timer)
         return;
     timer->elapsed = 0;
 }
 
-/// @brief Update update state for current frame.
-/// @param timer
-/// @return Result value.
+/// @brief Advance the timer by one tick. Returns 1 if the timer expired this tick.
 int8_t rt_timer_update(rt_timer timer) {
     if (!timer || !timer->running) {
         return 0;
@@ -139,28 +129,24 @@ int8_t rt_timer_update(rt_timer timer) {
     return 0;
 }
 
-/// @brief Check if running.
-/// @param timer
-/// @return Result value.
+/// @brief Check whether the timer is currently counting.
 int8_t rt_timer_is_running(rt_timer timer) {
     return timer ? timer->running : 0;
 }
 
-/// @brief Check if expired.
-/// @param timer
-/// @return Result value.
+/// @brief Check whether the timer has expired (stopped and elapsed >= duration).
 int8_t rt_timer_is_expired(rt_timer timer) {
     if (!timer)
         return 0;
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
 }
 
-/// @brief Elapsed operation.
+/// @brief Get the number of ticks elapsed since the timer was started.
 int64_t rt_timer_elapsed(rt_timer timer) {
     return timer ? timer->elapsed : 0;
 }
 
-/// @brief Remaining operation.
+/// @brief Get the number of ticks remaining before the timer expires.
 int64_t rt_timer_remaining(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
@@ -169,7 +155,7 @@ int64_t rt_timer_remaining(rt_timer timer) {
     return (remaining > 0) ? remaining : 0;
 }
 
-/// @brief Progress operation.
+/// @brief Get the timer progress as a percentage (0–100).
 int64_t rt_timer_progress(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
@@ -178,14 +164,12 @@ int64_t rt_timer_progress(rt_timer timer) {
     return (progress > 100) ? 100 : progress;
 }
 
-/// @brief Duration operation.
+/// @brief Get the total duration the timer was started with.
 int64_t rt_timer_duration(rt_timer timer) {
     return timer ? timer->duration : 0;
 }
 
-/// @brief Check if repeating.
-/// @param timer
-/// @return Result value.
+/// @brief Check whether the timer is in repeating (auto-restart) mode.
 int8_t rt_timer_is_repeating(rt_timer timer) {
     return timer ? timer->repeating : 0;
 }

@@ -67,6 +67,11 @@ static behavior_impl *get(void *bhv) {
     return (behavior_impl *)bhv;
 }
 
+/// @brief Create a new composable AI behavior controller.
+/// @details Behaviors are built by adding presets (patrol, chase, gravity, etc.)
+///          via the add_* methods. Update applies all active behaviors to an Entity
+///          in a fixed priority order: gravity → patrol → chase → sine float →
+///          move+collide → wall/edge reverse → shoot cooldown → animation.
 void *rt_behavior_new(void) {
     behavior_impl *b = (behavior_impl *)rt_obj_new_i64(0, (int64_t)sizeof(behavior_impl));
     if (!b)
@@ -75,6 +80,7 @@ void *rt_behavior_new(void) {
     return b;
 }
 
+/// @brief Add horizontal patrol behavior (entity walks left/right at given speed).
 void rt_behavior_add_patrol(void *bhv, int64_t speed) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -82,6 +88,7 @@ void rt_behavior_add_patrol(void *bhv, int64_t speed) {
     b->patrol_speed = speed;
 }
 
+/// @brief Add chase-target behavior (entity moves toward the target when within range).
 void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -90,6 +97,7 @@ void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
     b->chase_range = range;
 }
 
+/// @brief Add gravity behavior (applies downward acceleration with a terminal velocity).
 void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -98,16 +106,19 @@ void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
     b->max_fall = max_fall;
 }
 
+/// @brief Add edge-reverse behavior (entity turns around at platform edges).
 void rt_behavior_add_edge_reverse(void *bhv) {
     if (!bhv) return;
     get(bhv)->flags |= BHV_EDGE_REVERSE;
 }
 
+/// @brief Add wall-reverse behavior (entity turns around when hitting a wall).
 void rt_behavior_add_wall_reverse(void *bhv) {
     if (!bhv) return;
     get(bhv)->flags |= BHV_WALL_REVERSE;
 }
 
+/// @brief Add shoot-on-cooldown behavior (shoot_ready flag sets after cooldown elapses).
 void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -116,6 +127,7 @@ void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
     b->shoot_timer = cooldown_ms;
 }
 
+/// @brief Add sine-wave floating behavior (vertical oscillation for hovering enemies).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -124,6 +136,7 @@ void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
     b->float_speed = speed;
 }
 
+/// @brief Add frame-based animation loop (cycles through frames at the given interval).
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame) {
     if (!bhv) return;
     behavior_impl *b = get(bhv);
@@ -132,6 +145,10 @@ void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_fr
     b->anim_ms = ms_per_frame;
 }
 
+/// @brief Run all active behaviors on an entity for one tick.
+/// @details Applies behaviors in priority order: gravity, patrol, chase, sine
+///          float, move+collide, wall reverse, edge reverse, shoot cooldown,
+///          then animation loop. The target_x/target_y are the chase target position.
 void rt_behavior_update(void *bhv, void *entity, void *tilemap,
                         int64_t target_x, int64_t target_y, int64_t dt) {
     if (!bhv || !entity)
@@ -212,6 +229,7 @@ void rt_behavior_update(void *bhv, void *entity, void *tilemap,
     }
 }
 
+/// @brief Check and consume the shoot-ready flag (returns 1 once, then resets).
 int8_t rt_behavior_shoot_ready(void *bhv) {
     if (!bhv) return 0;
     behavior_impl *b = get(bhv);
@@ -222,6 +240,7 @@ int8_t rt_behavior_shoot_ready(void *bhv) {
     return 0;
 }
 
+/// @brief Get the current animation frame index from the animation loop behavior.
 int64_t rt_behavior_anim_frame(void *bhv) {
     return bhv ? get(bhv)->anim_frame : 0;
 }

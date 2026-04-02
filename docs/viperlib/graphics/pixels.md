@@ -579,6 +579,8 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
+Advanced runtime support also includes multi-layer tilemaps, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
+
 ### Zia Example
 
 ```rust

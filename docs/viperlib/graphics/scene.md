@@ -463,7 +463,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch collects draw calls and renders them efficiently in a single batch. Use this when drawing many sprites (particles, bullets, tiles) for better performance.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. Use this when drawing many sprites (particles, bullets, tiles) to reduce caller-side draw orchestration.
 
 ### Properties
 
@@ -483,7 +483,7 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Integer, Integer)`                       | Draw pixels buffer at position                 |
 | `DrawRegion(pixels, dx, dy, sx, sy, sw, sh)`    | `Void(Pixels, Integer...)`                             | Draw a sub-region of a Pixels buffer           |
 | `DrawScaled(sprite, x, y, scale)`               | `Void(Sprite, Integer, Integer, Integer)`              | Draw sprite with uniform scale (100 = 100%)    |
-| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush all draws to the canvas    |
+| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush recorded draws to the canvas |
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |

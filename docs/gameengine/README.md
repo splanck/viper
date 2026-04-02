@@ -74,7 +74,7 @@ LOOP
 
 | System | Classes | Highlights |
 |--------|---------|------------|
-| **2D Graphics** | Canvas, Pixels, SpriteBatch, TextureAtlas, BitmapFont | 40+ drawing primitives, BMP/PNG/JPEG/GIF/WebP I/O |
+| **2D Graphics** | Canvas, Pixels, SpriteBatch, TextureAtlas, BitmapFont | 40+ drawing primitives, BMP/PNG save, BMP/PNG/JPEG/GIF load |
 | **3D Graphics** | Canvas3D, Mesh3D, Scene3D, Material3D, Light3D, Skeleton3D | Metal, D3D11, OpenGL 3.3 + software rasterizer |
 | **Sprites & Animation** | SpriteAnimation, AnimStateMachine, SpriteBatch | State machines, frame events, ping-pong, depth sorting |
 | **Tilemap** | Tilemap | Layers, auto-tiling, tile animation, collision, CSV I/O |

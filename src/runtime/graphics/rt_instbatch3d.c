@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Transforms are float[16] row-major, stored contiguously.
 //   - Software backend: loops N individual submit_draw calls.
-//   - Mesh/material are borrowed (caller keeps them alive).
+//   - Mesh/material are retained by the batch because it stores them across frames.
 //
 // Links: rt_instbatch3d.h, rt_canvas3d.c, vgfx3d_backend.h
 //
@@ -32,6 +32,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
@@ -40,8 +43,8 @@ extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 typedef struct {
     void *vptr;
-    void *mesh;        /* borrowed Mesh3D */
-    void *material;    /* borrowed Material3D */
+    void *mesh;        /* retained Mesh3D */
+    void *material;    /* retained Material3D */
     float *transforms; /* N * 16 floats */
     float *current_snapshot; /* current-frame snapshot for motion history */
     float *prev_transforms;  /* previous-frame transforms */
@@ -57,6 +60,14 @@ static void instbatch_copy_matrix_slot(float *dst, int32_t dst_idx, const float 
     if (!dst || !src || dst_idx < 0 || src_idx < 0)
         return;
     memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
+}
+
+static void instbatch_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
 }
 
 static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
@@ -88,6 +99,8 @@ static void instbatch_finalizer(void *obj) {
     b->motion_snapshot_count = b->prev_count = 0;
     b->last_motion_frame = 0;
     b->has_prev_snapshot = 0;
+    instbatch_release_ref(&b->mesh);
+    instbatch_release_ref(&b->material);
 }
 
 /// @brief Create an instance batch for drawing N copies of one mesh efficiently.
@@ -95,8 +108,10 @@ static void instbatch_finalizer(void *obj) {
 ///          but different transforms in fewer draw calls. The software backend
 ///          falls back to individual draws; GPU backends may use native instancing.
 ///          Transforms are stored as contiguous float[16*N] row-major Mat4 arrays.
-/// @param mesh     Mesh handle shared by all instances (borrowed reference).
-/// @param material Material handle shared by all instances (borrowed reference).
+/// @param mesh     Mesh handle shared by all instances. The batch retains it
+///                 because it is reused across frames.
+/// @param material Material handle shared by all instances. The batch retains
+///                 it because it is reused across frames.
 /// @return Opaque batch handle, or NULL on failure.
 void *rt_instbatch3d_new(void *mesh, void *material) {
     if (!mesh || !material)
@@ -109,6 +124,8 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
     b->vptr = NULL;
     b->mesh = mesh;
     b->material = material;
+    rt_obj_retain_maybe(mesh);
+    rt_obj_retain_maybe(material);
     b->transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
     b->current_snapshot = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
     b->prev_transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));

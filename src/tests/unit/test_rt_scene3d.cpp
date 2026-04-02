@@ -428,6 +428,41 @@ static void test_scene_save_escapes_json_names() {
                 "Scene3D.Save escapes quotes, backslashes, and newlines in node names");
 }
 
+static void test_scene_save_serializes_visibility_and_lod_metadata() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    const char *path = "/tmp/viper_scene_metadata_test.vscn";
+
+    rt_scene_node3d_set_visible(node, 0);
+    rt_scene_node3d_set_mesh(node, rt_mesh3d_new_box(1.0, 1.0, 1.0));
+    rt_scene_node3d_set_material(node, rt_material3d_new_color(1.0, 0.0, 0.0));
+    rt_scene_node3d_add_lod(node, 10.0, rt_mesh3d_new_box(0.5, 0.5, 0.5));
+    rt_scene3d_add(scene, node);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save writes metadata-rich scene files");
+
+    FILE *f = fopen(path, "rb");
+    EXPECT_TRUE(f != nullptr, "Scene3D.Save metadata output can be reopened");
+    if (!f)
+        return;
+    char buf[2048];
+    size_t bytes = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[bytes] = '\0';
+
+    EXPECT_TRUE(std::strstr(buf, "\"visible\": false") != nullptr,
+                "Scene3D.Save serializes node visibility");
+    EXPECT_TRUE(std::strstr(buf, "\"hasMesh\": true") != nullptr,
+                "Scene3D.Save serializes mesh presence");
+    EXPECT_TRUE(std::strstr(buf, "\"hasMaterial\": true") != nullptr,
+                "Scene3D.Save serializes material presence");
+    EXPECT_TRUE(std::strstr(buf, "\"lod\": [") != nullptr,
+                "Scene3D.Save serializes LOD metadata");
+    EXPECT_TRUE(std::strstr(buf, "\"distance\": 10.000000") != nullptr,
+                "Scene3D.Save serializes LOD distances");
+}
+
 static void test_frustum_aabb_inside() {
     /* Object at origin, camera looking at it → visible (not culled) */
     void *scene = rt_scene3d_new();
@@ -552,6 +587,7 @@ int main() {
     test_lod_culling_uses_selected_mesh_bounds();
     test_scene_draw_reuses_active_frame();
     test_scene_save_escapes_json_names();
+    test_scene_save_serializes_visibility_and_lod_metadata();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

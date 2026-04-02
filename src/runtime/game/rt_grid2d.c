@@ -53,6 +53,9 @@ static void grid2d_finalizer(void *obj) {
     grid->data = NULL;
 }
 
+/// @brief Create a new 2D integer grid filled with a default value.
+/// @details Allocates a flat array of width*height int64_t cells. Used for
+///          tile-based game data: collision maps, influence maps, fog-of-war grids.
 rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
     if (width <= 0 || height <= 0) {
         return NULL;
@@ -131,12 +134,12 @@ void rt_grid2d_clear(rt_grid2d grid) {
     rt_grid2d_fill(grid, 0);
 }
 
-/// @brief Width the grid2d.
+/// @brief Get the width of the grid in cells.
 int64_t rt_grid2d_width(rt_grid2d grid) {
     return grid ? grid->width : 0;
 }
 
-/// @brief Height the grid2d.
+/// @brief Get the height of the grid in cells.
 int64_t rt_grid2d_height(rt_grid2d grid) {
     return grid ? grid->height : 0;
 }
@@ -173,7 +176,7 @@ int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
     return 1;
 }
 
-/// @brief Return the count of elements in the grid2d.
+/// @brief Count how many cells contain the given value.
 int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
     if (!grid)
         return 0;
@@ -188,7 +191,7 @@ int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
     return count;
 }
 
-/// @brief Find the grid2d.
+/// @brief Find the first cell containing the given value (row-major scan order).
 int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *out_y) {
     if (!grid)
         return 0;
@@ -207,7 +210,7 @@ int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *ou
     return 0;
 }
 
-/// @brief Replace the grid2d.
+/// @brief Replace all occurrences of old_value with new_value; returns the number replaced.
 int64_t rt_grid2d_replace(rt_grid2d grid, int64_t old_value, int64_t new_value) {
     if (!grid)
         return 0;

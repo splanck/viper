@@ -350,24 +350,21 @@ static void test_scene_node_detach(void) {
     assert(rt_scene_node_child_count(parent) == 0);
 }
 
-/// @brief rt_scene_node_count returns the number of visible nodes with sprites.
-/// This internally calls rt_seq_new and must release it (Bug R-16 fix).
-/// Calling it many times validates that the seq is properly released each time.
+/// @brief rt_scene_node_count returns the number of root-level scene nodes.
+/// Repeated calls validate the corrected contract and ensure the fast path
+/// remains stable under repeated use.
 static void test_scene_node_count_no_leak(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
-    // Add nodes without sprites; collect_visible_nodes skips them, so count=0.
+    // Add two root-level nodes. NodeCount should report exactly those children.
     rt_scene_add(scene, rt_scene_node_new());
     rt_scene_add(scene, rt_scene_node_new());
 
-    // Call rt_scene_node_count many times to amplify any per-call leak.
-    // A correct implementation releases the temporary seq on every call.
-    // This does not crash and does not grow memory unboundedly if fixed.
+    // Call rt_scene_node_count many times to validate the count is stable.
     for (int i = 0; i < 1000; i++) {
         int64_t count = rt_scene_node_count(scene);
-        // Nodes have no sprites, so visible-node count is 0.
-        assert(count == 0);
+        assert(count == 2);
     }
 }
 

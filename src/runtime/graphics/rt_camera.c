@@ -46,6 +46,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 
+#include <math.h>
 #include <string.h>
 
 /// Maximum number of parallax scrolling layers per camera.
@@ -80,19 +81,105 @@ typedef struct rt_camera_impl {
     int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
 
+static void camera_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static int64_t camera_world_width(const rt_camera_impl *camera) {
+    return (camera->width * 100) / camera->zoom;
+}
+
+static int64_t camera_world_height(const rt_camera_impl *camera) {
+    return (camera->height * 100) / camera->zoom;
+}
+
+static double camera_center_x(const rt_camera_impl *camera) {
+    return (double)camera->x + (double)camera_world_width(camera) * 0.5;
+}
+
+static double camera_center_y(const rt_camera_impl *camera) {
+    return (double)camera->y + (double)camera_world_height(camera) * 0.5;
+}
+
+static void camera_apply_transform(const rt_camera_impl *camera,
+                                   double world_x,
+                                   double world_y,
+                                   double *screen_x,
+                                   double *screen_y) {
+    double dx = world_x - camera_center_x(camera);
+    double dy = world_y - camera_center_y(camera);
+    double rad = -((double)camera->rotation) * 3.14159265358979323846 / 180.0;
+    double cos_r = cos(rad);
+    double sin_r = sin(rad);
+    double rx = dx * cos_r - dy * sin_r;
+    double ry = dx * sin_r + dy * cos_r;
+    if (screen_x)
+        *screen_x = rx * (double)camera->zoom / 100.0 + (double)camera->width * 0.5;
+    if (screen_y)
+        *screen_y = ry * (double)camera->zoom / 100.0 + (double)camera->height * 0.5;
+}
+
+static void camera_apply_inverse_transform(const rt_camera_impl *camera,
+                                           double screen_x,
+                                           double screen_y,
+                                           double *world_x,
+                                           double *world_y) {
+    double dx = (screen_x - (double)camera->width * 0.5) * 100.0 / (double)camera->zoom;
+    double dy = (screen_y - (double)camera->height * 0.5) * 100.0 / (double)camera->zoom;
+    double rad = ((double)camera->rotation) * 3.14159265358979323846 / 180.0;
+    double cos_r = cos(rad);
+    double sin_r = sin(rad);
+    double rx = dx * cos_r - dy * sin_r;
+    double ry = dx * sin_r + dy * cos_r;
+    if (world_x)
+        *world_x = rx + camera_center_x(camera);
+    if (world_y)
+        *world_y = ry + camera_center_y(camera);
+}
+
+static void camera_release_parallax_layer(rt_parallax_layer *layer) {
+    if (!layer || !layer->active)
+        return;
+    camera_release_ref(&layer->pixels);
+    layer->scroll_factor_x = 0;
+    layer->scroll_factor_y = 0;
+    layer->offset_y = 0;
+    layer->active = 0;
+}
+
+static void camera_finalize(void *obj) {
+    rt_camera_impl *camera = (rt_camera_impl *)obj;
+    if (!camera)
+        return;
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
+        camera_release_parallax_layer(&camera->parallax[i]);
+    camera->parallax_count = 0;
+}
+
 /// @brief Clamp camera position to bounds.
 static void camera_clamp_bounds(rt_camera_impl *camera) {
     if (!camera->has_bounds)
         return;
 
+    int64_t max_x = camera->max_x - camera_world_width(camera);
+    int64_t max_y = camera->max_y - camera_world_height(camera);
+    if (max_x < camera->min_x)
+        max_x = camera->min_x;
+    if (max_y < camera->min_y)
+        max_y = camera->min_y;
+
     if (camera->x < camera->min_x)
         camera->x = camera->min_x;
     if (camera->y < camera->min_y)
         camera->y = camera->min_y;
-    if (camera->x > camera->max_x)
-        camera->x = camera->max_x;
-    if (camera->y > camera->max_y)
-        camera->y = camera->max_y;
+    if (camera->x > max_x)
+        camera->x = max_x;
+    if (camera->y > max_y)
+        camera->y = max_y;
 }
 
 //=============================================================================
@@ -123,6 +210,7 @@ void *rt_camera_new(int64_t width, int64_t height) {
     camera->dirty = 1; /* newly created camera is always dirty */
     camera->parallax_count = 0;
     memset(camera->parallax, 0, sizeof(camera->parallax));
+    rt_obj_set_finalizer(camera, camera_finalize);
 
     return camera;
 }
@@ -189,6 +277,7 @@ void rt_camera_set_zoom(void *camera_ptr, int64_t zoom) {
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->zoom = zoom;
     camera->dirty = 1;
+    camera_clamp_bounds(camera);
 }
 
 int64_t rt_camera_get_rotation(void *camera_ptr) {
@@ -237,8 +326,8 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Center the camera on the given position
-    camera->x = x - camera->width / 2;
-    camera->y = y - camera->height / 2;
+    camera->x = x - camera_world_width(camera) / 2;
+    camera->y = y - camera_world_height(camera) / 2;
     camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
@@ -252,8 +341,8 @@ void rt_camera_smooth_follow(void *camera_ptr, int64_t target_x, int64_t target_
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Desired camera position (center target in viewport)
-    int64_t desired_x = target_x - camera->width / 2;
-    int64_t desired_y = target_y - camera->height / 2;
+    int64_t desired_x = target_x - camera_world_width(camera) / 2;
+    int64_t desired_y = target_y - camera_world_height(camera) / 2;
 
     // Deadzone: skip if target is within deadzone of current position
     if (camera->deadzone_w > 0 || camera->deadzone_h > 0) {
@@ -292,24 +381,28 @@ void rt_camera_world_to_screen(
         return;
 
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-
-    // Apply camera offset and zoom
-    *screen_x = (world_x - camera->x) * camera->zoom / 100;
-    *screen_y = (world_y - camera->y) * camera->zoom / 100;
+    double sx = 0.0, sy = 0.0;
+    camera_apply_transform(camera, (double)world_x, (double)world_y, &sx, &sy);
+    *screen_x = (int64_t)llround(sx);
+    *screen_y = (int64_t)llround(sy);
 }
 
 int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x) {
     if (!camera_ptr)
         return world_x;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    return (world_x - camera->x) * camera->zoom / 100;
+    double sx = 0.0;
+    camera_apply_transform(camera, (double)world_x, camera_center_y(camera), &sx, NULL);
+    return (int64_t)llround(sx);
 }
 
 int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y) {
     if (!camera_ptr)
         return world_y;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    return (world_y - camera->y) * camera->zoom / 100;
+    double sy = 0.0;
+    camera_apply_transform(camera, camera_center_x(camera), (double)world_y, NULL, &sy);
+    return (int64_t)llround(sy);
 }
 
 void rt_camera_screen_to_world(
@@ -318,24 +411,30 @@ void rt_camera_screen_to_world(
         return;
 
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-
-    // Reverse the camera transform
-    *world_x = screen_x * 100 / camera->zoom + camera->x;
-    *world_y = screen_y * 100 / camera->zoom + camera->y;
+    double wx = 0.0, wy = 0.0;
+    camera_apply_inverse_transform(camera, (double)screen_x, (double)screen_y, &wx, &wy);
+    *world_x = (int64_t)llround(wx);
+    *world_y = (int64_t)llround(wy);
 }
 
 int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x) {
     if (!camera_ptr)
         return screen_x;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    return screen_x * 100 / camera->zoom + camera->x;
+    double wx = 0.0;
+    camera_apply_inverse_transform(
+        camera, (double)screen_x, (double)camera->height * 0.5, &wx, NULL);
+    return (int64_t)llround(wx);
 }
 
 int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y) {
     if (!camera_ptr)
         return screen_y;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    return screen_y * 100 / camera->zoom + camera->y;
+    double wy = 0.0;
+    camera_apply_inverse_transform(
+        camera, (double)camera->width * 0.5, (double)screen_y, NULL, &wy);
+    return (int64_t)llround(wy);
 }
 
 void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy) {
@@ -382,15 +481,28 @@ int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, 
         return 1; // Null camera — conservatively treat as visible
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
-    // Viewport in world space: top-left = (cam_x, cam_y),
-    // size = (viewport_w * 100 / zoom, viewport_h * 100 / zoom).
-    int64_t vx = camera->x;
-    int64_t vy = camera->y;
-    int64_t vw = camera->width * 100 / camera->zoom;
-    int64_t vh = camera->height * 100 / camera->zoom;
+    double sx[4];
+    double sy[4];
+    camera_apply_transform(camera, (double)x, (double)y, &sx[0], &sy[0]);
+    camera_apply_transform(camera, (double)(x + w), (double)y, &sx[1], &sy[1]);
+    camera_apply_transform(camera, (double)x, (double)(y + h), &sx[2], &sy[2]);
+    camera_apply_transform(camera, (double)(x + w), (double)(y + h), &sx[3], &sy[3]);
 
-    // AABB overlap test: return 0 if separated on any axis.
-    if (x + w <= vx || x >= vx + vw || y + h <= vy || y >= vy + vh)
+    double min_x = sx[0], max_x = sx[0];
+    double min_y = sy[0], max_y = sy[0];
+    for (int i = 1; i < 4; i++) {
+        if (sx[i] < min_x)
+            min_x = sx[i];
+        if (sx[i] > max_x)
+            max_x = sx[i];
+        if (sy[i] < min_y)
+            min_y = sy[i];
+        if (sy[i] > max_y)
+            max_y = sy[i];
+    }
+
+    if (max_x <= 0.0 || min_x >= (double)camera->width || max_y <= 0.0 ||
+        min_y >= (double)camera->height)
         return 0;
     return 1;
 }
@@ -427,6 +539,7 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
 
     for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++) {
         if (!camera->parallax[i].active) {
+            rt_obj_retain_maybe(pixels);
             camera->parallax[i].pixels = pixels;
             camera->parallax[i].scroll_factor_x = scroll_x_pct;
             camera->parallax[i].scroll_factor_y = scroll_y_pct;
@@ -446,8 +559,7 @@ void rt_camera_remove_parallax(void *camera_ptr, int64_t index) {
     if (index < 0 || index >= RT_CAMERA_MAX_PARALLAX)
         return;
     if (camera->parallax[index].active) {
-        camera->parallax[index].active = 0;
-        camera->parallax[index].pixels = NULL;
+        camera_release_parallax_layer(&camera->parallax[index]);
         camera->parallax_count--;
     }
 }
@@ -456,7 +568,8 @@ void rt_camera_clear_parallax(void *camera_ptr) {
     if (!camera_ptr)
         return;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    memset(camera->parallax, 0, sizeof(camera->parallax));
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
+        camera_release_parallax_layer(&camera->parallax[i]);
     camera->parallax_count = 0;
 }
 

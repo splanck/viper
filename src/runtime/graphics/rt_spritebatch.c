@@ -209,6 +209,15 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     }
 
     if (item->rotation != 0) {
+        int64_t src_w = rt_pixels_width(transformed);
+        int64_t src_h = rt_pixels_height(transformed);
+        int64_t half_w = src_w;
+        int64_t half_h = src_h;
+        void *padded = rt_pixels_new(half_w * 2, half_h * 2);
+        if (padded) {
+            rt_pixels_copy(padded, half_w, half_h, transformed, 0, 0, src_w, src_h);
+            transformed = padded;
+        }
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
         if (rotated)
             transformed = rotated;
@@ -218,7 +227,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 
     int64_t blit_x = item->x;
     int64_t blit_y = item->y;
-    if (needsTransform) {
+    if (item->rotation != 0) {
         blit_x = item->x - rt_pixels_width(transformed) / 2;
         blit_y = item->y - rt_pixels_height(transformed) / 2;
     }
@@ -276,12 +285,16 @@ void rt_spritebatch_begin(void *batch_ptr) {
 
 /// @brief End the spritebatch.
 void rt_spritebatch_end(void *batch_ptr, void *canvas) {
-    if (!batch_ptr || !canvas)
+    if (!batch_ptr)
         return;
 
     spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
     if (!batch->active)
         return;
+    if (!canvas) {
+        batch->active = 0;
+        return;
+    }
 
     // Sort by depth if enabled
     if (batch->sort_by_depth && batch->count > 1) {
@@ -295,29 +308,15 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
         switch (item->type) {
             case BATCH_ITEM_SPRITE:
                 if (item->source) {
-                    // Save original sprite state
-                    int64_t old_x = rt_sprite_get_x(item->source);
-                    int64_t old_y = rt_sprite_get_y(item->source);
-                    int64_t old_sx = rt_sprite_get_scale_x(item->source);
-                    int64_t old_sy = rt_sprite_get_scale_y(item->source);
-                    int64_t old_rot = rt_sprite_get_rotation(item->source);
-
-                    // Apply batch transform
-                    rt_sprite_set_x(item->source, item->x);
-                    rt_sprite_set_y(item->source, item->y);
-                    rt_sprite_set_scale_x(item->source, item->scale_x);
-                    rt_sprite_set_scale_y(item->source, item->scale_y);
-                    rt_sprite_set_rotation(item->source, item->rotation);
-
-                    // Draw
-                    rt_sprite_draw(item->source, canvas);
-
-                    // Restore original state
-                    rt_sprite_set_x(item->source, old_x);
-                    rt_sprite_set_y(item->source, old_y);
-                    rt_sprite_set_scale_x(item->source, old_sx);
-                    rt_sprite_set_scale_y(item->source, old_sy);
-                    rt_sprite_set_rotation(item->source, old_rot);
+                    rt_sprite_draw_transformed(item->source,
+                                               canvas,
+                                               item->x,
+                                               item->y,
+                                               item->scale_x,
+                                               item->scale_y,
+                                               item->rotation,
+                                               batch->tint_color,
+                                               batch->alpha);
                 }
                 break;
 
@@ -375,7 +374,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
     item.scale_x = scale_x;
     item.scale_y = scale_y;
     item.rotation = rotation;
-    item.depth = 0; // Could be set via sprite's depth property if needed
+    item.depth = rt_sprite_get_depth(sprite);
 
     add_item(batch, &item);
 }

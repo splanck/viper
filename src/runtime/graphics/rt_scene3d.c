@@ -14,7 +14,7 @@
 //   - TRS order: world = parent_world * Translate * Rotate * Scale
 //   - Dirty flag propagates DOWN: changing a parent marks all descendants dirty.
 //   - Children array is heap-allocated (not GC-managed); freed in finalizer.
-//   - Mesh/material/name are borrowed GC pointers (not owned by the node).
+//   - Mesh/material/name and LOD meshes are retained by the node.
 //
 // Links: rt_scene3d.h, rt_quat.h, rt_mat4.h, plans/3d/12-scene-graph.md
 //
@@ -36,6 +36,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -107,7 +110,7 @@ typedef struct rt_scene_node3d {
     /* Visibility */
     int8_t visible;
 
-    /* Name (borrowed rt_string — GC-managed) */
+    /* Name (retained rt_string) */
     rt_string name;
 
     /* Bounding volume (Phase 13 frustum culling) */
@@ -131,6 +134,14 @@ typedef struct {
     int32_t node_count;
     int32_t last_culled_count; /* from most recent Draw call */
 } rt_scene3d;
+
+static void scene3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
 
 /*==========================================================================
  * Helpers
@@ -351,12 +362,27 @@ static void draw_node(rt_scene_node3d *node,
 
 static void rt_scene_node3d_finalize(void *obj) {
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (!node)
+        return;
+
+    for (int32_t i = 0; i < node->child_count; i++) {
+        if (node->children[i])
+            node->children[i]->parent = NULL;
+        scene3d_release_ref((void **)&node->children[i]);
+    }
     free(node->children);
     node->children = NULL;
     node->child_count = 0;
+    node->child_capacity = 0;
+    for (int32_t i = 0; i < node->lod_count; i++)
+        scene3d_release_ref(&node->lod_levels[i].mesh);
     free(node->lod_levels);
     node->lod_levels = NULL;
     node->lod_count = 0;
+    node->lod_capacity = 0;
+    scene3d_release_ref(&node->mesh);
+    scene3d_release_ref(&node->material);
+    scene3d_release_ref((void **)&node->name);
 }
 
 void *rt_scene_node3d_new(void) {
@@ -511,6 +537,7 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
 
     parent->children[parent->child_count++] = child;
     child->parent = parent;
+    rt_obj_retain_maybe(child);
     mark_dirty(child);
 }
 
@@ -526,8 +553,11 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
             for (int32_t j = i; j < parent->child_count - 1; j++)
                 parent->children[j] = parent->children[j + 1];
             parent->child_count--;
+            parent->children[parent->child_count] = NULL;
             child->parent = NULL;
             mark_dirty(child);
+            if (rt_obj_release_check0(child))
+                rt_obj_free(child);
             return;
         }
     }
@@ -567,6 +597,13 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
+    if (n->mesh == mesh) {
+        if (mesh)
+            scene_mesh_bounds((rt_mesh3d *)mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
+        return;
+    }
+    rt_obj_retain_maybe(mesh);
+    scene3d_release_ref(&n->mesh);
     n->mesh = mesh;
 
     /* Compute object-space AABB from mesh vertices */
@@ -580,8 +617,14 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
 }
 
 void rt_scene_node3d_set_material(void *obj, void *material) {
-    if (obj)
-        ((rt_scene_node3d *)obj)->material = material;
+    if (!obj)
+        return;
+    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (node->material == material)
+        return;
+    rt_obj_retain_maybe(material);
+    scene3d_release_ref(&node->material);
+    node->material = material;
 }
 
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
@@ -594,8 +637,16 @@ int8_t rt_scene_node3d_get_visible(void *obj) {
 }
 
 void rt_scene_node3d_set_name(void *obj, rt_string name) {
-    if (obj)
-        ((rt_scene_node3d *)obj)->name = name;
+    if (!obj)
+        return;
+    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (!name)
+        name = rt_const_cstr("");
+    if (node->name == name)
+        return;
+    rt_obj_retain_maybe(name);
+    scene3d_release_ref((void **)&node->name);
+    node->name = name;
 }
 
 rt_string rt_scene_node3d_get_name(void *obj) {
@@ -623,9 +674,12 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
  *=========================================================================*/
 
 static void rt_scene3d_finalize(void *obj) {
-    (void)obj;
-    /* Root node is GC-managed; its finalizer frees children array.
-     * Scene3D itself has no heap-allocated state to free. */
+    rt_scene3d *scene = (rt_scene3d *)obj;
+    if (!scene)
+        return;
+    if (scene->root)
+        scene->root->parent = NULL;
+    scene3d_release_ref((void **)&scene->root);
 }
 
 void *rt_scene3d_new(void) {
@@ -723,8 +777,10 @@ void rt_scene3d_clear(void *obj) {
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
     /* Detach all children from root */
-    for (int32_t i = 0; i < s->root->child_count; i++)
+    for (int32_t i = 0; i < s->root->child_count; i++) {
         s->root->children[i]->parent = NULL;
+        scene3d_release_ref((void **)&s->root->children[i]);
+    }
     s->root->child_count = 0;
     s->node_count = 1; /* just root */
 }
@@ -769,6 +825,7 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
 
     node->lod_levels[pos].distance = distance;
     node->lod_levels[pos].mesh = mesh;
+    rt_obj_retain_maybe(mesh);
     node->lod_count++;
 }
 
@@ -776,6 +833,8 @@ void rt_scene_node3d_clear_lod(void *obj) {
     if (!obj)
         return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    for (int32_t i = 0; i < node->lod_count; i++)
+        scene3d_release_ref(&node->lod_levels[i].mesh);
     node->lod_count = 0;
 }
 
@@ -898,9 +957,34 @@ static int vscn_serialize_node(rt_scene_node3d *node, char **buf, size_t *len, s
                      node->position[0], node->position[1], node->position[2]) ||
         !vscn_append(buf, len, cap, "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n", indent,
                      node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]) ||
-        !vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f]", indent,
-                     node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2])) {
+        !vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f],\n", indent,
+                     node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2]) ||
+        !vscn_append(buf, len, cap, "%s  \"visible\": %s,\n", indent,
+                     node->visible ? "true" : "false") ||
+        !vscn_append(buf, len, cap, "%s  \"hasMesh\": %s,\n", indent,
+                     node->mesh ? "true" : "false") ||
+        !vscn_append(buf, len, cap, "%s  \"hasMaterial\": %s", indent,
+                     node->material ? "true" : "false")) {
         return 0;
+    }
+
+    if (node->lod_count > 0) {
+        if (!vscn_append(buf, len, cap, ",\n%s  \"lod\": [\n", indent))
+            return 0;
+        for (int32_t i = 0; i < node->lod_count; i++) {
+            if (!vscn_append(buf,
+                             len,
+                             cap,
+                             "%s    {\"distance\": %.6f, \"hasMesh\": %s}%s\n",
+                             indent,
+                             node->lod_levels[i].distance,
+                             node->lod_levels[i].mesh ? "true" : "false",
+                             i + 1 < node->lod_count ? "," : "")) {
+                return 0;
+            }
+        }
+        if (!vscn_append(buf, len, cap, "%s  ]", indent))
+            return 0;
     }
 
     if (node->child_count > 0) {

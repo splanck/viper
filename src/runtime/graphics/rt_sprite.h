@@ -83,6 +83,12 @@ int64_t rt_sprite_get_rotation(void *sprite);
 /// @brief Set sprite rotation in degrees.
 void rt_sprite_set_rotation(void *sprite, int64_t degrees);
 
+/// @brief Get sprite depth used by batch sorting.
+int64_t rt_sprite_get_depth(void *sprite);
+
+/// @brief Set sprite depth used by batch sorting.
+void rt_sprite_set_depth(void *sprite, int64_t depth);
+
 /// @brief Get sprite visibility.
 int64_t rt_sprite_get_visible(void *sprite);
 
@@ -118,6 +124,17 @@ void rt_sprite_set_flip_y(void *sprite, int64_t flip);
 /// @param sprite Sprite object.
 /// @param canvas Canvas to draw on.
 void rt_sprite_draw(void *sprite, void *canvas);
+
+/// @brief Internal helper used by SpriteBatch and scene traversal.
+void rt_sprite_draw_transformed(void *sprite,
+                                void *canvas,
+                                int64_t x,
+                                int64_t y,
+                                int64_t scale_x,
+                                int64_t scale_y,
+                                int64_t rotation,
+                                int64_t tint_color,
+                                int64_t alpha);
 
 /// @brief Set the sprite's origin point for rotation/scaling.
 /// @param sprite Sprite object.

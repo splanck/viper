@@ -82,7 +82,7 @@ void rt_smoothvalue_destroy(rt_smoothvalue sv) {
         rt_obj_free(sv);
 }
 
-/// @brief Get a value from the smoothvalue.
+/// @brief Get the current smoothed value.
 double rt_smoothvalue_get(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
@@ -96,14 +96,14 @@ int64_t rt_smoothvalue_get_i64(rt_smoothvalue sv) {
     return (int64_t)(sv->current + (sv->current >= 0 ? 0.5 : -0.5));
 }
 
-/// @brief Get a value from the smoothvalue.
+/// @brief Get the target value that the smooth value is converging toward.
 double rt_smoothvalue_target(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->target;
 }
 
-/// @brief Get a value from the smoothvalue.
+/// @brief Set a new target value for the smooth interpolation to converge toward.
 void rt_smoothvalue_set_target(rt_smoothvalue sv, double target) {
     if (!sv)
         return;
@@ -157,21 +157,21 @@ void rt_smoothvalue_update(rt_smoothvalue sv) {
     }
 }
 
-/// @brief Get a value from the smoothvalue.
+/// @brief Check whether the current value has converged to the target (within epsilon).
 int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
     if (!sv)
         return 1;
     return fabs(sv->current - sv->target) < SMOOTH_EPSILON ? 1 : 0;
 }
 
-/// @brief Velocity the smoothvalue.
+/// @brief Get the per-frame velocity (change in value since last update).
 double rt_smoothvalue_velocity(rt_smoothvalue sv) {
     if (!sv)
         return 0.0;
     return sv->velocity;
 }
 
-/// @brief Impulse the smoothvalue.
+/// @brief Apply an instant offset to the current value (bypasses smoothing).
 void rt_smoothvalue_impulse(rt_smoothvalue sv, double impulse) {
     if (!sv)
         return;

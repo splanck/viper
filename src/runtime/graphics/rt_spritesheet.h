@@ -11,11 +11,11 @@
 //   - Regions are stored by name; duplicate names overwrite the previous region.
 //   - rt_spritesheet_get_region returns coordinates into the atlas; it does not copy pixels.
 //   - All regions must reference valid coordinates within the atlas bounds.
-//   - The atlas Pixels object must remain valid while the spritesheet is in use.
+//   - The atlas Pixels object is retained while the spritesheet is in use.
 //
 // Ownership/Lifetime:
 //   - Spritesheet objects are heap-allocated opaque pointers.
-//   - The atlas Pixels is not retained; caller must ensure its lifetime exceeds the spritesheet.
+//   - The atlas Pixels is retained and released with the spritesheet.
 //
 // Links: src/runtime/graphics/rt_spritesheet.c (implementation), src/runtime/core/rt_string.h
 //

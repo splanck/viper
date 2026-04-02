@@ -44,6 +44,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -60,6 +61,7 @@ typedef struct rt_sprite_impl {
     int64_t scale_x;                 ///< Horizontal scale (100 = 100%)
     int64_t scale_y;                 ///< Vertical scale (100 = 100%)
     int64_t rotation;                ///< Rotation in degrees
+    int64_t depth;                   ///< Depth used by SpriteBatch sorting
     int64_t visible;                 ///< Visibility flag
     int64_t origin_x;                ///< Origin X for rotation/scaling
     int64_t origin_y;                ///< Origin Y for rotation/scaling
@@ -74,6 +76,142 @@ typedef struct rt_sprite_impl {
 
 // Forward declaration for time function
 extern int64_t rt_timer_ms(void);
+
+static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
+    if (!sprite || sprite->frame_count <= 0 || sprite->current_frame < 0 ||
+        sprite->current_frame >= sprite->frame_count)
+        return NULL;
+    return sprite->frames[sprite->current_frame];
+}
+
+static void sprite_apply_alpha(void *pixels, int64_t alpha) {
+    if (!pixels || alpha >= 255)
+        return;
+    if (alpha < 0)
+        alpha = 0;
+    rt_pixels_impl *impl = (rt_pixels_impl *)pixels;
+    if (!impl->data)
+        return;
+    uint32_t *data = impl->data;
+    int64_t count = impl->width * impl->height;
+    for (int64_t i = 0; i < count; i++) {
+        uint32_t rgba = data[i];
+        uint32_t a = rgba & 0xFFu;
+        a = (a * (uint32_t)alpha + 127u) / 255u;
+        data[i] = (rgba & 0xFFFFFF00u) | a;
+    }
+}
+
+static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
+    return (origin * scale) / 100;
+}
+
+static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
+                                   int64_t scale_x,
+                                   int64_t scale_y,
+                                   int64_t rotation,
+                                   int64_t tint_color,
+                                   int64_t alpha,
+                                   int64_t *origin_x_out,
+                                   int64_t *origin_y_out,
+                                   int8_t *origin_centered_out) {
+    void *frame = sprite_get_current_frame_ptr(sprite);
+    if (!frame)
+        return NULL;
+
+    void *transformed = frame;
+
+    if (sprite->flip_x) {
+        transformed = rt_pixels_clone(transformed);
+        if (transformed)
+            rt_pixels_flip_h(transformed);
+    }
+    if (sprite->flip_y) {
+        if (transformed == frame)
+            transformed = rt_pixels_clone(transformed);
+        if (transformed)
+            rt_pixels_flip_v(transformed);
+    }
+
+    if (!transformed)
+        return NULL;
+
+    if (scale_x != 100 || scale_y != 100) {
+        int64_t new_w = rt_pixels_width(transformed) * scale_x / 100;
+        int64_t new_h = rt_pixels_height(transformed) * scale_y / 100;
+        if (new_w < 1)
+            new_w = 1;
+        if (new_h < 1)
+            new_h = 1;
+        void *scaled = rt_pixels_scale(transformed, new_w, new_h);
+        if (scaled)
+            transformed = scaled;
+    }
+
+    int64_t origin_x = sprite_scale_origin(sprite->origin_x, scale_x);
+    int64_t origin_y = sprite_scale_origin(sprite->origin_y, scale_y);
+    int8_t origin_centered = 0;
+
+    if (rotation != 0) {
+        int64_t src_w = rt_pixels_width(transformed);
+        int64_t src_h = rt_pixels_height(transformed);
+        int64_t center_x = src_w / 2;
+        int64_t center_y = src_h / 2;
+
+        if (origin_x != center_x || origin_y != center_y) {
+            int64_t half_w = llabs(origin_x);
+            int64_t edge_w = llabs(src_w - origin_x);
+            int64_t half_h = llabs(origin_y);
+            int64_t edge_h = llabs(src_h - origin_y);
+            if (edge_w > half_w)
+                half_w = edge_w;
+            if (edge_h > half_h)
+                half_h = edge_h;
+            if (half_w < 1)
+                half_w = 1;
+            if (half_h < 1)
+                half_h = 1;
+
+            void *padded = rt_pixels_new(half_w * 2, half_h * 2);
+            if (padded) {
+                rt_pixels_copy(
+                    padded, half_w - origin_x, half_h - origin_y, transformed, 0, 0, src_w, src_h);
+                transformed = padded;
+                origin_x = half_w;
+                origin_y = half_h;
+            }
+        }
+
+        void *rotated = rt_pixels_rotate(transformed, (double)rotation);
+        if (rotated)
+            transformed = rotated;
+        origin_centered = 1;
+    }
+
+    if (tint_color != 0) {
+        void *tinted = rt_pixels_tint(transformed, tint_color);
+        if (tinted)
+            transformed = tinted;
+    }
+
+    if (alpha < 255) {
+        if (transformed == frame) {
+            void *cloned = rt_pixels_clone(transformed);
+            if (!cloned)
+                return transformed;
+            transformed = cloned;
+        }
+        sprite_apply_alpha(transformed, alpha);
+    }
+
+    if (origin_x_out)
+        *origin_x_out = origin_x;
+    if (origin_y_out)
+        *origin_y_out = origin_y;
+    if (origin_centered_out)
+        *origin_centered_out = origin_centered;
+    return transformed;
+}
 
 static void sprite_finalize(void *obj) {
     rt_sprite_impl *sprite = (rt_sprite_impl *)obj;
@@ -94,6 +232,7 @@ static rt_sprite_impl *sprite_alloc(void) {
     sprite->scale_x = 100;
     sprite->scale_y = 100;
     sprite->rotation = 0;
+    sprite->depth = 0;
     sprite->visible = 1;
     sprite->origin_x = 0;
     sprite->origin_y = 0;
@@ -325,6 +464,22 @@ void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees) {
     ((rt_sprite_impl *)sprite_ptr)->rotation = degrees;
 }
 
+int64_t rt_sprite_get_depth(void *sprite_ptr) {
+    if (!sprite_ptr) {
+        rt_trap("Sprite.Depth: null sprite");
+        return 0;
+    }
+    return ((rt_sprite_impl *)sprite_ptr)->depth;
+}
+
+void rt_sprite_set_depth(void *sprite_ptr, int64_t depth) {
+    if (!sprite_ptr) {
+        rt_trap("Sprite.Depth: null sprite");
+        return;
+    }
+    ((rt_sprite_impl *)sprite_ptr)->depth = depth;
+}
+
 int64_t rt_sprite_get_visible(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Visible: null sprite");
@@ -405,7 +560,15 @@ void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip) {
 // Sprite Methods
 //=============================================================================
 
-void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
+void rt_sprite_draw_transformed(void *sprite_ptr,
+                                void *canvas_ptr,
+                                int64_t x,
+                                int64_t y,
+                                int64_t scale_x,
+                                int64_t scale_y,
+                                int64_t rotation,
+                                int64_t tint_color,
+                                int64_t alpha) {
     if (!sprite_ptr || !canvas_ptr)
         return;
 
@@ -415,80 +578,49 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
     if (!sprite->visible)
         return;
 
-    // Get current frame
-    if (sprite->frame_count == 0)
-        return;
-    void *frame = sprite->frames[sprite->current_frame];
+    void *frame = sprite_get_current_frame_ptr(sprite);
     if (!frame)
         return;
 
-    int64_t w = rt_pixels_width(frame);
-    int64_t h = rt_pixels_height(frame);
-
     // If no transform at all, use simple blit
-    if (sprite->scale_x == 100 && sprite->scale_y == 100 && sprite->rotation == 0 &&
-        !sprite->flip_x && !sprite->flip_y) {
-        rt_canvas_blit_alpha(canvas_ptr, sprite->x, sprite->y, frame);
+    if (scale_x == 100 && scale_y == 100 && rotation == 0 && !sprite->flip_x && !sprite->flip_y &&
+        tint_color == 0 && alpha >= 255) {
+        rt_canvas_blit_alpha(
+            canvas_ptr, x - sprite->origin_x, y - sprite->origin_y, frame);
         return;
     }
 
-    // Apply flips, scale, and rotation.
-    // NOTE: each transform creates a new GC-managed Pixels object. In tight
-    // render loops this creates GC pressure. Future optimization: cache the
-    // transformed frame when (flip_x, flip_y, scale_x, scale_y, rotation)
-    // haven't changed since last draw.
-    void *transformed = frame;
+    int64_t origin_x = 0;
+    int64_t origin_y = 0;
+    int8_t origin_centered = 0;
+    void *transformed = sprite_prepare_pixels(
+        sprite, scale_x, scale_y, rotation, tint_color, alpha, &origin_x, &origin_y, &origin_centered);
+    if (!transformed)
+        return;
 
-    // Flip on a clone (flip_h/v operate in-place; don't corrupt source frame)
-    if (sprite->flip_x) {
-        transformed = rt_pixels_clone(transformed);
-        if (transformed)
-            rt_pixels_flip_h(transformed);
-    }
-    if (sprite->flip_y) {
-        if (transformed == frame)
-            transformed = rt_pixels_clone(transformed);
-        if (transformed)
-            rt_pixels_flip_v(transformed);
-    }
-
-    if (sprite->scale_x != 100 || sprite->scale_y != 100) {
-        int64_t new_w = w * sprite->scale_x / 100;
-        int64_t new_h = h * sprite->scale_y / 100;
-        if (new_w < 1)
-            new_w = 1;
-        if (new_h < 1)
-            new_h = 1;
-        void *scaled = rt_pixels_scale(transformed, new_w, new_h);
-        if (scaled)
-            transformed = scaled;
-    }
-
-    // Rotate the (scaled) frame if needed
-    if (sprite->rotation != 0) {
-        void *rotated = rt_pixels_rotate(transformed, (double)sprite->rotation);
-        if (rotated)
-            transformed = rotated;
-    }
-
-    // Calculate blit position, accounting for origin and transformed dimensions
-    int64_t tw = rt_pixels_width(transformed);
-    int64_t th = rt_pixels_height(transformed);
-
-    // The origin point should stay at the sprite's (x, y) position
-    // After rotation, the image size may have changed, so we need to center it
-    int64_t blit_x = sprite->x - tw / 2;
-    int64_t blit_y = sprite->y - th / 2;
-
-    // If origin is set, place origin point at (x, y) instead of centering
-    if (sprite->origin_x != 0 || sprite->origin_y != 0) {
-        blit_x = sprite->x - sprite->origin_x;
-        blit_y = sprite->y - sprite->origin_y;
+    int64_t blit_x = x - origin_x;
+    int64_t blit_y = y - origin_y;
+    if (origin_centered) {
+        blit_x = x - rt_pixels_width(transformed) / 2;
+        blit_y = y - rt_pixels_height(transformed) / 2;
     }
 
     rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);
+}
 
-    // Note: transformed pixels will be GC'd
+void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
+    if (!sprite_ptr)
+        return;
+    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_draw_transformed(sprite_ptr,
+                               canvas_ptr,
+                               sprite->x,
+                               sprite->y,
+                               sprite->scale_x,
+                               sprite->scale_y,
+                               sprite->rotation,
+                               0,
+                               255);
 }
 
 void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {

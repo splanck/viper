@@ -254,7 +254,8 @@ void rt_physics2d_world_remove_joint(void *world, void *joint) {
     rt_world_impl *w = (rt_world_impl *)world;
     for (int32_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == (ph_joint *)joint) {
-            rt_obj_release_check0(joint);
+            if (rt_obj_release_check0(joint))
+                rt_obj_free(joint);
             w->joints[i] = w->joints[w->joint_count - 1];
             w->joints[w->joint_count - 1] = NULL;
             w->joint_count--;

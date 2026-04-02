@@ -189,6 +189,10 @@ static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
 // Public API
 //===----------------------------------------------------------------------===//
 
+/// @brief Generate a constant-frequency tone as a playable Sound handle.
+/// @details Synthesizes PCM samples at 44100 Hz using the selected waveform
+///          (0=sine, 1=square, 2=sawtooth, 3=triangle). Applies 10ms fade-in/out
+///          envelopes to prevent audible clicks.
 void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform) {
     freq_hz = clamp_i64(freq_hz, 20, 20000);
     duration_ms = clamp_i64(duration_ms, 1, 10000);
@@ -225,6 +229,9 @@ void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform) {
     return sound;
 }
 
+/// @brief Generate a frequency sweep (glissando) from start_hz to end_hz as a playable Sound.
+/// @details Linear frequency interpolation with fade envelopes. Useful for laser,
+///          power-up, and sci-fi sound effects.
 void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int64_t waveform) {
     start_hz = clamp_i64(start_hz, 20, 20000);
     end_hz = clamp_i64(end_hz, 20, 20000);
@@ -266,6 +273,7 @@ void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int6
     return sound;
 }
 
+/// @brief Generate white noise as a playable Sound handle (LCG PRNG, fade envelopes).
 void *rt_synth_noise(int64_t duration_ms, int64_t volume) {
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     volume = clamp_i64(volume, 0, 100);

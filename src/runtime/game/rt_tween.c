@@ -65,7 +65,7 @@ struct rt_tween_impl {
 };
 
 // Forward declaration of public easing function
-/// @brief Ease operation.
+/// @brief Apply an easing curve to a linear progress value t in [0,1].
 double rt_tween_ease(double t, int64_t ease_type);
 
 // Forward declaration of internal easing functions
@@ -91,8 +91,7 @@ static double ease_in_bounce(double t);
 static double ease_out_bounce(double t);
 static double ease_in_out_bounce(double t);
 
-/// @brief Create a new new instance.
-/// @return Result value.
+/// @brief Create a new tween interpolator (starts inactive until start() is called).
 rt_tween rt_tween_new(void) {
     struct rt_tween_impl *tween =
         (struct rt_tween_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_tween_impl));
@@ -112,19 +111,13 @@ rt_tween rt_tween_new(void) {
     return tween;
 }
 
-/// @brief Destroy and free destroy resources.
-/// @param tween
+/// @brief Destroy a tween and release its GC allocation.
 void rt_tween_destroy(rt_tween tween) {
     if (tween && rt_obj_release_check0(tween))
         rt_obj_free(tween);
 }
 
-/// @brief Start start.
-/// @param tween
-/// @param from
-/// @param to
-/// @param duration
-/// @param ease_type
+/// @brief Start interpolating from one value to another over the given duration with easing.
 void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type) {
     if (!tween)
         return;
@@ -144,14 +137,13 @@ void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, in
     tween->paused = 0;
 }
 
+/// @brief Start an integer-valued tween (convenience wrapper, converts to double internally).
 void rt_tween_start_i64(
     rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type) {
     rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
 }
 
-/// @brief Update update state for current frame.
-/// @param tween
-/// @return Result value.
+/// @brief Advance the tween by one tick. Returns 1 if the tween just completed.
 int8_t rt_tween_update(rt_tween tween) {
     if (!tween)
         return 0;
@@ -182,14 +174,14 @@ int8_t rt_tween_update(rt_tween tween) {
     return 0;
 }
 
-/// @brief Value operation.
+/// @brief Get the current interpolated value as a double.
 double rt_tween_value(rt_tween tween) {
     if (!tween)
         return 0.0;
     return tween->current;
 }
 
-/// @brief I64 the value.
+/// @brief Get the current interpolated value rounded to the nearest integer.
 int64_t rt_tween_value_i64(rt_tween tween) {
     if (!tween)
         return 0;
@@ -197,25 +189,21 @@ int64_t rt_tween_value_i64(rt_tween tween) {
     return (int64_t)(tween->current + (tween->current >= 0 ? 0.5 : -0.5));
 }
 
-/// @brief Check if running.
-/// @param tween
-/// @return Result value.
+/// @brief Check whether the tween is actively interpolating (running and not paused).
 int8_t rt_tween_is_running(rt_tween tween) {
     if (!tween)
         return 0;
     return tween->running && !tween->paused;
 }
 
-/// @brief Check if complete.
-/// @param tween
-/// @return Result value.
+/// @brief Check whether the tween has reached its end value.
 int8_t rt_tween_is_complete(rt_tween tween) {
     if (!tween)
         return 0;
     return tween->complete;
 }
 
-/// @brief Progress operation.
+/// @brief Get the tween progress as a percentage (0–100).
 int64_t rt_tween_progress(rt_tween tween) {
     if (!tween || tween->duration == 0)
         return 0;
@@ -225,22 +213,21 @@ int64_t rt_tween_progress(rt_tween tween) {
     return progress;
 }
 
-/// @brief Elapsed operation.
+/// @brief Get the number of ticks elapsed since the tween was started.
 int64_t rt_tween_elapsed(rt_tween tween) {
     if (!tween)
         return 0;
     return tween->elapsed;
 }
 
-/// @brief Duration operation.
+/// @brief Get the total duration of the tween in ticks.
 int64_t rt_tween_duration(rt_tween tween) {
     if (!tween)
         return 0;
     return tween->duration;
 }
 
-/// @brief Stop stop.
-/// @param tween
+/// @brief Stop the tween and clear the paused state.
 void rt_tween_stop(rt_tween tween) {
     if (!tween)
         return;
@@ -248,8 +235,7 @@ void rt_tween_stop(rt_tween tween) {
     tween->paused = 0;
 }
 
-/// @brief Reset reset to initial state.
-/// @param tween
+/// @brief Reset the tween to its start value and restart playback.
 void rt_tween_reset(rt_tween tween) {
     if (!tween)
         return;
@@ -261,25 +247,21 @@ void rt_tween_reset(rt_tween tween) {
     tween->paused = 0;
 }
 
-/// @brief Pause pause.
-/// @param tween
+/// @brief Pause the tween at the current position (can be resumed).
 void rt_tween_pause(rt_tween tween) {
     if (!tween)
         return;
     tween->paused = 1;
 }
 
-/// @brief Resume resume.
-/// @param tween
+/// @brief Resume a paused tween from where it left off.
 void rt_tween_resume(rt_tween tween) {
     if (!tween)
         return;
     tween->paused = 0;
 }
 
-/// @brief Check if paused.
-/// @param tween
-/// @return Result value.
+/// @brief Check whether the tween is currently paused.
 int8_t rt_tween_is_paused(rt_tween tween) {
     if (!tween)
         return 0;
@@ -292,7 +274,7 @@ int8_t rt_tween_is_paused(rt_tween tween) {
 
 // Note: rt_lerp is provided by rt_math.c
 
-/// @brief I64 the lerp.
+/// @brief Linearly interpolate between two integers at parameter t, rounded to nearest.
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
     if (t < 0.0)
         t = 0.0;
@@ -302,7 +284,10 @@ int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
     return (int64_t)(result + (result >= 0 ? 0.5 : -0.5));
 }
 
-/// @brief Ease operation.
+/// @brief Apply an easing curve to a linear progress value t in [0,1].
+/// @details Dispatches to one of 19 easing functions (linear, quad, cubic, sine,
+///          expo, back, bounce — each in in/out/in-out variants). Returns 0 for
+///          t<=0 and 1 for t>=1 to guarantee exact endpoints.
 double rt_tween_ease(double t, int64_t ease_type) {
     if (t <= 0.0)
         return 0.0;

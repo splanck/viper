@@ -30,6 +30,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
 extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
 extern void rt_trap(const char *msg);
@@ -57,18 +58,19 @@ typedef struct {
     void *material; /* built on first draw */
 } rt_decal3d;
 
+static void decal3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
 static void decal3d_finalizer(void *obj) {
     rt_decal3d *d = (rt_decal3d *)obj;
-    if (d->mesh) {
-        if (rt_obj_release_check0(d->mesh))
-            rt_obj_free(d->mesh);
-        d->mesh = NULL;
-    }
-    if (d->material) {
-        if (rt_obj_release_check0(d->material))
-            rt_obj_free(d->material);
-        d->material = NULL;
-    }
+    decal3d_release_ref(&d->texture);
+    decal3d_release_ref(&d->mesh);
+    decal3d_release_ref(&d->material);
 }
 
 /// @brief Create a new 3D decal projected onto a surface.
@@ -80,7 +82,8 @@ static void decal3d_finalizer(void *obj) {
 /// @param pos_v    Vec3 world-space position on the surface.
 /// @param normal_v Vec3 surface normal at the decal location.
 /// @param size     Width/height of the decal quad in world units.
-/// @param texture  Pixels handle for the decal image (borrowed, not owned).
+/// @param texture  Pixels handle for the decal image. The decal retains it so
+///        lazy material creation stays valid across frames.
 /// @return Opaque decal handle, or NULL on failure.
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     if (!pos_v || !normal_v)
@@ -99,6 +102,7 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     d->normal[2] = rt_vec3_z(normal_v);
     d->size = size;
     d->texture = texture;
+    rt_obj_retain_maybe(texture);
     d->lifetime = -1.0; /* permanent by default */
     d->max_lifetime = -1.0;
     d->alpha = 1.0;

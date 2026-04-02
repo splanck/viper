@@ -34,6 +34,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -321,7 +324,21 @@ static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, doubl
  *=========================================================================*/
 
 static void world3d_finalizer(void *obj) {
-    (void)obj; /* bodies are GC-managed */
+    rt_world3d *w = (rt_world3d *)obj;
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
+            rt_obj_free(w->bodies[i]);
+        w->bodies[i] = NULL;
+    }
+    for (int32_t i = 0; i < w->joint_count; i++) {
+        if (w->joints[i] && rt_obj_release_check0(w->joints[i]))
+            rt_obj_free(w->joints[i]);
+        w->joints[i] = NULL;
+    }
+    w->body_count = 0;
+    w->joint_count = 0;
 }
 
 void *rt_world3d_new(double gx, double gy, double gz) {
@@ -437,6 +454,7 @@ void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
         rt_trap("Physics3D: max joint limit (128) exceeded");
         return;
     }
+    rt_obj_retain_maybe(joint);
     w->joints[w->joint_count] = joint;
     w->joint_types[w->joint_count] = (int32_t)joint_type;
     w->joint_count++;
@@ -448,9 +466,12 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
     rt_world3d *w = (rt_world3d *)obj;
     for (int32_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == joint) {
+            void *removed = w->joints[i];
             w->joints[i] = w->joints[--w->joint_count];
             w->joint_types[i] = w->joint_types[w->joint_count];
             w->joints[w->joint_count] = NULL;
+            if (removed && rt_obj_release_check0(removed))
+                rt_obj_free(removed);
             return;
         }
     }
@@ -468,6 +489,7 @@ void rt_world3d_add(void *obj, void *body) {
         rt_trap("Physics3D: max body limit (256) exceeded");
         return;
     }
+    rt_obj_retain_maybe(body);
     w->bodies[w->body_count++] = (rt_body3d *)body;
 }
 
@@ -477,8 +499,11 @@ void rt_world3d_remove(void *obj, void *body) {
     rt_world3d *w = (rt_world3d *)obj;
     for (int32_t i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == body) {
+            void *removed = w->bodies[i];
             w->bodies[i] = w->bodies[--w->body_count];
             w->bodies[w->body_count] = NULL;
+            if (removed && rt_obj_release_check0(removed))
+                rt_obj_free(removed);
             return;
         }
     }

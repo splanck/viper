@@ -82,6 +82,9 @@ typedef struct {
 // Construction
 //=============================================================================
 
+/// @brief Create a new dialogue box at the given screen position and size.
+/// @details The dialogue supports queued lines with typewriter text reveal,
+///          speaker names, and configurable styling (font, colors, padding).
 void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     rt_dialogue_impl *d = (rt_dialogue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dialogue_impl));
     if (!d)
@@ -370,7 +373,7 @@ int8_t rt_dialogue_is_active(void *dlg) {
     return ((rt_dialogue_impl *)dlg)->active;
 }
 
-/// @brief Is the line complete of the dialogue.
+/// @brief Check whether the current line of dialogue has been fully displayed.
 int8_t rt_dialogue_is_line_complete(void *dlg) {
     if (!dlg)
         return 0;

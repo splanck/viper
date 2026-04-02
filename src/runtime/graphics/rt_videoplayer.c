@@ -44,6 +44,8 @@ extern void ogg_reader_rewind(ogg_reader_t *r);
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern const char *rt_string_cstr(void *str);
 extern void *rt_pixels_new(int64_t width, int64_t height);
@@ -257,6 +259,14 @@ void *rt_videoplayer_open(void *path) {
         return NULL;
     }
 
+    /* OGG/Theora decode is not complete enough to expose as a working runtime
+     * surface yet. Reject it here instead of returning a player that only
+     * produces placeholder frames. */
+    if (is_ogg) {
+        free(data);
+        return NULL;
+    }
+
     /* Create VideoPlayer object */
     rt_videoplayer *vp =
         (rt_videoplayer *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videoplayer));
@@ -268,47 +278,18 @@ void *rt_videoplayer_open(void *path) {
     vp->file_data = data;
     vp->file_len = (size_t)file_len;
 
-    if (is_avi) {
-        vp->container_type = 0;
-        if (avi_parse(&vp->avi, data, (size_t)file_len) != 0) {
-            free(data);
-            return NULL;
-        }
-        vp->width = vp->avi.video.width;
-        vp->height = vp->avi.video.height;
-        vp->fps = vp->avi.video.fps;
-        vp->duration = vp->avi.video.duration;
-        vp->total_frames = vp->avi.video_frame_count;
-    } else {
-        /* OGG/Theora */
-        vp->container_type = 1;
-        theora_decoder_init(&vp->theora);
-        vp->ogg_reader = ogg_reader_open_mem(data, (size_t)file_len);
-        if (!vp->ogg_reader) {
-            free(data);
-            return NULL;
-        }
-        /* Read header packets */
-        const uint8_t *pkt;
-        size_t pkt_len;
-        while (!vp->theora.headers_complete &&
-               ogg_reader_next_packet(vp->ogg_reader, &pkt, &pkt_len)) {
-            if (theora_is_header_packet(pkt, pkt_len))
-                theora_decode_header(&vp->theora, pkt, pkt_len);
-        }
-        if (!vp->theora.headers_complete) {
-            ogg_reader_free(vp->ogg_reader);
-            vp->ogg_reader = NULL;
-            free(data);
-            return NULL;
-        }
-        vp->width = (int32_t)vp->theora.pic_width;
-        vp->height = (int32_t)vp->theora.pic_height;
-        vp->fps = vp->theora.fps_den > 0
-                      ? (double)vp->theora.fps_num / (double)vp->theora.fps_den
-                      : 30.0;
-        vp->total_frames = 0; /* streaming */
+    vp->container_type = 0;
+    if (avi_parse(&vp->avi, data, (size_t)file_len) != 0) {
+        free(data);
+        if (rt_obj_release_check0(vp))
+            rt_obj_free(vp);
+        return NULL;
     }
+    vp->width = vp->avi.video.width;
+    vp->height = vp->avi.video.height;
+    vp->fps = vp->avi.video.fps;
+    vp->duration = vp->avi.video.duration;
+    vp->total_frames = vp->avi.video_frame_count;
     vp->playing = 0;
     vp->position = 0.0;
     vp->current_frame = -1;

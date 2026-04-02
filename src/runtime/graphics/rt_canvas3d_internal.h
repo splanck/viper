@@ -253,10 +253,15 @@ typedef struct {
     /* Post-processing effect chain (NULL = disabled) */
     void *postfx;
 
-    /* Temporary buffers freed at end of frame (e.g., skinned vertex data) */
+    /* Temporary raw buffers freed at end of frame (e.g., skinned vertex data) */
     void **temp_buffers;
     int32_t temp_buf_count;
     int32_t temp_buf_capacity;
+
+    /* Temporary runtime objects retained until end of frame */
+    void **temp_objects;
+    int32_t temp_obj_count;
+    int32_t temp_obj_capacity;
 
     /* Reusable text rendering scratch buffers */
     vgfx3d_vertex_t *text_vertices;

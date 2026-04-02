@@ -198,10 +198,16 @@ static int ensure_audio_init(void) {
     return g_audio_ctx != NULL;
 }
 
+/// @brief Explicitly initialize the audio system. Returns 1 on success, 0 on failure.
+/// @details Normally called lazily on first sound/music operation. This function
+///          allows eager initialization to detect audio hardware issues early.
 int64_t rt_audio_init(void) {
     return ensure_audio_init() ? 1 : 0;
 }
 
+/// @brief Shut down the audio system, releasing all device resources.
+/// @details Thread-safe via spinlock. Resets the initialization state so the
+///          system can be re-initialized later if needed.
 void rt_audio_shutdown(void) {
     // Acquire lock to ensure exclusive access during shutdown
 #if RT_COMPILER_MSVC
@@ -236,6 +242,7 @@ void rt_audio_shutdown(void) {
 #endif
 }
 
+/// @brief Set the global master volume (0 = mute, 100 = full volume).
 void rt_audio_set_master_volume(int64_t volume) {
     if (!ensure_audio_init())
         return;
@@ -249,6 +256,7 @@ void rt_audio_set_master_volume(int64_t volume) {
     vaud_set_master_volume(g_audio_ctx, (float)volume / 100.0f);
 }
 
+/// @brief Get the current master volume as an integer (0–100).
 int64_t rt_audio_get_master_volume(void) {
     if (!g_audio_ctx)
         return 0;
@@ -257,16 +265,19 @@ int64_t rt_audio_get_master_volume(void) {
     return (int64_t)(vol * 100.0f + 0.5f);
 }
 
+/// @brief Pause all currently playing sounds and music.
 void rt_audio_pause_all(void) {
     if (g_audio_ctx)
         vaud_pause_all(g_audio_ctx);
 }
 
+/// @brief Resume all paused sounds and music.
 void rt_audio_resume_all(void) {
     if (g_audio_ctx)
         vaud_resume_all(g_audio_ctx);
 }
 
+/// @brief Stop all currently playing sound effects (music is unaffected).
 void rt_audio_stop_all_sounds(void) {
     if (g_audio_ctx)
         vaud_stop_all_sounds(g_audio_ctx);
@@ -512,6 +523,9 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     return 0;
 }
 
+/// @brief Load a sound effect from a file (WAV, OGG, or MP3 auto-detected from magic bytes).
+/// @details OGG and MP3 files are decoded to WAV in memory before loading into the
+///          audio engine. The returned handle can be played multiple times concurrently.
 void *rt_sound_load(rt_string path) {
     if (!path)
         return NULL;
@@ -564,6 +578,7 @@ void *rt_sound_load(rt_string path) {
     return wrapper;
 }
 
+/// @brief Load a sound effect from an in-memory buffer (WAV format expected).
 void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!data || size <= 0)
         return NULL;
@@ -590,6 +605,7 @@ void *rt_sound_load_mem(const void *data, int64_t size) {
     return wrapper;
 }
 
+/// @brief Destroy a sound handle and release the underlying audio buffer.
 void rt_sound_destroy(void *sound) {
     if (!sound)
         return;
@@ -598,6 +614,7 @@ void rt_sound_destroy(void *sound) {
         rt_obj_free(sound);
 }
 
+/// @brief Play a sound effect at default volume and center pan. Returns a voice ID.
 int64_t rt_sound_play(void *sound) {
     if (!sound)
         return -1;
@@ -610,6 +627,7 @@ int64_t rt_sound_play(void *sound) {
     return (int64_t)voice;
 }
 
+/// @brief Play a sound with explicit volume (0–100) and stereo pan (-100 to 100).
 int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     if (!sound)
         return -1;
@@ -636,6 +654,7 @@ int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     return (int64_t)voice;
 }
 
+/// @brief Play a sound in a continuous loop with explicit volume and pan. Returns a voice ID.
 int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     if (!sound)
         return -1;
@@ -662,6 +681,7 @@ int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     return (int64_t)voice;
 }
 
+/// @brief Stop a playing voice immediately by its voice ID.
 void rt_voice_stop(int64_t voice_id) {
     if (!g_audio_ctx || voice_id < 0)
         return;
@@ -669,6 +689,7 @@ void rt_voice_stop(int64_t voice_id) {
     vaud_stop_voice(g_audio_ctx, (vaud_voice_id)voice_id);
 }
 
+/// @brief Change the volume of a playing voice (0–100).
 void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     if (!g_audio_ctx || voice_id < 0)
         return;
@@ -682,6 +703,7 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, vol);
 }
 
+/// @brief Change the stereo pan of a playing voice (-100 = full left, 100 = full right).
 void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
     if (!g_audio_ctx || voice_id < 0)
         return;
@@ -695,6 +717,7 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
     vaud_set_voice_pan(g_audio_ctx, (vaud_voice_id)voice_id, p);
 }
 
+/// @brief Check whether a voice is currently playing.
 int64_t rt_voice_is_playing(int64_t voice_id) {
     if (!g_audio_ctx || voice_id < 0)
         return 0;
@@ -706,6 +729,9 @@ int64_t rt_voice_is_playing(int64_t voice_id) {
 // Music Streaming
 //===----------------------------------------------------------------------===//
 
+/// @brief Load a music track for streaming playback (WAV, OGG, or MP3 auto-detected).
+/// @details Unlike sounds, music streams from disk and is not fully decoded into memory.
+///          Only one music track plays at a time (use crossfade for transitions).
 void *rt_music_load(rt_string path) {
     if (!path)
         return NULL;
@@ -748,6 +774,7 @@ void *rt_music_load(rt_string path) {
     return wrapper;
 }
 
+/// @brief Destroy a music handle and release streaming resources.
 void rt_music_destroy(void *music) {
     if (!music)
         return;
@@ -756,6 +783,7 @@ void rt_music_destroy(void *music) {
         rt_obj_free(music);
 }
 
+/// @brief Start playing a music track (loop=1 for continuous looping, 0 for one-shot).
 void rt_music_play(void *music, int64_t loop) {
     if (!music)
         return;
@@ -767,6 +795,7 @@ void rt_music_play(void *music, int64_t loop) {
     vaud_music_play(mus->music, loop ? 1 : 0);
 }
 
+/// @brief Stop music playback and reset the position to the beginning.
 void rt_music_stop(void *music) {
     if (!music)
         return;
@@ -776,6 +805,7 @@ void rt_music_stop(void *music) {
         vaud_music_stop(mus->music);
 }
 
+/// @brief Pause music playback at the current position (can be resumed).
 void rt_music_pause(void *music) {
     if (!music)
         return;
@@ -785,6 +815,7 @@ void rt_music_pause(void *music) {
         vaud_music_pause(mus->music);
 }
 
+/// @brief Resume paused music playback from where it was paused.
 void rt_music_resume(void *music) {
     if (!music)
         return;
@@ -794,6 +825,7 @@ void rt_music_resume(void *music) {
         vaud_music_resume(mus->music);
 }
 
+/// @brief Set the music playback volume (0–100).
 void rt_music_set_volume(void *music, int64_t volume) {
     if (!music)
         return;
@@ -811,6 +843,7 @@ void rt_music_set_volume(void *music, int64_t volume) {
     vaud_music_set_volume(mus->music, vol);
 }
 
+/// @brief Get the current music playback volume (0–100).
 int64_t rt_music_get_volume(void *music) {
     if (!music)
         return 0;
@@ -823,6 +856,7 @@ int64_t rt_music_get_volume(void *music) {
     return (int64_t)(vol * 100.0f + 0.5f);
 }
 
+/// @brief Check whether a music track is currently playing.
 int64_t rt_music_is_playing(void *music) {
     if (!music)
         return 0;
@@ -834,6 +868,7 @@ int64_t rt_music_is_playing(void *music) {
     return vaud_music_is_playing(mus->music) ? 1 : 0;
 }
 
+/// @brief Seek to a position in the music track (in milliseconds from the start).
 void rt_music_seek(void *music, int64_t position_ms) {
     if (!music)
         return;
@@ -849,6 +884,7 @@ void rt_music_seek(void *music, int64_t position_ms) {
     vaud_music_seek(mus->music, seconds);
 }
 
+/// @brief Get the current playback position in milliseconds.
 int64_t rt_music_get_position(void *music) {
     if (!music)
         return 0;
@@ -861,6 +897,7 @@ int64_t rt_music_get_position(void *music) {
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
+/// @brief Get the total duration of a music track in milliseconds.
 int64_t rt_music_get_duration(void *music) {
     if (!music)
         return 0;
@@ -877,6 +914,7 @@ int64_t rt_music_get_duration(void *music) {
 // Mix Groups — real implementation
 //===----------------------------------------------------------------------===//
 
+/// @brief Set the volume for a mix group (0–100). Sounds in this group are scaled by this.
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
@@ -887,6 +925,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     g_group_volume[group] = volume;
 }
 
+/// @brief Get the volume of a mix group (0–100).
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
@@ -897,6 +936,10 @@ int64_t rt_audio_get_group_volume(int64_t group) {
 // Music Crossfade — real implementation
 //===----------------------------------------------------------------------===//
 
+/// @brief Begin a crossfade transition between two music tracks over the given duration.
+/// @details Fades out the current track while fading in the new track simultaneously.
+///          Both tracks are retained for the duration of the crossfade. Call
+///          rt_music_crossfade_update each frame to advance the fade.
 void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
     // Cancel any existing crossfade and release retained music objects
     if (g_crossfade.active) {
@@ -952,10 +995,12 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     }
 }
 
+/// @brief Check whether a music crossfade is currently in progress.
 int8_t rt_music_is_crossfading(void) {
     return g_crossfade.active;
 }
 
+/// @brief Advance the crossfade by dt_ms milliseconds (call each frame during a crossfade).
 void rt_music_crossfade_update(int64_t dt_ms) {
     if (!g_crossfade.active)
         return;
@@ -1010,6 +1055,7 @@ static int64_t apply_group_volume(int64_t volume, int64_t group) {
     return volume * g_group_volume[group] / 100;
 }
 
+/// @brief Play a sound at default volume, scaled by the given mix group's volume.
 int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     if (!sound)
         return -1;
@@ -1017,6 +1063,7 @@ int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     return rt_sound_play_ex(sound, vol, 0);
 }
 
+/// @brief Play a sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;
@@ -1024,6 +1071,7 @@ int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int6
     return rt_sound_play_ex(sound, vol, pan);
 }
 
+/// @brief Play a looping sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;

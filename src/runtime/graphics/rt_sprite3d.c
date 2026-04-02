@@ -30,6 +30,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_clear(void *m);
@@ -38,7 +41,7 @@ extern void rt_mesh3d_add_vertex(
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
-extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_material3d_new(void);
@@ -58,8 +61,22 @@ typedef struct {
     void *cached_texture;  /* Track texture for material invalidation */
 } rt_sprite3d;
 
+static void sprite3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
 static void sprite3d_finalizer(void *obj) {
-    (void)obj;
+    rt_sprite3d *s = (rt_sprite3d *)obj;
+    if (!s)
+        return;
+    sprite3d_release_ref(&s->texture);
+    sprite3d_release_ref(&s->cached_mesh);
+    sprite3d_release_ref(&s->cached_material);
+    s->cached_texture = NULL;
 }
 
 /// @brief Create a 3D billboard sprite that always faces the camera.
@@ -67,7 +84,8 @@ static void sprite3d_finalizer(void *obj) {
 ///          the camera using its view matrix right/up vectors. Commonly used for
 ///          particles, distant trees, UI indicators, etc. The sprite supports
 ///          spritesheet frames (SetFrame), anchor point control, and non-uniform scale.
-/// @param texture Pixels handle for the sprite image (borrowed, not owned).
+/// @param texture Pixels handle for the sprite image. The sprite retains it so
+///        lazy billboard material creation stays valid across frames.
 /// @return Opaque sprite handle, or NULL on failure.
 void *rt_sprite3d_new(void *texture) {
     rt_sprite3d *s = (rt_sprite3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite3d));
@@ -77,6 +95,7 @@ void *rt_sprite3d_new(void *texture) {
     }
     s->vptr = NULL;
     s->texture = texture;
+    rt_obj_retain_maybe(texture);
     s->position[0] = s->position[1] = s->position[2] = 0.0;
     s->scale_wh[0] = 1.0;
     s->scale_wh[1] = 1.0;
@@ -180,6 +199,7 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!s->cached_mesh)
         s->cached_mesh = rt_mesh3d_new();
     if (!s->cached_material || s->cached_texture != s->texture) {
+        sprite3d_release_ref(&s->cached_material);
         s->cached_material = rt_material3d_new();
         if (s->texture)
             rt_material3d_set_texture(s->cached_material, s->texture);
@@ -217,9 +237,9 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_mesh3d_add_triangle(mesh, 0, 1, 2);
     rt_mesh3d_add_triangle(mesh, 0, 2, 3);
 
-    /* Register with canvas temp buffer list so GC doesn't collect mid-frame */
-    rt_canvas3d_add_temp_buffer(canvas, mesh);
-    rt_canvas3d_add_temp_buffer(canvas, s->cached_material);
+    /* Keep cached runtime objects alive until the deferred frame submission completes. */
+    rt_canvas3d_add_temp_object(canvas, mesh);
+    rt_canvas3d_add_temp_object(canvas, s->cached_material);
 
     rt_canvas3d_draw_mesh(canvas, mesh, rt_mat4_identity(), s->cached_material);
 }

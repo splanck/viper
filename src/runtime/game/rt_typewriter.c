@@ -37,6 +37,10 @@ struct rt_typewriter_impl {
     int8_t complete;
 };
 
+/// @brief Create a new typewriter text-reveal effect.
+/// @details Reveals text one character at a time at a configurable rate, producing
+///          the classic RPG dialogue effect. Use say() to load text, update() each
+///          frame, and get_visible_text() to read the partially-revealed string.
 rt_typewriter rt_typewriter_new(void) {
     struct rt_typewriter_impl *t =
         (struct rt_typewriter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_typewriter_impl));
@@ -55,6 +59,7 @@ rt_typewriter rt_typewriter_new(void) {
     return t;
 }
 
+/// @brief Destroy a typewriter and free its text buffers.
 void rt_typewriter_destroy(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
@@ -65,6 +70,7 @@ void rt_typewriter_destroy(void *tw) {
         rt_obj_free(t);
 }
 
+/// @brief Load new text and begin the typewriter reveal at the given character rate.
 void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
@@ -86,6 +92,7 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     t->complete = 0;
 }
 
+/// @brief Advance the typewriter by dt milliseconds. Returns 1 if it just completed.
 int8_t rt_typewriter_update(void *tw, int64_t dt) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->active || t->complete)
@@ -110,6 +117,7 @@ int8_t rt_typewriter_update(void *tw, int64_t dt) {
     return just_completed;
 }
 
+/// @brief Instantly reveal all remaining text (skip the animation).
 void rt_typewriter_skip(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->full_text)
@@ -124,6 +132,7 @@ void rt_typewriter_skip(void *tw) {
     t->active = 0;
 }
 
+/// @brief Clear all text and reset to the initial idle state.
 void rt_typewriter_reset(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
@@ -139,6 +148,7 @@ void rt_typewriter_reset(void *tw) {
     t->complete = 0;
 }
 
+/// @brief Get the currently revealed portion of the text.
 rt_string rt_typewriter_get_visible_text(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->visible_buf)
@@ -146,6 +156,7 @@ rt_string rt_typewriter_get_visible_text(void *tw) {
     return rt_string_from_bytes(t->visible_buf, (int64_t)strlen(t->visible_buf));
 }
 
+/// @brief Get the complete text that was loaded with say().
 rt_string rt_typewriter_get_full_text(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->full_text)
@@ -153,16 +164,19 @@ rt_string rt_typewriter_get_full_text(void *tw) {
     return rt_string_from_bytes(t->full_text, (int64_t)strlen(t->full_text));
 }
 
+/// @brief Check whether the typewriter is currently revealing text.
 int8_t rt_typewriter_is_active(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return (t && t->active) ? 1 : 0;
 }
 
+/// @brief Check whether all text has been fully revealed.
 int8_t rt_typewriter_is_complete(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return (t && t->complete) ? 1 : 0;
 }
 
+/// @brief Get the reveal progress as a percentage (0–100).
 int64_t rt_typewriter_progress(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || t->total_len == 0)
@@ -170,11 +184,13 @@ int64_t rt_typewriter_progress(void *tw) {
     return t->char_index * 100 / t->total_len;
 }
 
+/// @brief Get the number of characters revealed so far.
 int64_t rt_typewriter_char_count(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return t ? t->char_index : 0;
 }
 
+/// @brief Get the total number of characters in the loaded text.
 int64_t rt_typewriter_total_chars(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return t ? t->total_len : 0;

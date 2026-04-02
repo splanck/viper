@@ -74,6 +74,11 @@ static leveldata_impl *get(void *level) {
     return (leveldata_impl *)level;
 }
 
+/// @brief Load a level from a JSON file, creating a tilemap and extracting objects.
+/// @details Parses a JSON level file with "width", "height", "tileWidth", "tileHeight",
+///          "layers" (tile data), "objects" (entity spawn points), and "properties"
+///          (playerStartX/Y, theme). Creates a tilemap from tile layer data and stores
+///          up to 256 named objects with type, id, and position.
 void *rt_leveldata_load(void *path) {
     if (!path)
         return NULL;
@@ -175,46 +180,55 @@ void *rt_leveldata_load(void *path) {
     return ld;
 }
 
+/// @brief Get the tilemap created from the level's tile layers.
 void *rt_leveldata_get_tilemap(void *level) {
     return level ? get(level)->tilemap : NULL;
 }
 
+/// @brief Get the number of objects (entity spawn points) in the level.
 int64_t rt_leveldata_object_count(void *level) {
     return level ? get(level)->object_count : 0;
 }
 
+/// @brief Get the type string of an object at the given index (e.g., "enemy", "item").
 rt_string rt_leveldata_object_type(void *level, int64_t index) {
     if (!level || index < 0 || index >= get(level)->object_count)
         return rt_const_cstr("");
     return rt_const_cstr(get(level)->objects[index].type);
 }
 
+/// @brief Get the ID string of an object at the given index.
 rt_string rt_leveldata_object_id(void *level, int64_t index) {
     if (!level || index < 0 || index >= get(level)->object_count)
         return rt_const_cstr("");
     return rt_const_cstr(get(level)->objects[index].id);
 }
 
+/// @brief Get the X position of an object at the given index.
 int64_t rt_leveldata_object_x(void *level, int64_t index) {
     if (!level || index < 0 || index >= get(level)->object_count)
         return 0;
     return get(level)->objects[index].x;
 }
 
+/// @brief Get the Y position of an object at the given index.
 int64_t rt_leveldata_object_y(void *level, int64_t index) {
     if (!level || index < 0 || index >= get(level)->object_count)
         return 0;
     return get(level)->objects[index].y;
 }
 
+/// @brief Get the player's starting X position from the level properties.
 int64_t rt_leveldata_player_start_x(void *level) {
     return level ? get(level)->player_start_x : 0;
 }
 
+/// @brief Get the player's starting Y position from the level properties.
 int64_t rt_leveldata_player_start_y(void *level) {
     return level ? get(level)->player_start_y : 0;
 }
 
+/// @brief Get the theme name from the level properties (e.g., "forest", "cave").
 rt_string rt_leveldata_get_theme(void *level) {
     if (!level)
         return rt_const_cstr("");

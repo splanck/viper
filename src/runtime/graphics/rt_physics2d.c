@@ -221,8 +221,8 @@ static void world_finalizer(void *obj) {
     if (w) {
         int64_t i;
         for (i = 0; i < w->body_count; i++) {
-            if (w->bodies[i])
-                rt_obj_release_check0(w->bodies[i]);
+            if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
+                rt_obj_free(w->bodies[i]);
         }
         w->body_count = 0;
     }
@@ -456,7 +456,8 @@ void rt_physics2d_world_remove(void *obj, void *body) {
     w = (rt_world_impl *)obj;
     for (i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == (rt_body_impl *)body) {
-            rt_obj_release_check0(w->bodies[i]);
+            if (rt_obj_release_check0(w->bodies[i]))
+                rt_obj_free(w->bodies[i]);
             /* Swap with tail to maintain a compact, order-independent array */
             w->bodies[i] = w->bodies[w->body_count - 1];
             w->bodies[w->body_count - 1] = NULL;

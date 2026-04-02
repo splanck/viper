@@ -35,6 +35,9 @@ static config_impl *get(void *cfg) {
     return (config_impl *)cfg;
 }
 
+/// @brief Load a JSON config file and return a queryable config handle.
+/// @details Reads the file, parses as JSON, and wraps the root node for typed
+///          key lookups via JsonPath queries (e.g., "player.speed").
 void *rt_config_load(void *path) {
     if (!path)
         return NULL;
@@ -53,6 +56,7 @@ void *rt_config_load(void *path) {
     return cfg;
 }
 
+/// @brief Create a config from a JSON string (no file I/O).
 void *rt_config_from_string(void *json_str) {
     if (!json_str)
         return NULL;
@@ -68,6 +72,7 @@ void *rt_config_from_string(void *json_str) {
     return cfg;
 }
 
+/// @brief Get an integer value at a JsonPath, or default_val if missing.
 int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
     if (!cfg || !path)
         return default_val;
@@ -80,6 +85,7 @@ int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
     return rt_jsonpath_get_int(c->json_root, (rt_string)path);
 }
 
+/// @brief Get a string value at a JsonPath, or default_val if missing.
 void *rt_config_get_str(void *cfg, void *path, void *default_val) {
     if (!cfg || !path)
         return default_val;
@@ -92,6 +98,7 @@ void *rt_config_get_str(void *cfg, void *path, void *default_val) {
     return val;
 }
 
+/// @brief Get a boolean value at a JsonPath, or default_val if missing.
 int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
     if (!cfg || !path)
         return default_val;
@@ -104,6 +111,7 @@ int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
     return rt_jsonpath_get_int(c->json_root, (rt_string)path) != 0;
 }
 
+/// @brief Check whether a JsonPath key exists in the config.
 int8_t rt_config_has(void *cfg, void *path) {
     if (!cfg || !path)
         return 0;

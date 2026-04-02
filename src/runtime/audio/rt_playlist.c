@@ -173,6 +173,7 @@ static void playlist_finalize(void *obj) {
     }
 }
 
+/// @brief Create a new playlist with shuffle, repeat, crossfade, and auto-advance support.
 void *rt_playlist_new(void) {
     playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
     memset(pl, 0, sizeof(playlist_impl));

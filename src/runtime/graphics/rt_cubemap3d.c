@@ -11,7 +11,7 @@
 //
 // Key invariants:
 //   - All 6 faces must be square and the same dimensions
-//   - Faces are Pixels objects (GC-managed, NOT owned by CubeMap3D)
+//   - Faces are retained Pixels objects while the cubemap is alive.
 //   - Face order: +X, -X, +Y, -Y, +Z, -Z
 //
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h, plans/3d/11-cube-maps.md
@@ -28,16 +28,37 @@
 #include <stdlib.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
+static void cubemap_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void cubemap_finalize(void *obj) {
+    rt_cubemap3d *cm = (rt_cubemap3d *)obj;
+    if (!cm)
+        return;
+    for (int i = 0; i < 6; i++)
+        cubemap_release_ref(&cm->faces[i]);
+}
+
 /// @brief Create a cube map from six square face textures.
 /// @details The six Pixels objects represent the +X, -X, +Y, -Y, +Z, -Z faces
-///          of a cube. All must be square and the same dimensions. The face
-///          pointers are borrowed (GC-managed, not owned by the cubemap). Used
+///          of a cube. All must be square and the same dimensions. The cube map
+///          retains the face textures so skybox and reflection sampling remain
+///          valid even if the caller drops its references. Used
 ///          for skyboxes and environment-map reflections.
 /// @param px Positive-X face (right).
 /// @param nx Negative-X face (left).
@@ -77,10 +98,12 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         return NULL;
     }
     cm->vptr = NULL;
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 6; i++) {
+        rt_obj_retain_maybe(faces[i]);
         cm->faces[i] = faces[i];
+    }
     cm->face_size = size;
-    /* No finalizer needed — faces are GC-managed Pixels, not owned by us */
+    rt_obj_set_finalizer(cm, cubemap_finalize);
     return cm;
 }
 
@@ -212,14 +235,23 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (!canvas)
         return;
-    ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
+    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c->skybox == (rt_cubemap3d *)cubemap)
+        return;
+    rt_obj_retain_maybe(cubemap);
+    if (c->skybox && rt_obj_release_check0(c->skybox))
+        rt_obj_free(c->skybox);
+    c->skybox = (rt_cubemap3d *)cubemap;
 }
 
 /// @brief Remove the skybox from the canvas (reverts to solid clear color).
 void rt_canvas3d_clear_skybox(void *canvas) {
     if (!canvas)
         return;
-    ((rt_canvas3d *)canvas)->skybox = NULL;
+    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c->skybox && rt_obj_release_check0(c->skybox))
+        rt_obj_free(c->skybox);
+    c->skybox = NULL;
 }
 
 //=============================================================================
@@ -230,7 +262,13 @@ void rt_canvas3d_clear_skybox(void *canvas) {
 void rt_material3d_set_env_map(void *obj, void *cubemap) {
     if (!obj)
         return;
-    ((rt_material3d *)obj)->env_map = cubemap;
+    rt_material3d *mat = (rt_material3d *)obj;
+    if (mat->env_map == cubemap)
+        return;
+    rt_obj_retain_maybe(cubemap);
+    if (mat->env_map && rt_obj_release_check0(mat->env_map))
+        rt_obj_free(mat->env_map);
+    mat->env_map = cubemap;
 }
 
 /// @brief Set the environment reflection strength for a material (0.0–1.0).

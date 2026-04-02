@@ -61,6 +61,7 @@ static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
@@ -340,12 +341,38 @@ static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     return 1;
 }
 
+static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
+    if (!c || !obj)
+        return 0;
+    if (c->temp_obj_count >= c->temp_obj_capacity) {
+        int32_t new_cap = c->temp_obj_capacity == 0 ? 8 : c->temp_obj_capacity * 2;
+        void **nb = (void **)realloc(c->temp_objects, (size_t)new_cap * sizeof(void *));
+        if (!nb)
+            return 0;
+        c->temp_objects = nb;
+        c->temp_obj_capacity = new_cap;
+    }
+    rt_obj_retain_maybe(obj);
+    c->temp_objects[c->temp_obj_count++] = obj;
+    return 1;
+}
+
 static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     if (!c)
         return;
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
+}
+
+static void canvas3d_clear_temp_objects(rt_canvas3d *c) {
+    if (!c)
+        return;
+    for (int32_t i = 0; i < c->temp_obj_count; i++) {
+        if (c->temp_objects[i] && rt_obj_release_check0(c->temp_objects[i]))
+            rt_obj_free(c->temp_objects[i]);
+    }
+    c->temp_obj_count = 0;
 }
 
 static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_matrix) {
@@ -835,6 +862,10 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->temp_buffers);
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    canvas3d_clear_temp_objects(c);
+    free(c->temp_objects);
+    c->temp_objects = NULL;
+    c->temp_obj_count = c->temp_obj_capacity = 0;
     free(c->text_vertices);
     c->text_vertices = NULL;
     c->text_vertex_capacity = 0;
@@ -848,6 +879,12 @@ static void rt_canvas3d_finalize(void *obj) {
         free(c->shadow_rt->depth_buf);
         free(c->shadow_rt);
         c->shadow_rt = NULL;
+    }
+
+    if (c->skybox) {
+        if (rt_obj_release_check0(c->skybox))
+            rt_obj_free(c->skybox);
+        c->skybox = NULL;
     }
 
     if (c->gfx_win) {
@@ -922,6 +959,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    c->temp_objects = NULL;
+    c->temp_obj_count = c->temp_obj_capacity = 0;
     c->fog_enabled = 0;
     c->fog_near = 10.0f;
     c->fog_far = 50.0f;
@@ -1668,6 +1707,7 @@ void rt_canvas3d_end(void *obj) {
         c->frame_is_2d = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
+        canvas3d_clear_temp_objects(c);
         return;
     }
 
@@ -1771,6 +1811,7 @@ void rt_canvas3d_end(void *obj) {
         c->frame_is_2d = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
+        canvas3d_clear_temp_objects(c);
         return;
     }
 
@@ -1875,6 +1916,7 @@ void rt_canvas3d_end(void *obj) {
     c->frame_is_2d = 0;
     c->draw_count = 0;
     canvas3d_clear_temp_buffers(c);
+    canvas3d_clear_temp_objects(c);
 }
 
 /*==========================================================================
@@ -2042,6 +2084,12 @@ void rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     if (!obj || !buffer)
         return;
     (void)canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
+}
+
+void rt_canvas3d_add_temp_object(void *obj, void *value) {
+    if (!obj || !value)
+        return;
+    (void)canvas3d_track_temp_object((rt_canvas3d *)obj, value);
 }
 
 /// @brief Get the current canvas width in pixels (updates on window resize).

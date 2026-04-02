@@ -30,6 +30,7 @@ extern int8_t rt_tilemap_is_solid_at(void *tm, int64_t px, int64_t py);
 // Line-Rect intersection (Liang-Barsky)
 //=============================================================================
 
+/// @brief Test whether a line segment intersects an axis-aligned rectangle (Liang-Barsky).
 int8_t rt_collision_line_rect(double x1, double y1, double x2, double y2,
                               double rx, double ry, double rw, double rh) {
     double dx = x2 - x1;
@@ -62,6 +63,7 @@ int8_t rt_collision_line_rect(double x1, double y1, double x2, double y2,
 // Line-Circle intersection
 //=============================================================================
 
+/// @brief Test whether a line segment intersects a circle (quadratic formula).
 int8_t rt_collision_line_circle(double x1, double y1, double x2, double y2,
                                 double cx, double cy, double r) {
     double dx = x2 - x1;
@@ -85,6 +87,10 @@ int8_t rt_collision_line_circle(double x1, double y1, double x2, double y2,
 // Tilemap Raycast (DDA)
 //=============================================================================
 
+/// @brief Cast a ray through a tilemap and return the first solid tile hit.
+/// @details Walks from (x1,y1) to (x2,y2) in pixel steps, checking tile
+///          solidity at each position. Capped at 2000 steps for safety.
+/// @return 1 if a solid tile was hit (hit_x/hit_y set), 0 if clear.
 int8_t rt_raycast_tilemap(void *tilemap, int64_t x1, int64_t y1,
                           int64_t x2, int64_t y2,
                           int64_t *hit_x, int64_t *hit_y) {
@@ -118,6 +124,7 @@ int8_t rt_raycast_tilemap(void *tilemap, int64_t x1, int64_t y1,
     return 0;
 }
 
+/// @brief Check whether two points have unobstructed line of sight through a tilemap.
 int8_t rt_has_line_of_sight(void *tilemap, int64_t x1, int64_t y1,
                             int64_t x2, int64_t y2) {
     return !rt_raycast_tilemap(tilemap, x1, y1, x2, y2, NULL, NULL);

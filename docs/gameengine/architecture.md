@@ -21,7 +21,7 @@ Every component of the Viper Game Engine is implemented in pure C with **no exte
 | **Window & input** | Native platform APIs (Cocoa/Win32/X11) |
 | **2D rendering** | Software rasterizer with pixel-level control |
 | **3D rendering** | Metal, Direct3D 11, OpenGL 3.3 backends + software fallback |
-| **Image I/O** | BMP, PNG, JPEG, GIF, WebP decoders/encoders |
+| **Image I/O** | BMP/PNG encoders, BMP/PNG/JPEG/GIF decoders |
 | **Audio mixing** | 32-voice mixer with LRU eviction |
 | **Audio codecs** | WAV, MP3, OGG Vorbis decoders |
 | **Sound synthesis** | Sine, square, sawtooth, triangle, noise generators |
@@ -86,7 +86,7 @@ Game code never touches this layer directly — it's wrapped by Canvas, Input, a
 
 ### Rendering Layer
 
-**2D (Canvas + Pixels):** Software-rendered into a pixel buffer. Canvas provides 40+ drawing primitives (Box, Disc, Line, Text, Gradient, Polygon, Triangle, Arc, Bezier, etc.). Pixels provides direct pixel manipulation and image I/O (load/save BMP, PNG, JPEG, GIF, WebP). SpriteBatch enables efficient sprite rendering with depth sorting and tinting.
+**2D (Canvas + Pixels):** Software-rendered into a pixel buffer. Canvas provides 40+ drawing primitives (Box, Disc, Line, Text, Gradient, Polygon, Triangle, Arc, Bezier, etc.). Pixels provides direct pixel manipulation plus BMP/PNG save and BMP/PNG/JPEG/GIF load. SpriteBatch records sprite draws with optional depth sorting and shared tint/alpha before flushing them in `End()`.
 
 **3D (Canvas3D + Scene3D):** GPU-accelerated with automatic backend selection. The software rasterizer serves as a universal fallback. Scene3D provides a hierarchical scene graph with transform inheritance, LOD, and AABB culling.
 

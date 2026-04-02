@@ -10,7 +10,7 @@
 //   transforms in a single draw call. Software fallback loops individual draws.
 //
 // Key invariants:
-//   - Mesh and material are borrowed references (not owned).
+//   - Mesh and material are retained by the batch while it is alive.
 //   - Transforms stored as contiguous float[16*N] array (row-major Mat4).
 //   - Per-instance frustum culling at Canvas3D level before submission.
 //

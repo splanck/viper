@@ -171,12 +171,12 @@ int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
     return pool->slots[slot].active;
 }
 
-/// @brief Return the count of elements in the objpool.
+/// @brief Get the number of currently active (allocated) slots.
 int64_t rt_objpool_active_count(rt_objpool pool) {
     return pool ? pool->active_count : 0;
 }
 
-/// @brief Return the count of elements in the objpool.
+/// @brief Get the number of free (available) slots in the pool.
 int64_t rt_objpool_free_count(rt_objpool pool) {
     return pool ? pool->capacity - pool->active_count : 0;
 }

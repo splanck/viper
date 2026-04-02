@@ -4,6 +4,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_camera.h"
+#include "rt_pixels.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -110,6 +111,40 @@ TEST(is_visible_with_camera_offset) {
     ASSERT(rt_camera_is_visible(cam, 900, 500, 99, 100) == 0); // x+w=999 <= cam_x=1000
 }
 
+TEST(world_screen_roundtrip_with_rotation_and_zoom) {
+    void *cam = rt_camera_new(800, 600);
+    rt_camera_set_x(cam, 100);
+    rt_camera_set_y(cam, 50);
+    rt_camera_set_zoom(cam, 200);
+    rt_camera_set_rotation(cam, 90);
+
+    int64_t sx = -1, sy = -1;
+    int64_t wx = -1, wy = -1;
+
+    rt_camera_world_to_screen(cam, 300, 200, &sx, &sy);
+    ASSERT(sx == 400);
+    ASSERT(sy == 300);
+
+    rt_camera_world_to_screen(cam, 350, 260, &sx, &sy);
+    rt_camera_screen_to_world(cam, sx, sy, &wx, &wy);
+    ASSERT(wx == 350);
+    ASSERT(wy == 260);
+}
+
+TEST(follow_and_bounds_respect_zoom) {
+    void *cam = rt_camera_new(800, 600);
+    rt_camera_set_zoom(cam, 200);
+    rt_camera_set_bounds(cam, 0, 0, 1000, 1000);
+
+    rt_camera_follow(cam, 900, 900);
+    ASSERT(rt_camera_get_x(cam) == 600);
+    ASSERT(rt_camera_get_y(cam) == 700);
+
+    rt_camera_smooth_follow(cam, 0, 0, 1000);
+    ASSERT(rt_camera_get_x(cam) == 0);
+    ASSERT(rt_camera_get_y(cam) == 0);
+}
+
 TEST(dirty_flag) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_is_dirty(cam) == 1); // starts dirty
@@ -129,9 +164,10 @@ TEST(parallax_add_remove) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_parallax_count(cam) == 0);
 
-    // Use dummy non-NULL pointers as fake Pixels objects
-    void *fake_pixels_a = (void *)0x1000;
-    void *fake_pixels_b = (void *)0x2000;
+    void *fake_pixels_a = rt_pixels_new(8, 8);
+    void *fake_pixels_b = rt_pixels_new(8, 8);
+    ASSERT(fake_pixels_a != NULL);
+    ASSERT(fake_pixels_b != NULL);
 
     int64_t idx0 = rt_camera_add_parallax(cam, fake_pixels_a, 50, 50);
     ASSERT(idx0 == 0);
@@ -152,16 +188,21 @@ TEST(parallax_add_remove) {
 
 TEST(parallax_max_layers) {
     void *cam = rt_camera_new(800, 600);
+    void *pixels[8] = {0};
 
     // Fill all 8 slots
     for (int i = 0; i < 8; i++) {
-        int64_t idx = rt_camera_add_parallax(cam, (void *)(intptr_t)(0x1000 + i), 50, 50);
+        pixels[i] = rt_pixels_new(4, 4);
+        ASSERT(pixels[i] != NULL);
+        int64_t idx = rt_camera_add_parallax(cam, pixels[i], 50, 50);
         ASSERT(idx == i);
     }
     ASSERT(rt_camera_parallax_count(cam) == 8);
 
     // 9th layer should fail
-    int64_t overflow = rt_camera_add_parallax(cam, (void *)0x9000, 50, 50);
+    void *overflow_pixels = rt_pixels_new(4, 4);
+    ASSERT(overflow_pixels != NULL);
+    int64_t overflow = rt_camera_add_parallax(cam, overflow_pixels, 50, 50);
     ASSERT(overflow == -1);
     ASSERT(rt_camera_parallax_count(cam) == 8);
 }
@@ -169,7 +210,9 @@ TEST(parallax_max_layers) {
 TEST(parallax_null_safety) {
     // NULL camera should not crash, returns safe defaults
     ASSERT(rt_camera_parallax_count(NULL) == 0);
-    ASSERT(rt_camera_add_parallax(NULL, (void *)0x1000, 50, 50) == -1);
+    void *pixels = rt_pixels_new(2, 2);
+    ASSERT(pixels != NULL);
+    ASSERT(rt_camera_add_parallax(NULL, pixels, 50, 50) == -1);
     /// @brief Rt_camera_remove_parallax.
     rt_camera_remove_parallax(NULL, 0); // no crash
                                         /// @brief Rt_camera_clear_parallax.
@@ -196,6 +239,8 @@ int main() {
     RUN_TEST(is_visible_zoom_in);
     RUN_TEST(is_visible_zoom_out);
     RUN_TEST(is_visible_with_camera_offset);
+    RUN_TEST(world_screen_roundtrip_with_rotation_and_zoom);
+    RUN_TEST(follow_and_bounds_respect_zoom);
     RUN_TEST(dirty_flag);
     RUN_TEST(parallax_add_remove);
     RUN_TEST(parallax_max_layers);

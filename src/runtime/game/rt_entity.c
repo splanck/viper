@@ -61,6 +61,11 @@ static entity_impl *get(void *ent) {
 // Constructor
 //=============================================================================
 
+/// @brief Create a new 2D game entity with position, bounding box, and physics state.
+/// @details Entities are lightweight game objects with position (in centipixels),
+///          velocity, direction, HP, collision flags, and active state. They support
+///          tilemap-based physics via move_and_collide (axis-separated collision
+///          resolution) and helper methods for patrol AI.
 void *rt_entity_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     entity_impl *e = (entity_impl *)rt_obj_new_i64(0, (int64_t)sizeof(entity_impl));
     if (!e)
@@ -115,6 +120,7 @@ int8_t rt_entity_hit_ceiling(void *ent) { return ent ? get(ent)->hit_ceiling : 0
 // Physics: Gravity
 //=============================================================================
 
+/// @brief Apply downward gravitational acceleration, clamped to max_fall terminal velocity.
 void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64_t dt) {
     if (!ent)
         return;
@@ -128,6 +134,11 @@ void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64
 // Physics: MoveAndCollide (tilemap)
 //=============================================================================
 
+/// @brief Move the entity by its velocity and resolve tilemap collisions per axis.
+/// @details Moves X first, then Y. For each axis, checks the leading edge tiles
+///          for solidity and pushes the entity out if overlapping. Sets collision
+///          flags (on_ground, hit_left, hit_right, hit_ceiling) and zeroes the
+///          velocity component on collision. Positions are in centipixels (÷100 for px).
 void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
     if (!ent)
         return;
@@ -235,6 +246,7 @@ void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
 // Physics: Combined gravity + move + collide
 //=============================================================================
 
+/// @brief Apply gravity then move-and-collide in one call (convenience wrapper).
 void rt_entity_update_physics(void *ent, void *tilemap,
                               int64_t gravity, int64_t max_fall, int64_t dt) {
     rt_entity_apply_gravity(ent, gravity, max_fall, dt);
@@ -245,6 +257,7 @@ void rt_entity_update_physics(void *ent, void *tilemap,
 // AI helpers
 //=============================================================================
 
+/// @brief Check whether the entity is at a platform edge (no solid tile below in facing direction).
 int8_t rt_entity_at_edge(void *ent, void *tilemap) {
     if (!ent || !tilemap)
         return 0;
@@ -256,6 +269,7 @@ int8_t rt_entity_at_edge(void *ent, void *tilemap) {
     return !rt_tilemap_is_solid_at(tilemap, checkX, checkY);
 }
 
+/// @brief Reverse direction when hitting a wall (check hit_left/hit_right flags).
 void rt_entity_patrol_reverse(void *ent, int64_t speed) {
     if (!ent)
         return;
@@ -270,6 +284,7 @@ void rt_entity_patrol_reverse(void *ent, int64_t speed) {
     }
 }
 
+/// @brief Test whether two entities' bounding boxes overlap (AABB collision test).
 int8_t rt_entity_overlaps(void *ent, void *other) {
     if (!ent || !other)
         return 0;

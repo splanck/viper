@@ -115,6 +115,10 @@ static void rt_soundbank_finalize(void *obj) {
 // Public API
 //===----------------------------------------------------------------------===//
 
+/// @brief Create a new sound bank for organizing named sound effects.
+/// @details A sound bank maps string names to loaded Sound handles, enabling
+///          sounds to be played by name (e.g., bank.Play("jump")). Supports
+///          up to BANK_MAX_ENTRIES sounds.
 void *rt_soundbank_new(void) {
     rt_soundbank_impl *bank =
         (rt_soundbank_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_soundbank_impl));
@@ -129,6 +133,7 @@ void *rt_soundbank_new(void) {
     return bank;
 }
 
+/// @brief Load a sound from a file path and register it under the given name.
 int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     if (!bank_ptr || !name || !path)
         return 0;
@@ -168,6 +173,7 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     return 1;
 }
 
+/// @brief Register a pre-loaded Sound handle under the given name (retains the sound).
 int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound) {
     if (!bank_ptr || !name || !sound)
         return 0;
@@ -199,6 +205,7 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
     return 1;
 }
 
+/// @brief Play a sound by name at default volume. Returns a voice ID or -1 if not found.
 int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return -1;
@@ -214,6 +221,7 @@ int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
     return rt_sound_play(bank->entries[idx].sound);
 }
 
+/// @brief Play a sound by name with explicit volume and pan. Returns a voice ID.
 int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int64_t pan) {
     if (!bank_ptr || !name)
         return -1;
@@ -229,6 +237,7 @@ int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int
     return rt_sound_play_ex(bank->entries[idx].sound, volume, pan);
 }
 
+/// @brief Check whether a sound with the given name exists in the bank.
 int64_t rt_soundbank_has(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return 0;
@@ -240,6 +249,7 @@ int64_t rt_soundbank_has(void *bank_ptr, rt_string name) {
     return find_entry(bank, namebuf) >= 0 ? 1 : 0;
 }
 
+/// @brief Get the Sound handle for a name (retained — caller must release). NULL if not found.
 void *rt_soundbank_get(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return NULL;
@@ -257,6 +267,7 @@ void *rt_soundbank_get(void *bank_ptr, rt_string name) {
     return sound;
 }
 
+/// @brief Remove a sound from the bank by name and release its reference.
 void rt_soundbank_remove(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return;
@@ -273,6 +284,7 @@ void rt_soundbank_remove(void *bank_ptr, rt_string name) {
     bank->count--;
 }
 
+/// @brief Remove and release all sounds from the bank.
 void rt_soundbank_clear(void *bank_ptr) {
     if (!bank_ptr)
         return;
@@ -285,6 +297,7 @@ void rt_soundbank_clear(void *bank_ptr) {
     bank->count = 0;
 }
 
+/// @brief Get the number of sounds currently registered in the bank.
 int64_t rt_soundbank_count(void *bank_ptr) {
     if (!bank_ptr)
         return 0;

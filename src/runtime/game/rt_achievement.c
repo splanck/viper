@@ -54,6 +54,9 @@ struct rt_achievement_impl {
     int64_t slide_offset;    // Slide-in animation offset
 };
 
+/// @brief Create a new achievement tracker (supports up to 64 achievements via bitmask).
+/// @details Tracks unlock state as a 64-bit mask, supports per-achievement stats,
+///          and provides slide-in notification display when achievements unlock.
 rt_achievement rt_achievement_new(int64_t max_achievements) {
     (void)max_achievements; // Capacity is fixed at 64
 
@@ -74,6 +77,7 @@ rt_achievement rt_achievement_new(int64_t max_achievements) {
     return ach;
 }
 
+/// @brief Destroy the achievement tracker and free all name/description strings.
 void rt_achievement_destroy(rt_achievement ach) {
     if (!ach)
         return;
@@ -87,6 +91,7 @@ void rt_achievement_destroy(rt_achievement ach) {
         rt_obj_free(ach);
 }
 
+/// @brief Define an achievement by ID with a display name and description.
 void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const char *description) {
     if (!ach || id < 0 || id >= MAX_ACH)
         return;
@@ -103,6 +108,7 @@ void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const 
     }
 }
 
+/// @brief Unlock an achievement and trigger the slide-in notification. Returns 1 if newly unlocked.
 int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
     if (!ach || id < 0 || id >= MAX_ACH)
         return 0;
@@ -121,21 +127,25 @@ int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
     return 1; // Newly unlocked
 }
 
+/// @brief Check whether an achievement has been unlocked.
 int8_t rt_achievement_is_unlocked(rt_achievement ach, int64_t id) {
     if (!ach || id < 0 || id >= MAX_ACH)
         return 0;
     return (ach->unlock_mask & ((int64_t)1 << id)) ? 1 : 0;
 }
 
+/// @brief Get the raw 64-bit unlock bitmask (for serialization/save games).
 int64_t rt_achievement_get_mask(rt_achievement ach) {
     return ach ? ach->unlock_mask : 0;
 }
 
+/// @brief Restore the unlock bitmask from a saved value (for loading save games).
 void rt_achievement_set_mask(rt_achievement ach, int64_t mask) {
     if (ach)
         ach->unlock_mask = mask;
 }
 
+/// @brief Count how many achievements have been unlocked (popcount of the bitmask).
 int64_t rt_achievement_unlocked_count(rt_achievement ach) {
     if (!ach)
         return 0;
@@ -149,30 +159,33 @@ int64_t rt_achievement_unlocked_count(rt_achievement ach) {
     return count;
 }
 
+/// @brief Get the total number of defined achievements.
 int64_t rt_achievement_total_count(rt_achievement ach) {
     return ach ? ach->total_defined : 0;
 }
 
-// Stat tracking
+/// @brief Increment a tracked stat counter by the given amount.
 void rt_achievement_inc_stat(rt_achievement ach, int64_t stat_id, int64_t amount) {
     if (!ach || stat_id < 0 || stat_id >= MAX_STATS)
         return;
     ach->stats[stat_id] += amount;
 }
 
+/// @brief Get the current value of a tracked stat counter.
 int64_t rt_achievement_get_stat(rt_achievement ach, int64_t stat_id) {
     if (!ach || stat_id < 0 || stat_id >= MAX_STATS)
         return 0;
     return ach->stats[stat_id];
 }
 
+/// @brief Set a tracked stat counter to an absolute value.
 void rt_achievement_set_stat(rt_achievement ach, int64_t stat_id, int64_t value) {
     if (!ach || stat_id < 0 || stat_id >= MAX_STATS)
         return;
     ach->stats[stat_id] = value;
 }
 
-// Notification update
+/// @brief Update the notification slide-in animation and auto-dismiss timer.
 void rt_achievement_update(rt_achievement ach, int64_t dt) {
     if (!ach || ach->notify_id < 0)
         return;
@@ -192,6 +205,7 @@ void rt_achievement_update(rt_achievement ach, int64_t dt) {
     }
 }
 
+/// @brief Draw the achievement notification banner (slides in from the right edge).
 void rt_achievement_draw(rt_achievement ach, void *canvas) {
     if (!ach || !canvas || ach->notify_id < 0)
         return;
@@ -218,11 +232,13 @@ void rt_achievement_draw(rt_achievement ach, void *canvas) {
     }
 }
 
+/// @brief Set the notification display duration in milliseconds (default 3000).
 void rt_achievement_set_notify_duration(rt_achievement ach, int64_t ms) {
     if (ach && ms > 0)
         ach->notify_duration = ms;
 }
 
+/// @brief Check whether an achievement notification is currently being displayed.
 int8_t rt_achievement_has_notification(rt_achievement ach) {
     return (ach && ach->notify_id >= 0) ? 1 : 0;
 }

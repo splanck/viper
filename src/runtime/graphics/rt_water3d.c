@@ -31,6 +31,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
 extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
 extern void rt_trap(const char *msg);
@@ -81,18 +82,29 @@ typedef struct {
     int32_t resolution;  /* grid resolution (default WATER_GRID) */
 } rt_water3d;
 
+static void water3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void water3d_assign_ref(void **slot, void *value) {
+    if (*slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    water3d_release_ref(slot);
+    *slot = value;
+}
+
 static void water3d_finalizer(void *obj) {
     rt_water3d *w = (rt_water3d *)obj;
-    if (w->mesh) {
-        if (rt_obj_release_check0(w->mesh))
-            rt_obj_free(w->mesh);
-        w->mesh = NULL;
-    }
-    if (w->material) {
-        if (rt_obj_release_check0(w->material))
-            rt_obj_free(w->material);
-        w->material = NULL;
-    }
+    water3d_release_ref(&w->texture);
+    water3d_release_ref(&w->normal_map);
+    water3d_release_ref(&w->env_map);
+    water3d_release_ref(&w->mesh);
+    water3d_release_ref(&w->material);
 }
 
 /// @brief Create a new water surface with animated wave simulation.
@@ -162,20 +174,32 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
 
 /// @brief Set surface texture for water.
 void rt_water3d_set_texture(void *obj, void *pixels) {
-    if (obj)
-        ((rt_water3d *)obj)->texture = pixels;
+    if (!obj)
+        return;
+    rt_water3d *w = (rt_water3d *)obj;
+    water3d_assign_ref(&w->texture, pixels);
+    if (w->material)
+        rt_material3d_set_texture(w->material, pixels);
 }
 
 /// @brief Set normal map for wave detail.
 void rt_water3d_set_normal_map(void *obj, void *pixels) {
-    if (obj)
-        ((rt_water3d *)obj)->normal_map = pixels;
+    if (!obj)
+        return;
+    rt_water3d *w = (rt_water3d *)obj;
+    water3d_assign_ref(&w->normal_map, pixels);
+    if (w->material)
+        rt_material3d_set_normal_map(w->material, pixels);
 }
 
 /// @brief Set environment cubemap for reflections.
 void rt_water3d_set_env_map(void *obj, void *cubemap) {
-    if (obj)
-        ((rt_water3d *)obj)->env_map = cubemap;
+    if (!obj)
+        return;
+    rt_water3d *w = (rt_water3d *)obj;
+    water3d_assign_ref(&w->env_map, cubemap);
+    if (w->material)
+        rt_material3d_set_env_map(w->material, cubemap);
 }
 
 /// @brief Set reflectivity [0.0-1.0] for environment mapping.
@@ -304,14 +328,10 @@ void rt_water3d_update(void *obj, double dt) {
     rt_material3d_set_alpha(w->material, w->alpha);
 
     /* Phase A: wire texture/normalmap/envmap to material */
-    if (w->texture)
-        rt_material3d_set_texture(w->material, w->texture);
-    if (w->normal_map)
-        rt_material3d_set_normal_map(w->material, w->normal_map);
-    if (w->env_map) {
-        rt_material3d_set_env_map(w->material, w->env_map);
-        rt_material3d_set_reflectivity(w->material, w->reflectivity);
-    }
+    rt_material3d_set_texture(w->material, w->texture);
+    rt_material3d_set_normal_map(w->material, w->normal_map);
+    rt_material3d_set_env_map(w->material, w->env_map);
+    rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
 }
 
 /// @brief Draw the animated water surface to the 3D canvas.

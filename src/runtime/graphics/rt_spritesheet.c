@@ -77,7 +77,8 @@ static void ss_finalizer(void *obj) {
         ss->names = NULL;
         ss->count = 0;
         if (ss->atlas) {
-            rt_obj_release_check0(ss->atlas);
+            if (rt_obj_release_check0(ss->atlas))
+                rt_obj_free(ss->atlas);
             ss->atlas = NULL;
         }
     }

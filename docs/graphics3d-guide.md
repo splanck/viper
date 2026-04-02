@@ -317,6 +317,7 @@ scene.Draw(canvas, cam)  // handles Begin/End internally
 | `Scene3D.Clear(scene)` | Remove all children from root |
 | `Scene3D.get_NodeCount` | Total nodes in tree |
 | `Scene3D.get_CulledCount` | Nodes culled in last Draw |
+| `Scene3D.Save(scene, path)` | Write a JSON scene snapshot of hierarchy, transforms, visibility, and LOD metadata |
 | `SceneNode3D.SetPosition(n, x, y, z)` | Set local position |
 | `SceneNode3D.set_Rotation(n, quat)` | Set local rotation (quaternion) |
 | `SceneNode3D.SetScale(n, x, y, z)` | Set local scale |
@@ -325,7 +326,7 @@ scene.Draw(canvas, cam)  // handles Begin/End internally
 | `SceneNode3D.set_Visible(n, bool)` | Hide node + all descendants |
 | `SceneNode3D.set_Name(n, str)` | Set name for Find() lookup |
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. `Scene3D.Save` is a structural scene export; it does not embed mesh or material payloads.
 
 ## Skeleton3D / Animation3D / AnimPlayer3D
 
@@ -836,7 +837,7 @@ Video playback for game cutscenes and GUI applications.
 
 | Member | Description |
 |--------|-------------|
-| `Open(path)` | Load video file (`.avi` or `.ogv`) |
+| `Open(path)` | Load an AVI MJPEG video file |
 | `Play()` | Start playback |
 | `Pause()` | Pause playback |
 | `Stop()` | Stop and rewind to start |
@@ -855,11 +856,10 @@ Video playback for game cutscenes and GUI applications.
 | Container | Video Codec | Audio Codec | Extension |
 |-----------|-------------|-------------|-----------|
 | AVI (RIFF) | MJPEG | PCM WAV | `.avi` |
-| OGG | Theora | Vorbis | `.ogv` |
 
 **MJPEG notes:** MJPEG frames in AVI files often omit Huffman tables (DHT markers). The decoder automatically injects standard JPEG Annex K DHT tables when they are missing. MJPEG has no inter-frame compression — each frame is an independent JPEG image. File sizes are large (~100-200 MB per minute at 720p) but seeking is instant since every frame is a keyframe.
 
-**Theora notes:** Theora uses OGG container (same as Vorbis audio). The existing OGG parser handles multi-stream demux by serial number. Theora provides real inter-frame compression (~10-20x smaller than MJPEG). Godot Engine uses Theora as its only built-in video format.
+**Current limitation:** OGG/Theora plumbing exists in the source tree, but it is not exposed as a working runtime playback format yet. `VideoPlayer.Open` currently accepts the AVI/MJPEG path only.
 
 ### Game Cutscene Usage
 

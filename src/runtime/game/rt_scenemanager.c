@@ -51,6 +51,9 @@ static int find_scene(scenemanager_impl *sm, const char *name) {
     return -1;
 }
 
+/// @brief Create a new scene manager for named game state transitions.
+/// @details Manages a flat list of named scenes (e.g., "menu", "gameplay", "pause").
+///          Supports instant switching and timed transitions with progress tracking.
 void *rt_scenemanager_new(void) {
     scenemanager_impl *sm =
         (scenemanager_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scenemanager_impl));
@@ -63,6 +66,7 @@ void *rt_scenemanager_new(void) {
     return sm;
 }
 
+/// @brief Register a named scene. The first scene added becomes the current scene.
 void rt_scenemanager_add(void *mgr, void *name) {
     if (!mgr || !name)
         return;
@@ -83,6 +87,7 @@ void rt_scenemanager_add(void *mgr, void *name) {
     }
 }
 
+/// @brief Instantly switch to a named scene (sets just_entered and just_exited flags).
 void rt_scenemanager_switch(void *mgr, void *name) {
     if (!mgr || !name)
         return;
@@ -98,6 +103,7 @@ void rt_scenemanager_switch(void *mgr, void *name) {
     sm->transitioning = 0;
 }
 
+/// @brief Begin a timed transition to a new scene (completes after duration_ms).
 void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_ms) {
     if (!mgr || !name)
         return;
@@ -112,6 +118,7 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
     sm->trans_timer = sm->trans_duration;
 }
 
+/// @brief Advance the scene manager by dt milliseconds. Clears one-shot flags, completes transitions.
 void rt_scenemanager_update(void *mgr, int64_t dt) {
     if (!mgr)
         return;
@@ -132,6 +139,7 @@ void rt_scenemanager_update(void *mgr, int64_t dt) {
     }
 }
 
+/// @brief Get the name of the currently active scene.
 void *rt_scenemanager_current(void *mgr) {
     if (!mgr)
         return (void *)rt_const_cstr("");
@@ -141,6 +149,7 @@ void *rt_scenemanager_current(void *mgr) {
     return (void *)rt_const_cstr("");
 }
 
+/// @brief Get the name of the previously active scene (before the last transition).
 void *rt_scenemanager_previous(void *mgr) {
     if (!mgr)
         return (void *)rt_const_cstr("");
@@ -150,6 +159,7 @@ void *rt_scenemanager_previous(void *mgr) {
     return (void *)rt_const_cstr("");
 }
 
+/// @brief Check whether the current scene matches the given name.
 int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
     if (!mgr || !name)
         return 0;
@@ -160,18 +170,22 @@ int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
     return strcmp(sm->scenes[sm->current].name, cname) == 0;
 }
 
+/// @brief Check whether a scene was entered this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_entered(void *mgr) {
     return mgr ? get(mgr)->just_entered : 0;
 }
 
+/// @brief Check whether a scene was exited this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_exited(void *mgr) {
     return mgr ? get(mgr)->just_exited : 0;
 }
 
+/// @brief Check whether a timed scene transition is currently in progress.
 int8_t rt_scenemanager_is_transitioning(void *mgr) {
     return mgr ? get(mgr)->transitioning : 0;
 }
 
+/// @brief Get the transition progress as a ratio (0.0 = start, 1.0 = complete).
 double rt_scenemanager_transition_progress(void *mgr) {
     if (!mgr)
         return 0.0;

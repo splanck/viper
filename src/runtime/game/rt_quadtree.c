@@ -526,7 +526,7 @@ int64_t rt_quadtree_query_rect(
     return tree->result_count;
 }
 
-/// @brief Query the was truncated of the quadtree.
+/// @brief Check whether the last query hit the result capacity limit.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
     return tree ? tree->query_truncated : 0;
 }
@@ -547,12 +547,12 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
     return tree->results[index];
 }
 
-/// @brief Return the count of elements in the quadtree.
+/// @brief Get the number of results from the most recent query.
 int64_t rt_quadtree_result_count(rt_quadtree tree) {
     return tree ? tree->result_count : 0;
 }
 
-/// @brief Return the count of elements in the quadtree.
+/// @brief Get the total number of active items in the quadtree.
 int64_t rt_quadtree_item_count(rt_quadtree tree) {
     if (!tree)
         return 0;

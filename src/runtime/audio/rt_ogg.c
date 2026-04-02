@@ -187,6 +187,7 @@ static void packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
 // Public API
 //===----------------------------------------------------------------------===//
 
+/// @brief Open an OGG container from a file path for sequential packet reading.
 ogg_reader_t *ogg_reader_open_file(const char *path) {
     if (!path)
         return NULL;
@@ -202,6 +203,7 @@ ogg_reader_t *ogg_reader_open_file(const char *path) {
     return r;
 }
 
+/// @brief Open an OGG container from an in-memory buffer for sequential packet reading.
 ogg_reader_t *ogg_reader_open_mem(const uint8_t *data, size_t len) {
     if (!data || len == 0)
         return NULL;
@@ -213,6 +215,7 @@ ogg_reader_t *ogg_reader_open_mem(const uint8_t *data, size_t len) {
     return r;
 }
 
+/// @brief Close the OGG reader and free all resources (file handle, packet buffer).
 void ogg_reader_free(ogg_reader_t *r) {
     if (!r)
         return;
@@ -222,6 +225,7 @@ void ogg_reader_free(ogg_reader_t *r) {
     free(r);
 }
 
+/// @brief Rewind the reader to the beginning of the OGG stream for re-reading.
 void ogg_reader_rewind(ogg_reader_t *r) {
     if (!r)
         return;
@@ -235,6 +239,7 @@ void ogg_reader_rewind(ogg_reader_t *r) {
     r->packet.complete = 0;
 }
 
+/// @brief Read the next complete OGG packet (may span multiple pages). Returns 1 on success.
 int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len) {
     if (!r)
         return 0;

@@ -91,6 +91,45 @@ static void mark_transform_dirty(scene_node_impl *node);
 static void update_world_transform(scene_node_impl *node);
 static void collect_visible_nodes(scene_node_impl *node, void *list);
 static int compare_depth(const void *a, const void *b);
+static void release_owned_ref(void **slot);
+static void scene_node_finalize(void *obj);
+static void scene_finalize(void *obj);
+
+static void release_owned_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void scene_node_finalize(void *obj) {
+    scene_node_impl *node = (scene_node_impl *)obj;
+    if (!node)
+        return;
+
+    if (node->children) {
+        int64_t count = rt_seq_len(node->children);
+        for (int64_t i = 0; i < count; i++) {
+            scene_node_impl *child = (scene_node_impl *)rt_seq_get(node->children, i);
+            if (child)
+                child->parent = NULL;
+        }
+        release_owned_ref(&node->children);
+    }
+
+    release_owned_ref(&node->sprite);
+    release_owned_ref((void **)&node->name);
+}
+
+static void scene_finalize(void *obj) {
+    scene_impl *scene = (scene_impl *)obj;
+    if (!scene)
+        return;
+    if (scene->root)
+        scene->root->parent = NULL;
+    release_owned_ref((void **)&scene->root);
+}
 
 //=============================================================================
 // Scene Node Creation
@@ -121,17 +160,20 @@ void *rt_scene_node_new(void) {
 
     node->parent = NULL;
     node->children = rt_seq_new();
+    rt_seq_set_owns_elements(node->children, 1);
     node->sprite = NULL;
-    node->name = rt_const_cstr("");
+    node->name = NULL;
+
+    rt_obj_set_finalizer(node, scene_node_finalize);
+    rt_scene_node_set_name(node, rt_const_cstr(""));
 
     return node;
 }
 
 void *rt_scene_node_from_sprite(void *sprite) {
     scene_node_impl *node = (scene_node_impl *)rt_scene_node_new();
-    if (node && sprite) {
-        node->sprite = sprite;
-    }
+    if (node && sprite)
+        rt_scene_node_set_sprite(node, sprite);
     return node;
 }
 
@@ -410,7 +452,14 @@ rt_string rt_scene_node_get_name(void *node_ptr) {
 void rt_scene_node_set_name(void *node_ptr, rt_string name) {
     if (!node_ptr)
         return;
-    ((scene_node_impl *)node_ptr)->name = name;
+    scene_node_impl *node = (scene_node_impl *)node_ptr;
+    if (!name)
+        name = rt_const_cstr("");
+    if (node->name == name)
+        return;
+    rt_obj_retain_maybe(name);
+    release_owned_ref((void **)&node->name);
+    node->name = name;
 }
 
 void *rt_scene_node_get_sprite(void *node_ptr) {
@@ -423,7 +472,12 @@ void *rt_scene_node_get_sprite(void *node_ptr) {
 void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     if (!node_ptr)
         return;
-    ((scene_node_impl *)node_ptr)->sprite = sprite;
+    scene_node_impl *node = (scene_node_impl *)node_ptr;
+    if (node->sprite == sprite)
+        return;
+    rt_obj_retain_maybe(sprite);
+    release_owned_ref(&node->sprite);
+    node->sprite = sprite;
 }
 
 //=============================================================================
@@ -465,9 +519,11 @@ void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     int64_t count = rt_seq_len(node->children);
     for (int64_t i = 0; i < count; i++) {
         if (rt_seq_get(node->children, i) == child) {
-            rt_seq_remove(node->children, i);
             child->parent = NULL;
+            void *removed = rt_seq_remove(node->children, i);
             mark_transform_dirty(child);
+            if (removed && rt_obj_release_check0(removed))
+                rt_obj_free(removed);
             return;
         }
     }
@@ -544,30 +600,16 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
 
     update_world_transform(node);
 
-    // Draw this node's sprite if any
-    if (node->sprite) {
-        // Apply world transform to sprite before drawing
-        int64_t old_x = rt_sprite_get_x(node->sprite);
-        int64_t old_y = rt_sprite_get_y(node->sprite);
-        int64_t old_sx = rt_sprite_get_scale_x(node->sprite);
-        int64_t old_sy = rt_sprite_get_scale_y(node->sprite);
-        int64_t old_rot = rt_sprite_get_rotation(node->sprite);
-
-        rt_sprite_set_x(node->sprite, node->world_x);
-        rt_sprite_set_y(node->sprite, node->world_y);
-        rt_sprite_set_scale_x(node->sprite, node->world_scale_x);
-        rt_sprite_set_scale_y(node->sprite, node->world_scale_y);
-        rt_sprite_set_rotation(node->sprite, node->world_rotation);
-
-        rt_sprite_draw(node->sprite, canvas);
-
-        // Restore original sprite state
-        rt_sprite_set_x(node->sprite, old_x);
-        rt_sprite_set_y(node->sprite, old_y);
-        rt_sprite_set_scale_x(node->sprite, old_sx);
-        rt_sprite_set_scale_y(node->sprite, old_sy);
-        rt_sprite_set_rotation(node->sprite, old_rot);
-    }
+    if (node->sprite)
+        rt_sprite_draw_transformed(node->sprite,
+                                   canvas,
+                                   node->world_x,
+                                   node->world_y,
+                                   node->world_scale_x,
+                                   node->world_scale_y,
+                                   node->world_rotation,
+                                   0,
+                                   255);
 
     // Draw children in insertion order
     int64_t count = rt_seq_len(node->children);
@@ -588,43 +630,23 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
 
     update_world_transform(node);
 
-    // Draw this node's sprite if any
     if (node->sprite) {
-        // Apply world transform and camera offset
-        int64_t old_x = rt_sprite_get_x(node->sprite);
-        int64_t old_y = rt_sprite_get_y(node->sprite);
-        int64_t old_sx = rt_sprite_get_scale_x(node->sprite);
-        int64_t old_sy = rt_sprite_get_scale_y(node->sprite);
-        int64_t old_rot = rt_sprite_get_rotation(node->sprite);
-
         int64_t screen_x = node->world_x;
         int64_t screen_y = node->world_y;
+        int64_t scale_x = node->world_scale_x;
+        int64_t scale_y = node->world_scale_y;
+        int64_t rotation = node->world_rotation;
 
         if (camera) {
-            screen_x = rt_camera_to_screen_x(camera, node->world_x);
-            screen_y = rt_camera_to_screen_y(camera, node->world_y);
-
-            // Apply camera zoom to sprite scale
+            rt_camera_world_to_screen(camera, node->world_x, node->world_y, &screen_x, &screen_y);
             int64_t zoom = rt_camera_get_zoom(camera);
-            rt_sprite_set_scale_x(node->sprite, (node->world_scale_x * zoom) / 100);
-            rt_sprite_set_scale_y(node->sprite, (node->world_scale_y * zoom) / 100);
-        } else {
-            rt_sprite_set_scale_x(node->sprite, node->world_scale_x);
-            rt_sprite_set_scale_y(node->sprite, node->world_scale_y);
+            scale_x = (node->world_scale_x * zoom) / 100;
+            scale_y = (node->world_scale_y * zoom) / 100;
+            rotation -= rt_camera_get_rotation(camera);
         }
 
-        rt_sprite_set_x(node->sprite, screen_x);
-        rt_sprite_set_y(node->sprite, screen_y);
-        rt_sprite_set_rotation(node->sprite, node->world_rotation);
-
-        rt_sprite_draw(node->sprite, canvas);
-
-        // Restore
-        rt_sprite_set_x(node->sprite, old_x);
-        rt_sprite_set_y(node->sprite, old_y);
-        rt_sprite_set_scale_x(node->sprite, old_sx);
-        rt_sprite_set_scale_y(node->sprite, old_sy);
-        rt_sprite_set_rotation(node->sprite, old_rot);
+        rt_sprite_draw_transformed(
+            node->sprite, canvas, screen_x, screen_y, scale_x, scale_y, rotation, 0, 255);
     }
 
     // Draw children
@@ -696,7 +718,8 @@ void *rt_scene_new(void) {
     memset(scene, 0, sizeof(scene_impl));
 
     scene->root = (scene_node_impl *)rt_scene_node_new();
-    scene->root->name = rt_const_cstr("root");
+    rt_scene_node_set_name(scene->root, rt_const_cstr("root"));
+    rt_obj_set_finalizer(scene, scene_finalize);
 
     return scene;
 }
@@ -809,27 +832,16 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
         scene_node_impl *node = arr[i];
         update_world_transform(node);
 
-        if (node->sprite) {
-            int64_t old_x = rt_sprite_get_x(node->sprite);
-            int64_t old_y = rt_sprite_get_y(node->sprite);
-            int64_t old_sx = rt_sprite_get_scale_x(node->sprite);
-            int64_t old_sy = rt_sprite_get_scale_y(node->sprite);
-            int64_t old_rot = rt_sprite_get_rotation(node->sprite);
-
-            rt_sprite_set_x(node->sprite, node->world_x);
-            rt_sprite_set_y(node->sprite, node->world_y);
-            rt_sprite_set_scale_x(node->sprite, node->world_scale_x);
-            rt_sprite_set_scale_y(node->sprite, node->world_scale_y);
-            rt_sprite_set_rotation(node->sprite, node->world_rotation);
-
-            rt_sprite_draw(node->sprite, canvas);
-
-            rt_sprite_set_x(node->sprite, old_x);
-            rt_sprite_set_y(node->sprite, old_y);
-            rt_sprite_set_scale_x(node->sprite, old_sx);
-            rt_sprite_set_scale_y(node->sprite, old_sy);
-            rt_sprite_set_rotation(node->sprite, old_rot);
-        }
+        if (node->sprite)
+            rt_sprite_draw_transformed(node->sprite,
+                                       canvas,
+                                       node->world_x,
+                                       node->world_y,
+                                       node->world_scale_x,
+                                       node->world_scale_y,
+                                       node->world_rotation,
+                                       0,
+                                       255);
     }
 
     free(arr);
@@ -878,38 +890,22 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
         update_world_transform(node);
 
         if (node->sprite) {
-            int64_t old_x = rt_sprite_get_x(node->sprite);
-            int64_t old_y = rt_sprite_get_y(node->sprite);
-            int64_t old_sx = rt_sprite_get_scale_x(node->sprite);
-            int64_t old_sy = rt_sprite_get_scale_y(node->sprite);
-            int64_t old_rot = rt_sprite_get_rotation(node->sprite);
-
             int64_t screen_x = node->world_x;
             int64_t screen_y = node->world_y;
             int64_t final_sx = node->world_scale_x;
             int64_t final_sy = node->world_scale_y;
+            int64_t rotation = node->world_rotation;
 
             if (camera) {
-                screen_x = rt_camera_to_screen_x(camera, node->world_x);
-                screen_y = rt_camera_to_screen_y(camera, node->world_y);
+                rt_camera_world_to_screen(camera, node->world_x, node->world_y, &screen_x, &screen_y);
                 int64_t zoom = rt_camera_get_zoom(camera);
                 final_sx = (node->world_scale_x * zoom) / 100;
                 final_sy = (node->world_scale_y * zoom) / 100;
+                rotation -= rt_camera_get_rotation(camera);
             }
 
-            rt_sprite_set_x(node->sprite, screen_x);
-            rt_sprite_set_y(node->sprite, screen_y);
-            rt_sprite_set_scale_x(node->sprite, final_sx);
-            rt_sprite_set_scale_y(node->sprite, final_sy);
-            rt_sprite_set_rotation(node->sprite, node->world_rotation);
-
-            rt_sprite_draw(node->sprite, canvas);
-
-            rt_sprite_set_x(node->sprite, old_x);
-            rt_sprite_set_y(node->sprite, old_y);
-            rt_sprite_set_scale_x(node->sprite, old_sx);
-            rt_sprite_set_scale_y(node->sprite, old_sy);
-            rt_sprite_set_rotation(node->sprite, old_rot);
+            rt_sprite_draw_transformed(
+                node->sprite, canvas, screen_x, screen_y, final_sx, final_sy, rotation, 0, 255);
         }
     }
 
@@ -932,17 +928,7 @@ int64_t rt_scene_node_count(void *scene_ptr) {
     if (!scene_ptr)
         return 0;
     scene_impl *scene = (scene_impl *)scene_ptr;
-
-    // Count all nodes recursively
-    void *nodes = rt_seq_new();
-    collect_visible_nodes(scene->root, nodes);
-    int64_t count = rt_seq_len(nodes);
-    if (rt_obj_release_check0(nodes))
-        rt_obj_free(nodes);
-
-    // Add invisible nodes - just count children recursively
-    // For simplicity, just return visible sprite count
-    return count;
+    return scene && scene->root ? rt_seq_len(scene->root->children) : 0;
 }
 
 /// @brief Clear all clear.
@@ -960,6 +946,8 @@ void rt_scene_clear(void *scene_ptr) {
             child->parent = NULL;
     }
     while (rt_seq_len(scene->root->children) > 0) {
-        rt_seq_pop(scene->root->children);
+        void *child = rt_seq_pop(scene->root->children);
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
     }
 }

@@ -87,6 +87,23 @@ TEST(RTSprite, SpritebatchBeginClearsCount) {
     printf("test_spritebatch_begin_clears_count: PASSED\n");
 }
 
+TEST(RTSprite, SpritebatchEndNullCanvasDeactivates) {
+    void *batch = rt_spritebatch_new(0);
+    void *pixels = rt_pixels_new(4, 4);
+
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_pixels(batch, pixels, 0, 0);
+    ASSERT_TRUE(rt_spritebatch_is_active(batch) == 1);
+
+    rt_spritebatch_end(batch, nullptr);
+    ASSERT_TRUE(rt_spritebatch_is_active(batch) == 0);
+
+    rt_spritebatch_begin(batch);
+    ASSERT_TRUE(rt_spritebatch_count(batch) == 0);
+
+    printf("test_spritebatch_end_null_canvas_deactivates: PASSED\n");
+}
+
 // ============================================================================
 // SpriteBatch Draw Tests
 // ============================================================================
