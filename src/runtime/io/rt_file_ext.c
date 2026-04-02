@@ -112,8 +112,13 @@ int64_t rt_io_file_exists(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
     struct stat st;
-    if (stat(cpath, &st) == 0)
-        return 1;
+    if (stat(cpath, &st) == 0) {
+#ifdef _WIN32
+        return (st.st_mode & _S_IFREG) != 0;
+#else
+        return S_ISREG(st.st_mode);
+#endif
+    }
     return 0;
 }
 
@@ -450,8 +455,17 @@ void rt_file_copy(rt_string src, rt_string dst) {
     }
 
     char buf[8192];
-    ssize_t n;
-    while ((n = rt_posix_read(src_fd, buf, sizeof(buf))) > 0) {
+    for (;;) {
+        ssize_t n = rt_posix_read(src_fd, buf, sizeof(buf));
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            close(src_fd);
+            close(dst_fd);
+            rt_trap("File.Copy: read error");
+        }
+        if (n == 0)
+            break;
         size_t written = 0;
         while (written < (size_t)n) {
             ssize_t w = rt_posix_write(dst_fd, buf + written, (size_t)n - written);
@@ -528,16 +542,10 @@ void *rt_file_read_bytes(rt_string path) {
         return rt_bytes_new(0);
     }
 
-    // Create bytes object with the file size
-    void *bytes = rt_bytes_new((int64_t)size);
-
-    // Read directly into bytes data
-    // We need to access the internal data pointer for this
-    // Use a temporary buffer and copy
     char *buf = (char *)malloc(size);
     if (!buf) {
         close(fd);
-        return bytes; // Return empty bytes
+        return rt_bytes_new(0);
     }
 
     size_t off = 0;
@@ -548,7 +556,7 @@ void *rt_file_read_bytes(rt_string path) {
                 continue;
             free(buf);
             close(fd);
-            return bytes;
+            return rt_bytes_new(0);
         }
         if (n == 0)
             break;
@@ -556,7 +564,7 @@ void *rt_file_read_bytes(rt_string path) {
     }
     close(fd);
 
-    /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
+    void *bytes = rt_bytes_new((int64_t)off);
     uint8_t *dst2 = file_bytes_data(bytes);
     if (dst2)
         memcpy(dst2, buf, off);

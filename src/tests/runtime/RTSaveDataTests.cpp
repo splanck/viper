@@ -31,8 +31,10 @@
 
 #ifdef _WIN32
 #include <process.h>
+#include <direct.h>
 #define GETPID _getpid
 #else
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #define GETPID getpid
@@ -65,6 +67,35 @@ extern "C" void vm_trap(const char *msg) {
 /// @brief Helper: create rt_string from C literal.
 static rt_string S(const char *s) {
     return rt_const_cstr(s);
+}
+
+static bool string_bytes_equal(rt_string s, const char *bytes, size_t len) {
+    return s && (size_t)rt_str_len(s) == len && memcmp(rt_string_cstr(s), bytes, len) == 0;
+}
+
+static void write_file_exact(const char *path, const char *bytes, size_t len) {
+    FILE *fp = fopen(path, "wb");
+    assert(fp != nullptr);
+    size_t written = fwrite(bytes, 1, len, fp);
+    fclose(fp);
+    assert(written == len);
+}
+
+static void configure_test_save_root() {
+    char root[256];
+#ifdef _WIN32
+    const char *tmp = getenv("TEMP");
+    if (!tmp)
+        tmp = "C:\\Temp";
+    snprintf(root, sizeof(root), "%s\\viper_savedata_home_%d", tmp, (int)GETPID());
+    _mkdir(root);
+    _putenv_s("APPDATA", root);
+    _putenv_s("USERPROFILE", root);
+#else
+    snprintf(root, sizeof(root), "/tmp/viper_savedata_home_%d", (int)GETPID());
+    mkdir(root, 0755);
+    setenv("HOME", root, 1);
+#endif
 }
 
 // ============================================================================
@@ -427,12 +458,61 @@ static void test_large_int_values() {
     printf("  test_large_int_values: PASSED\n");
 }
 
+static void test_binary_safe_string_round_trip() {
+    char game[64];
+    snprintf(game, sizeof(game), "viper-binary-%d", (int)GETPID());
+
+    char key_bytes[] = {'b', 'i', 'n', '\0', 'k', 'e', 'y'};
+    char value_bytes[] = {'A', '\0', 'B', 0x01, 'C'};
+    rt_string key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
+    rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+
+    void *sd = rt_savedata_new(S(game));
+    assert(sd != nullptr);
+    rt_savedata_set_string(sd, key, value);
+    assert(rt_savedata_save(sd) == 1);
+
+    void *sd2 = rt_savedata_new(S(game));
+    assert(rt_savedata_load(sd2) == 1);
+
+    rt_string loaded = rt_savedata_get_string(sd2, key, S(""));
+    assert(string_bytes_equal(loaded, value_bytes, sizeof(value_bytes)));
+
+    rt_string path = rt_savedata_get_path(sd);
+    remove(rt_string_cstr(path));
+
+    printf("  test_binary_safe_string_round_trip: PASSED\n");
+}
+
+static void test_load_rejects_malformed_json() {
+    char game[64];
+    snprintf(game, sizeof(game), "viper-malformed-%d", (int)GETPID());
+
+    void *sd = rt_savedata_new(S(game));
+    assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("score"), 7);
+    assert(rt_savedata_save(sd) == 1);
+
+    rt_string path = rt_savedata_get_path(sd);
+    write_file_exact(rt_string_cstr(path), "{\"score\": 1", strlen("{\"score\": 1"));
+    assert(rt_savedata_load(sd) == 0);
+    assert(rt_savedata_get_int(sd, S("score"), -1) == 7);
+
+    write_file_exact(rt_string_cstr(path), "{} trailing", strlen("{} trailing"));
+    assert(rt_savedata_load(sd) == 0);
+    assert(rt_savedata_get_int(sd, S("score"), -1) == 7);
+
+    remove(rt_string_cstr(path));
+    printf("  test_load_rejects_malformed_json: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
 
 int main() {
     printf("=== RTSaveDataTests ===\n\n");
+    configure_test_save_root();
 
     test_null_safety();
     test_empty_name_traps();
@@ -461,6 +541,8 @@ int main() {
     test_empty_key_ignored();
     test_special_chars_in_values();
     test_large_int_values();
+    test_binary_safe_string_round_trip();
+    test_load_rejects_malformed_json();
 
     printf("\n=== All RTSaveDataTests passed! ===\n");
     return 0;

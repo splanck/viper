@@ -16,6 +16,7 @@
 #include "rt_archive.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
+#include "rt_dir.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -29,10 +30,13 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <io.h>
+#define mkdir_p(path) _mkdir(path)
 #define rmdir _rmdir
 #define unlink _unlink
 #else
 #include "tests/common/PosixCompat.h"
+#include <sys/stat.h>
+#define mkdir_p(path) mkdir(path, 0755)
 #endif
 
 namespace {
@@ -118,6 +122,34 @@ static const char *get_temp_path(const char *name) {
 /// @brief Delete a file if it exists
 static void delete_file(const char *path) {
     unlink(path);
+}
+
+static bool file_equals_text(const char *path, const char *expected) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp)
+        return false;
+
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (size < 0) {
+        fclose(fp);
+        return false;
+    }
+
+    char *buf = (char *)malloc((size_t)size + 1);
+    if (!buf) {
+        fclose(fp);
+        return false;
+    }
+
+    size_t read = fread(buf, 1, (size_t)size, fp);
+    fclose(fp);
+    buf[read] = '\0';
+    bool ok = strcmp(buf, expected) == 0;
+    free(buf);
+    return ok;
 }
 
 //=============================================================================
@@ -248,6 +280,48 @@ static void test_add_directory() {
     test_result("isDirectory is true", rt_unbox_i1(is_dir) == 1);
 
     delete_file(path);
+}
+
+static void test_extract_operations() {
+    printf("Testing Extract and ExtractAll:\n");
+
+    const char *zip_path = get_temp_path("test_extract.zip");
+    const char *single_out = get_temp_path("test_extract_single.txt");
+    const char *extract_dir = get_temp_path("test_extract_dir");
+    delete_file(zip_path);
+    delete_file(single_out);
+    rt_dir_remove_all(rt_const_cstr(extract_dir));
+
+    void *ar = rt_archive_create(rt_const_cstr(zip_path));
+    rt_archive_add_str(ar, rt_const_cstr("hello.txt"), rt_const_cstr("Hello extract"));
+    rt_archive_add_str(ar, rt_const_cstr("nested/world.txt"), rt_const_cstr("Nested extract"));
+    rt_archive_finish(ar);
+
+    void *reader = rt_archive_open(rt_const_cstr(zip_path));
+    rt_archive_extract(reader, rt_const_cstr("hello.txt"), rt_const_cstr(single_out));
+    test_result("Extract writes absolute destination", file_equals_text(single_out, "Hello extract"));
+
+    mkdir_p(extract_dir);
+    rt_archive_extract_all(reader, rt_const_cstr(extract_dir));
+
+    char nested_path[512];
+#ifdef _WIN32
+    snprintf(nested_path, sizeof(nested_path), "%s\\nested\\world.txt", extract_dir);
+#else
+    snprintf(nested_path, sizeof(nested_path), "%s/nested/world.txt", extract_dir);
+#endif
+    char hello_path[512];
+#ifdef _WIN32
+    snprintf(hello_path, sizeof(hello_path), "%s\\hello.txt", extract_dir);
+#else
+    snprintf(hello_path, sizeof(hello_path), "%s/hello.txt", extract_dir);
+#endif
+    test_result("ExtractAll writes hello.txt", file_equals_text(hello_path, "Hello extract"));
+    test_result("ExtractAll writes nested/world.txt", file_equals_text(nested_path, "Nested extract"));
+
+    delete_file(single_out);
+    delete_file(zip_path);
+    rt_dir_remove_all(rt_const_cstr(extract_dir));
 }
 
 static void test_invalid_entry_names() {
@@ -582,6 +656,7 @@ int main() {
     test_add_string();
     printf("\n");
     test_add_directory();
+    test_extract_operations();
     printf("\n");
     test_invalid_entry_names();
     printf("\n");

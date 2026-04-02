@@ -727,8 +727,8 @@ rt_string rt_path_abs(rt_string path) {
     // Get current working directory
     char cwd[4096];
     if (!getcwd(cwd, sizeof(cwd))) {
-        // Failed to get cwd, just return normalized input
-        return rt_path_norm(path);
+        rt_trap("Path.Abs: failed to get current directory");
+        return rt_const_cstr("");
     }
 
     // Join cwd with path
@@ -817,6 +817,7 @@ rt_string rt_path_norm(rt_string path) {
         free(comp_starts);
         free(comp_ends);
         rt_trap("rt_path: memory allocation failed");
+        return rt_const_cstr("");
     }
     size_t comp_count = 0;
 

@@ -491,11 +491,14 @@ void rt_dir_remove_all(rt_string path) {
         char full_path[PATH_MAX];
         snprintf(full_path, PATH_MAX, "%s\\%s", cpath, fd.cFileName);
 
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            // Recurse into subdirectory
-            rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
-            rt_dir_remove_all(sub);
-            rt_string_unref(sub);
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+                (void)RemoveDirectoryA(full_path);
+            } else {
+                rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
+                rt_dir_remove_all(sub);
+                rt_string_unref(sub);
+            }
         } else {
             delete_file(full_path);
         }

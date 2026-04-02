@@ -155,12 +155,26 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
 // Public API
 //=============================================================================
 
-/// @brief Hash the password.
+/// @brief Hash a password using PBKDF2-SHA256 with 100,000 iterations.
+/// @details Convenience wrapper that calls rt_password_hash_with_iterations
+///          with the default iteration count. The 100,000 default provides
+///          a good balance between security and latency (~50ms on modern hardware).
+/// @param password The password to hash.
+/// @return Self-describing hash string: "PBKDF2$100000$<salt_b64>$<hash_b64>".
 rt_string rt_password_hash(rt_string password) {
     return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
 }
 
-/// @brief Hash the with iterations of the password.
+/// @brief Hash a password with a custom PBKDF2 iteration count.
+/// @details Generates a 16-byte CSPRNG salt, derives a 32-byte key using
+///          PBKDF2-HMAC-SHA256, and returns a self-describing string that
+///          encodes the algorithm, iteration count, salt, and hash. The format
+///          is "PBKDF2$<iterations>$<salt_b64>$<hash_b64>", which allows
+///          rt_password_verify to extract all parameters without separate
+///          salt storage. Iterations are clamped to [10,000, 10,000,000].
+/// @param password   The password to hash.
+/// @param iterations Number of PBKDF2 iterations (higher = slower + more secure).
+/// @return Encoded hash string safe for database storage.
 rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
     // Clamp iterations to minimum
     if (iterations < MIN_ITERATIONS) {
@@ -201,7 +215,17 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
-/// @brief Verify the password.
+/// @brief Verify a password against a stored hash string.
+/// @details Parses the stored hash to extract the algorithm, iteration count,
+///          salt (base64-decoded), and expected hash. Re-derives the key from
+///          the candidate password using the same parameters, then compares
+///          using constant-time byte comparison (XOR accumulator) to prevent
+///          timing side-channel attacks. Returns 0 (not trap) for any mismatch,
+///          malformed input, or unrecognized format — callers should never
+///          distinguish "wrong password" from "corrupt hash".
+/// @param password The candidate password to verify.
+/// @param hash     The stored hash string from rt_password_hash.
+/// @return 1 if the password matches, 0 otherwise.
 int8_t rt_password_verify(rt_string password, rt_string hash) {
     const char *hash_str = rt_string_cstr(hash);
 

@@ -114,6 +114,27 @@ static void test_glob_match() {
         test_result("Multiple * matches", rt_glob_match(path, pattern) == 1);
     }
 
+    // Test 13: Character class
+    {
+        rt_string pattern = rt_const_cstr("file[0-9].txt");
+        rt_string path = rt_const_cstr("file7.txt");
+        test_result("character class matches range", rt_glob_match(path, pattern) == 1);
+    }
+
+    // Test 14: Negated character class
+    {
+        rt_string pattern = rt_const_cstr("file[!0-9].txt");
+        rt_string path = rt_const_cstr("filea.txt");
+        test_result("negated character class matches non-range", rt_glob_match(path, pattern) == 1);
+    }
+
+    // Test 15: Character class mismatch
+    {
+        rt_string pattern = rt_const_cstr("file[abc].txt");
+        rt_string path = rt_const_cstr("filez.txt");
+        test_result("character class mismatch", rt_glob_match(path, pattern) == 0);
+    }
+
     printf("\n");
 }
 

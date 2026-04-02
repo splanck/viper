@@ -43,6 +43,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -97,6 +98,61 @@ static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
+}
+
+static void archive_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void archive_write_bytes_to_path(const char *cpath, void *data) {
+    if (!cpath || *cpath == '\0')
+        rt_trap("Archive: invalid destination path");
+
+    const uint8_t *src = bytes_data(data);
+    size_t total = (size_t)bytes_len(data);
+
+#ifdef _WIN32
+    HANDLE h =
+        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        rt_trap("Archive: failed to create destination file");
+
+    size_t written_total = 0;
+    while (written_total < total) {
+        DWORD chunk = 0;
+        DWORD want = (DWORD)(total - written_total);
+        if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0) {
+            CloseHandle(h);
+            rt_trap("Archive: failed to write destination file");
+        }
+        written_total += (size_t)chunk;
+    }
+
+    CloseHandle(h);
+#else
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+        rt_trap("Archive: failed to create destination file");
+
+    size_t written_total = 0;
+    while (written_total < total) {
+        ssize_t n = write(fd, src + written_total, total - written_total);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            close(fd);
+            rt_trap("Archive: failed to write destination file");
+        }
+        if (n == 0) {
+            close(fd);
+            rt_trap("Archive: failed to write destination file");
+        }
+        written_total += (size_t)n;
+    }
+
+    close(fd);
+#endif
 }
 
 //=============================================================================
@@ -731,34 +787,9 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
     const char *cpath = rt_string_cstr(dest_path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid destination path");
-    // Reject path traversal attempts
-    if (cpath[0] == '/' || cpath[0] == '\\' || strstr(cpath, "..") ||
-        (cpath[0] != '\0' && cpath[1] == ':'))
-        rt_trap("Archive.Extract: unsafe destination path (absolute or traversal)");
 
-#ifdef _WIN32
-    HANDLE h =
-        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-        rt_trap("Archive: failed to create destination file");
-
-    DWORD written;
-    if (!WriteFile(h, bytes_data(data), (DWORD)bytes_len(data), &written, NULL)) {
-        CloseHandle(h);
-        rt_trap("Archive: failed to write destination file");
-    }
-    CloseHandle(h);
-#else
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
-        rt_trap("Archive: failed to create destination file");
-
-    ssize_t n = write(fd, bytes_data(data), (size_t)bytes_len(data));
-    close(fd);
-
-    if (n != bytes_len(data))
-        rt_trap("Archive: failed to write destination file");
-#endif
+    archive_write_bytes_to_path(cpath, data);
+    archive_release_temp_object(data);
 }
 
 void rt_archive_extract_all(void *obj, rt_string dest_dir) {
@@ -772,6 +803,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     if (!cdir || *cdir == '\0')
         rt_trap("Archive: invalid destination directory");
 
+    rt_dir_make_all(dest_dir);
     size_t dir_len = strlen(cdir);
 
     for (int i = 0; i < ar->entry_count; i++) {
@@ -816,10 +848,9 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
                 *last_sep = PATH_SEP;
             }
 
-            // Extract file
-            rt_string entry_name = rt_const_cstr(norm_name);
-            rt_string dest = rt_const_cstr(full_path);
-            rt_archive_extract(obj, entry_name, dest);
+            void *data = read_entry_data(ar, e);
+            archive_write_bytes_to_path(full_path, data);
+            archive_release_temp_object(data);
         }
 
         free(full_path);

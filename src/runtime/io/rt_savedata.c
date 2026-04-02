@@ -40,6 +40,8 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <process.h>
+#include <windows.h>
 #else
 #include <pwd.h>
 #include <sys/stat.h>
@@ -53,6 +55,7 @@ extern void *rt_json_stream_new(rt_string json);
 extern int64_t rt_json_stream_next(void *parser);
 extern rt_string rt_json_stream_string_value(void *parser);
 extern double rt_json_stream_number_value(void *parser);
+extern rt_string rt_json_stream_error(void *parser);
 
 /* Token types */
 #define TOK_OBJECT_START 1
@@ -69,10 +72,11 @@ extern double rt_json_stream_number_value(void *parser);
 typedef enum { SAVE_INT = 0, SAVE_STR = 1 } SaveEntryType;
 
 typedef struct SaveEntry {
-    char *key;
+    rt_string key;
+    int64_t key_len;
     SaveEntryType type;
     int64_t int_val;
-    char *str_val;
+    rt_string str_val;
     struct SaveEntry *next;
 } SaveEntry;
 
@@ -87,9 +91,13 @@ typedef struct {
 //=========================================================================
 
 static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_len) {
+    if (!sd || !key)
+        return NULL;
+
     SaveEntry *e = sd->entries;
     while (e) {
-        if (strlen(e->key) == key_len && memcmp(e->key, key, key_len) == 0)
+        if (e->key && e->key_len == (int64_t)key_len &&
+            memcmp(rt_string_cstr(e->key), key, key_len) == 0)
             return e;
         e = e->next;
     }
@@ -98,8 +106,10 @@ static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_l
 
 static void free_entry(SaveEntry *e) {
     if (e) {
-        free(e->key);
-        free(e->str_val);
+        if (e->key)
+            rt_string_unref(e->key);
+        if (e->str_val)
+            rt_string_unref(e->str_val);
         free(e);
     }
 }
@@ -204,18 +214,105 @@ static void ensure_parent_dir(const char *file_path) {
     free(dir);
 }
 
-/* Escape a string for JSON output (handles \, ", \n, \t, \r).
-   NOTE: Other ASCII control characters (0x00-0x1F) are passed through unescaped.
-   Full JSON compliance would require \uXXXX encoding for those. */
+static int savedata_set_int_entry(SaveEntry **head, rt_string key, int64_t value) {
+    if (!head || !key)
+        return 0;
+
+    const char *key_data = rt_string_cstr(key);
+    size_t key_len = (size_t)rt_str_len(key);
+    SaveEntry *e = NULL;
+    for (SaveEntry *it = *head; it; it = it->next) {
+        if (it->key && it->key_len == (int64_t)key_len &&
+            memcmp(rt_string_cstr(it->key), key_data, key_len) == 0) {
+            e = it;
+            break;
+        }
+    }
+
+    if (e) {
+        if (e->str_val) {
+            rt_string_unref(e->str_val);
+            e->str_val = NULL;
+        }
+        e->type = SAVE_INT;
+        e->int_val = value;
+        return 1;
+    }
+
+    e = (SaveEntry *)malloc(sizeof(SaveEntry));
+    if (!e)
+        return 0;
+
+    e->key = rt_string_ref(key);
+    e->key_len = (int64_t)key_len;
+    e->type = SAVE_INT;
+    e->int_val = value;
+    e->str_val = NULL;
+    e->next = *head;
+    *head = e;
+    return 1;
+}
+
+static int savedata_set_string_entry(SaveEntry **head, rt_string key, rt_string value) {
+    if (!head || !key)
+        return 0;
+
+    const char *key_data = rt_string_cstr(key);
+    size_t key_len = (size_t)rt_str_len(key);
+    SaveEntry *e = NULL;
+    for (SaveEntry *it = *head; it; it = it->next) {
+        if (it->key && it->key_len == (int64_t)key_len &&
+            memcmp(rt_string_cstr(it->key), key_data, key_len) == 0) {
+            e = it;
+            break;
+        }
+    }
+
+    rt_string stored_value = value ? value : rt_str_empty();
+    if (e) {
+        if (e->str_val)
+            rt_string_unref(e->str_val);
+        e->type = SAVE_STR;
+        e->str_val = rt_string_ref(stored_value);
+        e->int_val = 0;
+        return 1;
+    }
+
+    e = (SaveEntry *)malloc(sizeof(SaveEntry));
+    if (!e)
+        return 0;
+
+    e->key = rt_string_ref(key);
+    e->key_len = (int64_t)key_len;
+    e->type = SAVE_STR;
+    e->int_val = 0;
+    e->str_val = rt_string_ref(stored_value);
+    e->next = *head;
+    *head = e;
+    return 1;
+}
+
+static void savedata_free_parser(void *parser) {
+    if (parser && rt_obj_release_check0(parser))
+        rt_obj_free(parser);
+}
+
 static void json_escape_append(rt_string_builder *sb, const char *str, size_t len) {
+    static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < len; i++) {
-        char c = str[i];
+        unsigned char c = (unsigned char)str[i];
         switch (c) {
             case '"':
                 rt_sb_append_cstr(sb, "\\\"");
                 break;
             case '\\':
                 rt_sb_append_cstr(sb, "\\\\");
+                break;
+            case '\b':
+                rt_sb_append_cstr(sb, "\\b");
+                break;
+            case '\f':
+                rt_sb_append_cstr(sb, "\\f");
                 break;
             case '\n':
                 rt_sb_append_cstr(sb, "\\n");
@@ -227,10 +324,65 @@ static void json_escape_append(rt_string_builder *sb, const char *str, size_t le
                 rt_sb_append_cstr(sb, "\\t");
                 break;
             default:
-                rt_sb_append_bytes(sb, &c, 1);
+                if (c < 0x20) {
+                    char escaped[6] = {'\\', 'u', '0', '0', hex[(c >> 4) & 0x0F], hex[c & 0x0F]};
+                    rt_sb_append_bytes(sb, escaped, sizeof(escaped));
+                } else {
+                    char ch = (char)c;
+                    rt_sb_append_bytes(sb, &ch, 1);
+                }
                 break;
         }
     }
+}
+
+static int savedata_write_atomic(const char *path, const char *data, size_t len) {
+    size_t path_len = strlen(path);
+    char *tmp_path = (char *)malloc(path_len + 48);
+    if (!tmp_path)
+        return 0;
+
+#ifdef _WIN32
+    unsigned long pid = (unsigned long)_getpid();
+#else
+    unsigned long pid = (unsigned long)getpid();
+#endif
+    snprintf(tmp_path, path_len + 48, "%s.tmp.%lu.%p", path, pid, (const void *)data);
+
+    FILE *fp = fopen(tmp_path, "wb");
+    if (!fp) {
+        free(tmp_path);
+        return 0;
+    }
+
+    size_t written = 0;
+    while (written < len) {
+        size_t n = fwrite(data + written, 1, len - written, fp);
+        if (n == 0) {
+            if (ferror(fp))
+                break;
+        }
+        written += n;
+    }
+
+    int ok = (written == len) ? 1 : 0;
+    if (ok && fflush(fp) != 0)
+        ok = 0;
+    if (fclose(fp) != 0)
+        ok = 0;
+
+    if (ok) {
+#ifdef _WIN32
+        ok = MoveFileExA(tmp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 1 : 0;
+#else
+        ok = (rename(tmp_path, path) == 0) ? 1 : 0;
+#endif
+    }
+
+    if (!ok)
+        remove(tmp_path);
+    free(tmp_path);
+    return ok;
 }
 
 //=========================================================================
@@ -280,32 +432,12 @@ void rt_savedata_set_int(void *obj, rt_string key, int64_t value) {
         return;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     const char *kcstr = rt_string_cstr(key);
-    if (!kcstr || kcstr[0] == '\0')
+    size_t klen = (size_t)rt_str_len(key);
+    if (!kcstr || klen == 0)
         return;
-    size_t klen = strlen(kcstr);
+    (void)klen;
 
-    SaveEntry *e = find_entry(sd, kcstr, klen);
-    if (e) {
-        free(e->str_val);
-        e->str_val = NULL;
-        e->type = SAVE_INT;
-        e->int_val = value;
-        return;
-    }
-
-    e = (SaveEntry *)malloc(sizeof(SaveEntry));
-    if (!e)
-        return;
-    e->key = strdup(kcstr);
-    if (!e->key) {
-        free(e);
-        return;
-    }
-    e->type = SAVE_INT;
-    e->int_val = value;
-    e->str_val = NULL;
-    e->next = sd->entries;
-    sd->entries = e;
+    savedata_set_int_entry(&sd->entries, key, value);
 }
 
 void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
@@ -313,40 +445,12 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
         return;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     const char *kcstr = rt_string_cstr(key);
-    if (!kcstr || kcstr[0] == '\0')
+    size_t klen = (size_t)rt_str_len(key);
+    if (!kcstr || klen == 0)
         return;
-    size_t klen = strlen(kcstr);
+    (void)klen;
 
-    const char *vcstr = value ? rt_string_cstr(value) : "";
-    char *val_copy = strdup(vcstr ? vcstr : "");
-    if (!val_copy)
-        return;
-
-    SaveEntry *e = find_entry(sd, kcstr, klen);
-    if (e) {
-        free(e->str_val);
-        e->type = SAVE_STR;
-        e->str_val = val_copy;
-        e->int_val = 0;
-        return;
-    }
-
-    e = (SaveEntry *)malloc(sizeof(SaveEntry));
-    if (!e) {
-        free(val_copy);
-        return;
-    }
-    e->key = strdup(kcstr);
-    if (!e->key) {
-        free(val_copy);
-        free(e);
-        return;
-    }
-    e->type = SAVE_STR;
-    e->str_val = val_copy;
-    e->int_val = 0;
-    e->next = sd->entries;
-    sd->entries = e;
+    savedata_set_string_entry(&sd->entries, key, value);
 }
 
 int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
@@ -356,7 +460,7 @@ int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return default_val;
-    SaveEntry *e = find_entry(sd, kcstr, strlen(kcstr));
+    SaveEntry *e = find_entry(sd, kcstr, (size_t)rt_str_len(key));
     if (!e || e->type != SAVE_INT)
         return default_val;
     return e->int_val;
@@ -369,10 +473,10 @@ rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return default_val ? default_val : rt_str_empty();
-    SaveEntry *e = find_entry(sd, kcstr, strlen(kcstr));
+    SaveEntry *e = find_entry(sd, kcstr, (size_t)rt_str_len(key));
     if (!e || e->type != SAVE_STR)
         return default_val ? default_val : rt_str_empty();
-    return rt_string_from_bytes(e->str_val, strlen(e->str_val));
+    return e->str_val ? rt_string_ref(e->str_val) : rt_str_empty();
 }
 
 int8_t rt_savedata_save(void *obj) {
@@ -384,10 +488,6 @@ int8_t rt_savedata_save(void *obj) {
 
     /* Ensure parent directory exists */
     ensure_parent_dir(sd->file_path);
-
-    FILE *fp = fopen(sd->file_path, "w");
-    if (!fp)
-        return 0;
 
     /* Build JSON using string builder */
     rt_string_builder sb;
@@ -403,7 +503,7 @@ int8_t rt_savedata_save(void *obj) {
         first = 0;
 
         rt_sb_append_cstr(&sb, "  \"");
-        json_escape_append(&sb, e->key, strlen(e->key));
+        json_escape_append(&sb, rt_string_cstr(e->key), (size_t)e->key_len);
         rt_sb_append_cstr(&sb, "\": ");
 
         if (e->type == SAVE_INT) {
@@ -411,7 +511,8 @@ int8_t rt_savedata_save(void *obj) {
         } else {
             rt_sb_append_cstr(&sb, "\"");
             if (e->str_val)
-                json_escape_append(&sb, e->str_val, strlen(e->str_val));
+                json_escape_append(
+                    &sb, rt_string_cstr(e->str_val), (size_t)rt_str_len(e->str_val));
             rt_sb_append_cstr(&sb, "\"");
         }
 
@@ -420,12 +521,10 @@ int8_t rt_savedata_save(void *obj) {
 
     rt_sb_append_cstr(&sb, "\n}\n");
 
-    size_t total = sb.len;
-    size_t written = fwrite(sb.data, 1, total, fp);
-    fclose(fp);
+    int ok = savedata_write_atomic(sd->file_path, sb.data, sb.len);
     rt_sb_free(&sb);
 
-    return (written == total) ? 1 : 0;
+    return ok ? 1 : 0;
 }
 
 int8_t rt_savedata_load(void *obj) {
@@ -435,7 +534,7 @@ int8_t rt_savedata_load(void *obj) {
     if (!sd->file_path)
         return 0;
 
-    FILE *fp = fopen(sd->file_path, "r");
+    FILE *fp = fopen(sd->file_path, "rb");
     if (!fp)
         return 0;
 
@@ -455,6 +554,11 @@ int8_t rt_savedata_load(void *obj) {
         return 0;
     }
     size_t read_count = fread(buf, 1, (size_t)file_size, fp);
+    if (read_count != (size_t)file_size && ferror(fp)) {
+        free(buf);
+        fclose(fp);
+        return 0;
+    }
     fclose(fp);
     buf[read_count] = '\0';
 
@@ -463,32 +567,70 @@ int8_t rt_savedata_load(void *obj) {
     free(buf);
 
     void *parser = rt_json_stream_new(json);
-    if (!parser)
+    if (!parser) {
+        rt_string_unref(json);
         return 0;
+    }
 
-    /* Clear existing entries */
-    free_all_entries(sd);
+    SaveEntry *loaded_entries = NULL;
+    int success = 0;
 
     int64_t tok = rt_json_stream_next(parser);
     if (tok != TOK_OBJECT_START)
-        return 0;
+        goto done;
 
     tok = rt_json_stream_next(parser);
+    if (tok == TOK_OBJECT_END) {
+        success = (rt_json_stream_next(parser) == TOK_END) ? 1 : 0;
+        goto done;
+    }
+
     while (tok == TOK_KEY) {
         rt_string key_str = rt_json_stream_string_value(parser);
-
         tok = rt_json_stream_next(parser);
         if (tok == TOK_NUMBER) {
             double val = rt_json_stream_number_value(parser);
-            rt_savedata_set_int(obj, key_str, (int64_t)val);
+            if (!savedata_set_int_entry(&loaded_entries, key_str, (int64_t)val)) {
+                rt_string_unref(key_str);
+                goto done;
+            }
         } else if (tok == TOK_STRING) {
             rt_string val_str = rt_json_stream_string_value(parser);
-            rt_savedata_set_string(obj, key_str, val_str);
+            if (!savedata_set_string_entry(&loaded_entries, key_str, val_str)) {
+                rt_string_unref(val_str);
+                rt_string_unref(key_str);
+                goto done;
+            }
+            rt_string_unref(val_str);
+        } else {
+            rt_string_unref(key_str);
+            goto done;
         }
+        rt_string_unref(key_str);
 
         tok = rt_json_stream_next(parser);
+        if (tok == TOK_OBJECT_END) {
+            success = (rt_json_stream_next(parser) == TOK_END) ? 1 : 0;
+            goto done;
+        }
+        if (tok != TOK_KEY)
+            goto done;
     }
 
+done:
+    savedata_free_parser(parser);
+    rt_string_unref(json);
+    if (!success) {
+        while (loaded_entries) {
+            SaveEntry *next = loaded_entries->next;
+            free_entry(loaded_entries);
+            loaded_entries = next;
+        }
+        return 0;
+    }
+
+    free_all_entries(sd);
+    sd->entries = loaded_entries;
     return 1;
 }
 
@@ -499,7 +641,7 @@ int8_t rt_savedata_has_key(void *obj, rt_string key) {
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return 0;
-    return find_entry(sd, kcstr, strlen(kcstr)) != NULL;
+    return find_entry(sd, kcstr, (size_t)rt_str_len(key)) != NULL;
 }
 
 int8_t rt_savedata_remove(void *obj, rt_string key) {
@@ -509,12 +651,13 @@ int8_t rt_savedata_remove(void *obj, rt_string key) {
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return 0;
-    size_t klen = strlen(kcstr);
+    size_t klen = (size_t)rt_str_len(key);
 
     SaveEntry **pp = &sd->entries;
     while (*pp) {
         SaveEntry *e = *pp;
-        if (strlen(e->key) == klen && memcmp(e->key, kcstr, klen) == 0) {
+        if (e->key && e->key_len == (int64_t)klen &&
+            memcmp(rt_string_cstr(e->key), kcstr, klen) == 0) {
             *pp = e->next;
             free_entry(e);
             return 1;

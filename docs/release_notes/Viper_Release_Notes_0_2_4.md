@@ -38,16 +38,20 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Zia Runtime Extern Signatures** — `rtgen` now emits full parameter types (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. Enables correct string equality comparison for runtime methods returning `str` (e.g., `LevelData.ObjectType() == "enemy"` now emits `Viper.String.Equals` instead of `ICmpEq`).
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
 - **VAPS Packaging Overhaul** — 10 improvements, 57 new tests, Windows installer stub, symlink safety, dry-run mode.
-- **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,706 source files, @brief Doxygen on 98% of runtime functions. Bible code audit across 12 chapters correcting struct field syntax, class method visibility, interface declarations, catch syntax, and collection API calls.
+- **GUI Runtime Hardening** — Theme ownership moved to per-app structs (no more mutating built-in dark/light singletons), modal dialog routing follows the real dialog stack, overlay timing uses wall-clock time, platform text input events (`VGFX_EVENT_TEXT_INPUT`) wired through macOS/Win32/X11 backends replacing ASCII key synthesis, dropdown placeholder ownership fix, notification compaction, and command palette UTF-8 query path.
+- **Comprehensive Documentation Pass** — Substantial `@brief`/`@details` comments added to 100+ functions across GUI runtime (8 files), Graphics3D runtime (19 files), network subsystem (19 files), and crypto subsystem (8 files). Rewrites broken auto-generated comments ("Should the close of the app", "Sphere the overlaps of the aabb3d") into proper Viper documentation standard with why/how explanations, parameter contracts, and ownership semantics.
+- **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
+- **Network & Crypto Hardening** — Comprehensive function documentation across TLS handshake, certificate verification, WebSocket framing, SSE chunked parsing, SMTP protocol, connection pooling, async sockets, AES/cipher/HKDF/password hashing modules. Two test fixes: IPv6 wildcard address acceptance, HTTP chunked encoding framing correction.
+- **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,706 source files, @brief Doxygen on 100% of runtime functions. Bible code audit across 12 chapters correcting struct field syntax, class method visibility, interface declarations, catch syntax, and collection API calls.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 61 | +61 |
-| Source files | 2,671 | 2,788 | +117 |
-| Production SLOC | ~348K | ~407K | +59K |
-| Test count | 1,351 | 1,383 | +32 |
+| Commits | — | 62 | +62 |
+| Source files | 2,671 | 2,795 | +124 |
+| Production SLOC | ~348K | ~412K | +64K |
+| Test count | 1,351 | 1,388 | +37 |
 
 ---
 
@@ -651,6 +655,61 @@ Eight new demo programs in `examples/apiaudit/graphics3d/`:
 
 ---
 
+### GUI Runtime Hardening
+
+Architectural improvements to the GUI subsystem for correctness and platform fidelity across macOS, Windows, and Linux.
+
+#### Theme & App State Management
+- **Per-app theme ownership** — Each `rt_gui_app_t` now owns a private scaled theme copy. Previously, `rt_gui_refresh_theme` mutated the built-in `vg_theme_dark()`/`vg_theme_light()` singletons in place, meaning multiple apps or rapid theme switches would corrupt shared state. Theme copies are rebuilt only when the base theme or HiDPI scale changes.
+- **Widget runtime state save/restore** — Focus, keyboard capture, and tooltip state are saved per-app and restored on activation, enabling correct multi-app contexts.
+- **Modal dialog stack** — Dialog routing now follows the actual `dialog_stack` array with `rt_gui_sync_modal_root`, replacing the old parallel event path that could desync from the widget tree.
+
+#### Platform Text Input
+- **`VGFX_EVENT_TEXT_INPUT`** — New event type carries translated Unicode text from the OS input method. Wired through macOS (`interpretKeyEvents:`/`insertText:`), Win32 (`WM_CHAR`), and X11 (`XLookupString`) backends.
+- **GUI `KEY_CHAR` delivery** — `vg_event_from_platform` converts text-input events to `VG_EVENT_KEY_CHAR`, replacing the old US-layout ASCII key synthesis that broke on non-QWERTY keyboards and dead keys.
+
+#### Widget Contract Fixes
+- Dropdown placeholder strings copied instead of borrowing freed temporaries
+- Dismissed notifications compacted immediately instead of accumulating stale entries
+- Command palette placeholder and UTF-8 query path completed
+- MessageBox prompt/builder flows honor default/cancel button semantics
+- Font inheritance applied consistently at construction for all text-bearing widgets
+
+---
+
+### Comprehensive Documentation Pass
+
+Substantial function-level documentation added across four major runtime subsystems, rewriting broken auto-generated comments into proper Viper `@brief`/`@details`/`@param`/`@return` annotations that explain the *why* and *how* for each function.
+
+| Subsystem | Files | Functions Documented | Key Topics |
+|-----------|-------|---------------------|------------|
+| GUI Runtime | 8 | ~100 | App lifecycle, widget constructors, menu system, command palette, tooltips, toasts, drag-and-drop, find/replace bar |
+| Graphics3D | 19 | ~130 | Canvas3D render pipeline, Camera3D (perspective/ortho/FPS/orbit/shake), Mesh3D procedural generators, Material3D PBR, Light3D types, skeletal animation, physics joints, raycasting, spline paths, terrain, water, decals, sprites, instanced batching, cubemap reflections, FBX/glTF loaders |
+| Network | 19 | ~120 | TCP/UDP sockets, TLS handshake, certificate verification, HTTP client/server, WebSocket framing, SSE streaming, SMTP protocol, REST client, connection pooling, async sockets, DNS resolution |
+| Crypto/Text | 8 | ~50 | AES-CBC/CTR, cipher abstraction, HKDF key derivation, password hashing (bcrypt/PBKDF2/Argon2), CSPRNG |
+
+**Examples of rewritten comments:**
+- `"Should the close of the app"` → `"Query whether the application's window has been closed"`
+- `"Sphere the overlaps of the aabb3d"` → `"Test whether an AABB and a sphere overlap"`
+- `"Play the at of the audio3d"` → `"Play a sound at a 3D position with distance-based attenuation"`
+
+---
+
+### HTTP Server Runtime Bindings
+
+New `HttpServer` runtime class wired through the bytecode VM and both language frontends (Zia and BASIC), enabling Zia programs to serve HTTP requests:
+
+| Component | Changes |
+|-----------|---------|
+| `runtime.def` | `HttpServer` class with `Listen`, `Accept`, `Respond`, `Close`, `Method`, `Path`, `Header`, `Body` |
+| `NetworkRuntime.cpp` | VM native function implementations (130 LOC) |
+| `BytecodeVM.cpp` | CALL_NATIVE dispatch entries for all 8 HttpServer methods |
+| `Lowerer_Expr_Call.cpp` | Zia frontend lowering for HttpServer method calls |
+| `Lower_OOP_MethodCall.cpp` | BASIC frontend lowering for HttpServer method calls |
+| Tests | `RTHighLevelNetworkTests.cpp` (SSE + SMTP + HttpServer), `HttpServerRuntimeTests.cpp`, `TestHttpServerBinding.cpp`, `test_zia_http_server.cpp` |
+
+---
+
 ### Bug Fixes
 
 - Particle emitter renders with zero alpha from `Color.RGB()` values (alpha byte = 0 treated as opaque)
@@ -713,3 +772,11 @@ Eight new demo programs in `examples/apiaudit/graphics3d/`:
 - Canvas3D `rt_canvas3d_screenshot()` returned NULL when using a GPU backend (only software framebuffer path existed) — now supports render target readback and `backend->readback_rgba()` GPU path
 - Canvas3D did not propagate OS window resize events — added resize callback and `VGFX_EVENT_RESIZE` handling in `Poll()`
 - macOS ViperGFX windows had no application menu (no About, no Cmd+Q) — default app menu now generated automatically with standard items
+- GUI theme singletons mutated in-place: `rt_gui_refresh_theme` modified the built-in `vg_theme_dark()`/`vg_theme_light()` constants, corrupting shared state across apps — now creates private scaled copies per-app
+- GUI modal dialog routing used a parallel event path that could desync from the widget tree — now follows the real dialog stack via `rt_gui_sync_modal_root`
+- GUI overlay timing (tooltips, toasts) used last-input-event timestamps, causing animations to freeze while idle — now uses wall-clock time via `rt_gui_now_ms`
+- GUI dropdown placeholder used freed temporary C string (use-after-free) — now copies the string into owned storage
+- GUI notification manager accumulated dismissed entries without compacting — stale notifications never freed
+- Platform text input on non-QWERTY keyboards produced wrong characters — old US-layout ASCII key synthesis replaced with OS text-input events (`VGFX_EVENT_TEXT_INPUT`)
+- Network test `test_rt_network` failed on macOS: `getaddrinfo(NULL, ...)` with `AF_UNSPEC` prefers IPv6, storing `"::"` instead of expected `"0.0.0.0"` — test now accepts either wildcard
+- Network test `test_rt_network_highlevel` SSE chunked mock server: wrong hex chunk size (`0x14` for 23-byte payload, should be `0x17`) and missing mandatory trailing `\r\n` after chunk data per RFC 7230 §4.1

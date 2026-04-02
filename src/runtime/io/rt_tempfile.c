@@ -43,6 +43,7 @@ extern void rt_trap(const char *msg);
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
 #ifdef _WIN32
 #include <process.h>
@@ -89,6 +90,50 @@ static void generate_unique_id(char *buffer, size_t size) {
 #endif
 
     snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
+}
+
+static int tempfile_try_create_path(const char *cpath) {
+#ifdef _WIN32
+    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE) {
+        CloseHandle(h);
+        return 1;
+    }
+
+    DWORD err = GetLastError();
+    if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
+        return 0;
+
+    rt_trap("TempFile.Create: failed to create temporary file");
+    return -1;
+#else
+    int tmp_fd = open(cpath, O_CREAT | O_EXCL | O_WRONLY, 0600);
+    if (tmp_fd >= 0) {
+        close(tmp_fd);
+        return 1;
+    }
+
+    if (errno == EEXIST)
+        return 0;
+
+    rt_trap("TempFile.Create: failed to create temporary file");
+    return -1;
+#endif
+}
+
+static int tempfile_try_create_dir(const char *cpath) {
+#ifdef _WIN32
+    if (_mkdir(cpath) == 0)
+        return 1;
+#else
+    if (mkdir(cpath, 0700) == 0)
+        return 1;
+#endif
+    if (errno == EEXIST)
+        return 0;
+
+    rt_trap("TempFile.CreateDir: failed to create temporary directory");
+    return -1;
 }
 
 //=============================================================================
@@ -193,21 +238,19 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
     /* Fall through to path-based creation on mkstemp failure */
 #endif
 
-    rt_string path = rt_tempfile_path_with_prefix(prefix);
-    const char *cpath = rt_string_cstr(path);
+    for (int attempt = 0; attempt < 128; attempt++) {
+        rt_string path = rt_tempfile_path_with_prefix(prefix);
+        const char *cpath = rt_string_cstr(path);
+        int created = tempfile_try_create_path(cpath);
+        if (created > 0)
+            return path;
+        rt_string_unref(path);
+        if (created < 0)
+            return rt_const_cstr("");
+    }
 
-    // Create file atomically to prevent TOCTOU race
-#ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h != INVALID_HANDLE_VALUE)
-        CloseHandle(h);
-#else
-    int tmp_fd = open(cpath, O_CREAT | O_EXCL | O_WRONLY, 0600);
-    if (tmp_fd >= 0)
-        close(tmp_fd);
-#endif
-
-    return path;
+    rt_trap("TempFile.Create: failed to generate a unique temporary file path");
+    return rt_const_cstr("");
 }
 
 rt_string rt_tempdir_create(void) {
@@ -215,28 +258,17 @@ rt_string rt_tempdir_create(void) {
 }
 
 rt_string rt_tempdir_create_with_prefix(rt_string prefix) {
-    char unique_id[64];
-    generate_unique_id(unique_id, sizeof(unique_id));
+    for (int attempt = 0; attempt < 128; attempt++) {
+        rt_string result = rt_tempfile_path_with_ext(prefix, rt_const_cstr(""));
+        const char *cpath = rt_string_cstr(result);
+        int created = tempfile_try_create_dir(cpath);
+        if (created > 0)
+            return result;
+        rt_string_unref(result);
+        if (created < 0)
+            return rt_const_cstr("");
+    }
 
-    const char *prefix_cstr = rt_string_cstr(prefix);
-
-    // Build dirname: prefix + unique_id
-    size_t dirname_len = strlen(prefix_cstr) + strlen(unique_id) + 1;
-    char *dirname = (char *)malloc(dirname_len);
-    if (!dirname)
-        rt_trap("TempFile: memory allocation failed");
-    snprintf(dirname, dirname_len, "%s%s", prefix_cstr, unique_id);
-
-    rt_string temp_dir = rt_tempfile_dir();
-    rt_string dname_str = rt_string_from_bytes(dirname, strlen(dirname));
-    free(dirname);
-
-    rt_string result = rt_path_join(temp_dir, dname_str);
-    rt_string_unref(dname_str);
-    rt_string_unref(temp_dir);
-
-    // Create directory
-    rt_dir_make(result);
-
-    return result;
+    rt_trap("TempFile.CreateDir: failed to generate a unique temporary directory path");
+    return rt_const_cstr("");
 }

@@ -529,6 +529,11 @@ rt_string rt_linereader_read_all(void *obj) {
 
     // Read the rest
     size_t read = fread(buf + offset, 1, remaining, lr->fp);
+    if (read < remaining && ferror(lr->fp)) {
+        free(buf);
+        rt_trap("LineReader.ReadAll: read failed");
+        return rt_string_from_bytes("", 0);
+    }
     total = offset + read;
 
     lr->eof = 1;

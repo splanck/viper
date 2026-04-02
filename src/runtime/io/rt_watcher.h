@@ -4,18 +4,19 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/io/rt_watcher.h
-// Purpose: File system watcher for Viper.IO.Watcher, monitoring files and directories for changes
-// (created, modified, deleted) and delivering events via callbacks.
+// Purpose: Poll-based file system watcher for Viper.IO.Watcher, monitoring files and directories
+// for changes via native OS facilities and exposing queued events through Poll/PollFor.
 //
 // Key invariants:
-//   - Events are delivered asynchronously via a callback registered at creation.
-//   - Watching a directory is recursive by default on all platforms.
+//   - Events are queued internally and retrieved synchronously via Poll/PollFor.
+//   - Watching is non-recursive on all platforms.
 //   - The watcher must be started with rt_watcher_start before events fire.
-//   - Callback may be invoked from a background thread; caller must synchronize.
+//   - EventPath returns the full watched file path for file watches; directory watches
+//     return the changed child path when the platform reports one, otherwise the watched path.
 //
 // Ownership/Lifetime:
-//   - Watcher objects are heap-allocated; caller must stop and free when done.
-//   - Callback function pointer must remain valid while the watcher is running.
+//   - Watcher objects are heap-allocated and GC-managed.
+//   - The watcher retains copies of the watched path and any queued event paths.
 //
 // Links: src/runtime/io/rt_watcher.c (implementation), src/runtime/core/rt_string.h
 //

@@ -115,6 +115,15 @@ static void wait_for_event() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
+static int64_t poll_until_event(void *watcher, int attempts = 20) {
+    for (int i = 0; i < attempts; i++) {
+        int64_t event = rt_watcher_poll_for(watcher, 100);
+        if (event != RT_WATCH_EVENT_NONE)
+            return event;
+    }
+    return RT_WATCH_EVENT_NONE;
+}
+
 /// @brief Test watcher creation and basic properties.
 static void test_watcher_new() {
     printf("Testing Watcher.New...\n");
@@ -199,6 +208,69 @@ static void test_poll_no_events() {
     rmdir_p(base);
 }
 
+static void test_directory_event_path() {
+    printf("Testing directory event paths...\n");
+
+    const char *base = get_test_base();
+    mkdir_p(base);
+
+    char file_path[512];
+#ifdef _WIN32
+    snprintf(file_path, sizeof(file_path), "%s\\created.txt", base);
+#else
+    snprintf(file_path, sizeof(file_path), "%s/created.txt", base);
+#endif
+
+    void *w = rt_watcher_new(rt_string_from_bytes(base, strlen(base)));
+    rt_watcher_start(w);
+    wait_for_event();
+    create_file(file_path);
+
+    int64_t event = poll_until_event(w);
+    assert(event != RT_WATCH_EVENT_NONE);
+    rt_string event_path = rt_watcher_event_path(w);
+#if defined(__APPLE__)
+    test_result("macOS directory event path is watched directory",
+                strcmp(rt_string_cstr(event_path), base) == 0);
+#else
+    test_result("directory event path resolves full child path",
+                strcmp(rt_string_cstr(event_path), file_path) == 0);
+#endif
+
+    rt_watcher_stop(w);
+    remove_file(file_path);
+    rmdir_p(base);
+}
+
+static void test_file_event_path() {
+    printf("Testing file event paths...\n");
+
+    const char *base = get_test_base();
+    mkdir_p(base);
+
+    char file_path[512];
+#ifdef _WIN32
+    snprintf(file_path, sizeof(file_path), "%s\\watched.txt", base);
+#else
+    snprintf(file_path, sizeof(file_path), "%s/watched.txt", base);
+#endif
+    create_file(file_path);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(file_path, strlen(file_path)));
+    rt_watcher_start(w);
+    wait_for_event();
+    modify_file(file_path);
+
+    int64_t event = poll_until_event(w);
+    assert(event != RT_WATCH_EVENT_NONE);
+    rt_string event_path = rt_watcher_event_path(w);
+    test_result("file event path is watched file", strcmp(rt_string_cstr(event_path), file_path) == 0);
+
+    rt_watcher_stop(w);
+    remove_file(file_path);
+    rmdir_p(base);
+}
+
 /// @brief Test watcher traps on null path.
 static void test_null_path_trap() {
     printf("Testing null path trap...\n");
@@ -230,6 +302,8 @@ int main() {
     test_watcher_new();
     test_watcher_start_stop();
     test_poll_no_events();
+    test_directory_event_path();
+    test_file_event_path();
     test_null_path_trap();
     test_nonexistent_path_trap();
 

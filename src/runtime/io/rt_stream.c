@@ -68,22 +68,43 @@ static inline int64_t bytes_len(void *obj) {
     return ((bytes_impl *)obj)->len;
 }
 
+static void stream_release_wrapped(stream_impl *s) {
+    if (!s || !s->owns || !s->wrapped)
+        return;
+
+    void *wrapped = s->wrapped;
+    s->wrapped = NULL;
+    if (rt_obj_release_check0(wrapped))
+        rt_obj_free(wrapped);
+}
+
+static void stream_dispose_bytes(void *bytes) {
+    if (bytes && rt_obj_release_check0(bytes))
+        rt_obj_free(bytes);
+}
+
+static void *stream_shrink_bytes(void *bytes, int64_t len) {
+    if (!bytes)
+        return rt_bytes_new(0);
+    if (len <= 0) {
+        stream_dispose_bytes(bytes);
+        return rt_bytes_new(0);
+    }
+    if (rt_bytes_len(bytes) == len)
+        return bytes;
+
+    void *slice = rt_bytes_slice(bytes, 0, len);
+    stream_dispose_bytes(bytes);
+    return slice;
+}
+
 //=============================================================================
 // Finalizer
 //=============================================================================
 
 static void stream_finalizer(void *obj) {
     stream_impl *s = (stream_impl *)obj;
-    if (s && s->owns && s->wrapped) {
-        if (s->type == RT_STREAM_TYPE_BINFILE) {
-            rt_binfile_close(s->wrapped);
-        } else {
-            // MemStream or other wrapped types: release via object API
-            if (rt_obj_release_check0(s->wrapped))
-                rt_obj_free(s->wrapped);
-        }
-        s->wrapped = NULL;
-    }
+    stream_release_wrapped(s);
 }
 
 //=============================================================================
@@ -236,14 +257,7 @@ void *rt_stream_read(void *stream, int64_t count) {
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         void *bytes = rt_bytes_new(count);
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
-
-        // If we read less than requested, return a slice
-        if (read < count && read > 0) {
-            return rt_bytes_slice(bytes, 0, read);
-        } else if (read <= 0) {
-            return rt_bytes_new(0);
-        }
-        return bytes;
+        return stream_shrink_bytes(bytes, read);
     } else {
         return rt_memstream_read_bytes(s->wrapped, count);
     }
@@ -264,8 +278,8 @@ void *rt_stream_read_all(void *stream) {
             return rt_bytes_new(0);
 
         void *bytes = rt_bytes_new(remaining);
-        rt_binfile_read(s->wrapped, bytes, 0, remaining);
-        return bytes;
+        int64_t read = rt_binfile_read(s->wrapped, bytes, 0, remaining);
+        return stream_shrink_bytes(bytes, read);
     } else {
         // Read remaining bytes from MemStream
         int64_t pos = rt_memstream_get_pos(s->wrapped);
@@ -343,12 +357,7 @@ void rt_stream_close(void *stream) {
         return;
 
     stream_impl *s = (stream_impl *)stream;
-    if (s->wrapped && s->owns) {
-        if (s->type == RT_STREAM_TYPE_BINFILE) {
-            rt_binfile_close(s->wrapped);
-        }
-        s->wrapped = NULL;
-    }
+    stream_release_wrapped(s);
 }
 
 //=============================================================================

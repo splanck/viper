@@ -32,13 +32,21 @@
 
 #include "rt_dir.h"
 #include "rt_file_ext.h"
+#include "rt_file_path.h"
 #include "rt_object.h"
 #include "rt_path.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
 
 //=============================================================================
 // Pattern Matching
@@ -49,6 +57,75 @@
 /// @param text Text string (null-terminated).
 /// @param allow_slash Whether * matches /
 /// @return 1 if match, 0 otherwise.
+static int glob_char_eq(char a, char b) {
+#ifdef _WIN32
+    return tolower((unsigned char)a) == tolower((unsigned char)b);
+#else
+    return a == b;
+#endif
+}
+
+static int glob_char_in_range(char ch, char start, char end) {
+#ifdef _WIN32
+    unsigned char c = (unsigned char)tolower((unsigned char)ch);
+    unsigned char lo = (unsigned char)tolower((unsigned char)start);
+    unsigned char hi = (unsigned char)tolower((unsigned char)end);
+#else
+    unsigned char c = (unsigned char)ch;
+    unsigned char lo = (unsigned char)start;
+    unsigned char hi = (unsigned char)end;
+#endif
+    if (lo > hi) {
+        unsigned char tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
+    return c >= lo && c <= hi;
+}
+
+static int glob_match_class(const char **pattern_ptr, char ch, int allow_slash) {
+    const char *p = *pattern_ptr + 1; // skip '['
+    int negate = 0;
+    int matched = 0;
+    int has_prev = 0;
+    char prev = '\0';
+
+    if (!ch || (ch == '/' && !allow_slash))
+        return 0;
+
+    if (*p == '!' || *p == '^') {
+        negate = 1;
+        p++;
+    }
+
+    while (*p && *p != ']') {
+        char token = *p++;
+        if (token == '\\' && *p)
+            token = *p++;
+
+        if (token == '-' && has_prev && *p && *p != ']') {
+            char end = *p++;
+            if (end == '\\' && *p)
+                end = *p++;
+            if (glob_char_in_range(ch, prev, end))
+                matched = 1;
+            has_prev = 0;
+            continue;
+        }
+
+        if (glob_char_eq(ch, token))
+            matched = 1;
+        prev = token;
+        has_prev = 1;
+    }
+
+    if (*p != ']')
+        return -1;
+
+    *pattern_ptr = p + 1;
+    return negate ? !matched : matched;
+}
+
 static int glob_match_impl(const char *pattern, const char *text, int allow_slash) {
     while (*pattern) {
         if (*pattern == '*') {
@@ -105,9 +182,23 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
                 return 0;
             pattern++;
             text++;
+        } else if (*pattern == '[') {
+            const char *after = pattern;
+            int match = glob_match_class(&after, *text, allow_slash);
+            if (match >= 0) {
+                if (!match)
+                    return 0;
+                pattern = after;
+                text++;
+            } else {
+                if (!glob_char_eq(*pattern, *text))
+                    return 0;
+                pattern++;
+                text++;
+            }
         } else {
             // Literal character match
-            if (*pattern != *text)
+            if (!glob_char_eq(*pattern, *text))
                 return 0;
             pattern++;
             text++;
@@ -121,6 +212,33 @@ int8_t rt_glob_match(rt_string path, rt_string pattern) {
     const char *pat = rt_string_cstr(pattern);
     const char *txt = rt_string_cstr(path);
     return glob_match_impl(pat, txt, 0) ? 1 : 0;
+}
+
+static void glob_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static int glob_is_real_directory(rt_string path) {
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return 0;
+
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(cpath);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        return 0;
+    if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
+        return 0;
+    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+        return 0;
+    return 1;
+#else
+    struct stat st;
+    if (lstat(cpath, &st) != 0)
+        return 0;
+    return S_ISDIR(st.st_mode) ? 1 : 0;
+#endif
 }
 
 //=============================================================================
@@ -158,10 +276,12 @@ static void glob_recursive_helper(rt_string base_dir,
                                   void *result) {
     // List all entries in current directory
     rt_string current_dir;
+    int owns_current_dir = 0;
     if (rt_str_len(rel_path) == 0) {
         current_dir = rt_string_ref(base_dir);
     } else {
         current_dir = rt_path_join(base_dir, rel_path);
+        owns_current_dir = 1;
     }
 
     void *entries = rt_dir_list_seq(current_dir);
@@ -179,6 +299,7 @@ static void glob_recursive_helper(rt_string base_dir,
             rt_string slash = rt_const_cstr("/");
             rt_string temp = rt_str_concat(rt_string_ref(rel_path), slash);
             entry_rel = rt_str_concat(temp, rt_string_ref(name));
+            rt_string_unref(temp);
         }
 
         // Check if this entry matches the pattern
@@ -190,7 +311,7 @@ static void glob_recursive_helper(rt_string base_dir,
         }
 
         // If directory, recurse into it
-        if (rt_dir_exists(full_path)) {
+        if (glob_is_real_directory(full_path)) {
             glob_recursive_helper(base_dir, entry_rel, pattern, result);
         }
 
@@ -198,7 +319,10 @@ static void glob_recursive_helper(rt_string base_dir,
         rt_string_unref(full_path);
     }
 
-    if (current_dir != base_dir) {
+    glob_release_object(entries);
+    if (owns_current_dir) {
+        rt_string_unref(current_dir);
+    } else {
         rt_string_unref(current_dir);
     }
 }
@@ -229,5 +353,6 @@ void *rt_glob_entries(rt_string dir, rt_string pattern) {
         }
     }
 
+    glob_release_object(entries);
     return result;
 }

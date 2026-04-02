@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-01
 ---
 
 # Files & Directories
@@ -21,7 +21,7 @@ File system operations.
 
 | Method                        | Signature              | Description                                                                               |
 |-------------------------------|------------------------|-------------------------------------------------------------------------------------------|
-| `Exists(path)`                | `Boolean(String)`      | Returns true if the file exists                                                           |
+| `Exists(path)`                | `Boolean(String)`      | Returns true only if the path exists and is a regular file                               |
 | `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string                                                |
 | `WriteAllText(path, content)` | `Void(String, String)` | Writes a string to a file (overwrites if exists)                                          |
 | `Delete(path)`                | `Void(String)`         | Deletes a file                                                                            |
@@ -43,6 +43,7 @@ File system operations.
 ### Notes
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
+- `Exists` returns false for directories; use `Dir.Exists` for directory checks.
 - `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending
   does not add an extra empty final line.
 - `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.

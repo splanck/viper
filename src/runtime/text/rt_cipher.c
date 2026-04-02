@@ -125,7 +125,20 @@ static void derive_key_pbkdf2(const char *password,
 // Password-Based Encryption
 //=============================================================================
 
-/// @brief Cipher encrypt.
+/// @brief Encrypt data using a password with ChaCha20-Poly1305 AEAD.
+/// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
+///          (100,000 iterations) with a fresh random 16-byte salt. Generates
+///          a random 12-byte nonce. Encrypts and authenticates the plaintext
+///          using ChaCha20-Poly1305 (RFC 8439), producing a 16-byte Poly1305
+///          authentication tag that detects any tampering.
+///
+///          Wire format: [salt(16) | nonce(12) | ciphertext | tag(16)]
+///
+///          The salt is unique per call, so encrypting the same plaintext with
+///          the same password always produces different ciphertext.
+/// @param plaintext Bytes object containing data to encrypt (traps if NULL).
+/// @param password  Password string for key derivation (traps if empty).
+/// @return Bytes object containing the encrypted payload.
 void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     if (!plaintext) {
         rt_trap("Cipher.Encrypt: plaintext is null");
@@ -180,7 +193,18 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     return result;
 }
 
-/// @brief Cipher decrypt.
+/// @brief Decrypt data that was encrypted with rt_cipher_encrypt.
+/// @details Extracts the salt and nonce from the ciphertext header, re-derives
+///          the key using PBKDF2-HMAC-SHA256, then decrypts and verifies the
+///          Poly1305 authentication tag. If verification fails (wrong password
+///          or corrupted data), falls back to the legacy HKDF-based key
+///          derivation scheme for backward compatibility. Traps if both
+///          derivation schemes fail authentication.
+///
+///          Expected wire format: [salt(16) | nonce(12) | ciphertext | tag(16)]
+/// @param ciphertext Bytes object containing the encrypted payload.
+/// @param password   Password string for key derivation.
+/// @return Bytes object containing the decrypted plaintext.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
     if (!ciphertext) {
         rt_trap("Cipher.Decrypt: ciphertext is null");
@@ -252,7 +276,17 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
 // Key-Based Encryption
 //=============================================================================
 
-/// @brief Cipher encrypt with key.
+/// @brief Encrypt data using a raw 256-bit key with ChaCha20-Poly1305 AEAD.
+/// @details Like rt_cipher_encrypt but skips key derivation — the caller
+///          provides a pre-derived 32-byte key (e.g., from rt_cipher_generate_key
+///          or rt_cipher_derive_key). A random 12-byte nonce is generated per call.
+///
+///          Wire format: [nonce(12) | ciphertext | tag(16)]
+///
+///          Note: no salt is stored because no password derivation occurs.
+/// @param plaintext  Bytes object containing data to encrypt (traps if NULL).
+/// @param key_bytes  Bytes object containing exactly 32 bytes (traps if wrong size).
+/// @return Bytes object containing the encrypted payload.
 void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     if (!plaintext) {
         rt_trap("Cipher.EncryptWithKey: plaintext is null");
@@ -296,7 +330,15 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     return result;
 }
 
-/// @brief Cipher decrypt with key.
+/// @brief Decrypt data that was encrypted with rt_cipher_encrypt_with_key.
+/// @details Extracts the 12-byte nonce from the ciphertext header, then
+///          decrypts and verifies the Poly1305 authentication tag using the
+///          provided 32-byte key. Traps if authentication fails.
+///
+///          Expected wire format: [nonce(12) | ciphertext | tag(16)]
+/// @param ciphertext Bytes object containing the encrypted payload.
+/// @param key_bytes  Bytes object containing exactly 32 bytes.
+/// @return Bytes object containing the decrypted plaintext.
 void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
     if (!ciphertext) {
         rt_trap("Cipher.DecryptWithKey: ciphertext is null");
@@ -350,14 +392,27 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
 // Key Generation
 //=============================================================================
 
-/// @brief Cipher generate key.
+/// @brief Generate a random 256-bit (32-byte) encryption key from the OS CSPRNG.
+/// @details The key is suitable for use with rt_cipher_encrypt_with_key and
+///          rt_cipher_decrypt_with_key. Uses the same CSPRNG as rt_crypto_rand_bytes
+///          (arc4random on macOS, BCryptGenRandom on Windows, /dev/urandom on Linux).
+/// @return Bytes object containing 32 cryptographically random bytes.
 void *rt_cipher_generate_key(void) {
     void *key = rt_bytes_new(CIPHER_KEY_SIZE);
     rt_crypto_random_bytes(bytes_data(key), CIPHER_KEY_SIZE);
     return key;
 }
 
-/// @brief Cipher derive key.
+/// @brief Derive a deterministic 256-bit key from a password and salt.
+/// @details Uses PBKDF2-HMAC-SHA256 with 100,000 iterations. The same password
+///          and salt always produce the same key, which is the point — this
+///          enables key agreement between parties who share a password. The salt
+///          should be at least 16 bytes of random data to prevent rainbow-table
+///          attacks. For one-time encryption, prefer rt_cipher_encrypt (which
+///          generates salt automatically).
+/// @param password   Password string (traps if empty).
+/// @param salt_bytes Bytes object containing the salt (traps if NULL or empty).
+/// @return Bytes object containing the 32-byte derived key.
 void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
     if (!salt_bytes) {
         rt_trap("Cipher.DeriveKey: salt is null");

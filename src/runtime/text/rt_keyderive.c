@@ -119,7 +119,16 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
     free(salt_int);
 }
 
-/// @brief Derive a key using PBKDF2-SHA256.
+/// @brief Derive a key from a password using PBKDF2-SHA256, returning a Bytes object.
+/// @details High-level wrapper around rt_keyderive_pbkdf2_sha256_raw that
+///          handles Viper string/bytes conversion. Validates iterations (min 1000)
+///          and key length (1–1024 bytes). The derived key is zeroed from the
+///          temporary buffer after copying to the Bytes object.
+/// @param password   Password string.
+/// @param salt       Bytes object containing the salt.
+/// @param iterations Number of PBKDF2 iterations (min 1000).
+/// @param key_len    Desired output key length in bytes (1–1024).
+/// @return Bytes object containing the derived key.
 void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  void *salt,
                                  int64_t iterations,
@@ -168,7 +177,15 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     return result;
 }
 
-/// @brief Derive a key using PBKDF2-SHA256 and return as hex string.
+/// @brief Derive a key from a password using PBKDF2-SHA256, returning a hex string.
+/// @details Same derivation as rt_keyderive_pbkdf2_sha256 but returns the key
+///          encoded as a lowercase hexadecimal string (2 chars per byte). Useful
+///          for interop with systems that expect text-encoded keys.
+/// @param password   Password string.
+/// @param salt       Bytes object containing the salt.
+/// @param iterations Number of PBKDF2 iterations (min 1000).
+/// @param key_len    Desired output key length in bytes (hex output is 2x this).
+/// @return Hex-encoded string of the derived key.
 rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          void *salt,
                                          int64_t iterations,

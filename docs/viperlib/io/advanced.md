@@ -1,11 +1,11 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-01
 ---
 
 # Advanced IO
-> Archive (zip/tar), Compress (gzip/zstd/lz4), Watcher (filesystem events)
+> Archive (ZIP), Compress (DEFLATE/GZIP), Watcher (filesystem events)
 
 **Part of [Viper Runtime Library](../README.md) › [Input & Output](README.md)**
 
@@ -354,6 +354,7 @@ Compression traps on:
 - Invalid or truncated compressed data
 - CRC32 mismatch in GZIP decompression
 - Corrupted DEFLATE stream
+- Inflated output exceeding the runtime safety cap (256 MiB)
 
 ### Implementation Notes
 
@@ -410,7 +411,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `Stop()`        | void    | Stop watching for events                                 |
 | `Poll()`        | Integer | Check for event (non-blocking); returns event type or 0  |
 | `PollFor(ms)`   | Integer | Wait up to ms milliseconds for event; returns event type |
-| `EventPath()`   | String  | Get the path of the file that triggered the last event   |
+| `EventPath()`   | String  | Get the full path for the last event, or the watched path when the backend cannot report a child path |
 | `EventType()`   | Integer | Get the type of the last polled event                    |
 
 ### Platform Implementation
@@ -423,7 +424,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 
 ### Zia Example
 
-> Watcher is not yet available from Zia. The constructor name `new()` conflicts with the Zia `new` keyword, and `Poll`/`PollFor` are not exported. Use BASIC for file system watching.
+Watcher is available from Zia and BASIC through the same poll-based API.
 
 ### BASIC Example
 
@@ -501,6 +502,8 @@ watcher.Stop()
 - `PollFor(ms)` waits up to the specified milliseconds for an event
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
+- Directory watches are non-recursive
+- macOS directory watches report the watched directory path for queued events because `kqueue` does not provide child entry names
 - Platform-specific behavior may vary slightly for edge cases
 
 ---

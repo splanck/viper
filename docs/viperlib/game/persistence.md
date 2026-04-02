@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-25
+last-verified: 2026-04-01
 ---
 
 # SaveData — Game Persistence
@@ -95,7 +95,7 @@ func start() {
 
 ### Atomic Writes
 
-`Save()` opens the file, writes the complete JSON, and closes it in one operation. There is no incremental/append mode — the entire state is written each time.
+`Save()` writes the complete JSON payload to a temporary file in the destination directory and then replaces the live save file. There is no incremental or append mode; each save writes the full state atomically.
 
 ### Last-Write Wins
 
@@ -112,6 +112,8 @@ Data is stored as a flat JSON object. Integer values are stored as numbers; stri
   "level_reached": 5
 }
 ```
+
+String values are emitted with standard JSON escaping for control characters. `Load()` rejects malformed or trailing garbage and leaves the in-memory state unchanged on failure.
 
 ---
 

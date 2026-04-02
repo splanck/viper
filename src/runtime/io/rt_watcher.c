@@ -31,6 +31,7 @@
 #include "rt_watcher.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_path.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 
@@ -62,8 +63,8 @@
 #endif
 
 // Helper to create rt_string from C string
-static inline void *str_from_cstr(const char *s) {
-    return s ? (void *)rt_string_from_bytes(s, strlen(s)) : NULL;
+static inline rt_string str_from_cstr(const char *s) {
+    return s ? rt_string_from_bytes(s, strlen(s)) : NULL;
 }
 
 #define WATCHER_EVENT_QUEUE_SIZE 64
@@ -76,9 +77,11 @@ typedef struct watcher_event {
 
 /// @brief Internal watcher implementation structure.
 typedef struct rt_watcher_impl {
-    void *watch_path;    ///< The path being watched (rt_string)
-    int8_t is_watching;  ///< 1 if actively watching
-    int8_t is_directory; ///< 1 if watching a directory
+    void *watch_path;     ///< The path being watched (rt_string)
+    void *watch_dir_path; ///< Directory path used for full event path reconstruction (rt_string)
+    void *watch_leaf_name; ///< Final path component when watching a single file (rt_string)
+    int8_t is_watching;   ///< 1 if actively watching
+    int8_t is_directory;  ///< 1 if watching a directory
 
     // Event queue
     watcher_event events[WATCHER_EVENT_QUEUE_SIZE];
@@ -126,6 +129,8 @@ static void rt_watcher_finalize(void *obj) {
 #elif defined(_WIN32)
         if (w->dir_handle != INVALID_HANDLE_VALUE) {
             CancelIo(w->dir_handle);
+            if (w->overlapped.hEvent)
+                CloseHandle(w->overlapped.hEvent);
             CloseHandle(w->dir_handle);
         }
 #endif
@@ -146,10 +151,42 @@ static void rt_watcher_finalize(void *obj) {
         rt_string_unref(w->watch_path);
         w->watch_path = NULL;
     }
+    if (w->watch_dir_path) {
+        rt_string_unref(w->watch_dir_path);
+        w->watch_dir_path = NULL;
+    }
+    if (w->watch_leaf_name) {
+        rt_string_unref(w->watch_leaf_name);
+        w->watch_leaf_name = NULL;
+    }
 }
 
+#if defined(__linux__) || defined(_WIN32)
+static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char *path) {
+    if (!w)
+        return NULL;
+
+    if (!path || path[0] == '\0')
+        return rt_string_ref((rt_string)w->watch_path);
+
+    rt_string rel = str_from_cstr(path);
+    if (!rel)
+        return rt_string_ref((rt_string)w->watch_path);
+
+    if (!w->is_directory && w->watch_leaf_name) {
+        int matches = rt_str_eq((rt_string)w->watch_leaf_name, rel);
+        rt_string_unref(rel);
+        return matches ? rt_string_ref((rt_string)w->watch_path) : NULL;
+    }
+
+    rt_string full = rt_path_join((rt_string)w->watch_dir_path, rel);
+    rt_string_unref(rel);
+    return full;
+}
+#endif
+
 /// @brief Queue an event internally.
-static void watcher_queue_event(rt_watcher_impl *w, int64_t type, const char *path) {
+static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_string path) {
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         // Queue full, drop oldest
         if (w->events[w->event_head].path)
@@ -159,7 +196,7 @@ static void watcher_queue_event(rt_watcher_impl *w, int64_t type, const char *pa
     }
 
     w->events[w->event_tail].type = type;
-    w->events[w->event_tail].path = path ? str_from_cstr(path) : NULL;
+    w->events[w->event_tail].path = path;
     w->event_tail = (w->event_tail + 1) % WATCHER_EVENT_QUEUE_SIZE;
     w->event_count++;
 }
@@ -199,8 +236,10 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
             type = RT_WATCH_EVENT_RENAMED;
 
         if (type != RT_WATCH_EVENT_NONE) {
-            const char *name = event->len > 0 ? event->name : "";
-            watcher_queue_event(w, type, name);
+            const char *name = event->len > 0 ? event->name : NULL;
+            rt_string path = watcher_event_path_from_relative(w, name);
+            if (path)
+                watcher_queue_event_owned(w, type, path);
         }
 
         ptr += sizeof(struct inotify_event) + event->len;
@@ -221,15 +260,18 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
         return;
 
     if (event.fflags & NOTE_DELETE)
-        watcher_queue_event(w, RT_WATCH_EVENT_DELETED, "");
+        watcher_queue_event_owned(w, RT_WATCH_EVENT_DELETED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_WRITE)
-        watcher_queue_event(w, RT_WATCH_EVENT_MODIFIED, "");
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_MODIFIED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_RENAME)
-        watcher_queue_event(w, RT_WATCH_EVENT_RENAMED, "");
+        watcher_queue_event_owned(w, RT_WATCH_EVENT_RENAMED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_EXTEND)
-        watcher_queue_event(w, RT_WATCH_EVENT_MODIFIED, "");
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_MODIFIED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_ATTRIB)
-        watcher_queue_event(w, RT_WATCH_EVENT_MODIFIED, "");
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_MODIFIED, rt_string_ref((rt_string)w->watch_path));
 }
 #endif
 
@@ -280,7 +322,9 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
                 WideCharToMultiByte(
                     CP_UTF8, 0, info->FileName, name_len, name, utf8_len, NULL, NULL);
                 name[utf8_len] = '\0';
-                watcher_queue_event(w, type, name);
+                rt_string path = watcher_event_path_from_relative(w, name);
+                if (path)
+                    watcher_queue_event_owned(w, type, path);
                 free(name);
             }
         }
@@ -291,6 +335,8 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
     }
 
     // Start another read
+    if (w->overlapped.hEvent)
+        ResetEvent(w->overlapped.hEvent);
     ReadDirectoryChangesW(w->dir_handle,
                           w->buffer,
                           sizeof(w->buffer),
@@ -325,6 +371,13 @@ void *rt_watcher_new(rt_string path) {
     memset(w, 0, sizeof(rt_watcher_impl));
     w->watch_path = str_from_cstr(cpath);
     w->is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
+    if (w->is_directory) {
+        w->watch_dir_path = rt_string_ref((rt_string)w->watch_path);
+        w->watch_leaf_name = NULL;
+    } else {
+        w->watch_dir_path = rt_path_dir((rt_string)w->watch_path);
+        w->watch_leaf_name = rt_path_name((rt_string)w->watch_path);
+    }
     w->is_watching = 0;
     w->event_head = 0;
     w->event_tail = 0;
@@ -418,7 +471,8 @@ void rt_watcher_start(void *obj) {
 
 #elif defined(_WIN32)
     // For Windows, we need to watch the directory (or parent directory for files)
-    const char *watch_dir = w->is_directory ? cpath : "."; // Simplified
+    const char *watch_dir =
+        rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
 
     w->dir_handle = CreateFileA(watch_dir,
                                 FILE_LIST_DIRECTORY,
@@ -487,7 +541,10 @@ void rt_watcher_stop(void *obj) {
 #elif defined(_WIN32)
     if (w->dir_handle != INVALID_HANDLE_VALUE) {
         CancelIo(w->dir_handle);
-        CloseHandle(w->overlapped.hEvent);
+        if (w->overlapped.hEvent) {
+            CloseHandle(w->overlapped.hEvent);
+            w->overlapped.hEvent = NULL;
+        }
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
     }

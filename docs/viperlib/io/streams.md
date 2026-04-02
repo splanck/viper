@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-01
 ---
 
 # Streams & Buffers
@@ -60,7 +60,7 @@ Unified stream abstraction providing a common interface over file and memory str
 
 ### Zia Example
 
-> Stream is not yet fully accessible from Zia. `OpenFile`/`OpenMemory`/`OpenBytes` return untyped pointers, and `FromBinFile`/`FromMemStream` have runtime issues. Use `BinFile` or `MemStream` directly instead.
+`Stream` is available from both Zia and BASIC. Use `Close()` when you own the stream and are done with it so wrapped file or memory resources are released promptly.
 
 ### BASIC Example
 

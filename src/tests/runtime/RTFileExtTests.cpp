@@ -106,8 +106,14 @@ static void test_exists() {
     create_test_file(file_path, "test");
     test_result("file exists after create", rt_io_file_exists(path) == 1);
 
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_exists_dir", base);
+    mkdir_p(dir_path);
+    test_result("directory is not treated as file", rt_io_file_exists(rt_const_cstr(dir_path)) == 0);
+
     // Clean up
     remove_file(file_path);
+    rmdir_p(dir_path);
     test_result("file not exists after remove", rt_io_file_exists(path) == 0);
 
     printf("\n");

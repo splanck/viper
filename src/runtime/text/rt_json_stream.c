@@ -43,6 +43,7 @@
 #define MAX_DEPTH 256
 
 typedef struct {
+    rt_string input_owner;
     const char *input;
     size_t len;
     size_t pos;
@@ -62,6 +63,10 @@ typedef struct {
 static void stream_finalizer(void *obj) {
     rt_json_stream_impl *s = (rt_json_stream_impl *)obj;
     if (s) {
+        if (s->input_owner) {
+            rt_string_unref(s->input_owner);
+            s->input_owner = NULL;
+        }
         free(s->str_buf);
         s->str_buf = NULL;
         free(s->error_msg);
@@ -289,9 +294,10 @@ void *rt_json_stream_new(rt_string json) {
         rt_trap("JsonStream: memory allocation failed");
         return NULL;
     }
-    const char *cstr = rt_string_cstr(json);
+    s->input_owner = json ? rt_string_ref(json) : NULL;
+    const char *cstr = json ? rt_string_cstr(json) : "";
     s->input = cstr ? cstr : "";
-    s->len = cstr ? strlen(cstr) : 0;
+    s->len = json ? (size_t)rt_str_len(json) : 0;
     s->pos = 0;
     s->current_type = RT_JSON_TOK_NONE;
     s->str_buf = NULL;

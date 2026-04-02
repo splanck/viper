@@ -297,9 +297,15 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
 
     size_t read = fread(b->data + offset, 1, (size_t)count, bf->fp);
 
-    // Update EOF flag
+    if (read < (size_t)count && ferror(bf->fp)) {
+        rt_trap("BinFile.Read: read failed");
+        return (int64_t)read;
+    }
+
     if (feof(bf->fp))
         bf->eof = 1;
+    else if (read > 0)
+        bf->eof = 0;
 
     return (int64_t)read;
 }
@@ -425,10 +431,15 @@ int64_t rt_binfile_read_byte(void *obj) {
 
     int c = fgetc(bf->fp);
     if (c == EOF) {
+        if (ferror(bf->fp)) {
+            rt_trap("BinFile.ReadByte: read failed");
+            return -1;
+        }
         bf->eof = 1;
         return -1;
     }
 
+    bf->eof = 0;
     return (int64_t)(unsigned char)c;
 }
 
