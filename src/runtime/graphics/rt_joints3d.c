@@ -59,6 +59,14 @@ static void distance_joint_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Create a distance joint that constrains two bodies to a fixed separation.
+/// @details The joint applies positional correction and velocity damping each
+///          physics step to maintain the target distance. Both bodies must be
+///          non-null. If both are static (zero inverse mass), the joint is inert.
+/// @param body_a   First body handle.
+/// @param body_b   Second body handle.
+/// @param distance Target separation distance in world units.
+/// @return Opaque joint handle, or NULL on failure.
 void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
     if (!body_a || !body_b) {
         rt_trap("DistanceJoint3D.New: both bodies must be non-null");
@@ -78,10 +86,12 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
     return j;
 }
 
+/// @brief Get the target distance of a distance joint.
 double rt_distance_joint3d_get_distance(void *joint) {
     return joint ? ((rt_distance_joint3d *)joint)->target_distance : 0;
 }
 
+/// @brief Change the target distance of a distance joint at runtime.
 void rt_distance_joint3d_set_distance(void *joint, double distance) {
     if (joint)
         ((rt_distance_joint3d *)joint)->target_distance = distance;
@@ -152,6 +162,16 @@ static void spring_joint_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Create a spring joint that applies Hooke's law forces between two bodies.
+/// @details Unlike the distance joint (hard constraint), the spring joint applies
+///          continuous forces: F = -k*(dist - rest) + damping. This produces
+///          bouncy, elastic behavior. Damping reduces oscillation over time.
+/// @param body_a      First body handle.
+/// @param body_b      Second body handle.
+/// @param rest_length Natural length at which the spring exerts zero force.
+/// @param stiffness   Spring constant k (higher = stiffer, less stretch).
+/// @param damping     Velocity damping coefficient (higher = less oscillation).
+/// @return Opaque joint handle, or NULL on failure.
 void *rt_spring_joint3d_new(void *body_a, void *body_b, double rest_length,
                             double stiffness, double damping) {
     if (!body_a || !body_b) {
@@ -174,24 +194,29 @@ void *rt_spring_joint3d_new(void *body_a, void *body_b, double rest_length,
     return j;
 }
 
+/// @brief Get the spring constant k.
 double rt_spring_joint3d_get_stiffness(void *joint) {
     return joint ? ((rt_spring_joint3d *)joint)->stiffness : 0;
 }
 
+/// @brief Set the spring constant k at runtime.
 void rt_spring_joint3d_set_stiffness(void *joint, double stiffness) {
     if (joint)
         ((rt_spring_joint3d *)joint)->stiffness = stiffness;
 }
 
+/// @brief Get the velocity damping coefficient.
 double rt_spring_joint3d_get_damping(void *joint) {
     return joint ? ((rt_spring_joint3d *)joint)->damping : 0;
 }
 
+/// @brief Set the velocity damping coefficient at runtime.
 void rt_spring_joint3d_set_damping(void *joint, double damping) {
     if (joint)
         ((rt_spring_joint3d *)joint)->damping = damping;
 }
 
+/// @brief Get the spring's natural (zero-force) length.
 double rt_spring_joint3d_get_rest_length(void *joint) {
     return joint ? ((rt_spring_joint3d *)joint)->rest_length : 0;
 }
@@ -244,6 +269,13 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
  * Generic joint solver dispatch
  *=========================================================================*/
 
+/// @brief Dispatch the constraint solver for a joint based on its type.
+/// @details Called by the physics world during each step. Dispatches to
+///          solve_distance (hard positional constraint) or solve_spring
+///          (Hooke's law force application) based on joint_type.
+/// @param joint      Opaque joint handle (distance or spring).
+/// @param joint_type RT_JOINT_DISTANCE or RT_JOINT_SPRING.
+/// @param dt         Physics timestep in seconds.
 void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
     if (!joint)
         return;

@@ -26,6 +26,7 @@ void vm_trap(const char *msg) {
 
 static void reset_fake_app(rt_gui_app_t *app) {
     memset(app, 0, sizeof(*app));
+    app->magic = RT_GUI_APP_MAGIC;
     app->shortcuts_global_enabled = 1;
     app->theme_kind = RT_GUI_THEME_DARK;
 }
@@ -241,6 +242,32 @@ static void test_platform_text_events_translate_to_gui_text(void) {
     printf("test_platform_text_events_translate_to_gui_text: PASSED\n");
 }
 
+static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    s_current_app = &app;
+
+    vg_floatingpanel_t *panel = (vg_floatingpanel_t *)rt_floatingpanel_new(&app);
+    assert(panel);
+    assert(panel->base.parent == app.root);
+
+    void *palette_handle = rt_commandpalette_new(&app);
+    assert(palette_handle);
+    assert(app.command_palette_count == 1);
+    assert(app.command_palettes[0] != NULL);
+
+    rt_shortcuts_register(rt_const_cstr("palette"), rt_const_cstr("Ctrl+Shift+P"), rt_const_cstr(""));
+    assert(app.shortcut_count == 1);
+    assert(app.shortcuts != NULL);
+
+    rt_shortcuts_clear();
+    rt_commandpalette_destroy(palette_handle);
+    cleanup_fake_app(&app);
+    printf("test_app_handles_resolve_to_root_widgets_for_overlays: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -253,6 +280,7 @@ int main(void) {
     test_notification_cleanup_runs_for_manual_dismiss();
     test_command_palette_placeholder_and_utf8_input();
     test_platform_text_events_translate_to_gui_text();
+    test_app_handles_resolve_to_root_widgets_for_overlays();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

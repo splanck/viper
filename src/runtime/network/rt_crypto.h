@@ -99,7 +99,7 @@ void rt_hkdf_extract(
 /// @param okm Output buffer for the derived keying material.
 /// @param okm_len Desired length of output keying material in bytes
 ///               (at most 255 * 32 = 8160 bytes per RFC 5869).
-void rt_hkdf_expand(
+int rt_hkdf_expand(
     const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len);
 
 /// @brief HKDF-Expand-Label for TLS 1.3.
@@ -109,12 +109,12 @@ void rt_hkdf_expand(
 /// @param context_len Length of @p context in bytes.
 /// @param out Output buffer for the derived keying material.
 /// @param out_len Desired length of output in bytes.
-void rt_hkdf_expand_label(const uint8_t secret[32],
-                          const char *label,
-                          const uint8_t *context,
-                          size_t context_len,
-                          uint8_t *out,
-                          size_t out_len);
+int rt_hkdf_expand_label(const uint8_t secret[32],
+                         const char *label,
+                         const uint8_t *context,
+                         size_t context_len,
+                         uint8_t *out,
+                         size_t out_len);
 
 //=========================================================================
 // ChaCha20-Poly1305 AEAD

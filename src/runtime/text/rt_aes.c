@@ -33,7 +33,9 @@
 #include "rt_aes.h"
 
 #include "rt_bytes.h"
+#include "rt_crypto.h"
 #include "rt_internal.h"
+#include "rt_keyderive_internal.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -41,7 +43,19 @@
 
 // Forward declarations
 extern void rt_trap(const char *msg);
-extern void *rt_crypto_rand_bytes(int64_t count);
+
+#define AES_STR_MAGIC0 'V'
+#define AES_STR_MAGIC1 'A'
+#define AES_STR_MAGIC2 'G'
+#define AES_STR_MAGIC3 '1'
+#define AES_STR_HEADER_LEN 36
+#define AES_STR_PBKDF2_ITERATIONS 100000U
+
+static void aes_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
 
 //=============================================================================
 // AES Constants (FIPS-197)
@@ -779,7 +793,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 /// For production-grade security, use PBKDF2-HMAC-SHA256 with a random salt.
 #define DERIVE_KEY_ROUNDS 10000
 
-static void derive_key(const char *password, uint8_t key[32]) {
+static void derive_key_legacy(const char *password, uint8_t key[32]) {
     size_t pass_len = password ? strlen(password) : 0;
 
     /* Fixed application-level domain separator (S-06) */
@@ -816,27 +830,32 @@ static void derive_key(const char *password, uint8_t key[32]) {
 
 #undef DERIVE_KEY_ROUNDS
 
-/// @brief Generate random IV using rt_crypto_rand_bytes
-static void generate_iv(uint8_t iv[16]) {
-    void *rand_bytes = rt_crypto_rand_bytes(16);
-    for (int i = 0; i < 16; i++)
-        iv[i] = (uint8_t)rt_bytes_get(rand_bytes, i);
-    // Release the Bytes object after extracting the random data
-    if (rt_obj_release_check0(rand_bytes))
-        rt_obj_free(rand_bytes);
+static void derive_key_pbkdf2(const char *password,
+                              const uint8_t *salt,
+                              size_t salt_len,
+                              uint32_t iterations,
+                              uint8_t key[16]) {
+    size_t pass_len = password ? strlen(password) : 0;
+    rt_keyderive_pbkdf2_sha256_raw(
+        (const uint8_t *)(password ? password : ""), pass_len, salt, salt_len, iterations, key, 16);
 }
 
-/// @brief Encrypt string using AES-256-CBC with key derivation.
+static void generate_random_bytes(uint8_t *buf, size_t len) {
+    rt_crypto_random_bytes(buf, len);
+}
+
+static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
+    return len >= AES_STR_HEADER_LEN && data[0] == AES_STR_MAGIC0 && data[1] == AES_STR_MAGIC1 &&
+           data[2] == AES_STR_MAGIC2 && data[3] == AES_STR_MAGIC3;
+}
+
+/// @brief Encrypt a string using authenticated AES-128-GCM with PBKDF2-derived keys.
 ///
-/// Encrypts a string using AES-256-CBC. The password is hashed to derive
-/// a 32-byte key. A random 16-byte IV is generated and prepended to the
-/// ciphertext.
+/// Output format:
+///   [magic "VAG1"(4)][PBKDF2 iterations BE32(4)][salt(16)][nonce(12)][ciphertext][tag(16)]
 ///
-/// Output format: [16-byte IV][ciphertext]
-///
-/// @param data String to encrypt
-/// @param password Password string
-/// @return Bytes object containing IV + ciphertext
+/// Decrypt remains backward-compatible with the legacy
+/// [iv(16)][aes-256-cbc-ciphertext] format.
 void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     const char *data_cstr = rt_string_cstr(data);
     const char *pass_cstr = rt_string_cstr(password);
@@ -846,77 +865,165 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     if (!pass_cstr)
         pass_cstr = "";
 
-    // Derive key from password
-    uint8_t key[32];
-    derive_key(pass_cstr, key);
-
-    // Generate random IV
-    uint8_t iv[16];
-    generate_iv(iv);
-
-    // Encrypt
     size_t plain_len = strlen(data_cstr);
+    uint8_t salt[16];
+    uint8_t nonce[12];
+    uint8_t key[16];
     size_t cipher_len;
-    uint8_t *cipher =
-        aes_cbc_encrypt((const uint8_t *)data_cstr, plain_len, key, iv, 8, 14, &cipher_len);
+    size_t total_len;
+    uint8_t *out;
+    void *result;
 
-    // Create output: IV + ciphertext
-    size_t total_len = 16 + cipher_len;
-    void *result = rt_bytes_new((int64_t)total_len);
+    generate_random_bytes(salt, sizeof(salt));
+    generate_random_bytes(nonce, sizeof(nonce));
+    derive_key_pbkdf2(pass_cstr, salt, sizeof(salt), AES_STR_PBKDF2_ITERATIONS, key);
 
-    // Write IV (per-byte via rt_bytes_set; could use memcpy with raw pointer for perf)
-    for (int i = 0; i < 16; i++)
-        rt_bytes_set(result, i, iv[i]);
+    cipher_len = plain_len + 16;
+    if (plain_len > 0 && cipher_len < plain_len) {
+        aes_secure_zero(key, sizeof(key));
+        aes_secure_zero(salt, sizeof(salt));
+        aes_secure_zero(nonce, sizeof(nonce));
+        rt_trap("AES: authenticated encryption failed");
+    }
 
-    // Write ciphertext
-    for (size_t i = 0; i < cipher_len; i++)
-        rt_bytes_set(result, (int64_t)(16 + i), cipher[i]);
+    total_len = AES_STR_HEADER_LEN + cipher_len;
+    out = (uint8_t *)malloc(total_len);
+    if (!out) {
+        aes_secure_zero(key, sizeof(key));
+        aes_secure_zero(salt, sizeof(salt));
+        aes_secure_zero(nonce, sizeof(nonce));
+        rt_trap("AES: memory allocation failed");
+    }
 
-    free(cipher);
+    out[0] = AES_STR_MAGIC0;
+    out[1] = AES_STR_MAGIC1;
+    out[2] = AES_STR_MAGIC2;
+    out[3] = AES_STR_MAGIC3;
+    out[4] = (uint8_t)((AES_STR_PBKDF2_ITERATIONS >> 24) & 0xFF);
+    out[5] = (uint8_t)((AES_STR_PBKDF2_ITERATIONS >> 16) & 0xFF);
+    out[6] = (uint8_t)((AES_STR_PBKDF2_ITERATIONS >> 8) & 0xFF);
+    out[7] = (uint8_t)(AES_STR_PBKDF2_ITERATIONS & 0xFF);
+    memcpy(out + 8, salt, sizeof(salt));
+    memcpy(out + 24, nonce, sizeof(nonce));
+
+    cipher_len = rt_aes128_gcm_encrypt(key, nonce, NULL, 0, data_cstr, plain_len, out + AES_STR_HEADER_LEN);
+    if (cipher_len == 0 && plain_len != 0) {
+        aes_secure_zero(key, sizeof(key));
+        aes_secure_zero(salt, sizeof(salt));
+        aes_secure_zero(nonce, sizeof(nonce));
+        aes_secure_zero(out, total_len);
+        free(out);
+        rt_trap("AES: authenticated encryption failed");
+    }
+
+    result = rt_bytes_from_raw(out, total_len);
+    aes_secure_zero(key, sizeof(key));
+    aes_secure_zero(salt, sizeof(salt));
+    aes_secure_zero(nonce, sizeof(nonce));
+    aes_secure_zero(out, total_len);
+    free(out);
     return result;
 }
 
-/// @brief Decrypt to string using AES-256-CBC with key derivation.
+/// @brief Decrypt a string encrypted by rt_aes_encrypt_str.
 ///
-/// Decrypts data that was encrypted with rt_aes_encrypt_str. The input
-/// should be: [16-byte IV][ciphertext]
-///
-/// @param data Bytes object containing IV + ciphertext
-/// @param password Password string
-/// @return Decrypted string
+/// Accepts both the current authenticated VAG1 format and the legacy
+/// AES-256-CBC string format for backward compatibility.
 rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     const char *pass_cstr = rt_string_cstr(password);
     if (!pass_cstr)
         pass_cstr = "";
 
-    // Get data length
     int64_t total_len = rt_bytes_len(data);
+    if (total_len <= 0) {
+        rt_trap("AES: encrypted data is empty");
+        return rt_const_cstr("");
+    }
+
+    uint8_t *encoded = (uint8_t *)malloc((size_t)total_len);
+    if (!encoded)
+        rt_trap("AES: memory allocation failed");
+    for (int64_t i = 0; i < total_len; i++)
+        encoded[i] = (uint8_t)rt_bytes_get(data, i);
+
+    if (aes_is_gcm_string_payload(encoded, (size_t)total_len)) {
+        uint32_t iterations = ((uint32_t)encoded[4] << 24) | ((uint32_t)encoded[5] << 16) |
+                              ((uint32_t)encoded[6] << 8) | (uint32_t)encoded[7];
+        const uint8_t *salt = encoded + 8;
+        const uint8_t *nonce = encoded + 24;
+        const uint8_t *cipher = encoded + AES_STR_HEADER_LEN;
+        size_t cipher_len = (size_t)total_len - AES_STR_HEADER_LEN;
+        uint8_t key[16];
+        uint8_t *plain;
+        long plain_len;
+        rt_string result;
+
+        if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
+            aes_secure_zero(encoded, (size_t)total_len);
+            free(encoded);
+            rt_trap("AES: encrypted data uses an unsupported PBKDF2 iteration count");
+            return rt_const_cstr("");
+        }
+        if (cipher_len < 16) {
+            aes_secure_zero(encoded, (size_t)total_len);
+            free(encoded);
+            rt_trap("AES: encrypted data too short");
+            return rt_const_cstr("");
+        }
+
+        derive_key_pbkdf2(pass_cstr, salt, 16, iterations, key);
+        plain = (uint8_t *)malloc(cipher_len - 16 + 1);
+        if (!plain) {
+            aes_secure_zero(key, sizeof(key));
+            aes_secure_zero(encoded, (size_t)total_len);
+            free(encoded);
+            rt_trap("AES: memory allocation failed");
+        }
+
+        plain_len = rt_aes128_gcm_decrypt(key, nonce, NULL, 0, cipher, cipher_len, plain);
+        aes_secure_zero(key, sizeof(key));
+        aes_secure_zero(encoded, (size_t)total_len);
+        free(encoded);
+        if (plain_len < 0) {
+            free(plain);
+            rt_trap("AES: decryption failed (wrong password or corrupted data)");
+            return rt_const_cstr("");
+        }
+
+        result = rt_string_from_bytes((const char *)plain, (size_t)plain_len);
+        aes_secure_zero(plain, (size_t)plain_len);
+        free(plain);
+        return result;
+    }
+
     if (total_len < 16) {
+        aes_secure_zero(encoded, (size_t)total_len);
+        free(encoded);
         rt_trap("AES: encrypted data too short (missing IV)");
         return rt_const_cstr("");
     }
 
-    // Extract IV
     uint8_t iv[16];
-    for (int i = 0; i < 16; i++)
-        iv[i] = (uint8_t)rt_bytes_get(data, i);
-
-    // Extract ciphertext
-    size_t cipher_len = (size_t)(total_len - 16);
-    uint8_t *cipher = (uint8_t *)malloc(cipher_len);
-    if (!cipher)
-        rt_trap("AES: memory allocation failed");
-
-    for (size_t i = 0; i < cipher_len; i++)
-        cipher[i] = (uint8_t)rt_bytes_get(data, (int64_t)(16 + i));
-
-    // Derive key from password
     uint8_t key[32];
-    derive_key(pass_cstr, key);
-
-    // Decrypt
+    uint8_t *cipher = (uint8_t *)malloc((size_t)(total_len - 16));
     size_t plain_len;
-    uint8_t *plain = aes_cbc_decrypt(cipher, cipher_len, key, iv, 8, 14, &plain_len);
+    uint8_t *plain;
+    rt_string result;
+
+    if (!cipher) {
+        aes_secure_zero(encoded, (size_t)total_len);
+        free(encoded);
+        rt_trap("AES: memory allocation failed");
+    }
+
+    memcpy(iv, encoded, sizeof(iv));
+    memcpy(cipher, encoded + 16, (size_t)(total_len - 16));
+    aes_secure_zero(encoded, (size_t)total_len);
+    free(encoded);
+
+    derive_key_legacy(pass_cstr, key);
+    plain = aes_cbc_decrypt(cipher, (size_t)(total_len - 16), key, iv, 8, 14, &plain_len);
+    aes_secure_zero(key, sizeof(key));
     free(cipher);
 
     if (!plain) {
@@ -924,9 +1031,8 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
         return rt_const_cstr("");
     }
 
-    // Create string (ensure null-termination)
-    rt_string result = rt_string_from_bytes((const char *)plain, plain_len);
+    result = rt_string_from_bytes((const char *)plain, plain_len);
+    aes_secure_zero(plain, plain_len);
     free(plain);
-
     return result;
 }

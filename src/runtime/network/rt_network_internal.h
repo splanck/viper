@@ -221,3 +221,11 @@ void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
 /// @brief Wait for socket to become readable/writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.
 int wait_socket(socket_t sock, int timeout_ms, bool for_write);
+
+/// @brief Access the raw socket owned by a Tcp object.
+/// @return Socket descriptor, or INVALID_SOCK for NULL/invalid objects.
+socket_t rt_tcp_socket_fd(void *obj);
+
+/// @brief Detach the raw socket from a Tcp object without closing it.
+/// @details Marks the Tcp object closed and returns ownership of the socket to the caller.
+void rt_tcp_detach_socket(void *obj);

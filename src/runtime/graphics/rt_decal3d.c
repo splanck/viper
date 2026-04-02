@@ -71,6 +71,17 @@ static void decal3d_finalizer(void *obj) {
     }
 }
 
+/// @brief Create a new 3D decal projected onto a surface.
+/// @details Decals are flat quads oriented along a surface normal, used for
+///          bullet holes, blood splatters, scorch marks, etc. The quad mesh is
+///          lazily built on first draw from the position, normal, and size. If
+///          a lifetime is set, the decal fades out over its last 20% and can be
+///          checked with rt_decal3d_is_expired.
+/// @param pos_v    Vec3 world-space position on the surface.
+/// @param normal_v Vec3 surface normal at the decal location.
+/// @param size     Width/height of the decal quad in world units.
+/// @param texture  Pixels handle for the decal image (borrowed, not owned).
+/// @return Opaque decal handle, or NULL on failure.
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     if (!pos_v || !normal_v)
         return NULL;
@@ -97,6 +108,7 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     return d;
 }
 
+/// @brief Set how long the decal should live before expiring (< 0 = permanent).
 void rt_decal3d_set_lifetime(void *obj, double seconds) {
     if (!obj)
         return;
@@ -105,6 +117,7 @@ void rt_decal3d_set_lifetime(void *obj, double seconds) {
     d->max_lifetime = seconds;
 }
 
+/// @brief Advance the decal's lifetime timer and apply fade-out in the last 20%.
 void rt_decal3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
@@ -120,6 +133,7 @@ void rt_decal3d_update(void *obj, double dt) {
     }
 }
 
+/// @brief Check if the decal's lifetime has elapsed (permanent decals never expire).
 int8_t rt_decal3d_is_expired(void *obj) {
     if (!obj)
         return 1;

@@ -293,8 +293,17 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
         // Parse port
         if (port_colon && port_colon + 1 < auth_end) {
             result->port = 0;
-            for (const char *s = port_colon + 1; s < auth_end && *s >= '0' && *s <= '9'; s++) {
+            const char *s = port_colon + 1;
+            if (*s < '0' || *s > '9') {
+                free_url(result);
+                return -1;
+            }
+            for (; s < auth_end && *s >= '0' && *s <= '9'; s++) {
                 result->port = result->port * 10 + (*s - '0');
+            }
+            if (s != auth_end) {
+                free_url(result);
+                return -1;
             }
         }
 
@@ -374,6 +383,83 @@ static void free_url(rt_url_t *url) {
     if (url->fragment)
         free(url->fragment);
     memset(url, 0, sizeof(*url));
+}
+
+static char *normalize_path(const char *path) {
+    if (!path || *path == '\0')
+        return strdup("/");
+
+    size_t input_len = strlen(path);
+    char **segments = (char **)calloc(input_len + 1, sizeof(char *));
+    if (!segments)
+        return NULL;
+
+    int absolute = path[0] == '/';
+    int segment_count = 0;
+    const char *cursor = path;
+    while (*cursor) {
+        while (*cursor == '/')
+            cursor++;
+        const char *segment_end = cursor;
+        while (*segment_end && *segment_end != '/')
+            segment_end++;
+        size_t segment_len = (size_t)(segment_end - cursor);
+        if (segment_len == 0)
+            break;
+
+        char *segment = (char *)malloc(segment_len + 1);
+        if (!segment)
+            goto fail;
+        memcpy(segment, cursor, segment_len);
+        segment[segment_len] = '\0';
+
+        if (strcmp(segment, ".") == 0) {
+            free(segment);
+        } else if (strcmp(segment, "..") == 0) {
+            free(segment);
+            if (segment_count > 0)
+                free(segments[--segment_count]);
+        } else {
+            segments[segment_count++] = segment;
+        }
+
+        cursor = segment_end;
+    }
+
+    size_t out_len = absolute ? 1 : 0;
+    for (int i = 0; i < segment_count; i++)
+        out_len += strlen(segments[i]) + 1;
+    if (out_len == 0)
+        out_len = 1;
+
+    char *out = (char *)malloc(out_len + 1);
+    if (!out)
+        goto fail;
+
+    size_t pos = 0;
+    if (absolute)
+        out[pos++] = '/';
+    for (int i = 0; i < segment_count; i++) {
+        size_t seg_len = strlen(segments[i]);
+        memcpy(out + pos, segments[i], seg_len);
+        pos += seg_len;
+        if (i + 1 < segment_count)
+            out[pos++] = '/';
+    }
+    if (pos == 0)
+        out[pos++] = '/';
+    out[pos] = '\0';
+
+    for (int i = 0; i < segment_count; i++)
+        free(segments[i]);
+    free(segments);
+    return out;
+
+fail:
+    for (int i = 0; i < segment_count; i++)
+        free(segments[i]);
+    free(segments);
+    return NULL;
 }
 
 static void rt_url_finalize(void *obj) {
@@ -764,20 +850,9 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
 
     rt_url_t *url = (rt_url_t *)obj;
     const char *name_str = rt_string_cstr(name);
-    const char *value_str = rt_string_cstr(value);
 
     if (!name_str)
         return obj;
-
-    // Encode name and value
-    char *enc_name = percent_encode(name_str, true);
-    char *enc_value = value_str ? percent_encode(value_str, true) : strdup("");
-
-    if (!enc_name || !enc_value) {
-        free(enc_name);
-        free(enc_value);
-        return obj;
-    }
 
     // Parse existing query into map
     rt_string tmp_query =
@@ -802,9 +877,6 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
     // Release temporary map
     if (map && rt_obj_release_check0(map))
         rt_obj_free(map);
-
-    free(enc_name);
-    free(enc_value);
     return obj;
 }
 
@@ -891,7 +963,10 @@ void *rt_url_query_map(void *obj) {
     if (!url->query)
         return rt_map_new();
 
-    return rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
+    rt_string query = rt_string_from_bytes(url->query, strlen(url->query));
+    void *map = rt_url_decode_query(query);
+    rt_string_unref(query);
+    return map;
 }
 
 void *rt_url_resolve(void *obj, rt_string relative) {
@@ -952,7 +1027,7 @@ void *rt_url_resolve(void *obj, rt_string relative) {
                     result->query = safe_strdup(base->query);
             } else {
                 if (rel.path[0] == '/') {
-                    result->path = safe_strdup(rel.path);
+                    result->path = normalize_path(rel.path);
                 } else {
                     // Merge paths
                     if (!base->host || !base->path || *base->path == '\0') {
@@ -976,6 +1051,13 @@ void *rt_url_resolve(void *obj, rt_string relative) {
                         } else {
                             result->path = safe_strdup(rel.path);
                         }
+                    }
+                }
+                if (result->path) {
+                    char *normalized = normalize_path(result->path);
+                    if (normalized) {
+                        free(result->path);
+                        result->path = normalized;
                     }
                 }
                 result->query = safe_strdup(rel.query);

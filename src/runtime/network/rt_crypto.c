@@ -15,7 +15,19 @@
 
 #include "rt_crypto.h"
 
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__)
+extern void arc4random_buf(void *buf, size_t nbytes);
+#endif
+
+extern void rt_trap(const char *msg);
+
+#define RT_HKDF_MAX_OKM_LEN (255u * 32u)
+#define RT_CHACHA20_MAX_BYTES (UINT64_C(1) << 38)
+#define RT_AES_GCM_MAX_BYTES (((UINT64_C(1) << 32) - 2u) * 16u)
 
 /// @brief Secure memory zeroing that the compiler cannot optimize away.
 /// @details Uses volatile pointer writes to prevent dead-store elimination.
@@ -212,12 +224,15 @@ void rt_hkdf_extract(
     }
 }
 
-void rt_hkdf_expand(
+int rt_hkdf_expand(
     const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len) {
     uint8_t t[32] = {0};
     size_t t_len = 0;
     uint8_t counter = 1;
     size_t pos = 0;
+
+    if (okm_len > RT_HKDF_MAX_OKM_LEN)
+        return -1;
 
     while (pos < okm_len) {
         rt_sha256_ctx ctx;
@@ -261,14 +276,15 @@ void rt_hkdf_expand(
         rt_secure_zero(temp, sizeof(temp));
     }
     rt_secure_zero(t, sizeof(t));
+    return 0;
 }
 
-void rt_hkdf_expand_label(const uint8_t secret[32],
-                          const char *label,
-                          const uint8_t *context,
-                          size_t context_len,
-                          uint8_t *out,
-                          size_t out_len) {
+int rt_hkdf_expand_label(const uint8_t secret[32],
+                         const char *label,
+                         const uint8_t *context,
+                         size_t context_len,
+                         uint8_t *out,
+                         size_t out_len) {
     // TLS 1.3 HkdfLabel structure
     uint8_t hkdf_label[512];
     size_t pos = 0;
@@ -282,10 +298,12 @@ void rt_hkdf_expand_label(const uint8_t secret[32],
     size_t prefix_len = 6;
     size_t label_len = strlen(label);
 
-    /* Bounds check: reject over-long labels or contexts that would overflow
-       the 512-byte hkdf_label buffer (S-04 fix) */
+    if (out_len > RT_HKDF_MAX_OKM_LEN)
+        return -1;
+    if (prefix_len + label_len > 255 || context_len > 255)
+        return -1;
     if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
-        return; /* Silently ignore — TLS layer will detect the missing key */
+        return -1;
 
     hkdf_label[pos++] = (uint8_t)(prefix_len + label_len);
     memcpy(hkdf_label + pos, prefix, prefix_len);
@@ -300,7 +318,7 @@ void rt_hkdf_expand_label(const uint8_t secret[32],
         pos += context_len;
     }
 
-    rt_hkdf_expand(secret, hkdf_label, pos, out, out_len);
+    return rt_hkdf_expand(secret, hkdf_label, pos, out, out_len);
 }
 
 //=============================================================================
@@ -648,6 +666,9 @@ size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
                                     const void *plaintext,
                                     size_t plaintext_len,
                                     uint8_t *ciphertext) {
+    if ((uint64_t)plaintext_len > RT_CHACHA20_MAX_BYTES)
+        return 0;
+
     // Generate Poly1305 key (block 0)
     uint8_t poly_key[64];
     uint8_t zeros[64] = {0};
@@ -697,6 +718,8 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
         return -1;
 
     size_t data_len = ciphertext_len - 16;
+    if ((uint64_t)data_len > RT_CHACHA20_MAX_BYTES)
+        return -1;
     const uint8_t *tag = (const uint8_t *)ciphertext + data_len;
 
     // Generate Poly1305 key
@@ -967,6 +990,9 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
                              const void *plaintext,
                              size_t plaintext_len,
                              uint8_t *ciphertext) {
+    if ((uint64_t)plaintext_len > RT_AES_GCM_MAX_BYTES)
+        return 0;
+
     uint8_t rk[176];
     aes128_key_expand(key, rk);
 
@@ -1026,6 +1052,8 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
         return -1;
 
     size_t data_len = ciphertext_len - 16;
+    if ((uint64_t)data_len > RT_AES_GCM_MAX_BYTES)
+        return -1;
     const uint8_t *ct = (const uint8_t *)ciphertext;
     const uint8_t *recv_tag = ct + data_len;
 
@@ -1471,12 +1499,35 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 }
 
 #else
+#if defined(__linux__)
+#include <sys/random.h>
+#endif
 #include <fcntl.h>
 #include <unistd.h>
 
 extern void rt_trap(const char *msg);
 
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
+#if defined(__APPLE__)
+    arc4random_buf(buf, len);
+    return;
+#elif defined(__linux__)
+    size_t off = 0;
+    while (off < len) {
+        ssize_t n = getrandom(buf + off, len - off, 0);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            if (errno == ENOSYS)
+                break;
+            rt_trap("Crypto: failed to obtain OS entropy (getrandom)");
+        }
+        off += (size_t)n;
+    }
+    if (off == len)
+        return;
+#endif
+
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
         size_t off = 0;

@@ -85,6 +85,13 @@ static void rt_morphtarget3d_finalize(void *obj) {
     }
 }
 
+/// @brief Create a morph target container for blendshape animation.
+/// @details Morph targets (aka blend shapes) deform a mesh by adding weighted
+///          per-vertex deltas to the base positions and normals. Up to 32 shapes
+///          are supported. Each shape stores position deltas (and optionally normal
+///          deltas) for all vertices. Weights control the blend amount per shape.
+/// @param vertex_count Number of vertices in the base mesh (must match mesh vertex count).
+/// @return Opaque morph target handle, or NULL on failure.
 void *rt_morphtarget3d_new(int64_t vertex_count) {
     if (vertex_count <= 0) {
         rt_trap("MorphTarget3D.New: vertex_count must be > 0");
@@ -112,7 +119,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
  * Shape management
  *=========================================================================*/
 
-/// @brief Add the shape of the morphtarget3d.
+/// @brief Register a named blend shape and allocate its per-vertex delta arrays.
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!obj)
         return -1;
@@ -191,7 +198,7 @@ void rt_morphtarget3d_set_normal_delta(
  * Weight control
  *=========================================================================*/
 
-/// @brief Set the weight of the morphtarget3d.
+/// @brief Set the blend weight for a shape by index (0.0 = off, 1.0 = full).
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     if (!obj)
         return;
@@ -201,7 +208,7 @@ void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     mt->weights[shape] = (float)weight;
 }
 
-/// @brief Get the weight of the morphtarget3d.
+/// @brief Get the current blend weight for a shape by index.
 double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     if (!obj)
         return 0.0;
@@ -211,7 +218,7 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     return mt->weights[shape];
 }
 
-/// @brief Set the weight by name of the morphtarget3d.
+/// @brief Set the blend weight for a shape by its name (string lookup).
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     if (!obj || !name)
         return;
@@ -227,7 +234,7 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     }
 }
 
-/// @brief Return the count of elements in the morphtarget3d.
+/// @brief Get the number of registered blend shapes.
 int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
 }

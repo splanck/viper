@@ -29,6 +29,7 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
+#include <arpa/inet.h>
 #include <strings.h>
 #endif
 
@@ -55,8 +56,36 @@
 // B.2 — TLS 1.3 Certificate message parser
 // ---------------------------------------------------------------------------
 
-/// @brief Parse the TLS 1.3 Certificate handshake message and store the
-///        first (end-entity) certificate DER bytes in session->server_cert_der.
+static int tls_next_certificate_entry(const uint8_t *list,
+                                      size_t list_len,
+                                      size_t *pos,
+                                      const uint8_t **cert_der,
+                                      size_t *cert_len) {
+    if (!list || !pos || !cert_der || !cert_len || *pos + 5 > list_len)
+        return -1;
+
+    size_t entry_pos = *pos;
+    size_t der_len =
+        ((size_t)list[entry_pos] << 16) | ((size_t)list[entry_pos + 1] << 8) | (size_t)list[entry_pos + 2];
+    entry_pos += 3;
+    if (der_len == 0 || entry_pos + der_len + 2 > list_len)
+        return -1;
+
+    *cert_der = list + entry_pos;
+    *cert_len = der_len;
+    entry_pos += der_len;
+
+    size_t ext_len = ((size_t)list[entry_pos] << 8) | (size_t)list[entry_pos + 1];
+    entry_pos += 2;
+    if (entry_pos + ext_len > list_len)
+        return -1;
+
+    *pos = entry_pos + ext_len;
+    return 0;
+}
+
+/// @brief Parse the TLS 1.3 Certificate handshake message, store the leaf
+///        certificate DER, and retain the full certificate_list entries.
 ///
 /// Certificate message format (RFC 8446 §4.4.2):
 ///   1 byte:  certificate_request_context length
@@ -96,27 +125,60 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Read the first (end-entity) certificate
     if (list_len < 5) {
         session->error = "TLS: Certificate list too short for one entry";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    size_t cert_len = ((size_t)data[pos] << 16) | ((size_t)data[pos + 1] << 8) | data[pos + 2];
-    pos += 3;
+    const uint8_t *list = data + pos;
+    size_t list_pos = 0;
+    const uint8_t *leaf_der = NULL;
+    size_t leaf_len = 0;
+    size_t cert_count = 0;
 
-    if (cert_len == 0 || pos + cert_len > len) {
-        session->error = "TLS: Certificate DER length invalid";
+    while (list_pos < list_len) {
+        const uint8_t *cert_der = NULL;
+        size_t cert_len = 0;
+        if (tls_next_certificate_entry(list, list_len, &list_pos, &cert_der, &cert_len) != 0) {
+            session->error = "TLS: malformed certificate chain entry";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        if (cert_count == 0) {
+            leaf_der = cert_der;
+            leaf_len = cert_len;
+        }
+        cert_count++;
+    }
+
+    if (!leaf_der || leaf_len == 0 || cert_count == 0) {
+        session->error = "TLS: Certificate message contained no leaf certificate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    if (cert_len > sizeof(session->server_cert_der)) {
+    if (leaf_len > sizeof(session->server_cert_der)) {
         session->error = "TLS: Certificate DER too large for validation buffer";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    memcpy(session->server_cert_der, data + pos, cert_len);
-    session->server_cert_der_len = cert_len;
+    uint8_t *list_copy = (uint8_t *)malloc(list_len);
+    if (!list_copy) {
+        session->error = "TLS: memory allocation failed for certificate chain";
+        return RT_TLS_ERROR_MEMORY;
+    }
+    memcpy(list_copy, list, list_len);
+
+    if (session->server_cert_list) {
+        free(session->server_cert_list);
+        session->server_cert_list = NULL;
+        session->server_cert_list_len = 0;
+        session->server_cert_count = 0;
+    }
+
+    memcpy(session->server_cert_der, leaf_der, leaf_len);
+    session->server_cert_der_len = leaf_len;
+    session->server_cert_list = list_copy;
+    session->server_cert_list_len = list_len;
+    session->server_cert_count = cert_count;
     return RT_TLS_OK;
 }
 
@@ -213,6 +275,136 @@ static void extract_san_from_ext_value(
 
         pos += hl + vl;
     }
+}
+
+static int tls_hostname_is_ip_literal(const char *hostname, uint8_t ip_out[16], size_t *ip_len) {
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+
+    if (!hostname || !ip_out || !ip_len)
+        return 0;
+
+    if (inet_pton(AF_INET, hostname, &ipv4) == 1) {
+        memcpy(ip_out, &ipv4, 4);
+        *ip_len = 4;
+        return 1;
+    }
+
+    if (inet_pton(AF_INET6, hostname, &ipv6) == 1) {
+        memcpy(ip_out, &ipv6, 16);
+        *ip_len = 16;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int san_ext_has_ip_match(const uint8_t *ext_val,
+                                size_t ext_len,
+                                const uint8_t *expected_ip,
+                                size_t expected_ip_len,
+                                int *saw_ip_san) {
+    uint8_t t;
+    size_t vl, hl;
+    if (saw_ip_san)
+        *saw_ip_san = 0;
+
+    if (der_read_tlv(ext_val, ext_len, &t, &vl, &hl) != 0 || t != 0x04)
+        return 0;
+
+    const uint8_t *inner = ext_val + hl;
+    size_t inner_len = vl;
+    if (der_read_tlv(inner, inner_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *names = inner + hl;
+    size_t names_len = vl;
+    size_t pos = 0;
+    while (pos < names_len) {
+        if (der_read_tlv(names + pos, names_len - pos, &t, &vl, &hl) != 0)
+            break;
+        if (t == 0x87) {
+            if (saw_ip_san)
+                *saw_ip_san = 1;
+            if (vl == expected_ip_len && memcmp(names + pos + hl, expected_ip, expected_ip_len) == 0)
+                return 1;
+        }
+        pos += hl + vl;
+    }
+    return 0;
+}
+
+static int tls_cert_has_matching_ip_san(const uint8_t *der,
+                                        size_t der_len,
+                                        const uint8_t *expected_ip,
+                                        size_t expected_ip_len,
+                                        int *saw_ip_san) {
+    uint8_t t;
+    size_t vl, hl;
+    if (saw_ip_san)
+        *saw_ip_san = 0;
+
+    if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *cert_val = der + hl;
+    if (der_read_tlv(cert_val, vl, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *tbs_val = cert_val + hl;
+    size_t tbs_len = vl;
+    size_t pos = 0;
+
+    while (pos < tbs_len) {
+        if (der_read_tlv(tbs_val + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+            break;
+        if (t == 0xA3) {
+            const uint8_t *exts_wrap = tbs_val + pos + hl;
+            uint8_t t2;
+            size_t vl2, hl2;
+            if (der_read_tlv(exts_wrap, vl, &t2, &vl2, &hl2) != 0 || t2 != 0x30)
+                break;
+
+            const uint8_t *exts = exts_wrap + hl2;
+            size_t exts_len = vl2;
+            size_t ep = 0;
+            while (ep < exts_len) {
+                uint8_t t3;
+                size_t vl3, hl3;
+                if (der_read_tlv(exts + ep, exts_len - ep, &t3, &vl3, &hl3) != 0)
+                    break;
+                if (t3 == 0x30) {
+                    const uint8_t *ext = exts + ep + hl3;
+                    uint8_t t4;
+                    size_t vl4, hl4;
+                    if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
+                        oid_matches(ext + hl4, vl4, OID_SUBJECT_ALT_NAME, 3)) {
+                        size_t after_oid = hl4 + vl4;
+                        if (after_oid < vl3) {
+                            uint8_t nt;
+                            size_t nvl, nhl;
+                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0) {
+                                if (nt == 0x01)
+                                    after_oid += nhl + nvl;
+                                if (after_oid < vl3) {
+                                    return san_ext_has_ip_match(ext + after_oid,
+                                                                vl3 - after_oid,
+                                                                expected_ip,
+                                                                expected_ip_len,
+                                                                saw_ip_san);
+                                }
+                            }
+                        }
+                    }
+                }
+                ep += hl3 + vl3;
+            }
+            break;
+        }
+        pos += hl + vl;
+    }
+
+    return 0;
 }
 
 /// @brief Extract SubjectAltName DNS names from a certificate DER.
@@ -422,6 +614,19 @@ int tls_verify_hostname(rt_tls_session_t *session) {
     }
 
     const char *host = session->hostname;
+    uint8_t ip_literal[16];
+    size_t ip_literal_len = 0;
+
+    if (tls_hostname_is_ip_literal(host, ip_literal, &ip_literal_len)) {
+        int saw_ip_san = 0;
+        if (tls_cert_has_matching_ip_san(
+                session->server_cert_der, session->server_cert_der_len, ip_literal, ip_literal_len, &saw_ip_san)) {
+            return RT_TLS_OK;
+        }
+        session->error = saw_ip_san ? "TLS: certificate IP SAN mismatch"
+                                    : "TLS: certificate does not contain an IP SubjectAltName";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     // Try SubjectAltName first (RFC 6125 §6.4: SAN takes precedence over CN)
     char san_names[TLS_MAX_SAN_NAMES][256];
@@ -465,24 +670,54 @@ int tls_verify_chain(rt_tls_session_t *session) {
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    CFDataRef cert_data = CFDataCreate(
-        kCFAllocatorDefault, session->server_cert_der, (CFIndex)session->server_cert_der_len);
-    if (!cert_data) {
-        session->error = "TLS: could not create CFData for certificate";
+    CFMutableArrayRef certs = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    if (!certs) {
+        session->error = "TLS: could not allocate certificate array";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    SecCertificateRef cert = SecCertificateCreateWithData(kCFAllocatorDefault, cert_data);
-    CFRelease(cert_data);
-    if (!cert) {
-        session->error = "TLS: could not parse DER certificate";
+    if (session->server_cert_list && session->server_cert_list_len > 0) {
+        size_t list_pos = 0;
+        while (list_pos < session->server_cert_list_len) {
+            const uint8_t *cert_der = NULL;
+            size_t cert_len = 0;
+            if (tls_next_certificate_entry(
+                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+                CFRelease(certs);
+                session->error = "TLS: malformed certificate chain";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            CFDataRef cert_data = CFDataCreate(kCFAllocatorDefault, cert_der, (CFIndex)cert_len);
+            if (!cert_data) {
+                CFRelease(certs);
+                session->error = "TLS: could not create CFData for certificate";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            SecCertificateRef cert = SecCertificateCreateWithData(kCFAllocatorDefault, cert_data);
+            CFRelease(cert_data);
+            if (!cert) {
+                CFRelease(certs);
+                session->error = "TLS: could not parse DER certificate";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            CFArrayAppendValue(certs, cert);
+            CFRelease(cert);
+        }
+    }
+
+    if (CFArrayGetCount(certs) == 0) {
+        CFRelease(certs);
+        session->error = "TLS: no certificates available for validation";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     CFStringRef hostname_cf =
         CFStringCreateWithCString(kCFAllocatorDefault, session->hostname, kCFStringEncodingUTF8);
     if (!hostname_cf) {
-        CFRelease(cert);
+        CFRelease(certs);
         session->error = "TLS: could not create hostname CFString";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -490,18 +725,15 @@ int tls_verify_chain(rt_tls_session_t *session) {
     SecPolicyRef policy = SecPolicyCreateSSL(true, hostname_cf);
     CFRelease(hostname_cf);
     if (!policy) {
-        CFRelease(cert);
+        CFRelease(certs);
         session->error = "TLS: could not create SSL policy";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    const void *cert_val = (const void *)cert;
-    CFArrayRef certs = CFArrayCreate(kCFAllocatorDefault, &cert_val, 1, &kCFTypeArrayCallBacks);
     SecTrustRef trust = NULL;
     OSStatus os_status = SecTrustCreateWithCertificates(certs, policy, &trust);
-    CFRelease(certs);
     CFRelease(policy);
-    CFRelease(cert);
+    CFRelease(certs);
 
     if (os_status != errSecSuccess || !trust) {
         if (trust)
@@ -547,8 +779,50 @@ int tls_verify_chain(rt_tls_session_t *session) {
     CERT_CHAIN_PARA chain_para = {0};
     chain_para.cbSize = sizeof(chain_para);
 
+    HCERTSTORE extra_store = CertOpenStore(CERT_STORE_PROV_MEMORY,
+                                           0,
+                                           0,
+                                           CERT_STORE_CREATE_NEW_FLAG,
+                                           NULL);
+    if (!extra_store) {
+        CertFreeCertificateContext(cert_ctx);
+        session->error = "TLS: could not create intermediate certificate store";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (session->server_cert_list && session->server_cert_list_len > 0) {
+        size_t list_pos = 0;
+        size_t cert_index = 0;
+        while (list_pos < session->server_cert_list_len) {
+            const uint8_t *cert_der = NULL;
+            size_t cert_len = 0;
+            if (tls_next_certificate_entry(
+                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+                CertCloseStore(extra_store, 0);
+                CertFreeCertificateContext(cert_ctx);
+                session->error = "TLS: malformed certificate chain";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            if (cert_index++ == 0)
+                continue;
+            if (!CertAddEncodedCertificateToStore(extra_store,
+                                                  X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                                                  cert_der,
+                                                  (DWORD)cert_len,
+                                                  CERT_STORE_ADD_ALWAYS,
+                                                  NULL)) {
+                CertCloseStore(extra_store, 0);
+                CertFreeCertificateContext(cert_ctx);
+                session->error = "TLS: could not add intermediate certificate to store";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+        }
+    }
+
     PCCERT_CHAIN_CONTEXT chain_ctx = NULL;
-    BOOL ok = CertGetCertificateChain(NULL, cert_ctx, NULL, NULL, &chain_para, 0, NULL, &chain_ctx);
+    BOOL ok =
+        CertGetCertificateChain(NULL, cert_ctx, NULL, extra_store, &chain_para, 0, NULL, &chain_ctx);
+    CertCloseStore(extra_store, 0);
 
     if (!ok || !chain_ctx) {
         CertFreeCertificateContext(cert_ctx);
@@ -592,6 +866,35 @@ int tls_verify_chain(rt_tls_session_t *session) {
 }
 
 #else // Linux / other POSIX
+
+typedef void *tls_x509_t;
+typedef void *tls_x509_store_t;
+typedef void *tls_x509_store_ctx_t;
+typedef void *tls_openssl_stack_t;
+
+typedef tls_x509_t *(*tls_d2i_x509_fn)(tls_x509_t **, const unsigned char **, long);
+typedef void (*tls_x509_free_fn)(tls_x509_t *);
+typedef tls_x509_store_t *(*tls_x509_store_new_fn)(void);
+typedef void (*tls_x509_store_free_fn)(tls_x509_store_t *);
+typedef int (*tls_x509_store_set_default_paths_fn)(tls_x509_store_t *);
+typedef tls_x509_store_ctx_t *(*tls_x509_store_ctx_new_fn)(void);
+typedef void (*tls_x509_store_ctx_free_fn)(tls_x509_store_ctx_t *);
+typedef int (*tls_x509_store_ctx_init_fn)(
+    tls_x509_store_ctx_t *, tls_x509_store_t *, tls_x509_t *, tls_openssl_stack_t *);
+typedef int (*tls_x509_store_ctx_set_default_fn)(tls_x509_store_ctx_t *, const char *);
+typedef int (*tls_x509_verify_cert_fn)(tls_x509_store_ctx_t *);
+typedef tls_openssl_stack_t *(*tls_openssl_sk_new_null_fn)(void);
+typedef int (*tls_openssl_sk_push_fn)(tls_openssl_stack_t *, const void *);
+typedef void (*tls_openssl_sk_free_fn)(tls_openssl_stack_t *);
+
+static void *tls_dlopen_libcrypto(void) {
+    void *crypto_lib = dlopen("libcrypto.so.3", RTLD_LAZY | RTLD_LOCAL);
+    if (!crypto_lib)
+        crypto_lib = dlopen("libcrypto.so.1.1", RTLD_LAZY | RTLD_LOCAL);
+    if (!crypto_lib)
+        crypto_lib = dlopen("libcrypto.so", RTLD_LAZY | RTLD_LOCAL);
+    return crypto_lib;
+}
 
 /// @brief Try to find the system CA bundle.
 static const char *find_ca_bundle(void) {
@@ -861,102 +1164,168 @@ static int cert_check_expiry(const uint8_t *cert_der, size_t cert_len) {
     return -1; /* Validity field not found */
 }
 
-/// @brief Verify certificate chain against the Linux system CA bundle (best-effort).
-///
-/// Checks that the end-entity certificate's Issuer DER matches the Subject DER
-/// of at least one CA certificate in the bundle. Follows one level of intermediate
-/// (Issuer -> CA Subject match). Full recursive chain validation requires OpenSSL.
+/// @brief Verify certificate chain against the Linux system trust store using libcrypto.
 int tls_verify_chain(rt_tls_session_t *session) {
     if (!session->server_cert_der_len) {
         session->error = "TLS: no certificate to validate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    const char *bundle_path = find_ca_bundle();
-    if (!bundle_path) {
-        // No CA bundle found — skip chain validation with a warning in the error field
-        // (hostname verification still occurs separately via tls_verify_hostname)
-        session->error = "TLS: no system CA bundle found; chain validation skipped";
+    void *crypto_lib = tls_dlopen_libcrypto();
+    if (!crypto_lib) {
+        session->error = "TLS: certificate validation requires libcrypto on this platform";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    FILE *f = fopen(bundle_path, "r");
-    if (!f) {
-        session->error = "TLS: could not open CA bundle";
+    tls_d2i_x509_fn fn_d2i_X509 = (tls_d2i_x509_fn)dlsym(crypto_lib, "d2i_X509");
+    tls_x509_free_fn fn_X509_free = (tls_x509_free_fn)dlsym(crypto_lib, "X509_free");
+    tls_x509_store_new_fn fn_X509_STORE_new =
+        (tls_x509_store_new_fn)dlsym(crypto_lib, "X509_STORE_new");
+    tls_x509_store_free_fn fn_X509_STORE_free =
+        (tls_x509_store_free_fn)dlsym(crypto_lib, "X509_STORE_free");
+    tls_x509_store_set_default_paths_fn fn_X509_STORE_set_default_paths =
+        (tls_x509_store_set_default_paths_fn)dlsym(crypto_lib, "X509_STORE_set_default_paths");
+    tls_x509_store_ctx_new_fn fn_X509_STORE_CTX_new =
+        (tls_x509_store_ctx_new_fn)dlsym(crypto_lib, "X509_STORE_CTX_new");
+    tls_x509_store_ctx_free_fn fn_X509_STORE_CTX_free =
+        (tls_x509_store_ctx_free_fn)dlsym(crypto_lib, "X509_STORE_CTX_free");
+    tls_x509_store_ctx_init_fn fn_X509_STORE_CTX_init =
+        (tls_x509_store_ctx_init_fn)dlsym(crypto_lib, "X509_STORE_CTX_init");
+    tls_x509_store_ctx_set_default_fn fn_X509_STORE_CTX_set_default =
+        (tls_x509_store_ctx_set_default_fn)dlsym(crypto_lib, "X509_STORE_CTX_set_default");
+    tls_x509_verify_cert_fn fn_X509_verify_cert =
+        (tls_x509_verify_cert_fn)dlsym(crypto_lib, "X509_verify_cert");
+    tls_openssl_sk_new_null_fn fn_OPENSSL_sk_new_null =
+        (tls_openssl_sk_new_null_fn)dlsym(crypto_lib, "OPENSSL_sk_new_null");
+    tls_openssl_sk_push_fn fn_OPENSSL_sk_push =
+        (tls_openssl_sk_push_fn)dlsym(crypto_lib, "OPENSSL_sk_push");
+    tls_openssl_sk_free_fn fn_OPENSSL_sk_free =
+        (tls_openssl_sk_free_fn)dlsym(crypto_lib, "OPENSSL_sk_free");
+
+    if (!fn_d2i_X509 || !fn_X509_free || !fn_X509_STORE_new || !fn_X509_STORE_free ||
+        !fn_X509_STORE_set_default_paths || !fn_X509_STORE_CTX_new || !fn_X509_STORE_CTX_free ||
+        !fn_X509_STORE_CTX_init || !fn_X509_verify_cert) {
+        dlclose(crypto_lib);
+        session->error = "TLS: libcrypto is missing X.509 validation symbols";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Check end-entity certificate expiration
-    if (cert_check_expiry(session->server_cert_der, session->server_cert_der_len) != 0) {
-        fclose(f);
-        session->error = "TLS: server certificate has expired or is not yet valid";
+    const unsigned char *leaf_ptr = session->server_cert_der;
+    tls_x509_t *leaf = fn_d2i_X509(NULL, &leaf_ptr, (long)session->server_cert_der_len);
+    if (!leaf) {
+        dlclose(crypto_lib);
+        session->error = "TLS: failed to parse the leaf certificate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Get the end-entity cert's Issuer DER for comparison
-    size_t ee_issuer_len = 0;
-    const uint8_t *ee_issuer =
-        cert_get_issuer(session->server_cert_der, session->server_cert_der_len, &ee_issuer_len);
-    if (!ee_issuer || ee_issuer_len == 0) {
-        fclose(f);
-        session->error = "TLS: could not parse issuer from certificate";
+    tls_x509_store_t *store = fn_X509_STORE_new();
+    if (!store || fn_X509_STORE_set_default_paths(store) != 1) {
+        if (store)
+            fn_X509_STORE_free(store);
+        fn_X509_free(leaf);
+        dlclose(crypto_lib);
+        session->error = "TLS: failed to initialize the system trust store";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Scan the PEM bundle for a CA cert whose Subject matches the end-entity Issuer
-    char line[512];
-    // Heap-allocate PEM and DER buffers to avoid ~80KB stack usage and to be
-    // thread-safe (the previous static ca_der was shared across threads).
-    char *pem_b64 = (char *)malloc(65536);
-    uint8_t *ca_der = (uint8_t *)malloc(16384);
-    if (!pem_b64 || !ca_der) {
-        free(pem_b64);
-        free(ca_der);
-        fclose(f);
-        session->error = "TLS: memory allocation failed for chain validation";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
-    size_t pem_pos = 0;
-    int in_cert = 0;
-    int found = 0;
+    tls_openssl_stack_t *untrusted = NULL;
+    tls_x509_t **intermediates = NULL;
+    size_t intermediates_count = 0;
+    if (session->server_cert_list && session->server_cert_count > 1) {
+        if (!fn_OPENSSL_sk_new_null || !fn_OPENSSL_sk_push || !fn_OPENSSL_sk_free) {
+            fn_X509_STORE_free(store);
+            fn_X509_free(leaf);
+            dlclose(crypto_lib);
+            session->error = "TLS: libcrypto is missing certificate stack symbols";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
 
-    while (!found && fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "-----BEGIN CERTIFICATE-----", 27) == 0) {
-            in_cert = 1;
-            pem_pos = 0;
-        } else if (strncmp(line, "-----END CERTIFICATE-----", 25) == 0 && in_cert) {
-            in_cert = 0;
-            size_t ca_len = pem_decode_cert(pem_b64, pem_pos, ca_der, sizeof(ca_der));
-            if (ca_len > 0) {
-                size_t ca_subj_len = 0;
-                const uint8_t *ca_subj = cert_get_subject(ca_der, ca_len, &ca_subj_len);
-                if (ca_subj && der_names_equal(ee_issuer, ee_issuer_len, ca_subj, ca_subj_len)) {
-                    /* Check CA cert expiration before accepting. */
-                    if (cert_check_expiry(ca_der, ca_len) == 0)
-                        found = 1;
-                    /* If CA is expired, keep scanning for another matching CA. */
-                }
+        intermediates_count = session->server_cert_count - 1;
+        intermediates = (tls_x509_t **)calloc(intermediates_count, sizeof(tls_x509_t *));
+        untrusted = fn_OPENSSL_sk_new_null();
+        if (!intermediates || !untrusted) {
+            free(intermediates);
+            if (untrusted)
+                fn_OPENSSL_sk_free(untrusted);
+            fn_X509_STORE_free(store);
+            fn_X509_free(leaf);
+            dlclose(crypto_lib);
+            session->error = "TLS: failed to allocate intermediate certificate storage";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        size_t list_pos = 0;
+        size_t cert_index = 0;
+        while (list_pos < session->server_cert_list_len) {
+            const uint8_t *cert_der = NULL;
+            size_t cert_len = 0;
+            if (tls_next_certificate_entry(
+                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+                session->error = "TLS: malformed intermediate certificate chain";
+                goto linux_chain_cleanup;
             }
-            pem_pos = 0;
-        } else if (in_cert) {
-            size_t ll = strlen(line);
-            if (pem_pos + ll < 65536) {
-                memcpy(pem_b64 + pem_pos, line, ll);
-                pem_pos += ll;
+            if (cert_index++ == 0)
+                continue;
+
+            const unsigned char *cert_ptr = cert_der;
+            tls_x509_t *intermediate = fn_d2i_X509(NULL, &cert_ptr, (long)cert_len);
+            if (!intermediate) {
+                session->error = "TLS: failed to parse an intermediate certificate";
+                goto linux_chain_cleanup;
+            }
+            intermediates[cert_index - 2] = intermediate;
+            if (fn_OPENSSL_sk_push(untrusted, intermediate) <= 0) {
+                session->error = "TLS: failed to register an intermediate certificate";
+                goto linux_chain_cleanup;
             }
         }
     }
 
-    fclose(f);
-    free(pem_b64);
-    free(ca_der);
+    tls_x509_store_ctx_t *ctx = fn_X509_STORE_CTX_new();
+    if (!ctx || fn_X509_STORE_CTX_init(ctx, store, leaf, untrusted) != 1) {
+        if (ctx)
+            fn_X509_STORE_CTX_free(ctx);
+        session->error = "TLS: failed to create the certificate verification context";
+        goto linux_chain_cleanup;
+    }
+    if (fn_X509_STORE_CTX_set_default)
+        fn_X509_STORE_CTX_set_default(ctx, "ssl_client");
 
-    if (!found) {
-        session->error = "TLS: certificate issuer not found in system CA bundle";
-        return RT_TLS_ERROR_HANDSHAKE;
+    if (fn_X509_verify_cert(ctx) != 1) {
+        fn_X509_STORE_CTX_free(ctx);
+        session->error = "TLS: certificate chain validation failed";
+        goto linux_chain_cleanup;
     }
 
+    fn_X509_STORE_CTX_free(ctx);
+    if (untrusted)
+        fn_OPENSSL_sk_free(untrusted);
+    if (intermediates) {
+        for (size_t i = 0; i < intermediates_count; i++) {
+            if (intermediates[i])
+                fn_X509_free(intermediates[i]);
+        }
+        free(intermediates);
+    }
+    fn_X509_STORE_free(store);
+    fn_X509_free(leaf);
+    dlclose(crypto_lib);
     return RT_TLS_OK;
+
+linux_chain_cleanup:
+    if (untrusted && fn_OPENSSL_sk_free)
+        fn_OPENSSL_sk_free(untrusted);
+    if (intermediates) {
+        for (size_t i = 0; i < intermediates_count; i++) {
+            if (intermediates[i])
+                fn_X509_free(intermediates[i]);
+        }
+        free(intermediates);
+    }
+    fn_X509_STORE_free(store);
+    fn_X509_free(leaf);
+    dlclose(crypto_lib);
+    return RT_TLS_ERROR_HANDSHAKE;
 }
 
 #endif // Platform-specific chain validation
@@ -1461,27 +1830,18 @@ typedef int (*EVP_Digest_fn)(
 #define RSA_PKCS1_PSS_PADDING 6
 #define RSA_PSS_SALTLEN_DIGEST -1
 
-/// @brief Fallback to dlopen(libcrypto) for RSA-PSS signature verification.
-/// Used only when the server selects an RSA-PSS scheme (0x0804/0x0805/0x0806).
-/// @param content_hash Digest of the CertificateVerify message (32/48/64 bytes).
-/// @param content_hash_len Length of content_hash matching the scheme's hash algorithm.
-static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
-                                     uint16_t sig_scheme,
-                                     const uint8_t *sig_bytes,
-                                     uint16_t sig_len,
-                                     const uint8_t *content_hash,
-                                     size_t content_hash_len) {
-    void *ssl_lib = dlopen("libssl.so.3", RTLD_LAZY | RTLD_LOCAL);
-    if (!ssl_lib)
-        ssl_lib = dlopen("libssl.so.1.1", RTLD_LAZY | RTLD_LOCAL);
-    void *crypto_lib = dlopen("libcrypto.so.3", RTLD_LAZY | RTLD_LOCAL);
-    if (!crypto_lib)
-        crypto_lib = dlopen("libcrypto.so.1.1", RTLD_LAZY | RTLD_LOCAL);
-
+/// @brief Verify CertificateVerify signatures using libcrypto.
+/// Supports ECDSA P-256/P-384 and RSA-PSS schemes over the already-hashed
+/// CertificateVerify content.
+static int tls_verify_signature_dlopen(rt_tls_session_t *session,
+                                       uint16_t sig_scheme,
+                                       const uint8_t *sig_bytes,
+                                       uint16_t sig_len,
+                                       const uint8_t *content_hash,
+                                       size_t content_hash_len) {
+    void *crypto_lib = tls_dlopen_libcrypto();
     if (!crypto_lib) {
-        if (ssl_lib)
-            dlclose(ssl_lib);
-        session->error = "TLS: CertVerify: RSA-PSS requires libcrypto (not available)";
+        session->error = "TLS: CertVerify: libcrypto is required for signature verification";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1509,9 +1869,7 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
     if (!fn_d2i_X509 || !fn_X509_get_pubkey || !fn_EVP_PKEY_CTX_new || !fn_EVP_PKEY_verify_init ||
         !fn_set_md || !fn_verify || !fn_ctx_free || !fn_pkey_free || !fn_X509_free || !fn_sha256) {
         dlclose(crypto_lib);
-        if (ssl_lib)
-            dlclose(ssl_lib);
-        session->error = "TLS: CertVerify: libcrypto symbols missing for RSA-PSS";
+        session->error = "TLS: CertVerify: libcrypto symbols missing";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1519,8 +1877,6 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
     X509 *x509 = fn_d2i_X509(NULL, &der_ptr, (long)session->server_cert_der_len);
     if (!x509) {
         dlclose(crypto_lib);
-        if (ssl_lib)
-            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: d2i_X509 failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1529,8 +1885,6 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
     fn_X509_free(x509);
     if (!pkey) {
         dlclose(crypto_lib);
-        if (ssl_lib)
-            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: X509_get_pubkey failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1541,17 +1895,17 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
             fn_ctx_free(ctx);
         fn_pkey_free(pkey);
         dlclose(crypto_lib);
-        if (ssl_lib)
-            dlclose(ssl_lib);
         session->error = "TLS: CertVerify: EVP_PKEY_CTX init failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     void *md = NULL;
     switch (sig_scheme) {
+        case 0x0403:
         case 0x0804:
             md = fn_sha256();
             break;
+        case 0x0503:
         case 0x0805:
             md = (fn_sha384 ? fn_sha384() : NULL);
             break;
@@ -1566,15 +1920,14 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
         fn_ctx_free(ctx);
         fn_pkey_free(pkey);
         dlclose(crypto_lib);
-        if (ssl_lib)
-            dlclose(ssl_lib);
-        session->error = "TLS: CertVerify: unsupported RSA-PSS hash (Linux)";
+        session->error = "TLS: CertVerify: unsupported signature hash (Linux)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     fn_set_md(ctx, md);
 
-    if (fn_set_padding && fn_set_pss) {
+    if ((sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) && fn_set_padding &&
+        fn_set_pss) {
         fn_set_padding(ctx, RSA_PKCS1_PSS_PADDING);
         fn_set_pss(ctx, RSA_PSS_SALTLEN_DIGEST);
     }
@@ -1584,11 +1937,9 @@ static int tls_verify_rsa_pss_dlopen(rt_tls_session_t *session,
     fn_ctx_free(ctx);
     fn_pkey_free(pkey);
     dlclose(crypto_lib);
-    if (ssl_lib)
-        dlclose(ssl_lib);
 
     if (rc != 1) {
-        session->error = "TLS: CertificateVerify RSA-PSS verification failed (Linux)";
+        session->error = "TLS: CertificateVerify signature verification failed (Linux)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1628,9 +1979,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         rt_sha256(cv_message, 130, content_hash);
     } else {
         // SHA-384/SHA-512: use libcrypto EVP_Digest for the content hash
-        void *crypto_lib = dlopen("libcrypto.so.3", RTLD_LAZY | RTLD_LOCAL);
-        if (!crypto_lib)
-            crypto_lib = dlopen("libcrypto.so.1.1", RTLD_LAZY | RTLD_LOCAL);
+        void *crypto_lib = tls_dlopen_libcrypto();
         if (!crypto_lib) {
             session->error = "TLS: CertVerify: libcrypto required for SHA-384/SHA-512 hashing";
             return RT_TLS_ERROR_HANDSHAKE;
@@ -1657,32 +2006,9 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         hash_len = out_len;
     }
 
-    // Native ECDSA P-256 verification (no external dependencies)
-    if (sig_scheme == 0x0403) // ecdsa_secp256r1_sha256
-    {
-        uint8_t px[32], py[32];
-        if (cert_get_ec_pubkey(session->server_cert_der, session->server_cert_der_len, px, py) !=
-            0) {
-            session->error = "TLS: CertVerify: could not extract EC public key from certificate";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        uint8_t sig_r[32], sig_s[32];
-        if (parse_ecdsa_sig_der(sig_bytes, sig_len, sig_r, sig_s) != 0) {
-            session->error = "TLS: CertVerify: malformed ECDSA signature";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        if (!ecdsa_p256_verify(px, py, content_hash, sig_r, sig_s)) {
-            session->error = "TLS: CertificateVerify ECDSA signature verification failed";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-        return RT_TLS_OK;
-    }
-
-    // RSA-PSS schemes fall through to dlopen(libcrypto)
-    if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) {
-        return tls_verify_rsa_pss_dlopen(
+    if (sig_scheme == 0x0403 || sig_scheme == 0x0503 || sig_scheme == 0x0804 ||
+        sig_scheme == 0x0805 || sig_scheme == 0x0806) {
+        return tls_verify_signature_dlopen(
             session, sig_scheme, sig_bytes, sig_len, content_hash, hash_len);
     }
 

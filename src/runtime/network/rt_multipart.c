@@ -84,6 +84,21 @@ static inline int64_t bytes_len_impl(void *obj) {
     return ((bytes_impl *)obj)->len;
 }
 
+static const uint8_t *find_bytes(const uint8_t *haystack,
+                                 size_t haystack_len,
+                                 const uint8_t *needle,
+                                 size_t needle_len) {
+    if (!haystack || !needle || needle_len == 0 || haystack_len < needle_len)
+        return NULL;
+
+    size_t limit = haystack_len - needle_len;
+    for (size_t i = 0; i <= limit; i++) {
+        if (haystack[i] == needle[0] && memcmp(haystack + i, needle, needle_len) == 0)
+            return haystack + i;
+    }
+    return NULL;
+}
+
 //=============================================================================
 // Finalizer
 //=============================================================================
@@ -292,39 +307,49 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
 
     char delim[140];
     int dlen = snprintf(delim, sizeof(delim), "--%s", boundary);
-    char end_delim[142];
-    int elen = snprintf(end_delim, sizeof(end_delim), "--%s--", boundary);
+    char next_delim[144];
+    int next_dlen = snprintf(next_delim, sizeof(next_delim), "\r\n--%s", boundary);
+    if (dlen <= 0 || next_dlen <= 0)
+        return mp;
 
     // Find each part between boundaries
-    const char *s = (const char *)data;
-    const char *s_end = s + body_len;
+    const uint8_t *s = data;
+    const uint8_t *s_end = s + body_len;
 
     // Skip to first boundary
-    const char *p = strstr(s, delim);
+    const uint8_t *p = find_bytes(s, (size_t)body_len, (const uint8_t *)delim, (size_t)dlen);
     if (!p)
         return mp;
 
     while (p && p < s_end && mp->part_count < MAX_PARTS) {
         p += dlen;
-        if (*p == '-' && *(p + 1) == '-')
+        if (p + 1 < s_end && p[0] == '-' && p[1] == '-')
             break; // End boundary
-        if (*p == '\r')
+        if (p < s_end && *p == '\r')
             p++;
-        if (*p == '\n')
+        if (p < s_end && *p == '\n')
             p++;
 
         // Find end of headers (double CRLF)
-        const char *headers_end = strstr(p, "\r\n\r\n");
+        const uint8_t header_sep[] = {'\r', '\n', '\r', '\n'};
+        const uint8_t *headers_end =
+            find_bytes(p, (size_t)(s_end - p), header_sep, sizeof(header_sep));
         if (!headers_end)
             break;
 
         // Parse name from Content-Disposition
-        const char *name_start = strstr(p, "name=\"");
         char part_name[256] = {0};
         char part_filename[256] = {0};
         int is_file = 0;
+        size_t header_len = (size_t)(headers_end - p);
+        char *header_text = (char *)malloc(header_len + 1);
+        if (!header_text)
+            break;
+        memcpy(header_text, p, header_len);
+        header_text[header_len] = '\0';
 
-        if (name_start && name_start < headers_end) {
+        const char *name_start = strstr(header_text, "name=\"");
+        if (name_start) {
             name_start += 6;
             const char *name_end = strchr(name_start, '"');
             if (name_end) {
@@ -335,8 +360,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             }
         }
 
-        const char *fn_start = strstr(p, "filename=\"");
-        if (fn_start && fn_start < headers_end) {
+        const char *fn_start = strstr(header_text, "filename=\"");
+        if (fn_start) {
             fn_start += 10;
             const char *fn_end = strchr(fn_start, '"');
             if (fn_end) {
@@ -347,20 +372,20 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
                 is_file = 1;
             }
         }
+        free(header_text);
 
         // Data starts after headers
-        const char *data_start = headers_end + 4;
+        const uint8_t *data_start = headers_end + 4;
 
         // Find next boundary
-        const char *next = strstr(data_start, delim);
+        const uint8_t *next = find_bytes(data_start,
+                                         (size_t)(s_end - data_start),
+                                         (const uint8_t *)next_delim,
+                                         (size_t)next_dlen);
         if (!next)
             next = s_end;
 
-        // Data ends 2 bytes before next boundary (strip trailing \r\n)
         size_t data_size = (size_t)(next - data_start);
-        if (data_size >= 2 && data_start[data_size - 2] == '\r' &&
-            data_start[data_size - 1] == '\n')
-            data_size -= 2;
 
         multipart_part_t *part = &mp->parts[mp->part_count++];
         part->name = strdup(part_name);
@@ -374,8 +399,6 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         p = next;
     }
 
-    (void)elen;
-    (void)end_delim;
     return mp;
 }
 

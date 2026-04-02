@@ -90,6 +90,14 @@ static void instbatch_finalizer(void *obj) {
     b->has_prev_snapshot = 0;
 }
 
+/// @brief Create an instance batch for drawing N copies of one mesh efficiently.
+/// @details Instance batching draws many objects with the same mesh and material
+///          but different transforms in fewer draw calls. The software backend
+///          falls back to individual draws; GPU backends may use native instancing.
+///          Transforms are stored as contiguous float[16*N] row-major Mat4 arrays.
+/// @param mesh     Mesh handle shared by all instances (borrowed reference).
+/// @param material Material handle shared by all instances (borrowed reference).
+/// @return Opaque batch handle, or NULL on failure.
 void *rt_instbatch3d_new(void *mesh, void *material) {
     if (!mesh || !material)
         return NULL;
@@ -119,6 +127,9 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
     return b;
 }
 
+/// @brief Add an instance with the given transform (grows array if full).
+/// @details Copies the Mat4 (double) into the float[16] transform buffer.
+///          The array uses geometric growth to amortize allocation cost.
 void rt_instbatch3d_add(void *obj, void *transform) {
     if (!obj || !transform)
         return;
@@ -159,6 +170,7 @@ void rt_instbatch3d_add(void *obj, void *transform) {
     b->instance_count++;
 }
 
+/// @brief Remove an instance by index (swap-removes with last for O(1) time).
 void rt_instbatch3d_remove(void *obj, int64_t index) {
     if (!obj)
         return;
@@ -191,6 +203,7 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
         b->prev_count = b->instance_count;
 }
 
+/// @brief Update the transform of an existing instance at the given index.
 void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
     if (!obj || !transform)
         return;
@@ -204,6 +217,7 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
             dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
 }
 
+/// @brief Remove all instances from the batch, resetting count to zero.
 void rt_instbatch3d_clear(void *obj) {
     if (!obj)
         return;
@@ -214,6 +228,7 @@ void rt_instbatch3d_clear(void *obj) {
     b->has_prev_snapshot = 0;
 }
 
+/// @brief Get the current number of instances in the batch.
 int64_t rt_instbatch3d_count(void *obj) {
     return obj ? ((rt_instbatch3d *)obj)->instance_count : 0;
 }

@@ -6,6 +6,7 @@
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt_async.h"
 #include "rt_future.h"
+#include "rt_http_server.h"
 #include "rt_object.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
@@ -1694,6 +1695,18 @@ struct VmAsyncRunPayload {
     void *promise = nullptr;
 };
 
+struct VmHttpHandlerPayload {
+    const il::core::Module *module = nullptr;
+    std::shared_ptr<il::vm::VM::ProgramState> program;
+    const il::core::Function *entry = nullptr;
+};
+
+struct BytecodeHttpHandlerPayload {
+    const BytecodeModule *module = nullptr;
+    const BytecodeFunction *entry = nullptr;
+    bool runtimeBridgeEnabled = false;
+};
+
 /// Standard VM thread entry trampoline
 extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
@@ -1751,9 +1764,22 @@ static void validateAsyncEntrySignature(const il::core::Function &fn) {
     rt_trap("Async.Run: invalid entry signature");
 }
 
+static void validateHttpHandlerSignature(const il::core::Function &fn) {
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 || fn.params[0].type.kind != Kind::Ptr ||
+        fn.params[1].type.kind != Kind::Ptr) {
+        rt_trap("HttpServer.BindHandler: invalid entry signature");
+    }
+}
+
 static void validateBytecodeAsyncEntrySignature(const BytecodeFunction &fn) {
     if (!fn.hasReturn || fn.numParams != 1)
         rt_trap("Async.Run: invalid bytecode entry signature");
+}
+
+static void validateBytecodeHttpHandlerSignature(const BytecodeFunction &fn) {
+    if (fn.hasReturn || fn.numParams != 2)
+        rt_trap("HttpServer.BindHandler: invalid bytecode entry signature");
 }
 
 /// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
@@ -1927,6 +1953,117 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
     delete payload;
 }
 
+extern "C" void vm_http_handler_dispatch_bc(void *raw, void *req, void *res) {
+    auto *payload = static_cast<VmHttpHandlerPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry) {
+        rt_abort("HttpServer.BindHandler: invalid entry");
+        return;
+    }
+
+    try {
+        il::vm::VM vm(*payload->module, payload->program);
+        il::support::SmallVector<il::vm::Slot, 2> args;
+        il::vm::Slot reqSlot{};
+        reqSlot.ptr = req;
+        args.push_back(reqSlot);
+        il::vm::Slot resSlot{};
+        resSlot.ptr = res;
+        args.push_back(resSlot);
+        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+    } catch (...) {
+        rt_abort("HttpServer.BindHandler: unhandled exception");
+    }
+}
+
+extern "C" void bytecode_http_handler_dispatch(void *raw, void *req, void *res) {
+    auto *payload = static_cast<BytecodeHttpHandlerPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry) {
+        rt_abort("HttpServer.BindHandler: invalid bytecode entry");
+        return;
+    }
+
+    BytecodeVM vm;
+    vm.load(payload->module);
+    vm.setRuntimeBridgeEnabled(payload->runtimeBridgeEnabled);
+
+    std::vector<BCSlot> args;
+    BCSlot reqSlot{};
+    reqSlot.ptr = req;
+    args.push_back(reqSlot);
+    BCSlot resSlot{};
+    resSlot.ptr = res;
+    args.push_back(resSlot);
+    vm.exec(payload->entry, args);
+}
+
+extern "C" void destroy_vm_http_handler_payload_bc(void *raw) {
+    delete static_cast<VmHttpHandlerPayload *>(raw);
+}
+
+extern "C" void destroy_bytecode_http_handler_payload(void *raw) {
+    delete static_cast<BytecodeHttpHandlerPayload *>(raw);
+}
+
+static void unified_http_server_bind_handler(void **args, void *result) {
+    (void)result;
+
+    void *server = nullptr;
+    rt_string tag = nullptr;
+    void *entry = nullptr;
+    if (args && args[0])
+        server = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        tag = *reinterpret_cast<rt_string *>(args[1]);
+    if (args && args[2])
+        entry = *reinterpret_cast<void **>(args[2]);
+
+    if (!entry)
+        rt_trap("HttpServer.BindHandler: null entry");
+
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm) {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("HttpServer.BindHandler: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("HttpServer.BindHandler: invalid entry");
+        validateHttpHandlerSignature(*entryFn);
+
+        auto *payload = new VmHttpHandlerPayload{&module, std::move(program), entryFn};
+        rt_http_server_bind_handler_dispatch(server,
+                                             tag,
+                                             reinterpret_cast<void *>(&vm_http_handler_dispatch_bc),
+                                             payload,
+                                             reinterpret_cast<void *>(
+                                                 &destroy_vm_http_handler_payload_bc));
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("HttpServer.BindHandler: invalid bytecode entry");
+        validateBytecodeHttpHandlerSignature(*entryFn);
+
+        auto *payload = new BytecodeHttpHandlerPayload{
+            bcModule, entryFn, bcVm->runtimeBridgeEnabled()};
+        rt_http_server_bind_handler_dispatch(
+            server,
+            tag,
+            reinterpret_cast<void *>(&bytecode_http_handler_dispatch),
+            payload,
+            reinterpret_cast<void *>(&destroy_bytecode_http_handler_payload));
+        return;
+    }
+
+    rt_http_server_bind_handler(server, tag, entry);
+}
+
 static void unified_async_run_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -2035,6 +2172,13 @@ struct UnifiedThreadHandlerRegistrar {
             ext.signature =
                 make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
             ext.fn = reinterpret_cast<void *>(&unified_async_run_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Network.HttpServer.BindHandler";
+            ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_http_server_bind_handler);
             il::vm::RuntimeBridge::registerExtern(ext);
         }
     }

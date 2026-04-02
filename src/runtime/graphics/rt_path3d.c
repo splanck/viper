@@ -56,6 +56,12 @@ static void path3d_finalizer(void *obj) {
     p->point_count = p->point_capacity = 0;
 }
 
+/// @brief Create a new empty 3D Catmull-Rom spline path.
+/// @details Paths are used for camera dollies, patrol routes, missile trajectories,
+///          and similar smooth 3D curves. Points are added with add_point; the
+///          curve passes through all control points (Catmull-Rom property). The
+///          arc length is cached and recomputed lazily when points change.
+/// @return Opaque path handle, or NULL on allocation failure.
 void *rt_path3d_new(void) {
     rt_path3d *p = (rt_path3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_path3d));
     if (!p) {
@@ -75,6 +81,7 @@ void *rt_path3d_new(void) {
     return p;
 }
 
+/// @brief Append a control point to the path (invalidates cached arc length).
 void rt_path3d_add_point(void *obj, void *pos) {
     if (!obj || !pos)
         return;
@@ -132,6 +139,13 @@ static int32_t path_idx(const rt_path3d *p, int32_t i) {
     return i;
 }
 
+/// @brief Evaluate the path position at parameter t in [0, 1].
+/// @details Uses Catmull-Rom interpolation between control points. The curve
+///          passes through every control point. If looping is enabled, t wraps
+///          around; otherwise it is clamped to [0, 1]. Requires at least 2 points.
+/// @param obj Path handle.
+/// @param t   Parameter along the path (0 = start, 1 = end).
+/// @return New Vec3 at the interpolated position.
 void *rt_path3d_get_position_at(void *obj, double t) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -188,6 +202,9 @@ void *rt_path3d_get_position_at(void *obj, double t) {
     return rt_vec3_new(ox, oy, oz);
 }
 
+/// @brief Get the normalized tangent direction at parameter t.
+/// @details Computes the tangent via finite differences (forward - backward at
+///          a small epsilon). Returns (0,0,0) if the path has < 2 points.
 void *rt_path3d_get_direction_at(void *obj, double t) {
     double eps = 0.001;
     void *p0 = rt_path3d_get_position_at(obj, t - eps);
@@ -204,6 +221,9 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
     return rt_vec3_new(dx, dy, dz);
 }
 
+/// @brief Compute the total arc length of the path (cached, recomputed when dirty).
+/// @details Numerically integrates distance along the spline using 20 samples
+///          per control point. The result is cached until points are added/removed.
 double rt_path3d_get_length(void *obj) {
     if (!obj)
         return 0.0;
@@ -232,10 +252,12 @@ double rt_path3d_get_length(void *obj) {
     return total;
 }
 
+/// @brief Get the number of control points in the path.
 int64_t rt_path3d_get_point_count(void *obj) {
     return obj ? ((rt_path3d *)obj)->point_count : 0;
 }
 
+/// @brief Enable or disable looping (t wraps around instead of clamping).
 void rt_path3d_set_looping(void *obj, int8_t loop) {
     if (!obj)
         return;
@@ -244,6 +266,7 @@ void rt_path3d_set_looping(void *obj, int8_t loop) {
     p->length_dirty = 1;
 }
 
+/// @brief Remove all control points, resetting the path to empty.
 void rt_path3d_clear(void *obj) {
     if (!obj)
         return;

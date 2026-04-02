@@ -131,12 +131,15 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
 
 static void *execute_request(rest_client *client, void *req) {
     void *res = rt_http_req_send(req);
+    if (req && rt_obj_release_check0(req))
+        rt_obj_free(req);
 
     // Release the previous response before taking ownership of the new one (RC-2 fix)
     if (client->last_response && rt_obj_release_check0(client->last_response))
         rt_obj_free(client->last_response);
 
-    client->last_response = res; // Takes ownership (refcount = 1 from rt_http_req_send)
+    rt_obj_retain_maybe(res);
+    client->last_response = res;
     client->last_status = rt_http_res_status(res);
     return res;
 }
@@ -460,6 +463,7 @@ void *rt_restclient_last_response(void *obj) {
     if (!obj)
         return NULL;
     rest_client *client = (rest_client *)obj;
+    rt_obj_retain_maybe(client->last_response);
     return client->last_response;
 }
 

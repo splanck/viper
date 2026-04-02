@@ -91,6 +91,14 @@ static void rt_rendertarget3d_finalize(void *obj) {
     }
 }
 
+/// @brief Create an offscreen render target for render-to-texture effects.
+/// @details Allocates a software framebuffer at the specified resolution. Once
+///          bound to a Canvas3D via rt_canvas3d_bind_render_target, all subsequent
+///          Begin/DrawMesh/End calls render to this target instead of the window.
+///          The result can be read back as a Pixels object via as_pixels.
+/// @param width  Target width in pixels (1–8192).
+/// @param height Target height in pixels (1–8192).
+/// @return Opaque render target handle, or NULL on failure.
 void *rt_rendertarget3d_new(int64_t width, int64_t height) {
     if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
         rt_trap("RenderTarget3D.New: dimensions must be 1-8192");
@@ -118,14 +126,22 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height) {
     return rtd;
 }
 
+/// @brief Get the width of the render target in pixels.
 int64_t rt_rendertarget3d_get_width(void *obj) {
     return obj ? ((rt_rendertarget3d *)obj)->width : 0;
 }
 
+/// @brief Get the height of the render target in pixels.
 int64_t rt_rendertarget3d_get_height(void *obj) {
     return obj ? ((rt_rendertarget3d *)obj)->height : 0;
 }
 
+/// @brief Copy the render target contents into a new Pixels object for CPU access.
+/// @details Converts the internal RGBA byte buffer to Pixels' packed uint32_t
+///          format (0xRRGGBBAA). This is a full copy — the Pixels can be used
+///          as a texture, saved to disk, or processed independently.
+/// @param obj Render target handle.
+/// @return New Pixels handle with the framebuffer contents, or NULL on failure.
 void *rt_rendertarget3d_as_pixels(void *obj) {
     if (!obj)
         return NULL;

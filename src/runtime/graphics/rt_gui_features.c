@@ -74,7 +74,7 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
 
 void *rt_commandpalette_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     if (!app)
         app = s_current_app;
     vg_commandpalette_t *palette = vg_commandpalette_create();
@@ -115,7 +115,7 @@ void rt_commandpalette_destroy(void *palette) {
         free(data->selected_command);
 }
 
-/// @brief Add the command of the commandpalette.
+/// @brief Register a command in the palette's fuzzy-searchable list.
 void rt_commandpalette_add_command(void *palette,
                                    rt_string id,
                                    rt_string label,
@@ -180,7 +180,7 @@ void rt_commandpalette_add_command_with_shortcut(
     free(cshort);
 }
 
-/// @brief Remove the command of the commandpalette.
+/// @brief Remove a command from the palette by its ID.
 void rt_commandpalette_remove_command(void *palette, rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -220,7 +220,7 @@ void rt_commandpalette_hide(void *palette) {
     vg_commandpalette_hide(data->palette);
 }
 
-/// @brief Is the visible of the commandpalette.
+/// @brief Check whether the command palette is currently visible.
 int64_t rt_commandpalette_is_visible(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -254,7 +254,7 @@ rt_string rt_commandpalette_get_selected_command(void *palette) {
     return rt_str_empty();
 }
 
-/// @brief Was the command selected of the commandpalette.
+/// @brief Check if a command was selected since the last call (edge-triggered, resets).
 int64_t rt_commandpalette_was_command_selected(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
@@ -296,7 +296,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
         free(ctext);
 }
 
-/// @brief Show the rich of the tooltip.
+/// @brief Show a rich tooltip with a title and body at a specific screen position.
 void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -374,7 +374,7 @@ void rt_widget_set_tooltip(void *widget, rt_string text) {
         free(ctext);
 }
 
-/// @brief Set the tooltip rich of the widget.
+/// @brief Attach a rich tooltip (title + body) to a widget for hover display.
 void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -475,7 +475,7 @@ static vg_notification_position_t rt_toast_position_to_vg(int64_t position) {
     }
 }
 
-/// @brief Info the toast.
+/// @brief Show an informational toast notification (auto-dismisses after 3 seconds).
 void rt_toast_info(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -495,7 +495,7 @@ void rt_toast_info(rt_string message) {
         free(cmsg);
 }
 
-/// @brief Success the toast.
+/// @brief Show a success toast notification (auto-dismisses after 3 seconds).
 void rt_toast_success(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -515,7 +515,7 @@ void rt_toast_success(rt_string message) {
         free(cmsg);
 }
 
-/// @brief Warning the toast.
+/// @brief Show a warning toast notification (auto-dismisses after 5 seconds).
 void rt_toast_warning(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -535,7 +535,7 @@ void rt_toast_warning(rt_string message) {
         free(cmsg);
 }
 
-/// @brief Error the toast.
+/// @brief Show an error toast notification (does not auto-dismiss; user must close).
 void rt_toast_error(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -611,7 +611,7 @@ void rt_toast_set_action(void *toast, rt_string label) {
     }
 }
 
-/// @brief Was the action clicked of the toast.
+/// @brief Check if the toast's action button was clicked (edge-triggered).
 int64_t rt_toast_was_action_clicked(void *toast) {
     RT_ASSERT_MAIN_THREAD();
     if (!toast)
@@ -622,7 +622,7 @@ int64_t rt_toast_was_action_clicked(void *toast) {
     return result;
 }
 
-/// @brief Was the dismissed of the toast.
+/// @brief Check if the toast was dismissed (expired or manually closed).
 int64_t rt_toast_was_dismissed(void *toast) {
     RT_ASSERT_MAIN_THREAD();
     if (!toast)
@@ -736,7 +736,8 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
 
 void *rt_breadcrumb_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     if (!bc)
         return NULL;
@@ -753,8 +754,8 @@ void *rt_breadcrumb_new(void *parent) {
     data->was_clicked = 0;
 
     vg_breadcrumb_set_on_click(bc, rt_breadcrumb_on_click, data);
-    if (parent) {
-        vg_widget_add_child((vg_widget_t *)parent, &bc->base);
+    if (parent_widget) {
+        vg_widget_add_child(parent_widget, &bc->base);
     }
     if (app && app->default_font) {
         vg_breadcrumb_set_font(bc, app->default_font, app->default_font_size);
@@ -840,7 +841,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     }
 }
 
-/// @brief Add the item of the breadcrumb.
+/// @brief Add a path segment to a breadcrumb navigation widget.
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -867,7 +868,7 @@ void rt_breadcrumb_clear(void *crumb) {
     vg_breadcrumb_clear(data->breadcrumb);
 }
 
-/// @brief Was the item clicked of the breadcrumb.
+/// @brief Check if a breadcrumb segment was clicked this frame (edge-triggered).
 int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
     if (!crumb)
@@ -933,6 +934,7 @@ typedef struct rt_minimap_data {
 
 void *rt_minimap_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     vg_minimap_t *minimap = vg_minimap_create(NULL);
     if (!minimap)
         return NULL;
@@ -945,8 +947,8 @@ void *rt_minimap_new(void *parent) {
     }
     data->minimap = minimap;
     data->width = 80; // Default width
-    if (parent) {
-        vg_widget_add_child((vg_widget_t *)parent, &minimap->base);
+    if (parent_widget) {
+        vg_widget_add_child(parent_widget, &minimap->base);
     }
     return data;
 }
@@ -1017,7 +1019,7 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     vg_minimap_set_show_viewport(data->minimap, show != 0);
 }
 
-/// @brief Add the marker of the minimap.
+/// @brief Add a highlighted marker region to the minimap.
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -1040,7 +1042,7 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
     mm->base.needs_paint = true;
 }
 
-/// @brief Remove the markers of the minimap.
+/// @brief Clear all markers from the minimap.
 void rt_minimap_remove_markers(void *minimap, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
     if (!minimap)
@@ -1110,7 +1112,7 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
     w->drag_data = rt_string_to_cstr(data);
 }
 
-/// @brief Is the being dragged of the widget.
+/// @brief Check whether a widget is currently being dragged.
 int64_t rt_widget_is_being_dragged(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1136,7 +1138,7 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
     w->accepted_drop_types = rt_string_to_cstr(types);
 }
 
-/// @brief Is the drag over of the widget.
+/// @brief Check whether a dragged item is hovering over this drop target.
 int64_t rt_widget_is_drag_over(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1144,7 +1146,7 @@ int64_t rt_widget_is_drag_over(void *widget) {
     return ((vg_widget_t *)widget)->_is_drag_over ? 1 : 0;
 }
 
-/// @brief Was the dropped of the widget.
+/// @brief Check whether a drop was completed on this widget this frame.
 int64_t rt_widget_was_dropped(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
@@ -1177,7 +1179,7 @@ rt_string rt_widget_get_drop_data(void *widget) {
     return rt_str_empty();
 }
 
-/// @brief Was the file dropped of the app.
+/// @brief Check whether files were dropped onto the app window this frame.
 int64_t rt_app_was_file_dropped(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -1188,7 +1190,7 @@ int64_t rt_app_was_file_dropped(void *app) {
     return result;
 }
 
-/// @brief Return the count of elements in the app.
+/// @brief Get the number of files dropped onto the app window.
 int64_t rt_app_get_dropped_file_count(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
@@ -1268,7 +1270,7 @@ void rt_commandpalette_destroy(void *palette) {
     (void)palette;
 }
 
-/// @brief Add the command of the commandpalette.
+/// @brief Register a command in the palette's fuzzy-searchable list.
 void rt_commandpalette_add_command(void *palette,
                                    rt_string id,
                                    rt_string label,
@@ -1288,7 +1290,7 @@ void rt_commandpalette_add_command_with_shortcut(
     (void)shortcut;
 }
 
-/// @brief Remove the command of the commandpalette.
+/// @brief Remove a command from the palette by its ID.
 void rt_commandpalette_remove_command(void *palette, rt_string id) {
     (void)palette;
     (void)id;
@@ -1309,7 +1311,7 @@ void rt_commandpalette_hide(void *palette) {
     (void)palette;
 }
 
-/// @brief Is the visible of the commandpalette.
+/// @brief Check whether the command palette is currently visible.
 int64_t rt_commandpalette_is_visible(void *palette) {
     (void)palette;
     return 0;
@@ -1327,7 +1329,7 @@ rt_string rt_commandpalette_get_selected_command(void *palette) {
     return rt_str_empty();
 }
 
-/// @brief Was the command selected of the commandpalette.
+/// @brief Check if a command was selected since the last call (edge-triggered, resets).
 int64_t rt_commandpalette_was_command_selected(void *palette) {
     (void)palette;
     return 0;
@@ -1340,7 +1342,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
     (void)y;
 }
 
-/// @brief Show the rich of the tooltip.
+/// @brief Show a rich tooltip with a title and body at a specific screen position.
 void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y) {
     (void)title;
     (void)body;
@@ -1362,7 +1364,7 @@ void rt_widget_set_tooltip(void *widget, rt_string text) {
     (void)text;
 }
 
-/// @brief Set the tooltip rich of the widget.
+/// @brief Attach a rich tooltip (title + body) to a widget for hover display.
 void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
     (void)widget;
     (void)title;
@@ -1374,22 +1376,22 @@ void rt_widget_clear_tooltip(void *widget) {
     (void)widget;
 }
 
-/// @brief Info the toast.
+/// @brief Show an informational toast notification (auto-dismisses after 3 seconds).
 void rt_toast_info(rt_string message) {
     (void)message;
 }
 
-/// @brief Success the toast.
+/// @brief Show a success toast notification (auto-dismisses after 3 seconds).
 void rt_toast_success(rt_string message) {
     (void)message;
 }
 
-/// @brief Warning the toast.
+/// @brief Show a warning toast notification (auto-dismisses after 5 seconds).
 void rt_toast_warning(rt_string message) {
     (void)message;
 }
 
-/// @brief Error the toast.
+/// @brief Show an error toast notification (does not auto-dismiss; user must close).
 void rt_toast_error(rt_string message) {
     (void)message;
 }
@@ -1407,13 +1409,13 @@ void rt_toast_set_action(void *toast, rt_string label) {
     (void)label;
 }
 
-/// @brief Was the action clicked of the toast.
+/// @brief Check if the toast's action button was clicked (edge-triggered).
 int64_t rt_toast_was_action_clicked(void *toast) {
     (void)toast;
     return 0;
 }
 
-/// @brief Was the dismissed of the toast.
+/// @brief Check if the toast was dismissed (expired or manually closed).
 int64_t rt_toast_was_dismissed(void *toast) {
     (void)toast;
     return 0;
@@ -1460,7 +1462,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     (void)items;
 }
 
-/// @brief Add the item of the breadcrumb.
+/// @brief Add a path segment to a breadcrumb navigation widget.
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     (void)crumb;
     (void)text;
@@ -1472,7 +1474,7 @@ void rt_breadcrumb_clear(void *crumb) {
     (void)crumb;
 }
 
-/// @brief Was the item clicked of the breadcrumb.
+/// @brief Check if a breadcrumb segment was clicked this frame (edge-triggered).
 int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
     (void)crumb;
     return 0;
@@ -1547,7 +1549,7 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     (void)show;
 }
 
-/// @brief Add the marker of the minimap.
+/// @brief Add a highlighted marker region to the minimap.
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
     (void)minimap;
     (void)line;
@@ -1555,7 +1557,7 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
     (void)type;
 }
 
-/// @brief Remove the markers of the minimap.
+/// @brief Clear all markers from the minimap.
 void rt_minimap_remove_markers(void *minimap, int64_t line) {
     (void)minimap;
     (void)line;
@@ -1579,7 +1581,7 @@ void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
     (void)data;
 }
 
-/// @brief Is the being dragged of the widget.
+/// @brief Check whether a widget is currently being dragged.
 int64_t rt_widget_is_being_dragged(void *widget) {
     (void)widget;
     return 0;
@@ -1597,13 +1599,13 @@ void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
     (void)types;
 }
 
-/// @brief Is the drag over of the widget.
+/// @brief Check whether a dragged item is hovering over this drop target.
 int64_t rt_widget_is_drag_over(void *widget) {
     (void)widget;
     return 0;
 }
 
-/// @brief Was the dropped of the widget.
+/// @brief Check whether a drop was completed on this widget this frame.
 int64_t rt_widget_was_dropped(void *widget) {
     (void)widget;
     return 0;
@@ -1621,13 +1623,13 @@ rt_string rt_widget_get_drop_data(void *widget) {
     return rt_str_empty();
 }
 
-/// @brief Was the file dropped of the app.
+/// @brief Check whether files were dropped onto the app window this frame.
 int64_t rt_app_was_file_dropped(void *app) {
     (void)app;
     return 0;
 }
 
-/// @brief Return the count of elements in the app.
+/// @brief Get the number of files dropped onto the app window.
 int64_t rt_app_get_dropped_file_count(void *app) {
     (void)app;
     return 0;

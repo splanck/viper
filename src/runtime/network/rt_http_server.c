@@ -29,6 +29,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_threadpool.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -55,7 +56,6 @@ extern void rt_trap_net(const char *msg, int err_code);
 // Internal Structures
 //=============================================================================
 
-#define MAX_HANDLER_TAGS 256
 #define HTTP_REQ_MAX_LINE 8192
 #define HTTP_REQ_MAX_HEADERS 100
 #define HTTP_REQ_MAX_BODY (16 * 1024 * 1024) // 16 MB
@@ -79,16 +79,28 @@ typedef struct {
 } server_res_t;
 
 typedef struct {
-    char tag[256]; // Handler identifier (e.g., "handle_users_get")
-} handler_entry_t;
+    char *tag;
+} route_entry_t;
+
+typedef struct {
+    char *tag;
+    rt_http_server_handler_dispatch_fn dispatch;
+    void *ctx;
+    rt_http_server_handler_cleanup_fn cleanup;
+} handler_binding_t;
 
 typedef struct {
     void *router;     // HttpRouter
     void *tcp_server; // TcpServer
+    void *worker_pool;
     int64_t port;
     bool running;
-    handler_entry_t handlers[MAX_HANDLER_TAGS];
-    int handler_count;
+    route_entry_t *routes;
+    int route_count;
+    int route_cap;
+    handler_binding_t *bindings;
+    int binding_count;
+    int binding_cap;
 #ifdef _WIN32
     HANDLE accept_thread;
 #else
@@ -98,6 +110,160 @@ typedef struct {
 } rt_http_server_impl;
 
 static void free_server_req(server_req_t *req);
+static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
+static void free_route_entries(rt_http_server_impl *server);
+static void free_handler_bindings(rt_http_server_impl *server);
+
+static char *dup_cstr(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1);
+    return copy;
+}
+
+static int ensure_route_capacity(rt_http_server_impl *server, int needed) {
+    if (needed <= server->route_cap)
+        return 1;
+
+    int new_cap = server->route_cap > 0 ? server->route_cap : 8;
+    while (new_cap < needed) {
+        if (new_cap > INT32_MAX / 2)
+            return 0;
+        new_cap *= 2;
+    }
+
+    route_entry_t *routes =
+        (route_entry_t *)realloc(server->routes, (size_t)new_cap * sizeof(route_entry_t));
+    if (!routes)
+        return 0;
+    memset(routes + server->route_cap, 0, (size_t)(new_cap - server->route_cap) * sizeof(*routes));
+    server->routes = routes;
+    server->route_cap = new_cap;
+    return 1;
+}
+
+static int ensure_binding_capacity(rt_http_server_impl *server, int needed) {
+    if (needed <= server->binding_cap)
+        return 1;
+
+    int new_cap = server->binding_cap > 0 ? server->binding_cap : 8;
+    while (new_cap < needed) {
+        if (new_cap > INT32_MAX / 2)
+            return 0;
+        new_cap *= 2;
+    }
+
+    handler_binding_t *bindings =
+        (handler_binding_t *)realloc(server->bindings, (size_t)new_cap * sizeof(handler_binding_t));
+    if (!bindings)
+        return 0;
+    memset(bindings + server->binding_cap,
+           0,
+           (size_t)(new_cap - server->binding_cap) * sizeof(*bindings));
+    server->bindings = bindings;
+    server->binding_cap = new_cap;
+    return 1;
+}
+
+static route_entry_t *append_route_entry(rt_http_server_impl *server, const char *tag) {
+    if (!server || !tag)
+        return NULL;
+    if (!ensure_route_capacity(server, server->route_count + 1))
+        return NULL;
+
+    route_entry_t *entry = &server->routes[server->route_count];
+    entry->tag = dup_cstr(tag);
+    if (!entry->tag)
+        return NULL;
+
+    server->route_count++;
+    return entry;
+}
+
+static handler_binding_t *find_handler_binding(rt_http_server_impl *server, const char *tag) {
+    if (!server || !tag)
+        return NULL;
+
+    for (int i = 0; i < server->binding_count; i++) {
+        handler_binding_t *binding = &server->bindings[i];
+        if (binding->tag && strcmp(binding->tag, tag) == 0)
+            return binding;
+    }
+    return NULL;
+}
+
+static void release_handler_binding(handler_binding_t *binding) {
+    if (!binding)
+        return;
+    if (binding->cleanup)
+        binding->cleanup(binding->ctx);
+    free(binding->tag);
+    memset(binding, 0, sizeof(*binding));
+}
+
+static int set_handler_binding(rt_http_server_impl *server,
+                               const char *tag,
+                               rt_http_server_handler_dispatch_fn dispatch,
+                               void *ctx,
+                               rt_http_server_handler_cleanup_fn cleanup) {
+    if (!server || !tag || !dispatch)
+        return 0;
+
+    handler_binding_t *binding = find_handler_binding(server, tag);
+    if (binding) {
+        if (binding->cleanup && binding->ctx != ctx)
+            binding->cleanup(binding->ctx);
+        binding->dispatch = dispatch;
+        binding->ctx = ctx;
+        binding->cleanup = cleanup;
+        return 1;
+    }
+
+    if (!ensure_binding_capacity(server, server->binding_count + 1))
+        return 0;
+
+    binding = &server->bindings[server->binding_count];
+    binding->tag = dup_cstr(tag);
+    if (!binding->tag)
+        return 0;
+    binding->dispatch = dispatch;
+    binding->ctx = ctx;
+    binding->cleanup = cleanup;
+    server->binding_count++;
+    return 1;
+}
+
+static void free_route_entries(rt_http_server_impl *server) {
+    if (!server || !server->routes)
+        return;
+    for (int i = 0; i < server->route_count; i++)
+        free(server->routes[i].tag);
+    free(server->routes);
+    server->routes = NULL;
+    server->route_count = 0;
+    server->route_cap = 0;
+}
+
+static void free_handler_bindings(rt_http_server_impl *server) {
+    if (!server || !server->bindings)
+        return;
+    for (int i = 0; i < server->binding_count; i++)
+        release_handler_binding(&server->bindings[i]);
+    free(server->bindings);
+    server->bindings = NULL;
+    server->binding_count = 0;
+    server->binding_cap = 0;
+}
+
+static void native_handler_dispatch(void *ctx, void *req, void *res) {
+    if (!ctx)
+        return;
+    ((rt_http_server_handler_fn)ctx)(req, res);
+}
 
 //=============================================================================
 // Finalizer
@@ -107,14 +273,15 @@ static void rt_http_server_finalize(void *obj) {
     if (!obj)
         return;
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    server->running = false;
-    if (server->tcp_server) {
-        rt_tcp_server_close(server->tcp_server);
-        server->tcp_server = NULL;
-    }
+    rt_http_server_stop(server);
+    free_route_entries(server);
+    free_handler_bindings(server);
     if (server->router && rt_obj_release_check0(server->router))
         rt_obj_free(server->router);
     server->router = NULL;
+    if (server->worker_pool && rt_obj_release_check0(server->worker_pool))
+        rt_obj_free(server->worker_pool);
+    server->worker_pool = NULL;
 }
 
 //=============================================================================
@@ -147,6 +314,22 @@ static const char *find_char_bounded(const char *buf, size_t len, char needle) {
             return buf + i;
     }
     return NULL;
+}
+
+static int contains_crlf(const char *text) {
+    if (!text)
+        return 0;
+    for (; *text; text++) {
+        if (*text == '\r' || *text == '\n')
+            return 1;
+    }
+    return 0;
+}
+
+static int is_server_managed_header_name(const char *name) {
+    return name &&
+           (strcasecmp(name, "Content-Length") == 0 || strcasecmp(name, "Connection") == 0 ||
+            strcasecmp(name, "Transfer-Encoding") == 0);
 }
 
 static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
@@ -184,11 +367,13 @@ static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
 
 static bool parse_content_length_header_block(const char *headers,
                                               size_t headers_len,
-                                              size_t *content_length_out) {
+                                              size_t *content_length_out,
+                                              bool *chunked_out) {
     const char *p = headers;
     const char *end = headers + headers_len;
     size_t content_length = 0;
     bool saw_content_length = false;
+    bool saw_chunked = false;
 
     while (p < end) {
         const char *line_end = find_crlf(p, (size_t)(end - p));
@@ -205,9 +390,18 @@ static bool parse_content_length_header_block(const char *headers,
                 const char *value = colon + 1;
                 while (value < line_end && (*value == ' ' || *value == '\t'))
                     value++;
+                if (saw_content_length)
+                    return false;
                 if (!parse_size_decimal(value, (size_t)(line_end - value), &content_length))
                     return false;
                 saw_content_length = true;
+            } else if (name_len == strlen("Transfer-Encoding") &&
+                       strncasecmp(p, "Transfer-Encoding", name_len) == 0) {
+                const char *value = colon + 1;
+                while (value < line_end && (*value == ' ' || *value == '\t'))
+                    value++;
+                if (strncasecmp(value, "chunked", 7) == 0)
+                    saw_chunked = true;
             }
         }
 
@@ -215,6 +409,8 @@ static bool parse_content_length_header_block(const char *headers,
     }
 
     *content_length_out = saw_content_length ? content_length : 0;
+    if (chunked_out)
+        *chunked_out = saw_chunked;
     return true;
 }
 
@@ -273,6 +469,7 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     if (!req->headers)
         goto fail;
     p = line_end + 2;
+    const char *headers_begin = p;
     size_t content_length = 0;
     const char *body_start = NULL;
 
@@ -306,15 +503,6 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
                 rt_string key = rt_string_from_bytes(name, name_len);
                 rt_string value = rt_string_from_bytes(val, val_len);
                 rt_map_set(req->headers, key, (void *)value);
-
-                if (strcmp(name, "content-length") == 0) {
-                    if (!parse_size_decimal(val, val_len, &content_length)) {
-                        rt_string_unref(key);
-                        free(name);
-                        goto fail;
-                    }
-                }
-
                 rt_string_unref(key);
                 rt_string_unref(value);
                 free(name);
@@ -328,6 +516,12 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
         goto fail;
     if (!body_start)
         body_start = p;
+
+    bool chunked = false;
+    size_t headers_len = body_start > headers_begin ? (size_t)(body_start - headers_begin - 2) : 0;
+    if (!parse_content_length_header_block(headers_begin, headers_len, &content_length, &chunked) ||
+        chunked)
+        goto fail;
 
     // Parse body
     if (content_length > HTTP_REQ_MAX_BODY)
@@ -438,7 +632,8 @@ static char *build_response(server_res_t *res, size_t *out_len) {
             if (val) {
                 const char *k = rt_string_cstr(key);
                 const char *v = rt_string_cstr((rt_string)val);
-                if (k && v) {
+                if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
+                    !is_server_managed_header_name(k)) {
                     size_t k_len = strlen(k);
                     size_t v_len = strlen(v);
                     if (cap > SIZE_MAX - (k_len + v_len + 4)) {
@@ -487,7 +682,8 @@ static char *build_response(server_res_t *res, size_t *out_len) {
             if (val) {
                 const char *k = rt_string_cstr(key);
                 const char *v = rt_string_cstr((rt_string)val);
-                if (k && v) {
+                if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
+                    !is_server_managed_header_name(k)) {
                     int written = snprintf(cursor, remaining, "%s: %s\r\n", k, v);
                     if (written < 0 || (size_t)written >= remaining) {
                         if (rt_obj_release_check0(keys))
@@ -610,7 +806,10 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
             if (header_end) {
                 headers_done = true;
                 header_end_pos = (size_t)(header_end - buf);
-                if (!parse_content_length_header_block(buf, header_end_pos, &content_length) ||
+                bool chunked = false;
+                if (!parse_content_length_header_block(
+                        buf, header_end_pos, &content_length, &chunked) ||
+                    chunked ||
                     content_length > HTTP_REQ_MAX_BODY) {
                     bad_request = true;
                     break;
@@ -660,54 +859,9 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
     }
     free(buf);
 
-    // Route matching
-    rt_string method_str = rt_string_from_bytes(req.method, strlen(req.method));
-    rt_string path_str = rt_string_from_bytes(req.path, strlen(req.path));
-    void *match = rt_http_router_match(server->router, method_str, path_str);
-    rt_string_unref(method_str);
-    rt_string_unref(path_str);
-
-    // Build response
     server_res_t res;
     memset(&res, 0, sizeof(res));
-    res.headers = rt_map_new();
-
-    if (match) {
-        // Extract params from match
-        req.params = match; // Transfer ownership (match contains params map)
-
-        res.status_code = 200;
-        // Default: echo the handler tag and request info as JSON
-        int64_t route_idx = rt_route_match_index(match);
-        if (route_idx >= 0 && route_idx < server->handler_count) {
-            const char *tag = server->handlers[route_idx].tag;
-            // Build a simple JSON response with request info
-            size_t json_cap = 1024 + req.body_len;
-            char *json = (char *)malloc(json_cap);
-            if (json) {
-                int jlen = snprintf(json,
-                                    json_cap,
-                                    "{\"handler\":\"%s\",\"method\":\"%s\",\"path\":\"%s\"}",
-                                    tag,
-                                    req.method,
-                                    req.path);
-                res.body = json;
-                res.body_len = (size_t)jlen;
-                rt_string ct_key = rt_const_cstr("Content-Type");
-                rt_string ct_val = rt_const_cstr("application/json");
-                rt_map_set(res.headers, ct_key, (void *)ct_val);
-            }
-        }
-    } else {
-        // 404 Not Found
-        res.status_code = 404;
-        const char *not_found = "{\"error\":\"Not Found\"}";
-        res.body = strdup(not_found);
-        res.body_len = strlen(not_found);
-        rt_string ct_key = rt_const_cstr("Content-Type");
-        rt_string ct_val = rt_const_cstr("application/json");
-        rt_map_set(res.headers, ct_key, (void *)ct_val);
-    }
+    build_route_response(server, &req, &res);
 
     // Send response
     size_t resp_len;
@@ -723,6 +877,83 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         rt_obj_free(res.headers);
     free_server_req(&req);
     rt_tcp_close(tcp);
+}
+
+typedef struct {
+    rt_http_server_impl *server;
+    void *tcp;
+} http_conn_task_t;
+
+static void handle_connection_task(void *arg) {
+    http_conn_task_t *task = (http_conn_task_t *)arg;
+    handle_connection(task->server, task->tcp);
+    free(task);
+}
+
+static void set_json_error_response(server_res_t *res, int status_code, const char *message) {
+    if (!res)
+        return;
+
+    res->status_code = status_code;
+    free(res->body);
+    res->body = NULL;
+    res->body_len = 0;
+
+    if (message) {
+        size_t cap = strlen(message) + 32;
+        char *json = (char *)malloc(cap);
+        if (json) {
+            int written = snprintf(json, cap, "{\"error\":\"%s\"}", message);
+            if (written >= 0) {
+                res->body = json;
+                res->body_len = (size_t)written;
+            } else {
+                free(json);
+            }
+        }
+    }
+
+    if (!res->headers)
+        res->headers = rt_map_new();
+    if (res->headers) {
+        rt_string ct_key = rt_const_cstr("Content-Type");
+        rt_string ct_val = rt_const_cstr("application/json");
+        rt_map_set(res->headers, ct_key, (void *)ct_val);
+    }
+}
+
+static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res) {
+    rt_string method_str = rt_string_from_bytes(req->method, strlen(req->method));
+    rt_string path_str = rt_string_from_bytes(req->path, strlen(req->path));
+    void *match = rt_http_router_match(server->router, method_str, path_str);
+    rt_string_unref(method_str);
+    rt_string_unref(path_str);
+
+    res->headers = rt_map_new();
+
+    if (match) {
+        req->params = match; // Transfer ownership
+        res->status_code = 200;
+
+        int64_t route_idx = rt_route_match_index(match);
+        if (route_idx < 0 || route_idx >= server->route_count) {
+            set_json_error_response(res, 500, "Route metadata missing");
+            return;
+        }
+
+        const char *tag = server->routes[route_idx].tag;
+        handler_binding_t *binding = find_handler_binding(server, tag);
+        if (!binding || !binding->dispatch) {
+            set_json_error_response(res, 500, "Handler not registered");
+            return;
+        }
+
+        binding->dispatch(binding->ctx, req, res);
+        if (res->status_code <= 0)
+            res->status_code = 200;
+    } else {
+        set_json_error_response(res, 404, "Not Found");
+    }
 }
 
 //=============================================================================
@@ -747,8 +978,20 @@ static void *accept_loop(void *arg)
             break;
         }
 
-        // Handle connection synchronously (thread pool integration deferred)
-        handle_connection(server, tcp);
+        http_conn_task_t *task = (http_conn_task_t *)malloc(sizeof(http_conn_task_t));
+        if (!task) {
+            rt_tcp_close(tcp);
+            continue;
+        }
+
+        task->server = server;
+        task->tcp = tcp;
+
+        if (!server->worker_pool ||
+            !rt_threadpool_submit(server->worker_pool, (void *)handle_connection_task, task)) {
+            free(task);
+            rt_tcp_close(tcp);
+        }
     }
 
 #ifdef _WIN32
@@ -775,56 +1018,72 @@ void *rt_http_server_new(int64_t port) {
 
     server->port = port;
     server->router = rt_http_router_new();
+    server->worker_pool = rt_threadpool_new(8);
     server->running = false;
 
     return server;
 }
 
-void rt_http_server_get(void *obj, rt_string pattern, rt_string handler_tag) {
-    if (!obj)
+static void add_route_binding(void *obj, rt_string pattern, rt_string handler_tag, void *(*adder)(void *, rt_string)) {
+    if (!obj || !adder)
         return;
-    rt_http_server_impl *s = (rt_http_server_impl *)obj;
-    rt_http_router_get(s->router, pattern);
+
+    rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    adder(server->router, pattern);
+
     const char *tag = rt_string_cstr(handler_tag);
-    if (s->handler_count < MAX_HANDLER_TAGS && tag) {
-        strncpy(s->handlers[s->handler_count].tag, tag, 255);
-        s->handler_count++;
-    }
+    if (!tag || !append_route_entry(server, tag))
+        rt_trap("HttpServer: failed to register route");
+}
+
+void rt_http_server_get(void *obj, rt_string pattern, rt_string handler_tag) {
+    add_route_binding(obj, pattern, handler_tag, rt_http_router_get);
 }
 
 void rt_http_server_post(void *obj, rt_string pattern, rt_string handler_tag) {
-    if (!obj)
-        return;
-    rt_http_server_impl *s = (rt_http_server_impl *)obj;
-    rt_http_router_post(s->router, pattern);
-    const char *tag = rt_string_cstr(handler_tag);
-    if (s->handler_count < MAX_HANDLER_TAGS && tag) {
-        strncpy(s->handlers[s->handler_count].tag, tag, 255);
-        s->handler_count++;
-    }
+    add_route_binding(obj, pattern, handler_tag, rt_http_router_post);
 }
 
 void rt_http_server_put(void *obj, rt_string pattern, rt_string handler_tag) {
-    if (!obj)
-        return;
-    rt_http_server_impl *s = (rt_http_server_impl *)obj;
-    rt_http_router_put(s->router, pattern);
-    const char *tag = rt_string_cstr(handler_tag);
-    if (s->handler_count < MAX_HANDLER_TAGS && tag) {
-        strncpy(s->handlers[s->handler_count].tag, tag, 255);
-        s->handler_count++;
-    }
+    add_route_binding(obj, pattern, handler_tag, rt_http_router_put);
 }
 
 void rt_http_server_del(void *obj, rt_string pattern, rt_string handler_tag) {
-    if (!obj)
+    add_route_binding(obj, pattern, handler_tag, rt_http_router_delete);
+}
+
+void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) {
+    if (!obj || !entry)
         return;
-    rt_http_server_impl *s = (rt_http_server_impl *)obj;
-    rt_http_router_delete(s->router, pattern);
+
     const char *tag = rt_string_cstr(handler_tag);
-    if (s->handler_count < MAX_HANDLER_TAGS && tag) {
-        strncpy(s->handlers[s->handler_count].tag, tag, 255);
-        s->handler_count++;
+    if (!tag)
+        return;
+
+    if (!set_handler_binding(
+            (rt_http_server_impl *)obj, tag, native_handler_dispatch, entry, NULL)) {
+        rt_trap("HttpServer: failed to bind handler");
+    }
+}
+
+void rt_http_server_bind_handler_dispatch(void *obj,
+                                          rt_string handler_tag,
+                                          void *dispatch,
+                                          void *ctx,
+                                          void *cleanup) {
+    if (!obj || !dispatch)
+        return;
+
+    const char *tag = rt_string_cstr(handler_tag);
+    if (!tag)
+        return;
+
+    if (!set_handler_binding((rt_http_server_impl *)obj,
+                             tag,
+                             (rt_http_server_handler_dispatch_fn)dispatch,
+                             ctx,
+                             (rt_http_server_handler_cleanup_fn)cleanup)) {
+        rt_trap("HttpServer: failed to bind handler");
     }
 }
 
@@ -838,6 +1097,8 @@ void rt_http_server_start(void *obj) {
 
     // Create TCP server
     server->tcp_server = rt_tcp_server_listen(server->port);
+    if (!server->worker_pool)
+        server->worker_pool = rt_threadpool_new(8);
     server->running = true;
 
     // Start accept loop in background thread
@@ -869,6 +1130,9 @@ void rt_http_server_stop(void *obj) {
 #endif
         server->thread_started = false;
     }
+
+    if (server->worker_pool)
+        rt_threadpool_wait(server->worker_pool);
 }
 
 int64_t rt_http_server_port(void *obj) {
@@ -916,8 +1180,31 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
     server_req_t *req = (server_req_t *)obj;
     if (!req->headers)
         return rt_string_from_bytes("", 0);
-    void *val = rt_map_get(req->headers, name);
-    return val ? (rt_string)val : rt_string_from_bytes("", 0);
+
+    const char *name_cstr = rt_string_cstr(name);
+    if (!name_cstr)
+        return rt_string_from_bytes("", 0);
+
+    size_t len = strlen(name_cstr);
+    char *lower = (char *)malloc(len + 1);
+    if (!lower)
+        return rt_string_from_bytes("", 0);
+    for (size_t i = 0; i <= len; i++) {
+        char c = name_cstr[i];
+        lower[i] = (c >= 'A' && c <= 'Z') ? (char)(c + ('a' - 'A')) : c;
+    }
+
+    rt_string key = rt_string_from_bytes(lower, len);
+    free(lower);
+    void *val = rt_map_get(req->headers, key);
+    rt_string_unref(key);
+    if (!val)
+        return rt_string_from_bytes("", 0);
+
+    rt_string header = (rt_string)val;
+    const char *header_cstr = rt_string_cstr(header);
+    return header_cstr ? rt_string_from_bytes(header_cstr, strlen(header_cstr))
+                       : rt_string_from_bytes("", 0);
 }
 
 rt_string rt_server_req_param(void *obj, rt_string name) {
@@ -926,7 +1213,10 @@ rt_string rt_server_req_param(void *obj, rt_string name) {
     server_req_t *req = (server_req_t *)obj;
     if (!req->params)
         return rt_string_from_bytes("", 0);
-    return rt_route_match_param(req->params, name);
+    rt_string value = rt_route_match_param(req->params, name);
+    const char *value_cstr = rt_string_cstr(value);
+    return value_cstr ? rt_string_from_bytes(value_cstr, strlen(value_cstr))
+                      : rt_string_from_bytes("", 0);
 }
 
 rt_string rt_server_req_query(void *obj, rt_string name) {
@@ -948,7 +1238,10 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
             const char *val = p + nlen + 1;
             const char *amp = strchr(val, '&');
             size_t vlen = amp ? (size_t)(amp - val) : strlen(val);
-            return rt_string_from_bytes(val, vlen);
+            rt_string raw = rt_string_from_bytes(val, vlen);
+            rt_string decoded = rt_url_decode(raw);
+            rt_string_unref(raw);
+            return decoded;
         }
         const char *amp = strchr(p, '&');
         p = amp ? amp + 1 : NULL;
@@ -975,6 +1268,11 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     server_res_t *res = (server_res_t *)obj;
     if (!res->headers)
         res->headers = rt_map_new();
+    const char *name_cstr = rt_string_cstr(name);
+    const char *value_cstr = rt_string_cstr(value);
+    if (!name_cstr || !value_cstr || contains_crlf(name_cstr) || contains_crlf(value_cstr) ||
+        is_server_managed_header_name(name_cstr))
+        return obj;
     rt_map_set(res->headers, name, (void *)value);
     return obj;
 }
@@ -1003,9 +1301,34 @@ void rt_server_res_json(void *obj, rt_string json_str) {
 }
 
 void *rt_http_server_process_request(void *obj, rt_string raw_request) {
-    (void)obj;
-    (void)raw_request;
-    // Testing entry point — parses raw request and returns response
-    // Full implementation deferred to integration phase
-    return NULL;
+    if (!obj)
+        return rt_string_from_bytes("", 0);
+
+    const char *raw = rt_string_cstr(raw_request);
+    if (!raw)
+        return rt_string_from_bytes("", 0);
+
+    server_req_t req;
+    server_res_t res;
+    memset(&res, 0, sizeof(res));
+
+    if (!parse_http_request(raw, strlen(raw), &req)) {
+        return rt_string_from_bytes(
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            sizeof("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n") -
+                1);
+    }
+
+    build_route_response((rt_http_server_impl *)obj, &req, &res);
+
+    size_t resp_len = 0;
+    char *resp = build_response(&res, &resp_len);
+    rt_string result = resp ? rt_string_from_bytes(resp, resp_len) : rt_string_from_bytes("", 0);
+
+    free(resp);
+    free(res.body);
+    if (res.headers && rt_obj_release_check0(res.headers))
+        rt_obj_free(res.headers);
+    free_server_req(&req);
+    return result;
 }

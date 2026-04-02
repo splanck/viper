@@ -34,6 +34,13 @@
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_trap(const char *msg);
 
+/// @brief Create a new material with default white diffuse, shininess 32, fully opaque.
+/// @details Materials define how light interacts with a mesh surface. The default
+///          state is a white, opaque, lit Phong material with no textures. All
+///          texture pointers (diffuse, normal, specular, emissive, env) are borrowed
+///          references to GC-managed Pixels/CubeMap3D objects and must outlive the
+///          material.
+/// @return Opaque material handle, or NULL on allocation failure.
 void *rt_material3d_new(void) {
     rt_material3d *mat = (rt_material3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_material3d));
     if (!mat) {
@@ -59,6 +66,11 @@ void *rt_material3d_new(void) {
     return mat;
 }
 
+/// @brief Create a material with a solid diffuse color (no texture).
+/// @param r Red diffuse component [0.0–1.0].
+/// @param g Green diffuse component [0.0–1.0].
+/// @param b Blue diffuse component [0.0–1.0].
+/// @return Opaque material handle, or NULL on failure.
 void *rt_material3d_new_color(double r, double g, double b) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
@@ -70,6 +82,11 @@ void *rt_material3d_new_color(double r, double g, double b) {
     return mat;
 }
 
+/// @brief Create a material with a diffuse texture map.
+/// @details The texture (Pixels object) is stored as a borrowed pointer — the
+///          caller must ensure the Pixels outlives this material.
+/// @param pixels Pixels handle for the diffuse texture.
+/// @return Opaque material handle, or NULL on failure.
 void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
@@ -78,7 +95,7 @@ void *rt_material3d_new_textured(void *pixels) {
     return mat;
 }
 
-/// @brief Set the color of the material3d.
+/// @brief Set the diffuse color of a material (overrides existing color, keeps texture).
 void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -88,27 +105,29 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
     mat->diffuse[2] = b;
 }
 
-/// @brief Set the texture of the material3d.
+/// @brief Set or replace the diffuse texture map (borrowed Pixels pointer).
 void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->texture = pixels;
 }
 
-/// @brief Set the shininess of the material3d.
+/// @brief Set the Phong specular shininess exponent (higher = tighter highlight).
 void rt_material3d_set_shininess(void *obj, double s) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->shininess = s;
 }
 
-/// @brief Set the unlit of the material3d.
+/// @brief Enable or disable unlit mode (ignores scene lighting, renders flat color/texture).
 void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->unlit = unlit;
 }
 
+/// @brief Select the shading model (0=Phong, 1=Blinn-Phong, 2=flat, etc.).
+/// @details Model values outside [0,5] are clamped to 0 (Phong).
 void rt_material3d_set_shading_model(void *obj, int64_t model) {
     if (!obj)
         return;
@@ -117,48 +136,51 @@ void rt_material3d_set_shading_model(void *obj, int64_t model) {
     ((rt_material3d *)obj)->shading_model = (int32_t)model;
 }
 
+/// @brief Set a custom shader parameter by index (0–7) for advanced shading effects.
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
     if (!obj || index < 0 || index >= 8)
         return;
     ((rt_material3d *)obj)->custom_params[index] = value;
 }
 
-/// @brief Set the alpha of the material3d.
+/// @brief Set the transparency level (0.0 = invisible, 1.0 = fully opaque).
+/// @details Materials with alpha < 1.0 are drawn in the transparency pass,
+///          sorted back-to-front by distance from camera to prevent rendering artifacts.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->alpha = alpha;
 }
 
-/// @brief Get the alpha of the material3d.
+/// @brief Get the current transparency level of the material.
 double rt_material3d_get_alpha(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->alpha;
 }
 
-/// @brief Set the normal map of the material3d.
+/// @brief Assign a normal map texture for per-pixel bump/detail lighting.
 void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->normal_map = pixels;
 }
 
-/// @brief Set the specular map of the material3d.
+/// @brief Assign a specular map texture to control per-pixel highlight intensity.
 void rt_material3d_set_specular_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->specular_map = pixels;
 }
 
-/// @brief Set the emissive map of the material3d.
+/// @brief Assign an emissive map texture for self-illuminated surface regions.
 void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->emissive_map = pixels;
 }
 
-/// @brief Set the emissive color of the material3d.
+/// @brief Set the emissive (self-illumination) color, independent of scene lights.
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;

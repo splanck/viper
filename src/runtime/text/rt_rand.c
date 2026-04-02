@@ -37,6 +37,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__APPLE__)
+extern void arc4random_buf(void *buf, size_t nbytes);
+#endif
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -55,6 +59,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #else
+#if defined(__linux__)
+#include <sys/random.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -73,6 +80,25 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
     NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return NT_SUCCESS(status) ? 0 : -1;
 #else
+#if defined(__APPLE__)
+    arc4random_buf(buf, len);
+    return 0;
+#elif defined(__linux__)
+    size_t bytes_read = 0;
+    while (bytes_read < len) {
+        ssize_t result = getrandom(buf + bytes_read, len - bytes_read, 0);
+        if (result < 0) {
+            if (errno == EINTR)
+                continue;
+            if (errno == ENOSYS)
+                break;
+            return -1;
+        }
+        bytes_read += (size_t)result;
+    }
+    if (bytes_read == len)
+        return 0;
+#endif
     // Unix and ViperDOS: use /dev/urandom
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd < 0) {

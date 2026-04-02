@@ -62,6 +62,13 @@ static void sprite3d_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Create a 3D billboard sprite that always faces the camera.
+/// @details Sprites are textured quads rendered in 3D space that orient toward
+///          the camera using its view matrix right/up vectors. Commonly used for
+///          particles, distant trees, UI indicators, etc. The sprite supports
+///          spritesheet frames (SetFrame), anchor point control, and non-uniform scale.
+/// @param texture Pixels handle for the sprite image (borrowed, not owned).
+/// @return Opaque sprite handle, or NULL on failure.
 void *rt_sprite3d_new(void *texture) {
     rt_sprite3d *s = (rt_sprite3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite3d));
     if (!s) {
@@ -97,7 +104,7 @@ void *rt_sprite3d_new(void *texture) {
     return s;
 }
 
-/// @brief Set the position of the sprite3d.
+/// @brief Set the world-space position where the sprite is rendered.
 void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -107,7 +114,7 @@ void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     s->position[2] = z;
 }
 
-/// @brief Set the scale of the sprite3d.
+/// @brief Set the width and height scale of the sprite in world units.
 void rt_sprite3d_set_scale(void *obj, double w, double h) {
     if (!obj)
         return;
@@ -116,7 +123,7 @@ void rt_sprite3d_set_scale(void *obj, double w, double h) {
     s->scale_wh[1] = h;
 }
 
-/// @brief Set the anchor of the sprite3d.
+/// @brief Set the anchor point (0,0 = bottom-left, 0.5,0.5 = center, 1,1 = top-right).
 void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     if (!obj)
         return;
@@ -125,7 +132,7 @@ void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     s->anchor[1] = ay;
 }
 
-/// @brief Set the frame of the sprite3d.
+/// @brief Set the spritesheet sub-rectangle to display (for animated sprites).
 void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     if (!obj)
         return;
@@ -136,7 +143,10 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     s->frame_h = (int32_t)fh;
 }
 
-/// @brief Draw the sprite3d of the canvas3d.
+/// @brief Draw a 3D sprite as a camera-facing billboard on the canvas.
+/// @details Constructs a billboard quad each frame using the camera's right and
+///          up vectors, applies the anchor offset, and renders as a textured mesh.
+///          The quad geometry is cached and reused between frames.
 void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;

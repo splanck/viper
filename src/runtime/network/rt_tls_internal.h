@@ -71,6 +71,7 @@ struct rt_tls_session {
     // Configuration
     char hostname[256];
     int verify_cert;
+    int timeout_ms;
 
     // Handshake state
     uint8_t client_private_key[32];
@@ -91,8 +92,12 @@ struct rt_tls_session {
     // Transcript hash
     uint8_t transcript_hash[32];
     rt_sha256_ctx transcript_ctx;
-    uint8_t transcript_buffer[32768];
     size_t transcript_len;
+    uint8_t client_hello_hash[32];
+    int have_client_hello_hash;
+    uint8_t *hello_retry_cookie;
+    size_t hello_retry_cookie_len;
+    int hello_retry_seen;
 
     // Record layer
     traffic_keys_t write_keys;
@@ -112,6 +117,9 @@ struct rt_tls_session {
     // Certificate validation state (CS-1/CS-2/CS-3)
     uint8_t server_cert_der[16384];   // End-entity certificate DER bytes
     size_t server_cert_der_len;       // Bytes stored in server_cert_der
+    uint8_t *server_cert_list;        // Raw TLS certificate_list entries (leaf + intermediates)
+    size_t server_cert_list_len;      // Bytes stored in server_cert_list
+    size_t server_cert_count;         // Number of parsed certificate entries
     uint8_t cert_transcript_hash[32]; // Transcript hash saved AFTER Certificate (for CS-3)
 };
 

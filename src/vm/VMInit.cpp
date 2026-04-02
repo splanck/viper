@@ -41,6 +41,7 @@ using namespace il::core;
 namespace il::vm {
 
 void registerThreadsRuntimeExternals();
+void registerNetworkRuntimeExternals();
 
 namespace {
 
@@ -60,6 +61,7 @@ struct NumericLocaleInitializer {
 struct ThreadsRuntimeInitializer {
     ThreadsRuntimeInitializer() {
         registerThreadsRuntimeExternals();
+        registerNetworkRuntimeExternals();
     }
 };
 

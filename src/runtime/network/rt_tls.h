@@ -9,9 +9,10 @@
 // pure C without external TLS libraries.
 //
 // Key invariants:
-//   - Implements TLS 1.3 handshake with X25519 key exchange.
+//   - Implements TLS 1.3 handshake with X25519 key exchange and X25519 HelloRetryRequest retry.
 //   - Supports AES-128-GCM-SHA256 (0x1301) and ChaCha20-Poly1305-SHA256 (0x1303).
-//   - Certificate verification is performed against the system trust store.
+//   - Certificate verification is performed against the system trust store using the
+//     server-supplied certificate chain and hostname/IP SAN verification.
 //   - Only client mode is supported; server-side TLS is not implemented.
 //
 // Ownership/Lifetime:

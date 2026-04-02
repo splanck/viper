@@ -93,6 +93,14 @@ static void ws_send_handshake(void *client, const char *headers_buf) {
     rt_tcp_send_str(client, resp_str);
 }
 
+static void ws_send_server_frame(void *client, uint8_t first_byte, const uint8_t *payload, size_t len) {
+    assert(len < 126 && "test helper only supports small payloads");
+    uint8_t header[2] = {first_byte, (uint8_t)len};
+    rt_tcp_send_all_raw(client, header, 2);
+    if (len > 0)
+        rt_tcp_send_all_raw(client, payload, (int64_t)len);
+}
+
 //=============================================================================
 // Minimal WebSocket server for testing
 //=============================================================================
@@ -230,6 +238,96 @@ static void ws_echo_server_thread(int port) {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+static void ws_fragment_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        ws_server_failed = true;
+        ws_server_ready = true;
+        return;
+    }
+
+    ws_server_failed = false;
+    ws_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    char buf[4096];
+    int total = 0;
+    while (total < (int)sizeof(buf) - 1) {
+        rt_string line = rt_tcp_recv_str(client, 1);
+        if (!line)
+            break;
+        const char *c = rt_string_cstr(line);
+        if (c) {
+            buf[total] = c[0];
+            total++;
+        }
+        if (total >= 4 && buf[total - 4] == '\r' && buf[total - 3] == '\n' &&
+            buf[total - 2] == '\r' && buf[total - 1] == '\n')
+            break;
+    }
+
+    buf[total] = '\0';
+    ws_send_handshake(client, buf);
+
+    static const uint8_t part1[] = {'h', 'e', 'l'};
+    static const uint8_t part2[] = {'l', 'o'};
+    ws_send_server_frame(client, 0x01, part1, sizeof(part1)); // text, FIN=0
+    ws_send_server_frame(client, 0x80, part2, sizeof(part2)); // continuation, FIN=1
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+static void ws_invalid_utf8_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        ws_server_failed = true;
+        ws_server_ready = true;
+        return;
+    }
+
+    ws_server_failed = false;
+    ws_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    char buf[4096];
+    int total = 0;
+    while (total < (int)sizeof(buf) - 1) {
+        rt_string line = rt_tcp_recv_str(client, 1);
+        if (!line)
+            break;
+        const char *c = rt_string_cstr(line);
+        if (c) {
+            buf[total] = c[0];
+            total++;
+        }
+        if (total >= 4 && buf[total - 4] == '\r' && buf[total - 3] == '\n' &&
+            buf[total - 2] == '\r' && buf[total - 1] == '\n')
+            break;
+    }
+
+    buf[total] = '\0';
+    ws_send_handshake(client, buf);
+
+    static const uint8_t invalid_text[] = {0xC3, 0x28};
+    ws_send_server_frame(client, 0x81, invalid_text, sizeof(invalid_text));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     rt_tcp_close(client);
     rt_tcp_server_close(server);
 }
@@ -416,6 +514,77 @@ static void test_ws_connect_for_success() {
     server.join();
 }
 
+static void test_ws_fragmented_text_reassembly() {
+    printf("\nTesting WebSocket fragmented text reassembly:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+
+    std::thread server(ws_fragment_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/", port);
+    void *ws = rt_ws_connect(rt_const_cstr(url_buf));
+    test_result("WebSocket connect succeeds", ws != nullptr);
+
+    rt_string msg = rt_ws_recv_for(ws, 2000);
+    test_result("Fragmented message received", msg != nullptr);
+    if (msg) {
+        test_result("Fragmented message reassembled to 'hello'",
+                    strcmp(rt_string_cstr(msg), "hello") == 0);
+    }
+
+    rt_ws_close(ws);
+    server.join();
+}
+
+static void test_ws_invalid_utf8_closes_with_1007() {
+    printf("\nTesting WebSocket invalid UTF-8 close handling:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+
+    std::thread server(ws_invalid_utf8_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/", port);
+    void *ws = rt_ws_connect(rt_const_cstr(url_buf));
+    test_result("WebSocket connect succeeds", ws != nullptr);
+
+    rt_string msg = rt_ws_recv_for(ws, 2000);
+    test_result("Invalid UTF-8 yields empty message", msg != nullptr && strcmp(rt_string_cstr(msg), "") == 0);
+    test_result("Close code is 1007", rt_ws_close_code(ws) == 1007);
+    test_result("Connection is closed", rt_ws_is_open(ws) == 0);
+
+    server.join();
+}
+
 /// @brief Test recv_for and recv_bytes_for with NULL object.
 static void test_ws_null_object() {
     printf("\nTesting WebSocket timeout functions with NULL:\n");
@@ -443,6 +612,8 @@ int main() {
     test_ws_recv_for_timeout();
     test_ws_recv_bytes_for_timeout();
     test_ws_connect_for_success();
+    test_ws_fragmented_text_reassembly();
+    test_ws_invalid_utf8_closes_with_1007();
 
     printf("\nAll WebSocket tests passed.\n");
     return 0;

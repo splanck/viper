@@ -45,6 +45,25 @@ void rt_http_server_put(void *server, rt_string pattern, rt_string handler_tag);
 /// @brief Add a DELETE route.
 void rt_http_server_del(void *server, rt_string pattern, rt_string handler_tag);
 
+/// @brief Native handler signature used by bound route callbacks.
+typedef void (*rt_http_server_handler_fn)(void *req, void *res);
+
+/// @brief Dispatch signature used for VM/bytecode-backed handlers.
+typedef void (*rt_http_server_handler_dispatch_fn)(void *ctx, void *req, void *res);
+
+/// @brief Optional cleanup callback for a dispatch context.
+typedef void (*rt_http_server_handler_cleanup_fn)(void *ctx);
+
+/// @brief Bind a handler tag to a native function pointer.
+void rt_http_server_bind_handler(void *server, rt_string handler_tag, void *entry);
+
+/// @brief Bind a handler tag to a dispatcher with persistent context.
+void rt_http_server_bind_handler_dispatch(void *server,
+                                          rt_string handler_tag,
+                                          void *dispatch,
+                                          void *ctx,
+                                          void *cleanup);
+
 /// @brief Start accepting connections (blocks on accept loop in background thread).
 void rt_http_server_start(void *server);
 

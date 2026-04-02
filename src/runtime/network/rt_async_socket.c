@@ -44,6 +44,7 @@ extern int8_t rt_threadpool_submit(void *pool, void *callback, void *arg);
 // Forward declarations for promise/future (from rt_promise.h)
 extern void *rt_promise_new(void);
 extern void rt_promise_set(void *promise, void *value);
+extern void rt_promise_set_error(void *promise, rt_string error);
 extern void *rt_promise_get_future(void *promise);
 
 //=============================================================================
@@ -82,6 +83,18 @@ static void *get_default_pool(void) {
 #endif
 }
 
+static void async_release_owned(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void async_fail_submit(void *promise, const char *message) {
+    rt_string err = rt_string_from_bytes(message, strlen(message));
+    rt_promise_set_error(promise, err);
+    rt_string_unref(err);
+    async_release_owned(promise);
+}
+
 //=============================================================================
 // Async Connect
 //=============================================================================
@@ -98,6 +111,7 @@ static void async_connect_worker(void *arg) {
     void *tcp = rt_tcp_connect(host, a->port);
     rt_string_unref(host);
     rt_promise_set(a->promise, tcp);
+    async_release_owned(a->promise);
     free(a->host);
     free(a);
 }
@@ -117,8 +131,17 @@ void *rt_async_connect(rt_string host, int64_t port) {
     args->host = strdup(h);
     args->port = port;
     args->promise = promise;
+    if (!args->host) {
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
 
-    rt_threadpool_submit(get_default_pool(), (void *)async_connect_worker, args);
+    if (!rt_threadpool_submit(get_default_pool(), (void *)async_connect_worker, args)) {
+        free(args->host);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
+    }
     return future;
 }
 
@@ -137,6 +160,9 @@ static void async_send_worker(void *arg) {
     int64_t sent = rt_tcp_send(a->tcp, a->data);
     // Resolve with boxed integer (use pointer-sized value)
     rt_promise_set(a->promise, (void *)(intptr_t)sent);
+    async_release_owned(a->data);
+    async_release_owned(a->tcp);
+    async_release_owned(a->promise);
     free(a);
 }
 
@@ -151,11 +177,17 @@ void *rt_async_send(void *tcp, void *data) {
     send_args_t *args = (send_args_t *)malloc(sizeof(send_args_t));
     if (!args)
         rt_trap("AsyncSocket: OOM");
+    rt_obj_retain_maybe(tcp);
+    rt_obj_retain_maybe(data);
     args->tcp = tcp;
     args->data = data;
     args->promise = promise;
-
-    rt_threadpool_submit(get_default_pool(), (void *)async_send_worker, args);
+    if (!rt_threadpool_submit(get_default_pool(), (void *)async_send_worker, args)) {
+        async_release_owned(data);
+        async_release_owned(tcp);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
+    }
     return future;
 }
 
@@ -173,6 +205,8 @@ static void async_recv_worker(void *arg) {
     recv_args_t *a = (recv_args_t *)arg;
     void *data = rt_tcp_recv(a->tcp, a->max_bytes);
     rt_promise_set(a->promise, data);
+    async_release_owned(a->tcp);
+    async_release_owned(a->promise);
     free(a);
 }
 
@@ -187,11 +221,15 @@ void *rt_async_recv(void *tcp, int64_t max_bytes) {
     recv_args_t *args = (recv_args_t *)malloc(sizeof(recv_args_t));
     if (!args)
         rt_trap("AsyncSocket: OOM");
+    rt_obj_retain_maybe(tcp);
     args->tcp = tcp;
     args->max_bytes = max_bytes;
     args->promise = promise;
-
-    rt_threadpool_submit(get_default_pool(), (void *)async_recv_worker, args);
+    if (!rt_threadpool_submit(get_default_pool(), (void *)async_recv_worker, args)) {
+        async_release_owned(tcp);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
+    }
     return future;
 }
 
@@ -211,6 +249,7 @@ static void async_http_get_worker(void *arg) {
     rt_string result = rt_http_get(url);
     rt_string_unref(url);
     rt_promise_set(a->promise, (void *)result);
+    async_release_owned(a->promise);
     free(a->url);
     free(a);
 }
@@ -230,8 +269,17 @@ void *rt_async_http_get(rt_string url) {
     args->url = strdup(u);
     args->body = NULL;
     args->promise = promise;
+    if (!args->url) {
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
 
-    rt_threadpool_submit(get_default_pool(), (void *)async_http_get_worker, args);
+    if (!rt_threadpool_submit(get_default_pool(), (void *)async_http_get_worker, args)) {
+        free(args->url);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
+    }
     return future;
 }
 
@@ -244,6 +292,7 @@ static void async_http_post_worker(void *arg) {
     rt_string_unref(url);
     rt_string_unref(body);
     rt_promise_set(a->promise, (void *)result);
+    async_release_owned(a->promise);
     free(a->url);
     free(a->body);
     free(a);
@@ -265,7 +314,19 @@ void *rt_async_http_post(rt_string url, rt_string body) {
     args->url = strdup(u);
     args->body = b ? strdup(b) : NULL;
     args->promise = promise;
+    if (!args->url || (b && !args->body)) {
+        free(args->url);
+        free(args->body);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
 
-    rt_threadpool_submit(get_default_pool(), (void *)async_http_post_worker, args);
+    if (!rt_threadpool_submit(get_default_pool(), (void *)async_http_post_worker, args)) {
+        free(args->url);
+        free(args->body);
+        free(args);
+        async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
+    }
     return future;
 }

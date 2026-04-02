@@ -34,6 +34,7 @@
 #include "rt_cipher.h"
 #include "rt_bytes.h"
 #include "rt_crypto.h"
+#include "rt_keyderive_internal.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -49,6 +50,7 @@ extern void rt_trap(const char *msg);
 #define CIPHER_NONCE_SIZE 12
 #define CIPHER_KEY_SIZE 32
 #define CIPHER_TAG_SIZE 16
+#define CIPHER_PBKDF2_ITERATIONS 100000
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -78,25 +80,45 @@ static inline int64_t bytes_len(void *obj) {
 // Key Derivation
 //=============================================================================
 
-/// Derive a 32-byte key from password and salt using HKDF-SHA256.
-static void derive_key(const char *password,
-                       size_t password_len,
-                       const uint8_t *salt,
-                       size_t salt_len,
-                       uint8_t key[CIPHER_KEY_SIZE]) {
+static void cipher_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
+
+/// Derive a 32-byte key from password and salt using the legacy HKDF-SHA256 scheme.
+static void derive_key_legacy(const char *password,
+                              size_t password_len,
+                              const uint8_t *salt,
+                              size_t salt_len,
+                              uint8_t key[CIPHER_KEY_SIZE]) {
     uint8_t prk[32];
 
     // HKDF-Extract: PRK = HMAC-SHA256(salt, password)
     rt_hkdf_extract(salt, salt_len, (const uint8_t *)password, password_len, prk);
 
     // HKDF-Expand: key = HKDF-Expand(PRK, info, 32)
-    rt_hkdf_expand(prk, (const uint8_t *)HKDF_INFO, strlen(HKDF_INFO), key, CIPHER_KEY_SIZE);
+    if (rt_hkdf_expand(prk, (const uint8_t *)HKDF_INFO, strlen(HKDF_INFO), key, CIPHER_KEY_SIZE) !=
+        0) {
+        rt_trap("Cipher: legacy HKDF key derivation failed");
+    }
 
-    // Clear PRK from stack
-    // Use volatile to prevent compiler from eliding the key-scrubbing write
-    volatile uint8_t *vp = (volatile uint8_t *)prk;
-    for (size_t i = 0; i < sizeof(prk); i++)
-        vp[i] = 0;
+    cipher_secure_zero(prk, sizeof(prk));
+}
+
+/// Derive a 32-byte key from password and salt using PBKDF2-HMAC-SHA256.
+static void derive_key_pbkdf2(const char *password,
+                              size_t password_len,
+                              const uint8_t *salt,
+                              size_t salt_len,
+                              uint8_t key[CIPHER_KEY_SIZE]) {
+    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)password,
+                                   password_len,
+                                   salt,
+                                   salt_len,
+                                   CIPHER_PBKDF2_ITERATIONS,
+                                   key,
+                                   CIPHER_KEY_SIZE);
 }
 
 //=============================================================================
@@ -128,7 +150,7 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
 
     // Derive key from password
     uint8_t key[CIPHER_KEY_SIZE];
-    derive_key(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
+    derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
 
     // Output: salt + nonce + ciphertext + tag
     int64_t out_len = CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + plain_len + CIPHER_TAG_SIZE;
@@ -140,19 +162,20 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     memcpy(out_data + CIPHER_SALT_SIZE, nonce, CIPHER_NONCE_SIZE);
 
     // Encrypt: ciphertext goes after salt + nonce
-    rt_chacha20_poly1305_encrypt(key,
-                                 nonce,
-                                 NULL,
-                                 0, // No AAD
-                                 plain_data,
-                                 (size_t)plain_len,
-                                 out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
+    size_t encrypted_len = rt_chacha20_poly1305_encrypt(key,
+                                                        nonce,
+                                                        NULL,
+                                                        0, // No AAD
+                                                        plain_data,
+                                                        (size_t)plain_len,
+                                                        out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
+    if (encrypted_len == 0 && plain_len != 0) {
+        cipher_secure_zero(key, sizeof(key));
+        rt_trap("Cipher.Encrypt: encryption failed");
+        return NULL;
+    }
 
-    // Clear key from stack
-    // Use volatile to prevent compiler from eliding the key-scrubbing write
-    volatile uint8_t *vk = (volatile uint8_t *)key;
-    for (size_t i = 0; i < sizeof(key); i++)
-        vk[i] = 0;
+    cipher_secure_zero(key, sizeof(key));
 
     return result;
 }
@@ -189,7 +212,7 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
 
     // Derive key from password
     uint8_t key[CIPHER_KEY_SIZE];
-    derive_key(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
+    derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
 
     // Plaintext length = encrypted_len - tag
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
@@ -205,16 +228,22 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
                                                        (size_t)encrypted_len,
                                                        plain_data);
 
-    // Clear key from stack
-    // Use volatile to prevent compiler from eliding the key-scrubbing write
-    volatile uint8_t *vk = (volatile uint8_t *)key;
-    for (size_t i = 0; i < sizeof(key); i++)
-        vk[i] = 0;
-
     if (decrypt_result < 0) {
-        rt_trap("Cipher.Decrypt: authentication failed (wrong password or corrupted data)");
-        return NULL;
+        derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
+        decrypt_result = rt_chacha20_poly1305_decrypt(key,
+                                                      nonce,
+                                                      NULL,
+                                                      0,
+                                                      encrypted,
+                                                      (size_t)encrypted_len,
+                                                      plain_data);
+        if (decrypt_result < 0) {
+            cipher_secure_zero(key, sizeof(key));
+            rt_trap("Cipher.Decrypt: authentication failed (wrong password or corrupted data)");
+            return NULL;
+        }
     }
+    cipher_secure_zero(key, sizeof(key));
 
     return result;
 }
@@ -252,13 +281,17 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     memcpy(out_data, nonce, CIPHER_NONCE_SIZE);
 
     // Encrypt: ciphertext goes after nonce
-    rt_chacha20_poly1305_encrypt(key,
-                                 nonce,
-                                 NULL,
-                                 0, // No AAD
-                                 plain_data,
-                                 (size_t)plain_len,
-                                 out_data + CIPHER_NONCE_SIZE);
+    size_t encrypted_len = rt_chacha20_poly1305_encrypt(key,
+                                                        nonce,
+                                                        NULL,
+                                                        0, // No AAD
+                                                        plain_data,
+                                                        (size_t)plain_len,
+                                                        out_data + CIPHER_NONCE_SIZE);
+    if (encrypted_len == 0 && plain_len != 0) {
+        rt_trap("Cipher.EncryptWithKey: encryption failed");
+        return NULL;
+    }
 
     return result;
 }
@@ -340,9 +373,13 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
 
     const uint8_t *salt = bytes_data(salt_bytes);
     int64_t salt_len = bytes_len(salt_bytes);
+    if (salt_len <= 0) {
+        rt_trap("Cipher.DeriveKey: salt must not be empty");
+        return NULL;
+    }
 
     void *key = rt_bytes_new(CIPHER_KEY_SIZE);
-    derive_key(pwd, pwd_len, salt, (size_t)salt_len, bytes_data(key));
+    derive_key_pbkdf2(pwd, pwd_len, salt, (size_t)salt_len, bytes_data(key));
 
     return key;
 }

@@ -110,6 +110,12 @@ static void ensure_matrix(rt_transform3d *xf) {
     xf->dirty = 0;
 }
 
+/// @brief Create a new Transform3D at the origin with identity rotation and unit scale.
+/// @details Transform3D is a standalone TRS (translate-rotate-scale) container.
+///          The 4x4 matrix is lazily recomputed only when dirty. Unlike SceneNode3D,
+///          transforms have no parent-child hierarchy — they represent a single
+///          local-space transformation, typically passed to Canvas3D.DrawMesh.
+/// @return Opaque transform handle, or NULL on allocation failure.
 void *rt_transform3d_new(void) {
     rt_transform3d *xf = (rt_transform3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_transform3d));
     if (!xf) {
@@ -126,6 +132,7 @@ void *rt_transform3d_new(void) {
     return xf;
 }
 
+/// @brief Set the position component of the transform (marks matrix dirty).
 void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -136,6 +143,7 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     xf->dirty = 1;
 }
 
+/// @brief Get the current position as a new Vec3 (returns origin if NULL).
 void *rt_transform3d_get_position(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -143,6 +151,7 @@ void *rt_transform3d_get_position(void *obj) {
     return rt_vec3_new(xf->position[0], xf->position[1], xf->position[2]);
 }
 
+/// @brief Set the rotation from a quaternion (x,y,z,w), marks matrix dirty.
 void rt_transform3d_set_rotation(void *obj, void *quat) {
     if (!obj || !quat)
         return;
@@ -154,6 +163,7 @@ void rt_transform3d_set_rotation(void *obj, void *quat) {
     xf->dirty = 1;
 }
 
+/// @brief Get the current rotation as a new Quat (returns identity if NULL).
 void *rt_transform3d_get_rotation(void *obj) {
     if (!obj)
         return rt_quat_new(0, 0, 0, 1);
@@ -161,6 +171,10 @@ void *rt_transform3d_get_rotation(void *obj) {
     return rt_quat_new(xf->rotation[0], xf->rotation[1], xf->rotation[2], xf->rotation[3]);
 }
 
+/// @brief Set rotation from Euler angles (radians) using ZYX intrinsic convention.
+/// @details Converts pitch/yaw/roll to a quaternion internally. ZYX order means
+///          yaw is applied first, then pitch, then roll — matching common
+///          game engine conventions for character/camera orientation.
 void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) {
     if (!obj)
         return;
@@ -177,6 +191,7 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) 
     xf->dirty = 1;
 }
 
+/// @brief Set non-uniform scale factors for each axis (marks matrix dirty).
 void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -187,6 +202,7 @@ void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
     xf->dirty = 1;
 }
 
+/// @brief Get the current scale as a new Vec3 (returns (1,1,1) if NULL).
 void *rt_transform3d_get_scale(void *obj) {
     if (!obj)
         return rt_vec3_new(1, 1, 1);
@@ -194,6 +210,9 @@ void *rt_transform3d_get_scale(void *obj) {
     return rt_vec3_new(xf->scale[0], xf->scale[1], xf->scale[2]);
 }
 
+/// @brief Get the combined TRS matrix as a new Mat4 (lazily recomputed if dirty).
+/// @details The matrix is built as Translate * Rotate * Scale in row-major order,
+///          matching the scene graph convention. Returns identity if NULL.
 void *rt_transform3d_get_matrix(void *obj) {
     if (!obj)
         return rt_mat4_new(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
@@ -217,6 +236,7 @@ void *rt_transform3d_get_matrix(void *obj) {
                        xf->matrix[15]);
 }
 
+/// @brief Add a displacement vector to the current position (incremental move).
 void rt_transform3d_translate(void *obj, void *delta) {
     if (!obj || !delta)
         return;
@@ -227,6 +247,10 @@ void rt_transform3d_translate(void *obj, void *delta) {
     xf->dirty = 1;
 }
 
+/// @brief Apply an incremental rotation around an arbitrary axis (radians).
+/// @details Builds a quaternion from the axis-angle, then left-multiplies it
+///          onto the current rotation: current = new_rot * current. The axis
+///          vector is normalized internally.
 void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     if (!obj || !axis)
         return;
@@ -255,6 +279,14 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     xf->dirty = 1;
 }
 
+/// @brief Orient the transform to face a target point.
+/// @details Computes a forward vector from position to target, derives a
+///          right-handed orthonormal basis (right, true-up, forward), then
+///          extracts a quaternion from the 3x3 rotation matrix using the
+///          Shepperd method. The position is not modified — only rotation.
+/// @param obj    Transform handle.
+/// @param target Vec3 point to face toward.
+/// @param up_vec Vec3 up hint (defaults to world Y if NULL).
 void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     if (!obj || !target)
         return;

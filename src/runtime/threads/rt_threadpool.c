@@ -98,6 +98,8 @@ static void pool_finalizer(void *obj) {
     if (!pool)
         return;
 
+    rt_gc_untrack(pool);
+
     /* If not already shut down, signal workers and join them.
        This handles the case where a program exits without calling
        rt_threadpool_shutdown() — the atexit finalizer sweep invokes

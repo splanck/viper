@@ -32,6 +32,29 @@
 
 namespace il::frontends::basic {
 
+namespace {
+
+bool isHttpServerRouteTarget(const std::string &target) {
+    return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
+           target == "Viper.Network.HttpServer.Put" ||
+           target == "Viper.Network.HttpServer.Delete";
+}
+
+bool isValidHttpHandlerSignature(const ::il::frontends::basic::ProcedureSignature *sig) {
+    return sig && sig->retType.kind == il::core::Type::Kind::Void && sig->paramTypes.size() == 2 &&
+           sig->paramTypes[0].kind == il::core::Type::Kind::Ptr &&
+           sig->paramTypes[1].kind == il::core::Type::Kind::Ptr;
+}
+
+std::string resolveHttpHandlerTarget(const Lowerer &lowerer, const std::string &tag) {
+    const auto *sig = lowerer.findProcSignature(tag);
+    if (!isValidHttpHandlerSignature(sig))
+        return {};
+    return lowerer.resolveCalleeName(tag);
+}
+
+} // namespace
+
 /// @brief Lower an instance method call, dispatching through the mangled name.
 ///
 /// @details Evaluates the receiver expression, prepends it to the argument list,
@@ -238,6 +261,16 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             // so extern declarations can include the accessor alongside
             // canonical function names selected at call sites.
             runtimeTracker.trackCalleeName(info->target);
+            if (isHttpServerRouteTarget(info->target) && expr.args.size() == 2 && args.size() >= 3) {
+                if (const auto *tagExpr = as<const StringExpr>(*expr.args[1])) {
+                    std::string handlerTarget = resolveHttpHandlerTarget(*this, tagExpr->value);
+                    if (!handlerTarget.empty()) {
+                        runtimeTracker.trackCalleeName("Viper.Network.HttpServer.BindHandler");
+                        emitCall("Viper.Network.HttpServer.BindHandler",
+                                 {args[0], args[2], Value::global(handlerTarget)});
+                    }
+                }
+            }
             curLoc = expr.loc;
             Value result = retTy.kind == Type::Kind::Void
                                ? (emitCall(info->target, args), Value::constInt(0))

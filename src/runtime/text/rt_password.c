@@ -33,6 +33,8 @@
 
 #include "rt_crypto.h"
 #include "rt_hash.h"
+#include "rt_internal.h"
+#include "rt_keyderive_internal.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -42,67 +44,14 @@
 // Default iterations for password hashing (100k is reasonable for 2024+)
 #define DEFAULT_ITERATIONS 100000
 #define MIN_ITERATIONS 10000
+#define MAX_ITERATIONS 10000000
 #define SALT_LENGTH 16
 #define HASH_LENGTH 32
 
-//=============================================================================
-// Internal PBKDF2-SHA256 implementation
-//=============================================================================
-
-static void pbkdf2_sha256(const uint8_t *password,
-                          size_t password_len,
-                          const uint8_t *salt,
-                          size_t salt_len,
-                          int64_t iterations,
-                          uint8_t *output,
-                          size_t output_len) {
-    // PBKDF2 with SHA-256: DK = T1 || T2 || ... || Tdklen/hlen
-    // Ti = F(Password, Salt, c, i)
-    // F(Password, Salt, c, i) = U1 ^ U2 ^ ... ^ Uc
-    // U1 = PRF(Password, Salt || INT(i))
-    // U2 = PRF(Password, U1)
-    // ...
-
-    // Allocate buffer for salt + 4-byte block counter
-    uint8_t *block_salt = (uint8_t *)malloc(salt_len + 4);
-    if (!block_salt)
-        return;
-    memcpy(block_salt, salt, salt_len);
-
-    size_t pos = 0;
-    uint32_t block_num = 1;
-
-    while (pos < output_len) {
-        // Set block number (big-endian)
-        block_salt[salt_len + 0] = (block_num >> 24) & 0xFF;
-        block_salt[salt_len + 1] = (block_num >> 16) & 0xFF;
-        block_salt[salt_len + 2] = (block_num >> 8) & 0xFF;
-        block_salt[salt_len + 3] = block_num & 0xFF;
-
-        // U1 = HMAC-SHA256(password, salt || block_num)
-        uint8_t u[32], t[32];
-        rt_hash_hmac_sha256_raw(password, password_len, block_salt, salt_len + 4, u);
-        memcpy(t, u, 32);
-
-        // Ui = HMAC-SHA256(password, U(i-1)), T ^= Ui
-        for (int64_t i = 1; i < iterations; i++) {
-            rt_hash_hmac_sha256_raw(password, password_len, u, 32, u);
-            for (int j = 0; j < 32; j++) {
-                t[j] ^= u[j];
-            }
-        }
-
-        // Copy result to output
-        size_t copy = output_len - pos;
-        if (copy > 32)
-            copy = 32;
-        memcpy(output + pos, t, copy);
-
-        pos += copy;
-        block_num++;
-    }
-
-    free(block_salt);
+static void password_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
 }
 
 //=============================================================================
@@ -217,6 +166,9 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     if (iterations < MIN_ITERATIONS) {
         iterations = MIN_ITERATIONS;
     }
+    if (iterations > MAX_ITERATIONS) {
+        rt_trap("Password.HashIters: iterations must not exceed 10000000");
+    }
 
     // Generate random salt
     uint8_t salt[SALT_LENGTH];
@@ -227,7 +179,8 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     size_t pwd_len = (size_t)rt_str_len(password);
 
     uint8_t hash[HASH_LENGTH];
-    pbkdf2_sha256((const uint8_t *)pwd, pwd_len, salt, SALT_LENGTH, iterations, hash, HASH_LENGTH);
+    rt_keyderive_pbkdf2_sha256_raw(
+        (const uint8_t *)pwd, pwd_len, salt, SALT_LENGTH, (uint32_t)iterations, hash, HASH_LENGTH);
 
     // Encode salt and hash to base64
     size_t salt_b64_len, hash_b64_len;
@@ -242,6 +195,8 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 
     free(salt_b64);
     free(hash_b64);
+    password_secure_zero(hash, sizeof(hash));
+    password_secure_zero(salt, sizeof(salt));
 
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
@@ -261,7 +216,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
 
     // Parse iterations
     long long iterations = strtoll(p, &end, 10);
-    if (*end != '$' || iterations < 1) {
+    if (*end != '$' || iterations < MIN_ITERATIONS || iterations > MAX_ITERATIONS) {
         return 0;
     }
     p = end + 1;
@@ -282,6 +237,8 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
 
     // Decode salt
     char *salt_b64 = (char *)malloc(salt_b64_len + 1);
+    if (!salt_b64)
+        return 0;
     memcpy(salt_b64, salt_start, salt_b64_len);
     salt_b64[salt_b64_len] = '\0';
 
@@ -306,8 +263,15 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     size_t pwd_len = (size_t)rt_str_len(password);
 
     uint8_t computed[HASH_LENGTH];
-    pbkdf2_sha256((const uint8_t *)pwd, pwd_len, salt, salt_len, iterations, computed, HASH_LENGTH);
+    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd,
+                                   pwd_len,
+                                   salt,
+                                   salt_len,
+                                   (uint32_t)iterations,
+                                   computed,
+                                   HASH_LENGTH);
 
+    password_secure_zero(salt, salt_len);
     free(salt);
 
     // Constant-time comparison
@@ -319,7 +283,9 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     // Also check lengths match
     diff |= (expected_len != HASH_LENGTH) ? 1 : 0;
 
+    password_secure_zero(expected, expected_len);
     free(expected);
+    password_secure_zero(computed, sizeof(computed));
 
     return diff == 0 ? 1 : 0;
 }

@@ -31,15 +31,24 @@
 #include <time.h>
 
 #ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+typedef SOCKET conn_socket_t;
+#define INVALID_CONN_SOCK INVALID_SOCKET
 typedef CRITICAL_SECTION pool_mutex_t;
 #define POOL_MUTEX_INIT(m) InitializeCriticalSection(m)
 #define POOL_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define POOL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define POOL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 #else
+#include <arpa/inet.h>
+#include <errno.h>
 #include <pthread.h>
+#include <sys/socket.h>
+typedef int conn_socket_t;
+#define INVALID_CONN_SOCK (-1)
 typedef pthread_mutex_t pool_mutex_t;
 #define POOL_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
 #define POOL_MUTEX_LOCK(m) pthread_mutex_lock(m)
@@ -48,6 +57,8 @@ typedef pthread_mutex_t pool_mutex_t;
 #endif
 
 extern void rt_trap(const char *msg);
+extern conn_socket_t rt_tcp_socket_fd(void *obj);
+extern int wait_socket(conn_socket_t sock, int timeout_ms, bool for_write);
 
 //=============================================================================
 // Internal Structures
@@ -76,17 +87,47 @@ typedef struct {
 //=============================================================================
 
 static void make_key(const char *host, int port, char *buf, size_t buf_len) {
-    snprintf(buf, buf_len, "%s:%d", host, port);
+    if (host && strchr(host, ':') != NULL && host[0] != '[')
+        snprintf(buf, buf_len, "[%s]:%d", host, port);
+    else
+        snprintf(buf, buf_len, "%s:%d", host ? host : "", port);
 }
 
 static void close_entry(pooled_entry_t *entry) {
     if (entry->tcp) {
         rt_tcp_close(entry->tcp);
+        if (rt_obj_release_check0(entry->tcp))
+            rt_obj_free(entry->tcp);
         entry->tcp = NULL;
     }
     free(entry->key);
     entry->key = NULL;
     entry->in_use = false;
+}
+
+static int tcp_connection_healthy(void *tcp) {
+    if (!tcp || !rt_tcp_is_open(tcp))
+        return 0;
+
+    conn_socket_t sock = rt_tcp_socket_fd(tcp);
+    if (sock == INVALID_CONN_SOCK)
+        return 0;
+
+    int ready = wait_socket(sock, 0, false);
+    if (ready <= 0)
+        return 1;
+
+    uint8_t byte = 0;
+    int peeked = recv(sock, (char *)&byte, 1, MSG_PEEK);
+    if (peeked > 0)
+        return 1;
+    if (peeked == 0)
+        return 0;
+#ifdef _WIN32
+    return WSAGetLastError() == WSAEWOULDBLOCK ? 1 : 0;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK ? 1 : 0;
+#endif
 }
 
 //=============================================================================
@@ -154,7 +195,7 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
         if (!pool->entries[i].in_use && pool->entries[i].key &&
             strcmp(pool->entries[i].key, key) == 0) {
             // Check if still open
-            if (rt_tcp_is_open(pool->entries[i].tcp)) {
+            if (tcp_connection_healthy(pool->entries[i].tcp)) {
                 pool->entries[i].in_use = true;
                 void *tcp = pool->entries[i].tcp;
                 POOL_MUTEX_UNLOCK(&pool->lock);
@@ -184,8 +225,10 @@ void rt_connpool_release(void *obj, void *conn) {
 
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
 
-    if (!rt_tcp_is_open(conn)) {
+    if (!tcp_connection_healthy(conn)) {
         rt_tcp_close(conn);
+        if (rt_obj_release_check0(conn))
+            rt_obj_free(conn);
         return;
     }
 
@@ -221,6 +264,8 @@ void rt_connpool_release(void *obj, void *conn) {
 
     // Pool full — close the connection
     rt_tcp_close(conn);
+    if (rt_obj_release_check0(conn))
+        rt_obj_free(conn);
 }
 
 /// @brief Remove all entries from the connpool.

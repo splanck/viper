@@ -182,6 +182,13 @@ static const uint8_t *gltf_get_accessor_data(void *root, int64_t accessor_idx,
 // Main loader
 //===----------------------------------------------------------------------===//
 
+/// @brief Load a glTF 2.0 binary (.glb) file and extract meshes and materials.
+/// @details Parses the GLB container (JSON chunk + binary buffer), resolves
+///          accessors → buffer views → byte ranges, and constructs Mesh3D and
+///          Material3D objects. Supports POSITION, NORMAL, TEXCOORD_0 attributes
+///          and indexed geometry. Materials use baseColorFactor/baseColorTexture.
+/// @param path File path to the .glb file (runtime string).
+/// @return Opaque GLTF asset handle, or NULL on failure.
 void *rt_gltf_load(rt_string path) {
     if (!path)
         return NULL;
@@ -531,10 +538,12 @@ void *rt_gltf_load(rt_string path) {
     return asset;
 }
 
+/// @brief Get the number of meshes extracted from the GLTF file.
 int64_t rt_gltf_mesh_count(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->mesh_count : 0;
 }
 
+/// @brief Get a mesh by index from the loaded GLTF asset.
 void *rt_gltf_get_mesh(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -544,10 +553,12 @@ void *rt_gltf_get_mesh(void *obj, int64_t index) {
     return a->meshes[index];
 }
 
+/// @brief Get the number of materials extracted from the GLTF file.
 int64_t rt_gltf_material_count(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->material_count : 0;
 }
 
+/// @brief Get a material by index from the loaded GLTF asset.
 void *rt_gltf_get_material(void *obj, int64_t index) {
     if (!obj)
         return NULL;

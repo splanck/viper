@@ -34,6 +34,16 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+/// @brief Create a directional light (e.g., sun or moon).
+/// @details Directional lights have no position — only a direction vector.
+///          All surfaces in the scene receive parallel rays along this direction,
+///          making them ideal for outdoor/global illumination. The direction
+///          vector is copied from the provided Vec3 at creation time.
+/// @param direction Vec3 indicating the light direction (copied, not borrowed).
+/// @param r Red color component [0.0–1.0].
+/// @param g Green color component [0.0–1.0].
+/// @param b Blue color component [0.0–1.0].
+/// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_directional(void *direction, double r, double g, double b) {
     if (!direction) {
         rt_trap("Light3D.NewDirectional: direction must not be null");
@@ -58,6 +68,16 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
     return light;
 }
 
+/// @brief Create a point light that radiates from a position in all directions.
+/// @details Point lights simulate light bulbs, torches, etc. Intensity falls
+///          off with distance according to the attenuation factor. An attenuation
+///          of 0.0 means no falloff (constant brightness at all distances).
+/// @param position    Vec3 world-space position (copied at creation time).
+/// @param r           Red color component [0.0–1.0].
+/// @param g           Green color component [0.0–1.0].
+/// @param b           Blue color component [0.0–1.0].
+/// @param attenuation Distance falloff factor (0.0 = no falloff).
+/// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation) {
     if (!position) {
         rt_trap("Light3D.NewPoint: position must not be null");
@@ -82,6 +102,14 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     return light;
 }
 
+/// @brief Create an ambient light that illuminates all surfaces uniformly.
+/// @details Ambient lights have no direction or position — they apply a flat
+///          color contribution to every surface equally. Used to provide a base
+///          illumination level so shadowed areas aren't completely black.
+/// @param r Red color component [0.0–1.0].
+/// @param g Green color component [0.0–1.0].
+/// @param b Blue color component [0.0–1.0].
+/// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_ambient(double r, double g, double b) {
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
     if (!light) {
@@ -100,6 +128,21 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     return light;
 }
 
+/// @brief Create a spot light (cone-shaped illumination from a position).
+/// @details Spot lights combine a position, direction, and two cone angles.
+///          Surfaces inside the inner angle receive full intensity; between
+///          inner and outer angles intensity falls off smoothly. The angles
+///          are converted to cosines at creation time for efficient shader
+///          comparison (dot product vs. cosine threshold).
+/// @param position    Vec3 world-space position of the light source.
+/// @param direction   Vec3 direction the cone points toward.
+/// @param r           Red color component [0.0–1.0].
+/// @param g           Green color component [0.0–1.0].
+/// @param b           Blue color component [0.0–1.0].
+/// @param attenuation Distance falloff factor.
+/// @param inner_angle Full-brightness cone half-angle in degrees.
+/// @param outer_angle Outer cone half-angle in degrees (falloff edge).
+/// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_spot(void *position, void *direction, double r, double g, double b,
                           double attenuation, double inner_angle, double outer_angle) {
     if (!position || !direction) {
@@ -131,14 +174,23 @@ void *rt_light3d_new_spot(void *position, void *direction, double r, double g, d
     return light;
 }
 
-/// @brief Set the intensity of the light3d.
+/// @brief Set the brightness multiplier for a light.
+/// @details Scales the light's color contribution. Default is 1.0. Values
+///          above 1.0 create over-bright highlights; 0.0 effectively disables
+///          the light without removing it from the scene.
+/// @param obj       Light handle.
+/// @param intensity Brightness multiplier (default 1.0).
 void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!obj)
         return;
     ((rt_light3d *)obj)->intensity = intensity;
 }
 
-/// @brief Set the color of the light3d.
+/// @brief Change the RGB color of a light after creation.
+/// @param obj Light handle.
+/// @param r   Red component [0.0–1.0].
+/// @param g   Green component [0.0–1.0].
+/// @param b   Blue component [0.0–1.0].
 void rt_light3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;

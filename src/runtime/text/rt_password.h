@@ -8,10 +8,11 @@
 // constant-time verification to prevent timing attacks.
 //
 // Key invariants:
-//   - Hash output includes the salt encoded alongside the hash; no separate salt storage needed.
+//   - Hash output includes the salt and iteration count; no separate salt storage needed.
 //   - Verification uses constant-time comparison to prevent timing side-channels.
-//   - Default iteration count is 100,000; this can be increased for higher security.
-//   - Hash output format: base64(salt) + '$' + base64(hash).
+//   - Default iteration count is 100,000 and verification rejects hostile work factors above
+//     the implementation cap.
+//   - Hash output format: "PBKDF2$iterations$salt_b64$hash_b64".
 //
 // Ownership/Lifetime:
 //   - Returned hash strings are newly allocated; caller must release.

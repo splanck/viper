@@ -256,6 +256,12 @@ if (NOT TARGET test_runtime_class_list_binding)
     viper_add_ctest(test_runtime_class_list_binding test_runtime_class_list_binding)
 endif ()
 
+if (NOT TARGET test_http_server_binding)
+    viper_add_test(test_http_server_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestHttpServerBinding.cpp)
+    target_link_libraries(test_http_server_binding PRIVATE fe_basic)
+    viper_add_ctest(test_http_server_binding test_http_server_binding)
+endif ()
+
 # Viper.Console binding tests
 if (NOT TARGET test_console_binding)
     viper_add_test(test_console_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestConsoleBinding.cpp)
@@ -847,6 +853,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_restclient ${VIPER_TESTS_DIR}/runtime/RTRestClientTests.cpp)
     target_link_libraries(test_rt_restclient PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_restclient test_rt_restclient)
+
+    viper_add_test(test_rt_network_highlevel ${VIPER_TESTS_DIR}/runtime/RTHighLevelNetworkTests.cpp)
+    target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
 
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

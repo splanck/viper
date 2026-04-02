@@ -27,6 +27,59 @@ static constexpr int kClosureEnvOffset = 8;
 
 using namespace runtime;
 
+namespace {
+
+bool isHttpServerRouteRuntime(std::string_view callee) {
+    return callee == "Viper.Network.HttpServer.Get" || callee == "Viper.Network.HttpServer.Post" ||
+           callee == "Viper.Network.HttpServer.Put" ||
+           callee == "Viper.Network.HttpServer.Delete";
+}
+
+bool isHttpHandlerPtrType(TypeRef type) {
+    return type && type->kind == TypeKindSem::Ptr;
+}
+
+FunctionDecl *resolveHttpHandlerDecl(Sema &sema, const std::string &tag) {
+    if (FunctionDecl *decl = sema.getFunctionDecl(tag)) {
+        TypeRef fnType = sema.getFunctionType(decl);
+        if (fnType && fnType->kind == TypeKindSem::Function && fnType->returnType() &&
+            fnType->returnType()->kind == TypeKindSem::Void && fnType->paramTypes().size() == 2 &&
+            isHttpHandlerPtrType(fnType->paramTypes()[0]) &&
+            isHttpHandlerPtrType(fnType->paramTypes()[1])) {
+            return decl;
+        }
+    }
+
+    FunctionDecl *match = nullptr;
+    for (FunctionDecl *decl : sema.getFunctionOverloads(tag)) {
+        TypeRef fnType = sema.getFunctionType(decl);
+        if (!fnType || fnType->kind != TypeKindSem::Function || !fnType->returnType() ||
+            fnType->returnType()->kind != TypeKindSem::Void || fnType->paramTypes().size() != 2 ||
+            !isHttpHandlerPtrType(fnType->paramTypes()[0]) ||
+            !isHttpHandlerPtrType(fnType->paramTypes()[1])) {
+            continue;
+        }
+        if (match)
+            return nullptr;
+        match = decl;
+    }
+
+    return match;
+}
+
+std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
+    FunctionDecl *decl = resolveHttpHandlerDecl(sema, tag);
+    if (!decl)
+        return {};
+
+    std::string lowered = sema.loweredFunctionName(decl);
+    if (!lowered.empty())
+        return lowered;
+    return tag == "start" ? "main" : tag;
+}
+
+} // namespace
+
 //=============================================================================
 // Built-in Function Call Helper
 //=============================================================================
@@ -633,6 +686,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             }
 
             args.push_back(argValue);
+        }
+
+        if (isHttpServerRouteRuntime(runtimeCallee) && expr->args.size() == 2 && args.size() >= 3) {
+            if (auto *tagExpr = dynamic_cast<StringLiteralExpr *>(expr->args[1].value.get())) {
+                std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);
+                if (!handlerTarget.empty()) {
+                    emitCall("Viper.Network.HttpServer.BindHandler",
+                             {args[0], args[paramOffset + 1], Value::global(handlerTarget)});
+                }
+            }
         }
 
         TypeRef exprType = sema_.functionReturnType(runtimeCallee);

@@ -34,6 +34,18 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
+/// @brief Create a cube map from six square face textures.
+/// @details The six Pixels objects represent the +X, -X, +Y, -Y, +Z, -Z faces
+///          of a cube. All must be square and the same dimensions. The face
+///          pointers are borrowed (GC-managed, not owned by the cubemap). Used
+///          for skyboxes and environment-map reflections.
+/// @param px Positive-X face (right).
+/// @param nx Negative-X face (left).
+/// @param py Positive-Y face (top).
+/// @param ny Negative-Y face (bottom).
+/// @param pz Positive-Z face (front).
+/// @param nz Negative-Z face (back).
+/// @return Opaque cube map handle, or NULL on validation failure.
 void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) {
     void *faces[6] = {px, nx, py, ny, pz, nz};
 
@@ -196,14 +208,14 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 // Canvas3D skybox
 //=============================================================================
 
-/// @brief Set the skybox of the canvas3d.
+/// @brief Set a cube map as the canvas skybox (drawn behind all geometry).
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (!canvas)
         return;
     ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
 }
 
-/// @brief Clear the skybox of the canvas3d.
+/// @brief Remove the skybox from the canvas (reverts to solid clear color).
 void rt_canvas3d_clear_skybox(void *canvas) {
     if (!canvas)
         return;
@@ -214,21 +226,21 @@ void rt_canvas3d_clear_skybox(void *canvas) {
 // Material3D env map + reflectivity
 //=============================================================================
 
-/// @brief Set the env map of the material3d.
+/// @brief Assign a cube map as the environment reflection map for a material.
 void rt_material3d_set_env_map(void *obj, void *cubemap) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->env_map = cubemap;
 }
 
-/// @brief Set the reflectivity of the material3d.
+/// @brief Set the environment reflection strength for a material (0.0–1.0).
 void rt_material3d_set_reflectivity(void *obj, double r) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->reflectivity = r;
 }
 
-/// @brief Get the reflectivity of the material3d.
+/// @brief Get the current environment reflection strength of a material.
 double rt_material3d_get_reflectivity(void *obj) {
     if (!obj)
         return 0.0;

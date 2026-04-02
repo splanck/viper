@@ -74,7 +74,13 @@ static double lookup_voice_distance(int64_t voice) {
     return 50.0; /* default fallback */
 }
 
-/// @brief Set the listener of the audio3d.
+/// @brief Set the 3D audio listener position and orientation.
+/// @details Updates the single global listener used for all spatial audio
+///          calculations. The right vector is derived from cross(forward, world_up)
+///          where world_up is (0,1,0). All subsequent play_at and update_voice
+///          calls use this listener state for attenuation and stereo panning.
+/// @param position Vec3 world-space position of the listener (typically the camera).
+/// @param forward  Vec3 forward direction the listener is facing.
 void rt_audio3d_set_listener(void *position, void *forward) {
     if (!position || !forward)
         return;
@@ -121,7 +127,16 @@ static void compute_3d_params(
     }
 }
 
-/// @brief Play the at of the audio3d.
+/// @brief Play a sound at a 3D position with distance-based attenuation and stereo pan.
+/// @details Computes volume attenuation (linear falloff to max_distance) and
+///          stereo pan (dot product with listener's right vector), then delegates
+///          to the 2D audio play API. The voice's max_distance is tracked so
+///          subsequent update_voice calls can re-attenuate as the source moves.
+/// @param sound        Sound asset handle.
+/// @param position     Vec3 world-space position of the sound source.
+/// @param max_distance Distance at which the sound becomes inaudible (0 = infinite range).
+/// @param volume       Base volume before attenuation [0–100].
+/// @return Voice ID for subsequent updates, or 0 on failure.
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     if (!sound || !position)
         return 0;
@@ -134,7 +149,13 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     return voice;
 }
 
-/// @brief Update the voice of the audio3d.
+/// @brief Update a playing voice's volume and pan based on its current 3D position.
+/// @details Call each frame for moving sound sources. Recomputes attenuation
+///          and stereo pan relative to the current listener position. If
+///          max_distance is 0, the value stored at play time is used instead.
+/// @param voice        Voice ID returned by rt_audio3d_play_at.
+/// @param position     Vec3 current world-space position of the sound source.
+/// @param max_distance Falloff range override (0 = use value from play_at).
 void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance) {
     if (!position || voice <= 0)
         return;

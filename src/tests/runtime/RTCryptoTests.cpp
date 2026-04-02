@@ -378,6 +378,69 @@ static void test_crypto_rand() {
 }
 
 //=============================================================================
+// AEAD / Key Exchange Tests
+//=============================================================================
+
+static void test_aead_tamper_detection() {
+    printf("Testing AEAD tamper detection:\n");
+
+    {
+        uint8_t key[32];
+        uint8_t nonce[12];
+        memset(key, 0x11, sizeof(key));
+        memset(nonce, 0x22, sizeof(nonce));
+        const char *msg = "ChaCha20-Poly1305";
+        uint8_t ciphertext[sizeof("ChaCha20-Poly1305") - 1 + 16];
+        uint8_t plaintext[sizeof("ChaCha20-Poly1305") - 1];
+
+        size_t cipher_len = rt_chacha20_poly1305_encrypt(
+            key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
+        test_result("ChaCha20 encrypt length matches", cipher_len == strlen(msg) + 16);
+        ciphertext[cipher_len - 1] ^= 0x01;
+        test_result("ChaCha20 tamper detected",
+                    rt_chacha20_poly1305_decrypt(
+                        key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
+    }
+
+    {
+        uint8_t key[16];
+        uint8_t nonce[12];
+        memset(key, 0x33, sizeof(key));
+        memset(nonce, 0x44, sizeof(nonce));
+        const char *msg = "AES-GCM";
+        uint8_t ciphertext[sizeof("AES-GCM") - 1 + 16];
+        uint8_t plaintext[sizeof("AES-GCM") - 1];
+
+        size_t cipher_len = rt_aes128_gcm_encrypt(key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
+        test_result("AES-GCM encrypt length matches", cipher_len == strlen(msg) + 16);
+        ciphertext[0] ^= 0x80;
+        test_result("AES-GCM tamper detected",
+                    rt_aes128_gcm_decrypt(key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
+    }
+
+    printf("\n");
+}
+
+static void test_x25519_shared_secret_agreement() {
+    printf("Testing X25519 shared secret agreement:\n");
+
+    uint8_t alice_secret[32], alice_public[32];
+    uint8_t bob_secret[32], bob_public[32];
+    uint8_t shared1[32], shared2[32];
+
+    rt_x25519_keygen(alice_secret, alice_public);
+    rt_x25519_keygen(bob_secret, bob_public);
+    rt_x25519(alice_secret, bob_public, shared1);
+    rt_x25519(bob_secret, alice_public, shared2);
+
+    test_result("Shared secrets match", memcmp(shared1, shared2, sizeof(shared1)) == 0);
+
+    uint8_t zeros[32] = {0};
+    test_result("Shared secret is non-zero", memcmp(shared1, zeros, sizeof(shared1)) != 0);
+    printf("\n");
+}
+
+//=============================================================================
 // Entry Point
 //=============================================================================
 
@@ -390,6 +453,8 @@ int main() {
     test_sha256_incremental_matches_one_shot();
     test_pbkdf2_sha256();
     test_crypto_rand();
+    test_aead_tamper_detection();
+    test_x25519_shared_secret_agreement();
 
     printf("All Crypto tests passed!\n");
     return 0;

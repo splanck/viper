@@ -518,6 +518,18 @@ void *rt_http_req_set_body_str(void *obj, rt_string text);
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms);
 
+/// @brief Enable or disable automatic redirect following for this request.
+/// @param obj HttpReq object.
+/// @param follow 1 to follow redirects, 0 to return the redirect response as-is.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_set_follow_redirects(void *obj, int8_t follow);
+
+/// @brief Set the maximum number of redirects to follow for this request.
+/// @param obj HttpReq object.
+/// @param max_redirects Maximum redirects (0 = none).
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects);
+
 /// @brief Execute HTTP request.
 /// @param obj HttpReq object.
 /// @return HttpRes response object.

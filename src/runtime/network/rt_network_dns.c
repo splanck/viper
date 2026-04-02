@@ -89,7 +89,7 @@ rt_string rt_dns_resolve(rt_string hostname) {
         rt_trap("Network: NULL hostname");
 
     struct addrinfo hints = {0};
-    hints.ai_family = AF_INET; // IPv4 only for Resolve()
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     struct addrinfo *result = NULL;
@@ -100,9 +100,17 @@ rt_string rt_dns_resolve(rt_string hostname) {
         rt_trap_net("Network: hostname not found", Err_DnsError);
     }
 
-    char ip_str[INET_ADDRSTRLEN];
-    struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
-    inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
+    char ip_str[INET6_ADDRSTRLEN];
+    if (result->ai_family == AF_INET) {
+        struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
+        inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
+    } else if (result->ai_family == AF_INET6) {
+        struct sockaddr_in6 *addr = (struct sockaddr_in6 *)result->ai_addr;
+        inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
+    } else {
+        freeaddrinfo(result);
+        rt_trap_net("Network: hostname not found", Err_DnsError);
+    }
 
     freeaddrinfo(result);
     return rt_string_from_bytes(ip_str, strlen(ip_str));

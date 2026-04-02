@@ -304,6 +304,7 @@ add_library(il_vm STATIC
         # VMInit.cpp is included directly in Runner.cpp to avoid Windows static lib linking issues
         vm/VMContext.cpp
         vm/ThreadsRuntime.cpp
+        vm/NetworkRuntime.cpp
         vm/debug/VMDebug.cpp
         vm/RuntimeBridge.cpp
         vm/Marshal.cpp

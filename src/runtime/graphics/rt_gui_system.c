@@ -42,7 +42,7 @@
 // Clipboard Functions (Phase 1)
 //=============================================================================
 
-/// @brief Set the text of the clipboard.
+/// @brief Copy text to the system clipboard.
 void rt_clipboard_set_text(rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
@@ -270,7 +270,7 @@ void rt_shortcuts_clear(void) {
     app->triggered_shortcut_id = NULL;
 }
 
-/// @brief Was the triggered of the shortcuts.
+/// @brief Check if any registered keyboard shortcut was triggered this frame.
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -352,7 +352,7 @@ rt_string rt_shortcuts_get_triggered(void) {
     return rt_str_empty();
 }
 
-/// @brief Set the enabled of the shortcuts.
+/// @brief Enable or disable global keyboard shortcut processing.
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -372,7 +372,7 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     free(cid);
 }
 
-/// @brief Is the enabled of the shortcuts.
+/// @brief Check whether global keyboard shortcuts are currently enabled.
 int64_t rt_shortcuts_is_enabled(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -442,7 +442,7 @@ rt_string rt_app_get_title(void *app) {
     return rt_str_empty();
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -482,7 +482,7 @@ int64_t rt_app_get_height(void *app) {
     return h;
 }
 
-/// @brief Set the position of the app.
+/// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -548,7 +548,7 @@ void rt_app_restore(void *app) {
         vgfx_restore(gui_app->window);
 }
 
-/// @brief Is the minimized of the app.
+/// @brief Check whether the app window is currently minimized.
 int64_t rt_app_is_minimized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -557,7 +557,7 @@ int64_t rt_app_is_minimized(void *app) {
     return gui_app->window ? vgfx_is_minimized(gui_app->window) : 0;
 }
 
-/// @brief Is the maximized of the app.
+/// @brief Check whether the app window is currently maximized.
 int64_t rt_app_is_maximized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -576,7 +576,7 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
         vgfx_set_fullscreen(gui_app->window, (int32_t)fullscreen);
 }
 
-/// @brief Is the fullscreen of the app.
+/// @brief Check whether the app window is in fullscreen mode.
 int64_t rt_app_is_fullscreen(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -595,7 +595,7 @@ void rt_app_focus(void *app) {
         vgfx_focus(gui_app->window);
 }
 
-/// @brief Is the focused of the app.
+/// @brief Check whether the app window currently has OS-level focus.
 int64_t rt_app_is_focused(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -614,7 +614,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent) {
         vgfx_set_prevent_close(gui_app->window, (int32_t)prevent);
 }
 
-/// @brief Was the close requested of the app.
+/// @brief Check whether the window close was requested this frame.
 int64_t rt_app_was_close_requested(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -649,7 +649,7 @@ int64_t rt_app_get_monitor_height(void *app) {
     return (int64_t)h;
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -663,7 +663,7 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     // dimensions passed from Zia, as that would corrupt the layout geometry.
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -676,7 +676,7 @@ double rt_app_get_font_size(void *app) {
     return (double)(gui_app->default_font_size / _s);
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_font_size(void *app, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -711,7 +711,7 @@ void rt_cursor_reset(void) {
     rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
 }
 
-/// @brief Set the visible of the cursor.
+/// @brief Show or hide the mouse cursor.
 void rt_cursor_set_visible(int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -735,7 +735,7 @@ void rt_widget_reset_cursor(void *widget) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-/// @brief Set the text of the clipboard.
+/// @brief Copy text to the system clipboard.
 void rt_clipboard_set_text(rt_string text) {
     (void)text;
 }
@@ -768,7 +768,7 @@ void rt_shortcuts_unregister(rt_string id) {
 /// @brief Remove all entries from the shortcuts.
 void rt_shortcuts_clear(void) {}
 
-/// @brief Was the triggered of the shortcuts.
+/// @brief Check if any registered keyboard shortcut was triggered this frame.
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     (void)id;
     return 0;
@@ -792,13 +792,13 @@ rt_string rt_shortcuts_get_triggered(void) {
     return rt_str_empty();
 }
 
-/// @brief Set the enabled of the shortcuts.
+/// @brief Enable or disable global keyboard shortcut processing.
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     (void)id;
     (void)enabled;
 }
 
-/// @brief Is the enabled of the shortcuts.
+/// @brief Check whether global keyboard shortcuts are currently enabled.
 int64_t rt_shortcuts_is_enabled(rt_string id) {
     (void)id;
     return 0;
@@ -826,7 +826,7 @@ rt_string rt_app_get_title(void *app) {
     return rt_str_empty();
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     (void)app;
     (void)width;
@@ -845,7 +845,7 @@ int64_t rt_app_get_height(void *app) {
     return 0;
 }
 
-/// @brief Set the position of the app.
+/// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     (void)app;
     (void)x;
@@ -879,13 +879,13 @@ void rt_app_restore(void *app) {
     (void)app;
 }
 
-/// @brief Is the minimized of the app.
+/// @brief Check whether the app window is currently minimized.
 int64_t rt_app_is_minimized(void *app) {
     (void)app;
     return 0;
 }
 
-/// @brief Is the maximized of the app.
+/// @brief Check whether the app window is currently maximized.
 int64_t rt_app_is_maximized(void *app) {
     (void)app;
     return 0;
@@ -897,7 +897,7 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     (void)fullscreen;
 }
 
-/// @brief Is the fullscreen of the app.
+/// @brief Check whether the app window is in fullscreen mode.
 int64_t rt_app_is_fullscreen(void *app) {
     (void)app;
     return 0;
@@ -908,7 +908,7 @@ void rt_app_focus(void *app) {
     (void)app;
 }
 
-/// @brief Is the focused of the app.
+/// @brief Check whether the app window currently has OS-level focus.
 int64_t rt_app_is_focused(void *app) {
     (void)app;
     return 0;
@@ -920,7 +920,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent) {
     (void)prevent;
 }
 
-/// @brief Was the close requested of the app.
+/// @brief Check whether the window close was requested this frame.
 int64_t rt_app_was_close_requested(void *app) {
     (void)app;
     return 0;
@@ -938,20 +938,20 @@ int64_t rt_app_get_monitor_height(void *app) {
     return 0;
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     (void)app;
     (void)w;
     (void)h;
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 double rt_app_get_font_size(void *app) {
     (void)app;
     return 14.0;
 }
 
-/// @brief Return the size of the app.
+/// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_font_size(void *app, double size) {
     (void)app;
     (void)size;
@@ -965,7 +965,7 @@ void rt_cursor_set(int64_t type) {
 /// @brief Set a value in the cursor.
 void rt_cursor_reset(void) {}
 
-/// @brief Set the visible of the cursor.
+/// @brief Show or hide the mouse cursor.
 void rt_cursor_set_visible(int64_t visible) {
     (void)visible;
 }

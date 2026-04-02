@@ -57,6 +57,13 @@ static void rt_mesh3d_finalize(void *obj) {
     m->indices = NULL;
 }
 
+/// @brief Create a new empty 3D mesh for programmatic construction.
+/// @details Allocates vertex and index arrays with initial capacity. Vertices are
+///          stored as vgfx3d_vertex_t (80 bytes each, float internally) and indices
+///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
+///          by calling add_vertex/add_triangle, or by using the procedural generators
+///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
+/// @return Opaque mesh handle, or NULL on allocation failure.
 void *rt_mesh3d_new(void) {
     rt_mesh3d *m = (rt_mesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_mesh3d));
     if (!m) {
@@ -92,6 +99,7 @@ void *rt_mesh3d_new(void) {
     return m;
 }
 
+/// @brief Remove all vertices and indices from the mesh, resetting to empty.
 void rt_mesh3d_clear(void *obj) {
     if (!obj)
         return;
@@ -103,6 +111,11 @@ void rt_mesh3d_clear(void *obj) {
     rt_mesh3d_reset_bounds(m);
 }
 
+/// @brief Add a vertex with position, normal, and UV texture coordinates.
+/// @details The vertex array grows geometrically when full. Normals should be
+///          normalized (or recalculated later with recalc_normals). UV coords
+///          use the standard [0,1] range. The vertex is stored as float internally
+///          (vgfx3d_vertex_t), converted from the double parameters.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v) {
     if (!obj)
@@ -136,7 +149,7 @@ void rt_mesh3d_add_vertex(
     rt_mesh3d_touch_geometry(m);
 }
 
-/// @brief Add the triangle of the mesh3d.
+/// @brief Add a triangle defined by three vertex indices (CCW winding = front-facing).
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     if (!obj)
         return;
@@ -163,21 +176,21 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     rt_mesh3d_touch_geometry(m);
 }
 
-/// @brief Return the count of elements in the mesh3d.
+/// @brief Get the number of vertices in the mesh.
 int64_t rt_mesh3d_get_vertex_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_mesh3d *)obj)->vertex_count;
 }
 
-/// @brief Return the count of elements in the mesh3d.
+/// @brief Get the number of triangles in the mesh (index_count / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
 }
 
-/// @brief Recalc the normals of the mesh3d.
+/// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
     if (!obj)
         return;
@@ -232,6 +245,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d_touch_geometry(m);
 }
 
+/// @brief Create a deep copy of a mesh (independent vertex/index arrays).
 void *rt_mesh3d_clone(void *obj) {
     if (!obj)
         return NULL;
@@ -285,7 +299,7 @@ void *rt_mesh3d_clone(void *obj) {
     return dst;
 }
 
-/// @brief Transform the mesh3d.
+/// @brief Apply a 4x4 transformation matrix to all vertex positions and normals in-place.
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     if (!obj || !mat4_obj)
         return;
@@ -326,6 +340,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
 }
 
 /* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
+/// @brief Generate a box mesh centered at the origin with the given half-extents.
 void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
@@ -385,6 +400,7 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     return m;
 }
 
+/// @brief Generate a UV sphere mesh with the given radius and segment count.
 void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     void *m = rt_mesh3d_new();
     if (!m)
@@ -425,6 +441,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     return m;
 }
 
+/// @brief Generate a flat plane mesh on the XZ plane (facing +Y) with the given size.
 void *rt_mesh3d_new_plane(double sx, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
@@ -446,6 +463,7 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
     return m;
 }
 
+/// @brief Generate a cylinder mesh with circular caps, centered at the origin.
 void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     void *m = rt_mesh3d_new();
     if (!m)
@@ -554,7 +572,7 @@ static double obj_parse_double(const char **p) {
     return val;
 }
 
-/// @brief Calc the tangents of the mesh3d.
+/// @brief Calculate per-vertex tangent vectors for normal mapping (Lengyel method).
 void rt_mesh3d_calc_tangents(void *obj) {
     if (!obj)
         return;
@@ -745,6 +763,12 @@ static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *coun
 // OBJ Loading (Wavefront)
 //=============================================================================
 
+/// @brief Load a mesh from a Wavefront OBJ file (positions, normals, UVs, faces).
+/// @details Parses v/vn/vt/f lines from the OBJ text format. Supports
+///          triangulated and quad faces (quads are split into two triangles).
+///          Vertex data is de-duplicated by unique (position, normal, UV) tuples.
+/// @param path File path to the .obj file (runtime string).
+/// @return Mesh handle, or NULL on parse/load failure.
 void *rt_mesh3d_from_obj(rt_string path) {
     if (!path) {
         rt_trap("Mesh3D.FromOBJ: path must not be null");
@@ -1019,6 +1043,12 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     return mesh;
 }
 
+/// @brief Load a mesh from a binary or ASCII STL file.
+/// @details STL files contain raw triangle soup (no shared vertices or UVs).
+///          Each triangle has its own face normal. ASCII and binary formats are
+///          auto-detected. UV coordinates are set to (0,0) for all vertices.
+/// @param path File path to the .stl file (runtime string).
+/// @return Mesh handle, or NULL on load failure.
 void *rt_mesh3d_from_stl(rt_string path) {
     if (!path)
         return NULL;

@@ -44,15 +44,18 @@ void *rt_aes_encrypt(void *data, void *key, void *iv);
 /// @return Bytes object containing plaintext (PKCS7 padding removed)
 void *rt_aes_decrypt(void *data, void *key, void *iv);
 
-/// @brief Encrypt string using AES-256-CBC with key derivation.
+/// @brief Encrypt string using PBKDF2-derived AES-128-GCM.
 /// @param data String to encrypt
-/// @param password Password string (will be derived to 32-byte key using SHA-256)
-/// @return Bytes object containing: 16-byte IV + ciphertext
+/// @param password Password string used to derive a 128-bit key via PBKDF2-HMAC-SHA256
+/// @return Bytes object containing:
+///         [magic(4) | iterations(4) | salt(16) | nonce(12) | ciphertext | tag(16)]
 void *rt_aes_encrypt_str(rt_string data, rt_string password);
 
-/// @brief Decrypt to string using AES-256-CBC with key derivation.
-/// @param data Bytes object containing: 16-byte IV + ciphertext
-/// @param password Password string (will be derived to 32-byte key using SHA-256)
+/// @brief Decrypt to string using the authenticated string format.
+/// @details Accepts the current AES-128-GCM format and the legacy
+///          [16-byte IV | AES-256-CBC ciphertext] format for compatibility.
+/// @param data Bytes object containing encrypted string payload
+/// @param password Password string used for key derivation
 /// @return Decrypted string
 rt_string rt_aes_decrypt_str(void *data, rt_string password);
 

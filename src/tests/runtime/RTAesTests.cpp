@@ -78,6 +78,25 @@ static void test_empty_str_roundtrip(void) {
     rt_string_unref(plaintext);
 }
 
+static void test_str_format_magic(void) {
+    printf("rt_aes_encrypt_str emits authenticated VAG1 payload:\n");
+
+    rt_string plaintext = S("Format probe");
+    rt_string password = S("format-password");
+
+    void *ciphertext = rt_aes_encrypt_str(plaintext, password);
+    check("ciphertext non-null", ciphertext != NULL);
+    check("ciphertext length >= header + tag", rt_bytes_len(ciphertext) >= 36 + 16);
+    check("magic[0] == 'V'", rt_bytes_get(ciphertext, 0) == 'V');
+    check("magic[1] == 'A'", rt_bytes_get(ciphertext, 1) == 'A');
+    check("magic[2] == 'G'", rt_bytes_get(ciphertext, 2) == 'G');
+    check("magic[3] == '1'", rt_bytes_get(ciphertext, 3) == '1');
+
+    obj_release(ciphertext);
+    rt_string_unref(password);
+    rt_string_unref(plaintext);
+}
+
 static void test_raw_aes128_roundtrip(void) {
     printf("rt_aes_encrypt / rt_aes_decrypt AES-128 (from hex keys):\n");
 
@@ -141,6 +160,7 @@ int main(void) {
     printf("=== RTAesTests ===\n");
     test_str_roundtrip();
     test_empty_str_roundtrip();
+    test_str_format_magic();
     // wrong-password decrypt traps (bad PKCS7 padding aborts via rt_trap),
     // so that path cannot be tested with assert-style checks.
     test_raw_aes128_roundtrip();

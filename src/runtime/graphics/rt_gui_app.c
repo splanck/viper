@@ -51,10 +51,21 @@ static rt_gui_app_t *s_active_app = NULL;
 
 extern int64_t rt_clock_ticks_us(void);
 
+/// @brief Return the current wall-clock time in milliseconds.
+/// @details Converts the microsecond-precision platform clock to milliseconds.
+///          Used throughout the GUI subsystem for event timestamps, tooltip
+///          delays, toast durations, and animation timing.
+/// @return Monotonic time in milliseconds (wraps after ~585 million years).
 uint64_t rt_gui_now_ms(void) {
     return (uint64_t)(rt_clock_ticks_us() / 1000);
 }
 
+/// @brief Reset all global widget runtime state to defaults.
+/// @details Zeroes the shared widget runtime state (focus, capture, hover
+///          tracking), clears the tooltip manager, and restores the dark theme
+///          as the current theme. Called when no app is active (e.g., after the
+///          last app is destroyed) so stale pointers from a previous app don't
+///          linger in global state.
 static void rt_gui_clear_widget_runtime_state(void) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
@@ -62,6 +73,12 @@ static void rt_gui_clear_widget_runtime_state(void) {
     vg_theme_set_current(vg_theme_dark());
 }
 
+/// @brief Snapshot the current global widget state into an app struct.
+/// @details The vg widget system uses global state for focus, keyboard capture,
+///          and tooltip tracking. When switching between multiple GUI apps, we
+///          must save this state so each app gets its own independent focus and
+///          tooltip context. This is the "save" half of a save/restore pair.
+/// @param app App whose state fields will be overwritten with current globals.
 static void rt_gui_save_app_runtime_state(rt_gui_app_t *app) {
     if (!app)
         return;
@@ -69,6 +86,11 @@ static void rt_gui_save_app_runtime_state(rt_gui_app_t *app) {
     app->tooltip_manager_state = *vg_tooltip_manager_get();
 }
 
+/// @brief Restore previously-saved widget state from an app struct.
+/// @details The "restore" half of the save/restore pair. Pushes the app's
+///          saved focus, capture, and tooltip state back into the global vg
+///          widget system. If app is NULL, clears to defaults instead.
+/// @param app App whose saved state will become the active global state.
 static void rt_gui_restore_app_runtime_state(rt_gui_app_t *app) {
     if (!app) {
         rt_gui_clear_widget_runtime_state();
@@ -78,10 +100,23 @@ static void rt_gui_restore_app_runtime_state(rt_gui_app_t *app) {
     *vg_tooltip_manager_get() = app->tooltip_manager_state;
 }
 
+/// @brief Return the base (unscaled) theme for a given theme kind.
+/// @details Maps the runtime enum to the built-in vg_theme constant. The
+///          returned pointer is a static singleton — do not free it.
+/// @param kind RT_GUI_THEME_DARK or RT_GUI_THEME_LIGHT.
+/// @return Pointer to the corresponding immutable base theme.
 static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
     return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
 }
 
+/// @brief Apply a HiDPI scale factor to all size-sensitive theme fields.
+/// @details Multiplies typography sizes, spacing constants, button/input
+///          heights, padding, and scrollbar width by the given scale. This
+///          ensures the UI is sized in physical pixels, not logical points,
+///          so it renders crisply on Retina/HiDPI displays. A scale <= 0
+///          is clamped to 1.0 (identity) for safety.
+/// @param theme Mutable theme to scale in-place.
+/// @param scale HiDPI multiplier (e.g., 2.0 on a Retina display).
 static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     if (!theme)
         return;
@@ -104,6 +139,14 @@ static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     theme->scrollbar.width *= scale;
 }
 
+/// @brief Rebuild and activate the app's scaled theme if the base or scale changed.
+/// @details Creates a fresh mutable copy of the base theme (dark or light),
+///          scales it to the current window's HiDPI factor, and installs it as
+///          the active theme. Skips the rebuild if the base theme and scale
+///          haven't changed since the last call — this avoids redundant
+///          allocations during per-frame render calls. The old theme is
+///          destroyed after the new one is installed.
+/// @param app App whose theme to refresh (no-op if NULL).
 void rt_gui_refresh_theme(rt_gui_app_t *app) {
     if (!app)
         return;
@@ -135,6 +178,12 @@ void rt_gui_refresh_theme(rt_gui_app_t *app) {
         vg_theme_destroy(old_theme);
 }
 
+/// @brief Switch the app's theme between dark and light.
+/// @details Resets the cached base/scale so the next rt_gui_refresh_theme call
+///          forces a full theme rebuild with the new kind. The refresh is
+///          triggered immediately so the change takes effect this frame.
+/// @param app Target app (no-op if NULL).
+/// @param kind RT_GUI_THEME_DARK or RT_GUI_THEME_LIGHT.
 void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind) {
     if (!app)
         return;
@@ -144,10 +193,23 @@ void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind) {
     rt_gui_refresh_theme(app);
 }
 
+/// @brief Return the currently active GUI app, or NULL if none is active.
+/// @details The active app is the one whose widget tree, theme, and runtime
+///          state are installed in the global vg widget system. There is at
+///          most one active app at a time.
+/// @return Pointer to the active app, or NULL.
 rt_gui_app_t *rt_gui_get_active_app(void) {
     return s_active_app;
 }
 
+/// @brief Make the given app the active GUI app.
+/// @details Saves the outgoing app's widget runtime state (focus, capture,
+///          tooltips), installs the incoming app's state, refreshes its theme,
+///          and syncs the macOS native menu bar. If the app is already active,
+///          just refreshes the theme (handles window scale changes). Both
+///          s_active_app and s_current_app are updated so widget constructors
+///          and font lookups use the correct app context.
+/// @param app App to activate. May be NULL to deactivate.
 void rt_gui_activate_app(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
     if (app == s_active_app) {
@@ -167,7 +229,18 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
     rt_gui_macos_menu_sync_app(app);
 }
 
+/// @brief Resolve the owning app for a given widget by walking the parent chain.
+/// @details Widgets don't store a direct back-pointer to their app. Instead,
+///          the root widget's user_data is set to the app pointer at creation.
+///          This function walks up the parent chain until it finds a root
+///          (parentless) widget and returns its user_data. If the pointer is
+///          actually an app handle (magic check), it's returned directly. Falls
+///          back to s_current_app if the walk fails.
+/// @param widget Any widget in the tree.
+/// @return The owning rt_gui_app_t, or s_current_app as a last resort.
 rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
+    if (rt_gui_is_app_handle(widget))
+        return (rt_gui_app_t *)widget;
     for (vg_widget_t *w = widget; w; w = w->parent) {
         if (!w->parent && w->user_data) {
             return (rt_gui_app_t *)w->user_data;
@@ -176,6 +249,11 @@ rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
     return s_current_app;
 }
 
+/// @brief Double the dialog stack capacity when full (amortized O(1) growth).
+/// @details The dialog stack uses a dynamic array with geometric growth. This
+///          avoids per-push allocation while keeping memory usage reasonable
+///          for the typical case (1-3 nested dialogs).
+/// @param app App whose dialog stack to grow.
 static void rt_gui_grow_dialog_stack(rt_gui_app_t *app) {
     if (!app || app->dialog_count < app->dialog_cap)
         return;
@@ -187,6 +265,14 @@ static void rt_gui_grow_dialog_stack(rt_gui_app_t *app) {
     app->dialog_cap = new_cap;
 }
 
+/// @brief Compact the dialog stack and set the topmost open dialog as modal root.
+/// @details Removes closed dialogs from the stack (compacting in-place), then
+///          tells the vg widget system which widget is the modal root. When a
+///          modal root is set, all input events outside that widget's bounds are
+///          blocked — this implements the modal dialog interaction pattern where
+///          the user must dismiss the dialog before interacting with the rest
+///          of the UI.
+/// @param app App whose dialog stack to synchronize.
 void rt_gui_sync_modal_root(rt_gui_app_t *app) {
     if (!app) {
         vg_widget_set_modal_root(NULL);
@@ -206,6 +292,13 @@ void rt_gui_sync_modal_root(rt_gui_app_t *app) {
     vg_widget_set_modal_root(top ? &top->base : NULL);
 }
 
+/// @brief Push a dialog onto the app's modal dialog stack.
+/// @details Adds the dialog if it isn't already present (dedup check), grows
+///          the stack if needed, and syncs the modal root so the new dialog
+///          captures input. The dialog's user_data is set to the app pointer
+///          so the dialog can find its owning app when needed.
+/// @param app Target app.
+/// @param dlg Dialog to push (ignored if already on the stack).
 void rt_gui_push_dialog(rt_gui_app_t *app, vg_dialog_t *dlg) {
     if (!app || !dlg)
         return;
@@ -221,6 +314,13 @@ void rt_gui_push_dialog(rt_gui_app_t *app, vg_dialog_t *dlg) {
     }
 }
 
+/// @brief Remove a dialog from the app's modal dialog stack.
+/// @details Finds the dialog by pointer identity, shifts subsequent entries
+///          down via memmove, and re-syncs the modal root. If the removed
+///          dialog was the topmost modal, the next dialog (or NULL) becomes
+///          the new modal root.
+/// @param app Target app.
+/// @param dlg Dialog to remove.
 void rt_gui_remove_dialog(rt_gui_app_t *app, vg_dialog_t *dlg) {
     if (!app || !dlg)
         return;
@@ -236,6 +336,12 @@ void rt_gui_remove_dialog(rt_gui_app_t *app, vg_dialog_t *dlg) {
     }
 }
 
+/// @brief Return the topmost open dialog on the stack, or NULL if none.
+/// @details Compacts closed dialogs before returning, so the result is always
+///          an open dialog or NULL. Used by the poll/render loops to determine
+///          the current modal root and event routing target.
+/// @param app App to query.
+/// @return Topmost open vg_dialog_t, or NULL.
 vg_dialog_t *rt_gui_top_dialog(rt_gui_app_t *app) {
     if (!app)
         return NULL;
@@ -243,6 +349,11 @@ vg_dialog_t *rt_gui_top_dialog(rt_gui_app_t *app) {
     return app->dialog_count > 0 ? app->dialog_stack[app->dialog_count - 1] : NULL;
 }
 
+/// @brief Double the command palette array capacity when full.
+/// @details Same geometric-growth pattern as the dialog stack. Apps rarely have
+///          more than 1-2 command palettes, but the dynamic array handles the
+///          general case safely.
+/// @param app App whose command palette array to grow.
 static void rt_gui_grow_command_palette_array(rt_gui_app_t *app) {
     if (!app || app->command_palette_count < app->command_palette_cap)
         return;
@@ -254,6 +365,13 @@ static void rt_gui_grow_command_palette_array(rt_gui_app_t *app) {
     app->command_palette_cap = new_cap;
 }
 
+/// @brief Register a command palette with the app for event routing and rendering.
+/// @details Command palettes are rendered as overlays above all other content
+///          and receive keyboard/mouse events before the widget tree. The app
+///          tracks all registered palettes so the poll loop can route events to
+///          whichever one is visible. Duplicate registrations are silently ignored.
+/// @param app Target app.
+/// @param palette Command palette to register.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette) {
     if (!app || !palette)
         return;
@@ -267,6 +385,11 @@ void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *pal
     }
 }
 
+/// @brief Unregister a command palette from the app.
+/// @details Removes the palette from the app's tracking array so it is no
+///          longer rendered or receives events. Called during palette destruction.
+/// @param app Target app.
+/// @param palette Command palette to unregister.
 void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette) {
     if (!app || !palette)
         return;
@@ -282,6 +405,13 @@ void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *p
     }
 }
 
+/// @brief Find the topmost visible command palette, if any.
+/// @details Scans the palette array in reverse (most-recently-registered first)
+///          to find one that is both programmatically visible (is_visible) and
+///          widget-visible (base.visible). The poll loop uses this to intercept
+///          keyboard events before they reach the widget tree.
+/// @param app App to search.
+/// @return Topmost visible palette, or NULL if none are open.
 static vg_commandpalette_t *rt_gui_top_visible_command_palette(rt_gui_app_t *app) {
     if (!app)
         return NULL;
@@ -293,8 +423,11 @@ static vg_commandpalette_t *rt_gui_top_visible_command_palette(rt_gui_app_t *app
     return NULL;
 }
 
-/// @brief Set the active dialog value.
-/// @param dlg
+/// @brief Push or pop the active modal dialog.
+/// @details When dlg is non-NULL, pushes it onto the dialog stack so it becomes
+///          the modal root. When dlg is NULL, pops the topmost dialog. This is
+///          the Zia-facing entry point for modal dialog management.
+/// @param dlg Dialog to push, or NULL to pop the topmost dialog.
 void rt_gui_set_active_dialog(void *dlg) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = s_current_app ? s_current_app : s_active_app;
@@ -309,14 +442,28 @@ void rt_gui_set_active_dialog(void *dlg) {
     }
 }
 
-// Resize callback: called from the platform's windowDidResize: (macOS) to
-// keep the window repainted during the Cocoa live-resize modal loop.
+/// @brief Resize callback invoked by the platform during live window resizing.
+/// @details On macOS, the Cocoa run loop enters a modal tracking mode during
+///          window resize, blocking our main thread. Without this callback, the
+///          framebuffer stays black until the drag ends. By registering this as
+///          the vgfx resize callback, we re-render the full UI on every resize
+///          event, giving smooth live feedback.
+/// @param userdata Pointer to the rt_gui_app_t (set at registration time).
+/// @param w New window width in physical pixels (unused; render reads it).
+/// @param h New window height in physical pixels (unused; render reads it).
 static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h) {
     (void)w;
     (void)h;
     rt_gui_app_render(userdata);
 }
 
+/// @brief Keep a font alive until the app is destroyed (prevents use-after-free).
+/// @details When the user calls App.SetFont, the old default font may still be
+///          referenced by widgets that haven't been repainted yet. Rather than
+///          immediately freeing the old font (risking dangling pointers), we
+///          move it to a "retired fonts" list that is freed in app_destroy.
+/// @param app App that will own the retired font.
+/// @param font Font to retain (must not be NULL).
 static void rt_gui_retain_font(rt_gui_app_t *app, vg_font_t *font) {
     if (!app || !font)
         return;
@@ -331,6 +478,15 @@ static void rt_gui_retain_font(rt_gui_app_t *app, vg_font_t *font) {
     app->retired_fonts[app->retired_font_count++] = font;
 }
 
+/// @brief Recursively apply a font and size to a widget and all its descendants.
+/// @details Different widget types have different font APIs (e.g., vg_label_set_font,
+///          vg_button_set_font, etc.), so this function dispatches on widget->type
+///          to call the correct setter. After updating the font, it marks the widget
+///          as needing re-layout and re-paint, then recurses into children.
+///          This is the mechanism behind App.SetFont propagating to every widget.
+/// @param widget Root of the subtree to update.
+/// @param font   Font to apply.
+/// @param size   Font size in physical pixels.
 static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float size) {
     if (!widget || !font)
         return;
@@ -399,6 +555,13 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
     }
 }
 
+/// @brief Apply the app's default font to a newly-created widget.
+/// @details Resolves the owning app from the widget's parent chain, ensures
+///          the default font is loaded (lazy init), then calls
+///          rt_gui_apply_font_to_widget to set the font on the widget and its
+///          children. Called by every widget constructor so new widgets inherit
+///          the app's font automatically.
+/// @param widget Newly-created widget to apply the default font to.
 void rt_gui_apply_default_font(vg_widget_t *widget) {
     if (!widget)
         return;
@@ -416,12 +579,23 @@ void rt_gui_apply_default_font(vg_widget_t *widget) {
     rt_gui_apply_font_to_widget(widget, app->default_font, app->default_font_size);
 }
 
+/// @brief Create a new GUI application with a window and root widget container.
+/// @details Allocates the app struct on the GC heap (rt_obj_new_i64), creates a
+///          platform window via vgfx, sets up a root container widget, registers
+///          the live-resize callback, applies dark theme by default, and activates
+///          the app as current. The root widget is NOT given a fixed size — it is
+///          resized dynamically every frame from the physical window dimensions.
+/// @param title  Window title (runtime string).
+/// @param width  Initial window width in logical pixels (clamped to [1, INT32_MAX]).
+/// @param height Initial window height in logical pixels.
+/// @return Pointer to the new app, or NULL on failure.
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
     if (!app)
         return NULL;
     memset(app, 0, sizeof(rt_gui_app_t));
+    app->magic = RT_GUI_APP_MAGIC;
 
     // Create window
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -467,8 +641,15 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return app;
 }
 
-// Ensure the default font is loaded (lazy init on first use).
-/// @brief Default the font of the ensure.
+/// @brief Lazily load the default font on first use.
+/// @details Tries the embedded JetBrains Mono Regular first (always available
+///          because it's compiled into the binary). If that fails, falls back to
+///          well-known system font paths on macOS, Linux, and Windows. The font
+///          size is scaled by the window's HiDPI factor so glyphs render at
+///          native resolution (e.g., 28 px on a 2x Retina display for 14 pt text).
+///          Once loaded, the font is marked as owned by the app and freed in
+///          rt_gui_app_destroy. Subsequent calls are no-ops if the font is
+///          already loaded.
 void rt_gui_ensure_default_font(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
@@ -507,7 +688,18 @@ void rt_gui_ensure_default_font(void) {
     }
 }
 
-/// @brief Release resources and destroy the app.
+/// @brief Tear down the GUI application, releasing all owned resources.
+/// @details Destruction order is critical to avoid use-after-free:
+///          1. Activate the app so cleanup operates on the right global state.
+///          2. Clean up feature resources (command palettes, notifications, etc.).
+///          3. Destroy all dialogs on the stack and free the stack array.
+///          4. Free keyboard shortcuts and their string data.
+///          5. Clear global app pointers if this was the active/current app.
+///          6. Destroy the theme, default font, retired fonts, root widget tree,
+///             and finally the platform window.
+///          The app struct itself is GC-allocated, so it will be reclaimed by the
+///          collector — we just zero the magic so stale pointers are detected.
+/// @param app_ptr Pointer to the app (opaque void* from the Zia layer).
 void rt_gui_app_destroy(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -576,9 +768,16 @@ void rt_gui_app_destroy(void *app_ptr) {
     if (app->window) {
         vgfx_destroy_window(app->window);
     }
+    app->magic = 0;
 }
 
-/// @brief Should the close of the app.
+/// @brief Query whether the application's window has been closed.
+/// @details Returns non-zero once the platform window receives a close event
+///          (e.g., user clicked the X button, Alt+F4, or Cmd+Q). Zia code
+///          polls this in the main loop to decide when to exit:
+///          `while not app.ShouldClose() { ... }`
+/// @param app_ptr Pointer to the app.
+/// @return 1 if the window should close, 0 otherwise. Returns 1 for NULL.
 int64_t rt_gui_app_should_close(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -595,6 +794,14 @@ static void render_widget_tree(vgfx_window_t window,
 static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type);
 static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event);
 
+/// @brief Check if a widget accepts a given drag-and-drop data type.
+/// @details Parses the widget's comma-separated accepted_drop_types string and
+///          compares each entry (case-insensitive) against the given type. If
+///          the widget has no type filter or the filter is empty, it accepts all
+///          types. Non-drop-target widgets always return 0.
+/// @param widget Widget to check.
+/// @param type   MIME-like type string from the drag source.
+/// @return Non-zero if the widget accepts this type.
 static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type) {
     if (!widget || !widget->is_drop_target)
         return 0;
@@ -618,6 +825,14 @@ static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type
     return 0;
 }
 
+/// @brief Send a GUI event directly to a specific widget (bypassing tree dispatch).
+/// @details Sets the event target to the widget and, for mouse events, converts
+///          screen-space coordinates to widget-local coordinates using the
+///          widget's screen bounds. Returns whether the event was consumed.
+///          Used for command palette and notification manager event routing.
+/// @param widget Target widget.
+/// @param event  GUI event to deliver.
+/// @return 1 if the event was consumed, 0 otherwise.
 static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return 0;
@@ -633,11 +848,24 @@ static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event) {
     return vg_event_send(widget, event) ? 1 : 0;
 }
 
+/// @brief Return the effective event-dispatch root for hit testing.
+/// @details When a modal dialog is open, all hit testing and event dispatch is
+///          scoped to the dialog's widget subtree (not the full app root). This
+///          prevents clicks from "leaking through" to background widgets.
+/// @param app Active app.
+/// @return The topmost dialog widget, or the app root if no dialog is open.
 static vg_widget_t *rt_gui_hit_root(rt_gui_app_t *app) {
     vg_dialog_t *top_dialog = rt_gui_top_dialog(app);
     return top_dialog ? &top_dialog->base : app->root;
 }
 
+/// @brief Measure and position a command palette centered near the top of the window.
+/// @details Palettes are positioned at horizontal center and 15% down from the
+///          top — mimicking VS Code's Ctrl+Shift+P behavior.
+/// @param app     Active app.
+/// @param palette Palette to layout.
+/// @param win_w   Window width in physical pixels.
+/// @param win_h   Window height in physical pixels.
 static void rt_gui_layout_command_palette(rt_gui_app_t *app,
                                           vg_commandpalette_t *palette,
                                           int32_t win_w,
@@ -650,6 +878,10 @@ static void rt_gui_layout_command_palette(rt_gui_app_t *app,
     vg_widget_arrange(&palette->base, (win_w - pw) / 2.0f, win_h * 0.15f, pw, ph);
 }
 
+/// @brief Test if a screen-space point falls within the command palette bounds.
+/// @details Used to determine whether mouse events should be routed to the
+///          palette or dismissed (clicks outside close the palette).
+/// @return Non-zero if (x, y) is inside the palette's layout rectangle.
 static int rt_gui_palette_contains_point(vg_commandpalette_t *palette, float x, float y) {
     if (!palette)
         return 0;
@@ -657,7 +889,19 @@ static int rt_gui_palette_contains_point(vg_commandpalette_t *palette, float x, 
            y >= palette->base.y && y < palette->base.y + palette->base.height;
 }
 
-/// @brief Poll the app.
+/// @brief Process all pending platform events and dispatch them to the widget tree.
+/// @details This is one half of the main loop (poll + render). It:
+///          1. Clears per-frame state (last_clicked, drag-over, shortcut triggers).
+///          2. Polls the platform event queue via vgfx_poll_event.
+///          3. Handles close events, file drops, keyboard shortcuts.
+///          4. Routes mouse/keyboard events through modal dialogs, command
+///             palettes, notification manager, and finally the widget tree.
+///          5. Manages drag-and-drop state transitions (start → over → drop).
+///          Events are converted from platform format (vgfx_event_t) to GUI
+///          format (vg_event_t) and dispatched via vg_event_dispatch. The
+///          command palette intercepts all keyboard events when visible, and
+///          mouse events inside its bounds. Clicks outside dismiss it.
+/// @param app_ptr Pointer to the app.
 void rt_gui_app_poll(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -835,7 +1079,20 @@ void rt_gui_app_poll(void *app_ptr) {
     }
 }
 
-/// @brief Render the app.
+/// @brief Layout, paint, and present the entire UI to the window.
+/// @details This is the render half of the main loop. It:
+///          1. Ensures the default font is loaded and theme is up-to-date.
+///          2. Runs the vg layout engine (vg_widget_layout) with current window
+///             dimensions, computing sizes and positions for all widgets.
+///          3. Clears the framebuffer with the theme's background color.
+///          4. Walks the widget tree via render_widget_tree, converting relative
+///             coordinates to absolute for painting, then restoring them.
+///          5. Paints overlays: popup dropdowns, command palettes, dialogs,
+///             notifications, and tooltips — each above the previous layer.
+///          6. Presents the framebuffer via vgfx_update.
+///          Widget coordinates remain relative after this call, so hit testing
+///          during the next poll() uses parent-chain walks correctly.
+/// @param app_ptr Pointer to the app.
 void rt_gui_app_render(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -986,6 +1243,12 @@ void rt_gui_app_render(void *app_ptr) {
     vgfx_update(app->window);
 }
 
+/// @brief Return the root container widget of the app's widget tree.
+/// @details The root is a plain VG_WIDGET_CONTAINER that fills the window. All
+///          user-created widgets are added as children (or descendants) of this
+///          root. Layout is driven by the window's physical dimensions.
+/// @param app_ptr Pointer to the app.
+/// @return Root vg_widget_t pointer, or NULL if the app is NULL.
 void *rt_gui_app_get_root(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -994,7 +1257,18 @@ void *rt_gui_app_get_root(void *app_ptr) {
     return app->root;
 }
 
-/// @brief Set the font of the app.
+/// @brief Replace the app's default font and propagate it to all existing widgets.
+/// @details Sets the new font as the app's default (used by all future widget
+///          constructors), then walks the entire widget tree, all dialogs,
+///          command palettes, the notification manager, and the manual tooltip,
+///          updating each to the new font. The old font is not freed immediately
+///          — it is retained in the app's retired-fonts list and freed at
+///          app_destroy, because widgets may still reference it during the
+///          current frame.
+/// @param app_ptr Pointer to the app.
+/// @param font    New font to use (vg_font_t*).
+/// @param size    Font size in points (will be stored as-is; HiDPI scaling is
+///                handled by the font loader).
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -1091,15 +1365,15 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     return NULL;
 }
 
-/// @brief Default the font of the ensure.
+/// @brief No-op stub: default font loading (graphics disabled).
 void rt_gui_ensure_default_font(void) {}
 
-/// @brief Release resources and destroy the app.
+/// @brief No-op stub: app destruction (graphics disabled).
 void rt_gui_app_destroy(void *app_ptr) {
     (void)app_ptr;
 }
 
-/// @brief Should the close of the app.
+/// @brief Stub: always returns 1 (close immediately when graphics disabled).
 int64_t rt_gui_app_should_close(void *app_ptr) {
     (void)app_ptr;
     return 1;

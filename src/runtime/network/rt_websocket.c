@@ -89,6 +89,7 @@ static void suppress_sigpipe(int sock) {
 #define WS_CLOSE_UNSUPPORTED 1003
 #define WS_CLOSE_NO_STATUS 1005
 #define WS_CLOSE_ABNORMAL 1006
+#define WS_CLOSE_INVALID_DATA 1007
 #define WS_CLOSE_MESSAGE_TOO_BIG 1009
 
 // Maximum total size for reassembled fragmented messages (64 MB)
@@ -110,6 +111,109 @@ typedef struct rt_ws_impl {
 
 static int host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
+}
+
+static int ws_is_valid_opcode(uint8_t opcode) {
+    switch (opcode) {
+        case WS_OP_CONTINUATION:
+        case WS_OP_TEXT:
+        case WS_OP_BINARY:
+        case WS_OP_CLOSE:
+        case WS_OP_PING:
+        case WS_OP_PONG:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static void ws_encode_u64_len(uint8_t out[8], size_t len) {
+    uint64_t value = (uint64_t)len;
+    for (int i = 7; i >= 0; i--) {
+        out[i] = (uint8_t)(value & 0xFFu);
+        value >>= 8;
+    }
+}
+
+static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
+    uint64_t value = 0;
+    for (int i = 0; i < 8; i++)
+        value = (value << 8) | in[i];
+    if (value > (uint64_t)SIZE_MAX)
+        return 0;
+    *len_out = (size_t)value;
+    return 1;
+}
+
+static int ws_is_valid_utf8(const uint8_t *data, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        uint8_t c = data[i++];
+        if (c <= 0x7F)
+            continue;
+
+        if (c >= 0xC2 && c <= 0xDF) {
+            if (i >= len || (data[i] & 0xC0) != 0x80)
+                return 0;
+            i++;
+            continue;
+        }
+
+        if (c == 0xE0) {
+            if (i + 1 >= len || data[i] < 0xA0 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80)
+                return 0;
+            i += 2;
+            continue;
+        }
+
+        if (c >= 0xE1 && c <= 0xEC) {
+            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
+                return 0;
+            i += 2;
+            continue;
+        }
+
+        if (c == 0xED) {
+            if (i + 1 >= len || data[i] < 0x80 || data[i] > 0x9F || (data[i + 1] & 0xC0) != 0x80)
+                return 0;
+            i += 2;
+            continue;
+        }
+
+        if (c >= 0xEE && c <= 0xEF) {
+            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
+                return 0;
+            i += 2;
+            continue;
+        }
+
+        if (c == 0xF0) {
+            if (i + 2 >= len || data[i] < 0x90 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80 ||
+                (data[i + 2] & 0xC0) != 0x80)
+                return 0;
+            i += 3;
+            continue;
+        }
+
+        if (c >= 0xF1 && c <= 0xF3) {
+            if (i + 2 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80 ||
+                (data[i + 2] & 0xC0) != 0x80)
+                return 0;
+            i += 3;
+            continue;
+        }
+
+        if (c == 0xF4) {
+            if (i + 2 >= len || data[i] < 0x80 || data[i] > 0x8F || (data[i + 1] & 0xC0) != 0x80 ||
+                (data[i + 2] & 0xC0) != 0x80)
+                return 0;
+            i += 3;
+            continue;
+        }
+
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Minimal SHA-1 (RFC 3174) for Sec-WebSocket-Accept validation (RFC 6455 §4.1).
@@ -671,14 +775,7 @@ static int ws_send_frame(rt_ws_impl *ws, uint8_t opcode, const void *data, size_
         header_len = 4;
     } else {
         header[1] = WS_MASK | 127;
-        header[2] = 0;
-        header[3] = 0;
-        header[4] = 0;
-        header[5] = 0;
-        header[6] = (uint8_t)(len >> 24);
-        header[7] = (uint8_t)(len >> 16);
-        header[8] = (uint8_t)(len >> 8);
-        header[9] = (uint8_t)(len);
+        ws_encode_u64_len(header + 2, len);
         header_len = 10;
     }
 
@@ -736,10 +833,20 @@ static int ws_recv_frame(
     if (!ws_recv_exact(ws, header, 2))
         return 0;
 
+    if ((header[0] & 0x70) != 0) {
+        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+        return 0;
+    }
+
     *fin_out = (header[0] & WS_FIN) ? 1 : 0; // H-11: expose FIN bit for reassembly
     *opcode_out = header[0] & 0x0F;
     uint8_t masked = header[1] & WS_MASK;
     size_t payload_len = header[1] & 0x7F;
+
+    if (!ws_is_valid_opcode(*opcode_out)) {
+        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+        return 0;
+    }
 
     // M-9: RFC 6455 §5.1 — client MUST close connection if server sends a masked frame.
     if (masked) {
@@ -758,8 +865,15 @@ static int ws_recv_frame(
         uint8_t ext[8];
         if (!ws_recv_exact(ws, ext, 8))
             return 0;
-        payload_len =
-            ((size_t)ext[4] << 24) | ((size_t)ext[5] << 16) | ((size_t)ext[6] << 8) | ext[7];
+        if (!ws_decode_u64_len(ext, &payload_len)) {
+            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+            return 0;
+        }
+    }
+
+    if (*opcode_out >= 0x08 && (!*fin_out || payload_len > 125)) {
+        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+        return 0;
     }
 
     /* Reject server-controlled allocation larger than 64 MB (S-10 fix).
@@ -784,6 +898,115 @@ static int ws_recv_frame(
     }
 
     return 1;
+}
+
+static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, size_t len);
+
+static int ws_recv_message(rt_ws_impl *ws, uint8_t **data_out, size_t *len_out, uint8_t *opcode_out) {
+    uint8_t *frag_buf = NULL;
+    size_t frag_len = 0;
+    uint8_t frag_opcode = 0;
+    int frag_active = 0;
+
+    *data_out = NULL;
+    *len_out = 0;
+    *opcode_out = 0;
+
+    while (ws->is_open) {
+        uint8_t fin = 0;
+        uint8_t opcode = 0;
+        uint8_t *data = NULL;
+        size_t len = 0;
+
+        if (!ws_recv_frame(ws, &fin, &opcode, &data, &len)) {
+            free(frag_buf);
+            if (ws->close_code == 0)
+                ws->close_code = WS_CLOSE_ABNORMAL;
+            ws->is_open = 0;
+            return 0;
+        }
+
+        if (opcode >= 0x08) {
+            ws_handle_control(ws, opcode, data, len);
+            free(data);
+            continue;
+        }
+
+        if (opcode == WS_OP_CONTINUATION) {
+            if (!frag_active) {
+                free(data);
+                free(frag_buf);
+                ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+                ws->is_open = 0;
+                return 0;
+            }
+        } else if (opcode == WS_OP_TEXT || opcode == WS_OP_BINARY) {
+            if (frag_active) {
+                free(data);
+                free(frag_buf);
+                ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+                ws->is_open = 0;
+                return 0;
+            }
+
+            if (fin) {
+                if (opcode == WS_OP_TEXT && !ws_is_valid_utf8(data, len)) {
+                    free(data);
+                    rt_ws_close_with(ws, WS_CLOSE_INVALID_DATA, rt_str_empty());
+                    return 0;
+                }
+                *data_out = data;
+                *len_out = len;
+                *opcode_out = opcode;
+                return 1;
+            }
+
+            frag_active = 1;
+            frag_opcode = opcode;
+        } else {
+            free(data);
+            free(frag_buf);
+            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+            ws->is_open = 0;
+            return 0;
+        }
+
+        if (len > 0) {
+            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE) {
+                free(data);
+                free(frag_buf);
+                rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());
+                return 0;
+            }
+
+            uint8_t *new_buf = (uint8_t *)realloc(frag_buf, frag_len + len);
+            if (!new_buf) {
+                free(data);
+                free(frag_buf);
+                ws->is_open = 0;
+                return 0;
+            }
+            frag_buf = new_buf;
+            memcpy(frag_buf + frag_len, data, len);
+            frag_len += len;
+        }
+        free(data);
+
+        if (fin) {
+            if (frag_opcode == WS_OP_TEXT && !ws_is_valid_utf8(frag_buf, frag_len)) {
+                free(frag_buf);
+                rt_ws_close_with(ws, WS_CLOSE_INVALID_DATA, rt_str_empty());
+                return 0;
+            }
+            *data_out = frag_buf;
+            *len_out = frag_len;
+            *opcode_out = frag_opcode;
+            return 1;
+        }
+    }
+
+    free(frag_buf);
+    return 0;
 }
 
 /// @brief Handle control frames (ping, pong, close).
@@ -827,8 +1050,8 @@ static void rt_ws_finalize(void *obj) {
     if (ws->tls) {
         rt_tls_close(ws->tls);
         ws->tls = NULL;
-    }
-    if (ws->socket_fd >= 0) {
+        ws->socket_fd = -1;
+    } else if (ws->socket_fd >= 0) {
         close(ws->socket_fd);
         ws->socket_fd = -1;
     }
@@ -1048,77 +1271,15 @@ rt_string rt_ws_recv(void *obj) {
     if (!obj)
         return rt_str_empty();
     rt_ws_impl *ws = obj;
-
-    // H-11: Fragmentation reassembly buffer (RFC 6455 §5.4)
-    uint8_t *frag_buf = NULL;
-    size_t frag_len = 0;
-    uint8_t frag_opcode = 0; // opcode of the first fragment
-
-    while (ws->is_open) {
-        uint8_t fin, opcode;
-        uint8_t *data = NULL;
-        size_t len;
-
-        if (!ws_recv_frame(ws, &fin, &opcode, &data, &len)) {
-            free(frag_buf);
-            ws->is_open = 0;
-            ws->close_code = WS_CLOSE_ABNORMAL;
-            return rt_str_empty();
-        }
-
-        // Control frames may arrive in the middle of fragmented messages (RFC 6455 §5.5)
-        // and must not disturb the fragmentation state.
-        if (opcode >= 0x08) {
-            ws_handle_control(ws, opcode, data, len);
-            free(data);
-            continue;
-        }
-
-        // First fragment or unfragmented message
-        if (opcode == WS_OP_TEXT || opcode == WS_OP_BINARY) {
-            free(frag_buf); // discard any incomplete previous message
-            frag_buf = NULL;
-            frag_len = 0;
-            frag_opcode = opcode;
-        } else if (opcode != WS_OP_CONTINUATION) {
-            free(data);
-            continue; // skip unknown opcodes
-        }
-
-        // Accumulate fragment payload
-        if (len > 0) {
-            // F-1: Cap total reassembled message size (RFC 6455 close code 1009)
-            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE) {
-                free(data);
-                free(frag_buf);
-                rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());
-                return rt_str_empty();
-            }
-            uint8_t *new_buf = (uint8_t *)realloc(frag_buf, frag_len + len);
-            if (!new_buf) {
-                free(data);
-                free(frag_buf);
-                ws->is_open = 0;
-                return rt_str_empty();
-            }
-            frag_buf = new_buf;
-            memcpy(frag_buf + frag_len, data, len);
-            frag_len += len;
-        }
-        free(data);
-
-        if (fin) {
-            // Final fragment: deliver the complete message
-            rt_string result = rt_string_from_bytes((const char *)frag_buf, frag_len);
-            free(frag_buf);
-            (void)frag_opcode; // opcode available for future text/binary distinction
-            return result;
-        }
-        // FIN=0: continue accumulating continuation frames
-    }
-
-    free(frag_buf);
-    return rt_str_empty();
+    uint8_t *message = NULL;
+    size_t message_len = 0;
+    uint8_t opcode = 0;
+    if (!ws_recv_message(ws, &message, &message_len, &opcode))
+        return rt_str_empty();
+    rt_string result = rt_string_from_bytes((const char *)message, message_len);
+    free(message);
+    (void)opcode;
+    return result;
 }
 
 rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
@@ -1148,73 +1309,17 @@ void *rt_ws_recv_bytes(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
     rt_ws_impl *ws = obj;
-
-    // H-11: Fragmentation reassembly buffer (RFC 6455 §5.4)
-    uint8_t *frag_buf = NULL;
-    size_t frag_len = 0;
-
-    while (ws->is_open) {
-        uint8_t fin, opcode;
-        uint8_t *data = NULL;
-        size_t len;
-
-        if (!ws_recv_frame(ws, &fin, &opcode, &data, &len)) {
-            free(frag_buf);
-            ws->is_open = 0;
-            ws->close_code = WS_CLOSE_ABNORMAL;
-            return rt_bytes_new(0);
-        }
-
-        // Control frames may interleave within fragmented messages
-        if (opcode >= 0x08) {
-            ws_handle_control(ws, opcode, data, len);
-            free(data);
-            continue;
-        }
-
-        if (opcode == WS_OP_BINARY || opcode == WS_OP_TEXT) {
-            free(frag_buf);
-            frag_buf = NULL;
-            frag_len = 0;
-        } else if (opcode != WS_OP_CONTINUATION) {
-            free(data);
-            continue;
-        }
-
-        // Accumulate fragment payload
-        if (len > 0) {
-            // F-1: Cap total reassembled message size (RFC 6455 close code 1009)
-            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE) {
-                free(data);
-                free(frag_buf);
-                rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());
-                return rt_bytes_new(0);
-            }
-            uint8_t *new_buf = (uint8_t *)realloc(frag_buf, frag_len + len);
-            if (!new_buf) {
-                free(data);
-                free(frag_buf);
-                ws->is_open = 0;
-                return rt_bytes_new(0);
-            }
-            frag_buf = new_buf;
-            memcpy(frag_buf + frag_len, data, len);
-            frag_len += len;
-        }
-        free(data);
-
-        if (fin) {
-            // Final fragment: deliver complete message as Bytes object
-            void *result = rt_bytes_new((int64_t)frag_len);
-            for (size_t i = 0; i < frag_len; i++)
-                rt_bytes_set(result, (int64_t)i, frag_buf[i]);
-            free(frag_buf);
-            return result;
-        }
-    }
-
-    free(frag_buf);
-    return rt_bytes_new(0);
+    uint8_t *message = NULL;
+    size_t message_len = 0;
+    uint8_t opcode = 0;
+    if (!ws_recv_message(ws, &message, &message_len, &opcode))
+        return rt_bytes_new(0);
+    void *result = rt_bytes_new((int64_t)message_len);
+    for (size_t i = 0; i < message_len; i++)
+        rt_bytes_set(result, (int64_t)i, message[i]);
+    free(message);
+    (void)opcode;
+    return result;
 }
 
 void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {

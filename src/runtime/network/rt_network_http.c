@@ -208,17 +208,8 @@ static int http_conn_recv_byte(http_conn_t *conn, uint8_t *byte) {
 /// @brief Close HTTP connection.
 static void http_conn_close(http_conn_t *conn) {
     if (conn->use_tls && conn->tls) {
-        int sock = rt_tls_get_socket(conn->tls);
         rt_tls_close(conn->tls);
         conn->tls = NULL;
-        // Close underlying socket
-        if (sock >= 0) {
-#ifdef _WIN32
-            closesocket(sock);
-#else
-            close(sock);
-#endif
-        }
     } else if (conn->tcp) {
         rt_tcp_close(conn->tcp);
         conn->tcp = NULL;
@@ -233,6 +224,8 @@ typedef struct rt_http_req {
     uint8_t *body;          // Request body
     size_t body_len;        // Body length
     int timeout_ms;         // Timeout in milliseconds
+    int follow_redirects;   // Automatically follow redirect responses
+    int max_redirects;      // Redirect limit for this request
 } rt_http_req_t;
 
 /// @brief HTTP response structure.
@@ -292,7 +285,8 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
         p = bracket_end + 1;
     } else {
         const char *host_end = p;
-        while (*host_end && *host_end != ':' && *host_end != '/')
+        while (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' &&
+               *host_end != '#')
             host_end++;
 
         size_t host_len = (size_t)(host_end - p);
@@ -307,7 +301,7 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
         p = host_end;
     }
 
-    if (*p != '\0' && *p != ':' && *p != '/') {
+    if (*p != '\0' && *p != ':' && *p != '/' && *p != '?' && *p != '#') {
         free_parsed_url(result);
         return -1;
     }
@@ -326,15 +320,32 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
         }
     }
 
-    // Parse path (default to "/")
+    // Parse request-target path + query (fragments are never sent on the wire)
     if (*p == '/') {
-        size_t path_len = strlen(p);
+        const char *path_end = p;
+        while (*path_end && *path_end != '#')
+            path_end++;
+        size_t path_len = (size_t)(path_end - p);
         result->path = (char *)malloc(path_len + 1);
         if (!result->path) {
             free_parsed_url(result);
             return -1;
         }
-        memcpy(result->path, p, path_len + 1);
+        memcpy(result->path, p, path_len);
+        result->path[path_len] = '\0';
+    } else if (*p == '?') {
+        const char *query_end = p;
+        while (*query_end && *query_end != '#')
+            query_end++;
+        size_t query_len = (size_t)(query_end - p);
+        result->path = (char *)malloc(query_len + 2);
+        if (!result->path) {
+            free_parsed_url(result);
+            return -1;
+        }
+        result->path[0] = '/';
+        memcpy(result->path + 1, p, query_len);
+        result->path[query_len + 1] = '\0';
     } else {
         result->path = (char *)malloc(2);
         if (!result->path) {
@@ -669,6 +680,30 @@ static void parse_header_line(const char *line, void *headers_map) {
 
     rt_string name_str = rt_string_from_bytes(name, strlen(name));
     rt_string value_str = rt_string_from_bytes(value, strlen(value));
+
+    void *existing = rt_map_get(headers_map, name_str);
+    if (existing && rt_box_type(existing) == RT_BOX_STR) {
+        rt_string existing_str = rt_unbox_str(existing);
+        const char *existing_cstr = rt_string_cstr(existing_str);
+        const char *value_cstr = rt_string_cstr(value_str);
+        const char *sep = strcmp(name, "set-cookie") == 0 ? "\n" : ", ";
+        size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
+        size_t value_len = value_cstr ? strlen(value_cstr) : 0;
+        size_t sep_len = strlen(sep);
+        char *joined = (char *)malloc(existing_len + sep_len + value_len + 1);
+        if (joined) {
+            memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
+            memcpy(joined + existing_len, sep, sep_len);
+            memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
+            joined[existing_len + sep_len + value_len] = '\0';
+            rt_string merged = rt_string_from_bytes(joined, existing_len + sep_len + value_len);
+            rt_string_unref(value_str);
+            value_str = merged;
+            free(joined);
+        }
+        rt_string_unref(existing_str);
+    }
+
     void *boxed = rt_box_str(value_str);
     rt_map_set(headers_map, name_str, boxed);
     if (boxed && rt_obj_release_check0(boxed))
@@ -688,7 +723,7 @@ static uint8_t *read_body_content_length_conn(http_conn_t *conn,
         return NULL;
     }
 
-    uint8_t *body = (uint8_t *)malloc(content_length);
+    uint8_t *body = (uint8_t *)malloc(content_length > 0 ? content_length : 1);
     if (!body)
         return NULL;
 
@@ -698,8 +733,11 @@ static uint8_t *read_body_content_length_conn(http_conn_t *conn,
         size_t chunk_size = remaining < HTTP_BUFFER_SIZE ? remaining : HTTP_BUFFER_SIZE;
 
         long len = http_conn_recv(conn, body + total_read, chunk_size);
-        if (len <= 0)
-            break;
+        if (len <= 0) {
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
 
         total_read += len;
     }
@@ -719,8 +757,11 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
     while (1) {
         // Read chunk size line
         char *size_line = read_line_conn(conn);
-        if (!size_line)
-            break;
+        if (!size_line) {
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
 
         // Parse hex chunk size — guard against overflow before each multiply (M-6)
         size_t chunk_size = 0;
@@ -755,6 +796,11 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
             char *trailer;
             while ((trailer = read_line_conn(conn)) != NULL && trailer[0] != '\0')
                 free(trailer);
+            if (!trailer) {
+                free(body);
+                *out_len = 0;
+                return NULL;
+            }
             if (trailer)
                 free(trailer);
             break;
@@ -786,8 +832,9 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
             long len = http_conn_recv(conn, body + body_len, to_read);
             if (len <= 0) {
-                *out_len = body_len;
-                return body;
+                free(body);
+                *out_len = 0;
+                return NULL;
             }
 
             body_len += len;
@@ -796,6 +843,11 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
         // Read trailing CRLF after chunk
         char *chunk_end = read_line_conn(conn);
+        if (!chunk_end) {
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
         free(chunk_end);
     }
 
@@ -845,11 +897,6 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
 /// @brief Perform HTTP request and return response.
 static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining) {
     rt_net_init_wsa();
-
-    if (redirects_remaining <= 0) {
-        rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
-        return NULL;
-    }
 
     // Create connection (TLS or plain TCP)
     http_conn_t conn;
@@ -989,10 +1036,22 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
 
     // Handle redirects (3xx with Location)
-    if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
+    if (req->follow_redirects &&
+        (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
+        if (redirects_remaining <= 0) {
+            http_conn_close(&conn);
+            free(status_text);
+            free(redirect_location);
+            if (headers_map && rt_obj_release_check0(headers_map))
+                rt_obj_free(headers_map);
+            rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
+            return NULL;
+        }
         http_conn_close(&conn);
         free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
 
         // RFC 7231 §6.4.4: 303 See Other must change method to GET and remove body
         if (status == 303) {
@@ -1069,6 +1128,14 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         rt_string_unref(transfer_encoding_val);
     if (content_length_val)
         rt_string_unref(content_length_val);
+
+    if (!is_head && !body) {
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        free(status_text);
+        rt_trap_net("HTTP: incomplete response body", Err_ProtocolError);
+        return NULL;
+    }
 
     // Create response object (must use rt_obj_new_i64 for GC management)
     rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
@@ -1312,10 +1379,7 @@ void *rt_http_head(rt_string url) {
     if (!res)
         rt_trap_net("HTTP: request failed", Err_NetworkError);
 
-    // Return the headers map (matching the API contract and test expectations).
-    // Detach headers from the response to prevent the finalizer from freeing them.
-    void *headers = res->headers;
-    res->headers = NULL;
+    void *headers = rt_http_res_headers(res);
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
 
@@ -1554,6 +1618,8 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     rt_obj_set_finalizer(req, rt_http_req_finalize);
     req->method = strdup(method_str);
     req->timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
+    req->follow_redirects = 1;
+    req->max_redirects = HTTP_MAX_REDIRECTS;
 
     if (parse_url(url_str, &req->url) < 0) {
         free(req->method);
@@ -1640,6 +1706,26 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
     return obj;
 }
 
+void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
+    if (!obj)
+        rt_trap("HTTP: NULL request");
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    req->follow_redirects = follow ? 1 : 0;
+    return obj;
+}
+
+void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
+    if (!obj)
+        rt_trap("HTTP: NULL request");
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    if (max_redirects < 0)
+        max_redirects = 0;
+    req->max_redirects = (int)max_redirects;
+    return obj;
+}
+
 void *rt_http_req_send(void *obj) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1651,7 +1737,7 @@ void *rt_http_req_send(void *obj) {
         add_header(req, "Content-Type", "application/octet-stream");
     }
 
-    rt_http_res_t *res = do_http_request(req, HTTP_MAX_REDIRECTS);
+    rt_http_res_t *res = do_http_request(req, req->max_redirects);
     return res;
 }
 
@@ -1679,7 +1765,26 @@ rt_string rt_http_res_status_text(void *obj) {
 void *rt_http_res_headers(void *obj) {
     if (!obj)
         return rt_map_new();
-    return ((rt_http_res_t *)obj)->headers;
+
+    rt_http_res_t *res = (rt_http_res_t *)obj;
+    void *copy = rt_map_new();
+    if (!res->headers || !copy)
+        return copy ? copy : rt_map_new();
+
+    void *keys = rt_map_keys(res->headers);
+    int64_t count = rt_seq_len(keys);
+    for (int64_t i = 0; i < count; i++) {
+        rt_string key = (rt_string)rt_seq_get(keys, i);
+        void *boxed = rt_map_get(res->headers, key);
+        if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
+            continue;
+        rt_string value = rt_unbox_str(boxed);
+        rt_map_set(copy, key, value);
+        rt_string_unref(value);
+    }
+    if (keys && rt_obj_release_check0(keys))
+        rt_obj_free(keys);
+    return copy;
 }
 
 void *rt_http_res_body(void *obj) {
@@ -1738,7 +1843,11 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
     if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
         return rt_string_from_bytes("", 0);
 
-    return rt_unbox_str(boxed);
+    rt_string value = rt_unbox_str(boxed);
+    const char *value_cstr = rt_string_cstr(value);
+    rt_string copy = rt_string_from_bytes(value_cstr ? value_cstr : "", value_cstr ? strlen(value_cstr) : 0);
+    rt_string_unref(value);
+    return copy;
 }
 
 int8_t rt_http_res_is_ok(void *obj) {

@@ -64,9 +64,9 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     if (timeout_ms <= 0)
         timeout_ms = 1000;
 
-    struct addrinfo hints, *res;
+    struct addrinfo hints, *res, *rp;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     char port_str[16];
@@ -75,53 +75,56 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     if (getaddrinfo(host_ptr, port_str, &hints, &res) != 0)
         return 0;
 
-    socket_t sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        socket_t sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 #ifdef _WIN32
-    if (sock == INVALID_SOCKET)
+        if (sock == INVALID_SOCKET)
 #else
-    if (sock < 0)
+        if (sock < 0)
 #endif
-    {
-        freeaddrinfo(res);
-        return 0;
+            continue;
+
+        // Set non-blocking for timeout
+#ifdef _WIN32
+        u_long mode = 1;
+        ioctlsocket(sock, FIONBIO, &mode);
+#else
+        int flags = fcntl(sock, F_GETFL, 0);
+        if (flags >= 0)
+            fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#endif
+
+        int result = connect(sock, rp->ai_addr, (int)rp->ai_addrlen);
+        if (result == 0) {
+            CLOSE_SOCKET(sock);
+            freeaddrinfo(res);
+            return 1;
+        }
+
+        fd_set write_fds;
+        FD_ZERO(&write_fds);
+        FD_SET(sock, &write_fds);
+
+        struct timeval tv;
+        tv.tv_sec = (long)(timeout_ms / 1000);
+        tv.tv_usec = (long)((timeout_ms % 1000) * 1000);
+
+        int ready = select((int)(sock + 1), NULL, &write_fds, NULL, &tv);
+        if (ready > 0) {
+            int so_error = 0;
+            socklen_t len = sizeof(so_error);
+            getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
+            CLOSE_SOCKET(sock);
+            if (so_error == 0) {
+                freeaddrinfo(res);
+                return 1;
+            }
+        } else {
+            CLOSE_SOCKET(sock);
+        }
     }
 
-    // Set non-blocking for timeout
-#ifdef _WIN32
-    u_long mode = 1;
-    ioctlsocket(sock, FIONBIO, &mode);
-#else
-    int flags = fcntl(sock, F_GETFL, 0);
-    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-#endif
-
-    int result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
     freeaddrinfo(res);
-
-    if (result == 0) {
-        CLOSE_SOCKET(sock);
-        return 1; // Connected immediately
-    }
-
-    // Wait for connection to complete
-    fd_set write_fds;
-    FD_ZERO(&write_fds);
-    FD_SET(sock, &write_fds);
-
-    struct timeval tv;
-    tv.tv_sec = (long)(timeout_ms / 1000);
-    tv.tv_usec = (long)((timeout_ms % 1000) * 1000);
-
-    int ready = select((int)(sock + 1), NULL, &write_fds, NULL, &tv);
-    if (ready > 0) {
-        int so_error = 0;
-        socklen_t len = sizeof(so_error);
-        getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
-        CLOSE_SOCKET(sock);
-        return so_error == 0 ? 1 : 0;
-    }
-
-    CLOSE_SOCKET(sock);
     return 0;
 }
 

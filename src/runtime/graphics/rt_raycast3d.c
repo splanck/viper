@@ -113,7 +113,15 @@ double rt_ray3d_intersect_triangle(
  * Ray-AABB intersection (slab method)
  *=========================================================================*/
 
-/// @brief Intersect the aabb of the ray3d.
+/// @brief Test ray–AABB intersection using the slab method.
+/// @details Returns the nearest positive intersection distance, or -1.0 on miss.
+///          Uses the standard slab algorithm: project the ray onto each axis,
+///          compute entry/exit intervals, and check for overlap.
+/// @param origin   Vec3 ray origin.
+/// @param dir      Vec3 ray direction (need not be normalized; length affects t).
+/// @param aabb_min Vec3 minimum corner of the axis-aligned bounding box.
+/// @param aabb_max Vec3 maximum corner of the axis-aligned bounding box.
+/// @return Distance t along the ray to the nearest hit, or -1.0 on miss.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     if (!origin || !dir || !aabb_min || !aabb_max)
         return -1.0;
@@ -160,7 +168,14 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
  * Ray-sphere intersection (quadratic formula)
  *=========================================================================*/
 
-/// @brief Intersect the sphere of the ray3d.
+/// @brief Test ray–sphere intersection using the quadratic formula.
+/// @details Solves the quadratic |O + tD - C|² = r² for the smallest positive t.
+///          Returns -1.0 on miss. The ray origin may be inside the sphere (returns 0 distance).
+/// @param origin Vec3 ray origin.
+/// @param dir    Vec3 ray direction.
+/// @param center Vec3 sphere center.
+/// @param radius Sphere radius.
+/// @return Distance t to nearest hit, or -1.0 on miss.
 double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
     if (!origin || !dir || !center)
         return -1.0;
@@ -193,6 +208,17 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
  * Ray-mesh intersection (iterate triangles, AABB early-out)
  *=========================================================================*/
 
+/// @brief Test ray–mesh intersection by iterating all triangles.
+/// @details Performs an AABB early-out test, then iterates each triangle in the
+///          mesh using the Möller–Trumbore algorithm. If a transform is provided,
+///          vertices are transformed to world space per-triangle (avoids computing
+///          the inverse model matrix). Returns a RayHit3D with distance, position,
+///          normal, and triangle index on hit, or NULL on miss.
+/// @param origin        Vec3 ray origin in world space.
+/// @param dir           Vec3 ray direction (need not be normalized).
+/// @param mesh_obj      Mesh handle to test against.
+/// @param transform_obj Optional Mat4 model transform (NULL = identity).
+/// @return Opaque RayHit3D handle, or NULL on miss.
 void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *transform_obj) {
     if (!origin || !dir || !mesh_obj)
         return NULL;
@@ -312,7 +338,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
  * AABB-AABB collision
  *=========================================================================*/
 
-/// @brief Overlaps the aabb3d.
+/// @brief Test whether two axis-aligned bounding boxes overlap.
+/// @return 1 if they overlap on all three axes, 0 otherwise.
 int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
     if (!min_a || !max_a || !min_b || !max_b)
         return 0;
@@ -325,6 +352,9 @@ int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
     return (a0 <= b3 && a3 >= b0 && a1 <= b4 && a4 >= b1 && a2 <= b5 && a5 >= b2) ? 1 : 0;
 }
 
+/// @brief Compute the minimum-axis penetration vector to separate two overlapping AABBs.
+/// @details Finds the axis with the smallest overlap and returns a push vector
+///          along that axis. Returns (0,0,0) if the boxes do not overlap.
 void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) {
     if (!min_a || !max_a || !min_b || !max_b)
         return rt_vec3_new(0, 0, 0);
@@ -363,11 +393,12 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
  * RayHit3D accessors
  *=========================================================================*/
 
-/// @brief Hit the distance of the ray3d.
+/// @brief Get the distance along the ray to the hit point.
 double rt_ray3d_hit_distance(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->distance : -1.0;
 }
 
+/// @brief Get the world-space position of the hit point as a new Vec3.
 void *rt_ray3d_hit_point(void *hit) {
     if (!hit)
         return rt_vec3_new(0, 0, 0);
@@ -375,6 +406,7 @@ void *rt_ray3d_hit_point(void *hit) {
     return rt_vec3_new(h->point[0], h->point[1], h->point[2]);
 }
 
+/// @brief Get the surface normal at the hit point as a new Vec3.
 void *rt_ray3d_hit_normal(void *hit) {
     if (!hit)
         return rt_vec3_new(0, 1, 0);
@@ -382,7 +414,7 @@ void *rt_ray3d_hit_normal(void *hit) {
     return rt_vec3_new(h->normal[0], h->normal[1], h->normal[2]);
 }
 
-/// @brief Hit the triangle of the ray3d.
+/// @brief Get the index of the triangle that was hit (-1 if no hit).
 int64_t rt_ray3d_hit_triangle(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->triangle_index : -1;
 }
@@ -391,7 +423,7 @@ int64_t rt_ray3d_hit_triangle(void *hit) {
  * Shape-shape collision primitives (for Physics3D)
  *=========================================================================*/
 
-/// @brief Overlaps the sphere3d.
+/// @brief Test whether two spheres overlap (distance < sum of radii).
 int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return 0;
@@ -403,6 +435,7 @@ int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, dou
     return dist_sq < r_sum * r_sum ? 1 : 0;
 }
 
+/// @brief Compute the penetration vector to separate two overlapping spheres.
 void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return rt_vec3_new(0, 0, 0);
@@ -418,6 +451,7 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
     return rt_vec3_new(dx * inv_dist * depth, dy * inv_dist * depth, dz * inv_dist * depth);
 }
 
+/// @brief Find the closest point on an AABB surface to a given point.
 void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     if (!aabb_min || !aabb_max || !point)
         return rt_vec3_new(0, 0, 0);
@@ -430,7 +464,7 @@ void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     return rt_vec3_new(cx, cy, cz);
 }
 
-/// @brief Sphere the overlaps of the aabb3d.
+/// @brief Test whether an AABB and a sphere overlap.
 int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
     if (!aabb_min || !aabb_max || !center)
         return 0;

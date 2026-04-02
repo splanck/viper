@@ -30,6 +30,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_keyderive.h"
+#include "rt_keyderive_internal.h"
 
 #include "rt_bytes.h"
 #include "rt_codec.h"
@@ -41,14 +42,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Minimum iterations required for PBKDF2.
-#define PBKDF2_MIN_ITERATIONS 1000
-
-/// Maximum key length in bytes.
-#define PBKDF2_MAX_KEY_LEN 1024
-
 /// SHA256 output size in bytes.
 #define SHA256_DIGEST_LEN 32
+
+static void keyderive_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
 
 /// @brief PBKDF2-HMAC-SHA256 implementation (RFC 2898 / RFC 8018).
 ///
@@ -59,13 +60,13 @@
 /// U2 = PRF(Password, U1)
 /// ...
 /// Uc = PRF(Password, Uc-1)
-static void pbkdf2_sha256(const uint8_t *password,
-                          size_t password_len,
-                          const uint8_t *salt,
-                          size_t salt_len,
-                          uint32_t iterations,
-                          uint8_t *out,
-                          size_t out_len) {
+void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
+                                    size_t password_len,
+                                    const uint8_t *salt,
+                                    size_t salt_len,
+                                    uint32_t iterations,
+                                    uint8_t *out,
+                                    size_t out_len) {
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
 
@@ -109,8 +110,12 @@ static void pbkdf2_sha256(const uint8_t *password,
 
         memcpy(out + bytes_written, T, bytes_to_copy);
         bytes_written += bytes_to_copy;
+
+        keyderive_secure_zero(U, sizeof(U));
+        keyderive_secure_zero(T, sizeof(T));
     }
 
+    keyderive_secure_zero(salt_int, salt_int_len);
     free(salt_int);
 }
 
@@ -120,12 +125,12 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  int64_t iterations,
                                  int64_t key_len) {
     // Validate iterations
-    if (iterations < PBKDF2_MIN_ITERATIONS) {
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations must be at least 1000");
     }
 
     // Validate key length
-    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN) {
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
     }
 
@@ -145,19 +150,20 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
 
     // Derive key
-    pbkdf2_sha256((const uint8_t *)pwd_cstr,
-                  pwd_len,
-                  salt_data ? salt_data : (const uint8_t *)"",
-                  salt_len,
-                  (uint32_t)iterations,
-                  derived_key,
-                  (size_t)key_len);
+    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
+                                   pwd_len,
+                                   salt_data ? salt_data : (const uint8_t *)"",
+                                   salt_len,
+                                   (uint32_t)iterations,
+                                   derived_key,
+                                   (size_t)key_len);
 
     if (salt_data)
         free(salt_data);
 
     // Create Bytes object from derived key
     void *result = rt_bytes_from_raw(derived_key, (size_t)key_len);
+    keyderive_secure_zero(derived_key, (size_t)key_len);
     free(derived_key);
     return result;
 }
@@ -168,12 +174,12 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          int64_t iterations,
                                          int64_t key_len) {
     // Validate iterations
-    if (iterations < PBKDF2_MIN_ITERATIONS) {
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations must be at least 1000");
     }
 
     // Validate key length
-    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN) {
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
     }
 
@@ -193,19 +199,20 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
 
     // Derive key
-    pbkdf2_sha256((const uint8_t *)pwd_cstr,
-                  pwd_len,
-                  salt_data ? salt_data : (const uint8_t *)"",
-                  salt_len,
-                  (uint32_t)iterations,
-                  derived_key,
-                  (size_t)key_len);
+    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
+                                   pwd_len,
+                                   salt_data ? salt_data : (const uint8_t *)"",
+                                   salt_len,
+                                   (uint32_t)iterations,
+                                   derived_key,
+                                   (size_t)key_len);
 
     if (salt_data)
         free(salt_data);
 
     // Convert to hex string using shared codec utility
     rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
+    keyderive_secure_zero(derived_key, (size_t)key_len);
     free(derived_key);
     return result;
 }

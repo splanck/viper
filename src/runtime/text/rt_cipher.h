@@ -5,7 +5,7 @@
 //
 // File: src/runtime/text/rt_cipher.h
 // Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce
-// generation and PBKDF2 key derivation from passwords.
+// generation and PBKDF2-HMAC-SHA256 key derivation from passwords.
 //
 // Key invariants:
 //   - Password-based format: [16 bytes salt][12 bytes nonce][ciphertext][16 bytes tag].
@@ -36,8 +36,9 @@ extern "C" {
 //=========================================================================
 
 /// @brief Encrypt data using a password.
-/// @details Derives a 256-bit key from the password using HKDF-SHA256 with
-///          a random 16-byte salt. Generates a random 12-byte nonce.
+/// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
+///          with a random 16-byte salt and a fixed strong work factor.
+///          Generates a random 12-byte nonce.
 ///          Uses ChaCha20-Poly1305 AEAD for authenticated encryption.
 /// @param plaintext Bytes object containing data to encrypt.
 /// @param password Password string used for key derivation.
@@ -80,7 +81,7 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key);
 void *rt_cipher_generate_key(void);
 
 /// @brief Derive a 256-bit key from a password and salt.
-/// @details Uses HKDF-SHA256 to derive a key from the password.
+/// @details Uses PBKDF2-HMAC-SHA256 to derive a key from the password.
 /// @param password Password string.
 /// @param salt Bytes object containing salt (recommended: 16+ bytes).
 /// @return Bytes object containing 32-byte derived key.

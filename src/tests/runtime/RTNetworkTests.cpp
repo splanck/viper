@@ -13,7 +13,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_connpool.h"
 #include "rt_map.h"
+#include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -105,6 +107,83 @@ static bool localhost_bind_available() {
     return available;
 }
 
+static bool localhost_bind_available_ipv6() {
+    static const bool available = []() {
+#if defined(_WIN32)
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+            return false;
+        SOCKET fd = socket(AF_INET6, SOCK_STREAM, 0);
+        if (fd == INVALID_SOCKET) {
+            WSACleanup();
+            return false;
+        }
+#else
+        int fd = socket(AF_INET6, SOCK_STREAM, 0);
+        if (fd < 0)
+            return false;
+#endif
+
+        sockaddr_in6 addr = {};
+        addr.sin6_family = AF_INET6;
+        addr.sin6_addr = in6addr_loopback;
+        addr.sin6_port = 0;
+
+        const int rc = bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+#if defined(_WIN32)
+        closesocket(fd);
+        WSACleanup();
+#else
+        close(fd);
+#endif
+        return rc == 0;
+    }();
+
+    return available;
+}
+
+static int get_free_port_ipv6() {
+#if defined(_WIN32)
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+        return 0;
+    SOCKET fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET) {
+        WSACleanup();
+        return 0;
+    }
+#else
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0)
+        return 0;
+#endif
+
+    sockaddr_in6 addr = {};
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = in6addr_loopback;
+    addr.sin6_port = 0;
+    if (bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+#if defined(_WIN32)
+        closesocket(fd);
+        WSACleanup();
+#else
+        close(fd);
+#endif
+        return 0;
+    }
+
+    socklen_t len = sizeof(addr);
+    const int ok = getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0;
+    int port = ok ? ntohs(addr.sin6_port) : 0;
+#if defined(_WIN32)
+    closesocket(fd);
+    WSACleanup();
+#else
+    close(fd);
+#endif
+    return port;
+}
+
 /// @brief Echo server thread function
 static void echo_server_thread(int port, int num_clients) {
     void *server = rt_tcp_server_listen(port);
@@ -128,6 +207,32 @@ static void echo_server_thread(int port, int num_clients) {
             }
 
             // Send back what we received
+            rt_tcp_send_all(client, data);
+        }
+
+        rt_tcp_close(client);
+    }
+
+    rt_tcp_server_close(server);
+    server_done = true;
+}
+
+static void echo_server_thread_at(const char *address, int port, int num_clients) {
+    void *server = rt_tcp_server_listen_at(rt_const_cstr(address), port);
+    assert(server != nullptr);
+
+    server_ready = true;
+
+    for (int i = 0; i < num_clients; i++) {
+        void *client = rt_tcp_server_accept(server);
+        if (!client)
+            break;
+
+        while (rt_tcp_is_open(client)) {
+            void *data = rt_tcp_recv(client, 1024);
+            int64_t len = get_bytes_len(data);
+            if (len == 0)
+                break;
             rt_tcp_send_all(client, data);
         }
 
@@ -167,6 +272,47 @@ static void test_server_client_connect() {
     server_thread.join();
 
     test_result("Server finished", server_done.load());
+}
+
+static void test_server_client_connect_ipv6() {
+    printf("\nTesting Server/Client Connect over IPv6:\n");
+
+    if (!localhost_bind_available_ipv6()) {
+        printf("  SKIP: IPv6 loopback unavailable in this environment\n");
+        return;
+    }
+
+    const int port = get_free_port_ipv6();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate IPv6 loopback port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(echo_server_thread_at, "::1", port, 1);
+
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    void *client = rt_tcp_connect(rt_const_cstr("::1"), port);
+
+    test_result("IPv6 client connects successfully", client != nullptr);
+    test_result("IPv6 client is open", rt_tcp_is_open(client) == 1);
+    test_result("IPv6 client port is correct", rt_tcp_port(client) == port);
+    test_result("IPv6 host property preserved", strcmp(rt_string_cstr(rt_tcp_host(client)), "::1") == 0);
+
+    const char *test_msg = "ipv6";
+    void *send_data = make_bytes_str(test_msg);
+    rt_tcp_send_all(client, send_data);
+    void *recv_data = rt_tcp_recv_exact(client, (int64_t)strlen(test_msg));
+    test_result("IPv6 echo round-trip succeeds",
+                memcmp(get_bytes_data(recv_data), test_msg, strlen(test_msg)) == 0);
+
+    rt_tcp_close(client);
+    server_thread.join();
+    test_result("IPv6 server finished", server_done.load());
 }
 
 /// @brief Test send and receive
@@ -256,6 +402,51 @@ static void test_send_all_recv_exact() {
     server_thread.join();
 }
 
+static void test_connection_pool_reuses_live_connection() {
+    printf("\nTesting ConnectionPool live connection reuse:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(echo_server_thread, port, 1);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    void *pool = rt_connpool_new(4);
+    void *conn1 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+    test_result("Pool acquire returns connection", conn1 != nullptr);
+
+    void *msg1 = make_bytes_str("one");
+    rt_tcp_send_all(conn1, msg1);
+    void *echo1 = rt_tcp_recv_exact(conn1, 3);
+    test_result("First pooled round-trip succeeds",
+                memcmp(get_bytes_data(echo1), "one", 3) == 0);
+
+    rt_connpool_release(pool, conn1);
+    test_result("Pool has one available connection", rt_connpool_available(pool) == 1);
+
+    void *conn2 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+    test_result("Pool reuses the same live connection", conn1 == conn2);
+
+    void *msg2 = make_bytes_str("two");
+    rt_tcp_send_all(conn2, msg2);
+    void *echo2 = rt_tcp_recv_exact(conn2, 3);
+    test_result("Second pooled round-trip succeeds",
+                memcmp(get_bytes_data(echo2), "two", 3) == 0);
+
+    rt_connpool_release(pool, conn2);
+    rt_connpool_clear(pool);
+    server_thread.join();
+
+    test_result("Server finished after pooled connection close", server_done.load());
+}
+
 /// @brief Line server thread function - sends lines
 static void line_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
@@ -327,7 +518,11 @@ static void test_server_properties() {
     test_result("Server is listening", rt_tcp_server_is_listening(server) == 1);
 
     rt_string addr = rt_tcp_server_address(server);
-    test_result("Server address is 0.0.0.0", strcmp(rt_string_cstr(addr), "0.0.0.0") == 0);
+    // Accept either IPv4 wildcard "0.0.0.0" or IPv6 wildcard "::" — getaddrinfo
+    // with AF_UNSPEC may prefer either depending on the OS (macOS prefers IPv6).
+    const char *addr_cstr = rt_string_cstr(addr);
+    test_result("Server address is wildcard",
+                strcmp(addr_cstr, "0.0.0.0") == 0 || strcmp(addr_cstr, "::") == 0);
 
     rt_tcp_server_close(server);
 
@@ -654,7 +849,7 @@ static void test_dns_resolve_localhost() {
 
     const char *ip = rt_string_cstr(result);
     test_result("DNS Resolve localhost returns IP", ip != nullptr);
-    test_result("DNS Resolve localhost is 127.0.0.1", strcmp(ip, "127.0.0.1") == 0);
+    test_result("DNS Resolve localhost is loopback", strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
 }
 
 /// @brief Test DNS resolve4 localhost
@@ -1391,9 +1586,11 @@ int main() {
         test_listen_at();
         test_accept_timeout();
         test_server_client_connect();
+        test_server_client_connect_ipv6();
         test_client_properties();
         test_send_recv();
         test_send_all_recv_exact();
+        test_connection_pool_reuses_live_connection();
         test_recv_line();
         test_connect_with_timeout();
 

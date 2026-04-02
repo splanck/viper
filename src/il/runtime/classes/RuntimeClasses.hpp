@@ -343,6 +343,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_HttpRouter,
     RTCLS_RouteMatch,
     RTCLS_HttpServer,
+    RTCLS_ServerReq,
+    RTCLS_ServerRes,
     RTCLS_ConnectionPool,
     RTCLS_Multipart,
     RTCLS_NetUtils,

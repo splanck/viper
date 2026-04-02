@@ -107,6 +107,16 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     m[15] = 1.0;
 }
 
+/// @brief Create a perspective camera with the given field of view and clipping planes.
+/// @details Uses a right-handed coordinate system (+X right, +Y up, +Z toward viewer)
+///          with OpenGL NDC convention (Z in [-1, 1]). The camera starts at the
+///          origin looking along -Z. View and projection matrices are stored as
+///          double[16] row-major, matching Mat4 conventions.
+/// @param fov      Vertical field of view in degrees.
+/// @param aspect   Width/height aspect ratio.
+/// @param near_val Near clipping plane distance.
+/// @param far_val  Far clipping plane distance.
+/// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val) {
     rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
@@ -156,6 +166,14 @@ static void build_ortho(double *m, double left, double right, double bottom, dou
     m[15] = 1.0;
 }
 
+/// @brief Create an orthographic camera (parallel projection, no perspective foreshortening).
+/// @details Useful for 2D games rendered in a 3D pipeline, UI overlays, shadow maps,
+///          and minimap views. The size parameter controls the vertical extent.
+/// @param size     Half-height of the orthographic view volume.
+/// @param aspect   Width/height aspect ratio.
+/// @param near_val Near clipping plane distance.
+/// @param far_val  Far clipping plane distance.
+/// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val) {
     rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
@@ -193,6 +211,10 @@ int8_t rt_camera3d_is_ortho(void *obj) {
     return obj ? ((rt_camera3d *)obj)->is_ortho : 0;
 }
 
+/// @brief Position the camera and orient it to look at a target point.
+/// @details Builds the view matrix using the standard look-at construction:
+///          forward = normalize(eye - target), right = cross(up, forward),
+///          true_up = cross(forward, right). Uses right-handed coordinates.
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     if (!obj || !eye_v || !target_v || !up_v)
         return;
@@ -209,6 +231,10 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     build_look_at(cam->view, eye, target, up);
 }
 
+/// @brief Position the camera on a spherical orbit around a target point.
+/// @details Computes eye position from spherical coordinates (yaw, pitch, distance)
+///          relative to the target, then builds a look-at view matrix. Useful for
+///          third-person cameras and object inspection views.
 void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
     if (!obj || !target_v)
         return;
@@ -244,12 +270,14 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     build_look_at(cam->view, eye, target, up);
 }
 
+/// @brief Get the vertical field of view in degrees.
 double rt_camera3d_get_fov(void *obj) {
     if (!obj)
         return 0.0;
     return ((rt_camera3d *)obj)->fov;
 }
 
+/// @brief Change the field of view and rebuild the projection matrix.
 void rt_camera3d_set_fov(void *obj, double fov) {
     if (!obj)
         return;
@@ -265,6 +293,7 @@ void *rt_camera3d_get_position(void *obj) {
     return rt_vec3_new(cam->eye[0], cam->eye[1], cam->eye[2]);
 }
 
+/// @brief Set the camera's eye position and rebuild the view matrix.
 void rt_camera3d_set_position(void *obj, void *pos) {
     if (!obj || !pos)
         return;
@@ -395,6 +424,7 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
  * FPS camera controller
  *=========================================================================*/
 
+/// @brief Initialize FPS-style camera state (yaw/pitch from current orientation).
 void rt_camera3d_fps_init(void *obj) {
     if (!obj)
         return;
@@ -412,6 +442,10 @@ void rt_camera3d_fps_init(void *obj) {
         cam->fps_pitch = -89.0;
 }
 
+/// @brief Update FPS camera from mouse look (dx/dy) and WASD movement (fwd/right/up).
+/// @details Integrates mouse deltas into yaw/pitch (with pitch clamped to ±89°),
+///          then computes the forward/right/up vectors and applies WASD movement.
+///          The camera shake offset is added last if active.
 void rt_camera3d_fps_update(void *obj,
                             double yaw_delta,
                             double pitch_delta,
@@ -508,6 +542,9 @@ static void apply_shake(rt_camera3d *cam, double dt) {
     cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
 }
 
+/// @brief Trigger a camera shake effect (exponentially decaying random offset).
+/// @details The shake applies random XY offsets that decay over the given duration.
+///          Used for explosions, impacts, and other feedback effects.
 void rt_camera3d_shake(void *obj, double intensity, double duration, double decay) {
     if (!obj)
         return;
@@ -521,6 +558,9 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
  * Smooth follow (third-person camera)
  *=========================================================================*/
 
+/// @brief Smoothly interpolate the camera toward a target position over time.
+/// @details Uses exponential decay (lerp with speed * dt) for natural smoothing.
+///          The camera maintains a configurable offset from the target.
 void rt_camera3d_smooth_follow(
     void *obj, void *target_pos, double distance, double height, double speed, double dt) {
     if (!obj || !target_pos)
@@ -555,6 +595,7 @@ void rt_camera3d_smooth_follow(
  * Smooth look-at (gradual rotation toward target)
  *=========================================================================*/
 
+/// @brief Smoothly rotate the camera toward a look-at target over time.
 void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt) {
     if (!obj || !target)
         return;

@@ -154,6 +154,10 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_bind_fns PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_bind_fns test_zia_bind_fns)
 
+    viper_add_test(test_zia_http_server ${_VIPER_ZIA_DIR}/test_zia_http_server.cpp)
+    target_link_libraries(test_zia_http_server PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_http_server test_zia_http_server)
+
     # Static call fixes (A-014, A-019, A-034, A-043, A-052)
     viper_add_test(test_zia_static_calls ${_VIPER_ZIA_DIR}/test_zia_static_calls.cpp)
     target_link_libraries(test_zia_static_calls PRIVATE ${VIPER_ZIA_LIBS})

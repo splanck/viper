@@ -57,10 +57,17 @@ static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
 
+/// @brief Create a new menu bar widget at the top of the window.
+/// @details Creates a vg_menubar_t and applies the app's default font. On
+///          macOS, also registers with the native app menu bar so menus appear
+///          in the system menu strip rather than inside the window.
+/// @param parent Parent container or app handle.
+/// @return Opaque menu bar widget handle, or NULL on failure.
 void *rt_menubar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
-    vg_menubar_t *mb = vg_menubar_create((vg_widget_t *)parent);
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_menubar_t *mb = vg_menubar_create(parent_widget);
     if (mb) {
         if (app)
             rt_gui_activate_app(app);
@@ -82,6 +89,12 @@ void rt_menubar_destroy(void *menubar) {
     vg_widget_destroy((vg_widget_t *)menubar);
 }
 
+/// @brief Add a top-level menu (e.g., "File", "Edit") to the menu bar.
+/// @details The title text is copied by the vg layer. Syncs with the native
+///          macOS menu bar if registered. Returns the menu handle for adding items.
+/// @param menubar Menu bar widget handle.
+/// @param title   Menu title text (runtime string).
+/// @return Opaque menu handle, or NULL on failure.
 void *rt_menubar_add_menu(void *menubar, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
@@ -93,7 +106,7 @@ void *rt_menubar_add_menu(void *menubar, rt_string title) {
     return menu;
 }
 
-/// @brief Remove the menu of the menubar.
+/// @brief Remove a menu from the menu bar.
 void rt_menubar_remove_menu(void *menubar, void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar || !menu)
@@ -102,7 +115,7 @@ void rt_menubar_remove_menu(void *menubar, void *menu) {
     rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
 }
 
-/// @brief Return the count of elements in the menubar.
+/// @brief Get the number of menus in the menu bar.
 int64_t rt_menubar_get_menu_count(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
@@ -125,7 +138,7 @@ void *rt_menubar_get_menu(void *menubar, int64_t index) {
     return menu;
 }
 
-/// @brief Set the visible of the menubar.
+/// @brief Show or hide the menu bar widget.
 void rt_menubar_set_visible(void *menubar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
@@ -134,7 +147,7 @@ void rt_menubar_set_visible(void *menubar, int64_t visible) {
     rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
 }
 
-/// @brief Is the visible of the menubar.
+/// @brief Check whether the menu bar is currently visible.
 int64_t rt_menubar_is_visible(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
@@ -146,6 +159,13 @@ int64_t rt_menubar_is_visible(void *menubar) {
 // Menu Widget (Phase 2)
 //=============================================================================
 
+/// @brief Add a clickable item to a menu.
+/// @details The text is copied by the vg layer. Returns the item handle for
+///          checking clicks, enabling/disabling, or setting check state. Syncs
+///          with the macOS native menu bar if the menu is part of a registered menubar.
+/// @param menu Menu handle.
+/// @param text Item label text (runtime string).
+/// @return Opaque menu item handle, or NULL on failure.
 void *rt_menu_add_item(void *menu, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -190,7 +210,7 @@ void *rt_menu_add_submenu(void *menu, rt_string title) {
     return submenu;
 }
 
-/// @brief Remove the item of the menu.
+/// @brief Remove a menu item and free its resources.
 void rt_menu_remove_item(void *menu, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu || !item)
@@ -199,7 +219,7 @@ void rt_menu_remove_item(void *menu, void *item) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
 }
 
-/// @brief Remove all entries from the menu.
+/// @brief Remove all items from a menu, leaving it empty.
 void rt_menu_clear(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -230,7 +250,7 @@ rt_string rt_menu_get_title(void *menu) {
     return rt_string_from_bytes(title, strlen(title));
 }
 
-/// @brief Return the count of elements in the menu.
+/// @brief Get the number of items in a menu.
 int64_t rt_menu_get_item_count(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -253,7 +273,7 @@ void *rt_menu_get_item(void *menu, int64_t index) {
     return item;
 }
 
-/// @brief Set the enabled of the menu.
+/// @brief Enable or disable an entire menu (greys out all items when disabled).
 void rt_menu_set_enabled(void *menu, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -262,7 +282,7 @@ void rt_menu_set_enabled(void *menu, int64_t enabled) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
 }
 
-/// @brief Is the enabled of the menu.
+/// @brief Check whether a menu is currently enabled.
 int64_t rt_menu_is_enabled(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -334,7 +354,7 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
-/// @brief Set the checkable of the menuitem.
+/// @brief Enable or disable the checkable toggle behavior for a menu item.
 void rt_menuitem_set_checkable(void *item, int64_t checkable) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -346,7 +366,7 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
-/// @brief Is the checkable of the menuitem.
+/// @brief Check whether a menu item supports the checkable toggle state.
 int64_t rt_menuitem_is_checkable(void *item) {
     RT_ASSERT_MAIN_THREAD();
     /* An item is considered checkable if it has ever had a checked state set. */
@@ -363,7 +383,7 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
-/// @brief Is the checked of the menuitem.
+/// @brief Check whether a menu item is currently in the checked state.
 int64_t rt_menuitem_is_checked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -371,7 +391,7 @@ int64_t rt_menuitem_is_checked(void *item) {
     return ((vg_menu_item_t *)item)->checked ? 1 : 0;
 }
 
-/// @brief Set the enabled of the menuitem.
+/// @brief Enable or disable a menu item (disabled items are greyed out).
 void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -380,7 +400,7 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
 }
 
-/// @brief Is the enabled of the menuitem.
+/// @brief Check whether a menu item is currently enabled.
 int64_t rt_menuitem_is_enabled(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -388,7 +408,7 @@ int64_t rt_menuitem_is_enabled(void *item) {
     return ((vg_menu_item_t *)item)->enabled ? 1 : 0;
 }
 
-/// @brief Is the separator of the menuitem.
+/// @brief Check whether a menu item is a separator (horizontal dividing line).
 int64_t rt_menuitem_is_separator(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -396,7 +416,7 @@ int64_t rt_menuitem_is_separator(void *item) {
     return ((vg_menu_item_t *)item)->separator ? 1 : 0;
 }
 
-/// @brief Was the clicked of the menuitem.
+/// @brief Check whether a menu item was clicked this frame (edge-triggered, clears after read).
 int64_t rt_menuitem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -413,6 +433,11 @@ int64_t rt_menuitem_was_clicked(void *item) {
 // ContextMenu Widget (Phase 2)
 //=============================================================================
 
+/// @brief Create a new context (right-click) menu.
+/// @details Context menus are standalone popup menus not attached to a menu bar.
+///          Use rt_contextmenu_show to display at specific screen coordinates.
+///          The menu auto-dismisses when the user clicks outside its bounds.
+/// @return Opaque context menu handle, or NULL on failure.
 void *rt_contextmenu_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_contextmenu_create();
@@ -475,7 +500,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     return submenu;
 }
 
-/// @brief Remove all entries from the contextmenu.
+/// @brief Remove all items from a context menu.
 void rt_contextmenu_clear(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (menu) {
@@ -499,7 +524,7 @@ void rt_contextmenu_hide(void *menu) {
     }
 }
 
-/// @brief Is the visible of the contextmenu.
+/// @brief Check whether a context menu is currently visible on screen.
 int64_t rt_contextmenu_is_visible(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -524,10 +549,17 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
 // StatusBar Widget (Phase 3)
 //=============================================================================
 
+/// @brief Create a new status bar widget (typically placed at the bottom of a window).
+/// @details Creates a vg_statusbar_t with three zones (left, center, right) for
+///          displaying status text, buttons, progress indicators, and separators.
+///          Items are added to specific zones and rendered in the status strip.
+/// @param parent Parent container or app handle.
+/// @return Opaque status bar widget handle, or NULL on failure.
 void *rt_statusbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
-    vg_statusbar_t *sb = vg_statusbar_create((vg_widget_t *)parent);
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_statusbar_t *sb = vg_statusbar_create(parent_widget);
     if (sb) {
         if (app)
             rt_gui_activate_app(app);
@@ -706,7 +738,7 @@ void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     return vg_statusbar_add_spacer((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
 }
 
-/// @brief Remove the item of the statusbar.
+/// @brief Remove an item from the status bar.
 void rt_statusbar_remove_item(void *bar, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar || !item)
@@ -714,7 +746,7 @@ void rt_statusbar_remove_item(void *bar, void *item) {
     vg_statusbar_remove_item((vg_statusbar_t *)bar, (vg_statusbar_item_t *)item);
 }
 
-/// @brief Remove all entries from the statusbar.
+/// @brief Remove all items from all status bar zones.
 void rt_statusbar_clear(void *bar) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -725,7 +757,7 @@ void rt_statusbar_clear(void *bar) {
     vg_statusbar_clear_zone(sb, VG_STATUSBAR_ZONE_RIGHT);
 }
 
-/// @brief Set the visible of the statusbar.
+/// @brief Show or hide the status bar.
 void rt_statusbar_set_visible(void *bar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -733,7 +765,7 @@ void rt_statusbar_set_visible(void *bar, int64_t visible) {
     vg_widget_set_visible(&((vg_statusbar_t *)bar)->base, visible != 0);
 }
 
-/// @brief Is the visible of the statusbar.
+/// @brief Check whether the status bar is currently visible.
 int64_t rt_statusbar_is_visible(void *bar) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -793,7 +825,7 @@ double rt_statusbaritem_get_progress(void *item) {
     return (double)((vg_statusbar_item_t *)item)->progress;
 }
 
-/// @brief Set the visible of the statusbaritem.
+/// @brief Show or hide a status bar item.
 void rt_statusbaritem_set_visible(void *item, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -801,7 +833,7 @@ void rt_statusbaritem_set_visible(void *item, int64_t visible) {
     vg_statusbar_item_set_visible((vg_statusbar_item_t *)item, visible != 0);
 }
 
-/// @brief Set the clicked statusbar item value.
+/// @brief Record which status bar item was clicked (for frame-based polling).
 /// @param item
 void rt_gui_set_clicked_statusbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
@@ -812,7 +844,7 @@ void rt_gui_set_clicked_statusbar_item(void *item) {
         app->last_statusbar_clicked = (vg_statusbar_item_t *)item;
 }
 
-/// @brief Was the clicked of the statusbaritem.
+/// @brief Check if a status bar item was clicked this frame (edge-triggered).
 int64_t rt_statusbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -830,10 +862,17 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
 // Toolbar Widget (Phase 3)
 //=============================================================================
 
+/// @brief Create a new horizontal toolbar widget.
+/// @details Creates a vg_toolbar_t for displaying icon buttons, toggles,
+///          separators, and dropdown items in a horizontal strip. Typically
+///          placed below the menu bar. Buttons can carry both icons and labels.
+/// @param parent Parent container or app handle.
+/// @return Opaque toolbar widget handle, or NULL on failure.
 void *rt_toolbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
-    vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_HORIZONTAL);
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_toolbar_t *tb = vg_toolbar_create(parent_widget, VG_TOOLBAR_HORIZONTAL);
     if (tb) {
         if (app)
             rt_gui_activate_app(app);
@@ -844,10 +883,15 @@ void *rt_toolbar_new(void *parent) {
     return tb;
 }
 
+/// @brief Create a new vertical toolbar widget.
+/// @details Like rt_toolbar_new but arranged vertically (e.g., sidebar tool palette).
+/// @param parent Parent container or app handle.
+/// @return Opaque toolbar widget handle, or NULL on failure.
 void *rt_toolbar_new_vertical(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = parent ? rt_gui_app_from_widget((vg_widget_t *)parent) : rt_gui_get_active_app();
-    vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_VERTICAL);
+    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_toolbar_t *tb = vg_toolbar_create(parent_widget, VG_TOOLBAR_VERTICAL);
     if (tb) {
         if (app)
             rt_gui_activate_app(app);
@@ -1000,7 +1044,7 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     return item;
 }
 
-/// @brief Remove the item of the toolbar.
+/// @brief Remove an item from the toolbar.
 void rt_toolbar_remove_item(void *toolbar, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar || !item)
@@ -1011,7 +1055,7 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
     }
 }
 
-/// @brief Return the size of the toolbar.
+/// @brief Get a size property of the toolbar (button width or height).
 void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1019,7 +1063,7 @@ void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     vg_toolbar_set_icon_size((vg_toolbar_t *)toolbar, (vg_toolbar_icon_size_t)size);
 }
 
-/// @brief Return the size of the toolbar.
+/// @brief Get a size property of the toolbar (button width or height).
 int64_t rt_toolbar_get_icon_size(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1035,7 +1079,7 @@ void rt_toolbar_set_style(void *toolbar, int64_t style) {
     vg_toolbar_set_show_labels((vg_toolbar_t *)toolbar, style != RT_TOOLBAR_STYLE_ICON_ONLY);
 }
 
-/// @brief Return the count of elements in the toolbar.
+/// @brief Get the number of items in the toolbar.
 int64_t rt_toolbar_get_item_count(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1053,7 +1097,7 @@ void *rt_toolbar_get_item(void *toolbar, int64_t index) {
     return tb->items[index];
 }
 
-/// @brief Set the visible of the toolbar.
+/// @brief Show or hide the toolbar.
 void rt_toolbar_set_visible(void *toolbar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1061,7 +1105,7 @@ void rt_toolbar_set_visible(void *toolbar, int64_t visible) {
     ((vg_toolbar_t *)toolbar)->base.visible = visible != 0;
 }
 
-/// @brief Is the visible of the toolbar.
+/// @brief Check whether the toolbar is currently visible.
 int64_t rt_toolbar_is_visible(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1124,7 +1168,7 @@ void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) {
     free(ctooltip);
 }
 
-/// @brief Set the enabled of the toolbaritem.
+/// @brief Enable or disable a toolbar item.
 void rt_toolbaritem_set_enabled(void *item, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -1132,7 +1176,7 @@ void rt_toolbaritem_set_enabled(void *item, int64_t enabled) {
     vg_toolbar_item_set_enabled((vg_toolbar_item_t *)item, enabled != 0);
 }
 
-/// @brief Is the enabled of the toolbaritem.
+/// @brief Check whether a toolbar item is currently enabled.
 int64_t rt_toolbaritem_is_enabled(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -1148,7 +1192,7 @@ void rt_toolbaritem_set_toggled(void *item, int64_t toggled) {
     vg_toolbar_item_set_checked((vg_toolbar_item_t *)item, toggled != 0);
 }
 
-/// @brief Is the toggled of the toolbaritem.
+/// @brief Check whether a toolbar toggle button is currently in the toggled state.
 int64_t rt_toolbaritem_is_toggled(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -1156,7 +1200,7 @@ int64_t rt_toolbaritem_is_toggled(void *item) {
     return ((vg_toolbar_item_t *)item)->checked ? 1 : 0;
 }
 
-/// @brief Set the clicked toolbar item value.
+/// @brief Record which toolbar item was clicked (for frame-based polling).
 /// @param item
 void rt_gui_set_clicked_toolbar_item(void *item) {
     RT_ASSERT_MAIN_THREAD();
@@ -1167,7 +1211,7 @@ void rt_gui_set_clicked_toolbar_item(void *item) {
         app->last_toolbar_clicked = (vg_toolbar_item_t *)item;
 }
 
-/// @brief Was the clicked of the toolbaritem.
+/// @brief Check if a toolbar button was clicked this frame (edge-triggered).
 int64_t rt_toolbaritem_was_clicked(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
@@ -1210,13 +1254,13 @@ void *rt_menubar_add_menu(void *menubar, rt_string title) {
     return NULL;
 }
 
-/// @brief Remove the menu of the menubar.
+/// @brief Remove a menu from the menu bar.
 void rt_menubar_remove_menu(void *menubar, void *menu) {
     (void)menubar;
     (void)menu;
 }
 
-/// @brief Return the count of elements in the menubar.
+/// @brief Get the number of menus in the menu bar.
 int64_t rt_menubar_get_menu_count(void *menubar) {
     (void)menubar;
     return 0;
@@ -1228,13 +1272,13 @@ void *rt_menubar_get_menu(void *menubar, int64_t index) {
     return NULL;
 }
 
-/// @brief Set the visible of the menubar.
+/// @brief Show or hide the menu bar widget.
 void rt_menubar_set_visible(void *menubar, int64_t visible) {
     (void)menubar;
     (void)visible;
 }
 
-/// @brief Is the visible of the menubar.
+/// @brief Check whether the menu bar is currently visible.
 int64_t rt_menubar_is_visible(void *menubar) {
     (void)menubar;
     return 0;
@@ -1264,13 +1308,13 @@ void *rt_menu_add_submenu(void *menu, rt_string title) {
     return NULL;
 }
 
-/// @brief Remove the item of the menu.
+/// @brief Remove a menu item and free its resources.
 void rt_menu_remove_item(void *menu, void *item) {
     (void)menu;
     (void)item;
 }
 
-/// @brief Remove all entries from the menu.
+/// @brief Remove all items from a menu, leaving it empty.
 void rt_menu_clear(void *menu) {
     (void)menu;
 }
@@ -1287,7 +1331,7 @@ rt_string rt_menu_get_title(void *menu) {
     return rt_str_empty();
 }
 
-/// @brief Return the count of elements in the menu.
+/// @brief Get the number of items in a menu.
 int64_t rt_menu_get_item_count(void *menu) {
     (void)menu;
     return 0;
@@ -1299,13 +1343,13 @@ void *rt_menu_get_item(void *menu, int64_t index) {
     return NULL;
 }
 
-/// @brief Set the enabled of the menu.
+/// @brief Enable or disable an entire menu (greys out all items when disabled).
 void rt_menu_set_enabled(void *menu, int64_t enabled) {
     (void)menu;
     (void)enabled;
 }
 
-/// @brief Is the enabled of the menu.
+/// @brief Check whether a menu is currently enabled.
 int64_t rt_menu_is_enabled(void *menu) {
     (void)menu;
     return 0;
@@ -1341,13 +1385,13 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
     (void)pixels;
 }
 
-/// @brief Set the checkable of the menuitem.
+/// @brief Enable or disable the checkable toggle behavior for a menu item.
 void rt_menuitem_set_checkable(void *item, int64_t checkable) {
     (void)item;
     (void)checkable;
 }
 
-/// @brief Is the checkable of the menuitem.
+/// @brief Check whether a menu item supports the checkable toggle state.
 int64_t rt_menuitem_is_checkable(void *item) {
     (void)item;
     return 0;
@@ -1359,31 +1403,31 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
     (void)checked;
 }
 
-/// @brief Is the checked of the menuitem.
+/// @brief Check whether a menu item is currently in the checked state.
 int64_t rt_menuitem_is_checked(void *item) {
     (void)item;
     return 0;
 }
 
-/// @brief Set the enabled of the menuitem.
+/// @brief Enable or disable a menu item (disabled items are greyed out).
 void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     (void)item;
     (void)enabled;
 }
 
-/// @brief Is the enabled of the menuitem.
+/// @brief Check whether a menu item is currently enabled.
 int64_t rt_menuitem_is_enabled(void *item) {
     (void)item;
     return 0;
 }
 
-/// @brief Is the separator of the menuitem.
+/// @brief Check whether a menu item is a separator (horizontal dividing line).
 int64_t rt_menuitem_is_separator(void *item) {
     (void)item;
     return 0;
 }
 
-/// @brief Was the clicked of the menuitem.
+/// @brief Check whether a menu item was clicked this frame (edge-triggered, clears after read).
 int64_t rt_menuitem_was_clicked(void *item) {
     (void)item;
     return 0;
@@ -1422,7 +1466,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     return NULL;
 }
 
-/// @brief Remove all entries from the contextmenu.
+/// @brief Remove all items from a context menu.
 void rt_contextmenu_clear(void *menu) {
     (void)menu;
 }
@@ -1439,7 +1483,7 @@ void rt_contextmenu_hide(void *menu) {
     (void)menu;
 }
 
-/// @brief Is the visible of the contextmenu.
+/// @brief Check whether a context menu is currently visible on screen.
 int64_t rt_contextmenu_is_visible(void *menu) {
     (void)menu;
     return 0;
@@ -1528,24 +1572,24 @@ void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     return NULL;
 }
 
-/// @brief Remove the item of the statusbar.
+/// @brief Remove an item from the status bar.
 void rt_statusbar_remove_item(void *bar, void *item) {
     (void)bar;
     (void)item;
 }
 
-/// @brief Remove all entries from the statusbar.
+/// @brief Remove all items from all status bar zones.
 void rt_statusbar_clear(void *bar) {
     (void)bar;
 }
 
-/// @brief Set the visible of the statusbar.
+/// @brief Show or hide the status bar.
 void rt_statusbar_set_visible(void *bar, int64_t visible) {
     (void)bar;
     (void)visible;
 }
 
-/// @brief Is the visible of the statusbar.
+/// @brief Check whether the status bar is currently visible.
 int64_t rt_statusbar_is_visible(void *bar) {
     (void)bar;
     return 0;
@@ -1581,19 +1625,19 @@ double rt_statusbaritem_get_progress(void *item) {
     return 0.0;
 }
 
-/// @brief Set the visible of the statusbaritem.
+/// @brief Show or hide a status bar item.
 void rt_statusbaritem_set_visible(void *item, int64_t visible) {
     (void)item;
     (void)visible;
 }
 
-/// @brief Set the clicked statusbar item value.
+/// @brief Record which status bar item was clicked (for frame-based polling).
 /// @param item
 void rt_gui_set_clicked_statusbar_item(void *item) {
     (void)item;
 }
 
-/// @brief Was the clicked of the statusbaritem.
+/// @brief Check if a status bar item was clicked this frame (edge-triggered).
 int64_t rt_statusbaritem_was_clicked(void *item) {
     (void)item;
     return 0;
@@ -1655,19 +1699,19 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     return NULL;
 }
 
-/// @brief Remove the item of the toolbar.
+/// @brief Remove an item from the toolbar.
 void rt_toolbar_remove_item(void *toolbar, void *item) {
     (void)toolbar;
     (void)item;
 }
 
-/// @brief Return the size of the toolbar.
+/// @brief Get a size property of the toolbar (button width or height).
 void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     (void)toolbar;
     (void)size;
 }
 
-/// @brief Return the size of the toolbar.
+/// @brief Get a size property of the toolbar (button width or height).
 int64_t rt_toolbar_get_icon_size(void *toolbar) {
     (void)toolbar;
     return 0;
@@ -1679,7 +1723,7 @@ void rt_toolbar_set_style(void *toolbar, int64_t style) {
     (void)style;
 }
 
-/// @brief Return the count of elements in the toolbar.
+/// @brief Get the number of items in the toolbar.
 int64_t rt_toolbar_get_item_count(void *toolbar) {
     (void)toolbar;
     return 0;
@@ -1691,13 +1735,13 @@ void *rt_toolbar_get_item(void *toolbar, int64_t index) {
     return NULL;
 }
 
-/// @brief Set the visible of the toolbar.
+/// @brief Show or hide the toolbar.
 void rt_toolbar_set_visible(void *toolbar, int64_t visible) {
     (void)toolbar;
     (void)visible;
 }
 
-/// @brief Is the visible of the toolbar.
+/// @brief Check whether the toolbar is currently visible.
 int64_t rt_toolbar_is_visible(void *toolbar) {
     (void)toolbar;
     return 0;
@@ -1727,13 +1771,13 @@ void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) {
     (void)tooltip;
 }
 
-/// @brief Set the enabled of the toolbaritem.
+/// @brief Enable or disable a toolbar item.
 void rt_toolbaritem_set_enabled(void *item, int64_t enabled) {
     (void)item;
     (void)enabled;
 }
 
-/// @brief Is the enabled of the toolbaritem.
+/// @brief Check whether a toolbar item is currently enabled.
 int64_t rt_toolbaritem_is_enabled(void *item) {
     (void)item;
     return 0;
@@ -1745,19 +1789,19 @@ void rt_toolbaritem_set_toggled(void *item, int64_t toggled) {
     (void)toggled;
 }
 
-/// @brief Is the toggled of the toolbaritem.
+/// @brief Check whether a toolbar toggle button is currently in the toggled state.
 int64_t rt_toolbaritem_is_toggled(void *item) {
     (void)item;
     return 0;
 }
 
-/// @brief Set the clicked toolbar item value.
+/// @brief Record which toolbar item was clicked (for frame-based polling).
 /// @param item
 void rt_gui_set_clicked_toolbar_item(void *item) {
     (void)item;
 }
 
-/// @brief Was the clicked of the toolbaritem.
+/// @brief Check if a toolbar button was clicked this frame (edge-triggered).
 int64_t rt_toolbaritem_was_clicked(void *item) {
     (void)item;
     return 0;

@@ -182,12 +182,87 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
 
 /// @brief Get local port from socket.
 static int get_local_port(socket_t sock) {
-    struct sockaddr_in addr;
+    struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
     if (getsockname(sock, (struct sockaddr *)&addr, &len) == 0) {
-        return ntohs(addr.sin_port);
+        if (addr.ss_family == AF_INET)
+            return ntohs(((struct sockaddr_in *)&addr)->sin_port);
+        if (addr.ss_family == AF_INET6)
+            return ntohs(((struct sockaddr_in6 *)&addr)->sin6_port);
     }
     return 0;
+}
+
+static bool socket_recv_timed_out(void) {
+#ifdef _WIN32
+    int err = WSAGetLastError();
+    return err == WSAETIMEDOUT || err == WSAEWOULDBLOCK;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT;
+#endif
+}
+
+static bool connect_socket_with_timeout(socket_t sock,
+                                        const struct sockaddr *addr,
+                                        socklen_t addrlen,
+                                        int timeout_ms,
+                                        int *err_out) {
+    if (err_out)
+        *err_out = 0;
+
+    if (timeout_ms > 0) {
+        if (!set_nonblocking(sock, true)) {
+            if (err_out)
+                *err_out = GET_LAST_ERROR();
+            return false;
+        }
+
+        int connect_result = connect(sock, addr, addrlen);
+        if (connect_result == SOCK_ERROR) {
+            int err = GET_LAST_ERROR();
+#ifdef _WIN32
+            if (err == WSAEWOULDBLOCK)
+#else
+            if (err == EINPROGRESS)
+#endif
+            {
+                int ready = wait_socket(sock, timeout_ms, true);
+                if (ready <= 0) {
+                    if (err_out)
+                        *err_out = ready == 0 ? ETIMEDOUT : GET_LAST_ERROR();
+                    return false;
+                }
+
+                int so_error = 0;
+                socklen_t len = sizeof(so_error);
+                getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
+                if (so_error != 0) {
+                    if (err_out)
+                        *err_out = so_error;
+                    return false;
+                }
+            } else {
+                if (err_out)
+                    *err_out = err;
+                return false;
+            }
+        }
+
+        if (!set_nonblocking(sock, false)) {
+            if (err_out)
+                *err_out = GET_LAST_ERROR();
+            return false;
+        }
+        return true;
+    }
+
+    if (connect(sock, addr, addrlen) == SOCK_ERROR) {
+        if (err_out)
+            *err_out = GET_LAST_ERROR();
+        return false;
+    }
+
+    return true;
 }
 
 //=============================================================================
@@ -220,9 +295,9 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     memcpy(host_cstr, host_ptr, host_len + 1);
 
     // Resolve hostname
-    struct addrinfo hints, *res;
+    struct addrinfo hints, *res, *rp;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET; // IPv4 only; IPv6 support is a future enhancement
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     char port_str[16];
@@ -234,89 +309,36 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
         rt_trap_net("Network: host not found", Err_HostNotFound);
     }
 
-    // Create socket
-    socket_t sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock == INVALID_SOCK) {
-        freeaddrinfo(res);
-        free(host_cstr);
-        rt_trap("Network: failed to create socket");
+    socket_t sock = INVALID_SOCK;
+    int last_err = 0;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        socket_t candidate = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (candidate == INVALID_SOCK)
+            continue;
+
+        suppress_sigpipe(candidate);
+        if (connect_socket_with_timeout(
+                candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen, (int)timeout_ms, &last_err)) {
+            sock = candidate;
+            break;
+        }
+
+        CLOSE_SOCKET(candidate);
     }
-    suppress_sigpipe(sock);
-
-    // Connect with optional timeout
-    int connect_result;
-    if (timeout_ms > 0) {
-        // Non-blocking connect with timeout
-        if (!set_nonblocking(sock, true)) {
-            CLOSE_SOCKET(sock);
-            freeaddrinfo(res);
-            free(host_cstr);
-            rt_trap("Network: failed to set non-blocking mode");
-        }
-
-        connect_result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
-
-        if (connect_result == SOCK_ERROR) {
-            int err = GET_LAST_ERROR();
-#ifdef _WIN32
-            if (err == WSAEWOULDBLOCK)
-#else
-            if (err == EINPROGRESS)
-#endif
-            {
-                // Wait for connection to complete
-                int ready = wait_socket(sock, (int)timeout_ms, true);
-                if (ready <= 0) {
-                    CLOSE_SOCKET(sock);
-                    freeaddrinfo(res);
-                    free(host_cstr);
-                    rt_trap_net("Network: connection timeout", Err_Timeout);
-                }
-
-                // Check if connection succeeded
-                int so_error;
-                socklen_t len = sizeof(so_error);
-                getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
-                if (so_error != 0) {
-                    CLOSE_SOCKET(sock);
-                    freeaddrinfo(res);
-                    free(host_cstr);
-                    if (so_error == CONN_REFUSED)
-                        rt_trap_net("Network: connection refused", Err_ConnectionRefused);
-                    rt_trap_net("Network: connection failed", Err_NetworkError);
-                }
-            } else {
-                CLOSE_SOCKET(sock);
-                freeaddrinfo(res);
-                free(host_cstr);
-                if (err == CONN_REFUSED)
-                    rt_trap_net("Network: connection refused", Err_ConnectionRefused);
-                rt_trap_net("Network: connection failed", Err_NetworkError);
-            }
-        }
-
-        // Switch back to blocking mode
-        if (!set_nonblocking(sock, false)) {
-            CLOSE_SOCKET(sock);
-            freeaddrinfo(res);
-            free(host_cstr);
-            rt_trap("Network: failed to restore blocking mode");
-        }
-    } else {
-        // Blocking connect
-        connect_result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
-        if (connect_result == SOCK_ERROR) {
-            int err = GET_LAST_ERROR();
-            CLOSE_SOCKET(sock);
-            freeaddrinfo(res);
-            free(host_cstr);
-            if (err == CONN_REFUSED)
-                rt_trap_net("Network: connection refused", Err_ConnectionRefused);
-            rt_trap_net("Network: connection failed", Err_NetworkError);
-        }
-    }
-
     freeaddrinfo(res);
+
+    if (sock == INVALID_SOCK) {
+        free(host_cstr);
+        if (last_err == CONN_REFUSED)
+            rt_trap_net("Network: connection refused", Err_ConnectionRefused);
+#ifdef _WIN32
+        if (last_err == WSAETIMEDOUT)
+#else
+        if (last_err == ETIMEDOUT)
+#endif
+            rt_trap_net("Network: connection timeout", Err_Timeout);
+        rt_trap_net("Network: connection failed", Err_NetworkError);
+    }
 
     // Enable TCP_NODELAY
     set_nodelay(sock);
@@ -533,13 +555,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
 
     int received = recv(tcp->sock, (char *)buf, (int)max_bytes, 0);
     if (received == SOCK_ERROR) {
-        // Check if it's a timeout
-#ifdef _WIN32
-        if (WSAGetLastError() == WSAETIMEDOUT)
-#else
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-#endif
-        {
+        if (socket_recv_timed_out()) {
             // Timeout - release over-allocated buffer and return empty bytes
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
@@ -598,9 +614,11 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
         int received =
             recv(tcp->sock, (char *)(buf + total_received), (int)(count - total_received), 0);
         if (received == SOCK_ERROR) {
-            tcp->is_open = false;
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
+            if (socket_recv_timed_out())
+                rt_trap_net("Network: receive timeout", Err_Timeout);
+            tcp->is_open = false;
             rt_trap_net("Network: receive failed", net_classify_errno());
         }
         if (received == 0) {
@@ -636,6 +654,8 @@ rt_string rt_tcp_recv_line(void *obj) {
         int received = recv(tcp->sock, &c, 1, 0);
         if (received == SOCK_ERROR) {
             free(line);
+            if (socket_recv_timed_out())
+                rt_trap_net("Network: receive timeout", Err_Timeout);
             tcp->is_open = false;
             rt_trap_net("Network: receive failed", net_classify_errno());
         }
@@ -713,73 +733,97 @@ void rt_tcp_close(void *obj) {
     }
 }
 
+socket_t rt_tcp_socket_fd(void *obj) {
+    if (!obj)
+        return INVALID_SOCK;
+    return ((rt_tcp_t *)obj)->sock;
+}
+
+void rt_tcp_detach_socket(void *obj) {
+    if (!obj)
+        return;
+    rt_tcp_t *tcp = (rt_tcp_t *)obj;
+    tcp->sock = INVALID_SOCK;
+    tcp->is_open = false;
+}
+
 //=============================================================================
 // TcpServer - Creation
 //=============================================================================
 
-void *rt_tcp_server_listen(int64_t port) {
-    return rt_tcp_server_listen_at(rt_const_cstr("0.0.0.0"), port);
-}
-
-void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
+static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     rt_net_init_wsa();
 
-    if (port < 1 || port > 65535) {
+    if (port < 1 || port > 65535)
         rt_trap("Network: invalid port number");
-    }
 
-    // Get address string
-    const char *addr_ptr = rt_string_cstr(address);
-    size_t addr_len = strlen(addr_ptr);
-    char *addr_cstr = (char *)malloc(addr_len + 1);
-    if (!addr_cstr) {
-        rt_trap("Network: memory allocation failed");
-    }
-    memcpy(addr_cstr, addr_ptr, addr_len + 1);
+    struct addrinfo hints;
+    struct addrinfo *res = NULL;
+    struct addrinfo *rp = NULL;
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%d", (int)port);
 
-    // Create socket
-    socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == INVALID_SOCK) {
-        free(addr_cstr);
-        rt_trap("Network: failed to create socket");
-    }
-    suppress_sigpipe(sock);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (!address)
+        hints.ai_flags = AI_PASSIVE;
 
-    // Enable address reuse
-    int reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
-
-    // Bind to address
-    struct sockaddr_in bind_addr;
-    memset(&bind_addr, 0, sizeof(bind_addr));
-    bind_addr.sin_family = AF_INET;
-    bind_addr.sin_port = htons((uint16_t)port);
-
-    if (inet_pton(AF_INET, addr_cstr, &bind_addr.sin_addr) != 1) {
-        CLOSE_SOCKET(sock);
-        free(addr_cstr);
+    if (getaddrinfo(address, port_str, &hints, &res) != 0)
         rt_trap("Network: invalid address");
+
+    socket_t sock = INVALID_SOCK;
+    int last_err = 0;
+    int bound_family = AF_UNSPEC;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        socket_t candidate = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (candidate == INVALID_SOCK)
+            continue;
+
+        suppress_sigpipe(candidate);
+
+        int reuse = 1;
+        setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
+#ifdef IPV6_V6ONLY
+        if (rp->ai_family == AF_INET6) {
+            int v6only = address ? 1 : 0;
+            setsockopt(candidate,
+                       IPPROTO_IPV6,
+                       IPV6_V6ONLY,
+                       (const char *)&v6only,
+                       sizeof(v6only));
+        }
+#endif
+
+        if (bind(candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen) == 0 &&
+            listen(candidate, SOMAXCONN) == 0) {
+            sock = candidate;
+            bound_family = rp->ai_family;
+            break;
+        }
+
+        last_err = GET_LAST_ERROR();
+        CLOSE_SOCKET(candidate);
     }
 
-    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR) {
-        int err = GET_LAST_ERROR();
-        CLOSE_SOCKET(sock);
-        free(addr_cstr);
-        if (err == ADDR_IN_USE)
+    freeaddrinfo(res);
+
+    if (sock == INVALID_SOCK) {
+        if (last_err == ADDR_IN_USE)
             rt_trap_net("Network: port already in use", Err_NetworkError);
-        if (err == PERM_DENIED)
+        if (last_err == PERM_DENIED)
             rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
         rt_trap_net("Network: bind failed", Err_NetworkError);
     }
 
-    // Start listening
-    if (listen(sock, SOMAXCONN) == SOCK_ERROR) {
+    const char *bound_addr = address ? address : (bound_family == AF_INET6 ? "::" : "0.0.0.0");
+    char *addr_cstr = (char *)malloc(strlen(bound_addr) + 1);
+    if (!addr_cstr) {
         CLOSE_SOCKET(sock);
-        free(addr_cstr);
-        rt_trap_net("Network: listen failed", Err_NetworkError);
+        rt_trap("Network: memory allocation failed");
     }
+    memcpy(addr_cstr, bound_addr, strlen(bound_addr) + 1);
 
-    // Create server object
     rt_tcp_server_t *server =
         (rt_tcp_server_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_server_t));
     if (!server) {
@@ -795,6 +839,17 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
     server->is_listening = true;
 
     return server;
+}
+
+void *rt_tcp_server_listen(int64_t port) {
+    return rt_tcp_server_listen_impl(NULL, port);
+}
+
+void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
+    const char *addr_ptr = rt_string_cstr(address);
+    if (!addr_ptr || *addr_ptr == '\0')
+        rt_trap("Network: invalid address");
+    return rt_tcp_server_listen_impl(addr_ptr, port);
 }
 
 //=============================================================================
@@ -854,7 +909,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     }
 
     // Accept connection
-    struct sockaddr_in client_addr;
+    struct sockaddr_storage client_addr;
     socklen_t client_len = sizeof(client_addr);
 
     socket_t client_sock = accept(server->sock, (struct sockaddr *)&client_addr, &client_len);
@@ -871,8 +926,18 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     set_nodelay(client_sock);
 
     // Get client info
-    char host_buf[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client_addr.sin_addr, host_buf, sizeof(host_buf));
+    char host_buf[NI_MAXHOST];
+    char service_buf[NI_MAXSERV];
+    if (getnameinfo((struct sockaddr *)&client_addr,
+                    client_len,
+                    host_buf,
+                    sizeof(host_buf),
+                    service_buf,
+                    sizeof(service_buf),
+                    NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
+        snprintf(host_buf, sizeof(host_buf), "%s", "");
+        snprintf(service_buf, sizeof(service_buf), "%d", 0);
+    }
 
     char *host_cstr = (char *)malloc(strlen(host_buf) + 1);
     if (!host_cstr) {
@@ -892,7 +957,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
 
     tcp->sock = client_sock;
     tcp->host = host_cstr;
-    tcp->port = ntohs(client_addr.sin_port);
+    tcp->port = atoi(service_buf);
     tcp->local_port = get_local_port(client_sock);
     tcp->is_open = true;
     tcp->recv_timeout_ms = 0;

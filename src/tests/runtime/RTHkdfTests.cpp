@@ -89,7 +89,7 @@ static void test_hkdf_expand_rfc5869_case1() {
                  42);
 
     uint8_t okm[42];
-    rt_hkdf_expand(prk, info, 10, okm, 42);
+    test_result("Expand returns success", rt_hkdf_expand(prk, info, 10, okm, 42) == 0);
 
     test_result("Expand matches RFC 5869 Case 1", memcmp(okm, expected_okm, 42) == 0);
     printf("\n");
@@ -142,7 +142,7 @@ static void test_hkdf_repeatability() {
     for (int trial = 0; trial < 4; trial++) {
         uint8_t prk[32];
         rt_hkdf_extract(salt, 16, ikm, 32, prk);
-        rt_hkdf_expand(prk, info, 8, results[trial], 64);
+        test_result("Expand repeat trial succeeds", rt_hkdf_expand(prk, info, 8, results[trial], 64) == 0);
     }
 
     // All results should be identical
@@ -187,6 +187,20 @@ static void test_hmac_sha256_after_secure_zero() {
     printf("\n");
 }
 
+static void test_hkdf_rejects_oversized_output() {
+    printf("Testing HKDF oversized output rejection:\n");
+
+    uint8_t prk[32];
+    uint8_t okm[1] = {0};
+    memset(prk, 0x42, sizeof(prk));
+
+    test_result("Expand rejects > 255*HashLen", rt_hkdf_expand(prk, nullptr, 0, okm, 8161) != 0);
+    test_result("ExpandLabel rejects > 255*HashLen",
+                rt_hkdf_expand_label(prk, "traffic upd", nullptr, 0, okm, 8161) != 0);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -199,6 +213,7 @@ int main() {
     test_hkdf_extract_null_salt();
     test_hkdf_repeatability();
     test_hmac_sha256_after_secure_zero();
+    test_hkdf_rejects_oversized_output();
 
     printf("All HKDF tests passed!\n");
     return 0;

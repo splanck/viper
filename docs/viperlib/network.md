@@ -811,8 +811,7 @@ HTTP operations trap on errors:
 
 ### Limitations
 
-- **IPv4 only** - IPv6 addresses not supported in URLs
-- **No cookies** - Cookie handling not included
+- **No session cookie jar in the static `Http` facade** - Use `HttpClient` when you need persistent cookies across requests
 - **No auth** - Use `HttpReq` for custom headers including Authorization
 - **No client certificates** - Client-side TLS certificates not supported
 - **Fixed Content-Type on Post** - `Http.Post()` always sends `Content-Type: text/plain; charset=utf-8`. For JSON or other content types, use `HttpReq` with `.SetHeader("Content-Type", "application/json")`
@@ -1792,7 +1791,7 @@ URL pattern matching with parameter extraction for HTTP routing.
 
 ## Viper.Network.HttpServer
 
-Threaded HTTP/1.1 server with routing and automatic request dispatching.
+Threaded HTTP/1.1 server with routing and handler-tag lookup.
 
 **Type:** Instance class
 
@@ -1816,6 +1815,8 @@ Threaded HTTP/1.1 server with routing and automatic request dispatching.
 |----------|------|-------------|
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
+
+> **Current runtime note:** Routes are matched and associated with the registered handler tag. The built-in response path returns matched tag metadata; direct invocation of user-defined language handlers is not yet wired through the frontend/runtime boundary.
 
 ---
 
@@ -2031,5 +2032,4 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 - [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
-> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange. When `verify_cert=1` (the default), it performs full TLS 1.3 authentication: certificate chain validation against the OS trust store, hostname verification against SubjectAltName/CommonName, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
-
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the platform trust store plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.

@@ -1294,6 +1294,13 @@ static void rt_fbx_asset_finalize(void *obj) {
     fbx->morph_targets = NULL;
 }
 
+/// @brief Load an FBX binary file and extract meshes, skeleton, animations, and materials.
+/// @details Parses the FBX binary format (magic header "Kaydara FBX Binary"),
+///          decodes geometry, deformers (skin clusters for skeletal binding),
+///          animation curves, and materials. Z-up models are automatically
+///          corrected to Y-up. Supports FBX versions 7.1–7.5 (most common).
+/// @param path File path to the .fbx file (runtime string).
+/// @return Opaque FBX asset handle containing meshes/skeleton/animations, or NULL.
 void *rt_fbx_load(rt_string path) {
     if (!path) {
         rt_trap("FBX.Load: null path");
@@ -1712,10 +1719,12 @@ void *rt_fbx_load(rt_string path) {
  * FBX asset accessors
  *=========================================================================*/
 
+/// @brief Get the number of meshes extracted from the FBX file.
 int64_t rt_fbx_mesh_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->mesh_count : 0;
 }
 
+/// @brief Get a mesh by index from the loaded FBX asset.
 void *rt_fbx_get_mesh(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -1725,14 +1734,17 @@ void *rt_fbx_get_mesh(void *obj, int64_t index) {
     return a->meshes[index];
 }
 
+/// @brief Get the skeleton extracted from the FBX file (NULL if no skeleton).
 void *rt_fbx_get_skeleton(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->skeleton : NULL;
 }
 
+/// @brief Get the number of animation clips in the FBX file.
 int64_t rt_fbx_animation_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->animation_count : 0;
 }
 
+/// @brief Get an animation clip by index from the loaded FBX asset.
 void *rt_fbx_get_animation(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -1742,6 +1754,7 @@ void *rt_fbx_get_animation(void *obj, int64_t index) {
     return a->animations[index];
 }
 
+/// @brief Get the name of an animation clip by index.
 rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
     void *anim = rt_fbx_get_animation(obj, index);
     if (!anim)
@@ -1750,10 +1763,12 @@ rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
     return rt_animation3d_get_name(anim);
 }
 
+/// @brief Get the number of materials extracted from the FBX file.
 int64_t rt_fbx_material_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->material_count : 0;
 }
 
+/// @brief Get a material by index from the loaded FBX asset.
 void *rt_fbx_get_material(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -1763,6 +1778,7 @@ void *rt_fbx_get_material(void *obj, int64_t index) {
     return a->materials[index];
 }
 
+/// @brief Get the morph target data for a mesh by its index in the FBX asset.
 void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
     if (!obj)
         return NULL;

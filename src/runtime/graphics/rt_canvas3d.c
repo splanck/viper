@@ -856,6 +856,16 @@ static void rt_canvas3d_finalize(void *obj) {
     }
 }
 
+/// @brief Create a new 3D rendering canvas (window + backend context).
+/// @details Opens a platform window, selects the best available rendering backend
+///          (Metal > OpenGL > D3D11 > software), and initializes the framebuffer,
+///          depth buffer, deferred draw queue, and motion blur history. The canvas
+///          is the main entry point for 3D rendering — call Begin/DrawMesh/End/Flip
+///          each frame. GC finalizer destroys the backend context and window.
+/// @param title Window title (runtime string).
+/// @param w     Window width in pixels (1–8192).
+/// @param h     Window height in pixels (1–8192).
+/// @return Opaque canvas handle, or NULL on failure.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
@@ -938,6 +948,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
  * Rendering — dispatches through backend vtable
  *=========================================================================*/
 
+/// @brief Clear the framebuffer and depth buffer with the given background color.
+/// @details Must be called at the start of each frame before Begin. Also resets
+///          fog state and ambient light to defaults for the new frame.
 void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -1300,6 +1313,12 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
         c, c->text_vertices, vertex_count, c->text_indices, index_count, r, g, b, 1.0f);
 }
 
+/// @brief Begin a 3D rendering frame with the given camera.
+/// @details Must be called after Clear and before any DrawMesh calls. Captures
+///          the camera's view/projection matrices, resets the deferred draw queue,
+///          and updates per-frame timing state. Begin/End must not be nested.
+/// @param obj    Canvas handle.
+/// @param camera Camera3D handle providing view and projection matrices.
 void rt_canvas3d_begin(void *obj, void *camera) {
     vgfx3d_camera_params_t params;
 
@@ -1495,6 +1514,11 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     rt_canvas3d_draw_mesh_matrix_keyed(obj, mesh_obj, model_matrix, material_obj, NULL, NULL, NULL);
 }
 
+/// @brief Submit a mesh for drawing with the given transform and material.
+/// @details Defers the draw into the per-frame queue. Actual rendering happens
+///          in End(), which sorts opaque draws front-to-back and transparent draws
+///          back-to-front for correct alpha blending. The mesh, transform, and
+///          material pointers are borrowed (not retained).
 void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
     if (!transform_obj)
         return;
@@ -1621,6 +1645,14 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     }
 }
 
+/// @brief Flush all deferred draws, performing depth sorting and backend dispatch.
+/// @details Processes the deferred draw queue built during Begin/DrawMesh calls:
+///          1. Frustum-culls draws against the camera's view frustum.
+///          2. Sorts opaque draws front-to-back (Z-sort for early depth rejection).
+///          3. Sorts transparent draws back-to-front (for correct alpha blending).
+///          4. Dispatches each draw through the backend's submit_draw vtable.
+///          5. Applies shadow mapping and post-processing if enabled.
+///          Must be called after all DrawMesh calls and before Flip.
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
     int32_t main_count = 0;
@@ -1849,6 +1881,10 @@ void rt_canvas3d_end(void *obj) {
  * Window lifecycle — same as before, no backend involvement
  *=========================================================================*/
 
+/// @brief Present the rendered frame to the window (swaps buffers).
+/// @details Applies post-processing effects (if any), then presents the
+///          framebuffer via the backend's present function. Updates the FPS
+///          counter and delta-time calculation for the next frame.
 void rt_canvas3d_flip(void *obj) {
     if (!obj)
         return;
@@ -1895,6 +1931,10 @@ void rt_canvas3d_flip(void *obj) {
     }
 }
 
+/// @brief Process all pending window events (keyboard, mouse, resize, close).
+/// @details Polls the platform event queue and updates input state for
+///          Keyboard/Mouse/Pad subsystems. Must be called once per frame.
+/// @return 1 if a close event was received, 0 otherwise.
 int64_t rt_canvas3d_poll(void *obj) {
     if (!obj)
         return 0;
@@ -1981,15 +2021,18 @@ int64_t rt_canvas3d_poll(void *obj) {
     return 0;
 }
 
+/// @brief Check if the canvas window received a close request.
 int8_t rt_canvas3d_should_close(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->should_close : 0;
 }
 
+/// @brief Enable or disable wireframe rendering mode.
 void rt_canvas3d_set_wireframe(void *obj, int8_t enabled) {
     if (obj)
         ((rt_canvas3d *)obj)->wireframe = enabled;
 }
 
+/// @brief Enable or disable backface culling (CCW winding = front face).
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
     if (obj)
         ((rt_canvas3d *)obj)->backface_cull = enabled;
@@ -2001,14 +2044,17 @@ void rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     (void)canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
 }
 
+/// @brief Get the current canvas width in pixels (updates on window resize).
 int64_t rt_canvas3d_get_width(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->width : 0;
 }
 
+/// @brief Get the current canvas height in pixels (updates on window resize).
 int64_t rt_canvas3d_get_height(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->height : 0;
 }
 
+/// @brief Get the current frames-per-second (updated each Flip call).
 int64_t rt_canvas3d_get_fps(void *obj) {
     if (!obj)
         return 0;
@@ -2016,6 +2062,9 @@ int64_t rt_canvas3d_get_fps(void *obj) {
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
 }
 
+/// @brief Get the time elapsed since the last frame in milliseconds.
+/// @details Clamped to dt_max (default 100ms) to prevent physics explosions
+///          after long pauses (e.g., window drag, breakpoint, alt-tab).
 int64_t rt_canvas3d_get_delta_time(void *obj) {
     if (!obj)
         return 0;
@@ -2035,12 +2084,15 @@ void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
         ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
 }
 
+/// @brief Assign a light to one of the 8 per-canvas light slots.
+/// @details Slot index must be in [0, VGFX3D_MAX_LIGHTS). Pass NULL to clear a slot.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)
         return;
     ((rt_canvas3d *)obj)->lights[index] = (rt_light3d *)light;
 }
 
+/// @brief Set the global ambient light color for the canvas (applied to all surfaces).
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -2074,6 +2126,7 @@ static int world_to_screen(
     return 1;
 }
 
+/// @brief Draw a debug line between two 3D points (rendered as a thin quad).
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -2112,6 +2165,7 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a debug point at a 3D position (rendered as a small quad billboard).
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
@@ -2154,6 +2208,7 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
  * Screen-space HUD overlay (drawn directly to framebuffer, no 3D transform)
  *=========================================================================*/
 
+/// @brief Draw a filled 2D rectangle on the screen (HUD overlay, screen-space).
 void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -2172,6 +2227,7 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a centered crosshair on the screen (two crossing lines).
 void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
@@ -2203,6 +2259,7 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw 2D text on the screen using the built-in 5x7 bitmap font.
 void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -2219,6 +2276,7 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, in
         rt_canvas3d_end(c);
 }
 
+/// @brief Get the name of the active rendering backend ("metal", "opengl", "d3d11", or "software").
 rt_string rt_canvas3d_get_backend(void *obj) {
     if (!obj)
         return rt_const_cstr("unknown");
@@ -2295,6 +2353,7 @@ void *rt_canvas3d_screenshot(void *obj) {
  * Debug Gizmos — wireframe AABB, sphere, ray, axis
  *=========================================================================*/
 
+/// @brief Draw a wireframe axis-aligned bounding box (12 edges) for debugging.
 void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
     if (!obj || !min_v || !max_v)
         return;
@@ -2324,6 +2383,7 @@ void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t col
         rt_canvas3d_draw_line3d(obj, c[edges[e][0]], c[edges[e][1]], color);
 }
 
+/// @brief Draw a wireframe sphere approximation (3 circles on XY, XZ, YZ planes).
 void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color) {
     if (!obj || !center)
         return;
@@ -2354,6 +2414,7 @@ void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_
     }
 }
 
+/// @brief Draw a debug ray from an origin along a direction for the given length.
 void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color) {
     if (!obj || !origin || !dir)
         return;
@@ -2363,6 +2424,7 @@ void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double lengt
     rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ex, ey, ez), color);
 }
 
+/// @brief Draw an XYZ axis gizmo (red=X, green=Y, blue=Z) at the given origin.
 void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
     if (!obj || !origin)
         return;
@@ -2389,6 +2451,7 @@ void rt_canvas3d_set_fog(
     c->fog_color[2] = (float)b;
 }
 
+/// @brief Disable distance fog on the canvas.
 void rt_canvas3d_clear_fog(void *obj) {
     if (!obj)
         return;
@@ -2399,6 +2462,10 @@ void rt_canvas3d_clear_fog(void *obj) {
  * Shadow Mapping
  *=========================================================================*/
 
+/// @brief Enable shadow mapping with the given shadow map resolution.
+/// @details Creates a shadow depth buffer and configures directional light shadow
+///          casting. The shadow map is rendered from the light's perspective and
+///          sampled during the main render pass.
 void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     if (!obj)
         return;
@@ -2429,6 +2496,7 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     }
 }
 
+/// @brief Disable shadow mapping and free the shadow depth buffer.
 void rt_canvas3d_disable_shadows(void *obj) {
     if (!obj)
         return;
@@ -2442,12 +2510,14 @@ void rt_canvas3d_disable_shadows(void *obj) {
     }
 }
 
+/// @brief Set the shadow map depth bias to reduce shadow acne artifacts.
 void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
     if (!obj)
         return;
     ((rt_canvas3d *)obj)->shadow_bias = (float)bias;
 }
 
+/// @brief Enable or disable software occlusion culling for draw submission.
 void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
     if (!obj)
         return;

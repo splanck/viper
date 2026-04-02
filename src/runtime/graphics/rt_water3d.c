@@ -95,6 +95,14 @@ static void water3d_finalizer(void *obj) {
     }
 }
 
+/// @brief Create a new water surface with animated wave simulation.
+/// @details Creates a grid mesh that deforms each frame using sinusoidal or
+///          Gerstner wave functions. The water supports configurable color,
+///          transparency, surface textures, normal maps, and environment-map
+///          reflections. The mesh is lazily built on first draw.
+/// @param width World-space width of the water plane (X axis).
+/// @param depth World-space depth of the water plane (Z axis).
+/// @return Opaque water handle, or NULL on failure.
 void *rt_water3d_new(double width, double depth) {
     rt_water3d *w = (rt_water3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_water3d));
     if (!w) {
@@ -125,13 +133,13 @@ void *rt_water3d_new(double width, double depth) {
     return w;
 }
 
-/// @brief Set the height of the water3d.
+/// @brief Set the base Y-coordinate (world height) of the water plane.
 void rt_water3d_set_height(void *obj, double y) {
     if (obj)
         ((rt_water3d *)obj)->height = y;
 }
 
-/// @brief Set the wave params of the water3d.
+/// @brief Configure the sinusoidal wave animation parameters.
 void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency) {
     if (!obj)
         return;
@@ -141,7 +149,7 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     w->wave_frequency = frequency;
 }
 
-/// @brief Set the color of the water3d.
+/// @brief Set the base tint color and transparency of the water surface.
 void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     if (!obj)
         return;
@@ -306,7 +314,7 @@ void rt_water3d_update(void *obj, double dt) {
     }
 }
 
-/// @brief Draw the water of the canvas3d.
+/// @brief Draw the animated water surface to the 3D canvas.
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj)
         return;
