@@ -40,17 +40,16 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **VAPS Packaging Overhaul** — 10 improvements, 57 new tests, Windows installer stub, symlink safety, dry-run mode.
 - **GUI Runtime Hardening** — Theme ownership moved to per-app structs (no more mutating built-in dark/light singletons), modal dialog routing follows the real dialog stack, overlay timing uses wall-clock time, platform text input events (`VGFX_EVENT_TEXT_INPUT`) wired through macOS/Win32/X11 backends replacing ASCII key synthesis, dropdown placeholder ownership fix, notification compaction, and command palette UTF-8 query path.
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
-- **Comprehensive Documentation Pass** — Substantial `@brief`/`@details` comments added to 100+ functions across GUI runtime (8 files), Graphics3D runtime (19 files), network subsystem (19 files), crypto subsystem (8 files), and IO subsystem (11 files). Rewrites broken auto-generated comments ("Should the close of the app", "Sphere the overlaps of the aabb3d", "Hash the with iterations of the password") into proper Viper documentation standard with why/how explanations, parameter contracts, and ownership semantics.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
-- **Network & Crypto Hardening** — Comprehensive function documentation across TLS handshake, certificate verification, WebSocket framing, SSE chunked parsing, SMTP protocol, connection pooling, async sockets, AES/cipher/HKDF/password hashing modules. Two test fixes: IPv6 wildcard address acceptance, HTTP chunked encoding framing correction.
-- **Comprehensive Documentation Review** — 39 stale files deleted, 70+ factual errors corrected across 30+ docs, Viper file headers on 100% of 2,706 source files, @brief Doxygen on 100% of runtime functions. Bible code audit across 12 chapters correcting struct field syntax, class method visibility, interface declarations, catch syntax, and collection API calls.
+- **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
+- **Documentation & Code Quality** — 500+ runtime functions documented across all subsystems (GUI, Graphics3D, Game, Sound, Network, Crypto, IO). 39 stale doc files deleted, 70+ factual errors fixed. Bible code audit across 12 chapters. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 72 | +72 |
-| Source files | 2,671 | 2,795 | +124 |
+| Commits | — | 73 | +73 |
+| Source files | 2,671 | 2,796 | +125 |
 | Production SLOC | ~348K | ~413K | +65K |
 | Test count | 1,351 | 1,388 | +37 |
 
@@ -678,24 +677,6 @@ Architectural improvements to the GUI subsystem for correctness and platform fid
 
 ---
 
-### Comprehensive Documentation Pass
-
-Substantial function-level documentation added across four major runtime subsystems, rewriting broken auto-generated comments into proper Viper `@brief`/`@details`/`@param`/`@return` annotations that explain the *why* and *how* for each function.
-
-| Subsystem | Files | Functions Documented | Key Topics |
-|-----------|-------|---------------------|------------|
-| GUI Runtime | 8 | ~100 | App lifecycle, widget constructors, menu system, command palette, tooltips, toasts, drag-and-drop, find/replace bar |
-| Graphics3D | 19 | ~130 | Canvas3D render pipeline, Camera3D (perspective/ortho/FPS/orbit/shake), Mesh3D procedural generators, Material3D PBR, Light3D types, skeletal animation, physics joints, raycasting, spline paths, terrain, water, decals, sprites, instanced batching, cubemap reflections, FBX/glTF loaders |
-| Network | 19 | ~120 | TCP/UDP sockets, TLS handshake, certificate verification, HTTP client/server, WebSocket framing, SSE streaming, SMTP protocol, REST client, connection pooling, async sockets, DNS resolution |
-| Crypto/Text | 8 | ~50 | AES-CBC/CTR, cipher abstraction, HKDF key derivation, password hashing (bcrypt/PBKDF2/Argon2), CSPRNG |
-| IO | 11 | ~60 | Archive extraction, binary files, directories, glob matching, line reader, path utilities, save data, streams, temp files, file watcher, JSON streaming |
-
-**Examples of rewritten comments:**
-- `"Should the close of the app"` → `"Query whether the application's window has been closed"`
-- `"Sphere the overlaps of the aabb3d"` → `"Test whether an AABB and a sphere overlap"`
-- `"Hash the with iterations of the password"` → `"Hash a password with a custom PBKDF2 iteration count"`
-- `"Play the at of the audio3d"` → `"Play a sound at a 3D position with distance-based attenuation"`
-
 ---
 
 ### HTTP Server Runtime Bindings
@@ -827,3 +808,4 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - TempFile creation had a TOCTOU race: checked for existence then created — replaced with atomic `O_CREAT|O_EXCL` (POSIX) / `CREATE_NEW` (Windows) with collision retry
 - Archive extraction accepted paths containing `../` — could write outside the target directory (zip-slip). Now validates and rejects path-traversal entries
 - Cipher `rt_cipher_decrypt` did not fall back gracefully when PBKDF2-derived key failed authentication — now tries legacy HKDF derivation before trapping
+- Graphics3D texture ownership: CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D did not retain their texture/mesh/material references — GC could collect them while still in use. All now use retain/release with finalizer cleanup
