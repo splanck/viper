@@ -49,10 +49,10 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 72 | +72 |
+| Commits | — | 78 | +78 |
 | Source files | 2,671 | 2,797 | +126 |
 | Production SLOC | ~348K | ~416K | +68K |
-| Test count | 1,351 | 1,389 | +38 |
+| Test count | 1,351 | 1,390 | +39 |
 
 ---
 

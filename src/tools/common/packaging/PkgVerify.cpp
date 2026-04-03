@@ -36,6 +36,59 @@ uint32_t rdLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, std::ostream &err) {
+    if (data.size() < 64) {
+        err << "PE: file too small (" << data.size() << " bytes)\n";
+        return false;
+    }
+    if (data[0] != 'M' || data[1] != 'Z') {
+        err << "PE: missing DOS 'MZ' magic\n";
+        return false;
+    }
+
+    uint32_t peOff = rdLE32(data.data() + 60);
+    if (peOff + 4 > data.size()) {
+        err << "PE: e_lfanew (" << peOff << ") points past end of file\n";
+        return false;
+    }
+    if (data[peOff] != 'P' || data[peOff + 1] != 'E' || data[peOff + 2] != 0 ||
+        data[peOff + 3] != 0) {
+        err << "PE: invalid PE signature at offset " << peOff << "\n";
+        return false;
+    }
+
+    uint32_t coffOff = peOff + 4;
+    if (coffOff + 20 > data.size()) {
+        err << "PE: COFF header truncated\n";
+        return false;
+    }
+
+    uint16_t numSections = rdLE16(data.data() + coffOff + 2);
+    uint16_t optHdrSize = rdLE16(data.data() + coffOff + 16);
+    uint32_t secTableOff = coffOff + 20 + optHdrSize;
+    if (secTableOff + static_cast<size_t>(numSections) * 40 > data.size()) {
+        err << "PE: section table truncated\n";
+        return false;
+    }
+
+    size_t maxRawEnd = 0;
+    for (uint16_t i = 0; i < numSections; ++i) {
+        size_t secOff = secTableOff + static_cast<size_t>(i) * 40;
+        uint32_t rawSize = rdLE32(data.data() + secOff + 16);
+        uint32_t rawOff = rdLE32(data.data() + secOff + 20);
+        size_t secEnd = static_cast<size_t>(rawOff) + static_cast<size_t>(rawSize);
+        if (secEnd > data.size()) {
+            err << "PE: section raw data extends past end of file\n";
+            return false;
+        }
+        if (secEnd > maxRawEnd)
+            maxRawEnd = secEnd;
+    }
+
+    overlayOff = maxRawEnd;
+    return true;
+}
+
 } // namespace
 
 // ============================================================================
@@ -71,7 +124,25 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
 
     // Read entry count from EOCD
     uint16_t totalEntries = rdLE16(data.data() + eocdOff + 10);
+    uint16_t commentLen = rdLE16(data.data() + eocdOff + 20);
+    uint32_t cdSize = rdLE32(data.data() + eocdOff + 12);
     uint32_t cdOffset = rdLE32(data.data() + eocdOff + 16);
+
+    if (rdLE16(data.data() + eocdOff + 8) == 0xFFFF || totalEntries == 0xFFFF ||
+        cdSize == 0xFFFFFFFFu || cdOffset == 0xFFFFFFFFu) {
+        err << "ZIP: ZIP64 archives are not supported\n";
+        return false;
+    }
+
+    if (eocdOff + 22 + commentLen != data.size()) {
+        err << "ZIP: EOCD comment length does not match file size\n";
+        return false;
+    }
+    if (static_cast<uint64_t>(cdOffset) + static_cast<uint64_t>(cdSize) >
+        static_cast<uint64_t>(eocdOff)) {
+        err << "ZIP: central directory extends past EOCD\n";
+        return false;
+    }
 
     // Verify central directory entries
     size_t pos = cdOffset;
@@ -83,7 +154,8 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
         }
         uint16_t nameLen = rdLE16(data.data() + pos + 28);
         uint16_t extraLen = rdLE16(data.data() + pos + 30);
-        uint16_t commentLen = rdLE16(data.data() + pos + 32);
+        uint16_t entryCommentLen = rdLE16(data.data() + pos + 32);
+        uint32_t compSize = rdLE32(data.data() + pos + 20);
 
         // Verify the corresponding local header exists
         uint32_t localOff = rdLE32(data.data() + pos + 42);
@@ -96,12 +168,33 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
             return false;
         }
 
-        pos += 46 + nameLen + extraLen + commentLen;
+        size_t centralEnd =
+            pos + 46 + static_cast<size_t>(nameLen) + static_cast<size_t>(extraLen) +
+            static_cast<size_t>(entryCommentLen);
+        if (centralEnd > data.size() || centralEnd > static_cast<size_t>(cdOffset) + cdSize) {
+            err << "ZIP: truncated central directory entry at offset " << pos << "\n";
+            return false;
+        }
+
+        uint16_t localNameLen = rdLE16(data.data() + localOff + 26);
+        uint16_t localExtraLen = rdLE16(data.data() + localOff + 28);
+        size_t localDataOff =
+            static_cast<size_t>(localOff) + 30 + static_cast<size_t>(localNameLen) + localExtraLen;
+        if (localDataOff + compSize > data.size()) {
+            err << "ZIP: local file data at offset " << localOff << " is truncated\n";
+            return false;
+        }
+
+        pos = centralEnd;
         entriesFound++;
     }
 
     if (entriesFound != totalEntries) {
         err << "ZIP: expected " << totalEntries << " entries, found " << entriesFound << "\n";
+        return false;
+    }
+    if (pos != static_cast<size_t>(cdOffset) + cdSize) {
+        err << "ZIP: central directory size does not match EOCD\n";
         return false;
     }
 
@@ -302,6 +395,28 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
                 return false;
             }
         }
+    }
+
+    return true;
+}
+
+bool verifyPEZipOverlay(const std::vector<uint8_t> &data, std::ostream &err) {
+    if (!verifyPE(data, err))
+        return false;
+
+    size_t overlayOff = 0;
+    if (!parsePeOverlayOffset(data, overlayOff, err))
+        return false;
+
+    if (overlayOff >= data.size()) {
+        err << "PE: expected ZIP overlay after sections, but no overlay bytes were found\n";
+        return false;
+    }
+
+    std::vector<uint8_t> overlay(data.begin() + overlayOff, data.end());
+    if (!verifyZip(overlay, err)) {
+        err << "PE: ZIP overlay verification failed\n";
+        return false;
     }
 
     return true;

@@ -292,6 +292,65 @@ std::vector<uint8_t> buildX64StartupStub(uint64_t imageBase,
     return stub;
 }
 
+std::vector<uint8_t> buildAArch64StartupStub(uint64_t imageBase,
+                                             uint64_t entryAddr,
+                                             uint32_t stubRva,
+                                             uint32_t exitProcessIatRva,
+                                             std::ostream &err) {
+    std::vector<uint8_t> stub = {
+        0x10, 0x00, 0x00, 0x90, // adrp x16, entry
+        0x10, 0x02, 0x00, 0x91, // add  x16, x16, #entry_lo12
+        0x00, 0x02, 0x3F, 0xD6, // blr  x16
+        0x10, 0x00, 0x00, 0x90, // adrp x16, __imp_ExitProcess
+        0x10, 0x02, 0x40, 0xF9, // ldr  x16, [x16, #iat_lo12]
+        0x00, 0x02, 0x1F, 0xD6, // br   x16
+        0x00, 0x00, 0x20, 0xD4, // brk  #0
+    };
+
+    auto patchAdrp = [&](size_t offset, uint64_t targetVa) {
+        const uint64_t pcVa = imageBase + stubRva + static_cast<uint32_t>(offset);
+        const uint64_t pageTarget = targetVa & ~0xFFFULL;
+        const uint64_t pagePc = pcVa & ~0xFFFULL;
+        const int64_t pageDelta = static_cast<int64_t>(pageTarget) - static_cast<int64_t>(pagePc);
+        const int64_t immHiLo = pageDelta >> 12;
+        if (immHiLo > 0xFFFFF || immHiLo < -0x100000) {
+            err << "error: PE ARM64 startup stub ADRP target out of range\n";
+            return false;
+        }
+
+        uint32_t insn = 0x90000010U;
+        const uint32_t immlo = static_cast<uint32_t>(immHiLo) & 0x3;
+        const uint32_t immhi = (static_cast<uint32_t>(immHiLo) >> 2) & 0x7FFFF;
+        insn = (insn & 0x9F00001F) | (immlo << 29) | (immhi << 5);
+        putLE32(stub, offset, insn);
+        return true;
+    };
+
+    auto patchAddLo12 = [&](size_t offset, uint64_t targetVa) {
+        const uint32_t pageOff = static_cast<uint32_t>(targetVa & 0xFFFULL);
+        uint32_t insn = 0x91000210U;
+        insn = (insn & 0xFFC003FF) | (pageOff << 10);
+        putLE32(stub, offset, insn);
+    };
+
+    auto patchLdrLo12 = [&](size_t offset, uint64_t targetVa) {
+        const uint32_t pageOff = static_cast<uint32_t>((targetVa & 0xFFFULL) >> 3);
+        uint32_t insn = 0xF9400210U;
+        insn = (insn & 0xFFC003FF) | (pageOff << 10);
+        putLE32(stub, offset, insn);
+    };
+
+    if (!patchAdrp(0, entryAddr))
+        return {};
+    patchAddLo12(4, entryAddr);
+
+    const uint64_t exitProcessIatVa = imageBase + static_cast<uint64_t>(exitProcessIatRva);
+    if (!patchAdrp(12, exitProcessIatVa))
+        return {};
+    patchLdrLo12(16, exitProcessIatVa);
+    return stub;
+}
+
 std::string sectionNameFor(const OutputSection &sec) {
     if (!sec.alloc)
         return ".debug";
@@ -475,16 +534,21 @@ bool writePeExe(const std::string &path,
     }
 
     uint32_t entryRva = static_cast<uint32_t>(layout.entryAddr - imageBase);
-    if (emitStartupStub && arch == LinkArch::X86_64 && !imports.empty()) {
+    if (emitStartupStub && !imports.empty()) {
         const auto exitIt = importLayout.slotRvas.find("ExitProcess");
         if (exitIt == importLayout.slotRvas.end()) {
-            err << "error: PE writer requires ExitProcess for x64 startup stub\n";
+            err << "error: PE writer requires ExitProcess for startup stub\n";
             return false;
         }
 
         const uint32_t stubRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
-        generatedStubData =
-            buildX64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
+        if (arch == LinkArch::AArch64) {
+            generatedStubData = buildAArch64StartupStub(
+                imageBase, layout.entryAddr, stubRva, exitIt->second, err);
+        } else {
+            generatedStubData =
+                buildX64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
+        }
         if (generatedStubData.empty())
             return false;
 

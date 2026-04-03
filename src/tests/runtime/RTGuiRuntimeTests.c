@@ -268,6 +268,41 @@ static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
     printf("test_app_handles_resolve_to_root_widgets_for_overlays: PASSED\n");
 }
 
+static void test_codeeditor_runtime_supports_multicursor_editing(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *editor = rt_codeeditor_new(app.root);
+    assert(editor);
+
+    rt_codeeditor_set_text(editor, rt_const_cstr("abc\nabc"));
+    rt_codeeditor_add_cursor(editor, 99, 99);
+    assert(rt_codeeditor_get_cursor_count(editor) == 2);
+    assert(rt_codeeditor_get_cursor_line_at(editor, 1) == 1);
+    assert(rt_codeeditor_get_cursor_col_at(editor, 1) == 3);
+
+    rt_codeeditor_set_cursor_selection(editor, 1, 1, 0, 1, 2);
+    assert(rt_codeeditor_cursor_has_selection(editor, 1) == 1);
+
+    rt_codeeditor_set_cursor_position_at(editor, 0, 0, 1);
+    rt_codeeditor_set_cursor_position_at(editor, 1, 1, 1);
+    assert(rt_codeeditor_cursor_has_selection(editor, 1) == 0);
+
+    rt_codeeditor_insert_at_cursor(editor, rt_const_cstr("X"));
+    rt_string text = rt_codeeditor_get_text(editor);
+    assert(strcmp(rt_string_cstr(text), "aXbc\naXbc") == 0);
+
+    rt_codeeditor_undo(editor);
+    text = rt_codeeditor_get_text(editor);
+    assert(strcmp(rt_string_cstr(text), "abc\nabc") == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_runtime_supports_multicursor_editing: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -281,6 +316,7 @@ int main(void) {
     test_command_palette_placeholder_and_utf8_input();
     test_platform_text_events_translate_to_gui_text();
     test_app_handles_resolve_to_root_widgets_for_overlays();
+    test_codeeditor_runtime_supports_multicursor_editing();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

@@ -33,14 +33,19 @@
 #include "PEBuilder.hpp"
 #include "PkgDeflate.hpp"
 #include "PkgGzip.hpp"
+#include "PkgUtils.hpp"
 #include "PkgPNG.hpp"
 #include "PkgVerify.hpp"
 #include "PlistGenerator.hpp"
 #include "TarWriter.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
+#include "PackageConfig.hpp"
+#include "WindowsPackageBuilder.hpp"
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 
 using namespace viper::pkg;
@@ -210,6 +215,12 @@ TEST(Zip, UnixPermissionsEncoded) {
     uint32_t extAttrs = readLE32(data.data() + cdOff + 38);
     uint16_t unixMode = static_cast<uint16_t>(extAttrs >> 16);
     EXPECT_EQ(unixMode, static_cast<uint16_t>(0100755));
+}
+
+TEST(Zip, RejectsTooLongNames) {
+    ZipWriter zip;
+    std::string longName(70000, 'a');
+    EXPECT_THROWS(zip.addFileString(longName, "x"), std::runtime_error);
 }
 
 // ============================================================================
@@ -670,6 +681,30 @@ TEST(Verify, ZipInvalidTooSmall) {
     EXPECT_CONTAINS(err.str(), "too small");
 }
 
+TEST(Verify, ZipRejectsZip64Sentinel) {
+    std::vector<uint8_t> data(22, 0);
+    data[0] = 0x50;
+    data[1] = 0x4B;
+    data[2] = 0x05;
+    data[3] = 0x06;
+    data[8] = 0xFF;
+    data[9] = 0xFF;
+    data[10] = 0xFF;
+    data[11] = 0xFF;
+    data[12] = 0xFF;
+    data[13] = 0xFF;
+    data[14] = 0xFF;
+    data[15] = 0xFF;
+    data[16] = 0xFF;
+    data[17] = 0xFF;
+    data[18] = 0xFF;
+    data[19] = 0xFF;
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(data, err));
+    EXPECT_CONTAINS(err.str(), "ZIP64");
+}
+
 TEST(Verify, DebValid) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
@@ -703,6 +738,72 @@ TEST(Verify, PEInvalidMagic) {
     std::ostringstream err;
     EXPECT_FALSE(verifyPE(data, err));
     EXPECT_CONTAINS(err.str(), "MZ");
+}
+
+TEST(Verify, PEZipOverlayValid) {
+    ZipWriter zip;
+    zip.addFileString("hello.txt", "Hello");
+
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    params.overlay = zip.finishToVector();
+    auto pe = buildPE(params);
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+}
+
+TEST(Verify, PEZipOverlayMissing) {
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    auto pe = buildPE(params);
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyPEZipOverlay(pe, err));
+    EXPECT_CONTAINS(err.str(), "overlay");
+}
+
+TEST(PE, ImportsAndCustomRdataCoexist) {
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    params.imports = {{"kernel32.dll", {"ExitProcess"}}};
+    params.rdataSection = {'V', 'I', 'P', 'E', 'R'};
+    auto pe = buildPE(params);
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPE(pe, err));
+
+    bool foundMarker = false;
+    for (size_t i = 0; i + 5 <= pe.size(); ++i) {
+        if (std::memcmp(pe.data() + i, "VIPER", 5) == 0) {
+            foundMarker = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundMarker);
+}
+
+TEST(PackageUtils, SanitizesRelativePaths) {
+    EXPECT_EQ(sanitizePackageRelativePath("themes\\\\dark"), std::string("themes/dark"));
+    EXPECT_EQ(joinPackageRelativePath("usr/share/app", "themes/dark"),
+              std::string("usr/share/app/themes/dark"));
+}
+
+TEST(PackageUtils, RejectsArchiveEscapes) {
+    EXPECT_THROWS(sanitizePackageRelativePath("../escape"), std::runtime_error);
+    EXPECT_THROWS(sanitizePackageRelativePath("/absolute"), std::runtime_error);
+    EXPECT_THROWS(sanitizePackageRelativePath("C:/drive"), std::runtime_error);
+}
+
+TEST(PackageConfig, DetectsNonDefaultPackageFields) {
+    PackageConfig pkg;
+    EXPECT_FALSE(pkg.hasPackageConfig());
+    pkg.license = "GPL-3.0-only";
+    EXPECT_TRUE(pkg.hasPackageConfig());
+
+    PackageConfig pkg2;
+    pkg2.targetArchitectures.push_back("arm64");
+    EXPECT_TRUE(pkg2.hasPackageConfig());
 }
 
 // ============================================================================
@@ -757,6 +858,19 @@ TEST(ZipReader, InvalidDataThrows) {
         threw = true;
     }
     EXPECT_TRUE(threw);
+}
+
+TEST(ZipWriter, StoredModePreservesLocalDataLayout) {
+    ZipWriter writer;
+    writer.setCompressionEnabled(false);
+    writer.addFileString("hello.txt", "Hello stored world");
+
+    const auto &entries = writer.layoutEntries();
+    ASSERT_EQ(entries.size(), static_cast<size_t>(1));
+    EXPECT_EQ(entries[0].method, static_cast<uint16_t>(0));
+    EXPECT_EQ(entries[0].name, std::string("hello.txt"));
+    EXPECT_GT(entries[0].localDataOffset, entries[0].localHeaderOffset);
+    EXPECT_EQ(entries[0].compressedSize, entries[0].uncompressedSize);
 }
 
 // ============================================================================
@@ -833,7 +947,19 @@ TEST(StubGen, EmbedStringW) {
 // ============================================================================
 
 TEST(InstallerStub, GeneratesValidPE) {
-    auto stub = buildInstallerStub("TestApp", "TestApp", "x64");
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.version = "1.0.0";
+    layout.executableName = "testapp.exe";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.overlayFileOffset = 0x400;
+    layout.installDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
+    layout.uninstallDirectories = layout.installDirectories;
+    layout.installFiles.push_back(
+        {WindowsInstallRoot::InstallDir, "testapp.exe", 0x80, 16});
+    auto stub = buildInstallerStub(layout, "x64");
 
     // Should produce non-empty .text and imports
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
@@ -851,7 +977,17 @@ TEST(InstallerStub, GeneratesValidPE) {
 }
 
 TEST(InstallerStub, UninstallerGeneratesValidPE) {
-    auto stub = buildUninstallerStub("TestApp", "x64");
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.version = "1.0.0";
+    layout.executableName = "testapp.exe";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.uninstallDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
+    layout.uninstallFiles.push_back(
+        {WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
+    auto stub = buildUninstallerStub(layout, "x64");
 
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
     EXPECT_FALSE(stub.imports.empty());
@@ -866,12 +1002,90 @@ TEST(InstallerStub, UninstallerGeneratesValidPE) {
     EXPECT_TRUE(verifyPE(peBytes, err));
 }
 
-TEST(InstallerStub, ARM64ReturnsPlaceholder) {
-    auto stub = buildInstallerStub("TestApp", "TestApp", "arm64");
-    // ARM64 placeholder is just `ret` = 4 bytes
-    EXPECT_EQ(stub.textSection.size(), static_cast<size_t>(4));
-    EXPECT_EQ(stub.textSection[0], static_cast<uint8_t>(0xC0));
-    EXPECT_EQ(stub.textSection[3], static_cast<uint8_t>(0xD6));
+TEST(InstallerStub, ARM64UsesX64Bootstrap) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    auto stub = buildInstallerStub(layout, "arm64");
+    EXPECT_EQ(stub.peArch, "x64");
+    EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
+    EXPECT_FALSE(stub.imports.empty());
+}
+
+TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_builder_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "assets" / "themes");
+
+    {
+        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
+        exe.write("MZstub", 6);
+    }
+    {
+        std::ofstream asset(tmpRoot / "assets" / "themes" / "dark.json", std::ios::binary);
+        asset << "{\"theme\":\"dark\"}";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Test App";
+    pkg.identifier = "org.viper.testapp";
+    pkg.author = "Viper";
+    pkg.shortcutDesktop = true;
+    pkg.shortcutMenu = true;
+    pkg.assets.push_back({"assets", "data"});
+
+    const fs::path outPath = tmpRoot / "test_setup.exe";
+    WindowsBuildParams params;
+    params.projectName = "testapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = outPath.string();
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+
+    auto pe = readFile(outPath.string());
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_builder_arm64_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
+        exe.write("MZstub", 6);
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Test App";
+
+    WindowsBuildParams params;
+    params.projectName = "testapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "test_setup.exe").string();
+    params.archStr = "arm64";
+
+    buildWindowsPackage(params);
+
+    auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0x8664));
+    fs::remove_all(tmpRoot);
 }
 
 // ============================================================================

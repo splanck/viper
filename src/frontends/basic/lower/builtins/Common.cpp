@@ -229,6 +229,24 @@ static IlType typeForKind(BuiltinLowerContext &ctx, TypeKind kind) {
     return IlType(kind);
 }
 
+static Lowerer::RVal makeTypedZero(IlType type) {
+    switch (type.kind) {
+        case IlKind::F64:
+            return {Value::constFloat(0.0), type};
+        case IlKind::Str:
+            return {Value::constStr(""), type};
+        case IlKind::I1:
+            return {Value::constBool(false), type};
+        case IlKind::Ptr:
+            return {Value::null(), type};
+        case IlKind::I16:
+        case IlKind::I32:
+        case IlKind::I64:
+        default:
+            return {Value::constInt(0), type};
+    }
+}
+
 static bool applyBuiltinCoercion(BuiltinLowerContext &ctx,
                                  Lowerer::RVal &slot,
                                  TypeKind to,
@@ -383,7 +401,7 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
                                0,
                                "string default values are not supported in builtin rules");
                 }
-                // Fall through to return zero as a placeholder
+                value = makeTypedZero(typeFromExpr(*this->lowerer_, def.type));
                 break;
             case Lowerer::ExprType::Bool:
                 value = {lowerer_->emitBoolConst(def.i64 != 0), lowerer_->ilBoolTy()};
@@ -509,12 +527,28 @@ IlType BuiltinLowerContext::resolveResultType() {
     return resolveResultType(rule_->result);
 }
 
+IlType BuiltinLowerContext::fallbackResultType() const {
+    if (!rule_)
+        return IlType(IlKind::I64);
+
+    switch (rule_->result.kind) {
+        case BuiltinLoweringRule::ResultSpec::Kind::Fixed:
+            return typeFromExpr(*lowerer_, rule_->result.type);
+        case BuiltinLoweringRule::ResultSpec::Kind::FromArg:
+            if (rule_->result.argIndex < originalTypes_.size() && originalTypes_[rule_->result.argIndex]) {
+                return typeFromExpr(*lowerer_, *originalTypes_[rule_->result.argIndex]);
+            }
+            return typeFromExpr(*lowerer_, rule_->result.type);
+    }
+    return IlType(IlKind::I64);
+}
+
 /// @brief Create a default zero-valued result.
 /// @details Used when lowering fails or when a variant is missing so downstream
-///          lowering can continue with a benign placeholder.
-/// @return Pair containing an integer zero constant and its IL type.
+///          lowering can continue with a type-correct placeholder.
+/// @return Pair containing a zero/null/empty constant matching the builtin result type.
 Lowerer::RVal BuiltinLowerContext::makeZeroResult() const {
-    return {Value::constInt(0), IlType(IlKind::I64)};
+    return makeTypedZero(fallbackResultType());
 }
 
 /// @brief Choose the lowering variant that matches the current call shape.

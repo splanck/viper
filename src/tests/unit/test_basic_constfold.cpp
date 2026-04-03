@@ -275,6 +275,46 @@ int main() {
         assert(se && se->value == "ab");
     }
 
+    // BASIC numeric conversion builtins fold using runtime-compatible semantics
+    {
+        std::string src = "10 LET A = CINT(2.5)\n"
+                          "20 LET B = CINT(32767.5)\n"
+                          "30 LET C = CLNG(2147483646.5)\n"
+                          "40 LET D = CLNG(2147483647.5)\n"
+                          "50 LET E = CSNG(1.25#)\n"
+                          "60 LET F = CDBL(42)\n"
+                          "70 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("casts.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+
+        auto *letA = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *cintEven = dynamic_cast<IntExpr *>(letA->expr.get());
+        assert(cintEven && cintEven->value == 2);
+
+        auto *letB = dynamic_cast<LetStmt *>(prog->main[1].get());
+        auto *cintOverflow = dynamic_cast<BuiltinCallExpr *>(letB->expr.get());
+        assert(cintOverflow && cintOverflow->builtin == BuiltinCallExpr::Builtin::Cint);
+
+        auto *letC = dynamic_cast<LetStmt *>(prog->main[2].get());
+        auto *clngEven = dynamic_cast<IntExpr *>(letC->expr.get());
+        assert(clngEven && clngEven->value == 2147483646LL);
+
+        auto *letD = dynamic_cast<LetStmt *>(prog->main[3].get());
+        auto *clngOverflow = dynamic_cast<BuiltinCallExpr *>(letD->expr.get());
+        assert(clngOverflow && clngOverflow->builtin == BuiltinCallExpr::Builtin::Clng);
+
+        auto *letE = dynamic_cast<LetStmt *>(prog->main[4].get());
+        auto *csngValue = dynamic_cast<FloatExpr *>(letE->expr.get());
+        assert(csngValue && csngValue->value == 1.25);
+
+        auto *letF = dynamic_cast<LetStmt *>(prog->main[5].get());
+        auto *cdblValue = dynamic_cast<FloatExpr *>(letF->expr.get());
+        assert(cdblValue && cdblValue->value == 42.0);
+    }
+
     // boolean literals stay BOOLEAN after folding
     {
         std::string src = "10 LET A = NOT TRUE\n"

@@ -37,6 +37,7 @@ typedef enum vg_edit_op_type {
 /// @brief Single edit operation for undo/redo history
 typedef struct vg_edit_op {
     vg_edit_op_type_t type; ///< Operation type
+    int cursor_id;          ///< 0 = primary cursor, 1+ = extra cursor slot
 
     // Position info
     int start_line; ///< Start line
@@ -205,10 +206,12 @@ typedef struct vg_codeeditor {
     int fold_region_count; ///< Active region count
     int fold_region_cap;   ///< Allocated capacity
 
-    // Extra cursors (multi-cursor display — input still uses primary cursor)
+    // Extra cursors (multi-cursor editing state)
     struct vg_extra_cursor {
-        int line;     ///< 0-based line number
-        int col;      ///< 0-based column number
+        int line;                ///< 0-based line number
+        int col;                 ///< 0-based column number
+        vg_selection_t selection; ///< Per-cursor selection range
+        bool has_selection;      ///< Whether this cursor owns an active selection
     } *extra_cursors; ///< Owned array; NULL when unused
 
     int extra_cursor_count; ///< Active extra cursor count

@@ -83,6 +83,16 @@ ZipWriter::ZipWriter() {
 
 ZipWriter::~ZipWriter() = default;
 
+void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *what) const {
+    if (value > maxValue) {
+        throw std::runtime_error(std::string("ZipWriter: ZIP64 is not supported for ") + what);
+    }
+}
+
+void ZipWriter::validateEntryName(const std::string &name) const {
+    validateArchiveLimit(name.size(), 0xFFFFu, "entry names longer than 65535 bytes");
+}
+
 void ZipWriter::writeBytes(const uint8_t *data, size_t len) {
     buffer_.insert(buffer_.end(), data, data + len);
 }
@@ -115,6 +125,11 @@ void ZipWriter::addFile(const std::string &name,
                         const uint8_t *data,
                         size_t len,
                         uint32_t unixMode) {
+    validateEntryName(name);
+    validateArchiveLimit(len, 0xFFFFFFFFu, "files larger than 4 GiB");
+    validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
+    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+
     uint32_t crc = rt_crc32_compute(data, len);
 
     // Decide compression
@@ -123,7 +138,7 @@ void ZipWriter::addFile(const std::string &name,
     size_t writeLen = len;
     std::vector<uint8_t> compressed;
 
-    if (len > 64) {
+    if (compressionEnabled_ && len > 64) {
         compressed = deflate(data, len);
         if (compressed.size() < len) {
             method = kMethodDeflate;
@@ -131,6 +146,7 @@ void ZipWriter::addFile(const std::string &name,
             writeLen = compressed.size();
         }
     }
+    validateArchiveLimit(writeLen, 0xFFFFFFFFu, "compressed files larger than 4 GiB");
 
     // Record entry
     Entry e;
@@ -163,6 +179,15 @@ void ZipWriter::addFile(const std::string &name,
     writeBytes(writeData, writeLen);
 
     entries_.push_back(std::move(e));
+    layoutEntries_.push_back(
+        LayoutEntry{name,
+                    entries_.back().localOffset,
+                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
+                                          name.size()),
+                    entries_.back().compressedSize,
+                    entries_.back().uncompressedSize,
+                    entries_.back().method,
+                    false});
 }
 
 void ZipWriter::addFileString(const std::string &name,
@@ -175,6 +200,9 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     std::string dirName = name;
     if (dirName.empty() || dirName.back() != '/')
         dirName += '/';
+    validateEntryName(dirName);
+    validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
+    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
     Entry e;
     e.name = dirName;
@@ -204,9 +232,23 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     writeBytes(reinterpret_cast<const uint8_t *>(dirName.data()), dirName.size());
 
     entries_.push_back(std::move(e));
+    layoutEntries_.push_back(
+        LayoutEntry{dirName,
+                    entries_.back().localOffset,
+                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
+                                          dirName.size()),
+                    0,
+                    0,
+                    entries_.back().method,
+                    true});
 }
 
 void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
+    validateEntryName(name);
+    validateArchiveLimit(target.size(), 0xFFFFFFFFu, "symlinks larger than 4 GiB");
+    validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
+    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+
     // Symlinks store the target path as file data
     auto *data = reinterpret_cast<const uint8_t *>(target.data());
     size_t len = target.size();
@@ -241,12 +283,25 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     writeBytes(data, len);
 
     entries_.push_back(std::move(e));
+    layoutEntries_.push_back(
+        LayoutEntry{name,
+                    entries_.back().localOffset,
+                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
+                                          name.size()),
+                    entries_.back().compressedSize,
+                    entries_.back().uncompressedSize,
+                    entries_.back().method,
+                    false});
 }
 
 void ZipWriter::writeCentralDirectory() {
+    validateArchiveLimit(entries_.size(), 0xFFFFu, "more than 65535 entries");
+    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+
     uint32_t cdOffset = static_cast<uint32_t>(buffer_.size());
 
     for (const auto &e : entries_) {
+        validateEntryName(e.name);
         uint8_t ch[kCentralHeaderSize];
         putU32(ch + 0, kCentralHeaderSig);
         putU16(ch + 4, kVersionMadeBy);
@@ -270,6 +325,7 @@ void ZipWriter::writeCentralDirectory() {
         writeBytes(reinterpret_cast<const uint8_t *>(e.name.data()), e.name.size());
     }
 
+    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
     uint32_t cdSize = static_cast<uint32_t>(buffer_.size()) - cdOffset;
 
     // End of central directory record

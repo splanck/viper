@@ -41,8 +41,8 @@ int main() {
     const int rc = nativeLink(opts, out, err);
 
     CHECK(rc != 0);
-    CHECK(err.str().find("Windows ARM64 executable linking is not implemented yet") !=
-          std::string::npos);
+    CHECK(err.str().find("not implemented yet") == std::string::npos);
+    CHECK(err.str().find("failed to read object file") != std::string::npos);
 
     if (gFail == 0) {
         std::cout << "All NativeLinker tests passed.\n";

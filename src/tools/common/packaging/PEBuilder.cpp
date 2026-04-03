@@ -525,11 +525,13 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
         for (const auto &sec : sections)
             rdataVA += alignUp(sec.virtualSize, kSectionAlignment);
 
-        if (!params.rdataSection.empty()) {
-            s.data = params.rdataSection;
-        } else {
+        if (!params.imports.empty()) {
             importResult = buildImportTables(params.imports, rdataVA);
             s.data = importResult.data;
+        }
+        if (!params.rdataSection.empty()) {
+            s.data.insert(
+                s.data.end(), params.rdataSection.begin(), params.rdataSection.end());
         }
         s.virtualSize = static_cast<uint32_t>(s.data.size());
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);

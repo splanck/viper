@@ -23,6 +23,7 @@
 #include "frontends/basic/LowerExprBuiltin.hpp"
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/lower/BuiltinCommon.hpp"
 #include "frontends/basic/lower/common/BuiltinUtils.hpp"
 
 #include <algorithm>
@@ -441,6 +442,7 @@ Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const Builti
 /// @return Placeholder integer result.
 Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer,
                                                           const BuiltinCallExpr &expr) {
+    lower::BuiltinLowerContext ctx(lowerer, expr);
     if (auto *diag = lowerer.diagnosticEmitter()) {
         // This path should never trigger when the registry is complete, but provide a
         // diagnostic so accidental omissions still surface during lowering.
@@ -452,7 +454,7 @@ Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer,
                    "no emitter registered for builtin call");
     }
 
-    return {Value::constInt(0), IlType(IlKind::I64)};
+    return ctx.makeZeroResult();
 }
 
 /// @brief Lower a builtin call through the rule-driven lowering engine.

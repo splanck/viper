@@ -111,6 +111,18 @@ AST::ExprPtr foldChrLiteral(const AST::Expr &arg);
 /// @brief Fold VAL builtin when the argument is a literal string.
 AST::ExprPtr foldValLiteral(const AST::Expr &arg);
 
+/// @brief Fold CINT builtin when the argument is a literal numeric.
+AST::ExprPtr foldCIntLiteral(const AST::Expr &arg);
+
+/// @brief Fold CLNG builtin when the argument is a literal numeric.
+AST::ExprPtr foldCLngLiteral(const AST::Expr &arg);
+
+/// @brief Fold CSNG builtin when the argument is a literal numeric.
+AST::ExprPtr foldCSngLiteral(const AST::Expr &arg);
+
+/// @brief Fold CDBL builtin when the argument is a literal numeric.
+AST::ExprPtr foldCDblLiteral(const AST::Expr &arg);
+
 /// @brief Fold INT builtin (floor) when the argument is a literal numeric.
 AST::ExprPtr foldIntLiteral(const AST::Expr &arg);
 

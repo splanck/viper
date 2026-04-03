@@ -65,4 +65,16 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err);
 /// @return true if the PE is structurally valid.
 bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err);
 
+/// @brief Verify a PE32+ executable that is expected to carry a ZIP overlay.
+///
+/// Checks:
+///   - Base PE structure is valid
+///   - Overlay exists after the final section payload
+///   - Overlay bytes form a structurally valid ZIP archive
+///
+/// @param data PE file bytes.
+/// @param err  Stream for error messages.
+/// @return true if the PE and its ZIP overlay are structurally valid.
+bool verifyPEZipOverlay(const std::vector<uint8_t> &data, std::ostream &err);
+
 } // namespace viper::pkg

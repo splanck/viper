@@ -27,6 +27,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,16 @@ namespace viper::pkg {
 
 class ZipWriter {
   public:
+    struct LayoutEntry {
+        std::string name;
+        uint32_t localHeaderOffset{0};
+        uint32_t localDataOffset{0};
+        uint32_t compressedSize{0};
+        uint32_t uncompressedSize{0};
+        uint16_t method{0};
+        bool isDirectory{false};
+    };
+
     ZipWriter();
     ~ZipWriter();
 
@@ -73,6 +84,16 @@ class ZipWriter {
     /// @brief Finalize and return the ZIP as bytes.
     std::vector<uint8_t> finishToVector();
 
+    /// @brief Enable or disable per-entry compression.
+    void setCompressionEnabled(bool enabled) noexcept {
+        compressionEnabled_ = enabled;
+    }
+
+    /// @brief Inspect local-header/data offsets for entries already added.
+    const std::vector<LayoutEntry> &layoutEntries() const noexcept {
+        return layoutEntries_;
+    }
+
   private:
     struct Entry {
         std::string name;
@@ -88,7 +109,11 @@ class ZipWriter {
 
     std::vector<uint8_t> buffer_;
     std::vector<Entry> entries_;
+    std::vector<LayoutEntry> layoutEntries_;
+    bool compressionEnabled_{true};
 
+    void validateEntryName(const std::string &name) const;
+    void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
     void writeBytes(const uint8_t *data, size_t len);
     void writeU16(uint16_t v);
     void writeU32(uint32_t v);

@@ -730,6 +730,20 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
 // CodeEditor Enhancements - Multiple Cursors (Phase 4)
 //=============================================================================
 
+static void rt_codeeditor_clamp_position(vg_codeeditor_t *ce, int *line, int *col) {
+    if (!ce || !line || !col || ce->line_count <= 0)
+        return;
+
+    if (*line < 0)
+        *line = 0;
+    if (*line >= ce->line_count)
+        *line = ce->line_count - 1;
+    if (*col < 0)
+        *col = 0;
+    if (*col > (int)ce->lines[*line].length)
+        *col = (int)ce->lines[*line].length;
+}
+
 int64_t rt_codeeditor_get_cursor_count(void *editor) {
     if (!editor)
         return 1;
@@ -752,6 +766,9 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
     struct vg_extra_cursor *c = &ce->extra_cursors[ce->extra_cursor_count++];
     c->line = (int)line;
     c->col = (int)col;
+    rt_codeeditor_clamp_position(ce, &c->line, &c->col);
+    memset(&c->selection, 0, sizeof(c->selection));
+    c->has_selection = false;
     ce->base.needs_paint = true;
 }
 
@@ -825,6 +842,9 @@ void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t l
         return;
     ce->extra_cursors[extra_idx].line = (int)line;
     ce->extra_cursors[extra_idx].col = (int)col;
+    rt_codeeditor_clamp_position(
+        ce, &ce->extra_cursors[extra_idx].line, &ce->extra_cursors[extra_idx].col);
+    ce->extra_cursors[extra_idx].has_selection = false;
     ce->base.needs_paint = true;
 }
 
@@ -836,19 +856,43 @@ void rt_codeeditor_set_cursor_selection(void *editor,
                                         int64_t end_col) {
     if (!editor)
         return;
-    if (index != 0)
-        return; // Only primary cursor supported for selection
-    vg_codeeditor_set_selection(
-        (vg_codeeditor_t *)editor, (int)start_line, (int)start_col, (int)end_line, (int)end_col);
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int s_line = (int)start_line;
+    int s_col = (int)start_col;
+    int e_line = (int)end_line;
+    int e_col = (int)end_col;
+    rt_codeeditor_clamp_position(ce, &s_line, &s_col);
+    rt_codeeditor_clamp_position(ce, &e_line, &e_col);
+
+    if (index == 0) {
+        vg_codeeditor_set_selection(ce, s_line, s_col, e_line, e_col);
+        return;
+    }
+
+    int extra_idx = (int)index - 1;
+    if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
+        return;
+
+    ce->extra_cursors[extra_idx].selection.start_line = s_line;
+    ce->extra_cursors[extra_idx].selection.start_col = s_col;
+    ce->extra_cursors[extra_idx].selection.end_line = e_line;
+    ce->extra_cursors[extra_idx].selection.end_col = e_col;
+    ce->extra_cursors[extra_idx].line = e_line;
+    ce->extra_cursors[extra_idx].col = e_col;
+    ce->extra_cursors[extra_idx].has_selection = true;
+    ce->base.needs_paint = true;
 }
 
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     if (!editor)
         return 0;
-    if (index != 0)
-        return 0; // Only primary cursor supported
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
-    return ce->has_selection ? 1 : 0;
+    if (index == 0)
+        return ce->has_selection ? 1 : 0;
+    int extra_idx = (int)index - 1;
+    if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
+        return 0;
+    return ce->extra_cursors[extra_idx].has_selection ? 1 : 0;
 }
 
 void rt_codeeditor_undo(void *editor) {

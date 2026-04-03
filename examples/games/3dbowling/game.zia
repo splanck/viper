@@ -48,6 +48,7 @@ class BowlingGame {
     hide Float spin;
     hide Boolean charging;
     hide Boolean gutterLatched;
+    hide Boolean ballHitPinsThisRoll;
     hide Boolean cinematicStarted;
 
     hide Integer oilPattern;
@@ -83,6 +84,7 @@ class BowlingGame {
         spin = 0.0;
         charging = false;
         gutterLatched = false;
+        ballHitPinsThisRoll = false;
         cinematicStarted = false;
         oilPattern = config.OIL_HOUSE;
         qualityMode = config.QUALITY_CINEMATIC;
@@ -234,6 +236,7 @@ class BowlingGame {
 
         pinMgr = new PinManager();
         pinMgr.initPins(physWorld);
+        pinMgr.savePinState();
 
         ballObj = new Ball();
         ballObj.initBall(physWorld);
@@ -273,6 +276,7 @@ class BowlingGame {
         spin = 0.0;
         charging = false;
         gutterLatched = false;
+        ballHitPinsThisRoll = false;
         accumulator = 0.0;
         camCtrl.setTitleMode();
         hudObj.showMessage("Select a mode and bowl.", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
@@ -299,6 +303,7 @@ class BowlingGame {
         skidMarkTimer = 0.0;
         lightFlashTimer = 0.0;
         gutterLatched = false;
+        ballHitPinsThisRoll = false;
         cinematicStarted = false;
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;
@@ -479,6 +484,7 @@ class BowlingGame {
             particleMgr.startLaneDust(aimX, config.BALL_THROW_Z);
             playSpatialSound("roll", ballObj.getPosition(), 12.0, 80);
             gutterLatched = false;
+            ballHitPinsThisRoll = false;
             impactCooldown = 0.0;
             skidMarkTimer = 0.0;
             accumulator = 0.0;
@@ -549,9 +555,9 @@ class BowlingGame {
         if (pz > config.GUTTER_DETECT_Z) {
             if (px < -overhangEdge) { inLeftGutter = true; }
             if (px > overhangEdge) { inRightGutter = true; }
-            if (py < config.BALL_RADIUS * 0.58) {
-                if (px < -(laneHalf - config.BALL_RADIUS * 0.08)) { inLeftGutter = true; }
-                if (px > laneHalf - config.BALL_RADIUS * 0.08) { inRightGutter = true; }
+            if (py < config.BALL_RADIUS * 0.46) {
+                if (px < -(laneHalf - config.BALL_RADIUS * 0.03)) { inLeftGutter = true; }
+                if (px > laneHalf - config.BALL_RADIUS * 0.03) { inRightGutter = true; }
             }
         }
         var inGutter = inLeftGutter || inRightGutter || py < config.GUTTER_Y;
@@ -575,40 +581,48 @@ class BowlingGame {
     }
 
     hide func handlePinImpacts() {
-        if (impactCooldown > 0.0) { return; }
-
         var collisionCount = Physics3DWorld.get_CollisionCount(physWorld);
         var bestDepth = 0.0;
         var bestPos = new Vec3(0.0, 0.0, 0.0);
         var ballPinImpact = false;
+        var sawBallPinImpact = false;
 
         for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
             var depth = Physics3DWorld.GetCollisionDepth(physWorld, ci);
-            if (depth <= bestDepth) { continue; }
-
             var bodyA = Physics3DWorld.GetCollisionBodyA(physWorld, ci);
             var bodyB = Physics3DWorld.GetCollisionBodyB(physWorld, ci);
             var layerA = Physics3DBody.get_CollisionLayer(bodyA);
             var layerB = Physics3DBody.get_CollisionLayer(bodyB);
             var posA = Physics3DBody.get_Position(bodyA);
             var posB = Physics3DBody.get_Position(bodyB);
+            var isBallPinPair =
+                (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
+                (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
+
+            if (isBallPinPair) {
+                sawBallPinImpact = true;
+            }
+
+            if (depth <= bestDepth) { continue; }
 
             if ((layerA == config.LAYER_BALL || layerA == config.LAYER_PINS) && isImpactBodyInPinDeck(posA)) {
                 bestDepth = depth;
                 bestPos = posA;
-                ballPinImpact =
-                    (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
-                    (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
+                ballPinImpact = isBallPinPair;
             }
             if ((layerB == config.LAYER_BALL || layerB == config.LAYER_PINS) &&
                 isImpactBodyInPinDeck(posB) && depth > bestDepth) {
                 bestDepth = depth;
                 bestPos = posB;
-                ballPinImpact =
-                    (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
-                    (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
+                ballPinImpact = isBallPinPair;
             }
         }
+
+        if (sawBallPinImpact) {
+            ballHitPinsThisRoll = true;
+        }
+
+        if (impactCooldown > 0.0) { return; }
 
         if (bestDepth > 0.007) {
             impactCooldown = config.IMPACT_COOLDOWN;
@@ -627,7 +641,7 @@ class BowlingGame {
         var current = getActiveScoreKeeper();
         var newlyKnocked = pinMgr.countNewlyKnocked();
         var scoredKnocked = newlyKnocked;
-        if (ballObj.gutterBall()) {
+        if (ballObj.gutterBall() || ballHitPinsThisRoll == false) {
             scoredKnocked = 0;
             if (newlyKnocked > 0) {
                 pinMgr.restoreSavedPinState();
@@ -722,6 +736,7 @@ class BowlingGame {
         charging = false;
         accumulator = 0.0;
         gutterLatched = false;
+        ballHitPinsThisRoll = false;
         cinematicStarted = false;
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;

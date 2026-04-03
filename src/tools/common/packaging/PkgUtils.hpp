@@ -30,6 +30,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace viper::pkg {
@@ -79,6 +80,98 @@ inline std::string normalizeDebName(const std::string &name) {
             result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
     return result;
+}
+
+/// @brief Normalize a package-relative path and reject archive escapes.
+///
+/// Converts backslashes to forward slashes and rejects absolute paths, parent
+/// traversal, empty segments, drive-qualified paths, and control characters.
+/// Returns an empty string for "." or an empty input.
+inline std::string sanitizePackageRelativePath(const std::string &raw,
+                                               const char *fieldName = "package path") {
+    std::string normalized = raw;
+    for (char &c : normalized) {
+        if (c == '\\')
+            c = '/';
+    }
+
+    std::string collapsed;
+    collapsed.reserve(normalized.size());
+    bool lastWasSlash = false;
+    for (char c : normalized) {
+        if (c == '/') {
+            if (lastWasSlash)
+                continue;
+            lastWasSlash = true;
+        } else {
+            lastWasSlash = false;
+        }
+        collapsed.push_back(c);
+    }
+    normalized.swap(collapsed);
+
+    while (!normalized.empty() && normalized.back() == '/')
+        normalized.pop_back();
+
+    if (normalized.empty() || normalized == ".")
+        return "";
+
+    if (normalized.front() == '/')
+        throw std::runtime_error(std::string(fieldName) + " must be relative: '" + raw + "'");
+
+    if (normalized.size() >= 2 && std::isalpha(static_cast<unsigned char>(normalized[0])) &&
+        normalized[1] == ':') {
+        throw std::runtime_error(std::string(fieldName) + " must not use a drive prefix: '" +
+                                 raw + "'");
+    }
+
+    std::string out;
+    std::size_t pos = 0;
+    while (pos < normalized.size()) {
+        std::size_t next = normalized.find('/', pos);
+        std::string_view segment =
+            next == std::string::npos
+                ? std::string_view(normalized).substr(pos)
+                : std::string_view(normalized).substr(pos, next - pos);
+
+        if (segment.empty())
+            throw std::runtime_error(std::string(fieldName) + " contains an empty path segment: '" +
+                                     raw + "'");
+        if (segment == "." || segment == "..")
+            throw std::runtime_error(std::string(fieldName) +
+                                     " must not contain '.' or '..' segments: '" + raw + "'");
+
+        for (char c : segment) {
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (uc < 0x20 || c == ':') {
+                throw std::runtime_error(std::string(fieldName) +
+                                         " contains an invalid character: '" + raw + "'");
+            }
+        }
+
+        if (!out.empty())
+            out.push_back('/');
+        out.append(segment.data(), segment.size());
+
+        if (next == std::string::npos)
+            break;
+        pos = next + 1;
+    }
+
+    return out;
+}
+
+/// @brief Join two package-relative paths and sanitize the result.
+inline std::string joinPackageRelativePath(const std::string &base,
+                                          const std::string &leaf,
+                                          const char *fieldName = "package path") {
+    const std::string cleanBase = sanitizePackageRelativePath(base, fieldName);
+    const std::string cleanLeaf = sanitizePackageRelativePath(leaf, fieldName);
+    if (cleanBase.empty())
+        return cleanLeaf;
+    if (cleanLeaf.empty())
+        return cleanBase;
+    return sanitizePackageRelativePath(cleanBase + "/" + cleanLeaf, fieldName);
 }
 
 /// @brief Safely iterate a directory tree, skipping symlinks that escape the

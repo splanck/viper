@@ -243,6 +243,7 @@ class BuiltinLowerContext {
     [[nodiscard]] il::support::SourceLoc selectArgLoc(
         const BuiltinLoweringRule::Argument &spec) const;
     [[nodiscard]] static il::core::Type typeFromExpr(Lowerer &lowerer, Lowerer::ExprType type);
+    [[nodiscard]] il::core::Type fallbackResultType() const;
 
     Lowerer *lowerer_;
     const BuiltinCallExpr *call_;

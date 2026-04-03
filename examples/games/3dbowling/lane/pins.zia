@@ -70,14 +70,14 @@ class PinManager {
             knocked.add(false);
             previousKnocked.add(false);
             savedX.add(px);
-            savedY.add(config.PIN_HEIGHT / 2.0);
+            savedY.add(config.PIN_BODY_CENTER_Y);
             savedZ.add(pz);
             tiltAngle.add(0.0);
             tiltAxisX.add(0.0);
             tiltAxisZ.add(1.0);
 
-            var body = Physics3DBody.NewCapsule(config.PIN_RADIUS * 0.72, config.PIN_CAPSULE_HEIGHT, config.PIN_MASS);
-            Physics3DBody.SetPosition(body, px, config.PIN_HEIGHT / 2.0, pz);
+            var body = Physics3DBody.NewSphere(config.PIN_BODY_RADIUS, config.PIN_MASS);
+            Physics3DBody.SetPosition(body, px, config.PIN_BODY_CENTER_Y, pz);
             Physics3DBody.set_Restitution(body, config.PIN_RESTITUTION);
             Physics3DBody.set_Friction(body, config.PIN_FRICTION);
             Physics3DBody.set_CollisionLayer(body, config.LAYER_PINS);
@@ -127,9 +127,9 @@ class PinManager {
             var disp = Sqrt(dx * dx + dz * dz);
 
             if (knocked.get(i) == false) {
-                if (py < config.PIN_HEIGHT * 0.24 ||
-                    disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
-                    (speed > config.PIN_KNOCKDOWN_SPEED && disp > 0.10)) {
+                if (disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
+                    (speed > config.PIN_KNOCKDOWN_SPEED &&
+                     disp > config.PIN_KNOCKDOWN_SPEED_DISPLACEMENT)) {
                     knocked.set(i, true);
                     if (disp > 0.02) {
                         tiltAxisX.set(i, dz / (disp + 0.0001));
@@ -140,6 +140,9 @@ class PinManager {
                     }
                 } else if (speed < config.PIN_SETTLE_SNAP_SPEED) {
                     Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
+                    if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
+                        Physics3DBody.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
+                    }
                 }
             }
 
@@ -182,7 +185,7 @@ class PinManager {
             } else {
                 var pos = Physics3DBody.get_Position(bodies.get(i));
                 savedX.set(i, Vec3.get_X(pos));
-                savedY.set(i, config.PIN_HEIGHT / 2.0);
+                savedY.set(i, config.PIN_BODY_CENTER_Y);
                 savedZ.set(i, Vec3.get_Z(pos));
             }
         }
@@ -254,7 +257,7 @@ class PinManager {
             knocked.set(i, false);
             previousKnocked.set(i, false);
             savedX.set(i, homeX.get(i));
-            savedY.set(i, config.PIN_HEIGHT / 2.0);
+            savedY.set(i, config.PIN_BODY_CENTER_Y);
             savedZ.set(i, homeZ.get(i));
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
@@ -270,7 +273,7 @@ class PinManager {
             } else {
                 var pos = Physics3DBody.get_Position(bodies.get(i));
                 Physics3DBody.SetPosition(bodies.get(i),
-                    Vec3.get_X(pos), config.PIN_HEIGHT / 2.0, Vec3.get_Z(pos));
+                    Vec3.get_X(pos), config.PIN_BODY_CENTER_Y, Vec3.get_Z(pos));
                 Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             }
         }
@@ -285,7 +288,7 @@ class PinManager {
         if (progress > 1.0) { progress = 1.0; }
 
         var currentY = config.RESET_DROP_HEIGHT +
-            (config.PIN_HEIGHT / 2.0 - config.RESET_DROP_HEIGHT) * progress;
+            (config.PIN_BODY_CENTER_Y - config.RESET_DROP_HEIGHT) * progress;
 
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), currentY, homeZ.get(i));
@@ -295,9 +298,10 @@ class PinManager {
         if (resetTimer <= 0.0) {
             resetting = false;
             for (var i2: Integer = 0; i2 < config.PIN_COUNT; i2 = i2 + 1) {
-                Physics3DBody.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_HEIGHT / 2.0, homeZ.get(i2));
+                Physics3DBody.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_BODY_CENTER_Y, homeZ.get(i2));
                 Physics3DBody.SetVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
             }
+            savePinState();
             return true;
         }
         return false;
@@ -323,14 +327,15 @@ class PinManager {
             if (py < -5.0) { continue; }
 
             if (knocked.get(i)) {
-                var translate = Mat4.Translate(px, py, pz);
+                var translate = Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz);
                 var tiltAxis = new Vec3(tiltAxisX.get(i), 0.0, tiltAxisZ.get(i));
                 var rotate = Mat4.RotateAxis(tiltAxis, tiltAngle.get(i));
                 Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Mul(translate, rotate), pinMat);
             } else {
-                Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Translate(px, py, pz), pinMat);
+                Canvas3D.DrawMesh(canvas, pinBodyMesh,
+                    Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz), pinMat);
                 Canvas3D.DrawMesh(canvas, pinNeckMesh,
-                    Mat4.Translate(px, py + config.PIN_HEIGHT * 0.29, pz), pinNeckMat);
+                    Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET + config.PIN_HEIGHT * 0.29, pz), pinNeckMat);
             }
         }
     }

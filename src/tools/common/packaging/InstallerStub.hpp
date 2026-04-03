@@ -11,10 +11,14 @@
 //          PEBuilder integration.
 //
 // Key invariants:
-//   - Installer reads ZIP overlay from own PE, extracts to Program Files.
-//   - Uninstaller reads install.ini, deletes files, removes registry keys.
+//   - Installer uses precomputed layout metadata and stored-overlay offsets to
+//     extract files directly from the packaged ZIP overlay.
+//   - Uninstaller uses the same layout metadata to delete installed files,
+//     remove shortcuts, and unregister the app.
 //   - Both stubs use Win32 APIs via IAT (no dynamic LoadLibrary).
-//   - Generated code is x86-64 only (ARM64 support planned).
+//   - Bootstrap code is emitted as x86-64 machine code. ARM64 payload packages
+//     currently use the same x86-64 bootstrap so the installer can run under
+//     Windows-on-ARM emulation while still deploying an ARM64 application.
 //
 // Ownership/Lifetime:
 //   - Pure functions returning result structs.
@@ -32,49 +36,61 @@
 
 namespace viper::pkg {
 
+enum class WindowsInstallRoot : uint64_t {
+    InstallDir = 0,
+    DesktopDir = 1,
+    StartMenuDir = 2,
+};
+
+struct WindowsPackageDirEntry {
+    WindowsInstallRoot root{WindowsInstallRoot::InstallDir};
+    std::string relativePath;
+};
+
+struct WindowsPackageFileEntry {
+    WindowsInstallRoot root{WindowsInstallRoot::InstallDir};
+    std::string relativePath;
+    uint64_t overlayDataOffset{0};
+    uint64_t sizeBytes{0};
+};
+
+struct WindowsPackageLayout {
+    std::string displayName;
+    std::string installDirName;
+    std::string version;
+    std::string identifier;
+    std::string publisher;
+    std::string executableName;
+    uint32_t overlayFileOffset{0};
+    bool createDesktopShortcut{false};
+    bool createStartMenuShortcut{false};
+    std::vector<WindowsPackageDirEntry> installDirectories;
+    std::vector<WindowsPackageDirEntry> uninstallDirectories;
+    std::vector<WindowsPackageFileEntry> installFiles;
+    std::vector<WindowsPackageFileEntry> uninstallFiles;
+};
+
 /// @brief Result of building an installer/uninstaller stub.
 struct StubResult {
     std::vector<uint8_t> textSection; ///< Machine code for .text
     std::vector<uint8_t> stubData;    ///< Embedded string data (appended to .rdata)
     std::vector<PEImport> imports;    ///< DLL imports needed
+    std::string peArch{"x64"};        ///< PE machine type to use for the bootstrap executable.
     uint32_t stubDataRVAOffset{0};    ///< Offset within .rdata where stubData starts
 };
 
 /// @brief Build the installer stub machine code.
 ///
-/// The installer:
-///   1. Finds own .exe path via GetModuleFileNameW
-///   2. Opens self and reads the ZIP overlay (stored entries only)
-///   3. Parses install.ini for display name, install dir, shortcut flags
-///   4. Creates install directory under %ProgramFiles%
-///   5. Extracts app/ files to the install directory
-///   6. Copies .lnk shortcuts to Start Menu / Desktop
-///   7. Writes Add/Remove Programs registry entry
-///   8. Shows completion MessageBox
-///
-/// @param displayName  Application display name (for MessageBox, registry).
-/// @param installDir   Subdirectory under Program Files.
-/// @param arch         "x64" or "arm64".
+/// @param layout Package layout and extraction metadata.
+/// @param arch   Payload architecture ("x64" or "arm64").
 /// @return StubResult with .text bytes, data, and import list.
-StubResult buildInstallerStub(const std::string &displayName,
-                              const std::string &installDir,
-                              const std::string &arch);
+StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::string &arch);
 
 /// @brief Build the uninstaller stub machine code.
 ///
-/// The uninstaller:
-///   1. Finds own directory via GetModuleFileNameW
-///   2. Reads install.ini from same directory
-///   3. Deletes all files in the install directory
-///   4. Removes the install directory
-///   5. Deletes Start Menu / Desktop shortcuts
-///   6. Removes Add/Remove Programs registry entry
-///   7. Schedules self-deletion
-///   8. Shows completion MessageBox
-///
-/// @param displayName  Application display name.
-/// @param arch         "x64" or "arm64".
+/// @param layout Package layout and uninstall metadata.
+/// @param arch   Payload architecture ("x64" or "arm64").
 /// @return StubResult with .text bytes, data, and import list.
-StubResult buildUninstallerStub(const std::string &displayName, const std::string &arch);
+StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::string &arch);
 
 } // namespace viper::pkg

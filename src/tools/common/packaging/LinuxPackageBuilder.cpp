@@ -69,13 +69,9 @@ void buildDebPackage(const LinuxBuildParams &params) {
     // Assets
     for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
-        std::string targetDir = asset.targetPath;
-        if (targetDir == ".")
-            targetDir = "";
+        std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
-        std::string sharePrefix = "usr/share/" + pkgName + "/";
-        if (!targetDir.empty())
-            sharePrefix += targetDir + "/";
+        std::string sharePrefix = joinPackageRelativePath("usr/share/" + pkgName, targetDir);
 
         if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
@@ -86,14 +82,19 @@ void buildDebPackage(const LinuxBuildParams &params) {
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     if (entry.is_regular_file()) {
-                        auto relPath = fs::relative(entry.path(), srcPath).string();
+                        auto relPath = sanitizePackageRelativePath(
+                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
                         auto fileData = readFile(entry.path().string());
-                        dataFiles.push_back({sharePrefix + relPath, fileData});
+                        dataFiles.push_back(
+                            {joinPackageRelativePath(sharePrefix, relPath, "asset path"), fileData});
                     }
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            dataFiles.push_back({sharePrefix + srcPath.filename().string(), fileData});
+            dataFiles.push_back({joinPackageRelativePath(sharePrefix,
+                                                        srcPath.filename().generic_string(),
+                                                        "asset path"),
+                                 fileData});
         }
     }
 
@@ -320,13 +321,9 @@ void buildTarball(const LinuxBuildParams &params) {
     // Assets
     for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
-        std::string targetDir = asset.targetPath;
-        if (targetDir == ".")
-            targetDir = "";
+        std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
-        std::string prefix = topDir;
-        if (!targetDir.empty())
-            prefix += targetDir + "/";
+        std::string prefix = joinPackageRelativePath(topDir, targetDir, "asset target path");
 
         if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
@@ -337,18 +334,27 @@ void buildTarball(const LinuxBuildParams &params) {
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     if (entry.is_directory()) {
-                        auto relPath = fs::relative(entry.path(), srcPath).string();
-                        tar.addDirectory(prefix + relPath, 0755);
+                        auto relPath = sanitizePackageRelativePath(
+                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                        tar.addDirectory(
+                            joinPackageRelativePath(prefix, relPath, "asset path"), 0755);
                     } else if (entry.is_regular_file()) {
-                        auto relPath = fs::relative(entry.path(), srcPath).string();
+                        auto relPath = sanitizePackageRelativePath(
+                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
                         auto fileData = readFile(entry.path().string());
-                        tar.addFile(prefix + relPath, fileData.data(), fileData.size(), 0644);
+                        tar.addFile(joinPackageRelativePath(prefix, relPath, "asset path"),
+                                    fileData.data(),
+                                    fileData.size(),
+                                    0644);
                     }
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            tar.addFile(
-                prefix + srcPath.filename().string(), fileData.data(), fileData.size(), 0644);
+            tar.addFile(joinPackageRelativePath(
+                            prefix, srcPath.filename().generic_string(), "asset path"),
+                        fileData.data(),
+                        fileData.size(),
+                        0644);
         }
     }
 

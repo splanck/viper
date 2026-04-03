@@ -12,7 +12,8 @@
 // Key invariants:
 //   - Resolves project, compiles to native, then packages.
 //   - Default target is the host platform.
-//   - Cross-packaging is supported (byte-level format generation).
+//   - Non-host package formats can package a caller-supplied executable even
+//     when the current host cannot build the target-native payload itself.
 //
 // Ownership/Lifetime:
 //   - Temporary files (IL, native binary) are cleaned up after packaging.
@@ -34,6 +35,7 @@
 #include "support/source_manager.hpp"
 
 #include <cstdio>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -55,7 +57,7 @@ void packageUsage() {
         << "Usage: viper package [project] [options]\n"
         << "\n"
         << "  Compiles a Viper project to a native binary and packages it into a\n"
-        << "  platform-specific installer. Cross-packaging is fully supported.\n"
+        << "  platform-specific installer using only Viper's built-in tooling.\n"
         << "\n"
         << "  [project]  Path to a directory or viper.project file (default: .)\n"
         << "\n"
@@ -66,6 +68,7 @@ void packageUsage() {
         << "                        windows  Self-extracting .exe installer\n"
         << "                        tarball  Portable .tar.gz archive\n"
         << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
+        << "  --executable <path>   Package a prebuilt native executable instead of compiling\n"
         << "  -o <path>             Output file path\n"
         << "  --dry-run             List package contents without building\n"
         << "  --verbose, -v         Show detailed packaging output\n"
@@ -108,6 +111,7 @@ struct PackageArgs {
     PackageTarget platformTarget{PackageTarget::Auto};
     std::string outputPath;
     std::string archOverride; // "x64" or "arm64"
+    std::string executablePath;
     bool dryRun{false};
     bool verbose{false};
 };
@@ -179,6 +183,8 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                           << "'; expected x64 or arm64\n";
                 return false;
             }
+        } else if (arg == "--executable" && i + 1 < argc) {
+            args.executablePath = argv[++i];
         } else if (arg == "-o" && i + 1 < argc) {
             args.outputPath = argv[++i];
         } else if (arg == "--dry-run") {
@@ -268,8 +274,22 @@ int cmdPackage(int argc, char **argv) {
         arch = (args.archOverride == "arm64") ? viper::tools::TargetArch::ARM64
                                               : viper::tools::TargetArch::X64;
         archStr = args.archOverride;
+    } else if (proj.packageConfig.targetArchitectures.size() == 1) {
+        archStr = proj.packageConfig.targetArchitectures.front();
+        arch = (archStr == "arm64") ? viper::tools::TargetArch::ARM64
+                                    : viper::tools::TargetArch::X64;
     } else {
         archStr = (arch == viper::tools::TargetArch::ARM64) ? "arm64" : "x64";
+    }
+    if (!proj.packageConfig.targetArchitectures.empty()) {
+        auto it = std::find(proj.packageConfig.targetArchitectures.begin(),
+                            proj.packageConfig.targetArchitectures.end(),
+                            archStr);
+        if (it == proj.packageConfig.targetArchitectures.end()) {
+            std::cerr << "error: selected package architecture '" << archStr
+                      << "' is not listed by target-arch in viper.project\n";
+            return 1;
+        }
     }
 
     // Dry-run mode: list what would be packaged, then exit
@@ -277,7 +297,10 @@ int cmdPackage(int argc, char **argv) {
         std::cerr << "Dry run: " << displayName << " for " << platformName(args.platformTarget)
                   << " (" << archStr << ")\n";
         std::cerr << "  Output: " << args.outputPath << "\n";
-        std::cerr << "  Executable: " << proj.name << "\n";
+        if (!args.executablePath.empty())
+            std::cerr << "  Executable: " << args.executablePath << " (prebuilt)\n";
+        else
+            std::cerr << "  Executable: " << proj.name << " (build)\n";
         if (!proj.packageConfig.iconPath.empty()) {
             fs::path iconPath = fs::path(proj.rootDir) / proj.packageConfig.iconPath;
             std::cerr << "  Icon: " << proj.packageConfig.iconPath;
@@ -312,51 +335,77 @@ int cmdPackage(int argc, char **argv) {
         return 0;
     }
 
-    // Step 1: Compile to native binary (using build pipeline)
-    std::cerr << "Compiling " << proj.name << "...\n";
-
-    // We need to compile the project to IL first, then to native.
-    // Reuse the same approach as cmdBuild: compile → serialize IL → compileToNative
-    SourceManager sm;
-
-    // We need to include the compilation infrastructure. For now, use the
-    // external compileToNative pathway: serialize IL to temp, then codegen.
-    // This requires the compile pipeline. Since cmd_run.cpp has internal
-    // compile functions, we instead build the native binary via a temp IL file
-    // by calling the run/build pipeline.
-
-    // The simplest approach: use viper build -o <tempBinary> <target>
-    // But that requires forking ourselves. Instead, compile IL and use
-    // compileToNative directly.
-
-    // For the initial implementation, we compile using the existing build
-    // pathway by writing a temporary binary.
-    std::string tempBinaryPath = viper::tools::generateTempIlPath();
-    // Change extension to the native binary
-    tempBinaryPath = tempBinaryPath.substr(0, tempBinaryPath.rfind('.'));
-#ifdef _WIN32
-    tempBinaryPath += ".exe";
-#endif
-
-    // Build the native binary using cmdBuild directly (same binary)
-    {
-        // Construct argv for cmdBuild: <target> -o <tempBinaryPath>
-        std::vector<char *> buildArgv;
-        std::string targetArg = args.target;
-        std::string dashO = "-o";
-        buildArgv.push_back(targetArg.data());
-        buildArgv.push_back(dashO.data());
-        buildArgv.push_back(tempBinaryPath.data());
-        int rc = cmdBuild(static_cast<int>(buildArgv.size()), buildArgv.data());
-        if (rc != 0) {
-            std::cerr << "error: compilation failed\n";
-            return 1;
-        }
+    const PackageTarget hostPlatform = detectHostPlatform();
+    if (args.executablePath.empty() && args.platformTarget != PackageTarget::Tarball &&
+        args.platformTarget != hostPlatform) {
+        std::cerr << "error: packaging for '" << platformName(args.platformTarget)
+                  << "' from this host requires --executable because the built-in compile path "
+                     "still targets the host platform\n";
+        return 1;
     }
 
-    if (!fs::exists(tempBinaryPath)) {
-        std::cerr << "error: compiled binary not found at " << tempBinaryPath << "\n";
-        return 1;
+    std::string packageBinaryPath;
+    bool cleanupPackagedBinary = false;
+
+    if (!args.executablePath.empty()) {
+        fs::path exePath(args.executablePath);
+        if (!exePath.is_absolute())
+            exePath = fs::path(proj.rootDir) / exePath;
+        packageBinaryPath = exePath.lexically_normal().string();
+        if (!fs::exists(packageBinaryPath)) {
+            std::cerr << "error: prebuilt executable not found at " << packageBinaryPath << "\n";
+            return 1;
+        }
+    } else {
+        // Step 1: Compile to native binary (using build pipeline)
+        std::cerr << "Compiling " << proj.name << "...\n";
+
+        // We need to compile the project to IL first, then to native.
+        // Reuse the same approach as cmdBuild: compile → serialize IL → compileToNative
+        SourceManager sm;
+
+        // We need to include the compilation infrastructure. For now, use the
+        // external compileToNative pathway: serialize IL to temp, then codegen.
+        // This requires the compile pipeline. Since cmd_run.cpp has internal
+        // compile functions, we instead build the native binary via a temp IL file
+        // by calling the run/build pipeline.
+
+        // The simplest approach: use viper build -o <tempBinary> <target>
+        // But that requires forking ourselves. Instead, compile IL and use
+        // compileToNative directly.
+
+        // For the initial implementation, we compile using the existing build
+        // pathway by writing a temporary binary.
+        std::string tempBinaryPath = viper::tools::generateTempIlPath();
+        // Change extension to the native binary
+        tempBinaryPath = tempBinaryPath.substr(0, tempBinaryPath.rfind('.'));
+#ifdef _WIN32
+        tempBinaryPath += ".exe";
+#endif
+
+        // Build the native binary using cmdBuild directly (same binary)
+        {
+            // Construct argv for cmdBuild: <target> -o <tempBinaryPath>
+            std::vector<std::string> buildStorage = {
+                args.target, "-o", tempBinaryPath, "--arch", archStr};
+            std::vector<char *> buildArgv;
+            buildArgv.reserve(buildStorage.size());
+            for (auto &arg : buildStorage)
+                buildArgv.push_back(arg.data());
+            int rc = cmdBuild(static_cast<int>(buildArgv.size()), buildArgv.data());
+            if (rc != 0) {
+                std::cerr << "error: compilation failed\n";
+                return 1;
+            }
+        }
+
+        if (!fs::exists(tempBinaryPath)) {
+            std::cerr << "error: compiled binary not found at " << tempBinaryPath << "\n";
+            return 1;
+        }
+
+        packageBinaryPath = std::move(tempBinaryPath);
+        cleanupPackagedBinary = true;
     }
 
     // Step 2: Determine output path
@@ -370,8 +419,8 @@ int cmdPackage(int argc, char **argv) {
               << archStr << ")...\n";
 
     if (args.verbose) {
-        auto binSize = fs::file_size(tempBinaryPath);
-        std::cerr << "  Binary: " << tempBinaryPath << " (" << binSize << " bytes)\n";
+        auto binSize = fs::file_size(packageBinaryPath);
+        std::cerr << "  Binary: " << packageBinaryPath << " (" << binSize << " bytes)\n";
         std::cerr << "  Output: " << args.outputPath << "\n";
         if (!proj.packageConfig.iconPath.empty())
             std::cerr << "  Icon: " << proj.packageConfig.iconPath << "\n";
@@ -385,7 +434,7 @@ int cmdPackage(int argc, char **argv) {
                 viper::pkg::MacOSBuildParams params;
                 params.projectName = proj.name;
                 params.version = proj.version;
-                params.executablePath = tempBinaryPath;
+                params.executablePath = packageBinaryPath;
                 params.projectRoot = proj.rootDir;
                 params.pkgConfig = proj.packageConfig;
                 params.outputPath = args.outputPath;
@@ -396,7 +445,7 @@ int cmdPackage(int argc, char **argv) {
                 viper::pkg::LinuxBuildParams lparams;
                 lparams.projectName = proj.name;
                 lparams.version = proj.version;
-                lparams.executablePath = tempBinaryPath;
+                lparams.executablePath = packageBinaryPath;
                 lparams.projectRoot = proj.rootDir;
                 lparams.pkgConfig = proj.packageConfig;
                 lparams.outputPath = args.outputPath;
@@ -409,7 +458,7 @@ int cmdPackage(int argc, char **argv) {
                 viper::pkg::WindowsBuildParams wparams;
                 wparams.projectName = proj.name;
                 wparams.version = proj.version;
-                wparams.executablePath = tempBinaryPath;
+                wparams.executablePath = packageBinaryPath;
                 wparams.projectRoot = proj.rootDir;
                 wparams.pkgConfig = proj.packageConfig;
                 wparams.outputPath = args.outputPath;
@@ -421,7 +470,7 @@ int cmdPackage(int argc, char **argv) {
                 viper::pkg::LinuxBuildParams tparams;
                 tparams.projectName = proj.name;
                 tparams.version = proj.version;
-                tparams.executablePath = tempBinaryPath;
+                tparams.executablePath = packageBinaryPath;
                 tparams.projectRoot = proj.rootDir;
                 tparams.pkgConfig = proj.packageConfig;
                 tparams.outputPath = args.outputPath;
@@ -435,7 +484,8 @@ int cmdPackage(int argc, char **argv) {
     } catch (const std::exception &e) {
         std::cerr << "error: packaging failed: " << e.what() << "\n";
         std::error_code ec;
-        fs::remove(tempBinaryPath, ec);
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
         return 1;
     }
 
@@ -460,7 +510,7 @@ int cmdPackage(int argc, char **argv) {
                     valid = viper::pkg::verifyDeb(pkgData, verifyErr);
                     break;
                 case PackageTarget::Windows:
-                    valid = viper::pkg::verifyPE(pkgData, verifyErr);
+                    valid = viper::pkg::verifyPEZipOverlay(pkgData, verifyErr);
                     break;
                 default:
                     break; // Tarball: no structural verification needed
@@ -468,7 +518,8 @@ int cmdPackage(int argc, char **argv) {
             if (!valid) {
                 std::cerr << "error: package verification failed:\n" << verifyErr.str();
                 fs::remove(args.outputPath, ec);
-                fs::remove(tempBinaryPath, ec);
+                if (cleanupPackagedBinary)
+                    fs::remove(packageBinaryPath, ec);
                 return 1;
             }
             if (args.verbose)
@@ -477,7 +528,8 @@ int cmdPackage(int argc, char **argv) {
     }
 
     // Cleanup temp binary
-    fs::remove(tempBinaryPath, ec);
+    if (cleanupPackagedBinary)
+        fs::remove(packageBinaryPath, ec);
 
     std::cerr << "Package created: " << args.outputPath;
     if (args.verbose && fs::exists(args.outputPath)) {

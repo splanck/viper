@@ -10,10 +10,13 @@
 //          native binary and package assets.
 //
 // Key invariants:
-//   - Output is a valid PE32+ executable with ZIP payload as overlay.
-//   - ZIP payload contains: application .exe, assets, uninstall metadata,
-//     .lnk shortcuts, .ico icon file.
-//   - PE .text section contains a minimal installer stub.
+//   - Output is a valid PE32+ executable with a stored-only ZIP payload as overlay.
+//   - ZIP payload contains the application binary, assets, shortcuts, and a
+//     packaged uninstaller PE.
+//   - PE .text section contains a real x64 installer stub that extracts files,
+//     writes uninstall metadata, and installs shortcuts. ARM64 payload packages
+//     reuse the same bootstrap so the installer can run under Windows-on-ARM
+//     x64 emulation while deploying ARM64 binaries.
 //   - Resource section embeds RT_MANIFEST for UAC elevation.
 //   - Overlay data (ZIP) is appended after the last PE section.
 //
@@ -40,14 +43,14 @@ struct WindowsBuildParams {
     std::string projectRoot;    ///< Project root directory (for resolving assets).
     PackageConfig pkgConfig;    ///< Package manifest configuration.
     std::string outputPath;     ///< Output .exe path.
-    std::string archStr;        ///< Architecture string ("x64" or "arm64").
+    std::string archStr;        ///< Payload architecture string ("x64" or "arm64").
 };
 
 /// @brief Build a Windows self-extracting installer .exe.
 ///
 /// Creates a PE32+ executable containing:
 /// 1. PE headers with RT_MANIFEST resource (UAC elevation).
-/// 2. Minimal .text stub (placeholder for installer logic).
+/// 2. x64 .text stub implementing installation logic.
 /// 3. ZIP overlay containing the application binary, assets, shortcuts, icons.
 ///
 /// The ZIP payload is structured as:

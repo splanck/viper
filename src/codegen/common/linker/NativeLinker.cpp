@@ -242,14 +242,15 @@ std::string importNameForSymbol(const std::string &name) {
     return name;
 }
 
-WindowsImportPlan generateWindowsX64Imports(const std::unordered_set<std::string> &dynamicSyms,
-                                            bool debugRuntime) {
+WindowsImportPlan generateWindowsImports(LinkArch arch,
+                                         const std::unordered_set<std::string> &dynamicSyms,
+                                         bool debugRuntime) {
     WindowsImportPlan plan;
-    plan.obj.name = "<win64-imports>";
+    plan.obj.name = (arch == LinkArch::AArch64) ? "<winarm64-imports>" : "<win64-imports>";
     plan.obj.format = ObjFileFormat::COFF;
     plan.obj.is64bit = true;
     plan.obj.isLittleEndian = true;
-    plan.obj.machine = 0x8664;
+    plan.obj.machine = (arch == LinkArch::AArch64) ? 0xAA64 : 0x8664;
     plan.obj.sections.push_back(ObjSection{});
     plan.obj.symbols.push_back(ObjSymbol{});
 
@@ -312,7 +313,16 @@ WindowsImportPlan generateWindowsX64Imports(const std::unordered_set<std::string
             plan.obj.symbols.push_back(std::move(slotSym));
 
             const size_t stubOff = textSec.data.size();
-            textSec.data.insert(textSec.data.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
+            if (arch == LinkArch::AArch64) {
+                textSec.data.insert(textSec.data.end(),
+                                    {
+                                        0x10, 0x00, 0x00, 0x90, // adrp x16, __imp_fn
+                                        0x10, 0x02, 0x40, 0xF9, // ldr  x16, [x16, #lo12]
+                                        0x00, 0x02, 0x1F, 0xD6, // br   x16
+                                    });
+            } else {
+                textSec.data.insert(textSec.data.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
+            }
 
             ObjSymbol stubSym;
             stubSym.name = fn;
@@ -321,12 +331,28 @@ WindowsImportPlan generateWindowsX64Imports(const std::unordered_set<std::string
             stubSym.offset = stubOff;
             plan.obj.symbols.push_back(std::move(stubSym));
 
-            ObjReloc reloc;
-            reloc.offset = stubOff + 2;
-            reloc.type = coff_x64::kRel32;
-            reloc.symIndex = slotSymIdx;
-            reloc.addend = 0;
-            textSec.relocs.push_back(reloc);
+            if (arch == LinkArch::AArch64) {
+                ObjReloc pageReloc;
+                pageReloc.offset = stubOff + 0;
+                pageReloc.type = coff_a64::kPageRel21;
+                pageReloc.symIndex = slotSymIdx;
+                pageReloc.addend = 0;
+                textSec.relocs.push_back(pageReloc);
+
+                ObjReloc loadReloc;
+                loadReloc.offset = stubOff + 4;
+                loadReloc.type = coff_a64::kPageOff12L;
+                loadReloc.symIndex = slotSymIdx;
+                loadReloc.addend = 0;
+                textSec.relocs.push_back(loadReloc);
+            } else {
+                ObjReloc reloc;
+                reloc.offset = stubOff + 2;
+                reloc.type = coff_x64::kRel32;
+                reloc.symIndex = slotSymIdx;
+                reloc.addend = 0;
+                textSec.relocs.push_back(reloc);
+            }
         }
 
         dataSec.data.resize(dataSec.data.size() + 8, 0);
@@ -623,13 +649,6 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
 ///          performs ICF, inserts branch trampolines, applies relocations, and
 ///          writes the final executable. Zero external tool dependencies.
 int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err) {
-    if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::AArch64) {
-        err << "error: native Windows ARM64 executable linking is not implemented yet\n";
-        err << "error: AArch64 COFF object emission is supported, but PE startup/import/unwind "
-               "generation remains x86_64-only\n";
-        return 1;
-    }
-
     // Step 1: Read the user's object file.
     ObjFile userObj;
     if (!readObjFile(opts.objPath, userObj, err)) {
@@ -711,7 +730,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 3.5b: Generate dynamic symbol stubs (macOS/ELF — needed for shared library imports).
     std::vector<DllImport> peImports;
     std::unordered_map<std::string, uint32_t> peImportSlotRvas;
-    if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::X86_64) {
+    if (opts.platform == LinkPlatform::Windows) {
         dynamicSyms.erase("__ImageBase");
         const bool haveVmTrapDefault = globalSyms.find("vm_trap_default") != globalSyms.end();
         const bool needTlsIndex =
@@ -721,20 +740,24 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 });
             });
 
-        ObjFile helperObj = generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
-        if (!helperObj.sections.empty()) {
-            const size_t helperIdx = allObjects.size();
-            allObjects.push_back(std::move(helperObj));
-            registerSyntheticSymbols(allObjects[helperIdx], helperIdx, globalSyms);
-            for (const auto &sym : allObjects[helperIdx].symbols) {
-                if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined ||
-                    sym.name.empty())
-                    continue;
-                dynamicSyms.erase(sym.name);
+        if (opts.arch == LinkArch::X86_64) {
+            ObjFile helperObj =
+                generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
+            if (!helperObj.sections.empty()) {
+                const size_t helperIdx = allObjects.size();
+                allObjects.push_back(std::move(helperObj));
+                registerSyntheticSymbols(allObjects[helperIdx], helperIdx, globalSyms);
+                for (const auto &sym : allObjects[helperIdx].symbols) {
+                    if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined ||
+                        sym.name.empty())
+                        continue;
+                    dynamicSyms.erase(sym.name);
+                }
             }
         }
 
-        WindowsImportPlan importPlan = generateWindowsX64Imports(dynamicSyms, debugWindowsRuntime);
+        WindowsImportPlan importPlan =
+            generateWindowsImports(opts.arch, dynamicSyms, debugWindowsRuntime);
         peImports = importPlan.imports;
         if (!importPlan.obj.sections.empty()) {
             const size_t importIdx = allObjects.size();
@@ -774,7 +797,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         }
     }
 
-    if (opts.platform == LinkPlatform::Windows && opts.arch == LinkArch::X86_64) {
+    if (opts.platform == LinkPlatform::Windows) {
         dynamicSyms.erase("__ImageBase");
         dynamicSyms.erase("vm_trap");
     }

@@ -46,6 +46,9 @@ static void codeeditor_on_focus(vg_widget_t *widget, bool gained);
 
 static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed);
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed);
+static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text);
+static void delete_text_range_internal(
+    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 
 //=============================================================================
 // CodeEditor VTable
@@ -322,6 +325,7 @@ static void edit_history_end_group(vg_edit_history_t *history) {
 }
 
 static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
+                                    int cursor_id,
                                     int start_line,
                                     int start_col,
                                     int end_line,
@@ -337,6 +341,7 @@ static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
         return NULL;
 
     op->type = type;
+    op->cursor_id = cursor_id;
     op->start_line = start_line;
     op->start_col = start_col;
     op->end_line = end_line;
@@ -372,6 +377,308 @@ static void normalize_selection(
         *start_col = *end_col;
         *end_col = tmp;
     }
+}
+
+static void normalize_selection_range(
+    int *start_line, int *start_col, int *end_line, int *end_col) {
+    if (*start_line > *end_line || (*start_line == *end_line && *start_col > *end_col)) {
+        int tmp = *start_line;
+        *start_line = *end_line;
+        *end_line = tmp;
+        tmp = *start_col;
+        *start_col = *end_col;
+        *end_col = tmp;
+    }
+}
+
+static char *copy_text_range(vg_codeeditor_t *editor,
+                             int start_line,
+                             int start_col,
+                             int end_line,
+                             int end_col) {
+    if (!editor)
+        return NULL;
+
+    normalize_selection_range(&start_line, &start_col, &end_line, &end_col);
+
+    size_t total_len = 0;
+    for (int line = start_line; line <= end_line; line++) {
+        int col_start = (line == start_line) ? start_col : 0;
+        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
+        total_len += (size_t)(col_end - col_start);
+        if (line < end_line)
+            total_len++;
+    }
+
+    char *result = malloc(total_len + 1);
+    if (!result)
+        return NULL;
+
+    char *ptr = result;
+    for (int line = start_line; line <= end_line; line++) {
+        int col_start = (line == start_line) ? start_col : 0;
+        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
+        size_t len = (size_t)(col_end - col_start);
+        if (len > 0) {
+            memcpy(ptr, editor->lines[line].text + col_start, len);
+            ptr += len;
+        }
+        if (line < end_line)
+            *ptr++ = '\n';
+    }
+    *ptr = '\0';
+    return result;
+}
+
+static void clear_extra_cursor_selections(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    for (int i = 0; i < editor->extra_cursor_count; i++)
+        editor->extra_cursors[i].has_selection = false;
+}
+
+static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) {
+    if (!editor || !line || !col || editor->line_count <= 0)
+        return;
+
+    if (*line < 0)
+        *line = 0;
+    if (*line >= editor->line_count)
+        *line = editor->line_count - 1;
+    if (*col < 0)
+        *col = 0;
+    if (*col > (int)editor->lines[*line].length)
+        *col = (int)editor->lines[*line].length;
+}
+
+static int compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
+    if (lhs_line != rhs_line)
+        return (lhs_line < rhs_line) ? -1 : 1;
+    if (lhs_col != rhs_col)
+        return (lhs_col < rhs_col) ? -1 : 1;
+    return 0;
+}
+
+typedef struct vg_edit_target {
+    int cursor_id;
+    int cursor_line_before;
+    int cursor_col_before;
+    int start_line;
+    int start_col;
+    int end_line;
+    int end_col;
+} vg_edit_target_t;
+
+static int edit_target_compare_desc(const void *lhs, const void *rhs) {
+    const vg_edit_target_t *a = (const vg_edit_target_t *)lhs;
+    const vg_edit_target_t *b = (const vg_edit_target_t *)rhs;
+    int cmp = compare_positions(b->start_line, b->start_col, a->start_line, a->start_col);
+    if (cmp != 0)
+        return cmp;
+    cmp = compare_positions(b->end_line, b->end_col, a->end_line, a->end_col);
+    if (cmp != 0)
+        return cmp;
+    return a->cursor_id - b->cursor_id;
+}
+
+static int edit_target_compare_asc(const void *lhs, const void *rhs) {
+    const vg_edit_target_t *a = (const vg_edit_target_t *)lhs;
+    const vg_edit_target_t *b = (const vg_edit_target_t *)rhs;
+    int cmp = compare_positions(a->start_line, a->start_col, b->start_line, b->start_col);
+    if (cmp != 0)
+        return cmp;
+    cmp = compare_positions(a->end_line, a->end_col, b->end_line, b->end_col);
+    if (cmp != 0)
+        return cmp;
+    return a->cursor_id - b->cursor_id;
+}
+
+static void set_cursor_position_by_id(vg_codeeditor_t *editor, int cursor_id, int line, int col) {
+    if (cursor_id == 0) {
+        editor->cursor_line = line;
+        editor->cursor_col = col;
+        return;
+    }
+    int extra_idx = cursor_id - 1;
+    if (extra_idx < 0 || extra_idx >= editor->extra_cursor_count)
+        return;
+    editor->extra_cursors[extra_idx].line = line;
+    editor->extra_cursors[extra_idx].col = col;
+}
+
+static void clear_cursor_selection_by_id(vg_codeeditor_t *editor, int cursor_id) {
+    if (cursor_id == 0) {
+        editor->has_selection = false;
+        return;
+    }
+    int extra_idx = cursor_id - 1;
+    if (extra_idx < 0 || extra_idx >= editor->extra_cursor_count)
+        return;
+    editor->extra_cursors[extra_idx].has_selection = false;
+}
+
+static void add_edit_target(vg_edit_target_t *targets,
+                            int *count,
+                            int cursor_id,
+                            int cursor_line_before,
+                            int cursor_col_before,
+                            int start_line,
+                            int start_col,
+                            int end_line,
+                            int end_col) {
+    normalize_selection_range(&start_line, &start_col, &end_line, &end_col);
+    for (int i = 0; i < *count; i++) {
+        if (targets[i].start_line == start_line && targets[i].start_col == start_col &&
+            targets[i].end_line == end_line && targets[i].end_col == end_col)
+            return;
+    }
+
+    targets[*count].cursor_id = cursor_id;
+    targets[*count].cursor_line_before = cursor_line_before;
+    targets[*count].cursor_col_before = cursor_col_before;
+    targets[*count].start_line = start_line;
+    targets[*count].start_col = start_col;
+    targets[*count].end_line = end_line;
+    targets[*count].end_col = end_col;
+    (*count)++;
+}
+
+static void record_edit_history(vg_codeeditor_t *editor,
+                                vg_edit_op_type_t type,
+                                int cursor_id,
+                                int start_line,
+                                int start_col,
+                                int end_line,
+                                int end_col,
+                                const char *old_text,
+                                const char *new_text,
+                                int cursor_line_before,
+                                int cursor_col_before,
+                                int cursor_line_after,
+                                int cursor_col_after) {
+    if (!editor || !editor->history)
+        return;
+    vg_edit_op_t *op = create_edit_op(type,
+                                      cursor_id,
+                                      start_line,
+                                      start_col,
+                                      end_line,
+                                      end_col,
+                                      old_text,
+                                      new_text,
+                                      cursor_line_before,
+                                      cursor_col_before,
+                                      cursor_line_after,
+                                      cursor_col_after);
+    if (op)
+        edit_history_push(editor->history, op);
+}
+
+static void apply_edit_targets(vg_codeeditor_t *editor,
+                               vg_edit_target_t *targets,
+                               int target_count,
+                               const char *replacement_text) {
+    if (!editor || target_count <= 0)
+        return;
+
+    const int cursor_count = 1 + editor->extra_cursor_count;
+    int *new_lines = malloc((size_t)cursor_count * sizeof(int));
+    int *new_cols = malloc((size_t)cursor_count * sizeof(int));
+    if (!new_lines || !new_cols) {
+        free(new_lines);
+        free(new_cols);
+        return;
+    }
+
+    new_lines[0] = editor->cursor_line;
+    new_cols[0] = editor->cursor_col;
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        new_lines[i + 1] = editor->extra_cursors[i].line;
+        new_cols[i + 1] = editor->extra_cursors[i].col;
+    }
+
+    if (editor->history && target_count > 1)
+        edit_history_begin_group(editor->history);
+
+    for (int i = 0; i < target_count; i++) {
+        const vg_edit_target_t *target = &targets[i];
+        char *old_text = NULL;
+        int history_end_line = target->end_line;
+        int history_end_col = target->end_col;
+        const int has_old_text =
+            compare_positions(target->start_line, target->start_col, target->end_line, target->end_col) != 0;
+
+        if (has_old_text) {
+            old_text = copy_text_range(editor,
+                                       target->start_line,
+                                       target->start_col,
+                                       target->end_line,
+                                       target->end_col);
+            delete_text_range_internal(editor,
+                                       target->start_line,
+                                       target->start_col,
+                                       target->end_line,
+                                       target->end_col);
+        } else {
+            editor->cursor_line = target->start_line;
+            editor->cursor_col = target->start_col;
+        }
+
+        if (replacement_text && replacement_text[0] != '\0')
+            insert_text_at_internal(editor, target->start_line, target->start_col, replacement_text);
+
+        new_lines[target->cursor_id] = editor->cursor_line;
+        new_cols[target->cursor_id] = editor->cursor_col;
+        clear_cursor_selection_by_id(editor, target->cursor_id);
+        history_end_line = editor->cursor_line;
+        history_end_col = editor->cursor_col;
+
+        if (replacement_text && replacement_text[0] != '\0') {
+            vg_edit_op_type_t type = has_old_text ? VG_EDIT_REPLACE : VG_EDIT_INSERT;
+            record_edit_history(editor,
+                                type,
+                                target->cursor_id,
+                                target->start_line,
+                                target->start_col,
+                                history_end_line,
+                                history_end_col,
+                                old_text,
+                                replacement_text,
+                                target->cursor_line_before,
+                                target->cursor_col_before,
+                                editor->cursor_line,
+                                editor->cursor_col);
+        } else if (has_old_text) {
+            record_edit_history(editor,
+                                VG_EDIT_DELETE,
+                                target->cursor_id,
+                                target->start_line,
+                                target->start_col,
+                                target->end_line,
+                                target->end_col,
+                                old_text,
+                                NULL,
+                                target->cursor_line_before,
+                                target->cursor_col_before,
+                                target->start_line,
+                                target->start_col);
+        }
+
+        free(old_text);
+    }
+
+    if (editor->history && target_count > 1)
+        edit_history_end_group(editor->history);
+
+    for (int i = 0; i < cursor_count; i++)
+        set_cursor_position_by_id(editor, i, new_lines[i], new_cols[i]);
+
+    free(new_lines);
+    free(new_cols);
+    editor->modified = true;
+    update_gutter_width(editor);
+    ensure_cursor_visible(editor);
+    editor->base.needs_paint = true;
 }
 
 //=============================================================================
@@ -488,6 +795,34 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     // Free undo/redo history
     edit_history_destroy(editor->history);
     editor->history = NULL;
+
+    if (editor->custom_keywords) {
+        for (int i = 0; i < editor->custom_keyword_count; i++)
+            free(editor->custom_keywords[i]);
+        free(editor->custom_keywords);
+        editor->custom_keywords = NULL;
+        editor->custom_keyword_count = 0;
+    }
+
+    free(editor->highlight_spans);
+    editor->highlight_spans = NULL;
+    editor->highlight_span_count = 0;
+    editor->highlight_span_cap = 0;
+
+    free(editor->gutter_icons);
+    editor->gutter_icons = NULL;
+    editor->gutter_icon_count = 0;
+    editor->gutter_icon_cap = 0;
+
+    free(editor->fold_regions);
+    editor->fold_regions = NULL;
+    editor->fold_region_count = 0;
+    editor->fold_region_cap = 0;
+
+    free(editor->extra_cursors);
+    editor->extra_cursors = NULL;
+    editor->extra_cursor_count = 0;
+    editor->extra_cursor_cap = 0;
 }
 
 static void codeeditor_measure(vg_widget_t *widget, float available_width, float available_height) {
@@ -641,6 +976,35 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
             }
         }
 
+        if (widget->state & VG_STATE_FOCUSED) {
+            for (int c = 0; c < editor->extra_cursor_count; c++) {
+                if (!editor->extra_cursors[c].has_selection)
+                    continue;
+
+                int sel_start_line = editor->extra_cursors[c].selection.start_line;
+                int sel_start_col = editor->extra_cursors[c].selection.start_col;
+                int sel_end_line = editor->extra_cursors[c].selection.end_line;
+                int sel_end_col = editor->extra_cursors[c].selection.end_col;
+                normalize_selection_range(
+                    &sel_start_line, &sel_start_col, &sel_end_line, &sel_end_col);
+
+                if (i < sel_start_line || i > sel_end_line)
+                    continue;
+
+                int col_start = (i == sel_start_line) ? sel_start_col : 0;
+                int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
+                float sel_x = content_x + col_start * editor->char_width - editor->scroll_x;
+                float sel_width = (col_end - col_start) * editor->char_width;
+
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)sel_x,
+                               (int32_t)line_y,
+                               (int32_t)sel_width,
+                               (int32_t)editor->line_height,
+                               editor->selection_color);
+            }
+        }
+
         // Draw line text
         if (editor->lines[i].text && editor->lines[i].length > 0) {
             float text_y = line_y + font_metrics.ascent;
@@ -742,6 +1106,22 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                            (int32_t)editor->line_height,
                            editor->cursor_color);
         }
+
+        for (int c = 0; c < editor->extra_cursor_count; c++) {
+            int visible_extra_line = editor->extra_cursors[c].line - editor->visible_first_line;
+            if (visible_extra_line < 0 || visible_extra_line >= editor->visible_line_count)
+                continue;
+            float cursor_x =
+                content_x + editor->extra_cursors[c].col * editor->char_width - editor->scroll_x;
+            float cursor_y = widget->y + visible_extra_line * editor->line_height -
+                             (editor->scroll_y - editor->visible_first_line * editor->line_height);
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)cursor_x,
+                           (int32_t)cursor_y,
+                           2,
+                           (int32_t)editor->line_height,
+                           editor->cursor_color);
+        }
     }
 
     // Draw vertical scrollbar
@@ -818,7 +1198,7 @@ static int encode_utf8(uint32_t cp, char *buf) {
 }
 
 // Insert n raw bytes at the current cursor position and advance cursor_col by n.
-static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
+VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
     if (!n)
         return;
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
@@ -837,7 +1217,7 @@ static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
     line->modified = true;
 }
 
-static void insert_char(vg_codeeditor_t *editor, char c) {
+VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
     if (!ensure_text_capacity(line, line->length + 2))
@@ -855,7 +1235,7 @@ static void insert_char(vg_codeeditor_t *editor, char c) {
     line->modified = true;
 }
 
-static void insert_newline(vg_codeeditor_t *editor) {
+VG_UNUSED static void insert_newline(vg_codeeditor_t *editor) {
     if (!ensure_line_capacity(editor, editor->line_count + 1))
         return;
 
@@ -900,7 +1280,7 @@ static void insert_newline(vg_codeeditor_t *editor) {
     update_gutter_width(editor);
 }
 
-static void delete_char_backward(vg_codeeditor_t *editor) {
+VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
     if (editor->cursor_col > 0) {
         vg_code_line_t *line = &editor->lines[editor->cursor_line];
         memmove(line->text + editor->cursor_col - 1,
@@ -939,6 +1319,88 @@ static void delete_char_backward(vg_codeeditor_t *editor) {
 
         update_gutter_width(editor);
     }
+}
+
+static void delete_backspace_targets(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets)
+        return;
+
+    int target_count = 0;
+    if (editor->has_selection) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->selection.start_line,
+                        editor->selection.start_col,
+                        editor->selection.end_line,
+                        editor->selection.end_col);
+    } else if (editor->cursor_col > 0) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line,
+                        editor->cursor_col - 1,
+                        editor->cursor_line,
+                        editor->cursor_col);
+    } else if (editor->cursor_line > 0) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line - 1,
+                        (int)editor->lines[editor->cursor_line - 1].length,
+                        editor->cursor_line,
+                        0);
+    }
+
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        if (cursor->has_selection) {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->selection.start_line,
+                            cursor->selection.start_col,
+                            cursor->selection.end_line,
+                            cursor->selection.end_col);
+        } else if (cursor->col > 0) {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line,
+                            cursor->col - 1,
+                            cursor->line,
+                            cursor->col);
+        } else if (cursor->line > 0) {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line - 1,
+                            (int)editor->lines[cursor->line - 1].length,
+                            cursor->line,
+                            0);
+        }
+    }
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+    apply_edit_targets(editor, targets, target_count, NULL);
+    free(targets);
 }
 
 static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
@@ -1064,6 +1526,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             editor->cursor_line = line;
             editor->cursor_col = col;
             editor->has_selection = false;
+            clear_extra_cursor_selections(editor);
             editor->cursor_visible = true;
             widget->needs_paint = true;
             return true;
@@ -1078,39 +1541,19 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (has_ctrl) {
                 switch (event->key.key) {
                     case VG_KEY_C: // Copy
-                        if (editor->has_selection) {
-                            char *text = vg_codeeditor_get_selection(editor);
-                            if (text) {
-                                vgfx_clipboard_set_text(text);
-                                free(text);
-                            }
-                        }
+                        vg_codeeditor_copy(editor);
                         widget->needs_paint = true;
                         return true;
 
                     case VG_KEY_X: // Cut
-                        if (!editor->read_only && editor->has_selection) {
-                            char *text = vg_codeeditor_get_selection(editor);
-                            if (text) {
-                                vgfx_clipboard_set_text(text);
-                                free(text);
-                                vg_codeeditor_delete_selection(editor);
-                            }
-                        }
+                        if (!editor->read_only)
+                            vg_codeeditor_cut(editor);
                         widget->needs_paint = true;
                         return true;
 
                     case VG_KEY_V: // Paste
-                        if (!editor->read_only) {
-                            char *text = vgfx_clipboard_get_text();
-                            if (text) {
-                                if (editor->has_selection) {
-                                    vg_codeeditor_delete_selection(editor);
-                                }
-                                vg_codeeditor_insert_text(editor, text);
-                                free(text);
-                            }
-                        }
+                        if (!editor->read_only)
+                            vg_codeeditor_paste(editor);
                         widget->needs_paint = true;
                         return true;
 
@@ -1129,12 +1572,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         return true;
 
                     case VG_KEY_A: // Select all
-                        editor->selection.start_line = 0;
-                        editor->selection.start_col = 0;
-                        editor->selection.end_line = editor->line_count - 1;
-                        editor->selection.end_col =
-                            (int)editor->lines[editor->line_count - 1].length;
-                        editor->has_selection = true;
+                        vg_codeeditor_select_all(editor);
                         widget->needs_paint = true;
                         return true;
 
@@ -1242,22 +1680,24 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
                 }
                 case VG_KEY_BACKSPACE:
-                    if (editor->has_selection) {
-                        vg_codeeditor_delete_selection(editor);
-                    } else {
-                        delete_char_backward(editor);
-                    }
+                    delete_backspace_targets(editor);
                     break;
                 case VG_KEY_ENTER:
-                    insert_newline(editor);
+                    vg_codeeditor_insert_text(editor, "\n");
                     break;
                 case VG_KEY_TAB:
                     if (editor->use_spaces) {
-                        for (int i = 0; i < editor->tab_width; i++) {
-                            insert_char(editor, ' ');
-                        }
+                        char spaces[32];
+                        int space_count = editor->tab_width;
+                        if (space_count < 0)
+                            space_count = 0;
+                        if (space_count >= (int)sizeof(spaces))
+                            space_count = (int)sizeof(spaces) - 1;
+                        memset(spaces, ' ', (size_t)space_count);
+                        spaces[space_count] = '\0';
+                        vg_codeeditor_insert_text(editor, spaces);
                     } else {
-                        insert_char(editor, '\t');
+                        vg_codeeditor_insert_text(editor, "\t");
                     }
                     break;
                 default:
@@ -1269,6 +1709,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             editor->cursor_visible = true;
             editor->has_selection = false;
+            clear_extra_cursor_selections(editor);
             widget->needs_paint = true;
             return true;
         }
@@ -1278,16 +1719,16 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             // Accept all printable codepoints: U+0020–U+10FFFF excluding surrogates.
             bool printable = (cp >= 0x20 && !(cp >= 0xD800 && cp <= 0xDFFF) && cp <= 0x10FFFF);
             if (!editor->read_only && printable) {
-                if (editor->has_selection) {
-                    vg_codeeditor_delete_selection(editor);
-                }
                 if (cp < 0x80) {
-                    insert_char(editor, (char)cp);
+                    char text[2] = {(char)cp, '\0'};
+                    vg_codeeditor_insert_text(editor, text);
                 } else {
-                    char utf8[4];
+                    char utf8[5] = {0};
                     int n = encode_utf8(cp, utf8);
-                    if (n > 0)
-                        insert_bytes(editor, utf8, (size_t)n);
+                    if (n > 0) {
+                        utf8[n] = '\0';
+                        vg_codeeditor_insert_text(editor, utf8);
+                    }
                 }
                 ensure_cursor_visible(editor);
                 widget->needs_paint = true;
@@ -1391,6 +1832,8 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     editor->cursor_line = 0;
     editor->cursor_col = 0;
     editor->has_selection = false;
+    clear_extra_cursor_selections(editor);
+    editor->extra_cursor_count = 0;
     editor->scroll_x = 0;
     editor->scroll_y = 0;
     editor->modified = false;
@@ -1432,40 +1875,9 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor) {
     if (!editor || !editor->has_selection)
         return NULL;
 
-    // Normalize selection (start before end)
     int start_line, start_col, end_line, end_col;
     normalize_selection(editor, &start_line, &start_col, &end_line, &end_col);
-
-    // Calculate buffer size needed
-    size_t total_len = 0;
-    for (int line = start_line; line <= end_line; line++) {
-        int col_start = (line == start_line) ? start_col : 0;
-        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
-        total_len += (size_t)(col_end - col_start);
-        if (line < end_line)
-            total_len++; // newline
-    }
-
-    // Allocate and copy
-    char *result = malloc(total_len + 1);
-    if (!result)
-        return NULL;
-
-    char *ptr = result;
-    for (int line = start_line; line <= end_line; line++) {
-        int col_start = (line == start_line) ? start_col : 0;
-        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
-        size_t len = (size_t)(col_end - col_start);
-        if (len > 0) {
-            memcpy(ptr, editor->lines[line].text + col_start, len);
-            ptr += len;
-        }
-        if (line < end_line)
-            *ptr++ = '\n';
-    }
-    *ptr = '\0';
-
-    return result;
+    return copy_text_range(editor, start_line, start_col, end_line, end_col);
 }
 
 /// @brief Codeeditor set cursor.
@@ -1473,18 +1885,12 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col) {
     if (!editor)
         return;
 
-    if (line < 0)
-        line = 0;
-    if (line >= editor->line_count)
-        line = editor->line_count - 1;
-    if (col < 0)
-        col = 0;
-    if (col > (int)editor->lines[line].length)
-        col = (int)editor->lines[line].length;
+    clamp_editor_position(editor, &line, &col);
 
     editor->cursor_line = line;
     editor->cursor_col = col;
     editor->has_selection = false;
+    clear_extra_cursor_selections(editor);
     editor->base.needs_paint = true;
 }
 
@@ -1504,6 +1910,8 @@ void vg_codeeditor_set_selection(
     if (!editor)
         return;
 
+    clamp_editor_position(editor, &start_line, &start_col);
+    clamp_editor_position(editor, &end_line, &end_col);
     editor->selection.start_line = start_line;
     editor->selection.start_col = start_col;
     editor->selection.end_line = end_line;
@@ -1516,101 +1924,110 @@ void vg_codeeditor_set_selection(
 
 /// @brief Codeeditor insetext.
 void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text) {
-    if (!editor || !text)
+    if (!editor || !text || text[0] == '\0')
         return;
 
-    for (const char *p = text; *p; p++) {
-        if (*p == '\n') {
-            insert_newline(editor);
-        } else if (*p >= 32) {
-            insert_char(editor, *p);
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets)
+        return;
+
+    int target_count = 0;
+    if (editor->has_selection) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->selection.start_line,
+                        editor->selection.start_col,
+                        editor->selection.end_line,
+                        editor->selection.end_col);
+    } else {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line,
+                        editor->cursor_col);
+    }
+
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        if (cursor->has_selection) {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->selection.start_line,
+                            cursor->selection.start_col,
+                            cursor->selection.end_line,
+                            cursor->selection.end_col);
+        } else {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line,
+                            cursor->col);
         }
     }
-    editor->base.needs_paint = true;
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+    apply_edit_targets(editor, targets, target_count, text);
+    free(targets);
 }
 
 /// @brief Codeeditor delete selection.
 void vg_codeeditor_delete_selection(vg_codeeditor_t *editor) {
-    if (!editor || !editor->has_selection)
+    if (!editor)
         return;
 
-    // Normalize selection
-    int start_line, start_col, end_line, end_col;
-    normalize_selection(editor, &start_line, &start_col, &end_line, &end_col);
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets)
+        return;
 
-    // Get the selected text for undo
-    char *deleted_text = vg_codeeditor_get_selection(editor);
-
-    // Save cursor state for undo
-    int cursor_before_line = editor->cursor_line;
-    int cursor_before_col = editor->cursor_col;
-
-    if (start_line == end_line) {
-        // Single line deletion
-        vg_code_line_t *line = &editor->lines[start_line];
-        memmove(line->text + start_col, line->text + end_col, line->length - end_col + 1);
-        line->length -= (end_col - start_col);
-        line->modified = true;
-    } else {
-        // Multi-line deletion
-        vg_code_line_t *first = &editor->lines[start_line];
-        vg_code_line_t *last = &editor->lines[end_line];
-
-        // Keep the beginning of first line and end of last line
-        size_t new_len = start_col + (last->length - end_col);
-        if (!ensure_text_capacity(first, new_len + 1)) {
-            free(deleted_text);
-            return;
-        }
-
-        // Copy end of last line to first line
-        memcpy(first->text + start_col, last->text + end_col, last->length - end_col + 1);
-        first->length = new_len;
-        first->modified = true;
-
-        // Free intermediate lines
-        for (int i = start_line + 1; i <= end_line; i++) {
-            free_line(&editor->lines[i]);
-        }
-
-        // Move remaining lines up
-        int lines_removed = end_line - start_line;
-        if (end_line + 1 < editor->line_count) {
-            memmove(&editor->lines[start_line + 1],
-                    &editor->lines[end_line + 1],
-                    (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
-        }
-        editor->line_count -= lines_removed;
-
-        update_gutter_width(editor);
+    int target_count = 0;
+    if (editor->has_selection) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->selection.start_line,
+                        editor->selection.start_col,
+                        editor->selection.end_line,
+                        editor->selection.end_col);
     }
 
-    // Set cursor to start of deleted region
-    editor->cursor_line = start_line;
-    editor->cursor_col = start_col;
-    editor->has_selection = false;
-    editor->modified = true;
-
-    // Record for undo
-    if (editor->history && deleted_text) {
-        vg_edit_op_t *op = create_edit_op(VG_EDIT_DELETE,
-                                          start_line,
-                                          start_col,
-                                          end_line,
-                                          end_col,
-                                          deleted_text,
-                                          NULL,
-                                          cursor_before_line,
-                                          cursor_before_col,
-                                          start_line,
-                                          start_col);
-        if (op) {
-            edit_history_push(editor->history, op);
-        }
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        if (!cursor->has_selection)
+            continue;
+        add_edit_target(targets,
+                        &target_count,
+                        i + 1,
+                        cursor->line,
+                        cursor->col,
+                        cursor->selection.start_line,
+                        cursor->selection.start_col,
+                        cursor->selection.end_line,
+                        cursor->selection.end_col);
     }
 
-    free(deleted_text);
-    editor->base.needs_paint = true;
+    if (target_count > 0) {
+        qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+        apply_edit_targets(editor, targets, target_count, NULL);
+    }
+    free(targets);
 }
 
 /// @brief Codeeditor scroll to line.
@@ -1766,6 +2183,28 @@ static void delete_text_range_internal(
     editor->modified = true;
 }
 
+static void compute_text_end_position(
+    int start_line, int start_col, const char *text, int *out_line, int *out_col) {
+    int line = start_line;
+    int col = start_col;
+
+    if (text) {
+        for (const char *p = text; *p; p++) {
+            if (*p == '\n') {
+                line++;
+                col = 0;
+            } else if (*p >= 32 || *p == '\t') {
+                col++;
+            }
+        }
+    }
+
+    if (out_line)
+        *out_line = line;
+    if (out_col)
+        *out_col = col;
+}
+
 /// @brief Codeeditor undo.
 void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
@@ -1780,6 +2219,8 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     do {
         switch (op->type) {
             case VG_EDIT_INSERT:
+                compute_text_end_position(
+                    op->start_line, op->start_col, op->new_text, &op->end_line, &op->end_col);
                 // Undo insert = delete the inserted text
                 delete_text_range_internal(
                     editor, op->start_line, op->start_col, op->end_line, op->end_col);
@@ -1791,6 +2232,8 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
                 break;
 
             case VG_EDIT_REPLACE:
+                compute_text_end_position(
+                    op->start_line, op->start_col, op->new_text, &op->end_line, &op->end_col);
                 // Undo replace = delete new text, insert old text
                 delete_text_range_internal(
                     editor, op->start_line, op->start_col, op->end_line, op->end_col);
@@ -1799,8 +2242,8 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
         }
 
         // Restore cursor
-        editor->cursor_line = op->cursor_line_before;
-        editor->cursor_col = op->cursor_col_before;
+        set_cursor_position_by_id(
+            editor, op->cursor_id, op->cursor_line_before, op->cursor_col_before);
 
         // Check for more operations in same group
         if (group != 0) {
@@ -1816,6 +2259,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     } while (op);
 
     editor->has_selection = false;
+    clear_extra_cursor_selections(editor);
     editor->base.needs_paint = true;
 }
 
@@ -1840,12 +2284,16 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
                 break;
 
             case VG_EDIT_DELETE:
+                compute_text_end_position(
+                    op->start_line, op->start_col, op->old_text, &op->end_line, &op->end_col);
                 // Redo delete = delete the text again
                 delete_text_range_internal(
                     editor, op->start_line, op->start_col, op->end_line, op->end_col);
                 break;
 
             case VG_EDIT_REPLACE:
+                compute_text_end_position(
+                    op->start_line, op->start_col, op->old_text, &op->end_line, &op->end_col);
                 // Redo replace = delete old text, insert new text
                 delete_text_range_internal(
                     editor, op->start_line, op->start_col, op->end_line, op->end_col);
@@ -1854,8 +2302,8 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
         }
 
         // Restore cursor
-        editor->cursor_line = op->cursor_line_after;
-        editor->cursor_col = op->cursor_col_after;
+        set_cursor_position_by_id(
+            editor, op->cursor_id, op->cursor_line_after, op->cursor_col_after);
 
         // Check for more operations in same group
         if (group != 0 && editor->history->current_index < editor->history->count) {
@@ -1871,35 +2319,116 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     } while (op);
 
     editor->has_selection = false;
+    clear_extra_cursor_selections(editor);
     editor->base.needs_paint = true;
 }
 
 bool vg_codeeditor_copy(vg_codeeditor_t *editor) {
-    if (!editor || !editor->has_selection)
+    if (!editor)
         return false;
 
-    char *text = vg_codeeditor_get_selection(editor);
-    if (text) {
-        vgfx_clipboard_set_text(text);
-        free(text);
-        return true;
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    char **parts = NULL;
+    size_t *part_lengths = NULL;
+    char *clipboard_text = NULL;
+    bool copied = false;
+
+    if (!targets)
+        return false;
+
+    int target_count = 0;
+    if (editor->has_selection) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->selection.start_line,
+                        editor->selection.start_col,
+                        editor->selection.end_line,
+                        editor->selection.end_col);
     }
-    return false;
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        if (!cursor->has_selection)
+            continue;
+        add_edit_target(targets,
+                        &target_count,
+                        i + 1,
+                        cursor->line,
+                        cursor->col,
+                        cursor->selection.start_line,
+                        cursor->selection.start_col,
+                        cursor->selection.end_line,
+                        cursor->selection.end_col);
+    }
+
+    if (target_count <= 0)
+        goto cleanup;
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_asc);
+
+    parts = calloc((size_t)target_count, sizeof(char *));
+    part_lengths = calloc((size_t)target_count, sizeof(size_t));
+    if (!parts || !part_lengths)
+        goto cleanup;
+
+    size_t total_len = 0;
+    for (int i = 0; i < target_count; i++) {
+        parts[i] = copy_text_range(editor,
+                                   targets[i].start_line,
+                                   targets[i].start_col,
+                                   targets[i].end_line,
+                                   targets[i].end_col);
+        if (!parts[i])
+            goto cleanup;
+        part_lengths[i] = strlen(parts[i]);
+        total_len += part_lengths[i];
+        if (i + 1 < target_count)
+            total_len++;
+    }
+
+    clipboard_text = malloc(total_len + 1);
+    if (!clipboard_text)
+        goto cleanup;
+
+    char *dst = clipboard_text;
+    for (int i = 0; i < target_count; i++) {
+        if (part_lengths[i] > 0) {
+            memcpy(dst, parts[i], part_lengths[i]);
+            dst += part_lengths[i];
+        }
+        if (i + 1 < target_count)
+            *dst++ = '\n';
+    }
+    *dst = '\0';
+
+    vgfx_clipboard_set_text(clipboard_text);
+    copied = true;
+
+cleanup:
+    if (parts) {
+        for (int i = 0; i < target_count; i++)
+            free(parts[i]);
+    }
+    free(clipboard_text);
+    free(part_lengths);
+    free(parts);
+    free(targets);
+    return copied;
 }
 
 bool vg_codeeditor_cut(vg_codeeditor_t *editor) {
-    if (!editor || editor->read_only || !editor->has_selection)
+    if (!editor || editor->read_only)
         return false;
 
-    char *text = vg_codeeditor_get_selection(editor);
-    if (text) {
-        vgfx_clipboard_set_text(text);
-        free(text);
-        vg_codeeditor_delete_selection(editor);
-        editor->base.needs_paint = true;
-        return true;
-    }
-    return false;
+    if (!vg_codeeditor_copy(editor))
+        return false;
+
+    vg_codeeditor_delete_selection(editor);
+    editor->base.needs_paint = true;
+    return true;
 }
 
 bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
@@ -1908,9 +2437,6 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
 
     char *text = vgfx_clipboard_get_text();
     if (text) {
-        if (editor->has_selection) {
-            vg_codeeditor_delete_selection(editor);
-        }
         vg_codeeditor_insert_text(editor, text);
         free(text);
         editor->base.needs_paint = true;
@@ -1929,6 +2455,9 @@ void vg_codeeditor_select_all(vg_codeeditor_t *editor) {
     editor->selection.end_line = editor->line_count - 1;
     editor->selection.end_col = editor->lines[editor->line_count - 1].length;
     editor->has_selection = true;
+    editor->cursor_line = editor->selection.end_line;
+    editor->cursor_col = editor->selection.end_col;
+    clear_extra_cursor_selections(editor);
     editor->base.needs_paint = true;
 }
 

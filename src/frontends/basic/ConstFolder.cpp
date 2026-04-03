@@ -183,6 +183,62 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor {
         return false;
     }
 
+    /// @brief Fold CINT builtin calls for literal numeric arguments.
+    /// @param expr Builtin call expression being visited.
+    /// @return @c true when the expression was replaced with a constant.
+    bool tryFoldCInt(BuiltinCallExpr &expr) {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = cf::foldCIntLiteral(*expr.args[0])) {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Fold CLNG builtin calls for literal numeric arguments.
+    /// @param expr Builtin call expression being visited.
+    /// @return @c true when the expression was replaced with a constant.
+    bool tryFoldCLng(BuiltinCallExpr &expr) {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = cf::foldCLngLiteral(*expr.args[0])) {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Fold CSNG builtin calls for literal numeric arguments.
+    /// @param expr Builtin call expression being visited.
+    /// @return @c true when the expression was replaced with a constant.
+    bool tryFoldCSng(BuiltinCallExpr &expr) {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = cf::foldCSngLiteral(*expr.args[0])) {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Fold CDBL builtin calls for literal numeric arguments.
+    /// @param expr Builtin call expression being visited.
+    /// @return @c true when the expression was replaced with a constant.
+    bool tryFoldCDbl(BuiltinCallExpr &expr) {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = cf::foldCDblLiteral(*expr.args[0])) {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
     /// @brief Fold INT builtin calls for literal numeric arguments.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
@@ -259,12 +315,16 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor {
         bool (ConstFolderPass::*folder)(BuiltinCallExpr &);
     };
 
-    static constexpr std::array<BuiltinDispatchEntry, 10> kBuiltinDispatch{{
+    static constexpr std::array<BuiltinDispatchEntry, 14> kBuiltinDispatch{{
         {BuiltinCallExpr::Builtin::Len, &ConstFolderPass::tryFoldLen},
         {BuiltinCallExpr::Builtin::Mid, &ConstFolderPass::tryFoldMid},
         {BuiltinCallExpr::Builtin::Left, &ConstFolderPass::tryFoldLeft},
         {BuiltinCallExpr::Builtin::Right, &ConstFolderPass::tryFoldRight},
         {BuiltinCallExpr::Builtin::Val, &ConstFolderPass::tryFoldVal},
+        {BuiltinCallExpr::Builtin::Cint, &ConstFolderPass::tryFoldCInt},
+        {BuiltinCallExpr::Builtin::Clng, &ConstFolderPass::tryFoldCLng},
+        {BuiltinCallExpr::Builtin::Csng, &ConstFolderPass::tryFoldCSng},
+        {BuiltinCallExpr::Builtin::Cdbl, &ConstFolderPass::tryFoldCDbl},
         {BuiltinCallExpr::Builtin::Int, &ConstFolderPass::tryFoldInt},
         {BuiltinCallExpr::Builtin::Fix, &ConstFolderPass::tryFoldFix},
         {BuiltinCallExpr::Builtin::Round, &ConstFolderPass::tryFoldRound},

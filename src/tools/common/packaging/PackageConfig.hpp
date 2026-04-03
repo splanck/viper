@@ -70,7 +70,11 @@ struct PackageConfig {
     /// @brief Check if any package-* directives were specified.
     bool hasPackageConfig() const {
         return !displayName.empty() || !author.empty() || !description.empty() ||
-               !identifier.empty() || !iconPath.empty() || !assets.empty();
+               !homepage.empty() || !license.empty() || !identifier.empty() || !iconPath.empty() ||
+               !assets.empty() || !fileAssociations.empty() || shortcutDesktop || !shortcutMenu ||
+               !minOsWindows.empty() || !minOsMacos.empty() || !targetArchitectures.empty() ||
+               !category.empty() || !depends.empty() || !postInstallScript.empty() ||
+               !preUninstallScript.empty();
     }
 };
 

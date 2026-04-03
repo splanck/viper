@@ -51,6 +51,8 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     std::string contentsPrefix = appName + "/Contents/";
     std::string macosPrefix = contentsPrefix + "MacOS/";
     std::string resourcesPrefix = contentsPrefix + "Resources/";
+    const std::string resourcesRoot =
+        sanitizePackageRelativePath(resourcesPrefix, "bundle resource path");
 
     ZipWriter zip;
 
@@ -96,9 +98,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     // Assets
     for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
-        std::string targetDir = asset.targetPath;
-        if (targetDir == ".")
-            targetDir = "";
+        std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
         if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
@@ -109,11 +109,12 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
             // Recurse directory (symlink-safe)
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
-                    auto relPath = fs::relative(entry.path(), srcPath).string();
-                    std::string zipPath = resourcesPrefix;
-                    if (!targetDir.empty())
-                        zipPath += targetDir + "/";
-                    zipPath += relPath;
+                    auto relPath = sanitizePackageRelativePath(
+                        fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                    std::string assetBase =
+                        joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
+                    std::string zipPath =
+                        joinPackageRelativePath(assetBase, relPath, "asset path");
 
                     if (entry.is_directory()) {
                         zip.addDirectory(zipPath);
@@ -124,10 +125,10 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto data = readFile(srcPath.string());
-            std::string zipPath = resourcesPrefix;
-            if (!targetDir.empty())
-                zipPath += targetDir + "/";
-            zipPath += srcPath.filename().string();
+            std::string assetBase =
+                joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
+            std::string zipPath = joinPackageRelativePath(
+                assetBase, srcPath.filename().generic_string(), "asset path");
             zip.addFile(zipPath, data.data(), data.size());
         }
     }

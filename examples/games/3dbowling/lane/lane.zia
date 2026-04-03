@@ -9,6 +9,9 @@ class LaneBuilder {
     hide Mesh3D laneMesh;
     hide Mesh3D oilMesh;
     hide Mesh3D pinDeckMesh;
+    hide Mesh3D roomFloorMesh;
+    hide Mesh3D sideLaneMesh;
+    hide Mesh3D sideGutterMesh;
     hide Mesh3D gutterMesh;
     hide Mesh3D wallMesh;
     hide Mesh3D backWallMesh;
@@ -25,6 +28,9 @@ class LaneBuilder {
     hide Material3D laneMat;
     hide Material3D oilMat;
     hide Material3D pinDeckMat;
+    hide Material3D roomFloorMat;
+    hide Material3D sideLaneMat;
+    hide Material3D sideGutterMat;
     hide Material3D gutterMat;
     hide Material3D wallMat;
     hide Material3D backWallMat;
@@ -41,6 +47,11 @@ class LaneBuilder {
     hide Mat4 laneXform;
     hide Mat4 oilXform;
     hide Mat4 pinDeckXform;
+    hide Mat4 roomFloorXform;
+    hide Mat4 sideLaneLeftXform;
+    hide Mat4 sideLaneRightXform;
+    hide Mat4 sideGutterLeftXform;
+    hide Mat4 sideGutterRightXform;
     hide Mat4 gutterLeftXform;
     hide Mat4 gutterRightXform;
     hide Mat4 wallLeftXform;
@@ -108,22 +119,33 @@ class LaneBuilder {
         pinDeckMat = Material3D.NewColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
         Material3D.SetShininess(pinDeckMat, config.PIN_DECK_SHININESS);
 
+        roomFloorMesh = Mesh3D.NewBox(8.8, 0.05, totalLen + 6.0);
+        roomFloorMat = Material3D.NewColor(config.ROOM_FLOOR_R, config.ROOM_FLOOR_G, config.ROOM_FLOOR_B);
+        Material3D.SetShininess(roomFloorMat, 18.0);
+
+        sideLaneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.03, totalLen + 1.2);
+        sideLaneMat = Material3D.NewColor(config.ROOM_SIDE_LANE_R, config.ROOM_SIDE_LANE_G, config.ROOM_SIDE_LANE_B);
+        Material3D.SetShininess(sideLaneMat, 38.0);
+
+        sideGutterMesh = Mesh3D.NewBox(config.LANE_GUTTER_W * 2.0 + 0.12, 0.03, totalLen + 1.2);
+        sideGutterMat = Material3D.NewColor(config.ROOM_SIDE_GUTTER_R, config.ROOM_SIDE_GUTTER_G, config.ROOM_SIDE_GUTTER_B);
+
         gutterMesh = Mesh3D.NewBox(config.LANE_GUTTER_W, 0.04, totalLen);
         gutterMat = Material3D.NewColor(config.GUTTER_COLOR_R, config.GUTTER_COLOR_G, config.GUTTER_COLOR_B);
 
         wallMesh = Mesh3D.NewBox(0.05, config.LANE_WALL_H, totalLen);
         wallMat = Material3D.NewColor(config.WALL_COLOR_R, config.WALL_COLOR_G, config.WALL_COLOR_B);
 
-        var backW = config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0 + 0.2;
-        backWallMesh = Mesh3D.NewBox(backW, 1.5, 0.1);
-        backWallMat = Material3D.NewColor(config.BACKWALL_COLOR_R, config.BACKWALL_COLOR_G, config.BACKWALL_COLOR_B);
+        var backW = 8.8;
+        backWallMesh = Mesh3D.NewBox(backW, 4.2, 0.18);
+        backWallMat = Material3D.NewColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
 
-        ceilingMesh = Mesh3D.NewBox(config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0 + 1.8, 0.08, totalLen);
-        ceilingMat = Material3D.NewColor(0.16, 0.18, 0.23);
+        ceilingMesh = Mesh3D.NewBox(8.8, 0.08, totalLen + 2.8);
+        ceilingMat = Material3D.NewColor(0.18, 0.20, 0.25);
         Material3D.SetShininess(ceilingMat, 10.0);
 
-        sidePanelMesh = Mesh3D.NewBox(0.16, 3.4, totalLen);
-        sidePanelMat = Material3D.NewColor(0.14, 0.17, 0.21);
+        sidePanelMesh = Mesh3D.NewBox(0.26, 3.8, totalLen + 2.8);
+        sidePanelMat = Material3D.NewColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
         Material3D.SetShininess(sidePanelMat, 8.0);
 
         pinsetterMesh = Mesh3D.NewBox(backW, 0.92, 1.4);
@@ -160,6 +182,13 @@ class LaneBuilder {
         if (oilLen < 0.5) { oilLen = 0.5; }
         oilXform = Mat4.Translate(0.0, 0.005, config.OIL_START_Z + oilLen / 2.0);
         pinDeckXform = Mat4.Translate(0.0, 0.004, config.PIN_Z_OFFSET + 0.12);
+        roomFloorXform = Mat4.Translate(0.0, -0.045, laneCenterZ + 0.3);
+
+        var sideLaneCenter = config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0 + 0.92;
+        sideLaneLeftXform = Mat4.Translate(-sideLaneCenter, -0.01, laneCenterZ + 0.1);
+        sideLaneRightXform = Mat4.Translate(sideLaneCenter, -0.01, laneCenterZ + 0.1);
+        sideGutterLeftXform = Mat4.Translate(-sideLaneCenter, config.GUTTER_Y * 0.4, laneCenterZ + 0.1);
+        sideGutterRightXform = Mat4.Translate(sideLaneCenter, config.GUTTER_Y * 0.4, laneCenterZ + 0.1);
 
         var gLeft = -(config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W / 2.0);
         var gRight = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W / 2.0;
@@ -171,10 +200,10 @@ class LaneBuilder {
         wallLeftXform = Mat4.Translate(wLeft, config.LANE_WALL_H / 2.0, laneCenterZ);
         wallRightXform = Mat4.Translate(wRight, config.LANE_WALL_H / 2.0, laneCenterZ);
 
-        backWallXform = Mat4.Translate(0.0, 0.75, config.PIN_Z_OFFSET + 2.1);
+        backWallXform = Mat4.Translate(0.0, 1.6, config.PIN_Z_OFFSET + 2.55);
         ceilingXform = Mat4.Translate(0.0, 4.9, laneCenterZ);
-        sidePanelLeftXform = Mat4.Translate(wLeft - 0.26, 1.7, laneCenterZ);
-        sidePanelRightXform = Mat4.Translate(wRight + 0.26, 1.7, laneCenterZ);
+        sidePanelLeftXform = Mat4.Translate(-4.48, 1.9, laneCenterZ);
+        sidePanelRightXform = Mat4.Translate(4.48, 1.9, laneCenterZ);
         pinsetterXform = Mat4.Translate(0.0, 1.62, config.PIN_Z_OFFSET + 0.72);
         approachXform = Mat4.Translate(0.0, -0.02, -config.LANE_APPROACH / 2.0);
         foulLineXform = Mat4.Translate(0.0, 0.0, 0.0);
@@ -269,6 +298,11 @@ class LaneBuilder {
     }
 
     expose func draw(canvas: Canvas3D) {
+        Canvas3D.DrawMesh(canvas, roomFloorMesh, roomFloorXform, roomFloorMat);
+        Canvas3D.DrawMesh(canvas, sideLaneMesh, sideLaneLeftXform, sideLaneMat);
+        Canvas3D.DrawMesh(canvas, sideLaneMesh, sideLaneRightXform, sideLaneMat);
+        Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterLeftXform, sideGutterMat);
+        Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterRightXform, sideGutterMat);
         Canvas3D.DrawMesh(canvas, laneMesh, laneXform, laneMat);
         Canvas3D.DrawMesh(canvas, oilMesh, oilXform, oilMat);
         Canvas3D.DrawMesh(canvas, pinDeckMesh, pinDeckXform, pinDeckMat);
@@ -302,6 +336,15 @@ class LaneBuilder {
 
         Material3D.SetEnvMap(pinDeckMat, env);
         Material3D.set_Reflectivity(pinDeckMat, config.PIN_DECK_REFLECTIVITY);
+
+        Material3D.SetEnvMap(roomFloorMat, env);
+        Material3D.set_Reflectivity(roomFloorMat, 0.03);
+
+        Material3D.SetEnvMap(sideLaneMat, env);
+        Material3D.set_Reflectivity(sideLaneMat, 0.05);
+
+        Material3D.SetEnvMap(sideGutterMat, env);
+        Material3D.set_Reflectivity(sideGutterMat, 0.02);
 
         Material3D.SetEnvMap(approachMat, env);
         Material3D.set_Reflectivity(approachMat, config.LANE_REFLECTIVITY * 0.75);

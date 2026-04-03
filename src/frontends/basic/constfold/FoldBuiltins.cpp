@@ -27,6 +27,7 @@
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "viper/il/io/FormatUtils.hpp"
 
+#include <cstdint>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -42,6 +43,15 @@ namespace {
 /// @return Unique pointer owning the new float literal.
 AST::ExprPtr make_float(double value) {
     auto out = std::make_unique<::il::frontends::basic::FloatExpr>();
+    out->value = value;
+    return out;
+}
+
+/// @brief Create an integer literal node.
+/// @param value Numeric value to embed.
+/// @return Unique pointer owning the new integer literal.
+AST::ExprPtr make_int(long long value) {
+    auto out = std::make_unique<::il::frontends::basic::IntExpr>();
     out->value = value;
     return out;
 }
@@ -66,6 +76,19 @@ std::optional<double> get_finite_double(const AST::Expr &expr) {
     if (!std::isfinite(value))
         return std::nullopt;
     return value;
+}
+
+/// @brief Round a finite double using BASIC's banker-rounding rule.
+/// @param expr Expression to inspect.
+/// @return Rounded value or empty optional when folding cannot proceed.
+std::optional<double> get_rounded_even_double(const AST::Expr &expr) {
+    auto value = get_finite_double(expr);
+    if (!value)
+        return std::nullopt;
+    double rounded = std::nearbyint(*value);
+    if (!std::isfinite(rounded))
+        return std::nullopt;
+    return rounded;
 }
 
 /// @brief Round a value to the specified decimal digits.
@@ -152,6 +175,55 @@ AST::ExprPtr foldValLiteral(const AST::Expr &arg) {
     if (!parsed)
         return nullptr;
     return make_float(*parsed);
+}
+
+/// @brief Fold CINT builtin using banker rounding and int16 range checks.
+/// @param arg Expression passed to CINT().
+/// @return Integer literal or nullptr when folding cannot proceed.
+AST::ExprPtr foldCIntLiteral(const AST::Expr &arg) {
+    auto value = get_rounded_even_double(arg);
+    if (!value)
+        return nullptr;
+    if (*value < static_cast<double>(std::numeric_limits<int16_t>::min()) ||
+        *value > static_cast<double>(std::numeric_limits<int16_t>::max()))
+        return nullptr;
+    return make_int(static_cast<long long>(static_cast<int16_t>(*value)));
+}
+
+/// @brief Fold CLNG builtin using banker rounding and int32 range checks.
+/// @param arg Expression passed to CLNG().
+/// @return Integer literal or nullptr when folding cannot proceed.
+AST::ExprPtr foldCLngLiteral(const AST::Expr &arg) {
+    auto value = get_rounded_even_double(arg);
+    if (!value)
+        return nullptr;
+    if (*value < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
+        *value > static_cast<double>(std::numeric_limits<int32_t>::max()))
+        return nullptr;
+    return make_int(static_cast<long long>(static_cast<int32_t>(*value)));
+}
+
+/// @brief Fold CSNG builtin by casting to float when the result remains finite.
+/// @param arg Expression passed to CSNG().
+/// @return Float literal or nullptr when folding cannot proceed.
+AST::ExprPtr foldCSngLiteral(const AST::Expr &arg) {
+    auto value = get_finite_double(arg);
+    if (!value)
+        return nullptr;
+    float converted = static_cast<float>(*value);
+    if (!std::isfinite(converted))
+        return nullptr;
+    return make_float(static_cast<double>(converted));
+}
+
+/// @brief Fold CDBL builtin by materialising a floating literal.
+/// @param arg Expression passed to CDBL().
+/// @return Float literal or nullptr when folding cannot proceed.
+AST::ExprPtr foldCDblLiteral(const AST::Expr &arg) {
+    auto value = get_finite_double(arg);
+    if (!value)
+        return nullptr;
+    return make_float(*value);
 }
 
 /// @brief Fold INT builtin (floor) when the argument is a literal numeric.
