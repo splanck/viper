@@ -334,39 +334,22 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
     // Runtime classes are Ptr types with a name like "Viper.GUI.App"
     if (baseType && baseType->kind == TypeKindSem::Ptr && !baseType->name.empty() &&
         baseType->name.find("Viper.") == 0) {
-        // Construct getter function name: {ClassName}.get_{PropertyName}
+        const auto &registry = il::runtime::RuntimeRegistry::instance();
         std::string getterName = baseType->name + ".get_" + expr->field;
+        if (auto prop = registry.findProperty(baseType->name, expr->field);
+            prop && prop->getter && *prop->getter) {
+            getterName = prop->getter;
+        }
 
-        // Look up the getter function
         Symbol *sym = lookupSymbol(getterName);
         if (sym && sym->kind == Symbol::Kind::Function) {
+            resolvedFieldGetters_[expr] = getterName;
             // Return the function's return type (the property type)
             TypeRef funcType = sym->type;
             if (funcType && funcType->kind == TypeKindSem::Function) {
                 return normalizeRuntimeSurfaceType(funcType->returnType());
             }
             return normalizeRuntimeSurfaceType(funcType);
-        }
-
-        // Fallback: when a runtime function returns obj typed as a different class
-        // (e.g., Network.Tcp.RecvExact returns Bytes, not Tcp), the variable's Ptr
-        // name may not match the actual class. Search all runtime classes for the
-        // property getter as a cross-class fallback.
-        const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
-        for (const auto &cls : catalog) {
-            if (!cls.qname || cls.qname == baseType->name)
-                continue;
-            for (const auto &p : cls.properties) {
-                if (p.name && std::string_view(p.name) == expr->field && p.getter) {
-                    Symbol *fallbackSym = lookupSymbol(p.getter);
-                    if (fallbackSym && fallbackSym->kind == Symbol::Kind::Function) {
-                        TypeRef funcType = fallbackSym->type;
-                        if (funcType && funcType->kind == TypeKindSem::Function)
-                            return normalizeRuntimeSurfaceType(funcType->returnType());
-                        return normalizeRuntimeSurfaceType(funcType);
-                    }
-                }
-            }
         }
     }
 

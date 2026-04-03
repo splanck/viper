@@ -328,6 +328,22 @@ void *rt_option_filter(void *obj, int8_t (*pred)(void *)) {
     return rt_option_none();
 }
 
+void *rt_option_map_wrapper(void *obj, void *fn) {
+    return rt_option_map(obj, (void *(*)(void *))fn);
+}
+
+void *rt_option_and_then_wrapper(void *obj, void *fn) {
+    return rt_option_and_then(obj, (void *(*)(void *))fn);
+}
+
+void *rt_option_or_else_wrapper(void *obj, void *fn) {
+    return rt_option_or_else(obj, (void *(*)(void))fn);
+}
+
+void *rt_option_filter_wrapper(void *obj, void *pred) {
+    return rt_option_filter(obj, (int8_t(*)(void *))pred);
+}
+
 //=============================================================================
 // Conversion
 //=============================================================================

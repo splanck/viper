@@ -70,6 +70,7 @@ echo.
 REM Build Zia demos
 call :build_demo paint "%APPS_DIR%\paint"
 call :build_demo viperide "%APPS_DIR%\viperide"
+call :build_demo 3dbowling "%GAMES_DIR%\3dbowling"
 call :build_demo pacman-zia "%GAMES_DIR%\pacman"
 call :build_demo sqldb "%APPS_DIR%\sqldb"
 call :build_demo chess-zia "%GAMES_DIR%\chess"

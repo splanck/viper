@@ -198,6 +198,11 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                     Symbol *sym = currentScope_->lookup(lhsIdent->name);
                     if (sym && sym->type)
                         assignTarget = sym->type;
+                } else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+                    auto resolvedIt = exprTypes_.find(fieldExpr);
+                    if (resolvedIt != exprTypes_.end() && resolvedIt->second) {
+                        assignTarget = resolvedIt->second;
+                    }
                 }
                 if (!rightType->isConvertibleTo(*assignTarget)) {
                     errorTypeMismatch(expr->loc, assignTarget, rightType);

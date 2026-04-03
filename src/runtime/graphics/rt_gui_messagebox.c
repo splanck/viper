@@ -244,6 +244,28 @@ typedef struct {
     size_t custom_button_cap;
 } rt_messagebox_data_t;
 
+static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
+    if (!data)
+        return;
+    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
+    for (size_t i = 0; i < data->custom_button_count; i++)
+        free(data->custom_buttons[i].label);
+    free(data->custom_buttons);
+    data->custom_buttons = NULL;
+    data->custom_button_count = 0;
+    data->custom_button_cap = 0;
+    if (data->dialog) {
+        rt_gui_remove_dialog(app, data->dialog);
+        vg_widget_destroy((vg_widget_t *)data->dialog);
+        data->dialog = NULL;
+    }
+    data->result = -1;
+}
+
+static void rt_messagebox_finalize(void *box) {
+    rt_messagebox_dispose((rt_messagebox_data_t *)box);
+}
+
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     char *ctitle = rt_string_to_cstr(title);
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
@@ -285,8 +307,28 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     data->result = -1;
     data->default_button = 0;
     data->owner_app = rt_messagebox_app();
+    data->custom_buttons = NULL;
+    data->custom_button_count = 0;
+    data->custom_button_cap = 0;
+    rt_obj_set_finalizer(data, rt_messagebox_finalize);
 
     return data;
+}
+
+void *rt_messagebox_new_info(rt_string title, rt_string message) {
+    return rt_messagebox_new(title, message, RT_MESSAGEBOX_INFO);
+}
+
+void *rt_messagebox_new_warning(rt_string title, rt_string message) {
+    return rt_messagebox_new(title, message, RT_MESSAGEBOX_WARNING);
+}
+
+void *rt_messagebox_new_error(rt_string title, rt_string message) {
+    return rt_messagebox_new(title, message, RT_MESSAGEBOX_ERROR);
+}
+
+void *rt_messagebox_new_question(rt_string title, rt_string message) {
+    return rt_messagebox_new(title, message, RT_MESSAGEBOX_QUESTION);
 }
 
 void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
@@ -356,16 +398,7 @@ int64_t rt_messagebox_show(void *box) {
 void rt_messagebox_destroy(void *box) {
     if (!box)
         return;
-    rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
-    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
-    // Free custom button labels
-    for (size_t i = 0; i < data->custom_button_count; i++)
-        free(data->custom_buttons[i].label);
-    free(data->custom_buttons);
-    if (data->dialog) {
-        rt_gui_remove_dialog(app, data->dialog);
-        vg_widget_destroy((vg_widget_t *)data->dialog);
-    }
+    rt_messagebox_dispose((rt_messagebox_data_t *)box);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
@@ -410,6 +443,30 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     (void)title;
     (void)message;
     (void)type;
+    return NULL;
+}
+
+void *rt_messagebox_new_info(rt_string title, rt_string message) {
+    (void)title;
+    (void)message;
+    return NULL;
+}
+
+void *rt_messagebox_new_warning(rt_string title, rt_string message) {
+    (void)title;
+    (void)message;
+    return NULL;
+}
+
+void *rt_messagebox_new_error(rt_string title, rt_string message) {
+    (void)title;
+    (void)message;
+    return NULL;
+}
+
+void *rt_messagebox_new_question(rt_string title, rt_string message) {
+    (void)title;
+    (void)message;
     return NULL;
 }
 

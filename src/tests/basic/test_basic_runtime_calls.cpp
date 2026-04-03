@@ -100,6 +100,75 @@ PRINT "created"
 )"));
 }
 
+TEST(BasicRuntimeCalls, RuntimeBuilderApis) {
+    ASSERT_TRUE(compileOk(R"(
+DIM box AS OBJECT
+DIM choice AS INTEGER
+DIM dlg AS OBJECT
+DIM shown AS INTEGER
+DIM path AS STRING
+DIM count AS INTEGER
+box = Viper.GUI.MessageBox.NewInfo("Title", "Body")
+Viper.GUI.MessageBox.AddButton(box, "OK", 1)
+Viper.GUI.MessageBox.SetDefaultButton(box, 1)
+choice = Viper.GUI.MessageBox.Show(box)
+Viper.GUI.MessageBox.Destroy(box)
+dlg = Viper.GUI.FileDialog.NewOpen()
+Viper.GUI.FileDialog.SetTitle(dlg, "Choose")
+Viper.GUI.FileDialog.AddFilter(dlg, "Images", "*.png")
+Viper.GUI.FileDialog.SetMultiple(dlg, 1)
+shown = Viper.GUI.FileDialog.Show(dlg)
+path = Viper.GUI.FileDialog.GetPath(dlg)
+count = Viper.GUI.FileDialog.get_PathCount(dlg)
+path = Viper.GUI.FileDialog.GetPathAt(dlg, 0)
+Viper.GUI.FileDialog.Destroy(dlg)
+PRINT choice
+)"));
+}
+
+TEST(BasicRuntimeCalls, RuntimeCollectionConverters) {
+    ASSERT_TRUE(compileOk(R"(
+DIM seq AS OBJECT
+DIM list AS OBJECT
+DIM st AS OBJECT
+DIM bag AS OBJECT
+DIM queue AS OBJECT
+DIM stack AS OBJECT
+DIM deque AS OBJECT
+DIM seq2 AS OBJECT
+seq = Viper.Collections.Seq.New()
+list = Viper.Collections.List.FromSeq(seq)
+st = Viper.Collections.Set.FromSeq(seq)
+bag = Viper.Collections.Bag.FromSeq(seq)
+queue = Viper.Collections.Queue.FromSeq(seq)
+stack = Viper.Collections.Stack.FromSeq(seq)
+deque = Viper.Collections.Deque.FromSeq(seq)
+seq2 = Viper.Collections.Seq.FromList(list)
+seq2 = Viper.Collections.Seq.FromSet(st)
+seq2 = Viper.Collections.Seq.FromBag(bag)
+list = Viper.Collections.List.FromSet(st)
+list = Viper.Collections.List.FromDeque(deque)
+PRINT "ok"
+)"));
+}
+
+TEST(BasicRuntimeCalls, SpriteAnimatorSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM anim AS OBJECT
+DIM ok AS BOOLEAN
+DIM current AS STRING
+DIM playing AS BOOLEAN
+anim = Viper.Graphics.SpriteAnimator.New()
+ok = Viper.Graphics.SpriteAnimator.AddClip(anim, "idle", 0, 0, 16, 16)
+playing = Viper.Graphics.SpriteAnimator.Play(anim, "idle")
+current = Viper.Graphics.SpriteAnimator.get_Current(anim)
+playing = Viper.Graphics.SpriteAnimator.get_IsPlaying(anim)
+Viper.Graphics.SpriteAnimator.Stop(anim)
+Viper.Graphics.SpriteAnimator.Destroy(anim)
+PRINT current
+)"));
+}
+
 /// @brief Main.
 int main() {
     return viper_test::run_all_tests();

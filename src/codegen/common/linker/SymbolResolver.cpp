@@ -327,6 +327,13 @@ static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "truncf",
         // macOS specific
         "_NSGetExecutablePath",
+        "_NSConcreteStackBlock",
+        "_NSConcreteGlobalBlock",
+        "_NSConcreteMallocBlock",
+        "_Block_copy",
+        "_Block_release",
+        "_Block_object_assign",
+        "_Block_object_dispose",
         "dyld_stub_binder",
         "_tlv_atexit",
         "_tlv_bootstrap",

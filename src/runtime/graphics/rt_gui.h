@@ -1957,6 +1957,18 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message);
 /// @return MessageBox handle.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type);
 
+/// @brief Create a custom info message box.
+void *rt_messagebox_new_info(rt_string title, rt_string message);
+
+/// @brief Create a custom warning message box.
+void *rt_messagebox_new_warning(rt_string title, rt_string message);
+
+/// @brief Create a custom error message box.
+void *rt_messagebox_new_error(rt_string title, rt_string message);
+
+/// @brief Create a custom question message box.
+void *rt_messagebox_new_question(rt_string title, rt_string message);
+
 /// @brief Add a button to a custom message box.
 /// @param box MessageBox handle.
 /// @param text Button text.
@@ -2023,6 +2035,15 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path);
 /// @param type Dialog type (RT_FILEDIALOG_OPEN, SAVE, or FOLDER).
 /// @return FileDialog handle.
 void *rt_filedialog_new(int64_t type);
+
+/// @brief Create a custom open-file dialog.
+void *rt_filedialog_new_open(void);
+
+/// @brief Create a custom save-file dialog.
+void *rt_filedialog_new_save(void);
+
+/// @brief Create a custom select-folder dialog.
+void *rt_filedialog_new_folder(void);
 
 /// @brief Set the title of a file dialog.
 /// @param dialog FileDialog handle.

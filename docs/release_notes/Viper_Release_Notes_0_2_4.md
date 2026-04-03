@@ -48,7 +48,7 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 74 | +74 |
+| Commits | — | 75 | +75 |
 | Source files | 2,671 | 2,796 | +125 |
 | Production SLOC | ~348K | ~415K | +67K |
 | Test count | 1,351 | 1,388 | +37 |
@@ -587,6 +587,7 @@ Comprehensive overhaul with 10 improvements:
 ### Demo Games
 
 - **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking.
+- **3D Bowling** — Multi-file 3D bowling game (12 files, 3,100 LOC) with Physics3D pin collision, ball spin/hook, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
 - **Asset Demo** — Minimal example (`examples/apps/asset_demo/`) demonstrating `embed` and `pack` project directives with `Assets.Load()` at runtime.
 
 ---

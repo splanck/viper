@@ -735,16 +735,21 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
 //=============================================================================
 
 rt_sprite_animator_t *rt_sprite_animator_new(void) {
-    rt_sprite_animator_t *anim = calloc(1, sizeof(rt_sprite_animator_t));
+    rt_sprite_animator_t *anim =
+        (rt_sprite_animator_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite_animator_t));
     if (!anim)
         return NULL;
+    memset(anim, 0, sizeof(rt_sprite_animator_t));
     anim->current_clip = -1;
     anim->playing = 0;
     return anim;
 }
 
 void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
-    free(animator);
+    if (!animator)
+        return;
+    if (rt_obj_release_check0(animator))
+        rt_obj_free(animator);
 }
 
 int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
@@ -851,4 +856,33 @@ const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
     if (!animator || !animator->playing || animator->current_clip < 0)
         return NULL;
     return animator->clips[animator->current_clip].name;
+}
+
+int8_t rt_sprite_animator_add_clip_str(void *animator,
+                                       rt_string name,
+                                       int64_t start_frame,
+                                       int64_t frame_count,
+                                       int64_t frame_delay_ms,
+                                       int64_t loop) {
+    const char *clipName = name ? rt_string_cstr(name) : NULL;
+    int ok = rt_sprite_animator_add_clip((rt_sprite_animator_t *)animator,
+                                         clipName,
+                                         start_frame,
+                                         frame_count,
+                                         frame_delay_ms,
+                                         loop != 0);
+    return ok ? 1 : 0;
+}
+
+int8_t rt_sprite_animator_play_str(void *animator, rt_string name) {
+    const char *clipName = name ? rt_string_cstr(name) : NULL;
+    int8_t ok = rt_sprite_animator_play((rt_sprite_animator_t *)animator, clipName);
+    return ok;
+}
+
+rt_string rt_sprite_animator_get_current_str(void *animator) {
+    const char *name = rt_sprite_animator_get_current((rt_sprite_animator_t *)animator);
+    if (!name)
+        return rt_str_empty();
+    return rt_string_from_bytes(name, strlen(name));
 }

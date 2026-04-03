@@ -189,6 +189,18 @@ void *rt_result_and_then(void *obj, void *(*fn)(void *));
 /// @return Same Ok, or Result from fn if Err.
 void *rt_result_or_else(void *obj, void *(*fn)(void *));
 
+/// @brief IL-compatible wrapper for @ref rt_result_map accepting an opaque callback pointer.
+void *rt_result_map_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_result_map_err accepting an opaque callback pointer.
+void *rt_result_map_err_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_result_and_then accepting an opaque callback pointer.
+void *rt_result_and_then_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_result_or_else accepting an opaque callback pointer.
+void *rt_result_or_else_wrapper(void *obj, void *fn);
+
 //=========================================================================
 // Utility
 //=========================================================================

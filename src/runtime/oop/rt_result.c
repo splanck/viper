@@ -383,6 +383,22 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+void *rt_result_map_wrapper(void *obj, void *fn) {
+    return rt_result_map(obj, (void *(*)(void *))fn);
+}
+
+void *rt_result_map_err_wrapper(void *obj, void *fn) {
+    return rt_result_map_err(obj, (void *(*)(void *))fn);
+}
+
+void *rt_result_and_then_wrapper(void *obj, void *fn) {
+    return rt_result_and_then(obj, (void *(*)(void *))fn);
+}
+
+void *rt_result_or_else_wrapper(void *obj, void *fn) {
+    return rt_result_or_else(obj, (void *(*)(void *))fn);
+}
+
 //=============================================================================
 // Utility
 //=============================================================================

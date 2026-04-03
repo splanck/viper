@@ -126,6 +126,85 @@ func start() {
 )"));
 }
 
+TEST(ZiaStaticCalls, RuntimeBuilderApis) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+/// @brief Start.
+func start() {
+    var box = Viper.GUI.MessageBox.NewInfo("Title", "Body");
+    box.AddButton("OK", 1);
+    box.SetDefaultButton(1);
+    var choice = box.Show();
+    box.Destroy();
+
+    var dlg = Viper.GUI.FileDialog.NewOpen();
+    dlg.SetTitle("Choose");
+    dlg.AddFilter("Images", "*.png");
+    dlg.SetMultiple(1);
+    var shown = dlg.Show();
+    var path = dlg.GetPath();
+    var count = dlg.PathCount;
+    var path0 = dlg.GetPathAt(0);
+    dlg.Destroy();
+}
+)"));
+}
+
+TEST(ZiaStaticCalls, RuntimeCollectionConverters) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+/// @brief Start.
+func start() {
+    var seq = Viper.Collections.Seq.New();
+    var list = Viper.Collections.List.FromSeq(seq);
+    var set = Viper.Collections.Set.FromSeq(seq);
+    var bag = Viper.Collections.Bag.FromSeq(seq);
+    var queue = Viper.Collections.Queue.FromSeq(seq);
+    var stack = Viper.Collections.Stack.FromSeq(seq);
+    var deque = Viper.Collections.Deque.FromSeq(seq);
+    var seqFromList = Viper.Collections.Seq.FromList(list);
+    var seqFromSet = Viper.Collections.Seq.FromSet(set);
+    var seqFromBag = Viper.Collections.Seq.FromBag(bag);
+    var listFromSet = Viper.Collections.List.FromSet(set);
+    var listFromDeque = Viper.Collections.List.FromDeque(deque);
+}
+)"));
+}
+
+TEST(ZiaStaticCalls, SpriteAnimatorSurface) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+/// @brief Start.
+func start() {
+    var anim = Viper.Graphics.SpriteAnimator.New();
+    var added = anim.AddClip("idle", 0, 0, 16, 16);
+    var playing = anim.Play("idle");
+    var current = anim.Current;
+    var isPlaying = anim.IsPlaying;
+    anim.Stop();
+    anim.Destroy();
+}
+)"));
+}
+
+TEST(ZiaStaticCalls, RuntimeObjectCallbackMethod) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+
+func keepList(x: Viper.Collections.List): Viper.Collections.List {
+    return x;
+}
+
+/// @brief Start.
+func start() {
+    var list = Viper.Collections.List.New();
+    var opt = Viper.Option.Some(list);
+    var mapped = opt.Map(keepList);
+    var out = Viper.Option.Unwrap(mapped);
+}
+)"));
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

@@ -753,17 +753,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             std::string fullMethodName = "Viper.String." + fieldExpr->field;
             Symbol *sym = nullptr;
-
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName("Viper.String")) {
-                for (const auto &m : rtClass->methods) {
-                    if (m.name && iequals(m.name, fieldExpr->field) && m.target) {
-                        sym = lookupSymbol(m.target);
-                        if (sym && sym->kind == Symbol::Kind::Function) {
-                            fullMethodName = m.target;
-                            break;
-                        }
-                    }
-                }
+            const auto &registry = il::runtime::RuntimeRegistry::instance();
+            if (auto method = registry.findMethod("Viper.String", fieldExpr->field, expr->args.size());
+                method && method->target && *method->target) {
+                sym = lookupSymbol(method->target);
+                if (sym && sym->kind == Symbol::Kind::Function)
+                    fullMethodName = method->target;
             }
 
             if (!sym)
@@ -835,19 +830,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             std::string fullMethodName = baseType->name + "." + fieldExpr->field;
 
             Symbol *sym = nullptr;
-
-            // First, try the RuntimeClasses catalog for instance method dispatch.
-            // This finds method targets that accept the implicit receiver arg.
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(baseType->name)) {
-                for (const auto &m : rtClass->methods) {
-                    if (m.name && std::string_view(m.name) == fieldExpr->field && m.target) {
-                        sym = lookupSymbol(m.target);
-                        if (sym && sym->kind == Symbol::Kind::Function) {
-                            fullMethodName = m.target;
-                            break;
-                        }
-                    }
-                }
+            const auto &registry = il::runtime::RuntimeRegistry::instance();
+            if (auto method =
+                    registry.findMethod(baseType->name, fieldExpr->field, expr->args.size());
+                method && method->target && *method->target) {
+                sym = lookupSymbol(method->target);
+                if (sym && sym->kind == Symbol::Kind::Function)
+                    fullMethodName = method->target;
             }
 
             // Fall back to direct qualified name lookup
@@ -862,29 +851,6 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 sym = lookupSymbol(widgetMethodName);
                 if (sym && sym->kind == Symbol::Kind::Function) {
                     fullMethodName = widgetMethodName;
-                }
-            }
-
-            // Cross-class fallback: when a runtime function returns obj typed as a
-            // different class (e.g., Network.Tcp.RecvExact returns Bytes, not Tcp),
-            // the variable's Ptr name may not match the actual class. Search all
-            // runtime classes for the method as a fallback.
-            if (!sym) {
-                const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
-                for (const auto &cls : catalog) {
-                    if (!cls.qname || cls.qname == baseType->name)
-                        continue;
-                    for (const auto &m : cls.methods) {
-                        if (m.name && std::string_view(m.name) == fieldExpr->field && m.target) {
-                            sym = lookupSymbol(m.target);
-                            if (sym && sym->kind == Symbol::Kind::Function) {
-                                fullMethodName = m.target;
-                                break;
-                            }
-                        }
-                    }
-                    if (sym)
-                        break;
                 }
             }
 

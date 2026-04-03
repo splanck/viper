@@ -101,6 +101,15 @@ void *rt_lazy_map(void *obj, void *(*fn)(void *));
 /// @return New Lazy that will unwrap the result.
 void *rt_lazy_flat_map(void *obj, void *(*fn)(void *));
 
+/// @brief IL-compatible wrapper for @ref rt_lazy_new accepting an opaque supplier pointer.
+void *rt_lazy_new_wrapper(void *supplier);
+
+/// @brief IL-compatible wrapper for @ref rt_lazy_map accepting an opaque callback pointer.
+void *rt_lazy_map_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_lazy_flat_map accepting an opaque callback pointer.
+void *rt_lazy_flat_map_wrapper(void *obj, void *fn);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2,7 +2,16 @@
 module config;
 
 // =========================================================================
-// Game States
+// App Screens
+// =========================================================================
+var SCREEN_TITLE: Integer = 0;
+var SCREEN_PLAYING: Integer = 1;
+var SCREEN_PAUSED: Integer = 2;
+var SCREEN_OPTIONS: Integer = 3;
+var SCREEN_RESULTS: Integer = 4;
+
+// =========================================================================
+// Match Flow States
 // =========================================================================
 var STATE_AIMING: Integer = 0;
 var STATE_ROLLING: Integer = 1;
@@ -11,7 +20,15 @@ var STATE_SCORING: Integer = 3;
 var STATE_SWEEPING: Integer = 4;
 var STATE_RESETTING: Integer = 5;
 var STATE_CELEBRATING: Integer = 6;
-var STATE_GAMEOVER: Integer = 7;
+
+// =========================================================================
+// Game Modes / Quality
+// =========================================================================
+var MODE_SINGLE: Integer = 0;
+var MODE_VERSUS: Integer = 1;
+
+var QUALITY_PERFORMANCE: Integer = 0;
+var QUALITY_CINEMATIC: Integer = 1;
 
 // =========================================================================
 // Window
@@ -27,61 +44,53 @@ var CAMERA_FOV: Float = 55.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 200.0;
 
-// Aim camera (behind ball looking down lane)
 var CAM_AIM_HEIGHT: Float = 2.5;
-var CAM_AIM_BEHIND: Float = 4.0;
+var CAM_AIM_BEHIND: Float = 4.2;
 var CAM_AIM_LOOK_Z: Float = 8.0;
-var CAM_AIM_LOOK_Y: Float = 0.3;
+var CAM_AIM_LOOK_Y: Float = 0.35;
 
-// Follow camera (tracks ball down lane)
-var CAM_FOLLOW_HEIGHT: Float = 1.8;
-var CAM_FOLLOW_DIST: Float = 3.0;
-var CAM_FOLLOW_LOOK_AHEAD: Float = 5.0;
-var CAM_FOLLOW_SMOOTH: Float = 5.0;
+var CAM_FOLLOW_HEIGHT: Float = 2.0;
+var CAM_FOLLOW_DIST: Float = 3.3;
+var CAM_FOLLOW_LOOK_AHEAD: Float = 5.5;
+var CAM_FOLLOW_SMOOTH: Float = 5.5;
 
-// Overhead camera (pin area, settling)
-var CAM_OVER_HEIGHT: Float = 6.0;
-var CAM_OVER_ANGLE: Float = 0.8;    // Radians tilt from vertical
+var CAM_OVER_HEIGHT: Float = 6.5;
 
-// Cinematic camera (strike replay)
-var CAM_CINE_DURATION: Float = 2.5;
-var CAM_CINE_RADIUS: Float = 4.0;
-var CAM_CINE_HEIGHT: Float = 2.0;
-var CAM_CINE_SPEED: Float = 1.5;    // Orbit speed
+var CAM_CINE_DURATION: Float = 2.6;
+var CAM_CINE_HEIGHT: Float = 2.2;
+var CAM_CINE_RADIUS: Float = 4.5;
+var CAM_CINE_LOOK_Y: Float = 0.35;
 
-// Shake
 var SHAKE_PIN_INTENSITY: Float = 0.08;
-var SHAKE_PIN_DURATION: Float = 0.15;
-var SHAKE_STRIKE_INTENSITY: Float = 0.2;
-var SHAKE_STRIKE_DURATION: Float = 0.4;
+var SHAKE_PIN_DURATION: Float = 0.12;
+var SHAKE_STRIKE_INTENSITY: Float = 0.22;
+var SHAKE_STRIKE_DURATION: Float = 0.35;
 
 // =========================================================================
-// Lane Dimensions (meters, regulation-inspired)
+// Lane Dimensions
 // =========================================================================
 var LANE_LENGTH: Float = 18.0;
 var LANE_WIDTH: Float = 1.06;
 var LANE_GUTTER_W: Float = 0.25;
 var LANE_WALL_H: Float = 0.15;
-var LANE_APPROACH: Float = 4.5;      // Space behind foul line
+var LANE_APPROACH: Float = 4.5;
 
-// Lane visual markers
-var LANE_ARROW_Z: Float = 4.5;       // Arrow guide distance
+var LANE_ARROW_Z: Float = 4.5;
 var LANE_ARROW_COUNT: Integer = 5;
 var LANE_ARROW_SPACING: Float = 0.18;
-var LANE_DOT_Z1: Float = 2.0;        // First dot row
-var LANE_DOT_Z2: Float = 3.0;        // Second dot row
+var LANE_DOT_Z1: Float = 2.0;
+var LANE_DOT_Z2: Float = 3.0;
 var LANE_DOT_COUNT: Integer = 5;
 var LANE_DOT_SPACING: Float = 0.16;
 
-// Oil pattern zones (Z positions)
-var OIL_START_Z: Float = 1.0;
-var OIL_END_HOUSE: Float = 12.0;     // House pattern: long oil
-var OIL_END_SPORT: Float = 9.0;      // Sport pattern: shorter oil
-var OIL_END_DRY: Float = 5.0;        // Dry pattern: very short oil
-var OIL_FRICTION_OILED: Float = 0.08; // Low friction on oil
-var OIL_FRICTION_DRY: Float = 0.45;   // High friction on dry boards
+var OIL_START_Z: Float = 0.8;
+var OIL_END_HOUSE: Float = 12.2;
+var OIL_END_SPORT: Float = 9.5;
+var OIL_END_DRY: Float = 5.8;
+var OIL_FRICTION_OILED: Float = 0.08;
+var OIL_FRICTION_BLEND: Float = 0.22;
+var OIL_FRICTION_DRY: Float = 0.48;
 
-// Oil pattern IDs
 var OIL_HOUSE: Integer = 0;
 var OIL_SPORT: Integer = 1;
 var OIL_DRY: Integer = 2;
@@ -90,62 +99,58 @@ var OIL_DRY: Integer = 2;
 // Pin Layout
 // =========================================================================
 var PIN_COUNT: Integer = 10;
-var PIN_SPACING: Float = 0.305;       // 12 inches between pin centers
-var PIN_RADIUS: Float = 0.06;         // Approximate pin body radius
-var PIN_HEIGHT: Float = 0.38;         // Pin visual height
-var PIN_MASS: Float = 1.5;            // kg
-var PIN_RESTITUTION: Float = 0.4;
-var PIN_FRICTION: Float = 0.5;
-var PIN_Z_OFFSET: Float = 15.5;       // Distance from foul line to head pin
-var PIN_KNOCKDOWN_SPEED: Float = 0.8; // Minimum velocity to count as knocked
-var PIN_TILT_SPEED: Float = 4.0;      // Visual tilt animation speed
-var PIN_TILT_MAX: Float = 1.57;       // pi/2, fully toppled
+var PIN_SPACING: Float = 0.305;
+var PIN_RADIUS: Float = 0.055;
+var PIN_HEIGHT: Float = 0.38;
+var PIN_CAPSULE_HEIGHT: Float = 0.22;
+var PIN_MASS: Float = 1.45;
+var PIN_RESTITUTION: Float = 0.35;
+var PIN_FRICTION: Float = 0.45;
+var PIN_Z_OFFSET: Float = 15.5;
+var PIN_KNOCKDOWN_SPEED: Float = 0.8;
+var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.105;
+var PIN_SETTLE_SNAP_SPEED: Float = 0.08;
+var PIN_TILT_SPEED: Float = 4.5;
+var PIN_TILT_MAX: Float = 1.57;
 
-// Sweep animation
-var SWEEP_SPEED: Float = 3.0;         // Bar descent speed
-var SWEEP_Y_START: Float = 2.0;       // Bar starts above pins
-var SWEEP_Y_END: Float = 0.1;         // Bar rests at lane surface
-var SWEEP_PUSH_SPEED: Float = 4.0;    // Knocked pin push speed
-var SWEEP_DURATION: Float = 1.5;
+var SWEEP_SPEED: Float = 3.0;
+var SWEEP_Y_START: Float = 2.0;
+var SWEEP_Y_END: Float = 0.1;
+var SWEEP_DURATION: Float = 1.05;
 
-// Reset animation
-var RESET_DURATION: Float = 1.2;
-var RESET_DROP_HEIGHT: Float = 2.5;   // Pins lower from this height
+var RESET_DURATION: Float = 1.0;
+var RESET_DROP_HEIGHT: Float = 2.6;
 
 // =========================================================================
 // Ball
 // =========================================================================
-// Light ball (10 lb)
 var BALL_MASS_LIGHT: Float = 4.5;
-var BALL_SPEED_MAX_LIGHT: Float = 13.0;
-var BALL_HOOK_LIGHT: Float = 1.5;     // Spin multiplier
-var BALL_COLOR_LIGHT_R: Float = 0.2;
-var BALL_COLOR_LIGHT_G: Float = 0.4;
-var BALL_COLOR_LIGHT_B: Float = 0.9;
+var BALL_SPEED_MAX_LIGHT: Float = 13.5;
+var BALL_HOOK_LIGHT: Float = 1.35;
+var BALL_COLOR_LIGHT_R: Float = 0.24;
+var BALL_COLOR_LIGHT_G: Float = 0.48;
+var BALL_COLOR_LIGHT_B: Float = 0.92;
 
-// Medium ball (13 lb)
 var BALL_MASS_MEDIUM: Float = 6.0;
-var BALL_SPEED_MAX_MEDIUM: Float = 11.5;
-var BALL_HOOK_MEDIUM: Float = 1.0;
-var BALL_COLOR_MEDIUM_R: Float = 0.4;
-var BALL_COLOR_MEDIUM_G: Float = 0.1;
-var BALL_COLOR_MEDIUM_B: Float = 0.5;
+var BALL_SPEED_MAX_MEDIUM: Float = 11.8;
+var BALL_HOOK_MEDIUM: Float = 1.05;
+var BALL_COLOR_MEDIUM_R: Float = 0.45;
+var BALL_COLOR_MEDIUM_G: Float = 0.12;
+var BALL_COLOR_MEDIUM_B: Float = 0.58;
 
-// Heavy ball (16 lb)
 var BALL_MASS_HEAVY: Float = 7.3;
-var BALL_SPEED_MAX_HEAVY: Float = 10.0;
-var BALL_HOOK_HEAVY: Float = 0.7;
-var BALL_COLOR_HEAVY_R: Float = 0.8;
-var BALL_COLOR_HEAVY_G: Float = 0.1;
-var BALL_COLOR_HEAVY_B: Float = 0.1;
+var BALL_SPEED_MAX_HEAVY: Float = 10.4;
+var BALL_HOOK_HEAVY: Float = 0.82;
+var BALL_COLOR_HEAVY_R: Float = 0.82;
+var BALL_COLOR_HEAVY_G: Float = 0.12;
+var BALL_COLOR_HEAVY_B: Float = 0.12;
 
-// Common ball properties
-var BALL_RADIUS: Float = 0.109;       // ~8.6 inch diameter
-var BALL_RESTITUTION: Float = 0.3;
+var BALL_RADIUS: Float = 0.109;
+var BALL_RESTITUTION: Float = 0.24;
 var BALL_FRICTION: Float = 0.25;
 var BALL_SHININESS: Float = 200.0;
+var BALL_REFLECTIVITY: Float = 0.42;
 
-// Ball selection IDs
 var BALL_LIGHT: Integer = 0;
 var BALL_MEDIUM: Integer = 1;
 var BALL_HEAVY: Integer = 2;
@@ -154,44 +159,48 @@ var BALL_HEAVY: Integer = 2;
 // Throw Mechanics
 // =========================================================================
 var THROW_SPEED_MIN: Float = 5.0;
-var THROW_POWER_RATE: Float = 0.8;    // Power charge per second
-var AIM_SPEED: Float = 2.0;
-var AIM_MAX: Float = 0.5;             // Max lateral offset from center
-var SPIN_RATE: Float = 1.5;           // Spin charge per second
-var SPIN_MAX: Float = 1.0;            // Max spin magnitude
-var SPIN_VISUAL_SPEED: Float = 8.0;   // Visual ball rotation speed
+var THROW_POWER_RATE: Float = 0.82;
+var AIM_SPEED: Float = 1.7;
+var AIM_MAX: Float = 0.48;
+var AIM_RELEASE_ANGLE: Float = 0.22;
+var SPIN_RATE: Float = 1.4;
+var SPIN_MAX: Float = 1.0;
+var SPIN_VISUAL_SPEED: Float = 7.0;
+var BACKEND_HOOK_FORCE: Float = 18.0;
+var EARLY_HOOK_FORCE: Float = 4.0;
+var SPIN_DECAY_OIL: Float = 0.10;
+var SPIN_DECAY_DRY: Float = 0.32;
+var SIDE_DRAG: Float = 0.16;
 
-// Ball start position
 var BALL_START_X: Float = 0.0;
-var BALL_START_Y_OFFSET: Float = 0.01; // Slightly above lane
+var BALL_START_Y_OFFSET: Float = 0.01;
 var BALL_START_Z: Float = -1.5;
-var BALL_THROW_Z: Float = -1.0;       // Launch point
+var BALL_THROW_Z: Float = -0.85;
 
-// Gutter detection
-var GUTTER_THRESHOLD_X: Float = 0.55;  // Beyond lane edge
+var GUTTER_Y: Float = -0.11;
+var GUTTER_TRIGGER_WIDTH: Float = 0.16;
+var GUTTER_EXIT_Z: Float = PIN_Z_OFFSET + 2.8;
 
 // =========================================================================
 // Physics
 // =========================================================================
 var GRAVITY_Y: Float = -9.81;
-var PHYSICS_DT: Float = 0.016;        // Fixed 60Hz step
-var DT_CLAMP: Float = 0.05;           // Max frame dt
+var PHYSICS_DT: Float = 0.016;
+var DT_CLAMP: Float = 0.05;
+var MAX_FIXED_STEPS: Integer = 6;
+var SETTLE_TIME: Float = 2.4;
+var SETTLE_SPEED_THRESHOLD: Float = 0.08;
+var IMPACT_COOLDOWN: Float = 0.08;
 
-// Collision layers
-var LAYER_STATIC: Integer = 1;        // Floor, walls
+var LAYER_STATIC: Integer = 1;
 var LAYER_BALL: Integer = 2;
 var LAYER_PINS: Integer = 4;
-var MASK_BALL: Integer = 5;           // Collides with static + pins
-var MASK_PINS: Integer = 7;           // Collides with static + ball + pins
-
-// Settle detection
-var SETTLE_TIME: Float = 2.5;         // Wait for pins to settle
-var SETTLE_SPEED_THRESHOLD: Float = 0.05; // All pins below this = settled early
+var MASK_BALL: Integer = 5;
+var MASK_PINS: Integer = 7;
 
 // =========================================================================
 // Lighting
 // =========================================================================
-// Main overhead (alley ceiling lights)
 var LIGHT_MAIN_DIR_X: Float = -0.2;
 var LIGHT_MAIN_DIR_Y: Float = -1.0;
 var LIGHT_MAIN_DIR_Z: Float = -0.3;
@@ -199,7 +208,6 @@ var LIGHT_MAIN_R: Float = 0.95;
 var LIGHT_MAIN_G: Float = 0.92;
 var LIGHT_MAIN_B: Float = 0.88;
 
-// Fill light (soften shadows)
 var LIGHT_FILL_DIR_X: Float = 0.3;
 var LIGHT_FILL_DIR_Y: Float = -0.5;
 var LIGHT_FILL_DIR_Z: Float = 0.6;
@@ -207,7 +215,6 @@ var LIGHT_FILL_R: Float = 0.3;
 var LIGHT_FILL_G: Float = 0.3;
 var LIGHT_FILL_B: Float = 0.35;
 
-// Pin spot light (highlight pin area)
 var LIGHT_SPOT_X: Float = 0.0;
 var LIGHT_SPOT_Y: Float = 4.0;
 var LIGHT_SPOT_Z: Float = 15.5;
@@ -216,15 +223,13 @@ var LIGHT_SPOT_G: Float = 0.95;
 var LIGHT_SPOT_B: Float = 0.85;
 var LIGHT_SPOT_RANGE: Float = 8.0;
 
-// Ambient
 var AMBIENT_R: Float = 0.15;
 var AMBIENT_G: Float = 0.13;
 var AMBIENT_B: Float = 0.12;
 
 // =========================================================================
-// Visual Colors
+// Materials / Colors
 // =========================================================================
-// Lane
 var LANE_COLOR_R: Float = 0.82;
 var LANE_COLOR_G: Float = 0.62;
 var LANE_COLOR_B: Float = 0.32;
@@ -233,114 +238,108 @@ var LANE_OIL_COLOR_G: Float = 0.68;
 var LANE_OIL_COLOR_B: Float = 0.40;
 var LANE_SHININESS: Float = 64.0;
 var LANE_OIL_SHININESS: Float = 128.0;
+var LANE_REFLECTIVITY: Float = 0.08;
+var LANE_OIL_REFLECTIVITY: Float = 0.36;
 
-// Approach
 var APPROACH_COLOR_R: Float = 0.55;
 var APPROACH_COLOR_G: Float = 0.38;
 var APPROACH_COLOR_B: Float = 0.22;
 
-// Gutters
-var GUTTER_COLOR_R: Float = 0.3;
-var GUTTER_COLOR_G: Float = 0.3;
-var GUTTER_COLOR_B: Float = 0.35;
+var GUTTER_COLOR_R: Float = 0.28;
+var GUTTER_COLOR_G: Float = 0.30;
+var GUTTER_COLOR_B: Float = 0.36;
 
-// Walls
 var WALL_COLOR_R: Float = 0.4;
 var WALL_COLOR_G: Float = 0.25;
 var WALL_COLOR_B: Float = 0.15;
 
-// Back wall
-var BACKWALL_COLOR_R: Float = 0.2;
+var BACKWALL_COLOR_R: Float = 0.19;
 var BACKWALL_COLOR_G: Float = 0.2;
 var BACKWALL_COLOR_B: Float = 0.25;
 
-// Pins
 var PIN_COLOR_R: Float = 0.95;
 var PIN_COLOR_G: Float = 0.92;
 var PIN_COLOR_B: Float = 0.88;
 var PIN_SHININESS: Float = 96.0;
+var PIN_REFLECTIVITY: Float = 0.14;
 var PIN_NECK_R: Float = 0.85;
 var PIN_NECK_G: Float = 0.15;
 var PIN_NECK_B: Float = 0.15;
+var PIN_NECK_REFLECTIVITY: Float = 0.08;
 
-// Foul line
 var FOUL_LINE_R: Float = 0.9;
 var FOUL_LINE_G: Float = 0.1;
 var FOUL_LINE_B: Float = 0.1;
 var FOUL_LINE_EMISSIVE: Float = 0.3;
 
-// Arrow markers
-var ARROW_COLOR_R: Float = 0.6;
+var ARROW_COLOR_R: Float = 0.62;
 var ARROW_COLOR_G: Float = 0.45;
-var ARROW_COLOR_B: Float = 0.25;
+var ARROW_COLOR_B: Float = 0.22;
 
-// Sweep bar
-var SWEEP_COLOR_R: Float = 0.3;
-var SWEEP_COLOR_G: Float = 0.3;
-var SWEEP_COLOR_B: Float = 0.35;
+var SWEEP_COLOR_R: Float = 0.32;
+var SWEEP_COLOR_G: Float = 0.32;
+var SWEEP_COLOR_B: Float = 0.38;
 
-// Clear color (dark background)
-var CLEAR_R: Float = 0.05;
+var LIGHT_FIXTURE_R: Float = 0.74;
+var LIGHT_FIXTURE_G: Float = 0.68;
+var LIGHT_FIXTURE_B: Float = 0.60;
+
+var CLEAR_R: Float = 0.04;
 var CLEAR_G: Float = 0.05;
 var CLEAR_B: Float = 0.08;
 
 // =========================================================================
-// HUD
+// HUD / Menus
 // =========================================================================
-// Scoreboard position (top-center)
-var SCORE_X: Integer = 200;
 var SCORE_Y: Integer = 10;
 var SCORE_FRAME_W: Integer = 80;
 var SCORE_FRAME_H: Integer = 55;
-var SCORE_FRAME_10_W: Integer = 110;  // 10th frame wider (3 rolls)
+var SCORE_FRAME_10_W: Integer = 110;
 
-// Power meter
-var METER_W: Integer = 140;
+var METER_W: Integer = 160;
 var METER_H: Integer = 18;
-var METER_Y_OFFSET: Integer = 65;     // From bottom
+var METER_Y_OFFSET: Integer = 72;
 var METER_COLOR_LOW: Integer = 0x44FF44;
 var METER_COLOR_MID: Integer = 0xFF8844;
 var METER_COLOR_HIGH: Integer = 0xFF3333;
 var METER_THRESHOLD_MID: Float = 0.7;
 var METER_THRESHOLD_HIGH: Float = 0.9;
 
-// Spin indicator
-var SPIN_INDICATOR_W: Integer = 80;
+var SPIN_INDICATOR_W: Integer = 96;
 var SPIN_INDICATOR_H: Integer = 12;
-var SPIN_INDICATOR_Y_OFFSET: Integer = 95;
+var SPIN_INDICATOR_Y_OFFSET: Integer = 104;
 
-// Messages
 var MSG_DURATION_SHORT: Float = 2.0;
 var MSG_DURATION_LONG: Float = 3.5;
-var MSG_DURATION_GAMEOVER: Float = 10.0;
+var MSG_DURATION_RESULTS: Float = 7.0;
 
-// Colors
 var HUD_COLOR_WHITE: Integer = 0xFFFFFF;
-var HUD_COLOR_GRAY: Integer = 0x888888;
-var HUD_COLOR_DARK: Integer = 0x333333;
+var HUD_COLOR_GRAY: Integer = 0x8A8A9F;
+var HUD_COLOR_DARK: Integer = 0x222233;
 var HUD_COLOR_GOLD: Integer = 0xFFDD44;
 var HUD_COLOR_RED: Integer = 0xFF4444;
-var HUD_COLOR_GREEN: Integer = 0x44FF44;
+var HUD_COLOR_GREEN: Integer = 0x44FF88;
 var HUD_COLOR_CYAN: Integer = 0x44DDFF;
-var HUD_COLOR_FRAME_BG: Integer = 0x1A1A2A;
-var HUD_COLOR_FRAME_ACTIVE: Integer = 0x2A2A4A;
-var HUD_COLOR_FRAME_BORDER: Integer = 0x444466;
+var HUD_COLOR_FRAME_BG: Integer = 0x121824;
+var HUD_COLOR_FRAME_ACTIVE: Integer = 0x27364D;
+var HUD_COLOR_FRAME_BORDER: Integer = 0x4C5E7A;
+var HUD_COLOR_MENU_BG: Integer = 0x0E1622;
+var HUD_COLOR_MENU_CARD: Integer = 0x1B2533;
+var HUD_COLOR_MENU_ACCENT: Integer = 0x62D2FF;
 
 // =========================================================================
-// Particles
+// Particles / Decals
 // =========================================================================
-// Pin crash sparks
-var SPARK_COUNT: Integer = 30;
+var SPARK_COUNT: Integer = 24;
 var SPARK_SPEED_MIN: Float = 2.0;
 var SPARK_SPEED_MAX: Float = 6.0;
-var SPARK_LIFETIME_MIN: Float = 0.1;
-var SPARK_LIFETIME_MAX: Float = 0.4;
-var SPARK_SIZE_START: Float = 0.04;
+var SPARK_LIFETIME_MIN: Float = 0.12;
+var SPARK_LIFETIME_MAX: Float = 0.42;
+var SPARK_SIZE_START: Float = 0.05;
 var SPARK_SIZE_END: Float = 0.01;
 var SPARK_COLOR_START: Integer = 0xFFEECC;
 var SPARK_COLOR_END: Integer = 0xFF8844;
 
-// Strike fireworks
 var FIREWORK_COUNT: Integer = 80;
 var FIREWORK_SPEED_MIN: Float = 3.0;
 var FIREWORK_SPEED_MAX: Float = 10.0;
@@ -349,37 +348,64 @@ var FIREWORK_LIFETIME_MAX: Float = 1.5;
 var FIREWORK_SIZE_START: Float = 0.08;
 var FIREWORK_SIZE_END: Float = 0.02;
 
-// Lane dust
-var DUST_RATE: Float = 15.0;
-var DUST_SPEED_MIN: Float = 0.2;
+var DUST_RATE: Float = 18.0;
+var DUST_SPEED_MIN: Float = 0.15;
 var DUST_SPEED_MAX: Float = 0.8;
-var DUST_LIFETIME_MIN: Float = 0.3;
-var DUST_LIFETIME_MAX: Float = 0.8;
+var DUST_LIFETIME_MIN: Float = 0.25;
+var DUST_LIFETIME_MAX: Float = 0.7;
 var DUST_SIZE_START: Float = 0.03;
-var DUST_SIZE_END: Float = 0.06;
+var DUST_SIZE_END: Float = 0.07;
 var DUST_COLOR: Integer = 0xCCBB99;
 
+var DECAL_MAX: Integer = 48;
+var DECAL_LIFETIME: Float = 8.0;
+
 // =========================================================================
-// Celebrations
+// Celebrations / Scores
 // =========================================================================
 var CELEBRATE_STRIKE_DURATION: Float = 2.5;
-var CELEBRATE_SPARE_DURATION: Float = 1.8;
+var CELEBRATE_SPARE_DURATION: Float = 1.6;
 var CELEBRATE_TURKEY_DURATION: Float = 3.0;
 var CELEBRATE_GUTTER_DURATION: Float = 1.5;
 var CELEBRATE_PERFECT_DURATION: Float = 5.0;
+var CELEBRATE_FLASH_DURATION: Float = 0.3;
+var CELEBRATE_FLASH_ALPHA: Float = 0.4;
 
-var CELEBRATE_FLASH_DURATION: Float = 0.3;  // Screen flash time
-var CELEBRATE_FLASH_ALPHA: Float = 0.4;      // Flash opacity
-
-// =========================================================================
-// Scoring
-// =========================================================================
 var FRAMES_PER_GAME: Integer = 10;
-var MAX_SCORE: Integer = 300;          // Perfect game
+var MAX_SCORE: Integer = 300;
+
+// =========================================================================
+// Input Action Names
+// =========================================================================
+var ACT_MENU_UP: String = "menu_up";
+var ACT_MENU_DOWN: String = "menu_down";
+var ACT_CONFIRM: String = "confirm";
+var ACT_BACK: String = "back";
+var ACT_AIM_X: String = "aim_x";
+var ACT_SPIN_X: String = "spin_x";
+var ACT_THROW: String = "throw";
+var ACT_BALL_PREV: String = "ball_prev";
+var ACT_BALL_NEXT: String = "ball_next";
+var ACT_RESET: String = "reset";
+var ACT_PAUSE: String = "pause";
+var ACT_CAMERA: String = "camera_cycle";
+
+// =========================================================================
+// Save Keys
+// =========================================================================
+var SAVE_NAME: String = "3dbowling";
+var SAVE_KEY_BEST_SCORE: String = "best_score";
+var SAVE_KEY_GAMES_PLAYED: String = "games_played";
+var SAVE_KEY_OIL_PATTERN: String = "oil_pattern";
+var SAVE_KEY_QUALITY: String = "quality";
+var SAVE_KEY_LAST_MODE: String = "last_mode";
 
 // =========================================================================
 // Sound Effects
 // =========================================================================
-// Synth IDs are bound from Viper.Sound: SFX_JUMP(0), SFX_COIN(1),
-// SFX_HIT(2), SFX_EXPLODE(3), SFX_POWERUP(4), SFX_LASER(5)
-// Sound mapping is in game.zia initSound()
+var SFX_JUMP: Integer = 0;
+var SFX_COIN: Integer = 1;
+var SFX_HIT: Integer = 2;
+var SFX_EXPLODE: Integer = 3;
+var SFX_POWERUP: Integer = 4;
+var SFX_LASER: Integer = 5;

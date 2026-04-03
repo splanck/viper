@@ -1,25 +1,29 @@
-// hud.zia — Bowling scoreboard, power meter, aim/spin indicators, messages
+// hud.zia — Bowling scoreboard, meters, player summary, and toast messages
 module hud;
 
 bind Viper.Graphics3D;
-bind Viper.Math;
-bind Viper.Terminal;
+bind Convert = Viper.Core.Convert;
 bind "../config";
 bind "../scoring/scoring";
 
 class HUD {
     hide Float messageTimer;
-    hide String messageText;
+    hide List[String] messageText;
     hide Integer messageColor;
 
     expose func initHUD() {
         messageTimer = 0.0;
-        messageText = "";
+        messageText = [];
+        messageText.add("");
         messageColor = config.HUD_COLOR_WHITE;
     }
 
     expose func showMessage(msg: String, color: Integer, duration: Float) {
-        messageText = msg;
+        if (messageText.count() == 0) {
+            messageText.add(msg);
+        } else {
+            messageText.set(0, msg);
+        }
         messageColor = color;
         messageTimer = duration;
     }
@@ -30,265 +34,167 @@ class HUD {
         }
     }
 
-    // ─── Main Draw ───
-
     expose func draw(canvas: Canvas3D, scoreKeeper: ScoreKeeper,
                      power: Float, charging: Boolean,
                      spin: Float, aimX: Float,
                      ballType: Integer, gameState: Integer,
-                     fps: Integer) {
+                     fps: Integer, playerCount: Integer, activePlayer: Integer,
+                     playerOneScore: Integer, playerTwoScore: Integer,
+                     oilName: String) {
         var cw: Integer = Canvas3D.get_Width(canvas);
         var ch: Integer = Canvas3D.get_Height(canvas);
 
-        drawScoreboard(canvas, scoreKeeper, cw, ch);
-        drawBallInfo(canvas, ballType, cw, ch);
+        drawScoreboard(canvas, scoreKeeper, cw);
+        drawStatusPanel(canvas, cw, playerCount, activePlayer, playerOneScore, playerTwoScore, oilName, ballType);
 
         if (gameState == config.STATE_AIMING) {
             drawPowerMeter(canvas, power, charging, cw, ch);
             drawSpinIndicator(canvas, spin, cw, ch);
             drawAimGuide(canvas, aimX, cw, ch);
-            drawControls(canvas, cw, ch);
+            drawControls(canvas, ch);
         }
 
-        // Status message
         if (messageTimer > 0.0) {
-            var msgX: Integer = cw / 2 - messageText.Length * 4;
-            var msgY: Integer = ch / 2 + 40;
-            Canvas3D.DrawText2D(canvas, msgX, msgY, messageText, messageColor);
+            var msg = messageText.get(0);
+            var msgX = cw / 2 - msg.Length * 4;
+            Canvas3D.DrawText2D(canvas, msgX, ch / 2 + 52, msg, messageColor);
         }
 
-        // FPS
-        Canvas3D.DrawText2D(canvas, cw - 85, ch - 20,
-            "FPS: " + toString(fps), config.HUD_COLOR_GRAY);
-
-        // Game over overlay
-        if (gameState == config.STATE_GAMEOVER) {
-            drawGameOver(canvas, scoreKeeper, cw, ch);
-        }
+        Canvas3D.DrawText2D(canvas, cw - 86, ch - 20, "FPS: " + toString(fps), config.HUD_COLOR_GRAY);
     }
 
-    // ─── Scoreboard Grid ───
-
-    hide func drawScoreboard(canvas: Canvas3D, sk: ScoreKeeper,
-                             cw: Integer, ch: Integer) {
-        // Calculate centered position
+    hide func drawScoreboard(canvas: Canvas3D, sk: ScoreKeeper, cw: Integer) {
         var totalW: Integer = config.SCORE_FRAME_W * 9 + config.SCORE_FRAME_10_W;
         var startX: Integer = (cw - totalW) / 2;
         var startY: Integer = config.SCORE_Y;
-        var frameH: Integer = config.SCORE_FRAME_H;
-
-        // Title
-        Canvas3D.DrawText2D(canvas, startX, startY - 2, "BOWLING", config.HUD_COLOR_GOLD);
-
         var curFrame: Integer = sk.getFrame();
         var x: Integer = startX;
+
+        Canvas3D.DrawText2D(canvas, startX, startY - 2, "BOWLING", config.HUD_COLOR_GOLD);
 
         for (var f: Integer = 0; f < config.FRAMES_PER_GAME; f = f + 1) {
             var fw: Integer = config.SCORE_FRAME_W;
             if (f == 9) { fw = config.SCORE_FRAME_10_W; }
 
-            // Frame background
-            var bgColor: Integer = config.HUD_COLOR_FRAME_BG;
+            var bgColor = config.HUD_COLOR_FRAME_BG;
             if (f == curFrame - 1) { bgColor = config.HUD_COLOR_FRAME_ACTIVE; }
-            Canvas3D.DrawRect2D(canvas, x, startY + 12, fw, frameH, bgColor);
-
-            // Frame border
+            Canvas3D.DrawRect2D(canvas, x, startY + 12, fw, config.SCORE_FRAME_H, bgColor);
             Canvas3D.DrawRect2D(canvas, x, startY + 12, fw, 1, config.HUD_COLOR_FRAME_BORDER);
-            Canvas3D.DrawRect2D(canvas, x, startY + 12 + frameH - 1, fw, 1, config.HUD_COLOR_FRAME_BORDER);
-            Canvas3D.DrawRect2D(canvas, x, startY + 12, 1, frameH, config.HUD_COLOR_FRAME_BORDER);
-            Canvas3D.DrawRect2D(canvas, x + fw - 1, startY + 12, 1, frameH, config.HUD_COLOR_FRAME_BORDER);
+            Canvas3D.DrawRect2D(canvas, x, startY + 12 + config.SCORE_FRAME_H - 1, fw, 1, config.HUD_COLOR_FRAME_BORDER);
+            Canvas3D.DrawRect2D(canvas, x, startY + 12, 1, config.SCORE_FRAME_H, config.HUD_COLOR_FRAME_BORDER);
+            Canvas3D.DrawRect2D(canvas, x + fw - 1, startY + 12, 1, config.SCORE_FRAME_H, config.HUD_COLOR_FRAME_BORDER);
+            Canvas3D.DrawText2D(canvas, x + fw / 2 - 3, startY + 14, toString(f + 1), config.HUD_COLOR_GRAY);
 
-            // Frame number
-            Canvas3D.DrawText2D(canvas, x + fw / 2 - 3, startY + 14,
-                toString(f + 1), config.HUD_COLOR_GRAY);
-
-            // Roll results (top-right boxes)
             var rollY: Integer = startY + 26;
-            var rollBoxW: Integer = 18;
-
-            // Roll 1
-            var r1: String = sk.getFrameRoll1(f);
-            if (r1 != "") {
-                var r1Color: Integer = config.HUD_COLOR_WHITE;
-                if (r1 == "X") { r1Color = config.HUD_COLOR_RED; }
-                if (r1 == "-") { r1Color = config.HUD_COLOR_GRAY; }
-                Canvas3D.DrawText2D(canvas, x + fw - rollBoxW * 2 - 2, rollY, r1, r1Color);
-            }
-
-            // Roll 2
-            var r2: String = sk.getFrameRoll2(f);
-            if (r2 != "") {
-                var r2Color: Integer = config.HUD_COLOR_WHITE;
-                if (r2 == "/") { r2Color = config.HUD_COLOR_GREEN; }
-                if (r2 == "X") { r2Color = config.HUD_COLOR_RED; }
-                if (r2 == "-") { r2Color = config.HUD_COLOR_GRAY; }
-                Canvas3D.DrawText2D(canvas, x + fw - rollBoxW - 2, rollY, r2, r2Color);
-            }
-
-            // Roll 3 (10th frame only)
+            drawRollText(canvas, x + fw - 38, rollY, sk.getFrameRoll1(f));
+            drawRollText(canvas, x + fw - 20, rollY, sk.getFrameRoll2(f));
             if (f == 9) {
-                var r3: String = sk.getFrameRoll3(f);
-                if (r3 != "") {
-                    var r3Color: Integer = config.HUD_COLOR_WHITE;
-                    if (r3 == "X") { r3Color = config.HUD_COLOR_RED; }
-                    if (r3 == "/") { r3Color = config.HUD_COLOR_GREEN; }
-                    if (r3 == "-") { r3Color = config.HUD_COLOR_GRAY; }
-                    Canvas3D.DrawText2D(canvas, x + fw - 4, rollY, r3, r3Color);
-                }
+                drawRollText(canvas, x + fw - 4, rollY, sk.getFrameRoll3(f));
             }
 
-            // Frame total
-            var total: Integer = sk.getFrameTotal(f);
+            var total = sk.getFrameTotal(f);
             if (total >= 0) {
-                var totalStr: String = toString(total);
-                Canvas3D.DrawText2D(canvas, x + fw / 2 - totalStr.Length * 3,
-                    startY + 42, totalStr, config.HUD_COLOR_GOLD);
+                var totalStr = toString(total);
+                Canvas3D.DrawText2D(canvas, x + fw / 2 - totalStr.Length * 3, startY + 42, totalStr, config.HUD_COLOR_GOLD);
             }
-
             x = x + fw;
         }
-
-        // Total score (right of scoreboard)
-        var totalScore: Integer = sk.getTotalScore();
-        Canvas3D.DrawText2D(canvas, x + 10, startY + 20, "TOTAL", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, x + 10, startY + 38,
-            toString(totalScore), config.HUD_COLOR_GOLD);
     }
 
-    // ─── Power Meter ───
+    hide func drawRollText(canvas: Canvas3D, x: Integer, y: Integer, text: String) {
+        if (text == "") { return; }
+        var color = config.HUD_COLOR_WHITE;
+        if (text == "X") { color = config.HUD_COLOR_RED; }
+        if (text == "/") { color = config.HUD_COLOR_GREEN; }
+        if (text == "-") { color = config.HUD_COLOR_GRAY; }
+        Canvas3D.DrawText2D(canvas, x, y, text, color);
+    }
+
+    hide func drawStatusPanel(canvas: Canvas3D, cw: Integer,
+                              playerCount: Integer, activePlayer: Integer,
+                              playerOneScore: Integer, playerTwoScore: Integer,
+                              oilName: String, ballType: Integer) {
+        var panelX = cw - 244;
+        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 122, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, panelX + 12, 54, "Status", config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, panelX + 12, 78, "Oil: " + oilName, config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2D(canvas, panelX + 12, 98, "Ball: " + getBallName(ballType), getBallColor(ballType));
+
+        if (playerCount <= 1) {
+            Canvas3D.DrawText2D(canvas, panelX + 12, 122, "Score: " + toString(playerOneScore), config.HUD_COLOR_CYAN);
+        } else {
+            var p1Color = config.HUD_COLOR_WHITE;
+            var p2Color = config.HUD_COLOR_WHITE;
+            if (activePlayer == 0) { p1Color = config.HUD_COLOR_GOLD; }
+            if (activePlayer == 1) { p2Color = config.HUD_COLOR_GOLD; }
+            Canvas3D.DrawText2D(canvas, panelX + 12, 120, "P1  " + toString(playerOneScore), p1Color);
+            Canvas3D.DrawText2D(canvas, panelX + 108, 120, "P2  " + toString(playerTwoScore), p2Color);
+        }
+    }
 
     hide func drawPowerMeter(canvas: Canvas3D, power: Float, charging: Boolean,
                              cw: Integer, ch: Integer) {
         if (charging == false && power <= 0.0) { return; }
 
-        var mx: Integer = cw / 2 - config.METER_W / 2;
-        var my: Integer = ch - config.METER_Y_OFFSET;
-
-        // Label
+        var mx = cw / 2 - config.METER_W / 2;
+        var my = ch - config.METER_Y_OFFSET;
         Canvas3D.DrawText2D(canvas, mx, my - 18, "POWER", config.HUD_COLOR_WHITE);
+        Canvas3D.DrawRect2D(canvas, mx - 1, my - 1, config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
 
-        // Background
-        Canvas3D.DrawRect2D(canvas, mx - 1, my - 1,
-            config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
-
-        // Fill
-        var fillW: Integer = toInteger(power * toFloat(config.METER_W));
-        var meterColor: Integer = config.METER_COLOR_LOW;
+        var fillW = Convert.NumToInt(power * (config.METER_W + 0.0));
+        var meterColor = config.METER_COLOR_LOW;
         if (power > config.METER_THRESHOLD_MID) { meterColor = config.METER_COLOR_MID; }
         if (power > config.METER_THRESHOLD_HIGH) { meterColor = config.METER_COLOR_HIGH; }
         Canvas3D.DrawRect2D(canvas, mx, my, fillW, config.METER_H, meterColor);
 
-        // Percentage
         if (charging) {
-            var pctStr: String = toString(toInteger(power * 100.0)) + "%";
-            Canvas3D.DrawText2D(canvas, mx + config.METER_W + 5, my, pctStr, config.HUD_COLOR_WHITE);
+            Canvas3D.DrawText2D(canvas, mx + config.METER_W + 6, my,
+                toString(Convert.NumToInt(power * 100.0)) + "%", config.HUD_COLOR_WHITE);
         }
     }
 
-    // ─── Spin Indicator ───
+    hide func drawSpinIndicator(canvas: Canvas3D, spin: Float, cw: Integer, ch: Integer) {
+        var sx = cw / 2 - config.SPIN_INDICATOR_W / 2;
+        var sy = ch - config.SPIN_INDICATOR_Y_OFFSET;
 
-    hide func drawSpinIndicator(canvas: Canvas3D, spin: Float,
-                                cw: Integer, ch: Integer) {
-        var sx: Integer = cw / 2 - config.SPIN_INDICATOR_W / 2;
-        var sy: Integer = ch - config.SPIN_INDICATOR_Y_OFFSET;
-
-        // Label
-        Canvas3D.DrawText2D(canvas, sx, sy - 15, "SPIN (Q/E)", config.HUD_COLOR_GRAY);
-
-        // Background
-        Canvas3D.DrawRect2D(canvas, sx, sy, config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H,
-            config.HUD_COLOR_DARK);
-
-        // Center mark
-        var centerX: Integer = sx + config.SPIN_INDICATOR_W / 2;
+        Canvas3D.DrawText2D(canvas, sx, sy - 15, "SHAPE", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawRect2D(canvas, sx, sy, config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
+        var centerX = sx + config.SPIN_INDICATOR_W / 2;
         Canvas3D.DrawRect2D(canvas, centerX, sy, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
 
-        // Spin marker
-        var spinOffset: Integer = toInteger(spin * toFloat(config.SPIN_INDICATOR_W / 2));
-        var markerX: Integer = centerX + spinOffset;
-        var markerColor: Integer = config.HUD_COLOR_CYAN;
-        if (spin < 0.0) { markerColor = 0xFF8844; } // Orange for left
-        Canvas3D.DrawRect2D(canvas, markerX - 2, sy - 1,
-            4, config.SPIN_INDICATOR_H + 2, markerColor);
+        var spinOffset = Convert.NumToInt(spin * ((config.SPIN_INDICATOR_W / 2) + 0.0));
+        var markerX = centerX + spinOffset;
+        var markerColor = config.HUD_COLOR_CYAN;
+        if (spin < 0.0) { markerColor = 0xFF8844; }
+        Canvas3D.DrawRect2D(canvas, markerX - 2, sy - 1, 4, config.SPIN_INDICATOR_H + 2, markerColor);
     }
 
-    // ─── Aim Guide ───
-
-    hide func drawAimGuide(canvas: Canvas3D, aimX: Float,
-                           cw: Integer, ch: Integer) {
-        // Arrow indicator showing aim offset
-        var aimPct: Float = aimX / config.AIM_MAX;
-        var arrowX: Integer = cw / 2 + toInteger(aimPct * 60.0);
-        var arrowY: Integer = ch - 30;
+    hide func drawAimGuide(canvas: Canvas3D, aimX: Float, cw: Integer, ch: Integer) {
+        var aimPct = aimX / config.AIM_MAX;
+        var arrowX = cw / 2 + Convert.NumToInt(aimPct * 60.0);
+        var arrowY = ch - 34;
 
         Canvas3D.DrawText2D(canvas, arrowX - 2, arrowY, "^", config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, cw / 2 - 35, arrowY + 12,
-            "A/D = Aim", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, cw / 2 - 46, arrowY + 12, "Aim board", config.HUD_COLOR_GRAY);
     }
 
-    // ─── Controls Help ───
-
-    hide func drawControls(canvas: Canvas3D, cw: Integer, ch: Integer) {
-        Canvas3D.DrawText2D(canvas, 10, ch - 60, "SPACE = Charge & Throw", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 10, ch - 44, "Q/E = Add Spin", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 10, ch - 28, "1/2/3 = Ball Weight", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, 10, ch - 12, "R = Reset  ESC = Quit", config.HUD_COLOR_GRAY);
+    hide func drawControls(canvas: Canvas3D, ch: Integer) {
+        Canvas3D.DrawText2D(canvas, 12, ch - 80, "C / Y = camera toggle", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, 12, ch - 64, "Hold Space / A = charge throw", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, 12, ch - 48, "A-D / left stick = aim", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, 12, ch - 32, "Q-E / bumpers = shape | 1 / 3 = change ball", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, 12, ch - 16, "P / Start = pause | R = restart", config.HUD_COLOR_GRAY);
     }
 
-    // ─── Ball Info ───
-
-    hide func drawBallInfo(canvas: Canvas3D, ballType: Integer,
-                           cw: Integer, ch: Integer) {
-        var ballName: String = "Medium (13lb)";
-        var ballColor: Integer = 0x8822AA;
-
-        if (ballType == config.BALL_LIGHT) {
-            ballName = "Light (10lb)";
-            ballColor = 0x4488FF;
-        } else if (ballType == config.BALL_HEAVY) {
-            ballName = "Heavy (16lb)";
-            ballColor = 0xFF3333;
-        }
-
-        Canvas3D.DrawText2D(canvas, cw - 140, 10, "Ball:", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, cw - 100, 10, ballName, ballColor);
+    hide func getBallName(ballType: Integer) -> String {
+        if (ballType == config.BALL_LIGHT) { return "Light 10lb"; }
+        if (ballType == config.BALL_HEAVY) { return "Heavy 16lb"; }
+        return "Medium 13lb";
     }
 
-    // ─── Game Over ───
-
-    hide func drawGameOver(canvas: Canvas3D, sk: ScoreKeeper,
-                           cw: Integer, ch: Integer) {
-        var score: Integer = sk.getTotalScore();
-
-        // Dark overlay
-        Canvas3D.DrawRect2D(canvas, 0, ch / 2 - 60, cw, 120, config.HUD_COLOR_DARK);
-
-        // Game over text
-        Canvas3D.DrawText2D(canvas, cw / 2 - 45, ch / 2 - 40,
-            "GAME OVER", config.HUD_COLOR_RED);
-
-        // Final score
-        var scoreStr: String = "Final Score: " + toString(score);
-        Canvas3D.DrawText2D(canvas, cw / 2 - scoreStr.Length * 4, ch / 2 - 10,
-            scoreStr, config.HUD_COLOR_GOLD);
-
-        // Rating
-        var rating: String = getRating(score);
-        Canvas3D.DrawText2D(canvas, cw / 2 - rating.Length * 4, ch / 2 + 15,
-            rating, config.HUD_COLOR_CYAN);
-
-        // Restart prompt
-        Canvas3D.DrawText2D(canvas, cw / 2 - 55, ch / 2 + 45,
-            "R = Play Again", config.HUD_COLOR_GRAY);
+    hide func getBallColor(ballType: Integer) -> Integer {
+        if (ballType == config.BALL_LIGHT) { return 0x4488FF; }
+        if (ballType == config.BALL_HEAVY) { return 0xFF4444; }
+        return 0xA45BFF;
     }
-}
-
-func getRating(score: Integer) -> String {
-    if (score == 300) { return "PERFECT!"; }
-    if (score >= 250) { return "Outstanding!"; }
-    if (score >= 200) { return "Excellent!"; }
-    if (score >= 150) { return "Great Game!"; }
-    if (score >= 100) { return "Good Job!"; }
-    if (score >= 50) { return "Keep Practicing!"; }
-    return "Better Luck Next Time!";
 }

@@ -1,41 +1,30 @@
-// pins.zia — Pin manager: layout, physics, knockdown detection,
-// sweep animation, reset animation, visual rendering
+// pins.zia — Pin manager: capsule collisions, hybrid knockdown model, sweep/reset visuals
 module pins;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
-bind Viper.Terminal;
 bind "../config";
 
 class PinManager {
-    // Physics bodies
     hide List[Physics3DBody] bodies;
     hide Physics3DWorld world;
 
-    // Home positions (for reset)
     hide List[Float] homeX;
     hide List[Float] homeZ;
-
-    // Knockdown state
     hide List[Boolean] knocked;
-    hide List[Boolean] previousKnocked;   // From prior roll (for pin counting)
+    hide List[Boolean] previousKnocked;
 
-    // Visual tilt animation
     hide List[Float] tiltAngle;
     hide List[Float] tiltAxisX;
     hide List[Float] tiltAxisZ;
 
-    // Sweep animation
     hide Boolean sweeping;
     hide Float sweepY;
     hide Float sweepTimer;
 
-    // Reset animation
     hide Boolean resetting;
     hide Float resetTimer;
-    hide Float resetProgress;
 
-    // Meshes (shared across all pins)
     hide Mesh3D pinBodyMesh;
     hide Mesh3D pinNeckMesh;
     hide Material3D pinMat;
@@ -56,19 +45,16 @@ class PinManager {
         sweepTimer = 0.0;
         resetting = false;
         resetTimer = 0.0;
-        resetProgress = 0.0;
 
-        // Create shared meshes
-        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS, config.PIN_HEIGHT, 8);
-        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 1.15, 0.02, 8);
+        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS, config.PIN_HEIGHT, 10);
+        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 1.15, 0.02, 10);
         pinMat = Material3D.NewColor(config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
         Material3D.SetShininess(pinMat, config.PIN_SHININESS);
         pinNeckMat = Material3D.NewColor(config.PIN_NECK_R, config.PIN_NECK_G, config.PIN_NECK_B);
 
-        // Create 10 pins in standard triangle layout
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            var px: Float = computePinX(i);
-            var pz: Float = computePinZ(i);
+            var px = computePinX(i);
+            var pz = computePinZ(i);
             homeX.add(px);
             homeZ.add(pz);
             knocked.add(false);
@@ -77,22 +63,16 @@ class PinManager {
             tiltAxisX.add(0.0);
             tiltAxisZ.add(1.0);
 
-            var body = Physics3DBody.NewSphere(config.PIN_RADIUS * 1.5, config.PIN_MASS);
+            var body = Physics3DBody.NewCapsule(config.PIN_RADIUS * 0.72, config.PIN_CAPSULE_HEIGHT, config.PIN_MASS);
             Physics3DBody.SetPosition(body, px, config.PIN_HEIGHT / 2.0, pz);
-            Physics3DBody.SetRestitution(body, config.PIN_RESTITUTION);
-            Physics3DBody.SetFriction(body, config.PIN_FRICTION);
+            Physics3DBody.set_Restitution(body, config.PIN_RESTITUTION);
+            Physics3DBody.set_Friction(body, config.PIN_FRICTION);
             Physics3DBody.set_CollisionLayer(body, config.LAYER_PINS);
             Physics3DBody.set_CollisionMask(body, config.MASK_PINS);
             Physics3DWorld.Add(world, body);
             bodies.add(body);
         }
     }
-
-    // ─── Pin Position Computation (standard triangle) ───
-    // Row 0: pin 0 (head)
-    // Row 1: pins 1, 2
-    // Row 2: pins 3, 4, 5
-    // Row 3: pins 6, 7, 8, 9
 
     hide func computePinX(index: Integer) -> Float {
         if (index == 0) { return 0.0; }
@@ -113,33 +93,45 @@ class PinManager {
         if (index >= 1) { row = 1; }
         if (index >= 3) { row = 2; }
         if (index >= 6) { row = 3; }
-        return config.PIN_Z_OFFSET + toFloat(row) * config.PIN_SPACING * 0.866;
+        return config.PIN_Z_OFFSET + (row + 0.0) * config.PIN_SPACING * 0.866;
     }
-
-    // ─── Knockdown Detection ───
 
     expose func updateKnockdowns(dt: Float) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            var body = bodies.get(i);
+            var pos = Physics3DBody.get_Position(body);
+            var vel = Physics3DBody.get_Velocity(body);
+
+            var px = Vec3.get_X(pos);
+            var py = Vec3.get_Y(pos);
+            var pz = Vec3.get_Z(pos);
+            var vx = Vec3.get_X(vel);
+            var vy = Vec3.get_Y(vel);
+            var vz = Vec3.get_Z(vel);
+            var speed = Sqrt(vx * vx + vy * vy + vz * vz);
+            var dx = px - homeX.get(i);
+            var dz = pz - homeZ.get(i);
+            var disp = Sqrt(dx * dx + dz * dz);
+
             if (knocked.get(i) == false) {
-                var vel = Physics3DBody.get_Velocity(bodies.get(i));
-                var vx: Float = Vec3.get_X(vel);
-                var vz: Float = Vec3.get_Z(vel);
-                var speed: Float = Sqrt(vx * vx + vz * vz);
-
-                if (speed > config.PIN_KNOCKDOWN_SPEED) {
+                if (py < config.PIN_HEIGHT * 0.32 ||
+                    disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
+                    (speed > config.PIN_KNOCKDOWN_SPEED && disp > 0.03)) {
                     knocked.set(i, true);
-
-                    // Tilt direction from velocity
-                    if (speed > 0.01) {
-                        tiltAxisX.set(i, vz / speed);
-                        tiltAxisZ.set(i, -vx / speed);
+                    if (disp > 0.02) {
+                        tiltAxisX.set(i, dz / (disp + 0.0001));
+                        tiltAxisZ.set(i, -dx / (disp + 0.0001));
+                    } else if (speed > 0.02) {
+                        tiltAxisX.set(i, vz / (speed + 0.0001));
+                        tiltAxisZ.set(i, -vx / (speed + 0.0001));
                     }
+                } else if (speed < config.PIN_SETTLE_SNAP_SPEED) {
+                    Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
                 }
             }
 
-            // Animate tilt for knocked pins
             if (knocked.get(i)) {
-                var tilt: Float = tiltAngle.get(i);
+                var tilt = tiltAngle.get(i);
                 if (tilt < config.PIN_TILT_MAX) {
                     tilt = tilt + dt * config.PIN_TILT_SPEED;
                     if (tilt > config.PIN_TILT_MAX) { tilt = config.PIN_TILT_MAX; }
@@ -149,9 +141,8 @@ class PinManager {
         }
     }
 
-    // Count newly knocked pins (since last savePinState call)
     expose func countNewlyKnocked() -> Integer {
-        var count: Integer = 0;
+        var count = 0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             if (knocked.get(i) && previousKnocked.get(i) == false) {
                 count = count + 1;
@@ -160,37 +151,33 @@ class PinManager {
         return count;
     }
 
-    // Count total knocked pins
     expose func countTotalKnocked() -> Integer {
-        var count: Integer = 0;
+        var count = 0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             if (knocked.get(i)) { count = count + 1; }
         }
         return count;
     }
 
-    // Save current knockdown state (before second roll)
     expose func savePinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             previousKnocked.set(i, knocked.get(i));
         }
     }
 
-    // Check if all pins have stopped moving
     expose func allSettled() -> Boolean {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            if (knocked.get(i)) { continue; }
+            var pos = Physics3DBody.get_Position(bodies.get(i));
+            if (Vec3.get_Y(pos) < -5.0) { continue; }
             var vel = Physics3DBody.get_Velocity(bodies.get(i));
-            var vx: Float = Vec3.get_X(vel);
-            var vy: Float = Vec3.get_Y(vel);
-            var vz: Float = Vec3.get_Z(vel);
-            var speed: Float = Sqrt(vx * vx + vy * vy + vz * vz);
+            var vx = Vec3.get_X(vel);
+            var vy = Vec3.get_Y(vel);
+            var vz = Vec3.get_Z(vel);
+            var speed = Sqrt(vx * vx + vy * vy + vz * vz);
             if (speed > config.SETTLE_SPEED_THRESHOLD) { return false; }
         }
         return true;
     }
-
-    // ─── Sweep Animation ───
 
     expose func startSweep() {
         sweeping = true;
@@ -202,37 +189,20 @@ class PinManager {
         if (sweeping == false) { return true; }
 
         sweepTimer = sweepTimer - dt;
-
-        // Bar descends
         if (sweepY > config.SWEEP_Y_END) {
             sweepY = sweepY - dt * config.SWEEP_SPEED;
             if (sweepY < config.SWEEP_Y_END) { sweepY = config.SWEEP_Y_END; }
         }
 
-        // Push knocked pins away when bar is low enough
-        if (sweepY < 0.5) {
-            for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-                if (knocked.get(i)) {
-                    // Push pin behind back wall
-                    var pos = Physics3DBody.get_Position(bodies.get(i));
-                    var pz: Float = Vec3.get_Z(pos);
-                    if (pz < config.PIN_Z_OFFSET + 3.0) {
-                        Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, config.SWEEP_PUSH_SPEED);
-                    }
-                }
-            }
-        }
-
         if (sweepTimer <= 0.0) {
             sweeping = false;
-            // Move knocked pin bodies far away
-            for (var j: Integer = 0; j < config.PIN_COUNT; j = j + 1) {
-                if (knocked.get(j)) {
-                    Physics3DBody.SetPosition(bodies.get(j), 0.0, -10.0, 0.0);
-                    Physics3DBody.SetVelocity(bodies.get(j), 0.0, 0.0, 0.0);
+            for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+                if (knocked.get(i)) {
+                    Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
+                    Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
                 }
             }
-            return true; // Sweep complete
+            return true;
         }
         return false;
     }
@@ -245,36 +215,27 @@ class PinManager {
         return sweepY;
     }
 
-    // ─── Reset (full or partial) ───
-
-    // Full reset: all 10 pins back to home
     expose func startFullReset() {
         resetting = true;
         resetTimer = config.RESET_DURATION;
-        resetProgress = 0.0;
-
-        // Move all pins above home position
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, false);
             previousKnocked.set(i, false);
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetPosition(bodies.get(i),
-                homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
+            Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
         }
     }
 
-    // Second-roll setup: only stop movement on standing pins, leave knocked ones
     expose func prepareSecondRoll() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            if (knocked.get(i) == false) {
-                // Stabilize standing pins
-                Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                Physics3DBody.SetPosition(bodies.get(i),
-                    homeX.get(i), config.PIN_HEIGHT / 2.0, homeZ.get(i));
-            } else {
-                // Move knocked pins out of play
+            if (knocked.get(i)) {
                 Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
+                Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            } else {
+                var pos = Physics3DBody.get_Position(bodies.get(i));
+                Physics3DBody.SetPosition(bodies.get(i),
+                    Vec3.get_X(pos), config.PIN_HEIGHT / 2.0, Vec3.get_Z(pos));
                 Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             }
         }
@@ -285,28 +246,24 @@ class PinManager {
         if (resetting == false) { return true; }
 
         resetTimer = resetTimer - dt;
-        resetProgress = 1.0 - (resetTimer / config.RESET_DURATION);
-        if (resetProgress > 1.0) { resetProgress = 1.0; }
+        var progress = 1.0 - (resetTimer / config.RESET_DURATION);
+        if (progress > 1.0) { progress = 1.0; }
 
-        // Smoothly lower pins from drop height to home
-        var currentY: Float = config.RESET_DROP_HEIGHT +
-            (config.PIN_HEIGHT / 2.0 - config.RESET_DROP_HEIGHT) * resetProgress;
+        var currentY = config.RESET_DROP_HEIGHT +
+            (config.PIN_HEIGHT / 2.0 - config.RESET_DROP_HEIGHT) * progress;
 
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            Physics3DBody.SetPosition(bodies.get(i),
-                homeX.get(i), currentY, homeZ.get(i));
+            Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), currentY, homeZ.get(i));
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
         }
 
         if (resetTimer <= 0.0) {
             resetting = false;
-            // Snap all pins to exact home
-            for (var j: Integer = 0; j < config.PIN_COUNT; j = j + 1) {
-                Physics3DBody.SetPosition(bodies.get(j),
-                    homeX.get(j), config.PIN_HEIGHT / 2.0, homeZ.get(j));
-                Physics3DBody.SetVelocity(bodies.get(j), 0.0, 0.0, 0.0);
+            for (var i2: Integer = 0; i2 < config.PIN_COUNT; i2 = i2 + 1) {
+                Physics3DBody.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_HEIGHT / 2.0, homeZ.get(i2));
+                Physics3DBody.SetVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
             }
-            return true; // Reset complete
+            return true;
         }
         return false;
     }
@@ -315,40 +272,33 @@ class PinManager {
         return resetting;
     }
 
-    // ─── Rendering ───
+    expose func applyEnvironment(env: CubeMap3D) {
+        Material3D.SetEnvMap(pinMat, env);
+        Material3D.set_Reflectivity(pinMat, config.PIN_REFLECTIVITY);
+        Material3D.SetEnvMap(pinNeckMat, env);
+        Material3D.set_Reflectivity(pinNeckMat, config.PIN_NECK_REFLECTIVITY);
+    }
 
     expose func draw(canvas: Canvas3D) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var pos = Physics3DBody.get_Position(bodies.get(i));
-            var px: Float = Vec3.get_X(pos);
-            var py: Float = Vec3.get_Y(pos);
-            var pz: Float = Vec3.get_Z(pos);
-
-            // Skip pins that are hidden below the floor
+            var px = Vec3.get_X(pos);
+            var py = Vec3.get_Y(pos);
+            var pz = Vec3.get_Z(pos);
             if (py < -5.0) { continue; }
 
             if (knocked.get(i)) {
-                // Knocked: tilt in velocity direction
-                var angle: Float = tiltAngle.get(i);
-                var axX: Float = tiltAxisX.get(i);
-                var axZ: Float = tiltAxisZ.get(i);
-                var tiltAxis = new Vec3(axX, 0.0, axZ);
                 var translate = Mat4.Translate(px, py, pz);
-                var rotate = Mat4.RotateAxis(tiltAxis, angle);
-                var pinXform = Mat4.Mul(translate, rotate);
-                Canvas3D.DrawMesh(canvas, pinBodyMesh, pinXform, pinMat);
+                var tiltAxis = new Vec3(tiltAxisX.get(i), 0.0, tiltAxisZ.get(i));
+                var rotate = Mat4.RotateAxis(tiltAxis, tiltAngle.get(i));
+                Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Mul(translate, rotate), pinMat);
             } else {
-                // Standing: upright with neck stripe
-                var pinXform = Mat4.Translate(px, py, pz);
-                Canvas3D.DrawMesh(canvas, pinBodyMesh, pinXform, pinMat);
-
-                var neckXform = Mat4.Translate(px, py + config.PIN_HEIGHT * 0.3, pz);
-                Canvas3D.DrawMesh(canvas, pinNeckMesh, neckXform, pinNeckMat);
+                Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Translate(px, py, pz), pinMat);
+                Canvas3D.DrawMesh(canvas, pinNeckMesh,
+                    Mat4.Translate(px, py + config.PIN_HEIGHT * 0.3, pz), pinNeckMat);
             }
         }
     }
-
-    // ─── Pin position query (for particle spawn) ───
 
     expose func getPinPosition(index: Integer) -> Vec3 {
         return Physics3DBody.get_Position(bodies.get(index));

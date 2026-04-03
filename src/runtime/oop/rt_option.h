@@ -162,6 +162,18 @@ void *rt_option_or_else(void *obj, void *(*fn)(void));
 /// @return Same Some if predicate returns true, None otherwise.
 void *rt_option_filter(void *obj, int8_t (*pred)(void *));
 
+/// @brief IL-compatible wrapper for @ref rt_option_map accepting an opaque callback pointer.
+void *rt_option_map_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_option_and_then accepting an opaque callback pointer.
+void *rt_option_and_then_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_option_or_else accepting an opaque callback pointer.
+void *rt_option_or_else_wrapper(void *obj, void *fn);
+
+/// @brief IL-compatible wrapper for @ref rt_option_filter accepting an opaque callback pointer.
+void *rt_option_filter_wrapper(void *obj, void *pred);
+
 //=========================================================================
 // Conversion
 //=========================================================================

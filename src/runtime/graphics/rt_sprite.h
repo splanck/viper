@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_string.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -246,6 +247,20 @@ int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator);
 
 /// @brief Return the name of the currently playing clip, or NULL if idle.
 const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator);
+
+/// @brief Add a named clip using a runtime string.
+int8_t rt_sprite_animator_add_clip_str(void *animator,
+                                       rt_string name,
+                                       int64_t start_frame,
+                                       int64_t frame_count,
+                                       int64_t frame_delay_ms,
+                                       int64_t loop);
+
+/// @brief Start playing a named clip using a runtime string.
+int8_t rt_sprite_animator_play_str(void *animator, rt_string name);
+
+/// @brief Return the current clip name as a runtime string.
+rt_string rt_sprite_animator_get_current_str(void *animator);
 
 #ifdef __cplusplus
 }

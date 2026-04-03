@@ -942,6 +942,32 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
 
     out << fileHeader("RuntimeClasses.inc", "Runtime class catalog with properties and methods.");
 
+    const auto resolveFunc = [&](const std::string &idOrCanonical) -> const RuntimeFunc * {
+        if (auto it = state.func_by_id.find(idOrCanonical); it != state.func_by_id.end())
+            return &state.functions[it->second];
+        for (const auto &fn : state.functions) {
+            if (fn.canonical == idOrCanonical)
+                return &fn;
+        }
+        return nullptr;
+    };
+
+    const auto lastSegment = [](std::string_view dotted) -> std::string {
+        size_t pos = dotted.rfind('.');
+        if (pos == std::string_view::npos)
+            return std::string(dotted);
+        return std::string(dotted.substr(pos + 1));
+    };
+    const auto methodSlotKey = [](std::string_view name, std::string_view signature) -> std::string {
+        std::string key;
+        key.reserve(name.size() + signature.size() + 1);
+        for (unsigned char c : name)
+            key.push_back(static_cast<char>(std::tolower(c)));
+        key.push_back('|');
+        key.append(signature);
+        return key;
+    };
+
     for (const auto &cls : state.classes) {
         out << "RUNTIME_CLASS(\n";
         out << "    \"" << cls.name << "\",\n";
@@ -949,15 +975,16 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
         out << "    \"" << cls.layout << "\",\n";
 
         // Constructor - resolve to canonical name
+        std::string ctorCanonical;
         if (cls.ctor_id.empty() || cls.ctor_id == "none") {
             out << "    \"\",\n";
         } else {
-            // Look up canonical name from id
-            auto it = state.func_by_id.find(cls.ctor_id);
-            if (it != state.func_by_id.end()) {
-                out << "    \"" << state.functions[it->second].canonical << "\",\n";
+            if (const auto *fn = resolveFunc(cls.ctor_id)) {
+                ctorCanonical = fn->canonical;
+                out << "    \"" << ctorCanonical << "\",\n";
             } else {
                 // Assume it's already a canonical name
+                ctorCanonical = cls.ctor_id;
                 out << "    \"" << cls.ctor_id << "\",\n";
             }
         }
@@ -994,17 +1021,80 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
         out << "),\n";
 
         // Methods
+        std::vector<RuntimeMethod> methods = cls.methods;
+        std::unordered_set<std::string> coveredCanonicals;
+        std::unordered_set<std::string> coveredMethodSlots;
+        for (const auto &prop : cls.props) {
+            if (const auto *getter = resolveFunc(prop.getter_id))
+                coveredCanonicals.insert(getter->canonical);
+            if (!prop.setter_id.empty() && prop.setter_id != "none") {
+                if (const auto *setter = resolveFunc(prop.setter_id))
+                    coveredCanonicals.insert(setter->canonical);
+            }
+        }
+        for (const auto &method : methods) {
+            coveredMethodSlots.insert(methodSlotKey(method.name, method.signature));
+            if (const auto *fn = resolveFunc(method.target_id))
+                coveredCanonicals.insert(fn->canonical);
+        }
+        if (!ctorCanonical.empty()) {
+            bool hasCtorMethod = false;
+            for (const auto &method : methods) {
+                if (method.target_id == cls.ctor_id) {
+                    hasCtorMethod = true;
+                    break;
+                }
+                if (const auto *fn = resolveFunc(method.target_id);
+                    fn && fn->canonical == ctorCanonical) {
+                    hasCtorMethod = true;
+                    break;
+                }
+            }
+            if (!hasCtorMethod) {
+                if (const auto *ctorFunc = resolveFunc(cls.ctor_id.empty() ? ctorCanonical : cls.ctor_id)) {
+                    RuntimeMethod ctorMethod;
+                    ctorMethod.name = lastSegment(ctorFunc->canonical);
+                    ctorMethod.signature = ctorFunc->signature;
+                    ctorMethod.target_id = ctorFunc->canonical;
+                    coveredMethodSlots.insert(
+                        methodSlotKey(ctorMethod.name, ctorMethod.signature));
+                    methods.push_back(std::move(ctorMethod));
+                    coveredCanonicals.insert(ctorFunc->canonical);
+                }
+            }
+        }
+
+        const std::string classPrefix = cls.name + ".";
+        for (const auto &fn : state.functions) {
+            if (!startsWith(fn.canonical, classPrefix))
+                continue;
+            if (coveredCanonicals.count(fn.canonical))
+                continue;
+            std::string methodName = lastSegment(fn.canonical);
+            if (startsWith(methodName, "get_") || startsWith(methodName, "set_"))
+                continue;
+            if (coveredMethodSlots.count(methodSlotKey(methodName, fn.signature)))
+                continue;
+
+            RuntimeMethod synthetic;
+            synthetic.name = std::move(methodName);
+            synthetic.signature = fn.signature;
+            synthetic.target_id = fn.canonical;
+            methods.push_back(std::move(synthetic));
+            coveredCanonicals.insert(fn.canonical);
+            coveredMethodSlots.insert(methodSlotKey(methods.back().name, methods.back().signature));
+        }
+
         out << "    RUNTIME_METHODS(";
-        for (size_t i = 0; i < cls.methods.size(); ++i) {
-            const auto &method = cls.methods[i];
+        for (size_t i = 0; i < methods.size(); ++i) {
+            const auto &method = methods[i];
             if (i > 0)
                 out << ",\n                    ";
 
             // Resolve target canonical name
             std::string target_canonical = method.target_id;
-            auto mit = state.func_by_id.find(method.target_id);
-            if (mit != state.func_by_id.end()) {
-                target_canonical = state.functions[mit->second].canonical;
+            if (const auto *fn = resolveFunc(method.target_id)) {
+                target_canonical = fn->canonical;
             }
 
             out << "RUNTIME_METHOD(\"" << method.name << "\", \"" << method.signature << "\", \""

@@ -162,20 +162,26 @@ src/runtime/graphics/
 │   └── vgfx3d_backend_opengl.c    OpenGL 3.3 GPU backend (Linux)
 ├── Effects & Advanced
 │   ├── rt_particles3d.c/h         Particles3D emitter system
-│   ├── rt_postfx3d.c/h            PostFX3D (bloom, FXAA, tonemap, vignette, etc.)
+│   ├── rt_postfx3d.c/h            PostFX3D (bloom, FXAA, tonemap, vignette, SSAO, DOF, motion blur)
 │   ├── rt_sprite3d.c/h            Sprite3D billboards (cached mesh/material)
-│   ├── rt_decal3d.c               Decal3D surface projections
-│   ├── rt_water3d.c               Water3D animated surface
-│   ├── rt_terrain3d.c             Terrain3D heightmap terrain
-│   ├── rt_instbatch3d.c           InstanceBatch3D instanced rendering
+│   ├── rt_decal3d.c/h             Decal3D surface projections
+│   ├── rt_water3d.c/h             Water3D animated Gerstner wave surface
+│   ├── rt_terrain3d.c/h           Terrain3D heightmap terrain (LOD, splatting)
+│   ├── rt_vegetation3d.c/h        Vegetation3D procedural grass/foliage
+│   ├── rt_instbatch3d.c/h         InstanceBatch3D instanced rendering
 │   ├── rt_cubemap3d.c             CubeMap3D environment/skybox
 │   ├── rt_rendertarget3d.c        RenderTarget3D offscreen rendering
-│   └── rt_texatlas3d.c            TextureAtlas3D texture arrays
+│   └── rt_texatlas3d.c/h          TextureAtlas3D texture arrays
+├── Animation (extended)
+│   └── rt_anim_blend3d            AnimBlend3D weight-based animation blending
+├── Physics (extended)
+│   └── rt_joints3d.c/h            DistanceJoint3D + SpringJoint3D constraints
 ├── Navigation & Paths
 │   ├── rt_navmesh3d.c/h           NavMesh3D A* pathfinding
-│   └── rt_path3d.c                Path3D spline following
+│   └── rt_path3d.c/h              Path3D spline following
 ├── Asset Loading
-│   └── rt_fbx_loader.c/h          FBX binary format loader
+│   ├── rt_fbx_loader.c/h          FBX binary format loader
+│   └── rt_gltf.c/h                glTF 2.0 format loader
 └── Audio
     └── rt_audio3d.c/h             Audio3D spatial audio
 ```

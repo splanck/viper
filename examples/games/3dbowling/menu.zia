@@ -1,0 +1,292 @@
+// menu.zia — Title/pause/options/results flow and persistence
+module menu;
+
+bind Viper.Game;
+bind Viper.Game.UI;
+bind Viper.Graphics3D;
+bind Viper.IO;
+bind Viper.Input;
+bind "./config";
+
+var CMD_NONE: Integer = -1;
+var CMD_START_SINGLE: Integer = 0;
+var CMD_START_VERSUS: Integer = 1;
+var CMD_OPEN_OPTIONS: Integer = 2;
+var CMD_QUIT: Integer = 3;
+var CMD_RESUME: Integer = 4;
+var CMD_RESTART: Integer = 5;
+var CMD_MAIN_MENU: Integer = 6;
+var CMD_PLAY_AGAIN: Integer = 7;
+var CMD_BACK: Integer = 8;
+
+class BowlingMenu {
+    hide MenuList titleMenu;
+    hide MenuList pauseMenu;
+    hide MenuList resultsMenu;
+    hide MenuList optionsMenu;
+
+    hide List[String] titleItems;
+    hide List[String] pauseItems;
+    hide List[String] resultsItems;
+    hide List[String] optionItems;
+
+    hide SaveData save;
+    hide Integer bestScore;
+    hide Integer gamesPlayed;
+    hide Integer oilPattern;
+    hide Integer qualityMode;
+    hide Integer preferredMode;
+    hide Integer titlePulse;
+
+    expose func init() {
+        titleMenu = MenuList.New(0, 0, 44);
+        pauseMenu = MenuList.New(0, 0, 40);
+        resultsMenu = MenuList.New(0, 0, 40);
+        optionsMenu = MenuList.New(0, 0, 40);
+
+        titleItems = [];
+        titleItems.add("Single Game");
+        titleItems.add("Versus");
+        titleItems.add("Options");
+        titleItems.add("Quit");
+
+        pauseItems = [];
+        pauseItems.add("Resume");
+        pauseItems.add("Restart Match");
+        pauseItems.add("Main Menu");
+
+        resultsItems = [];
+        resultsItems.add("Play Again");
+        resultsItems.add("Main Menu");
+
+        optionItems = [];
+        optionItems.add("Oil Pattern");
+        optionItems.add("Visual Quality");
+        optionItems.add("Reset Stats");
+        optionItems.add("Back");
+
+        populateMenu(titleMenu, titleItems);
+        populateMenu(pauseMenu, pauseItems);
+        populateMenu(resultsMenu, resultsItems);
+        populateMenu(optionsMenu, optionItems);
+
+        save = SaveData.New(config.SAVE_NAME);
+        bestScore = 0;
+        gamesPlayed = 0;
+        oilPattern = config.OIL_HOUSE;
+        qualityMode = config.QUALITY_CINEMATIC;
+        preferredMode = config.MODE_SINGLE;
+        titlePulse = 0;
+        load();
+    }
+
+    hide func populateMenu(menuRef: MenuList, labels: List[String]) {
+        menuRef.Clear();
+        for (var i: Integer = 0; i < labels.count(); i = i + 1) {
+            menuRef.AddItem(labels.get(i));
+        }
+        menuRef.SetColors(config.HUD_COLOR_MENU_CARD, config.HUD_COLOR_WHITE, config.HUD_COLOR_MENU_ACCENT);
+        menuRef.set_Selected(0);
+    }
+
+    expose func load() {
+        save.Load();
+        bestScore = save.GetInt(config.SAVE_KEY_BEST_SCORE, 0);
+        gamesPlayed = save.GetInt(config.SAVE_KEY_GAMES_PLAYED, 0);
+        oilPattern = save.GetInt(config.SAVE_KEY_OIL_PATTERN, config.OIL_HOUSE);
+        qualityMode = save.GetInt(config.SAVE_KEY_QUALITY, config.QUALITY_CINEMATIC);
+        preferredMode = save.GetInt(config.SAVE_KEY_LAST_MODE, config.MODE_SINGLE);
+    }
+
+    expose func savePreferences() {
+        save.SetInt(config.SAVE_KEY_BEST_SCORE, bestScore);
+        save.SetInt(config.SAVE_KEY_GAMES_PLAYED, gamesPlayed);
+        save.SetInt(config.SAVE_KEY_OIL_PATTERN, oilPattern);
+        save.SetInt(config.SAVE_KEY_QUALITY, qualityMode);
+        save.SetInt(config.SAVE_KEY_LAST_MODE, preferredMode);
+        save.Save();
+    }
+
+    expose func recordFinishedMatch(score: Integer, mode: Integer) {
+        gamesPlayed = gamesPlayed + 1;
+        if (mode == config.MODE_SINGLE && score > bestScore) {
+            bestScore = score;
+        }
+        preferredMode = mode;
+        savePreferences();
+    }
+
+    expose func updateTitle() -> Integer {
+        titlePulse = titlePulse + 1;
+        var choice = titleMenu.HandleInput(
+            Action.Pressed(config.ACT_MENU_UP),
+            Action.Pressed(config.ACT_MENU_DOWN),
+            Action.Pressed(config.ACT_CONFIRM)
+        );
+
+        if (choice == 0) {
+            preferredMode = config.MODE_SINGLE;
+            savePreferences();
+            return CMD_START_SINGLE;
+        }
+        if (choice == 1) {
+            preferredMode = config.MODE_VERSUS;
+            savePreferences();
+            return CMD_START_VERSUS;
+        }
+        if (choice == 2) { return CMD_OPEN_OPTIONS; }
+        if (choice == 3) { return CMD_QUIT; }
+        return CMD_NONE;
+    }
+
+    expose func updatePause() -> Integer {
+        var choice = pauseMenu.HandleInput(
+            Action.Pressed(config.ACT_MENU_UP),
+            Action.Pressed(config.ACT_MENU_DOWN),
+            Action.Pressed(config.ACT_CONFIRM)
+        );
+        if (choice == 0) { return CMD_RESUME; }
+        if (choice == 1) { return CMD_RESTART; }
+        if (choice == 2) { return CMD_MAIN_MENU; }
+        if (Action.Pressed(config.ACT_BACK)) { return CMD_RESUME; }
+        return CMD_NONE;
+    }
+
+    expose func updateResults() -> Integer {
+        var choice = resultsMenu.HandleInput(
+            Action.Pressed(config.ACT_MENU_UP),
+            Action.Pressed(config.ACT_MENU_DOWN),
+            Action.Pressed(config.ACT_CONFIRM)
+        );
+        if (choice == 0) { return CMD_PLAY_AGAIN; }
+        if (choice == 1) { return CMD_MAIN_MENU; }
+        if (Action.Pressed(config.ACT_BACK)) { return CMD_MAIN_MENU; }
+        return CMD_NONE;
+    }
+
+    expose func updateOptions() -> Integer {
+        var choice = optionsMenu.HandleInput(
+            Action.Pressed(config.ACT_MENU_UP),
+            Action.Pressed(config.ACT_MENU_DOWN),
+            Action.Pressed(config.ACT_CONFIRM)
+        );
+
+        if (choice == 0) {
+            oilPattern = oilPattern + 1;
+            if (oilPattern > config.OIL_DRY) { oilPattern = config.OIL_HOUSE; }
+            savePreferences();
+        } else if (choice == 1) {
+            if (qualityMode == config.QUALITY_CINEMATIC) {
+                qualityMode = config.QUALITY_PERFORMANCE;
+            } else {
+                qualityMode = config.QUALITY_CINEMATIC;
+            }
+            savePreferences();
+        } else if (choice == 2) {
+            bestScore = 0;
+            gamesPlayed = 0;
+            savePreferences();
+        } else if (choice == 3) {
+            return CMD_BACK;
+        }
+
+        if (Action.Pressed(config.ACT_BACK)) { return CMD_BACK; }
+        return CMD_NONE;
+    }
+
+    expose func getOilPattern() -> Integer {
+        return oilPattern;
+    }
+
+    expose func getQualityMode() -> Integer {
+        return qualityMode;
+    }
+
+    expose func getPreferredMode() -> Integer {
+        return preferredMode;
+    }
+
+    expose func getBestScore() -> Integer {
+        return bestScore;
+    }
+
+    expose func getGamesPlayed() -> Integer {
+        return gamesPlayed;
+    }
+
+    expose func drawTitle(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
+        var pulse = 180 + (titlePulse % 60);
+        var titleColor = (pulse << 16) + (220 << 8) + 140;
+
+        Canvas3D.DrawRect2D(canvas, 32, 36, screenW - 64, screenH - 72, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, 52, 56, screenW - 104, 136, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 88, 76, "3D BOWLING", titleColor);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 132, 104,
+            "Built entirely on Viper's native 3D runtime", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 88, 132,
+            "Oil: " + getOilPatternName() + "   Quality: " + getQualityName(), config.HUD_COLOR_CYAN);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 87, 156,
+            "Best: " + toString(bestScore) + "   Games: " + toString(gamesPlayed), config.HUD_COLOR_GOLD);
+
+        drawMenuList(canvas, titleItems, titleMenu.get_Selected(), screenW / 2 - 110, 250, 220, 42);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 150, screenH - 58,
+            "Arrows / gamepad D-pad = navigate, Enter / A = confirm", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 130, screenH - 34,
+            "During play: hold Space / A to charge, A-D to aim, Q-E to shape", config.HUD_COLOR_GRAY);
+    }
+
+    expose func drawPause(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
+        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 28, 140, "PAUSED", config.HUD_COLOR_GOLD);
+        drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, 240, 220, 40);
+    }
+
+    expose func drawOptions(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
+        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 36, 120, "OPTIONS", config.HUD_COLOR_GOLD);
+
+        var labels: List[String] = [];
+        labels.add("Oil Pattern  : " + getOilPatternName());
+        labels.add("Visual Quality: " + getQualityName());
+        labels.add("Reset Stats");
+        labels.add("Back");
+        drawMenuList(canvas, labels, optionsMenu.get_Selected(), screenW / 2 - 150, 220, 300, 40);
+
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 135, screenH - 48,
+            "Confirm cycles values. Escape / B returns to the title.", config.HUD_COLOR_GRAY);
+    }
+
+    expose func drawResults(canvas: Canvas3D, screenW: Integer, screenH: Integer,
+                            headline: String, subtitle: String, detail: String) {
+        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - headline.Length * 4, 116, headline, config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - subtitle.Length * 4, 152, subtitle, config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - detail.Length * 4, 184, detail, config.HUD_COLOR_CYAN);
+        drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, 266, 220, 40);
+    }
+
+    hide func drawMenuList(canvas: Canvas3D, labels: List[String], selected: Integer,
+                           x: Integer, y: Integer, width: Integer, rowH: Integer) {
+        for (var i: Integer = 0; i < labels.count(); i = i + 1) {
+            var rowY = y + i * rowH;
+            var fill = config.HUD_COLOR_MENU_CARD;
+            if (i == selected) { fill = config.HUD_COLOR_FRAME_ACTIVE; }
+            Canvas3D.DrawRect2D(canvas, x, rowY, width, rowH - 6, fill);
+            Canvas3D.DrawText2D(canvas, x + 14, rowY + 12, labels.get(i), config.HUD_COLOR_WHITE);
+            if (i == selected) {
+                Canvas3D.DrawRect2D(canvas, x - 12, rowY + 11, 6, 14, config.HUD_COLOR_MENU_ACCENT);
+            }
+        }
+    }
+
+    expose func getOilPatternName() -> String {
+        if (oilPattern == config.OIL_SPORT) { return "Sport"; }
+        if (oilPattern == config.OIL_DRY) { return "Dry"; }
+        return "House";
+    }
+
+    expose func getQualityName() -> String {
+        if (qualityMode == config.QUALITY_PERFORMANCE) { return "Performance"; }
+        return "Cinematic";
+    }
+}

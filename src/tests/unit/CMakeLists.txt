@@ -210,6 +210,13 @@ if (NOT TARGET test_runtime_classes_catalog)
     viper_add_ctest(test_runtime_classes_catalog test_runtime_classes_catalog)
 endif ()
 
+if (NOT TARGET test_runtime_surface_audit)
+    viper_add_test(test_runtime_surface_audit ${VIPER_TESTS_DIR}/unit/test_runtime_surface_audit.cpp)
+    target_link_libraries(test_runtime_surface_audit PRIVATE fe_basic)
+    target_compile_definitions(test_runtime_surface_audit PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    viper_add_ctest(test_runtime_surface_audit test_runtime_surface_audit)
+endif ()
+
 # New unit tests for RC-B7 runtime-class pipeline
 if (NOT TARGET test_catalog_basic)
     viper_add_test(test_catalog_basic ${VIPER_TESTS_DIR}/unit/runtime_classes/TestCatalog.cpp)

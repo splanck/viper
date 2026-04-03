@@ -1,10 +1,10 @@
-// ball.zia — Ball entity: physics, throw, spin/hook, gutter detection,
-// visual spin rotation, ball weight selection
+// ball.zia — Ball entity: weight selection, release shaping, hook model, gutter state
 module ball;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
+bind Convert = Viper.Core.Convert;
 bind "../config";
 
 class Ball {
@@ -12,7 +12,6 @@ class Ball {
     hide Physics3DWorld world;
     hide Boolean inWorld;
 
-    // Current ball properties (set by weight selection)
     hide Float mass;
     hide Float maxSpeed;
     hide Float hookMultiplier;
@@ -21,15 +20,12 @@ class Ball {
     hide Float colorB;
     hide Integer ballType;
 
-    // Meshes
     hide Mesh3D ballMesh;
     hide Material3D ballMat;
 
-    // Spin state
-    hide Float spinAmount;          // -1.0 (left) to +1.0 (right)
-    hide Float visualSpinAngle;     // For visual rotation
-
-    // State tracking
+    hide Float spinAmount;
+    hide Float visualSpinAngle;
+    hide Float launchAngle;
     hide Boolean isInGutter;
     hide Boolean hasBeenThrown;
 
@@ -38,48 +34,29 @@ class Ball {
         inWorld = false;
         spinAmount = 0.0;
         visualSpinAngle = 0.0;
+        launchAngle = 0.0;
         isInGutter = false;
         hasBeenThrown = false;
 
-        // Default to medium ball
         ballType = config.BALL_MEDIUM;
-        mass = config.BALL_MASS_MEDIUM;
-        maxSpeed = config.BALL_SPEED_MAX_MEDIUM;
-        hookMultiplier = config.BALL_HOOK_MEDIUM;
-        colorR = config.BALL_COLOR_MEDIUM_R;
-        colorG = config.BALL_COLOR_MEDIUM_G;
-        colorB = config.BALL_COLOR_MEDIUM_B;
+        applyBallStats();
 
-        // Create mesh and material
         ballMesh = Mesh3D.NewSphere(config.BALL_RADIUS, 16);
         ballMat = Material3D.NewColor(colorR, colorG, colorB);
         Material3D.SetShininess(ballMat, config.BALL_SHININESS);
 
-        // Create physics body (not yet in world)
-        body = Physics3DBody.NewSphere(config.BALL_RADIUS, mass);
-        Physics3DBody.SetRestitution(body, config.BALL_RESTITUTION);
-        Physics3DBody.SetFriction(body, config.BALL_FRICTION);
-        Physics3DBody.set_CollisionLayer(body, config.LAYER_BALL);
-        Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
-
-        // Start at rest position
-        Physics3DBody.SetPosition(body,
-            config.BALL_START_X, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
+        recreateBody();
     }
 
-    // ─── Ball Selection ───
-
-    expose func selectBall(btype: Integer) {
-        ballType = btype;
-
-        if (btype == config.BALL_LIGHT) {
+    hide func applyBallStats() {
+        if (ballType == config.BALL_LIGHT) {
             mass = config.BALL_MASS_LIGHT;
             maxSpeed = config.BALL_SPEED_MAX_LIGHT;
             hookMultiplier = config.BALL_HOOK_LIGHT;
             colorR = config.BALL_COLOR_LIGHT_R;
             colorG = config.BALL_COLOR_LIGHT_G;
             colorB = config.BALL_COLOR_LIGHT_B;
-        } else if (btype == config.BALL_HEAVY) {
+        } else if (ballType == config.BALL_HEAVY) {
             mass = config.BALL_MASS_HEAVY;
             maxSpeed = config.BALL_SPEED_MAX_HEAVY;
             hookMultiplier = config.BALL_HOOK_HEAVY;
@@ -94,25 +71,36 @@ class Ball {
             colorG = config.BALL_COLOR_MEDIUM_G;
             colorB = config.BALL_COLOR_MEDIUM_B;
         }
+    }
 
-        // Update visual
-        Material3D.SetColor(ballMat, colorR, colorG, colorB);
-
-        // Recreate physics body with new mass
+    hide func recreateBody() {
         if (inWorld) {
             Physics3DWorld.Remove(world, body);
         }
         body = Physics3DBody.NewSphere(config.BALL_RADIUS, mass);
-        Physics3DBody.SetRestitution(body, config.BALL_RESTITUTION);
-        Physics3DBody.SetFriction(body, config.BALL_FRICTION);
+        Physics3DBody.set_Restitution(body, config.BALL_RESTITUTION);
+        Physics3DBody.set_Friction(body, config.BALL_FRICTION);
         Physics3DBody.set_CollisionLayer(body, config.LAYER_BALL);
         Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
         Physics3DBody.SetPosition(body,
             config.BALL_START_X, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
+        Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
         inWorld = false;
     }
 
-    // ─── Spin Control ───
+    expose func selectBall(btype: Integer) {
+        ballType = btype;
+        applyBallStats();
+        Material3D.SetColor(ballMat, colorR, colorG, colorB);
+        recreateBody();
+    }
+
+    expose func cycleBall(dir: Integer) {
+        var nextType = ballType + dir;
+        if (nextType < config.BALL_LIGHT) { nextType = config.BALL_HEAVY; }
+        if (nextType > config.BALL_HEAVY) { nextType = config.BALL_LIGHT; }
+        selectBall(nextType);
+    }
 
     expose func setSpin(amount: Float) {
         spinAmount = amount;
@@ -124,14 +112,14 @@ class Ball {
         return spinAmount;
     }
 
-    // ─── Throw ───
-
     expose func doThrow(aimX: Float, power: Float) {
-        var throwSpeed: Float = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
+        var throwSpeed = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
+        launchAngle = aimX / config.AIM_MAX * config.AIM_RELEASE_ANGLE + spinAmount * 0.08;
+        var sideSpeed = launchAngle * 10.0;
 
         Physics3DBody.SetPosition(body,
             aimX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
-        Physics3DBody.SetVelocity(body, 0.0, 0.0, throwSpeed);
+        Physics3DBody.SetVelocity(body, sideSpeed, 0.0, throwSpeed);
 
         if (inWorld == false) {
             Physics3DWorld.Add(world, body);
@@ -140,38 +128,63 @@ class Ball {
 
         isInGutter = false;
         hasBeenThrown = true;
-        Say("Thrown! Power: " + toString(toInteger(power * 100.0)) + "%"
-            + " Spin: " + toString(toInteger(spinAmount * 100.0)));
+        Say("Thrown! Power: " + toString(Convert.NumToInt(power * 100.0))
+            + "%  Shape: " + toString(Convert.NumToInt(spinAmount * 100.0)));
     }
 
-    // ─── Per-Frame Update ───
+    expose func updateMotion(dt: Float, laneFriction: Float, oilEndZ: Float) {
+        if (hasBeenThrown == false || isInGutter) { return; }
 
-    // Apply spin-based hook force. laneFriction controls how much the ball grips.
-    expose func updateHook(dt: Float, laneFriction: Float) {
-        if (hasBeenThrown == false) { return; }
-        if (isInGutter) { return; }
-
-        // Hook force: spin × grip × hookMultiplier
-        // On oil: laneFriction is low → ball slides straight
-        // On dry: laneFriction is high → ball hooks hard
-        var hookForce: Float = spinAmount * laneFriction * hookMultiplier * 25.0;
-        Physics3DBody.ApplyForce(body, hookForce, 0.0, 0.0);
-
-        // Update visual spin rotation
-        visualSpinAngle = visualSpinAngle + spinAmount * config.SPIN_VISUAL_SPEED * dt;
-    }
-
-    // Check if ball has entered the gutter
-    expose func checkGutter() {
-        if (isInGutter) { return; }
         var pos = Physics3DBody.get_Position(body);
-        var bx: Float = Vec3.get_X(pos);
-        if (bx > config.GUTTER_THRESHOLD_X || bx < -config.GUTTER_THRESHOLD_X) {
-            isInGutter = true;
+        var vel = Physics3DBody.get_Velocity(body);
+        var x = Vec3.get_X(pos);
+        var z = Vec3.get_Z(pos);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        var speed = Sqrt(vx * vx + vz * vz);
+        if (speed < 0.05) { return; }
+
+        var backend = 0.0;
+        if (z > oilEndZ) {
+            backend = (z - oilEndZ) / 3.0;
+            if (backend > 1.0) { backend = 1.0; }
+        }
+        var frictionPct = (laneFriction - config.OIL_FRICTION_OILED) /
+            (config.OIL_FRICTION_DRY - config.OIL_FRICTION_OILED + 0.0001);
+        if (frictionPct < 0.0) { frictionPct = 0.0; }
+        if (frictionPct > 1.0) { frictionPct = 1.0; }
+
+        var hookForce = spinAmount * hookMultiplier *
+            (config.EARLY_HOOK_FORCE + backend * config.BACKEND_HOOK_FORCE) * frictionPct;
+        var dragForce = -vx * config.SIDE_DRAG * (0.8 + frictionPct);
+        Physics3DBody.ApplyForce(body, hookForce + dragForce, 0.0, 0.0);
+
+        var spinDecay = config.SPIN_DECAY_OIL + (config.SPIN_DECAY_DRY - config.SPIN_DECAY_OIL) * frictionPct;
+        if (spinAmount > 0.0) {
+            spinAmount = spinAmount - spinDecay * dt;
+            if (spinAmount < 0.0) { spinAmount = 0.0; }
+        } else if (spinAmount < 0.0) {
+            spinAmount = spinAmount + spinDecay * dt;
+            if (spinAmount > 0.0) { spinAmount = 0.0; }
+        }
+
+        visualSpinAngle = visualSpinAngle + speed * dt * config.SPIN_VISUAL_SPEED;
+        if (x > config.LANE_WIDTH) {
+            spinAmount = spinAmount * 0.95;
         }
     }
 
-    // ─── Queries ───
+    expose func markGutter() {
+        isInGutter = true;
+    }
+
+    expose func clearGutter() {
+        isInGutter = false;
+    }
+
+    expose func getBody() -> Physics3DBody {
+        return body;
+    }
 
     expose func getPosition() -> Vec3 {
         return Physics3DBody.get_Position(body);
@@ -183,28 +196,26 @@ class Ball {
 
     expose func getSpeed() -> Float {
         var vel = Physics3DBody.get_Velocity(body);
-        var vx: Float = Vec3.get_X(vel);
-        var vy: Float = Vec3.get_Y(vel);
-        var vz: Float = Vec3.get_Z(vel);
+        var vx = Vec3.get_X(vel);
+        var vy = Vec3.get_Y(vel);
+        var vz = Vec3.get_Z(vel);
         return Sqrt(vx * vx + vy * vy + vz * vz);
     }
 
     expose func getPosX() -> Float {
-        var pos = Physics3DBody.get_Position(body);
-        return Vec3.get_X(pos);
+        return Vec3.get_X(Physics3DBody.get_Position(body));
     }
 
     expose func getPosZ() -> Float {
-        var pos = Physics3DBody.get_Position(body);
-        return Vec3.get_Z(pos);
+        return Vec3.get_Z(Physics3DBody.get_Position(body));
     }
 
     expose func hasPastPins() -> Boolean {
-        return getPosZ() > config.PIN_Z_OFFSET + 1.5;
+        return getPosZ() > config.PIN_Z_OFFSET + 1.8;
     }
 
     expose func isSlow() -> Boolean {
-        return getSpeed() < 0.3;
+        return getSpeed() < 0.45;
     }
 
     expose func gutterBall() -> Boolean {
@@ -219,45 +230,38 @@ class Ball {
         return ballType;
     }
 
-    // ─── Reset ───
+    expose func applyEnvironment(env: CubeMap3D) {
+        Material3D.SetEnvMap(ballMat, env);
+        Material3D.set_Reflectivity(ballMat, config.BALL_REFLECTIVITY);
+    }
 
     expose func resetBall() {
         if (inWorld) {
             Physics3DWorld.Remove(world, body);
-            inWorld = false;
         }
-        Physics3DBody.SetPosition(body,
-            config.BALL_START_X, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
-        Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
+        recreateBody();
         isInGutter = false;
         hasBeenThrown = false;
         spinAmount = 0.0;
         visualSpinAngle = 0.0;
+        launchAngle = 0.0;
     }
 
-    // Set aim position (visual update while aiming)
     expose func setAimPosition(aimX: Float) {
         Physics3DBody.SetPosition(body,
             aimX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
     }
 
-    // ─── Drawing ───
-
     expose func draw(canvas: Canvas3D) {
         var pos = Physics3DBody.get_Position(body);
-        var bx: Float = Vec3.get_X(pos);
-        var by: Float = Vec3.get_Y(pos);
-        var bz: Float = Vec3.get_Z(pos);
+        var bx = Vec3.get_X(pos);
+        var by = Vec3.get_Y(pos);
+        var bz = Vec3.get_Z(pos);
 
-        // Apply visual spin rotation around forward axis
         var translate = Mat4.Translate(bx, by, bz);
-        if (visualSpinAngle != 0.0) {
-            var spinAxis = new Vec3(0.0, 0.0, 1.0);
-            var rotate = Mat4.RotateAxis(spinAxis, visualSpinAngle);
-            var ballXform = Mat4.Mul(translate, rotate);
-            Canvas3D.DrawMesh(canvas, ballMesh, ballXform, ballMat);
-        } else {
-            Canvas3D.DrawMesh(canvas, ballMesh, translate, ballMat);
-        }
+        var spinAxis = new Vec3(1.0, 0.0, 0.0);
+        var rotateSpin = Mat4.RotateAxis(spinAxis, visualSpinAngle);
+        var rotateYaw = Mat4.RotateAxis(new Vec3(0.0, 1.0, 0.0), launchAngle);
+        Canvas3D.DrawMesh(canvas, ballMesh, Mat4.Mul(Mat4.Mul(translate, rotateYaw), rotateSpin), ballMat);
     }
 }

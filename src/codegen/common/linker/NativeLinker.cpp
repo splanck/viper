@@ -876,11 +876,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             // A framework is linked if ANY dynamic symbol starts with one of its prefixes.
             struct FrameworkRule {
                 const char *prefixes[10]; // NUL-terminated list of symbol prefixes.
-                const char *exactSyms[3]; // NUL-terminated list of exact-match symbol names.
+                const char *exactSyms[8]; // NUL-terminated list of exact-match symbol names.
                 const char *dylibPath;
             };
 
             static constexpr FrameworkRule kFrameworkRules[] = {
+                {{"Block_", "NSConcrete"},
+                 {"_Block_copy", "_Block_release", "_Block_object_assign"},
+                 "/usr/lib/libSystem.B.dylib"},
                 {{"CF", "kCF"},
                  {},
                  "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"},
@@ -956,7 +959,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                         break;
                 }
                 if (needed)
-                    dylibs.push_back({rule.dylibPath});
+                    if (std::none_of(dylibs.begin(),
+                                     dylibs.end(),
+                                     [&](const DylibImport &imp) {
+                                         return imp.path == rule.dylibPath;
+                                     }))
+                        dylibs.push_back({rule.dylibPath});
             }
 
             // Build symbol-to-dylib ordinal map for MH_TWOLEVEL.

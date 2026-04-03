@@ -629,13 +629,13 @@ Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent or
 smooth interpolation via SLERP.
 
 **Type:** Instance (obj)
-**Constructor:** `Quat.New(w, x, y, z)` or `Quat.Identity()`
+**Constructor:** `Quat.New(x, y, z, w)` or `Quat.Identity()`
 
 ### Static Constructors
 
 | Method                        | Signature             | Description                                              |
 |-------------------------------|-----------------------|----------------------------------------------------------|
-| `New(w, x, y, z)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components                       |
+| `New(x, y, z, w)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components (x, y, z, w order)    |
 | `Identity()`                  | `obj()`               | Create identity quaternion (1, 0, 0, 0)                 |
 | `FromAxisAngle(axis, angle)`  | `obj(obj, f64)`       | Create from a Vec3 axis and angle in radians            |
 | `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians                     |

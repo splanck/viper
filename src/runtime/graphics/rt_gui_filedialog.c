@@ -35,7 +35,7 @@
 // Phase 5: FileDialog
 //=============================================================================
 
-rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string default_path) {
+rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
     char *cpath = rt_string_to_cstr(default_path);
@@ -130,9 +130,9 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
 }
 
 rt_string rt_filedialog_save(rt_string title,
+                             rt_string default_path,
                              rt_string filter,
-                             rt_string default_name,
-                             rt_string default_path) {
+                             rt_string default_name) {
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
     char *cname = rt_string_to_cstr(default_name);
@@ -195,6 +195,28 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
+static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
+    if (!data)
+        return;
+    if (data->selected_paths) {
+        for (size_t i = 0; i < data->selected_count; i++) {
+            free(data->selected_paths[i]);
+        }
+        free(data->selected_paths);
+        data->selected_paths = NULL;
+        data->selected_count = 0;
+    }
+    if (data->dialog) {
+        vg_filedialog_destroy(data->dialog);
+        data->dialog = NULL;
+    }
+    data->result = 0;
+}
+
+static void rt_filedialog_finalize(void *dialog) {
+    rt_filedialog_dispose((rt_filedialog_data_t *)dialog);
+}
+
 void *rt_filedialog_new(int64_t type) {
     vg_filedialog_mode_t mode;
     switch (type) {
@@ -226,8 +248,21 @@ void *rt_filedialog_new(int64_t type) {
     data->selected_paths = NULL;
     data->selected_count = 0;
     data->result = 0;
+    rt_obj_set_finalizer(data, rt_filedialog_finalize);
 
     return data;
+}
+
+void *rt_filedialog_new_open(void) {
+    return rt_filedialog_new(RT_FILEDIALOG_OPEN);
+}
+
+void *rt_filedialog_new_save(void) {
+    return rt_filedialog_new(RT_FILEDIALOG_SAVE);
+}
+
+void *rt_filedialog_new_folder(void) {
+    return rt_filedialog_new(RT_FILEDIALOG_FOLDER);
 }
 
 void rt_filedialog_set_title(void *dialog, rt_string title) {
@@ -300,12 +335,14 @@ int64_t rt_filedialog_show(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     vg_filedialog_show(data->dialog);
 
-    // Get selected paths
+    // Replace any previous selection snapshot with the latest dialog result.
     if (data->selected_paths) {
         for (size_t i = 0; i < data->selected_count; i++) {
             free(data->selected_paths[i]);
         }
         free(data->selected_paths);
+        data->selected_paths = NULL;
+        data->selected_count = 0;
     }
     data->selected_paths = vg_filedialog_get_selected_paths(data->dialog, &data->selected_count);
     data->result = (data->selected_count > 0) ? 1 : 0;
@@ -344,24 +381,15 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
 void rt_filedialog_destroy(void *dialog) {
     if (!dialog)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    if (data->selected_paths) {
-        for (size_t i = 0; i < data->selected_count; i++) {
-            free(data->selected_paths[i]);
-        }
-        free(data->selected_paths);
-    }
-    if (data->dialog) {
-        vg_filedialog_destroy(data->dialog);
-    }
+    rt_filedialog_dispose((rt_filedialog_data_t *)dialog);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string default_path) {
+rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     (void)title;
-    (void)filter;
     (void)default_path;
+    (void)filter;
     return rt_str_empty();
 }
 
@@ -373,13 +401,13 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
 }
 
 rt_string rt_filedialog_save(rt_string title,
+                             rt_string default_path,
                              rt_string filter,
-                             rt_string default_name,
-                             rt_string default_path) {
+                             rt_string default_name) {
     (void)title;
+    (void)default_path;
     (void)filter;
     (void)default_name;
-    (void)default_path;
     return rt_str_empty();
 }
 
@@ -391,6 +419,18 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
 
 void *rt_filedialog_new(int64_t type) {
     (void)type;
+    return NULL;
+}
+
+void *rt_filedialog_new_open(void) {
+    return NULL;
+}
+
+void *rt_filedialog_new_save(void) {
+    return NULL;
+}
+
+void *rt_filedialog_new_folder(void) {
     return NULL;
 }
 

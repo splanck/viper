@@ -231,3 +231,15 @@ void *rt_lazy_flat_map(void *obj, void *(*fn)(void *)) {
     // Return the new lazy (which will be evaluated when needed)
     return new_lazy;
 }
+
+void *rt_lazy_new_wrapper(void *supplier) {
+    return rt_lazy_new((void *(*)(void))supplier);
+}
+
+void *rt_lazy_map_wrapper(void *obj, void *fn) {
+    return rt_lazy_map(obj, (void *(*)(void *))fn);
+}
+
+void *rt_lazy_flat_map_wrapper(void *obj, void *fn) {
+    return rt_lazy_flat_map(obj, (void *(*)(void *))fn);
+}

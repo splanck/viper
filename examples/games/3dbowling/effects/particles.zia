@@ -1,28 +1,26 @@
-// particles.zia — Particle effects: pin crash sparks, lane dust,
-// strike fireworks, gutter splash
+// particles.zia — Particle effects plus skid / impact decals
 module particles;
 
 bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
 bind Viper.Math;
+bind Convert = Viper.Core.Convert;
 bind "../config";
 
 class ParticleManager {
-    // Pin crash sparks (burst on impact)
     hide Particles3D crashSparks;
-
-    // Lane dust (continuous while ball rolls)
     hide Particles3D laneDust;
-
-    // Strike/spare fireworks (burst on achievement)
     hide Particles3D fireworks1;
     hide Particles3D fireworks2;
     hide Particles3D fireworks3;
-
-    // Gutter splash
     hide Particles3D gutterSplash;
 
+    hide Pixels skidTexture;
+    hide Pixels impactTexture;
+    hide List[Decal3D] decals;
+
     expose func initParticles() {
-        // ─── Crash sparks (pin collisions) ───
         crashSparks = Particles3D.New(100);
         Particles3D.SetDirection(crashSparks, 0.0, 1.0, 0.0, 0.9);
         Particles3D.SetSpeed(crashSparks, config.SPARK_SPEED_MIN, config.SPARK_SPEED_MAX);
@@ -31,24 +29,25 @@ class ParticleManager {
         Particles3D.SetGravity(crashSparks, 0.0, -5.0, 0.0);
         Particles3D.SetColor(crashSparks, config.SPARK_COLOR_START, config.SPARK_COLOR_END);
         Particles3D.SetAlpha(crashSparks, 1.0, 0.0);
+        Particles3D.SetEmitterShape(crashSparks, 0);
+        Particles3D.set_Additive(crashSparks, true);
 
-        // ─── Lane dust (ball rolling) ───
         laneDust = Particles3D.New(60);
-        Particles3D.SetDirection(laneDust, 0.0, 1.0, 0.0, 0.5);
+        Particles3D.SetDirection(laneDust, 0.0, 1.0, 0.0, 0.45);
         Particles3D.SetSpeed(laneDust, config.DUST_SPEED_MIN, config.DUST_SPEED_MAX);
         Particles3D.SetLifetime(laneDust, config.DUST_LIFETIME_MIN, config.DUST_LIFETIME_MAX);
         Particles3D.SetSize(laneDust, config.DUST_SIZE_START, config.DUST_SIZE_END);
-        Particles3D.SetGravity(laneDust, 0.0, 0.3, 0.0);
+        Particles3D.SetGravity(laneDust, 0.0, 0.15, 0.0);
         Particles3D.SetColor(laneDust, config.DUST_COLOR, config.DUST_COLOR);
-        Particles3D.SetAlpha(laneDust, 0.4, 0.0);
+        Particles3D.SetAlpha(laneDust, 0.45, 0.0);
         Particles3D.SetRate(laneDust, config.DUST_RATE);
+        Particles3D.SetEmitterShape(laneDust, 2);
+        Particles3D.SetEmitterSize(laneDust, 0.05, 0.02, 0.12);
 
-        // ─── Fireworks (3 emitters for color variety) ───
         fireworks1 = createFirework(0xFF4444, 0xFFAA22);
         fireworks2 = createFirework(0x44FF44, 0x22AAFF);
         fireworks3 = createFirework(0xFFFF44, 0xFF44FF);
 
-        // ─── Gutter splash ───
         gutterSplash = Particles3D.New(40);
         Particles3D.SetDirection(gutterSplash, 0.0, 1.0, 0.0, 0.6);
         Particles3D.SetSpeed(gutterSplash, 1.0, 3.0);
@@ -57,10 +56,15 @@ class ParticleManager {
         Particles3D.SetGravity(gutterSplash, 0.0, -4.0, 0.0);
         Particles3D.SetColor(gutterSplash, 0x666666, 0x333333);
         Particles3D.SetAlpha(gutterSplash, 0.6, 0.0);
+        Particles3D.SetEmitterShape(gutterSplash, 1);
+
+        skidTexture = createSkidTexture(20, 0x1A120E);
+        impactTexture = createSkidTexture(18, 0x3A2C1C);
+        decals = [];
     }
 
     hide func createFirework(startColor: Integer, endColor: Integer) -> Particles3D {
-        var fw = Particles3D.New(100);
+        var fw = Particles3D.New(120);
         Particles3D.SetDirection(fw, 0.0, 1.0, 0.0, 1.0);
         Particles3D.SetSpeed(fw, config.FIREWORK_SPEED_MIN, config.FIREWORK_SPEED_MAX);
         Particles3D.SetLifetime(fw, config.FIREWORK_LIFETIME_MIN, config.FIREWORK_LIFETIME_MAX);
@@ -68,55 +72,94 @@ class ParticleManager {
         Particles3D.SetGravity(fw, 0.0, -3.0, 0.0);
         Particles3D.SetColor(fw, startColor, endColor);
         Particles3D.SetAlpha(fw, 1.0, 0.0);
+        Particles3D.SetEmitterShape(fw, 1);
+        Particles3D.set_Additive(fw, true);
         return fw;
     }
 
-    // ─── Trigger Effects ───
+    hide func createSkidTexture(size: Integer, rgb: Integer) -> Pixels {
+        var buf = Pixels.New(size, size);
+        var cx = size / 2;
+        var cy = size / 2;
+        var rr = (rgb / 65536) % 256;
+        var gg = (rgb / 256) % 256;
+        var bb = rgb % 256;
 
-    // Burst sparks at a pin collision point
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var dx = (px - cx + 0.0) / (size + 0.0);
+                var dy = (py - cy + 0.0) / (size + 0.0);
+                var dist = Sqrt(dx * dx * 0.7 + dy * dy * 2.0);
+                var alpha = 1.0 - dist * 3.0;
+                if (alpha > 0.0) {
+                    var a = Convert.NumToInt(alpha * 140.0);
+                    if (a < 1) { a = 1; }
+                    if (a > 180) { a = 180; }
+                    buf.Set(px, py, Color.RGBA(rr, gg, bb, a));
+                }
+            }
+        }
+        return buf;
+    }
+
+    hide func addDecal(decal: Decal3D) {
+        decals.add(decal);
+        if (decals.count() > config.DECAL_MAX) {
+            decals.removeAt(0);
+        }
+    }
+
     expose func spawnCrashSparks(x: Float, y: Float, z: Float) {
         Particles3D.SetPosition(crashSparks, x, y, z);
         Particles3D.Burst(crashSparks, config.SPARK_COUNT);
+        spawnImpactMark(x, y, z);
     }
 
-    // Start lane dust at ball position
     expose func startLaneDust(x: Float, z: Float) {
         Particles3D.SetPosition(laneDust, x, 0.05, z);
         Particles3D.Start(laneDust);
     }
 
-    // Update dust position to follow ball
     expose func updateLaneDust(x: Float, z: Float) {
         Particles3D.SetPosition(laneDust, x, 0.05, z);
     }
 
-    // Stop lane dust
     expose func stopLaneDust() {
         Particles3D.Stop(laneDust);
     }
 
-    // Fire celebration fireworks at pin area
     expose func spawnFireworks() {
-        var cx: Float = 0.0;
-        var cy: Float = 1.0;
-        var cz: Float = config.PIN_Z_OFFSET;
-
+        var cx = 0.0;
+        var cy = 1.0;
+        var cz = config.PIN_Z_OFFSET;
         Particles3D.SetPosition(fireworks1, cx - 0.3, cy, cz);
         Particles3D.SetPosition(fireworks2, cx, cy + 0.5, cz);
         Particles3D.SetPosition(fireworks3, cx + 0.3, cy, cz);
-
         Particles3D.Burst(fireworks1, config.FIREWORK_COUNT);
         Particles3D.Burst(fireworks2, config.FIREWORK_COUNT);
         Particles3D.Burst(fireworks3, config.FIREWORK_COUNT);
     }
 
-    // Gutter ball splash
     expose func spawnGutterSplash(x: Float, z: Float) {
         Particles3D.SetPosition(gutterSplash, x, 0.05, z);
         Particles3D.Burst(gutterSplash, 20);
     }
 
-    // ─── Per-Frame Update & Draw ───
+    expose func spawnSkidMark(x: Float, z: Float) {
+        var pos = new Vec3(x, 0.004, z);
+        var normal = new Vec3(0.0, 1.0, 0.0);
+        var decal = Decal3D.New(pos, normal, 0.18, skidTexture);
+        Decal3D.SetLifetime(decal, config.DECAL_LIFETIME);
+        addDecal(decal);
+    }
+
+    expose func spawnImpactMark(x: Float, y: Float, z: Float) {
+        var pos = new Vec3(x, y + 0.01, z);
+        var normal = new Vec3(0.0, 1.0, 0.0);
+        var decal = Decal3D.New(pos, normal, 0.12, impactTexture);
+        Decal3D.SetLifetime(decal, config.DECAL_LIFETIME * 0.75);
+        addDecal(decal);
+    }
 
     expose func update(dt: Float) {
         Particles3D.Update(crashSparks, dt);
@@ -125,6 +168,16 @@ class ParticleManager {
         Particles3D.Update(fireworks2, dt);
         Particles3D.Update(fireworks3, dt);
         Particles3D.Update(gutterSplash, dt);
+
+        var i = 0;
+        while (i < decals.count()) {
+            Decal3D.Update(decals.get(i), dt);
+            if (Decal3D.get_Expired(decals.get(i)) != 0) {
+                decals.removeAt(i);
+            } else {
+                i = i + 1;
+            }
+        }
     }
 
     expose func draw(canvas: Canvas3D, camera: Camera3D) {
@@ -134,5 +187,9 @@ class ParticleManager {
         Particles3D.Draw(fireworks2, canvas, camera);
         Particles3D.Draw(fireworks3, canvas, camera);
         Particles3D.Draw(gutterSplash, canvas, camera);
+
+        for (var i: Integer = 0; i < decals.count(); i = i + 1) {
+            Canvas3D.DrawDecal(canvas, decals.get(i));
+        }
     }
 }
