@@ -14,7 +14,6 @@ class Torch {
     hide Material3D torchMat;
     hide Material3D flameMat;
     hide Mesh3D flameMesh;
-    hide Mesh3D flameMesh;
     hide Light3D pointLight;
     hide Mat4 torchXform;
     hide Mat4 flameXform;

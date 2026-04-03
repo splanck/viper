@@ -42,16 +42,17 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **Documentation & Code Quality** — 700+ runtime functions documented across all subsystems (GUI, Graphics3D, Game, Sound, Network, Crypto, IO, Input, Threading, Text). All broken auto-generated comment patterns fixed. 39 stale doc files deleted, 70+ factual errors fixed. Bible code audit across 12 chapters. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
+- **3D Bowling Game Demo** — Multi-file 3D bowling game (12 files, 3,100+ LOC) with Physics3D pin collision, ball spin/hook mechanics, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
+- **Documentation & Code Quality** — 700+ runtime functions documented, 39 stale doc files deleted, 70+ factual errors fixed, Bible code audit across 12 chapters, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against source with Zia examples), runtime surface audit test, Quat.New parameter order fix. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 75 | +75 |
-| Source files | 2,671 | 2,796 | +125 |
-| Production SLOC | ~348K | ~415K | +67K |
-| Test count | 1,351 | 1,388 | +37 |
+| Commits | — | 72 | +72 |
+| Source files | 2,671 | 2,797 | +126 |
+| Production SLOC | ~348K | ~416K | +68K |
+| Test count | 1,351 | 1,389 | +38 |
 
 ---
 
@@ -568,26 +569,14 @@ Comprehensive overhaul with 10 improvements:
 
 ### Documentation
 
-- **Comprehensive review** — 39 stale/obsolete doc files deleted (-24K lines), 70+ factual errors corrected across 30+ documents. Deleted files include resolved bug trackers, historical stress tests, completed plans, and deprecated specs.
-- **Factual corrections** — `entity`→`class` terminology in 15 files, IL version 0.1→0.2.0, AArch64 status updates (all demos, 89 tests, coalescer/peephole decomp), Win64 ABI marked as implemented (not missing), Linux/Windows graphics backends marked as implemented (not stubs), Metal winding corrected to `MTLWindingCounterClockwise`, 6 missing IL pass docs added (GVN, LICM, EHOpt, LoopRotate, Reassociate, SiblingRecursion).
-- **Test & runtime accuracy** — Test label counts updated to actual values (codegen 121, runtime 352, zia 99, il 196, total 1358), `runtime.def` counts updated (225→293 functions, 3129→3965 entries), GC cycle detection documented (trial-deletion algorithm), `fcmp` opcode mnemonics corrected to underscore format.
-- **Bible code audit** — 12 chapters corrected: struct fields `name: Type` → `expose Type name` (Ch 11, 14–18), class methods `func` → `expose func` (Ch 14–18), interface methods reverted from incorrect `expose` (Ch 16–18), `catch e {}` → `catch {}` (Ch 10), `Split()[0]` → `Split().Get(0)` (Ch 08, 09, 12, 23), `[val; count]` repeat syntax → loop with `Push` (Ch 06).
-- **File headers** — Viper license header on 100% of 2,706 source files (257 newly added)
-- **Doxygen** — `@brief`/`@param`/`@return` comments on 98% of runtime `.c` files, 100% of runtime `.h` files. Includes `rt_output.c`, `rt_memory.c`, `rt_platform.h`, `rt_string.h`, `rt_pool.c`, `rt_gc.c`.
-- **Codemap updates** — File counts refreshed (il-core 24, il-transform 72, runtime 522, tools 113, zia 74, basic 278), 3D Graphics Engine section added (122 files), lsp-common and vbasic-server entries.
-- **Clang-format** — `BreakBeforeBraces` switched from Allman to Attach across all 2,669 source files
-- **SLOC script** — `scripts/count_sloc.sh` with `--summary`, `--subsystem`, `--all`, `--json` modes
-- **3D architecture docs** — Metal shader feature table, backend parity matrix, terrain splat pipeline, D3D11 backend guide
-- **Game engine documentation** — New `/docs/gameengine/` section with landing page (feature table, quick start, topical guide links), getting-started tutorial (5-step paddle game in Zia + BASIC), architecture overview (system layers, data flow, zero-dependency design), and example games gallery (15 games with feature coverage matrix). `/docs/README.md` updated with Game Engine section.
-- **Native assembler doc corrections** — AArch64 COFF marked as "Object emission only" (PE startup/import/unwind generation remains x86_64-specific). Object-file matrix clarified.
-- **3D graphics guide corrections** — `SetShadingModel` model 2 marked as "Reserved" (forward-compatible, falls back to Blinn-Phong). `FromOBJ` description clarified: `.mtl`/`usemtl`/`g`/`o` directives parsed and flattened but do not create per-material submeshes. Unlit model 3 documented.
+- **Documentation & Code Quality** — 39 stale doc files deleted, 70+ factual errors corrected, Bible code audit across 12 chapters, `entity`→`class` terminology updates, Viper license headers on 100% of source files, Doxygen `@brief`/`@param`/`@return` on 98% of runtime `.c` and 100% of `.h` files across all subsystems, codemap refreshed, `BreakBeforeBraces` Attach formatting, `count_sloc.sh` script, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against `runtime.def` and C source with typed tables and Zia `bind` examples), new game engine docs (`/docs/gameengine/`), runtime surface audit test, and Quat.New parameter order fix in `viperlib/math.md`.
 
 ---
 
 ### Demo Games
 
 - **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking.
-- **3D Bowling** — Multi-file 3D bowling game (12 files, 3,100 LOC) with Physics3D pin collision, ball spin/hook, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
+- **3D Bowling** — Multi-file 3D bowling game at `examples/games/3dbowling/` (12 files, 3,100+ LOC) showcasing the full Graphics3D pipeline. Features Physics3D pin collision and ball spin/hook mechanics with oil pattern effects, pin sweep/reset animations with state machine, 4-mode camera system (follow/overhead/side/pin-view), full 10-frame scoring with bonus rolls and strike/spare detection, celebration state machine with particle effects, Synth audio for impacts and strikes, lane/gutter geometry, and traditional scoreboard HUD overlay.
 - **Asset Demo** — Minimal example (`examples/apps/asset_demo/`) demonstrating `embed` and `pack` project directives with `Assets.Load()` at runtime.
 
 ---

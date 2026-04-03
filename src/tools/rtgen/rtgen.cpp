@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -95,6 +96,41 @@ struct DescriptorFields {
     std::string hidden;
     std::string hiddenCount;
     std::string trapClass;
+};
+
+struct RuntimePrototype {
+    CSignature signature;
+    std::string headerPath;
+};
+
+struct ResolvedRuntimeProperty {
+    std::string name;
+    std::string type;
+    std::string getterCanonical;
+    std::string setterCanonical;
+};
+
+struct ResolvedRuntimeMethod {
+    std::string name;
+    std::string signature;
+    std::string targetCanonical;
+};
+
+struct ResolvedRuntimeClass {
+    std::string name;
+    std::string type_id;
+    std::string layout;
+    std::string ctorCanonical;
+    std::vector<ResolvedRuntimeProperty> props;
+    std::vector<ResolvedRuntimeMethod> methods;
+};
+
+struct RuntimeSurfacePolicy {
+    std::unordered_set<std::string> internalHeaders;
+    std::unordered_set<std::string> internalSymbols;
+    std::unordered_map<std::string, std::string> expectedFunctions;
+    std::vector<ResolvedRuntimeMethod> expectedMethods;
+    std::vector<ResolvedRuntimeProperty> expectedProperties;
 };
 
 //===----------------------------------------------------------------------===//
@@ -729,9 +765,30 @@ static std::string stripPreprocessor(const std::string &input) {
     return out.str();
 }
 
-static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
-    const fs::path &runtimeDir) {
-    std::unordered_map<std::string, CSignature> result;
+static std::string readTextFile(const fs::path &path) {
+    std::ifstream in(path);
+    if (!in) {
+        std::cerr << "error: cannot read " << path << "\n";
+        std::exit(1);
+    }
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+static std::string pathToGenericString(const fs::path &path) {
+    return path.lexically_normal().generic_string();
+}
+
+static std::string relativePathString(const fs::path &path, const fs::path &base) {
+    fs::path rel = path.lexically_relative(base);
+    if (rel.empty())
+        return pathToGenericString(path);
+    return pathToGenericString(rel);
+}
+
+static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclarations(
+    const fs::path &runtimeDir,
+    const fs::path &repoRoot) {
+    std::unordered_map<std::string, RuntimePrototype> result;
     if (!fs::exists(runtimeDir))
         return result;
 
@@ -782,11 +839,44 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
                 sig.argTypes.push_back(type);
             }
 
-            result.emplace(funcName, std::move(sig));
+            RuntimePrototype proto;
+            proto.signature = std::move(sig);
+            proto.headerPath = relativePathString(path, repoRoot);
+            result.emplace(funcName, std::move(proto));
         }
     }
 
     return result;
+}
+
+static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(const fs::path &runtimeDir,
+                                                                           const fs::path &repoRoot) {
+    std::unordered_map<std::string, CSignature> result;
+    auto decls = loadRuntimeHeaderDeclarations(runtimeDir, repoRoot);
+    for (auto &[symbol, proto] : decls) {
+        result.emplace(symbol, std::move(proto.signature));
+    }
+    return result;
+}
+
+static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &runtimeDir) {
+    std::unordered_set<std::string> tokens;
+    if (!fs::exists(runtimeDir))
+        return tokens;
+
+    const std::regex re(R"(\brt_[A-Za-z0-9_]+\b)");
+    for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
+        if (!entry.is_regular_file())
+            continue;
+        const fs::path path = entry.path();
+        if (path.extension() != ".c" && path.extension() != ".cpp")
+            continue;
+
+        const std::string text = readTextFile(path);
+        for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
+            tokens.insert((*it)[0].str());
+    }
+    return tokens;
 }
 
 //===----------------------------------------------------------------------===//
@@ -814,6 +904,281 @@ static std::string fileHeader(const std::string &filename, const std::string &pu
     out << "//\n";
     out << "//===----------------------------------------------------------------------===//\n\n";
     return out.str();
+}
+
+static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state, const std::string &idOrCanonical) {
+    if (auto it = state.func_by_id.find(idOrCanonical); it != state.func_by_id.end())
+        return &state.functions[it->second];
+    if (auto it = state.func_by_canonical.find(idOrCanonical); it != state.func_by_canonical.end())
+        return &state.functions[it->second];
+    return nullptr;
+}
+
+static const RuntimeAlias *resolveRuntimeAlias(const ParseState &state,
+                                               const std::string &canonical) {
+    for (const auto &alias : state.aliases) {
+        if (alias.canonical == canonical)
+            return &alias;
+    }
+    return nullptr;
+}
+
+static std::optional<std::string> resolveRuntimeCanonical(const ParseState &state,
+                                                          const std::string &idOrCanonical) {
+    if (idOrCanonical.empty() || idOrCanonical == "none")
+        return std::string();
+    if (const auto *fn = resolveRuntimeFunc(state, idOrCanonical))
+        return fn->canonical;
+    if (const auto *alias = resolveRuntimeAlias(state, idOrCanonical))
+        return alias->canonical;
+    return std::nullopt;
+}
+
+static std::optional<std::string> resolveRuntimeSymbol(const ParseState &state,
+                                                       const std::string &idOrCanonical) {
+    if (idOrCanonical.empty() || idOrCanonical == "none")
+        return std::string();
+    if (const auto *fn = resolveRuntimeFunc(state, idOrCanonical))
+        return fn->c_symbol;
+    if (const auto *alias = resolveRuntimeAlias(state, idOrCanonical)) {
+        if (auto it = state.func_by_id.find(alias->target_id); it != state.func_by_id.end())
+            return state.functions[it->second].c_symbol;
+    }
+    return std::nullopt;
+}
+
+static std::string lastSegment(std::string_view dotted) {
+    size_t pos = dotted.rfind('.');
+    if (pos == std::string_view::npos)
+        return std::string(dotted);
+    return std::string(dotted.substr(pos + 1));
+}
+
+static std::string methodSlotKey(std::string_view name, std::string_view signature) {
+    std::string key;
+    key.reserve(name.size() + signature.size() + 1);
+    for (unsigned char c : name)
+        key.push_back(static_cast<char>(std::tolower(c)));
+    key.push_back('|');
+    key.append(signature);
+    return key;
+}
+
+static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &state) {
+    std::vector<ResolvedRuntimeClass> resolved;
+    resolved.reserve(state.classes.size());
+
+    for (const auto &cls : state.classes) {
+        ResolvedRuntimeClass outClass;
+        outClass.name = cls.name;
+        outClass.type_id = cls.type_id;
+        outClass.layout = cls.layout;
+        if (auto ctorCanonical = resolveRuntimeCanonical(state, cls.ctor_id))
+            outClass.ctorCanonical = *ctorCanonical;
+
+        for (const auto &prop : cls.props) {
+            ResolvedRuntimeProperty outProp;
+            outProp.name = prop.name;
+            outProp.type = prop.type;
+            if (auto getterCanonical = resolveRuntimeCanonical(state, prop.getter_id))
+                outProp.getterCanonical = *getterCanonical;
+            else
+                outProp.getterCanonical = prop.getter_id;
+            if (auto setterCanonical = resolveRuntimeCanonical(state, prop.setter_id))
+                outProp.setterCanonical = *setterCanonical;
+            else
+                outProp.setterCanonical = prop.setter_id;
+            outClass.props.push_back(std::move(outProp));
+        }
+
+        std::vector<ResolvedRuntimeMethod> methods;
+        methods.reserve(cls.methods.size() + 4);
+        std::unordered_set<std::string> coveredCanonicals;
+        std::unordered_set<std::string> coveredMethodSlots;
+
+        for (const auto &prop : cls.props) {
+            if (auto getterCanonical = resolveRuntimeCanonical(state, prop.getter_id);
+                getterCanonical && !getterCanonical->empty()) {
+                coveredCanonicals.insert(*getterCanonical);
+            }
+            if (auto setterCanonical = resolveRuntimeCanonical(state, prop.setter_id);
+                setterCanonical && !setterCanonical->empty()) {
+                coveredCanonicals.insert(*setterCanonical);
+            }
+        }
+
+        for (const auto &method : cls.methods) {
+            ResolvedRuntimeMethod outMethod;
+            outMethod.name = method.name;
+            outMethod.signature = method.signature;
+            if (auto targetCanonical = resolveRuntimeCanonical(state, method.target_id))
+                outMethod.targetCanonical = *targetCanonical;
+            else
+                outMethod.targetCanonical = method.target_id;
+            coveredMethodSlots.insert(methodSlotKey(outMethod.name, outMethod.signature));
+            if (!outMethod.targetCanonical.empty())
+                coveredCanonicals.insert(outMethod.targetCanonical);
+            methods.push_back(std::move(outMethod));
+        }
+
+        if (!outClass.ctorCanonical.empty()) {
+            bool hasCtorMethod = false;
+            for (const auto &method : methods) {
+                if (method.targetCanonical == outClass.ctorCanonical) {
+                    hasCtorMethod = true;
+                    break;
+                }
+            }
+            if (!hasCtorMethod) {
+                if (const auto *ctorFunc = resolveRuntimeFunc(state, cls.ctor_id.empty()
+                                                                     ? outClass.ctorCanonical
+                                                                     : cls.ctor_id)) {
+                    ResolvedRuntimeMethod ctorMethod;
+                    ctorMethod.name = lastSegment(ctorFunc->canonical);
+                    ctorMethod.signature = ctorFunc->signature;
+                    ctorMethod.targetCanonical = ctorFunc->canonical;
+                    coveredMethodSlots.insert(methodSlotKey(ctorMethod.name, ctorMethod.signature));
+                    coveredCanonicals.insert(ctorMethod.targetCanonical);
+                    methods.push_back(std::move(ctorMethod));
+                }
+            }
+        }
+
+        const std::string classPrefix = cls.name + ".";
+        for (const auto &fn : state.functions) {
+            if (!startsWith(fn.canonical, classPrefix))
+                continue;
+            if (coveredCanonicals.count(fn.canonical))
+                continue;
+            std::string methodName = lastSegment(fn.canonical);
+            if (startsWith(methodName, "get_") || startsWith(methodName, "set_"))
+                continue;
+            if (coveredMethodSlots.count(methodSlotKey(methodName, fn.signature)))
+                continue;
+
+            ResolvedRuntimeMethod synthetic;
+            synthetic.name = std::move(methodName);
+            synthetic.signature = fn.signature;
+            synthetic.targetCanonical = fn.canonical;
+            coveredCanonicals.insert(synthetic.targetCanonical);
+            coveredMethodSlots.insert(methodSlotKey(synthetic.name, synthetic.signature));
+            methods.push_back(std::move(synthetic));
+        }
+
+        outClass.methods = std::move(methods);
+        resolved.push_back(std::move(outClass));
+    }
+
+    return resolved;
+}
+
+static void scanMacroCalls(const std::string &text,
+                           std::string_view macroName,
+                           const std::function<void(std::string_view)> &handler) {
+    size_t pos = 0;
+    while ((pos = text.find(macroName, pos)) != std::string::npos) {
+        if (pos > 0) {
+            char prev = text[pos - 1];
+            if (std::isalnum(static_cast<unsigned char>(prev)) || prev == '_') {
+                pos += macroName.size();
+                continue;
+            }
+        }
+
+        size_t cursor = pos + macroName.size();
+        while (cursor < text.size() && std::isspace(static_cast<unsigned char>(text[cursor])))
+            ++cursor;
+        if (cursor >= text.size() || text[cursor] != '(') {
+            pos += macroName.size();
+            continue;
+        }
+
+        size_t argsStart = cursor + 1;
+        int depth = 1;
+        bool inQuotes = false;
+        ++cursor;
+        for (; cursor < text.size() && depth > 0; ++cursor) {
+            char c = text[cursor];
+            if (c == '"' && (cursor == 0 || text[cursor - 1] != '\\')) {
+                inQuotes = !inQuotes;
+            } else if (!inQuotes) {
+                if (c == '(')
+                    ++depth;
+                else if (c == ')')
+                    --depth;
+            }
+        }
+        if (depth != 0) {
+            std::cerr << "error: unterminated " << macroName << " macro in runtime surface policy\n";
+            std::exit(1);
+        }
+
+        handler(std::string_view(text).substr(argsStart, cursor - argsStart - 1));
+        pos = cursor;
+    }
+}
+
+static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath) {
+    RuntimeSurfacePolicy policy;
+    if (!fs::exists(policyPath))
+        return policy;
+
+    std::string text = stripComments(readTextFile(policyPath));
+
+    scanMacroCalls(text, "RUNTIME_SURFACE_INTERNAL_HEADER", [&](std::string_view argsView) {
+        auto parts = split(argsView, ',');
+        if (parts.size() != 1) {
+            std::cerr << "error: RUNTIME_SURFACE_INTERNAL_HEADER requires 1 argument\n";
+            std::exit(1);
+        }
+        policy.internalHeaders.insert(pathToGenericString(stripQuotes(parts[0])));
+    });
+
+    scanMacroCalls(text, "RUNTIME_SURFACE_INTERNAL_SYMBOL", [&](std::string_view argsView) {
+        auto parts = split(argsView, ',');
+        if (parts.size() != 1) {
+            std::cerr << "error: RUNTIME_SURFACE_INTERNAL_SYMBOL requires 1 argument\n";
+            std::exit(1);
+        }
+        policy.internalSymbols.insert(stripQuotes(parts[0]));
+    });
+
+    scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_FUNCTION", [&](std::string_view argsView) {
+        auto parts = split(argsView, ',');
+        if (parts.size() != 2) {
+            std::cerr << "error: RUNTIME_SURFACE_EXPECT_FUNCTION requires 2 arguments\n";
+            std::exit(1);
+        }
+        policy.expectedFunctions.emplace(stripQuotes(parts[0]), stripQuotes(parts[1]));
+    });
+
+    scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_METHOD", [&](std::string_view argsView) {
+        auto parts = split(argsView, ',');
+        if (parts.size() != 3) {
+            std::cerr << "error: RUNTIME_SURFACE_EXPECT_METHOD requires 3 arguments\n";
+            std::exit(1);
+        }
+        ResolvedRuntimeMethod method;
+        method.name = stripQuotes(parts[1]);
+        method.signature = stripQuotes(parts[2]);
+        method.targetCanonical = stripQuotes(parts[0]);
+        policy.expectedMethods.push_back(std::move(method));
+    });
+
+    scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_PROPERTY", [&](std::string_view argsView) {
+        auto parts = split(argsView, ',');
+        if (parts.size() != 3) {
+            std::cerr << "error: RUNTIME_SURFACE_EXPECT_PROPERTY requires 3 arguments\n";
+            std::exit(1);
+        }
+        ResolvedRuntimeProperty prop;
+        prop.name = stripQuotes(parts[1]);
+        prop.type = stripQuotes(parts[2]);
+        prop.getterCanonical = stripQuotes(parts[0]);
+        policy.expectedProperties.push_back(std::move(prop));
+    });
+
+    return policy;
 }
 
 static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSignature &sig) {
@@ -942,163 +1307,43 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
 
     out << fileHeader("RuntimeClasses.inc", "Runtime class catalog with properties and methods.");
 
-    const auto resolveFunc = [&](const std::string &idOrCanonical) -> const RuntimeFunc * {
-        if (auto it = state.func_by_id.find(idOrCanonical); it != state.func_by_id.end())
-            return &state.functions[it->second];
-        for (const auto &fn : state.functions) {
-            if (fn.canonical == idOrCanonical)
-                return &fn;
-        }
-        return nullptr;
-    };
-
-    const auto lastSegment = [](std::string_view dotted) -> std::string {
-        size_t pos = dotted.rfind('.');
-        if (pos == std::string_view::npos)
-            return std::string(dotted);
-        return std::string(dotted.substr(pos + 1));
-    };
-    const auto methodSlotKey = [](std::string_view name, std::string_view signature) -> std::string {
-        std::string key;
-        key.reserve(name.size() + signature.size() + 1);
-        for (unsigned char c : name)
-            key.push_back(static_cast<char>(std::tolower(c)));
-        key.push_back('|');
-        key.append(signature);
-        return key;
-    };
-
-    for (const auto &cls : state.classes) {
+    for (const auto &cls : buildResolvedClasses(state)) {
         out << "RUNTIME_CLASS(\n";
         out << "    \"" << cls.name << "\",\n";
         out << "    RTCLS_" << cls.type_id << ",\n";
         out << "    \"" << cls.layout << "\",\n";
 
-        // Constructor - resolve to canonical name
-        std::string ctorCanonical;
-        if (cls.ctor_id.empty() || cls.ctor_id == "none") {
+        if (cls.ctorCanonical.empty()) {
             out << "    \"\",\n";
         } else {
-            if (const auto *fn = resolveFunc(cls.ctor_id)) {
-                ctorCanonical = fn->canonical;
-                out << "    \"" << ctorCanonical << "\",\n";
-            } else {
-                // Assume it's already a canonical name
-                ctorCanonical = cls.ctor_id;
-                out << "    \"" << cls.ctor_id << "\",\n";
-            }
+            out << "    \"" << cls.ctorCanonical << "\",\n";
         }
 
-        // Properties
         out << "    RUNTIME_PROPS(";
         for (size_t i = 0; i < cls.props.size(); ++i) {
             const auto &prop = cls.props[i];
             if (i > 0)
                 out << ",\n                  ";
 
-            // Resolve getter canonical name
-            std::string getter_canonical = prop.getter_id;
-            auto git = state.func_by_id.find(prop.getter_id);
-            if (git != state.func_by_id.end()) {
-                getter_canonical = state.functions[git->second].canonical;
-            }
-
             out << "RUNTIME_PROP(\"" << prop.name << "\", \"" << prop.type << "\", \""
-                << getter_canonical << "\", ";
+                << prop.getterCanonical << "\", ";
 
-            if (prop.setter_id == "none" || prop.setter_id.empty()) {
+            if (prop.setterCanonical == "none" || prop.setterCanonical.empty()) {
                 out << "nullptr";
             } else {
-                std::string setter_canonical = prop.setter_id;
-                auto sit = state.func_by_id.find(prop.setter_id);
-                if (sit != state.func_by_id.end()) {
-                    setter_canonical = state.functions[sit->second].canonical;
-                }
-                out << "\"" << setter_canonical << "\"";
+                out << "\"" << prop.setterCanonical << "\"";
             }
             out << ")";
         }
         out << "),\n";
 
-        // Methods
-        std::vector<RuntimeMethod> methods = cls.methods;
-        std::unordered_set<std::string> coveredCanonicals;
-        std::unordered_set<std::string> coveredMethodSlots;
-        for (const auto &prop : cls.props) {
-            if (const auto *getter = resolveFunc(prop.getter_id))
-                coveredCanonicals.insert(getter->canonical);
-            if (!prop.setter_id.empty() && prop.setter_id != "none") {
-                if (const auto *setter = resolveFunc(prop.setter_id))
-                    coveredCanonicals.insert(setter->canonical);
-            }
-        }
-        for (const auto &method : methods) {
-            coveredMethodSlots.insert(methodSlotKey(method.name, method.signature));
-            if (const auto *fn = resolveFunc(method.target_id))
-                coveredCanonicals.insert(fn->canonical);
-        }
-        if (!ctorCanonical.empty()) {
-            bool hasCtorMethod = false;
-            for (const auto &method : methods) {
-                if (method.target_id == cls.ctor_id) {
-                    hasCtorMethod = true;
-                    break;
-                }
-                if (const auto *fn = resolveFunc(method.target_id);
-                    fn && fn->canonical == ctorCanonical) {
-                    hasCtorMethod = true;
-                    break;
-                }
-            }
-            if (!hasCtorMethod) {
-                if (const auto *ctorFunc = resolveFunc(cls.ctor_id.empty() ? ctorCanonical : cls.ctor_id)) {
-                    RuntimeMethod ctorMethod;
-                    ctorMethod.name = lastSegment(ctorFunc->canonical);
-                    ctorMethod.signature = ctorFunc->signature;
-                    ctorMethod.target_id = ctorFunc->canonical;
-                    coveredMethodSlots.insert(
-                        methodSlotKey(ctorMethod.name, ctorMethod.signature));
-                    methods.push_back(std::move(ctorMethod));
-                    coveredCanonicals.insert(ctorFunc->canonical);
-                }
-            }
-        }
-
-        const std::string classPrefix = cls.name + ".";
-        for (const auto &fn : state.functions) {
-            if (!startsWith(fn.canonical, classPrefix))
-                continue;
-            if (coveredCanonicals.count(fn.canonical))
-                continue;
-            std::string methodName = lastSegment(fn.canonical);
-            if (startsWith(methodName, "get_") || startsWith(methodName, "set_"))
-                continue;
-            if (coveredMethodSlots.count(methodSlotKey(methodName, fn.signature)))
-                continue;
-
-            RuntimeMethod synthetic;
-            synthetic.name = std::move(methodName);
-            synthetic.signature = fn.signature;
-            synthetic.target_id = fn.canonical;
-            methods.push_back(std::move(synthetic));
-            coveredCanonicals.insert(fn.canonical);
-            coveredMethodSlots.insert(methodSlotKey(methods.back().name, methods.back().signature));
-        }
-
         out << "    RUNTIME_METHODS(";
-        for (size_t i = 0; i < methods.size(); ++i) {
-            const auto &method = methods[i];
+        for (size_t i = 0; i < cls.methods.size(); ++i) {
+            const auto &method = cls.methods[i];
             if (i > 0)
                 out << ",\n                    ";
-
-            // Resolve target canonical name
-            std::string target_canonical = method.target_id;
-            if (const auto *fn = resolveFunc(method.target_id)) {
-                target_canonical = fn->canonical;
-            }
-
             out << "RUNTIME_METHOD(\"" << method.name << "\", \"" << method.signature << "\", \""
-                << target_canonical << "\")";
+                << method.targetCanonical << "\")";
         }
         out << "))\n\n";
     }
@@ -1122,8 +1367,9 @@ static void generateSignatures(const ParseState &state,
                       "Runtime descriptor rows for all runtime functions.");
 
     const fs::path srcRoot = runtimeDir.parent_path().parent_path();
+    const fs::path repoRoot = srcRoot.parent_path();
     const fs::path runtimeHeaders = srcRoot / "runtime";
-    auto cSignatures = loadRuntimeCSignatures(runtimeHeaders);
+    auto cSignatures = loadRuntimeCSignatures(runtimeHeaders, repoRoot);
     auto rtSigMap = buildRtSigMap(runtimeDir);
 
     // Build entries from functions and aliases
@@ -1500,37 +1746,261 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::cout << "  Generated " << outPath << "\n";
 }
 
+static int runAudit(const ParseState &state,
+                    const fs::path &inputPath,
+                    bool strictHeaderSync,
+                    bool strictUnclassified,
+                    bool summaryOnly) {
+    const fs::path runtimeDir = inputPath.parent_path();
+    const fs::path srcRoot = runtimeDir.parent_path().parent_path();
+    const fs::path repoRoot = srcRoot.parent_path();
+    const fs::path runtimeRoot = srcRoot / "runtime";
+    const fs::path policyPath = runtimeDir / "RuntimeSurfacePolicy.inc";
+
+    RuntimeSurfacePolicy policy = parseRuntimeSurfacePolicy(policyPath);
+    auto headerDecls = loadRuntimeHeaderDeclarations(runtimeRoot, repoRoot);
+    auto sourceTokens = loadRuntimeSourceTokens(runtimeRoot);
+    auto resolvedClasses = buildResolvedClasses(state);
+
+    std::unordered_map<std::string, std::string> canonicalToSymbol;
+    canonicalToSymbol.reserve(state.functions.size() + state.aliases.size());
+    for (const auto &func : state.functions)
+        canonicalToSymbol.emplace(func.canonical, func.c_symbol);
+    for (const auto &alias : state.aliases) {
+        if (auto symbol = resolveRuntimeSymbol(state, alias.canonical); symbol && !symbol->empty())
+            canonicalToSymbol.emplace(alias.canonical, *symbol);
+    }
+
+    std::unordered_map<std::string, const ResolvedRuntimeClass *> classesByName;
+    for (const auto &cls : resolvedClasses)
+        classesByName.emplace(cls.name, &cls);
+
+    std::unordered_set<std::string> publicSymbols;
+    for (const auto &func : state.functions)
+        publicSymbols.insert(func.c_symbol);
+
+    std::vector<std::string> errors;
+    std::vector<std::string> headerSyncFindings;
+    std::vector<std::string> unclassifiedFindings;
+    auto addError = [&](std::string msg) { errors.push_back(std::move(msg)); };
+    auto addHeaderFinding = [&](std::string msg) { headerSyncFindings.push_back(std::move(msg)); };
+    auto addUnclassifiedFinding = [&](std::string msg) {
+        unclassifiedFindings.push_back(std::move(msg));
+    };
+
+    for (const auto &func : state.functions) {
+        if (headerDecls.find(func.c_symbol) == headerDecls.end()) {
+            addHeaderFinding("runtime.def function " + func.canonical + " maps to " +
+                             func.c_symbol +
+                             " but no declaration was found in src/runtime headers");
+        }
+        if (sourceTokens.count(func.c_symbol) == 0) {
+            addError("runtime.def function " + func.canonical + " maps to " + func.c_symbol +
+                     " but no implementation token was found in src/runtime sources");
+        }
+    }
+
+    for (const auto &cls : state.classes) {
+        if (!cls.ctor_id.empty() && cls.ctor_id != "none" &&
+            !resolveRuntimeCanonical(state, cls.ctor_id)) {
+            addError("runtime class " + cls.name + " has unresolved ctor target " + cls.ctor_id);
+        }
+        for (const auto &prop : cls.props) {
+            if (!prop.getter_id.empty() && prop.getter_id != "none" &&
+                !resolveRuntimeCanonical(state, prop.getter_id)) {
+                addError("runtime property " + cls.name + "." + prop.name +
+                         " has unresolved getter target " + prop.getter_id);
+            }
+            if (!prop.setter_id.empty() && prop.setter_id != "none" &&
+                !resolveRuntimeCanonical(state, prop.setter_id)) {
+                addError("runtime property " + cls.name + "." + prop.name +
+                         " has unresolved setter target " + prop.setter_id);
+            }
+        }
+        for (const auto &method : cls.methods) {
+            if (!method.target_id.empty() && method.target_id != "none" &&
+                !resolveRuntimeCanonical(state, method.target_id)) {
+                addError("runtime method " + cls.name + "." + method.name +
+                         " has unresolved target " + method.target_id);
+            }
+        }
+    }
+
+    for (const auto &[canonical, expectedSymbol] : policy.expectedFunctions) {
+        auto it = canonicalToSymbol.find(canonical);
+        if (it == canonicalToSymbol.end()) {
+            addError("runtime surface policy expects function " + canonical +
+                     " but it is missing from runtime.def");
+            continue;
+        }
+        if (it->second != expectedSymbol) {
+            addError("runtime surface policy expects " + canonical + " to map to " +
+                     expectedSymbol + " but runtime.def maps it to " + it->second);
+        }
+    }
+
+    for (const auto &expected : policy.expectedMethods) {
+        auto classIt = classesByName.find(expected.targetCanonical);
+        if (classIt == classesByName.end()) {
+            addError("runtime surface policy expects class " + expected.targetCanonical +
+                     " but it is missing from the runtime catalog");
+            continue;
+        }
+
+        bool found = false;
+        for (const auto &method : classIt->second->methods) {
+            if (method.name == expected.name && method.signature == expected.signature) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            addError("runtime surface policy expects method " + expected.targetCanonical + "." +
+                     expected.name + " with signature " + expected.signature +
+                     " but it is missing from the runtime catalog");
+        }
+    }
+
+    for (const auto &expected : policy.expectedProperties) {
+        auto classIt = classesByName.find(expected.getterCanonical);
+        if (classIt == classesByName.end()) {
+            addError("runtime surface policy expects class " + expected.getterCanonical +
+                     " but it is missing from the runtime catalog");
+            continue;
+        }
+
+        bool found = false;
+        for (const auto &prop : classIt->second->props) {
+            if (prop.name == expected.name && prop.type == expected.type) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            addError("runtime surface policy expects property " + expected.getterCanonical + "." +
+                     expected.name + " : " + expected.type +
+                     " but it is missing from the runtime catalog");
+        }
+    }
+
+    for (const auto &[symbol, proto] : headerDecls) {
+        if (policy.internalSymbols.count(symbol))
+            continue;
+        if (policy.internalHeaders.count(proto.headerPath))
+            continue;
+        if (publicSymbols.count(symbol))
+            continue;
+
+        addUnclassifiedFinding("unclassified runtime header symbol " + symbol + " declared in " +
+                               proto.headerPath +
+                               " is not represented in runtime.def or policy");
+    }
+
+    std::sort(errors.begin(), errors.end());
+    std::sort(headerSyncFindings.begin(), headerSyncFindings.end());
+    std::sort(unclassifiedFindings.begin(), unclassifiedFindings.end());
+
+    std::cout << "rtgen audit: " << state.functions.size() << " functions, "
+              << state.aliases.size() << " aliases, " << state.classes.size() << " classes, "
+              << headerDecls.size() << " header declarations\n";
+
+    if (!summaryOnly) {
+        for (const auto &finding : headerSyncFindings)
+            std::cerr << "warning: " << finding << "\n";
+        for (const auto &finding : unclassifiedFindings)
+            std::cerr << "warning: " << finding << "\n";
+        for (const auto &error : errors)
+            std::cerr << "error: " << error << "\n";
+    }
+
+    if (strictHeaderSync && !headerSyncFindings.empty()) {
+        std::cerr << "error: strict header sync mode is enabled and "
+                  << headerSyncFindings.size() << " runtime.def/header mismatch(es) were found\n";
+        return 1;
+    }
+    if (strictUnclassified && !unclassifiedFindings.empty()) {
+        std::cerr << "error: strict unclassified mode is enabled and "
+                  << unclassifiedFindings.size()
+                  << " unclassified runtime header symbol(s) were found\n";
+        return 1;
+    }
+    if (!errors.empty()) {
+        std::cerr << "rtgen audit failed with " << errors.size() << " error(s)";
+        if (!headerSyncFindings.empty())
+            std::cerr << ", " << headerSyncFindings.size() << " header-sync finding(s)";
+        if (!unclassifiedFindings.empty())
+            std::cerr << ", and " << unclassifiedFindings.size() << " unclassified finding(s)";
+        std::cerr << "\n";
+        return 1;
+    }
+
+    std::cout << "rtgen audit passed";
+    if (!headerSyncFindings.empty() || !unclassifiedFindings.empty()) {
+        std::cout << " with " << headerSyncFindings.size() << " header-sync finding(s) and "
+                  << unclassifiedFindings.size() << " unclassified finding(s)";
+    }
+    std::cout << "\n";
+    return 0;
+}
+
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
 
 static void printUsage(const char *prog) {
     std::cerr << "Usage: " << prog << " <input.def> <output_dir>\n";
+    std::cerr << "       " << prog
+              << " --audit [--strict-header-sync] [--strict-unclassified] [--summary-only] <input.def>\n";
     std::cerr << "\n";
     std::cerr << "Generates runtime registry .inc files from runtime.def\n";
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
+    bool auditMode = false;
+    bool strictHeaderSync = false;
+    bool strictUnclassified = false;
+    bool summaryOnly = false;
+    std::vector<std::string> positional;
+    positional.reserve(static_cast<size_t>(argc));
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--audit") {
+            auditMode = true;
+        } else if (arg == "--strict-header-sync") {
+            strictHeaderSync = true;
+        } else if (arg == "--strict-unclassified") {
+            strictUnclassified = true;
+        } else if (arg == "--summary-only") {
+            summaryOnly = true;
+        } else {
+            positional.push_back(std::move(arg));
+        }
+    }
+
+    if ((!auditMode && positional.size() != 2) || (auditMode && positional.size() != 1)) {
         printUsage(argv[0]);
         return 1;
     }
 
-    fs::path inputPath = argv[1];
-    fs::path outputDir = argv[2];
+    fs::path inputPath = positional[0];
 
     if (!fs::exists(inputPath)) {
         std::cerr << "error: input file not found: " << inputPath << "\n";
         return 1;
     }
 
+    std::cout << "rtgen: Parsing " << inputPath << "\n";
+    ParseState state = parseFile(inputPath);
+
+    if (auditMode)
+        return runAudit(state, inputPath, strictHeaderSync, strictUnclassified, summaryOnly);
+
+    fs::path outputDir = positional[1];
+
     // Create output directory if needed
     if (!fs::exists(outputDir)) {
         fs::create_directories(outputDir);
     }
-
-    std::cout << "rtgen: Parsing " << inputPath << "\n";
-    ParseState state = parseFile(inputPath);
 
     std::cout << "rtgen: Parsed " << state.functions.size() << " functions, "
               << state.aliases.size() << " aliases, " << state.classes.size() << " classes\n";

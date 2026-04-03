@@ -53,9 +53,27 @@ static void test_snapshot_disabled_returns_zero(void) {
                 "Snapshot export returns zero when PostFX is disabled");
 }
 
+static void test_snapshot_preserves_documented_tonemap_and_grade_params(void) {
+    void *fx = rt_postfx3d_new();
+    vgfx3d_postfx_snapshot_t snapshot;
+
+    rt_postfx3d_add_tonemap(fx, 0, 1.0);
+    rt_postfx3d_add_color_grade(fx, 0.02, 1.08, 1.04);
+
+    EXPECT_TRUE(vgfx3d_postfx_get_snapshot(fx, &snapshot) == 1,
+                "Snapshot export succeeds for tonemap and color-grade settings");
+    EXPECT_TRUE(snapshot.tonemap_mode == 0 && snapshot.tonemap_exposure == 1.0f,
+                "Snapshot preserves tonemap mode 0 as disabled");
+    EXPECT_TRUE(snapshot.color_grade_enabled == 1, "Snapshot includes color-grade enable flag");
+    EXPECT_TRUE(snapshot.cg_brightness == 0.02f && snapshot.cg_contrast == 1.08f &&
+                    snapshot.cg_saturation == 1.04f,
+                "Snapshot preserves additive color-grade parameters");
+}
+
 int main(void) {
     test_snapshot_includes_advanced_effects();
     test_snapshot_disabled_returns_zero();
+    test_snapshot_preserves_documented_tonemap_and_grade_params();
 
     printf("rt_postfx3d snapshot tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

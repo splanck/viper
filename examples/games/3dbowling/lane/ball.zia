@@ -114,12 +114,36 @@ class Ball {
 
     expose func doThrow(aimX: Float, power: Float) {
         var throwSpeed = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
-        launchAngle = aimX / config.AIM_MAX * config.AIM_RELEASE_ANGLE + spinAmount * 0.08;
-        var sideSpeed = launchAngle * 10.0;
+        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
+        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+
+        var aimPct = aimX / config.AIM_MAX;
+        if (aimPct < -1.0) { aimPct = -1.0; }
+        if (aimPct > 1.0) { aimPct = 1.0; }
+
+        var releaseClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 1.85;
+        if (releaseClamp < 0.16) { releaseClamp = 0.16; }
+        var targetClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 0.78;
+        if (targetClamp < releaseClamp) { targetClamp = releaseClamp; }
+
+        var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
+        var targetX = aimPct * targetClamp * config.BALL_TARGET_X_SCALE + spinAmount * 0.08;
+        if (targetX < -targetClamp) { targetX = -targetClamp; }
+        if (targetX > targetClamp) { targetX = targetClamp; }
+
+        var travelZ = config.BALL_TARGET_Z - config.BALL_THROW_Z;
+        if (travelZ < 5.0) { travelZ = 5.0; }
+        var sideSpeed = throwSpeed * ((targetX - releaseX) / travelZ) * config.BALL_SIDE_SPEED_SCALE;
+        if (sideSpeed < -config.BALL_SIDE_SPEED_MAX) { sideSpeed = -config.BALL_SIDE_SPEED_MAX; }
+        if (sideSpeed > config.BALL_SIDE_SPEED_MAX) { sideSpeed = config.BALL_SIDE_SPEED_MAX; }
+        var forwardSq = throwSpeed * throwSpeed - sideSpeed * sideSpeed;
+        if (forwardSq < 1.0) { forwardSq = 1.0; }
+        var forwardSpeed = Sqrt(forwardSq);
+        launchAngle = Atan2(sideSpeed, forwardSpeed);
 
         Physics3DBody.SetPosition(body,
-            aimX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
-        Physics3DBody.SetVelocity(body, sideSpeed, 0.0, throwSpeed);
+            releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
+        Physics3DBody.SetVelocity(body, sideSpeed, 0.0, forwardSpeed);
 
         if (inWorld == false) {
             Physics3DWorld.Add(world, body);
@@ -156,6 +180,7 @@ class Ball {
 
         var hookForce = spinAmount * hookMultiplier *
             (config.EARLY_HOOK_FORCE + backend * config.BACKEND_HOOK_FORCE) * frictionPct;
+        hookForce = hookForce * (0.55 + frictionPct * 0.35);
         var dragForce = -vx * config.SIDE_DRAG * (0.8 + frictionPct);
         Physics3DBody.ApplyForce(body, hookForce + dragForce, 0.0, 0.0);
 
@@ -174,8 +199,33 @@ class Ball {
         }
     }
 
-    expose func markGutter() {
+    expose func dampForPinDeckImpact(depth: Float) {
+        if (hasBeenThrown == false || isInGutter) { return; }
+
+        var vel = Physics3DBody.get_Velocity(body);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        var slowdown = config.BALL_DECK_IMPACT_SLOWDOWN - depth * 8.0;
+        if (slowdown < 0.62) { slowdown = 0.62; }
+        if (slowdown > 0.90) { slowdown = 0.90; }
+        vx = vx * config.BALL_DECK_IMPACT_SIDE_DAMP;
+        vz = vz * slowdown;
+        if (vz < 0.35) { vz = 0.35; }
+        Physics3DBody.SetVelocity(body, vx, Vec3.get_Y(vel), vz);
+    }
+
+    expose func markGutter(side: Integer) {
         isInGutter = true;
+        var gutterSign = 1.0;
+        if (side < 0) { gutterSign = -1.0; }
+
+        var pos = Physics3DBody.get_Position(body);
+        var vel = Physics3DBody.get_Velocity(body);
+        var vz = Vec3.get_Z(vel);
+        var safeX = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W * 0.68;
+        Physics3DBody.SetPosition(body, gutterSign * safeX, Vec3.get_Y(pos), Vec3.get_Z(pos));
+        Physics3DBody.SetVelocity(body, gutterSign * 0.22, 0.0, vz * 0.9);
+        Physics3DBody.set_CollisionMask(body, config.LAYER_STATIC);
     }
 
     expose func clearGutter() {
@@ -248,8 +298,14 @@ class Ball {
     }
 
     expose func setAimPosition(aimX: Float) {
+        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
+        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+        var aimPct = aimX / config.AIM_MAX;
+        var releaseClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 1.85;
+        if (releaseClamp < 0.16) { releaseClamp = 0.16; }
+        var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;
         Physics3DBody.SetPosition(body,
-            aimX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
+            releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
     }
 
     expose func draw(canvas: Canvas3D) {

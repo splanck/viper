@@ -13,6 +13,9 @@ class PinManager {
     hide List[Float] homeZ;
     hide List[Boolean] knocked;
     hide List[Boolean] previousKnocked;
+    hide List[Float] savedX;
+    hide List[Float] savedY;
+    hide List[Float] savedZ;
 
     hide List[Float] tiltAngle;
     hide List[Float] tiltAxisX;
@@ -37,6 +40,9 @@ class PinManager {
         homeZ = [];
         knocked = [];
         previousKnocked = [];
+        savedX = [];
+        savedY = [];
+        savedZ = [];
         tiltAngle = [];
         tiltAxisX = [];
         tiltAxisZ = [];
@@ -46,11 +52,15 @@ class PinManager {
         resetting = false;
         resetTimer = 0.0;
 
-        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS, config.PIN_HEIGHT, 10);
-        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 1.15, 0.02, 10);
+        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS, config.PIN_HEIGHT, 18);
+        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 1.18, 0.035, 18);
         pinMat = Material3D.NewColor(config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
         Material3D.SetShininess(pinMat, config.PIN_SHININESS);
+        Material3D.SetEmissiveColor(pinMat,
+            config.PIN_EMISSIVE, config.PIN_EMISSIVE, config.PIN_EMISSIVE * 0.9);
         pinNeckMat = Material3D.NewColor(config.PIN_NECK_R, config.PIN_NECK_G, config.PIN_NECK_B);
+        Material3D.SetEmissiveColor(pinNeckMat,
+            config.PIN_NECK_EMISSIVE, config.PIN_NECK_EMISSIVE * 0.18, config.PIN_NECK_EMISSIVE * 0.18);
 
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var px = computePinX(i);
@@ -59,6 +69,9 @@ class PinManager {
             homeZ.add(pz);
             knocked.add(false);
             previousKnocked.add(false);
+            savedX.add(px);
+            savedY.add(config.PIN_HEIGHT / 2.0);
+            savedZ.add(pz);
             tiltAngle.add(0.0);
             tiltAxisX.add(0.0);
             tiltAxisZ.add(1.0);
@@ -114,9 +127,9 @@ class PinManager {
             var disp = Sqrt(dx * dx + dz * dz);
 
             if (knocked.get(i) == false) {
-                if (py < config.PIN_HEIGHT * 0.32 ||
+                if (py < config.PIN_HEIGHT * 0.24 ||
                     disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
-                    (speed > config.PIN_KNOCKDOWN_SPEED && disp > 0.03)) {
+                    (speed > config.PIN_KNOCKDOWN_SPEED && disp > 0.10)) {
                     knocked.set(i, true);
                     if (disp > 0.02) {
                         tiltAxisX.set(i, dz / (disp + 0.0001));
@@ -162,6 +175,25 @@ class PinManager {
     expose func savePinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             previousKnocked.set(i, knocked.get(i));
+            if (knocked.get(i)) {
+                savedX.set(i, 0.0);
+                savedY.set(i, -10.0);
+                savedZ.set(i, 0.0);
+            } else {
+                var pos = Physics3DBody.get_Position(bodies.get(i));
+                savedX.set(i, Vec3.get_X(pos));
+                savedY.set(i, config.PIN_HEIGHT / 2.0);
+                savedZ.set(i, Vec3.get_Z(pos));
+            }
+        }
+    }
+
+    expose func restoreSavedPinState() {
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            knocked.set(i, previousKnocked.get(i));
+            tiltAngle.set(i, 0.0);
+            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetPosition(bodies.get(i), savedX.get(i), savedY.get(i), savedZ.get(i));
         }
     }
 
@@ -221,6 +253,9 @@ class PinManager {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, false);
             previousKnocked.set(i, false);
+            savedX.set(i, homeX.get(i));
+            savedY.set(i, config.PIN_HEIGHT / 2.0);
+            savedZ.set(i, homeZ.get(i));
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
@@ -295,7 +330,7 @@ class PinManager {
             } else {
                 Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Translate(px, py, pz), pinMat);
                 Canvas3D.DrawMesh(canvas, pinNeckMesh,
-                    Mat4.Translate(px, py + config.PIN_HEIGHT * 0.3, pz), pinNeckMat);
+                    Mat4.Translate(px, py + config.PIN_HEIGHT * 0.29, pz), pinNeckMat);
             }
         }
     }

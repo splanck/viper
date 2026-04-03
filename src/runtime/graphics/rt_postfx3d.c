@@ -228,11 +228,14 @@ static void apply_bloom(
 
 /// @brief Apply tone mapping (Reinhard or ACES filmic).
 static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
+    if (mode != 1 && mode != 2)
+        return;
+
     int32_t count = w * h;
     for (int32_t i = 0; i < count; i++) {
         float *p = &buf[i * 3];
         float r = p[0] * exposure, g = p[1] * exposure, b = p[2] * exposure;
-        if (mode == 0) {
+        if (mode == 1) {
             /* Reinhard */
             r = r / (r + 1.0f);
             g = g / (g + 1.0f);

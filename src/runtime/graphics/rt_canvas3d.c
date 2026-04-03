@@ -73,6 +73,7 @@ extern void rt_mouse_begin_frame(void);
 extern void rt_pad_init(void);
 extern void rt_pad_begin_frame(void);
 extern void rt_pad_poll(void);
+extern void rt_action_update(void);
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -2052,6 +2053,10 @@ int64_t rt_canvas3d_poll(void *obj) {
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
         rt_mouse_update_pos((int64_t)mx, (int64_t)my);
     }
+
+    /* Update action mapping state after input devices and event queues are
+     * finalized so action queries observe this frame's input. */
+    rt_action_update();
 
     /* Warp cursor to center for next frame (only when captured) */
     if (captured) {

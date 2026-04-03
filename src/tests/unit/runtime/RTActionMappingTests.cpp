@@ -22,6 +22,18 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static void sim_key_frame(const int64_t *press_keys, const int64_t *release_keys) {
+    rt_keyboard_begin_frame();
+    if (press_keys) {
+        for (int i = 0; press_keys[i] >= 0; i++)
+            rt_keyboard_on_key_down(press_keys[i]);
+    }
+    if (release_keys) {
+        for (int i = 0; release_keys[i] >= 0; i++)
+            rt_keyboard_on_key_up(release_keys[i]);
+    }
+}
+
 // Test: Define button action and check existence
 static void test_define_button_action() {
     rt_action_init();
@@ -260,6 +272,36 @@ static void test_key_bound_to() {
     rt_action_clear();
 }
 
+static void test_action_edge_state_requires_update() {
+    rt_action_init();
+    rt_action_clear();
+
+    rt_string confirm = make_str("confirm");
+    assert(rt_action_define(confirm) == 1);
+    assert(rt_action_bind_key(make_str("confirm"), VIPER_KEY_ENTER) == 1);
+
+    int64_t press_enter[] = {VIPER_KEY_ENTER, -1};
+    sim_key_frame(press_enter, NULL);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("confirm")) == 1);
+    assert(rt_action_held(make_str("confirm")) == 1);
+    assert(rt_action_released(make_str("confirm")) == 0);
+
+    sim_key_frame(NULL, NULL);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("confirm")) == 0);
+    assert(rt_action_held(make_str("confirm")) == 1);
+
+    int64_t release_enter[] = {VIPER_KEY_ENTER, -1};
+    sim_key_frame(NULL, release_enter);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("confirm")) == 0);
+    assert(rt_action_held(make_str("confirm")) == 0);
+    assert(rt_action_released(make_str("confirm")) == 1);
+
+    rt_action_clear();
+}
+
 // Test: Axis constant getters
 static void test_axis_constants() {
     assert(rt_action_axis_left_x() == VIPER_AXIS_LEFT_X);
@@ -323,6 +365,7 @@ int main() {
     test_multiple_bindings();
     test_bindings_str();
     test_key_bound_to();
+    test_action_edge_state_requires_update();
     test_axis_constants();
     test_lifecycle();
     test_invalid_names();

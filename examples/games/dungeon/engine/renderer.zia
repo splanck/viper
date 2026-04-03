@@ -39,7 +39,7 @@ class Renderer {
         postfx = PostFX3D.New();
         PostFX3D.AddBloom(postfx, 0.6, 0.35, 3);
         PostFX3D.AddVignette(postfx, 0.5, 0.3);
-        PostFX3D.AddColorGrade(postfx, 1.05, 1.0, 1.1);
+        PostFX3D.AddColorGrade(postfx, 0.05, 1.0, 1.1);
         Canvas3D.SetPostFX(canvas, postfx);
 
         // Mouse capture handled by game state transitions, not here

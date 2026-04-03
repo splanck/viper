@@ -13,6 +13,7 @@
 //
 // Available macros:
 //   RUNTIME_SURFACE_INTERNAL_HEADER(path)
+//   RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol)
 //   RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)
 //   RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)
 //   RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)

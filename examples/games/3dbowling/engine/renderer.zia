@@ -16,6 +16,8 @@ class Renderer {
     hide Light3D sunLight;
     hide Light3D fillLight;
     hide Light3D pinSpot;
+    hide Light3D lanePractical;
+    hide Light3D deckFill;
     hide Integer qualityMode;
 
     expose func initRenderer(startQuality: Integer) {
@@ -32,18 +34,33 @@ class Renderer {
         var mainDir = new Vec3(config.LIGHT_MAIN_DIR_X, config.LIGHT_MAIN_DIR_Y, config.LIGHT_MAIN_DIR_Z);
         sunLight = Light3D.NewDirectional(mainDir,
             config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
+        Light3D.SetIntensity(sunLight, 1.22);
         Canvas3D.SetLight(canvas, 0, sunLight);
 
         var fillDir = new Vec3(config.LIGHT_FILL_DIR_X, config.LIGHT_FILL_DIR_Y, config.LIGHT_FILL_DIR_Z);
         fillLight = Light3D.NewDirectional(fillDir,
             config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
+        Light3D.SetIntensity(fillLight, 0.72);
         Canvas3D.SetLight(canvas, 1, fillLight);
 
         var spotPos = new Vec3(config.LIGHT_SPOT_X, config.LIGHT_SPOT_Y, config.LIGHT_SPOT_Z);
-        pinSpot = Light3D.NewPoint(spotPos,
+        var spotDir = new Vec3(0.0, -0.55, 1.0);
+        pinSpot = Light3D.NewSpot(spotPos, spotDir,
             config.LIGHT_SPOT_R, config.LIGHT_SPOT_G, config.LIGHT_SPOT_B,
-            config.LIGHT_SPOT_RANGE);
+            config.LIGHT_SPOT_ATTENUATION,
+            config.LIGHT_SPOT_INNER_ANGLE, config.LIGHT_SPOT_OUTER_ANGLE);
+        Light3D.SetIntensity(pinSpot, 2.35);
         Canvas3D.SetLight(canvas, 2, pinSpot);
+
+        var laneGlowPos = new Vec3(0.0, 4.2, 6.2);
+        lanePractical = Light3D.NewPoint(laneGlowPos, 1.0, 0.88, 0.72, 0.04);
+        Light3D.SetIntensity(lanePractical, 0.92);
+        Canvas3D.SetLight(canvas, 3, lanePractical);
+
+        var deckFillPos = new Vec3(-0.78, 2.9, 16.2);
+        deckFill = Light3D.NewPoint(deckFillPos, 0.82, 0.90, 1.0, 0.05);
+        Light3D.SetIntensity(deckFill, 1.1);
+        Canvas3D.SetLight(canvas, 4, deckFill);
 
         Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         Canvas3D.EnableShadows(canvas, 1);
@@ -59,20 +76,16 @@ class Renderer {
         PostFX3D.Clear(postfx);
 
         if (mode == config.QUALITY_CINEMATIC) {
-            PostFX3D.AddTonemap(postfx, 1, 1.15);
-            PostFX3D.AddBloom(postfx, 0.68, 0.42, 4);
+            PostFX3D.AddTonemap(postfx, 1, 1.28);
+            PostFX3D.AddBloom(postfx, 0.84, 0.12, 3);
             PostFX3D.AddFXAA(postfx);
-            PostFX3D.AddSSAO(postfx, 0.55, 0.6, 16);
-            PostFX3D.AddDOF(postfx, 0.8, 2.5, 0.22);
-            PostFX3D.AddMotionBlur(postfx, 0.18, 6);
-            PostFX3D.AddVignette(postfx, 0.55, 0.35);
-            PostFX3D.AddColorGrade(postfx, 1.02, 1.08, 1.04);
+            PostFX3D.AddColorGrade(postfx, 0.02, 1.07, 1.05);
+            PostFX3D.AddVignette(postfx, 0.82, 0.06);
         } else {
-            PostFX3D.AddTonemap(postfx, 0, 1.0);
-            PostFX3D.AddBloom(postfx, 0.72, 0.22, 2);
+            PostFX3D.AddTonemap(postfx, 1, 1.18);
+            PostFX3D.AddBloom(postfx, 0.90, 0.06, 1);
             PostFX3D.AddFXAA(postfx);
-            PostFX3D.AddColorGrade(postfx, 1.0, 1.04, 1.02);
-            PostFX3D.AddVignette(postfx, 0.60, 0.30);
+            PostFX3D.AddColorGrade(postfx, 0.015, 1.04, 1.02);
         }
 
         Canvas3D.SetPostFX(canvas, postfx);
@@ -94,8 +107,11 @@ class Renderer {
         return alleySkybox;
     }
 
-    expose func beginFrame() {
+    expose func poll() {
         Canvas3D.Poll(canvas);
+    }
+
+    expose func beginFrame() {
         Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
         Canvas3D.Begin(canvas, cam);
     }
@@ -136,17 +152,17 @@ class Renderer {
     }
 
     expose func resetPinLight() {
-        Light3D.SetIntensity(pinSpot, 1.0);
+        Light3D.SetIntensity(pinSpot, 2.35);
         Canvas3D.SetLight(canvas, 2, pinSpot);
     }
 
     hide func createAlleySkybox() -> CubeMap3D {
-        var right = createGradientFace(24, 16, 24, 108, 82, 44, true);
-        var left = createGradientFace(22, 15, 24, 92, 76, 40, true);
+        var right = createGradientFace(34, 24, 34, 142, 108, 60, true);
+        var left = createGradientFace(30, 22, 32, 128, 100, 56, true);
         var top = createCeilingFace();
         var bottom = createFloorFace();
-        var front = createGradientFace(16, 20, 30, 120, 88, 48, true);
-        var back = createGradientFace(12, 18, 26, 84, 66, 38, false);
+        var front = createGradientFace(22, 28, 42, 150, 112, 62, true);
+        var back = createGradientFace(18, 24, 34, 114, 88, 52, false);
         return CubeMap3D.New(right, left, top, bottom, front, back);
     }
 
@@ -167,9 +183,9 @@ class Renderer {
                 var g = gg;
                 var b = bb;
                 if (addLights && py >= 7 && py <= 10 && ((px + 2) % 6) <= 1) {
-                    r = 245;
-                    g = 198;
-                    b = 112;
+                    r = 248;
+                    g = 212;
+                    b = 128;
                 }
                 face.Set(px, py, Color.RGBA(r, g, b, 255));
             }
@@ -183,13 +199,13 @@ class Renderer {
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
-                var r = 30;
-                var g = 34;
-                var b = 42;
+                var r = 56;
+                var g = 60;
+                var b = 68;
                 if (((px + 1) % 8) <= 2 && ((py + 3) % 8) <= 2) {
-                    r = 236;
-                    g = 204;
-                    b = 144;
+                    r = 250;
+                    g = 226;
+                    b = 168;
                 }
                 face.Set(px, py, Color.RGBA(r, g, b, 255));
             }
@@ -204,13 +220,13 @@ class Renderer {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var stripe = ((px / 3) + (py / 5)) % 2;
-                var r = 26;
-                var g = 18;
-                var b = 10;
+                var r = 46;
+                var g = 32;
+                var b = 18;
                 if (stripe == 0) {
-                    r = 38;
-                    g = 26;
-                    b = 14;
+                    r = 60;
+                    g = 42;
+                    b = 24;
                 }
                 face.Set(px, py, Color.RGBA(r, g, b, 255));
             }

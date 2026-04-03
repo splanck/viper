@@ -217,6 +217,12 @@ if (NOT TARGET test_runtime_surface_audit)
     viper_add_ctest(test_runtime_surface_audit test_runtime_surface_audit)
 endif ()
 
+viper_add_ctest(test_runtime_surface_cli
+        $<TARGET_FILE:rtgen>
+        --audit
+        --summary-only
+        ${CMAKE_SOURCE_DIR}/src/il/runtime/runtime.def)
+
 # New unit tests for RC-B7 runtime-class pipeline
 if (NOT TARGET test_catalog_basic)
     viper_add_test(test_catalog_basic ${VIPER_TESTS_DIR}/unit/runtime_classes/TestCatalog.cpp)

@@ -41,20 +41,20 @@ class CameraController {
         mode = MODE_TITLE;
         titleAngle = 0.0;
         eyeX = 0.0;
-        eyeY = 4.0;
-        eyeZ = -3.5;
+        eyeY = 3.5;
+        eyeZ = -2.2;
         targetX = 0.0;
-        targetY = 0.4;
-        targetZ = config.PIN_Z_OFFSET - 2.5;
+        targetY = 0.46;
+        targetZ = config.PIN_Z_OFFSET - 0.4;
         applyLookAt();
     }
 
     expose func setAimMode(aimX: Float) {
         mode = MODE_AIM;
-        eyeX = aimX;
+        eyeX = aimX + 0.28;
         eyeY = config.CAM_AIM_HEIGHT;
         eyeZ = -config.CAM_AIM_BEHIND;
-        targetX = aimX * 0.4;
+        targetX = aimX * 0.22;
         targetY = config.CAM_AIM_LOOK_Y;
         targetZ = config.CAM_AIM_LOOK_Z;
         applyLookAt();
@@ -90,20 +90,20 @@ class CameraController {
         if (mode != MODE_TITLE) { return; }
 
         titleAngle = titleAngle + dt * 0.35;
-        eyeX = Sin(titleAngle) * 1.7;
-        eyeY = 3.8 + Sin(titleAngle * 0.5) * 0.3;
-        eyeZ = -3.3 + Cos(titleAngle) * 0.8;
+        eyeX = Sin(titleAngle) * 1.25;
+        eyeY = 3.5 + Sin(titleAngle * 0.5) * 0.24;
+        eyeZ = -2.1 + Cos(titleAngle) * 0.55;
         targetX = 0.0;
-        targetY = 0.45;
-        targetZ = config.PIN_Z_OFFSET - 2.6;
+        targetY = 0.48;
+        targetZ = config.PIN_Z_OFFSET - 0.55;
         applyLookAt();
     }
 
     expose func updateAim(aimX: Float, dt: Float) {
         if (mode != MODE_AIM) { return; }
 
-        eyeX = lerp(eyeX, aimX, dt * config.CAM_FOLLOW_SMOOTH);
-        targetX = lerp(targetX, aimX * 0.4, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeX = lerp(eyeX, aimX + 0.28, dt * config.CAM_FOLLOW_SMOOTH);
+        targetX = lerp(targetX, aimX * 0.22, dt * config.CAM_FOLLOW_SMOOTH);
         targetY = lerp(targetY, config.CAM_AIM_LOOK_Y, dt * config.CAM_FOLLOW_SMOOTH);
         targetZ = lerp(targetZ, config.CAM_AIM_LOOK_Z, dt * config.CAM_FOLLOW_SMOOTH);
         applyLookAt();
@@ -112,10 +112,10 @@ class CameraController {
     expose func updateFollow(ballX: Float, ballZ: Float, dt: Float) {
         if (mode != MODE_FOLLOW) { return; }
 
-        eyeX = lerp(eyeX, ballX * 0.35, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeX = lerp(eyeX, ballX * 0.28 + 0.2, dt * config.CAM_FOLLOW_SMOOTH);
         eyeY = lerp(eyeY, config.CAM_FOLLOW_HEIGHT, dt * config.CAM_FOLLOW_SMOOTH);
         eyeZ = lerp(eyeZ, ballZ - config.CAM_FOLLOW_DIST, dt * config.CAM_FOLLOW_SMOOTH);
-        targetX = lerp(targetX, ballX * 0.45, dt * config.CAM_FOLLOW_SMOOTH);
+        targetX = lerp(targetX, ballX * 0.26, dt * config.CAM_FOLLOW_SMOOTH);
         targetY = lerp(targetY, 0.25, dt * config.CAM_FOLLOW_SMOOTH);
         targetZ = lerp(targetZ, ballZ + config.CAM_FOLLOW_LOOK_AHEAD, dt * config.CAM_FOLLOW_SMOOTH);
         applyLookAt();

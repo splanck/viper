@@ -40,14 +40,14 @@ var WINDOW_TITLE: String = "3D Bowling";
 // =========================================================================
 // Camera
 // =========================================================================
-var CAMERA_FOV: Float = 55.0;
+var CAMERA_FOV: Float = 50.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 200.0;
 
-var CAM_AIM_HEIGHT: Float = 2.5;
-var CAM_AIM_BEHIND: Float = 4.2;
-var CAM_AIM_LOOK_Z: Float = 8.0;
-var CAM_AIM_LOOK_Y: Float = 0.35;
+var CAM_AIM_HEIGHT: Float = 2.2;
+var CAM_AIM_BEHIND: Float = 3.9;
+var CAM_AIM_LOOK_Z: Float = 11.0;
+var CAM_AIM_LOOK_Y: Float = 0.48;
 
 var CAM_FOLLOW_HEIGHT: Float = 2.0;
 var CAM_FOLLOW_DIST: Float = 3.3;
@@ -103,12 +103,12 @@ var PIN_SPACING: Float = 0.305;
 var PIN_RADIUS: Float = 0.055;
 var PIN_HEIGHT: Float = 0.38;
 var PIN_CAPSULE_HEIGHT: Float = 0.22;
-var PIN_MASS: Float = 1.45;
-var PIN_RESTITUTION: Float = 0.35;
-var PIN_FRICTION: Float = 0.45;
+var PIN_MASS: Float = 1.88;
+var PIN_RESTITUTION: Float = 0.20;
+var PIN_FRICTION: Float = 0.64;
 var PIN_Z_OFFSET: Float = 15.5;
-var PIN_KNOCKDOWN_SPEED: Float = 0.8;
-var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.105;
+var PIN_KNOCKDOWN_SPEED: Float = 1.42;
+var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.19;
 var PIN_SETTLE_SNAP_SPEED: Float = 0.08;
 var PIN_TILT_SPEED: Float = 4.5;
 var PIN_TILT_MAX: Float = 1.57;
@@ -125,29 +125,29 @@ var RESET_DROP_HEIGHT: Float = 2.6;
 // Ball
 // =========================================================================
 var BALL_MASS_LIGHT: Float = 4.5;
-var BALL_SPEED_MAX_LIGHT: Float = 13.5;
+var BALL_SPEED_MAX_LIGHT: Float = 12.4;
 var BALL_HOOK_LIGHT: Float = 1.35;
 var BALL_COLOR_LIGHT_R: Float = 0.24;
 var BALL_COLOR_LIGHT_G: Float = 0.48;
 var BALL_COLOR_LIGHT_B: Float = 0.92;
 
 var BALL_MASS_MEDIUM: Float = 6.0;
-var BALL_SPEED_MAX_MEDIUM: Float = 11.8;
+var BALL_SPEED_MAX_MEDIUM: Float = 10.9;
 var BALL_HOOK_MEDIUM: Float = 1.05;
 var BALL_COLOR_MEDIUM_R: Float = 0.45;
 var BALL_COLOR_MEDIUM_G: Float = 0.12;
 var BALL_COLOR_MEDIUM_B: Float = 0.58;
 
 var BALL_MASS_HEAVY: Float = 7.3;
-var BALL_SPEED_MAX_HEAVY: Float = 10.4;
+var BALL_SPEED_MAX_HEAVY: Float = 9.9;
 var BALL_HOOK_HEAVY: Float = 0.82;
 var BALL_COLOR_HEAVY_R: Float = 0.82;
 var BALL_COLOR_HEAVY_G: Float = 0.12;
 var BALL_COLOR_HEAVY_B: Float = 0.12;
 
 var BALL_RADIUS: Float = 0.109;
-var BALL_RESTITUTION: Float = 0.24;
-var BALL_FRICTION: Float = 0.25;
+var BALL_RESTITUTION: Float = 0.12;
+var BALL_FRICTION: Float = 0.38;
 var BALL_SHININESS: Float = 200.0;
 var BALL_REFLECTIVITY: Float = 0.42;
 
@@ -160,26 +160,35 @@ var BALL_HEAVY: Integer = 2;
 // =========================================================================
 var THROW_SPEED_MIN: Float = 5.0;
 var THROW_POWER_RATE: Float = 0.82;
-var AIM_SPEED: Float = 1.7;
-var AIM_MAX: Float = 0.48;
-var AIM_RELEASE_ANGLE: Float = 0.22;
-var SPIN_RATE: Float = 1.4;
-var SPIN_MAX: Float = 1.0;
+var AIM_SPEED: Float = 1.45;
+var AIM_MAX: Float = 0.26;
+var AIM_RELEASE_ANGLE: Float = 0.11;
+var SPIN_RATE: Float = 1.0;
+var SPIN_MAX: Float = 0.55;
 var SPIN_VISUAL_SPEED: Float = 7.0;
-var BACKEND_HOOK_FORCE: Float = 18.0;
-var EARLY_HOOK_FORCE: Float = 4.0;
+var BACKEND_HOOK_FORCE: Float = 3.6;
+var EARLY_HOOK_FORCE: Float = 0.20;
 var SPIN_DECAY_OIL: Float = 0.10;
 var SPIN_DECAY_DRY: Float = 0.32;
-var SIDE_DRAG: Float = 0.16;
+var SIDE_DRAG: Float = 0.40;
 
 var BALL_START_X: Float = 0.0;
 var BALL_START_Y_OFFSET: Float = 0.01;
 var BALL_START_Z: Float = -1.5;
 var BALL_THROW_Z: Float = -0.85;
+var BALL_RELEASE_X_SCALE: Float = 0.54;
+var BALL_TARGET_X_SCALE: Float = 0.86;
+var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
+var BALL_SIDE_SPEED_SCALE: Float = 1.90;
+var BALL_SIDE_SPEED_MAX: Float = 1.05;
+var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.80;
+var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.72;
 
 var GUTTER_Y: Float = -0.11;
-var GUTTER_TRIGGER_WIDTH: Float = 0.16;
+var GUTTER_TRIGGER_WIDTH: Float = 0.04;
 var GUTTER_EXIT_Z: Float = PIN_Z_OFFSET + 2.8;
+var GUTTER_DETECT_Z: Float = 0.80;
+var GUTTER_DETECT_OVERHANG: Float = 0.10;
 
 // =========================================================================
 // Physics
@@ -204,46 +213,48 @@ var MASK_PINS: Integer = 7;
 var LIGHT_MAIN_DIR_X: Float = -0.2;
 var LIGHT_MAIN_DIR_Y: Float = -1.0;
 var LIGHT_MAIN_DIR_Z: Float = -0.3;
-var LIGHT_MAIN_R: Float = 0.95;
-var LIGHT_MAIN_G: Float = 0.92;
-var LIGHT_MAIN_B: Float = 0.88;
+var LIGHT_MAIN_R: Float = 1.0;
+var LIGHT_MAIN_G: Float = 0.96;
+var LIGHT_MAIN_B: Float = 0.92;
 
-var LIGHT_FILL_DIR_X: Float = 0.3;
-var LIGHT_FILL_DIR_Y: Float = -0.5;
-var LIGHT_FILL_DIR_Z: Float = 0.6;
-var LIGHT_FILL_R: Float = 0.3;
-var LIGHT_FILL_G: Float = 0.3;
-var LIGHT_FILL_B: Float = 0.35;
+var LIGHT_FILL_DIR_X: Float = 0.15;
+var LIGHT_FILL_DIR_Y: Float = -0.7;
+var LIGHT_FILL_DIR_Z: Float = 0.9;
+var LIGHT_FILL_R: Float = 0.52;
+var LIGHT_FILL_G: Float = 0.50;
+var LIGHT_FILL_B: Float = 0.56;
 
 var LIGHT_SPOT_X: Float = 0.0;
-var LIGHT_SPOT_Y: Float = 4.0;
-var LIGHT_SPOT_Z: Float = 15.5;
-var LIGHT_SPOT_R: Float = 1.0;
-var LIGHT_SPOT_G: Float = 0.95;
-var LIGHT_SPOT_B: Float = 0.85;
-var LIGHT_SPOT_RANGE: Float = 8.0;
+var LIGHT_SPOT_Y: Float = 4.8;
+var LIGHT_SPOT_Z: Float = 12.8;
+var LIGHT_SPOT_R: Float = 1.28;
+var LIGHT_SPOT_G: Float = 1.18;
+var LIGHT_SPOT_B: Float = 1.06;
+var LIGHT_SPOT_ATTENUATION: Float = 0.045;
+var LIGHT_SPOT_INNER_ANGLE: Float = 22.0;
+var LIGHT_SPOT_OUTER_ANGLE: Float = 42.0;
 
-var AMBIENT_R: Float = 0.15;
-var AMBIENT_G: Float = 0.13;
-var AMBIENT_B: Float = 0.12;
+var AMBIENT_R: Float = 0.25;
+var AMBIENT_G: Float = 0.24;
+var AMBIENT_B: Float = 0.22;
 
 // =========================================================================
 // Materials / Colors
 // =========================================================================
-var LANE_COLOR_R: Float = 0.82;
-var LANE_COLOR_G: Float = 0.62;
-var LANE_COLOR_B: Float = 0.32;
-var LANE_OIL_COLOR_R: Float = 0.85;
-var LANE_OIL_COLOR_G: Float = 0.68;
-var LANE_OIL_COLOR_B: Float = 0.40;
+var LANE_COLOR_R: Float = 0.72;
+var LANE_COLOR_G: Float = 0.52;
+var LANE_COLOR_B: Float = 0.26;
+var LANE_OIL_COLOR_R: Float = 0.76;
+var LANE_OIL_COLOR_G: Float = 0.60;
+var LANE_OIL_COLOR_B: Float = 0.32;
 var LANE_SHININESS: Float = 64.0;
 var LANE_OIL_SHININESS: Float = 128.0;
 var LANE_REFLECTIVITY: Float = 0.08;
 var LANE_OIL_REFLECTIVITY: Float = 0.36;
 
-var APPROACH_COLOR_R: Float = 0.55;
-var APPROACH_COLOR_G: Float = 0.38;
-var APPROACH_COLOR_B: Float = 0.22;
+var APPROACH_COLOR_R: Float = 0.48;
+var APPROACH_COLOR_G: Float = 0.32;
+var APPROACH_COLOR_B: Float = 0.18;
 
 var GUTTER_COLOR_R: Float = 0.28;
 var GUTTER_COLOR_G: Float = 0.30;
@@ -253,19 +264,27 @@ var WALL_COLOR_R: Float = 0.4;
 var WALL_COLOR_G: Float = 0.25;
 var WALL_COLOR_B: Float = 0.15;
 
-var BACKWALL_COLOR_R: Float = 0.19;
-var BACKWALL_COLOR_G: Float = 0.2;
-var BACKWALL_COLOR_B: Float = 0.25;
+var BACKWALL_COLOR_R: Float = 0.08;
+var BACKWALL_COLOR_G: Float = 0.10;
+var BACKWALL_COLOR_B: Float = 0.14;
 
-var PIN_COLOR_R: Float = 0.95;
-var PIN_COLOR_G: Float = 0.92;
-var PIN_COLOR_B: Float = 0.88;
-var PIN_SHININESS: Float = 96.0;
-var PIN_REFLECTIVITY: Float = 0.14;
-var PIN_NECK_R: Float = 0.85;
-var PIN_NECK_G: Float = 0.15;
-var PIN_NECK_B: Float = 0.15;
+var PIN_DECK_COLOR_R: Float = 0.24;
+var PIN_DECK_COLOR_G: Float = 0.20;
+var PIN_DECK_COLOR_B: Float = 0.16;
+var PIN_DECK_SHININESS: Float = 42.0;
+var PIN_DECK_REFLECTIVITY: Float = 0.04;
+
+var PIN_COLOR_R: Float = 1.0;
+var PIN_COLOR_G: Float = 0.99;
+var PIN_COLOR_B: Float = 1.0;
+var PIN_SHININESS: Float = 128.0;
+var PIN_REFLECTIVITY: Float = 0.12;
+var PIN_EMISSIVE: Float = 0.05;
+var PIN_NECK_R: Float = 0.92;
+var PIN_NECK_G: Float = 0.12;
+var PIN_NECK_B: Float = 0.14;
 var PIN_NECK_REFLECTIVITY: Float = 0.08;
+var PIN_NECK_EMISSIVE: Float = 0.12;
 
 var FOUL_LINE_R: Float = 0.9;
 var FOUL_LINE_G: Float = 0.1;
@@ -284,9 +303,9 @@ var LIGHT_FIXTURE_R: Float = 0.74;
 var LIGHT_FIXTURE_G: Float = 0.68;
 var LIGHT_FIXTURE_B: Float = 0.60;
 
-var CLEAR_R: Float = 0.04;
-var CLEAR_G: Float = 0.05;
-var CLEAR_B: Float = 0.08;
+var CLEAR_R: Float = 0.08;
+var CLEAR_G: Float = 0.10;
+var CLEAR_B: Float = 0.16;
 
 // =========================================================================
 // HUD / Menus
@@ -323,8 +342,8 @@ var HUD_COLOR_CYAN: Integer = 0x44DDFF;
 var HUD_COLOR_FRAME_BG: Integer = 0x121824;
 var HUD_COLOR_FRAME_ACTIVE: Integer = 0x27364D;
 var HUD_COLOR_FRAME_BORDER: Integer = 0x4C5E7A;
-var HUD_COLOR_MENU_BG: Integer = 0x0E1622;
-var HUD_COLOR_MENU_CARD: Integer = 0x1B2533;
+var HUD_COLOR_MENU_BG: Integer = 0x162235;
+var HUD_COLOR_MENU_CARD: Integer = 0x263449;
 var HUD_COLOR_MENU_ACCENT: Integer = 0x62D2FF;
 
 // =========================================================================
@@ -394,11 +413,13 @@ var ACT_CAMERA: String = "camera_cycle";
 // Save Keys
 // =========================================================================
 var SAVE_NAME: String = "3dbowling";
+var SAVE_VERSION: Integer = 2;
 var SAVE_KEY_BEST_SCORE: String = "best_score";
 var SAVE_KEY_GAMES_PLAYED: String = "games_played";
 var SAVE_KEY_OIL_PATTERN: String = "oil_pattern";
 var SAVE_KEY_QUALITY: String = "quality";
 var SAVE_KEY_LAST_MODE: String = "last_mode";
+var SAVE_KEY_SETTINGS_VERSION: String = "settings_version";
 
 // =========================================================================
 // Sound Effects

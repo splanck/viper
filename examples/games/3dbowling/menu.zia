@@ -91,14 +91,20 @@ class BowlingMenu {
 
     expose func load() {
         save.Load();
+        var settingsVersion = save.GetInt(config.SAVE_KEY_SETTINGS_VERSION, 0);
         bestScore = save.GetInt(config.SAVE_KEY_BEST_SCORE, 0);
         gamesPlayed = save.GetInt(config.SAVE_KEY_GAMES_PLAYED, 0);
         oilPattern = save.GetInt(config.SAVE_KEY_OIL_PATTERN, config.OIL_HOUSE);
         qualityMode = save.GetInt(config.SAVE_KEY_QUALITY, config.QUALITY_CINEMATIC);
         preferredMode = save.GetInt(config.SAVE_KEY_LAST_MODE, config.MODE_SINGLE);
+        if (settingsVersion < config.SAVE_VERSION && qualityMode == config.QUALITY_PERFORMANCE) {
+            qualityMode = config.QUALITY_CINEMATIC;
+            savePreferences();
+        }
     }
 
     expose func savePreferences() {
+        save.SetInt(config.SAVE_KEY_SETTINGS_VERSION, config.SAVE_VERSION);
         save.SetInt(config.SAVE_KEY_BEST_SCORE, bestScore);
         save.SetInt(config.SAVE_KEY_GAMES_PLAYED, gamesPlayed);
         save.SetInt(config.SAVE_KEY_OIL_PATTERN, oilPattern);
@@ -218,8 +224,10 @@ class BowlingMenu {
         var pulse = 180 + (titlePulse % 60);
         var titleColor = (pulse << 16) + (220 << 8) + 140;
 
-        Canvas3D.DrawRect2D(canvas, 32, 36, screenW - 64, screenH - 72, config.HUD_COLOR_MENU_BG);
-        Canvas3D.DrawRect2D(canvas, 52, 56, screenW - 104, 136, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawRect2D(canvas, 34, 34, screenW - 68, 132, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawRect2D(canvas, 58, 58, screenW - 116, 4, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawRect2D(canvas, screenW - 334, 198, 254, 202, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, screenH - 86, 376, 52, config.HUD_COLOR_MENU_BG);
         Canvas3D.DrawText2D(canvas, screenW / 2 - 88, 76, "3D BOWLING", titleColor);
         Canvas3D.DrawText2D(canvas, screenW / 2 - 132, 104,
             "Built entirely on Viper's native 3D runtime", config.HUD_COLOR_GRAY);
@@ -228,7 +236,7 @@ class BowlingMenu {
         Canvas3D.DrawText2D(canvas, screenW / 2 - 87, 156,
             "Best: " + toString(bestScore) + "   Games: " + toString(gamesPlayed), config.HUD_COLOR_GOLD);
 
-        drawMenuList(canvas, titleItems, titleMenu.get_Selected(), screenW / 2 - 110, 250, 220, 42);
+        drawMenuList(canvas, titleItems, titleMenu.get_Selected(), screenW - 300, 222, 220, 42);
         Canvas3D.DrawText2D(canvas, screenW / 2 - 150, screenH - 58,
             "Arrows / gamepad D-pad = navigate, Enter / A = confirm", config.HUD_COLOR_GRAY);
         Canvas3D.DrawText2D(canvas, screenW / 2 - 130, screenH - 34,
@@ -236,21 +244,24 @@ class BowlingMenu {
     }
 
     expose func drawPause(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
-        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 28, 140, "PAUSED", config.HUD_COLOR_GOLD);
-        drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, 240, 220, 40);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 232, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 34, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 28, 118, "PAUSED", config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 118, 152, "Match suspended. The lane stays live behind the menu.", config.HUD_COLOR_GRAY);
+        drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, 196, 220, 40);
     }
 
     expose func drawOptions(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
-        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 36, 120, "OPTIONS", config.HUD_COLOR_GOLD);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 96, 440, 254, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 96, 440, 34, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 36, 106, "OPTIONS", config.HUD_COLOR_GOLD);
 
         var labels: List[String] = [];
         labels.add("Oil Pattern  : " + getOilPatternName());
         labels.add("Visual Quality: " + getQualityName());
         labels.add("Reset Stats");
         labels.add("Back");
-        drawMenuList(canvas, labels, optionsMenu.get_Selected(), screenW / 2 - 150, 220, 300, 40);
+        drawMenuList(canvas, labels, optionsMenu.get_Selected(), screenW / 2 - 150, 164, 300, 40);
 
         Canvas3D.DrawText2D(canvas, screenW / 2 - 135, screenH - 48,
             "Confirm cycles values. Escape / B returns to the title.", config.HUD_COLOR_GRAY);
@@ -258,11 +269,12 @@ class BowlingMenu {
 
     expose func drawResults(canvas: Canvas3D, screenW: Integer, screenH: Integer,
                             headline: String, subtitle: String, detail: String) {
-        Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH, config.HUD_COLOR_DARK);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - headline.Length * 4, 116, headline, config.HUD_COLOR_GOLD);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - subtitle.Length * 4, 152, subtitle, config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - detail.Length * 4, 184, detail, config.HUD_COLOR_CYAN);
-        drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, 266, 220, 40);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 92, 440, 278, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 92, 440, 34, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - headline.Length * 4, 102, headline, config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - subtitle.Length * 4, 150, subtitle, config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - detail.Length * 4, 182, detail, config.HUD_COLOR_CYAN);
+        drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, 246, 220, 40);
     }
 
     hide func drawMenuList(canvas: Canvas3D, labels: List[String], selected: Integer,
@@ -272,6 +284,8 @@ class BowlingMenu {
             var fill = config.HUD_COLOR_MENU_CARD;
             if (i == selected) { fill = config.HUD_COLOR_FRAME_ACTIVE; }
             Canvas3D.DrawRect2D(canvas, x, rowY, width, rowH - 6, fill);
+            Canvas3D.DrawRect2D(canvas, x, rowY, width, 1, config.HUD_COLOR_FRAME_BORDER);
+            Canvas3D.DrawRect2D(canvas, x, rowY + rowH - 7, width, 1, config.HUD_COLOR_FRAME_BORDER);
             Canvas3D.DrawText2D(canvas, x + 14, rowY + 12, labels.get(i), config.HUD_COLOR_WHITE);
             if (i == selected) {
                 Canvas3D.DrawRect2D(canvas, x - 12, rowY + 11, 6, 14, config.HUD_COLOR_MENU_ACCENT);

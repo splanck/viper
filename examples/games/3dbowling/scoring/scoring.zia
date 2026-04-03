@@ -48,6 +48,8 @@ class ScoreKeeper {
     // Record a roll result. Returns true if the frame is complete.
     expose func recordRoll(pinsDown: Integer) -> Boolean {
         if (gameComplete) { return true; }
+        if (pinsDown < 0) { pinsDown = 0; }
+        if (pinsDown > pinsStanding) { pinsDown = pinsStanding; }
 
         rolls.add(pinsDown);
         rollCount = rollCount + 1;
