@@ -81,7 +81,7 @@ TEST(Arm64CLI, TrapFromErr) {
     EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
-TEST(Arm64CLI, EhMarkersNoop) {
+TEST(Arm64CLI, EhMarkersLowerToNativeHelpers) {
     const std::string in = outPath("arm64_eh.il");
     const std::string out = outPath("arm64_eh.s");
     const std::string il = "il 0.1\n"
@@ -99,7 +99,9 @@ TEST(Arm64CLI, EhMarkersNoop) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // We should see the trap helper call; EH markers produce no extra code.
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_frame_alloc")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_push")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("setjmp")), std::string::npos);
     EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 

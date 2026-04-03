@@ -6,13 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_videoplayer.h
-// Purpose: Video playback runtime class — loads AVI (MJPEG) files, decodes
-//   video frames to Pixels, and presents them for software rendering.
+// Purpose: Video playback runtime class — loads AVI (MJPEG) and OGG/Theora
+//   containers, decodes video frames to Pixels, and presents them for software
+//   rendering.
 //
 // Key invariants:
 //   - Frame pool: 2 Pixels objects (display + decode), swapped on advance.
 //   - AVI sync: frame-rate-based (no timestamps in AVI).
-//   - OGG/Theora is not exposed as a working runtime surface yet.
+//   - OGG/Theora sync follows packet granule positions; when a Vorbis stream is
+//     present in the same container, VideoPlayer coordinates audio playback via
+//     the runtime music API.
 //   - Update(dt) must be called each game frame to advance decode.
 //   - Frame property returns current display Pixels (may be NULL before first decode).
 //

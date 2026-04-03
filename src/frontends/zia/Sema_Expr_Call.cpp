@@ -874,6 +874,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     return normalizeRuntimeSurfaceType(sym->type->returnType());
                 return normalizeRuntimeSurfaceType(sym->type);
             }
+
+            for (auto &arg : expr->args) {
+                analyzeExpr(arg.value.get());
+            }
+            error(expr->loc,
+                  "Runtime class '" + baseType->name + "' has no method '" + fieldExpr->field +
+                      "'");
+            return types::unknown();
         }
     }
 

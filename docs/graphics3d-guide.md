@@ -2333,7 +2333,7 @@ Video playback for game cutscenes and GUI applications.
 
 | Member | Description |
 |--------|-------------|
-| `Open(path)` | Load an AVI MJPEG video file |
+| `Open(path)` | Load an AVI MJPEG or OGG/Theora video file |
 | `Play()` | Start playback |
 | `Pause()` | Pause playback |
 | `Stop()` | Stop and rewind to start |
@@ -2352,10 +2352,11 @@ Video playback for game cutscenes and GUI applications.
 | Container | Video Codec | Audio Codec | Extension |
 |-----------|-------------|-------------|-----------|
 | AVI (RIFF) | MJPEG | PCM WAV | `.avi` |
+| OGG | Theora | Vorbis | `.ogv` |
 
 **MJPEG notes:** MJPEG frames in AVI files often omit Huffman tables (DHT markers). The decoder automatically injects standard JPEG Annex K DHT tables when they are missing. MJPEG has no inter-frame compression — each frame is an independent JPEG image. File sizes are large (~100-200 MB per minute at 720p) but seeking is instant since every frame is a keyframe.
 
-**Current limitation:** OGG/Theora plumbing exists in the source tree, but it is not exposed as a working runtime playback format yet. `VideoPlayer.Open` currently accepts the AVI/MJPEG path only.
+**Current limitation:** `.ogv` playback now handles mixed Theora/Vorbis containers through `VideoPlayer.Open`, including audio volume/seek integration and logical-stream demux, but video fidelity is still bounded by the current in-tree Theora frame decoder implementation.
 
 ### Game Cutscene Usage
 

@@ -76,12 +76,8 @@ class GameCamera {
     expose func setLevelSize(w: Integer, h: Integer) {
         levelPixelW = w * TILE_SIZE;
         levelPixelH = h * TILE_SIZE;
-        // Camera bounds: top-left (0,0) to bottom-right (maxScrollX, maxScrollY)
-        var maxX = levelPixelW - SCREEN_W;
-        var maxY = levelPixelH - SCREEN_H;
-        if maxX < 0 { maxX = 0; }
-        if maxY < 0 { maxY = 0; }
-        cam.SetBounds(0, 0, maxX, maxY);
+        // Camera.SetBounds expects world extents, not pre-subtracted scroll limits.
+        cam.SetBounds(0, 0, levelPixelW, levelPixelH);
     }
 
     // Snap camera to target instantly (no smooth interpolation).

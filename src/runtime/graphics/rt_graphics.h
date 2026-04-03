@@ -216,6 +216,17 @@ void rt_canvas_box_alpha(
 void rt_canvas_disc_alpha(
     void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha);
 
+/// @brief Draw a filled ellipse with alpha blending.
+/// @param canvas Canvas handle.
+/// @param cx Center X coordinate.
+/// @param cy Center Y coordinate.
+/// @param rx Horizontal radius.
+/// @param ry Vertical radius.
+/// @param color Fill color (0x00RRGGBB).
+/// @param alpha Alpha value (0=transparent, 255=opaque).
+void rt_canvas_ellipse_alpha(
+    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color, int64_t alpha);
+
 /// @brief Blit a Pixels buffer to the canvas.
 /// @param canvas Canvas handle.
 /// @param x Destination X coordinate.

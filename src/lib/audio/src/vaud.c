@@ -33,11 +33,20 @@
 typedef struct ogg_reader ogg_reader_t;
 typedef struct vorbis_decoder vorbis_decoder_t;
 typedef struct mp3_stream mp3_stream_t;
+typedef struct {
+    uint32_t serial_number;
+    int64_t granule_position;
+    uint8_t bos;
+    uint8_t eos;
+} ogg_packet_info_t;
 
 ogg_reader_t *ogg_reader_open_file(const char *path);
 void ogg_reader_free(ogg_reader_t *r);
 void ogg_reader_rewind(ogg_reader_t *r);
-int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len);
+int ogg_reader_next_packet_ex(ogg_reader_t *r,
+                              const uint8_t **out_data,
+                              size_t *out_len,
+                              ogg_packet_info_t *out_info);
 
 vorbis_decoder_t *vorbis_decoder_new(void);
 void vorbis_decoder_free(vorbis_decoder_t *dec);
@@ -504,6 +513,74 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id) {
 // Compressed stream read helpers
 //===----------------------------------------------------------------------===//
 
+static int packet_is_vorbis_header(const uint8_t *data, size_t len, uint8_t type) {
+    return data && len >= 7 && data[0] == type && memcmp(data + 1, "vorbis", 6) == 0;
+}
+
+static void vaud_music_clear_buffers(struct vaud_music *music) {
+    if (!music)
+        return;
+    music->current_buffer = 0;
+    music->buffer_position = 0;
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
+        music->buffer_frames[i] = 0;
+    music->leftover_frames = 0;
+}
+
+static int vaud_ogg_parse_headers_for_serial(ogg_reader_t *reader,
+                                             uint32_t serial,
+                                             vorbis_decoder_t *dec) {
+    const uint8_t *pkt = NULL;
+    size_t pkt_len = 0;
+    ogg_packet_info_t info;
+    int header_num = 0;
+    while (ogg_reader_next_packet_ex(reader, &pkt, &pkt_len, &info)) {
+        if (info.serial_number != serial)
+            continue;
+        if (vorbis_decode_header(dec, pkt, pkt_len, header_num) != 0)
+            return 0;
+        header_num++;
+        if (header_num == 3)
+            return 1;
+    }
+    return 0;
+}
+
+static int vaud_music_reset_source(struct vaud_music *music) {
+    if (!music)
+        return 0;
+
+    vaud_music_clear_buffers(music);
+    music->position = 0;
+
+    if (music->format == 1) {
+        if (!music->ogg_reader || music->ogg_serial == 0)
+            return 0;
+        ogg_reader_rewind((ogg_reader_t *)music->ogg_reader);
+        if (music->vorbis_dec) {
+            vorbis_decoder_free((vorbis_decoder_t *)music->vorbis_dec);
+            music->vorbis_dec = NULL;
+        }
+        music->vorbis_dec = vorbis_decoder_new();
+        if (!music->vorbis_dec)
+            return 0;
+        return vaud_ogg_parse_headers_for_serial(
+            (ogg_reader_t *)music->ogg_reader, music->ogg_serial,
+            (vorbis_decoder_t *)music->vorbis_dec);
+    }
+
+    if (music->format == 2) {
+        if (!music->mp3_stream)
+            return 0;
+        mp3_stream_rewind((mp3_stream_t *)music->mp3_stream);
+        return 1;
+    }
+
+    if (!music->file)
+        return 0;
+    return fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET) == 0;
+}
+
 /// @brief Read decoded PCM frames from an OGG Vorbis stream.
 static int32_t ogg_stream_read_frames(struct vaud_music *music, int16_t *output, int32_t max_frames) {
     if (!music->ogg_reader || !music->vorbis_dec)
@@ -523,9 +600,17 @@ static int32_t ogg_stream_read_frames(struct vaud_music *music, int16_t *output,
 
     // Decode packets until we have enough frames
     while (written < max_frames) {
-        const uint8_t *pkt;
-        size_t pkt_len;
-        if (!ogg_reader_next_packet((ogg_reader_t *)music->ogg_reader, &pkt, &pkt_len))
+        const uint8_t *pkt = NULL;
+        size_t pkt_len = 0;
+        ogg_packet_info_t info;
+        do {
+            if (!ogg_reader_next_packet_ex(
+                    (ogg_reader_t *)music->ogg_reader, &pkt, &pkt_len, &info)) {
+                pkt = NULL;
+                break;
+            }
+        } while (music->ogg_serial != 0 && info.serial_number != music->ogg_serial);
+        if (!pkt)
             break;
 
         int16_t *pcm = NULL;
@@ -617,11 +702,13 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
         return 0;
 
     int16_t *out = music->buffers[buf_idx];
+    int32_t source_rate = music->source_sample_rate > 0 ? music->source_sample_rate
+                                                        : music->sample_rate;
 
     // Compressed format streaming (OGG/MP3) — decode to temp, resample if needed
     if (music->format == 1 || music->format == 2) {
         int32_t raw_frames;
-        if (music->sample_rate == VAUD_SAMPLE_RATE) {
+        if (source_rate == VAUD_SAMPLE_RATE) {
             // Decode directly into output buffer (no resampling)
             raw_frames = (music->format == 1)
                 ? ogg_stream_read_frames(music, out, VAUD_MUSIC_BUFFER_FRAMES)
@@ -630,7 +717,7 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
         }
         // Need resampling: decode into temp buffer, then resample into output
         int64_t raw_needed =
-            (int64_t)VAUD_MUSIC_BUFFER_FRAMES * music->sample_rate / VAUD_SAMPLE_RATE + 2;
+            (int64_t)VAUD_MUSIC_BUFFER_FRAMES * source_rate / VAUD_SAMPLE_RATE + 2;
         if (!music->resample_buf || music->resample_cap < raw_needed) {
             free(music->resample_buf);
             music->resample_cap = raw_needed + 64;
@@ -643,11 +730,10 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
             : mp3_stream_read_frames_music(music, music->resample_buf, (int32_t)raw_needed);
         if (raw_frames <= 0)
             return 0;
-        int64_t out_frames = vaud_resample_output_frames(
-            raw_frames, music->sample_rate, VAUD_SAMPLE_RATE);
+        int64_t out_frames = vaud_resample_output_frames(raw_frames, source_rate, VAUD_SAMPLE_RATE);
         if (out_frames > VAUD_MUSIC_BUFFER_FRAMES)
             out_frames = VAUD_MUSIC_BUFFER_FRAMES;
-        vaud_resample(music->resample_buf, raw_frames, music->sample_rate,
+        vaud_resample(music->resample_buf, raw_frames, source_rate,
                       out, out_frames, VAUD_SAMPLE_RATE, 2);
         return (int32_t)out_frames;
     }
@@ -656,14 +742,14 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
     if (!music->file)
         return 0;
 
-    if (music->sample_rate == VAUD_SAMPLE_RATE) {
+    if (source_rate == VAUD_SAMPLE_RATE) {
         return vaud_wav_read_frames(
             music->file, out, VAUD_MUSIC_BUFFER_FRAMES, music->channels, music->bits_per_sample);
     }
 
     // WAV resampling path
     int64_t raw_needed =
-        (int64_t)VAUD_MUSIC_BUFFER_FRAMES * music->sample_rate / VAUD_SAMPLE_RATE + 2;
+        (int64_t)VAUD_MUSIC_BUFFER_FRAMES * source_rate / VAUD_SAMPLE_RATE + 2;
 
     if (!music->resample_buf || music->resample_cap < raw_needed) {
         free(music->resample_buf);
@@ -682,14 +768,52 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
     if (raw_read == 0)
         return 0;
 
-    int64_t out_frames = vaud_resample_output_frames(raw_read, music->sample_rate, VAUD_SAMPLE_RATE);
+    int64_t out_frames = vaud_resample_output_frames(raw_read, source_rate, VAUD_SAMPLE_RATE);
     if (out_frames > VAUD_MUSIC_BUFFER_FRAMES)
         out_frames = VAUD_MUSIC_BUFFER_FRAMES;
 
     vaud_resample(
-        music->resample_buf, raw_read, music->sample_rate, out, out_frames, VAUD_SAMPLE_RATE, 2);
+        music->resample_buf, raw_read, source_rate, out, out_frames, VAUD_SAMPLE_RATE, 2);
 
     return (int32_t)out_frames;
+}
+
+int vaud_music_seek_output_frame(struct vaud_music *music, int64_t target_frame) {
+    if (!music)
+        return 0;
+
+    if (target_frame < 0)
+        target_frame = 0;
+    if (music->frame_count > 0 && target_frame >= music->frame_count)
+        target_frame = music->frame_count > 0 ? music->frame_count - 1 : 0;
+
+    if (!vaud_music_reset_source(music))
+        return 0;
+
+    int64_t remaining = target_frame;
+    while (remaining > 0) {
+        int32_t got = vaud_music_fill_buffer(music, 0);
+        if (got <= 0) {
+            music->position = target_frame - remaining;
+            music->buffer_frames[0] = 0;
+            music->buffer_position = 0;
+            return 0;
+        }
+        if (remaining < got) {
+            music->buffer_frames[0] = got;
+            music->buffer_position = (int32_t)remaining;
+            music->position = target_frame;
+            music->current_buffer = 0;
+            return 1;
+        }
+        remaining -= got;
+    }
+
+    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    music->buffer_position = 0;
+    music->position = target_frame;
+    music->current_buffer = 0;
+    return music->buffer_frames[0] > 0 || music->frame_count == 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -740,8 +864,9 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     music->file = file;
     music->data_offset = data_offset;
     music->data_size = data_size;
-    music->frame_count = frames;
-    music->sample_rate = sample_rate;
+    music->frame_count = vaud_resample_output_frames(frames, sample_rate, VAUD_SAMPLE_RATE);
+    music->sample_rate = VAUD_SAMPLE_RATE;
+    music->source_sample_rate = sample_rate;
     music->channels = channels;
     music->bits_per_sample = bits;
     music->state = VAUD_MUSIC_STOPPED;
@@ -753,8 +878,8 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     music->resample_buf = NULL;
     music->resample_cap = 0;
 
-    /* Pre-fill first buffer (resamples if needed) */
-    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    /* Prime the stream at position 0. */
+    vaud_music_seek_output_frame(music, 0);
 
     /* Add to context's music list (H-4: return NULL and free if list is full) */
     vaud_mutex_lock(&ctx->mutex);
@@ -822,16 +947,37 @@ vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
         return NULL;
     }
 
-    // Parse 3 Vorbis header packets
-    for (int i = 0; i < 3; i++) {
-        const uint8_t *pkt;
-        size_t pkt_len;
-        if (!ogg_reader_next_packet(reader, &pkt, &pkt_len) ||
-            vorbis_decode_header(dec, pkt, pkt_len, i) != 0) {
-            vorbis_decoder_free(dec);
-            ogg_reader_free(reader);
-            return NULL;
+    uint32_t vorbis_serial = 0;
+    int header_num = 0;
+    int64_t last_granule = -1;
+    const uint8_t *pkt = NULL;
+    size_t pkt_len = 0;
+    ogg_packet_info_t info;
+    while (ogg_reader_next_packet_ex(reader, &pkt, &pkt_len, &info)) {
+        if (vorbis_serial == 0) {
+            if (!info.bos || !packet_is_vorbis_header(pkt, pkt_len, 1))
+                continue;
+            vorbis_serial = info.serial_number;
         }
+        if (info.serial_number != vorbis_serial)
+            continue;
+        if (header_num < 3) {
+            if (vorbis_decode_header(dec, pkt, pkt_len, header_num) != 0) {
+                vorbis_decoder_free(dec);
+                ogg_reader_free(reader);
+                return NULL;
+            }
+            header_num++;
+            continue;
+        }
+        if (info.granule_position >= 0)
+            last_granule = info.granule_position;
+    }
+
+    if (vorbis_serial == 0 || header_num < 3) {
+        vorbis_decoder_free(dec);
+        ogg_reader_free(reader);
+        return NULL;
     }
 
     vaud_music_t music = music_alloc_and_register(ctx);
@@ -843,16 +989,26 @@ vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
 
     music->format = 1;
     music->ogg_reader = reader;
-    music->vorbis_dec = dec;
-    music->sample_rate = vorbis_get_sample_rate(dec);
+    music->vorbis_dec = NULL;
+    music->ogg_serial = vorbis_serial;
+    music->source_sample_rate = vorbis_get_sample_rate(dec);
+    music->sample_rate = VAUD_SAMPLE_RATE;
     music->channels = vorbis_get_channels(dec);
+    if (music->source_sample_rate <= 0 || music->channels <= 0) {
+        vorbis_decoder_free(dec);
+        vaud_free_music(music);
+        return NULL;
+    }
     music->filepath = strdup(path);
+    music->frame_count = last_granule >= 0
+        ? vaud_resample_output_frames(last_granule, music->source_sample_rate, VAUD_SAMPLE_RATE)
+        : 0;
 
-    // Estimate duration (0 if unknown — would need last-page granule scan)
-    music->frame_count = 0;
-
-    // Pre-fill first buffer
-    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    vorbis_decoder_free(dec);
+    if (!vaud_music_seek_output_frame(music, 0)) {
+        vaud_free_music(music);
+        return NULL;
+    }
     return music;
 }
 
@@ -872,15 +1028,19 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
 
     music->format = 2;
     music->mp3_stream = stream;
-    music->sample_rate = mp3_stream_sample_rate(stream);
+    music->source_sample_rate = mp3_stream_sample_rate(stream);
+    music->sample_rate = VAUD_SAMPLE_RATE;
     music->channels = mp3_stream_channels(stream);
+    if (music->source_sample_rate <= 0 || music->channels <= 0) {
+        vaud_free_music(music);
+        return NULL;
+    }
     music->filepath = strdup(path);
 
     // Estimate frame count from file size (approximate for VBR)
     music->frame_count = 0;
 
-    // Pre-fill first buffer
-    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    vaud_music_seek_output_frame(music, 0);
     return music;
 }
 
@@ -938,17 +1098,13 @@ void vaud_music_play(vaud_music_t music, int loop) {
     vaud_mutex_lock(&music->ctx->mutex);
 
     music->loop = loop ? 1 : 0;
-    music->state = VAUD_MUSIC_PLAYING;
-
-    /* Seek to beginning if stopped */
-    if (music->position == 0 && music->file) {
-        fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
-        music->current_buffer = 0;
-        music->buffer_position = 0;
-
-        /* Pre-fill first buffer (resamples if needed) */
-        music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    if (music->state == VAUD_MUSIC_STOPPED && music->position == 0 &&
+        !vaud_music_seek_output_frame(music, 0)) {
+        music->state = VAUD_MUSIC_STOPPED;
+        vaud_mutex_unlock(&music->ctx->mutex);
+        return;
     }
+    music->state = VAUD_MUSIC_PLAYING;
 
     vaud_mutex_unlock(&music->ctx->mutex);
 }
@@ -960,14 +1116,7 @@ void vaud_music_stop(vaud_music_t music) {
     vaud_mutex_lock(&music->ctx->mutex);
 
     music->state = VAUD_MUSIC_STOPPED;
-    music->position = 0;
-    music->current_buffer = 0;
-    music->buffer_position = 0;
-
-    /* Seek to beginning */
-    if (music->file) {
-        fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
-    }
+    vaud_music_seek_output_frame(music, 0);
 
     vaud_mutex_unlock(&music->ctx->mutex);
 }
@@ -1032,27 +1181,13 @@ int vaud_music_is_playing(vaud_music_t music) {
 }
 
 void vaud_music_seek(vaud_music_t music, float seconds) {
-    if (!music || !music->ctx || !music->file)
+    if (!music || !music->ctx)
         return;
 
     vaud_mutex_lock(&music->ctx->mutex);
 
     int64_t target_frame = (int64_t)(seconds * music->sample_rate);
-    if (target_frame < 0)
-        target_frame = 0;
-    if (target_frame >= music->frame_count)
-        target_frame = music->frame_count - 1;
-
-    int32_t bytes_per_frame = (music->bits_per_sample / 8) * music->channels;
-    int64_t byte_offset = music->data_offset + target_frame * bytes_per_frame;
-
-    fseek((FILE *)music->file, (long)byte_offset, SEEK_SET);
-    music->position = target_frame;
-    music->current_buffer = 0;
-    music->buffer_position = 0;
-
-    /* Refill buffer (resamples if needed) */
-    music->buffer_frames[0] = vaud_music_fill_buffer(music, 0);
+    vaud_music_seek_output_frame(music, target_frame);
 
     vaud_mutex_unlock(&music->ctx->mutex);
 }
@@ -1060,11 +1195,15 @@ void vaud_music_seek(vaud_music_t music, float seconds) {
 float vaud_music_get_position(vaud_music_t music) {
     if (!music)
         return 0.0f;
+    if (music->sample_rate <= 0)
+        return 0.0f;
     return (float)music->position / (float)music->sample_rate;
 }
 
 float vaud_music_get_duration(vaud_music_t music) {
     if (!music)
+        return 0.0f;
+    if (music->sample_rate <= 0)
         return 0.0f;
     return (float)music->frame_count / (float)music->sample_rate;
 }

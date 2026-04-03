@@ -457,6 +457,7 @@ set(VIPER_CLI_LINK_LIBS
 add_executable(viper ${VIPER_CLI_SOURCES})
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
 target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
+add_dependencies(viper viper_runtime_components)
 get_target_property(VIPER_LINK_LIBS viper LINK_LIBRARIES)
 message(STATUS "viper LINK_LIBRARIES: ${VIPER_LINK_LIBS}")
 install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

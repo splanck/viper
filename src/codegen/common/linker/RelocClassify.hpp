@@ -144,6 +144,8 @@ inline RelocAction coffX64Action(uint32_t type) {
 
 inline RelocAction coffA64Action(uint32_t type) {
     switch (type) {
+        case coff_a64::kAddr64:
+            return RelocAction::Abs64;
         case coff_a64::kBranch26:
             return RelocAction::Branch26;
         case coff_a64::kPageRel21:

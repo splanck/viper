@@ -369,6 +369,13 @@ WindowsImportPlan generateWindowsImports(LinkArch arch,
     return plan;
 }
 
+void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
+    data.push_back(static_cast<uint8_t>(insn & 0xFF));
+    data.push_back(static_cast<uint8_t>((insn >> 8) & 0xFF));
+    data.push_back(static_cast<uint8_t>((insn >> 16) & 0xFF));
+    data.push_back(static_cast<uint8_t>((insn >> 24) & 0xFF));
+}
+
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                   bool haveVmTrapDefault,
                                   bool needTlsIndex) {
@@ -639,6 +646,257 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
     return obj;
 }
 
+ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynamicSyms,
+                                    bool haveVmTrapDefault,
+                                    bool needTlsIndex) {
+    ObjFile obj;
+    obj.name = "<winarm64-helpers>";
+    obj.format = ObjFileFormat::COFF;
+    obj.is64bit = true;
+    obj.isLittleEndian = true;
+    obj.machine = 0xAA64;
+    obj.sections.push_back(ObjSection{});
+    obj.symbols.push_back(ObjSymbol{});
+
+    ObjSection textSec;
+    textSec.name = ".text";
+    textSec.executable = true;
+    textSec.alloc = true;
+    textSec.alignment = 16;
+
+    ObjSection dataSec;
+    dataSec.name = ".data";
+    dataSec.writable = true;
+    dataSec.alloc = true;
+    dataSec.alignment = 8;
+
+    auto needsHelper = [&](const std::string &name) {
+        return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
+    };
+
+    auto addTextFn = [&](const std::string &name, const std::vector<uint32_t> &insns) {
+        const size_t off = textSec.data.size();
+        for (uint32_t insn : insns)
+            appendArm64Insn(textSec.data, insn);
+
+        ObjSymbol sym;
+        sym.name = name;
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
+    };
+
+    auto addRetFn = [&](const std::string &name) {
+        return addTextFn(name, {0xD65F03C0U}); // ret
+    };
+
+    auto addRetImmFn = [&](const std::string &name, uint16_t imm) {
+        return addTextFn(name, {0xD2800000U | (static_cast<uint32_t>(imm) << 5), 0xD65F03C0U});
+    };
+
+    auto addData = [&](const std::string &name, const std::vector<uint8_t> &bytes, uint32_t align) {
+        while ((dataSec.data.size() % align) != 0)
+            dataSec.data.push_back(0);
+        const size_t off = dataSec.data.size();
+        dataSec.data.insert(dataSec.data.end(), bytes.begin(), bytes.end());
+        ObjSymbol sym;
+        sym.name = name;
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 2;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
+    };
+
+    auto addAbs64DataRef = [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
+        while ((dataSec.data.size() % align) != 0)
+            dataSec.data.push_back(0);
+        const size_t off = dataSec.data.size();
+        dataSec.data.resize(off + 8, 0);
+        ObjSymbol sym;
+        sym.name = name;
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 2;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
+
+        ObjReloc reloc;
+        reloc.offset = off;
+        reloc.type = coff_a64::kAddr64;
+        reloc.symIndex = targetSymIdx;
+        reloc.addend = 0;
+        dataSec.relocs.push_back(reloc);
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
+    };
+
+    auto addImportAlias = [&](const std::string &name, uint32_t targetSymIdx) {
+        if (dynamicSyms.count("__imp_" + name))
+            addAbs64DataRef("__imp_" + name, 8, targetSymIdx);
+    };
+
+    if (needsHelper("_fltused")) {
+        const uint32_t idx = addData("_fltused", {1, 0, 0, 0}, 4);
+        addImportAlias("_fltused", idx);
+    }
+    if (needsHelper("__security_cookie")) {
+        const uint32_t idx =
+            addData("__security_cookie", {0x32, 0xA2, 0xDF, 0x2D, 0x99, 0x2B, 0x00, 0x00}, 8);
+        addImportAlias("__security_cookie", idx);
+    }
+    if (needsHelper("__security_cookie_complement")) {
+        const uint32_t idx = addData(
+            "__security_cookie_complement", {0xCD, 0x5D, 0x20, 0xD2, 0x66, 0xD4, 0xFF, 0xFF}, 8);
+        addImportAlias("__security_cookie_complement", idx);
+    }
+    if (needTlsIndex || needsHelper("_tls_index")) {
+        const uint32_t idx = addData("_tls_index", {0, 0, 0, 0}, 4);
+        addImportAlias("_tls_index", idx);
+    }
+    if (needsHelper("_is_c_termination_complete")) {
+        const uint32_t idx = addData("_is_c_termination_complete", {0, 0, 0, 0}, 4);
+        addImportAlias("_is_c_termination_complete", idx);
+    }
+    if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
+        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
+                                     {0, 0, 0, 0, 0, 0, 0, 0},
+                                     8);
+        addImportAlias("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", idx);
+    }
+    if (needsHelper("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")) {
+        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
+                                     {0, 0, 0, 0, 0, 0, 0, 0},
+                                     8);
+        addImportAlias("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", idx);
+    }
+
+    if (needsHelper("__security_check_cookie")) {
+        const uint32_t idx = addRetFn("__security_check_cookie");
+        addImportAlias("__security_check_cookie", idx);
+    }
+    if (needsHelper("__security_init_cookie")) {
+        const uint32_t idx = addRetFn("__security_init_cookie");
+        addImportAlias("__security_init_cookie", idx);
+    }
+    if (needsHelper("__GSHandlerCheck")) {
+        const uint32_t idx = addRetFn("__GSHandlerCheck");
+        addImportAlias("__GSHandlerCheck", idx);
+    }
+    if (needsHelper("_RTC_CheckStackVars")) {
+        const uint32_t idx = addRetFn("_RTC_CheckStackVars");
+        addImportAlias("_RTC_CheckStackVars", idx);
+    }
+    if (needsHelper("_RTC_InitBase")) {
+        const uint32_t idx = addRetImmFn("_RTC_InitBase", 0);
+        addImportAlias("_RTC_InitBase", idx);
+    }
+    if (needsHelper("_RTC_Shutdown")) {
+        const uint32_t idx = addRetFn("_RTC_Shutdown");
+        addImportAlias("_RTC_Shutdown", idx);
+    }
+    if (needsHelper("__report_rangecheckfailure")) {
+        const uint32_t idx = addTextFn("__report_rangecheckfailure", {0xD4200000U, 0xD65F03C0U});
+        addImportAlias("__report_rangecheckfailure", idx);
+    }
+    if (needsHelper("__chkstk")) {
+        const uint32_t idx = addRetFn("__chkstk");
+        addImportAlias("__chkstk", idx);
+    }
+    if (needsHelper("rt_audio_shutdown")) {
+        const uint32_t idx = addRetFn("rt_audio_shutdown");
+        addImportAlias("rt_audio_shutdown", idx);
+    }
+    if (needsHelper("__vcrt_initialize")) {
+        const uint32_t idx = addRetImmFn("__vcrt_initialize", 1);
+        addImportAlias("__vcrt_initialize", idx);
+    }
+    if (needsHelper("__vcrt_thread_attach")) {
+        const uint32_t idx = addRetImmFn("__vcrt_thread_attach", 1);
+        addImportAlias("__vcrt_thread_attach", idx);
+    }
+    if (needsHelper("__vcrt_thread_detach")) {
+        const uint32_t idx = addRetImmFn("__vcrt_thread_detach", 1);
+        addImportAlias("__vcrt_thread_detach", idx);
+    }
+    if (needsHelper("__vcrt_uninitialize")) {
+        const uint32_t idx = addRetImmFn("__vcrt_uninitialize", 1);
+        addImportAlias("__vcrt_uninitialize", idx);
+    }
+    if (needsHelper("__vcrt_uninitialize_critical")) {
+        const uint32_t idx = addRetFn("__vcrt_uninitialize_critical");
+        addImportAlias("__vcrt_uninitialize_critical", idx);
+    }
+    if (needsHelper("__acrt_initialize")) {
+        const uint32_t idx = addRetImmFn("__acrt_initialize", 1);
+        addImportAlias("__acrt_initialize", idx);
+    }
+    if (needsHelper("__acrt_thread_attach")) {
+        const uint32_t idx = addRetImmFn("__acrt_thread_attach", 1);
+        addImportAlias("__acrt_thread_attach", idx);
+    }
+    if (needsHelper("__acrt_thread_detach")) {
+        const uint32_t idx = addRetImmFn("__acrt_thread_detach", 1);
+        addImportAlias("__acrt_thread_detach", idx);
+    }
+    if (needsHelper("__acrt_uninitialize")) {
+        const uint32_t idx = addRetImmFn("__acrt_uninitialize", 1);
+        addImportAlias("__acrt_uninitialize", idx);
+    }
+    if (needsHelper("__acrt_uninitialize_critical")) {
+        const uint32_t idx = addRetFn("__acrt_uninitialize_critical");
+        addImportAlias("__acrt_uninitialize_critical", idx);
+    }
+    if (needsHelper("__isa_available_init")) {
+        const uint32_t idx = addRetFn("__isa_available_init");
+        addImportAlias("__isa_available_init", idx);
+    }
+    if (needsHelper("__scrt_exe_initialize_mta")) {
+        const uint32_t idx = addRetImmFn("__scrt_exe_initialize_mta", 0);
+        addImportAlias("__scrt_exe_initialize_mta", idx);
+    }
+
+    if (needsHelper("__guard_dispatch_icall_fptr")) {
+        const uint32_t dispatchIdx = addTextFn("__guard_dispatch_icall_stub", {0xD61F0200U});
+        const uint32_t ptrIdx = addAbs64DataRef("__guard_dispatch_icall_fptr", 8, dispatchIdx);
+        addImportAlias("__guard_dispatch_icall_fptr", ptrIdx);
+    }
+
+    if (dynamicSyms.count("vm_trap")) {
+        const size_t off = textSec.data.size();
+        appendArm64Insn(textSec.data, 0x14000000U); // b target
+
+        ObjSymbol vmTrap;
+        vmTrap.name = "vm_trap";
+        vmTrap.binding = ObjSymbol::Global;
+        vmTrap.sectionIndex = 1;
+        vmTrap.offset = off;
+        obj.symbols.push_back(std::move(vmTrap));
+
+        ObjSymbol target;
+        target.name = haveVmTrapDefault ? "vm_trap_default" : "rt_abort";
+        target.binding = ObjSymbol::Undefined;
+        const uint32_t targetIdx = static_cast<uint32_t>(obj.symbols.size());
+        obj.symbols.push_back(std::move(target));
+
+        ObjReloc reloc;
+        reloc.offset = off;
+        reloc.type = coff_a64::kBranch26;
+        reloc.symIndex = targetIdx;
+        reloc.addend = 0;
+        textSec.relocs.push_back(reloc);
+    }
+
+    if (!textSec.data.empty())
+        obj.sections.push_back(std::move(textSec));
+    if (!dataSec.data.empty()) {
+        if (obj.sections.size() == 1)
+            obj.sections.push_back(ObjSection{});
+        obj.sections.push_back(std::move(dataSec));
+    }
+    return obj;
+}
+
 } // namespace
 
 /// @brief Run the full native link pipeline: parse objects → resolve symbols →
@@ -740,9 +998,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 });
             });
 
-        if (opts.arch == LinkArch::X86_64) {
-            ObjFile helperObj =
-                generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
+        if (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64) {
+            ObjFile helperObj = (opts.arch == LinkArch::AArch64)
+                                    ? generateWindowsArm64Helpers(
+                                          dynamicSyms, haveVmTrapDefault, needTlsIndex)
+                                    : generateWindowsX64Helpers(
+                                          dynamicSyms, haveVmTrapDefault, needTlsIndex);
             if (!helperObj.sections.empty()) {
                 const size_t helperIdx = allObjects.size();
                 allObjects.push_back(std::move(helperObj));

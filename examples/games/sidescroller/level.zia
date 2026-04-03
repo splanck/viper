@@ -160,6 +160,15 @@ class Level {
         tilemap.SetCollision(TILE_CONDUIT, 1);
         tilemap.SetCollision(TILE_CONSOLE, 1);
         tilemap.SetCollision(TILE_HOLO_BRIDGE, 1);
+        tilemap.SetCollision(TILE_QUICKSAND, 1);
+        tilemap.SetCollision(TILE_CRUMBLE, 1);
+        tilemap.SetCollision(TILE_ICE_FLOOR, 1);
+        tilemap.SetCollision(TILE_CONVEYOR_L, 1);
+        tilemap.SetCollision(TILE_CONVEYOR_R, 1);
+        tilemap.SetCollision(TILE_STEAM_VENT, 1);
+        tilemap.SetCollision(TILE_DESTRUCTIBLE, 1);
+        tilemap.SetCollision(TILE_SAVE_STATION, 1);
+        tilemap.SetCollision(TILE_LORE_TERMINAL, 1);
     }
 
     // Add enemy spawn

@@ -80,7 +80,7 @@ ZIA_DEMOS=(
     "viperide:${APPS_DIR}/viperide"
     "3dbowling:${GAMES_DIR}/3dbowling"
     "pacman-zia:${GAMES_DIR}/pacman"
-    "sqldb:${APPS_DIR}/sqldb"
+    "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
     "sidescroller:${GAMES_DIR}/sidescroller"
 )

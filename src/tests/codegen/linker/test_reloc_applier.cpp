@@ -533,6 +533,58 @@ int main() {
         CHECK((patched & 0x03FFFFFF) == 1);
     }
 
+    // --- COFF AArch64 ADDR64 writes an absolute 64-bit pointer ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto caller = makeObj("test_addr64_a64.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              /*IMAGE_REL_ARM64_ADDR64=*/14,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target_data.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetData;
+        targetData.name = ".data";
+        targetData.data.resize(16, 0xAB);
+        targetData.writable = true;
+        targetData.alloc = true;
+        targetData.alignment = 8;
+        target.sections.push_back(targetData);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target_data";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        targetSym.offset = 0;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target_data";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        entry.resolvedAddr = 0;
+        layout.globalSyms["target_data"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err);
+        CHECK(ok);
+
+        uint64_t patched = readLE64(layout.sections[0].data.data());
+        CHECK(patched == 0x140001008ULL);
+    }
+
     // --- Unknown reloc type produces error ---
     {
         std::vector<uint8_t> code(8, 0);

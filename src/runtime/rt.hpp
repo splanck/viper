@@ -49,6 +49,24 @@ void rt_trap_clear_recovery(void);
 /// @return Null-terminated error string (thread-local storage).
 const char *rt_trap_get_error(void);
 
+/// @brief Allocate a native EH frame used by native codegen's setjmp path.
+void *rt_native_eh_frame_alloc(void);
+
+/// @brief Free a native EH frame allocated by @ref rt_native_eh_frame_alloc.
+void rt_native_eh_frame_free(void *frame);
+
+/// @brief Push a native EH frame onto the thread-local trap stack.
+void rt_native_eh_push(void *frame);
+
+/// @brief Pop a native EH frame from the thread-local trap stack.
+void rt_native_eh_pop(void *frame);
+
+/// @brief Record the active native resume site for the frame.
+void rt_native_eh_set_site(void *frame, int64_t site_id);
+
+/// @brief Retrieve the active native resume site for the frame.
+int64_t rt_native_eh_get_site(void *frame);
+
 /// @brief Raise a network-specific trap with a categorized error code.
 /// @param msg Human-readable description of the network failure.
 /// @param err_code One of the Err_ConnectionRefused..Err_ProtocolError codes.

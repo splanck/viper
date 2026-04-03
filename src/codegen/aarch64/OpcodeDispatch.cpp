@@ -479,10 +479,10 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
 
         // === Structured Error Handling ===
-        // EH markers are no-ops in native codegen.  The runtime's setjmp/longjmp-
-        // based recovery (rt_trap_set_recovery / rt_trap / longjmp) handles trap
-        // recovery at the C level, so the handler push/pop/entry instructions
-        // need no machine code.  This matches the x86-64 strategy exactly.
+        // NativeEHLowering rewrites structured EH into helper calls and plain
+        // control flow before backend lowering. If raw EH markers still reach
+        // this stage, treat them as inert markers rather than generating new
+        // machine semantics.
         case Opcode::EhPush:
         case Opcode::EhPop:
         case Opcode::EhEntry:
@@ -544,12 +544,13 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::ResumeLabel:
             return true;
 
-        // resume.same and resume.next require full setjmp-based dispatch
-        // that is not yet implemented in either backend.
+        // resume.same / resume.next must have been lowered away by the shared
+        // native EH rewrite before they reach backend instruction selection.
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
-            throw std::runtime_error(std::string("AArch64 native codegen does not yet support ") +
-                                     il::core::toString(ins.op) + ". Use resume.label instead.");
+            throw std::runtime_error(std::string("AArch64 lowering received raw ") +
+                                     il::core::toString(ins.op) +
+                                     " after NativeEHLowering; structured EH rewrite is incomplete.");
 
         default:
             // Opcode not handled - caller should process

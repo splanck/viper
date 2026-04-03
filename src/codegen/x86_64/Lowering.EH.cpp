@@ -6,10 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/codegen/x86_64/Lowering.EH.cpp
-// Purpose: x86-64 MIR lowering for IL exception handling markers and trap
-//          instructions.  eh.push/eh.pop are stubs (setjmp-based recovery is
-//          handled at the runtime level); trap emits a call to rt_trap which
-//          performs longjmp if a thread-local recovery point is set, or aborts.
+// Purpose: x86-64 MIR lowering for residual EH markers and trap instructions.
+//          Structured native EH is rewritten earlier by NativeEHLowering; the
+//          marker emitters here exist only as inert fallbacks if raw EH slips
+//          past the shared rewrite. trap emits a call to rt_trap which performs
+//          longjmp if a thread-local recovery point is set, or aborts.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,20 +22,18 @@
 namespace viper::codegen::x64::lowering {
 
 void emitEhPush(const ILInstr &, MIRBuilder &) {
-    // eh.push registers a handler label for trap recovery.  In native codegen
-    // the runtime's thread-local jmp_buf-based recovery (rt_trap_set_recovery /
-    // rt_trap / longjmp) handles trap recovery at the C level.  Full setjmp-
-    // based handler dispatch in generated code is not yet implemented.
+    // NativeEHLowering should have rewritten eh.push before MIR lowering.
+    // Keep the fallback emitter inert so stale marker instructions do not
+    // invent duplicate machine-level EH state.
 }
 
 void emitEhPop(const ILInstr &, MIRBuilder &) {
-    // eh.pop clears the current handler.  The runtime clears recovery via
-    // rt_trap_clear_recovery when appropriate.
+    // NativeEHLowering should have rewritten eh.pop before MIR lowering.
 }
 
 void emitEhEntry(const ILInstr &, MIRBuilder &) {
-    // Handler block entry — no-op.  The handler block is already materialised
-    // as a MIR block with a label.
+    // Handler entry markers are erased by NativeEHLowering. Leave a no-op
+    // fallback so residual markers remain harmless.
 }
 
 void emitTrap(const ILInstr &, MIRBuilder &builder) {

@@ -6,13 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_videoplayer.c
-// Purpose: Video playback engine — loads AVI containers with MJPEG codec,
-//   decodes video frames to Pixels, manages playback state and A/V sync.
+// Purpose: Video playback engine — loads AVI/MJPEG and OGG/Theora containers,
+//   decodes video frames to Pixels, and manages playback state and sync.
 //
 // Key invariants:
-//   - Frame decode uses rt_jpeg_decode_buffer (MJPEG = sequence of JPEGs).
+//   - Frame decode uses rt_jpeg_decode_buffer for MJPEG and rt_theora for OGG.
 //   - Double-buffered frames: display + decode, swapped on advance.
 //   - AVI sync: frame index = position * fps (no timestamps).
+//   - OGG/Theora playback advances by logical packet order and granule-derived
+//     frame indices; Vorbis tracks in the same OGG container are handed off to
+//     the audio runtime when available.
 //   - Caller must call Update(dt) each frame to advance playback.
 //
 // Links: rt_videoplayer.h, rt_avi.h, rt_pixels.h
@@ -26,15 +29,10 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_theora.h"
 #include "rt_ycbcr.h"
-
-/* OGG reader — declared in audio module, we use extern declarations
- * to avoid cross-module include path dependency. */
-typedef struct ogg_reader_t ogg_reader_t;
-extern ogg_reader_t *ogg_reader_open_mem(const uint8_t *data, size_t len);
-extern void ogg_reader_free(ogg_reader_t *r);
-extern int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data,
-                                   size_t *out_len);
-extern void ogg_reader_rewind(ogg_reader_t *r);
+#include "../audio/rt_ogg.h"
+#ifdef VIPER_ENABLE_AUDIO
+#include "../audio/rt_audio.h"
+#endif
 
 #include <math.h>
 #include <stdint.h>
@@ -185,6 +183,11 @@ typedef struct {
     ogg_reader_t *ogg_reader;
     theora_decoder_t theora;
     uint32_t theora_serial;    /* OGG stream serial for Theora */
+#ifdef VIPER_ENABLE_AUDIO
+    void *audio_track;         /* rt_music */
+    int8_t audio_started;
+    int8_t audio_paused;
+#endif
     /* Video info */
     int32_t width, height;
     double fps;
@@ -200,10 +203,228 @@ typedef struct {
     void *frame_decode;  /* Pixels — scratch for decode (may be reallocated) */
 } rt_videoplayer;
 
+static int32_t theora_granule_to_frame_index(const theora_decoder_t *dec, int64_t granule_pos) {
+    if (!dec || granule_pos < 0)
+        return -1;
+    uint32_t shift = dec->keyframe_granule_shift;
+    if (shift >= 63)
+        return -1;
+    int64_t iframe = (shift == 0) ? granule_pos : (granule_pos >> shift);
+    int64_t pframe = (shift == 0) ? 0 : (granule_pos - (iframe << shift));
+    int64_t frame = iframe + pframe;
+    if (frame < 0 || frame > INT32_MAX)
+        return -1;
+    return (int32_t)frame;
+}
+
+static int copy_theora_frame_to_display(rt_videoplayer *vp,
+                                        const uint8_t *y,
+                                        const uint8_t *cb,
+                                        const uint8_t *cr) {
+    if (!vp || !vp->frame_display || !y || !cb || !cr)
+        return 0;
+
+    px_view *dst = (px_view *)vp->frame_display;
+    if (!dst->data)
+        return 0;
+
+    const theora_decoder_t *dec = &vp->theora;
+    int32_t pic_w = (int32_t)dec->pic_width;
+    int32_t pic_h = (int32_t)dec->pic_height;
+    if (pic_w <= 0 || pic_h <= 0)
+        return 0;
+    if (dst->width != pic_w || dst->height != pic_h)
+        return 0;
+
+    const uint8_t *y_plane = y + dec->pic_y * dec->y_stride + dec->pic_x;
+    const uint8_t *cb_plane = cb + (dec->pic_y / 2) * dec->c_stride + (dec->pic_x / 2);
+    const uint8_t *cr_plane = cr + (dec->pic_y / 2) * dec->c_stride + (dec->pic_x / 2);
+    ycbcr420_to_rgba(
+        y_plane, cb_plane, cr_plane, pic_w, pic_h, dec->y_stride, dec->c_stride, dst->data);
+    return 1;
+}
+
+#ifdef VIPER_ENABLE_AUDIO
+static void videoplayer_set_audio_volume(rt_videoplayer *vp) {
+    if (!vp || !vp->audio_track)
+        return;
+    int64_t vol = (int64_t)(vp->volume * 100.0 + 0.5);
+    rt_music_set_volume(vp->audio_track, vol);
+}
+
+static void videoplayer_start_audio(rt_videoplayer *vp) {
+    if (!vp || !vp->audio_track)
+        return;
+    videoplayer_set_audio_volume(vp);
+    if (vp->audio_paused && vp->audio_started) {
+        rt_music_resume(vp->audio_track);
+    } else {
+        rt_music_seek(vp->audio_track, (int64_t)(vp->position * 1000.0 + 0.5));
+        rt_music_play(vp->audio_track, 0);
+        vp->audio_started = 1;
+    }
+    vp->audio_paused = 0;
+}
+
+static void videoplayer_pause_audio(rt_videoplayer *vp) {
+    if (!vp || !vp->audio_track || !vp->audio_started || vp->audio_paused)
+        return;
+    rt_music_pause(vp->audio_track);
+    vp->audio_paused = 1;
+}
+
+static void videoplayer_stop_audio(rt_videoplayer *vp) {
+    if (!vp || !vp->audio_track)
+        return;
+    rt_music_stop(vp->audio_track);
+    vp->audio_started = 0;
+    vp->audio_paused = 0;
+}
+
+static void videoplayer_seek_audio(rt_videoplayer *vp) {
+    if (!vp || !vp->audio_track || !vp->audio_started)
+        return;
+    rt_music_seek(vp->audio_track, (int64_t)(vp->position * 1000.0 + 0.5));
+}
+#endif
+
+static int ogv_scan_stream(rt_videoplayer *vp) {
+    ogg_reader_t *reader = ogg_reader_open_mem(vp->file_data, vp->file_len);
+    if (!reader)
+        return 0;
+
+    theora_decoder_t dec;
+    theora_decoder_init(&dec);
+
+    int found_theora = 0;
+    int64_t last_granule = -1;
+    const uint8_t *packet = NULL;
+    size_t packet_len = 0;
+    ogg_packet_info_t info;
+
+    while (ogg_reader_next_packet_ex(reader, &packet, &packet_len, &info)) {
+        if (!found_theora) {
+            if (!theora_is_header_packet(packet, packet_len))
+                continue;
+            vp->theora_serial = info.serial_number;
+            found_theora = 1;
+        }
+        if (info.serial_number != vp->theora_serial)
+            continue;
+
+        int rc = theora_decode_header(&dec, packet, packet_len);
+        if (rc < 0) {
+            ogg_reader_free(reader);
+            theora_decoder_free(&dec);
+            return 0;
+        }
+        if (rc == 1 && info.granule_position >= 0)
+            last_granule = info.granule_position;
+    }
+
+    ogg_reader_free(reader);
+    if (!found_theora || !dec.headers_complete || dec.pic_width == 0 || dec.pic_height == 0) {
+        theora_decoder_free(&dec);
+        return 0;
+    }
+
+    vp->width = (int32_t)dec.pic_width;
+    vp->height = (int32_t)dec.pic_height;
+    vp->fps = (dec.fps_num > 0 && dec.fps_den > 0) ? ((double)dec.fps_num / (double)dec.fps_den)
+                                                    : 0.0;
+    if (vp->fps <= 0.0)
+        vp->fps = 1.0;
+    vp->total_frames = (last_granule >= 0) ? (theora_granule_to_frame_index(&dec, last_granule) + 1)
+                                           : 0;
+    if (vp->total_frames < 0)
+        vp->total_frames = 0;
+    vp->duration = (vp->total_frames > 0) ? ((double)vp->total_frames / vp->fps) : 0.0;
+
+    theora_decoder_free(&dec);
+    return 1;
+}
+
+static int ogv_prepare_playback(rt_videoplayer *vp) {
+    if (!vp)
+        return 0;
+
+    if (!vp->ogg_reader) {
+        vp->ogg_reader = ogg_reader_open_mem(vp->file_data, vp->file_len);
+        if (!vp->ogg_reader)
+            return 0;
+    } else {
+        ogg_reader_rewind(vp->ogg_reader);
+    }
+
+    theora_decoder_free(&vp->theora);
+    theora_decoder_init(&vp->theora);
+
+    const uint8_t *packet = NULL;
+    size_t packet_len = 0;
+    ogg_packet_info_t info;
+    while (ogg_reader_next_packet_ex(vp->ogg_reader, &packet, &packet_len, &info)) {
+        if (info.serial_number != vp->theora_serial)
+            continue;
+        int rc = theora_decode_header(&vp->theora, packet, packet_len);
+        if (rc < 0)
+            return 0;
+        if (vp->theora.headers_complete)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int ogv_decode_next_frame(rt_videoplayer *vp) {
+    if (!vp || !vp->ogg_reader)
+        return 0;
+
+    const uint8_t *packet = NULL;
+    size_t packet_len = 0;
+    ogg_packet_info_t info;
+    while (ogg_reader_next_packet_ex(vp->ogg_reader, &packet, &packet_len, &info)) {
+        if (info.serial_number != vp->theora_serial)
+            continue;
+
+        const uint8_t *y = NULL;
+        const uint8_t *cb = NULL;
+        const uint8_t *cr = NULL;
+        int rc = theora_decode_frame(&vp->theora, packet, packet_len, &y, &cb, &cr);
+        if (rc != 0)
+            continue;
+        if (!copy_theora_frame_to_display(vp, y, cb, cr))
+            return 0;
+
+        int32_t frame_index = theora_granule_to_frame_index(&vp->theora, info.granule_position);
+        if (frame_index < 0)
+            frame_index = vp->current_frame + 1;
+        vp->current_frame = frame_index;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
+    if (!vp)
+        return 0;
+    if (target_frame < 0)
+        return 1;
+    while (vp->current_frame < target_frame) {
+        if (!ogv_decode_next_frame(vp))
+            return 0;
+    }
+    return 1;
+}
+
 static void videoplayer_finalizer(void *obj) {
     rt_videoplayer *vp = (rt_videoplayer *)obj;
     if (vp->container_type == 0)
         avi_free(&vp->avi);
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->audio_track)
+        rt_music_destroy(vp->audio_track);
+#endif
     if (vp->ogg_reader)
         ogg_reader_free(vp->ogg_reader);
     theora_decoder_free(&vp->theora);
@@ -259,14 +480,6 @@ void *rt_videoplayer_open(void *path) {
         return NULL;
     }
 
-    /* OGG/Theora decode is not complete enough to expose as a working runtime
-     * surface yet. Reject it here instead of returning a player that only
-     * produces placeholder frames. */
-    if (is_ogg) {
-        free(data);
-        return NULL;
-    }
-
     /* Create VideoPlayer object */
     rt_videoplayer *vp =
         (rt_videoplayer *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videoplayer));
@@ -277,6 +490,37 @@ void *rt_videoplayer_open(void *path) {
     memset(vp, 0, sizeof(*vp));
     vp->file_data = data;
     vp->file_len = (size_t)file_len;
+    vp->playing = 0;
+    vp->position = 0.0;
+    vp->current_frame = -1;
+    vp->volume = 1.0;
+    rt_obj_set_finalizer(vp, videoplayer_finalizer);
+
+    if (is_ogg) {
+        vp->container_type = 1;
+        if (!ogv_scan_stream(vp)) {
+            if (rt_obj_release_check0(vp))
+                rt_obj_free(vp);
+            return NULL;
+        }
+        vp->frame_display = rt_pixels_new(vp->width, vp->height);
+        vp->frame_decode = NULL;
+        if (!vp->frame_display || !ogv_prepare_playback(vp)) {
+            if (rt_obj_release_check0(vp))
+                rt_obj_free(vp);
+            return NULL;
+        }
+        if (vp->total_frames > 0 && !ogv_decode_until_frame(vp, 0)) {
+            if (rt_obj_release_check0(vp))
+                rt_obj_free(vp);
+            return NULL;
+        }
+#ifdef VIPER_ENABLE_AUDIO
+        vp->audio_track = rt_music_load(path);
+        videoplayer_set_audio_volume(vp);
+#endif
+        return vp;
+    }
 
     vp->container_type = 0;
     if (avi_parse(&vp->avi, data, (size_t)file_len) != 0) {
@@ -290,17 +534,11 @@ void *rt_videoplayer_open(void *path) {
     vp->fps = vp->avi.video.fps;
     vp->duration = vp->avi.video.duration;
     vp->total_frames = vp->avi.video_frame_count;
-    vp->playing = 0;
-    vp->position = 0.0;
-    vp->current_frame = -1;
-    vp->volume = 1.0;
 
     /* Stable frame buffer — pre-allocated, content copied in each frame.
      * This prevents GC from collecting the display Pixels mid-frame. */
     vp->frame_display = rt_pixels_new(vp->width, vp->height);
     vp->frame_decode = NULL;
-
-    rt_obj_set_finalizer(vp, videoplayer_finalizer);
 
     /* Decode first frame immediately so get_Frame works before Play */
     if (vp->total_frames > 0) {
@@ -325,12 +563,22 @@ void *rt_videoplayer_open(void *path) {
 
 void rt_videoplayer_play(void *obj) {
     if (!obj) return;
-    ((rt_videoplayer *)obj)->playing = 1;
+    rt_videoplayer *vp = (rt_videoplayer *)obj;
+    vp->playing = 1;
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->container_type == 1)
+        videoplayer_start_audio(vp);
+#endif
 }
 
 void rt_videoplayer_pause(void *obj) {
     if (!obj) return;
-    ((rt_videoplayer *)obj)->playing = 0;
+    rt_videoplayer *vp = (rt_videoplayer *)obj;
+    vp->playing = 0;
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->container_type == 1)
+        videoplayer_pause_audio(vp);
+#endif
 }
 
 void rt_videoplayer_stop(void *obj) {
@@ -339,6 +587,12 @@ void rt_videoplayer_stop(void *obj) {
     vp->playing = 0;
     vp->position = 0.0;
     vp->current_frame = -1;
+    if (vp->container_type == 1)
+        ogv_prepare_playback(vp);
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->container_type == 1)
+        videoplayer_stop_audio(vp);
+#endif
 }
 
 void rt_videoplayer_seek(void *obj, double seconds) {
@@ -347,7 +601,19 @@ void rt_videoplayer_seek(void *obj, double seconds) {
     if (seconds < 0.0) seconds = 0.0;
     if (seconds > vp->duration) seconds = vp->duration;
     vp->position = seconds;
-    vp->current_frame = -1; /* force re-decode on next Update */
+    if (vp->container_type == 1) {
+        int32_t target = (int32_t)(vp->position * vp->fps);
+        if (target >= vp->total_frames)
+            target = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
+        vp->current_frame = -1;
+        if (ogv_prepare_playback(vp) && target >= 0)
+            ogv_decode_until_frame(vp, target);
+#ifdef VIPER_ENABLE_AUDIO
+        videoplayer_seek_audio(vp);
+#endif
+    } else {
+        vp->current_frame = -1; /* force re-decode on next Update */
+    }
 }
 
 void rt_videoplayer_update(void *obj, double dt) {
@@ -355,13 +621,39 @@ void rt_videoplayer_update(void *obj, double dt) {
     rt_videoplayer *vp = (rt_videoplayer *)obj;
     if (!vp->playing) return;
 
-    vp->position += dt;
+    if (vp->container_type == 1) {
+#ifdef VIPER_ENABLE_AUDIO
+        if (vp->audio_track && vp->audio_started && rt_music_is_playing(vp->audio_track)) {
+            vp->position = (double)rt_music_get_position(vp->audio_track) / 1000.0;
+        } else
+#endif
+        {
+            vp->position += dt;
+        }
+    } else {
+        vp->position += dt;
+    }
 
     /* Determine target frame */
     int32_t target = (int32_t)(vp->position * vp->fps);
     if (target >= vp->total_frames) {
         vp->playing = 0;
         vp->position = vp->duration;
+#ifdef VIPER_ENABLE_AUDIO
+        if (vp->container_type == 1)
+            videoplayer_stop_audio(vp);
+#endif
+        return;
+    }
+
+    if (vp->container_type == 1) {
+        if (target != vp->current_frame && target >= 0) {
+            if (!ogv_decode_until_frame(vp, target)) {
+                vp->playing = 0;
+                if (vp->duration > 0.0)
+                    vp->position = vp->duration;
+            }
+        }
         return;
     }
 
@@ -390,7 +682,12 @@ void rt_videoplayer_set_volume(void *obj, double vol) {
     if (!obj) return;
     if (vol < 0.0) vol = 0.0;
     if (vol > 1.0) vol = 1.0;
-    ((rt_videoplayer *)obj)->volume = vol;
+    rt_videoplayer *vp = (rt_videoplayer *)obj;
+    vp->volume = vol;
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->container_type == 1)
+        videoplayer_set_audio_volume(vp);
+#endif
 }
 
 int64_t rt_videoplayer_get_width(void *obj) {
@@ -406,7 +703,16 @@ double rt_videoplayer_get_duration(void *obj) {
 }
 
 double rt_videoplayer_get_position(void *obj) {
-    return obj ? ((rt_videoplayer *)obj)->position : 0.0;
+    if (!obj)
+        return 0.0;
+    rt_videoplayer *vp = (rt_videoplayer *)obj;
+#ifdef VIPER_ENABLE_AUDIO
+    if (vp->container_type == 1 && vp->audio_track && vp->audio_started &&
+        rt_music_is_playing(vp->audio_track)) {
+        return (double)rt_music_get_position(vp->audio_track) / 1000.0;
+    }
+#endif
+    return vp->position;
 }
 
 int64_t rt_videoplayer_get_is_playing(void *obj) {

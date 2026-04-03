@@ -89,6 +89,7 @@ constexpr uint32_t kBranch26 = 3;   // IMAGE_REL_ARM64_BRANCH26
 constexpr uint32_t kPageRel21 = 4;  // IMAGE_REL_ARM64_PAGEBASE_REL21
 constexpr uint32_t kPageOff12A = 6; // IMAGE_REL_ARM64_PAGEOFFSET_12A
 constexpr uint32_t kPageOff12L = 7; // IMAGE_REL_ARM64_PAGEOFFSET_12L
+constexpr uint32_t kAddr64 = 14;    // IMAGE_REL_ARM64_ADDR64
 constexpr uint32_t kBranch19 = 8;   // IMAGE_REL_ARM64_BRANCH19
 } // namespace coff_a64
 

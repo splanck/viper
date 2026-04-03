@@ -249,7 +249,7 @@ int theora_is_header_packet(const uint8_t *data, size_t len) {
 
 int theora_decode_header(theora_decoder_t *dec, const uint8_t *data,
                           size_t len) {
-    if (!dec || !data || len < 7)
+    if (!dec || !data || len < 1)
         return -1;
 
     /* Check if this is a data packet (not a header) */

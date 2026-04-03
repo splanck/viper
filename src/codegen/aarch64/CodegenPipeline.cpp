@@ -14,6 +14,7 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 
+#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
@@ -437,6 +438,8 @@ PipelineResult CodegenPipeline::run() {
         result.stderr_text = err.str();
         return result;
     }
+
+    viper::codegen::common::lowerNativeEh(mod);
 
     if (!runIlOptimizations(mod, opts_.optimize)) {
         err << "error: failed to run AArch64 IL optimization pipeline\n";

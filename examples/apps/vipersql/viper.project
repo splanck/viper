@@ -1,0 +1,20 @@
+# ViperSQL — SQL database server written in Zia
+project vipersql
+version 0.2.0
+lang zia
+entry vipersql.zia
+
+# === Package Metadata ===
+package-name ViperSQL
+package-description "SQL database server with PostgreSQL wire protocol compatibility"
+package-identifier org.viper-lang.vipersql
+
+# === Assets ===
+asset docs docs
+asset README.md .
+
+# === File Associations ===
+file-assoc .sql "SQL Script" application/sql
+
+# === Shortcuts ===
+shortcut-menu on

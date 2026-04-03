@@ -890,6 +890,35 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Runtime getters that return opaque objects must preserve the concrete
+/// runtime class so chained instance calls lower as direct runtime calls.
+TEST(ZiaBugFixes, BugFE008_RuntimeObjectGetterKeepsConcreteClass) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Sound;
+
+func start() {
+    var bank = SoundBank.New();
+    var voice = bank.Get("music_menu").PlayLoop(45, 0);
+    Viper.Terminal.SayInt(voice);
+}
+)";
+    CompilerInput input{.source = source, .path = "bug_fe008_soundbank_get.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Sound.SoundBank.Get"), 1u);
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Sound.Sound.PlayLoop"), 1u);
+    EXPECT_FALSE(hasOpcode(*mainFn, il::core::Opcode::CallIndirect));
+}
+
 //===----------------------------------------------------------------------===//
 // BUG-FE-009: List[Boolean].get(i) type mismatch in boolean expressions
 //===----------------------------------------------------------------------===//

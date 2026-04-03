@@ -482,6 +482,12 @@ struct ParsedSignature {
     /// a typed sequence/collection type instead of an opaque pointer.
     std::string elementTypeName;
 
+    /// @brief Runtime class name for typed object returns (e.g. "Viper.Sound.Sound"
+    /// from "obj<Viper.Sound.Sound>").
+    /// @details Empty for plain obj/ptr returns. When non-empty, frontends should surface
+    /// the return value as that concrete runtime class instead of an opaque pointer.
+    std::string objectTypeName;
+
     /// @brief Check if the signature was parsed successfully.
     [[nodiscard]] bool isValid() const {
         return returnType != ILScalarType::Unknown;

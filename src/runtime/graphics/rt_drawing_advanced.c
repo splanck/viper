@@ -670,6 +670,46 @@ void rt_canvas_ellipse_frame(
     }
 }
 
+void rt_canvas_ellipse_alpha(void *canvas_ptr,
+                             int64_t cx,
+                             int64_t cy,
+                             int64_t rx,
+                             int64_t ry,
+                             int64_t color,
+                             int64_t alpha) {
+    if (!canvas_ptr || rx <= 0 || ry <= 0)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win || alpha <= 0)
+        return;
+
+    if (alpha >= 255) {
+        rt_canvas_ellipse(canvas_ptr, cx, cy, rx, ry, color);
+        return;
+    }
+
+    if (rx == ry) {
+        rt_canvas_disc_alpha(canvas_ptr, cx, cy, rx, color, alpha);
+        return;
+    }
+
+    uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
+    const double ry2 = (double)ry * (double)ry;
+
+    for (int64_t dy = -ry; dy <= ry; ++dy) {
+        double norm = 1.0 - ((double)dy * (double)dy) / ry2;
+        if (norm < 0.0)
+            continue;
+
+        int64_t span = (int64_t)floor((double)rx * sqrt(norm));
+        int32_t py = (int32_t)(cy + dy);
+        for (int64_t dx = -span; dx <= span; ++dx) {
+            vgfx_pset_alpha(canvas->gfx_win, (int32_t)(cx + dx), py, argb);
+        }
+    }
+}
+
 //=============================================================================
 // Advanced Curves & Shapes
 //=============================================================================

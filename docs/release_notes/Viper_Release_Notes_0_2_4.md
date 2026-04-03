@@ -37,11 +37,12 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Bytecode VM CALL_NATIVE Expansion** — Native function index widened from 8-bit to 16-bit (255 → 65,535 max native references) to accommodate the growing runtime. Bytecode format version bumped to v2.
 - **Zia Runtime Extern Signatures** — `rtgen` now emits full parameter types (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. Enables correct string equality comparison for runtime methods returning `str` (e.g., `LevelData.ObjectType() == "enemy"` now emits `Viper.String.Equals` instead of `ICmpEq`).
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
-- **VAPS Packaging Overhaul** — 10 improvements, 57 new tests, Windows installer stub, symlink safety, dry-run mode.
+- **VAPS Packaging Overhaul** — InstallerStub rewrite with full Windows .exe generation, WindowsPackageBuilder improvements, ZipWriter enhancements, PkgVerify expansion, symlink safety, dry-run mode, 57+ new tests.
 - **GUI Runtime Hardening** — Theme ownership moved to per-app structs (no more mutating built-in dark/light singletons), modal dialog routing follows the real dialog stack, overlay timing uses wall-clock time, platform text input events (`VGFX_EVENT_TEXT_INPUT`) wired through macOS/Win32/X11 backends replacing ASCII key synthesis, dropdown placeholder ownership fix, notification compaction, and command palette UTF-8 query path.
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
+- **ViperSQL Client-Server Architecture** — SQLdb demo renamed to ViperSQL and restructured as a database server with `vsql` interactive client. Server entry point with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--log-queries`, `--repl`). PG wire protocol client library. SHA-256 password hashing. Query logging.
 - **3D Bowling Game Demo** — Multi-file 3D bowling game (12 files, 3,100+ LOC) with Physics3D pin collision, ball spin/hook mechanics, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
 - **Documentation & Code Quality** — 700+ runtime functions documented, 39 stale doc files deleted, 70+ factual errors fixed, Bible code audit across 12 chapters, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against source with Zia examples), runtime surface audit test, Quat.New parameter order fix. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
 
@@ -49,9 +50,9 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 78 | +78 |
+| Commits | — | 79 | +79 |
 | Source files | 2,671 | 2,797 | +126 |
-| Production SLOC | ~348K | ~416K | +68K |
+| Production SLOC | ~348K | ~418K | +70K |
 | Test count | 1,351 | 1,390 | +39 |
 
 ---
@@ -269,6 +270,9 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **`catch(e)` binding** — New `rt_throw_msg_set`/`rt_throw_msg_get` TLS runtime functions and `ErrGetMsg` IL opcode. `throw` stores the message, `catch` reads it as a String binding.
 - **`String.Contains()` method** — Added `Contains` method alias to the String class mapping to the existing `StrHas` implementation.
 
+**BASIC frontend:**
+- **Constant folding for builtins** — `FoldBuiltins.cpp` evaluates `ABS`, `INT`, `SGN`, `SQR`, `LOG`, `EXP`, `SIN`, `COS`, `TAN`, `ATN`, `ASC`, `CHR$`, `LEN`, `LEFT$`, `RIGHT$`, `MID$`, `STR$`, `VAL`, `STRING$`, `SPACE$`, `LCASE$`, `UCASE$`, and `LTRIM$`/`RTRIM$`/`TRIM$` at compile time when arguments are constant. Eliminates runtime calls for constant expressions.
+
 **x86_64 backend:**
 - **CoffWriter cross-section symbol resolution** — Rodata symbols (`.LC_str_*`) were emitted as undefined in the COFF symbol table, causing LNK2001 linker errors. Rodata symbols now processed first with text relocations redirected to defined entries.
 - **X64BinaryEncoder runtime symbol mapping** — External calls used raw IL names (`Viper.Terminal.PrintStr`) instead of C runtime names (`rt_print_str`). Added `mapRuntimeSymbol()` matching the AArch64 pattern.
@@ -300,6 +304,8 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 **Native linker:**
 - `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
 - `-lshell32` — Added to Windows linker command for `DragQueryFile`/`DragAcceptFiles` GUI support.
+- **PeExeWriter hardening** — Import table construction and section alignment fixes for Windows native executables.
+- **NativeLinker improvements** — Enhanced platform detection and link-time error diagnostics.
 
 **Runtime:**
 - `SetErrorMode` + `_set_abort_behavior` added to `rt_init_stack_safety` on Windows to suppress crash/assert dialog boxes in natively compiled programs.
@@ -551,19 +557,21 @@ Bytecode format version bumped from 1 to 2. Both `BytecodeVM.cpp` (switch dispat
 
 ### VAPS Packaging System
 
-Comprehensive overhaul with 10 improvements:
-- Shared `PkgUtils.hpp` (readFile, name normalizers, safeDirectoryIterate)
+Comprehensive overhaul with InstallerStub rewrite and expanded platform support:
+- **InstallerStub rewrite** — Major rework of the Windows self-extracting installer stub with improved PE generation, IAT wiring, and ZipReader extraction
+- **WindowsPackageBuilder** — Rewritten with improved .exe output, shortcut creation, and registry integration
+- **ZipWriter enhancements** — Extended API for multi-file archive creation
+- **PkgVerify expansion** — Expanded structural checks for ZIP, .deb, and PE output validation
+- Shared `PkgUtils.hpp` (readFile, name normalizers, safeDirectoryIterate, new utility functions)
 - Warn on missing icons/assets/invalid versions (eliminate silent failures)
 - Symlink safety with root-escape detection in all directory traversals
 - `package-category` and `package-depends` manifest directives
 - ARM64 Windows PE support (machine type 0xAA64)
 - `--dry-run` and `--verbose` CLI modes for package content preview
-- Post-build verification (`PkgVerify`) for ZIP, .deb, and PE structural checks
 - `.lnk` LinkInfo with VolumeID + LocalBasePath for reliable shortcut resolution
-- Windows installer stub architecture (InstallerStubGen x86-64 emitter, IAT wiring, ZipReader)
 - Fix DEFLATE double-free crash and `.lnk` missing LinkInfo
 
-57 new packaging tests.
+57+ new packaging tests.
 
 ---
 
@@ -657,6 +665,9 @@ Architectural improvements to the GUI subsystem for correctness and platform fid
 #### Platform Text Input
 - **`VGFX_EVENT_TEXT_INPUT`** — New event type carries translated Unicode text from the OS input method. Wired through macOS (`interpretKeyEvents:`/`insertText:`), Win32 (`WM_CHAR`), and X11 (`XLookupString`) backends.
 - **GUI `KEY_CHAR` delivery** — `vg_event_from_platform` converts text-input events to `VG_EVENT_KEY_CHAR`, replacing the old US-layout ASCII key synthesis that broke on non-QWERTY keyboards and dead keys.
+
+#### Code Editor Enhancements
+- **`vg_codeeditor.c` major expansion** — Substantial rework of the GUI code editor widget with improved text handling, selection, scrolling, and rendering
 
 #### Widget Contract Fixes
 - Dropdown placeholder strings copied instead of borrowing freed temporaries

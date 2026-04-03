@@ -55,7 +55,7 @@ il::core::Type::Kind parseKindToken(std::string_view token) {
         return Kind::F64;
     if (token == "str" || token == "string")
         return Kind::Str;
-    if (token.rfind("ptr", 0) == 0 || token == "obj")
+    if (token.rfind("ptr", 0) == 0 || token == "obj" || token.rfind("obj<", 0) == 0)
         return Kind::Ptr;
     // Parameterized seq/list types (e.g. "seq<str>", "list<i64>") are opaque
     // pointers at the IL level. The element type is used only by Zia-layer sema

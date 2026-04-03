@@ -237,7 +237,9 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice);
 /// @return Music handle on success, NULL on failure.
 vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path);
 
-/// @brief Load an OGG Vorbis file for streaming music playback.
+/// @brief Load a Vorbis logical stream from an OGG container for streaming music playback.
+/// @details Accepts plain `.ogg` audio files and mixed logical-stream containers
+///          such as `.ogv`, selecting the first Vorbis stream it finds.
 vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path);
 
 /// @brief Load an MP3 file for streaming music playback.

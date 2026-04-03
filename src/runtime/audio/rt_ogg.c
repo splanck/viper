@@ -21,6 +21,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct ogg_stream_state_t {
+    uint32_t serial_number;
+    ogg_packet_t partial;
+    int saw_bos;
+    struct ogg_stream_state_t *next;
+};
+
+struct ogg_packet_node_t {
+    uint8_t *data;
+    size_t len;
+    ogg_packet_info_t info;
+    struct ogg_packet_node_t *next;
+};
+
 //===----------------------------------------------------------------------===//
 // CRC-32 for OGG (polynomial 0x04C11DB7, init 0)
 //===----------------------------------------------------------------------===//
@@ -42,13 +56,6 @@ static void ogg_crc_init(void) {
         ogg_crc_table[i] = c;
     }
     ogg_crc_table_init = 1;
-}
-
-static uint32_t ogg_crc32(const uint8_t *data, size_t len) {
-    uint32_t crc = 0;
-    for (size_t i = 0; i < len; i++)
-        crc = (crc << 8) ^ ogg_crc_table[((crc >> 24) ^ data[i]) & 0xFF];
-    return crc;
 }
 
 //===----------------------------------------------------------------------===//
@@ -136,10 +143,8 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
     uint8_t crc_header[27];
     memcpy(crc_header, header, 27);
     crc_header[22] = crc_header[23] = crc_header[24] = crc_header[25] = 0;
-    uint32_t crc = ogg_crc32(crc_header, 27);
-    crc = ogg_crc32(r->page.segment_table, r->page.num_segments) ^ crc;
-    // For proper CRC we need to compute over the concatenated data:
-    // We'll just compute it incrementally
+    // For proper CRC we need to compute over the concatenated data.
+    // We currently parse permissively and do not reject on CRC mismatch.
     {
         uint32_t full_crc = 0;
         for (size_t i = 0; i < 27; i++)
@@ -156,8 +161,6 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
         (void)full_crc;
     }
 
-    r->page_valid = 1;
-    r->segment_idx = 0;
     *body_out = body;
     *body_len_out = body_len;
     return 1;
@@ -181,6 +184,140 @@ static void packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
     }
     memcpy(pkt->data + pkt->len, data, len);
     pkt->len += len;
+}
+
+static void packet_reset(ogg_packet_t *pkt) {
+    if (!pkt)
+        return;
+    pkt->len = 0;
+    pkt->complete = 0;
+}
+
+static ogg_stream_state_t *find_stream_state(ogg_reader_t *r, uint32_t serial_number) {
+    ogg_stream_state_t *cur = r->streams;
+    while (cur) {
+        if (cur->serial_number == serial_number)
+            return cur;
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+static ogg_stream_state_t *get_stream_state(ogg_reader_t *r, uint32_t serial_number) {
+    ogg_stream_state_t *state = find_stream_state(r, serial_number);
+    if (state)
+        return state;
+    state = (ogg_stream_state_t *)calloc(1, sizeof(*state));
+    if (!state)
+        return NULL;
+    state->serial_number = serial_number;
+    state->next = r->streams;
+    r->streams = state;
+    return state;
+}
+
+static void free_stream_states(ogg_reader_t *r) {
+    ogg_stream_state_t *cur = r->streams;
+    while (cur) {
+        ogg_stream_state_t *next = cur->next;
+        free(cur->partial.data);
+        free(cur);
+        cur = next;
+    }
+    r->streams = NULL;
+}
+
+static void clear_ready_packets(ogg_reader_t *r) {
+    ogg_packet_node_t *node = r->ready_head;
+    while (node) {
+        ogg_packet_node_t *next = node->next;
+        free(node->data);
+        free(node);
+        node = next;
+    }
+    r->ready_head = NULL;
+    r->ready_tail = NULL;
+}
+
+static int queue_completed_packet(ogg_reader_t *r,
+                                  ogg_stream_state_t *state,
+                                  int64_t granule_position,
+                                  uint8_t bos,
+                                  uint8_t eos) {
+    if (!r || !state || state->partial.len == 0)
+        return 0;
+
+    ogg_packet_node_t *node = (ogg_packet_node_t *)calloc(1, sizeof(*node));
+    if (!node)
+        return 0;
+
+    node->data = (uint8_t *)malloc(state->partial.len);
+    if (!node->data) {
+        free(node);
+        return 0;
+    }
+
+    memcpy(node->data, state->partial.data, state->partial.len);
+    node->len = state->partial.len;
+    node->info.serial_number = state->serial_number;
+    node->info.granule_position = granule_position;
+    node->info.bos = bos;
+    node->info.eos = eos;
+
+    if (r->ready_tail)
+        r->ready_tail->next = node;
+    else
+        r->ready_head = node;
+    r->ready_tail = node;
+
+    packet_reset(&state->partial);
+    return 1;
+}
+
+static int process_page_packets(ogg_reader_t *r, const uint8_t *body, size_t body_len) {
+    ogg_stream_state_t *state = get_stream_state(r, r->page.serial_number);
+    if (!state)
+        return 0;
+
+    int last_complete_segment = -1;
+    for (int i = 0; i < r->page.num_segments; i++) {
+        if (r->page.segment_table[i] < 255)
+            last_complete_segment = i;
+    }
+
+    size_t offset = 0;
+    int discarding_continuation = ((r->page.header_type & 0x01) != 0 && state->partial.len == 0);
+
+    for (int i = 0; i < r->page.num_segments; i++) {
+        uint8_t seg_size = r->page.segment_table[i];
+        if (offset + seg_size > body_len)
+            return 0;
+
+        if (!discarding_continuation)
+            packet_append(&state->partial, body + offset, seg_size);
+        offset += seg_size;
+
+        if (seg_size < 255) {
+            if (discarding_continuation) {
+                discarding_continuation = 0;
+                continue;
+            }
+            int64_t packet_granule =
+                (i == last_complete_segment) ? r->page.granule_position : -1;
+            uint8_t bos = 0;
+            uint8_t eos = 0;
+            if ((r->page.header_type & 0x02) && !state->saw_bos) {
+                bos = 1;
+                state->saw_bos = 1;
+            }
+            if ((r->page.header_type & 0x04) && i == last_complete_segment)
+                eos = 1;
+            if (!queue_completed_packet(r, state, packet_granule, bos, eos))
+                return 0;
+        }
+    }
+
+    return 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,7 +358,9 @@ void ogg_reader_free(ogg_reader_t *r) {
         return;
     if (r->file)
         fclose(r->file);
-    free(r->packet.data);
+    free(r->last_packet_data);
+    free_stream_states(r);
+    clear_ready_packets(r);
     free(r);
 }
 
@@ -233,62 +372,52 @@ void ogg_reader_rewind(ogg_reader_t *r) {
         fseek(r->file, 0, SEEK_SET);
     if (r->mem)
         r->mem_pos = 0;
-    r->page_valid = 0;
-    r->segment_idx = 0;
-    r->packet.len = 0;
-    r->packet.complete = 0;
+    memset(&r->page, 0, sizeof(r->page));
+    free(r->last_packet_data);
+    r->last_packet_data = NULL;
+    free_stream_states(r);
+    clear_ready_packets(r);
 }
 
 /// @brief Read the next complete OGG packet (may span multiple pages). Returns 1 on success.
 int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len) {
-    if (!r)
+    return ogg_reader_next_packet_ex(r, out_data, out_len, NULL);
+}
+
+int ogg_reader_next_packet_ex(ogg_reader_t *r,
+                              const uint8_t **out_data,
+                              size_t *out_len,
+                              ogg_packet_info_t *out_info) {
+    if (!r || !out_data || !out_len)
         return 0;
 
-    // Reset packet buffer
-    r->packet.len = 0;
-    r->packet.complete = 0;
+    free(r->last_packet_data);
+    r->last_packet_data = NULL;
 
-    while (!r->packet.complete) {
-        // If we need a new page, read one
-        uint8_t *page_body = NULL;
-        size_t page_body_len = 0;
-
-        if (!r->page_valid || r->segment_idx >= r->page.num_segments) {
-            if (!ogg_read_page(r, &page_body, &page_body_len)) {
-                // EOF — return whatever we have if non-empty
-                if (r->packet.len > 0) {
-                    r->packet.complete = 1;
-                    break;
-                }
-                return 0;
-            }
-
-            // Process segments from this page
-            size_t offset = 0;
-            for (int i = 0; i < r->page.num_segments; i++) {
-                uint8_t seg_size = r->page.segment_table[i];
-                packet_append(&r->packet, page_body + offset, seg_size);
-                offset += seg_size;
-
-                // A segment size < 255 marks the end of a packet
-                if (seg_size < 255) {
-                    r->packet.complete = 1;
-                    r->segment_idx = i + 1;
-                    free(page_body);
-                    goto done;
-                }
-            }
-            // All segments were 255 — packet continues on next page
-            r->page_valid = 0;
-            free(page_body);
-        }
-    }
-
-done:
-    if (r->packet.len > 0) {
-        *out_data = r->packet.data;
-        *out_len = r->packet.len;
+    if (r->ready_head) {
+        ogg_packet_node_t *node = r->ready_head;
+        r->ready_head = node->next;
+        if (!r->ready_head)
+            r->ready_tail = NULL;
+        r->last_packet_data = node->data;
+        *out_data = r->last_packet_data;
+        *out_len = node->len;
+        if (out_info)
+            *out_info = node->info;
+        free(node);
         return 1;
     }
-    return 0;
+
+    while (!r->ready_head) {
+        uint8_t *page_body = NULL;
+        size_t page_body_len = 0;
+        if (!ogg_read_page(r, &page_body, &page_body_len))
+            return 0;
+        int ok = process_page_packets(r, page_body, page_body_len);
+        free(page_body);
+        if (!ok)
+            return 0;
+    }
+
+    return ogg_reader_next_packet_ex(r, out_data, out_len, out_info);
 }

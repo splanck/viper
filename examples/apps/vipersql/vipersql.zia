@@ -1,0 +1,320 @@
+// vipersql.zia — ViperSQL Database Server Entry Point
+//
+// Primary entry point for the ViperSQL database server.
+// Starts a PostgreSQL wire protocol-compatible server that accepts
+// connections from psql, JDBC, ODBC, and the vsql client tool.
+//
+// Usage:
+//   viper run examples/apps/vipersql/
+//   viper run examples/apps/vipersql/ -- --port 5432
+//   viper run examples/apps/vipersql/ -- --repl
+//
+// Connect via vsql:
+//   viper run examples/apps/vipersql/client/vsql.zia
+//
+// Connect via psql:
+//   psql -h localhost -p 5432 -U admin -d main
+
+module vipersql;
+
+bind Terminal = Viper.Terminal;
+bind String = Viper.String;
+bind Fmt = Viper.Fmt;
+bind Network = Viper.Network;
+bind Threads = Viper.Threads;
+bind Parse = Viper.Core.Parse;
+bind Env = Viper.Environment;
+
+bind "./engine/server";
+bind "./server/connection";
+bind "./server/threadpool";
+bind "./engine/executor";
+
+//=============================================================================
+// DEFAULT CONFIGURATION
+//=============================================================================
+
+final DEFAULT_PG_PORT = 5432;
+final DEFAULT_TEXT_PORT = 5433;
+final DEFAULT_MAX_CONNECTIONS = 100;
+final VERSION = "0.2.0";
+
+//=============================================================================
+// CONFIGURATION
+//=============================================================================
+
+class ServerConfig {
+    expose Integer pgPort;
+    expose Integer textPort;
+    expose Integer maxConnections;
+    expose Boolean logQueries;
+    expose Boolean replMode;
+    expose String dataDir;
+
+    expose func init() {
+        pgPort = DEFAULT_PG_PORT;
+        textPort = DEFAULT_TEXT_PORT;
+        maxConnections = DEFAULT_MAX_CONNECTIONS;
+        logQueries = false;
+        replMode = false;
+        dataDir = "./data";
+    }
+}
+
+func parseArgs() -> ServerConfig {
+    var config = new ServerConfig();
+    config.init();
+
+    var argc = Env.GetArgumentCount();
+    var i = 0;
+    while i < argc {
+        var arg = Env.GetArgument(i);
+
+        if arg == "--port" && i + 1 < argc {
+            i = i + 1;
+            config.pgPort = Parse.IntOr(Env.GetArgument(i), DEFAULT_PG_PORT);
+        }
+
+        if arg == "--text-port" && i + 1 < argc {
+            i = i + 1;
+            config.textPort = Parse.IntOr(Env.GetArgument(i), DEFAULT_TEXT_PORT);
+        }
+
+        if arg == "--max-connections" && i + 1 < argc {
+            i = i + 1;
+            config.maxConnections = Parse.IntOr(Env.GetArgument(i), DEFAULT_MAX_CONNECTIONS);
+        }
+
+        if arg == "--data-dir" && i + 1 < argc {
+            i = i + 1;
+            config.dataDir = Env.GetArgument(i);
+        }
+
+        if arg == "--log-queries" {
+            config.logQueries = true;
+        }
+
+        if arg == "--repl" || arg == "--standalone" {
+            config.replMode = true;
+        }
+
+        if arg == "--no-text" {
+            config.textPort = 0;
+        }
+
+        if arg == "--help" || arg == "-h" {
+            printUsage();
+            return config;
+        }
+
+        i = i + 1;
+    }
+
+    return config;
+}
+
+func printUsage() {
+    Terminal.Say("ViperSQL v" + VERSION + " — SQL Database Server");
+    Terminal.Say("");
+    Terminal.Say("Usage: vipersql [options]");
+    Terminal.Say("");
+    Terminal.Say("Options:");
+    Terminal.Say("  --port N            PG wire protocol port (default: 5432)");
+    Terminal.Say("  --text-port N       Text protocol port (default: 5433, 0 to disable)");
+    Terminal.Say("  --no-text           Disable text protocol listener");
+    Terminal.Say("  --max-connections N Maximum concurrent connections (default: 100)");
+    Terminal.Say("  --data-dir PATH     Data directory (default: ./data)");
+    Terminal.Say("  --log-queries       Log all queries to stdout");
+    Terminal.Say("  --repl              Start in standalone REPL mode (no server)");
+    Terminal.Say("  --help, -h          Show this help");
+}
+
+//=============================================================================
+// SERVER MODE
+//=============================================================================
+
+func runServer(config: ServerConfig) {
+    Terminal.Say("================================================");
+    Terminal.Say("  ViperSQL v" + VERSION);
+    Terminal.Say("  PostgreSQL Wire Protocol v3 Compatible");
+    Terminal.Say("================================================");
+    Terminal.Say("");
+
+    // Create the shared DatabaseServer
+    var dbServer = new DatabaseServer();
+    dbServer.init();
+    Terminal.Say("Database server initialized (database: main)");
+    Terminal.Say("Default user: admin / admin");
+
+    // Initialize connection handler
+    sql_connection_init(dbServer);
+
+    Terminal.Say("Thread model: thread-per-connection (max " + Fmt.Int(config.maxConnections) + ")");
+    if config.logQueries {
+        sql_connection_enable_logging();
+        Terminal.Say("Query logging: enabled");
+    }
+    Terminal.Say("");
+
+    // Start text protocol listener on separate thread
+    if config.textPort > 0 {
+        var textArgs: List[Integer] = [];
+        textArgs.add(config.textPort);
+        Threads.Thread.StartSafe(&textProtocolListener, textArgs);
+        Terminal.Say("Text protocol listening on port " + Fmt.Int(config.textPort));
+    }
+
+    // Start PG wire protocol listener (main thread)
+    var pgServer = Network.TcpServer.Listen(config.pgPort);
+    Terminal.Say("PG wire protocol listening on port " + Fmt.Int(config.pgPort));
+    Terminal.Say("");
+    Terminal.Say("Connect via: psql -h localhost -p " + Fmt.Int(config.pgPort) + " -U admin -d main");
+    Terminal.Say("         or: vsql -h localhost -p " + Fmt.Int(config.pgPort) + " -U admin");
+    Terminal.Say("");
+
+    // Accept loop
+    var running = 1;
+    var activeConns = 0;
+    while running == 1 {
+        var client = Network.TcpServer.Accept(pgServer);
+        // TODO: enforce max connections
+        Threads.Thread.StartSafe(&handlePgClient, client);
+    }
+
+    Terminal.Say("Shutting down...");
+    Network.TcpServer.Close(pgServer);
+    Terminal.Say("Server stopped.");
+}
+
+// Text protocol listener — runs on a separate thread
+func textProtocolListener(args: List[Integer]) {
+    var port = args.get(0);
+    var server = Network.TcpServer.Listen(port);
+
+    var running = 1;
+    while running == 1 {
+        var client = Network.TcpServer.Accept(server);
+        Threads.Thread.StartSafe(&handleSqlClient, client);
+    }
+
+    Network.TcpServer.Close(server);
+}
+
+//=============================================================================
+// REPL MODE (standalone, in-memory)
+//=============================================================================
+
+func runRepl() {
+    Terminal.Say("ViperSQL v" + VERSION + " — Standalone REPL (in-memory)");
+    Terminal.Say("Type SQL commands or 'exit' to quit. Type .help for commands.");
+    Terminal.Say("");
+
+    var exec = new Executor();
+    exec.init();
+
+    var running = true;
+    while running {
+        Terminal.Print("sql> ");
+        var rawInput = Terminal.ReadLine();
+        if rawInput == null {
+            running = false;
+            continue;
+        }
+        var input = rawInput!;
+
+        if input == "exit" || input == "quit" {
+            running = false;
+            continue;
+        }
+
+        if input == "" {
+            continue;
+        }
+
+        var trimmed = String.Trim(input);
+        if String.StartsWith(trimmed, ".") {
+            processReplCommand(trimmed, exec);
+            continue;
+        }
+
+        var result = exec.executeSql(input);
+        Terminal.Say(result.toString());
+        Terminal.Say("");
+    }
+
+    Terminal.Say("Goodbye!");
+}
+
+func processReplCommand(cmd: String, exec: Executor) {
+    var lower = String.ToLower(cmd);
+
+    if lower == ".help" {
+        Terminal.Say("");
+        Terminal.Say("Meta-commands:");
+        Terminal.Say("  .help          Show this help");
+        Terminal.Say("  .quit/.exit    Exit the shell");
+        Terminal.Say("  .tables        List all tables");
+        Terminal.Say("  .schema        Show all table schemas");
+        Terminal.Say("  .schema <tbl>  Show specific table schema");
+        Terminal.Say("");
+        return;
+    }
+
+    if lower == ".quit" || lower == ".exit" {
+        Terminal.Say("Goodbye!");
+        return;
+    }
+
+    if lower == ".tables" {
+        var result = exec.executeSql("SHOW TABLES");
+        Terminal.Say(result.toString());
+        Terminal.Say("");
+        return;
+    }
+
+    if lower == ".schema" {
+        var tablesResult = exec.executeSql("SHOW TABLES");
+        var ti = 0;
+        while ti < tablesResult.rowCount() {
+            var row = tablesResult.getRow(ti);
+            if row != null {
+                var r = row;
+                var tableName = r.getValue(0).textValue;
+                Terminal.Say("");
+                Terminal.Say("Table: " + tableName);
+                var descResult = exec.executeSql("DESCRIBE " + tableName);
+                Terminal.Say(descResult.toString());
+            }
+            ti = ti + 1;
+        }
+        Terminal.Say("");
+        return;
+    }
+
+    if String.StartsWith(lower, ".schema ") {
+        var tableName = String.Substring(cmd, 8, String.Length(cmd) - 8);
+        tableName = String.Trim(tableName);
+        var result = exec.executeSql("DESCRIBE " + tableName);
+        Terminal.Say(result.toString());
+        Terminal.Say("");
+        return;
+    }
+
+    Terminal.Say("Unknown command: " + cmd);
+    Terminal.Say("Type .help for help");
+    Terminal.Say("");
+}
+
+//=============================================================================
+// ENTRY POINT
+//=============================================================================
+
+func start() {
+    var config = parseArgs();
+
+    if config.replMode {
+        runRepl();
+    } else {
+        runServer(config);
+    }
+}

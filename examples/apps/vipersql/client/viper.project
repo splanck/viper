@@ -1,0 +1,9 @@
+# vsql — ViperSQL Interactive Client
+project vsql
+version 0.2.0
+lang zia
+entry vsql.zia
+
+package-name vsql
+package-description "Interactive SQL client for ViperSQL"
+package-identifier org.viper-lang.vsql

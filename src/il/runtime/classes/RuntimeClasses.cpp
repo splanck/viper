@@ -340,23 +340,35 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
         retTok.remove_suffix(1);
     }
 
-    // Check for parameterized collection type: "seq<str>", "list<str>", etc.
-    // These indicate a typed sequence return where the element type is known.
+    // Check for parameterized return annotations:
+    //   - "seq<str>" / "list<str>" carry element type information.
+    //   - "obj<Viper.Sound.Sound>" / "ptr<Viper.Sound.Sound>" carry the
+    //     concrete runtime class behind an otherwise opaque pointer return.
     auto langle = retTok.find('<');
     if (langle != std::string_view::npos) {
         auto rangle = retTok.rfind('>');
         if (rangle != std::string_view::npos && rangle > langle) {
-            // Extract element type name (e.g. "str" from "seq<str>")
-            result.elementTypeName = std::string(retTok.substr(langle + 1, rangle - langle - 1));
-            // Trim any whitespace from element type name
-            while (!result.elementTypeName.empty() &&
-                   std::isspace(static_cast<unsigned char>(result.elementTypeName.front())))
-                result.elementTypeName.erase(result.elementTypeName.begin());
-            while (!result.elementTypeName.empty() &&
-                   std::isspace(static_cast<unsigned char>(result.elementTypeName.back())))
-                result.elementTypeName.pop_back();
-            // The collection prefix ("seq", "list") maps to Object at IL level
-            retTok = retTok.substr(0, langle);
+            std::string typeArg(retTok.substr(langle + 1, rangle - langle - 1));
+            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.front())))
+                typeArg.erase(typeArg.begin());
+            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.back())))
+                typeArg.pop_back();
+
+            std::string_view outerTok = retTok.substr(0, langle);
+            while (!outerTok.empty() &&
+                   std::isspace(static_cast<unsigned char>(outerTok.front())))
+                outerTok.remove_prefix(1);
+            while (!outerTok.empty() &&
+                   std::isspace(static_cast<unsigned char>(outerTok.back())))
+                outerTok.remove_suffix(1);
+
+            if (outerTok == "seq" || outerTok == "list") {
+                result.elementTypeName = std::move(typeArg);
+            } else if (outerTok == "obj" || outerTok == "ptr") {
+                result.objectTypeName = std::move(typeArg);
+            }
+
+            retTok = outerTok;
         }
     }
 

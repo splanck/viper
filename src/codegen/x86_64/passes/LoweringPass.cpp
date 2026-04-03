@@ -578,8 +578,9 @@ class ModuleAdapter {
                 break;
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
-                reportUnsupported(std::string{"Native codegen does not yet support "} +
-                                  il::core::toString(instr.op) + ". Use resume.label instead.");
+                reportUnsupported(std::string{"x86-64 lowering received raw "} +
+                                  il::core::toString(instr.op) +
+                                  " after NativeEHLowering; structured EH rewrite is incomplete.");
 
             default:
                 reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +

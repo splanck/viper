@@ -69,11 +69,9 @@ TEST(Arm64EH, EhPush) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Should compile without error
-    EXPECT_FALSE(asmText.empty());
-    // EH handlers may call runtime helpers
-    // Verification: code generated
-    EXPECT_NE(asmText.find("ret"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_frame_alloc")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_push")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("setjmp")), std::string::npos);
 }
 
 // Test 2: eh.pop - pop error handler
@@ -94,7 +92,8 @@ TEST(Arm64EH, EhPop) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_FALSE(asmText.empty());
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_pop")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_frame_free")), std::string::npos);
 }
 
 // Test 3: trap instruction
@@ -131,7 +130,7 @@ TEST(Arm64EH, TrapFromErr) {
     EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
-// Test 5: resume.same remains explicitly unsupported in native AArch64 codegen.
+// Test 5: resume.same lowers to native EH dispatch and re-enters the fault site.
 TEST(Arm64EH, ResumeSame) {
     const std::string in = outPath("arm64_eh_resume_same.il");
     const std::string out = outPath("arm64_eh_resume_same.s");
@@ -146,10 +145,15 @@ TEST(Arm64EH, ResumeSame) {
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_NE(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_set_site")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_get_site")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("setjmp")), std::string::npos);
+    EXPECT_NE(asmText.find(".__neh.site."), std::string::npos);
 }
 
-// Test 6: resume.next remains explicitly unsupported in native AArch64 codegen.
+// Test 6: resume.next lowers to native EH dispatch for resumable fault sites.
 TEST(Arm64EH, ResumeNext) {
     const std::string in = outPath("arm64_eh_resume_next.il");
     const std::string out = outPath("arm64_eh_resume_next.s");
@@ -157,17 +161,21 @@ TEST(Arm64EH, ResumeNext) {
                            "func @f() -> i64 {\n"
                            "entry:\n"
                            "  eh.push ^handler\n"
-                           "  trap.from_err i32 1\n"
-                           "after:\n"
+                           "  %q = sdiv.chk0 10, 0\n"
                            "  eh.pop\n"
-                           "  ret 0\n"
+                           "  ret 42\n"
                            "handler ^handler(%err:Error, %tok:ResumeTok):\n"
                            "  eh.entry\n"
                            "  resume.next %tok\n"
                            "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_NE(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_set_site")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_get_site")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_native_eh_pop")), std::string::npos);
+    EXPECT_NE(asmText.find("42"), std::string::npos);
 }
 
 // Test 7: Full try-catch pattern

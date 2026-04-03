@@ -1,6 +1,7 @@
 add_library(viper_codegen_common STATIC
         Diagnostics.cpp
         LinkerSupport.cpp
+        NativeEHLowering.cpp
         objfile/ObjectFileWriter.cpp
         objfile/ElfWriter.cpp
         objfile/MachOWriter.cpp

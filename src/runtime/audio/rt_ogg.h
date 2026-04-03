@@ -47,6 +47,17 @@ typedef struct {
     int complete; // 1 if packet is complete, 0 if continued on next page
 } ogg_packet_t;
 
+/// @brief Metadata attached to a completed logical OGG packet.
+typedef struct {
+    uint32_t serial_number;
+    int64_t granule_position; // -1 when not known for this packet
+    uint8_t bos;
+    uint8_t eos;
+} ogg_packet_info_t;
+
+typedef struct ogg_stream_state_t ogg_stream_state_t;
+typedef struct ogg_packet_node_t ogg_packet_node_t;
+
 /// @brief OGG file reader
 typedef struct {
     FILE *file;        // NULL for memory-based reading
@@ -56,11 +67,10 @@ typedef struct {
 
     // Current page state
     ogg_page_header_t page;
-    int page_valid;
-    int segment_idx;   // current segment within page
-
-    // Packet assembly buffer
-    ogg_packet_t packet;
+    ogg_stream_state_t *streams;
+    ogg_packet_node_t *ready_head;
+    ogg_packet_node_t *ready_tail;
+    uint8_t *last_packet_data;
 } ogg_reader_t;
 
 /// @brief Create an OGG reader from a file path.
@@ -76,6 +86,14 @@ void ogg_reader_free(ogg_reader_t *r);
 /// @return 1 if a packet was read, 0 on EOF or error.
 /// The returned packet data is valid until the next call to ogg_reader_next_packet.
 int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len);
+
+/// @brief Read the next complete packet plus stream metadata.
+/// @return 1 if a packet was read, 0 on EOF or error.
+/// The returned packet data is valid until the next call to ogg_reader_next_packet[_ex].
+int ogg_reader_next_packet_ex(ogg_reader_t *r,
+                              const uint8_t **out_data,
+                              size_t *out_len,
+                              ogg_packet_info_t *out_info);
 
 /// @brief Reset reader to the beginning of the file (for looping).
 /// @details Seeks the file to position 0 and resets page/packet state.

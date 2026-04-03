@@ -61,26 +61,33 @@ class SpriteFactory {
     hide List[Pixels] sporewalkerFrames;
     hide List[Pixels] glowmothFrames;
     hide List[Pixels] fungalTurretFrames;
+    hide List[Pixels] myceliumFrames;
     hide List[Pixels] crystalGolemFrames;
     hide List[Pixels] shardBatFrames;
+    hide List[Pixels] resonanceOrbFrames;
     hide List[Pixels] mirrorSlimeFrames;
     hide List[Pixels] magmaSlugFrames;
     hide List[Pixels] emberWaspFrames;
     hide List[Pixels] forgeSentinelFrames;
     hide List[Pixels] frostBeetleFrames;
     hide List[Pixels] iceWraithFrames;
+    hide List[Pixels] stalactiteBatFrames;
+    hide Pixels vineWhipSprite;
     hide List[Pixels] mossGolemFrames;
     hide List[Pixels] ruinGuardianFrames;
     hide List[Pixels] shadowCloneFrames;
     hide List[Pixels] sporeMothFrames;
     hide List[Pixels] crystalWyrmFrames;
     hide List[Pixels] magmaCoreFrames;
+    hide Pixels corruptionSprite;
     hide List[Pixels] architectFrames;
+    hide List[Pixels] bombCarrierFrames;
     hide Boolean newSpritesBuilt;
 
     // Tiles
     hide Pixels tileGrassTop;
     hide Pixels tileDirt;
+    hide Pixels tileMissing;
     hide Pixels tileStone;
     hide Pixels tileBrick;
     hide Pixels tilePlatform;
@@ -408,6 +415,11 @@ class SpriteFactory {
             batFrames.add(buildBatFrame(i).Scale(BAT_W, BAT_H));
         }
 
+        // Maintenance drone: compact hovering robot with a blinking eye.
+        for i in 0..2 {
+            droneFrames.add(buildDroneFrame(i).Scale(DRONE_W, DRONE_H));
+        }
+
         // Turret: draw at 42x42, scale to TURRET_W x TURRET_H
         turretBase = buildTurretBase().Scale(TURRET_W, TURRET_H);
         turretBarrel = buildTurretBarrel().Scale(30 * TURRET_W / ORIG_TURRET_W, 9 * TURRET_H / ORIG_TURRET_H);
@@ -535,6 +547,44 @@ class SpriteFactory {
         // Barbed tail
         px.DrawBezier(21, 23, 20, 27, 23, 29, 0x6622AA);
         px.DrawTriangle(22, 28, 24, 28, 23, 30, 0x553399);
+
+        return px;
+    }
+
+    hide func buildDroneFrame(frame: Integer) -> Pixels {
+        var px = Pixels.New(30, 24);
+        var wingY = 11;
+        if frame == 1 { wingY = 10; }
+        if frame == 2 { wingY = 12; }
+
+        // Side thruster pods
+        px.DrawDisc(6, wingY, 4, pal.hullPlateLt);
+        px.DrawDisc(24, wingY, 4, pal.hullPlateLt);
+        px.DrawDisc(6, wingY, 2, pal.hullPlateDk);
+        px.DrawDisc(24, wingY, 2, pal.hullPlateDk);
+
+        // Main hull
+        px.DrawBox(8, 7, 14, 10, pal.hullPlate);
+        px.DrawBox(10, 5, 10, 4, pal.hullPlateLt);
+        px.DrawFrame(8, 7, 14, 10, pal.outline);
+
+        // Sensor eye
+        var eye = pal.emergencyLight;
+        if frame == 1 { eye = pal.white; }
+        px.DrawDisc(15, 11, 2, eye);
+        px.DrawDisc(15, 11, 1, pal.black);
+
+        // Landing struts / antennae
+        px.DrawLine(11, 16, 9, 21, pal.outline);
+        px.DrawLine(19, 16, 21, 21, pal.outline);
+        px.DrawLine(12, 7, 10, 3, pal.outline);
+        px.DrawLine(18, 7, 20, 3, pal.outline);
+
+        // Hover glow
+        if frame != 2 {
+            px.DrawLine(5, 18, 7, 22, pal.coolantBright);
+            px.DrawLine(23, 18, 25, 22, pal.coolantBright);
+        }
 
         return px;
     }
@@ -752,6 +802,7 @@ class SpriteFactory {
     hide func buildTileSprites() {
         tileGrassTop = scaleTile(buildGrassTile());
         tileDirt = scaleTile(buildDirtTile());
+        tileMissing = scaleTile(buildMissingTile());
         tileStone = scaleTile(buildStoneTile());
         tileBrick = scaleTile(buildBrickTile());
         tilePlatform = scaleTile(buildPlatformTile());
@@ -1738,6 +1789,15 @@ class SpriteFactory {
         return px;
     }
 
+    hide func buildMissingTile() -> Pixels {
+        var px = Pixels.New(ORIG_TILE, ORIG_TILE);
+        px.DrawBox(0, 0, ORIG_TILE, ORIG_TILE, Color.RGB(255, 0, 255));
+        px.DrawBox(4, 4, ORIG_TILE - 8, ORIG_TILE - 8, Color.RGB(30, 0, 30));
+        px.DrawLine(0, 0, ORIG_TILE - 1, ORIG_TILE - 1, Color.RGB(255, 255, 255));
+        px.DrawLine(ORIG_TILE - 1, 0, 0, ORIG_TILE - 1, Color.RGB(255, 255, 255));
+        return px;
+    }
+
     // =========================================================================
     // Tile Lookup (replaces if-chain in getTile)
     // =========================================================================
@@ -1787,6 +1847,18 @@ class SpriteFactory {
         registerTile(TILE_CONSOLE, tileConsole);
         registerTile(TILE_HOLO_BRIDGE, tileHoloBridge);
         registerTile(TILE_VIEWPORT, tileViewport);
+        // Environmental and interaction tiles
+        registerTile(TILE_POISON_POOL, tilePoisonPool1);
+        registerTile(TILE_QUICKSAND, tileQuicksand);
+        registerTile(TILE_CRUMBLE, tileCrumble);
+        registerTile(TILE_ICE_FLOOR, tileIceFloor);
+        registerTile(TILE_CONVEYOR_L, tileConveyorL);
+        registerTile(TILE_CONVEYOR_R, tileConveyorR);
+        registerTile(TILE_STEAM_VENT, tileSteamVent);
+        registerTile(TILE_DESTRUCTIBLE, tileDestructible);
+        registerTile(TILE_ONE_WAY, tileOneWay);
+        registerTile(TILE_SAVE_STATION, tileSaveStation);
+        registerTile(TILE_LORE_TERMINAL, tileLoreTerminal);
     }
 
     hide func registerTile(id: Integer, sprite: Pixels) {
@@ -2007,7 +2079,7 @@ class SpriteFactory {
             }
             i = i + 1;
         }
-        return tileDirt;  // fallback
+        return tileMissing;  // fallback
     }
 
     expose func getLavaTile(frame: Integer) -> Pixels {
@@ -2056,18 +2128,24 @@ class SpriteFactory {
         buildSporewalkerSprites();
         buildGlowmothSprites();
         buildFungalTurretSprites();
+        buildMyceliumSprites();
         buildCrystalGolemSprites();
         buildShardBatSprites();
+        buildResonanceOrbSprites();
         buildMirrorSlimeSprites();
         buildMagmaSlugSprites();
         buildEmberWaspSprites();
         buildForgeSentinelSprites();
         buildFrostBeetleSprites();
         buildIceWraithSprites();
+        buildStalactiteBatSprites();
+        buildVineWhipSprite();
         buildMossGolemSprites();
         buildRuinGuardianSprites();
         buildShadowCloneSprites();
+        buildCorruptionSprite();
         buildBossSprites2();
+        buildBombCarrierSprites();
     }
 
     // ─── Sporewalker: mushroom-headed walker ──────────────────────────
@@ -2156,6 +2234,27 @@ class SpriteFactory {
         }
     }
 
+    hide func buildMyceliumSprites() {
+        myceliumFrames = [];
+        var f = 0;
+        while f < 3 {
+            var pix = Pixels.New(24, 16);
+            var tendril = f - 1;
+            Pixels.DrawEllipse(pix, 12, 7, 11, 5, Color.RGB(120, 90, 70));
+            Pixels.DrawEllipse(pix, 12, 6, 9, 4, Color.RGB(170, 130, 95));
+            Pixels.DrawDisc(pix, 9, 6, 1, pal.white);
+            Pixels.DrawDisc(pix, 15, 6, 1, pal.white);
+            Pixels.DrawDisc(pix, 9, 6, 0, pal.outline);
+            Pixels.DrawDisc(pix, 15, 6, 0, pal.outline);
+            Pixels.DrawLine(pix, 8, 10, 6 + tendril, 15, pal.jungleRoots);
+            Pixels.DrawLine(pix, 12, 10, 12, 15, pal.jungleRoots);
+            Pixels.DrawLine(pix, 16, 10, 18 - tendril, 15, pal.jungleRoots);
+            Pixels.DrawLine(pix, 12, 2, 12, 0, pal.outline);
+            myceliumFrames.add(Pixels.Scale(pix, MYCELIUM_W, MYCELIUM_H));
+            f = f + 1;
+        }
+    }
+
     // ─── Crystal Golem: large crystalline walker ──────────────────────
     hide func buildCrystalGolemSprites() {
         crystalGolemFrames = [];
@@ -2210,6 +2309,22 @@ class SpriteFactory {
             Pixels.Set(pix, 16, 7, Color.RGB(255, 50, 50));
             Pixels.Set(pix, 20, 7, Color.RGB(255, 50, 50));
             shardBatFrames.add(Pixels.Scale(pix, SHARD_BAT_W, SHARD_BAT_H));
+            f = f + 1;
+        }
+    }
+
+    hide func buildResonanceOrbSprites() {
+        resonanceOrbFrames = [];
+        var f = 0;
+        while f < 4 {
+            var pix = Pixels.New(24, 24);
+            var r = 7 + f % 2;
+            Pixels.DrawDisc(pix, 12, 12, r, Color.RGB(140, 110, 220));
+            Pixels.DrawDisc(pix, 12, 12, r - 2, Color.RGB(220, 210, 255));
+            Pixels.DrawRing(pix, 12, 12, r + 3, Color.RGB(190, 170, 255));
+            Pixels.DrawLine(pix, 12 - r, 12, 12 + r, 12, Color.RGB(255, 255, 255));
+            Pixels.DrawLine(pix, 12, 12 - r, 12, 12 + r, Color.RGB(220, 240, 255));
+            resonanceOrbFrames.add(Pixels.Scale(pix, RESONANCE_ORB_W, RESONANCE_ORB_H));
             f = f + 1;
         }
     }
@@ -2383,6 +2498,38 @@ class SpriteFactory {
         }
     }
 
+    hide func buildStalactiteBatSprites() {
+        stalactiteBatFrames = [];
+        var f = 0;
+        while f < 2 {
+            var pix = Pixels.New(18, 36);
+            var wingY = 18;
+            if f == 1 { wingY = 20; }
+            Pixels.DrawTriangle(pix, 9, 0, 3, 12, 15, 12, Color.RGB(170, 190, 220));
+            Pixels.DrawTriangle(pix, 9, 4, 5, 16, 13, 16, Color.RGB(220, 235, 255));
+            Pixels.DrawEllipse(pix, 9, 20, 4, 6, Color.RGB(80, 100, 130));
+            Pixels.DrawTriangle(pix, 9, 18, 0, wingY, 6, 28, Color.RGB(110, 130, 170));
+            Pixels.DrawTriangle(pix, 9, 18, 18, wingY, 12, 28, Color.RGB(110, 130, 170));
+            Pixels.DrawDisc(pix, 7, 20, 1, pal.white);
+            Pixels.DrawDisc(pix, 11, 20, 1, pal.white);
+            Pixels.DrawLine(pix, 6, 28, 5, 35, pal.outline);
+            Pixels.DrawLine(pix, 12, 28, 13, 35, pal.outline);
+            stalactiteBatFrames.add(Pixels.Scale(pix, STALACTITE_BAT_W, STALACTITE_BAT_H));
+            f = f + 1;
+        }
+    }
+
+    hide func buildVineWhipSprite() {
+        var pix = Pixels.New(16, 48);
+        Pixels.DrawLine(pix, 8, 0, 8, 47, Color.RGB(50, 120, 40));
+        Pixels.DrawLine(pix, 7, 0, 7, 47, Color.RGB(80, 160, 60));
+        Pixels.DrawTriangle(pix, 8, 24, 0, 32, 8, 36, Color.RGB(120, 200, 80));
+        Pixels.DrawTriangle(pix, 8, 24, 16, 32, 8, 36, Color.RGB(120, 200, 80));
+        Pixels.DrawTriangle(pix, 8, 8, 3, 0, 13, 0, Color.RGB(90, 150, 60));
+        Pixels.DrawTriangle(pix, 8, 40, 4, 47, 12, 47, Color.RGB(90, 150, 60));
+        vineWhipSprite = Pixels.Scale(pix, VINE_WHIP_W, VINE_WHIP_H);
+    }
+
     // ─── Moss Golem: large regenerating plant creature ────────────────
     hide func buildMossGolemSprites() {
         mossGolemFrames = [];
@@ -2480,6 +2627,13 @@ class SpriteFactory {
             shadowCloneFrames.add(Pixels.Scale(pix, SHADOW_CLONE_W, SHADOW_CLONE_H));
             f = f + 1;
         }
+    }
+
+    hide func buildCorruptionSprite() {
+        var pix = buildCorruptionWispSprite(28);
+        Pixels.DrawLine(pix, 10, 18, 6, 27, Color.RGB(70, 20, 95));
+        Pixels.DrawLine(pix, 18, 18, 22, 27, Color.RGB(70, 20, 95));
+        corruptionSprite = Pixels.Scale(pix, CORRUPTION_W, CORRUPTION_H);
     }
 
     // ─── Boss Sprites (new bosses) ────────────────────────────────────
@@ -2608,6 +2762,27 @@ class SpriteFactory {
         }
     }
 
+    hide func buildBombCarrierSprites() {
+        bombCarrierFrames = [];
+        var f = 0;
+        while f < 2 {
+            var pix = Pixels.New(24, 24);
+            Pixels.DrawDisc(pix, 12, 10, 6, pal.hullPlateLt);
+            Pixels.DrawDisc(pix, 12, 10, 4, pal.hullPlate);
+            Pixels.DrawDisc(pix, 12, 10, 1, pal.emergencyLight);
+            Pixels.DrawLine(pix, 6, 8, 2, 12 + f, pal.outline);
+            Pixels.DrawLine(pix, 18, 8, 22, 12 + f, pal.outline);
+            Pixels.DrawLine(pix, 12, 15, 12, 18, pal.outline);
+            Pixels.DrawDisc(pix, 12, 21, 4, Color.RGB(180, 60, 60));
+            Pixels.DrawLine(pix, 12, 17, 12, 24, Color.RGB(255, 230, 80));
+            if f == 0 {
+                Pixels.DrawDisc(pix, 12, 17, 1, pal.sparkYellow);
+            }
+            bombCarrierFrames.add(Pixels.Scale(pix, BOMB_CARRIER_W, BOMB_CARRIER_H));
+            f = f + 1;
+        }
+    }
+
     // ─── Accessor methods for new sprites ─────────────────────────────
     // These return the cached sprite for the given animation frame.
     // If sprites haven't been built yet, build them on first access.
@@ -2620,6 +2795,14 @@ class SpriteFactory {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return glowmothFrames.get(f % glowmothFrames.length());
     }
+    expose func getFungalTurretFrame(f: Integer) -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return fungalTurretFrames.get(f % fungalTurretFrames.length());
+    }
+    expose func getMyceliumFrame(f: Integer) -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return myceliumFrames.get(f % myceliumFrames.length());
+    }
     expose func getCrystalGolemFrame(f: Integer) -> Pixels {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return crystalGolemFrames.get(f % crystalGolemFrames.length());
@@ -2627,6 +2810,10 @@ class SpriteFactory {
     expose func getShardBatFrame(f: Integer) -> Pixels {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return shardBatFrames.get(f % shardBatFrames.length());
+    }
+    expose func getResonanceOrbFrame(f: Integer) -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return resonanceOrbFrames.get(f % resonanceOrbFrames.length());
     }
     expose func getMirrorSlimeFrame(f: Integer) -> Pixels {
         if not newSpritesBuilt { buildNewEnemySprites(); }
@@ -2652,6 +2839,14 @@ class SpriteFactory {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return iceWraithFrames.get(f % iceWraithFrames.length());
     }
+    expose func getStalactiteBatFrame(f: Integer) -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return stalactiteBatFrames.get(f % stalactiteBatFrames.length());
+    }
+    expose func getVineWhipSprite() -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return vineWhipSprite;
+    }
     expose func getMossGolemFrame(f: Integer) -> Pixels {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return mossGolemFrames.get(f % mossGolemFrames.length());
@@ -2676,9 +2871,20 @@ class SpriteFactory {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return magmaCoreFrames.get(f % magmaCoreFrames.length());
     }
+    expose func getCorruptionSprite() -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return corruptionSprite;
+    }
     expose func getArchitectFrame(f: Integer) -> Pixels {
         if not newSpritesBuilt { buildNewEnemySprites(); }
         return architectFrames.get(f % architectFrames.length());
+    }
+    expose func getBombCarrierFrame(f: Integer) -> Pixels {
+        if not newSpritesBuilt { buildNewEnemySprites(); }
+        return bombCarrierFrames.get(f % bombCarrierFrames.length());
+    }
+    expose func getDroneFrame(f: Integer) -> Pixels {
+        return droneFrames.get(f % droneFrames.length());
     }
 
     // =========================================================================

@@ -504,6 +504,8 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_runtime
 )
 
+add_custom_target(viper_runtime_components DEPENDS ${VIPER_RUNTIME_COMPONENT_LIBS})
+
 # Subdirectory list for include-path extension (all consumers get flat #include "rt_*.h" lookup)
 set(_RT_SUBDIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/core

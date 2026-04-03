@@ -1803,37 +1803,39 @@ class EnemyManager {
                         sx: Integer, sy: Integer, sprites: SpriteFactory) {
         if t == ENEMY_SLIME { canvas.BlitAlpha(sx, sy, sprites.getSlimeFrame(f)); return; }
         if t == ENEMY_BAT { canvas.BlitAlpha(sx, sy, sprites.getBatFrame(f)); return; }
+        if t == ENEMY_DRONE { canvas.BlitAlpha(sx, sy, sprites.getDroneFrame(f)); return; }
         if t == ENEMY_TURRET { canvas.BlitAlpha(sx, sy, sprites.getTurretBase()); return; }
         if t == ENEMY_BOSS { canvas.BlitAlpha(sx, sy, sprites.getBossFrame(f)); return; }
+        if t == ENEMY_SPOREWALKER { canvas.BlitAlpha(sx, sy, sprites.getSporewalkerFrame(f)); return; }
+        if t == ENEMY_GLOWMOTH { canvas.BlitAlpha(sx, sy, sprites.getGlowmothFrame(f)); return; }
+        if t == ENEMY_FUNGAL_TURRET { canvas.BlitAlpha(sx, sy, sprites.getFungalTurretFrame(f)); return; }
+        if t == ENEMY_MYCELIUM { canvas.BlitAlpha(sx, sy, sprites.getMyceliumFrame(f)); return; }
+        if t == ENEMY_SPORE_MOTHER { canvas.BlitAlpha(sx, sy, sprites.getSporeMothFrame(f)); return; }
+        if t == ENEMY_CRYSTAL_GOLEM { canvas.BlitAlpha(sx, sy, sprites.getCrystalGolemFrame(f)); return; }
+        if t == ENEMY_SHARD_BAT { canvas.BlitAlpha(sx, sy, sprites.getShardBatFrame(f)); return; }
+        if t == ENEMY_RESONANCE_ORB { canvas.BlitAlpha(sx, sy, sprites.getResonanceOrbFrame(f)); return; }
+        if t == ENEMY_MIRROR_SLIME { canvas.BlitAlpha(sx, sy, sprites.getMirrorSlimeFrame(f)); return; }
+        if t == ENEMY_CRYSTAL_WYRM { canvas.BlitAlpha(sx, sy, sprites.getCrystalWyrmFrame(f)); return; }
+        if t == ENEMY_MAGMA_SLUG { canvas.BlitAlpha(sx, sy, sprites.getMagmaSlugFrame(f)); return; }
+        if t == ENEMY_EMBER_WASP { canvas.BlitAlpha(sx, sy, sprites.getEmberWaspFrame(f)); return; }
+        if t == ENEMY_FORGE_SENTINEL { canvas.BlitAlpha(sx, sy, sprites.getForgeSentinelFrame(f)); return; }
+        if t == ENEMY_MAGMA_CORE { canvas.BlitAlpha(sx, sy, sprites.getMagmaCoreFrame(f)); return; }
+        if t == ENEMY_ICE_WRAITH { canvas.BlitAlpha(sx, sy, sprites.getIceWraithFrame(f)); return; }
+        if t == ENEMY_FROST_BEETLE { canvas.BlitAlpha(sx, sy, sprites.getFrostBeetleFrame(f)); return; }
+        if t == ENEMY_STALACTITE_BAT { canvas.BlitAlpha(sx, sy, sprites.getStalactiteBatFrame(f)); return; }
+        if t == ENEMY_VINE_WHIP { canvas.BlitAlpha(sx, sy, sprites.getVineWhipSprite()); return; }
+        if t == ENEMY_MOSS_GOLEM { canvas.BlitAlpha(sx, sy, sprites.getMossGolemFrame(f)); return; }
+        if t == ENEMY_RUIN_GUARDIAN { canvas.BlitAlpha(sx, sy, sprites.getRuinGuardianFrame(f)); return; }
+        if t == ENEMY_SHADOW_CLONE { canvas.BlitAlpha(sx, sy, sprites.getShadowCloneFrame(f)); return; }
+        if t == ENEMY_CORRUPTION { canvas.BlitAlpha(sx, sy, sprites.getCorruptionSprite()); return; }
+        if t == ENEMY_ARCHITECT { canvas.BlitAlpha(sx, sy, sprites.getArchitectFrame(f)); return; }
+        if t == ENEMY_BOMB_CARRIER { canvas.BlitAlpha(sx, sy, sprites.getBombCarrierFrame(f)); return; }
 
-        // New enemies — placeholder colored shapes (proper sprites will replace these)
+        // Remaining enemies still fall back to procedural rendering where the
+        // sprite factory has no dedicated cached sprite yet.
         var w = getEnemyW(t); var h = getEnemyH(t);
-        if t == ENEMY_SPOREWALKER { canvas.Box(sx, sy, w, h, Color.RGB(80, 180, 60)); canvas.Frame(sx, sy, w, h, Color.RGB(40, 100, 30)); }
-        else if t == ENEMY_GLOWMOTH { canvas.Disc(sx + w / 2, sy + h / 2, w / 2, Color.RGB(200, 255, 100)); }
-        else if t == ENEMY_FUNGAL_TURRET { canvas.Box(sx, sy, w, h, Color.RGB(140, 80, 160)); canvas.Frame(sx, sy, w, h, Color.RGB(80, 40, 100)); }
-        else if t == ENEMY_MYCELIUM { canvas.Box(sx, sy, w, h, Color.RGB(100, 60, 40)); }
-        else if t == ENEMY_SPORE_MOTHER { canvas.Box(sx, sy, w, h, Color.RGB(60, 140, 50)); canvas.Frame(sx + 4, sy + 4, w - 8, h - 8, Color.RGB(200, 255, 100)); }
-        else if t == ENEMY_CRYSTAL_GOLEM { canvas.Box(sx, sy, w, h, Color.RGB(80, 120, 200)); canvas.Frame(sx, sy, w, h, Color.RGB(150, 200, 255)); }
-        else if t == ENEMY_SHARD_BAT { canvas.Disc(sx + w / 2, sy + h / 2, w / 2, Color.RGB(130, 100, 220)); }
-        else if t == ENEMY_RESONANCE_ORB { canvas.Disc(sx + w / 2, sy + h / 2, w / 2, Color.RGB(180, 160, 255)); if f == 1 { canvas.Ring(sx + w / 2, sy + h / 2, w, Color.RGB(200, 180, 255)); } }
-        else if t == ENEMY_MIRROR_SLIME { canvas.Box(sx, sy, w, h, Color.RGB(200, 220, 230)); canvas.Frame(sx, sy, w, h, Color.RGB(255, 255, 255)); }
-        else if t == ENEMY_CRYSTAL_WYRM { canvas.Box(sx, sy, w, h, Color.RGB(60, 80, 180)); canvas.Frame(sx + 4, sy + 4, w - 8, h - 8, Color.RGB(100, 140, 255)); }
-        else if t == ENEMY_MAGMA_SLUG { canvas.Box(sx, sy, w, h, Color.RGB(200, 80, 20)); canvas.Frame(sx, sy, w, h, Color.RGB(255, 150, 30)); }
-        else if t == ENEMY_EMBER_WASP { canvas.Disc(sx + w / 2, sy + h / 2, w / 2, Color.RGB(255, 180, 50)); }
-        else if t == ENEMY_FORGE_SENTINEL { canvas.Box(sx, sy, w, h, Color.RGB(120, 120, 130)); canvas.Frame(sx, sy, w, h, Color.RGB(180, 80, 40)); }
-        else if t == ENEMY_PISTON_TRAP { canvas.Box(sx, sy, w, h, Color.RGB(150, 150, 160)); canvas.Box(sx + 4, sy, w - 8, h / 3, Color.RGB(200, 50, 50)); }
-        else if t == ENEMY_MAGMA_CORE { canvas.Box(sx, sy, w, h, Color.RGB(180, 40, 20)); canvas.Disc(sx + w / 2, sy + w / 2, 20, Color.RGB(255, 200, 50)); }
-        else if t == ENEMY_ICE_WRAITH { canvas.BoxAlpha(sx, sy, w, h, Color.RGB(180, 220, 255), 150); }
-        else if t == ENEMY_FROST_BEETLE { canvas.Box(sx, sy, w, h, Color.RGB(100, 160, 200)); canvas.Frame(sx, sy, w, h, Color.RGB(60, 100, 140)); }
-        else if t == ENEMY_STALACTITE_BAT { canvas.Box(sx, sy, w, h, Color.RGB(160, 180, 200)); }
-        else if t == ENEMY_VINE_WHIP { canvas.Box(sx, sy, w, h, Color.RGB(50, 130, 40)); }
-        else if t == ENEMY_MOSS_GOLEM { canvas.Box(sx, sy, w, h, Color.RGB(80, 110, 60)); canvas.Frame(sx, sy, w, h, Color.RGB(60, 90, 40)); }
-        else if t == ENEMY_RUIN_GUARDIAN { canvas.Box(sx, sy, w, h, Color.RGB(140, 130, 110)); canvas.Frame(sx, sy, w, h, Color.RGB(180, 170, 150)); }
-        else if t == ENEMY_SHADOW_CLONE { canvas.BoxAlpha(sx, sy, w, h, Color.RGB(40, 0, 60), 180); }
-        else if t == ENEMY_CORRUPTION { canvas.Box(sx, sy, w, h, Color.RGB(80, 0, 100)); }
-        else if t == ENEMY_ARCHITECT { canvas.Box(sx, sy, w, h, Color.RGB(60, 20, 80)); canvas.Frame(sx + 8, sy + 8, w - 16, h - 16, Color.RGB(200, 50, 255)); }
-        else if t == ENEMY_PATROL_DRONE { canvas.Box(sx, sy, w, h, Color.RGB(100, 120, 140)); canvas.Disc(sx + w / 2, sy + h / 2, 4, Color.RGB(255, 50, 50)); }
-        else if t == ENEMY_BOMB_CARRIER { canvas.Box(sx, sy, w, h, Color.RGB(180, 60, 60)); if f % 2 == 0 { canvas.Disc(sx + w / 2, sy + 4, 4, Color.RGB(255, 255, 50)); } }
+        if t == ENEMY_PISTON_TRAP { canvas.Box(sx, sy, w, h, Color.RGB(150, 150, 160)); canvas.Box(sx + 4, sy, w - 8, h / 3, Color.RGB(200, 50, 50)); }
+        else if t == ENEMY_PATROL_DRONE { canvas.BlitAlpha(sx, sy, sprites.getDroneFrame(f)); }
         else { canvas.Box(sx, sy, w, h, Color.RGB(255, 0, 255)); } // Fallback: magenta
     }
 

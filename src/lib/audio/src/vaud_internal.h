@@ -111,8 +111,9 @@ struct vaud_music {
     void *file;              ///< FILE pointer for streaming
     int64_t data_offset;     ///< Offset to PCM data in file
     int64_t data_size;       ///< Total PCM data size in bytes
-    int64_t frame_count;     ///< Total frames in file
-    int32_t sample_rate;     ///< File sample rate
+    int64_t frame_count;     ///< Total output frames after any resampling
+    int32_t sample_rate;     ///< Playback sample rate (always mixer rate)
+    int32_t source_sample_rate; ///< Source file/stream sample rate before resampling
     int32_t channels;        ///< File channel count
     int32_t bits_per_sample; ///< Bits per sample in file
 
@@ -136,7 +137,8 @@ struct vaud_music {
     void *ogg_reader;       ///< ogg_reader_t* for OGG streaming
     void *vorbis_dec;       ///< vorbis_decoder_t* for OGG streaming
     void *mp3_stream;       ///< mp3_stream_t* for MP3 streaming
-    char *filepath;         ///< strdup'd path for loop restart
+    uint32_t ogg_serial;    ///< Selected Vorbis logical stream for OGG playback
+    char *filepath;         ///< Retained source path (for diagnostics/future reopen paths)
 
     // Leftover PCM from last decode (variable packet sizes)
     int16_t *leftover_buf;  ///< Excess decoded frames
@@ -296,6 +298,12 @@ int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t 
 /// @param buf_idx Index of the buffer to fill (0..VAUD_MUSIC_BUFFER_COUNT-1).
 /// @return Number of output frames written to the buffer.
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx);
+
+/// @brief Rewind or seek a music stream to the given output frame.
+/// @details Resets format-specific decoder state, primes buffer 0, and leaves
+///          the stream ready for subsequent playback from the requested frame.
+/// @return 1 on success, 0 if the stream could not be rewound or sought.
+int vaud_music_seek_output_frame(struct vaud_music *music, int64_t target_frame);
 
 //===----------------------------------------------------------------------===//
 // Platform Backend Interface

@@ -34,18 +34,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Forward declarations for runtime codec APIs (avoids cross-layer #include)
-typedef struct ogg_reader ogg_reader_t;
-typedef struct vorbis_decoder vorbis_decoder_t;
-typedef struct mp3_stream mp3_stream_t;
-
-void ogg_reader_rewind(ogg_reader_t *r);
-int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *out_len);
-vorbis_decoder_t *vorbis_decoder_new(void);
-void vorbis_decoder_free(vorbis_decoder_t *dec);
-int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len, int num);
-void mp3_stream_rewind(mp3_stream_t *stream);
-
 //===----------------------------------------------------------------------===//
 // Mixer Constants
 //===----------------------------------------------------------------------===//
@@ -189,33 +177,11 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                 int32_t read = vaud_music_fill_buffer(music, music->current_buffer);
 
                 if (read == 0 && music->loop) {
-                    /* Loop restart: reset to beginning based on format */
-                    if (music->format == 1 && music->ogg_reader && music->vorbis_dec) {
-                        /* OGG: rewind reader and re-parse headers */
-                        ogg_reader_rewind((ogg_reader_t *)music->ogg_reader);
-                        vorbis_decoder_free((vorbis_decoder_t *)music->vorbis_dec);
-                        music->vorbis_dec = vorbis_decoder_new();
-                        if (music->vorbis_dec) {
-                            for (int hi = 0; hi < 3; hi++) {
-                                const uint8_t *pkt;
-                                size_t pkt_len;
-                                if (ogg_reader_next_packet(
-                                        (ogg_reader_t *)music->ogg_reader, &pkt, &pkt_len))
-                                    vorbis_decode_header(
-                                        (vorbis_decoder_t *)music->vorbis_dec, pkt, pkt_len, hi);
-                            }
-                        }
-                        music->leftover_frames = 0;
-                    } else if (music->format == 2 && music->mp3_stream) {
-                        /* MP3: rewind stream */
-                        mp3_stream_rewind((mp3_stream_t *)music->mp3_stream);
-                        music->leftover_frames = 0;
-                    } else if (music->file) {
-                        /* WAV: seek to PCM data start */
-                        fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
+                    if (!vaud_music_seek_output_frame(music, 0)) {
+                        music->state = VAUD_MUSIC_STOPPED;
+                        return;
                     }
-                    music->position = 0;
-                    read = vaud_music_fill_buffer(music, music->current_buffer);
+                    continue;
                 }
 
                 if (read == 0) {

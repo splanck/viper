@@ -52,6 +52,7 @@
 #include <errno.h>
 #include <setjmp.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,20 +67,57 @@
 // Thread-local trap recovery for safe threads
 // =============================================================================
 
+typedef enum {
+    RT_TRAP_RECOVERY_LEGACY = 0,
+    RT_TRAP_RECOVERY_NATIVE = 1
+} rt_trap_recovery_kind_t;
+
+typedef struct rt_trap_recovery_base {
+    struct rt_trap_recovery_base *prev;
+    rt_trap_recovery_kind_t kind;
+} rt_trap_recovery_base_t;
+
+typedef struct {
+    rt_trap_recovery_base_t base;
+    jmp_buf *buf;
+} rt_trap_legacy_recovery_t;
+
+typedef struct {
+    jmp_buf env;
+    rt_trap_recovery_base_t base;
+    int64_t site_id;
+} rt_native_eh_frame_t;
+
 // _Thread_local requires C11; supported by GCC, Clang, and MSVC 19.0+
-static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
+static _Thread_local rt_trap_recovery_base_t *rt_trap_recovery_top_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
 static _Thread_local int rt_trap_net_code_ = 0;
 
 /// @brief Install a longjmp recovery point for recoverable traps on this thread.
 /// @param buf jmp_buf to longjmp to when rt_trap is called; NULL disables.
 void rt_trap_set_recovery(jmp_buf *buf) {
-    rt_trap_recovery_ = buf;
+    if (!buf) {
+        rt_trap_clear_recovery();
+        return;
+    }
+    rt_trap_legacy_recovery_t *node =
+        (rt_trap_legacy_recovery_t *)malloc(sizeof(rt_trap_legacy_recovery_t));
+    if (!node)
+        rt_abort("rt_trap_set_recovery: alloc");
+    node->base.prev = rt_trap_recovery_top_;
+    node->base.kind = RT_TRAP_RECOVERY_LEGACY;
+    node->buf = buf;
+    rt_trap_recovery_top_ = &node->base;
 }
 
 /// @brief Remove the thread-local trap recovery point and clear the saved error.
 void rt_trap_clear_recovery(void) {
-    rt_trap_recovery_ = NULL;
+    if (rt_trap_recovery_top_ &&
+        rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_LEGACY) {
+        rt_trap_legacy_recovery_t *node = (rt_trap_legacy_recovery_t *)rt_trap_recovery_top_;
+        rt_trap_recovery_top_ = node->base.prev;
+        free(node);
+    }
     rt_trap_error_[0] = '\0';
 }
 
@@ -166,9 +204,15 @@ void rt_trap(const char *msg) {
                                              kind = 2;      // "Invalid cast" → InvalidCast
         rt_trap_fields_set(kind, 0, -1);
     }
-    if (rt_trap_recovery_) {
+    if (rt_trap_recovery_top_) {
         snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
-        longjmp(*rt_trap_recovery_, 1);
+        if (rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_NATIVE) {
+            rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)((char *)rt_trap_recovery_top_ -
+                                                                   offsetof(rt_native_eh_frame_t,
+                                                                            base));
+            longjmp(frame->env, 1);
+        }
+        longjmp(*((rt_trap_legacy_recovery_t *)rt_trap_recovery_top_)->buf, 1);
     }
     vm_trap(msg);
 }
@@ -190,6 +234,45 @@ void rt_trap_net(const char *msg, int err_code) {
 /// @return The Err_* code set by the last rt_trap_net() call on this thread.
 int rt_trap_get_net_code(void) {
     return rt_trap_net_code_;
+}
+
+void *rt_native_eh_frame_alloc(void) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)calloc(1, sizeof(rt_native_eh_frame_t));
+    return frame;
+}
+
+void rt_native_eh_frame_free(void *frame_ptr) {
+    free(frame_ptr);
+}
+
+void rt_native_eh_push(void *frame_ptr) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
+    if (!frame)
+        return;
+    frame->base.prev = rt_trap_recovery_top_;
+    frame->base.kind = RT_TRAP_RECOVERY_NATIVE;
+    frame->site_id = 0;
+    rt_trap_recovery_top_ = &frame->base;
+}
+
+void rt_native_eh_pop(void *frame_ptr) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
+    if (!frame)
+        return;
+    if (rt_trap_recovery_top_ == &frame->base)
+        rt_trap_recovery_top_ = frame->base.prev;
+}
+
+void rt_native_eh_set_site(void *frame_ptr, int64_t site_id) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
+    if (!frame)
+        return;
+    frame->site_id = site_id;
+}
+
+int64_t rt_native_eh_get_site(void *frame_ptr) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
+    return frame ? frame->site_id : 0;
 }
 
 // =============================================================================

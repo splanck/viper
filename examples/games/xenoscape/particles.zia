@@ -350,7 +350,7 @@ class ParticleSystem {
     // =========================================================================
 
     expose func burstPoisonCloud(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(25, 40);
         emitter.SetVelocity(3.0, 12.0, 0.0, 360.0);
         emitter.SetGravity(0.0, -0.1);
@@ -363,7 +363,7 @@ class ParticleSystem {
     }
 
     expose func burstCrystalShatter(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(15, 25);
         emitter.SetVelocity(10.0, 30.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.5);
@@ -376,7 +376,7 @@ class ParticleSystem {
     }
 
     expose func burstLavaSplash(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(15, 30);
         emitter.SetVelocity(8.0, 25.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.6);
@@ -388,7 +388,7 @@ class ParticleSystem {
     }
 
     expose func burstFrostShatter(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(20, 35);
         emitter.SetVelocity(6.0, 20.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.3);
@@ -401,7 +401,7 @@ class ParticleSystem {
     }
 
     expose func burstCorruptionDeath(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(20, 35);
         emitter.SetVelocity(5.0, 18.0, 0.0, 360.0);
         emitter.SetGravity(0.0, -0.15);
@@ -414,7 +414,7 @@ class ParticleSystem {
     }
 
     expose func burstExplosion(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(15, 30);
         emitter.SetVelocity(12.0, 40.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.4);
@@ -430,7 +430,7 @@ class ParticleSystem {
     }
 
     expose func burstBossPhaseTransition(x: Integer, y: Integer, phaseColor: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(25, 45);
         emitter.SetVelocity(15.0, 50.0, 0.0, 360.0);
         emitter.SetGravity(0.0, 0.0);
@@ -443,7 +443,7 @@ class ParticleSystem {
     }
 
     expose func burstAbilityAcquired(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(30, 50);
         emitter.SetVelocity(8.0, 30.0, 0.0, 360.0);
         emitter.SetGravity(0.0, -0.1);
@@ -456,7 +456,7 @@ class ParticleSystem {
     }
 
     expose func burstDashTrail(x: Integer, y: Integer, facing: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(5, 10);
         if facing > 0 {
             emitter.SetVelocity(8.0, 15.0, 150.0, 210.0);
@@ -470,7 +470,7 @@ class ParticleSystem {
     }
 
     expose func burstPoundImpact(x: Integer, y: Integer) {
-        emitter.set_Position(x, y);
+        emitter.SetPosition(x + 0.0, y + 0.0);
         emitter.SetLifetime(10, 20);
         emitter.SetVelocity(10.0, 30.0, 160.0, 200.0);
         emitter.SetGravity(0.0, 0.3);

@@ -408,14 +408,15 @@ static void test_playlist_clear_releases_shuffle_order() {
 
 // Write a minimal PCM WAV file with the given sample_rate to `path`.
 // Returns 1 on success, 0 if the temp file could not be written.
-static int write_test_wav(const char *path, uint32_t sample_rate) {
+static int write_test_wav_frames(const char *path, uint32_t sample_rate, uint32_t frame_count) {
     FILE *f = fopen(path, "wb");
     if (!f)
         return 0;
 
     // RIFF/WAVE header (12 bytes)
     fwrite("RIFF", 1, 4, f);
-    uint32_t riff_sz = 38; // = 4 (WAVE) + 24 (fmt chunk) + 10 (data chunk)
+    uint32_t data_sz = frame_count * 2; // 16-bit mono PCM
+    uint32_t riff_sz = 36 + data_sz;
     fwrite(&riff_sz, 4, 1, f);
     fwrite("WAVE", 1, 4, f);
 
@@ -437,13 +438,17 @@ static int write_test_wav(const char *path, uint32_t sample_rate) {
 
     // data chunk (10 bytes)
     fwrite("data", 1, 4, f);
-    uint32_t data_sz = 2; // one 16-bit mono sample
     fwrite(&data_sz, 4, 1, f);
     uint16_t sample = 0;
-    fwrite(&sample, 2, 1, f);
+    for (uint32_t i = 0; i < frame_count; i++)
+        fwrite(&sample, 2, 1, f);
 
     fclose(f);
     return 1;
+}
+
+static int write_test_wav(const char *path, uint32_t sample_rate) {
+    return write_test_wav_frames(path, sample_rate, 1);
 }
 
 static void test_wav_zero_sample_rate() {
@@ -489,6 +494,36 @@ static void test_wav_valid_sample_rate() {
     remove(path);
 }
 
+static void test_music_seek_resampled_wav() {
+    const char *path = "/tmp/viper_test_music_seek_22050.wav";
+    if (!write_test_wav_frames(path, 22050, 22050)) {
+        ASSERT(1, "could not write temp WAV file (skip music seek test)");
+        return;
+    }
+
+    void *music = rt_music_load(make_str(path));
+    if (!music) {
+        ASSERT(1, "music load unavailable in headless environment (skip)");
+        remove(path);
+        return;
+    }
+
+    int64_t duration_ms = rt_music_get_duration(music);
+    ASSERT(duration_ms >= 950 && duration_ms <= 1050,
+           "resampled WAV duration stays near 1000ms");
+
+    rt_music_seek(music, 500);
+    int64_t pos_ms = rt_music_get_position(music);
+    ASSERT(pos_ms >= 450 && pos_ms <= 550,
+           "resampled WAV seek reports stable millisecond position");
+
+    rt_music_stop(music);
+    ASSERT(rt_music_get_position(music) <= 50, "music stop rewinds to the beginning");
+
+    rt_music_destroy(music);
+    remove(path);
+}
+
 /// @brief Main.
 int main() {
     // Audio system (headless-safe)
@@ -520,6 +555,7 @@ int main() {
     test_wav_zero_sample_rate();
     test_wav_extreme_sample_rate();
     test_wav_valid_sample_rate();
+    test_music_seek_resampled_wav();
 
     printf("Audio integration tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

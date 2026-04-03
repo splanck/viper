@@ -113,6 +113,9 @@ std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig) {
 }
 
 TypeRef toZiaReturnType(const il::runtime::ParsedSignature &sig) {
+    if (!sig.objectTypeName.empty())
+        return types::runtimeClass(sig.objectTypeName);
+
     // When the signature carries an element type (e.g. "seq<str>"), produce a typed
     // Seq type so the lowerer can use kSeqLen/kSeqGet for safe rt_seq iteration.
     if (!sig.elementTypeName.empty()) {

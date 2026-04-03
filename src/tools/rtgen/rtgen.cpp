@@ -529,28 +529,48 @@ static ParseState parseFile(const fs::path &path) {
 
 /// @brief Map IL type to C type for DirectHandler template.
 static std::string ilTypeToCType(const std::string &ilType) {
-    if (ilType == "str")
+    std::string baseType = ilType;
+    size_t langle = baseType.find('<');
+    if (langle != std::string::npos)
+        baseType = baseType.substr(0, langle);
+
+    if (baseType == "str")
         return "rt_string";
-    if (ilType == "i64")
+    if (baseType == "i64")
         return "int64_t";
-    if (ilType == "i32")
+    if (baseType == "i32")
         return "int32_t";
-    if (ilType == "i16")
+    if (baseType == "i16")
         return "int16_t";
-    if (ilType == "i8" || ilType == "i1")
+    if (baseType == "i8" || baseType == "i1")
         return "int8_t";
-    if (ilType == "f64")
+    if (baseType == "f64")
         return "double";
-    if (ilType == "f32")
+    if (baseType == "f32")
         return "float";
-    if (ilType == "void")
+    if (baseType == "void")
         return "void";
-    if (ilType == "bool")
+    if (baseType == "bool")
         return "int8_t";
-    if (ilType == "obj" || ilType == "ptr")
+    if (baseType == "obj" || baseType == "ptr")
         return "void *";
     // Default to void* for unknown types
     return "void *";
+}
+
+static std::string stripTypeArgs(const std::string &ilType) {
+    size_t langle = ilType.find('<');
+    if (langle == std::string::npos)
+        return ilType;
+    return ilType.substr(0, langle);
+}
+
+static std::string extractTypeArg(const std::string &ilType) {
+    size_t langle = ilType.find('<');
+    size_t rangle = ilType.rfind('>');
+    if (langle == std::string::npos || rangle == std::string::npos || rangle <= langle)
+        return {};
+    return ilType.substr(langle + 1, rangle - langle - 1);
 }
 
 /// @brief Map IL type to signature string format.
@@ -559,14 +579,16 @@ static std::string ilTypeToSigType(const std::string &ilType) {
     // reference types keep their inner type (null pointer = none).
     if (!ilType.empty() && ilType.back() == '?')
         return ilTypeToSigType(ilType.substr(0, ilType.size() - 1));
-    if (ilType == "str")
+
+    std::string baseType = stripTypeArgs(ilType);
+    if (baseType == "str")
         return "string";
-    if (ilType == "obj")
+    if (baseType == "obj" || baseType == "ptr")
         return "ptr";
-    if (ilType == "bool")
+    if (baseType == "bool")
         return "i1";
     // Most types map directly
-    return ilType;
+    return baseType;
 }
 
 /// @brief Parse a signature like "str(i64,str)" into return type and arg types.
@@ -1424,17 +1446,22 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         return "types::optional(" + ilTypeToZiaType(inner, canonical) + ")";
     }
 
-    if (ilType == "str")
+    std::string baseType = stripTypeArgs(ilType);
+    std::string typeArg = extractTypeArg(ilType);
+
+    if (baseType == "str")
         return "types::string()";
-    if (ilType == "i64")
+    if (baseType == "i64")
         return "types::integer()";
-    if (ilType == "f64")
+    if (baseType == "f64")
         return "types::number()";
-    if (ilType == "i1" || ilType == "bool")
+    if (baseType == "i1" || baseType == "bool")
         return "types::boolean()";
-    if (ilType == "void")
+    if (baseType == "void")
         return "types::voidType()";
-    if (ilType == "obj" || ilType == "ptr") {
+    if ((baseType == "obj" || baseType == "ptr") && !typeArg.empty())
+        return "types::runtimeClass(\"" + typeArg + "\")";
+    if (baseType == "obj" || baseType == "ptr") {
         // Explicit return type overrides for functions that return objects
         // from a different namespace than their own.
         static const std::unordered_map<std::string, std::string> returnTypeOverrides = {
@@ -1512,17 +1539,19 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
         return "types::optional(" + ilParamTypeToZiaType(inner) + ")";
     }
 
-    if (ilType == "str")
+    std::string baseType = stripTypeArgs(ilType);
+
+    if (baseType == "str")
         return "types::string()";
-    if (ilType == "i64")
+    if (baseType == "i64")
         return "types::integer()";
-    if (ilType == "f64")
+    if (baseType == "f64")
         return "types::number()";
-    if (ilType == "i1" || ilType == "bool")
+    if (baseType == "i1" || baseType == "bool")
         return "types::boolean()";
-    if (ilType == "void")
+    if (baseType == "void")
         return "types::voidType()";
-    if (ilType == "obj" || ilType == "ptr")
+    if (baseType == "obj" || baseType == "ptr")
         return "types::ptr()";
     return "types::ptr()";
 }

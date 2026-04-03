@@ -15,6 +15,7 @@
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_pixels.h"
+#include "rt_crc32.h"
 #include "rt_string.h"
 
 #include "tests/common/PosixCompat.h"
@@ -25,6 +26,54 @@
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
+}
+
+static uint32_t read_be32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
+           (uint32_t)p[3];
+}
+
+static void assert_png_chunk_crcs_valid(const char *path) {
+    FILE *f = fopen(path, "rb");
+    assert(f != nullptr);
+    assert(fseek(f, 0, SEEK_END) == 0);
+    long file_len = ftell(f);
+    assert(file_len > 8);
+    assert(fseek(f, 0, SEEK_SET) == 0);
+
+    uint8_t *buf = (uint8_t *)malloc((size_t)file_len);
+    assert(buf != nullptr);
+    assert(fread(buf, 1, (size_t)file_len, f) == (size_t)file_len);
+    fclose(f);
+
+    static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    assert(memcmp(buf, png_sig, 8) == 0);
+
+    size_t pos = 8;
+    int saw_iend = 0;
+    while (pos + 12 <= (size_t)file_len) {
+        uint32_t chunk_len = read_be32(buf + pos);
+        pos += 4;
+        size_t chunk_start = pos;
+        assert(pos + 4 + (size_t)chunk_len + 4 <= (size_t)file_len);
+
+        const uint8_t *chunk_type = buf + pos;
+        pos += 4 + (size_t)chunk_len;
+
+        uint32_t file_crc = read_be32(buf + pos);
+        pos += 4;
+
+        uint32_t actual_crc = rt_crc32_compute(buf + chunk_start, 4 + (size_t)chunk_len);
+        assert(file_crc == actual_crc);
+
+        if (memcmp(chunk_type, "IEND", 4) == 0) {
+            saw_iend = 1;
+            break;
+        }
+    }
+
+    free(buf);
+    assert(saw_iend == 1);
 }
 
 // ============================================================================
@@ -190,6 +239,7 @@ static void test_png_roundtrip_no_leak() {
 
     int64_t save_ok = rt_pixels_save_png(p, path);
     assert(save_ok == 1);
+    assert_png_chunk_crcs_valid(pngpath);
 
     int64_t after_save = rt_gc_tracked_count();
     // save_png should release raw_bytes and comp_bytes internally

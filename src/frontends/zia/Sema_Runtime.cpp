@@ -174,7 +174,7 @@ void Sema::initRuntimeFunctions() {
             // infer the owning class type for constructor/factory methods so callers
             // get proper type tracking. Do NOT override typed seq returns.
             if (sig.returnType == il::runtime::ILScalarType::Object &&
-                sig.elementTypeName.empty() && cls.qname)
+                sig.elementTypeName.empty() && sig.objectTypeName.empty() && cls.qname)
                 returnType = types::runtimeClass(cls.qname);
             if (sig.isOptionalReturn)
                 returnType = types::optional(returnType);

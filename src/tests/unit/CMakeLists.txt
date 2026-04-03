@@ -338,6 +338,14 @@ if (NOT TARGET test_codegen_x86_64_passes)
     viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
 endif ()
 
+if (NOT TARGET test_native_eh_lowering)
+    viper_add_test(
+            test_native_eh_lowering
+            ${VIPER_TESTS_DIR}/unit/test_native_eh_lowering.cpp)
+    target_link_libraries(test_native_eh_lowering PRIVATE viper_codegen_common il_api)
+    viper_add_ctest(test_native_eh_lowering test_native_eh_lowering)
+endif ()
+
 if (NOT TARGET test_codegen_x86_64_live_intervals)
     viper_add_test(
             test_codegen_x86_64_live_intervals

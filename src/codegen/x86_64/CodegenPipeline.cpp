@@ -23,6 +23,7 @@
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
+#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/LinkerSupport.hpp"
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
@@ -725,6 +726,8 @@ PipelineResult CodegenPipeline::run() {
         result.stderr_text = err.str();
         return result;
     }
+
+    viper::codegen::common::lowerNativeEh(module);
 
     // Run IL optimizations before lowering to MIR.
     // Keep these pipelines aligned with the currently safe canonical O1/O2

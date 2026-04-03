@@ -1,0 +1,413 @@
+// expr.zia — Expression AST Nodes
+// Part of ViperSQL
+//
+// Defines the Expr entity used by the parser to represent SQL expressions
+// as an abstract syntax tree. Each Expr has a kind (EXPR_LITERAL, EXPR_COLUMN,
+// EXPR_BINARY, EXPR_FUNCTION, EXPR_SUBQUERY, etc.) and carries child nodes,
+// operator info, and literal values. The executor's evalExpr() walks this
+// tree to produce SqlValue results during query execution.
+
+module expr;
+
+bind "../engine/types";
+
+//=============================================================================
+// EXPRESSION KIND CONSTANTS
+//=============================================================================
+
+final EXPR_LITERAL = 1;      // Literal value (NULL, int, real, text)
+final EXPR_COLUMN = 2;       // Column reference
+final EXPR_BINARY = 3;       // Binary operation (+, -, *, /, =, <, >, etc.)
+final EXPR_UNARY = 4;        // Unary operation (-, NOT)
+final EXPR_FUNCTION = 5;     // Function call (COUNT, SUM, etc.)
+final EXPR_STAR = 6;         // SELECT * wildcard
+final EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
+final EXPR_CASE = 8;         // CASE WHEN ... THEN ... ELSE ... END
+final EXPR_EXISTS = 9;       // EXISTS (SELECT ...)
+final EXPR_WINDOW = 10;      // Window function: func() OVER (...)
+final EXPR_QUANTIFIED = 11;  // Phase 71: col op ANY/ALL/SOME (subquery)
+final EXPR_ROW_VALUE = 12;   // Phase 76: (a, b) row value constructor
+
+//=============================================================================
+// BINARY OPERATOR CONSTANTS
+//=============================================================================
+
+final OP_ADD = 1;
+final OP_SUB = 2;
+final OP_MUL = 3;
+final OP_DIV = 4;
+final OP_MOD = 5;
+final OP_EQ = 10;
+final OP_NE = 11;
+final OP_LT = 12;
+final OP_LE = 13;
+final OP_GT = 14;
+final OP_GE = 15;
+final OP_AND = 20;
+final OP_OR = 21;
+final OP_LIKE = 22;
+final OP_IN = 23;
+final OP_IS = 24;
+final OP_CONCAT = 25;  // ||
+final OP_REGEX_MATCH = 26;  // ~ (regex match)
+final OP_SIMILAR_TO = 27;   // SIMILAR TO
+final OP_IS_DISTINCT = 28;      // IS DISTINCT FROM (NULL-safe <>)
+final OP_IS_NOT_DISTINCT = 29;  // IS NOT DISTINCT FROM (NULL-safe =)
+
+//=============================================================================
+// UNARY OPERATOR CONSTANTS
+//=============================================================================
+
+final OP_NEG = 1;
+final OP_NOT = 2;
+
+//=============================================================================
+// EXPR ENTITY
+//=============================================================================
+
+class Expr {
+    expose Integer kind;
+
+    // For EXPR_LITERAL
+    expose SqlValue literalValue;
+
+    // For EXPR_COLUMN
+    expose String tableName;   // Optional table alias
+    expose String columnName;
+
+    // For EXPR_BINARY and EXPR_UNARY
+    expose Integer op;
+    // Children stored in args: binary uses args[0]=left, args[1]=right; unary uses args[0]=operand
+
+    // For EXPR_FUNCTION and children
+    expose String funcName;
+    expose List[Expr] args;  // Also used for binary/unary children
+
+    // For EXPR_SUBQUERY (stores SQL to re-parse - avoids circular dependency)
+    expose String subquerySQL;
+
+    // For EXPR_CASE
+    expose List[Expr] caseConditions;  // WHEN conditions
+    expose List[Expr] caseResults;     // THEN results
+    expose Expr? caseElse;             // ELSE result (null if no ELSE)
+
+    // For EXPR_WINDOW
+    expose List[Expr] partitionBy;     // PARTITION BY expressions
+    expose List[Expr] windowOrderBy;   // ORDER BY expressions for window
+    expose List[Integer] windowOrderDir; // 0=ASC, 1=DESC for each ORDER BY
+    // Window frame specification (Phase 61)
+    // frameMode: 0=none, 1=ROWS, 2=RANGE
+    // frameBound kinds: 0=default, 1=UNBOUNDED PRECEDING, 2=N PRECEDING,
+    //                   3=CURRENT ROW, 4=N FOLLOWING, 5=UNBOUNDED FOLLOWING
+    expose Integer frameMode;
+    expose Integer frameStartKind;
+    expose Integer frameStartN;       // N for "N PRECEDING" or "N FOLLOWING"
+    expose Integer frameEndKind;
+    expose Integer frameEndN;
+    // Phase 72: EXCLUDE clause — 0=none, 1=EXCLUDE CURRENT ROW, 2=EXCLUDE GROUP, 3=EXCLUDE TIES
+    expose Integer frameExclude;
+
+    // For aggregate FILTER clause (Phase 54)
+    expose Expr? filterExpr;           // FILTER (WHERE expr) for aggregates
+
+    // Phase 75: Named window reference (OVER w)
+    expose String windowRefName;       // Name of referenced WINDOW definition
+
+    expose func init() {
+        kind = EXPR_LITERAL;
+        literalValue = new SqlValue();
+        literalValue.initNull();
+        tableName = "";
+        columnName = "";
+        op = 0;
+        funcName = "";
+        args = [];
+        subquerySQL = "";
+        caseConditions = [];
+        caseResults = [];
+        caseElse = null;
+        partitionBy = [];
+        windowOrderBy = [];
+        windowOrderDir = [];
+        frameMode = 0;
+        frameStartKind = 0;
+        frameStartN = 0;
+        frameEndKind = 0;
+        frameEndN = 0;
+        frameExclude = 0;
+        filterExpr = null;
+        windowRefName = "";
+    }
+
+    expose func initLiteral(val: SqlValue) {
+        kind = EXPR_LITERAL;
+        literalValue = val;
+    }
+
+    expose func initColumn(tbl: String, col: String) {
+        kind = EXPR_COLUMN;
+        tableName = tbl;
+        columnName = col;
+    }
+
+    expose func initBinary(operator: Integer, l: Expr, r: Expr) {
+        kind = EXPR_BINARY;
+        op = operator;
+        args = [];
+        args.add(l);
+        args.add(r);
+    }
+
+    expose func initUnary(operator: Integer, expr: Expr) {
+        kind = EXPR_UNARY;
+        op = operator;
+        args = [];
+        args.add(expr);
+    }
+
+    expose func initFunction(name: String) {
+        kind = EXPR_FUNCTION;
+        funcName = name;
+        args = [];
+    }
+
+    expose func initStar() {
+        kind = EXPR_STAR;
+    }
+
+    expose func initSubquery(sql: String) {
+        kind = EXPR_SUBQUERY;
+        subquerySQL = sql;
+    }
+
+    expose func initExists(sql: String) {
+        kind = EXPR_EXISTS;
+        subquerySQL = sql;
+    }
+
+    expose func initWindow(name: String) {
+        kind = EXPR_WINDOW;
+        funcName = name;
+        args = [];
+        partitionBy = [];
+        windowOrderBy = [];
+        windowOrderDir = [];
+        frameMode = 0;
+        frameStartKind = 0;
+        frameStartN = 0;
+        frameEndKind = 0;
+        frameEndN = 0;
+        frameExclude = 0;
+    }
+
+    // Phase 71: col op ANY/ALL/SOME (subquery)
+    // op = comparison operator, funcName = "ANY"/"ALL", subquerySQL = query, args[0] = left expr
+    expose func initQuantified(operator: Integer, quantifier: String, sql: String, leftExpr: Expr) {
+        kind = EXPR_QUANTIFIED;
+        op = operator;
+        funcName = quantifier;
+        subquerySQL = sql;
+        args = [];
+        args.add(leftExpr);
+    }
+
+    expose func initCase() {
+        kind = EXPR_CASE;
+        caseConditions = [];
+        caseResults = [];
+        caseElse = null;
+    }
+
+    expose func addCaseWhen(condition: Expr, result: Expr) {
+        caseConditions.add(condition);
+        caseResults.add(result);
+    }
+
+    expose func setCaseElse(elseExpr: Expr) {
+        caseElse = elseExpr;
+    }
+
+    expose func isLiteral() -> Boolean {
+        return kind == EXPR_LITERAL;
+    }
+
+    expose func isColumn() -> Boolean {
+        return kind == EXPR_COLUMN;
+    }
+
+    expose func isBinary() -> Boolean {
+        return kind == EXPR_BINARY;
+    }
+
+    expose func getLeft() -> Expr {
+        return args.get(0);
+    }
+
+    expose func getRight() -> Expr {
+        return args.get(1);
+    }
+
+    expose func getOperand() -> Expr {
+        return args.get(0);
+    }
+
+    expose func toString() -> String {
+        if kind == EXPR_LITERAL {
+            return literalValue.toString();
+        }
+        if kind == EXPR_COLUMN {
+            if tableName != "" {
+                return tableName + "." + columnName;
+            }
+            return columnName;
+        }
+        if kind == EXPR_STAR {
+            return "*";
+        }
+        if kind == EXPR_BINARY {
+            var opStr = opToString(op);
+            var leftExpr = args.get(0);
+            var rightExpr = args.get(1);
+            return "(" + leftExpr.toString() + " " + opStr + " " + rightExpr.toString() + ")";
+        }
+        if kind == EXPR_UNARY {
+            var opStr = "";
+            if op == OP_NEG {
+                opStr = "-";
+            }
+            if op == OP_NOT {
+                opStr = "NOT ";
+            }
+            var operandExpr = args.get(0);
+            return opStr + operandExpr.toString();
+        }
+        if kind == EXPR_FUNCTION {
+            var result = funcName + "(";
+            var i = 0;
+            while i < args.count() {
+                if i > 0 {
+                    result = result + ", ";
+                }
+                var arg = args.get(i);
+                result = result + arg.toString();
+                i = i + 1;
+            }
+            return result + ")";
+        }
+        if kind == EXPR_SUBQUERY {
+            return "(" + subquerySQL + ")";
+        }
+        return "?";
+    }
+}
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+func opToString(op: Integer) -> String {
+    if op == OP_ADD { return "+"; }
+    if op == OP_SUB { return "-"; }
+    if op == OP_MUL { return "*"; }
+    if op == OP_DIV { return "/"; }
+    if op == OP_MOD { return "%"; }
+    if op == OP_EQ { return "="; }
+    if op == OP_NE { return "<>"; }
+    if op == OP_LT { return "<"; }
+    if op == OP_LE { return "<="; }
+    if op == OP_GT { return ">"; }
+    if op == OP_GE { return ">="; }
+    if op == OP_AND { return "AND"; }
+    if op == OP_OR { return "OR"; }
+    if op == OP_LIKE { return "LIKE"; }
+    if op == OP_CONCAT { return "||"; }
+    if op == OP_REGEX_MATCH { return "~"; }
+    if op == OP_SIMILAR_TO { return "SIMILAR TO"; }
+    if op == OP_IS_DISTINCT { return "IS DISTINCT FROM"; }
+    if op == OP_IS_NOT_DISTINCT { return "IS NOT DISTINCT FROM"; }
+    return "??";
+}
+
+//=============================================================================
+// FACTORY FUNCTIONS
+//=============================================================================
+
+func exprLiteral(val: SqlValue) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initLiteral(val);
+    return e;
+}
+
+func exprNull() -> Expr {
+    return exprLiteral(sqlNull());
+}
+
+func exprInt(val: Integer) -> Expr {
+    return exprLiteral(sqlInteger(val));
+}
+
+func exprReal(val: Float, text: String) -> Expr {
+    return exprLiteral(sqlReal(val, text));
+}
+
+func exprText(val: String) -> Expr {
+    return exprLiteral(sqlText(val));
+}
+
+func exprColumn(name: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initColumn("", name);
+    return e;
+}
+
+func exprTableColumn(table: String, column: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initColumn(table, column);
+    return e;
+}
+
+func exprBinary(op: Integer, left: Expr, right: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initBinary(op, left, right);
+    return e;
+}
+
+func exprUnary(op: Integer, operand: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initUnary(op, operand);
+    return e;
+}
+
+func exprStar() -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initStar();
+    return e;
+}
+
+func exprFunction(name: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initFunction(name);
+    return e;
+}
+
+func exprSubquery(sql: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initSubquery(sql);
+    return e;
+}
+
+// Phase 71: col op ANY/ALL (subquery)
+func exprQuantified(operator: Integer, quantifier: String, sql: String, leftExpr: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initQuantified(operator, quantifier, sql, leftExpr);
+    return e;
+}

@@ -270,6 +270,17 @@ void rt_canvas_disc_alpha(
     (void)alpha;
 }
 
+void rt_canvas_ellipse_alpha(
+    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color, int64_t alpha) {
+    (void)canvas;
+    (void)cx;
+    (void)cy;
+    (void)rx;
+    (void)ry;
+    (void)color;
+    (void)alpha;
+}
+
 /// @brief Copy a rectangular region from one surface to another.
 void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)canvas;
