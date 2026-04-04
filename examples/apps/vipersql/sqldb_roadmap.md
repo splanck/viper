@@ -1603,7 +1603,7 @@ Audit of the Viper runtime (194+ classes) against ViperSQL needs. These are thin
 | # | Missing Class/Method | Type | Needed For |
 |---|---------------------|------|-----------|
 | 6 | **DateTime.Parse(str)** | New method | DATE/TIMESTAMP string parsing (currently manual substring extraction) |
-| 7 | **String.Like(text, pattern)** | New method | SQL LIKE operator (% and _ wildcards); no simple wildcard matching exists |
+| 7 | **String.Like(text, pattern)** | DONE | Case-sensitive SQL LIKE. String.LikeCI for case-insensitive ILIKE. |
 | 8 | **Bytes.ReadInt32LE/BE(offset)** | New methods | Multi-byte binary read/write at offset; only per-byte Get/Set exists |
 | 9 | **Map.SetInt/GetInt** | New methods | Typed map accessors to avoid manual Box.I64/ToI64 wrapping |
 

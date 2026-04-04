@@ -125,7 +125,8 @@ namespace {
         case MOpcode::FDIV:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
-        case MOpcode::MOVQrx: {
+        case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr: {
             const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
             if (reg && reg->isPhys)
                 return reg->idOrPhys;
@@ -174,6 +175,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
             // dst, src - use src
             if (instr.operands.size() >= 2)
                 addIfPhysReg(instr.operands[1]);

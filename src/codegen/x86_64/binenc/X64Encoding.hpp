@@ -244,7 +244,7 @@ struct SseOp {
     uint8_t prefix; ///< Mandatory prefix: 0xF2, 0x66, or 0 (none for MOVUPS).
     uint8_t opcode; ///< Opcode byte after 0F.
     bool regIsDst;  ///< True if ModR/M reg field is the destination.
-    bool needsRexW; ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx).
+    bool needsRexW; ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx, MOVQxr).
 };
 
 inline constexpr SseOp sseOpcode(MOpcode op) {
@@ -265,6 +265,8 @@ inline constexpr SseOp sseOpcode(MOpcode op) {
             return {0xF2, 0x2C, true, true};
         case MOpcode::MOVQrx:
             return {0x66, 0x6E, true, true};
+        case MOpcode::MOVQxr:
+            return {0x66, 0x7E, false, true};
         case MOpcode::MOVSDrr:
             return {0xF2, 0x10, true, false};
         case MOpcode::MOVSDrm:

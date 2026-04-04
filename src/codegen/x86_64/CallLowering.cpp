@@ -153,6 +153,19 @@ void lowerCall(MBasicBlock &block,
                                                  : CallSlotModel::IndependentRegisterBanks,
                             .variadicTailOnStack = false,
                             .numNamedArgs = plan.numNamedArgs});
+    auto maybeDuplicateWin64VarArgFpr = [&](const CallArgLocation &loc, PhysReg xmmReg) {
+        if (!isWin64 || !plan.isVarArg || !loc.inRegister || loc.cls != CallArgClass::FPR)
+            return;
+        if (loc.regIndex >= target.intArgOrder.size())
+            return;
+
+        // Win64 variadic/unprototyped calls must mirror FP register arguments
+        // into the corresponding positional integer register slot as raw bits.
+        insertInstr(MInstr::make(
+            MOpcode::MOVQxr,
+            {makePhysOperand(RegClass::GPR, target.intArgOrder[loc.regIndex]),
+             makePhysOperand(RegClass::XMM, xmmReg)}));
+    };
 
     // Stack alignment is handled statically by FrameLowering which folds
     // outgoingArgArea into frameSize and rounds up to kStackAlignment (16).
@@ -197,6 +210,7 @@ void lowerCall(MBasicBlock &block,
                     MOpcode::MOVSDrr,
                     {makePhysOperand(RegClass::XMM, destReg),
                      makeVRegOperand(RegClass::XMM, arg.vreg)}));
+                maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
                 const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
                                                              loc.stackSlotIndex * kSlotSizeBytes);
@@ -234,6 +248,7 @@ void lowerCall(MBasicBlock &block,
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
                 insertInstr(MInstr::make(
                     MOpcode::MOVQrx, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
+                maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
                 const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
                                                              loc.stackSlotIndex * kSlotSizeBytes);
@@ -251,7 +266,8 @@ void lowerCall(MBasicBlock &block,
         std::max(frame.outgoingArgArea, static_cast<int>(roundUpSize(stackBytes, kSlotSizeBytes)));
 
     // SysV AMD64 varargs: %al must carry the number of XMM registers used.
-    // Windows x64 does not require this - varargs just use the standard integer registers.
+    // Win64 instead mirrors FP register args into the corresponding integer
+    // lanes earlier in lowering and does not use %al.
     if (plan.isVarArg && target.shadowSpace == 0) {
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
         insertInstr(

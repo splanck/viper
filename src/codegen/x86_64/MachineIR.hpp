@@ -126,6 +126,7 @@ enum class MOpcode {
     CVTSI2SD,  ///< Convert signed integer to scalar double.
     CVTTSD2SI, ///< Convert scalar double to signed integer with truncation.
     MOVQrx,    ///< Move 64-bit GPR to XMM (bit-pattern transfer, no conversion).
+    MOVQxr,    ///< Move 64-bit XMM to GPR (bit-pattern transfer, no conversion).
     MOVSDrr,   ///< Move scalar double register to register.
     MOVSDrm,   ///< Move scalar double register to memory.
     MOVSDmr,   ///< Move scalar double memory to register.

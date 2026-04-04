@@ -243,6 +243,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::REMU64rr:
         case MOpcode::SETcc:
         case MOpcode::MOVZXrr32:
+        case MOpcode::MOVQxr:
             if (!instr.operands.empty()) {
                 const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
                 if (dst && dst->isPhys && dst->idOrPhys < 32)
@@ -337,6 +338,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
             if (!instr.operands.empty() && samePhysReg(instr.operands[0], reg))
                 return true;
             break;
@@ -404,6 +406,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
             // dst, src - check src
             if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
                 return true;

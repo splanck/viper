@@ -137,6 +137,8 @@ namespace {
             return "CVTTSD2SI";
         case MOpcode::MOVQrx:
             return "MOVQrx";
+        case MOpcode::MOVQxr:
+            return "MOVQxr";
         case MOpcode::MOVSDrr:
             return "MOVSDrr";
         case MOpcode::MOVSDrm:

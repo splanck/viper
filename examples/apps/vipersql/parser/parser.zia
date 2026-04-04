@@ -701,11 +701,16 @@ class Parser {
             return exprBinary(OP_AND, geExpr, leExpr);
         }
 
-        // LIKE / ILIKE pattern
-        if kind == TK_LIKE || kind == TK_ILIKE {
+        // LIKE (case-sensitive) / ILIKE (case-insensitive) pattern
+        if kind == TK_LIKE {
             advance();
             var pattern = parseAddExpr();
             return exprBinary(OP_LIKE, left, pattern);
+        }
+        if kind == TK_ILIKE {
+            advance();
+            var pattern = parseAddExpr();
+            return exprBinary(OP_ILIKE, left, pattern);
         }
 
         // ~ (regex match), ~* (case-insensitive regex match)
@@ -806,10 +811,15 @@ class Parser {
                     var leExpr = exprBinary(OP_LE, left, high);
                     return exprUnary(OP_NOT, exprBinary(OP_AND, geExpr, leExpr));
                 }
-                if currentToken.kind == TK_LIKE || currentToken.kind == TK_ILIKE {
+                if currentToken.kind == TK_LIKE {
                     advance();
                     var pattern = parseAddExpr();
                     return exprUnary(OP_NOT, exprBinary(OP_LIKE, left, pattern));
+                }
+                if currentToken.kind == TK_ILIKE {
+                    advance();
+                    var pattern = parseAddExpr();
+                    return exprUnary(OP_NOT, exprBinary(OP_ILIKE, left, pattern));
                 }
                 if currentToken.kind == TK_IN {
                     advance();

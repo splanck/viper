@@ -584,6 +584,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
         case MOpcode::MOVSDrr: {
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);

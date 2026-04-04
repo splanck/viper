@@ -53,8 +53,9 @@ final OP_REGEX_MATCH = 26;  // ~ (regex match)
 final OP_SIMILAR_TO = 27;   // SIMILAR TO
 final OP_IS_DISTINCT = 28;      // IS DISTINCT FROM (NULL-safe <>)
 final OP_IS_NOT_DISTINCT = 29;  // IS NOT DISTINCT FROM (NULL-safe =)
-final OP_JSON_ARROW = 30;       // ->  (JSON key extraction, returns JSON)
-final OP_JSON_ARROW_TEXT = 31;   // ->> (JSON key extraction, returns TEXT)
+final OP_ILIKE = 30;             // ILIKE (case-insensitive pattern match)
+final OP_JSON_ARROW = 31;       // ->  (JSON key extraction, returns JSON)
+final OP_JSON_ARROW_TEXT = 32;   // ->> (JSON key extraction, returns TEXT)
 
 //=============================================================================
 // UNARY OPERATOR CONSTANTS
@@ -322,11 +323,14 @@ func opToString(op: Integer) -> String {
     if op == OP_AND { return "AND"; }
     if op == OP_OR { return "OR"; }
     if op == OP_LIKE { return "LIKE"; }
+    if op == OP_ILIKE { return "ILIKE"; }
     if op == OP_CONCAT { return "||"; }
     if op == OP_REGEX_MATCH { return "~"; }
     if op == OP_SIMILAR_TO { return "SIMILAR TO"; }
     if op == OP_IS_DISTINCT { return "IS DISTINCT FROM"; }
     if op == OP_IS_NOT_DISTINCT { return "IS NOT DISTINCT FROM"; }
+    if op == OP_JSON_ARROW { return "->"; }
+    if op == OP_JSON_ARROW_TEXT { return "->>"; }
     return "??";
 }
 

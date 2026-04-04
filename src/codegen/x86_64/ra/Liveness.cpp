@@ -113,7 +113,7 @@ void LivenessAnalysis::collectVregs(const MInstr &instr,
     // For liveness, we need to know which vregs are used and which are defined.
     // Default: operand 0 is use+def, rest are use-only.
     // Pure defs: MOVrr[0], MOVri[0], MOVmr[0], LEA[0], SETcc[1],
-    //            MOVZXrr32[0], CVTSI2SD[0], CVTTSD2SI[0], MOVQrx[0],
+    //            MOVZXrr32[0], CVTSI2SD[0], CVTTSD2SI[0], MOVQrx[0], MOVQxr[0],
     //            MOVSDrr[0], MOVSDmr[0], MOVUPSmr[0], XORrr32[0]
 
     auto isDefOnly = [&](std::size_t idx) -> bool {
@@ -126,6 +126,7 @@ void LivenessAnalysis::collectVregs(const MInstr &instr,
             case MOpcode::CVTSI2SD:
             case MOpcode::CVTTSD2SI:
             case MOpcode::MOVQrx:
+            case MOpcode::MOVQxr:
             case MOpcode::MOVSDrr:
             case MOpcode::MOVSDmr:
             case MOpcode::MOVUPSmr:

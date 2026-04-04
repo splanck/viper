@@ -422,7 +422,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         std::vector<MInstr> prefix{};
         if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVri ||
              instr.opcode == MOpcode::LEA || instr.opcode == MOpcode::MOVSDrr ||
-             instr.opcode == MOpcode::MOVZXrr32 || instr.opcode == MOpcode::MOVQrx) &&
+             instr.opcode == MOpcode::MOVZXrr32 || instr.opcode == MOpcode::MOVQrx ||
+             instr.opcode == MOpcode::MOVQxr) &&
             !instr.operands.empty()) {
             if (const auto *destReg = std::get_if<OpReg>(&instr.operands[0])) {
                 if (destReg->isPhys) {
@@ -864,6 +865,7 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:
         case MOpcode::MOVUPSmr:

@@ -643,13 +643,20 @@ SELECT * FROM products WHERE price NOT BETWEEN 10 AND 50;
 SELECT * FROM products WHERE price BETWEEN SYMMETRIC 50 AND 10;  -- same as 10 AND 50
 ```
 
-**LIKE** — Pattern matching (`%` = any characters, `_` = single character):
+**LIKE** — Case-sensitive pattern matching (`%` = any characters, `_` = single character):
 
 ```sql
-SELECT * FROM users WHERE name LIKE 'A%';        -- starts with A
+SELECT * FROM users WHERE name LIKE 'A%';        -- starts with A (case-sensitive)
 SELECT * FROM users WHERE email LIKE '%@gmail%';  -- contains @gmail
 SELECT * FROM users WHERE name LIKE '_ob';        -- 3 chars ending in "ob"
 SELECT * FROM users WHERE name NOT LIKE '%test%'; -- doesn't contain "test"
+```
+
+**ILIKE** — Case-insensitive pattern matching (same wildcards as LIKE):
+
+```sql
+SELECT * FROM users WHERE name ILIKE 'alice%';    -- matches Alice, ALICE, alice
+SELECT * FROM users WHERE email ILIKE '%@GMAIL%'; -- case-insensitive email search
 ```
 
 **IN** — Check membership in a list or subquery:

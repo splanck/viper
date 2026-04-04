@@ -489,12 +489,17 @@ class JoinEngine {
                 return sqlInteger(0);
             }
 
-            // LIKE pattern matching (case-insensitive, matching executor behavior)
+            // LIKE pattern matching (case-sensitive)
             if op == OP_LIKE {
                 if left.kind == SQL_NULL { return sqlInteger(0); }
-                var leftStr = left.toString();
-                var likePat = right.toString();
-                if String.LikeCI(leftStr, likePat) { return sqlInteger(1); }
+                if String.Like(left.toString(), right.toString()) { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+
+            // ILIKE pattern matching (case-insensitive)
+            if op == OP_ILIKE {
+                if left.kind == SQL_NULL { return sqlInteger(0); }
+                if String.LikeCI(left.toString(), right.toString()) { return sqlInteger(1); }
                 return sqlInteger(0);
             }
 
