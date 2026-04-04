@@ -22,6 +22,7 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -47,6 +48,7 @@ bool writePeExe(const std::string &path,
                 const std::vector<DllImport> &imports,
                 const std::unordered_map<std::string, uint32_t> &slotRvas,
                 bool emitStartupStub,
+                std::size_t stackSize,
                 std::ostream &err);
 
 inline bool writePeExe(const std::string &path,
@@ -55,7 +57,7 @@ inline bool writePeExe(const std::string &path,
                        const std::vector<DllImport> &imports,
                        std::ostream &err) {
     static const std::unordered_map<std::string, uint32_t> kNoSlots;
-    return writePeExe(path, layout, arch, imports, kNoSlots, true, err);
+    return writePeExe(path, layout, arch, imports, kNoSlots, true, 0, err);
 }
 
 } // namespace viper::codegen::linker

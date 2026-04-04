@@ -78,6 +78,7 @@ class CodegenPipeline {
         bool dump_mir_before_ra = false;
         bool dump_mir_after_ra = false;
         int optimize = 1;
+        std::size_t stack_size = 0; ///< Requested stack size in bytes; 0 uses platform defaults.
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
         TargetPlatform target_platform = TargetPlatform::Host;

@@ -62,6 +62,10 @@ static uint32_t readLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+static uint64_t readLE64(const uint8_t *p) {
+    return static_cast<uint64_t>(readLE32(p)) | (static_cast<uint64_t>(readLE32(p + 4)) << 32);
+}
+
 int main() {
     {
         NativeLinkerOptions opts;
@@ -103,6 +107,7 @@ int main() {
         opts.objPath = objPath;
         opts.exePath = exePath;
         opts.entrySymbol = "main";
+        opts.stackSize = 0x200000;
 
         std::ostringstream out;
         std::ostringstream err;
@@ -124,6 +129,10 @@ int main() {
                 CHECK(exe[peOff + 2] == 0);
                 CHECK(exe[peOff + 3] == 0);
                 CHECK(readLE16(exe.data() + peOff + 4) == 0xAA64);
+                const size_t optHeaderOff = peOff + 24;
+                CHECK(optHeaderOff + 80 <= exe.size());
+                if (optHeaderOff + 80 <= exe.size())
+                    CHECK(readLE64(exe.data() + optHeaderOff + 72) == 0x200000ULL);
             }
         }
     }

@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/x86_64/FrameLowering.hpp"
+#include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/MachineIR.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -54,6 +55,39 @@ static int countStackProbes(const MFunction &func) {
         }
     }
     return count;
+}
+
+static std::vector<int32_t> collectLeaRbpDisps(const MFunction &func) {
+    std::vector<int32_t> disps;
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode != MOpcode::LEA || instr.operands.size() < 2)
+                continue;
+            const auto *mem = std::get_if<OpMem>(&instr.operands[1]);
+            if (!mem || !mem->base.isPhys)
+                continue;
+            if (static_cast<PhysReg>(mem->base.idOrPhys) != PhysReg::RBP)
+                continue;
+            disps.push_back(mem->disp);
+        }
+    }
+    return disps;
+}
+
+static ILInstr makeAllocaInstr(int resultId, int64_t sizeBytes) {
+    ILInstr instr{};
+    instr.opcode = "alloca";
+    instr.resultId = resultId;
+    instr.resultKind = ILValue::Kind::PTR;
+    instr.ops = {ILValue{.kind = ILValue::Kind::I64, .id = -1, .i64 = sizeBytes}};
+    return instr;
+}
+
+static ILInstr makeRetZero() {
+    ILInstr ret{};
+    ret.opcode = "ret";
+    ret.ops = {ILValue{.kind = ILValue::Kind::I64, .id = -1, .i64 = 0}};
+    return ret;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +225,52 @@ TEST(X64FrameLowering, ZeroFrameNoPrologue) {
     // should skip the prologue entirely (leaf frame elimination).
     int movCount = countOpcode(func, MOpcode::MOVrr);
     EXPECT_EQ(movCount, 0); // No prologue for leaf functions
+}
+
+TEST(X64FrameLowering, LargeAllocaConsumesMultipleSlots) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {makeAllocaInstr(0, 24), makeRetZero()};
+
+    ILFunction fn{};
+    fn.name = "large_alloca";
+    fn.blocks = {entry};
+
+    MFunction mir = lowering.lower(fn);
+    FrameInfo frame{};
+    assignSpillSlots(mir, sysvTarget(), frame);
+
+    const auto disps = collectLeaRbpDisps(mir);
+    ASSERT_EQ(disps.size(), 1u);
+    EXPECT_EQ(disps[0], -24);
+    EXPECT_EQ(frame.frameSize, 32);
+}
+
+TEST(X64FrameLowering, MixedAllocaSizesDoNotOverlap) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {makeAllocaInstr(0, 24), makeAllocaInstr(1, 8), makeRetZero()};
+
+    ILFunction fn{};
+    fn.name = "mixed_alloca";
+    fn.blocks = {entry};
+
+    MFunction mir = lowering.lower(fn);
+    FrameInfo frame{};
+    assignSpillSlots(mir, sysvTarget(), frame);
+
+    auto disps = collectLeaRbpDisps(mir);
+    std::sort(disps.begin(), disps.end());
+    ASSERT_EQ(disps.size(), 2u);
+    EXPECT_EQ(disps[0], -32);
+    EXPECT_EQ(disps[1], -24);
+    EXPECT_EQ(frame.frameSize, 32);
 }
 
 int main(int argc, char **argv) {

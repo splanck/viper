@@ -93,23 +93,30 @@ void lowerPendingCalls(MFunction &func,
                        const std::vector<CallLoweringPlan> &plans,
                        const TargetInfo &target,
                        FrameInfo &frame) {
-    std::size_t planIndex = 0;
+    std::vector<bool> consumed(plans.size(), false);
     for (auto &block : func.blocks) {
         std::size_t instrIndex = 0;
         while (instrIndex < block.instructions.size()) {
-            if (block.instructions[instrIndex].opcode != MOpcode::CALL) {
+            auto &instr = block.instructions[instrIndex];
+            if (instr.opcode != MOpcode::CALL) {
                 ++instrIndex;
                 continue;
             }
 
-            if (planIndex >= plans.size()) {
+            if (instr.callPlanId == MInstr::kNoCallPlanId) {
+                ++instrIndex;
+                continue;
+            }
+
+            if (instr.callPlanId >= plans.size()) {
                 break;
             }
+
             const std::size_t beforeSize = block.instructions.size();
-            lowerCall(block, instrIndex, plans[planIndex], target, frame);
+            lowerCall(block, instrIndex, plans[instr.callPlanId], target, frame);
             const std::size_t afterSize = block.instructions.size();
             const std::size_t inserted = afterSize - beforeSize;
-            ++planIndex;
+            consumed[instr.callPlanId] = true;
 
             // The CALL instruction we just processed is now at position (instrIndex + inserted).
             // Skip past it to continue searching for the next CALL.
@@ -117,7 +124,8 @@ void lowerPendingCalls(MFunction &func,
         }
     }
 
-    assert(planIndex == plans.size() && "call plan count mismatch");
+    assert(std::all_of(consumed.begin(), consumed.end(), [](bool used) { return used; }) &&
+           "call plan count mismatch");
 }
 
 /// @brief Lower one function to MIR and run pre-RA legalization.

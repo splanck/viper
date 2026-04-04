@@ -96,6 +96,7 @@ struct Elf64_Shdr {
 bool writeElfExe(const std::string &path,
                  const LinkLayout &layout,
                  LinkArch arch,
+                 std::size_t stackSize,
                  std::ostream &err) {
     std::ofstream f(path, std::ios::binary);
     if (!f) {
@@ -252,6 +253,7 @@ bool writeElfExe(const std::string &path,
         Elf64_Phdr phdr{};
         phdr.p_type = PT_GNU_STACK;
         phdr.p_flags = PF_R | PF_W;
+        phdr.p_memsz = stackSize;
         f.write(reinterpret_cast<const char *>(&phdr), sizeof(phdr));
     }
 

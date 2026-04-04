@@ -24,6 +24,7 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -39,6 +40,7 @@ struct NativeLinkerOptions {
     LinkArch arch = detectLinkArch();
     std::string entrySymbol = "main"; ///< Entry point symbol name.
     std::vector<std::string> extraObjPaths; ///< Additional .o files to link (e.g. asset blob).
+    std::size_t stackSize = 0; ///< Requested stack size in bytes; 0 uses format defaults.
 };
 
 /// Run the native linker.

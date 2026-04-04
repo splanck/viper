@@ -20,6 +20,7 @@
 #include "codegen/common/RuntimeComponents.hpp"
 
 #include <filesystem>
+#include <cstddef>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -44,6 +45,15 @@ bool fileExists(const std::filesystem::path &path);
 /// @param dst Output string to receive the file contents.
 /// @return True if the file was read successfully, false on error.
 bool readFileToString(const std::filesystem::path &path, std::string &dst);
+
+/// @brief Write a string to disk, replacing any existing contents.
+/// @param path The filesystem path to write to.
+/// @param text File contents to persist.
+/// @param err Output stream for human-readable error messages.
+/// @return True on success, false when the file could not be written.
+bool writeTextFile(const std::filesystem::path &path,
+                   std::string_view text,
+                   std::ostream &err);
 
 /// @brief Search for the CMake build directory by walking parent directories.
 /// @details Starts from the current working directory and walks upward looking
@@ -134,6 +144,27 @@ void appendGraphicsLibs(const LinkContext &ctx,
 /// @param ctx The link context to check for audio dependency.
 /// @param cmd The command-line vector to append flags to.
 void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd);
+
+/// @brief Return the default Apple framework list used by Viper graphics builds.
+/// @details Returns an empty list on non-Apple platforms.
+std::vector<std::string> defaultGraphicsFrameworks();
+
+/// @brief Append runtime archives, optional gfx/audio libs, and C++ runtime flags.
+/// @param ctx The resolved link context.
+/// @param cmd The command-line vector to append to.
+void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd);
+
+/// @brief Append platform-specific system-linker flags shared by native backends.
+/// @param ctx The resolved link context.
+/// @param cmd The command-line vector to append to.
+/// @param stackSize Requested stack size in bytes; 0 omits explicit stack flags.
+/// @param useElfPie Whether to force PIE on ELF targets.
+/// @param useElfMath Whether to link libm on ELF targets.
+void appendSystemLinkFlags(const LinkContext &ctx,
+                           std::vector<std::string> &cmd,
+                           std::size_t stackSize,
+                           bool useElfPie,
+                           bool useElfMath);
 
 // =========================================================================
 // Tool invocation

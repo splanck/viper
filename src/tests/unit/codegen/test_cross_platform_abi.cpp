@@ -195,6 +195,18 @@ TEST(CrossPlatformABI, LinkerSupportArchivePathContainsBaseName) {
     EXPECT_NE(path.string().find("my_lib"), std::string::npos);
 }
 
+#if !defined(_WIN32)
+TEST(CrossPlatformABI, LinkerSupportAssemblerHelperPreservesExitCode) {
+    std::ostringstream out;
+    std::ostringstream err;
+
+    const int exitCode = viper::codegen::common::invokeAssembler(
+        {"/bin/sh", "-c", "exit 7"}, "ignored-input.s", "ignored-output.o", out, err);
+
+    EXPECT_EQ(exitCode, 7);
+}
+#endif
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;

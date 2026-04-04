@@ -20,8 +20,10 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Native Linker Hardening** — BranchTrampoline rewritten with boundary-based placement, SectionMerger VA logic extracted as shared API, SymbolResolver platform-aware dynamic symbol classification, RelocApplier range-checked REL32, multi-section COFF writer for function-level code sections, and Windows ARM64 native link gating.
 - **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
+- **Audio Streaming Overhaul** — OGG reader extended with `ogg_reader_next_packet_ex()` providing per-packet serial number, granule position, and BOS/EOS flags. Music streaming now selects the correct Vorbis logical stream in multi-stream OGG containers (e.g., `.ogv` files with both Theora video and Vorbis audio). Unified `vaud_music_seek_output_frame()` handles seek/rewind/loop-restart across all formats (WAV/OGG/MP3). `source_sample_rate` field separates file sample rate from mixer rate for correct duration reporting and resampling.
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
 - **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
+- **Native Exception Handling Lowering** — New `NativeEHLowering` pass (683 LOC) rewrites structured IL EH markers (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext`/`TrapErr`) into ordinary calls and branches before backend lowering, enabling cross-platform native exception handling on x86_64 and AArch64.
 - **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
@@ -42,7 +44,7 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **ViperSQL Client-Server Architecture** — SQLdb demo renamed to ViperSQL and restructured as a database server with `vsql` interactive client. Server entry point with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--log-queries`, `--repl`). PG wire protocol client library. SHA-256 password hashing. Query logging.
+- **ViperSQL Client-Server Architecture** — SQLdb demo renamed to ViperSQL with modular directory layout (`engine/`, `parser/`, `storage/`, `server/`, `client/`, `io/`, `optimizer/`). New `vipersql.zia` server entry point with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--log-queries`, `--repl`). New `vsql` interactive client (482 LOC) with PG wire protocol, aligned column output, meta-commands (`\dt`, `\d`, `\l`, `\c`, `\i`, `\timing`, `\x`), and multi-line input. PG wire protocol client library (`pg_client.zia`, 420 LOC). SHA-256 password hashing. Query logging.
 - **3D Bowling Game Demo** — Multi-file 3D bowling game (12 files, 3,100+ LOC) with Physics3D pin collision, ball spin/hook mechanics, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
 - **Documentation & Code Quality** — 700+ runtime functions documented, 39 stale doc files deleted, 70+ factual errors fixed, Bible code audit across 12 chapters, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against source with Zia examples), runtime surface audit test, Quat.New parameter order fix. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
 
@@ -50,10 +52,10 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 79 | +79 |
-| Source files | 2,671 | 2,797 | +126 |
-| Production SLOC | ~348K | ~418K | +70K |
-| Test count | 1,351 | 1,390 | +39 |
+| Commits | — | 78 | +78 |
+| Source files | 2,671 | 2,800 | +129 |
+| Production SLOC | ~348K | ~420K | +72K |
+| Test count | 1,351 | 1,391 | +40 |
 
 ---
 
@@ -151,6 +153,16 @@ New API: `Pixels.Load(path)` auto-detects format from magic bytes (PNG, JPEG, BM
 Music streaming for OGG and MP3 uses the same triple-buffer architecture as WAV (~96 KB buffer memory regardless of track length). Seamless looping supported for all formats.
 
 New files: `rt_ogg.c/h` (OGG container parser, 276 LOC), `rt_vorbis.c/h` (Vorbis codec, 1100+ LOC), `rt_mp3.c/h` (MP3 decoder, 1000+ LOC), `rt_mp3_tables.h` (spec constants), `rt_gif.c/h` (GIF decoder, 420 LOC).
+
+#### Audio Streaming Overhaul
+
+Significant rework of the music streaming subsystem across all three compressed formats (OGG Vorbis, MP3, WAV):
+
+- **Multi-stream OGG support** — `ogg_reader_next_packet_ex()` returns per-packet `ogg_packet_info_t` with serial number, granule position, and BOS/EOS flags. Vorbis stream selection now identifies the first Vorbis BOS packet and filters all subsequent reads by serial, enabling correct audio extraction from mixed OGG containers (`.ogv` with Theora + Vorbis).
+- **Unified seek/rewind** — New `vaud_music_seek_output_frame()` handles seek, rewind, and loop-restart for all formats. Resets format-specific decoder state (OGG: rewinds reader, re-parses headers for the selected serial; MP3: rewinds stream; WAV: fseek to data offset), primes buffer 0, and leaves the stream ready for playback.
+- **Source sample rate separation** — `source_sample_rate` field tracks the original file sample rate independently from `sample_rate` (always mixer rate). Fixes duration reporting (`frame_count` now represents output frames) and resampling calculations for all three formats.
+- **OGG duration from granule** — Last-page granule scan during load provides accurate `frame_count` for Vorbis streams (previously 0/unknown).
+- **Loop restart consolidation** — Mixer loop restart code (previously duplicated per-format in `mix_music`) now delegates to `vaud_music_seek_output_frame(0)`, eliminating 40+ lines of format-specific restart logic.
 
 ---
 
@@ -295,6 +307,9 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Secondary scratch register (kScratchGPR2)** — X16 (IP0) formalized as `kScratchGPR2` for post-RA helper sequences that need a second temporary while `kScratchGPR` (X9) holds the base value. X16 excluded from register allocator pool. AsmEmitter and A64BinaryEncoder updated to use the named constant instead of hardcoded `PhysReg::X16`.
 - **Pipeline decomposition** — `PassManager`-based pass composition replacing direct function calls in `runCodegenPipeline`. Scheduler and BlockLayout passes added to the O1+ pipeline (previously only peephole ran post-RA). EH-sensitive modules (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext` opcodes) bypass IL optimizations to avoid structural invariant violations. Virtual register space partitioned into three ranges: general vregs (`kFirstVirtualRegId`=1), phi-inserted vregs (`kPhiVRegStart`=40000), and cross-block spill keys (`kCrossBlockSpillKeyStart`=50000) with overflow guards.
 
+**Native Exception Handling Lowering:**
+- **`NativeEHLowering` pass** (`src/codegen/common/NativeEHLowering.cpp`, 683 LOC) — Rewrites structured IL exception handling markers into ordinary IL calls and branches before backend lowering. Transforms `EhPush`/`EhPop` scope markers into `rt_eh_push`/`rt_eh_pop` runtime calls, converts `TrapErr` into `rt_trap()` invocations with message operand materialisation, and lowers `ResumeSame`/`ResumeNext` into control flow jumps. Both x86_64 and AArch64 `CodegenPipeline` invoke the pass before MIR lowering. 171-line unit test validates all EH opcode transformations.
+
 **Common codegen infrastructure:**
 - **`CodeSection::appendSection()`** — Merge two `CodeSection` objects with automatic symbol and relocation index rebasing. External symbols are deduped via `findOrDeclareSymbol`; defined symbols get offset-biased entries. Compact unwind and Win64 unwind entries are also rebased. Enables per-function binary emission followed by a single merged section for backward-compatible symbol extraction.
 - **`DebugLineTable::append()`** — Merge debug line entries from another table with address bias and file index remapping. Both x86_64 and AArch64 `BinaryEmitPass` now emit per-function debug tables and merge them, producing correct DWARF `.debug_line` across function boundaries.
@@ -306,6 +321,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - `-lshell32` — Added to Windows linker command for `DragQueryFile`/`DragAcceptFiles` GUI support.
 - **PeExeWriter hardening** — Import table construction and section alignment fixes for Windows native executables.
 - **NativeLinker improvements** — Enhanced platform detection and link-time error diagnostics.
+- **Windows ARM64 import stubs** — `generateWindowsImports()` now emits AArch64 `ADRP`/`LDR`/`BR` sequences for import thunks alongside x86_64 `JMP [rip+disp32]` stubs, with correct COFF ARM64 relocation types (`kPageRel21`, `kPageOff12L`). Machine type set to `0xAA64` for ARM64 COFF objects.
 
 **Runtime:**
 - `SetErrorMode` + `_set_abort_behavior` added to `rt_init_stack_safety` on Windows to suppress crash/assert dialog boxes in natively compiled programs.
@@ -583,9 +599,11 @@ Comprehensive overhaul with InstallerStub rewrite and expanded platform support:
 
 ### Demo Games
 
-- **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking.
-- **3D Bowling** — Multi-file 3D bowling game at `examples/games/3dbowling/` (12 files, 3,100+ LOC) showcasing the full Graphics3D pipeline. Features Physics3D pin collision and ball spin/hook mechanics with oil pattern effects, pin sweep/reset animations with state machine, 4-mode camera system (follow/overhead/side/pin-view), full 10-frame scoring with bonus rolls and strike/spare detection, celebration state machine with particle effects, Synth audio for impacts and strikes, lane/gutter geometry, and traditional scoreboard HUD overlay.
+- **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking. Camera and particle system refinements for smoother gameplay.
+- **3D Bowling** — Multi-file 3D bowling game at `examples/games/3dbowling/` (12 files, 3,100+ LOC) showcasing the full Graphics3D pipeline. Features Physics3D pin collision and ball spin/hook mechanics with oil pattern effects, pin sweep/reset animations with state machine, 4-mode camera system (follow/overhead/side/pin-view), full 10-frame scoring with bonus rolls and strike/spare detection, celebration state machine with particle effects, Synth audio for impacts and strikes, lane/gutter geometry, and traditional scoreboard HUD overlay. Late-cycle polish: lane rendering, pin placement, game config, and scoring refinements.
+- **Sidescroller** — Sprite art expansion (+208 LOC), enemy behavior updates, level additions, and camera/particle system refinements.
 - **Asset Demo** — Minimal example (`examples/apps/asset_demo/`) demonstrating `embed` and `pack` project directives with `Assets.Load()` at runtime.
+- **ViperSQL** — Database demo restructured from flat `sqldb/` into modular `vipersql/` layout (`engine/`, `parser/`, `storage/`, `server/`, `client/`, `io/`, `optimizer/`). New `vipersql.zia` server entry point and `vsql` interactive SQL client with PG wire protocol, meta-commands, and aligned output.
 
 ---
 
@@ -617,7 +635,8 @@ Video playback for game cutscenes and GUI media applications. All codecs impleme
 
 - **Header parsing** — Identification (0x80), comment (0x81), and setup (0x82) headers parsed from OGG packets. Extracts frame dimensions, FPS, color space, loop filter limits.
 - **YCbCr 4:2:0 → RGBA conversion** — BT.601 integer-only matrix with chroma upsampling. Separate utility (`rt_ycbcr.c`) reusable by future codecs.
-- **OGG multi-stream demux** — VideoPlayer detects Theora vs Vorbis streams by packet header signature, routing packets to the correct decoder.
+- **OGG multi-stream demux** — VideoPlayer detects Theora vs Vorbis streams by packet header signature via `ogg_reader_next_packet_ex()` serial filtering, routing packets to the correct decoder.
+- **Audio track integration** — OGV containers with Vorbis audio tracks are handed off to the audio runtime (`vaud_load_music_ogg`) when `VIPER_ENABLE_AUDIO` is active. VideoPlayer manages A/V synchronization.
 - **Reference frame buffers** — Y/Cb/Cr planes allocated for current, reference, and golden frames. Full DCT/motion compensation decode documented as follow-up.
 
 #### VideoWidget (GUI)
@@ -632,7 +651,7 @@ Video playback for game cutscenes and GUI media applications. All codecs impleme
 | Container | Video Codec | Audio Codec | Extension | Status |
 |-----------|-------------|-------------|-----------|--------|
 | AVI (RIFF) | MJPEG | PCM WAV | `.avi` | Full decode |
-| OGG | Theora | Vorbis | `.ogv` | Infrastructure (headers + YCbCr) |
+| OGG | Theora | Vorbis | `.ogv` | Infrastructure (headers + YCbCr + audio handoff) |
 
 ---
 

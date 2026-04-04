@@ -22,6 +22,7 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -52,6 +53,17 @@ bool writeMachOExe(const std::string &path,
                    const std::vector<DylibImport> &dylibs,
                    const std::unordered_set<std::string> &dynSyms,
                    const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                   std::size_t stackSize,
                    std::ostream &err);
+
+inline bool writeMachOExe(const std::string &path,
+                          const LinkLayout &layout,
+                          LinkArch arch,
+                          const std::vector<DylibImport> &dylibs,
+                          const std::unordered_set<std::string> &dynSyms,
+                          const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                          std::ostream &err) {
+    return writeMachOExe(path, layout, arch, dylibs, dynSyms, symOrdinals, 0, err);
+}
 
 } // namespace viper::codegen::linker

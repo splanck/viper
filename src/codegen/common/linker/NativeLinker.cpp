@@ -1148,7 +1148,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     bool writeOk = false;
     switch (opts.platform) {
         case LinkPlatform::Linux:
-            writeOk = writeElfExe(opts.exePath, layout, opts.arch, err);
+            writeOk = writeElfExe(opts.exePath, layout, opts.arch, opts.stackSize, err);
             break;
         case LinkPlatform::macOS: {
             std::vector<DylibImport> dylibs;
@@ -1307,7 +1307,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             }
 
             writeOk = writeMachOExe(
-                opts.exePath, layout, opts.arch, dylibs, dynamicSyms, symOrdinals, err);
+                opts.exePath, layout, opts.arch, dylibs, dynamicSyms, symOrdinals, opts.stackSize, err);
             break;
         }
         case LinkPlatform::Windows: {
@@ -1323,7 +1323,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             }
             const bool emitStartupStub = opts.entrySymbol == "main";
             writeOk = writePeExe(
-                opts.exePath, layout, opts.arch, peImports, peImportSlotRvas, emitStartupStub, err);
+                opts.exePath,
+                layout,
+                opts.arch,
+                peImports,
+                peImportSlotRvas,
+                emitStartupStub,
+                opts.stackSize,
+                err);
             break;
         }
     }

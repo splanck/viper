@@ -31,6 +31,7 @@ using viper::tools::ArgvView;
 
 constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
+    "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link]\n"
     "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n";
@@ -76,6 +77,18 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok == "-run-native") {
             opts.run_native = true;
+            continue;
+        }
+        if (tok.substr(0, 13) == "--stack-size=") {
+            const std::string sizeStr = std::string(tok.substr(13));
+            char *endptr = nullptr;
+            const unsigned long long size = std::strtoull(sizeStr.c_str(), &endptr, 10);
+            if (endptr == sizeStr.c_str() || *endptr != '\0') {
+                diag << "error: invalid --stack-size value: " << sizeStr << "\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.stack_size = static_cast<std::size_t>(size);
             continue;
         }
         if (tok == "--dump-mir-before-ra") {

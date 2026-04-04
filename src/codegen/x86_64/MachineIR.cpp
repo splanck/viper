@@ -203,7 +203,10 @@ bool isRspIndex(const OpReg &reg) noexcept {
 /// @param ops Operand vector consumed by the instruction.
 /// @return Newly constructed Machine IR instruction.
 MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops) {
-    return MInstr{opc, std::move(ops)};
+    MInstr instr{};
+    instr.opcode = opc;
+    instr.operands = std::move(ops);
+    return instr;
 }
 
 /// @brief Convenience overload that accepts an initializer list of operands.
@@ -211,7 +214,10 @@ MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops) {
 /// @param ops Operand initializer list copied into the instruction.
 /// @return Newly constructed Machine IR instruction.
 MInstr MInstr::make(MOpcode opc, std::initializer_list<Operand> ops) {
-    return MInstr{opc, std::vector<Operand>{ops}};
+    MInstr instr{};
+    instr.opcode = opc;
+    instr.operands = std::vector<Operand>{ops};
+    return instr;
 }
 
 /// @brief Append an operand to the instruction.

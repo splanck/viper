@@ -51,6 +51,7 @@
 #include "OpcodeMappings.hpp"
 #include "TargetAArch64.hpp"
 #include "TerminatorLowering.hpp"
+#include "codegen/common/CallArgLayout.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
@@ -195,19 +196,29 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         // This ensures parameters are preserved across function calls within the entry block.
         // ABI registers (x0-x7, v0-v7) are caller-saved and will be clobbered by calls.
         if (bi == 0 && !bbIn.params.empty()) {
-            // ARM64 ABI: GPR and FPR parameters have independent indexing.
-            // Integer/pointer params use x0, x1, x2...
-            // Float params use d0, d1, d2... (independently numbered)
-            std::size_t gprArgIdx = 0;
-            std::size_t fprArgIdx = 0;
-            // Track stack argument index for parameters that overflow registers.
-            // AAPCS64: stack args are laid out in argument order regardless of class.
-            std::size_t stackArgIdx = 0;
+            std::vector<viper::codegen::common::CallArgClass> paramClasses;
+            paramClasses.reserve(bbIn.params.size());
+            for (const auto &param : bbIn.params) {
+                paramClasses.push_back(param.type.kind == il::core::Type::Kind::F64
+                                           ? viper::codegen::common::CallArgClass::FPR
+                                           : viper::codegen::common::CallArgClass::GPR);
+            }
+            const auto layout = viper::codegen::common::planParamClasses(
+                paramClasses,
+                viper::codegen::common::CallArgLayoutConfig{
+                    .maxGPRArgs = ti_->intArgOrder.size(),
+                    .maxFPRArgs = ti_->f64ArgOrder.size(),
+                    .slotModel =
+                        viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
+                    .variadicTailOnStack = false,
+                    .numNamedArgs = paramClasses.size()});
 
             for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
                 const auto &param = bbIn.params[pi];
-                const RegClass cls =
-                    (param.type.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
+                const auto &loc = layout.locations[pi];
+                const RegClass cls = (loc.cls == viper::codegen::common::CallArgClass::FPR)
+                                         ? RegClass::FPR
+                                         : RegClass::GPR;
 
                 // Allocate spill slot for this parameter
                 // IMPORTANT: Use param.id (not pi index) to match LivenessAnalysis.cpp
@@ -217,27 +228,22 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                 const int spillOffset = fb.ensureSpill(spillKeyForCrossBlockTemp(param.id));
                 funcParamSpillOffset[param.id] = spillOffset;
 
-                // Get the ABI register for this parameter using independent GPR/FPR indexing
                 bool isStackParam = false;
                 PhysReg src{};
-                if (cls == RegClass::FPR) {
-                    if (fprArgIdx < ti_->f64ArgOrder.size())
-                        src = ti_->f64ArgOrder[fprArgIdx++];
+                if (loc.inRegister) {
+                    if (cls == RegClass::FPR)
+                        src = ti_->f64ArgOrder[loc.regIndex];
                     else
-                        isStackParam = true;
+                        src = ti_->intArgOrder[loc.regIndex];
                 } else {
-                    if (gprArgIdx < ti_->intArgOrder.size())
-                        src = ti_->intArgOrder[gprArgIdx++];
-                    else
-                        isStackParam = true;
+                    isStackParam = true;
                 }
 
                 if (isStackParam) {
                     // Stack parameter: load from caller's outgoing arg area.
                     // After prologue (stp x29, x30, [sp, #-16]!; mov x29, sp),
                     // caller's stack args are at [FP + 16 + stackArgIdx * 8].
-                    const int callerArgOffset = 16 + static_cast<int>(stackArgIdx) * 8;
-                    ++stackArgIdx;
+                    const int callerArgOffset = 16 + static_cast<int>(loc.stackSlotIndex) * 8;
 
                     // Load from caller's stack arg area into spill slot via a temporary
                     // vreg. IMPORTANT: We must NOT use a hardcoded physical register here

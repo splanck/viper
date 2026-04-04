@@ -179,7 +179,7 @@ class Parser {
         }
 
         // Keywords that can be used as function names: LEFT(), RIGHT(), CURRENT_DATE, etc.
-        if (kind == TK_LEFT || kind == TK_RIGHT || kind == TK_CURRENT || kind == TK_ROW || kind == TK_DATE_TYPE || kind == TK_TIMESTAMP_TYPE || kind == TK_JSON) && currentToken.kind != TK_EOF {
+        if (kind == TK_LEFT || kind == TK_RIGHT || kind == TK_CURRENT || kind == TK_ROW || kind == TK_DATE_TYPE || kind == TK_TIMESTAMP_TYPE || kind == TK_JSON || kind == TK_REPLACE) && currentToken.kind != TK_EOF {
             var kwName = String.ToUpper(currentToken.text);
             advance();
             // If followed by '(', parse as function call
@@ -536,17 +536,31 @@ class Parser {
             var operand = parseUnaryExpr();
             return exprUnary(OP_NEG, operand);
         }
-        return parsePrimaryExpr();
+        var result = parsePrimaryExpr();
+        // JSON path operators: -> and ->> (postfix, left-associative, chainable)
+        while currentToken.kind == TK_ARROW || currentToken.kind == TK_ARROW_TEXT {
+            var arrowOp = currentToken.kind;
+            advance();
+            var right = parsePrimaryExpr();
+            if arrowOp == TK_ARROW {
+                result = exprBinary(OP_JSON_ARROW, result, right);
+            } else {
+                result = exprBinary(OP_JSON_ARROW_TEXT, result, right);
+            }
+        }
+        return result;
     }
 
     expose func parseMulExpr() -> Expr {
         var left = parseUnaryExpr();
-        while currentToken.kind == TK_STAR || currentToken.kind == TK_SLASH {
+        while currentToken.kind == TK_STAR || currentToken.kind == TK_SLASH || currentToken.kind == TK_PERCENT {
             var op = currentToken.kind;
             advance();
             var right = parseUnaryExpr();
             if op == TK_STAR {
                 left = exprBinary(OP_MUL, left, right);
+            } else if op == TK_PERCENT {
+                left = exprBinary(OP_MOD, left, right);
             } else {
                 left = exprBinary(OP_DIV, left, right);
             }
@@ -2421,7 +2435,7 @@ class Parser {
 
         // Parse JOINs
         while currentToken.kind == TK_JOIN || currentToken.kind == TK_INNER || currentToken.kind == TK_LEFT || currentToken.kind == TK_RIGHT || currentToken.kind == TK_FULL || currentToken.kind == TK_CROSS || currentToken.kind == TK_NATURAL {
-            var joinType = 1;  // Default INNER
+            var joinType = JOIN_INNER;
 
             // Check for NATURAL prefix (Phase 56)
             var isNatural = false;
@@ -2435,7 +2449,7 @@ class Parser {
             }
 
             if currentToken.kind == TK_INNER {
-                joinType = 1;
+                joinType = JOIN_INNER;
                 advance();
                 if currentToken.kind != TK_JOIN {
                     setError("Expected JOIN after INNER");
@@ -2443,7 +2457,7 @@ class Parser {
                 }
                 advance();
             } else if currentToken.kind == TK_LEFT {
-                joinType = 2;
+                joinType = JOIN_LEFT;
                 advance();
                 if currentToken.kind == TK_OUTER { advance(); }
                 if currentToken.kind != TK_JOIN {
@@ -2452,7 +2466,7 @@ class Parser {
                 }
                 advance();
             } else if currentToken.kind == TK_RIGHT {
-                joinType = 3;
+                joinType = JOIN_RIGHT;
                 advance();
                 if currentToken.kind == TK_OUTER { advance(); }
                 if currentToken.kind != TK_JOIN {
@@ -2461,7 +2475,7 @@ class Parser {
                 }
                 advance();
             } else if currentToken.kind == TK_FULL {
-                joinType = 4;
+                joinType = JOIN_FULL;
                 advance();
                 if currentToken.kind == TK_OUTER { advance(); }
                 if currentToken.kind != TK_JOIN {
@@ -2470,7 +2484,7 @@ class Parser {
                 }
                 advance();
             } else if currentToken.kind == TK_CROSS {
-                joinType = 0;
+                joinType = JOIN_CROSS;
                 advance();
                 if currentToken.kind != TK_JOIN {
                     setError("Expected JOIN after CROSS");
@@ -3500,11 +3514,33 @@ class Parser {
 
         while currentToken.kind != TK_RPAREN && hasError == false {
             if currentToken.kind != TK_IDENTIFIER && currentToken.isKeyword() == false {
-                setError("Expected column name in index");
+                setError("Expected column name or expression in index");
                 return stmt;
             }
-            stmt.addColumn(currentToken.text);
+            var colText = currentToken.text;
             advance();
+
+            // Check if this is a function call: name followed by (
+            if currentToken.kind == TK_LPAREN {
+                // Expression index: e.g., LOWER(name), ABS(value)
+                advance(); // skip (
+                var argCol = "";
+                if currentToken.kind == TK_IDENTIFIER || currentToken.isKeyword() {
+                    argCol = currentToken.text;
+                    advance();
+                }
+                if currentToken.kind == TK_RPAREN {
+                    advance(); // skip )
+                }
+                stmt.isExpression = true;
+                stmt.expressionFuncName = String.ToUpper(colText);
+                stmt.expressionColumnName = argCol;
+                stmt.expressionSQL = String.ToUpper(colText) + "(" + argCol + ")";
+                // Store the underlying column for index lookup
+                stmt.addColumn(argCol);
+            } else {
+                stmt.addColumn(colText);
+            }
 
             if currentToken.kind == TK_ASC || currentToken.kind == TK_DESC {
                 advance();

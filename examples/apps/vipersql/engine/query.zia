@@ -334,8 +334,90 @@ class QueryHandler {
             return sqlArray(buildArrayString(elements));
         }
 
-        // BOOL_AND(column) - logical AND of all non-NULL boolean values
-        if funcName == "BOOL_AND" && hasArg {
+        // JSON_AGG(column) - collect non-NULL values into a JSON array
+        if funcName == "JSON_AGG" && hasArg {
+            var jsonParts: List[String] = [];
+            var i = 0;
+            while i < matchingRows.count() {
+                var rowIdx = matchingRows.get(i);
+                var maybeRow = table.getRow(rowIdx);
+                if maybeRow != null {
+                    var row = maybeRow;
+                    var argExpr = expr.args.get(0);
+                    var aVal = exec.evalExpr(argExpr, row, table);
+                    if aVal.kind != SQL_NULL {
+                        if aVal.kind == SQL_TEXT {
+                            // Quote strings as JSON strings
+                            jsonParts.add("\"" + aVal.textValue + "\"");
+                        } else if aVal.kind == SQL_BOOLEAN {
+                            if aVal.intValue != 0 { jsonParts.add("true"); }
+                            else { jsonParts.add("false"); }
+                        } else if aVal.kind == SQL_JSON {
+                            jsonParts.add(aVal.textValue);
+                        } else {
+                            jsonParts.add(aVal.toString());
+                        }
+                    }
+                }
+                i = i + 1;
+            }
+            if jsonParts.count() == 0 { return sqlNull(); }
+            var jsonArr = "[";
+            i = 0;
+            while i < jsonParts.count() {
+                if i > 0 { jsonArr = jsonArr + ", "; }
+                jsonArr = jsonArr + jsonParts.get(i);
+                i = i + 1;
+            }
+            jsonArr = jsonArr + "]";
+            return sqlJson(jsonArr);
+        }
+
+        // JSON_OBJECT_AGG(key, value) - collect key-value pairs into a JSON object
+        if funcName == "JSON_OBJECT_AGG" && expr.args.count() >= 2 {
+            var jsonParts: List[String] = [];
+            var i = 0;
+            while i < matchingRows.count() {
+                var rowIdx = matchingRows.get(i);
+                var maybeRow = table.getRow(rowIdx);
+                if maybeRow != null {
+                    var row = maybeRow;
+                    var keyVal = exec.evalExpr(expr.args.get(0), row, table);
+                    var valVal = exec.evalExpr(expr.args.get(1), row, table);
+                    if keyVal.kind != SQL_NULL {
+                        var keyStr = "\"" + keyVal.toString() + "\"";
+                        var valStr = "null";
+                        if valVal.kind == SQL_NULL {
+                            valStr = "null";
+                        } else if valVal.kind == SQL_TEXT {
+                            valStr = "\"" + valVal.textValue + "\"";
+                        } else if valVal.kind == SQL_BOOLEAN {
+                            if valVal.intValue != 0 { valStr = "true"; }
+                            else { valStr = "false"; }
+                        } else if valVal.kind == SQL_JSON {
+                            valStr = valVal.textValue;
+                        } else {
+                            valStr = valVal.toString();
+                        }
+                        jsonParts.add(keyStr + ": " + valStr);
+                    }
+                }
+                i = i + 1;
+            }
+            if jsonParts.count() == 0 { return sqlNull(); }
+            var jsonObj = "{";
+            i = 0;
+            while i < jsonParts.count() {
+                if i > 0 { jsonObj = jsonObj + ", "; }
+                jsonObj = jsonObj + jsonParts.get(i);
+                i = i + 1;
+            }
+            jsonObj = jsonObj + "}";
+            return sqlJson(jsonObj);
+        }
+
+        // BOOL_AND(column) / EVERY(column) - logical AND of all non-NULL boolean values
+        if (funcName == "BOOL_AND" || funcName == "EVERY") && hasArg {
             var result = true;
             var hasValue = false;
             var i = 0;
@@ -2521,6 +2603,52 @@ class QueryHandler {
             stepVal = evalLiteralExpr(stmt.tableFunctionArgs.get(2));
         }
 
+        // Detect date mode: if start is a TEXT that looks like a date (YYYY-MM-DD)
+        var isDateMode = false;
+        if startVal.kind == SQL_TEXT || startVal.kind == SQL_DATE {
+            var startText = startVal.toString();
+            if String.Length(startText) >= 10 {
+                var ch4 = String.Substring(startText, 4, 1);
+                var ch7 = String.Substring(startText, 7, 1);
+                if ch4 == "-" && ch7 == "-" {
+                    isDateMode = true;
+                }
+            }
+        }
+
+        if isDateMode {
+            // Date mode: iterate by days
+            var startDate = parseDateText(startVal.toString());
+            var stopDate = parseDateText(stopVal.toString());
+            var dayStep = stepVal.intValue;
+            if dayStep == 0 {
+                result.setError("step size cannot be zero");
+                return result;
+            }
+            var current = startDate;
+            var maxRows = 10000;
+            var count = 0;
+            if dayStep > 0 {
+                while current <= stopDate && count < maxRows {
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlDate(current));
+                    result.addRow(row);
+                    current = DateTime.AddDays(current, dayStep);
+                    count = count + 1;
+                }
+            } else {
+                while current >= stopDate && count < maxRows {
+                    var row = new Row();
+                    row.init();
+                    row.addValue(sqlDate(current));
+                    result.addRow(row);
+                    current = DateTime.AddDays(current, dayStep);
+                    count = count + 1;
+                }
+            }
+        } else {
+        // Integer mode (original behavior)
         var start = startVal.intValue;
         var stop = stopVal.intValue;
         var step = stepVal.intValue;
@@ -2550,6 +2678,7 @@ class QueryHandler {
                 current = current + step;
                 count = count + 1;
             }
+        }
         }
 
         // Apply LIMIT/OFFSET if specified
@@ -3003,8 +3132,72 @@ class QueryHandler {
             return sqlArray(buildArrayString(elements));
         }
 
-        // BOOL_AND
-        if funcName == "BOOL_AND" && hasArg {
+        // JSON_AGG
+        if funcName == "JSON_AGG" && hasArg {
+            var jsonParts: List[String] = [];
+            var i = 0;
+            while i < rows.count() {
+                var aVal = exec.evalExpr(expr.args.get(0), rows.get(i), table);
+                if aVal.kind != SQL_NULL {
+                    if aVal.kind == SQL_TEXT {
+                        jsonParts.add("\"" + aVal.textValue + "\"");
+                    } else if aVal.kind == SQL_BOOLEAN {
+                        if aVal.intValue != 0 { jsonParts.add("true"); }
+                        else { jsonParts.add("false"); }
+                    } else if aVal.kind == SQL_JSON {
+                        jsonParts.add(aVal.textValue);
+                    } else {
+                        jsonParts.add(aVal.toString());
+                    }
+                }
+                i = i + 1;
+            }
+            if jsonParts.count() == 0 { return sqlNull(); }
+            var jsonArr = "[";
+            i = 0;
+            while i < jsonParts.count() {
+                if i > 0 { jsonArr = jsonArr + ", "; }
+                jsonArr = jsonArr + jsonParts.get(i);
+                i = i + 1;
+            }
+            jsonArr = jsonArr + "]";
+            return sqlJson(jsonArr);
+        }
+
+        // JSON_OBJECT_AGG
+        if funcName == "JSON_OBJECT_AGG" && expr.args.count() >= 2 {
+            var jsonParts: List[String] = [];
+            var i = 0;
+            while i < rows.count() {
+                var keyVal = exec.evalExpr(expr.args.get(0), rows.get(i), table);
+                var valVal = exec.evalExpr(expr.args.get(1), rows.get(i), table);
+                if keyVal.kind != SQL_NULL {
+                    var keyStr = "\"" + keyVal.toString() + "\"";
+                    var valStr = "null";
+                    if valVal.kind == SQL_NULL { valStr = "null"; }
+                    else if valVal.kind == SQL_TEXT { valStr = "\"" + valVal.textValue + "\""; }
+                    else if valVal.kind == SQL_BOOLEAN {
+                        if valVal.intValue != 0 { valStr = "true"; } else { valStr = "false"; }
+                    } else if valVal.kind == SQL_JSON { valStr = valVal.textValue; }
+                    else { valStr = valVal.toString(); }
+                    jsonParts.add(keyStr + ": " + valStr);
+                }
+                i = i + 1;
+            }
+            if jsonParts.count() == 0 { return sqlNull(); }
+            var jsonObj = "{";
+            i = 0;
+            while i < jsonParts.count() {
+                if i > 0 { jsonObj = jsonObj + ", "; }
+                jsonObj = jsonObj + jsonParts.get(i);
+                i = i + 1;
+            }
+            jsonObj = jsonObj + "}";
+            return sqlJson(jsonObj);
+        }
+
+        // BOOL_AND / EVERY
+        if (funcName == "BOOL_AND" || funcName == "EVERY") && hasArg {
             var result = true;
             var hasValue = false;
             var i = 0;

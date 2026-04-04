@@ -48,10 +48,6 @@
 #include <unordered_set>
 #include <vector>
 
-#if !defined(_WIN32)
-#include <sys/wait.h>
-#endif
-
 namespace viper::codegen::x64 {
 namespace {
 
@@ -83,27 +79,14 @@ std::size_t totalInstructionCount(const il::core::Module &module) {
     return totalInstrs;
 }
 
-/// @brief Convert platform-specific process status codes to POSIX-style exits.
-/// @details Handles negative launch failures, Windows return values, and
-///          Unix wait statuses so pipeline users receive consistent exit
-///          codes irrespective of platform.
-/// @param status Raw status returned by @ref run_process or waitpid.
-/// @return Normalised exit code suitable for user display.
+/// @brief Preserve the already-normalised exit code returned by @ref run_process.
+/// @details The shared process launcher converts platform-specific wait status
+///          values into conventional process exit codes before returning, so the
+///          pipeline must not decode them a second time.
+/// @param status Exit code returned by @ref run_process.
+/// @return The same exit code, unchanged.
 int normaliseStatus(int status) {
-    if (status == -1) {
-        return -1;
-    }
-#if defined(_WIN32)
     return status;
-#else
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    if (WIFSIGNALED(status)) {
-        return 128 + WTERMSIG(status);
-    }
-    return status;
-#endif
 }
 
 /// @brief Compute the output assembly path from pipeline options.
@@ -164,17 +147,7 @@ std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
 bool writeAssemblyFile(const std::filesystem::path &path,
                        const std::string &text,
                        std::ostream &err) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        err << "error: unable to open '" << path.string() << "' for writing\n";
-        return false;
-    }
-    out << text;
-    if (!out) {
-        err << "error: failed to write assembly to '" << path.string() << "'\n";
-        return false;
-    }
-    return true;
+    return common::writeTextFile(path, text, err);
 }
 
 /// @brief Convert a path to use native separators on the current platform.
@@ -201,23 +174,13 @@ int invokeAssembler(const std::filesystem::path &asmPath,
                     const std::filesystem::path &objPath,
                     std::ostream &out,
                     std::ostream &err) {
-    const RunResult assemble =
-        run_process({kCcCommand, "-c", toNativePath(asmPath), "-o", toNativePath(objPath)});
-    if (assemble.exit_code == -1) {
-        err << "error: failed to launch system assembler command\n";
-        return -1;
-    }
-
-    if (!assemble.out.empty()) {
-        out << assemble.out;
-    }
-#if defined(_WIN32)
-    if (!assemble.err.empty()) {
-        err << assemble.err;
-    }
+    std::vector<std::string> ccArgs = {kCcCommand};
+#if defined(__APPLE__)
+    ccArgs.push_back("-arch");
+    ccArgs.push_back("x86_64");
 #endif
-
-    const int exitCode = normaliseStatus(assemble.exit_code);
+    const int exitCode =
+        common::invokeAssembler(ccArgs, toNativePath(asmPath), toNativePath(objPath), out, err);
     if (exitCode != 0) {
         err << "error: " << kCcCommand << " (assemble) exited with status " << exitCode << "\n";
     }
@@ -240,8 +203,6 @@ int linkWithContext(const std::filesystem::path &inputPath,
                     const common::LinkContext &ctx,
                     std::ostream &out,
                     std::ostream &err) {
-    using RtComponent = viper::codegen::RtComponent;
-
     std::vector<std::string> cmd = {kCcCommand};
 #if defined(__APPLE__)
     // Explicitly target x86_64 on macOS — required when the host is arm64
@@ -250,36 +211,9 @@ int linkWithContext(const std::filesystem::path &inputPath,
     cmd.push_back("x86_64");
 #endif
     cmd.push_back(inputPath.string());
-    common::appendArchives(ctx, cmd);
-    {
-        std::vector<std::string> frameworks;
-#if defined(__APPLE__)
-        frameworks.push_back("Cocoa");
-        frameworks.push_back("IOKit");
-        frameworks.push_back("CoreFoundation");
-        frameworks.push_back("UniformTypeIdentifiers");
-        frameworks.push_back("Metal");
-        frameworks.push_back("QuartzCore");
-#endif
-        common::appendGraphicsLibs(ctx, cmd, frameworks);
-    }
-    common::appendAudioLibs(ctx, cmd);
-
-#if defined(__APPLE__)
-    cmd.push_back("-Wl,-dead_strip");
     const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    std::ostringstream stackArg;
-    stackArg << "-Wl,-stack_size,0x" << std::hex << effStack;
-    cmd.push_back(stackArg.str());
-#elif !defined(_WIN32)
-    cmd.push_back("-Wl,--gc-sections");
-    cmd.push_back("-pie");
-    if (common::hasComponent(ctx, RtComponent::Threads))
-        cmd.push_back("-pthread");
-    cmd.push_back("-lm");
-    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    cmd.push_back("-Wl,-z,stack-size=" + std::to_string(effStack));
-#endif
+    common::appendSystemLinkInputs(ctx, cmd);
+    common::appendSystemLinkFlags(ctx, cmd, effStack, true, true);
 
     cmd.push_back("-o");
     cmd.push_back(exePath.string());
@@ -502,28 +436,14 @@ int invokeLinker(const std::filesystem::path &asmPath,
 }
 
 /// @brief Execute a freshly linked binary and capture its output.
-/// @details Launches the executable using @ref run_process and forwards its
-///          standard streams to the provided sinks, normalising the exit
-///          code for consistency across platforms.
+/// @details Delegates to the shared executable runner after normalising the
+///          path representation for the host platform.
 /// @param exePath Path to the executable to run.
 /// @param out     Stream receiving program stdout.
 /// @param err     Stream receiving program stderr.
-/// @return Normalised process exit code (-1 when the process could not be started).
+/// @return Process exit code (-1 when the process could not be started).
 int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::ostream &err) {
-    const RunResult run = run_process({toNativePath(exePath)});
-    if (run.exit_code == -1) {
-        err << "error: failed to execute '" << exePath.string() << "'\n";
-        return -1;
-    }
-    if (!run.out.empty()) {
-        out << run.out;
-    }
-#if defined(_WIN32)
-    if (!run.err.empty()) {
-        err << run.err;
-    }
-#endif
-    return normaliseStatus(run.exit_code);
+    return common::runExecutable(toNativePath(exePath), out, err);
 }
 
 void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
@@ -679,11 +599,13 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                const std::filesystem::path &exePath,
                                const common::LinkContext &ctx,
+                               std::size_t stackSize,
                                std::ostream &out,
                                std::ostream &err) {
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath.string();
     linkOpts.exePath = exePath.string();
+    linkOpts.stackSize = stackSize;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 #if defined(_WIN32)
     linkOpts.entrySymbol = "main";
@@ -946,7 +868,7 @@ PipelineResult CodegenPipeline::run() {
 
         int linkExit = 0;
         if (opts_.link_mode == LinkMode::Native)
-            linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, out, err);
+            linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
         else if (linker::detectLinkPlatform() == linker::LinkPlatform::Windows)
             linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
         else
@@ -1072,7 +994,7 @@ PipelineResult CodegenPipeline::run() {
             return result;
         }
 
-        linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, out, err);
+        linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
 
         std::error_code ec;
         std::filesystem::remove(objPath, ec);

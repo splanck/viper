@@ -408,6 +408,15 @@ class Lexer {
 
         // Single-character operators
         if (ch == "+") { return new Token(TK_PLUS, "+", startLine, startCol); }
+        // JSON path operators: -> and ->>  (must check before TK_MINUS)
+        if (ch == "-" && peek() == ">") {
+            advance(); // consume >
+            if (peek() == ">") {
+                advance(); // consume second >
+                return new Token(TK_ARROW_TEXT, "->>", startLine, startCol);
+            }
+            return new Token(TK_ARROW, "->", startLine, startCol);
+        }
         if (ch == "-") { return new Token(TK_MINUS, "-", startLine, startCol); }
         if (ch == "*") { return new Token(TK_STAR, "*", startLine, startCol); }
         if (ch == "/") { return new Token(TK_SLASH, "/", startLine, startCol); }

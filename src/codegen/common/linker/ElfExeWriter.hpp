@@ -21,6 +21,7 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 
@@ -35,6 +36,14 @@ namespace viper::codegen::linker {
 bool writeElfExe(const std::string &path,
                  const LinkLayout &layout,
                  LinkArch arch,
+                 std::size_t stackSize,
                  std::ostream &err);
+
+inline bool writeElfExe(const std::string &path,
+                        const LinkLayout &layout,
+                        LinkArch arch,
+                        std::ostream &err) {
+    return writeElfExe(path, layout, arch, 0, err);
+}
 
 } // namespace viper::codegen::linker

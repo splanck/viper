@@ -40,6 +40,20 @@ bool readFileToString(const std::filesystem::path &path, std::string &dst) {
     return true;
 }
 
+bool writeTextFile(const std::filesystem::path &path, std::string_view text, std::ostream &err) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        err << "error: unable to open '" << path.string() << "' for writing\n";
+        return false;
+    }
+    out << text;
+    if (!out) {
+        err << "error: failed to write file '" << path.string() << "'\n";
+        return false;
+    }
+    return true;
+}
+
 std::optional<std::filesystem::path> findBuildDir() {
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
@@ -367,6 +381,54 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
 #endif
 }
 
+std::vector<std::string> defaultGraphicsFrameworks() {
+#if defined(__APPLE__)
+    return {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+#else
+    return {};
+#endif
+}
+
+void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd) {
+    appendArchives(ctx, cmd);
+    appendGraphicsLibs(ctx, cmd, defaultGraphicsFrameworks());
+    appendAudioLibs(ctx, cmd);
+
+    if (hasComponent(ctx, RtComponent::Threads))
+        cmd.push_back("-lc++");
+}
+
+void appendSystemLinkFlags(const LinkContext &ctx,
+                           std::vector<std::string> &cmd,
+                           std::size_t stackSize,
+                           bool useElfPie,
+                           bool useElfMath) {
+#if defined(__APPLE__)
+    cmd.push_back("-Wl,-dead_strip");
+    if (stackSize > 0) {
+        std::ostringstream stackArg;
+        stackArg << "-Wl,-stack_size,0x" << std::hex << stackSize;
+        cmd.push_back(stackArg.str());
+    }
+#elif !defined(_WIN32)
+    cmd.push_back("-Wl,--gc-sections");
+    if (useElfPie)
+        cmd.push_back("-pie");
+    if (hasComponent(ctx, RtComponent::Threads))
+        cmd.push_back("-pthread");
+    if (useElfMath)
+        cmd.push_back("-lm");
+    if (stackSize > 0)
+        cmd.push_back("-Wl,-z,stack-size=" + std::to_string(stackSize));
+#else
+    (void)ctx;
+    (void)cmd;
+    (void)stackSize;
+    (void)useElfPie;
+    (void)useElfMath;
+#endif
+}
+
 // =========================================================================
 // Tool invocation
 // =========================================================================
@@ -393,7 +455,7 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
     if (!rr.err.empty())
         err << rr.err;
 #endif
-    return rr.exit_code == 0 ? 0 : 1;
+    return rr.exit_code;
 }
 
 int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err) {

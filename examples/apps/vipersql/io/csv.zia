@@ -276,6 +276,10 @@ class CsvHandler {
             }
             i = i + 1;
         }
+        // Reject unterminated quoted fields
+        if inQuotes {
+            return [];
+        }
         fields.add(current);
         return fields;
     }

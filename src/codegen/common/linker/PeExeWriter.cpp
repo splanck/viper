@@ -426,12 +426,17 @@ bool writePeExe(const std::string &path,
                 const std::vector<DllImport> &imports,
                 const std::unordered_map<std::string, uint32_t> &slotRvas,
                 bool emitStartupStub,
+                std::size_t stackSize,
                 std::ostream &err) {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
     const uint64_t imageBase = 0x140000000ULL;
     const uint32_t sectionAlignment = 0x1000;
     const uint32_t fileAlignment = 0x200;
+    const uint64_t stackReserve =
+        stackSize != 0 ? static_cast<uint64_t>(alignUp(stackSize, static_cast<std::size_t>(0x1000)))
+                       : 0x100000ULL;
+    const uint64_t stackCommit = std::min<uint64_t>(stackReserve, 0x1000ULL);
 
     if (layout.entryAddr == 0) {
         err << "error: no PE entry point was resolved\n";
@@ -642,8 +647,8 @@ bool writePeExe(const std::string &path,
     writeLE32(file, 0);
     writeLE16(file, 3); // IMAGE_SUBSYSTEM_WINDOWS_CUI
     writeLE16(file, kDllCharacteristics);
-    writeLE64(file, 0x100000);
-    writeLE64(file, 0x1000);
+    writeLE64(file, stackReserve);
+    writeLE64(file, stackCommit);
     writeLE64(file, 0x100000);
     writeLE64(file, 0x1000);
     writeLE32(file, 0);

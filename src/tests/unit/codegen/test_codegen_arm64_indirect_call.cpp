@@ -6,136 +6,206 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_indirect_call.cpp
-// Purpose: Verify indirect function calls (call.indirect) via pointer lowering.
-// Key invariants: Emits blr for indirect calls through a register.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: Verify AArch64 indirect call lowering uses BLR, preserves floating
+//          argument lanes, and spills overflow arguments onto the stack.
 //
 //===----------------------------------------------------------------------===//
+
 #include "tests/TestHarness.hpp"
-#include <filesystem>
-#include <fstream>
-#include <sstream>
+
+#include "codegen/aarch64/LowerILToMIR.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include <string>
 
-#include "tools/viper/cmd_codegen_arm64.hpp"
+TEST(Arm64IndirectCall, PointerCallUsesBlrRatherThanDirectBl) {
+    using namespace il::core;
+    using namespace viper::codegen::aarch64;
 
-using namespace viper::tools::ilc;
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
 
-static std::string outPath(const std::string &name) {
-    namespace fs = std::filesystem;
-    const fs::path dir{"build/test-out/arm64"};
-    fs::create_directories(dir);
-    return (dir / name).string();
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    Instr gaddr;
+    gaddr.result = 0;
+    gaddr.op = Opcode::GAddr;
+    gaddr.type = Type(Type::Kind::Ptr);
+    gaddr.operands = {Value::global("target")};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::CallIndirect;
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {gaddr, call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawBlr = false;
+    bool sawDirectBl = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
+            mi.ops[0].reg.isPhys &&
+            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
+            sawBlr = true;
+        }
+        if (mi.opc == MOpcode::Bl)
+            sawDirectBl = true;
+    }
+
+    EXPECT_TRUE(sawBlr);
+    EXPECT_FALSE(sawDirectBl);
 }
 
-static void writeFile(const std::string &path, const std::string &text) {
-    std::ofstream ofs(path);
-    ASSERT_TRUE(static_cast<bool>(ofs));
-    ofs << text;
+TEST(Arm64IndirectCall, FloatingArgumentsStayInFprLanes) {
+    using namespace il::core;
+    using namespace viper::codegen::aarch64;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "a", .type = Type(Type::Kind::F64), .id = 0},
+                    Param{.name = "b", .type = Type(Type::Kind::F64), .id = 1}};
+
+    Instr gaddr;
+    gaddr.result = 2;
+    gaddr.op = Opcode::GAddr;
+    gaddr.type = Type(Type::Kind::Ptr);
+    gaddr.operands = {Value::global("target")};
+
+    Instr call;
+    call.result = 3;
+    call.op = Opcode::CallIndirect;
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(2), Value::temp(1)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(3)};
+
+    entry.instructions = {gaddr, call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawFprMarshal = false;
+    bool sawBlr = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::FMovRR && mi.ops.size() >= 2 &&
+            mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[0].reg.isPhys &&
+            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::V0) {
+            sawFprMarshal = true;
+        }
+        if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
+            mi.ops[0].reg.isPhys &&
+            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
+            sawBlr = true;
+        }
+    }
+
+    EXPECT_TRUE(sawFprMarshal);
+    EXPECT_TRUE(sawBlr);
 }
 
-static std::string readFile(const std::string &path) {
-    std::ifstream ifs(path);
-    std::ostringstream ss;
-    ss << ifs.rdbuf();
-    return ss.str();
-}
+TEST(Arm64IndirectCall, OverflowArgumentsUseStackArea) {
+    using namespace il::core;
+    using namespace viper::codegen::aarch64;
 
-/// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name) {
-#if defined(__APPLE__)
-    return "bl _" + name;
-#else
-    return "bl " + name;
-#endif
-}
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
 
-// Test 1: Simple direct call - call via function symbol reference
-TEST(Arm64IndirectCall, SimpleIndirect) {
-    const std::string in = outPath("arm64_indirect_call_simple.il");
-    const std::string out = outPath("arm64_indirect_call_simple.s");
-    // Direct call to @target using 'call' opcode
-    const std::string il = "il 0.1\n"
-                           "func @target() -> i64 {\n"
-                           "entry:\n"
-                           "  ret 42\n"
-                           "}\n"
-                           "func @caller() -> i64 {\n"
-                           "entry:\n"
-                           "  %r = call @target()\n"
-                           "  ret %r\n"
-                           "}\n";
-    writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    // Expect bl for direct call
-    EXPECT_NE(asmText.find("bl "), std::string::npos);
-}
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
 
-// Test 2: Direct call with integer argument
-TEST(Arm64IndirectCall, WithIntArg) {
-    const std::string in = outPath("arm64_indirect_call_intarg.il");
-    const std::string out = outPath("arm64_indirect_call_intarg.s");
-    const std::string il = "il 0.1\n"
-                           "func @target(%n:i64) -> i64 {\n"
-                           "entry(%n:i64):\n"
-                           "  ret %n\n"
-                           "}\n"
-                           "func @caller(%arg:i64) -> i64 {\n"
-                           "entry(%arg:i64):\n"
-                           "  %r = call @target(%arg)\n"
-                           "  ret %r\n"
-                           "}\n";
-    writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    // Expect bl for call
-    EXPECT_NE(asmText.find("bl "), std::string::npos);
-}
+    Instr gaddr;
+    gaddr.result = 0;
+    gaddr.op = Opcode::GAddr;
+    gaddr.type = Type(Type::Kind::Ptr);
+    gaddr.operands = {Value::global("target")};
 
-// Test 3: Direct call with multiple arguments
-TEST(Arm64IndirectCall, WithMultipleArgs) {
-    const std::string in = outPath("arm64_indirect_call_multiarg.il");
-    const std::string out = outPath("arm64_indirect_call_multiarg.s");
-    const std::string il = "il 0.1\n"
-                           "func @target(%a:i64, %b:i64) -> i64 {\n"
-                           "entry(%a:i64, %b:i64):\n"
-                           "  %r = iadd.ovf %a, %b\n"
-                           "  ret %r\n"
-                           "}\n"
-                           "func @caller(%a:i64, %b:i64) -> i64 {\n"
-                           "entry(%a:i64, %b:i64):\n"
-                           "  %r = call @target(%a, %b)\n"
-                           "  ret %r\n"
-                           "}\n";
-    writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    // Expect bl for call
-    EXPECT_NE(asmText.find("bl "), std::string::npos);
-}
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::CallIndirect;
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0),
+                     Value::constInt(1),
+                     Value::constInt(2),
+                     Value::constInt(3),
+                     Value::constInt(4),
+                     Value::constInt(5),
+                     Value::constInt(6),
+                     Value::constInt(7),
+                     Value::constInt(8),
+                     Value::constInt(9),
+                     Value::constInt(10)};
 
-// Test 4: Direct call returning void (no result used)
-TEST(Arm64IndirectCall, VoidReturn) {
-    const std::string in = outPath("arm64_indirect_call_void.il");
-    const std::string out = outPath("arm64_indirect_call_void.s");
-    const std::string il = "il 0.1\n"
-                           "extern @sink(i64) -> void\n"
-                           "func @caller(%arg:i64) -> i64 {\n"
-                           "entry(%arg:i64):\n"
-                           "  call @sink(%arg)\n"
-                           "  ret 0\n"
-                           "}\n";
-    writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-    const std::string asmText = readFile(out);
-    // Expect bl for call
-    EXPECT_NE(asmText.find("bl "), std::string::npos);
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {gaddr, call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawStackAlloc = false;
+    bool sawStore0 = false;
+    bool sawStore8 = false;
+    bool sawBlr = false;
+    bool sawStackFree = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
+            mi.ops[0].imm == 16) {
+            sawStackAlloc = true;
+        }
+        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Imm) {
+            if (mi.ops[1].imm == 0)
+                sawStore0 = true;
+            if (mi.ops[1].imm == 8)
+                sawStore8 = true;
+        }
+        if (mi.opc == MOpcode::Blr)
+            sawBlr = true;
+        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
+            mi.ops[0].imm == 16) {
+            sawStackFree = true;
+        }
+    }
+
+    EXPECT_TRUE(sawStackAlloc);
+    EXPECT_TRUE(sawStore0);
+    EXPECT_TRUE(sawStore8);
+    EXPECT_TRUE(sawBlr);
+    EXPECT_TRUE(sawStackFree);
 }
 
 int main(int argc, char **argv) {

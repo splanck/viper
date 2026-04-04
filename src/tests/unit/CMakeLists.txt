@@ -386,6 +386,14 @@ if (NOT TARGET test_codegen_x86_64_lowering_rules)
     viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
 endif ()
 
+if (NOT TARGET test_x86_call_abi)
+    viper_add_test(
+            test_x86_call_abi
+            ${VIPER_TESTS_DIR}/unit/codegen/test_x86_call_abi.cpp)
+    target_link_libraries(test_x86_call_abi PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_x86_call_abi test_x86_call_abi)
+endif ()
+
 if (NOT TARGET test_codegen_review_x64_frame)
     viper_add_test(
             test_codegen_review_x64_frame

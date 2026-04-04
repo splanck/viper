@@ -36,6 +36,7 @@ bind "../storage/btree_node";
 bind "./triggers";
 bind "./sequence";
 bind "./procedures";
+bind "./sql_functions";
 
 //=============================================================================
 // DDL HANDLER ENTITY
@@ -306,6 +307,10 @@ class DdlHandler {
 
     // ALTER TABLE command
     expose func executeAlterTable(parser: Parser, tableName: String) -> QueryResult {
+        // Acquire exclusive lock on the table being altered
+        if exec.acquireExclusiveLock(tableName) == false {
+            return exec.lockTimeoutError(tableName);
+        }
         // Privilege check: must be owner or superuser to alter
         var alterOwnerErr = exec.checkOwnership(tableName);
         if alterOwnerErr != null { return alterOwnerErr; }
@@ -661,6 +666,14 @@ class DdlHandler {
             idx.isPartial = true;
         }
 
+        // Expression index: LOWER(col), ABS(col), etc.
+        if stmt.isExpression {
+            idx.isExpression = true;
+            idx.expressionSQL = stmt.expressionSQL;
+            idx.expressionFuncName = stmt.expressionFuncName;
+            idx.expressionColumnName = stmt.expressionColumnName;
+        }
+
         var i = 0;
         while i < stmt.columnCount() {
             idx.addColumn(stmt.columnNames.get(i));
@@ -668,7 +681,12 @@ class DdlHandler {
         }
 
         var t = table;
-        idx.rebuild(t!);
+        // For expression indexes, build with evaluated expressions
+        if stmt.isExpression {
+            rebuildExpressionIndex(idx, t!);
+        } else {
+            idx.rebuild(t!);
+        }
         exec.indexMgr.addIndex(idx);
 
         // Phase 10: Create B-tree and persist index metadata for persistent databases
@@ -1020,6 +1038,40 @@ class DdlHandler {
         return result;
     }
 
+    // Build an expression index by evaluating the expression for each row
+    hide func rebuildExpressionIndex(idx: SqlIndex, table: Table) {
+        var funcName = idx.expressionFuncName;
+        var colName = idx.expressionColumnName;
+        var colIdx = table.findColumnIndex(colName);
+        if colIdx < 0 { return; }
+
+        var ri = 0;
+        while ri < table.rowCount() {
+            var maybeRow = table.getRow(ri);
+            if maybeRow != null {
+                var row = maybeRow;
+                if row.deleted == false {
+                    var rawVal = row.getValue(colIdx);
+                    // Evaluate the expression (function call on the column value)
+                    var args: List[SqlValue] = [];
+                    args.add(rawVal);
+                    var exprResult = dispatchSqlFunction(funcName, args);
+                    if exprResult != null {
+                        var keyVal = exprResult;
+                        var keyStr = keyVal.toString();
+                        var entry = new IndexEntry();
+                        var hash = idx.hashString(keyStr);
+                        entry.initWith(hash, keyStr, ri);
+                        idx.entries.add(entry);
+                        var bucket = hash % idx.bucketCount;
+                        idx.buckets.get(bucket).add(entry);
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+    }
+
     // Internal: analyze a single table and update optimizer statistics
     hide func analyzeTable(table: Table) {
         // Count live rows (not deleted, not dead MVCC)
@@ -1076,8 +1128,8 @@ class DdlHandler {
                     if colIndex < row.columnCount() {
                         var val = row.getValue(colIndex);
                         var valStr = val.toString();
-                        // Simple bucket selection using string length
-                        var bucketIdx = valStr.Length() % 128;
+                        // Hash-based bucket selection using FNV via runtime
+                        var bucketIdx = exec.computeKeyHash(valStr) % 128;
                         var bucket = buckets.get(bucketIdx);
                         // Check if value already exists in bucket
                         var found = false;

@@ -51,6 +51,7 @@ bind "./setops";
 bind "./join";
 bind "../io/persistence";
 bind "../io/csv";
+bind "../io/json";
 bind "../optimizer/optimizer";
 bind "../storage/txn";
 bind "./sql_functions";
@@ -258,11 +259,15 @@ class Executor {
     expose List[String] commentObjectKeys;   // "table:name" or "column:table.col"
     expose List[String] commentObjectValues;
 
+    // Auto-ANALYZE: modification tracking per table
+    // When modCount exceeds 10% of last-analyzed row count, auto-analyze fires
+    expose List[String] autoAnalyzeTableNames;
+    expose List[Integer] autoAnalyzeModCounts;
+    expose List[Integer] autoAnalyzeLastRowCounts;  // Row count at last analyze
+
     expose func init() {
         server = new DatabaseServer();
         server.init();
-        // Initialize db and indexMgr - server always has 'main' database after init
-        // Direct assignment from server lists (guaranteed non-null after server.init())
         db = server.dbList.get(0);
         indexMgr = server.indexManagers.get(0);
         storageEngine = null;
@@ -271,88 +276,12 @@ class Executor {
         sessionId = 0;
         tableLockMgr = null;
         rowLockMgr = null;
-        currentUser = "admin";
-        inTransaction = false;
-        journal = [];
-        txnDirtyTables = [];
-        outerRow = null;
-        outerTable = null;
-        outerTableAlias = "";
-        currentTableAlias = "";
-        subqueryDepth = 0;
-        randomSeed = 42;
-        hasEvalError = 0;
-        evalError = "";
-        mvccTxnCounter = 1;
-        mvccTxnId = 0;
-        mvccSnapshotId = 0;
-        triggerMgr = new TriggerManager();
-        triggerMgr.init();
-        triggerDepth = 0;
-        seqMgr = new SequenceManager();
-        seqMgr.init();
-        funcMgr = new FunctionManager();
-        funcMgr.init();
-        var td = new Database();
-        td.initWithName("tempdb");
-        tempDb = td;
-        subqueryCacheKeys = [];
-        subqueryCacheScalars = [];
-        subqueryCacheLists = [];
-        btrees = [];
-        btreeIndexNames = [];
-        vacuumStatNames = [];
-        vacuumStatDeadRemoved = [];
-        vacuumStatLastVacuumTime = [];
-        vacuumStatVacuumCount = [];
-        analyzeStatLiveRows = [];
-        analyzeStatDeadRows = [];
-        analyzeStatLastAnalyzeTime = [];
-        analyzeStatAnalyzeCount = [];
-        pgStatTableNames = [];
-        pgStatSeqScan = [];
-        pgStatSeqTupRead = [];
-        pgStatIdxScan = [];
-        pgStatIdxTupFetch = [];
-        pgStatInsert = [];
-        pgStatUpdate = [];
-        pgStatDelete = [];
-        pgStatIndexNames = [];
-        pgStatIndexTableNames = [];
-        pgStatIndexIdxScan = [];
-        pgStatIndexTupRead = [];
-        pgStatIndexTupFetch = [];
-        pgStatLastQuery = "";
-        pgStatSessionStart = DateTime.Now();
-        pgStatQueryCount = 0;
-        preparedNames = [];
-        preparedSqlTemplates = [];
-        preparedParamCounts = [];
-        cursorNames = [];
-        cursorResults = [];
-        cursorPositions = [];
-        savepointNames = [];
-        savepointJournalMarks = [];
-        sessionVarNames = [];
-        sessionVarValues = [];
-        commentObjectKeys = [];
-        commentObjectValues = [];
-        initDefaultSessionVars();
-        joinEngine = new JoinEngine(self);
-        persistence = new PersistenceManager(self);
-        csvHandler = new CsvHandler(self);
-        optimizer = new QueryOptimizer();
-        optimizer.init();
-        ddlHandler = new DdlHandler(self);
-        dmlHandler = new DmlHandler(self);
-        queryHandler = new QueryHandler(self);
+        initCommon();
     }
 
     // Initialize with a shared DatabaseServer (for multi-user: multiple executors share one server)
-    // sessId is the unique session identifier used for table-level lock ownership.
     expose func initWithServer(existingServer: DatabaseServer, sessId: Integer) {
         server = existingServer;
-        // Start on the 'main' database (index 0)
         db = server.dbList.get(0);
         indexMgr = server.indexManagers.get(0);
         storageEngine = server.getStorageEngine("main");
@@ -361,6 +290,11 @@ class Executor {
         sessionId = sessId;
         tableLockMgr = server.tableLockMgr;
         rowLockMgr = server.rowLockMgr;
+        initCommon();
+    }
+
+    // Shared initialization for both standalone and server modes
+    hide func initCommon() {
         currentUser = "admin";
         inTransaction = false;
         journal = [];
@@ -427,6 +361,9 @@ class Executor {
         sessionVarValues = [];
         commentObjectKeys = [];
         commentObjectValues = [];
+        autoAnalyzeTableNames = [];
+        autoAnalyzeModCounts = [];
+        autoAnalyzeLastRowCounts = [];
         initDefaultSessionVars();
         joinEngine = new JoinEngine(self);
         persistence = new PersistenceManager(self);
@@ -1340,6 +1277,15 @@ class Executor {
             }
         }
 
+        if op == OP_MOD {
+            if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                if right.intValue != 0 {
+                    return sqlInteger(left.intValue % right.intValue);
+                }
+            }
+            return sqlNull();
+        }
+
         // Comparison - return 1 for true, 0 for false
         // compare() returns 2 for NULL comparisons (SQL three-valued logic)
         if op == OP_EQ {
@@ -1518,6 +1464,35 @@ class Executor {
             if left.kind == SQL_NULL { leftStr = ""; }
             if right.kind == SQL_NULL { rightStr = ""; }
             return sqlText(leftStr + rightStr);
+        }
+
+        // JSON path operators: -> and ->>
+        if op == OP_JSON_ARROW {
+            if left.kind == SQL_NULL { return sqlNull(); }
+            var jsonStr = "";
+            if left.kind == SQL_JSON { jsonStr = left.textValue; }
+            else if left.kind == SQL_TEXT { jsonStr = left.textValue; }
+            else { return sqlNull(); }
+            var key = right.toString();
+            var extracted = jsonExtractPath(jsonStr, key);
+            if extracted == "" { return sqlNull(); }
+            return sqlJson(extracted);
+        }
+        if op == OP_JSON_ARROW_TEXT {
+            if left.kind == SQL_NULL { return sqlNull(); }
+            var jsonStr = "";
+            if left.kind == SQL_JSON { jsonStr = left.textValue; }
+            else if left.kind == SQL_TEXT { jsonStr = left.textValue; }
+            else { return sqlNull(); }
+            var key = right.toString();
+            var extracted = jsonExtractPath(jsonStr, key);
+            if extracted == "" { return sqlNull(); }
+            // Unwrap: remove quotes if it's a JSON string value
+            var eLen = String.Length(extracted);
+            if eLen >= 2 && String.Substring(extracted, 0, 1) == "\"" && String.Substring(extracted, eLen - 1, 1) == "\"" {
+                return sqlText(String.Substring(extracted, 1, eLen - 2));
+            }
+            return sqlText(extracted);
         }
 
         return sqlNull();
@@ -1815,6 +1790,25 @@ class Executor {
             return maybeIdx != null;
         }
 
+        // Expression index matching: FUNC(col) = literal
+        if left.kind == EXPR_FUNCTION && right.kind == EXPR_LITERAL {
+            var funcName = String.ToUpper(left.funcName);
+            if left.args.count() == 1 && left.args.get(0).kind == EXPR_COLUMN {
+                var colName = left.args.get(0).columnName;
+                // Check if there's an expression index matching this function+column
+                var idx2 = 0;
+                while idx2 < indexMgr.indexCount() {
+                    var sidx = indexMgr.indexes.get(idx2);
+                    if sidx.tableName == tableName && sidx.isExpression {
+                        if sidx.expressionFuncName == funcName && sidx.expressionColumnName == colName {
+                            return true;
+                        }
+                    }
+                    idx2 = idx2 + 1;
+                }
+            }
+        }
+
         return false;
     }
 
@@ -2057,6 +2051,27 @@ class Executor {
             lookupValue = left.literalValue;
         }
 
+        // Expression index matching: FUNC(col) = literal
+        if colName == "" && left.kind == EXPR_FUNCTION && right.kind == EXPR_LITERAL {
+            var funcName = String.ToUpper(left.funcName);
+            if left.args.count() == 1 && left.args.get(0).kind == EXPR_COLUMN {
+                var exprCol = left.args.get(0).columnName;
+                lookupValue = right.literalValue;
+                // Find matching expression index
+                var ei = 0;
+                while ei < indexMgr.indexCount() {
+                    var eidx = indexMgr.indexes.get(ei);
+                    if eidx.tableName == tableName && eidx.isExpression {
+                        if eidx.expressionFuncName == funcName && eidx.expressionColumnName == exprCol {
+                            // Found matching expression index — lookup by evaluated value
+                            return eidx.lookupSingle(lookupValue, table);
+                        }
+                    }
+                    ei = ei + 1;
+                }
+            }
+        }
+
         // Find the index
         var maybeIdx = indexMgr.findIndexForColumn(tableName, colName);
         if maybeIdx == null {
@@ -2097,6 +2112,9 @@ class Executor {
             if funcName == "ARRAY_AGG" { return true; }
             if funcName == "BOOL_AND" { return true; }
             if funcName == "BOOL_OR" { return true; }
+            if funcName == "EVERY" { return true; }
+            if funcName == "JSON_AGG" { return true; }
+            if funcName == "JSON_OBJECT_AGG" { return true; }
         }
         return false;
     }
@@ -2242,6 +2260,19 @@ class Executor {
         pgStatQueryCount = pgStatQueryCount + 1;
         var result = executeSqlDispatch(sql);
 
+        // Auto-ANALYZE: track modifications and trigger when threshold exceeded
+        if result.success && result.rowsAffected > 0 {
+            // Detect the target table from the SQL (first identifier after INSERT INTO / UPDATE / DELETE FROM)
+            var upperSql = String.ToUpper(String.Trim(sql));
+            var targetTable = "";
+            if String.StartsWith(upperSql, "INSERT") || String.StartsWith(upperSql, "UPDATE") || String.StartsWith(upperSql, "DELETE") {
+                targetTable = extractDmlTargetTable(sql);
+            }
+            if targetTable != "" {
+                trackModification(targetTable, result.rowsAffected);
+            }
+        }
+
         // For non-transactional statements, release locks after each statement.
         // During transactions, locks are held until COMMIT/ROLLBACK.
         if inTransaction == false {
@@ -2249,6 +2280,70 @@ class Executor {
         }
 
         return result;
+    }
+
+    // Extract the target table name from a DML statement
+    hide func extractDmlTargetTable(sql: String) -> String {
+        var p = new Parser(sql);
+        var kind = p.currentKind();
+        if kind == TK_INSERT {
+            p.advance(); // INSERT
+            if p.currentKind() == TK_INTO { p.advance(); } // INTO
+            if p.currentKind() == TK_IDENTIFIER { return p.currentText(); }
+        }
+        if kind == TK_UPDATE {
+            p.advance(); // UPDATE
+            if p.currentKind() == TK_IDENTIFIER { return p.currentText(); }
+        }
+        if kind == TK_DELETE {
+            p.advance(); // DELETE
+            if p.currentKind() == TK_FROM { p.advance(); } // FROM
+            if p.currentKind() == TK_IDENTIFIER { return p.currentText(); }
+        }
+        return "";
+    }
+
+    // Track DML modifications per table and auto-trigger ANALYZE
+    hide func trackModification(tableName: String, rowsAffected: Integer) {
+        var found = false;
+        var idx = 0;
+        while idx < autoAnalyzeTableNames.count() {
+            if autoAnalyzeTableNames.get(idx) == tableName {
+                found = true;
+                var newCount = autoAnalyzeModCounts.get(idx) + rowsAffected;
+                autoAnalyzeModCounts.set(idx, newCount);
+                // Check threshold: auto-analyze when modifications exceed 10% of last row count
+                // Use minimum threshold of 50 rows to avoid over-analyzing tiny tables
+                var lastRows = autoAnalyzeLastRowCounts.get(idx);
+                var threshold = lastRows / 10;
+                if threshold < 50 { threshold = 50; }
+                if newCount >= threshold {
+                    // Trigger auto-analyze
+                    ddlHandler.executeAnalyzeTable(tableName);
+                    autoAnalyzeModCounts.set(idx, 0);  // Reset counter
+                    // Update last row count
+                    var table = findTable(tableName);
+                    if table != null {
+                        var t = table;
+                        autoAnalyzeLastRowCounts.set(idx, t.rowCount());
+                    }
+                }
+                idx = autoAnalyzeTableNames.count(); // break
+            }
+            idx = idx + 1;
+        }
+        if found == false {
+            autoAnalyzeTableNames.add(tableName);
+            autoAnalyzeModCounts.add(rowsAffected);
+            // Initialize last row count from current table state
+            var table = findTable(tableName);
+            if table != null {
+                var t = table;
+                autoAnalyzeLastRowCounts.add(t.rowCount());
+            } else {
+                autoAnalyzeLastRowCounts.add(0);
+            }
+        }
     }
 
     hide func executeSqlDispatch(sql: String) -> QueryResult {

@@ -28,10 +28,74 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace viper::codegen::x64::lowering {
+namespace {
+
+CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
+    CallArg arg{};
+    arg.cls = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArgClass::GPR
+                                                                : CallArgClass::FPR;
+
+    if (builder.isImmediate(argVal)) {
+        arg.isImm = true;
+        arg.imm = argVal.i64;
+        return arg;
+    }
+
+    const Operand operand = builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
+    if (const auto *reg = std::get_if<OpReg>(&operand)) {
+        arg.vreg = reg->idOrPhys;
+    } else if (const auto *imm = std::get_if<OpImm>(&operand)) {
+        arg.isImm = true;
+        arg.imm = imm->val;
+    }
+    return arg;
+}
+
+void applyKnownVarArgMetadata(CallLoweringPlan &plan, std::string_view callee) {
+    if (callee.empty())
+        return;
+
+    plan.isVarArg = il::runtime::isVarArgCallee(callee);
+    if (!plan.isVarArg) {
+        plan.numNamedArgs = plan.args.size();
+        return;
+    }
+
+    if (const auto *sig = il::runtime::findRuntimeSignature(callee))
+        plan.numNamedArgs = sig->paramTypes.size();
+    else
+        plan.numNamedArgs = 0;
+}
+
+MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
+    MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
+    call.callPlanId = callPlanId;
+    return call;
+}
+
+void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBuilder &builder) {
+    const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
+    if (instr.resultKind == ILValue::Kind::F64) {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
+        builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
+    } else if (instr.resultKind == ILValue::Kind::I1) {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+        builder.append(MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
+    } else {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+        builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
+    }
+}
+
+} // namespace
 
 /// @brief Lower an IL call instruction into the backend call plan.
 /// @details Builds a @ref CallLoweringPlan by classifying the callee operand,
@@ -50,35 +114,12 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder) {
     CallLoweringPlan plan{};
     if (instr.ops.front().kind != ILValue::Kind::LABEL)
         phaseAUnsupported("call target is not a label");
-    plan.calleeLabel = instr.ops.front().label;
-    // Query the runtime signature registry to determine if the callee uses
-    // C-style variadic arguments. The utility consults registered signatures
-    // first, then falls back to a curated list of known vararg C functions.
-    if (!plan.calleeLabel.empty()) {
-        plan.isVarArg = il::runtime::isVarArgCallee(plan.calleeLabel);
-    }
+    plan.callee = instr.ops.front().label;
 
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
-        const auto &argVal = instr.ops[idx];
-        CallArg arg{};
-        arg.kind = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArg::GPR : CallArg::XMM;
-
-        if (builder.isImmediate(argVal)) {
-            arg.isImm = true;
-            arg.imm = argVal.i64;
-        } else {
-            const Operand operand =
-                builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
-            if (const auto *reg = std::get_if<OpReg>(&operand)) {
-                arg.vreg = reg->idOrPhys;
-            } else if (const auto *imm = std::get_if<OpImm>(&operand)) {
-                arg.isImm = true;
-                arg.imm = imm->val;
-            }
-        }
-
-        plan.args.push_back(arg);
+        plan.args.push_back(makeCallArg(instr.ops[idx], builder));
     }
+    applyKnownVarArgMetadata(plan, plan.callee);
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);
@@ -89,31 +130,11 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder) {
         }
     }
 
-    builder.recordCallPlan(std::move(plan));
-    builder.append(
-        MInstr::make(MOpcode::CALL, std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
+    builder.append(makePlannedCall(builder.makeLabelOperand(instr.ops[0]), callPlanId));
 
-    // Emit MOV to capture return value from ABI return register to result virtual register
-    if (hasResult) {
-        const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
-        if (instr.resultKind == ILValue::Kind::F64) {
-            // Float return in XMM0
-            const Operand retReg = makePhysRegOperand(
-                RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
-            builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
-        } else if (instr.resultKind == ILValue::Kind::I1) {
-            // Boolean return in RAX — zero-extend from low byte to clear garbage upper bits
-            const Operand retReg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-            builder.append(
-                MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
-        } else {
-            // Integer/pointer return in RAX
-            const Operand retReg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
-        }
-    }
+    if (hasResult)
+        emitCapturedCallResult(instr, resultVReg, builder);
 }
 
 /// @brief Lower an IL call.indirect instruction into the backend call plan.
@@ -128,29 +149,13 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     }
 
     CallLoweringPlan plan{};
-    // No label for indirect calls; vararg detection is conservative here.
+    if (instr.ops[0].kind == ILValue::Kind::LABEL)
+        plan.callee = instr.ops[0].label;
 
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
-        const auto &argVal = instr.ops[idx];
-        CallArg arg{};
-        arg.kind = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArg::GPR : CallArg::XMM;
-
-        if (builder.isImmediate(argVal)) {
-            arg.isImm = true;
-            arg.imm = argVal.i64;
-        } else {
-            const Operand operand =
-                builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
-            if (const auto *reg = std::get_if<OpReg>(&operand)) {
-                arg.vreg = reg->idOrPhys;
-            } else if (const auto *imm = std::get_if<OpImm>(&operand)) {
-                arg.isImm = true;
-                arg.imm = imm->val;
-            }
-        }
-
-        plan.args.push_back(arg);
+        plan.args.push_back(makeCallArg(instr.ops[idx], builder));
     }
+    applyKnownVarArgMetadata(plan, plan.callee);
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);
@@ -161,7 +166,7 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
         }
     }
 
-    builder.recordCallPlan(std::move(plan));
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
     // Use GPR as preferred class when materialising the callee pointer.
     Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
     // The CALL instruction requires a register, memory, or label operand.
@@ -174,23 +179,10 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
             MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, calleeOp}));
         calleeOp = makeVRegOperand(tmp.cls, tmp.id);
     }
-    builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{calleeOp}));
+    builder.append(makePlannedCall(std::move(calleeOp), callPlanId));
 
-    // Emit MOV to capture return value from ABI return register to result virtual register
-    if (hasResult) {
-        const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
-        if (instr.resultKind == ILValue::Kind::F64) {
-            // Float return in XMM0
-            const Operand retReg = makePhysRegOperand(
-                RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
-            builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
-        } else {
-            // Integer/pointer return in RAX
-            const Operand retReg = makePhysRegOperand(
-                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
-        }
-    }
+    if (hasResult)
+        emitCapturedCallResult(instr, resultVReg, builder);
 }
 
 /// @brief Lower an automatic storage load instruction.
@@ -254,13 +246,10 @@ void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    // Get the allocation size (used for frame layout calculation)
-    const int64_t size = instr.ops.empty() ? 8 : instr.ops[0].i64;
-
-    // Use a placeholder negative offset that FrameLowering will resolve.
-    // The slot index is derived from the result SSA id to ensure uniqueness.
-    const int32_t placeholderOffset = -static_cast<int32_t>((instr.resultId + 1) * 8);
-    (void)size; // Size is used by frame builder, not needed here
+    const int sizeBytes =
+        (!instr.ops.empty() && instr.ops[0].i64 > 0) ? static_cast<int>(instr.ops[0].i64) : 8;
+    const int32_t placeholderOffset =
+        builder.reserveStackLocalPlaceholder(sizeBytes, kSlotSizeBytes);
 
     // LEA dest, [rbp + offset]
     const OpReg rbpBase = makePhysBase(PhysReg::RBP);

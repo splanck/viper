@@ -29,6 +29,7 @@
 #include "tests/TestHarness.hpp"
 
 #include "codegen/aarch64/FrameBuilder.hpp"
+#include "codegen/common/CallArgLayout.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/common/CallLoweringPlan.hpp"
 #include "codegen/common/FrameLayout.hpp"
@@ -108,6 +109,48 @@ TEST(SharedFrameLayout, DifferentLocalsGetDifferentOffsets) {
     EXPECT_NE(off0, off1);
 }
 
+TEST(SharedFrameLayout, SharedCursorHandlesLargeAlignedSlots) {
+    DownwardFrameCursor cursor(8);
+
+    const DownwardFrameSlot first = cursor.allocate(8, 8);
+    const DownwardFrameSlot second = cursor.allocate(16, 16);
+
+    EXPECT_EQ(first.offset, -8);
+    EXPECT_EQ(first.reservedBytes, 8);
+    EXPECT_EQ(second.offset, -32);
+    EXPECT_EQ(second.reservedBytes, 16);
+    EXPECT_EQ(cursor.usedBytes(), 32);
+}
+
+TEST(SharedFrameLayout, LargeLocalUsesItsFullExtent) {
+    MFunction fn{};
+    fn.name = "large_local";
+    FrameBuilder builder(fn);
+
+    builder.addLocal(0, 16, 16);
+    EXPECT_EQ(builder.localOffset(0), -16);
+
+    builder.finalize();
+    EXPECT_EQ(builder.totalBytes(), 16);
+}
+
+TEST(SharedFrameLayout, RecreatedBuilderResumesAfterLargeLocalExtent) {
+    MFunction fn{};
+    fn.name = "resume_after_large_local";
+
+    {
+        FrameBuilder builder(fn);
+        builder.addLocal(0, 24, 8);
+    }
+
+    FrameBuilder builder(fn);
+    const int spillOffset = builder.ensureSpill(7, 8, 8);
+    EXPECT_EQ(spillOffset, -32);
+
+    builder.finalize();
+    EXPECT_EQ(builder.totalBytes(), 32);
+}
+
 // ===========================================================================
 // CallLoweringPlan shared struct
 // ===========================================================================
@@ -137,6 +180,85 @@ TEST(SharedCallPlan, VarArgPlan) {
     EXPECT_TRUE(plan.isVarArg);
     EXPECT_EQ(plan.numNamedArgs, 3u);
     EXPECT_EQ(plan.args.size(), 4u);
+}
+
+TEST(SharedCallLayout, UnifiedRegisterPositionsShareSlotsAcrossClasses) {
+    std::vector<CallArgClass> classes = {CallArgClass::GPR,
+                                         CallArgClass::FPR,
+                                         CallArgClass::GPR,
+                                         CallArgClass::FPR,
+                                         CallArgClass::GPR};
+    const CallArgLayout layout =
+        planParamClasses(classes,
+                         CallArgLayoutConfig{.maxGPRArgs = 4,
+                                             .maxFPRArgs = 4,
+                                             .slotModel = CallSlotModel::UnifiedRegisterPositions,
+                                             .variadicTailOnStack = false,
+                                             .numNamedArgs = classes.size()});
+
+    ASSERT_EQ(layout.locations.size(), classes.size());
+    EXPECT_TRUE(layout.locations[0].inRegister);
+    EXPECT_EQ(layout.locations[0].regIndex, 0u);
+    EXPECT_TRUE(layout.locations[1].inRegister);
+    EXPECT_EQ(layout.locations[1].regIndex, 1u);
+    EXPECT_TRUE(layout.locations[2].inRegister);
+    EXPECT_EQ(layout.locations[2].regIndex, 2u);
+    EXPECT_TRUE(layout.locations[3].inRegister);
+    EXPECT_EQ(layout.locations[3].regIndex, 3u);
+    EXPECT_FALSE(layout.locations[4].inRegister);
+    EXPECT_EQ(layout.locations[4].stackSlotIndex, 0u);
+    EXPECT_EQ(layout.registerPositionsUsed, 4u);
+    EXPECT_EQ(layout.stackSlotsUsed, 1u);
+}
+
+TEST(SharedCallLayout, IndependentBanksKeepIntegerAndFloatRegistersSeparate) {
+    std::vector<CallArgClass> classes = {CallArgClass::GPR,
+                                         CallArgClass::FPR,
+                                         CallArgClass::GPR,
+                                         CallArgClass::FPR,
+                                         CallArgClass::GPR};
+    const CallArgLayout layout =
+        planParamClasses(classes,
+                         CallArgLayoutConfig{.maxGPRArgs = 2,
+                                             .maxFPRArgs = 2,
+                                             .slotModel =
+                                                 CallSlotModel::IndependentRegisterBanks,
+                                             .variadicTailOnStack = false,
+                                             .numNamedArgs = classes.size()});
+
+    ASSERT_EQ(layout.locations.size(), classes.size());
+    EXPECT_EQ(layout.locations[0].regIndex, 0u);
+    EXPECT_EQ(layout.locations[1].regIndex, 0u);
+    EXPECT_EQ(layout.locations[2].regIndex, 1u);
+    EXPECT_EQ(layout.locations[3].regIndex, 1u);
+    EXPECT_FALSE(layout.locations[4].inRegister);
+    EXPECT_EQ(layout.locations[4].stackSlotIndex, 0u);
+    EXPECT_EQ(layout.gprRegsUsed, 2u);
+    EXPECT_EQ(layout.fprRegsUsed, 2u);
+}
+
+TEST(SharedCallLayout, VariadicTailCanBeForcedOntoTheStack) {
+    std::vector<CallArgClass> classes = {
+        CallArgClass::GPR, CallArgClass::GPR, CallArgClass::FPR, CallArgClass::GPR};
+    const CallArgLayout layout =
+        planParamClasses(classes,
+                         CallArgLayoutConfig{.maxGPRArgs = 8,
+                                             .maxFPRArgs = 8,
+                                             .slotModel =
+                                                 CallSlotModel::IndependentRegisterBanks,
+                                             .variadicTailOnStack = true,
+                                             .numNamedArgs = 2});
+
+    ASSERT_EQ(layout.locations.size(), classes.size());
+    EXPECT_TRUE(layout.locations[0].inRegister);
+    EXPECT_TRUE(layout.locations[1].inRegister);
+    EXPECT_FALSE(layout.locations[2].inRegister);
+    EXPECT_TRUE(layout.locations[2].isVariadic);
+    EXPECT_EQ(layout.locations[2].stackSlotIndex, 0u);
+    EXPECT_FALSE(layout.locations[3].inRegister);
+    EXPECT_TRUE(layout.locations[3].isVariadic);
+    EXPECT_EQ(layout.locations[3].stackSlotIndex, 1u);
+    EXPECT_EQ(layout.stackSlotsUsed, 2u);
 }
 
 int main(int argc, char **argv) {

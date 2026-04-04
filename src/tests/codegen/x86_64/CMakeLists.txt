@@ -17,6 +17,7 @@ set(_viper_codegen_x86_64_tests
         addr_stress
         addressing_modes
         asm_encoding
+        call_indirect
         cf_stress
         determinism
         varargs_al

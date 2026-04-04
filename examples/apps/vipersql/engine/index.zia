@@ -57,6 +57,10 @@ class SqlIndex {
     expose Integer bucketCount;
     expose Expr? whereExpr;      // Phase 74: partial index predicate
     expose Boolean isPartial;    // Phase 74: true if WHERE clause present
+    expose Boolean isExpression;       // Expression index (e.g., LOWER(name))
+    expose String expressionSQL;       // Raw SQL text of expression
+    expose String expressionFuncName;  // Function name (e.g., "LOWER")
+    expose String expressionColumnName; // Column arg (e.g., "name")
 
     expose func init() {
         name = "";
@@ -68,6 +72,10 @@ class SqlIndex {
         buckets = [];
         whereExpr = null;
         isPartial = false;
+        isExpression = false;
+        expressionSQL = "";
+        expressionFuncName = "";
+        expressionColumnName = "";
         initBuckets();
     }
 

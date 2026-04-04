@@ -82,6 +82,27 @@ TEST(Arm64CLI, StackLocals_AllocaStoreLoad) {
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
+TEST(Arm64CLI, AcceptsStackSizeFlagWhenEmittingAssembly) {
+    const std::string in = "arm64_cli_stack_size.il";
+    const std::string out = "arm64_cli_stack_size.s";
+    const std::string il = "il 0.1\n"
+                           "func @test_stack_size() -> i64 {\n"
+                           "entry():\n"
+                           "  ret 0\n"
+                           "}\n";
+
+    const std::string inP = outPath(in);
+    const std::string outP = outPath(out);
+    writeFile(inP, il);
+
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str(), "--stack-size=65536", "-O0"};
+    const int rc = cmd_codegen_arm64(5, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 0);
+
+    const std::string asmText = readFile(outP);
+    EXPECT_NE(asmText.find("test_stack_size"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

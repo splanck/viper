@@ -71,20 +71,36 @@ func compareWindowRows(idxA: Integer, idxB: Integer, partKeys: List[String], win
     return 0;
 }
 
-// Sort indices by partition key and window ORDER BY (insertion sort)
+// Sort indices by partition key and window ORDER BY (quicksort)
 func sortWindowIndices(indices: List[Integer], partKeys: List[String], winExpr: Expr, result: QueryResult) {
-    var n = indices.count();
-    var i = 1;
-    while i < n {
-        var key = indices.get(i);
-        var j = i - 1;
-        while j >= 0 && compareWindowRows(indices.get(j), key, partKeys, winExpr, result) > 0 {
-            indices.set(j + 1, indices.get(j));
-            j = j - 1;
+    quickSortWindowIndices(indices, 0, indices.count() - 1, partKeys, winExpr, result);
+}
+
+// Quicksort implementation for window indices
+func quickSortWindowIndices(indices: List[Integer], low: Integer, high: Integer,
+                            partKeys: List[String], winExpr: Expr, result: QueryResult) {
+    if low >= high { return; }
+    // Partition
+    var pivot = indices.get(high);
+    var i = low;
+    var j = low;
+    while j < high {
+        if compareWindowRows(indices.get(j), pivot, partKeys, winExpr, result) <= 0 {
+            // Swap indices[i] and indices[j]
+            var tmp = indices.get(i);
+            indices.set(i, indices.get(j));
+            indices.set(j, tmp);
+            i = i + 1;
         }
-        indices.set(j + 1, key);
-        i = i + 1;
+        j = j + 1;
     }
+    // Place pivot
+    var tmp2 = indices.get(i);
+    indices.set(i, indices.get(high));
+    indices.set(high, tmp2);
+    // Recurse
+    quickSortWindowIndices(indices, low, i - 1, partKeys, winExpr, result);
+    quickSortWindowIndices(indices, i + 1, high, partKeys, winExpr, result);
 }
 
 // Check if two rows have equal ORDER BY values
@@ -134,6 +150,7 @@ func computeFrameStart(winExpr: Expr, wi: Integer, partSize: Integer) -> Integer
 }
 
 // Compute frame end index within partition (0-based relative to partStart, inclusive)
+// Returns -1 for empty frame (caller must check before iterating)
 func computeFrameEnd(winExpr: Expr, wi: Integer, partSize: Integer) -> Integer {
     var kind = winExpr.frameEndKind;
     if kind == 1 {
@@ -742,6 +759,188 @@ func applyWindowFunctions(stmt: SelectStmt, result: QueryResult, table: Table) {
         }
     }
 
+    // Collect auxiliary columns needed by PARTITION BY / ORDER BY that are not
+    // already in the result set.  Temporarily append them so that
+    // resolveWindowExpr can find partition/order values even when the user
+    // didn't SELECT them.
+    var auxColNames: List[String] = [];
+    var auxColIndices: List[Integer] = [];  // column index in source table
+
+    var wi = 0;
+    while wi < stmt.columns.count() {
+        var wExpr = stmt.columns.get(wi);
+        if wExpr.kind == EXPR_WINDOW {
+            // Check PARTITION BY columns
+            var pi = 0;
+            while pi < wExpr.partitionBy.count() {
+                var pExpr = wExpr.partitionBy.get(pi);
+                if pExpr.kind == EXPR_COLUMN {
+                    var pName = String.ToUpper(pExpr.columnName);
+                    // Check if already in result columns
+                    var found = false;
+                    var ri = 0;
+                    while ri < result.columnNames.count() {
+                        if String.ToUpper(result.columnNames.get(ri)) == pName {
+                            found = true;
+                            ri = result.columnNames.count();
+                        }
+                        ri = ri + 1;
+                    }
+                    // Also check if already in auxColNames
+                    if found == false {
+                        var ai = 0;
+                        while ai < auxColNames.count() {
+                            if auxColNames.get(ai) == pName {
+                                found = true;
+                                ai = auxColNames.count();
+                            }
+                            ai = ai + 1;
+                        }
+                    }
+                    if found == false {
+                        var srcIdx = table.findColumnIndex(pExpr.columnName);
+                        if srcIdx >= 0 {
+                            auxColNames.add(pName);
+                            auxColIndices.add(srcIdx);
+                        }
+                    }
+                }
+                pi = pi + 1;
+            }
+            // Check ORDER BY columns
+            var oi = 0;
+            while oi < wExpr.windowOrderBy.count() {
+                var oExpr = wExpr.windowOrderBy.get(oi);
+                if oExpr.kind == EXPR_COLUMN {
+                    var oName = String.ToUpper(oExpr.columnName);
+                    var found = false;
+                    var ri = 0;
+                    while ri < result.columnNames.count() {
+                        if String.ToUpper(result.columnNames.get(ri)) == oName {
+                            found = true;
+                            ri = result.columnNames.count();
+                        }
+                        ri = ri + 1;
+                    }
+                    if found == false {
+                        var ai = 0;
+                        while ai < auxColNames.count() {
+                            if auxColNames.get(ai) == oName {
+                                found = true;
+                                ai = auxColNames.count();
+                            }
+                            ai = ai + 1;
+                        }
+                    }
+                    if found == false {
+                        var srcIdx = table.findColumnIndex(oExpr.columnName);
+                        if srcIdx >= 0 {
+                            auxColNames.add(oName);
+                            auxColIndices.add(srcIdx);
+                        }
+                    }
+                }
+                oi = oi + 1;
+            }
+        }
+        wi = wi + 1;
+    }
+
+    // Append auxiliary columns to result
+    var auxCount = auxColNames.count();
+    if auxCount > 0 {
+        // Add column names
+        var ai = 0;
+        while ai < auxCount {
+            result.addColumnName(auxColNames.get(ai));
+            ai = ai + 1;
+        }
+        // We need to add the source table data for these columns to each result row.
+        // Since result rows were built from source table rows in order of matchingRows,
+        // we can look up the source data by scanning the source table.
+        // However, we don't have the matchingRows indices here.  Instead, we match
+        // result rows back to source rows by comparing the values already in each
+        // result row against the source table.  For correctness, we augment each
+        // result row with auxiliary column values using a positional approach:
+        // the QueryHandler builds result rows in matchingRows order, and if
+        // the source table is unchanged, we can identify source rows.
+        //
+        // Pragmatic approach: scan source table rows, for each result row find
+        // the first source row where all selected columns match, extract aux cols.
+        // This is O(n*m) but correct for the common case.
+        var usedSourceRows: List[Integer] = [];
+        var rri = 0;
+        while rri < result.rowCount() {
+            var resRow = result.rows.get(rri);
+            var origColCount = resRow.columnCount() - auxCount;  // columns before aux
+            // But we haven't added aux values yet — origColCount is still the same
+            // Actually, aux column names were added to result.columnNames but no values
+            // yet in the row. So resRow still has origColCount values.
+            var foundSrc = false;
+            var si = 0;
+            while si < table.rowCount() && foundSrc == false {
+                var srcRow = table.getRow(si);
+                if srcRow != null {
+                    var sr = srcRow;
+                    if sr.deleted == false {
+                        // Check if this source row is already used
+                        var alreadyUsed = false;
+                        var ui = 0;
+                        while ui < usedSourceRows.count() {
+                            if usedSourceRows.get(ui) == si {
+                                alreadyUsed = true;
+                                ui = usedSourceRows.count();
+                            }
+                            ui = ui + 1;
+                        }
+                        if alreadyUsed == false {
+                            // Try to match: check that selected columns match
+                            var allMatch = true;
+                            var ci = 0;
+                            while ci < origColCount && allMatch {
+                                // Find which source column corresponds to result column ci
+                                var resColName = "";
+                                if ci < result.columnNames.count() - auxCount {
+                                    resColName = result.columnNames.get(ci);
+                                }
+                                var srcColIdx = table.findColumnIndex(resColName);
+                                if srcColIdx >= 0 {
+                                    var resVal = resRow.getValue(ci);
+                                    var srcVal = sr.getValue(srcColIdx);
+                                    if resVal.compare(srcVal) != 0 {
+                                        allMatch = false;
+                                    }
+                                }
+                                ci = ci + 1;
+                            }
+                            if allMatch {
+                                // Found matching source row — extract aux columns
+                                var axi = 0;
+                                while axi < auxCount {
+                                    var auxIdx = auxColIndices.get(axi);
+                                    resRow.addValue(sr.getValue(auxIdx));
+                                    axi = axi + 1;
+                                }
+                                usedSourceRows.add(si);
+                                foundSrc = true;
+                            }
+                        }
+                    }
+                }
+                si = si + 1;
+            }
+            if foundSrc == false {
+                // Couldn't match — add NULLs for aux columns
+                var axi = 0;
+                while axi < auxCount {
+                    resRow.addValue(sqlNull());
+                    axi = axi + 1;
+                }
+            }
+            rri = rri + 1;
+        }
+    }
+
     var colIdx = 0;
     while colIdx < stmt.columns.count() {
         var colExpr = stmt.columns.get(colIdx);
@@ -749,6 +948,33 @@ func applyWindowFunctions(stmt: SelectStmt, result: QueryResult, table: Table) {
             computeWindowColumn(colExpr, result, colIdx, table);
         }
         colIdx = colIdx + 1;
+    }
+
+    // Strip auxiliary columns from result (rebuild without them — BUG-002 workaround)
+    if auxCount > 0 {
+        var origNameCount = result.columnNames.count() - auxCount;
+        // Rebuild column names without aux
+        var newColNames: List[String] = [];
+        var ni = 0;
+        while ni < origNameCount {
+            newColNames.add(result.columnNames.get(ni));
+            ni = ni + 1;
+        }
+        result.columnNames = newColNames;
+        // Rebuild each row's values without aux
+        var rri2 = 0;
+        while rri2 < result.rowCount() {
+            var row = result.rows.get(rri2);
+            var origValCount = row.columnCount() - auxCount;
+            var newVals: List[SqlValue] = [];
+            var vi = 0;
+            while vi < origValCount {
+                newVals.add(row.getValue(vi));
+                vi = vi + 1;
+            }
+            row.values = newVals;
+            rri2 = rri2 + 1;
+        }
     }
 }
 

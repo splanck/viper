@@ -29,6 +29,7 @@
 extern "C" {
 #include "runtime/audio/rt_ogg.h"
 #include "runtime/audio/rt_vorbis.h"
+#include "runtime/graphics/rt_theora.h"
 void *rt_videoplayer_open(void *path);
 void rt_videoplayer_play(void *vp);
 void rt_videoplayer_pause(void *vp);
@@ -47,6 +48,36 @@ int64_t rt_pixels_height(void *pixels);
 int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
 }
+
+struct BitWriter {
+    std::vector<uint8_t> bytes;
+    uint8_t cur = 0;
+    int bits_used = 0;
+
+    void push_bit(int bit) {
+        cur = (uint8_t)((cur << 1) | (bit ? 1 : 0));
+        bits_used++;
+        if (bits_used == 8) {
+            bytes.push_back(cur);
+            cur = 0;
+            bits_used = 0;
+        }
+    }
+
+    void push_bits(uint32_t value, int count) {
+        for (int i = count - 1; i >= 0; i--)
+            push_bit((value >> i) & 1u);
+    }
+
+    void flush() {
+        if (bits_used != 0) {
+            cur <<= (8 - bits_used);
+            bytes.push_back(cur);
+            cur = 0;
+            bits_used = 0;
+        }
+    }
+};
 
 static void append_u32_le(std::vector<uint8_t> &out, uint32_t v) {
     out.push_back((uint8_t)(v & 0xFF));
@@ -125,14 +156,174 @@ static std::vector<uint8_t> make_theora_comment_packet() {
 }
 
 static std::vector<uint8_t> make_theora_setup_packet() {
-    std::vector<uint8_t> packet(7, 0);
+    std::vector<uint8_t> packet;
+    BitWriter bw;
+    packet.resize(7, 0);
     packet[0] = 0x82;
     memcpy(packet.data() + 1, "theora", 6);
+
+    bw.push_bits(6, 3); // loop filter nbits
+    for (int i = 0; i < 64; i++)
+        bw.push_bits(63, 6);
+
+    bw.push_bits(6, 4); // ac scale nbits-1 = 6 => 7 bits
+    for (int i = 0; i < 64; i++)
+        bw.push_bits(100, 7);
+
+    bw.push_bits(6, 4); // dc scale nbits-1 = 6 => 7 bits
+    for (int i = 0; i < 64; i++)
+        bw.push_bits(100, 7);
+
+    bw.push_bits(0, 9); // NBMS-1 => 1 base matrix
+    for (int i = 0; i < 64; i++)
+        bw.push_bits(100, 8);
+
+    // qti=0, pli=0: one explicit range covering all 64 qi values.
+    bw.push_bits(62, 6); // size 63
+
+    // qti=0, pli=1/2: copy previous ranges.
+    bw.push_bit(0);
+    bw.push_bit(0);
+
+    // qti=1, pli=0/1/2: copy same plane from qti=0.
+    bw.push_bit(0);
+    bw.push_bit(1);
+    bw.push_bit(0);
+    bw.push_bit(1);
+    bw.push_bit(0);
+    bw.push_bit(1);
+
+    // 80 Huffman tables: root with left=token 0 (EOB), right=token 22 (large DC).
+    for (int i = 0; i < 80; i++) {
+        bw.push_bit(0);
+        bw.push_bit(1);
+        bw.push_bits(0, 5);
+        bw.push_bit(1);
+        bw.push_bits(22, 5);
+    }
+
+    bw.flush();
+    packet.insert(packet.end(), bw.bytes.begin(), bw.bytes.end());
     return packet;
 }
 
 static std::vector<uint8_t> make_dummy_packet(const char *text) {
     return std::vector<uint8_t>(text, text + strlen(text));
+}
+
+static std::vector<uint8_t> make_theora_iframe_packet(bool brighten_first_block) {
+    BitWriter bw;
+    // data packet marker + frame header
+    bw.push_bit(0);
+    bw.push_bit(0);       // intra frame
+    bw.push_bits(0, 6);   // qi0
+    bw.push_bit(0);       // NQIS = 1
+    bw.push_bits(0, 3);   // reserved
+
+    // ti = 0 table indices
+    bw.push_bits(0, 4);   // hti_L
+    bw.push_bits(0, 4);   // hti_C
+
+    // Six coded blocks in a 16x16 4:2:0 frame: 4 luma + cb + cr.
+    if (brighten_first_block) {
+        bw.push_bit(1);       // token 22
+        bw.push_bit(0);       // sign
+        bw.push_bits(0, 9);   // magnitude => 69
+    } else {
+        bw.push_bit(0);       // token 0 (EOB)
+    }
+    for (int i = 1; i < 6; i++)
+        bw.push_bit(0);       // token 0 (EOB)
+
+    // ti = 1 table indices
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+    if (brighten_first_block)
+        bw.push_bit(0);       // finish first block with EOB
+
+    bw.flush();
+    return bw.bytes;
+}
+
+static std::vector<uint8_t> make_theora_copy_pframe_packet() {
+    BitWriter bw;
+    bw.push_bit(0);
+    bw.push_bit(1);       // inter frame
+    bw.push_bits(0, 6);   // qi0
+    bw.push_bit(0);       // NQIS = 1
+
+    // Long-run coded superblock flags: all 3 superblocks are not partially coded.
+    bw.push_bit(0);
+    bw.push_bits(0b10, 2);
+    bw.push_bit(1);       // run length 3
+
+    // Long-run fully coded flags: all 3 are uncoded.
+    bw.push_bit(0);
+    bw.push_bits(0b10, 2);
+    bw.push_bit(1);       // run length 3
+
+    bw.push_bits(7, 3);   // direct mb mode scheme; unused because no coded luma blocks
+    bw.push_bit(0);       // MVMODE
+
+    // ti=0 and ti=1 still carry table indices even with no active coded blocks.
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+
+    bw.flush();
+    return bw.bytes;
+}
+
+static std::vector<uint8_t> make_theora_partial_intra_pframe_packet() {
+    BitWriter bw;
+    bw.push_bit(0);
+    bw.push_bit(1);       // inter frame
+    bw.push_bits(0, 6);   // qi0
+    bw.push_bit(0);       // NQIS = 1
+
+    // Superblock partial-coded flags: Y=1, Cb=0, Cr=0.
+    bw.push_bit(1);
+    bw.push_bit(0);       // run length 1
+    bw.push_bit(0);
+    bw.push_bit(1);
+    bw.push_bit(0);
+    bw.push_bit(0);       // run length 2
+
+    // Fully coded flags for the two uncoded chroma superblocks: both 0.
+    bw.push_bit(0);
+    bw.push_bit(1);
+    bw.push_bit(0);
+    bw.push_bit(0);       // run length 2
+
+    // Partial Y superblock block bits: [1,0,0,0].
+    bw.push_bit(1);
+    bw.push_bit(0);       // run length 1
+    bw.push_bit(0);
+    bw.push_bit(1);
+    bw.push_bit(0);
+    bw.push_bit(1);       // run length 3
+
+    bw.push_bits(7, 3);   // direct mb mode scheme
+    bw.push_bits(1, 3);   // mode 1 = intra
+    bw.push_bit(0);       // MVMODE
+
+    // ti = 0 tables
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+
+    // First and only coded block gets a strong positive DC token.
+    bw.push_bit(1);       // token 22
+    bw.push_bit(0);       // sign
+    bw.push_bits(0, 9);   // magnitude 69
+
+    // ti = 1 tables
+    bw.push_bits(0, 4);
+    bw.push_bits(0, 4);
+    bw.push_bit(0);       // EOB
+
+    bw.flush();
+    return bw.bytes;
 }
 
 static std::vector<uint8_t> make_synthetic_ogv() {
@@ -144,8 +335,8 @@ static std::vector<uint8_t> make_synthetic_ogv() {
     append_single_packet_page(out, 0x00, 0, theora_serial, 1, make_theora_comment_packet());
     append_single_packet_page(out, 0x00, 0, theora_serial, 2, make_theora_setup_packet());
     append_single_packet_page(out, 0x00, 0, other_serial, 1, make_dummy_packet("vorbis-data"));
-    append_single_packet_page(out, 0x00, 0, theora_serial, 3, std::vector<uint8_t>{0x00});
-    append_single_packet_page(out, 0x04, 1, theora_serial, 4, std::vector<uint8_t>{0x00});
+    append_single_packet_page(out, 0x00, 0, theora_serial, 3, make_theora_iframe_packet(false));
+    append_single_packet_page(out, 0x04, 1, theora_serial, 4, make_theora_copy_pframe_packet());
     return out;
 }
 
@@ -366,6 +557,75 @@ TEST(VideoPlayerTest, OpenSyntheticOgvAndAdvanceFrames) {
     if (rt_obj_release_check0(player))
         rt_obj_free(player);
     remove(path.c_str());
+}
+
+TEST(TheoraDecoderTest, DecodesIntraAndCopyInterFrames) {
+    theora_decoder_t dec = {};
+    const std::vector<uint8_t> ident = make_theora_ident_packet();
+    const std::vector<uint8_t> comment = make_theora_comment_packet();
+    const std::vector<uint8_t> setup = make_theora_setup_packet();
+    const std::vector<uint8_t> iframe = make_theora_iframe_packet(true);
+    const std::vector<uint8_t> pframe = make_theora_copy_pframe_packet();
+    const uint8_t *y = nullptr;
+    const uint8_t *cb = nullptr;
+    const uint8_t *cr = nullptr;
+
+    theora_decoder_init(&dec);
+    ASSERT_EQ(theora_decode_header(&dec, ident.data(), ident.size()), 0);
+    ASSERT_EQ(theora_decode_header(&dec, comment.data(), comment.size()), 0);
+    ASSERT_EQ(theora_decode_header(&dec, setup.data(), setup.size()), 0);
+
+    ASSERT_EQ(theora_decode_frame(&dec, iframe.data(), iframe.size(), &y, &cb, &cr), 0);
+    ASSERT_TRUE(y != nullptr);
+    ASSERT_TRUE(cb != nullptr);
+    ASSERT_TRUE(cr != nullptr);
+
+    uint8_t max_y = 0;
+    for (int i = 0; i < dec.y_stride * dec.y_height; i++)
+        if (y[i] > max_y)
+            max_y = y[i];
+    EXPECT_TRUE(max_y > 128);
+
+    ASSERT_EQ(theora_decode_frame(&dec, pframe.data(), pframe.size(), &y, &cb, &cr), 0);
+    uint8_t max_y_after = 0;
+    for (int i = 0; i < dec.y_stride * dec.y_height; i++)
+        if (y[i] > max_y_after)
+            max_y_after = y[i];
+    EXPECT_EQ(max_y_after, max_y);
+
+    theora_decoder_free(&dec);
+}
+
+TEST(TheoraDecoderTest, AppliesLoopFilterAcrossCodedToUncodedEdge) {
+    theora_decoder_t dec = {};
+    const std::vector<uint8_t> ident = make_theora_ident_packet();
+    const std::vector<uint8_t> comment = make_theora_comment_packet();
+    const std::vector<uint8_t> setup = make_theora_setup_packet();
+    const std::vector<uint8_t> iframe = make_theora_iframe_packet(false);
+    const std::vector<uint8_t> pframe = make_theora_partial_intra_pframe_packet();
+    const uint8_t *y = nullptr;
+
+    theora_decoder_init(&dec);
+    ASSERT_EQ(theora_decode_header(&dec, ident.data(), ident.size()), 0);
+    ASSERT_EQ(theora_decode_header(&dec, comment.data(), comment.size()), 0);
+    ASSERT_EQ(theora_decode_header(&dec, setup.data(), setup.size()), 0);
+    ASSERT_EQ(theora_decode_frame(&dec, iframe.data(), iframe.size(), &y, nullptr, nullptr), 0);
+    ASSERT_EQ(theora_decode_frame(&dec, pframe.data(), pframe.size(), &y, nullptr, nullptr), 0);
+    ASSERT_TRUE(y != nullptr);
+
+    const int stride = (int)dec.y_stride;
+    const int row = 4;
+    const int left_inside = y[row * stride + 6];
+    const int left_edge = y[row * stride + 7];
+    const int right_edge = y[row * stride + 8];
+    const int right_inside = y[row * stride + 9];
+
+    EXPECT_TRUE(left_inside >= left_edge);
+    EXPECT_TRUE(left_edge > right_edge);
+    EXPECT_TRUE(right_edge > right_inside);
+    EXPECT_TRUE(right_edge > 0);
+
+    theora_decoder_free(&dec);
 }
 
 int main() {

@@ -63,6 +63,9 @@ typedef struct {
 
     /* Current decode output */
     uint8_t *cur_y, *cur_cb, *cur_cr;        /* current frame being decoded */
+
+    /* Internal/private decoder state. */
+    void *priv;
 } theora_decoder_t;
 
 /// @brief Initialize a Theora decoder context.

@@ -54,20 +54,6 @@ static void dumpMir(const passes::AArch64Module &module, const char *tag, std::o
     }
 }
 
-static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        err << "error: unable to open '" << path << "' for writing\n";
-        return false;
-    }
-    out << text;
-    if (!out) {
-        err << "error: failed to write file '" << path << "'\n";
-        return false;
-    }
-    return true;
-}
-
 static std::vector<std::string> systemAssemblerArgs() {
 #if defined(__APPLE__)
     return {"cc", "-arch", "arm64"};
@@ -80,6 +66,7 @@ static std::vector<std::string> systemAssemblerArgs() {
 
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
+                     std::size_t stackSize,
                      std::ostream &out,
                      std::ostream &err) {
     using namespace viper::codegen::common;
@@ -95,27 +82,8 @@ static int linkToExe(const std::string &asmPath,
 #else
     std::vector<std::string> linkCmd = {"cc", asmPath};
 #endif
-    appendArchives(ctx, linkCmd);
-    {
-        std::vector<std::string> frameworks;
-#if defined(__APPLE__)
-        frameworks = {
-            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
-#endif
-        appendGraphicsLibs(ctx, linkCmd, frameworks);
-    }
-    appendAudioLibs(ctx, linkCmd);
-
-    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
-        linkCmd.push_back("-lc++");
-
-#if defined(__APPLE__)
-    linkCmd.push_back("-Wl,-dead_strip");
-#elif !defined(_WIN32)
-    linkCmd.push_back("-Wl,--gc-sections");
-    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
-        linkCmd.push_back("-pthread");
-#endif
+    appendSystemLinkInputs(ctx, linkCmd);
+    appendSystemLinkFlags(ctx, linkCmd, stackSize, true, true);
 
     linkCmd.push_back("-o");
     linkCmd.push_back(exePath);
@@ -131,12 +99,15 @@ static int linkToExe(const std::string &asmPath,
     if (!rr.err.empty())
         err << rr.err;
 #endif
-    return rr.exit_code == 0 ? 0 : 1;
+    if (rr.exit_code != 0)
+        err << "error: cc exited with status " << rr.exit_code << "\n";
+    return rr.exit_code;
 }
 
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
+                        std::size_t stackSize,
                         std::ostream &out,
                         std::ostream &err) {
     using namespace viper::codegen::common;
@@ -148,27 +119,8 @@ static int linkObjToExe(const std::string &objPath,
 #else
     std::vector<std::string> linkCmd = {"cc", objPath};
 #endif
-    appendArchives(ctx, linkCmd);
-    {
-        std::vector<std::string> frameworks;
-#if defined(__APPLE__)
-        frameworks = {
-            "Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
-#endif
-        appendGraphicsLibs(ctx, linkCmd, frameworks);
-    }
-    appendAudioLibs(ctx, linkCmd);
-
-    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
-        linkCmd.push_back("-lc++");
-
-#if defined(__APPLE__)
-    linkCmd.push_back("-Wl,-dead_strip");
-#elif !defined(_WIN32)
-    linkCmd.push_back("-Wl,--gc-sections");
-    if (hasComponent(ctx, viper::codegen::RtComponent::Threads))
-        linkCmd.push_back("-pthread");
-#endif
+    appendSystemLinkInputs(ctx, linkCmd);
+    appendSystemLinkFlags(ctx, linkCmd, stackSize, true, true);
 
     linkCmd.push_back("-o");
     linkCmd.push_back(exePath);
@@ -184,7 +136,9 @@ static int linkObjToExe(const std::string &objPath,
     if (!rr.err.empty())
         err << rr.err;
 #endif
-    return rr.exit_code == 0 ? 0 : 1;
+    if (rr.exit_code != 0)
+        err << "error: cc exited with status " << rr.exit_code << "\n";
+    return rr.exit_code;
 }
 
 static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod) {
@@ -507,7 +461,7 @@ PipelineResult CodegenPipeline::run() {
         applyDarwinAsmFixups(asmText, mod);
 
     if (opts_.emit_asm) {
-        if (!writeTextFile(asmPath, asmText, err)) {
+        if (!common::writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -516,7 +470,7 @@ PipelineResult CodegenPipeline::run() {
     }
 
     if (opts_.output_obj_path.empty() && !opts_.run_native) {
-        if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err)) {
+        if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -651,9 +605,10 @@ PipelineResult CodegenPipeline::run() {
             addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
 
             linkOpts.extraObjPaths = opts_.extra_objects;
+            linkOpts.stackSize = opts_.stack_size;
             lrc = viper::codegen::linker::nativeLink(linkOpts, out, err);
         } else {
-            lrc = linkObjToExe(objPath.string(), exe.string(), ctx, out, err);
+            lrc = linkObjToExe(objPath.string(), exe.string(), ctx, opts_.stack_size, out, err);
         }
 
         if (!outputIsObj) {
@@ -678,7 +633,7 @@ PipelineResult CodegenPipeline::run() {
         return result;
     }
 
-    if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err)) {
+    if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -696,7 +651,7 @@ PipelineResult CodegenPipeline::run() {
             return result;
         }
 
-        const int lrc = linkToExe(asmPath, outPath, out, err);
+        const int lrc = linkToExe(asmPath, outPath, opts_.stack_size, out, err);
         if (lrc == 0 && !opts_.emit_asm) {
             std::error_code ec;
             std::filesystem::remove(asmPath, ec);
@@ -712,7 +667,7 @@ PipelineResult CodegenPipeline::run() {
             ? std::filesystem::path(opts_.input_il_path).replace_extension("")
             : std::filesystem::path(opts_.output_obj_path);
 
-    if (linkToExe(asmPath, exe.string(), out, err) != 0) {
+    if (linkToExe(asmPath, exe.string(), opts_.stack_size, out, err) != 0) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();

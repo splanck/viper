@@ -87,6 +87,7 @@
 #include "A64ImmediateUtils.hpp"
 #include "FrameBuilder.hpp"
 #include "OpcodeMappings.hpp"
+#include "codegen/common/CallArgLayout.hpp"
 
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -127,6 +128,121 @@ static const char *fpCondCode(il::core::Opcode op) {
             return "eq";
     }
 }
+
+namespace {
+
+struct MaterializedCallArg {
+    uint16_t vreg{0};
+    viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
+};
+
+bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
+                     std::size_t numNamedArgs,
+                     bool variadicTailOnStack,
+                     const TargetInfo &ti,
+                     LoweredCall &seq) {
+    using namespace viper::codegen::common;
+
+    std::vector<CallArg> planArgs;
+    planArgs.reserve(args.size());
+    for (const auto &arg : args) {
+        CallArg planArg{};
+        planArg.cls = arg.cls;
+        planArg.vreg = arg.vreg;
+        planArgs.push_back(planArg);
+    }
+
+    const CallArgLayout layout = planCallArgs(
+        planArgs,
+        CallArgLayoutConfig{.maxGPRArgs = ti.intArgOrder.size(),
+                            .maxFPRArgs = ti.f64ArgOrder.size(),
+                            .slotModel = CallSlotModel::IndependentRegisterBanks,
+                            .variadicTailOnStack = variadicTailOnStack,
+                            .numNamedArgs = numNamedArgs});
+
+    const std::size_t stackBytes = ((layout.stackSlotsUsed * 8 + 15) / 16) * 16;
+    if (stackBytes > 0) {
+        seq.prefix.push_back(
+            MInstr{MOpcode::SubSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
+    }
+
+    for (const auto &loc : layout.locations) {
+        const auto &arg = args[loc.argIndex];
+        if (loc.inRegister) {
+            if (loc.cls == CallArgClass::FPR) {
+                const PhysReg dst = ti.f64ArgOrder[loc.regIndex];
+                seq.prefix.push_back(
+                    MInstr{MOpcode::FMovRR,
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::FPR, arg.vreg)}});
+            } else {
+                const PhysReg dst = ti.intArgOrder[loc.regIndex];
+                seq.prefix.push_back(
+                    MInstr{MOpcode::MovRR,
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, arg.vreg)}});
+            }
+        } else {
+            const long long stackOffset = static_cast<long long>(loc.stackSlotIndex * 8);
+            const MOpcode storeOpc =
+                (loc.cls == CallArgClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
+            seq.prefix.push_back(
+                MInstr{storeOpc,
+                       {(loc.cls == CallArgClass::FPR) ? MOperand::vregOp(RegClass::FPR, arg.vreg)
+                                                       : MOperand::vregOp(RegClass::GPR, arg.vreg),
+                        MOperand::immOp(stackOffset)}});
+        }
+    }
+
+    if (stackBytes > 0) {
+        seq.postfix.push_back(
+            MInstr{MOpcode::AddSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
+    }
+    return true;
+}
+
+uint16_t captureCallResult(const il::core::Instr &ins,
+                           const TargetInfo &ti,
+                           MBasicBlock &out,
+                           std::unordered_map<unsigned, uint16_t> &tempVReg,
+                           std::unordered_map<unsigned, RegClass> &tempRegClass,
+                           uint16_t &nextVRegId) {
+    if (!ins.result)
+        return 0;
+
+    const uint16_t dst = allocateNextVReg(nextVRegId);
+    tempVReg[*ins.result] = dst;
+    if (ins.type.kind == il::core::Type::Kind::F64) {
+        tempRegClass[*ins.result] = RegClass::FPR;
+        out.instrs.push_back(MInstr{
+            MOpcode::FMovRR,
+            {MOperand::vregOp(RegClass::FPR, dst), MOperand::regOp(ti.f64ReturnReg)}});
+        return dst;
+    }
+
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(ti.intReturnReg)}});
+    if (ins.type.kind == il::core::Type::Kind::Str) {
+        out.instrs.push_back(
+            MInstr{MOpcode::MovRR,
+                   {MOperand::regOp(ti.intReturnReg), MOperand::vregOp(RegClass::GPR, dst)}});
+        out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+    }
+    if (ins.type.kind == il::core::Type::Kind::I1) {
+        const uint16_t mask = allocateNextVReg(nextVRegId);
+        out.instrs.push_back(
+            MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+        const uint16_t masked = allocateNextVReg(nextVRegId);
+        out.instrs.push_back(MInstr{MOpcode::AndRRR,
+                                    {MOperand::vregOp(RegClass::GPR, masked),
+                                     MOperand::vregOp(RegClass::GPR, dst),
+                                     MOperand::vregOp(RegClass::GPR, mask)}});
+        tempVReg[*ins.result] = masked;
+        return masked;
+    }
+    return dst;
+}
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Value Materialization
@@ -670,8 +786,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     // First pass: materialize all arguments and collect them
     struct ArgInfo {
         uint16_t vreg;
-        RegClass cls;
-        bool isVariadic; // true if this arg is past the named parameter boundary
+        viper::codegen::common::CallArgClass cls;
     };
 
     std::vector<ArgInfo> args;
@@ -683,88 +798,17 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         if (!materializeValueToVReg(
                 arg, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vr, cls))
             return false;
-        const bool variadic = (i - argStart) >= namedArgCount;
-        args.push_back({vr, cls, variadic});
+        args.push_back({vr,
+                        cls == RegClass::FPR ? viper::codegen::common::CallArgClass::FPR
+                                             : viper::codegen::common::CallArgClass::GPR});
     }
 
-    // Count how many stack slots we need (args beyond register capacity,
-    // plus ALL variadic args which must go on stack per AAPCS64)
-    std::size_t gprIdx = 0;
-    std::size_t fprIdx = 0;
-    std::size_t stackSlots = 0;
-    for (const auto &a : args) {
-        if (a.isVariadic) {
-            // AAPCS64: variadic args always go on stack
-            stackSlots++;
-        } else if (a.cls == RegClass::FPR) {
-            if (fprIdx < ti.f64ArgOrder.size())
-                fprIdx++;
-            else
-                stackSlots++;
-        } else {
-            if (gprIdx < ti.intArgOrder.size())
-                gprIdx++;
-            else
-                stackSlots++;
-        }
-    }
+    std::vector<MaterializedCallArg> materialized;
+    materialized.reserve(args.size());
+    for (const auto &arg : args)
+        materialized.push_back({arg.vreg, arg.cls});
 
-    // If we have stack args, allocate space on stack (16-byte aligned)
-    const std::size_t stackBytes = ((stackSlots * 8 + 15) / 16) * 16;
-    if (stackBytes > 0) {
-        seq.prefix.push_back(
-            MInstr{MOpcode::SubSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
-    }
-
-    // Second pass: marshal arguments into registers or stack slots
-    gprIdx = 0;
-    fprIdx = 0;
-    std::size_t stackOffset = 0;
-    for (const auto &a : args) {
-        // AAPCS64: variadic args must always go on the stack, never in registers
-        if (a.isVariadic) {
-            MOpcode storeOpc =
-                (a.cls == RegClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
-            seq.prefix.push_back(MInstr{storeOpc,
-                                        {MOperand::vregOp(a.cls, a.vreg),
-                                         MOperand::immOp(static_cast<long long>(stackOffset))}});
-            stackOffset += 8;
-        } else if (a.cls == RegClass::FPR) {
-            if (fprIdx < ti.f64ArgOrder.size()) {
-                PhysReg dst = ti.f64ArgOrder[fprIdx++];
-                seq.prefix.push_back(
-                    MInstr{MOpcode::FMovRR,
-                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::FPR, a.vreg)}});
-            } else {
-                seq.prefix.push_back(
-                    MInstr{MOpcode::StrFprSpImm,
-                           {MOperand::vregOp(RegClass::FPR, a.vreg),
-                            MOperand::immOp(static_cast<long long>(stackOffset))}});
-                stackOffset += 8;
-            }
-        } else {
-            if (gprIdx < ti.intArgOrder.size()) {
-                PhysReg dst = ti.intArgOrder[gprIdx++];
-                seq.prefix.push_back(
-                    MInstr{MOpcode::MovRR,
-                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, a.vreg)}});
-            } else {
-                seq.prefix.push_back(
-                    MInstr{MOpcode::StrRegSpImm,
-                           {MOperand::vregOp(RegClass::GPR, a.vreg),
-                            MOperand::immOp(static_cast<long long>(stackOffset))}});
-                stackOffset += 8;
-            }
-        }
-    }
-
-    // After the call, deallocate stack space
-    if (stackBytes > 0) {
-        seq.postfix.push_back(
-            MInstr{MOpcode::AddSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
-    }
-
-    return true;
+    return marshalCallArgs(materialized, namedArgCount, isVarArg, ti, seq);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1616,37 +1660,8 @@ bool lowerCall(const il::core::Instr &ins,
         for (auto &mi : seq.postfix)
             out.instrs.push_back(std::move(mi));
         if (ins.result) {
-            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
-            ctx.tempVReg[*ins.result] = dst;
-            if (ins.type.kind == il::core::Type::Kind::F64) {
-                ctx.tempRegClass[*ins.result] = RegClass::FPR;
-                out.instrs.push_back(MInstr{
-                    MOpcode::FMovRR,
-                    {MOperand::vregOp(RegClass::FPR, dst), MOperand::regOp(ctx.ti.f64ReturnReg)}});
-            } else {
-                out.instrs.push_back(
-                    MInstr{MOpcode::MovRR,
-                           {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
-                if (ins.type.kind == il::core::Type::Kind::Str) {
-                    out.instrs.push_back(MInstr{
-                        MOpcode::MovRR,
-                        {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, dst)}});
-                    out.instrs.push_back(
-                        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
-                }
-                if (ins.type.kind == il::core::Type::Kind::I1) {
-                    const uint16_t mask = allocateNextVReg(ctx.nextVRegId);
-                    out.instrs.push_back(
-                        MInstr{MOpcode::MovRI,
-                               {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
-                    const uint16_t masked = allocateNextVReg(ctx.nextVRegId);
-                    out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                                {MOperand::vregOp(RegClass::GPR, masked),
-                                                 MOperand::vregOp(RegClass::GPR, dst),
-                                                 MOperand::vregOp(RegClass::GPR, mask)}});
-                    ctx.tempVReg[*ins.result] = masked;
-                }
-            }
+            const uint16_t dst = captureCallResult(
+                ins, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
             if (ins.callee == "rt_arr_obj_get") {
                 const int off = ctx.fb.ensureSpill(dst);
                 out.instrs.push_back(
@@ -1678,80 +1693,36 @@ bool lowerCallIndirect(const il::core::Instr &ins,
         return true;
 
     uint16_t vFuncPtr = 0;
-    const std::size_t argStartIdx = 1;
+    RegClass cFuncPtr = RegClass::GPR;
+    if (!materializeValueToVReg(ins.operands[0], bb, ctx, out, vFuncPtr, cFuncPtr))
+        return true;
 
-    const auto &funcPtrOp = ins.operands[0];
-    if (funcPtrOp.kind == il::core::Value::Kind::GlobalAddr) {
-        const uint16_t addrReg = allocateNextVReg(ctx.nextVRegId);
-        out.instrs.push_back(
-            MInstr{MOpcode::AdrPage,
-                   {MOperand::vregOp(RegClass::GPR, addrReg), MOperand::labelOp(funcPtrOp.str)}});
-        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                    {MOperand::vregOp(RegClass::GPR, addrReg),
-                                     MOperand::vregOp(RegClass::GPR, addrReg),
-                                     MOperand::labelOp(funcPtrOp.str)}});
-        vFuncPtr = addrReg;
-    } else {
-        RegClass cFuncPtr = RegClass::GPR;
-        if (!materializeValueToVReg(ins.operands[0], bb, ctx, out, vFuncPtr, cFuncPtr))
-            return true;
-    }
-
-    constexpr PhysReg argRegs[] = {PhysReg::X0,
-                                   PhysReg::X1,
-                                   PhysReg::X2,
-                                   PhysReg::X3,
-                                   PhysReg::X4,
-                                   PhysReg::X5,
-                                   PhysReg::X6,
-                                   PhysReg::X7};
-    const std::size_t numArgs = ins.operands.size() - argStartIdx;
-    for (std::size_t i = 0; i < numArgs && i < 8; ++i) {
+    std::vector<MaterializedCallArg> args;
+    args.reserve(ins.operands.size() - 1);
+    for (std::size_t i = 1; i < ins.operands.size(); ++i) {
         uint16_t vArg = 0;
         RegClass cArg = RegClass::GPR;
-        if (materializeValueToVReg(ins.operands[argStartIdx + i], bb, ctx, out, vArg, cArg)) {
-            out.instrs.push_back(
-                MInstr{MOpcode::MovRR,
-                       {MOperand::regOp(argRegs[i]), MOperand::vregOp(RegClass::GPR, vArg)}});
-        }
+        if (!materializeValueToVReg(ins.operands[i], bb, ctx, out, vArg, cArg))
+            return true;
+        args.push_back({vArg,
+                        cArg == RegClass::FPR ? viper::codegen::common::CallArgClass::FPR
+                                              : viper::codegen::common::CallArgClass::GPR});
     }
 
-    out.instrs.push_back(MInstr{
+    LoweredCall seq{};
+    if (!marshalCallArgs(args, args.size(), false, ctx.ti, seq))
+        return false;
+    seq.prefix.push_back(MInstr{
         MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::vregOp(RegClass::GPR, vFuncPtr)}});
-    out.instrs.push_back(MInstr{MOpcode::Blr, {MOperand::regOp(PhysReg::X9)}});
+    seq.call = MInstr{MOpcode::Blr, {MOperand::regOp(PhysReg::X9)}};
+    for (auto &mi : seq.prefix)
+        out.instrs.push_back(std::move(mi));
+    out.instrs.push_back(std::move(seq.call));
+    for (auto &mi : seq.postfix)
+        out.instrs.push_back(std::move(mi));
 
-    if (ins.result) {
-        const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
-        ctx.tempVReg[*ins.result] = dst;
-        if (ins.type.kind == il::core::Type::Kind::F64) {
-            ctx.tempRegClass[*ins.result] = RegClass::FPR;
-            out.instrs.push_back(MInstr{
-                MOpcode::FMovRR,
-                {MOperand::vregOp(RegClass::FPR, dst), MOperand::regOp(ctx.ti.f64ReturnReg)}});
-        } else {
-            out.instrs.push_back(
-                MInstr{MOpcode::MovRR,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
-            if (ins.type.kind == il::core::Type::Kind::Str) {
-                out.instrs.push_back(
-                    MInstr{MOpcode::MovRR,
-                           {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, dst)}});
-                out.instrs.push_back(
-                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
-            }
-            if (ins.type.kind == il::core::Type::Kind::I1) {
-                const uint16_t mask = allocateNextVReg(ctx.nextVRegId);
-                out.instrs.push_back(MInstr{
-                    MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
-                const uint16_t masked = allocateNextVReg(ctx.nextVRegId);
-                out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                            {MOperand::vregOp(RegClass::GPR, masked),
-                                             MOperand::vregOp(RegClass::GPR, dst),
-                                             MOperand::vregOp(RegClass::GPR, mask)}});
-                ctx.tempVReg[*ins.result] = masked;
-            }
-        }
-    }
+    if (ins.result)
+        captureCallResult(ins, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
     return true;
 }
 

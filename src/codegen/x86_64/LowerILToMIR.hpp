@@ -169,7 +169,13 @@ class MIRBuilder {
     /// @details Call plans describe argument passing, return handling, and callee info.
     ///          They are collected during lowering and consumed by the frame builder.
     /// @param plan The call lowering plan to record.
-    void recordCallPlan(CallLoweringPlan plan);
+    [[nodiscard]] uint32_t recordCallPlan(CallLoweringPlan plan);
+
+    /// @brief Reserve placeholder stack slots for a fixed-size alloca.
+    /// @details Returns the negative %rbp-relative displacement placeholder that
+    ///          FrameLowering will later shift below any callee-saved area.
+    [[nodiscard]] int32_t reserveStackLocalPlaceholder(int sizeBytes,
+                                                       int alignBytes = kSlotSizeBytes);
 
   private:
     LowerILToMIR *lower_{nullptr};
@@ -217,9 +223,16 @@ class LowerILToMIR {
     std::vector<CallLoweringPlan> callPlans_{};
     AsmEmitter::RoDataPool *roDataPool_{nullptr};
     uint32_t nextLocalLabel_{0};
+    int nextStackLocalSlot_{0};
 
     /// @brief Reset all per-function lowering state (vreg counter, maps, call plans).
     void resetFunctionState();
+
+    /// @brief Record a call plan and return the stable plan identifier.
+    [[nodiscard]] uint32_t recordCallPlan(CallLoweringPlan plan);
+
+    /// @brief Reserve placeholder stack slots for a fixed-size alloca.
+    [[nodiscard]] int32_t reserveStackLocalPlaceholder(int sizeBytes, int alignBytes);
 
     /// @brief Map an IL value kind to the appropriate machine register class.
     /// @param kind The IL value kind.

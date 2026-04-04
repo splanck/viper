@@ -307,6 +307,8 @@ final TK_LE = 148;
 final TK_GT = 149;
 final TK_GE = 150;
 final TK_CONCAT = 151;
+final TK_ARROW = 152;       // ->  (JSON key extraction)
+final TK_ARROW_TEXT = 153;   // ->> (JSON key extraction as text)
 
 // Punctuation
 final TK_LPAREN = 160;

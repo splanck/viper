@@ -53,6 +53,8 @@ final OP_REGEX_MATCH = 26;  // ~ (regex match)
 final OP_SIMILAR_TO = 27;   // SIMILAR TO
 final OP_IS_DISTINCT = 28;      // IS DISTINCT FROM (NULL-safe <>)
 final OP_IS_NOT_DISTINCT = 29;  // IS NOT DISTINCT FROM (NULL-safe =)
+final OP_JSON_ARROW = 30;       // ->  (JSON key extraction, returns JSON)
+final OP_JSON_ARROW_TEXT = 31;   // ->> (JSON key extraction, returns TEXT)
 
 //=============================================================================
 // UNARY OPERATOR CONSTANTS

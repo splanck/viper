@@ -337,7 +337,7 @@ const std::array<RuleSpec, 51> kLoweringRuleTable = {
              OperandShape{1U,
                           std::numeric_limits<std::uint8_t>::max(),
                           1U,
-                          {OperandKindPattern::Value,
+                          {OperandKindPattern::Any,
                            OperandKindPattern::Any,
                            OperandKindPattern::Any,
                            OperandKindPattern::Any}},

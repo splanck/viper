@@ -50,6 +50,7 @@ class ServerConfig {
     expose Boolean logQueries;
     expose Boolean replMode;
     expose String dataDir;
+    expose Integer poolSize;
 
     expose func init() {
         pgPort = DEFAULT_PG_PORT;
@@ -58,6 +59,7 @@ class ServerConfig {
         logQueries = false;
         replMode = false;
         dataDir = "./data";
+        poolSize = 10;
     }
 }
 
@@ -88,6 +90,11 @@ func parseArgs() -> ServerConfig {
         if arg == "--data-dir" && i + 1 < argc {
             i = i + 1;
             config.dataDir = Env.GetArgument(i);
+        }
+
+        if arg == "--pool-size" && i + 1 < argc {
+            i = i + 1;
+            config.poolSize = Parse.IntOr(Env.GetArgument(i), 10);
         }
 
         if arg == "--log-queries" {
@@ -123,6 +130,7 @@ func printUsage() {
     Terminal.Say("  --text-port N       Text protocol port (default: 5433, 0 to disable)");
     Terminal.Say("  --no-text           Disable text protocol listener");
     Terminal.Say("  --max-connections N Maximum concurrent connections (default: 100)");
+    Terminal.Say("  --pool-size N       Thread pool size (default: 10)");
     Terminal.Say("  --data-dir PATH     Data directory (default: ./data)");
     Terminal.Say("  --log-queries       Log all queries to stdout");
     Terminal.Say("  --repl              Start in standalone REPL mode (no server)");
@@ -149,7 +157,10 @@ func runServer(config: ServerConfig) {
     // Initialize connection handler
     sql_connection_init(dbServer);
 
-    Terminal.Say("Thread model: thread-per-connection (max " + Fmt.Int(config.maxConnections) + ")");
+    // Initialize thread pool
+    sql_pool_init(config.poolSize);
+
+    Terminal.Say("Thread model: pool (" + Fmt.Int(config.poolSize) + " workers, max " + Fmt.Int(config.maxConnections) + " connections)");
     if config.logQueries {
         sql_connection_enable_logging();
         Terminal.Say("Query logging: enabled");
@@ -172,13 +183,12 @@ func runServer(config: ServerConfig) {
     Terminal.Say("         or: vsql -h localhost -p " + Fmt.Int(config.pgPort) + " -U admin");
     Terminal.Say("");
 
-    // Accept loop
+    // Accept loop — submit clients to thread pool
     var running = 1;
     var activeConns = 0;
     while running == 1 {
         var client = Network.TcpServer.Accept(pgServer);
-        // TODO: enforce max connections
-        Threads.Thread.StartSafe(&handlePgClient, client);
+        sql_pool_submit_pg(client);
     }
 
     Terminal.Say("Shutting down...");

@@ -31,6 +31,7 @@
 #include "LoweringRules.hpp"
 #include "OperandUtils.hpp"
 #include "Unsupported.hpp"
+#include "codegen/common/FrameLayoutUtils.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -176,9 +177,14 @@ void MIRBuilder::append(MInstr instr) {
 
 /// @brief Record a call-lowering plan produced by a rule.
 /// @param plan Plan describing register shuffles and call conventions.
-void MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
+uint32_t MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
     assert(lower_);
-    lower_->callPlans_.push_back(std::move(plan));
+    return lower_->recordCallPlan(std::move(plan));
+}
+
+int32_t MIRBuilder::reserveStackLocalPlaceholder(int sizeBytes, int alignBytes) {
+    assert(lower_);
+    return lower_->reserveStackLocalPlaceholder(sizeBytes, alignBytes);
 }
 
 // -----------------------------------------------------------------------------
@@ -197,6 +203,21 @@ const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept {
     return callPlans_;
 }
 
+uint32_t LowerILToMIR::recordCallPlan(CallLoweringPlan plan) {
+    const uint32_t id = static_cast<uint32_t>(callPlans_.size());
+    callPlans_.push_back(std::move(plan));
+    return id;
+}
+
+int32_t LowerILToMIR::reserveStackLocalPlaceholder(int sizeBytes, int alignBytes) {
+    const int slotCount = common::bytesToSlots(sizeBytes, kSlotSizeBytes);
+    const int alignSlots =
+        std::max(1, common::bytesToSlots(std::max(alignBytes, kSlotSizeBytes), kSlotSizeBytes));
+    const int alignedStart = common::roundUpBytes(nextStackLocalSlot_, alignSlots);
+    nextStackLocalSlot_ = alignedStart + slotCount;
+    return -static_cast<int32_t>(nextStackLocalSlot_ * kSlotSizeBytes);
+}
+
 /// @brief Reset per-function caches before lowering a new function.
 /// @details Clears virtual register assignments, block metadata, and pending
 ///          call plans so state from the previous function does not leak.
@@ -208,6 +229,7 @@ void LowerILToMIR::resetFunctionState() {
     valueToVReg_.clear();
     blockInfo_.clear();
     callPlans_.clear();
+    nextStackLocalSlot_ = 0;
 }
 
 uint32_t LowerILToMIR::nextLocalLabelId() noexcept {
@@ -336,28 +358,31 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             // Create a CallLoweringPlan for rt_str_from_lit(ptr, len)
             // This ensures the call goes through the proper argument lowering mechanism
             CallLoweringPlan plan{};
-            plan.calleeLabel = "rt_str_from_lit";
+            plan.callee = "rt_str_from_lit";
+            plan.numNamedArgs = 2;
 
             // First arg: ptr vreg
             CallArg ptrArg{};
-            ptrArg.kind = CallArg::GPR;
+            ptrArg.cls = CallArgClass::GPR;
             ptrArg.vreg = ptrTmp.id;
             ptrArg.isImm = false;
             plan.args.push_back(ptrArg);
 
             // Second arg: length immediate
             CallArg lenArg{};
-            lenArg.kind = CallArg::GPR;
+            lenArg.cls = CallArgClass::GPR;
             lenArg.isImm = true;
             lenArg.imm = static_cast<int64_t>(literalLen);
             plan.args.push_back(lenArg);
 
             // Record the plan so lowerPendingCalls will set up args properly
-            callPlans_.push_back(std::move(plan));
+            const uint32_t callPlanId = recordCallPlan(std::move(plan));
 
             // Emit the CALL (argument setup will be inserted by lowerPendingCalls)
             const Operand callTarget = x64::makeLabelOperand(std::string{"rt_str_from_lit"});
-            block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget}));
+            MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget});
+            call.callPlanId = callPlanId;
+            block.append(std::move(call));
 
             // Move result from return register to temp vreg
             const VReg result = makeTempVReg(RegClass::GPR);
@@ -494,49 +519,45 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
     std::vector<StackParam> stackParams{};
     if (!func.blocks.empty() && !func.blocks[0].paramIds.empty()) {
         const auto &entryParams = func.blocks[0];
-        std::size_t gprArgIdx = 0;
-        std::size_t xmmArgIdx = 0;
-        std::size_t stackArgIdx = 0;
-        for (std::size_t p = 0;
-             p < entryParams.paramIds.size() && p < entryParams.paramKinds.size();
-             ++p) {
+        std::vector<CallArgClass> paramClasses;
+        paramClasses.reserve(entryParams.paramIds.size());
+        for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
+            const auto kind =
+                (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p] : ILValue::Kind::I64;
+            paramClasses.push_back(regClassFor(kind) == RegClass::XMM ? CallArgClass::FPR
+                                                                      : CallArgClass::GPR);
+        }
+        const CallArgLayout layout = common::planParamClasses(
+            paramClasses,
+            CallArgLayoutConfig{.maxGPRArgs = target_->maxGPRArgs,
+                                .maxFPRArgs = target_->maxFPArgs,
+                                .slotModel = target_->shadowSpace != 0
+                                                 ? CallSlotModel::UnifiedRegisterPositions
+                                                 : CallSlotModel::IndependentRegisterBanks,
+                                .variadicTailOnStack = false,
+                                .numNamedArgs = paramClasses.size()});
+        for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
             const int paramId = entryParams.paramIds[p];
-            const auto kind = entryParams.paramKinds[p];
+            const auto kind =
+                (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p] : ILValue::Kind::I64;
             if (paramId < 0) {
                 continue;
             }
-            const RegClass cls = regClassFor(kind);
-            if (cls == RegClass::XMM) {
-                if (xmmArgIdx < target_->maxFPArgs) {
-                    const PhysReg argReg = target_->f64ArgOrder[xmmArgIdx++];
+            const auto &loc = layout.locations[p];
+            if (loc.inRegister) {
+                if (loc.cls == CallArgClass::FPR) {
+                    const PhysReg argReg = target_->f64ArgOrder[loc.regIndex];
                     entryParamToPhysReg[paramId] =
                         makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(argReg));
                 } else {
-                    // Stack-passed XMM argument.
-                    // Offset from RBP after standard prologue:
-                    //   SysV AMD64:  16 + stackArgIdx*8  (8 saved RBP + 8 return address)
-                    //   Windows x64: shadowSpace + 16 + stackArgIdx*8  (= 48 + stackArgIdx*8)
-                    //                The 32-byte shadow space lives between the return address
-                    //                and the first stack-passed argument in the caller frame.
-                    const int32_t offset = static_cast<int32_t>(target_->shadowSpace) + 16 +
-                                           static_cast<int32_t>(stackArgIdx * 8);
-                    stackParams.push_back({paramId, offset, kind});
-                    ++stackArgIdx;
-                }
-            } else {
-                if (gprArgIdx < target_->maxGPRArgs) {
-                    const PhysReg argReg = target_->intArgOrder[gprArgIdx++];
+                    const PhysReg argReg = target_->intArgOrder[loc.regIndex];
                     entryParamToPhysReg[paramId] =
                         makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(argReg));
-                } else {
-                    // Stack-passed GPR argument.
-                    // SysV AMD64:  16 + stackArgIdx*8
-                    // Windows x64: shadowSpace + 16 + stackArgIdx*8
-                    const int32_t offset = static_cast<int32_t>(target_->shadowSpace) + 16 +
-                                           static_cast<int32_t>(stackArgIdx * 8);
-                    stackParams.push_back({paramId, offset, kind});
-                    ++stackArgIdx;
                 }
+            } else {
+                const int32_t offset = static_cast<int32_t>(target_->shadowSpace) + 16 +
+                                       static_cast<int32_t>(loc.stackSlotIndex * 8);
+                stackParams.push_back({paramId, offset, kind});
             }
         }
     }

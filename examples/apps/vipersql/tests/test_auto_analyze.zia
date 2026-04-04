@@ -1,0 +1,184 @@
+// test_auto_analyze.zia — Auto-ANALYZE Tests
+// Part of ViperSQL
+//
+// Tests automatic statistics collection triggered by DML operations.
+
+module test_auto_analyze;
+
+bind Terminal = Viper.Terminal;
+bind Fmt = Viper.Fmt;
+
+bind "../engine/executor";
+bind "../engine/types";
+bind "./test_common";
+
+//=============================================================================
+// 1. Auto-ANALYZE fires after bulk insert
+//=============================================================================
+
+func testAutoAnalyzeBulkInsert() {
+    section("Auto-ANALYZE after bulk INSERT");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE auto_test (id INTEGER, grp TEXT, val INTEGER)");
+
+    // Insert 60 rows (exceeds threshold of 50 for new table)
+    var i = 0;
+    while i < 60 {
+        exec.executeSql("INSERT INTO auto_test VALUES (" + Fmt.Int(i) + ", 'g" + Fmt.Int(i % 5) + "', " + Fmt.Int(i * 10) + ")");
+        i = i + 1;
+    }
+
+    // Verify auto-analyze tracked the table
+    var foundTable = false;
+    var ai = 0;
+    while ai < exec.autoAnalyzeTableNames.count() {
+        if exec.autoAnalyzeTableNames.get(ai) == "auto_test" {
+            foundTable = true;
+            // After auto-analyze fires, mod count should be reset (< 50)
+            assert(exec.autoAnalyzeModCounts.get(ai) < 50, "mod count reset after auto-analyze");
+        }
+        ai = ai + 1;
+    }
+    assert(foundTable, "auto_test tracked in auto-analyze");
+
+    // Verify optimizer has updated row count
+    var r = exec.executeSql("EXPLAIN SELECT * FROM auto_test WHERE val = 100");
+    assertSuccess(r, "EXPLAIN uses updated stats");
+}
+
+//=============================================================================
+// 2. Small changes don't trigger auto-analyze
+//=============================================================================
+
+func testAutoAnalyzeSmallChange() {
+    section("Auto-ANALYZE: small changes don't trigger");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE small_test (id INTEGER, val TEXT)");
+
+    // Insert just 10 rows (below threshold of 50)
+    var i = 0;
+    while i < 10 {
+        exec.executeSql("INSERT INTO small_test VALUES (" + Fmt.Int(i) + ", 'val')");
+        i = i + 1;
+    }
+
+    // Mod count should equal 10 (not reset by auto-analyze)
+    var found = false;
+    var ai = 0;
+    while ai < exec.autoAnalyzeTableNames.count() {
+        if exec.autoAnalyzeTableNames.get(ai) == "small_test" {
+            found = true;
+            assertEqInt(exec.autoAnalyzeModCounts.get(ai), 10, "mod count = 10 (no auto-analyze)");
+        }
+        ai = ai + 1;
+    }
+    assert(found, "small_test tracked");
+}
+
+//=============================================================================
+// 3. Multiple tables tracked independently
+//=============================================================================
+
+func testAutoAnalyzeMultipleTables() {
+    section("Auto-ANALYZE: multiple tables");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, val INTEGER)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, val INTEGER)");
+
+    // Insert 60 into t1 (triggers analyze), 20 into t2 (doesn't)
+    var i = 0;
+    while i < 60 {
+        exec.executeSql("INSERT INTO t1 VALUES (" + Fmt.Int(i) + ", " + Fmt.Int(i) + ")");
+        i = i + 1;
+    }
+    i = 0;
+    while i < 20 {
+        exec.executeSql("INSERT INTO t2 VALUES (" + Fmt.Int(i) + ", " + Fmt.Int(i) + ")");
+        i = i + 1;
+    }
+
+    // Both should be tracked
+    var t1Found = false;
+    var t2Found = false;
+    var ai = 0;
+    while ai < exec.autoAnalyzeTableNames.count() {
+        if exec.autoAnalyzeTableNames.get(ai) == "t1" {
+            t1Found = true;
+            // t1 had auto-analyze fire, so mod count < 50
+            assert(exec.autoAnalyzeModCounts.get(ai) < 50, "t1 mod count reset");
+        }
+        if exec.autoAnalyzeTableNames.get(ai) == "t2" {
+            t2Found = true;
+            assertEqInt(exec.autoAnalyzeModCounts.get(ai), 20, "t2 mod count = 20");
+        }
+        ai = ai + 1;
+    }
+    assert(t1Found, "t1 tracked");
+    assert(t2Found, "t2 tracked");
+}
+
+//=============================================================================
+// 4. Auto-ANALYZE on UPDATE and DELETE
+//=============================================================================
+
+func testAutoAnalyzeUpdateDelete() {
+    section("Auto-ANALYZE: UPDATE and DELETE tracking");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE upd_test (id INTEGER, val INTEGER)");
+    var i = 0;
+    while i < 100 {
+        exec.executeSql("INSERT INTO upd_test VALUES (" + Fmt.Int(i) + ", " + Fmt.Int(i) + ")");
+        i = i + 1;
+    }
+
+    // At this point auto-analyze should have fired (100 > 50 threshold)
+    // Reset counter is now tracking from rowCount=100, so threshold = 100/10 = 10
+    // But minimum is 50, so threshold remains 50
+
+    // Update 30 rows
+    exec.executeSql("UPDATE upd_test SET val = val + 1000 WHERE id < 30");
+
+    // Delete 25 rows
+    exec.executeSql("DELETE FROM upd_test WHERE id >= 75");
+
+    // Total mods since last analyze: 30 + 25 = 55 (exceeds 50 threshold)
+    var found = false;
+    var ai = 0;
+    while ai < exec.autoAnalyzeTableNames.count() {
+        if exec.autoAnalyzeTableNames.get(ai) == "upd_test" {
+            found = true;
+            // After 55 mods exceed threshold, auto-analyze fires again
+            assert(exec.autoAnalyzeModCounts.get(ai) < 50, "mod count reset after UPDATE+DELETE");
+        }
+        ai = ai + 1;
+    }
+    assert(found, "upd_test tracked");
+}
+
+//=============================================================================
+// ENTRY POINT
+//=============================================================================
+
+func main() {
+    Terminal.Say("=== Auto-ANALYZE Tests ===");
+    Terminal.Say("");
+
+    testAutoAnalyzeBulkInsert();
+    testAutoAnalyzeSmallChange();
+    testAutoAnalyzeMultipleTables();
+    testAutoAnalyzeUpdateDelete();
+
+    printResults();
+}

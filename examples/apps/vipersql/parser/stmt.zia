@@ -209,6 +209,13 @@ class InsertStmt {
 // SELECT STATEMENT
 //=============================================================================
 
+// JOIN type constants
+final JOIN_CROSS = 0;
+final JOIN_INNER = 1;
+final JOIN_LEFT = 2;
+final JOIN_RIGHT = 3;
+final JOIN_FULL = 4;
+
 class SelectStmt {
     expose List[Expr] columns;      // SELECT columns (or * for all)
     expose List[String] columnAliases; // Column aliases (AS ...)
@@ -216,7 +223,7 @@ class SelectStmt {
     expose String tableAlias;       // Table alias (e.g., FROM users u)
     expose List[String] tableNames;    // Multiple tables for JOINs
     expose List[String] tableAliases;  // Aliases for each table
-    expose List[Integer] joinTypes;    // 0=CROSS, 1=INNER, 2=LEFT, 3=RIGHT, 4=FULL
+    expose List[Integer] joinTypes;    // JOIN_CROSS, JOIN_INNER, JOIN_LEFT, JOIN_RIGHT, JOIN_FULL
     expose List[Expr] joinConditions;  // ON conditions for each join (null for CROSS)
     expose Expr? whereClause;       // WHERE condition (optional)
     expose Boolean selectAll;       // True if SELECT *
@@ -489,6 +496,10 @@ class CreateIndexStmt {
     expose Boolean isUnique;
     expose Boolean ifNotExists;  // Phase 65
     expose Expr? whereClause;    // Phase 74: partial index predicate
+    expose Boolean isExpression;       // Expression index (e.g., LOWER(name))
+    expose String expressionSQL;       // Raw SQL text of expression
+    expose String expressionFuncName;  // Function name (e.g., "LOWER")
+    expose String expressionColumnName; // Column name inside function
 
     expose func init() {
         indexName = "";
@@ -497,6 +508,10 @@ class CreateIndexStmt {
         isUnique = false;
         ifNotExists = false;
         whereClause = null;
+        isExpression = false;
+        expressionSQL = "";
+        expressionFuncName = "";
+        expressionColumnName = "";
     }
 
     expose func addColumn(colName: String) {

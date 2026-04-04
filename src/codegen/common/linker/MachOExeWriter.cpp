@@ -96,6 +96,7 @@ bool writeMachOExe(const std::string &path,
                    const std::vector<DylibImport> &dylibs,
                    const std::unordered_set<std::string> &dynSyms,
                    const std::unordered_map<std::string, uint32_t> &symOrdinals,
+                   std::size_t stackSize,
                    std::ostream &err) {
     const size_t pageSize = layout.pageSize;
     const bool isArm64 = (arch == LinkArch::AArch64);
@@ -559,7 +560,7 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, LC_MAIN);
     writeLE32(file, 24);
     writeLE64(file, mainEntryOff);
-    writeLE64(file, 0);
+    writeLE64(file, stackSize);
 
     // --- LC_LOAD_DYLIB ---
     for (size_t di = 0; di < dylibs.size(); ++di) {

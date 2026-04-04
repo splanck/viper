@@ -20,6 +20,7 @@ module join;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 bind Viper.Math;
+bind Pattern = Viper.Text.Pattern;
 
 bind "./types";
 bind "./schema";
@@ -30,6 +31,8 @@ bind "./result";
 bind "./database";
 bind "./index";
 bind "./executor";
+bind "./sql_functions";
+bind "../io/json";
 
 //=============================================================================
 // JOIN ENGINE ENTITY
@@ -310,10 +313,98 @@ class JoinEngine {
                                        tables, aliases, combinedRow, colOffsets);
         }
 
+        // Unary expressions (NOT, negation)
+        if expr.kind == EXPR_UNARY {
+            var operand = evalJoinExpr(expr.getOperand(), tables, aliases, combinedRow, colOffsets);
+            if expr.op == OP_NEG {
+                if operand.kind == SQL_INTEGER { return sqlInteger(-operand.intValue); }
+                if operand.kind == SQL_REAL {
+                    var neg = -operand.realValue;
+                    return sqlReal(neg, Fmt.Num(neg));
+                }
+            }
+            if expr.op == OP_NOT {
+                if operand.kind == SQL_NULL { return sqlInteger(0); }
+                if operand.intValue == 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+            return sqlNull();
+        }
+
+        // Function calls — delegate to executor
+        if expr.kind == EXPR_FUNCTION {
+            // Build a dummy row/table for the executor to work against
+            // We evaluate each arg in the join context first, then pass literals
+            var argVals: List[SqlValue] = [];
+            var ai = 0;
+            while ai < expr.args.count() {
+                argVals.add(evalJoinExpr(expr.args.get(ai), tables, aliases, combinedRow, colOffsets));
+                ai = ai + 1;
+            }
+            // Delegate to the SQL function dispatcher with pre-evaluated args
+            var funcResult = dispatchSqlFunction(String.ToUpper(expr.funcName), argVals);
+            if funcResult != null { return funcResult; }
+            return sqlNull();
+        }
+
+        // CASE expressions — evaluate in join context
+        if expr.kind == EXPR_CASE {
+            var ci = 0;
+            while ci < expr.caseConditions.count() {
+                var condResult = evalJoinExpr(expr.caseConditions.get(ci), tables, aliases, combinedRow, colOffsets);
+                var isTrue = false;
+                if condResult.kind == SQL_INTEGER && condResult.intValue != 0 { isTrue = true; }
+                if condResult.kind == SQL_TEXT && condResult.textValue != "" { isTrue = true; }
+                if isTrue {
+                    return evalJoinExpr(expr.caseResults.get(ci), tables, aliases, combinedRow, colOffsets);
+                }
+                ci = ci + 1;
+            }
+            if expr.caseElse != null {
+                var elseExpr = expr.caseElse;
+                return evalJoinExpr(elseExpr!, tables, aliases, combinedRow, colOffsets);
+            }
+            return sqlNull();
+        }
+
         if expr.kind == EXPR_BINARY {
+            var op = expr.op;
+
+            // Short-circuit AND/OR: avoid evaluating right side when unnecessary
+            if op == OP_AND {
+                var leftAnd = evalJoinExpr(expr.getLeft(), tables, aliases, combinedRow, colOffsets);
+                if leftAnd.intValue == 0 { return sqlInteger(0); }
+                var rightAnd = evalJoinExpr(expr.getRight(), tables, aliases, combinedRow, colOffsets);
+                if rightAnd.intValue != 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+            if op == OP_OR {
+                var leftOr = evalJoinExpr(expr.getLeft(), tables, aliases, combinedRow, colOffsets);
+                if leftOr.intValue != 0 { return sqlInteger(1); }
+                var rightOr = evalJoinExpr(expr.getRight(), tables, aliases, combinedRow, colOffsets);
+                if rightOr.intValue != 0 { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+
+            // For IN, only evaluate left side first (right side is a list)
+            if op == OP_IN {
+                var leftIn = evalJoinExpr(expr.getLeft(), tables, aliases, combinedRow, colOffsets);
+                if leftIn.kind == SQL_NULL { return sqlInteger(0); }
+                var rightExpr = expr.getRight();
+                if rightExpr.kind == EXPR_FUNCTION {
+                    // IN value list — args contain the values
+                    var ini = 0;
+                    while ini < rightExpr.args.count() {
+                        var listVal = evalJoinExpr(rightExpr.args.get(ini), tables, aliases, combinedRow, colOffsets);
+                        if leftIn.compare(listVal) == 0 { return sqlInteger(1); }
+                        ini = ini + 1;
+                    }
+                }
+                return sqlInteger(0);
+            }
+
             var left = evalJoinExpr(expr.getLeft(), tables, aliases, combinedRow, colOffsets);
             var right = evalJoinExpr(expr.getRight(), tables, aliases, combinedRow, colOffsets);
-            var op = expr.op;
 
             // Comparison operators (handle NULL: compare returns 2)
             if op == OP_EQ {
@@ -353,23 +444,186 @@ class JoinEngine {
                 return sqlInteger(0);
             }
 
-            // Logical operators
-            if op == OP_AND {
-                if left.intValue != 0 && right.intValue != 0 { return sqlInteger(1); }
-                return sqlInteger(0);
+            // IS NULL / IS NOT NULL / IS TRUE / IS FALSE
+            if op == OP_IS {
+                if right.kind == SQL_NULL {
+                    if left.kind == SQL_NULL { return sqlInteger(1); }
+                    return sqlInteger(0);
+                } else if right.intValue == 1 {
+                    if left.kind != SQL_NULL { return sqlInteger(1); }
+                    return sqlInteger(0);
+                } else if right.intValue == 5 {
+                    if left.kind == SQL_NULL { return sqlInteger(0); }
+                    if left.intValue != 0 { return sqlInteger(1); }
+                    return sqlInteger(0);
+                } else if right.intValue == 6 {
+                    if left.kind == SQL_NULL { return sqlInteger(0); }
+                    if left.intValue == 0 { return sqlInteger(1); }
+                    return sqlInteger(0);
+                } else if right.intValue == 3 {
+                    if left.kind == SQL_NULL { return sqlInteger(1); }
+                    if left.intValue == 0 { return sqlInteger(1); }
+                    return sqlInteger(0);
+                } else if right.intValue == 4 {
+                    if left.kind == SQL_NULL { return sqlInteger(1); }
+                    if left.intValue != 0 { return sqlInteger(1); }
+                    return sqlInteger(0);
+                }
             }
-            if op == OP_OR {
-                if left.intValue != 0 || right.intValue != 0 { return sqlInteger(1); }
+
+            // IS DISTINCT FROM — NULL-safe inequality
+            if op == OP_IS_DISTINCT {
+                if left.kind == SQL_NULL && right.kind == SQL_NULL { return sqlInteger(0); }
+                if left.kind == SQL_NULL || right.kind == SQL_NULL { return sqlInteger(1); }
+                var cmp = left.compare(right);
+                if cmp == 0 { return sqlInteger(0); }
+                return sqlInteger(1);
+            }
+
+            // IS NOT DISTINCT FROM — NULL-safe equality
+            if op == OP_IS_NOT_DISTINCT {
+                if left.kind == SQL_NULL && right.kind == SQL_NULL { return sqlInteger(1); }
+                if left.kind == SQL_NULL || right.kind == SQL_NULL { return sqlInteger(0); }
+                var cmp = left.compare(right);
+                if cmp == 0 { return sqlInteger(1); }
                 return sqlInteger(0);
             }
 
-            // Arithmetic operators
-            if op == OP_ADD { return sqlInteger(left.intValue + right.intValue); }
-            if op == OP_SUB { return sqlInteger(left.intValue - right.intValue); }
-            if op == OP_MUL { return sqlInteger(left.intValue * right.intValue); }
+            // LIKE pattern matching (case-insensitive, matching executor behavior)
+            if op == OP_LIKE {
+                if left.kind == SQL_NULL { return sqlInteger(0); }
+                var leftStr = left.toString();
+                var likePat = right.toString();
+                if String.LikeCI(leftStr, likePat) { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+
+            // ~ regex match
+            if op == OP_REGEX_MATCH {
+                if left.kind == SQL_NULL || right.kind == SQL_NULL { return sqlNull(); }
+                if Pattern.IsMatch(left.toString(), right.toString()) { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+
+            // SIMILAR TO (SQL standard pattern → regex)
+            if op == OP_SIMILAR_TO {
+                if left.kind == SQL_NULL || right.kind == SQL_NULL { return sqlNull(); }
+                var text = left.toString();
+                var pat = right.toString();
+                var regex = "^";
+                var pi = 0;
+                while pi < String.Length(pat) {
+                    var ch = String.Substring(pat, pi, 1);
+                    if ch == "%" { regex = regex + ".*"; }
+                    else if ch == "_" { regex = regex + "."; }
+                    else if ch == "." || ch == "(" || ch == ")" || ch == "[" || ch == "]"
+                         || ch == "{" || ch == "}" || ch == "^" || ch == "$" || ch == "+"
+                         || ch == "?" || ch == "\\" { regex = regex + "\\" + ch; }
+                    else { regex = regex + ch; }
+                    pi = pi + 1;
+                }
+                regex = regex + "$";
+                if Pattern.IsMatch(text, regex) { return sqlInteger(1); }
+                return sqlInteger(0);
+            }
+
+            // String concatenation ||
+            if op == OP_CONCAT {
+                var leftStr = left.toString();
+                var rightStr = right.toString();
+                if left.kind == SQL_NULL { leftStr = ""; }
+                if right.kind == SQL_NULL { rightStr = ""; }
+                return sqlText(leftStr + rightStr);
+            }
+
+            // JSON path operators: -> and ->>
+            if op == OP_JSON_ARROW {
+                if left.kind == SQL_NULL { return sqlNull(); }
+                var jsonStr = "";
+                if left.kind == SQL_JSON { jsonStr = left.textValue; }
+                else if left.kind == SQL_TEXT { jsonStr = left.textValue; }
+                else { return sqlNull(); }
+                var key = right.toString();
+                var extracted = jsonExtractPath(jsonStr, key);
+                if extracted == "" { return sqlNull(); }
+                return sqlJson(extracted);
+            }
+            if op == OP_JSON_ARROW_TEXT {
+                if left.kind == SQL_NULL { return sqlNull(); }
+                var jsonStr = "";
+                if left.kind == SQL_JSON { jsonStr = left.textValue; }
+                else if left.kind == SQL_TEXT { jsonStr = left.textValue; }
+                else { return sqlNull(); }
+                var key = right.toString();
+                var extracted = jsonExtractPath(jsonStr, key);
+                if extracted == "" { return sqlNull(); }
+                var eLen = String.Length(extracted);
+                if eLen >= 2 && String.Substring(extracted, 0, 1) == "\"" && String.Substring(extracted, eLen - 1, 1) == "\"" {
+                    return sqlText(String.Substring(extracted, 1, eLen - 2));
+                }
+                return sqlText(extracted);
+            }
+
+            // Arithmetic operators — supports INTEGER and REAL
+            if op == OP_ADD {
+                if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                    return sqlInteger(left.intValue + right.intValue);
+                }
+                if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                    var lv = left.realValue;
+                    if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                    var rv = right.realValue;
+                    if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                    var res = lv + rv;
+                    return sqlReal(res, Fmt.Num(res));
+                }
+            }
+            if op == OP_SUB {
+                if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                    return sqlInteger(left.intValue - right.intValue);
+                }
+                if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                    var lv = left.realValue;
+                    if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                    var rv = right.realValue;
+                    if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                    var res = lv - rv;
+                    return sqlReal(res, Fmt.Num(res));
+                }
+            }
+            if op == OP_MUL {
+                if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                    return sqlInteger(left.intValue * right.intValue);
+                }
+                if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                    var lv = left.realValue;
+                    if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                    var rv = right.realValue;
+                    if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                    var res = lv * rv;
+                    return sqlReal(res, Fmt.Num(res));
+                }
+            }
             if op == OP_DIV {
-                if right.intValue != 0 {
-                    return sqlInteger(left.intValue / right.intValue);
+                if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                    if right.intValue != 0 { return sqlInteger(left.intValue / right.intValue); }
+                    return sqlNull();
+                }
+                if (left.kind == SQL_REAL || left.kind == SQL_INTEGER) && (right.kind == SQL_REAL || right.kind == SQL_INTEGER) {
+                    var lv = left.realValue;
+                    if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
+                    var rv = right.realValue;
+                    if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
+                    if rv != 0.0 {
+                        var res = lv / rv;
+                        return sqlReal(res, Fmt.Num(res));
+                    }
+                    return sqlNull();
+                }
+            }
+            if op == OP_MOD {
+                if left.kind == SQL_INTEGER && right.kind == SQL_INTEGER {
+                    if right.intValue != 0 { return sqlInteger(left.intValue % right.intValue); }
                 }
                 return sqlNull();
             }
@@ -614,7 +868,7 @@ class JoinEngine {
             var allInner = true;
             var jt = 0;
             while jt < stmt.joinTypes.count() {
-                if stmt.joinTypes.get(jt) != 1 {
+                if stmt.joinTypes.get(jt) != JOIN_INNER {
                     allInner = false;
                 }
                 jt = jt + 1;
@@ -892,7 +1146,7 @@ class JoinEngine {
                             newCombined.add(newRow);
                             sri = sri + 1;
                         }
-                    } else if joinType == 2 {
+                    } else if joinType == JOIN_LEFT {
                         // LEFT JOIN LATERAL: add NULL row
                         var newRow = new Row();
                         newRow.init();
@@ -926,7 +1180,7 @@ class JoinEngine {
 
             // Try hash join for INNER JOIN with equi-condition
             var usedHashJoin = false;
-            if joinType == 1 && hasJoinCond {
+            if joinType == JOIN_INNER && hasJoinCond {
                 if isEquiJoin(joinCond) {
                     // Find which previously-joined table the condition references
                     var leftTableIdx = 0;
@@ -958,7 +1212,7 @@ class JoinEngine {
 
             // For RIGHT/FULL JOIN: track matched right rows
             var rightMatched = new List[Integer]();
-            if joinType == 3 || joinType == 4 {
+            if joinType == JOIN_RIGHT || joinType == JOIN_FULL {
                 var rInit = 0;
                 while rInit < tbl.rowCount() {
                     rightMatched.add(0);
@@ -992,7 +1246,7 @@ class JoinEngine {
 
                             // Check join condition for non-CROSS joins
                             var includeRow = true;
-                            if hasJoinCond && (joinType == 1 || joinType == 2 || joinType == 3 || joinType == 4) {
+                            if hasJoinCond && (joinType == JOIN_INNER || joinType == JOIN_LEFT || joinType == JOIN_RIGHT || joinType == JOIN_FULL) {
                                 var joinResult = evalJoinExpr(joinCond, tables, aliases, newRow, colOffsets);
                                 // Check for ambiguous column errors in JOIN ON
                                 if exec.hasEvalError == 1 {
@@ -1009,7 +1263,7 @@ class JoinEngine {
                             if includeRow {
                                 newCombined.add(newRow);
                                 foundMatch = true;
-                                if joinType == 3 || joinType == 4 {
+                                if joinType == JOIN_RIGHT || joinType == JOIN_FULL {
                                     rightMatched.set(r, 1);
                                 }
                             }
@@ -1019,7 +1273,7 @@ class JoinEngine {
                 }
 
                 // LEFT/FULL JOIN: add NULL row if no match
-                if (joinType == 2 || joinType == 4) && foundMatch == false {
+                if (joinType == JOIN_LEFT || joinType == JOIN_FULL) && foundMatch == false {
                     var nullRow = makeJoinRow(totalCols);
                     var c = 0;
                     while c < offset {
@@ -1033,7 +1287,7 @@ class JoinEngine {
             }
 
             // RIGHT/FULL JOIN: add unmatched right rows
-            if joinType == 3 || joinType == 4 {
+            if joinType == JOIN_RIGHT || joinType == JOIN_FULL {
                 var rCheck = 0;
                 while rCheck < tbl.rowCount() {
                     if rightMatched.get(rCheck) == 0 {

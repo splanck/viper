@@ -39,6 +39,7 @@
 #include "MachineIR.hpp"
 #include "TargetAArch64.hpp"
 #include "codegen/common/FrameLayout.hpp"
+#include "codegen/common/FrameLayoutUtils.hpp"
 
 namespace viper::codegen::aarch64 {
 
@@ -59,17 +60,13 @@ namespace viper::codegen::aarch64 {
 ///            maintained for the overall frame.
 class FrameBuilder : public common::FrameLayout {
   public:
-    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn) {
-        // Initialize nextOffset_ based on existing frame state to avoid
-        // collisions when the register allocator creates a new FrameBuilder
-        // after locals have already been allocated during MIR lowering.
-        int minExisting = -kSlotSizeBytes;
+    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn), slotCursor_(kSlotSizeBytes) {
+        // Resume allocation after any locals/spills assigned by an earlier
+        // builder instance (for example, when regalloc creates new spill slots).
         for (const auto &L : fn.frame.locals)
-            minExisting = std::min(minExisting, L.offset - kSlotSizeBytes);
+            slotCursor_.seedFromOffset(L.offset);
         for (const auto &S : fn.frame.spills)
-            minExisting = std::min(minExisting, S.offset - kSlotSizeBytes);
-        nextOffset_ = minExisting;
-        minOffset_ = minExisting + kSlotSizeBytes;
+            slotCursor_.seedFromOffset(S.offset);
     }
 
     /// @brief Declare a local stack slot by IL temp id.
@@ -159,8 +156,7 @@ class FrameBuilder : public common::FrameLayout {
     };
 
     MFunction *fn_{};
-    int nextOffset_{-kSlotSizeBytes}; ///< Next available slot (first at [x29, #-8]).
-    int minOffset_{0};                ///< Most negative offset assigned.
+    common::DownwardFrameCursor slotCursor_{kSlotSizeBytes};
     uint32_t blockEpoch_{0};          ///< Monotonically-increasing block counter.
 
     /// Lifetime records for every slot allocated via ensureSpillWithReuse().

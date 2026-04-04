@@ -150,8 +150,13 @@ class PersistenceManager {
             if ci > 0 {
                 sql = sql + ", ";
             }
-            var val = exec.cloneValue(row.getValue(ci));
-            sql = sql + val.toSqlString();
+            var rawVal = row.getValue(ci);
+            if rawVal.kind == SQL_NULL {
+                sql = sql + "NULL";
+            } else {
+                var val = exec.cloneValue(rawVal);
+                sql = sql + val.toSqlString();
+            }
             ci = ci + 1;
         }
         sql = sql + ");";
