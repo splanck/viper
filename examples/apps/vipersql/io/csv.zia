@@ -11,6 +11,9 @@ module csv;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
+bind SB = Viper.Text.StringBuilder;
+bind Csv = Viper.Text.Csv;
+bind Seq = Viper.Collections.Seq;
 
 bind "../engine/types";
 bind "../engine/schema";
@@ -41,7 +44,7 @@ class CsvHandler {
         }
         var table = maybeTable;
 
-        var csv = "";
+        var sb = SB.New();
 
         // Header row
         var ci = 0;
@@ -49,14 +52,12 @@ class CsvHandler {
             var maybeCol = table.getColumn(ci);
             if maybeCol != null {
                 var col = maybeCol;
-                if ci > 0 {
-                    csv = csv + ",";
-                }
-                csv = csv + escapeCSV(col.name);
+                if ci > 0 { SB.Append(sb, ","); }
+                SB.Append(sb, escapeCSV(col.name));
             }
             ci = ci + 1;
         }
-        csv = csv + "\n";
+        SB.Append(sb, "\n");
 
         // Data rows
         var ri = 0;
@@ -67,24 +68,20 @@ class CsvHandler {
                 if row.deleted == false {
                     ci = 0;
                     while ci < row.columnCount() {
-                        if ci > 0 {
-                            csv = csv + ",";
-                        }
+                        if ci > 0 { SB.Append(sb, ","); }
                         var val = row.getValue(ci);
-                        if val.isNull() {
-                            csv = csv + "";
-                        } else {
-                            csv = csv + escapeCSV(val.toString());
+                        if val.isNull() == false {
+                            SB.Append(sb, escapeCSV(val.toString()));
                         }
                         ci = ci + 1;
                     }
-                    csv = csv + "\n";
+                    SB.Append(sb, "\n");
                 }
             }
             ri = ri + 1;
         }
 
-        IO.File.WriteAllText(filename, csv);
+        IO.File.WriteAllText(filename, SB.ToString(sb));
 
         var rowCount = 0;
         ri = 0;
@@ -105,32 +102,24 @@ class CsvHandler {
 
     // Escape a value for CSV output
     hide func escapeCSV(value: String) -> String {
-        var needsQuotes = false;
-        var i = 0;
-        var len = String.Length(value);
-        while i < len {
-            var ch = String.Substring(value, i, 1);
-            if ch == "," || ch == "\"" || ch == "\n" || ch == "\r" {
-                needsQuotes = true;
-                break;
-            }
-            i = i + 1;
-        }
+        var needsQuotes = String.IndexOf(value, ",") > 0
+            || String.IndexOf(value, "\"") > 0
+            || String.IndexOf(value, "\n") > 0
+            || String.IndexOf(value, "\r") > 0;
 
         if needsQuotes {
-            // Escape quotes by doubling them
-            var escaped = "";
-            i = 0;
+            var sb = SB.New();
+            SB.Append(sb, "\"");
+            var i = 0;
+            var len = String.Length(value);
             while i < len {
                 var ch = String.Substring(value, i, 1);
-                if ch == "\"" {
-                    escaped = escaped + "\"\"";
-                } else {
-                    escaped = escaped + ch;
-                }
+                if ch == "\"" { SB.Append(sb, "\"\""); }
+                else { SB.Append(sb, ch); }
                 i = i + 1;
             }
-            return "\"" + escaped + "\"";
+            SB.Append(sb, "\"");
+            return SB.ToString(sb);
         }
         return value;
     }
@@ -219,68 +208,38 @@ class CsvHandler {
         return result;
     }
 
-    // Split content into lines
+    // Split content into lines — delegates to runtime String.Split
     hide func splitLines(content: String) -> List[String] {
+        // Split on newlines, strip carriage returns
         var lines: List[String] = [];
-        var current = "";
+        var rawSeq = String.Split(content, "\n");
+        var count = Seq.get_Length(rawSeq);
         var i = 0;
-        var len = String.Length(content);
-        while i < len {
-            var ch = String.Substring(content, i, 1);
-            if ch == "\n" {
-                lines.add(current);
-                current = "";
-            } else if ch != "\r" {
-                current = current + ch;
+        while i < count {
+            var line = Seq.GetStr(rawSeq, i);
+            // Strip trailing \r
+            var lineLen = String.Length(line);
+            if lineLen > 0 && String.Substring(line, lineLen - 1, 1) == "\r" {
+                line = String.Substring(line, 0, lineLen - 1);
+            }
+            if String.Length(line) > 0 || i < count - 1 {
+                lines.add(line);
             }
             i = i + 1;
-        }
-        if current != "" {
-            lines.add(current);
         }
         return lines;
     }
 
-    // Parse a CSV line into fields
+    // Parse a CSV line into fields — delegates to runtime Csv.ParseLine
     hide func parseCSVLine(line: String) -> List[String] {
+        var seq = Csv.ParseLine(line);
+        var count = Seq.get_Length(seq);
         var fields: List[String] = [];
-        var current = "";
-        var inQuotes = false;
         var i = 0;
-        var len = String.Length(line);
-
-        while i < len {
-            var ch = String.Substring(line, i, 1);
-
-            if inQuotes {
-                if ch == "\"" {
-                    // Check for escaped quote
-                    if i + 1 < len && String.Substring(line, i + 1, 1) == "\"" {
-                        current = current + "\"";
-                        i = i + 1;
-                    } else {
-                        inQuotes = false;
-                    }
-                } else {
-                    current = current + ch;
-                }
-            } else {
-                if ch == "\"" {
-                    inQuotes = true;
-                } else if ch == "," {
-                    fields.add(current);
-                    current = "";
-                } else {
-                    current = current + ch;
-                }
-            }
+        while i < count {
+            fields.add(Seq.GetStr(seq, i));
             i = i + 1;
         }
-        // Reject unterminated quoted fields
-        if inQuotes {
-            return [];
-        }
-        fields.add(current);
         return fields;
     }
 

@@ -16,6 +16,7 @@ bind "./types";
 bind "../io/json";
 bind CryptoHash = Viper.Crypto.Hash;
 bind Pattern = Viper.Text.Pattern;
+bind SB = Viper.Text.StringBuilder;
 
 //=============================================================================
 // DATE/TIME HELPER FUNCTIONS
@@ -148,43 +149,24 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             }
             return sqlText(String.Substring(s, start, end - start));
         }
-        // Simple TRIM(str) — trim whitespace from both sides
+        // Simple TRIM(str) — delegates to runtime
         var arg = args.get(0);
         if arg.kind == SQL_TEXT {
-            var s = arg.textValue;
-            var start = 0;
-            while start < String.Length(s) && String.Substring(s, start, 1) == " " {
-                start = start + 1;
-            }
-            var end = String.Length(s);
-            while end > start && String.Substring(s, end - 1, 1) == " " {
-                end = end - 1;
-            }
-            return sqlText(String.Substring(s, start, end - start));
+            return sqlText(String.Trim(arg.textValue));
         }
     }
 
     if name == "LTRIM" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_TEXT {
-            var s = arg.textValue;
-            var start = 0;
-            while start < String.Length(s) && String.Substring(s, start, 1) == " " {
-                start = start + 1;
-            }
-            return sqlText(String.Substring(s, start, String.Length(s) - start));
+            return sqlText(String.TrimStart(arg.textValue));
         }
     }
 
     if name == "RTRIM" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_TEXT {
-            var s = arg.textValue;
-            var end = String.Length(s);
-            while end > 0 && String.Substring(s, end - 1, 1) == " " {
-                end = end - 1;
-            }
-            return sqlText(String.Substring(s, 0, end));
+            return sqlText(String.TrimEnd(arg.textValue));
         }
     }
 
@@ -193,39 +175,19 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var fromArg = args.get(1);
         var toArg = args.get(2);
         if strArg.kind == SQL_TEXT && fromArg.kind == SQL_TEXT && toArg.kind == SQL_TEXT {
-            var str = strArg.textValue;
-            var from = fromArg.textValue;
-            var to = toArg.textValue;
-            var result = "";
-            var i = 0;
-            var fromLen = String.Length(from);
-            var strLen = String.Length(str);
-            while i < strLen {
-                if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
-                    result = result + to;
-                    i = i + fromLen;
-                } else {
-                    result = result + String.Substring(str, i, 1);
-                    i = i + 1;
-                }
-            }
-            return sqlText(result);
+            return sqlText(String.Replace(strArg.textValue, fromArg.textValue, toArg.textValue));
         }
     }
 
     if name == "CONCAT" && args.count() > 0 {
-        var result = "";
+        var sb = SB.New();
         var i = 0;
         while i < args.count() {
             var arg = args.get(i);
-            if arg.kind == SQL_TEXT {
-                result = result + arg.textValue;
-            } else if arg.kind == SQL_INTEGER {
-                result = result + Fmt.Int(arg.intValue);
-            }
+            if arg.kind != SQL_NULL { SB.Append(sb, arg.toString()); }
             i = i + 1;
         }
-        return sqlText(result);
+        return sqlText(SB.ToString(sb));
     }
 
     if name == "INSTR" && args.count() >= 2 {
@@ -288,18 +250,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         }
         var sLen = String.Length(s);
         if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
-        var result = "";
-        var padLen = String.Length(pad);
-        if padLen == 0 { return sqlText(s); }
-        var needed = targetLen - sLen;
-        var pi = 0;
-        while pi < needed {
-            var ci = pi % padLen;
-            result = result + String.Substring(pad, ci, 1);
-            pi = pi + 1;
-        }
-        result = result + s;
-        return sqlText(result);
+        return sqlText(String.PadLeft(s, targetLen, pad));
     }
 
     if name == "RPAD" && args.count() >= 2 {
@@ -315,31 +266,14 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         }
         var sLen = String.Length(s);
         if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
-        var result = s;
-        var padLen = String.Length(pad);
-        if padLen == 0 { return sqlText(s); }
-        var needed = targetLen - sLen;
-        var pi = 0;
-        while pi < needed {
-            var ci = pi % padLen;
-            result = result + String.Substring(pad, ci, 1);
-            pi = pi + 1;
-        }
-        return sqlText(result);
+        return sqlText(String.PadRight(s, targetLen, pad));
     }
 
     if name == "REVERSE" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         if arg.kind == SQL_TEXT {
-            var s = arg.textValue;
-            var result = "";
-            var i = String.Length(s) - 1;
-            while i >= 0 {
-                result = result + String.Substring(s, i, 1);
-                i = i - 1;
-            }
-            return sqlText(result);
+            return sqlText(String.Flip(arg.textValue));
         }
     }
 
@@ -367,40 +301,28 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var s = arg.toString();
-        var result = "";
+        var sb = SB.New();
         var capitalize = true;
         var i = 0;
         while i < String.Length(s) {
             var ch = String.Substring(s, i, 1);
             if ch == " " || ch == "\t" || ch == "\n" {
-                result = result + ch;
+                SB.Append(sb, ch);
                 capitalize = true;
             } else {
-                if capitalize {
-                    result = result + String.ToUpper(ch);
-                    capitalize = false;
-                } else {
-                    result = result + String.ToLower(ch);
-                }
+                if capitalize { SB.Append(sb, String.ToUpper(ch)); capitalize = false; }
+                else { SB.Append(sb, String.ToLower(ch)); }
             }
             i = i + 1;
         }
-        return sqlText(result);
+        return sqlText(SB.ToString(sb));
     }
 
     // REPEAT(s, n) — repeat string n times
     if name == "REPEAT" && args.count() >= 2 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var s = arg.toString();
-        var n = args.get(1).intValue;
-        var result = "";
-        var i = 0;
-        while i < n {
-            result = result + s;
-            i = i + 1;
-        }
-        return sqlText(result);
+        return sqlText(String.Repeat(arg.toString(), args.get(1).intValue));
     }
 
     // SPLIT_PART(s, delimiter, part) — split string and return nth part (1-based)
@@ -466,21 +388,19 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     // CONCAT_WS(sep, ...) — concatenate with separator, skipping NULLs
     if name == "CONCAT_WS" && args.count() >= 1 {
         var sep = args.get(0).toString();
-        var result = "";
+        var sb = SB.New();
         var first = true;
         var i = 1;
         while i < args.count() {
             var arg = args.get(i);
             if arg.kind != SQL_NULL {
-                if first == false {
-                    result = result + sep;
-                }
-                result = result + arg.toString();
+                if first == false { SB.Append(sb, sep); }
+                SB.Append(sb, arg.toString());
                 first = false;
             }
             i = i + 1;
         }
-        return sqlText(result);
+        return sqlText(SB.ToString(sb));
     }
 
     // STRING_AGG — handled as aggregate, but single-row version
@@ -519,7 +439,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var s = strArg.toString();
         var from = fromArg.toString();
         var to = toArg.toString();
-        var result = "";
+        var sb = SB.New();
         var i = 0;
         while i < String.Length(s) {
             var ch = String.Substring(s, i, 1);
@@ -528,20 +448,15 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             while fi < String.Length(from) {
                 if String.Substring(from, fi, 1) == ch {
                     found = true;
-                    if fi < String.Length(to) {
-                        result = result + String.Substring(to, fi, 1);
-                    }
-                    // If fi >= to length, character is deleted
-                    fi = String.Length(from); // break
+                    if fi < String.Length(to) { SB.Append(sb, String.Substring(to, fi, 1)); }
+                    fi = String.Length(from);
                 }
                 fi = fi + 1;
             }
-            if found == false {
-                result = result + ch;
-            }
+            if found == false { SB.Append(sb, ch); }
             i = i + 1;
         }
-        return sqlText(result);
+        return sqlText(SB.ToString(sb));
     }
 
     // OVERLAY(str PLACING new_str FROM start [FOR count])
@@ -607,40 +522,14 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "QUOTE_LITERAL" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlText("NULL"); }
-        var s = arg.toString();
-        var result = "'";
-        var i = 0;
-        while i < String.Length(s) {
-            var ch = String.Substring(s, i, 1);
-            if ch == "'" {
-                result = result + "''";
-            } else {
-                result = result + ch;
-            }
-            i = i + 1;
-        }
-        result = result + "'";
-        return sqlText(result);
+        return sqlText("'" + String.Replace(arg.toString(), "'", "''") + "'");
     }
 
     // QUOTE_IDENT(str) — wrap in double quotes, escape internal quotes
     if name == "QUOTE_IDENT" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var s = arg.toString();
-        var result = "\"";
-        var i = 0;
-        while i < String.Length(s) {
-            var ch = String.Substring(s, i, 1);
-            if ch == "\"" {
-                result = result + "\"\"";
-            } else {
-                result = result + ch;
-            }
-            i = i + 1;
-        }
-        result = result + "\"";
-        return sqlText(result);
+        return sqlText("\"" + String.Replace(arg.toString(), "\"", "\"\"") + "\"");
     }
 
     // MD5(str) — return MD5 hash as 32-character hex string

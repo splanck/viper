@@ -37,14 +37,22 @@ extern void *rt_json_parse_object(rt_string text);
 extern void *rt_map_get(void *map, rt_string key);
 extern int64_t rt_seq_len(void *seq);
 extern void *rt_seq_get(void *seq, int64_t index);
+extern int64_t rt_box_type(void *box);
 extern int64_t rt_unbox_i64(void *boxed);
 extern double rt_unbox_f64(void *boxed);
-extern rt_string rt_unbox_str(void *boxed);
+extern int64_t rt_unbox_i1(void *boxed);
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_trap(const char *msg);
 extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
+extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
+extern void *rt_pixels_load(void *path);
+extern void rt_material3d_set_texture(void *obj, void *pixels);
+extern void rt_material3d_set_normal_map(void *obj, void *pixels);
+extern void rt_material3d_set_specular_map(void *obj, void *pixels);
+extern void rt_material3d_set_emissive_map(void *obj, void *pixels);
+extern void rt_material3d_set_alpha(void *obj, double alpha);
 
 //===----------------------------------------------------------------------===//
 // Asset container
@@ -60,8 +68,20 @@ typedef struct {
 
 static void gltf_asset_finalize(void *obj) {
     rt_gltf_asset *a = (rt_gltf_asset *)obj;
+    if (a->meshes) {
+        for (int32_t i = 0; i < a->mesh_count; i++) {
+            if (a->meshes[i] && rt_obj_release_check0(a->meshes[i]))
+                rt_obj_free(a->meshes[i]);
+        }
+    }
     free(a->meshes);
     a->meshes = NULL;
+    if (a->materials) {
+        for (int32_t i = 0; i < a->material_count; i++) {
+            if (a->materials[i] && rt_obj_release_check0(a->materials[i]))
+                rt_obj_free(a->materials[i]);
+        }
+    }
     free(a->materials);
     a->materials = NULL;
 }
@@ -81,21 +101,37 @@ static double jnum(void *obj, const char *key, double def) {
     void *v = jget(obj, key);
     if (!v)
         return def;
-    return rt_unbox_f64(v);
+    switch (rt_box_type(v)) {
+        case 0:
+            return (double)rt_unbox_i64(v);
+        case 1:
+            return rt_unbox_f64(v);
+        case 2:
+            return (double)rt_unbox_i1(v);
+        default:
+            return def;
+    }
 }
 
 static int64_t jint(void *obj, const char *key, int64_t def) {
     void *v = jget(obj, key);
     if (!v)
         return def;
-    return rt_unbox_i64(v);
+    switch (rt_box_type(v)) {
+        case 0:
+            return rt_unbox_i64(v);
+        case 1:
+            return (int64_t)rt_unbox_f64(v);
+        case 2:
+            return rt_unbox_i1(v);
+        default:
+            return def;
+    }
 }
 
 static const char *jstr(void *obj, const char *key) {
     void *v = jget(obj, key);
-    if (!v)
-        return NULL;
-    rt_string s = rt_unbox_str(v);
+    rt_string s = (rt_string)v;
     return s ? rt_string_cstr(s) : NULL;
 }
 
@@ -107,6 +143,19 @@ static int64_t jarr_len(void *arr) {
     return arr ? rt_seq_len(arr) : 0;
 }
 
+static double jvalue_num(void *value, double def) {
+    if (!value)
+        return def;
+    switch (rt_box_type(value)) {
+        case 0:
+            return (double)rt_unbox_i64(value);
+        case 1:
+            return rt_unbox_f64(value);
+        default:
+            return def;
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Buffer management
 //===----------------------------------------------------------------------===//
@@ -115,6 +164,145 @@ typedef struct {
     uint8_t *data;
     size_t len;
 } gltf_buffer_t;
+
+static const char gltf_base64_chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int gltf_base64_digit_value(char c) {
+    const char *p = strchr(gltf_base64_chars, c);
+    if (p)
+        return (int)(p - gltf_base64_chars);
+    if (c == '=')
+        return -2;
+    return -1;
+}
+
+static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len) {
+    if (!data)
+        return NULL;
+    if (len == 0) {
+        uint8_t *empty = (uint8_t *)malloc(1);
+        if (out_len)
+            *out_len = 0;
+        return empty;
+    }
+    if (len % 4 != 0)
+        return NULL;
+
+    size_t olen = (len / 4) * 3;
+    if (len > 0 && data[len - 1] == '=')
+        olen--;
+    if (len > 1 && data[len - 2] == '=')
+        olen--;
+
+    uint8_t *output = (uint8_t *)malloc(olen > 0 ? olen : 1);
+    if (!output)
+        return NULL;
+
+    size_t i = 0;
+    size_t j = 0;
+    while (i < len) {
+        int a = gltf_base64_digit_value(data[i++]);
+        int b = gltf_base64_digit_value(data[i++]);
+        int c = gltf_base64_digit_value(data[i++]);
+        int d = gltf_base64_digit_value(data[i++]);
+        if (a < 0 || b < 0 || c == -1 || d == -1) {
+            free(output);
+            return NULL;
+        }
+        if (c == -2)
+            c = 0;
+        if (d == -2)
+            d = 0;
+        {
+            uint32_t triple =
+                ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
+            if (j < olen)
+                output[j++] = (uint8_t)((triple >> 16) & 0xFF);
+            if (j < olen)
+                output[j++] = (uint8_t)((triple >> 8) & 0xFF);
+            if (j < olen)
+                output[j++] = (uint8_t)(triple & 0xFF);
+        }
+    }
+
+    if (out_len)
+        *out_len = olen;
+    return output;
+}
+
+static int gltf_parse_data_uri(const char *uri,
+                               char *mime_buf,
+                               size_t mime_buf_cap,
+                               uint8_t **out_data,
+                               size_t *out_len) {
+    const char *comma;
+    const char *payload;
+    size_t mime_len = 0;
+    int is_base64 = 0;
+    if (!uri || strncmp(uri, "data:", 5) != 0)
+        return 0;
+    comma = strchr(uri, ',');
+    if (!comma)
+        return 0;
+    payload = comma + 1;
+
+    if (mime_buf && mime_buf_cap > 0)
+        mime_buf[0] = '\0';
+    {
+        const char *meta = uri + 5;
+        const char *semi = memchr(meta, ';', (size_t)(comma - meta));
+        if (semi) {
+            mime_len = (size_t)(semi - meta);
+            if (strstr(semi, ";base64"))
+                is_base64 = 1;
+        } else {
+            mime_len = (size_t)(comma - meta);
+        }
+        if (mime_buf && mime_buf_cap > 0 && mime_len > 0) {
+            if (mime_len >= mime_buf_cap)
+                mime_len = mime_buf_cap - 1;
+            memcpy(mime_buf, meta, mime_len);
+            mime_buf[mime_len] = '\0';
+        }
+    }
+
+    if (is_base64) {
+        *out_data = gltf_base64_decode(payload, strlen(payload), out_len);
+        return *out_data != NULL;
+    }
+
+    *out_len = strlen(payload);
+    *out_data = (uint8_t *)malloc(*out_len > 0 ? *out_len : 1);
+    if (!*out_data)
+        return 0;
+    if (*out_len > 0)
+        memcpy(*out_data, payload, *out_len);
+    return 1;
+}
+
+static const uint8_t *gltf_get_buffer_view_data(void *root,
+                                                int64_t view_idx,
+                                                gltf_buffer_t *buffers,
+                                                int buf_count,
+                                                size_t *out_len) {
+    void *views = jarr(root, "bufferViews");
+    if (!views || view_idx < 0 || view_idx >= jarr_len(views))
+        return NULL;
+    void *view = rt_seq_get(views, view_idx);
+    if (!view)
+        return NULL;
+    int buf_idx = (int)jint(view, "buffer", -1);
+    size_t byte_offset = (size_t)jint(view, "byteOffset", 0);
+    size_t byte_length = (size_t)jint(view, "byteLength", 0);
+    if (buf_idx < 0 || buf_idx >= buf_count)
+        return NULL;
+    if (byte_offset + byte_length > buffers[buf_idx].len)
+        return NULL;
+    if (out_len)
+        *out_len = byte_length;
+    return buffers[buf_idx].data + byte_offset;
+}
 
 /// @brief Read accessor data: resolve bufferView → buffer → byte range.
 static const uint8_t *gltf_get_accessor_data(void *root, int64_t accessor_idx,
@@ -176,6 +364,64 @@ static const uint8_t *gltf_get_accessor_data(void *root, int64_t accessor_idx,
         return NULL;
 
     return buffers[buf_idx].data + offset;
+}
+
+static void gltf_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void gltf_resolve_relative_path(const char *base_path,
+                                       const char *uri,
+                                       char *out,
+                                       size_t out_cap) {
+    const char *last_sep;
+    const char *last_bsep;
+    size_t dir_len;
+    if (!out || out_cap == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (!uri)
+        return;
+    last_sep = strrchr(base_path ? base_path : "", '/');
+    last_bsep = strrchr(base_path ? base_path : "", '\\');
+    if (last_bsep > last_sep)
+        last_sep = last_bsep;
+    if (last_sep) {
+        dir_len = (size_t)(last_sep - base_path + 1);
+        if (dir_len >= out_cap)
+            dir_len = out_cap - 1;
+        memcpy(out, base_path, dir_len);
+        out[dir_len] = '\0';
+        strncat(out, uri, out_cap - dir_len - 1);
+    } else {
+        strncpy(out, uri, out_cap - 1);
+        out[out_cap - 1] = '\0';
+    }
+}
+
+static void gltf_build_embedded_name(const char *mime_type,
+                                     const char *fallback_ext,
+                                     char *out,
+                                     size_t out_cap) {
+    const char *ext = fallback_ext ? fallback_ext : ".bin";
+    if (!out || out_cap == 0)
+        return;
+    if (mime_type) {
+        if (strstr(mime_type, "png"))
+            ext = ".png";
+        else if (strstr(mime_type, "jpeg") || strstr(mime_type, "jpg"))
+            ext = ".jpg";
+        else if (strstr(mime_type, "bmp"))
+            ext = ".bmp";
+        else if (strstr(mime_type, "gif"))
+            ext = ".gif";
+    }
+    snprintf(out, out_cap, "embedded%s", ext);
 }
 
 //===----------------------------------------------------------------------===//
@@ -301,36 +547,32 @@ void *rt_gltf_load(rt_string path) {
             buffers[i].data = bin_chunk;
             buffers[i].len = bin_chunk_len;
         } else if (uri) {
-            // External file — resolve relative to .gltf directory
-            char buf_path[1024];
-            const char *last_sep = strrchr(filepath, '/');
-            const char *last_bsep = strrchr(filepath, '\\');
-            if (last_bsep > last_sep)
-                last_sep = last_bsep;
-            if (last_sep) {
-                size_t dir_len = (size_t)(last_sep - filepath + 1);
-                if (dir_len >= sizeof(buf_path))
-                    dir_len = sizeof(buf_path) - 1;
-                memcpy(buf_path, filepath, dir_len);
-                buf_path[dir_len] = '\0';
-                strncat(buf_path, uri, sizeof(buf_path) - dir_len - 1);
-            } else {
-                strncpy(buf_path, uri, sizeof(buf_path) - 1);
-                buf_path[sizeof(buf_path) - 1] = '\0';
-            }
-            FILE *bf = fopen(buf_path, "rb");
-            if (bf) {
-                fseek(bf, 0, SEEK_END);
-                long blen = ftell(bf);
-                fseek(bf, 0, SEEK_SET);
-                if (blen > 0 && blen <= byte_length + 4) {
-                    buffers[i].data = (uint8_t *)malloc((size_t)blen);
-                    if (buffers[i].data) {
-                        if (fread(buffers[i].data, 1, (size_t)blen, bf) == (size_t)blen)
-                            buffers[i].len = (size_t)blen;
-                    }
+            if (strncmp(uri, "data:", 5) == 0) {
+                char mime_type[64];
+                uint8_t *decoded = NULL;
+                size_t decoded_len = 0;
+                if (gltf_parse_data_uri(uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
+                    buffers[i].data = decoded;
+                    buffers[i].len = decoded_len;
                 }
-                fclose(bf);
+            } else {
+                // External file — resolve relative to .gltf directory
+                char buf_path[1024];
+                gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
+                FILE *bf = fopen(buf_path, "rb");
+                if (bf) {
+                    fseek(bf, 0, SEEK_END);
+                    long blen = ftell(bf);
+                    fseek(bf, 0, SEEK_SET);
+                    if (blen > 0 && blen <= byte_length + 4) {
+                        buffers[i].data = (uint8_t *)malloc((size_t)blen);
+                        if (buffers[i].data) {
+                            if (fread(buffers[i].data, 1, (size_t)blen, bf) == (size_t)blen)
+                                buffers[i].len = (size_t)blen;
+                        }
+                    }
+                    fclose(bf);
+                }
             }
         }
     }
@@ -353,6 +595,56 @@ void *rt_gltf_load(rt_string path) {
     asset->material_count = 0;
     rt_obj_set_finalizer(asset, gltf_asset_finalize);
 
+    void **images = NULL;
+    void **texture_images = NULL;
+    void *images_arr = jarr(root, "images");
+    int image_count = (int)jarr_len(images_arr);
+    if (image_count > 0)
+        images = (void **)calloc((size_t)image_count, sizeof(void *));
+
+    for (int i = 0; i < image_count && images; i++) {
+        void *image_json = rt_seq_get(images_arr, (int64_t)i);
+        const char *uri = jstr(image_json, "uri");
+        const char *mime_type = jstr(image_json, "mimeType");
+        uint8_t *owned_data = NULL;
+        const uint8_t *image_data = NULL;
+        size_t image_len = 0;
+        char image_name[64];
+
+        if (uri && strncmp(uri, "data:", 5) == 0) {
+            char parsed_mime[64];
+            if (gltf_parse_data_uri(uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
+                image_data = owned_data;
+                if (!mime_type && parsed_mime[0] != '\0')
+                    mime_type = parsed_mime;
+            }
+        } else if (uri) {
+            char image_path[1024];
+            gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
+            images[i] = rt_pixels_load(rt_const_cstr(image_path));
+        } else {
+            int64_t view_idx = jint(image_json, "bufferView", -1);
+            image_data = gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &image_len);
+        }
+
+        if (!images[i] && image_data && image_len > 0) {
+            gltf_build_embedded_name(mime_type, ".bin", image_name, sizeof(image_name));
+            images[i] = rt_asset_decode_typed(image_name, image_data, image_len);
+        }
+        free(owned_data);
+    }
+
+    void *textures_arr = jarr(root, "textures");
+    int texture_count = (int)jarr_len(textures_arr);
+    if (texture_count > 0)
+        texture_images = (void **)calloc((size_t)texture_count, sizeof(void *));
+    for (int i = 0; i < texture_count && texture_images; i++) {
+        void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
+        int64_t source_idx = jint(texture_json, "source", -1);
+        if (source_idx >= 0 && source_idx < image_count)
+            texture_images[i] = images[source_idx];
+    }
+
     // Extract materials
     void *mats_arr = jarr(root, "materials");
     int mat_count = (int)jarr_len(mats_arr);
@@ -369,15 +661,27 @@ void *rt_gltf_load(rt_string path) {
             if (pbr) {
                 void *bcf = jarr(pbr, "baseColorFactor");
                 if (bcf && jarr_len(bcf) >= 3) {
-                    double r = rt_unbox_f64(rt_seq_get(bcf, 0));
-                    double g = rt_unbox_f64(rt_seq_get(bcf, 1));
-                    double b = rt_unbox_f64(rt_seq_get(bcf, 2));
+                    double r = jvalue_num(rt_seq_get(bcf, 0), 0.0);
+                    double g = jvalue_num(rt_seq_get(bcf, 1), 0.0);
+                    double b = jvalue_num(rt_seq_get(bcf, 2), 0.0);
                     rt_material3d_set_color(mat, r, g, b);
                     if (jarr_len(bcf) >= 4) {
-                        double a = rt_unbox_f64(rt_seq_get(bcf, 3));
+                        double a = jvalue_num(rt_seq_get(bcf, 3), 1.0);
                         if (a < 1.0)
                             rt_material3d_set_alpha(mat, a);
                     }
+                }
+                {
+                    void *base_tex = jget(pbr, "baseColorTexture");
+                    int64_t tex_idx = jint(base_tex, "index", -1);
+                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                        rt_material3d_set_texture(mat, texture_images[tex_idx]);
+                }
+                {
+                    void *mr_tex = jget(pbr, "metallicRoughnessTexture");
+                    int64_t tex_idx = jint(mr_tex, "index", -1);
+                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                        rt_material3d_set_specular_map(mat, texture_images[tex_idx]);
                 }
                 double roughness = jnum(pbr, "roughnessFactor", 1.0);
                 double shininess = pow(1.0 - roughness, 2.0) * 256.0;
@@ -389,10 +693,23 @@ void *rt_gltf_load(rt_string path) {
             // Emissive
             void *ef = jarr(mat_json, "emissiveFactor");
             if (ef && jarr_len(ef) >= 3) {
-                double er = rt_unbox_f64(rt_seq_get(ef, 0));
-                double eg = rt_unbox_f64(rt_seq_get(ef, 1));
-                double eb = rt_unbox_f64(rt_seq_get(ef, 2));
+                double er = jvalue_num(rt_seq_get(ef, 0), 0.0);
+                double eg = jvalue_num(rt_seq_get(ef, 1), 0.0);
+                double eb = jvalue_num(rt_seq_get(ef, 2), 0.0);
                 rt_material3d_set_emissive_color(mat, er, eg, eb);
+            }
+
+            {
+                void *normal_tex = jget(mat_json, "normalTexture");
+                int64_t tex_idx = jint(normal_tex, "index", -1);
+                if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                    rt_material3d_set_normal_map(mat, texture_images[tex_idx]);
+            }
+            {
+                void *emissive_tex = jget(mat_json, "emissiveTexture");
+                int64_t tex_idx = jint(emissive_tex, "index", -1);
+                if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                    rt_material3d_set_emissive_map(mat, texture_images[tex_idx]);
             }
 
             asset->materials[i] = mat;
@@ -526,6 +843,13 @@ void *rt_gltf_load(rt_string path) {
             }
         }
     }
+
+    if (images) {
+        for (int i = 0; i < image_count; i++)
+            gltf_release_ref(&images[i]);
+    }
+    free(images);
+    free(texture_images);
 
     // Cleanup buffers (except BIN chunk which is part of file_data)
     for (int i = 0; i < buf_count; i++) {

@@ -239,20 +239,7 @@ class SqlValue {
         if (kind == SQL_INTEGER) { return Fmt.Int(intValue); }
         if (kind == SQL_REAL) { return textValue; }
         if (kind == SQL_TEXT) {
-            // Escape single quotes by doubling them
-            var escaped = "";
-            var i = 0;
-            var len = String.Length(textValue);
-            while i < len {
-                var ch = String.Substring(textValue, i, 1);
-                if ch == "'" {
-                    escaped = escaped + "''";
-                } else {
-                    escaped = escaped + ch;
-                }
-                i = i + 1;
-            }
-            return "'" + escaped + "'";
+            return "'" + String.Replace(textValue, "'", "''") + "'";
         }
         if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
         if (kind == SQL_BOOLEAN) {
@@ -270,20 +257,7 @@ class SqlValue {
             return "'" + s + "'";
         }
         if (kind == SQL_JSON) {
-            // Escape single quotes by doubling them
-            var escaped = "";
-            var i = 0;
-            var len = String.Length(textValue);
-            while i < len {
-                var ch = String.Substring(textValue, i, 1);
-                if ch == "'" {
-                    escaped = escaped + "''";
-                } else {
-                    escaped = escaped + ch;
-                }
-                i = i + 1;
-            }
-            return "'" + escaped + "'";
+            return "'" + String.Replace(textValue, "'", "''") + "'";
         }
         return "?";
     }

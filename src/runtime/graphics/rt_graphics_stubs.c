@@ -1497,6 +1497,12 @@ int64_t rt_scene3d_get_node_count(void *s) {
     return 0;
 }
 
+void *rt_scene3d_load(rt_string path) {
+    (void)path;
+    rt_trap("Scene3D.Load: graphics support not compiled in");
+    return NULL;
+}
+
 void *rt_scene_node3d_new(void) {
     rt_trap("SceneNode3D.New: graphics support not compiled in");
     return NULL;
@@ -1585,10 +1591,20 @@ void rt_scene_node3d_set_mesh(void *n, void *m) {
     (void)m;
 }
 
+void *rt_scene_node3d_get_mesh(void *n) {
+    (void)n;
+    return NULL;
+}
+
 /// @brief Set the material of the node3d.
 void rt_scene_node3d_set_material(void *n, void *m) {
     (void)n;
     (void)m;
+}
+
+void *rt_scene_node3d_get_material(void *n) {
+    (void)n;
+    return NULL;
 }
 
 /// @brief Set the visible of the node3d.
@@ -1642,6 +1658,23 @@ void rt_scene_node3d_add_lod(void *n, double d, void *m) {
 /// @brief Clear the lod of the node3d.
 void rt_scene_node3d_clear_lod(void *n) {
     (void)n;
+}
+
+int64_t rt_scene_node3d_get_lod_count(void *n) {
+    (void)n;
+    return 0;
+}
+
+double rt_scene_node3d_get_lod_distance(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return 0.0;
+}
+
+void *rt_scene_node3d_get_lod_mesh(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return NULL;
 }
 
 /* Skeleton3D / Animation3D / AnimPlayer3D stubs */
@@ -2705,6 +2738,16 @@ double rt_character3d_get_step_height(void *c) {
 void rt_character3d_set_slope_limit(void *c, double d) {
     (void)c;
     (void)d;
+}
+
+void rt_character3d_set_world(void *c, void *w) {
+    (void)c;
+    (void)w;
+}
+
+void *rt_character3d_get_world(void *c) {
+    (void)c;
+    return NULL;
 }
 
 /// @brief Is the grounded of the character3d.

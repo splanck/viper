@@ -33,6 +33,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 
@@ -185,10 +188,20 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
 /// calls render to the target instead of the window. The active backend
 /// (Metal, software, etc.) handles RTT natively — no backend switching needed.
 void rt_canvas3d_set_render_target(void *canvas, void *target) {
-    if (!canvas || !target)
+    if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (!target) {
+        rt_canvas3d_reset_render_target(canvas);
+        return;
+    }
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)target;
+    if (c->render_target_owner == rtd)
+        return;
+    rt_obj_retain_maybe(rtd);
+    if (c->render_target_owner && rt_obj_release_check0(c->render_target_owner))
+        rt_obj_free(c->render_target_owner);
+    c->render_target_owner = rtd;
     c->render_target = rtd->target;
 
     if (c->backend && c->backend->set_render_target)
@@ -204,6 +217,9 @@ void rt_canvas3d_reset_render_target(void *canvas) {
     if (c->backend && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, NULL);
 
+    if (c->render_target_owner && rt_obj_release_check0(c->render_target_owner))
+        rt_obj_free(c->render_target_owner);
+    c->render_target_owner = NULL;
     c->render_target = NULL;
 }
 

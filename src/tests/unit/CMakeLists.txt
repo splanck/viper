@@ -583,6 +583,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_scene3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_scene3d test_rt_scene3d)
 
+    viper_add_test(test_rt_gltf ${VIPER_TESTS_DIR}/unit/test_rt_gltf.cpp)
+    target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gltf test_rt_gltf)
+
     viper_add_test(test_rt_skeleton3d ${VIPER_TESTS_DIR}/unit/test_rt_skeleton3d.cpp)
     target_link_libraries(test_rt_skeleton3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_skeleton3d test_rt_skeleton3d)

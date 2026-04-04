@@ -38,6 +38,105 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+#define EPSILON 1e-8
+
+static double clampd(double v, double lo, double hi) {
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
+
+static void aabb3d_clamp_point_raw(const double *mn, const double *mx, const double *point, double *closest) {
+    closest[0] = clampd(point[0], mn[0], mx[0]);
+    closest[1] = clampd(point[1], mn[1], mx[1]);
+    closest[2] = clampd(point[2], mn[2], mx[2]);
+}
+
+static double rt_ray3d_intersect_aabb_raw(const double *origin,
+                                          const double *dir,
+                                          const double *mn,
+                                          const double *mx) {
+    double tmin = -1e30, tmax = 1e30;
+    for (int i = 0; i < 3; i++) {
+        if (fabs(dir[i]) < EPSILON) {
+            if (origin[i] < mn[i] || origin[i] > mx[i])
+                return -1.0;
+            continue;
+        }
+        {
+            double inv = 1.0 / dir[i];
+            double t0 = (mn[i] - origin[i]) * inv;
+            double t1 = (mx[i] - origin[i]) * inv;
+            if (t0 > t1) {
+                double tmp = t0;
+                t0 = t1;
+                t1 = tmp;
+            }
+            if (t0 > tmin)
+                tmin = t0;
+            if (t1 < tmax)
+                tmax = t1;
+            if (tmin > tmax)
+                return -1.0;
+        }
+    }
+    return tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
+}
+
+static void mat4_transform_point_raw(const double *m, const double *point, double *out) {
+    out[0] = m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3];
+    out[1] = m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7];
+    out[2] = m[8] * point[0] + m[9] * point[1] + m[10] * point[2] + m[11];
+}
+
+static int mat4d_invert(const double *m, double *out) {
+    double inv[16];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    {
+        double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+        if (fabs(det) < 1e-12)
+            return -1;
+        det = 1.0 / det;
+        for (int i = 0; i < 16; i++)
+            out[i] = inv[i] * det;
+    }
+    return 0;
+}
+
 /*==========================================================================
  * RayHit3D — result of ray-mesh intersection
  *=========================================================================*/
@@ -56,8 +155,6 @@ typedef struct {
  * Edge vectors e1 = v1-v0, e2 = v2-v0. Uses cross products to compute
  * barycentric coordinates (u, v) and distance t simultaneously.
  *=========================================================================*/
-
-#define EPSILON 1e-8
 
 double rt_ray3d_intersect_triangle(
     void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
@@ -125,43 +222,13 @@ double rt_ray3d_intersect_triangle(
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     if (!origin || !dir || !aabb_min || !aabb_max)
         return -1.0;
-
-    double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
-    double dx = rt_vec3_x(dir), dy = rt_vec3_y(dir), dz = rt_vec3_z(dir);
-    double mnx = rt_vec3_x(aabb_min), mny = rt_vec3_y(aabb_min), mnz = rt_vec3_z(aabb_min);
-    double mxx = rt_vec3_x(aabb_max), mxy = rt_vec3_y(aabb_max), mxz = rt_vec3_z(aabb_max);
-
-    double tmin = -1e30, tmax = 1e30;
-
-    double inv[3];
-    double o[3] = {ox, oy, oz};
-    double d[3] = {dx, dy, dz};
-    double mn[3] = {mnx, mny, mnz};
-    double mx[3] = {mxx, mxy, mxz};
-
-    for (int i = 0; i < 3; i++) {
-        if (fabs(d[i]) < EPSILON) {
-            if (o[i] < mn[i] || o[i] > mx[i])
-                return -1.0;
-        } else {
-            inv[i] = 1.0 / d[i];
-            double t1 = (mn[i] - o[i]) * inv[i];
-            double t2 = (mx[i] - o[i]) * inv[i];
-            if (t1 > t2) {
-                double tmp = t1;
-                t1 = t2;
-                t2 = tmp;
-            }
-            if (t1 > tmin)
-                tmin = t1;
-            if (t2 < tmax)
-                tmax = t2;
-            if (tmin > tmax)
-                return -1.0;
-        }
+    {
+        double o[3] = {rt_vec3_x(origin), rt_vec3_y(origin), rt_vec3_z(origin)};
+        double d[3] = {rt_vec3_x(dir), rt_vec3_y(dir), rt_vec3_z(dir)};
+        double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
+        double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
+        return rt_ray3d_intersect_aabb_raw(o, d, mn, mx);
     }
-
-    return tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
 }
 
 /*==========================================================================
@@ -226,112 +293,235 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
     rt_mesh3d *m = (rt_mesh3d *)mesh_obj;
     if (m->vertex_count == 0 || m->index_count < 3)
         return NULL;
+    {
+        double world_origin[3] = {rt_vec3_x(origin), rt_vec3_y(origin), rt_vec3_z(origin)};
+        double world_dir[3] = {rt_vec3_x(dir), rt_vec3_y(dir), rt_vec3_z(dir)};
+        double obj_origin[3];
+        double obj_dir[3];
+        double inv_model[16];
+        int has_transform = (transform_obj != NULL);
+        int use_object_space = 0;
+        double best_t = 1e30;
+        int64_t best_tri = -1;
+        uint32_t best_i0 = 0, best_i1 = 0, best_i2 = 0;
+        double best_obj_point[3] = {0, 0, 0};
 
-    double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
-    double dx = rt_vec3_x(dir), dy = rt_vec3_y(dir), dz = rt_vec3_z(dir);
+        rt_mesh3d_refresh_bounds(m);
 
-    /* If a transform is provided, vertices are transformed to world space
-     * in the loop below (simpler than computing inverse model matrix). */
-    int has_transform = (transform_obj != NULL);
-
-    double best_t = 1e30;
-    int64_t best_tri = -1;
-    double best_normal[3] = {0, 1, 0};
-
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
-        uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
-        if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
-            continue;
-
-        double ax = m->vertices[i0].pos[0], ay = m->vertices[i0].pos[1],
-               az = m->vertices[i0].pos[2];
-        double bx = m->vertices[i1].pos[0], by = m->vertices[i1].pos[1],
-               bz = m->vertices[i1].pos[2];
-        double cx = m->vertices[i2].pos[0], cy = m->vertices[i2].pos[1],
-               cz = m->vertices[i2].pos[2];
-
-        /* If there's a transform, apply it to vertex positions */
         if (has_transform) {
-            typedef struct {
-                double m[16];
-            } mat4_view;
-
-            mat4_view *mv = (mat4_view *)transform_obj;
-            const double *M = mv->m;
-            double tax = M[0] * ax + M[1] * ay + M[2] * az + M[3];
-            double tay = M[4] * ax + M[5] * ay + M[6] * az + M[7];
-            double taz = M[8] * ax + M[9] * ay + M[10] * az + M[11];
-            ax = tax;
-            ay = tay;
-            az = taz;
-            double tbx = M[0] * bx + M[1] * by + M[2] * bz + M[3];
-            double tby = M[4] * bx + M[5] * by + M[6] * bz + M[7];
-            double tbz = M[8] * bx + M[9] * by + M[10] * bz + M[11];
-            bx = tbx;
-            by = tby;
-            bz = tbz;
-            double tcx = M[0] * cx + M[1] * cy + M[2] * cz + M[3];
-            double tcy = M[4] * cx + M[5] * cy + M[6] * cz + M[7];
-            double tcz = M[8] * cx + M[9] * cy + M[10] * cz + M[11];
-            cx = tcx;
-            cy = tcy;
-            cz = tcz;
-        }
-
-        /* Möller–Trumbore inline */
-        double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
-        double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
-        double px = dy * e2z - dz * e2y;
-        double py = dz * e2x - dx * e2z;
-        double pz = dx * e2y - dy * e2x;
-        double det = e1x * px + e1y * py + e1z * pz;
-        if (fabs(det) < EPSILON)
-            continue;
-        double inv_det = 1.0 / det;
-        double tvx = ox - ax, tvy = oy - ay, tvz = oz - az;
-        double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
-        if (u < 0.0 || u > 1.0)
-            continue;
-        double qx = tvy * e1z - tvz * e1y;
-        double qy = tvz * e1x - tvx * e1z;
-        double qz = tvx * e1y - tvy * e1x;
-        double v = (dx * qx + dy * qy + dz * qz) * inv_det;
-        if (v < 0.0 || u + v > 1.0)
-            continue;
-        double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
-
-        if (t >= 0.0 && t < best_t) {
-            best_t = t;
-            best_tri = (int64_t)(i / 3);
-            /* Face normal from cross product */
-            best_normal[0] = e1y * e2z - e1z * e2y;
-            best_normal[1] = e1z * e2x - e1x * e2z;
-            best_normal[2] = e1x * e2y - e1y * e2x;
-            double nlen = sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
-                               best_normal[2] * best_normal[2]);
-            if (nlen > 1e-8) {
-                best_normal[0] /= nlen;
-                best_normal[1] /= nlen;
-                best_normal[2] /= nlen;
+            const double *model = ((mat4_impl *)transform_obj)->m;
+            if (mat4d_invert(model, inv_model) == 0) {
+                double world_target[3] = {world_origin[0] + world_dir[0],
+                                          world_origin[1] + world_dir[1],
+                                          world_origin[2] + world_dir[2]};
+                double obj_target[3];
+                mat4_transform_point_raw(inv_model, world_origin, obj_origin);
+                mat4_transform_point_raw(inv_model, world_target, obj_target);
+                obj_dir[0] = obj_target[0] - obj_origin[0];
+                obj_dir[1] = obj_target[1] - obj_origin[1];
+                obj_dir[2] = obj_target[2] - obj_origin[2];
+                use_object_space = 1;
             }
         }
+
+        if (!use_object_space) {
+            obj_origin[0] = world_origin[0];
+            obj_origin[1] = world_origin[1];
+            obj_origin[2] = world_origin[2];
+            obj_dir[0] = world_dir[0];
+            obj_dir[1] = world_dir[1];
+            obj_dir[2] = world_dir[2];
+        }
+
+        {
+            double bounds_min[3] = {m->aabb_min[0], m->aabb_min[1], m->aabb_min[2]};
+            double bounds_max[3] = {m->aabb_max[0], m->aabb_max[1], m->aabb_max[2]};
+            if (has_transform && !use_object_space) {
+                const double *model = ((mat4_impl *)transform_obj)->m;
+                double corners[8][3];
+                double world_min[3] = {DBL_MAX, DBL_MAX, DBL_MAX};
+                double world_max[3] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+                corners[0][0] = bounds_min[0];
+                corners[0][1] = bounds_min[1];
+                corners[0][2] = bounds_min[2];
+                corners[1][0] = bounds_max[0];
+                corners[1][1] = bounds_min[1];
+                corners[1][2] = bounds_min[2];
+                corners[2][0] = bounds_min[0];
+                corners[2][1] = bounds_max[1];
+                corners[2][2] = bounds_min[2];
+                corners[3][0] = bounds_max[0];
+                corners[3][1] = bounds_max[1];
+                corners[3][2] = bounds_min[2];
+                corners[4][0] = bounds_min[0];
+                corners[4][1] = bounds_min[1];
+                corners[4][2] = bounds_max[2];
+                corners[5][0] = bounds_max[0];
+                corners[5][1] = bounds_min[1];
+                corners[5][2] = bounds_max[2];
+                corners[6][0] = bounds_min[0];
+                corners[6][1] = bounds_max[1];
+                corners[6][2] = bounds_max[2];
+                corners[7][0] = bounds_max[0];
+                corners[7][1] = bounds_max[1];
+                corners[7][2] = bounds_max[2];
+                for (int i = 0; i < 8; i++) {
+                    double p[3];
+                    mat4_transform_point_raw(model, corners[i], p);
+                    for (int axis = 0; axis < 3; axis++) {
+                        if (p[axis] < world_min[axis])
+                            world_min[axis] = p[axis];
+                        if (p[axis] > world_max[axis])
+                            world_max[axis] = p[axis];
+                    }
+                }
+                if (rt_ray3d_intersect_aabb_raw(world_origin, world_dir, world_min, world_max) < 0.0)
+                    return NULL;
+            } else if (rt_ray3d_intersect_aabb_raw(obj_origin, obj_dir, bounds_min, bounds_max) < 0.0) {
+                return NULL;
+            }
+        }
+
+        for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+            uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
+            if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+                continue;
+
+            double ax = m->vertices[i0].pos[0], ay = m->vertices[i0].pos[1],
+                   az = m->vertices[i0].pos[2];
+            double bx = m->vertices[i1].pos[0], by = m->vertices[i1].pos[1],
+                   bz = m->vertices[i1].pos[2];
+            double cx = m->vertices[i2].pos[0], cy = m->vertices[i2].pos[1],
+                   cz = m->vertices[i2].pos[2];
+
+            if (has_transform && !use_object_space) {
+                const double *model = ((mat4_impl *)transform_obj)->m;
+                double a[3] = {ax, ay, az}, b[3] = {bx, by, bz}, c[3] = {cx, cy, cz};
+                mat4_transform_point_raw(model, a, a);
+                mat4_transform_point_raw(model, b, b);
+                mat4_transform_point_raw(model, c, c);
+                ax = a[0];
+                ay = a[1];
+                az = a[2];
+                bx = b[0];
+                by = b[1];
+                bz = b[2];
+                cx = c[0];
+                cy = c[1];
+                cz = c[2];
+            }
+
+            {
+                double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+                double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+                double px = obj_dir[1] * e2z - obj_dir[2] * e2y;
+                double py = obj_dir[2] * e2x - obj_dir[0] * e2z;
+                double pz = obj_dir[0] * e2y - obj_dir[1] * e2x;
+                double det = e1x * px + e1y * py + e1z * pz;
+                if (fabs(det) < EPSILON)
+                    continue;
+                {
+                    double inv_det = 1.0 / det;
+                    double tvx = obj_origin[0] - ax, tvy = obj_origin[1] - ay, tvz = obj_origin[2] - az;
+                    double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
+                    if (u < 0.0 || u > 1.0)
+                        continue;
+                    {
+                        double qx = tvy * e1z - tvz * e1y;
+                        double qy = tvz * e1x - tvx * e1z;
+                        double qz = tvx * e1y - tvy * e1x;
+                        double v = (obj_dir[0] * qx + obj_dir[1] * qy + obj_dir[2] * qz) * inv_det;
+                        if (v < 0.0 || u + v > 1.0)
+                            continue;
+                        {
+                            double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
+                            if (t >= 0.0 && t < best_t) {
+                                best_t = t;
+                                best_tri = (int64_t)(i / 3);
+                                best_i0 = i0;
+                                best_i1 = i1;
+                                best_i2 = i2;
+                                best_obj_point[0] = obj_origin[0] + obj_dir[0] * t;
+                                best_obj_point[1] = obj_origin[1] + obj_dir[1] * t;
+                                best_obj_point[2] = obj_origin[2] + obj_dir[2] * t;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (best_tri < 0)
+            return NULL;
+
+        {
+            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rayhit3d));
+            double best_normal[3];
+            if (!hit)
+                return NULL;
+
+            {
+                double a[3] = {m->vertices[best_i0].pos[0], m->vertices[best_i0].pos[1], m->vertices[best_i0].pos[2]};
+                double b[3] = {m->vertices[best_i1].pos[0], m->vertices[best_i1].pos[1], m->vertices[best_i1].pos[2]};
+                double c[3] = {m->vertices[best_i2].pos[0], m->vertices[best_i2].pos[1], m->vertices[best_i2].pos[2]};
+                if (has_transform) {
+                    const double *model = ((mat4_impl *)transform_obj)->m;
+                    mat4_transform_point_raw(model, a, a);
+                    mat4_transform_point_raw(model, b, b);
+                    mat4_transform_point_raw(model, c, c);
+                    if (use_object_space)
+                        mat4_transform_point_raw(model, best_obj_point, hit->point);
+                    else {
+                        hit->point[0] = world_origin[0] + world_dir[0] * best_t;
+                        hit->point[1] = world_origin[1] + world_dir[1] * best_t;
+                        hit->point[2] = world_origin[2] + world_dir[2] * best_t;
+                    }
+                } else {
+                    hit->point[0] = world_origin[0] + world_dir[0] * best_t;
+                    hit->point[1] = world_origin[1] + world_dir[1] * best_t;
+                    hit->point[2] = world_origin[2] + world_dir[2] * best_t;
+                }
+
+                {
+                    double e1x = b[0] - a[0], e1y = b[1] - a[1], e1z = b[2] - a[2];
+                    double e2x = c[0] - a[0], e2y = c[1] - a[1], e2z = c[2] - a[2];
+                    best_normal[0] = e1y * e2z - e1z * e2y;
+                    best_normal[1] = e1z * e2x - e1x * e2z;
+                    best_normal[2] = e1x * e2y - e1y * e2x;
+                }
+            }
+
+            {
+                double nlen = sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
+                                   best_normal[2] * best_normal[2]);
+                if (nlen > 1e-8) {
+                    best_normal[0] /= nlen;
+                    best_normal[1] /= nlen;
+                    best_normal[2] /= nlen;
+                } else {
+                    best_normal[0] = 0.0;
+                    best_normal[1] = 1.0;
+                    best_normal[2] = 0.0;
+                }
+            }
+
+            {
+                double dir_len_sq = world_dir[0] * world_dir[0] + world_dir[1] * world_dir[1] +
+                                    world_dir[2] * world_dir[2];
+                hit->distance = dir_len_sq > 1e-12
+                                    ? (((hit->point[0] - world_origin[0]) * world_dir[0] +
+                                        (hit->point[1] - world_origin[1]) * world_dir[1] +
+                                        (hit->point[2] - world_origin[2]) * world_dir[2]) /
+                                       dir_len_sq)
+                                    : 0.0;
+            }
+            hit->normal[0] = best_normal[0];
+            hit->normal[1] = best_normal[1];
+            hit->normal[2] = best_normal[2];
+            hit->triangle_index = best_tri;
+            return hit;
+        }
     }
-
-    if (best_tri < 0)
-        return NULL;
-
-    rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rayhit3d));
-    if (!hit)
-        return NULL;
-    hit->distance = best_t;
-    hit->point[0] = ox + dx * best_t;
-    hit->point[1] = oy + dy * best_t;
-    hit->point[2] = oz + dz * best_t;
-    hit->normal[0] = best_normal[0];
-    hit->normal[1] = best_normal[1];
-    hit->normal[2] = best_normal[2];
-    hit->triangle_index = best_tri;
-    return hit;
 }
 
 /*==========================================================================
@@ -455,24 +645,72 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
 void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     if (!aabb_min || !aabb_max || !point)
         return rt_vec3_new(0, 0, 0);
-    double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
-    double mnx = rt_vec3_x(aabb_min), mny = rt_vec3_y(aabb_min), mnz = rt_vec3_z(aabb_min);
-    double mxx = rt_vec3_x(aabb_max), mxy = rt_vec3_y(aabb_max), mxz = rt_vec3_z(aabb_max);
-    double cx = px < mnx ? mnx : (px > mxx ? mxx : px);
-    double cy = py < mny ? mny : (py > mxy ? mxy : py);
-    double cz = pz < mnz ? mnz : (pz > mxz ? mxz : pz);
-    return rt_vec3_new(cx, cy, cz);
+    {
+        double p[3] = {rt_vec3_x(point), rt_vec3_y(point), rt_vec3_z(point)};
+        double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
+        double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
+        double c[3];
+        aabb3d_clamp_point_raw(mn, mx, p, c);
+        if (p[0] >= mn[0] && p[0] <= mx[0] && p[1] >= mn[1] && p[1] <= mx[1] && p[2] >= mn[2] &&
+            p[2] <= mx[2]) {
+            double dx0 = fabs(p[0] - mn[0]), dx1 = fabs(mx[0] - p[0]);
+            double dy0 = fabs(p[1] - mn[1]), dy1 = fabs(mx[1] - p[1]);
+            double dz0 = fabs(p[2] - mn[2]), dz1 = fabs(mx[2] - p[2]);
+            double best = dx0;
+            c[0] = mn[0];
+            c[1] = p[1];
+            c[2] = p[2];
+            if (dx1 < best) {
+                best = dx1;
+                c[0] = mx[0];
+                c[1] = p[1];
+                c[2] = p[2];
+            }
+            if (dy0 < best) {
+                best = dy0;
+                c[0] = p[0];
+                c[1] = mn[1];
+                c[2] = p[2];
+            }
+            if (dy1 < best) {
+                best = dy1;
+                c[0] = p[0];
+                c[1] = mx[1];
+                c[2] = p[2];
+            }
+            if (dz0 < best) {
+                best = dz0;
+                c[0] = p[0];
+                c[1] = p[1];
+                c[2] = mn[2];
+            }
+            if (dz1 < best) {
+                c[0] = p[0];
+                c[1] = p[1];
+                c[2] = mx[2];
+            }
+        }
+        return rt_vec3_new(c[0], c[1], c[2]);
+    }
 }
 
 /// @brief Test whether an AABB and a sphere overlap.
 int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
     if (!aabb_min || !aabb_max || !center)
         return 0;
-    void *closest = rt_aabb3d_closest_point(aabb_min, aabb_max, center);
-    double dx = rt_vec3_x(center) - rt_vec3_x(closest);
-    double dy = rt_vec3_y(center) - rt_vec3_y(closest);
-    double dz = rt_vec3_z(center) - rt_vec3_z(closest);
-    return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+    {
+        double p[3] = {rt_vec3_x(center), rt_vec3_y(center), rt_vec3_z(center)};
+        double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
+        double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
+        double c[3];
+        aabb3d_clamp_point_raw(mn, mx, p, c);
+        {
+            double dx = p[0] - c[0];
+            double dy = p[1] - c[1];
+            double dz = p[2] - c[2];
+            return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+        }
+    }
 }
 
 void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
@@ -520,13 +758,17 @@ int8_t rt_capsule3d_aabb_overlaps(
     /* Closest point on segment to AABB center */
     void *seg_pt = rt_segment3d_closest_point(cap_a, cap_b, aabb_center);
 
-    /* Closest point on AABB to that segment point */
-    void *aabb_pt = rt_aabb3d_closest_point(aabb_min, aabb_max, seg_pt);
-
-    double dx = rt_vec3_x(seg_pt) - rt_vec3_x(aabb_pt);
-    double dy = rt_vec3_y(seg_pt) - rt_vec3_y(aabb_pt);
-    double dz = rt_vec3_z(seg_pt) - rt_vec3_z(aabb_pt);
-    return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+    {
+        double p[3] = {rt_vec3_x(seg_pt), rt_vec3_y(seg_pt), rt_vec3_z(seg_pt)};
+        double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
+        double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
+        double c[3];
+        aabb3d_clamp_point_raw(mn, mx, p, c);
+        double dx = p[0] - c[0];
+        double dy = p[1] - c[1];
+        double dz = p[2] - c[2];
+        return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+    }
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

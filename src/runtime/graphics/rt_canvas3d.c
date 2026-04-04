@@ -82,6 +82,14 @@ extern double rt_vec3_z(void *v);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
+static void canvas3d_release_owned_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
 /*==========================================================================
  * Deferred draw command (for transparency sorting)
  *=========================================================================*/
@@ -888,6 +896,10 @@ static void rt_canvas3d_finalize(void *obj) {
         c->skybox = NULL;
     }
 
+    canvas3d_release_owned_ref(&c->postfx);
+    canvas3d_release_owned_ref((void **)&c->render_target_owner);
+    c->render_target = NULL;
+
     if (c->gfx_win) {
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
@@ -957,6 +969,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->backface_cull = 0; /* disabled by default — extreme perspective can reverse
                            * screen-space winding, causing false culling. Users can
                            * enable with SetBackfaceCull(canvas, true) if needed. */
+    c->render_target = NULL;
+    c->render_target_owner = NULL;
     c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;

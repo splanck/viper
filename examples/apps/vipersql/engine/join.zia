@@ -67,20 +67,7 @@ class JoinEngine {
         if val.kind == SQL_INTEGER { return Fmt.Int(val.intValue); }
         if val.kind == SQL_REAL { return val.toString(); }
         if val.kind == SQL_TEXT {
-            // Escape single quotes in text values
-            var escaped = "";
-            var i = 0;
-            var len = String.Length(val.textValue);
-            while i < len {
-                var ch = String.Substring(val.textValue, i, 1);
-                if ch == "'" {
-                    escaped = escaped + "''";
-                } else {
-                    escaped = escaped + ch;
-                }
-                i = i + 1;
-            }
-            return "'" + escaped + "'";
+            return "'" + String.Replace(val.textValue, "'", "''") + "'";
         }
         if val.kind == SQL_BOOLEAN {
             if val.intValue != 0 { return "TRUE"; }

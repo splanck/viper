@@ -10,8 +10,8 @@
 // Key invariants:
 //   - Supports .gltf (JSON + external files) and .glb (binary container)
 //   - PBR metallic-roughness materials mapped to Blinn-Phong
-//   - Embedded textures (base64 in .gltf, binary chunk in .glb) supported
-//   - Skeleton, animation, and morph targets extracted when present
+//   - Embedded base64 buffers/images and GLB bufferView images are supported
+//   - Extracts meshes and materials, but not scene graphs or animation tracks
 // Ownership/Lifetime:
 //   - Caller owns the returned asset and all objects within it
 // Links: rt_mesh3d.c, rt_material3d.c, rt_skeleton3d.c

@@ -1,63 +1,39 @@
 // threadpool.zia — SQL Server Thread Pool
 // Part of ViperSQL
 //
-// Implements a pre-allocated thread pool for handling client connections.
-// Worker threads pull clients from a shared task queue, handle the
-// connection, then return to the pool for the next client.
-//
-// When the pool is full (all workers busy), falls back to spawning
-// an overflow thread for the connection (degraded mode).
-//
-// Configuration: pool size set via ConnectionPool.init(size).
-// Default: 10 worker threads.
+// Uses the Viper.Threads.Pool runtime class for connection handling.
+// Worker threads are pre-allocated and pull clients from the pool's
+// internal task queue. Falls back to direct thread spawn when the
+// pool is not initialized (e.g., standalone REPL mode).
 
 module threadpool;
 
 bind Terminal = Viper.Terminal;
 bind Threads = Viper.Threads;
 bind Fmt = Viper.Fmt;
+bind Pool = Viper.Threads.Pool;
 
 bind "./connection";
 
 //=============================================================================
-// TASK QUEUE (thread-safe)
+// POOL STATE
 //=============================================================================
 
-// Shared task queue: list of client Ptr values waiting to be handled
-var taskQueue: List[Ptr];
-var queueLock: List[Integer];   // Monitor for thread-safe access
-var poolRunning: Boolean;       // False to signal shutdown
-var poolSize: Integer;          // Number of worker threads
-var busyWorkers: Integer;       // Count of currently-busy workers
-var totalHandled: Integer;      // Total connections handled by pool
-var overflowCount: Integer;     // Connections handled by overflow threads
+var pool: Pool;
+var poolRunning: Boolean;
+var poolSize: Integer;
 
 //=============================================================================
 // INITIALIZATION
 //=============================================================================
 
 // Initialize the thread pool with the given number of worker threads.
-// Must be called before sql_pool_submit().
 func sql_pool_init(size: Integer) {
-    taskQueue = [];
-    queueLock = [];
-    poolRunning = true;
-    busyWorkers = 0;
-    totalHandled = 0;
-    overflowCount = 0;
-
     if size < 1 { size = 1; }
     if size > 100 { size = 100; }
     poolSize = size;
-
-    // Spawn worker threads
-    var i = 0;
-    while i < poolSize {
-        var workerArgs: List[Integer] = [];
-        workerArgs.add(i);
-        Threads.Thread.StartSafe(&poolWorkerLoop, workerArgs);
-        i = i + 1;
-    }
+    pool = Pool.New(size);
+    poolRunning = true;
     Terminal.Say("Thread pool initialized: " + Fmt.Int(poolSize) + " workers");
 }
 
@@ -65,96 +41,21 @@ func sql_pool_init(size: Integer) {
 // SUBMIT CLIENT
 //=============================================================================
 
-// Submit a client connection to the pool.
-// If the pool has idle workers, the client is queued.
-// If all workers are busy, spawns an overflow thread.
+// Submit a text protocol client connection to the pool.
 func sql_pool_submit(client: Ptr) {
-    if poolRunning == false {
-        // Pool not initialized — fall back to direct thread
+    if poolRunning {
+        Pool.Submit(pool, &handleSqlClient, client);
+    } else {
         Threads.Thread.StartSafe(&handleSqlClient, client);
-        return;
     }
-
-    Threads.Monitor.Enter(queueLock);
-    var currentBusy = busyWorkers;
-    Threads.Monitor.Exit(queueLock);
-
-    if currentBusy >= poolSize {
-        // Pool full — spawn overflow thread
-        Threads.Monitor.Enter(queueLock);
-        overflowCount = overflowCount + 1;
-        Threads.Monitor.Exit(queueLock);
-        Threads.Thread.StartSafe(&handleSqlClient, client);
-        return;
-    }
-
-    // Enqueue the client for a pool worker
-    Threads.Monitor.Enter(queueLock);
-    taskQueue.add(client);
-    Threads.Monitor.Exit(queueLock);
 }
 
-// Submit a PG wire protocol client to the pool.
+// Submit a PG wire protocol client connection to the pool.
 func sql_pool_submit_pg(client: Ptr) {
-    if poolRunning == false {
+    if poolRunning {
+        Pool.Submit(pool, &handlePgClient, client);
+    } else {
         Threads.Thread.StartSafe(&handlePgClient, client);
-        return;
-    }
-
-    Threads.Monitor.Enter(queueLock);
-    var currentBusy = busyWorkers;
-    Threads.Monitor.Exit(queueLock);
-
-    if currentBusy >= poolSize {
-        Threads.Monitor.Enter(queueLock);
-        overflowCount = overflowCount + 1;
-        Threads.Monitor.Exit(queueLock);
-        Threads.Thread.StartSafe(&handlePgClient, client);
-        return;
-    }
-
-    Threads.Monitor.Enter(queueLock);
-    taskQueue.add(client);
-    Threads.Monitor.Exit(queueLock);
-}
-
-//=============================================================================
-// WORKER LOOP
-//=============================================================================
-
-// Each pool worker runs this loop: dequeue client → handle → loop.
-func poolWorkerLoop(args: List[Integer]) {
-    while poolRunning {
-        // Try to dequeue a client
-        var client: Ptr? = null;
-        Threads.Monitor.Enter(queueLock);
-        if taskQueue.count() > 0 {
-            client = taskQueue.get(0);
-            // Rebuild queue without first element (BUG-002: List.remove doesn't work)
-            var newQueue: List[Ptr] = [];
-            var qi = 1;
-            while qi < taskQueue.count() {
-                newQueue.add(taskQueue.get(qi));
-                qi = qi + 1;
-            }
-            taskQueue = newQueue;
-            busyWorkers = busyWorkers + 1;
-        }
-        Threads.Monitor.Exit(queueLock);
-
-        if client != null {
-            var c = client;
-            // Handle the PG wire protocol client
-            handlePgClient(c!);
-
-            Threads.Monitor.Enter(queueLock);
-            busyWorkers = busyWorkers - 1;
-            totalHandled = totalHandled + 1;
-            Threads.Monitor.Exit(queueLock);
-        } else {
-            // No clients — sleep briefly before checking again
-            Threads.Thread.Sleep(10);
-        }
     }
 }
 
@@ -162,24 +63,17 @@ func poolWorkerLoop(args: List[Integer]) {
 // STATISTICS
 //=============================================================================
 
-// Get pool statistics as formatted string
 func sql_pool_stats() -> String {
-    Threads.Monitor.Enter(queueLock);
-    var stats = "Pool: " + Fmt.Int(poolSize) + " workers, " +
-                Fmt.Int(busyWorkers) + " busy, " +
-                Fmt.Int(taskQueue.count()) + " queued, " +
-                Fmt.Int(totalHandled) + " handled, " +
-                Fmt.Int(overflowCount) + " overflow";
-    Threads.Monitor.Exit(queueLock);
-    return stats;
+    if poolRunning == false { return "Pool: not initialized"; }
+    return "Pool: " + Fmt.Int(poolSize) + " workers, " +
+           Fmt.Int(Pool.get_Active(pool)) + " active, " +
+           Fmt.Int(Pool.get_Pending(pool)) + " pending";
 }
 
-// Get pool size
 func sql_pool_size() -> Integer {
     return poolSize;
 }
 
-// Check if pool is initialized
 func sql_pool_is_running() -> Boolean {
     return poolRunning;
 }

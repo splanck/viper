@@ -7,13 +7,13 @@
 //
 // File: src/runtime/graphics/rt_physics3d.h
 // Purpose: 3D physics world with AABB/sphere/capsule collision, impulse
-//   resolution, collision layers, and character controller with MoveAndSlide.
+//   resolution, collision layers, and character controller with slide/step movement.
 //
 // Key invariants:
 //   - Max 256 bodies per world (PH3D_MAX_BODIES).
 //   - Symplectic Euler integration (force→velocity, velocity→position).
 //   - Collision filtering: bidirectional layer/mask bitmask check.
-//   - Character controller uses swept AABB + slide iterations.
+//   - Character controller binds to a World3D and uses swept slide iterations.
 //   - Trigger bodies overlap but don't apply physics impulse.
 //   - Trigger3D: standalone AABB zone with frame-edge enter/exit detection.
 //   - Max 64 tracked bodies per trigger (TRG3D_MAX_TRACKED).
@@ -90,6 +90,8 @@ void rt_character3d_move(void *ctrl, void *velocity, double dt);
 void rt_character3d_set_step_height(void *ctrl, double h);
 double rt_character3d_get_step_height(void *ctrl);
 void rt_character3d_set_slope_limit(void *ctrl, double degrees);
+void rt_character3d_set_world(void *ctrl, void *world);
+void *rt_character3d_get_world(void *ctrl);
 int8_t rt_character3d_is_grounded(void *ctrl);
 int8_t rt_character3d_just_landed(void *ctrl);
 void *rt_character3d_get_position(void *ctrl);

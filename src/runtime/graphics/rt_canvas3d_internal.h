@@ -242,6 +242,7 @@ typedef struct {
 
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;
+    rt_rendertarget3d *render_target_owner; /* retained wrapper for active target */
 
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];

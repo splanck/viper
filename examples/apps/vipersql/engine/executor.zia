@@ -207,32 +207,15 @@ class Executor {
     expose List[String] btreeIndexNames;
 
     // Vacuum/Analyze statistics tracking (Phase 26)
-    // Parallel lists keyed by table name
-    expose List[String] vacuumStatNames;
-    expose List[Integer] vacuumStatDeadRemoved;     // Total dead rows removed by VACUUM
-    expose List[Integer] vacuumStatLastVacuumTime;  // Epoch time of last VACUUM
-    expose List[Integer] vacuumStatVacuumCount;     // Number of times vacuumed
-    expose List[Integer] analyzeStatLiveRows;       // Live row count at last ANALYZE
-    expose List[Integer] analyzeStatDeadRows;       // Dead row count at last ANALYZE
-    expose List[Integer] analyzeStatLastAnalyzeTime; // Epoch time of last ANALYZE
-    expose List[Integer] analyzeStatAnalyzeCount;    // Number of times analyzed
+    // Map with compound keys: "table.field" → integer value
+    expose Map vacuumAnalyzeStats;
+    expose List[String] vacuumAnalyzeTableList;  // Track known table names for iteration
 
-    // pg_stat tracking (Phase 27) — per-table statistics
-    expose List[String] pgStatTableNames;
-    expose List[Integer] pgStatSeqScan;       // Sequential scan count
-    expose List[Integer] pgStatSeqTupRead;    // Rows read by sequential scans
-    expose List[Integer] pgStatIdxScan;       // Index scan count
-    expose List[Integer] pgStatIdxTupFetch;   // Rows fetched by index scans
-    expose List[Integer] pgStatInsert;        // Rows inserted
-    expose List[Integer] pgStatUpdate;        // Rows updated
-    expose List[Integer] pgStatDelete;        // Rows deleted
-
-    // pg_stat tracking — per-index statistics
-    expose List[String] pgStatIndexNames;
-    expose List[String] pgStatIndexTableNames;
-    expose List[Integer] pgStatIndexIdxScan;
-    expose List[Integer] pgStatIndexTupRead;
-    expose List[Integer] pgStatIndexTupFetch;
+    // pg_stat tracking (Phase 27) — per-table and per-index statistics
+    // Map with compound keys: "table.field" → integer value
+    expose Map pgStats;
+    expose List[String] pgStatTableList;   // Known table names for iteration
+    expose List[String] pgStatIndexList;   // Known index names for iteration
 
     // Session tracking
     expose String pgStatLastQuery;
@@ -242,10 +225,11 @@ class Executor {
     expose Map preparedSqlMap;        // name → SQL template
     expose Map preparedParamCountMap; // name → param count (as integer)
 
-    // Cursors (Phase 32)
+    // Cursors (Phase 32) — Map for O(1) name→index lookup, lists for data
+    expose Map cursorIndexMap;              // name → index in parallel lists
     expose List[String] cursorNames;
-    expose List[QueryResult] cursorResults;   // Materialized result sets
-    expose List[Integer] cursorPositions;      // Current fetch position (0-based, -1 = before first)
+    expose List[QueryResult] cursorResults;
+    expose List[Integer] cursorPositions;
 
     // Savepoints (Phase 33) — Map for O(1) lookup
     expose Map savepointMap;  // name → journal mark index
@@ -258,11 +242,8 @@ class Executor {
     // Object comments (Phase 43): COMMENT ON TABLE/COLUMN
     expose Map commentObjects;
 
-    // Auto-ANALYZE: modification tracking per table
-    // When modCount exceeds 10% of last-analyzed row count, auto-analyze fires
-    expose List[String] autoAnalyzeTableNames;
-    expose List[Integer] autoAnalyzeModCounts;
-    expose List[Integer] autoAnalyzeLastRowCounts;  // Row count at last analyze
+    // Auto-ANALYZE: modification tracking per table — Map for O(1) lookup
+    expose Map autoAnalyzeStats;  // Compound keys: "table.mod_count", "table.last_rows"
 
     expose func init() {
         server = new DatabaseServer();
@@ -324,32 +305,17 @@ class Executor {
         subqueryCacheLists = [];
         btrees = [];
         btreeIndexNames = [];
-        vacuumStatNames = [];
-        vacuumStatDeadRemoved = [];
-        vacuumStatLastVacuumTime = [];
-        vacuumStatVacuumCount = [];
-        analyzeStatLiveRows = [];
-        analyzeStatDeadRows = [];
-        analyzeStatLastAnalyzeTime = [];
-        analyzeStatAnalyzeCount = [];
-        pgStatTableNames = [];
-        pgStatSeqScan = [];
-        pgStatSeqTupRead = [];
-        pgStatIdxScan = [];
-        pgStatIdxTupFetch = [];
-        pgStatInsert = [];
-        pgStatUpdate = [];
-        pgStatDelete = [];
-        pgStatIndexNames = [];
-        pgStatIndexTableNames = [];
-        pgStatIndexIdxScan = [];
-        pgStatIndexTupRead = [];
-        pgStatIndexTupFetch = [];
+        vacuumAnalyzeStats = Map.New();
+        vacuumAnalyzeTableList = [];
+        pgStats = Map.New();
+        pgStatTableList = [];
+        pgStatIndexList = [];
         pgStatLastQuery = "";
         pgStatSessionStart = DateTime.Now();
         pgStatQueryCount = 0;
         preparedSqlMap = Map.New();
         preparedParamCountMap = Map.New();
+        cursorIndexMap = Map.New();
         cursorNames = [];
         cursorResults = [];
         cursorPositions = [];
@@ -358,9 +324,7 @@ class Executor {
         sessionVars = Map.New();
         sessionVarKeyList = [];
         commentObjects = Map.New();
-        autoAnalyzeTableNames = [];
-        autoAnalyzeModCounts = [];
-        autoAnalyzeLastRowCounts = [];
+        autoAnalyzeStats = Map.New();
         initDefaultSessionVars();
         joinEngine = new JoinEngine(self);
         persistence = new PersistenceManager(self);
@@ -2274,43 +2238,32 @@ class Executor {
 
     // Track DML modifications per table and auto-trigger ANALYZE
     hide func trackModification(tableName: String, rowsAffected: Integer) {
-        var found = false;
-        var idx = 0;
-        while idx < autoAnalyzeTableNames.count() {
-            if autoAnalyzeTableNames.get(idx) == tableName {
-                found = true;
-                var newCount = autoAnalyzeModCounts.get(idx) + rowsAffected;
-                autoAnalyzeModCounts.set(idx, newCount);
-                // Check threshold: auto-analyze when modifications exceed 10% of last row count
-                // Use minimum threshold of 50 rows to avoid over-analyzing tiny tables
-                var lastRows = autoAnalyzeLastRowCounts.get(idx);
-                var threshold = lastRows / 10;
-                if threshold < 50 { threshold = 50; }
-                if newCount >= threshold {
-                    // Trigger auto-analyze
-                    ddlHandler.executeAnalyzeTable(tableName);
-                    autoAnalyzeModCounts.set(idx, 0);  // Reset counter
-                    // Update last row count
-                    var table = findTable(tableName);
-                    if table != null {
-                        var t = table;
-                        autoAnalyzeLastRowCounts.set(idx, t.rowCount());
-                    }
-                }
-                idx = autoAnalyzeTableNames.count(); // break
-            }
-            idx = idx + 1;
-        }
-        if found == false {
-            autoAnalyzeTableNames.add(tableName);
-            autoAnalyzeModCounts.add(rowsAffected);
-            // Initialize last row count from current table state
+        var modKey = tableName + ".mod_count";
+        var rowKey = tableName + ".last_rows";
+        var newCount = Map.GetIntOr(autoAnalyzeStats, modKey, 0) + rowsAffected;
+        Map.SetInt(autoAnalyzeStats, modKey, newCount);
+
+        if Map.Has(autoAnalyzeStats, rowKey) == false {
             var table = findTable(tableName);
             if table != null {
                 var t = table;
-                autoAnalyzeLastRowCounts.add(t.rowCount());
+                Map.SetInt(autoAnalyzeStats, rowKey, t.rowCount());
             } else {
-                autoAnalyzeLastRowCounts.add(0);
+                Map.SetInt(autoAnalyzeStats, rowKey, 0);
+            }
+        }
+
+        // Check threshold: auto-analyze when modifications exceed 10% of last row count
+        var lastRows = Map.GetIntOr(autoAnalyzeStats, rowKey, 0);
+        var threshold = lastRows / 10;
+        if threshold < 50 { threshold = 50; }
+        if newCount >= threshold {
+            ddlHandler.executeAnalyzeTable(tableName);
+            Map.SetInt(autoAnalyzeStats, modKey, 0);
+            var table = findTable(tableName);
+            if table != null {
+                var t = table;
+                Map.SetInt(autoAnalyzeStats, rowKey, t.rowCount());
             }
         }
     }
@@ -4706,136 +4659,85 @@ class Executor {
 
     // Record vacuum statistics for a table
     expose func recordVacuumStats(tableName: String, deadRemoved: Integer) {
-        var idx = findVacuumStatIndex(tableName);
-        if idx < 0 {
-            vacuumStatNames.add(tableName);
-            vacuumStatDeadRemoved.add(deadRemoved);
-            vacuumStatLastVacuumTime.add(DateTime.Now());
-            vacuumStatVacuumCount.add(1);
-            analyzeStatLiveRows.add(0);
-            analyzeStatDeadRows.add(0);
-            analyzeStatLastAnalyzeTime.add(0);
-            analyzeStatAnalyzeCount.add(0);
-        } else {
-            vacuumStatDeadRemoved.set(idx, vacuumStatDeadRemoved.get(idx) + deadRemoved);
-            vacuumStatLastVacuumTime.set(idx, DateTime.Now());
-            vacuumStatVacuumCount.set(idx, vacuumStatVacuumCount.get(idx) + 1);
+        if Map.Has(vacuumAnalyzeStats, tableName + ".vacuum_count") == false {
+            vacuumAnalyzeTableList.add(tableName);
         }
+        var prev = Map.GetIntOr(vacuumAnalyzeStats, tableName + ".dead_removed", 0);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".dead_removed", prev + deadRemoved);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".last_vacuum", DateTime.Now());
+        var vc = Map.GetIntOr(vacuumAnalyzeStats, tableName + ".vacuum_count", 0);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".vacuum_count", vc + 1);
     }
 
-    // Record analyze statistics for a table
     expose func recordAnalyzeStats(tableName: String, liveRows: Integer, deadRows: Integer) {
-        var idx = findVacuumStatIndex(tableName);
-        if idx < 0 {
-            vacuumStatNames.add(tableName);
-            vacuumStatDeadRemoved.add(0);
-            vacuumStatLastVacuumTime.add(0);
-            vacuumStatVacuumCount.add(0);
-            analyzeStatLiveRows.add(liveRows);
-            analyzeStatDeadRows.add(deadRows);
-            analyzeStatLastAnalyzeTime.add(DateTime.Now());
-            analyzeStatAnalyzeCount.add(1);
-        } else {
-            analyzeStatLiveRows.set(idx, liveRows);
-            analyzeStatDeadRows.set(idx, deadRows);
-            analyzeStatLastAnalyzeTime.set(idx, DateTime.Now());
-            analyzeStatAnalyzeCount.set(idx, analyzeStatAnalyzeCount.get(idx) + 1);
+        if Map.Has(vacuumAnalyzeStats, tableName + ".vacuum_count") == false {
+            vacuumAnalyzeTableList.add(tableName);
+            Map.SetInt(vacuumAnalyzeStats, tableName + ".dead_removed", 0);
+            Map.SetInt(vacuumAnalyzeStats, tableName + ".last_vacuum", 0);
+            Map.SetInt(vacuumAnalyzeStats, tableName + ".vacuum_count", 0);
         }
-    }
-
-    hide func findVacuumStatIndex(tableName: String) -> Integer {
-        var i = 0;
-        while i < vacuumStatNames.count() {
-            if vacuumStatNames.get(i) == tableName {
-                return i;
-            }
-            i = i + 1;
-        }
-        return -1;
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".live_rows", liveRows);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".dead_rows", deadRows);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".last_analyze", DateTime.Now());
+        var ac = Map.GetIntOr(vacuumAnalyzeStats, tableName + ".analyze_count", 0);
+        Map.SetInt(vacuumAnalyzeStats, tableName + ".analyze_count", ac + 1);
     }
 
     //=========================================================================
     // PG_STAT TRACKING (Phase 27)
     //=========================================================================
 
-    hide func findPgStatTableIndex(tableName: String) -> Integer {
-        var i = 0;
-        while i < pgStatTableNames.count() {
-            if pgStatTableNames.get(i) == tableName {
-                return i;
-            }
-            i = i + 1;
+    hide func ensurePgStatTable(tableName: String) {
+        if Map.Has(pgStats, tableName + ".seq_scan") == false {
+            pgStatTableList.add(tableName);
+            Map.SetInt(pgStats, tableName + ".seq_scan", 0);
+            Map.SetInt(pgStats, tableName + ".seq_tup_read", 0);
+            Map.SetInt(pgStats, tableName + ".idx_scan", 0);
+            Map.SetInt(pgStats, tableName + ".idx_tup_fetch", 0);
+            Map.SetInt(pgStats, tableName + ".insert", 0);
+            Map.SetInt(pgStats, tableName + ".update", 0);
+            Map.SetInt(pgStats, tableName + ".delete", 0);
         }
-        return -1;
-    }
-
-    hide func ensurePgStatTable(tableName: String) -> Integer {
-        var idx = findPgStatTableIndex(tableName);
-        if idx < 0 {
-            pgStatTableNames.add(tableName);
-            pgStatSeqScan.add(0);
-            pgStatSeqTupRead.add(0);
-            pgStatIdxScan.add(0);
-            pgStatIdxTupFetch.add(0);
-            pgStatInsert.add(0);
-            pgStatUpdate.add(0);
-            pgStatDelete.add(0);
-            return pgStatTableNames.count() - 1;
-        }
-        return idx;
     }
 
     expose func recordSeqScan(tableName: String, tuplesRead: Integer) {
-        var idx = ensurePgStatTable(tableName);
-        pgStatSeqScan.set(idx, pgStatSeqScan.get(idx) + 1);
-        pgStatSeqTupRead.set(idx, pgStatSeqTupRead.get(idx) + tuplesRead);
+        ensurePgStatTable(tableName);
+        Map.SetInt(pgStats, tableName + ".seq_scan", Map.GetIntOr(pgStats, tableName + ".seq_scan", 0) + 1);
+        Map.SetInt(pgStats, tableName + ".seq_tup_read", Map.GetIntOr(pgStats, tableName + ".seq_tup_read", 0) + tuplesRead);
     }
 
     expose func recordIdxScan(tableName: String, tuplesFetched: Integer) {
-        var idx = ensurePgStatTable(tableName);
-        pgStatIdxScan.set(idx, pgStatIdxScan.get(idx) + 1);
-        pgStatIdxTupFetch.set(idx, pgStatIdxTupFetch.get(idx) + tuplesFetched);
+        ensurePgStatTable(tableName);
+        Map.SetInt(pgStats, tableName + ".idx_scan", Map.GetIntOr(pgStats, tableName + ".idx_scan", 0) + 1);
+        Map.SetInt(pgStats, tableName + ".idx_tup_fetch", Map.GetIntOr(pgStats, tableName + ".idx_tup_fetch", 0) + tuplesFetched);
     }
 
     expose func recordInsert(tableName: String, count: Integer) {
-        var idx = ensurePgStatTable(tableName);
-        pgStatInsert.set(idx, pgStatInsert.get(idx) + count);
+        ensurePgStatTable(tableName);
+        Map.SetInt(pgStats, tableName + ".insert", Map.GetIntOr(pgStats, tableName + ".insert", 0) + count);
     }
 
     expose func recordUpdate(tableName: String, count: Integer) {
-        var idx = ensurePgStatTable(tableName);
-        pgStatUpdate.set(idx, pgStatUpdate.get(idx) + count);
+        ensurePgStatTable(tableName);
+        Map.SetInt(pgStats, tableName + ".update", Map.GetIntOr(pgStats, tableName + ".update", 0) + count);
     }
 
     expose func recordDelete(tableName: String, count: Integer) {
-        var idx = ensurePgStatTable(tableName);
-        pgStatDelete.set(idx, pgStatDelete.get(idx) + count);
-    }
-
-    hide func findPgStatIndexIndex(indexName: String) -> Integer {
-        var i = 0;
-        while i < pgStatIndexNames.count() {
-            if pgStatIndexNames.get(i) == indexName {
-                return i;
-            }
-            i = i + 1;
-        }
-        return -1;
+        ensurePgStatTable(tableName);
+        Map.SetInt(pgStats, tableName + ".delete", Map.GetIntOr(pgStats, tableName + ".delete", 0) + count);
     }
 
     expose func recordIndexScan(indexName: String, tableName: String, tuplesRead: Integer, tuplesFetched: Integer) {
-        var idx = findPgStatIndexIndex(indexName);
-        if idx < 0 {
-            pgStatIndexNames.add(indexName);
-            pgStatIndexTableNames.add(tableName);
-            pgStatIndexIdxScan.add(1);
-            pgStatIndexTupRead.add(tuplesRead);
-            pgStatIndexTupFetch.add(tuplesFetched);
-        } else {
-            pgStatIndexIdxScan.set(idx, pgStatIndexIdxScan.get(idx) + 1);
-            pgStatIndexTupRead.set(idx, pgStatIndexTupRead.get(idx) + tuplesRead);
-            pgStatIndexTupFetch.set(idx, pgStatIndexTupFetch.get(idx) + tuplesFetched);
+        if Map.Has(pgStats, "idx:" + indexName + ".scan") == false {
+            pgStatIndexList.add(indexName);
+            Map.SetStr(pgStats, "idx:" + indexName + ".table", tableName);
         }
+        var sc = Map.GetIntOr(pgStats, "idx:" + indexName + ".scan", 0);
+        Map.SetInt(pgStats, "idx:" + indexName + ".scan", sc + 1);
+        var tr = Map.GetIntOr(pgStats, "idx:" + indexName + ".tup_read", 0);
+        Map.SetInt(pgStats, "idx:" + indexName + ".tup_read", tr + tuplesRead);
+        var tf = Map.GetIntOr(pgStats, "idx:" + indexName + ".tup_fetch", 0);
+        Map.SetInt(pgStats, "idx:" + indexName + ".tup_fetch", tf + tuplesFetched);
     }
 
     //=========================================================================
@@ -5008,13 +4910,9 @@ class Executor {
         parser.advance();
 
         // Check for duplicate cursor
-        var ci = 0;
-        while ci < cursorNames.count() {
-            if cursorNames.get(ci) == cursorName {
-                result.setError("Cursor \"" + cursorName + "\" already exists");
-                return result;
-            }
-            ci = ci + 1;
+        if Map.Has(cursorIndexMap, cursorName) {
+            result.setError("Cursor \"" + cursorName + "\" already exists");
+            return result;
         }
 
         // Expect CURSOR keyword
@@ -5053,6 +4951,7 @@ class Executor {
         }
 
         // Store cursor
+        Map.SetInt(cursorIndexMap, cursorName, cursorNames.count());
         cursorNames.add(cursorName);
         cursorResults.add(qr);
         cursorPositions.add(-1);  // Before first row
@@ -5147,15 +5046,8 @@ class Executor {
         }
         var cursorName = String.ToUpper(parser.currentText());
 
-        // Find cursor
-        var idx = -1;
-        var fi = 0;
-        while fi < cursorNames.count() {
-            if cursorNames.get(fi) == cursorName {
-                idx = fi;
-            }
-            fi = fi + 1;
-        }
+        // Find cursor (O(1) via Map)
+        var idx = Map.GetIntOr(cursorIndexMap, cursorName, -1);
         if idx < 0 {
             result.setError("Cursor \"" + cursorName + "\" does not exist");
             return result;
@@ -5281,6 +5173,7 @@ class Executor {
 
         // CLOSE ALL
         if parser.currentKind() == TK_ALL {
+            cursorIndexMap = Map.New();
             cursorNames = [];
             cursorResults = [];
             cursorPositions = [];
@@ -5294,22 +5187,29 @@ class Executor {
         }
         var cursorName = String.ToUpper(parser.currentText());
 
-        var idx = -1;
-        var fi = 0;
-        while fi < cursorNames.count() {
-            if cursorNames.get(fi) == cursorName {
-                idx = fi;
-            }
-            fi = fi + 1;
-        }
-        if idx < 0 {
+        if Map.Has(cursorIndexMap, cursorName) == false {
             result.setError("Cursor \"" + cursorName + "\" does not exist");
             return result;
         }
 
-        cursorNames.removeAt(idx);
-        cursorResults.removeAt(idx);
-        cursorPositions.removeAt(idx);
+        // Remove cursor and rebuild index map (BUG-002: removeAt unreliable)
+        Map.Remove(cursorIndexMap, cursorName);
+        var newNames: List[String] = [];
+        var newResults: List[QueryResult] = [];
+        var newPositions: List[Integer] = [];
+        var ri = 0;
+        while ri < cursorNames.count() {
+            if cursorNames.get(ri) != cursorName {
+                Map.SetInt(cursorIndexMap, cursorNames.get(ri), newNames.count());
+                newNames.add(cursorNames.get(ri));
+                newResults.add(cursorResults.get(ri));
+                newPositions.add(cursorPositions.get(ri));
+            }
+            ri = ri + 1;
+        }
+        cursorNames = newNames;
+        cursorResults = newResults;
+        cursorPositions = newPositions;
 
         result.message = "CLOSE CURSOR";
         return result;

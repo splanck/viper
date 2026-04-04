@@ -10,6 +10,10 @@ module json;
 
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
+bind Json = Viper.Text.Json;
+bind JP = Viper.Text.JsonPath;
+bind SB = Viper.Text.StringBuilder;
+bind Seq = Viper.Collections.Seq;
 
 bind "../engine/types";
 
@@ -453,27 +457,20 @@ class JsonParser {
 
 // Escape a string for JSON output (handle \ and " characters)
 func escapeJsonString(s: String) -> String {
-    var result = "";
+    var sb = SB.New();
     var i = 0;
     var sLen = String.Length(s);
     while i < sLen {
         var ch = String.Substring(s, i, 1);
-        if ch == "\"" {
-            result = result + "\\\"";
-        } else if ch == "\\" {
-            result = result + "\\\\";
-        } else if ch == "\n" {
-            result = result + "\\n";
-        } else if ch == "\t" {
-            result = result + "\\t";
-        } else if ch == "\r" {
-            result = result + "\\r";
-        } else {
-            result = result + ch;
-        }
+        if ch == "\"" { SB.Append(sb, "\\\""); }
+        else if ch == "\\" { SB.Append(sb, "\\\\"); }
+        else if ch == "\n" { SB.Append(sb, "\\n"); }
+        else if ch == "\t" { SB.Append(sb, "\\t"); }
+        else if ch == "\r" { SB.Append(sb, "\\r"); }
+        else { SB.Append(sb, ch); }
         i = i + 1;
     }
-    return result;
+    return SB.ToString(sb);
 }
 
 // Convert a SqlValue to a JSON string representation
@@ -497,24 +494,24 @@ func sqlValueToJson(val: SqlValue) -> String {
 // Evaluate JSON functions. Called from the sql_functions dispatch chain.
 func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 
-    // JSON_VALID(text) -> BOOLEAN
+    // JSON_VALID(text) -> BOOLEAN — delegates to runtime JSON parser
     if name == "JSON_VALID" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var text = arg.toString();
-        var parser = new JsonParser();
-        parser.initWithSource(text);
-        return sqlBoolean(parser.isValid());
+        return sqlBoolean(Json.IsValid(arg.toString()));
     }
 
     // JSON_TYPE(json) -> TEXT ('object', 'array', 'string', 'number', 'true', 'false', 'null')
     if name == "JSON_TYPE" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var text = arg.toString();
-        var parser = new JsonParser();
-        parser.initWithSource(text);
-        return sqlText(parser.getType());
+        var text = String.Trim(arg.toString());
+        // Return specific value for boolean literals (PostgreSQL behavior)
+        if text == "true" { return sqlText("true"); }
+        if text == "false" { return sqlText("false"); }
+        if text == "null" { return sqlText("null"); }
+        var obj = Json.Parse(text);
+        return sqlText(Json.TypeOf(obj));
     }
 
     // JSON_EXTRACT(json, path) -> JSON value
@@ -535,30 +532,30 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var jsonArg = args.get(0);
         var keyArg = args.get(1);
         if jsonArg.kind == SQL_NULL || keyArg.kind == SQL_NULL { return sqlNull(); }
-        var jsonStr = jsonArg.toString();
-        var key = keyArg.toString();
-        var parser = new JsonParser();
-        parser.initWithSource(jsonStr);
-        var raw = parser.extractKey(key);
-        if String.Length(raw) == 0 { return sqlNull(); }
-        return sqlText(parser.unwrapString(raw));
+        var obj = Json.Parse(jsonArg.toString());
+        var val = JP.GetStr(obj, keyArg.toString());
+        if String.Length(val) == 0 { return sqlNull(); }
+        return sqlText(val);
     }
 
-    // JSON_ARRAY_LENGTH(json) -> INTEGER
+    // JSON_ARRAY_LENGTH(json) -> INTEGER — delegates to runtime
     if name == "JSON_ARRAY_LENGTH" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var parser = new JsonParser();
-        parser.initWithSource(arg.toString());
-        var arrLen = parser.arrayLength();
-        if arrLen < 0 { return sqlNull(); }
-        return sqlInteger(arrLen);
+        var text = String.Trim(arg.toString());
+        // Must be a JSON array (starts with [)
+        if String.Length(text) == 0 { return sqlNull(); }
+        if String.Substring(text, 0, 1) != "[" { return sqlNull(); }
+        var arr = Json.ParseArray(text);
+        return sqlInteger(Seq.get_Length(arr));
     }
 
     // JSON_OBJECT_KEYS(json) -> JSON array of keys
     if name == "JSON_OBJECT_KEYS" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
+        // Still use hand-rolled parser for object key extraction
+        // (runtime JSON doesn't expose keys as a JSON array directly)
         var parser = new JsonParser();
         parser.initWithSource(arg.toString());
         return sqlJson(parser.objectKeys());
@@ -566,33 +563,34 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 
     // JSON_BUILD_OBJECT(k1, v1, k2, v2, ...) -> JSON object
     if name == "JSON_BUILD_OBJECT" {
-        if args.count() % 2 != 0 {
-            return sqlNull();  // must have even number of args
-        }
-        var result = "{";
+        if args.count() % 2 != 0 { return sqlNull(); }
+        var sb = SB.New();
+        SB.Append(sb, "{");
         var i = 0;
         while i < args.count() {
-            if i > 0 { result = result + ","; }
-            var key = args.get(i);
-            var val = args.get(i + 1);
-            result = result + "\"" + escapeJsonString(key.toString()) + "\":" + sqlValueToJson(val);
+            if i > 0 { SB.Append(sb, ","); }
+            SB.Append(sb, "\"");
+            SB.Append(sb, escapeJsonString(args.get(i).toString()));
+            SB.Append(sb, "\":");
+            SB.Append(sb, sqlValueToJson(args.get(i + 1)));
             i = i + 2;
         }
-        result = result + "}";
-        return sqlJson(result);
+        SB.Append(sb, "}");
+        return sqlJson(SB.ToString(sb));
     }
 
     // JSON_BUILD_ARRAY(v1, v2, ...) -> JSON array
     if name == "JSON_BUILD_ARRAY" {
-        var result = "[";
+        var sb = SB.New();
+        SB.Append(sb, "[");
         var i = 0;
         while i < args.count() {
-            if i > 0 { result = result + ","; }
-            result = result + sqlValueToJson(args.get(i));
+            if i > 0 { SB.Append(sb, ","); }
+            SB.Append(sb, sqlValueToJson(args.get(i)));
             i = i + 1;
         }
-        result = result + "]";
-        return sqlJson(result);
+        SB.Append(sb, "]");
+        return sqlJson(SB.ToString(sb));
     }
 
     // JSON(text) -> JSON (parse and re-emit, validates JSON)
@@ -601,9 +599,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if arg.kind == SQL_NULL { return sqlNull(); }
         if arg.kind == SQL_JSON { return arg; }
         var text = arg.toString();
-        var parser = new JsonParser();
-        parser.initWithSource(text);
-        if parser.isValid() == false { return sqlNull(); }
+        if Json.IsValid(text) == false { return sqlNull(); }
         return sqlJson(text);
     }
 
@@ -618,9 +614,12 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "JSON_TYPEOF" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        var parser = new JsonParser();
-        parser.initWithSource(arg.toString());
-        return sqlText(parser.getType());
+        var text = String.Trim(arg.toString());
+        if text == "true" { return sqlText("true"); }
+        if text == "false" { return sqlText("false"); }
+        if text == "null" { return sqlText("null"); }
+        var obj = Json.Parse(text);
+        return sqlText(Json.TypeOf(obj));
     }
 
     return null;

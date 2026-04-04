@@ -287,6 +287,59 @@ static void test_character_step_height() {
     EXPECT_NEAR(rt_character3d_get_step_height(c), 0.5, 0.01, "Step height set to 0.5");
 }
 
+static void test_character_world_binding() {
+    void *w = rt_world3d_new(0, -9.81, 0);
+    void *c = rt_character3d_new(0.5, 2.0, 80.0);
+    rt_character3d_set_world(c, w);
+    EXPECT_TRUE(rt_character3d_get_world(c) == w, "Character world getter returns bound world");
+    rt_character3d_set_world(c, NULL);
+    EXPECT_TRUE(rt_character3d_get_world(c) == nullptr, "Character world can be cleared");
+}
+
+static void test_character_slide_against_wall() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *floor = rt_body3d_new_aabb(10.0, 0.5, 10.0, 0.0);
+    void *wall = rt_body3d_new_aabb(0.5, 2.0, 2.0, 0.0);
+    void *c = rt_character3d_new(0.5, 2.0, 80.0);
+    void *v = rt_vec3_new(3.0, 0.0, 0.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_body3d_set_position(wall, 2.0, 1.5, 0.0);
+    rt_world3d_add(w, floor);
+    rt_world3d_add(w, wall);
+    rt_character3d_set_world(c, w);
+    rt_character3d_set_position(c, 0.0, 1.0, 0.0);
+
+    rt_character3d_move(c, v, 1.0);
+
+    {
+        void *pos = rt_character3d_get_position(c);
+        EXPECT_TRUE(rt_vec3_x(pos) <= 1.05, "Character stops before wall instead of tunneling");
+        EXPECT_TRUE(rt_character3d_is_grounded(c) != 0, "Character remains grounded while sliding");
+    }
+}
+
+static void test_character_step_up() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *floor = rt_body3d_new_aabb(10.0, 0.5, 10.0, 0.0);
+    void *step = rt_body3d_new_aabb(0.5, 0.125, 0.5, 0.0);
+    void *c = rt_character3d_new(0.5, 2.0, 80.0);
+    void *v = rt_vec3_new(2.0, 0.0, 0.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_body3d_set_position(step, 1.2, 0.125, 0.0);
+    rt_world3d_add(w, floor);
+    rt_world3d_add(w, step);
+    rt_character3d_set_world(c, w);
+    rt_character3d_set_position(c, 0.0, 1.0, 0.0);
+
+    rt_character3d_move(c, v, 1.0);
+
+    {
+        void *pos = rt_character3d_get_position(c);
+        EXPECT_TRUE(rt_vec3_x(pos) > 1.0, "Character steps forward across low obstacle");
+        EXPECT_TRUE(rt_vec3_y(pos) > 1.1, "Character steps up onto walkable obstacle");
+    }
+}
+
 /*==========================================================================
  * Trigger3D tests
  *=========================================================================*/
@@ -343,6 +396,24 @@ static void test_aabb_sphere_collision() {
 
     EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
                 "aabb-sphere: collision detected");
+}
+
+static void test_capsule_aabb_collision() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *capsule = rt_body3d_new_capsule(0.5, 2.0, 1.0);
+    void *wall = rt_body3d_new_aabb(0.5, 2.0, 2.0, 0.0);
+    rt_body3d_set_position(capsule, 1.2, 1.0, 0.0);
+    rt_body3d_set_position(wall, 2.0, 1.0, 0.0);
+    rt_world3d_add(world, capsule);
+    rt_world3d_add(world, wall);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "capsule-aabb: collision recorded");
+    {
+        void *pos = rt_body3d_get_position(capsule);
+        EXPECT_TRUE(rt_vec3_x(pos) < 1.2, "capsule-aabb: capsule pushed out of wall");
+    }
 }
 
 /*==========================================================================
@@ -588,6 +659,9 @@ int main() {
     test_character_create();
     test_character_position();
     test_character_step_height();
+    test_character_world_binding();
+    test_character_slide_against_wall();
+    test_character_step_up();
 
     /* Sphere-sphere collision tests — declared below */
 
@@ -604,6 +678,7 @@ int main() {
     test_sphere_sphere_collision();
     test_sphere_sphere_no_overlap();
     test_aabb_sphere_collision();
+    test_capsule_aabb_collision();
 
     /* Collision event queue */
     test_collision_event_count();

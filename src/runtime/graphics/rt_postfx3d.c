@@ -35,6 +35,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern void rt_trap(const char *msg);
 
 /*==========================================================================
@@ -561,6 +564,12 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c->postfx == postfx)
+        return;
+    if (postfx)
+        rt_obj_retain_maybe(postfx);
+    if (c->postfx && rt_obj_release_check0(c->postfx))
+        rt_obj_free(c->postfx);
     c->postfx = postfx;
 }
 

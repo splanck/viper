@@ -13,6 +13,7 @@ module persistence;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
+bind SB = Viper.Text.StringBuilder;
 
 bind "../engine/types";
 bind "../engine/schema";
@@ -144,23 +145,23 @@ class PersistenceManager {
 
     // Generate INSERT statement for a row
     hide func generateInsert(tableName: String, row: Row) -> String {
-        var sql = "INSERT INTO " + tableName + " VALUES (";
+        var sb = SB.New();
+        SB.Append(sb, "INSERT INTO ");
+        SB.Append(sb, tableName);
+        SB.Append(sb, " VALUES (");
         var ci = 0;
         while ci < row.columnCount() {
-            if ci > 0 {
-                sql = sql + ", ";
-            }
+            if ci > 0 { SB.Append(sb, ", "); }
             var rawVal = row.getValue(ci);
             if rawVal.kind == SQL_NULL {
-                sql = sql + "NULL";
+                SB.Append(sb, "NULL");
             } else {
-                var val = exec.cloneValue(rawVal);
-                sql = sql + val.toSqlString();
+                SB.Append(sb, exec.cloneValue(rawVal).toSqlString());
             }
             ci = ci + 1;
         }
-        sql = sql + ");";
-        return sql;
+        SB.Append(sb, ");");
+        return SB.ToString(sb);
     }
 
     // Generate CREATE INDEX statement

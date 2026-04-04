@@ -34,6 +34,7 @@
 #include <cassert>
 #include <csetjmp>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 
@@ -91,6 +92,11 @@ extern "C" void *rt_vec3_new(double x, double y, double z);
 extern "C" void *rt_pixels_new(int64_t width, int64_t height);
 extern "C" void *rt_mat4_identity(void);
 extern "C" void *rt_mat4_scale(double sx, double sy, double sz);
+extern "C" int rt_obj_release_check0(void *obj);
+extern "C" void rt_obj_free(void *obj);
+extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern "C" void *rt_postfx3d_new(void);
+extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
 /* Backend selection test */
 extern "C" const void *vgfx3d_select_backend(void);
@@ -907,6 +913,83 @@ static void test_rendertarget_null_safety() {
     PASS();
 }
 
+namespace {
+static int g_postfx_release_count = 0;
+static int g_render_target_release_count = 0;
+}
+
+extern "C" void tracked_postfx_finalizer(void *obj) {
+    (void)obj;
+    g_postfx_release_count++;
+}
+
+extern "C" void tracked_render_target_finalizer(void *obj) {
+    rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
+    g_render_target_release_count++;
+    if (rtd && rtd->target) {
+        free(rtd->target->color_buf);
+        free(rtd->target->depth_buf);
+        free(rtd->target);
+        rtd->target = nullptr;
+    }
+}
+
+static void test_canvas_postfx_retains_owned_reference() {
+    TEST("Canvas3D.SetPostFX retains owned reference");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *fx = rt_postfx3d_new();
+    assert(fx != NULL);
+    g_postfx_release_count = 0;
+    rt_obj_set_finalizer(fx, tracked_postfx_finalizer);
+
+    rt_canvas3d_set_post_fx(&canvas, fx);
+    if (rt_obj_release_check0(fx))
+        rt_obj_free(fx);
+    if (g_postfx_release_count != 0) {
+        FAIL("Canvas3D did not retain PostFX3D");
+        return;
+    }
+
+    rt_canvas3d_set_post_fx(&canvas, NULL);
+    if (g_postfx_release_count != 1) {
+        FAIL("Canvas3D did not release PostFX3D on clear");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_render_target_retains_owned_reference() {
+    TEST("Canvas3D.SetRenderTarget retains owned reference");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *rt = rt_rendertarget3d_new(16, 16);
+    assert(rt != NULL);
+    g_render_target_release_count = 0;
+    rt_obj_set_finalizer(rt, tracked_render_target_finalizer);
+
+    rt_canvas3d_set_render_target(&canvas, rt);
+    if (rt_obj_release_check0(rt))
+        rt_obj_free(rt);
+    if (g_render_target_release_count != 0) {
+        FAIL("Canvas3D did not retain RenderTarget3D");
+        return;
+    }
+    if (canvas.render_target_owner == rt && canvas.render_target == ((rt_rendertarget3d *)rt)->target) {
+        /* expected path */
+    } else {
+        FAIL("Canvas3D render target pointers were not updated");
+        return;
+    }
+
+    rt_canvas3d_reset_render_target(&canvas);
+    if (g_render_target_release_count != 1) {
+        FAIL("Canvas3D did not release RenderTarget3D on reset");
+        return;
+    }
+    PASS();
+}
+
 //=============================================================================
 // Terrain3D splat tests
 //=============================================================================
@@ -1183,8 +1266,6 @@ static void test_metal_postfx_new() {
     PASS();
 }
 
-extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
-
 static void test_metal_postfx_null_safety() {
     TEST("MTL-11: PostFX3D — null safety on all ops");
     rt_postfx3d_add_bloom(NULL, 0.5, 1.0, 2);
@@ -1313,6 +1394,8 @@ int main() {
     test_rendertarget_dimensions();
     test_rendertarget_as_pixels();
     test_rendertarget_null_safety();
+    test_canvas_postfx_retains_owned_reference();
+    test_canvas_render_target_retains_owned_reference();
 
     /* Terrain3D splat */
     test_terrain_create();

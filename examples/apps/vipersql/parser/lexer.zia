@@ -10,6 +10,7 @@
 module lexer;
 
 bind String = Viper.String;
+bind SB = Viper.Text.StringBuilder;
 
 bind "./token";
 
@@ -123,14 +124,13 @@ class Lexer {
         var startLine = line;
         var startCol = column;
         var quote = advance();
-        var text = "";
+        var sb = SB.New();
 
         while (!isAtEnd()) {
             var ch = peek();
             if ch == quote {
-                // Check for doubled quote (SQL-standard escape: '' -> ')
                 if peekNext() == quote {
-                    text = text + quote;
+                    SB.Append(sb, quote);
                     advance();
                     advance();
                     continue;
@@ -140,11 +140,11 @@ class Lexer {
             if ch == "\\" {
                 advance();
                 if (!isAtEnd()) {
-                    text = text + peek();
+                    SB.Append(sb, peek());
                     advance();
                 }
             } else {
-                text = text + ch;
+                SB.Append(sb, ch);
                 advance();
             }
         }
@@ -157,7 +157,7 @@ class Lexer {
 
         advance();
 
-        var tok = new Token(TK_STRING, text, startLine, startCol);
+        var tok = new Token(TK_STRING, SB.ToString(sb), startLine, startCol);
         return tok;
     }
 

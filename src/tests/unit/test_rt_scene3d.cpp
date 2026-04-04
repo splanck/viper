@@ -22,6 +22,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
+#include "rt_pixels.h"
 #include "rt_scene3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
@@ -30,6 +31,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -46,6 +48,7 @@ extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
 extern void *rt_material3d_new_color(double r, double g, double b);
 extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
 extern void *rt_mesh3d_new(void);
+extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void rt_mesh3d_add_vertex(void *obj,
                                  double x,
                                  double y,
@@ -80,6 +83,30 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+static bool read_text_file(const char *path, std::string &out) {
+    out.clear();
+    FILE *f = std::fopen(path, "rb");
+    if (!f)
+        return false;
+    if (std::fseek(f, 0, SEEK_END) != 0) {
+        std::fclose(f);
+        return false;
+    }
+    long size = std::ftell(f);
+    if (size < 0 || std::fseek(f, 0, SEEK_SET) != 0) {
+        std::fclose(f);
+        return false;
+    }
+    out.resize((size_t)size);
+    if (size > 0 && std::fread(out.data(), 1, (size_t)size, f) != (size_t)size) {
+        std::fclose(f);
+        out.clear();
+        return false;
+    }
+    std::fclose(f);
+    return true;
+}
 
 static void test_create_scene_and_node() {
     void *scene = rt_scene3d_new();
@@ -415,16 +442,12 @@ static void test_scene_save_escapes_json_names() {
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1, "Scene3D.Save writes the scene file");
 
-    FILE *f = fopen(path, "rb");
-    EXPECT_TRUE(f != nullptr, "Scene3D.Save output can be reopened");
-    if (!f)
+    std::string text;
+    EXPECT_TRUE(read_text_file(path, text), "Scene3D.Save output can be reopened");
+    if (text.empty())
         return;
-    char buf[1024];
-    size_t bytes = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[bytes] = '\0';
 
-    EXPECT_TRUE(std::strstr(buf, "\"name\": \"quote\\\"slash\\\\line\\nbreak\"") != nullptr,
+    EXPECT_TRUE(text.find("\"name\": \"quote\\\"slash\\\\line\\nbreak\"") != std::string::npos,
                 "Scene3D.Save escapes quotes, backslashes, and newlines in node names");
 }
 
@@ -442,25 +465,183 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
                 "Scene3D.Save writes metadata-rich scene files");
 
-    FILE *f = fopen(path, "rb");
-    EXPECT_TRUE(f != nullptr, "Scene3D.Save metadata output can be reopened");
-    if (!f)
+    std::string text;
+    EXPECT_TRUE(read_text_file(path, text), "Scene3D.Save metadata output can be reopened");
+    if (text.empty())
         return;
-    char buf[2048];
-    size_t bytes = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[bytes] = '\0';
 
-    EXPECT_TRUE(std::strstr(buf, "\"visible\": false") != nullptr,
+    EXPECT_TRUE(text.find("\"visible\": false") != std::string::npos,
                 "Scene3D.Save serializes node visibility");
-    EXPECT_TRUE(std::strstr(buf, "\"hasMesh\": true") != nullptr,
+    EXPECT_TRUE(text.find("\"hasMesh\": true") != std::string::npos,
                 "Scene3D.Save serializes mesh presence");
-    EXPECT_TRUE(std::strstr(buf, "\"hasMaterial\": true") != nullptr,
+    EXPECT_TRUE(text.find("\"hasMaterial\": true") != std::string::npos,
                 "Scene3D.Save serializes material presence");
-    EXPECT_TRUE(std::strstr(buf, "\"lod\": [") != nullptr,
+    EXPECT_TRUE(text.find("\"lod\": [") != std::string::npos,
                 "Scene3D.Save serializes LOD metadata");
-    EXPECT_TRUE(std::strstr(buf, "\"distance\": 10.000000") != nullptr,
+    EXPECT_TRUE(text.find("\"distance\": 10.000000") != std::string::npos,
                 "Scene3D.Save serializes LOD distances");
+}
+
+static void test_scene_roundtrip_loads_shared_assets() {
+    const char *path = "/tmp/viper_scene_roundtrip_test.vscn";
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    void *lod_mesh = rt_mesh3d_new_box(0.5, 0.5, 0.5);
+    rt_material3d *material = (rt_material3d *)rt_material3d_new();
+
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    ((rt_mesh3d *)mesh)->vertices[0].tangent[0] = 1.0f;
+    ((rt_mesh3d *)mesh)->vertices[0].bone_indices[0] = 3;
+    ((rt_mesh3d *)mesh)->vertices[0].bone_weights[0] = 1.0f;
+    ((rt_mesh3d *)mesh)->bone_count = 4;
+
+    void *diffuse = rt_pixels_new(2, 1);
+    void *normal = rt_pixels_new(1, 1);
+    void *specular = rt_pixels_new(1, 1);
+    void *emissive = rt_pixels_new(1, 1);
+    void *faces[6];
+    const int64_t face_colors[6] = {
+        0xFF0000FFll, 0x00FF00FFll, 0x0000FFFFll,
+        0xFFFF00FFll, 0xFF00FFFFll, 0x00FFFFFFll
+    };
+
+    rt_pixels_set(diffuse, 0, 0, 0x10203040ll);
+    rt_pixels_set(diffuse, 1, 0, 0x50607080ll);
+    rt_pixels_set(normal, 0, 0, 0x7F7FFFFFll);
+    rt_pixels_set(specular, 0, 0, 0x808080FFll);
+    rt_pixels_set(emissive, 0, 0, 0xFF8040FFll);
+    for (int i = 0; i < 6; i++) {
+        faces[i] = rt_pixels_new(1, 1);
+        rt_pixels_set(faces[i], 0, 0, face_colors[i]);
+    }
+
+    material->diffuse[0] = 0.25;
+    material->diffuse[1] = 0.5;
+    material->diffuse[2] = 0.75;
+    material->diffuse[3] = 0.9;
+    material->specular[0] = 0.2;
+    material->specular[1] = 0.4;
+    material->specular[2] = 0.6;
+    material->shininess = 48.0;
+    material->emissive[0] = 0.1;
+    material->emissive[1] = 0.2;
+    material->emissive[2] = 0.3;
+    material->alpha = 0.8;
+    material->reflectivity = 0.6;
+    material->unlit = 1;
+    material->shading_model = 4;
+    material->custom_params[0] = 3.5;
+    material->custom_params[1] = 1.25;
+    rt_material3d_set_texture(material, diffuse);
+    rt_material3d_set_normal_map(material, normal);
+    rt_material3d_set_specular_map(material, specular);
+    rt_material3d_set_emissive_map(material, emissive);
+    rt_material3d_set_env_map(material, rt_cubemap3d_new(
+        faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]));
+
+    rt_scene_node3d_set_name(parent, rt_const_cstr("parent"));
+    rt_scene_node3d_set_name(child, rt_const_cstr("child"));
+    rt_scene_node3d_set_position(parent, 1.0, 2.0, 3.0);
+    rt_scene_node3d_set_scale(parent, 2.0, 2.0, 2.0);
+    rt_scene_node3d_set_visible(parent, 0);
+    rt_scene_node3d_set_mesh(parent, mesh);
+    rt_scene_node3d_set_material(parent, material);
+    rt_scene_node3d_add_lod(parent, 10.0, lod_mesh);
+    rt_scene_node3d_set_mesh(child, mesh);
+    rt_scene_node3d_set_material(child, material);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save writes roundtrip scene files");
+
+    void *loaded_scene = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded_scene != nullptr, "Scene3D.Load reconstructs saved scenes");
+    if (!loaded_scene)
+        return;
+
+    void *loaded_parent = rt_scene3d_find(loaded_scene, rt_const_cstr("parent"));
+    void *loaded_child = rt_scene3d_find(loaded_scene, rt_const_cstr("child"));
+    EXPECT_TRUE(loaded_parent != nullptr, "Scene3D.Load restores named parent nodes");
+    EXPECT_TRUE(loaded_child != nullptr, "Scene3D.Load restores named child nodes");
+    if (!loaded_parent || !loaded_child)
+        return;
+
+    EXPECT_TRUE(rt_scene_node3d_get_parent(loaded_child) == loaded_parent,
+                "Scene3D.Load restores hierarchy links");
+    EXPECT_TRUE(rt_scene_node3d_get_visible(loaded_parent) == 0,
+                "Scene3D.Load restores node visibility");
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(loaded_parent)), 1.0, 0.001,
+                "Scene3D.Load restores node position");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(loaded_parent)), 2.0, 0.001,
+                "Scene3D.Load restores node scale");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(loaded_parent) == rt_scene_node3d_get_mesh(loaded_child),
+                "Scene3D.Load preserves shared mesh references");
+    EXPECT_TRUE(rt_scene_node3d_get_material(loaded_parent) ==
+                    rt_scene_node3d_get_material(loaded_child),
+                "Scene3D.Load preserves shared material references");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_count(loaded_parent) == 1,
+                "Scene3D.Load restores LOD entries");
+    EXPECT_NEAR(rt_scene_node3d_get_lod_distance(loaded_parent, 0), 10.0, 0.001,
+                "Scene3D.Load restores LOD distances");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) != rt_scene_node3d_get_mesh(loaded_parent),
+                "Scene3D.Load restores LOD mesh references");
+
+    rt_mesh3d *loaded_mesh = (rt_mesh3d *)rt_scene_node3d_get_mesh(loaded_parent);
+    EXPECT_TRUE(loaded_mesh != nullptr && loaded_mesh->vertex_count == 3 &&
+                    loaded_mesh->index_count == 3,
+                "Scene3D.Load restores mesh geometry");
+    if (loaded_mesh) {
+        EXPECT_NEAR(loaded_mesh->vertices[1].pos[0], 1.0, 0.001,
+                    "Scene3D.Load restores vertex positions");
+        EXPECT_NEAR(loaded_mesh->vertices[0].tangent[0], 1.0, 0.001,
+                    "Scene3D.Load restores vertex tangents");
+        EXPECT_TRUE(loaded_mesh->vertices[0].bone_indices[0] == 3 &&
+                        fabs(loaded_mesh->vertices[0].bone_weights[0] - 1.0f) < 0.001f &&
+                        loaded_mesh->bone_count == 4,
+                    "Scene3D.Load restores skinning vertex data");
+    }
+
+    rt_material3d *loaded_material = (rt_material3d *)rt_scene_node3d_get_material(loaded_parent);
+    EXPECT_TRUE(loaded_material != nullptr, "Scene3D.Load restores materials");
+    if (loaded_material) {
+        EXPECT_NEAR(loaded_material->diffuse[0], 0.25, 0.001,
+                    "Scene3D.Load restores material diffuse color");
+        EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001,
+                    "Scene3D.Load restores material alpha");
+        EXPECT_NEAR(loaded_material->reflectivity, 0.6, 0.001,
+                    "Scene3D.Load restores material reflectivity");
+        EXPECT_TRUE(loaded_material->unlit == 1 && loaded_material->shading_model == 4,
+                    "Scene3D.Load restores material shading flags");
+        EXPECT_NEAR(loaded_material->custom_params[0], 3.5, 0.001,
+                    "Scene3D.Load restores custom shader params");
+        EXPECT_TRUE(loaded_material->texture != nullptr &&
+                        rt_pixels_get(loaded_material->texture, 0, 0) == 0x10203040ll &&
+                        rt_pixels_get(loaded_material->texture, 1, 0) == 0x50607080ll,
+                    "Scene3D.Load restores diffuse textures");
+        EXPECT_TRUE(loaded_material->normal_map != nullptr &&
+                        rt_pixels_get(loaded_material->normal_map, 0, 0) == 0x7F7FFFFFll,
+                    "Scene3D.Load restores normal maps");
+        EXPECT_TRUE(loaded_material->specular_map != nullptr &&
+                        rt_pixels_get(loaded_material->specular_map, 0, 0) == 0x808080FFll,
+                    "Scene3D.Load restores specular maps");
+        EXPECT_TRUE(loaded_material->emissive_map != nullptr &&
+                        rt_pixels_get(loaded_material->emissive_map, 0, 0) == 0xFF8040FFll,
+                    "Scene3D.Load restores emissive maps");
+        rt_cubemap3d *env = (rt_cubemap3d *)loaded_material->env_map;
+        EXPECT_TRUE(env != nullptr && env->face_size == 1,
+                    "Scene3D.Load restores environment cubemaps");
+        if (env) {
+            EXPECT_TRUE(rt_pixels_get(env->faces[0], 0, 0) == face_colors[0] &&
+                            rt_pixels_get(env->faces[5], 0, 0) == face_colors[5],
+                        "Scene3D.Load restores cubemap face textures");
+        }
+    }
 }
 
 static void test_frustum_aabb_inside() {
@@ -588,6 +769,7 @@ int main() {
     test_scene_draw_reuses_active_frame();
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
+    test_scene_roundtrip_loads_shared_assets();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

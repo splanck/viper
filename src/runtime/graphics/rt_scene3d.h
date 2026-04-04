@@ -39,6 +39,7 @@ void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
 void rt_scene3d_clear(void *scene);
 int64_t rt_scene3d_get_node_count(void *scene);
 int64_t rt_scene3d_save(void *scene, rt_string path);
+void *rt_scene3d_load(rt_string path);
 
 /* SceneNode3D */
 void *rt_scene_node3d_new(void);
@@ -56,7 +57,9 @@ void *rt_scene_node3d_get_child(void *node, int64_t index);
 void *rt_scene_node3d_get_parent(void *node);
 void *rt_scene_node3d_find(void *node, rt_string name);
 void rt_scene_node3d_set_mesh(void *node, void *mesh);
+void *rt_scene_node3d_get_mesh(void *node);
 void rt_scene_node3d_set_material(void *node, void *material);
+void *rt_scene_node3d_get_material(void *node);
 void rt_scene_node3d_set_visible(void *node, int8_t visible);
 int8_t rt_scene_node3d_get_visible(void *node);
 void rt_scene_node3d_set_name(void *node, rt_string name);
@@ -67,6 +70,9 @@ void *rt_scene_node3d_get_aabb_max(void *node);
 /* LOD — Level of Detail */
 void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
 void rt_scene_node3d_clear_lod(void *node);
+int64_t rt_scene_node3d_get_lod_count(void *node);
+double rt_scene_node3d_get_lod_distance(void *node, int64_t index);
+void *rt_scene_node3d_get_lod_mesh(void *node, int64_t index);
 
 /* Scene3D — frustum culling stats */
 int64_t rt_scene3d_get_culled_count(void *scene);

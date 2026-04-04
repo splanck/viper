@@ -29,6 +29,7 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void *rt_mat4_identity(void);
+extern void *rt_mat4_translate(double tx, double ty, double tz);
 }
 
 static int tests_passed = 0;
@@ -162,6 +163,39 @@ static void test_ray_mesh() {
     }
 }
 
+static void test_ray_mesh_translated() {
+    void *origin = rt_vec3_new(3, 0, 5);
+    void *dir = rt_vec3_new(0, 0, -1);
+    void *box = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *xf = rt_mat4_translate(3.0, 0.0, 0.0);
+    void *hit = rt_ray3d_intersect_mesh(origin, dir, box, xf);
+    EXPECT_TRUE(hit != nullptr, "Ray-mesh translated hit returns non-null");
+    if (hit) {
+        EXPECT_NEAR(rt_ray3d_hit_distance(hit), 4.0, 0.01, "Translated ray-mesh distance = 4");
+        void *pt = rt_ray3d_hit_point(hit);
+        EXPECT_NEAR(rt_vec3_x(pt), 3.0, 0.01, "Translated hit point X = 3");
+        EXPECT_NEAR(rt_vec3_z(pt), 1.0, 0.01, "Translated hit point Z = 1");
+    }
+}
+
+static void test_aabb_closest_point_surface_inside() {
+    void *mn = rt_vec3_new(-1, -1, -1);
+    void *mx = rt_vec3_new(1, 1, 1);
+    void *p = rt_vec3_new(0.9, 0.1, 0.0);
+    void *closest = rt_aabb3d_closest_point(mn, mx, p);
+    EXPECT_NEAR(rt_vec3_x(closest), 1.0, 0.01, "AABB closest point snaps to nearest surface");
+    EXPECT_NEAR(rt_vec3_y(closest), 0.1, 0.01, "AABB closest point preserves tangent Y");
+    EXPECT_NEAR(rt_vec3_z(closest), 0.0, 0.01, "AABB closest point preserves tangent Z");
+}
+
+static void test_aabb_sphere_overlap_inside_box() {
+    void *mn = rt_vec3_new(-1, -1, -1);
+    void *mx = rt_vec3_new(1, 1, 1);
+    void *center = rt_vec3_new(0, 0, 0);
+    EXPECT_TRUE(rt_aabb3d_sphere_overlaps(mn, mx, center, 0.1) == 1,
+                "AABB-sphere overlap handles centers inside the box");
+}
+
 int main() {
     test_ray_triangle_hit();
     test_ray_triangle_miss();
@@ -175,6 +209,9 @@ int main() {
     test_aabb_separate();
     test_aabb_penetration();
     test_ray_mesh();
+    test_ray_mesh_translated();
+    test_aabb_closest_point_surface_inside();
+    test_aabb_sphere_overlap_inside_box();
 
     printf("Raycast3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

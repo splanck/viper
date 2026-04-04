@@ -17,6 +17,7 @@ module query;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 bind Viper.Math;
+bind Viper.Collections;
 
 bind "./types";
 bind "./schema";
@@ -2522,31 +2523,22 @@ class QueryHandler {
         result.addColumnName("last_analyze");
 
         var i = 0;
-        while i < exec.vacuumStatNames.count() {
+        while i < exec.vacuumAnalyzeTableList.count() {
+            var tbl = exec.vacuumAnalyzeTableList.get(i);
             var row = new Row();
             row.init();
-            row.addValue(sqlText(exec.vacuumStatNames.get(i)));
-            row.addValue(sqlInteger(exec.vacuumStatVacuumCount.get(i)));
-            row.addValue(sqlInteger(exec.vacuumStatDeadRemoved.get(i)));
-            var lastVac = exec.vacuumStatLastVacuumTime.get(i);
-            if lastVac > 0 {
-                row.addValue(sqlInteger(lastVac));
-            } else {
-                var nullVal = new SqlValue();
-                nullVal.initNull();
-                row.addValue(nullVal);
-            }
-            row.addValue(sqlInteger(exec.analyzeStatAnalyzeCount.get(i)));
-            row.addValue(sqlInteger(exec.analyzeStatLiveRows.get(i)));
-            row.addValue(sqlInteger(exec.analyzeStatDeadRows.get(i)));
-            var lastAna = exec.analyzeStatLastAnalyzeTime.get(i);
-            if lastAna > 0 {
-                row.addValue(sqlInteger(lastAna));
-            } else {
-                var nullVal2 = new SqlValue();
-                nullVal2.initNull();
-                row.addValue(nullVal2);
-            }
+            row.addValue(sqlText(tbl));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".vacuum_count", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".dead_removed", 0)));
+            var lastVac = Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".last_vacuum", 0);
+            if lastVac > 0 { row.addValue(sqlInteger(lastVac)); }
+            else { row.addValue(sqlNull()); }
+            row.addValue(sqlInteger(Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".analyze_count", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".live_rows", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".dead_rows", 0)));
+            var lastAna = Map.GetIntOr(exec.vacuumAnalyzeStats, tbl + ".last_analyze", 0);
+            if lastAna > 0 { row.addValue(sqlInteger(lastAna)); }
+            else { row.addValue(sqlNull()); }
             result.addRow(row);
             i = i + 1;
         }
@@ -3350,20 +3342,20 @@ class QueryHandler {
         result.addColumnName("n_dead_tup");
 
         var i = 0;
-        while i < exec.pgStatTableNames.count() {
-            var tblName = exec.pgStatTableNames.get(i);
+        while i < exec.pgStatTableList.count() {
+            var tblName = exec.pgStatTableList.get(i);
             var row = new Row();
             row.init();
             row.addValue(sqlInteger(generateOid(exec.currentDbName + "." + tblName)));
             row.addValue(sqlText("public"));
             row.addValue(sqlText(tblName));
-            row.addValue(sqlInteger(exec.pgStatSeqScan.get(i)));
-            row.addValue(sqlInteger(exec.pgStatSeqTupRead.get(i)));
-            row.addValue(sqlInteger(exec.pgStatIdxScan.get(i)));
-            row.addValue(sqlInteger(exec.pgStatIdxTupFetch.get(i)));
-            row.addValue(sqlInteger(exec.pgStatInsert.get(i)));
-            row.addValue(sqlInteger(exec.pgStatUpdate.get(i)));
-            row.addValue(sqlInteger(exec.pgStatDelete.get(i)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".seq_scan", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".seq_tup_read", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".idx_scan", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".idx_tup_fetch", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".insert", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".update", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, tblName + ".delete", 0)));
             // Live + dead tuples from actual table (if still exists)
             var table = exec.findTable(tblName);
             if table != null {
@@ -3410,9 +3402,9 @@ class QueryHandler {
         result.addColumnName("idx_tup_fetch");
 
         var i = 0;
-        while i < exec.pgStatIndexNames.count() {
-            var idxName = exec.pgStatIndexNames.get(i);
-            var tblName = exec.pgStatIndexTableNames.get(i);
+        while i < exec.pgStatIndexList.count() {
+            var idxName = exec.pgStatIndexList.get(i);
+            var tblName = Map.GetStr(exec.pgStats, "idx:" + idxName + ".table");
             var row = new Row();
             row.init();
             row.addValue(sqlInteger(generateOid(exec.currentDbName + "." + tblName)));
@@ -3420,9 +3412,9 @@ class QueryHandler {
             row.addValue(sqlText("public"));
             row.addValue(sqlText(tblName));
             row.addValue(sqlText(idxName));
-            row.addValue(sqlInteger(exec.pgStatIndexIdxScan.get(i)));
-            row.addValue(sqlInteger(exec.pgStatIndexTupRead.get(i)));
-            row.addValue(sqlInteger(exec.pgStatIndexTupFetch.get(i)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, "idx:" + idxName + ".scan", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, "idx:" + idxName + ".tup_read", 0)));
+            row.addValue(sqlInteger(Map.GetIntOr(exec.pgStats, "idx:" + idxName + ".tup_fetch", 0)));
             result.addRow(row);
             i = i + 1;
         }

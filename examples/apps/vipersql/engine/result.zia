@@ -10,6 +10,7 @@
 module result;
 
 bind Fmt = Viper.Fmt;
+bind SB = Viper.Text.StringBuilder;
 
 bind "./schema";
 
@@ -75,30 +76,25 @@ class QueryResult {
             return "ERROR: " + message;
         }
 
-        var result = "";
+        var sb = SB.New();
 
         // Print column headers
         var i = 0;
         while i < columnNames.count() {
-            if i > 0 {
-                result = result + " | ";
-            }
-            result = result + columnNames.get(i);
+            if i > 0 { SB.Append(sb, " | "); }
+            SB.Append(sb, columnNames.get(i));
             i = i + 1;
         }
 
         if columnNames.count() > 0 {
-            result = result + "\n";
-            // Print separator
+            SB.Append(sb, "\n");
             i = 0;
             while i < columnNames.count() {
-                if i > 0 {
-                    result = result + "-+-";
-                }
-                result = result + "--------";
+                if i > 0 { SB.Append(sb, "-+-"); }
+                SB.Append(sb, "--------");
                 i = i + 1;
             }
-            result = result + "\n";
+            SB.Append(sb, "\n");
         }
 
         // Print rows
@@ -107,22 +103,20 @@ class QueryResult {
             var row = rows.get(r);
             var c = 0;
             while c < row.columnCount() {
-                if c > 0 {
-                    result = result + " | ";
-                }
-                result = result + row.getValue(c).toString();
+                if c > 0 { SB.Append(sb, " | "); }
+                SB.Append(sb, row.getValue(c).toString());
                 c = c + 1;
             }
-            result = result + "\n";
+            SB.Append(sb, "\n");
             r = r + 1;
         }
 
         if rows.count() == 0 && columnNames.count() == 0 {
-            result = message;
-        } else {
-            result = result + "(" + Fmt.Int(rows.count()) + " rows)";
+            return message;
         }
-
-        return result;
+        SB.Append(sb, "(");
+        SB.Append(sb, Fmt.Int(rows.count()));
+        SB.Append(sb, " rows)");
+        return SB.ToString(sb);
     }
 }

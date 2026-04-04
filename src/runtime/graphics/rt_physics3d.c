@@ -137,6 +137,113 @@ static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
     }
 }
 
+static double clampd(double v, double lo, double hi) {
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
+
+static double vec3_dot(const double *a, const double *b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+static double vec3_len_sq(const double *v) {
+    return vec3_dot(v, v);
+}
+
+static void vec3_copy(double *dst, const double *src) {
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+}
+
+static void vec3_set(double *dst, double x, double y, double z) {
+    dst[0] = x;
+    dst[1] = y;
+    dst[2] = z;
+}
+
+static void make_temp_sphere(rt_body3d *out, const double *center, double radius) {
+    memset(out, 0, sizeof(*out));
+    out->shape = PH3D_SHAPE_SPHERE;
+    out->position[0] = center[0];
+    out->position[1] = center[1];
+    out->position[2] = center[2];
+    out->radius = radius;
+}
+
+static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c) {
+    double half_axis = fmax(b->height * 0.5 - b->radius, 0.0);
+    vec3_set(a, b->position[0], b->position[1] - half_axis, b->position[2]);
+    vec3_set(c, b->position[0], b->position[1] + half_axis, b->position[2]);
+}
+
+static void closest_point_capsule_axis_to_point(const rt_body3d *cap,
+                                                const double *point,
+                                                double *closest) {
+    double a[3], c[3];
+    capsule_axis_endpoints(cap, a, c);
+    closest[0] = cap->position[0];
+    closest[1] = clampd(point[1], a[1], c[1]);
+    closest[2] = cap->position[2];
+}
+
+static void closest_points_capsule_axes(const rt_body3d *a,
+                                        const rt_body3d *b,
+                                        double *closest_a,
+                                        double *closest_b) {
+    double aa[3], ac[3], ba[3], bc[3];
+    capsule_axis_endpoints(a, aa, ac);
+    capsule_axis_endpoints(b, ba, bc);
+
+    closest_a[0] = a->position[0];
+    closest_a[2] = a->position[2];
+    closest_b[0] = b->position[0];
+    closest_b[2] = b->position[2];
+
+    if (ac[1] < ba[1]) {
+        closest_a[1] = ac[1];
+        closest_b[1] = ba[1];
+    } else if (bc[1] < aa[1]) {
+        closest_a[1] = aa[1];
+        closest_b[1] = bc[1];
+    } else {
+        double overlap_min = aa[1] > ba[1] ? aa[1] : ba[1];
+        double overlap_max = ac[1] < bc[1] ? ac[1] : bc[1];
+        double y = clampd((a->position[1] + b->position[1]) * 0.5, overlap_min, overlap_max);
+        closest_a[1] = y;
+        closest_b[1] = y;
+    }
+}
+
+static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
+                                               const rt_body3d *box,
+                                               double *closest_axis) {
+    double mn[3], mx[3], a[3], c[3];
+    body_aabb(box, mn, mx);
+    capsule_axis_endpoints(cap, a, c);
+    closest_axis[0] = cap->position[0];
+    closest_axis[2] = cap->position[2];
+    if (c[1] < mn[1])
+        closest_axis[1] = c[1];
+    else if (a[1] > mx[1])
+        closest_axis[1] = a[1];
+    else
+        closest_axis[1] = clampd(cap->position[1], mn[1] > a[1] ? mn[1] : a[1], mx[1] < c[1] ? mx[1] : c[1]);
+}
+
+static int bodies_can_collide(const rt_body3d *a, const rt_body3d *b) {
+    if (!a || !b)
+        return 0;
+    if (!(a->collision_layer & b->collision_mask))
+        return 0;
+    if (!(b->collision_layer & a->collision_mask))
+        return 0;
+    return 1;
+}
+
 /* --- Shape-specific narrow-phase collision tests ---
  * Normal always points A→B (matches impulse convention: a.vel -= j*n). */
 
@@ -236,18 +343,64 @@ static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal
     /* Narrow phase: shape-specific dispatch */
     int sa = a->shape, sb = b->shape;
 
-    /* Sphere-sphere */
+    /* Sphere/capsule pairs collapse to closest-axis sphere tests. */
     if ((sa == PH3D_SHAPE_SPHERE || sa == PH3D_SHAPE_CAPSULE) &&
-        (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE))
-        return test_sphere_sphere(a, b, normal, depth);
+        (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE)) {
+        rt_body3d tmp_a, tmp_b;
+        const rt_body3d *sphere_a = a;
+        const rt_body3d *sphere_b = b;
+
+        if (sa == PH3D_SHAPE_CAPSULE) {
+            double center[3];
+            if (sb == PH3D_SHAPE_CAPSULE) {
+                double other_center[3];
+                closest_points_capsule_axes(a, b, center, other_center);
+                make_temp_sphere(&tmp_a, center, a->radius);
+                make_temp_sphere(&tmp_b, other_center, b->radius);
+                sphere_a = &tmp_a;
+                sphere_b = &tmp_b;
+                return test_sphere_sphere(sphere_a, sphere_b, normal, depth);
+            }
+            vec3_copy(center, b->position);
+            closest_point_capsule_axis_to_point(a, center, center);
+            make_temp_sphere(&tmp_a, center, a->radius);
+            sphere_a = &tmp_a;
+        }
+
+        if (sb == PH3D_SHAPE_CAPSULE) {
+            double center[3];
+            vec3_copy(center, a->position);
+            closest_point_capsule_axis_to_point(b, center, center);
+            make_temp_sphere(&tmp_b, center, b->radius);
+            sphere_b = &tmp_b;
+        }
+        return test_sphere_sphere(sphere_a, sphere_b, normal, depth);
+    }
 
     /* AABB-sphere (order: A=AABB, B=sphere) */
-    if (sa == PH3D_SHAPE_AABB && (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE))
+    if (sa == PH3D_SHAPE_AABB && (sb == PH3D_SHAPE_SPHERE || sb == PH3D_SHAPE_CAPSULE)) {
+        if (sb == PH3D_SHAPE_CAPSULE) {
+            double center[3];
+            rt_body3d tmp_sphere;
+            closest_point_capsule_axis_to_aabb(b, a, center);
+            make_temp_sphere(&tmp_sphere, center, b->radius);
+            return test_aabb_sphere(a, &tmp_sphere, normal, depth);
+        }
         return test_aabb_sphere(a, b, normal, depth);
+    }
 
     /* Sphere-AABB (reversed — flip normal) */
     if ((sa == PH3D_SHAPE_SPHERE || sa == PH3D_SHAPE_CAPSULE) && sb == PH3D_SHAPE_AABB) {
-        int hit = test_aabb_sphere(b, a, normal, depth);
+        int hit;
+        if (sa == PH3D_SHAPE_CAPSULE) {
+            double center[3];
+            rt_body3d tmp_sphere;
+            closest_point_capsule_axis_to_aabb(a, b, center);
+            make_temp_sphere(&tmp_sphere, center, a->radius);
+            hit = test_aabb_sphere(b, &tmp_sphere, normal, depth);
+        } else {
+            hit = test_aabb_sphere(b, a, normal, depth);
+        }
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -749,8 +902,264 @@ double rt_body3d_get_mass(void *o) {
  * Character Controller
  *=========================================================================*/
 
+typedef struct {
+    rt_body3d *body;
+    double normal[3];
+    double depth;
+    double fraction;
+    int8_t hit;
+} rt_character_hit3d;
+
+static void character3d_set_ground_state(rt_character3d *ctrl, int8_t grounded, const double *normal) {
+    if (!ctrl || !ctrl->body)
+        return;
+    ctrl->is_grounded = grounded;
+    ctrl->body->is_grounded = grounded;
+    if (grounded && normal) {
+        ctrl->body->ground_normal[0] = -normal[0];
+        ctrl->body->ground_normal[1] = -normal[1];
+        ctrl->body->ground_normal[2] = -normal[2];
+    } else {
+        ctrl->body->ground_normal[0] = 0.0;
+        ctrl->body->ground_normal[1] = 1.0;
+        ctrl->body->ground_normal[2] = 0.0;
+    }
+}
+
+static int character3d_normal_is_walkable(const rt_character3d *ctrl, const double *normal) {
+    return ctrl && normal && (-normal[1] >= ctrl->slope_limit_cos);
+}
+
+static int character3d_candidate_body(const rt_character3d *ctrl, const rt_body3d *other) {
+    if (!ctrl || !ctrl->body || !ctrl->world || !other)
+        return 0;
+    if (other == ctrl->body)
+        return 0;
+    if (other->is_trigger || !other->is_static)
+        return 0;
+    return bodies_can_collide(ctrl->body, other);
+}
+
+static int character3d_test_position(rt_character3d *ctrl,
+                                     const double *pos,
+                                     rt_character_hit3d *out_hit) {
+    if (!ctrl || !ctrl->body || !ctrl->world)
+        return 0;
+
+    rt_body3d *body = ctrl->body;
+    double saved[3] = {body->position[0], body->position[1], body->position[2]};
+    body->position[0] = pos[0];
+    body->position[1] = pos[1];
+    body->position[2] = pos[2];
+
+    rt_character_hit3d best;
+    memset(&best, 0, sizeof(best));
+    for (int32_t i = 0; i < ctrl->world->body_count; i++) {
+        rt_body3d *other = ctrl->world->bodies[i];
+        double normal[3], depth;
+        if (!character3d_candidate_body(ctrl, other))
+            continue;
+        if (!test_collision(body, other, normal, &depth))
+            continue;
+        if (!best.hit || depth > best.depth) {
+            best.hit = 1;
+            best.body = other;
+            best.depth = depth;
+            vec3_copy(best.normal, normal);
+        }
+    }
+
+    body->position[0] = saved[0];
+    body->position[1] = saved[1];
+    body->position[2] = saved[2];
+
+    if (best.hit && out_hit)
+        *out_hit = best;
+    return best.hit;
+}
+
+static void character3d_resolve_penetration(rt_character3d *ctrl) {
+    if (!ctrl || !ctrl->body)
+        return;
+    for (int iter = 0; iter < 6; iter++) {
+        rt_character_hit3d hit;
+        double pos[3] = {ctrl->body->position[0], ctrl->body->position[1], ctrl->body->position[2]};
+        if (!character3d_test_position(ctrl, pos, &hit))
+            return;
+        ctrl->body->position[0] -= hit.normal[0] * (hit.depth + 1e-4);
+        ctrl->body->position[1] -= hit.normal[1] * (hit.depth + 1e-4);
+        ctrl->body->position[2] -= hit.normal[2] * (hit.depth + 1e-4);
+    }
+}
+
+static int character3d_sweep(rt_character3d *ctrl, const double *delta, rt_character_hit3d *out_hit) {
+    if (!ctrl || !ctrl->body || vec3_len_sq(delta) < 1e-12)
+        return 0;
+
+    rt_body3d *body = ctrl->body;
+    double start[3] = {body->position[0], body->position[1], body->position[2]};
+    double end[3] = {start[0] + delta[0], start[1] + delta[1], start[2] + delta[2]};
+    double move_len = sqrt(vec3_len_sq(delta));
+    double step_dist = body->radius > 1e-6 ? body->radius * 0.25 : 0.05;
+    int steps = (int)ceil(move_len / (step_dist > 0.05 ? step_dist : 0.05));
+    double prev_t = 0.0;
+    rt_character_hit3d hit;
+
+    if (steps < 1)
+        steps = 1;
+    if (steps > 128)
+        steps = 128;
+
+    for (int s = 1; s <= steps; s++) {
+        double t = (double)s / (double)steps;
+        double pos[3] = {start[0] + delta[0] * t, start[1] + delta[1] * t, start[2] + delta[2] * t};
+        if (!character3d_test_position(ctrl, pos, &hit)) {
+            prev_t = t;
+            continue;
+        }
+
+        {
+            double lo = prev_t;
+            double hi = t;
+            rt_character_hit3d best_hit = hit;
+            for (int iter = 0; iter < 14; iter++) {
+                double mid = (lo + hi) * 0.5;
+                double mid_pos[3] = {start[0] + delta[0] * mid,
+                                     start[1] + delta[1] * mid,
+                                     start[2] + delta[2] * mid};
+                if (character3d_test_position(ctrl, mid_pos, &hit)) {
+                    hi = mid;
+                    best_hit = hit;
+                } else {
+                    lo = mid;
+                }
+            }
+
+            body->position[0] = start[0] + delta[0] * lo;
+            body->position[1] = start[1] + delta[1] * lo;
+            body->position[2] = start[2] + delta[2] * lo;
+            best_hit.hit = 1;
+            best_hit.fraction = lo;
+            if (out_hit)
+                *out_hit = best_hit;
+            return 1;
+        }
+    }
+
+    body->position[0] = end[0];
+    body->position[1] = end[1];
+    body->position[2] = end[2];
+    if (out_hit)
+        memset(out_hit, 0, sizeof(*out_hit));
+    return 0;
+}
+
+static int character3d_probe_ground(rt_character3d *ctrl) {
+    if (!ctrl || !ctrl->body)
+        return 0;
+    double probe_pos[3] = {ctrl->body->position[0], ctrl->body->position[1] - 0.05, ctrl->body->position[2]};
+    rt_character_hit3d hit;
+    if (character3d_test_position(ctrl, probe_pos, &hit) && character3d_normal_is_walkable(ctrl, hit.normal)) {
+        character3d_set_ground_state(ctrl, 1, hit.normal);
+        return 1;
+    }
+    character3d_set_ground_state(ctrl, 0, NULL);
+    return 0;
+}
+
+static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_delta) {
+    if (!ctrl || !ctrl->body || ctrl->step_height <= 1e-6 || vec3_len_sq(horizontal_delta) < 1e-12)
+        return 0;
+
+    double start[3] = {ctrl->body->position[0], ctrl->body->position[1], ctrl->body->position[2]};
+    double up[3] = {0.0, ctrl->step_height, 0.0};
+    rt_character_hit3d hit;
+
+    if (character3d_sweep(ctrl, up, &hit)) {
+        ctrl->body->position[0] = start[0];
+        ctrl->body->position[1] = start[1];
+        ctrl->body->position[2] = start[2];
+        return 0;
+    }
+    character3d_resolve_penetration(ctrl);
+
+    if (character3d_sweep(ctrl, horizontal_delta, &hit)) {
+        ctrl->body->position[0] = start[0];
+        ctrl->body->position[1] = start[1];
+        ctrl->body->position[2] = start[2];
+        return 0;
+    }
+    character3d_resolve_penetration(ctrl);
+
+    {
+        double down[3] = {0.0, -(ctrl->step_height + 0.05), 0.0};
+        if (character3d_sweep(ctrl, down, &hit) && character3d_normal_is_walkable(ctrl, hit.normal)) {
+            character3d_set_ground_state(ctrl, 1, hit.normal);
+            return 1;
+        }
+    }
+
+    ctrl->body->position[0] = start[0];
+    ctrl->body->position[1] = start[1];
+    ctrl->body->position[2] = start[2];
+    return 0;
+}
+
+static void character3d_move_axis(rt_character3d *ctrl,
+                                  const double *initial_delta,
+                                  int allow_step) {
+    double remaining[3] = {initial_delta[0], initial_delta[1], initial_delta[2]};
+    for (int iter = 0; iter < 4; iter++) {
+        rt_character_hit3d hit;
+        double leftover[3];
+
+        if (vec3_len_sq(remaining) < 1e-12)
+            return;
+
+        character3d_resolve_penetration(ctrl);
+        if (!character3d_sweep(ctrl, remaining, &hit))
+            return;
+
+        leftover[0] = remaining[0] * (1.0 - hit.fraction);
+        leftover[1] = remaining[1] * (1.0 - hit.fraction);
+        leftover[2] = remaining[2] * (1.0 - hit.fraction);
+
+        if (allow_step && !character3d_normal_is_walkable(ctrl, hit.normal) &&
+            character3d_try_step(ctrl, leftover))
+            return;
+
+        if (remaining[1] < 0.0 && character3d_normal_is_walkable(ctrl, hit.normal)) {
+            character3d_set_ground_state(ctrl, 1, hit.normal);
+            return;
+        }
+
+        {
+            double into = vec3_dot(leftover, hit.normal);
+            if (into > 0.0) {
+                leftover[0] -= hit.normal[0] * into;
+                leftover[1] -= hit.normal[1] * into;
+                leftover[2] -= hit.normal[2] * into;
+            } else {
+                leftover[0] = leftover[1] = leftover[2] = 0.0;
+            }
+        }
+
+        remaining[0] = leftover[0];
+        remaining[1] = leftover[1];
+        remaining[2] = leftover[2];
+    }
+}
+
 static void character3d_finalizer(void *obj) {
-    (void)obj;
+    rt_character3d *c = (rt_character3d *)obj;
+    if (!c)
+        return;
+    if (c->body && rt_obj_release_check0(c->body))
+        rt_obj_free(c->body);
+    c->body = NULL;
+    if (c->world && rt_obj_release_check0(c->world))
+        rt_obj_free(c->world);
+    c->world = NULL;
 }
 
 void *rt_character3d_new(double radius, double height, double mass) {
@@ -783,78 +1192,24 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     double vz = rt_vec3_z(velocity_vec);
 
     ctrl->was_grounded = ctrl->is_grounded;
-    ctrl->is_grounded = body->is_grounded;
+    character3d_set_ground_state(ctrl, 0, NULL);
 
-    /* Slide-and-step movement with up to 3 iterations.
-     * Each iteration: attempt move, on collision slide along surface. */
-    double remaining[3] = {vx * dt, vy * dt, vz * dt};
-    double original_y = body->position[0]; /* unused but keeps pattern */
-    (void)original_y;
+    {
+        double start[3] = {body->position[0], body->position[1], body->position[2]};
+        double horizontal[3] = {vx * dt, 0.0, vz * dt};
+        double vertical[3] = {0.0, vy * dt, 0.0};
 
-    for (int iter = 0; iter < 3; iter++) {
-        double move_len = sqrt(remaining[0] * remaining[0] + remaining[1] * remaining[1] +
-                               remaining[2] * remaining[2]);
-        if (move_len < 1e-6)
-            break;
+        character3d_resolve_penetration(ctrl);
+        character3d_move_axis(ctrl, horizontal, 1);
+        character3d_move_axis(ctrl, vertical, 0);
+        character3d_resolve_penetration(ctrl);
+        if (!ctrl->is_grounded)
+            character3d_probe_ground(ctrl);
 
-        /* Attempt full move */
-        body->position[0] += remaining[0];
-        body->position[1] += remaining[1];
-        body->position[2] += remaining[2];
-
-        /* Check collision against world bodies (if world is set) */
-        int collided = 0;
-        double best_normal[3] = {0, 0, 0};
-        double best_depth = 0;
-        if (ctrl->world) {
-            for (int32_t i = 0; i < ctrl->world->body_count; i++) {
-                rt_body3d *other = ctrl->world->bodies[i];
-                if (!other || other == body)
-                    continue;
-                if (!other->is_static)
-                    continue; /* character only collides with static geometry */
-
-                double normal[3], depth;
-                if (test_collision(body, other, normal, &depth)) {
-                    /* Slope limiting: reject movement up steep slopes */
-                    if (-normal[1] > ctrl->slope_limit_cos || normal[1] > ctrl->slope_limit_cos) {
-                        /* Walkable slope or ceiling — allow collision resolution */
-                    }
-                    if (depth > best_depth) {
-                        best_depth = depth;
-                        best_normal[0] = normal[0];
-                        best_normal[1] = normal[1];
-                        best_normal[2] = normal[2];
-                        collided = 1;
-                    }
-                    /* Ground detection */
-                    if (normal[1] < -0.7) {
-                        ctrl->is_grounded = 1;
-                    }
-                }
-            }
-        }
-
-        if (!collided)
-            break; /* No collision — move succeeded */
-
-        /* Push out of collision */
-        body->position[0] -= best_normal[0] * best_depth;
-        body->position[1] -= best_normal[1] * best_depth;
-        body->position[2] -= best_normal[2] * best_depth;
-
-        /* Slide: remove the component of remaining velocity along the collision normal */
-        double dot = remaining[0] * best_normal[0] + remaining[1] * best_normal[1] +
-                     remaining[2] * best_normal[2];
-        remaining[0] -= dot * best_normal[0];
-        remaining[1] -= dot * best_normal[1];
-        remaining[2] -= dot * best_normal[2];
+        body->velocity[0] = (body->position[0] - start[0]) / dt;
+        body->velocity[1] = (body->position[1] - start[1]) / dt;
+        body->velocity[2] = (body->position[2] - start[2]) / dt;
     }
-
-    /* Set velocity to match actual displacement (for physics world integration) */
-    body->velocity[0] = vx;
-    body->velocity[1] = vy;
-    body->velocity[2] = vz;
 }
 
 void rt_character3d_set_step_height(void *o, double h) {
@@ -869,6 +1224,23 @@ double rt_character3d_get_step_height(void *o) {
 void rt_character3d_set_slope_limit(void *o, double degrees) {
     if (o)
         ((rt_character3d *)o)->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
+}
+
+void rt_character3d_set_world(void *o, void *world) {
+    if (!o)
+        return;
+    rt_character3d *ctrl = (rt_character3d *)o;
+    if (ctrl->world == world)
+        return;
+    if (world)
+        rt_obj_retain_maybe(world);
+    if (ctrl->world && rt_obj_release_check0(ctrl->world))
+        rt_obj_free(ctrl->world);
+    ctrl->world = (rt_world3d *)world;
+}
+
+void *rt_character3d_get_world(void *o) {
+    return o ? ((rt_character3d *)o)->world : NULL;
 }
 
 int8_t rt_character3d_is_grounded(void *o) {
