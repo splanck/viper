@@ -24,6 +24,7 @@ module executor;
 bind String = Viper.String;
 bind Fmt = Viper.Fmt;
 bind IO = Viper.IO;
+bind Viper.Collections;
 bind Viper.Math;
 bind DateTime = Viper.Time.DateTime;
 bind Pattern = Viper.Text.Pattern;
@@ -237,27 +238,25 @@ class Executor {
     expose String pgStatLastQuery;
     expose Integer pgStatSessionStart;
     expose Integer pgStatQueryCount;
-    // Prepared statements (Phase 30)
-    expose List[String] preparedNames;
-    expose List[String] preparedSqlTemplates;
-    expose List[Integer] preparedParamCounts;
+    // Prepared statements (Phase 30) — Map for O(1) lookup
+    expose Map preparedSqlMap;        // name → SQL template
+    expose Map preparedParamCountMap; // name → param count (as integer)
 
     // Cursors (Phase 32)
     expose List[String] cursorNames;
     expose List[QueryResult] cursorResults;   // Materialized result sets
     expose List[Integer] cursorPositions;      // Current fetch position (0-based, -1 = before first)
 
-    // Savepoints (Phase 33)
-    expose List[String] savepointNames;
-    expose List[Integer] savepointJournalMarks;  // Journal index at savepoint creation
+    // Savepoints (Phase 33) — Map for O(1) lookup
+    expose Map savepointMap;  // name → journal mark index
+    expose List[String] savepointNameOrder;  // Insertion order for nested rollback
 
-    // Session variables (Phase 43): key-value pairs
-    expose List[String] sessionVarNames;
-    expose List[String] sessionVarValues;
+    // Session variables (Phase 43): Map for O(1) lookup + key list for iteration
+    expose Map sessionVars;
+    expose List[String] sessionVarKeyList;  // Ordered key list for SHOW ALL
 
     // Object comments (Phase 43): COMMENT ON TABLE/COLUMN
-    expose List[String] commentObjectKeys;   // "table:name" or "column:table.col"
-    expose List[String] commentObjectValues;
+    expose Map commentObjects;
 
     // Auto-ANALYZE: modification tracking per table
     // When modCount exceeds 10% of last-analyzed row count, auto-analyze fires
@@ -349,18 +348,16 @@ class Executor {
         pgStatLastQuery = "";
         pgStatSessionStart = DateTime.Now();
         pgStatQueryCount = 0;
-        preparedNames = [];
-        preparedSqlTemplates = [];
-        preparedParamCounts = [];
+        preparedSqlMap = Map.New();
+        preparedParamCountMap = Map.New();
         cursorNames = [];
         cursorResults = [];
         cursorPositions = [];
-        savepointNames = [];
-        savepointJournalMarks = [];
-        sessionVarNames = [];
-        sessionVarValues = [];
-        commentObjectKeys = [];
-        commentObjectValues = [];
+        savepointMap = Map.New();
+        savepointNameOrder = [];
+        sessionVars = Map.New();
+        sessionVarKeyList = [];
+        commentObjects = Map.New();
         autoAnalyzeTableNames = [];
         autoAnalyzeModCounts = [];
         autoAnalyzeLastRowCounts = [];
@@ -396,40 +393,22 @@ class Executor {
 
     expose func getSessionVar(name: String) -> String {
         var key = String.ToLower(name);
-        var i = 0;
-        while i < sessionVarNames.count() {
-            if sessionVarNames.get(i) == key {
-                return sessionVarValues.get(i);
-            }
-            i = i + 1;
+        if Map.Has(sessionVars, key) {
+            return Map.GetStr(sessionVars, key);
         }
         return "";
     }
 
     expose func setSessionVar(name: String, value: String) {
         var key = String.ToLower(name);
-        var i = 0;
-        while i < sessionVarNames.count() {
-            if sessionVarNames.get(i) == key {
-                sessionVarValues.set(i, value);
-                return;
-            }
-            i = i + 1;
+        if Map.Has(sessionVars, key) == false {
+            sessionVarKeyList.add(key);
         }
-        sessionVarNames.add(key);
-        sessionVarValues.add(value);
+        Map.SetStr(sessionVars, key, value);
     }
 
     expose func hasSessionVar(name: String) -> Boolean {
-        var key = String.ToLower(name);
-        var i = 0;
-        while i < sessionVarNames.count() {
-            if sessionVarNames.get(i) == key {
-                return true;
-            }
-            i = i + 1;
-        }
-        return false;
+        return Map.Has(sessionVars, String.ToLower(name));
     }
 
     //=========================================================================
@@ -437,38 +416,19 @@ class Executor {
     //=========================================================================
 
     expose func setComment(objectKey: String, comment: String) {
-        var i = 0;
-        while i < commentObjectKeys.count() {
-            if commentObjectKeys.get(i) == objectKey {
-                commentObjectValues.set(i, comment);
-                return;
-            }
-            i = i + 1;
-        }
-        commentObjectKeys.add(objectKey);
-        commentObjectValues.add(comment);
+        Map.SetStr(commentObjects, objectKey, comment);
     }
 
     expose func getComment(objectKey: String) -> String {
-        var i = 0;
-        while i < commentObjectKeys.count() {
-            if commentObjectKeys.get(i) == objectKey {
-                return commentObjectValues.get(i);
-            }
-            i = i + 1;
+        if Map.Has(commentObjects, objectKey) {
+            return Map.GetStr(commentObjects, objectKey);
         }
         return "";
     }
 
     expose func removeComment(objectKey: String) {
-        var i = 0;
-        while i < commentObjectKeys.count() {
-            if commentObjectKeys.get(i) == objectKey {
-                commentObjectKeys.removeAt(i);
-                commentObjectValues.removeAt(i);
-                return;
-            }
-            i = i + 1;
+        if Map.Has(commentObjects, objectKey) {
+            Map.Remove(commentObjects, objectKey);
         }
     }
 
@@ -4238,11 +4198,12 @@ class Executor {
         result.addColumnName("name");
         result.addColumnName("setting");
         var i = 0;
-        while i < sessionVarNames.count() {
+        while i < sessionVarKeyList.count() {
+            var key = sessionVarKeyList.get(i);
             var row = new Row();
             row.init();
-            row.addValue(sqlText(sessionVarNames.get(i)));
-            row.addValue(sqlText(sessionVarValues.get(i)));
+            row.addValue(sqlText(key));
+            row.addValue(sqlText(Map.GetStr(sessionVars, key)));
             result.addRow(row);
             i = i + 1;
         }
@@ -4273,8 +4234,8 @@ class Executor {
     }
 
     hide func executeResetAllVars() -> QueryResult {
-        sessionVarNames = [];
-        sessionVarValues = [];
+        sessionVars = Map.New();
+        sessionVarKeyList = [];
         initDefaultSessionVars();
         var result = new QueryResult();
         result.init();
@@ -4573,13 +4534,9 @@ class Executor {
         parser.advance();
 
         // Check for duplicate
-        var i = 0;
-        while i < preparedNames.count() {
-            if preparedNames.get(i) == name {
-                result.setError("Prepared statement '" + name + "' already exists");
-                return result;
-            }
-            i = i + 1;
+        if Map.Has(preparedSqlMap, name) {
+            result.setError("Prepared statement '" + name + "' already exists");
+            return result;
         }
 
         // Expect AS keyword
@@ -4616,9 +4573,8 @@ class Executor {
         }
         sqlTemplate = String.Trim(sqlTemplate);
 
-        preparedNames.add(name);
-        preparedSqlTemplates.add(sqlTemplate);
-        preparedParamCounts.add(paramCount);
+        Map.SetStr(preparedSqlMap, name, sqlTemplate);
+        Map.SetInt(preparedParamCountMap, name, paramCount);
         result.message = "PREPARE";
         return result;
     }
@@ -4635,21 +4591,12 @@ class Executor {
         parser.advance();
 
         // Find the prepared statement
-        var idx = -1;
-        var i = 0;
-        while i < preparedNames.count() {
-            if preparedNames.get(i) == name {
-                idx = i;
-                i = preparedNames.count();
-            }
-            i = i + 1;
-        }
-        if idx < 0 {
+        if Map.Has(preparedSqlMap, name) == false {
             result.setError("Prepared statement '" + name + "' not found");
             return result;
         }
 
-        var sqlTemplate = preparedSqlTemplates.get(idx);
+        var sqlTemplate = Map.GetStr(preparedSqlMap, name);
 
         // Parse optional parameter list: (val1, val2, ...)
         if parser.currentKind() == TK_LPAREN {
@@ -4691,9 +4638,8 @@ class Executor {
         if parser.currentKind() != TK_IDENTIFIER {
             // DEALLOCATE ALL
             if String.ToUpper(parser.currentText()) == "ALL" {
-                preparedNames = [];
-                preparedSqlTemplates = [];
-                preparedParamCounts = [];
+                preparedSqlMap = Map.New();
+                preparedParamCountMap = Map.New();
                 result.message = "DEALLOCATE ALL";
                 return result;
             }
@@ -4702,23 +4648,13 @@ class Executor {
         }
         var name = String.ToUpper(parser.currentText());
 
-        var idx = -1;
-        var i = 0;
-        while i < preparedNames.count() {
-            if preparedNames.get(i) == name {
-                idx = i;
-                i = preparedNames.count();
-            }
-            i = i + 1;
-        }
-        if idx < 0 {
+        if Map.Has(preparedSqlMap, name) == false {
             result.setError("Prepared statement '" + name + "' not found");
             return result;
         }
 
-        preparedNames.removeAt(idx);
-        preparedSqlTemplates.removeAt(idx);
-        preparedParamCounts.removeAt(idx);
+        Map.Remove(preparedSqlMap, name);
+        Map.Remove(preparedParamCountMap, name);
         result.message = "DEALLOCATE";
         return result;
     }
@@ -4958,8 +4894,8 @@ class Executor {
         txnDirtyTables = [];
 
         // Clear savepoints
-        savepointNames = [];
-        savepointJournalMarks = [];
+        savepointMap = Map.New();
+        savepointNameOrder = [];
 
         // MVCC: clear transaction state (snapshot becomes committed)
         mvccTxnId = 0;
@@ -5005,8 +4941,8 @@ class Executor {
         txnDirtyTables = [];
 
         // Clear savepoints
-        savepointNames = [];
-        savepointJournalMarks = [];
+        savepointMap = Map.New();
+        savepointNameOrder = [];
 
         // MVCC: clear transaction state
         mvccTxnId = 0;
@@ -5486,19 +5422,11 @@ class Executor {
         }
 
         // Check for duplicate savepoint — overwrite if exists (PG behavior)
-        var fi = 0;
-        var found = false;
-        while fi < savepointNames.count() {
-            if savepointNames.get(fi) == name {
-                savepointJournalMarks.set(fi, journal.count());
-                found = true;
-            }
-            fi = fi + 1;
-        }
-
-        if found == false {
-            savepointNames.add(name);
-            savepointJournalMarks.add(journal.count());
+        if Map.Has(savepointMap, name) {
+            Map.SetInt(savepointMap, name, journal.count());
+        } else {
+            Map.SetInt(savepointMap, name, journal.count());
+            savepointNameOrder.add(name);
         }
 
         result.message = "SAVEPOINT";
@@ -5515,25 +5443,33 @@ class Executor {
         }
 
         // Find the savepoint
-        var idx = -1;
-        var fi = 0;
-        while fi < savepointNames.count() {
-            if savepointNames.get(fi) == name {
-                idx = fi;
-            }
-            fi = fi + 1;
-        }
-
-        if idx < 0 {
+        if Map.Has(savepointMap, name) == false {
             result.setError("Savepoint \"" + name + "\" does not exist");
             return result;
         }
 
-        // Release this savepoint and all savepoints created after it
-        while savepointNames.count() > idx {
-            savepointNames.removeAt(savepointNames.count() - 1);
-            savepointJournalMarks.removeAt(savepointJournalMarks.count() - 1);
+        // Find index in order list
+        var idx = -1;
+        var fi = 0;
+        while fi < savepointNameOrder.count() {
+            if savepointNameOrder.get(fi) == name { idx = fi; }
+            fi = fi + 1;
         }
+
+        // Release this savepoint and all created after it (rebuild without them)
+        var newOrder: List[String] = [];
+        fi = 0;
+        while fi < idx {
+            newOrder.add(savepointNameOrder.get(fi));
+            fi = fi + 1;
+        }
+        // Remove released savepoints from map
+        fi = idx;
+        while fi < savepointNameOrder.count() {
+            Map.Remove(savepointMap, savepointNameOrder.get(fi));
+            fi = fi + 1;
+        }
+        savepointNameOrder = newOrder;
 
         result.message = "RELEASE";
         return result;
@@ -5549,21 +5485,20 @@ class Executor {
         }
 
         // Find the savepoint
-        var idx = -1;
-        var fi = 0;
-        while fi < savepointNames.count() {
-            if savepointNames.get(fi) == name {
-                idx = fi;
-            }
-            fi = fi + 1;
-        }
-
-        if idx < 0 {
+        if Map.Has(savepointMap, name) == false {
             result.setError("Savepoint \"" + name + "\" does not exist");
             return result;
         }
 
-        var journalMark = savepointJournalMarks.get(idx);
+        var journalMark = Map.GetInt(savepointMap, name);
+
+        // Find index in order list
+        var idx = -1;
+        var fi = 0;
+        while fi < savepointNameOrder.count() {
+            if savepointNameOrder.get(fi) == name { idx = fi; }
+            fi = fi + 1;
+        }
 
         // Undo journal entries in reverse order from current position back to mark
         var i = journal.count() - 1;
@@ -5591,10 +5526,19 @@ class Executor {
         }
 
         // Remove savepoints created after this one, but keep this savepoint
-        while savepointNames.count() > idx + 1 {
-            savepointNames.removeAt(savepointNames.count() - 1);
-            savepointJournalMarks.removeAt(savepointJournalMarks.count() - 1);
+        var newOrder2: List[String] = [];
+        var si = 0;
+        while si <= idx {
+            newOrder2.add(savepointNameOrder.get(si));
+            si = si + 1;
         }
+        // Remove later savepoints from map
+        si = idx + 1;
+        while si < savepointNameOrder.count() {
+            Map.Remove(savepointMap, savepointNameOrder.get(si));
+            si = si + 1;
+        }
+        savepointNameOrder = newOrder2;
 
         result.message = "ROLLBACK";
         return result;

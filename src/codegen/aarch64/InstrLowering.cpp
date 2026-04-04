@@ -136,6 +136,18 @@ struct MaterializedCallArg {
     viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
 };
 
+uint16_t emitMaskedI1Value(MBasicBlock &out, uint16_t srcVReg, uint16_t &nextVRegId) {
+    const uint16_t mask = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+    const uint16_t masked = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(MInstr{MOpcode::AndRRR,
+                                {MOperand::vregOp(RegClass::GPR, masked),
+                                 MOperand::vregOp(RegClass::GPR, srcVReg),
+                                 MOperand::vregOp(RegClass::GPR, mask)}});
+    return masked;
+}
+
 bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                      std::size_t numNamedArgs,
                      bool variadicTailOnStack,
@@ -228,14 +240,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
         out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
     }
     if (ins.type.kind == il::core::Type::Kind::I1) {
-        const uint16_t mask = allocateNextVReg(nextVRegId);
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
-        const uint16_t masked = allocateNextVReg(nextVRegId);
-        out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                    {MOperand::vregOp(RegClass::GPR, masked),
-                                     MOperand::vregOp(RegClass::GPR, dst),
-                                     MOperand::vregOp(RegClass::GPR, mask)}});
+        const uint16_t masked = emitMaskedI1Value(out, dst, nextVRegId);
         tempVReg[*ins.result] = masked;
         return masked;
     }
@@ -388,18 +393,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                                {MOperand::vregOp(cls, outVReg), MOperand::immOp(callerArgOffset)}});
                     // Mask i1 parameters to ensure upper bits are zero (stack path).
                     if (bb.params[static_cast<std::size_t>(pIdx)].type.kind ==
-                        il::core::Type::Kind::I1) {
-                        const uint16_t mask = allocateNextVReg(nextVRegId);
-                        out.instrs.push_back(
-                            MInstr{MOpcode::MovRI,
-                                   {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
-                        const uint16_t masked = allocateNextVReg(nextVRegId);
-                        out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                                    {MOperand::vregOp(RegClass::GPR, masked),
-                                                     MOperand::vregOp(RegClass::GPR, outVReg),
-                                                     MOperand::vregOp(RegClass::GPR, mask)}});
-                        outVReg = masked;
-                    }
+                        il::core::Type::Kind::I1)
+                        outVReg = emitMaskedI1Value(out, outVReg, nextVRegId);
                 }
                 return true;
             }
@@ -412,18 +407,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                     MInstr{MOpcode::MovRR, {MOperand::vregOp(cls, outVReg), MOperand::regOp(src)}});
                 // Mask i1 parameters to ensure upper bits are zero (register path).
                 if (bb.params[static_cast<std::size_t>(pIdx)].type.kind ==
-                    il::core::Type::Kind::I1) {
-                    const uint16_t mask = allocateNextVReg(nextVRegId);
-                    out.instrs.push_back(
-                        MInstr{MOpcode::MovRI,
-                               {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
-                    const uint16_t masked = allocateNextVReg(nextVRegId);
-                    out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                                {MOperand::vregOp(RegClass::GPR, masked),
-                                                 MOperand::vregOp(RegClass::GPR, outVReg),
-                                                 MOperand::vregOp(RegClass::GPR, mask)}});
-                    outVReg = masked;
-                }
+                    il::core::Type::Kind::I1)
+                    outVReg = emitMaskedI1Value(out, outVReg, nextVRegId);
             } else {
                 out.instrs.push_back(MInstr{
                     MOpcode::FMovRR, {MOperand::vregOp(cls, outVReg), MOperand::regOp(src)}});
@@ -722,6 +707,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                         out.instrs.push_back(
                             MInstr{MOpcode::LdrRegFpImm,
                                    {MOperand::vregOp(outCls, outVReg), MOperand::immOp(off)}});
+                        if (prod.type.kind == il::core::Type::Kind::I1)
+                            outVReg = emitMaskedI1Value(out, outVReg, nextVRegId);
                         return true;
                     }
                 }
@@ -1550,38 +1537,44 @@ bool lowerLoad(const il::core::Instr &ins,
         return true;
     const unsigned ptrId = ins.operands[0].id;
     const int off = ctx.fb.localOffset(ptrId);
+    const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
+    const bool isBool = (ins.type.kind == il::core::Type::Kind::I1);
     if (off != 0) {
-        const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
         const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
-        ctx.tempVReg[*ins.result] = dst;
         if (isFP) {
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
             out.instrs.push_back(
                 MInstr{MOpcode::LdrFprFpImm,
                        {MOperand::vregOp(RegClass::FPR, dst), MOperand::immOp(off)}});
+            ctx.tempVReg[*ins.result] = dst;
         } else {
             out.instrs.push_back(
                 MInstr{MOpcode::LdrRegFpImm,
                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(off)}});
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
+            ctx.tempVReg[*ins.result] =
+                isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
         }
     } else {
         uint16_t vbase = 0;
         RegClass cbase = RegClass::GPR;
         if (materializeValueToVReg(ins.operands[0], bb, ctx, out, vbase, cbase)) {
-            const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
-            ctx.tempVReg[*ins.result] = dst;
             if (isFP) {
                 ctx.tempRegClass[*ins.result] = RegClass::FPR;
                 out.instrs.push_back(MInstr{MOpcode::LdrFprBaseImm,
                                             {MOperand::vregOp(RegClass::FPR, dst),
                                              MOperand::vregOp(RegClass::GPR, vbase),
                                              MOperand::immOp(0)}});
+                ctx.tempVReg[*ins.result] = dst;
             } else {
                 out.instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
                                             {MOperand::vregOp(RegClass::GPR, dst),
                                              MOperand::vregOp(RegClass::GPR, vbase),
                                              MOperand::immOp(0)}});
+                ctx.tempRegClass[*ins.result] = RegClass::GPR;
+                ctx.tempVReg[*ins.result] =
+                    isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
             }
         }
     }
@@ -1772,9 +1765,13 @@ bool lowerRet(const il::core::Instr &ins,
                     MOpcode::FMovRR,
                     {MOperand::regOp(ctx.ti.f64ReturnReg), MOperand::vregOp(RegClass::FPR, v)}});
             } else {
+                uint16_t retVReg = v;
+                if (ctx.fn.retType.kind == il::core::Type::Kind::I1)
+                    retVReg = emitMaskedI1Value(out, v, ctx.nextVRegId);
                 out.instrs.push_back(
                     MInstr{MOpcode::MovRR,
-                           {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, v)}});
+                           {MOperand::regOp(PhysReg::X0),
+                            MOperand::vregOp(RegClass::GPR, retVReg)}});
             }
         }
     }

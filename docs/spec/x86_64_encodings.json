@@ -590,6 +590,20 @@
       ]
     },
     {
+      "opcode": "MOVQxr",
+      "mnemonic": "movq",
+      "form": "RegReg",
+      "order": "R_R",
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
+    },
+    {
       "opcode": "MOVSDrr",
       "mnemonic": "movsd",
       "form": "RegReg",

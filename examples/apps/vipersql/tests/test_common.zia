@@ -164,16 +164,7 @@ func getVal(result: QueryResult, row: Integer, col: Integer) -> SqlValue {
 
 // Check if a string contains a substring (case-sensitive).
 func stringContains(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
-    if subLen > sLen { return false; }
-    var i = 0;
-    while i <= sLen - subLen {
-        var slice = String.Substring(s, i, subLen);
-        if slice == sub { return true; }
-        i = i + 1;
-    }
-    return false;
+    return String.IndexOf(s, sub) >= 0;
 }
 
 //=============================================================================

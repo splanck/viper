@@ -34,7 +34,6 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
 - **10 Game Engine APIs** — Entity (2D game object with built-in physics), Behavior (composable AI presets), Raycast2D (tilemap line-of-sight), LevelData (JSON level loader), SceneManager (multi-scene transitions), Camera.SmoothFollow (deadzone + lerp tracking), AnimStateMachine named states (play-by-name), MenuList.HandleInput (input convenience), Config.Load (JSON config), Tilemap.SetTileAnim (per-tile frame animation). 10 new runtime classes, 3,800+ LOC in C.
 - **Asset Embedding System (VPA)** — Compile-time asset packaging via `embed`, `pack`, and `pack-compressed` project directives. VPA binary format with `AssetCompiler` and `VpaWriter` toolchain. `Assets.Load`/`LoadBytes`/`Exists`/`Mount` runtime API. Asset blobs injected into `.rodata` via the native assembler for zero-file-dependency executables. Cross-platform `Path.ExeDir()` for relative asset resolution.
-- **XENOSCAPE Demo Rewrite** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC), 10 JSON level files, JSON-driven entity spawning via `LevelData`, composable enemy AI via `Behavior`, and scene management via `SceneManager`.
 - **Native macOS Menu Bar** — 554-line Objective-C bridge (`rt_gui_macos_menu.m`) mirrors Viper GUI menubars to the native macOS application menu bar. Special item relocation (About → app menu, Preferences → app menu with Cmd+,, Quit → app menu with Cmd+Q). Keyboard accelerator translation, Services submenu, and Hide/Show All standard items.
 - **Bytecode VM CALL_NATIVE Expansion** — Native function index widened from 8-bit to 16-bit (255 → 65,535 max native references) to accommodate the growing runtime. Bytecode format version bumped to v2.
 - **Zia Runtime Extern Signatures** — `rtgen` now emits full parameter types (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. Enables correct string equality comparison for runtime methods returning `str` (e.g., `LevelData.ObjectType() == "enemy"` now emits `Viper.String.Equals` instead of `ICmpEq`).
@@ -44,18 +43,17 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **ViperSQL Client-Server Architecture** — SQLdb demo renamed to ViperSQL with modular directory layout (`engine/`, `parser/`, `storage/`, `server/`, `client/`, `io/`, `optimizer/`). New `vipersql.zia` server entry point with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--log-queries`, `--repl`). New `vsql` interactive client (482 LOC) with PG wire protocol, aligned column output, meta-commands (`\dt`, `\d`, `\l`, `\c`, `\i`, `\timing`, `\x`), and multi-line input. PG wire protocol client library (`pg_client.zia`, 420 LOC). SHA-256 password hashing. Query logging.
-- **3D Bowling Game Demo** — Multi-file 3D bowling game (12 files, 3,100+ LOC) with Physics3D pin collision, ball spin/hook mechanics, oil patterns, pin sweep/reset animations, 4-mode camera, full 10-frame scoring, particle effects, and Synth audio.
-- **Documentation & Code Quality** — 700+ runtime functions documented, 39 stale doc files deleted, 70+ factual errors fixed, Bible code audit across 12 chapters, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against source with Zia examples), runtime surface audit test, Quat.New parameter order fix. Two network test fixes: IPv6 wildcard address, HTTP chunked encoding framing.
+- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database restructured with 10 new engine features, 8 Graphics3D API demos.
+- **Documentation** — 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed, comprehensive 3D API docs overhaul, game engine docs.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 78 | +78 |
-| Source files | 2,671 | 2,800 | +129 |
-| Production SLOC | ~348K | ~420K | +72K |
-| Test count | 1,351 | 1,391 | +40 |
+| Commits | — | 84 | +84 |
+| Source files | 2,671 | 2,810 | +139 |
+| Production SLOC | ~348K | ~428K | +80K |
+| Test count | 1,351 | 1,401 | +50 |
 
 ---
 
@@ -296,6 +294,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Pipeline error handling** — `pipeline.run()` wrapped in try/catch for cleaner error reporting.
 - **Branch relaxation** — Short JMP (`EB`, 2 bytes) and short Jcc (`75`/`74`/etc., 2 bytes) encodings for near branches, replacing always-near JMP (`E9`, 5 bytes) and always-long Jcc (`0F 8x`, 6 bytes) forms. Reduces code size for small functions with nearby branch targets.
 - **Pipeline decomposition** — Monolithic `runFunctionPipeline` split into composable module-level phases: `legalizeModuleToMIR` (IL→MIR lowering + legalization), `allocateModuleMIR` (register allocation + frame lowering), `optimizeModuleMIR` (peephole), `emitMIRToAssembly` (text output), and `emitMIRToBinary` (native object output). `selectTarget()` made public. New `PeepholePass.cpp/hpp` (60 LOC) as a proper pass in the pass manager. Each phase can be invoked independently, enabling MIR inspection at any pipeline stage.
+- **Call ABI refactor** — `CallArgLayout` extracted as shared utility for SysV x86-64 call argument classification. `FrameLayoutUtils` for common frame lowering patterns. New `test_x86_call_abi.cpp` tests.
 
 **AArch64 backend:**
 - **`i1` parameter masking** — Boolean parameters masked with `AND 1` at function entry, matching return-value masking. Prevents upper-bit garbage corruption.
@@ -456,17 +455,6 @@ The app name is resolved from the window title, `CFBundleName`, or process name 
 
 ---
 
-### Game Engine Documentation
-
-New `/docs/gameengine/` documentation section providing topical game engine guides organized by game development topic (not by runtime namespace):
-
-- **README.md** — Landing page with quick start code (Zia + BASIC), feature summary table (17 systems), topical guide links (Rendering/Gameplay/Presentation/Infrastructure), 15-game example gallery, and API reference cross-links
-- **getting-started.md** — Progressive 5-step tutorial building a paddle-bounce game from zero (window → movement → ball physics → sound → screen effects)
-- **architecture.md** — System layer diagram, data flow per frame, zero-dependency manifesto, GPU backend selection, source code layout
-- **examples/README.md** — Gallery of all 15 example games with engine feature coverage matrix
-
----
-
 ### New Game Runtime Classes
 
 Five additions to the `Viper.Game` namespace:
@@ -591,22 +579,6 @@ Comprehensive overhaul with InstallerStub rewrite and expanded platform support:
 
 ---
 
-### Documentation
-
-- **Documentation & Code Quality** — 39 stale doc files deleted, 70+ factual errors corrected, Bible code audit across 12 chapters, `entity`→`class` terminology updates, Viper license headers on 100% of source files, Doxygen `@brief`/`@param`/`@return` on 98% of runtime `.c` and 100% of `.h` files across all subsystems, codemap refreshed, `BreakBeforeBraces` Attach formatting, `count_sloc.sh` script, comprehensive 3D API docs overhaul (all 34 Graphics3D classes verified against `runtime.def` and C source with typed tables and Zia `bind` examples), new game engine docs (`/docs/gameengine/`), runtime surface audit test, and Quat.New parameter order fix in `viperlib/math.md`.
-
----
-
-### Demo Games
-
-- **XENOSCAPE** — Complete rewrite of the flagship Metroid-style sidescroller using all 10 new game engine APIs. 26 Zia files (13K LOC) + 10 JSON level files with data-driven entity spawning, composable AI via Behavior, scene management, smooth camera tracking, and named animation states. 10 interconnected levels, 30+ enemy types, 4 boss fights, ability-gated progression, save system, and achievement tracking. Camera and particle system refinements for smoother gameplay.
-- **3D Bowling** — Multi-file 3D bowling game at `examples/games/3dbowling/` (12 files, 3,100+ LOC) showcasing the full Graphics3D pipeline. Features Physics3D pin collision and ball spin/hook mechanics with oil pattern effects, pin sweep/reset animations with state machine, 4-mode camera system (follow/overhead/side/pin-view), full 10-frame scoring with bonus rolls and strike/spare detection, celebration state machine with particle effects, Synth audio for impacts and strikes, lane/gutter geometry, and traditional scoreboard HUD overlay. Late-cycle polish: lane rendering, pin placement, game config, and scoring refinements.
-- **Sidescroller** — Sprite art expansion (+208 LOC), enemy behavior updates, level additions, and camera/particle system refinements.
-- **Asset Demo** — Minimal example (`examples/apps/asset_demo/`) demonstrating `embed` and `pack` project directives with `Assets.Load()` at runtime.
-- **ViperSQL** — Database demo restructured from flat `sqldb/` into modular `vipersql/` layout (`engine/`, `parser/`, `storage/`, `server/`, `client/`, `io/`, `optimizer/`). New `vipersql.zia` server entry point and `vsql` interactive SQL client with PG wire protocol, meta-commands, and aligned output.
-
----
-
 ### Video Playback
 
 Video playback for game cutscenes and GUI media applications. All codecs implemented from scratch with zero external dependencies.
@@ -652,23 +624,6 @@ Video playback for game cutscenes and GUI media applications. All codecs impleme
 |-----------|-------------|-------------|-----------|--------|
 | AVI (RIFF) | MJPEG | PCM WAV | `.avi` | Full decode |
 | OGG | Theora | Vorbis | `.ogv` | Infrastructure (headers + YCbCr + audio handoff) |
-
----
-
-### 3D Graphics Demos
-
-Eight new demo programs in `examples/apiaudit/graphics3d/`:
-
-| Demo | Features Demonstrated |
-|------|----------------------|
-| `minimal_3d_test.zia` | Canvas3D, Camera3D, Mesh3D, Material3D, Light3D — basic 3D rendering validation |
-| `procedural_terrain_demo.zia` | PerlinNoise → Terrain3D.GeneratePerlin, splat maps, FPS camera, terrain-locked movement |
-| `terrain_lod_demo.zia` | 256x256 terrain with SetLODDistances, frustum culling, SetSkirtDepth, free flight |
-| `water_demo.zia` | Terrain island + Water3D with 3 Gerstner waves, fog, directional lighting |
-| `vegetation_demo.zia` | Terrain + Vegetation3D with 5000 procedural grass blades, wind animation, LOD thinning |
-| `shading_demo.zia` | 4 spheres with BlinnPhong, Toon, Fresnel, and Emissive shading models side-by-side |
-| `video_demo.zia` | MJPEG AVI playback via VideoPlayer + Canvas.Blit |
-| `video_gui_demo.zia` | VideoWidget in a Viper.GUI application with looping |
 
 ---
 
@@ -829,3 +784,12 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - Archive extraction accepted paths containing `../` — could write outside the target directory (zip-slip). Now validates and rejects path-traversal entries
 - Cipher `rt_cipher_decrypt` did not fall back gracefully when PBKDF2-derived key failed authentication — now tries legacy HKDF derivation before trapping
 - Graphics3D texture ownership: CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D did not retain their texture/mesh/material references — GC could collect them while still in use. All now use retain/release with finalizer cleanup
+- ViperSQL: modulo operator (`%`) not recognized by parser/executor
+- ViperSQL: `REPLACE()` function rejected as keyword instead of function call
+- ViperSQL: `IS NULL` / `IS NOT NULL` not evaluated in JOIN WHERE clauses (evalJoinExpr missing `OP_IS`)
+- ViperSQL: window function `PARTITION BY` failed when partition column was not in SELECT list
+- ViperSQL: `LIKE` was case-insensitive (used `LikeCI`), now correctly case-sensitive; `ILIKE` added for case-insensitive matching
+- ViperSQL: `ALTER TABLE` missing exclusive lock acquisition (concurrent DDL corruption risk)
+- ViperSQL: CSV parser accepted unterminated quoted fields without error
+- ViperSQL: persistence export crashed on NULL column values
+- ViperSQL: `countDistinctValues` used string length as hash (severe bucket clustering) — now uses FNV hash

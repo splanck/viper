@@ -24,6 +24,8 @@
 #include "FastPathsInternal.hpp"
 #include "codegen/aarch64/A64ImmediateUtils.hpp"
 #include "codegen/aarch64/LoweringContext.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -278,6 +280,14 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     if (retV.kind != il::core::Value::Kind::Temp || retV.id != *binI.result || binI.callee.empty())
         return std::nullopt;
 
+    std::string mappedCallee = binI.callee;
+    if (auto mapped = il::runtime::mapCanonicalRuntimeName(binI.callee))
+        mappedCallee = std::string(*mapped);
+    const bool isVarArg =
+        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(binI.callee);
+    const bool needsGenericResultSemantics =
+        binI.type.kind == il::core::Type::Kind::Str || binI.type.kind == il::core::Type::Kind::I1;
+
     // Check for floating-point arguments (requires vreg-based lowering)
     bool hasFloatArg = false;
     for (const auto &arg : binI.operands) {
@@ -301,7 +311,8 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     // parameters to their alloca slots (those stores happen in the generic lowering at
     // LowerILToMIR.cpp:220-320). We must emit those stores here first so that the
     // alloca slots contain valid data when the loads execute.
-    if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg) {
+    if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg || isVarArg ||
+        needsGenericResultSemantics) {
         const auto paramHomeAllocas = buildParamHomeAllocaMap(bb);
 
         // Emit param→alloca stores: for each IL `store TYPE, %alloca, %param`,
@@ -532,14 +543,14 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
             return std::nullopt;
         }
 
-        bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
+        bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}});
         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
         ctx.fb.finalize();
         return ctx.mf;
     }
 
     // No stack args; emit call directly
-    bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
+    bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}});
     bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
     ctx.fb.finalize();
     return ctx.mf;

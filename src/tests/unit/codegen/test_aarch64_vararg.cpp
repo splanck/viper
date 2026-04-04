@@ -25,10 +25,16 @@
 
 #include "tests/TestHarness.hpp"
 
+#include "codegen/aarch64/LowerILToMIR.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -90,6 +96,220 @@ TEST(AArch64Vararg, RuntimeSigNamedParamCount) {
     }
     // Test passes even if rt_snprintf isn't in the registry (it might be
     // in the hardcoded vararg list only).
+}
+
+TEST(AArch64Vararg, SmallVarArgCallStillSpillsAnonymousArgsToStack) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "sink", .type = Type(Type::Kind::Ptr), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "rt_sb_printf";
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0), Value::constInt(7)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawStackAlloc = false;
+    bool sawStackStore = false;
+    bool sawStackFree = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
+            mi.ops[0].imm == 16) {
+            sawStackAlloc = true;
+        }
+        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
+            sawStackStore = true;
+        }
+        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
+            mi.ops[0].imm == 16) {
+            sawStackFree = true;
+        }
+    }
+
+    EXPECT_TRUE(sawStackAlloc);
+    EXPECT_TRUE(sawStackStore);
+    EXPECT_TRUE(sawStackFree);
+}
+
+TEST(AArch64Vararg, CallReturnedStringUsesGenericRetainSemantics) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::Str);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "seed", .type = Type(Type::Kind::I64), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "get_str";
+    call.type = Type(Type::Kind::Str);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawRetain = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc != MOpcode::Bl || mi.ops.empty() || mi.ops[0].kind != MOperand::Kind::Label)
+            continue;
+        if (mi.ops[0].label == "rt_str_retain_maybe") {
+            sawRetain = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawRetain);
+}
+
+TEST(AArch64Vararg, BoolCallResultIsNormalizedBeforeReturn) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I1);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "seed", .type = Type(Type::Kind::I64), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "is_ready";
+    call.type = Type(Type::Kind::I1);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawMask = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::AndRRR) {
+            sawMask = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawMask);
+}
+
+TEST(AArch64Vararg, BoolLoadResultIsNormalizedBeforeReturn) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I1);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "slot", .type = Type(Type::Kind::Ptr), .id = 0}};
+
+    Instr load;
+    load.result = 1;
+    load.op = Opcode::Load;
+    load.type = Type(Type::Kind::I1);
+    load.operands = {Value::temp(0)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {load, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawMask = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::AndRRR) {
+            sawMask = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawMask);
+}
+
+TEST(AArch64Vararg, BoolParamReturnUsesMaskedGenericPath) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I1);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "flag", .type = Type(Type::Kind::I1), .id = 0}};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(0)};
+
+    entry.instructions = {ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawMask = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::AndRRR) {
+            sawMask = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawMask);
 }
 
 int main(int argc, char **argv) {

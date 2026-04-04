@@ -26,6 +26,7 @@
 #include "OperandUtils.hpp"
 #include "Unsupported.hpp"
 
+#include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string_view>
@@ -60,14 +61,21 @@ void applyKnownVarArgMetadata(CallLoweringPlan &plan, std::string_view callee) {
     if (callee.empty())
         return;
 
-    plan.isVarArg = il::runtime::isVarArgCallee(callee);
+    std::string_view mappedCallee = callee;
+    if (const auto mapped = il::runtime::mapCanonicalRuntimeName(callee))
+        mappedCallee = *mapped;
+
+    plan.isVarArg =
+        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee);
     if (!plan.isVarArg) {
         plan.numNamedArgs = plan.args.size();
         return;
     }
 
-    if (const auto *sig = il::runtime::findRuntimeSignature(callee))
-        plan.numNamedArgs = sig->paramTypes.size();
+    if (const auto *mappedSig = il::runtime::findRuntimeSignature(mappedCallee))
+        plan.numNamedArgs = mappedSig->paramTypes.size();
+    else if (const auto *rawSig = il::runtime::findRuntimeSignature(callee))
+        plan.numNamedArgs = rawSig->paramTypes.size();
     else
         plan.numNamedArgs = 0;
 }
@@ -76,6 +84,17 @@ MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
     return call;
+}
+
+void emitRetainStringResultCall(const VReg &resultVReg, MIRBuilder &builder) {
+    CallLoweringPlan retainPlan{};
+    retainPlan.callee = "rt_str_retain_maybe";
+    retainPlan.args.push_back(
+        CallArg{.cls = CallArgClass::GPR, .vreg = resultVReg.id, .isImm = false, .imm = 0});
+    retainPlan.numNamedArgs = retainPlan.args.size();
+
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(retainPlan));
+    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_str_retain_maybe"}), callPlanId));
 }
 
 void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBuilder &builder) {
@@ -93,6 +112,9 @@ void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBui
             RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
         builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
     }
+
+    if (instr.resultKind == ILValue::Kind::STR)
+        emitRetainStringResultCall(resultVReg, builder);
 }
 
 } // namespace

@@ -14,6 +14,9 @@
 
 #include "tests/TestHarness.hpp"
 
+#include "codegen/x86_64/Backend.hpp"
+#include "codegen/x86_64/CallLowering.hpp"
+#include "codegen/x86_64/FrameLowering.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
@@ -52,6 +55,13 @@ ILInstr makeRet(ILValue value) {
     instr.opcode = "ret";
     instr.ops = {std::move(value)};
     return instr;
+}
+
+ILValue makeParam(int id, ILValue::Kind kind) {
+    ILValue value{};
+    value.kind = kind;
+    value.id = id;
+    return value;
 }
 
 const OpReg *asReg(const Operand &operand) {
@@ -202,6 +212,106 @@ TEST(X64CallABI, IndirectLabelCallsPreserveKnownVarArgMetadata) {
     EXPECT_TRUE(plan.isVarArg);
     EXPECT_EQ(plan.numNamedArgs, 0u);
     EXPECT_EQ(plan.args.size(), 4u);
+}
+
+TEST(X64CallABI, StringCallResultsScheduleRetainHelper) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.resultId = 0;
+    call.resultKind = ILValue::Kind::STR;
+    call.ops = {makeLabel("get_str")};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {call, makeRet(makeValue(ILValue::Kind::STR, 0))};
+
+    ILFunction fn{};
+    fn.name = "call_string_result";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 2u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "get_str");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_retain_maybe");
+    ASSERT_EQ(lowering.callPlans()[1].args.size(), 1u);
+
+    ASSERT_FALSE(mir.blocks.empty());
+    std::vector<const MInstr *> calls;
+    for (const auto &instr : mir.blocks.front().instructions) {
+        if (instr.opcode == MOpcode::CALL)
+            calls.push_back(&instr);
+    }
+    ASSERT_EQ(calls.size(), 2u);
+    ASSERT_LT(calls[1]->callPlanId, lowering.callPlans().size());
+    EXPECT_EQ(lowering.callPlans()[calls[1]->callPlanId].callee, "rt_str_retain_maybe");
+}
+
+TEST(X64CallABI, Win64VarArgFpRegisterIsDuplicatedIntoIntegerLane) {
+    MBasicBlock block{};
+    block.label = "entry";
+
+    CallLoweringPlan plan{};
+    plan.callee = "rt_sb_printf";
+    plan.isVarArg = true;
+    plan.numNamedArgs = 1;
+    plan.args.push_back(
+        CallArg{.cls = CallArgClass::GPR, .vreg = 1, .isImm = false, .imm = 0});
+    plan.args.push_back(
+        CallArg{.cls = CallArgClass::FPR, .vreg = 2, .isImm = false, .imm = 0});
+
+    FrameInfo frame{};
+    lowerCall(block, 0, plan, win64Target(), frame);
+
+    bool foundDup = false;
+    for (const auto &instr : block.instructions) {
+        if (instr.opcode != MOpcode::MOVQxr || instr.operands.size() < 2)
+            continue;
+        const auto *dst = asReg(instr.operands[0]);
+        const auto *src = asReg(instr.operands[1]);
+        if (!dst || !src || !dst->isPhys || !src->isPhys)
+            continue;
+        if (static_cast<PhysReg>(dst->idOrPhys) == PhysReg::RDX &&
+            static_cast<PhysReg>(src->idOrPhys) == PhysReg::XMM1) {
+            foundDup = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(foundDup);
+}
+
+TEST(X64CallABI, Win64VarArgAssemblyMirrorsFpArgIntoIntegerLane) {
+    ILValue sink = makeParam(0, ILValue::Kind::PTR);
+    ILValue fp = makeParam(1, ILValue::Kind::F64);
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.resultId = 2;
+    call.resultKind = ILValue::Kind::I64;
+    call.ops = {makeLabel("rt_sb_printf"), sink, fp};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {sink.id, fp.id};
+    entry.paramKinds = {sink.kind, fp.kind};
+    entry.instrs = {call, makeRet(makeValue(ILValue::Kind::I64, 2))};
+
+    ILFunction fn{};
+    fn.name = "win64_vararg_fp_dup";
+    fn.blocks = {entry};
+
+    ILModule module{};
+    module.funcs = {fn};
+
+    CodegenOptions options{};
+    options.targetABI = CodegenOptions::TargetABI::Win64;
+    const CodegenResult result = emitModuleToAssembly(module, options);
+
+    EXPECT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("movq %xmm1, %rdx"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

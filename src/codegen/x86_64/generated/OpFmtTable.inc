@@ -21,7 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-static constexpr std::array<OpFmt, 49> kOpFmt = {{
+static constexpr std::array<OpFmt, 50> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
     {MOpcode::MOVrm, "movq", 2U, 0U},
     {MOpcode::MOVmr, "movq", 2U, 0U},
@@ -73,3 +73,4 @@ static constexpr std::array<OpFmt, 49> kOpFmt = {{
     {MOpcode::MOVUPSrm, "movups", 2U, 0U},
     {MOpcode::MOVUPSmr, "movups", 2U, 0U},
 }};
+

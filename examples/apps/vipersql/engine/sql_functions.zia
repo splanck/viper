@@ -23,37 +23,18 @@ bind Pattern = Viper.Text.Pattern;
 
 // Check if a string contains a substring (module-local name to avoid collision with test_common)
 func sfStringContains(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
-    if subLen > sLen { return false; }
-    var i = 0;
-    while i <= sLen - subLen {
-        if String.Substring(s, i, subLen) == sub { return true; }
-        i = i + 1;
-    }
-    return false;
+    return String.IndexOf(s, sub) >= 0;
 }
 
-// Find position of a single character in a string, returns -1 if not found
+// Find position of a single character in a string, returns -1 if not found (0-based)
 func findChar(s: String, ch: String) -> Integer {
-    var i = 0;
-    var len = String.Length(s);
-    while i < len {
-        if String.Substring(s, i, 1) == ch {
-            return i;
-        }
-        i = i + 1;
-    }
-    return 0 - 1;
+    // String.IndexOf returns 1-based (0 = not found), convert to 0-based (-1 = not found)
+    return String.IndexOf(s, ch) - 1;
 }
 
 // Zero-pad an integer to a given width
 func fmtPadded(n: Integer, width: Integer) -> String {
-    var s = Fmt.Int(n);
-    while String.Length(s) < width {
-        s = "0" + s;
-    }
-    return s;
+    return Fmt.IntPad(n, width, "0");
 }
 
 // Convert SqlValue to integer (handles TEXT, REAL, INTEGER)
@@ -251,18 +232,8 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var strArg = args.get(0);
         var subArg = args.get(1);
         if strArg.kind == SQL_TEXT && subArg.kind == SQL_TEXT {
-            var str = strArg.textValue;
-            var sub = subArg.textValue;
-            var subLen = String.Length(sub);
-            var strLen = String.Length(str);
-            var i = 0;
-            while i + subLen <= strLen {
-                if String.Substring(str, i, subLen) == sub {
-                    return sqlInteger(i + 1);
-                }
-                i = i + 1;
-            }
-            return sqlInteger(0);
+            // String.IndexOf already returns 1-based (0 = not found)
+            return sqlInteger(String.IndexOf(strArg.textValue, subArg.textValue));
         }
     }
 
@@ -272,18 +243,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var strArg = args.get(1);
         if subArg.kind == SQL_NULL || strArg.kind == SQL_NULL { return sqlNull(); }
         if subArg.kind == SQL_TEXT && strArg.kind == SQL_TEXT {
-            var str = strArg.textValue;
-            var sub = subArg.textValue;
-            var subLen = String.Length(sub);
-            var strLen = String.Length(str);
-            var i = 0;
-            while i + subLen <= strLen {
-                if String.Substring(str, i, subLen) == sub {
-                    return sqlInteger(i + 1);
-                }
-                i = i + 1;
-            }
-            return sqlInteger(0);
+            return sqlInteger(String.IndexOf(strArg.textValue, subArg.textValue));
         }
     }
 

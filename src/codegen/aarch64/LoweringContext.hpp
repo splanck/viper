@@ -63,6 +63,9 @@ inline uint32_t spillKeyForCrossBlockTemp(unsigned tempId) {
 /// It contains references to the target info, frame builder, and various
 /// maps tracking temp-to-vreg mappings, phi spill slots, and cross-block temps.
 struct LoweringContext {
+    /// @brief IL function currently being lowered.
+    const il::core::Function &fn;
+
     /// @brief ABI and register information for the AArch64 target.
     const TargetInfo &ti;
 

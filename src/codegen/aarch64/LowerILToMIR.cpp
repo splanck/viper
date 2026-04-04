@@ -388,7 +388,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         }
 
         // Create lowering context for dispatching to extracted handlers
-        LoweringContext ctx{*ti_,
+        LoweringContext ctx{fn,
+                            *ti_,
                             fb,
                             mf,
                             nextVRegId,

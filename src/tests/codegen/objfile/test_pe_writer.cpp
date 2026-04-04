@@ -381,6 +381,7 @@ TEST(PeWriter, ExternalIatSlotsAreSeededWithLookupEntries) {
                          {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
                          {{"ExitProcess", 0x2000}},
                          false,
+                         0,
                          err);
     ASSERT_TRUE(ok);
 

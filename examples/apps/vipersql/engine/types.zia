@@ -59,23 +59,11 @@ func stringToNumber(text: String) -> Float {
 //=============================================================================
 
 func fmtDateParts(y: Integer, m: Integer, d: Integer) -> String {
-    var result = Fmt.Int(y) + "-";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + "-";
-    if d < 10 { result = result + "0"; }
-    result = result + Fmt.Int(d);
-    return result;
+    return Fmt.Int(y) + "-" + Fmt.IntPad(m, 2, "0") + "-" + Fmt.IntPad(d, 2, "0");
 }
 
 func fmtTimeParts(h: Integer, m: Integer, s: Integer) -> String {
-    var result = "";
-    if h < 10 { result = result + "0"; }
-    result = result + Fmt.Int(h) + ":";
-    if m < 10 { result = result + "0"; }
-    result = result + Fmt.Int(m) + ":";
-    if s < 10 { result = result + "0"; }
-    result = result + Fmt.Int(s);
-    return result;
+    return Fmt.IntPad(h, 2, "0") + ":" + Fmt.IntPad(m, 2, "0") + ":" + Fmt.IntPad(s, 2, "0");
 }
 
 // Convert DATE epoch (noon local) to TIMESTAMP epoch (midnight local for same date)
