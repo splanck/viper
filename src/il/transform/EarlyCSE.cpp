@@ -36,6 +36,7 @@
 #include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
+#include <cstddef>
 #include <unordered_map>
 #include <vector>
 
@@ -45,7 +46,24 @@ namespace il::transform {
 
 namespace {
 
-using CSETable = std::unordered_map<ValueKey, Value, ValueKeyHash>;
+struct AvailableExpr {
+    Value value;
+    BasicBlock *block{nullptr};
+};
+
+using CSETable = std::unordered_map<ValueKey, AvailableExpr, ValueKeyHash>;
+
+static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, std::size_t> &order,
+                                 const BasicBlock *defBlock,
+                                 const BasicBlock *useBlock) {
+    if (!defBlock || !useBlock)
+        return false;
+    auto defIt = order.find(defBlock);
+    auto useIt = order.find(useBlock);
+    if (defIt == order.end() || useIt == order.end())
+        return false;
+    return defIt->second <= useIt->second;
+}
 
 /// @brief Process one basic block during the dominator-tree CSE walk.
 /// @details For each pure instruction in @p B, looks up its expression key in
@@ -57,7 +75,10 @@ using CSETable = std::unordered_map<ValueKey, Value, ValueKeyHash>;
 ///                  current scope. May be modified (entries appended to back).
 /// @param useInfo   Use-def information for O(uses) replacement.
 /// @return True if any instruction was removed from @p B.
-bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDefInfo &useInfo) {
+bool processBlock(BasicBlock &B,
+                  std::vector<CSETable> &scopes,
+                  const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder,
+                  viper::il::UseDefInfo &useInfo) {
     bool changed = false;
     for (std::size_t idx = 0; idx < B.instructions.size();) {
         Instr &I = B.instructions[idx];
@@ -71,16 +92,18 @@ bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDe
         bool found = false;
         for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
             auto hit = it->find(*key);
-            if (hit != it->end()) {
-                useInfo.replaceAllUses(*I.result, hit->second);
-                B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
-                changed = true;
-                found = true;
-                break;
-            }
+            if (hit == it->end())
+                continue;
+            if (!isTextuallyAvailable(blockOrder, hit->second.block, &B))
+                continue;
+            useInfo.replaceAllUses(*I.result, hit->second.value);
+            B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
+            changed = true;
+            found = true;
+            break;
         }
         if (!found) {
-            scopes.back().emplace(std::move(*key), Value::temp(*I.result));
+            scopes.back().emplace(std::move(*key), AvailableExpr{Value::temp(*I.result), &B});
             ++idx;
         }
     }
@@ -123,6 +146,10 @@ bool runEarlyCSE(Module &M, Function &F) {
 
         std::vector<CSETable> scopes;
         scopes.reserve(F.blocks.size());
+        std::unordered_map<const BasicBlock *, std::size_t> blockOrder;
+        blockOrder.reserve(F.blocks.size());
+        for (std::size_t i = 0; i < F.blocks.size(); ++i)
+            blockOrder.emplace(&F.blocks[i], i);
 
         bool changed = false;
 
@@ -145,7 +172,7 @@ bool runEarlyCSE(Module &M, Function &F) {
             // Schedule scope pop after all children are processed.
             worklist.push_back({nullptr});
 
-            changed |= processBlock(*item.block, scopes, useInfo);
+            changed |= processBlock(*item.block, scopes, blockOrder, useInfo);
 
             // Schedule dominated children (order doesn't matter for correctness).
             auto childIt = domTree.children.find(item.block);

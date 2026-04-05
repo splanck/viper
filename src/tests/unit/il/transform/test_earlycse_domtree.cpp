@@ -218,6 +218,78 @@ Module buildSiblingBranchCSE() {
     return M;
 }
 
+Module buildTextuallyUnsafeCrossBlockCSE() {
+    Module M;
+    Function F;
+    F.name = "textually_unsafe_cross_block";
+    F.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+    Param a{"a", Type(Type::Kind::I64), id++};
+    Param b{"b", Type(Type::Kind::I64), id++};
+    F.params = {a, b};
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("late");
+        br.brArgs.push_back({});
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock update;
+    update.label = "update";
+    {
+        Instr add;
+        add.result = id++;
+        add.op = Opcode::Add;
+        add.type = Type(Type::Kind::I64);
+        add.operands = {Value::temp(a.id), Value::temp(b.id)};
+        update.instructions.push_back(std::move(add));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(id - 1));
+        update.instructions.push_back(std::move(ret));
+        update.terminated = true;
+    }
+
+    BasicBlock late;
+    late.label = "late";
+    {
+        Instr add;
+        add.result = id++;
+        add.op = Opcode::Add;
+        add.type = Type(Type::Kind::I64);
+        add.operands = {Value::temp(a.id), Value::temp(b.id)};
+        late.instructions.push_back(std::move(add));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("update");
+        br.brArgs.push_back({});
+        late.instructions.push_back(std::move(br));
+        late.terminated = true;
+    }
+
+    // "late" dominates "update" in the CFG, but appears later textually.
+    // EarlyCSE must not rewrite update's add to use late's temp.
+    F.blocks.push_back(std::move(entry));
+    F.blocks.push_back(std::move(update));
+    F.blocks.push_back(std::move(late));
+    F.valueNames.resize(id);
+    F.valueNames[a.id] = "a";
+    F.valueNames[b.id] = "b";
+    M.functions.push_back(std::move(F));
+    return M;
+}
+
 } // namespace
 
 // An Add in the entry block dominates its successor — the commuted duplicate
@@ -264,6 +336,29 @@ TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated) {
     // Both adds must survive — neither branch dominates the other.
     unsigned addsAfter = countOpcode(fn, Opcode::Add);
     EXPECT_EQ(addsAfter, 2u);
+}
+
+TEST(EarlyCSEDomTree, TextuallyLaterDominatorDoesNotCreateUseBeforeDef) {
+    Module M = buildTextuallyUnsafeCrossBlockCSE();
+    ASSERT_EQ(M.functions.size(), 1u);
+    Function &fn = M.functions.front();
+
+    unsigned addsBefore = countOpcode(fn, Opcode::Add);
+    ASSERT_EQ(addsBefore, 2u);
+
+    il::transform::runEarlyCSE(M, fn);
+
+    // The update block must keep its own add because reusing the later block's
+    // temp would violate textual def-before-use.
+    unsigned addsAfter = countOpcode(fn, Opcode::Add);
+    EXPECT_EQ(addsAfter, 2u);
+
+    const BasicBlock &updateBlock = fn.blocks[1];
+    ASSERT_EQ(updateBlock.instructions.size(), 2u);
+    ASSERT_TRUE(updateBlock.instructions[0].result.has_value());
+    EXPECT_EQ(updateBlock.instructions[0].op, Opcode::Add);
+    EXPECT_EQ(updateBlock.instructions[1].op, Opcode::Ret);
+    EXPECT_EQ(updateBlock.instructions[1].operands[0].id, *updateBlock.instructions[0].result);
 }
 
 /// @brief Main.

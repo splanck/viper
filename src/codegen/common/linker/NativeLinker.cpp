@@ -111,6 +111,32 @@ bool usesDebugWindowsRuntime(const std::vector<std::string> &archivePaths) {
     return false;
 }
 
+std::string stripLeadingUnderscores(const std::string &name) {
+    size_t i = 0;
+    while (i < name.size() && name[i] == '_')
+        ++i;
+    return (i > 0) ? name.substr(i) : name;
+}
+
+bool isObjcClassLookupSymbol(const std::string &name) {
+    const std::string stripped = stripLeadingUnderscores(name);
+    return stripped.rfind("OBJC_CLASS_$_", 0) == 0 || stripped.rfind("OBJC_METACLASS_$_", 0) == 0;
+}
+
+std::string normalizeMacFrameworkSymbol(const std::string &name) {
+    std::string normalized = stripLeadingUnderscores(name);
+    static constexpr const char *kObjcPrefixes[] = {
+        "OBJC_CLASS_$_",
+        "OBJC_METACLASS_$_",
+        "OBJC_EHTYPE_$_",
+    };
+    for (const char *prefix : kObjcPrefixes) {
+        if (normalized.rfind(prefix, 0) == 0)
+            return normalized.substr(std::char_traits<char>::length(prefix));
+    }
+    return normalized;
+}
+
 bool isWindowsHelperSymbol(const std::string &name) {
     return name == "_fltused" || name == "__security_cookie" || name == "__security_check_cookie" ||
            name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
@@ -1210,30 +1236,21 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                  "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore"},
             };
 
-            // Helper: strip all leading underscores from a symbol name for
-            // prefix matching. Needed because some C symbols retain underscores
-            // after the MachOReader strips the Mach-O mangling prefix (e.g.,
-            // __CFConstantStringClassReference, _objc_empty_cache).
-            auto stripUnderscores = [](const std::string &s) -> std::string {
-                size_t i = 0;
-                while (i < s.size() && s[i] == '_')
-                    ++i;
-                return (i > 0) ? s.substr(i) : s;
-            };
-
             for (const auto &rule : kFrameworkRules) {
                 bool needed = false;
                 for (const auto &sym : dynamicSyms) {
-                    const std::string stripped = stripUnderscores(sym);
+                    const std::string stripped = stripLeadingUnderscores(sym);
+                    const std::string normalized = normalizeMacFrameworkSymbol(sym);
                     for (const char *const *p = rule.prefixes; *p; ++p) {
-                        if (sym.find(*p) == 0 || stripped.find(*p) == 0) {
+                        if (sym.find(*p) == 0 || stripped.find(*p) == 0 ||
+                            normalized.find(*p) == 0) {
                             needed = true;
                             break;
                         }
                     }
                     if (!needed) {
                         for (const char *const *e = rule.exactSyms; *e; ++e) {
-                            if (sym == *e) {
+                            if (sym == *e || stripped == *e || normalized == *e) {
                                 needed = true;
                                 break;
                             }
@@ -1266,18 +1283,20 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                     // the framework that defines the class, which can't be determined
                     // from the symbol prefix alone (e.g., OBJC_CLASS_$_NSWindow is
                     // in AppKit, not libobjc).
-                    if (sym.find("OBJC_CLASS_$_") == 0 || sym.find("OBJC_METACLASS_$_") == 0) {
+                    if (isObjcClassLookupSymbol(sym)) {
                         symOrdinals[sym] = 0; // flat lookup
                         continue;
                     }
 
                     // Try prefix/exact matching against framework rules.
                     bool matched = false;
-                    const std::string stripped = stripUnderscores(sym);
+                    const std::string stripped = stripLeadingUnderscores(sym);
+                    const std::string normalized = normalizeMacFrameworkSymbol(sym);
                     for (const auto &rule : kFrameworkRules) {
                         // Try prefix match against both raw and underscore-stripped name.
                         for (const char *const *p = rule.prefixes; *p; ++p) {
-                            if (sym.find(*p) == 0 || stripped.find(*p) == 0) {
+                            if (sym.find(*p) == 0 || stripped.find(*p) == 0 ||
+                                normalized.find(*p) == 0) {
                                 auto pit = pathToOrdinal.find(rule.dylibPath);
                                 if (pit != pathToOrdinal.end())
                                     symOrdinals[sym] = pit->second;
@@ -1287,7 +1306,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                         }
                         if (!matched) {
                             for (const char *const *e = rule.exactSyms; *e; ++e) {
-                                if (sym == *e) {
+                                if (sym == *e || stripped == *e || normalized == *e) {
                                     auto pit = pathToOrdinal.find(rule.dylibPath);
                                     if (pit != pathToOrdinal.end())
                                         symOrdinals[sym] = pit->second;

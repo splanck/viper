@@ -133,17 +133,19 @@ inline bool isTerminator(MOpcode opc) {
 
 /// @brief Check if an opcode is a memory load instruction.
 /// @param opc The machine opcode to check.
-/// @return True for LdrRegFpImm or LdrRegBaseImm opcodes.
+/// @return True for GPR/FPR FP-relative and base-relative loads.
 inline bool isMemLd(MOpcode opc) {
-    return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
+    return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm ||
+           opc == MOpcode::LdrFprFpImm || opc == MOpcode::LdrFprBaseImm;
 }
 
 /// @brief Check if an opcode is a memory store instruction.
 /// @param opc The machine opcode to check.
-/// @return True for StrRegFpImm, StrRegBaseImm, or StrRegSpImm opcodes.
+/// @return True for GPR/FPR FP-relative, base-relative, or SP-relative stores.
 inline bool isMemSt(MOpcode opc) {
     return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
-           opc == MOpcode::StrRegSpImm;
+           opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
+           opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm;
 }
 
 } // namespace viper::codegen::aarch64::ra

@@ -25,6 +25,7 @@
 #include "tests/TestHarness.hpp"
 
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/ra/OperandRoles.hpp"
 
 #include <cstring>
 #include <string>
@@ -84,6 +85,26 @@ TEST(AArch64OpcodeDef, FirstAndLastOpcode) {
     auto opcodes = allOpcodes();
     EXPECT_EQ(opcodes.front(), MOpcode::MovRR);
     EXPECT_EQ(opcodes.back(), MOpcode::MulOvfRRR);
+}
+
+TEST(AArch64OpcodeDef, ImmediateAluRoles) {
+    MInstr addRi{MOpcode::AddRI,
+                 {MOperand::vregOp(RegClass::GPR, 1),
+                  MOperand::vregOp(RegClass::GPR, 2),
+                  MOperand::immOp(16)}};
+
+    EXPECT_EQ(ra::operandRoles(addRi, 0), std::make_pair(false, true));
+    EXPECT_EQ(ra::operandRoles(addRi, 1), std::make_pair(true, false));
+}
+
+TEST(AArch64OpcodeDef, FprBaseLoadRoles) {
+    MInstr ldrFprBase{MOpcode::LdrFprBaseImm,
+                      {MOperand::vregOp(RegClass::FPR, 1),
+                       MOperand::vregOp(RegClass::GPR, 2),
+                       MOperand::immOp(0)}};
+
+    EXPECT_EQ(ra::operandRoles(ldrFprBase, 0), std::make_pair(false, true));
+    EXPECT_EQ(ra::operandRoles(ldrFprBase, 1), std::make_pair(true, false));
 }
 
 int main(int argc, char **argv) {

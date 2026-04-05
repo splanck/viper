@@ -38,12 +38,18 @@ inline std::string machoMangle(const std::string &name) {
 /// Look up a symbol name in a map, falling back to the underscore-prefixed
 /// version if the plain name is not found (Mach-O convention).
 /// Returns the iterator to the found entry, or map.end() if neither exists.
-template <typename V>
-typename std::unordered_map<std::string, V>::const_iterator findWithMachoFallback(
-    const std::unordered_map<std::string, V> &map, const std::string &name) {
+template <typename MapT>
+auto findWithMachoFallback(MapT &map, const std::string &name) -> decltype(map.find(name)) {
     auto it = map.find(name);
     if (it != map.end())
         return it;
+
+    if (!name.empty() && name[0] == '_') {
+        it = map.find(name.substr(1));
+        if (it != map.end())
+            return it;
+    }
+
     return map.find("_" + name);
 }
 

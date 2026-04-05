@@ -45,6 +45,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <optional>
 #include <tuple>
 #include <unordered_map>
@@ -89,14 +90,36 @@ struct LoadKeyHash {
     }
 };
 
+/// @brief A reusable SSA value and the block that defines it.
+/// @details GVN walks the dominator tree, but verifier legality still depends
+///          on textual def-before-use ordering across blocks. Tracking the
+///          defining block lets the pass reject replacements that would
+///          introduce a use of a temp before its textual definition.
+struct AvailableValue {
+    Value value;
+    BasicBlock *block{nullptr};
+};
+
 /// @brief Per-path state threaded through the dominator-tree traversal.
 /// @details Contains value-numbering expressions and memoized loads visible on
 ///          the current dominating path. State is copied when recursing into
 ///          children to preserve path sensitivity.
 struct State {
-    std::unordered_map<ValueKey, Value, ValueKeyHash> exprs;
-    std::unordered_map<LoadKey, Value, LoadKeyHash> loads;
+    std::unordered_map<ValueKey, std::vector<AvailableValue>, ValueKeyHash> exprs;
+    std::unordered_map<LoadKey, std::vector<AvailableValue>, LoadKeyHash> loads;
 };
+
+static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, std::size_t> &order,
+                                 const BasicBlock *defBlock,
+                                 const BasicBlock *useBlock) {
+    if (!defBlock || !useBlock)
+        return false;
+    auto defIt = order.find(defBlock);
+    auto useIt = order.find(useBlock);
+    if (defIt == order.end() || useIt == order.end())
+        return false;
+    return defIt->second <= useIt->second;
+}
 
 /// @brief Visit a basic block and apply GVN/RLE transformations.
 /// @details Walks instructions in order, eliminating redundant loads and pure
@@ -117,6 +140,7 @@ void visitBlock(Function &F,
                 const viper::analysis::DomTree &DT,
                 viper::analysis::BasicAA &AA,
                 viper::il::UseDefInfo &useInfo,
+                const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder,
                 State state,
                 bool &changed) {
     for (std::size_t idx = 0; idx < B->instructions.size();) {
@@ -131,10 +155,14 @@ void visitBlock(Function &F,
             // Try exact match first
             auto it = state.loads.find(key);
             if (it != state.loads.end()) {
-                useInfo.replaceAllUses(*I.result, it->second);
-                B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
-                changed = true;
-                continue; // don't advance idx
+                for (auto avail = it->second.rbegin(); avail != it->second.rend(); ++avail) {
+                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                        continue;
+                    useInfo.replaceAllUses(*I.result, avail->value);
+                    B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
+                    changed = true;
+                    goto next_instruction;
+                }
             }
 
             // Otherwise, scan for alias-equivalent entries (MustAlias)
@@ -142,20 +170,27 @@ void visitBlock(Function &F,
             for (const auto &kv : state.loads) {
                 if (kv.first.type != key.type)
                     continue;
-                if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) ==
+                if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) !=
                     viper::analysis::AliasResult::MustAlias) {
-                    useInfo.replaceAllUses(*I.result, kv.second);
+                    continue;
+                }
+                for (auto avail = kv.second.rbegin(); avail != kv.second.rend(); ++avail) {
+                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                        continue;
+                    useInfo.replaceAllUses(*I.result, avail->value);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     replaced = true;
                     break;
                 }
+                if (replaced)
+                    break;
             }
             if (replaced)
-                continue;
+                goto next_instruction;
 
             // Record available load
-            state.loads.emplace(key, Value::temp(*I.result));
+            state.loads[key].push_back(AvailableValue{Value::temp(*I.result), B});
             ++idx;
             continue;
         }
@@ -201,25 +236,31 @@ void visitBlock(Function &F,
         if (auto key = makeValueKey(I)) {
             auto found = state.exprs.find(*key);
             if (found != state.exprs.end()) {
-                useInfo.replaceAllUses(*I.result, found->second);
-                B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
-                changed = true;
-                continue;
+                for (auto avail = found->second.rbegin(); avail != found->second.rend(); ++avail) {
+                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                        continue;
+                    useInfo.replaceAllUses(*I.result, avail->value);
+                    B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
+                    changed = true;
+                    goto next_instruction;
+                }
             }
-            state.exprs.emplace(std::move(*key), Value::temp(*I.result));
+            state.exprs[*key].push_back(AvailableValue{Value::temp(*I.result), B});
             ++idx;
             continue;
         }
 
         // Default: advance
         ++idx;
+    next_instruction:
+        ;
     }
 
     // Recurse to children in dominator-tree preorder
     auto it = DT.children.find(B);
     if (it != DT.children.end()) {
         for (auto *Child : it->second) {
-            visitBlock(F, Child, DT, AA, useInfo, state, changed);
+            visitBlock(F, Child, DT, AA, useInfo, blockOrder, state, changed);
         }
     }
 }
@@ -257,9 +298,13 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
     viper::il::UseDefInfo useInfo(function);
 
     State state;
+    std::unordered_map<const BasicBlock *, std::size_t> blockOrder;
+    blockOrder.reserve(function.blocks.size());
+    for (std::size_t i = 0; i < function.blocks.size(); ++i)
+        blockOrder.emplace(&function.blocks[i], i);
 
     // Start at entry block
-    visitBlock(function, &function.blocks.front(), dom, aa, useInfo, state, changed);
+    visitBlock(function, &function.blocks.front(), dom, aa, useInfo, blockOrder, state, changed);
 
     if (!changed)
         return PreservedAnalyses::all();

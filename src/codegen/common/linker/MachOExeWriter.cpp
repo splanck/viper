@@ -64,8 +64,16 @@ static constexpr uint32_t MH_PIE = 0x200000;
 static constexpr uint32_t MH_HAS_TLV_DESCRIPTORS = 0x800000;
 
 // Mach-O section type constants (low 8 bits of flags).
+static constexpr uint32_t S_REGULAR = 0x00;
+static constexpr uint32_t S_CSTRING_LITERALS = 0x02;
+static constexpr uint32_t S_LITERAL_POINTERS = 0x05;
 static constexpr uint32_t S_THREAD_LOCAL_REGULAR = 0x11;
+static constexpr uint32_t S_THREAD_LOCAL_ZEROFILL = 0x12;
 static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
+static constexpr uint32_t S_COALESCED = 0x0B;
+static constexpr uint32_t S_ATTR_PURE_INSTRUCTIONS = 0x80000000u;
+static constexpr uint32_t S_ATTR_SOME_INSTRUCTIONS = 0x00000400u;
+static constexpr uint32_t S_ATTR_NO_DEAD_STRIP = 0x10000000u;
 
 static constexpr uint32_t CPU_TYPE_X86_64 = 0x01000007;
 static constexpr uint32_t CPU_TYPE_ARM64 = 0x0100000C;
@@ -87,6 +95,39 @@ static constexpr uint32_t VM_PROT_WRITE = 2;
 static constexpr uint32_t VM_PROT_EXECUTE = 4;
 
 static constexpr uint32_t PLATFORM_MACOS = 1;
+
+static uint32_t machoSectionAlignLog2(uint32_t alignment) {
+    uint32_t pow2 = 0;
+    uint32_t value = (alignment == 0) ? 1 : alignment;
+    while (value > 1) {
+        value >>= 1;
+        ++pow2;
+    }
+    return pow2;
+}
+
+static std::string machoSectionNameForOutput(const OutputSection &sec) {
+    if (!isObjCSection(sec.name))
+        return sec.executable ? "__text" : "__const";
+    const auto comma = sec.name.find(',');
+    return (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
+}
+
+static uint32_t objcSectionFlags(const std::string &machoSecName) {
+    if (machoSecName == "__objc_classname" || machoSecName == "__objc_methname" ||
+        machoSecName == "__objc_methtype")
+        return S_CSTRING_LITERALS;
+    if (machoSecName == "__objc_selrefs")
+        return S_LITERAL_POINTERS | S_ATTR_NO_DEAD_STRIP;
+    if (machoSecName == "__objc_classrefs" || machoSecName == "__objc_superrefs" ||
+        machoSecName == "__objc_classlist" || machoSecName == "__objc_nlclslist" ||
+        machoSecName == "__objc_catlist" || machoSecName == "__objc_nlcatlist" ||
+        machoSecName == "__objc_methlist")
+        return S_ATTR_NO_DEAD_STRIP;
+    if (machoSecName == "__objc_protolist")
+        return S_COALESCED | S_ATTR_NO_DEAD_STRIP;
+    return S_REGULAR;
+}
 
 } // anonymous namespace
 
@@ -399,17 +440,7 @@ bool writeMachOExe(const std::string &path,
     for (size_t idx : textSections) {
         const auto &sec = layout.sections[idx];
 
-        // Determine Mach-O section name.
-        // ObjC metadata sections (e.g., __DATA,__objc_methname) keep their name.
-        // Regular sections use __text or __const.
-        std::string machoSecName;
-        if (isObjCSection(sec.name)) {
-            // Name format from MachOReader: "__SEGMENT,__section"
-            auto comma = sec.name.find(',');
-            machoSecName = (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
-        } else {
-            machoSecName = sec.executable ? "__text" : "__const";
-        }
+        const std::string machoSecName = machoSectionNameForOutput(sec);
 
         uint32_t secFileOff = static_cast<uint32_t>(sec.virtualAddr - textSegVmAddr);
         writeStr(file, machoSecName.c_str(), 16);
@@ -417,10 +448,13 @@ bool writeMachOExe(const std::string &path,
         writeLE64(file, sec.virtualAddr); // addr = SectionMerger VA
         writeLE64(file, sec.data.size());
         writeLE32(file, secFileOff);
-        writeLE32(file, 0); // align (log2)
+        writeLE32(file, machoSectionAlignLog2(sec.alignment));
         writeLE32(file, 0);
         writeLE32(file, 0); // reloff, nreloc
-        uint32_t flags = sec.executable ? 0x80000400u : 0u;
+        uint32_t flags = sec.executable ? (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS)
+                                        : S_REGULAR;
+        if (isObjCSection(sec.name))
+            flags = objcSectionFlags(machoSecName);
         writeLE32(file, flags);
         writeLE32(file, 0);
         writeLE32(file, 0);
@@ -448,12 +482,12 @@ bool writeMachOExe(const std::string &path,
 
             // Choose section name and type flags.
             std::string machoSecName = "__data";
-            uint32_t secFlags = 0;
+            uint32_t secFlags = S_REGULAR;
             bool isZerofill = false;
             if (isObjCSection(sec.name)) {
                 // ObjC metadata: preserve original section name (e.g., __objc_classlist).
-                auto comma = sec.name.find(',');
-                machoSecName = (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
+                machoSecName = machoSectionNameForOutput(sec);
+                secFlags = objcSectionFlags(machoSecName);
             } else if (sec.tls) {
                 if (sec.name == ".tdata") {
                     machoSecName = "__thread_vars";
@@ -484,7 +518,7 @@ bool writeMachOExe(const std::string &path,
             writeLE64(file, sec.virtualAddr); // addr = SectionMerger VA
             writeLE64(file, sec.data.size());
             writeLE32(file, isZerofill ? 0 : secFileOff);
-            writeLE32(file, 0); // align
+            writeLE32(file, machoSectionAlignLog2(sec.alignment));
             writeLE32(file, 0);
             writeLE32(file, 0); // reloff, nreloc
             writeLE32(file, secFlags);

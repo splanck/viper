@@ -217,9 +217,100 @@ static void test_redundant_load_elim() {
     assert(Only.operands.front().kind == Value::Kind::Temp);
 }
 
+static void test_textual_order_guard_for_redundant_load_elim() {
+    Module M;
+    Function F;
+    F.name = "gvn_rle_textual_order";
+    F.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr allocaI;
+        allocaI.result = id++;
+        allocaI.op = Opcode::Alloca;
+        allocaI.type = Type(Type::Kind::Ptr);
+        allocaI.operands.push_back(Value::constInt(8));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("late");
+        br.brArgs.push_back({});
+
+        entry.instructions.push_back(std::move(allocaI));
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock update;
+    update.label = "update";
+    {
+        Instr ld1;
+        ld1.result = id++;
+        ld1.op = Opcode::Load;
+        ld1.type = Type(Type::Kind::I64);
+        ld1.operands.push_back(Value::temp(0));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(*ld1.result));
+
+        update.instructions.push_back(std::move(ld1));
+        update.instructions.push_back(std::move(ret));
+        update.terminated = true;
+    }
+
+    BasicBlock late;
+    late.label = "late";
+    {
+        Instr ld0;
+        ld0.result = id++;
+        ld0.op = Opcode::Load;
+        ld0.type = Type(Type::Kind::I64);
+        ld0.operands.push_back(Value::temp(0));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("update");
+        br.brArgs.push_back({});
+
+        late.instructions.push_back(std::move(ld0));
+        late.instructions.push_back(std::move(br));
+        late.terminated = true;
+    }
+
+    // Textual order intentionally disagrees with dominance: "late" dominates
+    // "update", but appears later in the block list. Replacing update's load
+    // with late's temp would create a textual use-before-def.
+    F.blocks.push_back(std::move(entry));
+    F.blocks.push_back(std::move(update));
+    F.blocks.push_back(std::move(late));
+    M.functions.push_back(std::move(F));
+
+    Function &Fn = M.functions.back();
+    auto registry = makeRegistry();
+    il::transform::AnalysisManager AM(M, registry);
+
+    il::transform::GVN gvn;
+    gvn.run(Fn, AM);
+
+    const BasicBlock &UpdateB = Fn.blocks[1];
+    assert(UpdateB.instructions.size() == 2);
+    assert(UpdateB.instructions[0].op == Opcode::Load);
+    assert(UpdateB.instructions[1].op == Opcode::Ret);
+    assert(UpdateB.instructions[1].operands.size() == 1);
+    assert(UpdateB.instructions[1].operands[0].kind == Value::Kind::Temp);
+    assert(UpdateB.instructions[1].operands[0].id == *UpdateB.instructions[0].result);
+}
+
 /// @brief Main.
 int main() {
     test_cse_cross_block();
     test_redundant_load_elim();
+    test_textual_order_guard_for_redundant_load_elim();
     return 0;
 }

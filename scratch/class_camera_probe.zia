@@ -1,0 +1,65 @@
+module classprobe;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+class CameraHolder {
+    hide Canvas3D canvas;
+    hide Camera3D cam;
+    hide CubeMap3D sky;
+    hide PostFX3D postfx;
+    hide Light3D sun;
+    hide Light3D fill;
+    hide Light3D spot;
+    hide Light3D point;
+    hide Integer quality;
+
+    expose func init() {
+        canvas = Canvas3D.New("probe", 1280, 720);
+        Say("backend=" + Canvas3D.get_Backend(canvas));
+        Canvas3D.SetDTMax(canvas, 50);
+        Canvas3D.SetOcclusionCulling(canvas, true);
+
+        var aspect: Float = 1280.0 / 720.0;
+        var createdCam = Camera3D.New(50.0, aspect, 0.1, 100.0);
+        Say("local fov=" + toString(Camera3D.get_Fov(createdCam)));
+        cam = createdCam;
+        Say("field fov=" + toString(Camera3D.get_Fov(cam)));
+        Say("field pos=" + formatVec3(Camera3D.get_Position(cam)));
+
+        sky = CubeMap3D.New(makeFace(), makeFace(), makeFace(), makeFace(), makeFace(), makeFace());
+        sun = Light3D.NewDirectional(new Vec3(-0.2, -1.0, -0.3), 1.0, 0.96, 0.92);
+        fill = Light3D.NewDirectional(new Vec3(0.15, -0.7, 0.9), 0.52, 0.50, 0.56);
+        spot = Light3D.NewSpot(new Vec3(0.0, 4.8, 12.8), new Vec3(0.0, -0.55, 1.0),
+            1.28, 1.18, 1.06, 0.045, 22.0, 42.0);
+        point = Light3D.NewPoint(new Vec3(0.0, 4.2, 6.2), 1.0, 0.88, 0.72, 0.04);
+        postfx = PostFX3D.New();
+
+        Say("after objects fov=" + toString(Camera3D.get_Fov(cam)));
+        Say("after objects pos=" + formatVec3(Camera3D.get_Position(cam)));
+    }
+}
+
+func start() {
+    var holder = new CameraHolder();
+    holder.init();
+}
+
+func formatVec3(v: Vec3) -> String {
+    if (v == null) { return "<null>"; }
+    return "(" + toString(Vec3.get_X(v)) + ", "
+        + toString(Vec3.get_Y(v)) + ", "
+        + toString(Vec3.get_Z(v)) + ")";
+}
+
+func makeFace() -> Pixels {
+    var p = Pixels.New(2, 2);
+    for (var y: Integer = 0; y < 2; y = y + 1) {
+        for (var x: Integer = 0; x < 2; x = x + 1) {
+            p.Set(x, y, 0xFF884422);
+        }
+    }
+    return p;
+}

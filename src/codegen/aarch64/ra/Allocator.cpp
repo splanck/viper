@@ -122,8 +122,13 @@ void LinearAllocator::computeNextUses(const MBasicBlock &bb) {
         if (isCall(mi.opc))
             callPositions_.push_back(idx);
 
-        for (const auto &op : mi.ops) {
+        for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
+            const auto &op = mi.ops[opIdx];
             if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+                continue;
+            const auto [isUse, isDef] = operandRoles(mi, opIdx);
+            (void)isDef;
+            if (!isUse)
                 continue;
             if (op.reg.cls == RegClass::GPR)
                 usePositionsGPR_[op.reg.idOrPhys].push_back(idx);
@@ -132,6 +137,12 @@ void LinearAllocator::computeNextUses(const MBasicBlock &bb) {
         }
         ++idx;
     }
+}
+
+bool LinearAllocator::isProtectedUse(uint16_t vreg, RegClass cls) const {
+    if (cls == RegClass::GPR)
+        return protectedUseGPR_.find(vreg) != protectedUseGPR_.end();
+    return protectedUseFPR_.find(vreg) != protectedUseFPR_.end();
 }
 
 bool LinearAllocator::nextUseAfterCall(uint16_t vreg, RegClass cls) const {
@@ -179,13 +190,27 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
     if (!st.hasPhys)
         return;
 
-    if (st.dirty) {
+    const unsigned nextUseDist = getNextUseDistance(id, cls);
+    if (nextUseDist == UINT_MAX) {
+        if (cls == RegClass::GPR)
+            pools_.releaseGPR(st.phys, ti_);
+        else
+            pools_.releaseFPR(st.phys, ti_);
+        st.hasPhys = false;
+        st.spilled = false;
+        st.dirty = false;
+        return;
+    }
+
+    if (st.dirty || st.fpOffset == 0) {
         const auto &posMap = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
         unsigned trueLastUse = st.lastUse;
         auto posIt = posMap.find(id);
         if (posIt != posMap.end() && !posIt->second.empty())
             trueLastUse = posIt->second.back();
-        const int off = fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
+        const int off =
+            (st.fpOffset != 0) ? st.fpOffset : fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
+        st.fpOffset = off;
         if (cls == RegClass::GPR)
             prefix.push_back(makeStrFp(st.phys, off));
         else
@@ -208,6 +233,8 @@ uint16_t LinearAllocator::selectLRUVictim(RegClass cls) {
     unsigned oldestUse = UINT_MAX;
 
     for (auto &kv : states) {
+        if (isProtectedUse(kv.first, cls))
+            continue;
         if (kv.second.hasPhys && kv.second.lastUse < oldestUse) {
             oldestUse = kv.second.lastUse;
             victim = kv.first;
@@ -223,6 +250,8 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
 
     for (auto &kv : states) {
         if (!kv.second.hasPhys)
+            continue;
+        if (isProtectedUse(kv.first, cls))
             continue;
 
         unsigned dist = getNextUseDistance(kv.first, cls);
@@ -421,8 +450,10 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
         for (auto vid : loGPR) {
             auto it = gprStates_.find(vid);
             if (it != gprStates_.end() && it->second.hasPhys) {
-                if (it->second.dirty) {
-                    const int off = fb_.ensureSpill(vid);
+                if (it->second.dirty || it->second.fpOffset == 0) {
+                    const int off =
+                        (it->second.fpOffset != 0) ? it->second.fpOffset : fb_.ensureSpill(vid);
+                    it->second.fpOffset = off;
                     endSpills.push_back(makeStrFp(it->second.phys, off));
                     it->second.dirty = false;
                 }
@@ -434,8 +465,10 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
         for (auto vid : loFPR) {
             auto it = fprStates_.find(vid);
             if (it != fprStates_.end() && it->second.hasPhys) {
-                if (it->second.dirty) {
-                    const int off = fb_.ensureSpill(vid);
+                if (it->second.dirty || it->second.fpOffset == 0) {
+                    const int off =
+                        (it->second.fpOffset != 0) ? it->second.fpOffset : fb_.ensureSpill(vid);
+                    it->second.fpOffset = off;
                     endSpills.push_back(
                         MInstr{MOpcode::StrFprFpImm,
                                {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
@@ -527,6 +560,20 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     std::vector<MInstr> suffix;
     std::vector<PhysReg> scratch;
 
+    protectedUseGPR_.clear();
+    protectedUseFPR_.clear();
+    for (std::size_t i = 0; i < ins.ops.size(); ++i) {
+        const auto &op = ins.ops[i];
+        const auto [isUse, isDef] = operandRoles(ins, i);
+        (void)isDef;
+        if (!isUse || op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+            continue;
+        if (op.reg.cls == RegClass::GPR)
+            protectedUseGPR_.insert(op.reg.idOrPhys);
+        else
+            protectedUseFPR_.insert(op.reg.idOrPhys);
+    }
+
     for (std::size_t i = 0; i < ins.ops.size(); ++i) {
         auto &op = ins.ops[i];
         auto [isUse, isDef] = operandRoles(ins, i);
@@ -562,6 +609,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
         rewritten.push_back(std::move(suf));
 
     releaseScratch(scratch);
+    protectedUseGPR_.clear();
+    protectedUseFPR_.clear();
 }
 
 // =========================================================================

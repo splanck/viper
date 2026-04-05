@@ -46,7 +46,7 @@ static bool addObjSymbols(const ObjFile &obj,
 
         if (sym.binding == ObjSymbol::Undefined) {
             // Only add to undefined set if not already defined.
-            auto it = globalSyms.find(sym.name);
+            auto it = findWithMachoFallback(globalSyms, sym.name);
             if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
                 undefined.insert(sym.name);
             if (it == globalSyms.end()) {
@@ -69,7 +69,7 @@ static bool addObjSymbols(const ObjFile &obj,
             continue;
 
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
-        auto it = globalSyms.find(sym.name);
+        auto it = findWithMachoFallback(globalSyms, sym.name);
         if (it == globalSyms.end()) {
             // New symbol.
             GlobalSymEntry e;

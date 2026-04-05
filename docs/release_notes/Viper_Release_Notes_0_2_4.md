@@ -784,12 +784,4 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - Archive extraction accepted paths containing `../` — could write outside the target directory (zip-slip). Now validates and rejects path-traversal entries
 - Cipher `rt_cipher_decrypt` did not fall back gracefully when PBKDF2-derived key failed authentication — now tries legacy HKDF derivation before trapping
 - Graphics3D texture ownership: CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D did not retain their texture/mesh/material references — GC could collect them while still in use. All now use retain/release with finalizer cleanup
-- ViperSQL: modulo operator (`%`) not recognized by parser/executor
-- ViperSQL: `REPLACE()` function rejected as keyword instead of function call
-- ViperSQL: `IS NULL` / `IS NOT NULL` not evaluated in JOIN WHERE clauses (evalJoinExpr missing `OP_IS`)
-- ViperSQL: window function `PARTITION BY` failed when partition column was not in SELECT list
-- ViperSQL: `LIKE` was case-insensitive (used `LikeCI`), now correctly case-sensitive; `ILIKE` added for case-insensitive matching
-- ViperSQL: `ALTER TABLE` missing exclusive lock acquisition (concurrent DDL corruption risk)
-- ViperSQL: CSV parser accepted unterminated quoted fields without error
-- ViperSQL: persistence export crashed on NULL column values
-- ViperSQL: `countDistinctValues` used string length as hash (severe bucket clustering) — now uses FNV hash
+- ViperSQL demo: 9 bug fixes (modulo operator, REPLACE parsing, JOIN IS NULL, window PARTITION BY, LIKE case sensitivity, ALTER TABLE locking, CSV validation, persistence NULL crash, distinct hash function)

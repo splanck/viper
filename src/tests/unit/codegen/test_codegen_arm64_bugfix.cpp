@@ -143,6 +143,87 @@ TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure) {
     ASSERT_EQ(rc, 42);
 }
 
+/// Bug #5: Clean FPR values loaded from rodata or memory must still be
+/// materialized to a spill slot when they survive a call in caller-saved FPRs.
+///
+/// Before the fix, LdrFprBaseImm destinations were misclassified as USE-only,
+/// leaving their dirty flag clear.  The allocator then dropped those live FP
+/// values across a call without writing any spill slot, and later reloaded
+/// them from an uninitialized frame offset.
+TEST(Arm64Bugfix, CleanFprLoadSurvivesCall) {
+    const std::string in = outPath("arm64_bugfix_clean_fpr_survives_call.il");
+    const std::string il = "il 0.1\n"
+                           "func @tick() -> void {\n"
+                           "entry:\n"
+                           "  ret\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %x = const.f64 42.0\n"
+                           "  call @tick()\n"
+                           "  %r = cast.fp_to_si.rte.chk %x\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native", "-O0"};
+    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 42);
+}
+
+/// Bug #6: Current-instruction source operands must not be evicted before the
+/// instruction has consumed them under GPR pressure.
+///
+/// Before the fix, the allocator could spill or drop the base pointer for a
+/// `gep` while materializing that same instruction's destination register. The
+/// rewritten MIR then used a stale register from the previous instruction as
+/// the GEP base, corrupting object field stores. This is the failure pattern
+/// that broke BowlingGame.init in the 3dbowling demo.
+TEST(Arm64Bugfix, CurrentInstructionUseNotEvictedUnderPressure) {
+    std::string il = "il 0.1\n"
+                     "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
+                     "func @touch(%obj:ptr) -> i64 {\n"
+                     "entry(%obj:ptr):\n";
+
+    for (int i = 0; i < 22; ++i)
+        il += "  %v" + std::to_string(i) + " = iadd.ovf 0, " + std::to_string(i + 1) + "\n";
+
+    il += "  %f248 = gep %obj, 248\n";
+    il += "  store i64, %f248, 11\n";
+    il += "  %f256 = gep %obj, 256\n";
+    il += "  store i64, %f256, 1\n";
+    il += "  %f264 = gep %obj, 264\n";
+    il += "  store i64, %f264, 42\n";
+    il += "  %f272 = gep %obj, 272\n";
+    il += "  store i64, %f272, 0\n";
+    il += "  %f280 = gep %obj, 280\n";
+    il += "  store i64, %f280, 0\n";
+    il += "  %f288 = gep %obj, 288\n";
+    il += "  store i64, %f288, 0\n";
+
+    int offset = 0;
+    for (int i = 0; i < 22; ++i) {
+        il += "  %q" + std::to_string(i) + " = gep %obj, " + std::to_string(offset) + "\n";
+        il += "  store i64, %q" + std::to_string(i) + ", %v" + std::to_string(i) + "\n";
+        offset += 8;
+    }
+
+    il += "  %result = load i64, %f264\n";
+    il += "  ret %result\n";
+    il += "}\n";
+    il += "func @main() -> i64 {\n";
+    il += "entry:\n";
+    il += "  %obj = call @rt_obj_new_i64(0, 512)\n";
+    il += "  %r = call @touch(%obj)\n";
+    il += "  ret %r\n";
+    il += "}\n";
+
+    const std::string in = outPath("arm64_bugfix_current_use_pressure.il");
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native"};
+    const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 42);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

@@ -59,7 +59,7 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
 
     if (isUseDefImmLike(ins.opc)) {
         if (idx == 0)
-            return {true, true};
+            return {false, true};
         if (idx == 1)
             return {true, false};
     }

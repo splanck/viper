@@ -1138,11 +1138,17 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         if (!device)
+        {
+            NSLog(@ "[Metal] MTLCreateSystemDefaultDevice returned nil");
             return NULL;
+        }
 
         NSView *view = (__bridge NSView *)vgfx_get_native_view(win);
         if (!view)
+        {
+            NSLog(@ "[Metal] vgfx_get_native_view returned nil");
             return NULL;
+        }
 
         VGFXMetalContext *ctx = [[VGFXMetalContext alloc] init];
         ctx.device = device;
@@ -1167,7 +1173,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
 
         ctx.commandQueue = [device newCommandQueue];
         if (!ctx.commandQueue)
+        {
+            NSLog(@ "[Metal] newCommandQueue returned nil");
             return NULL;
+        }
         mat4f_identity(ctx->_view);
         mat4f_identity(ctx->_projection);
         mat4f_identity(ctx->_vp);
@@ -1189,7 +1198,14 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         id<MTLFunction> vfShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
         id<MTLFunction> ff = [ctx.library newFunctionWithName:@ "fragment_main"];
         if (!vf || !vfInstanced || !vfShadow || !ff)
+        {
+            NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ ff=%@)",
+                  vf,
+                  vfInstanced,
+                  vfShadow,
+                  ff);
             return NULL;
+        }
 
         MTLRenderPipelineDescriptor *pd = [[MTLRenderPipelineDescriptor alloc] init];
         pd.vertexFunction = vf;

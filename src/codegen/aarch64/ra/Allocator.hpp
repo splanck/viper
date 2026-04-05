@@ -60,6 +60,10 @@ class LinearAllocator {
     std::unordered_map<uint16_t, std::vector<unsigned>>
         usePositionsFPR_;                 ///< All use positions for FPR vregs.
     std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
+    std::unordered_set<uint16_t>
+        protectedUseGPR_; ///< Current-instruction GPR uses that must not be evicted early.
+    std::unordered_set<uint16_t>
+        protectedUseFPR_; ///< Current-instruction FPR uses that must not be evicted early.
 
     // CFG + liveness (extracted to shared-solver-backed LivenessAnalysis).
     LivenessAnalysis liveness_;
@@ -83,6 +87,7 @@ class LinearAllocator {
     void computeNextUses(const MBasicBlock &bb);
     bool nextUseAfterCall(uint16_t vreg, RegClass cls) const;
     unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const;
+    [[nodiscard]] bool isProtectedUse(uint16_t vreg, RegClass cls) const;
 
     // ---- Spilling ----
     void spillVictim(RegClass cls, uint16_t id, std::vector<MInstr> &prefix);
