@@ -23,23 +23,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_texatlas.h"
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_texatlas.h"
+#include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_spritebatch.h"
+#include "rt_string.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
-extern const char *rt_string_cstr(void *s);
-extern void *rt_heap_retain(void *obj);
-extern void rt_heap_release(void *obj);
-extern int64_t rt_pixels_width(void *pixels);
-extern int64_t rt_pixels_height(void *pixels);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Types
@@ -131,7 +129,9 @@ void *rt_texatlas_new(void *pixels) {
         return NULL;
 
     memset(impl, 0, sizeof(texatlas_impl));
-    impl->pixels = rt_heap_retain(pixels);
+    impl->pixels = pixels;
+    if (pixels)
+        rt_heap_retain(pixels);
     rt_obj_set_finalizer(impl, texatlas_finalize);
     return impl;
 }

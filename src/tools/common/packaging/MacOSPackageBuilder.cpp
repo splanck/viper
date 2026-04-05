@@ -113,8 +113,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
                         fs::relative(entry.path(), srcPath).generic_string(), "asset path");
                     std::string assetBase =
                         joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
-                    std::string zipPath =
-                        joinPackageRelativePath(assetBase, relPath, "asset path");
+                    std::string zipPath = joinPackageRelativePath(assetBase, relPath, "asset path");
 
                     if (entry.is_directory()) {
                         zip.addDirectory(zipPath);

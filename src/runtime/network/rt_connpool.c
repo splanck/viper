@@ -56,7 +56,7 @@ typedef pthread_mutex_t pool_mutex_t;
 #define POOL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern conn_socket_t rt_tcp_socket_fd(void *obj);
 extern int wait_socket(conn_socket_t sock, int timeout_ms, bool for_write);
 

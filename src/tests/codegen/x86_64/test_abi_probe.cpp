@@ -112,7 +112,7 @@ template <std::size_t N>
 #ifdef _WIN32
            && containsAll(asmText, kXmmPatterns)
 #endif
-           ;
+        ;
 }
 
 } // namespace

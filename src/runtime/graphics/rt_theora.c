@@ -93,60 +93,46 @@ typedef struct {
 } theora_priv_t;
 
 static const uint8_t theora_zigzag[64] = {
-    0, 1, 8, 16, 9, 2, 3, 10,
-    17, 24, 32, 25, 18, 11, 4, 5,
-    12, 19, 26, 33, 40, 48, 41, 34,
-    27, 20, 13, 6, 7, 14, 21, 28,
-    35, 42, 49, 56, 57, 50, 43, 36,
-    29, 22, 15, 23, 30, 37, 44, 51,
-    58, 59, 52, 45, 38, 31, 39, 46,
-    53, 60, 61, 54, 47, 55, 62, 63
-};
+    0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,  12, 19, 26, 33, 40, 48,
+    41, 34, 27, 20, 13, 6,  7,  14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+    30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
 
-static const uint8_t sb_hilbert_x[16] = {
-    0, 1, 1, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 2, 2, 3
-};
+static const uint8_t sb_hilbert_x[16] = {0, 1, 1, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 2, 2, 3};
 
-static const uint8_t sb_hilbert_y[16] = {
-    0, 0, 1, 1, 2, 3, 3, 2, 2, 3, 3, 2, 1, 1, 0, 0
-};
+static const uint8_t sb_hilbert_y[16] = {0, 0, 1, 1, 2, 3, 3, 2, 2, 3, 3, 2, 1, 1, 0, 0};
 
 static const uint8_t mb_hilbert_x[4] = {0, 0, 1, 1};
 static const uint8_t mb_hilbert_y[4] = {0, 1, 1, 0};
 
-static const uint8_t mb_mode_scheme[7][8] = {
-    {3, 4, 2, 0, 1, 5, 6, 7},
-    {3, 4, 0, 2, 1, 5, 6, 7},
-    {3, 2, 4, 0, 1, 5, 6, 7},
-    {3, 2, 0, 4, 1, 5, 6, 7},
-    {0, 3, 4, 2, 1, 5, 6, 7},
-    {0, 5, 3, 4, 2, 1, 6, 7},
-    {0, 1, 2, 3, 4, 5, 6, 7}
-};
+static const uint8_t mb_mode_scheme[7][8] = {{3, 4, 2, 0, 1, 5, 6, 7},
+                                             {3, 4, 0, 2, 1, 5, 6, 7},
+                                             {3, 2, 4, 0, 1, 5, 6, 7},
+                                             {3, 2, 0, 4, 1, 5, 6, 7},
+                                             {0, 3, 4, 2, 1, 5, 6, 7},
+                                             {0, 5, 3, 4, 2, 1, 6, 7},
+                                             {0, 1, 2, 3, 4, 5, 6, 7}};
 
 typedef struct {
     int16_t w[4];
     int16_t div;
 } theora_dc_weight_t;
 
-static const theora_dc_weight_t dc_weights[16] = {
-    {{0, 0, 0, 0}, 1},
-    {{1, 0, 0, 0}, 1},
-    {{0, 1, 0, 0}, 1},
-    {{1, 0, 0, 0}, 1},
-    {{0, 0, 1, 0}, 1},
-    {{1, 0, 1, 0}, 2},
-    {{0, 0, 1, 0}, 1},
-    {{29, -26, 29, 0}, 32},
-    {{0, 0, 0, 1}, 1},
-    {{75, 0, 0, 53}, 128},
-    {{0, 1, 0, 1}, 2},
-    {{75, 0, 0, 53}, 128},
-    {{0, 0, 1, 0}, 1},
-    {{75, 0, 0, 53}, 128},
-    {{0, 3, 10, 3}, 16},
-    {{29, -26, 29, 0}, 32}
-};
+static const theora_dc_weight_t dc_weights[16] = {{{0, 0, 0, 0}, 1},
+                                                  {{1, 0, 0, 0}, 1},
+                                                  {{0, 1, 0, 0}, 1},
+                                                  {{1, 0, 0, 0}, 1},
+                                                  {{0, 0, 1, 0}, 1},
+                                                  {{1, 0, 1, 0}, 2},
+                                                  {{0, 0, 1, 0}, 1},
+                                                  {{29, -26, 29, 0}, 32},
+                                                  {{0, 0, 0, 1}, 1},
+                                                  {{75, 0, 0, 53}, 128},
+                                                  {{0, 1, 0, 1}, 2},
+                                                  {{75, 0, 0, 53}, 128},
+                                                  {{0, 0, 1, 0}, 1},
+                                                  {{75, 0, 0, 53}, 128},
+                                                  {{0, 3, 10, 3}, 16},
+                                                  {{29, -26, 29, 0}, 32}};
 
 static void br_init(bitreader_t *br, const uint8_t *data, size_t len) {
     br->data = data;
@@ -214,13 +200,13 @@ static int round_div_s32(int v, int d) {
 
 static int theora_ref_index_for_mode(int mode) {
     switch (mode) {
-    case 1:
-        return 0;
-    case 5:
-    case 6:
-        return 2;
-    default:
-        return 1;
+        case 1:
+            return 0;
+        case 5:
+        case 6:
+            return 2;
+        default:
+            return 1;
     }
 }
 
@@ -266,8 +252,8 @@ static void theora_priv_free(theora_decoder_t *dec) {
 static int check_header_sig(const uint8_t *data, size_t len, uint8_t type) {
     if (!data || len < 7 || data[0] != type)
         return 0;
-    return data[1] == 't' && data[2] == 'h' && data[3] == 'e' &&
-           data[4] == 'o' && data[5] == 'r' && data[6] == 'a';
+    return data[1] == 't' && data[2] == 'h' && data[3] == 'e' && data[4] == 'o' && data[5] == 'r' &&
+           data[6] == 'a';
 }
 
 static int parse_id_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
@@ -364,20 +350,20 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
     priv->plane_width[0] = (int32_t)dec->frame_width;
     priv->plane_height[0] = (int32_t)dec->frame_height;
     switch (dec->pixel_format) {
-    case 0:
-        priv->plane_width[1] = priv->plane_width[2] = (int32_t)(dec->frame_width / 2);
-        priv->plane_height[1] = priv->plane_height[2] = (int32_t)(dec->frame_height / 2);
-        break;
-    case 2:
-        priv->plane_width[1] = priv->plane_width[2] = (int32_t)(dec->frame_width / 2);
-        priv->plane_height[1] = priv->plane_height[2] = (int32_t)dec->frame_height;
-        break;
-    case 3:
-        priv->plane_width[1] = priv->plane_width[2] = (int32_t)dec->frame_width;
-        priv->plane_height[1] = priv->plane_height[2] = (int32_t)dec->frame_height;
-        break;
-    default:
-        return -1;
+        case 0:
+            priv->plane_width[1] = priv->plane_width[2] = (int32_t)(dec->frame_width / 2);
+            priv->plane_height[1] = priv->plane_height[2] = (int32_t)(dec->frame_height / 2);
+            break;
+        case 2:
+            priv->plane_width[1] = priv->plane_width[2] = (int32_t)(dec->frame_width / 2);
+            priv->plane_height[1] = priv->plane_height[2] = (int32_t)dec->frame_height;
+            break;
+        case 3:
+            priv->plane_width[1] = priv->plane_width[2] = (int32_t)dec->frame_width;
+            priv->plane_height[1] = priv->plane_height[2] = (int32_t)dec->frame_height;
+            break;
+        default:
+            return -1;
     }
 
     for (plane = 0; plane < 3; plane++) {
@@ -389,8 +375,7 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
         priv->plane_sb_offsets[plane] = sb_offset;
         priv->plane_block_counts[plane] =
             priv->plane_block_cols[plane] * priv->plane_block_rows[plane];
-        priv->plane_sb_counts[plane] =
-            priv->plane_sb_cols[plane] * priv->plane_sb_rows[plane];
+        priv->plane_sb_counts[plane] = priv->plane_sb_cols[plane] * priv->plane_sb_rows[plane];
         block_offset += priv->plane_block_counts[plane];
         sb_offset += priv->plane_sb_counts[plane];
     }
@@ -408,12 +393,9 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
         (int32_t *)malloc((size_t)priv->plane_block_counts[1] * sizeof(int32_t));
     priv->plane_raster_to_coded[2] =
         (int32_t *)malloc((size_t)priv->plane_block_counts[2] * sizeof(int32_t));
-    priv->mb_raster_to_coded =
-        (int32_t *)malloc((size_t)mb_count * sizeof(int32_t));
-    priv->blocks =
-        (theora_block_info_t *)calloc((size_t)total_blocks, sizeof(theora_block_info_t));
-    priv->mbs =
-        (theora_mb_info_t *)calloc((size_t)mb_count, sizeof(theora_mb_info_t));
+    priv->mb_raster_to_coded = (int32_t *)malloc((size_t)mb_count * sizeof(int32_t));
+    priv->blocks = (theora_block_info_t *)calloc((size_t)total_blocks, sizeof(theora_block_info_t));
+    priv->mbs = (theora_mb_info_t *)calloc((size_t)mb_count, sizeof(theora_mb_info_t));
     priv->bcoded = (uint8_t *)calloc((size_t)total_blocks, 1);
     priv->sb_partcoded = (uint8_t *)calloc((size_t)total_sbs, 1);
     priv->sb_fullcoded = (uint8_t *)calloc((size_t)total_sbs, 1);
@@ -421,14 +403,13 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
     priv->mbmodes = (uint8_t *)calloc((size_t)mb_count, 1);
     priv->tis = (uint8_t *)calloc((size_t)total_blocks, 1);
     priv->ncoeffs = (uint8_t *)calloc((size_t)total_blocks, 1);
-    priv->mvects = (int8_t(*)[2])calloc((size_t)total_blocks, sizeof(int8_t[2]));
-    priv->coeffs = (int16_t(*)[64])calloc((size_t)total_blocks, sizeof(int16_t[64]));
+    priv->mvects = (int8_t (*)[2])calloc((size_t)total_blocks, sizeof(int8_t[2]));
+    priv->coeffs = (int16_t (*)[64])calloc((size_t)total_blocks, sizeof(int16_t[64]));
 
     if (!priv->plane_raster_to_coded[0] || !priv->plane_raster_to_coded[1] ||
-        !priv->plane_raster_to_coded[2] || !priv->mb_raster_to_coded ||
-        !priv->blocks || !priv->mbs || !priv->bcoded || !priv->sb_partcoded ||
-        !priv->sb_fullcoded || !priv->qiis || !priv->mbmodes || !priv->tis ||
-        !priv->ncoeffs || !priv->mvects || !priv->coeffs) {
+        !priv->plane_raster_to_coded[2] || !priv->mb_raster_to_coded || !priv->blocks ||
+        !priv->mbs || !priv->bcoded || !priv->sb_partcoded || !priv->sb_fullcoded || !priv->qiis ||
+        !priv->mbmodes || !priv->tis || !priv->ncoeffs || !priv->mvects || !priv->coeffs) {
         return -1;
     }
 
@@ -479,8 +460,7 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
 
                         mbx = bx / plane_mb_block_w(dec, plane);
                         mby = by / plane_mb_block_h(dec, plane);
-                        priv->blocks[bi].mb =
-                            priv->mb_raster_to_coded[mby * dec->macro_cols + mbx];
+                        priv->blocks[bi].mb = priv->mb_raster_to_coded[mby * dec->macro_cols + mbx];
                         local_x = bx % plane_mb_block_w(dec, plane);
                         local_y = by % plane_mb_block_h(dec, plane);
                         if (plane == 0) {
@@ -517,8 +497,7 @@ static uint16_t theora_compute_qscale(const theora_priv_t *priv, int qti, int pl
     else
         qscale = priv->ac_scale[qi];
     qri = 0;
-    while (qri + 1 < priv->nqrs[qti][pli] &&
-           qi >= qi_start + priv->qrsizes[qti][pli][qri]) {
+    while (qri + 1 < priv->nqrs[qti][pli] && qi >= qi_start + priv->qrsizes[qti][pli][qri]) {
         qi_start += priv->qrsizes[qti][pli][qri];
         qri++;
     }
@@ -544,8 +523,7 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
         for (int pli = 0; pli < 3; pli++) {
             for (int qi = 0; qi < 64; qi++) {
                 for (int ci = 0; ci < 64; ci++)
-                    dec->qmat[qti][pli][qi][ci] =
-                        theora_compute_qscale(priv, qti, pli, qi, ci);
+                    dec->qmat[qti][pli][qi][ci] = theora_compute_qscale(priv, qti, pli, qi, ci);
             }
         }
     }
@@ -572,9 +550,8 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     dec->cur_y = (uint8_t *)calloc(y_size, 1);
     dec->cur_cb = (uint8_t *)calloc(c_size, 1);
     dec->cur_cr = (uint8_t *)calloc(c_size, 1);
-    if (!dec->ref_y || !dec->ref_cb || !dec->ref_cr ||
-        !dec->gold_y || !dec->gold_cb || !dec->gold_cr ||
-        !dec->cur_y || !dec->cur_cb || !dec->cur_cr)
+    if (!dec->ref_y || !dec->ref_cb || !dec->ref_cr || !dec->gold_y || !dec->gold_cb ||
+        !dec->gold_cr || !dec->cur_y || !dec->cur_cb || !dec->cur_cr)
         return -1;
     dec->headers_complete = 1;
     return 0;
@@ -642,17 +619,21 @@ static int parse_setup_header(theora_decoder_t *dec, const uint8_t *data, size_t
                 }
             } else {
                 if (qti > 0 && br_read1(&br)) {
-                    memcpy(priv->qrbmis[qti][pli], priv->qrbmis[qti - 1][pli],
+                    memcpy(priv->qrbmis[qti][pli],
+                           priv->qrbmis[qti - 1][pli],
                            sizeof(priv->qrbmis[qti][pli]));
-                    memcpy(priv->qrsizes[qti][pli], priv->qrsizes[qti - 1][pli],
+                    memcpy(priv->qrsizes[qti][pli],
+                           priv->qrsizes[qti - 1][pli],
                            sizeof(priv->qrsizes[qti][pli]));
                     priv->nqrs[qti][pli] = priv->nqrs[qti - 1][pli];
                 } else {
                     int src_qti = (3 * qti + pli - 1) / 3;
                     int src_pli = (pli + 2) % 3;
-                    memcpy(priv->qrbmis[qti][pli], priv->qrbmis[src_qti][src_pli],
+                    memcpy(priv->qrbmis[qti][pli],
+                           priv->qrbmis[src_qti][src_pli],
                            sizeof(priv->qrbmis[qti][pli]));
-                    memcpy(priv->qrsizes[qti][pli], priv->qrsizes[src_qti][src_pli],
+                    memcpy(priv->qrsizes[qti][pli],
+                           priv->qrsizes[src_qti][src_pli],
                            sizeof(priv->qrsizes[qti][pli]));
                     priv->nqrs[qti][pli] = priv->nqrs[src_qti][src_pli];
                 }
@@ -694,8 +675,8 @@ int theora_is_header_packet(const uint8_t *data, size_t len) {
         return 0;
     if (data[0] != 0x80 && data[0] != 0x81 && data[0] != 0x82)
         return 0;
-    return data[1] == 't' && data[2] == 'h' && data[3] == 'e' &&
-           data[4] == 'o' && data[5] == 'r' && data[6] == 'a';
+    return data[1] == 't' && data[2] == 'h' && data[3] == 'e' && data[4] == 'o' && data[5] == 'r' &&
+           data[6] == 'a';
 }
 
 int theora_decode_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
@@ -704,14 +685,14 @@ int theora_decode_header(theora_decoder_t *dec, const uint8_t *data, size_t len)
     if (!theora_is_header_packet(data, len))
         return 1;
     switch (data[0]) {
-    case 0x80:
-        return parse_id_header(dec, data, len);
-    case 0x81:
-        return parse_comment_header(dec, data, len);
-    case 0x82:
-        return parse_setup_header(dec, data, len);
-    default:
-        return -1;
+        case 0x80:
+            return parse_id_header(dec, data, len);
+        case 0x81:
+            return parse_comment_header(dec, data, len);
+        case 0x82:
+            return parse_setup_header(dec, data, len);
+        default:
+            return -1;
     }
 }
 
@@ -721,9 +702,7 @@ typedef struct {
     uint8_t qi[3];
 } theora_frame_header_t;
 
-static int decode_frame_header(theora_decoder_t *dec,
-                               bitreader_t *br,
-                               theora_frame_header_t *fh) {
+static int decode_frame_header(theora_decoder_t *dec, bitreader_t *br, theora_frame_header_t *fh) {
     int has_more;
     if (br_read1(br) != 0)
         return -1;
@@ -879,14 +858,22 @@ static int decode_mb_mode_huff(bitreader_t *br) {
         code = (code << 1) | br_read1(br);
         if (br->failed)
             return -1;
-        if (len == 1 && code == 0) return 0;
-        if (len == 2 && code == 2) return 1;
-        if (len == 3 && code == 6) return 2;
-        if (len == 4 && code == 14) return 3;
-        if (len == 5 && code == 30) return 4;
-        if (len == 6 && code == 62) return 5;
-        if (len == 7 && code == 126) return 6;
-        if (len == 8 && code == 255) return 7;
+        if (len == 1 && code == 0)
+            return 0;
+        if (len == 2 && code == 2)
+            return 1;
+        if (len == 3 && code == 6)
+            return 2;
+        if (len == 4 && code == 14)
+            return 3;
+        if (len == 5 && code == 30)
+            return 4;
+        if (len == 6 && code == 62)
+            return 5;
+        if (len == 7 && code == 126)
+            return 6;
+        if (len == 8 && code == 255)
+            return 7;
     }
     return -1;
 }
@@ -953,40 +940,47 @@ static int decode_mv_component_huff(bitreader_t *br) {
         if (br->failed)
             return 0;
         switch (len) {
-        case 3:
-            if (code == 0) return 0;
-            if (code == 1) return 1;
-            if (code == 2) return -1;
-            break;
-        case 4:
-            if (code == 6) return 2;
-            if (code == 7) return -2;
-            if (code == 8) return 3;
-            if (code == 9) return -3;
-            break;
-        case 6:
-            if (code >= 40 && code <= 55) {
-                int mag = ((code - 40) >> 1) + 4;
-                return ((code - 40) & 1) ? -mag : mag;
-            }
-            break;
-        case 7:
-            if (code >= 96 && code <= 127) {
-                int mag = ((code - 96) >> 1) + 8;
-                return ((code - 96) & 1) ? -mag : mag;
-            }
-            break;
-        case 8:
-            if (code >= 224 && code <= 255) {
-                int mag = ((code - 224) >> 1) + 24;
-                return ((code - 224) & 1) ? -mag : mag;
-            } else if (code >= 192 && code <= 223) {
-                int mag = ((code - 192) >> 1) + 16;
-                return ((code - 192) & 1) ? -mag : mag;
-            }
-            break;
-        default:
-            break;
+            case 3:
+                if (code == 0)
+                    return 0;
+                if (code == 1)
+                    return 1;
+                if (code == 2)
+                    return -1;
+                break;
+            case 4:
+                if (code == 6)
+                    return 2;
+                if (code == 7)
+                    return -2;
+                if (code == 8)
+                    return 3;
+                if (code == 9)
+                    return -3;
+                break;
+            case 6:
+                if (code >= 40 && code <= 55) {
+                    int mag = ((code - 40) >> 1) + 4;
+                    return ((code - 40) & 1) ? -mag : mag;
+                }
+                break;
+            case 7:
+                if (code >= 96 && code <= 127) {
+                    int mag = ((code - 96) >> 1) + 8;
+                    return ((code - 96) & 1) ? -mag : mag;
+                }
+                break;
+            case 8:
+                if (code >= 224 && code <= 255) {
+                    int mag = ((code - 224) >> 1) + 24;
+                    return ((code - 224) & 1) ? -mag : mag;
+                } else if (code >= 192 && code <= 223) {
+                    int mag = ((code - 192) >> 1) + 16;
+                    return ((code - 192) & 1) ? -mag : mag;
+                }
+                break;
+            default:
+                break;
         }
     }
     br->failed = 1;
@@ -1090,10 +1084,22 @@ static int decode_motion_vectors(theora_decoder_t *dec,
                 int boty = round_div_s32(priv->mvects[a][1] + priv->mvects[b][1], 2);
                 int topx = round_div_s32(priv->mvects[c][0] + priv->mvects[d][0], 2);
                 int topy = round_div_s32(priv->mvects[c][1] + priv->mvects[d][1], 2);
-                if (cb0 >= 0) { priv->mvects[cb0][0] = (int8_t)botx; priv->mvects[cb0][1] = (int8_t)boty; }
-                if (cr0 >= 0) { priv->mvects[cr0][0] = (int8_t)botx; priv->mvects[cr0][1] = (int8_t)boty; }
-                if (cb1 >= 0) { priv->mvects[cb1][0] = (int8_t)topx; priv->mvects[cb1][1] = (int8_t)topy; }
-                if (cr1 >= 0) { priv->mvects[cr1][0] = (int8_t)topx; priv->mvects[cr1][1] = (int8_t)topy; }
+                if (cb0 >= 0) {
+                    priv->mvects[cb0][0] = (int8_t)botx;
+                    priv->mvects[cb0][1] = (int8_t)boty;
+                }
+                if (cr0 >= 0) {
+                    priv->mvects[cr0][0] = (int8_t)botx;
+                    priv->mvects[cr0][1] = (int8_t)boty;
+                }
+                if (cb1 >= 0) {
+                    priv->mvects[cb1][0] = (int8_t)topx;
+                    priv->mvects[cb1][1] = (int8_t)topy;
+                }
+                if (cr1 >= 0) {
+                    priv->mvects[cr1][0] = (int8_t)topx;
+                    priv->mvects[cr1][1] = (int8_t)topy;
+                }
             } else {
                 for (int i = 0; i < 4; i++) {
                     int cb = priv->mbs[mbi].chroma[0][i];
@@ -1177,32 +1183,40 @@ static int decode_qiis(theora_priv_t *priv, bitreader_t *br, int nqi) {
     return 0;
 }
 
-static int decode_eob_token(theora_priv_t *priv,
-                            bitreader_t *br,
-                            int token,
-                            int bi,
-                            int ti,
-                            int *eobs) {
+static int decode_eob_token(
+    theora_priv_t *priv, bitreader_t *br, int token, int bi, int ti, int *eobs) {
     int run = 0;
     switch (token) {
-    case 0: run = 1; break;
-    case 1: run = 2; break;
-    case 2: run = 3; break;
-    case 3: run = (int)br_read(br, 2) + 4; break;
-    case 4: run = (int)br_read(br, 3) + 8; break;
-    case 5: run = (int)br_read(br, 4) + 16; break;
-    case 6:
-        run = (int)br_read(br, 12);
-        if (run == 0) {
-            run = 0;
-            for (int bj = 0; bj < priv->total_blocks; bj++) {
-                if (priv->bcoded[bj] && priv->tis[bj] < 64)
-                    run++;
+        case 0:
+            run = 1;
+            break;
+        case 1:
+            run = 2;
+            break;
+        case 2:
+            run = 3;
+            break;
+        case 3:
+            run = (int)br_read(br, 2) + 4;
+            break;
+        case 4:
+            run = (int)br_read(br, 3) + 8;
+            break;
+        case 5:
+            run = (int)br_read(br, 4) + 16;
+            break;
+        case 6:
+            run = (int)br_read(br, 12);
+            if (run == 0) {
+                run = 0;
+                for (int bj = 0; bj < priv->total_blocks; bj++) {
+                    if (priv->bcoded[bj] && priv->tis[bj] < 64)
+                        run++;
+                }
             }
-        }
-        break;
-    default:
-        return -1;
+            break;
+        default:
+            return -1;
     }
     if (br->failed || run <= 0)
         return -1;
@@ -1214,11 +1228,7 @@ static int decode_eob_token(theora_priv_t *priv,
     return 0;
 }
 
-static int decode_coeff_token(theora_priv_t *priv,
-                              bitreader_t *br,
-                              int token,
-                              int bi,
-                              int ti) {
+static int decode_coeff_token(theora_priv_t *priv, bitreader_t *br, int token, int bi, int ti) {
     int sign = 0;
     int mag = 0;
     int rlen = 0;
@@ -1235,128 +1245,143 @@ static int decode_coeff_token(theora_priv_t *priv,
         return -1;
 
     switch (token) {
-    case 9: priv->coeffs[bi][ti] = 1; priv->tis[bi]++; break;
-    case 10: priv->coeffs[bi][ti] = -1; priv->tis[bi]++; break;
-    case 11: priv->coeffs[bi][ti] = 2; priv->tis[bi]++; break;
-    case 12: priv->coeffs[bi][ti] = -2; priv->tis[bi]++; break;
-    case 13: case 14: case 15: case 16:
-        sign = br_read1(br);
-        if (br->failed)
+        case 9:
+            priv->coeffs[bi][ti] = 1;
+            priv->tis[bi]++;
+            break;
+        case 10:
+            priv->coeffs[bi][ti] = -1;
+            priv->tis[bi]++;
+            break;
+        case 11:
+            priv->coeffs[bi][ti] = 2;
+            priv->tis[bi]++;
+            break;
+        case 12:
+            priv->coeffs[bi][ti] = -2;
+            priv->tis[bi]++;
+            break;
+        case 13:
+        case 14:
+        case 15:
+        case 16:
+            sign = br_read1(br);
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)((sign ? -1 : 1) * (token - 10));
+            priv->tis[bi]++;
+            break;
+        case 17:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 1) + 7;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 18:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 2) + 9;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 19:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 3) + 13;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 20:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 4) + 21;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 21:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 5) + 37;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 22:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 9) + 69;
+            if (br->failed)
+                return -1;
+            priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi]++;
+            break;
+        case 23:
+            sign = br_read1(br);
+            if (br->failed || ti + 1 >= 64)
+                return -1;
+            priv->coeffs[bi][ti] = 0;
+            priv->coeffs[bi][ti + 1] = (int16_t)(sign ? -1 : 1);
+            priv->tis[bi] += 2;
+            break;
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+            sign = br_read1(br);
+            rlen = token - 22;
+            if (br->failed || ti + rlen >= 64)
+                return -1;
+            for (int tj = ti; tj < ti + rlen; tj++)
+                priv->coeffs[bi][tj] = 0;
+            priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
+            priv->tis[bi] += (uint8_t)(rlen + 1);
+            break;
+        case 28:
+            sign = br_read1(br);
+            rlen = (int)br_read(br, 2) + 6;
+            if (br->failed || ti + rlen >= 64)
+                return -1;
+            for (int tj = ti; tj < ti + rlen; tj++)
+                priv->coeffs[bi][tj] = 0;
+            priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
+            priv->tis[bi] += (uint8_t)(rlen + 1);
+            break;
+        case 29:
+            sign = br_read1(br);
+            rlen = (int)br_read(br, 3) + 10;
+            if (br->failed || ti + rlen >= 64)
+                return -1;
+            for (int tj = ti; tj < ti + rlen; tj++)
+                priv->coeffs[bi][tj] = 0;
+            priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
+            priv->tis[bi] += (uint8_t)(rlen + 1);
+            break;
+        case 30:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 1) + 2;
+            if (br->failed || ti + 1 >= 64)
+                return -1;
+            priv->coeffs[bi][ti] = 0;
+            priv->coeffs[bi][ti + 1] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi] += 2;
+            break;
+        case 31:
+            sign = br_read1(br);
+            mag = (int)br_read(br, 1) + 2;
+            rlen = (int)br_read(br, 1) + 2;
+            if (br->failed || ti + rlen >= 64)
+                return -1;
+            for (int tj = ti; tj < ti + rlen; tj++)
+                priv->coeffs[bi][tj] = 0;
+            priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -mag : mag);
+            priv->tis[bi] += (uint8_t)(rlen + 1);
+            break;
+        default:
             return -1;
-        priv->coeffs[bi][ti] = (int16_t)((sign ? -1 : 1) * (token - 10));
-        priv->tis[bi]++;
-        break;
-    case 17:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 1) + 7;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 18:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 2) + 9;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 19:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 3) + 13;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 20:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 4) + 21;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 21:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 5) + 37;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 22:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 9) + 69;
-        if (br->failed)
-            return -1;
-        priv->coeffs[bi][ti] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi]++;
-        break;
-    case 23:
-        sign = br_read1(br);
-        if (br->failed || ti + 1 >= 64)
-            return -1;
-        priv->coeffs[bi][ti] = 0;
-        priv->coeffs[bi][ti + 1] = (int16_t)(sign ? -1 : 1);
-        priv->tis[bi] += 2;
-        break;
-    case 24:
-    case 25:
-    case 26:
-    case 27:
-        sign = br_read1(br);
-        rlen = token - 22;
-        if (br->failed || ti + rlen >= 64)
-            return -1;
-        for (int tj = ti; tj < ti + rlen; tj++)
-            priv->coeffs[bi][tj] = 0;
-        priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
-        priv->tis[bi] += (uint8_t)(rlen + 1);
-        break;
-    case 28:
-        sign = br_read1(br);
-        rlen = (int)br_read(br, 2) + 6;
-        if (br->failed || ti + rlen >= 64)
-            return -1;
-        for (int tj = ti; tj < ti + rlen; tj++)
-            priv->coeffs[bi][tj] = 0;
-        priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
-        priv->tis[bi] += (uint8_t)(rlen + 1);
-        break;
-    case 29:
-        sign = br_read1(br);
-        rlen = (int)br_read(br, 3) + 10;
-        if (br->failed || ti + rlen >= 64)
-            return -1;
-        for (int tj = ti; tj < ti + rlen; tj++)
-            priv->coeffs[bi][tj] = 0;
-        priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -1 : 1);
-        priv->tis[bi] += (uint8_t)(rlen + 1);
-        break;
-    case 30:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 1) + 2;
-        if (br->failed || ti + 1 >= 64)
-            return -1;
-        priv->coeffs[bi][ti] = 0;
-        priv->coeffs[bi][ti + 1] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi] += 2;
-        break;
-    case 31:
-        sign = br_read1(br);
-        mag = (int)br_read(br, 1) + 2;
-        rlen = (int)br_read(br, 1) + 2;
-        if (br->failed || ti + rlen >= 64)
-            return -1;
-        for (int tj = ti; tj < ti + rlen; tj++)
-            priv->coeffs[bi][tj] = 0;
-        priv->coeffs[bi][ti + rlen] = (int16_t)(sign ? -mag : mag);
-        priv->tis[bi] += (uint8_t)(rlen + 1);
-        break;
-    default:
-        return -1;
     }
 
     priv->ncoeffs[bi] = priv->tis[bi];
@@ -1364,10 +1389,14 @@ static int decode_coeff_token(theora_priv_t *priv,
 }
 
 static int huffman_group_for_ti(int ti) {
-    if (ti == 0) return 0;
-    if (ti <= 5) return 1;
-    if (ti <= 14) return 2;
-    if (ti <= 27) return 3;
+    if (ti == 0)
+        return 0;
+    if (ti <= 5)
+        return 1;
+    if (ti <= 14)
+        return 2;
+    if (ti <= 27)
+        return 3;
     return 4;
 }
 
@@ -1437,7 +1466,8 @@ static int compute_dc_pred(const theora_priv_t *priv, const int16_t lastdc[3], i
         if (nbx < 0 || nby < 0 || nbx >= priv->plane_block_cols[b->plane] ||
             nby >= priv->plane_block_rows[b->plane])
             continue;
-        pbi[i] = priv->plane_raster_to_coded[b->plane][nby * priv->plane_block_cols[b->plane] + nbx];
+        pbi[i] =
+            priv->plane_raster_to_coded[b->plane][nby * priv->plane_block_cols[b->plane] + nbx];
         if (pbi[i] >= 0 && priv->bcoded[pbi[i]] &&
             theora_ref_index_for_mode(priv->mbmodes[priv->blocks[pbi[i]].mb]) == rfi) {
             present[i] = 1;
@@ -1547,10 +1577,14 @@ static void idct_col(int32_t *workspace, int col) {
     workspace[col + 1 * 8] = TH_DESCALE(e1 + TH_DESCALE(x3 * TH_FIX(3.072711026), 12) + t1 + t2, 5);
     workspace[col + 2 * 8] = TH_DESCALE(e2 + TH_DESCALE(x5 * TH_FIX(2.053119869), 12) + t1 + t3, 5);
     workspace[col + 3 * 8] = TH_DESCALE(e3 + TH_DESCALE(x7 * TH_FIX(0.298631336), 12) + t0 + t2, 5);
-    workspace[col + 4 * 8] = TH_DESCALE(e3 - (TH_DESCALE(x7 * TH_FIX(0.298631336), 12) + t0 + t2), 5);
-    workspace[col + 5 * 8] = TH_DESCALE(e2 - (TH_DESCALE(x5 * TH_FIX(2.053119869), 12) + t1 + t3), 5);
-    workspace[col + 6 * 8] = TH_DESCALE(e1 - (TH_DESCALE(x3 * TH_FIX(3.072711026), 12) + t1 + t2), 5);
-    workspace[col + 7 * 8] = TH_DESCALE(e0 - (TH_DESCALE(x1 * TH_FIX(1.501321110), 12) + t0 + t3), 5);
+    workspace[col + 4 * 8] =
+        TH_DESCALE(e3 - (TH_DESCALE(x7 * TH_FIX(0.298631336), 12) + t0 + t2), 5);
+    workspace[col + 5 * 8] =
+        TH_DESCALE(e2 - (TH_DESCALE(x5 * TH_FIX(2.053119869), 12) + t1 + t3), 5);
+    workspace[col + 6 * 8] =
+        TH_DESCALE(e1 - (TH_DESCALE(x3 * TH_FIX(3.072711026), 12) + t1 + t2), 5);
+    workspace[col + 7 * 8] =
+        TH_DESCALE(e0 - (TH_DESCALE(x1 * TH_FIX(1.501321110), 12) + t0 + t3), 5);
 }
 
 static void idct_block(const int16_t in[64], int16_t out[64]) {
@@ -1585,7 +1619,8 @@ static void build_residual_block(const theora_decoder_t *dec,
         return;
     }
     memset(coeff_block, 0, sizeof(coeff_block));
-    coeff_block[0] = (int16_t)(((int)priv->coeffs[bi][0] * dec->qmat[qti][b->plane][qi_dc][0] + 15) >> 5);
+    coeff_block[0] =
+        (int16_t)(((int)priv->coeffs[bi][0] * dec->qmat[qti][b->plane][qi_dc][0] + 15) >> 5);
     for (int zi = 1; zi < priv->ncoeffs[bi] && zi < 64; zi++) {
         int idx = theora_zigzag[zi];
         int qi = zi == 0 ? qi_dc : qi_ac;
@@ -1636,10 +1671,9 @@ static int loop_filter_limit_response(int r, int limit) {
 static void apply_horizontal_filter(uint8_t *plane, int stride, int fx, int fy, int limit) {
     for (int by = 0; by < 8; by++) {
         int row = fy + by;
-        int r = (plane[row * stride + fx] -
-                 3 * plane[row * stride + fx + 1] +
-                 3 * plane[row * stride + fx + 2] -
-                 plane[row * stride + fx + 3] + 4) >> 3;
+        int r = (plane[row * stride + fx] - 3 * plane[row * stride + fx + 1] +
+                 3 * plane[row * stride + fx + 2] - plane[row * stride + fx + 3] + 4) >>
+                3;
         int delta = loop_filter_limit_response(r, limit);
         int p1 = plane[row * stride + fx + 1] + delta;
         int p2 = plane[row * stride + fx + 2] - delta;
@@ -1650,10 +1684,9 @@ static void apply_horizontal_filter(uint8_t *plane, int stride, int fx, int fy, 
 
 static void apply_vertical_filter(uint8_t *plane, int stride, int fx, int fy, int limit) {
     for (int bx = 0; bx < 8; bx++) {
-        int r = (plane[fy * stride + fx + bx] -
-                 3 * plane[(fy + 1) * stride + fx + bx] +
-                 3 * plane[(fy + 2) * stride + fx + bx] -
-                 plane[(fy + 3) * stride + fx + bx] + 4) >> 3;
+        int r = (plane[fy * stride + fx + bx] - 3 * plane[(fy + 1) * stride + fx + bx] +
+                 3 * plane[(fy + 2) * stride + fx + bx] - plane[(fy + 3) * stride + fx + bx] + 4) >>
+                3;
         int delta = loop_filter_limit_response(r, limit);
         int p1 = plane[(fy + 1) * stride + fx + bx] + delta;
         int p2 = plane[(fy + 2) * stride + fx + bx] - delta;
@@ -1802,15 +1835,20 @@ static void reconstruct_frame(theora_decoder_t *dec,
             int mvx = priv->mvects[bi][0];
             int mvy = priv->mvects[bi][1];
             if (((mvx | mvy) & 1) == 0) {
-                copy_pred_whole(pred, src, stride, bw, bh,
-                                px + mvx / 2, py + mvy / 2, plane_w, plane_h);
+                copy_pred_whole(
+                    pred, src, stride, bw, bh, px + mvx / 2, py + mvy / 2, plane_w, plane_h);
             } else {
-                copy_pred_half(pred, src, stride, bw, bh,
+                copy_pred_half(pred,
+                               src,
+                               stride,
+                               bw,
+                               bh,
                                px + motion_trunc_toward_zero(mvx),
                                py + motion_trunc_toward_zero(mvy),
                                px + motion_trunc_away_zero(mvx),
                                py + motion_trunc_away_zero(mvy),
-                               plane_w, plane_h);
+                               plane_w,
+                               plane_h);
             }
         }
 
@@ -1873,8 +1911,11 @@ int theora_decode_frame(theora_decoder_t *dec,
     }
     priv->first_frame_decoded = 1;
 
-    if (out_y) *out_y = dec->cur_y;
-    if (out_cb) *out_cb = dec->cur_cb;
-    if (out_cr) *out_cr = dec->cur_cr;
+    if (out_y)
+        *out_y = dec->cur_y;
+    if (out_cb)
+        *out_cb = dec->cur_cb;
+    if (out_cr)
+        *out_cr = dec->cur_cr;
     return 0;
 }

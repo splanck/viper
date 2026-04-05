@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_trap.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -22,8 +23,6 @@
 #if defined(__APPLE__)
 extern void arc4random_buf(void *buf, size_t nbytes);
 #endif
-
-extern void rt_trap(const char *msg);
 
 #define RT_HKDF_MAX_OKM_LEN (255u * 32u)
 #define RT_CHACHA20_MAX_BYTES (UINT64_C(1) << 38)
@@ -1481,8 +1480,6 @@ void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t 
 #endif
 #include <wincrypt.h>
 
-extern void rt_trap(const char *msg);
-
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
@@ -1504,8 +1501,6 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 #endif
 #include <fcntl.h>
 #include <unistd.h>
-
-extern void rt_trap(const char *msg);
 
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 #if defined(__APPLE__)

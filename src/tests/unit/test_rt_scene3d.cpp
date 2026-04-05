@@ -49,15 +49,8 @@ extern void *rt_material3d_new_color(double r, double g, double b);
 extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
 extern void *rt_mesh3d_new(void);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
-extern void rt_mesh3d_add_vertex(void *obj,
-                                 double x,
-                                 double y,
-                                 double z,
-                                 double nx,
-                                 double ny,
-                                 double nz,
-                                 double u,
-                                 double v);
+extern void rt_mesh3d_add_vertex(
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2);
 }
 
@@ -366,8 +359,14 @@ static int g_scene_begin_count = 0;
 static int g_scene_end_count = 0;
 static const void *g_scene_last_vertices = nullptr;
 
-static void scene_test_begin_frame(void *, const vgfx3d_camera_params_t *) { g_scene_begin_count++; }
-static void scene_test_end_frame(void *) { g_scene_end_count++; }
+static void scene_test_begin_frame(void *, const vgfx3d_camera_params_t *) {
+    g_scene_begin_count++;
+}
+
+static void scene_test_end_frame(void *) {
+    g_scene_end_count++;
+}
+
 static void scene_test_submit_draw(void *,
                                    vgfx_window_t,
                                    const vgfx3d_draw_cmd_t *cmd,
@@ -422,7 +421,8 @@ static void test_scene_draw_reuses_active_frame() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_begin_count == 0, "Scene3D.Draw does not nest Begin when a 3D frame is already active");
+    EXPECT_TRUE(g_scene_begin_count == 0,
+                "Scene3D.Draw does not nest Begin when a 3D frame is already active");
     EXPECT_TRUE(g_scene_end_count == 0, "Scene3D.Draw does not end an externally-owned frame");
     EXPECT_TRUE(canvas.draw_count == 1,
                 "Scene3D.Draw queues scene geometry inside an externally-owned frame");
@@ -440,7 +440,8 @@ static void test_scene_save_escapes_json_names() {
     rt_scene_node3d_set_name(node, rt_const_cstr(name));
     rt_scene3d_add(scene, node);
 
-    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1, "Scene3D.Save writes the scene file");
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save writes the scene file");
 
     std::string text;
     EXPECT_TRUE(read_text_file(path, text), "Scene3D.Save output can be reopened");
@@ -506,9 +507,7 @@ static void test_scene_roundtrip_loads_shared_assets() {
     void *emissive = rt_pixels_new(1, 1);
     void *faces[6];
     const int64_t face_colors[6] = {
-        0xFF0000FFll, 0x00FF00FFll, 0x0000FFFFll,
-        0xFFFF00FFll, 0xFF00FFFFll, 0x00FFFFFFll
-    };
+        0xFF0000FFll, 0x00FF00FFll, 0x0000FFFFll, 0xFFFF00FFll, 0xFF00FFFFll, 0x00FFFFFFll};
 
     rt_pixels_set(diffuse, 0, 0, 0x10203040ll);
     rt_pixels_set(diffuse, 1, 0, 0x50607080ll);
@@ -541,8 +540,8 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_material3d_set_normal_map(material, normal);
     rt_material3d_set_specular_map(material, specular);
     rt_material3d_set_emissive_map(material, emissive);
-    rt_material3d_set_env_map(material, rt_cubemap3d_new(
-        faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]));
+    rt_material3d_set_env_map(
+        material, rt_cubemap3d_new(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]));
 
     rt_scene_node3d_set_name(parent, rt_const_cstr("parent"));
     rt_scene_node3d_set_name(child, rt_const_cstr("child"));
@@ -576,9 +575,13 @@ static void test_scene_roundtrip_loads_shared_assets() {
                 "Scene3D.Load restores hierarchy links");
     EXPECT_TRUE(rt_scene_node3d_get_visible(loaded_parent) == 0,
                 "Scene3D.Load restores node visibility");
-    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(loaded_parent)), 1.0, 0.001,
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(loaded_parent)),
+                1.0,
+                0.001,
                 "Scene3D.Load restores node position");
-    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(loaded_parent)), 2.0, 0.001,
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(loaded_parent)),
+                2.0,
+                0.001,
                 "Scene3D.Load restores node scale");
     EXPECT_TRUE(rt_scene_node3d_get_mesh(loaded_parent) == rt_scene_node3d_get_mesh(loaded_child),
                 "Scene3D.Load preserves shared mesh references");
@@ -587,9 +590,12 @@ static void test_scene_roundtrip_loads_shared_assets() {
                 "Scene3D.Load preserves shared material references");
     EXPECT_TRUE(rt_scene_node3d_get_lod_count(loaded_parent) == 1,
                 "Scene3D.Load restores LOD entries");
-    EXPECT_NEAR(rt_scene_node3d_get_lod_distance(loaded_parent, 0), 10.0, 0.001,
+    EXPECT_NEAR(rt_scene_node3d_get_lod_distance(loaded_parent, 0),
+                10.0,
+                0.001,
                 "Scene3D.Load restores LOD distances");
-    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) != rt_scene_node3d_get_mesh(loaded_parent),
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) !=
+                    rt_scene_node3d_get_mesh(loaded_parent),
                 "Scene3D.Load restores LOD mesh references");
 
     rt_mesh3d *loaded_mesh = (rt_mesh3d *)rt_scene_node3d_get_mesh(loaded_parent);
@@ -597,9 +603,11 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     loaded_mesh->index_count == 3,
                 "Scene3D.Load restores mesh geometry");
     if (loaded_mesh) {
-        EXPECT_NEAR(loaded_mesh->vertices[1].pos[0], 1.0, 0.001,
-                    "Scene3D.Load restores vertex positions");
-        EXPECT_NEAR(loaded_mesh->vertices[0].tangent[0], 1.0, 0.001,
+        EXPECT_NEAR(
+            loaded_mesh->vertices[1].pos[0], 1.0, 0.001, "Scene3D.Load restores vertex positions");
+        EXPECT_NEAR(loaded_mesh->vertices[0].tangent[0],
+                    1.0,
+                    0.001,
                     "Scene3D.Load restores vertex tangents");
         EXPECT_TRUE(loaded_mesh->vertices[0].bone_indices[0] == 3 &&
                         fabs(loaded_mesh->vertices[0].bone_weights[0] - 1.0f) < 0.001f &&
@@ -610,15 +618,20 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_material3d *loaded_material = (rt_material3d *)rt_scene_node3d_get_material(loaded_parent);
     EXPECT_TRUE(loaded_material != nullptr, "Scene3D.Load restores materials");
     if (loaded_material) {
-        EXPECT_NEAR(loaded_material->diffuse[0], 0.25, 0.001,
+        EXPECT_NEAR(loaded_material->diffuse[0],
+                    0.25,
+                    0.001,
                     "Scene3D.Load restores material diffuse color");
-        EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001,
-                    "Scene3D.Load restores material alpha");
-        EXPECT_NEAR(loaded_material->reflectivity, 0.6, 0.001,
+        EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001, "Scene3D.Load restores material alpha");
+        EXPECT_NEAR(loaded_material->reflectivity,
+                    0.6,
+                    0.001,
                     "Scene3D.Load restores material reflectivity");
         EXPECT_TRUE(loaded_material->unlit == 1 && loaded_material->shading_model == 4,
                     "Scene3D.Load restores material shading flags");
-        EXPECT_NEAR(loaded_material->custom_params[0], 3.5, 0.001,
+        EXPECT_NEAR(loaded_material->custom_params[0],
+                    3.5,
+                    0.001,
                     "Scene3D.Load restores custom shader params");
         EXPECT_TRUE(loaded_material->texture != nullptr &&
                         rt_pixels_get(loaded_material->texture, 0, 0) == 0x10203040ll &&
@@ -739,8 +752,9 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
 
     EXPECT_TRUE(g_scene_submit_count == 0,
                 "Scene3D culls against the selected LOD mesh bounds, not the base mesh bounds");
-    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
-                "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
+    EXPECT_TRUE(
+        rt_scene3d_get_culled_count(scene) == 1,
+        "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
 }
 
 int main() {

@@ -348,6 +348,7 @@ class Lowerer {
         TypeRef type;
         Expr *initializer = nullptr;
     };
+
     std::vector<GlobalInitializer> globalInitializers_;
 
     /// @brief Current expression lowering depth for recursion guard.
@@ -493,16 +494,14 @@ class Lowerer {
     /// @param info The class type info to populate with field layouts.
     /// @param qualifiedName The fully qualified type name.
     void computeClassFieldLayout(ClassDecl &decl,
-                                  ClassTypeInfo &info,
-                                  const std::string &qualifiedName);
+                                 ClassTypeInfo &info,
+                                 const std::string &qualifiedName);
 
     /// @brief Build vtable entries from an class declaration's methods and properties.
     /// @param decl The class declaration.
     /// @param info The class type info to populate with vtable slots.
     /// @param qualifiedName The fully qualified type name.
-    void buildClassVtable(ClassDecl &decl,
-                           ClassTypeInfo &info,
-                           const std::string &qualifiedName);
+    void buildClassVtable(ClassDecl &decl, ClassTypeInfo &info, const std::string &qualifiedName);
 
     /// @brief Copy inherited fields, totalSize, and vtable from parent class.
     /// @param info The child class type info to populate.
@@ -1034,14 +1033,14 @@ class Lowerer {
     /// @param expr The call expression with constructor arguments.
     /// @return The constructed value, or nullopt if not a struct type.
     std::optional<LowerResult> lowerStructTypeConstruction(const std::string &typeName,
-                                                          CallExpr *expr);
+                                                           CallExpr *expr);
 
     /// @brief Lower an class type construction call (Entity(args) syntax).
     /// @param typeName The class type name.
     /// @param expr The call expression with constructor arguments.
     /// @return The constructed class pointer, or nullopt if not an class type.
     std::optional<LowerResult> lowerClassTypeConstruction(const std::string &typeName,
-                                                           CallExpr *expr);
+                                                          CallExpr *expr);
 
     /// @}
     //=========================================================================

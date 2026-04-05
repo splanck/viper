@@ -468,8 +468,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
         std::string assetBlobPath;
         std::string assetObjPath;
         if (!proj.embedAssets.empty() || !proj.packGroups.empty()) {
-            std::string outputDir =
-                std::filesystem::path(config.outputPath).parent_path().string();
+            std::string outputDir = std::filesystem::path(config.outputPath).parent_path().string();
             if (outputDir.empty())
                 outputDir = ".";
 

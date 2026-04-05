@@ -109,7 +109,8 @@ static void test_exists() {
     char dir_path[512];
     snprintf(dir_path, sizeof(dir_path), "%s_exists_dir", base);
     mkdir_p(dir_path);
-    test_result("directory is not treated as file", rt_io_file_exists(rt_const_cstr(dir_path)) == 0);
+    test_result("directory is not treated as file",
+                rt_io_file_exists(rt_const_cstr(dir_path)) == 0);
 
     // Clean up
     remove_file(file_path);

@@ -34,7 +34,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
@@ -313,7 +313,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
             packed_normal_deltas = (float *)calloc(delta_count, sizeof(float));
         if (mt->shape_count > 0)
             packed_weights = (float *)malloc((size_t)mt->shape_count * sizeof(float));
-        if ((delta_count > 0 && !packed_deltas) || (delta_count > 0 && has_normal_deltas && !packed_normal_deltas) ||
+        if ((delta_count > 0 && !packed_deltas) ||
+            (delta_count > 0 && has_normal_deltas && !packed_normal_deltas) ||
             (mt->shape_count > 0 && !packed_weights)) {
             free(packed_deltas);
             free(packed_normal_deltas);
@@ -349,13 +350,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         tmp.morph_weights = packed_weights;
         tmp.prev_morph_weights = prev_weights;
         tmp.morph_shape_count = mt->shape_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
-                                           &tmp,
-                                           model_matrix,
-                                           material,
-                                           motion_key,
-                                           NULL,
-                                           prev_weights);
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas, &tmp, model_matrix, material, motion_key, NULL, prev_weights);
         return;
     }
 
@@ -414,7 +410,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     /* Submit via normal draw pipeline */
     rt_mesh3d tmp = *m;
     tmp.vertices = morphed;
-    rt_canvas3d_draw_mesh_matrix_keyed(canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+    rt_canvas3d_draw_mesh_matrix_keyed(
+        canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
 }
 
 void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
@@ -434,4 +431,6 @@ void rt_canvas3d_draw_mesh_morphed(
         canvas, mesh, ((mat4_impl *)transform)->m, material, transform, morph_targets);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

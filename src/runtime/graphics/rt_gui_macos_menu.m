@@ -12,8 +12,8 @@
 
 #import <Cocoa/Cocoa.h>
 
-#include "rt_gui_internal.h"
 #include "../lib/graphics/src/vgfx_internal.h"
+#include "rt_gui_internal.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -36,13 +36,13 @@ static NSString *rt_gui_macos_app_name(void) {
         return [NSString stringWithUTF8String:s_current_app->title];
     }
 
-    NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@ "CFBundleName"];
     if (bundle_name.length > 0) {
         return bundle_name;
     }
 
     NSString *process_name = [[NSProcessInfo processInfo] processName];
-    return process_name.length > 0 ? process_name : @"Viper";
+    return process_name.length > 0 ? process_name : @ "Viper";
 }
 
 static BOOL rt_gui_macos_item_is_about(const vg_menu_item_t *item) {
@@ -217,12 +217,12 @@ static NSString *rt_gui_macos_display_shortcut(const char *shortcut) {
         return nil;
     }
 
-    display = [display stringByReplacingOccurrencesOfString:@"Ctrl+"
-                                                 withString:@"Cmd+"
+    display = [display stringByReplacingOccurrencesOfString:@ "Ctrl+"
+                                                 withString:@ "Cmd+"
                                                     options:NSCaseInsensitiveSearch
                                                       range:NSMakeRange(0, display.length)];
-    display = [display stringByReplacingOccurrencesOfString:@"Command+"
-                                                 withString:@"Cmd+"
+    display = [display stringByReplacingOccurrencesOfString:@ "Command+"
+                                                 withString:@ "Cmd+"
                                                     options:NSCaseInsensitiveSearch
                                                       range:NSMakeRange(0, display.length)];
     return display;
@@ -231,13 +231,13 @@ static NSString *rt_gui_macos_display_shortcut(const char *shortcut) {
 static NSMenuItem *rt_gui_macos_make_bound_item(vg_menu_item_t *item, NSString *title_override) {
     NSString *title = title_override;
     if (!title) {
-        title = item && item->text ? [NSString stringWithUTF8String:item->text] : @"";
+        title = item && item->text ? [NSString stringWithUTF8String:item->text] : @ "";
     }
     if (!title) {
-        title = @"";
+        title = @ "";
     }
 
-    NSMenuItem *native_item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+    NSMenuItem *native_item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@ ""];
     [native_item setEnabled:item ? item->enabled : YES];
     [native_item setState:item && item->checked ? NSControlStateValueOn : NSControlStateValueOff];
 
@@ -249,7 +249,8 @@ static NSMenuItem *rt_gui_macos_make_bound_item(vg_menu_item_t *item, NSString *
         if (!rt_gui_macos_apply_shortcut(native_item, item->shortcut)) {
             NSString *display_shortcut = rt_gui_macos_display_shortcut(item->shortcut);
             if (display_shortcut.length > 0) {
-                [native_item setTitle:[NSString stringWithFormat:@"%@\t%@", title, display_shortcut]];
+                [native_item
+                    setTitle:[NSString stringWithFormat:@ "%@\t%@", title, display_shortcut]];
             }
         }
     }
@@ -286,9 +287,9 @@ static NSMenuItem *rt_gui_macos_build_regular_item(vg_menu_item_t *item,
 
 static NSMenu *rt_gui_macos_build_regular_menu(vg_menu_t *menu,
                                                const rt_gui_macos_special_items_t *specials) {
-    NSString *title = menu && menu->title ? [NSString stringWithUTF8String:menu->title] : @"";
+    NSString *title = menu && menu->title ? [NSString stringWithUTF8String:menu->title] : @ "";
     if (!title) {
-        title = @"";
+        title = @ "";
     }
 
     NSMenu *native_menu = [[NSMenu alloc] initWithTitle:title];
@@ -309,14 +310,15 @@ static NSMenu *rt_gui_macos_build_regular_menu(vg_menu_t *menu,
     return native_menu;
 }
 
-static NSMenuItem *rt_gui_macos_build_preferences_item(const rt_gui_macos_special_items_t *specials) {
+static NSMenuItem *rt_gui_macos_build_preferences_item(
+    const rt_gui_macos_special_items_t *specials) {
     if (!specials->preferences_item) {
         return nil;
     }
 
     NSMenuItem *item = rt_gui_macos_make_bound_item(specials->preferences_item, nil);
     if ([[item keyEquivalent] length] == 0) {
-        [item setKeyEquivalent:@","];
+        [item setKeyEquivalent:@ ","];
         [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     }
     return item;
@@ -326,16 +328,16 @@ static NSMenuItem *rt_gui_macos_build_quit_item(const rt_gui_macos_special_items
                                                 NSString *app_name) {
     if (specials->quit_item) {
         NSMenuItem *item = rt_gui_macos_make_bound_item(
-            specials->quit_item, [NSString stringWithFormat:@"Quit %@", app_name]);
-        [item setKeyEquivalent:@"q"];
+            specials->quit_item, [NSString stringWithFormat:@ "Quit %@", app_name]);
+        [item setKeyEquivalent:@ "q"];
         [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
         return item;
     }
 
     NSMenuItem *item =
-        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", app_name]
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "Quit %@", app_name]
                                    action:@selector(quitApplication:)
-                            keyEquivalent:@"q"];
+                            keyEquivalent:@ "q"];
     [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [item setTarget:[RTGuiMacMenuDispatcher shared]];
     return item;
@@ -347,13 +349,14 @@ static NSMenu *rt_gui_macos_build_app_menu(const rt_gui_macos_special_items_t *s
     [app_menu setAutoenablesItems:NO];
 
     if (specials->about_item) {
-        [app_menu addItem:rt_gui_macos_make_bound_item(
-                              specials->about_item, [NSString stringWithFormat:@"About %@", app_name])];
+        [app_menu
+            addItem:rt_gui_macos_make_bound_item(
+                        specials->about_item, [NSString stringWithFormat:@ "About %@", app_name])];
     } else {
         NSMenuItem *about_item =
-            [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"About %@", app_name]
+            [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "About %@", app_name]
                                        action:@selector(orderFrontStandardAboutPanel:)
-                                keyEquivalent:@""];
+                                keyEquivalent:@ ""];
         [about_item setTarget:NSApp];
         [app_menu addItem:about_item];
     }
@@ -365,34 +368,36 @@ static NSMenu *rt_gui_macos_build_app_menu(const rt_gui_macos_special_items_t *s
 
     [app_menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *services_root =
-        [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
-    NSMenu *services_menu = [[NSMenu alloc] initWithTitle:@"Services"];
+    NSMenuItem *services_root = [[NSMenuItem alloc] initWithTitle:@ "Services"
+                                                           action:nil
+                                                    keyEquivalent:@ ""];
+    NSMenu *services_menu = [[NSMenu alloc] initWithTitle:@ "Services"];
     [services_root setSubmenu:services_menu];
     [NSApp setServicesMenu:services_menu];
     [app_menu addItem:services_root];
 
     [app_menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *hide_item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Hide %@", app_name]
-                                                       action:@selector(hide:)
-                                                keyEquivalent:@"h"];
+    NSMenuItem *hide_item =
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "Hide %@", app_name]
+                                   action:@selector(hide:)
+                            keyEquivalent:@ "h"];
     [hide_item setTarget:NSApp];
     [hide_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [app_menu addItem:hide_item];
 
     NSMenuItem *hide_others_item =
-        [[NSMenuItem alloc] initWithTitle:@"Hide Others"
+        [[NSMenuItem alloc] initWithTitle:@ "Hide Others"
                                    action:@selector(hideOtherApplications:)
-                            keyEquivalent:@"h"];
+                            keyEquivalent:@ "h"];
     [hide_others_item setTarget:NSApp];
     [hide_others_item
         setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
     [app_menu addItem:hide_others_item];
 
-    NSMenuItem *show_all_item =
-        [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:)
-                            keyEquivalent:@""];
+    NSMenuItem *show_all_item = [[NSMenuItem alloc] initWithTitle:@ "Show All"
+                                                           action:@selector(unhideAllApplications:)
+                                                    keyEquivalent:@ ""];
     [show_all_item setTarget:NSApp];
     [app_menu addItem:show_all_item];
 
@@ -410,10 +415,10 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
         }
     }
 
-    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
+    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@ ""];
     [main_menu setAutoenablesItems:NO];
 
-    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@ "" action:nil keyEquivalent:@ ""];
     [app_root setSubmenu:rt_gui_macos_build_app_menu(&specials)];
     [main_menu addItem:app_root];
 
@@ -422,9 +427,9 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
     }
 
     for (vg_menu_t *menu = g_main_menubar->first_menu; menu; menu = menu->next) {
-        NSString *title = menu->title ? [NSString stringWithUTF8String:menu->title] : @"";
+        NSString *title = menu->title ? [NSString stringWithUTF8String:menu->title] : @ "";
         if (!title) {
-            title = @"";
+            title = @ "";
         }
 
         NSMenu *submenu = rt_gui_macos_build_regular_menu(menu, &specials);
@@ -432,14 +437,16 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
             continue;
         }
 
-        NSMenuItem *root_item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+        NSMenuItem *root_item = [[NSMenuItem alloc] initWithTitle:title
+                                                           action:nil
+                                                    keyEquivalent:@ ""];
         [root_item setSubmenu:submenu];
         [root_item setEnabled:menu->enabled];
         [main_menu addItem:root_item];
 
-        if ([title caseInsensitiveCompare:@"Help"] == NSOrderedSame) {
+        if ([title caseInsensitiveCompare:@ "Help"] == NSOrderedSame) {
             [NSApp setHelpMenu:submenu];
-        } else if ([title caseInsensitiveCompare:@"Window"] == NSOrderedSame) {
+        } else if ([title caseInsensitiveCompare:@ "Window"] == NSOrderedSame) {
             [NSApp setWindowsMenu:submenu];
         }
     }

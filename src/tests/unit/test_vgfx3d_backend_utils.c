@@ -74,8 +74,12 @@ static void test_unpack_pixels_rgba_rejects_invalid(void) {
 
 static void test_unpack_cubemap_faces_rgba_success(void) {
     uint32_t face_data[6] = {
-        0x11223344u, 0x22334455u, 0x33445566u,
-        0x44556677u, 0x55667788u, 0x66778899u,
+        0x11223344u,
+        0x22334455u,
+        0x33445566u,
+        0x44556677u,
+        0x55667788u,
+        0x66778899u,
     };
     fake_pixels_t faces[6];
     fake_cubemap_t cubemap;
@@ -128,10 +132,22 @@ static void test_unpack_cubemap_faces_rgba_rejects_invalid(void) {
 
 static void test_flip_rgba_rows(void) {
     uint8_t rgba[16] = {
-        1, 2, 3, 4,
-        5, 6, 7, 8,
-        9, 10, 11, 12,
-        13, 14, 15, 16,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
     };
 
     vgfx3d_flip_rgba_rows(rgba, 2, 2);
@@ -145,8 +161,12 @@ static void test_flip_rgba_rows(void) {
 static void test_generation_helpers(void) {
     uint32_t data = 0x11223344u;
     fake_pixels_t faces[6] = {
-        {1, 1, &data, 1}, {1, 1, &data, 4}, {1, 1, &data, 2},
-        {1, 1, &data, 9}, {1, 1, &data, 3}, {1, 1, &data, 5},
+        {1, 1, &data, 1},
+        {1, 1, &data, 4},
+        {1, 1, &data, 2},
+        {1, 1, &data, 9},
+        {1, 1, &data, 3},
+        {1, 1, &data, 5},
     };
     fake_cubemap_t cubemap = {0};
     uint64_t base_generation;
@@ -175,10 +195,22 @@ static void test_generation_helpers(void) {
 
 static void test_compute_normal_matrix_inverse_transpose(void) {
     const float model[16] = {
-        2.0f, 0.0f, 0.0f, 5.0f,
-        0.0f, 3.0f, 0.0f, 6.0f,
-        0.0f, 0.0f, 4.0f, 7.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        2.0f,
+        0.0f,
+        0.0f,
+        5.0f,
+        0.0f,
+        3.0f,
+        0.0f,
+        6.0f,
+        0.0f,
+        0.0f,
+        4.0f,
+        7.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     float normal[16];
 
@@ -193,10 +225,22 @@ static void test_compute_normal_matrix_inverse_transpose(void) {
 
 static void test_compute_normal_matrix_singular_fallback(void) {
     const float model[16] = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        4.0f, 5.0f, 6.0f, 7.0f,
-        7.0f, 8.0f, 9.0f, 10.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        1.0f,
+        2.0f,
+        3.0f,
+        4.0f,
+        4.0f,
+        5.0f,
+        6.0f,
+        7.0f,
+        7.0f,
+        8.0f,
+        9.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     float normal[16];
 
@@ -211,10 +255,22 @@ static void test_compute_normal_matrix_singular_fallback(void) {
 
 static void test_invert_matrix4_success(void) {
     const float matrix[16] = {
-        2.0f, 0.0f, 0.0f, 4.0f,
-        0.0f, 4.0f, 0.0f, 6.0f,
-        0.0f, 0.0f, 8.0f, 8.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        2.0f,
+        0.0f,
+        0.0f,
+        4.0f,
+        0.0f,
+        4.0f,
+        0.0f,
+        6.0f,
+        0.0f,
+        0.0f,
+        8.0f,
+        8.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     float inv[16];
 
@@ -229,10 +285,22 @@ static void test_invert_matrix4_success(void) {
 
 static void test_invert_matrix4_rejects_singular(void) {
     const float matrix[16] = {
-        1.0f, 2.0f, 3.0f, 4.0f,
-        2.0f, 4.0f, 6.0f, 8.0f,
-        0.0f, 1.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        1.0f,
+        2.0f,
+        3.0f,
+        4.0f,
+        2.0f,
+        4.0f,
+        6.0f,
+        8.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     float inv[16];
 

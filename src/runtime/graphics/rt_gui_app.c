@@ -398,8 +398,7 @@ void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *p
             continue;
         memmove(&app->command_palettes[i],
                 &app->command_palettes[i + 1],
-                (size_t)(app->command_palette_count - i - 1) *
-                    sizeof(*app->command_palettes));
+                (size_t)(app->command_palette_count - i - 1) * sizeof(*app->command_palettes));
         app->command_palette_count--;
         break;
     }
@@ -962,8 +961,8 @@ void rt_gui_app_poll(void *app_ptr) {
 
                 // Drag-and-drop: update drag-over state during drag
                 if (app->drag_source) {
-                    vg_widget_t *hit = vg_widget_hit_test(
-                        event_root, (float)app->mouse_x, (float)app->mouse_y);
+                    vg_widget_t *hit =
+                        vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
                     // Clear previous drag-over
                     if (app->drag_over_widget && app->drag_over_widget != hit)
                         app->drag_over_widget->_is_drag_over = false;
@@ -980,8 +979,8 @@ void rt_gui_app_poll(void *app_ptr) {
                 if (top_palette) {
                     vg_tooltip_manager_on_leave(vg_tooltip_manager_get());
                 } else {
-                    vg_widget_t *hovered = vg_widget_hit_test(
-                        event_root, (float)app->mouse_x, (float)app->mouse_y);
+                    vg_widget_t *hovered =
+                        vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
                     if (hovered) {
                         vg_tooltip_manager_on_hover(
                             vg_tooltip_manager_get(), hovered, app->mouse_x, app->mouse_y);
@@ -1019,11 +1018,12 @@ void rt_gui_app_poll(void *app_ptr) {
                         // Transfer drag data to drop target
                         free(hit->_drop_received_type);
                         free(hit->_drop_received_data);
-                        hit->_drop_received_type =
-                            app->drag_source->drag_type ? strdup(app->drag_source->drag_type) : NULL;
-                        hit->_drop_received_data =
-                            app->drag_source->drag_data ? strdup(app->drag_source->drag_data)
-                                                        : NULL;
+                        hit->_drop_received_type = app->drag_source->drag_type
+                                                       ? strdup(app->drag_source->drag_type)
+                                                       : NULL;
+                        hit->_drop_received_data = app->drag_source->drag_data
+                                                       ? strdup(app->drag_source->drag_data)
+                                                       : NULL;
                         hit->_was_dropped = true;
                         hit->_is_drag_over = false;
                     }
@@ -1040,15 +1040,13 @@ void rt_gui_app_poll(void *app_ptr) {
             }
 
             if (top_palette && top_palette->is_visible) {
-                int is_mouse_event = gui_event.type == VG_EVENT_MOUSE_MOVE ||
-                                     gui_event.type == VG_EVENT_MOUSE_DOWN ||
-                                     gui_event.type == VG_EVENT_MOUSE_UP ||
-                                     gui_event.type == VG_EVENT_CLICK ||
-                                     gui_event.type == VG_EVENT_DOUBLE_CLICK ||
-                                     gui_event.type == VG_EVENT_MOUSE_WHEEL;
-                int inside_palette =
-                    rt_gui_palette_contains_point(
-                        top_palette, gui_event.mouse.screen_x, gui_event.mouse.screen_y);
+                int is_mouse_event =
+                    gui_event.type == VG_EVENT_MOUSE_MOVE ||
+                    gui_event.type == VG_EVENT_MOUSE_DOWN || gui_event.type == VG_EVENT_MOUSE_UP ||
+                    gui_event.type == VG_EVENT_CLICK || gui_event.type == VG_EVENT_DOUBLE_CLICK ||
+                    gui_event.type == VG_EVENT_MOUSE_WHEEL;
+                int inside_palette = rt_gui_palette_contains_point(
+                    top_palette, gui_event.mouse.screen_x, gui_event.mouse.screen_y);
 
                 if (is_mouse_event && inside_palette) {
                     rt_gui_send_event_to_widget(&top_palette->base, &gui_event);
@@ -1211,8 +1209,8 @@ void rt_gui_app_render(void *app_ptr) {
         vg_notification_manager_update(app->notification_manager, now_ms);
         if (app->notification_manager->base.vtable &&
             app->notification_manager->base.vtable->paint) {
-            app->notification_manager->base.vtable->paint(
-                &app->notification_manager->base, (void *)app->window);
+            app->notification_manager->base.vtable->paint(&app->notification_manager->base,
+                                                          (void *)app->window);
         }
     }
 
@@ -1226,8 +1224,8 @@ void rt_gui_app_render(void *app_ptr) {
         vg_widget_measure(&tooltip_mgr->active_tooltip->base, (float)win_w, (float)win_h);
         if (tooltip_mgr->active_tooltip->base.vtable &&
             tooltip_mgr->active_tooltip->base.vtable->paint) {
-            tooltip_mgr->active_tooltip->base.vtable->paint(
-                &tooltip_mgr->active_tooltip->base, (void *)app->window);
+            tooltip_mgr->active_tooltip->base.vtable->paint(&tooltip_mgr->active_tooltip->base,
+                                                            (void *)app->window);
         }
     }
 

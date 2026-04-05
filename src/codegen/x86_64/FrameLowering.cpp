@@ -372,8 +372,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
     frame.prologueEmitted = true;
     frame.usesChkstk = false;
     frame.win64UnwindOps.clear();
-    frame.win64UnwindOps.push_back(
-        {Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
+    frame.win64UnwindOps.push_back({Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
 #endif
 
     if (frame.frameSize > 0) {
@@ -447,10 +446,10 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
                 {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
         }
 #if defined(_WIN32)
-        frame.win64UnwindOps.push_back({isGPR(reg) ? Win64UnwindOpKind::SaveNonVol
-                                                   : Win64UnwindOpKind::SaveXmm128,
-                                        reg,
-                                        unwindOffsetFromFinalRsp(frame.frameSize, offset)});
+        frame.win64UnwindOps.push_back(
+            {isGPR(reg) ? Win64UnwindOpKind::SaveNonVol : Win64UnwindOpKind::SaveXmm128,
+             reg,
+             unwindOffsetFromFinalRsp(frame.frameSize, offset)});
 #endif
     }
 

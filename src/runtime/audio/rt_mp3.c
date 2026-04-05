@@ -82,7 +82,7 @@ typedef struct {
     int channel_mode; // 0=stereo, 1=joint, 2=dual, 3=mono
     int mode_ext;
     int channels;
-    int frame_size;   // total frame bytes including header
+    int frame_size; // total frame bytes including header
     int side_info_size;
     int main_data_size;
 } mp3_frame_header_t;
@@ -98,7 +98,7 @@ static int mp3_parse_header(const uint8_t *hdr, mp3_frame_header_t *out) {
 
     // Layer: 01=III, 10=II, 11=I
     if (layer_bits == 0)
-        return -1; // reserved
+        return -1;               // reserved
     out->layer = 4 - layer_bits; // convert to 1=I, 2=II, 3=III
 
     if (out->layer != 3)
@@ -175,8 +175,8 @@ typedef struct {
     mp3_granule_info_t granules[MP3_MAX_GRANULES][MP3_MAX_CHANNELS];
 } mp3_side_info_t;
 
-static int mp3_parse_side_info(const uint8_t *data, int size, int channels,
-                               int mpeg1, mp3_side_info_t *si) {
+static int mp3_parse_side_info(
+    const uint8_t *data, int size, int channels, int mpeg1, mp3_side_info_t *si) {
     mp3_bits_t bits;
     mp3_bits_init(&bits, data, (size_t)size);
 
@@ -273,8 +273,8 @@ void mp3_decoder_free(mp3_decoder_t *dec) {
 
 /// @brief Decode one (x, y) pair from a Huffman tree stored as flat node array.
 /// @return 0 on success, -1 on error.
-static int mp3_huff_tree_decode(mp3_bits_t *bits, const mp3_huff_node_t *tree, int tree_size,
-                                 int *x, int *y) {
+static int mp3_huff_tree_decode(
+    mp3_bits_t *bits, const mp3_huff_node_t *tree, int tree_size, int *x, int *y) {
     if (!tree || tree_size <= 0)
         return -1;
     int node = 0;
@@ -301,10 +301,20 @@ static int mp3_huff_tree_decode(mp3_bits_t *bits, const mp3_huff_node_t *tree, i
 /// @return Tree pointer and size, or NULL if table uses fallback decode.
 static const mp3_huff_node_t *mp3_get_huff_tree(int table_idx, int *out_size) {
     switch (table_idx) {
-        case 1: *out_size = 7; return mp3_htree_1;
-        case 2: case 3: *out_size = 16; return mp3_htree_2;
-        case 5: case 6: *out_size = 28; return mp3_htree_5;
-        default: *out_size = 0; return NULL;
+        case 1:
+            *out_size = 7;
+            return mp3_htree_1;
+        case 2:
+        case 3:
+            *out_size = 16;
+            return mp3_htree_2;
+        case 5:
+        case 6:
+            *out_size = 28;
+            return mp3_htree_5;
+        default:
+            *out_size = 0;
+            return NULL;
     }
 }
 
@@ -331,13 +341,18 @@ static void mp3_huff_decode_pair(mp3_bits_t *bits, int table_idx, int *x, int *y
     int nbits = 0;
     {
         int tmp = max_val;
-        while (tmp > 0) { nbits++; tmp >>= 1; }
+        while (tmp > 0) {
+            nbits++;
+            tmp >>= 1;
+        }
     }
 
     *x = (int)mp3_bits_read(bits, nbits);
     *y = (int)mp3_bits_read(bits, nbits);
-    if (*x > max_val) *x = max_val;
-    if (*y > max_val) *y = max_val;
+    if (*x > max_val)
+        *x = max_val;
+    if (*y > max_val)
+        *y = max_val;
 }
 
 //===----------------------------------------------------------------------===//
@@ -349,7 +364,8 @@ static void mp3_imdct36(const float *in, float *out) {
     for (int i = 0; i < 36; i++) {
         double sum = 0.0;
         for (int k = 0; k < 18; k++)
-            sum += (double)in[k] * cos(M_PI / 36.0 * (double)(2 * i + 1 + 18) * (double)(2 * k + 1) / 2.0);
+            sum += (double)in[k] *
+                   cos(M_PI / 36.0 * (double)(2 * i + 1 + 18) * (double)(2 * k + 1) / 2.0);
         out[i] = (float)sum;
     }
 }
@@ -359,7 +375,8 @@ static void mp3_imdct12(const float *in, float *out) {
     for (int i = 0; i < 12; i++) {
         double sum = 0.0;
         for (int k = 0; k < 6; k++)
-            sum += (double)in[k] * cos(M_PI / 12.0 * (double)(2 * i + 1 + 6) * (double)(2 * k + 1) / 2.0);
+            sum += (double)in[k] *
+                   cos(M_PI / 12.0 * (double)(2 * i + 1 + 6) * (double)(2 * k + 1) / 2.0);
         out[i] = (float)sum;
     }
 }
@@ -368,8 +385,10 @@ static void mp3_imdct12(const float *in, float *out) {
 // Polyphase synthesis filterbank
 //===----------------------------------------------------------------------===//
 
-static void mp3_synth_filter(mp3_decoder_t *dec, int ch, const float subbands[32],
-                              int16_t *pcm_out) {
+static void mp3_synth_filter(mp3_decoder_t *dec,
+                             int ch,
+                             const float subbands[32],
+                             int16_t *pcm_out) {
     float *buf = dec->synth_buf[ch];
     int offset = dec->synth_offset[ch];
 
@@ -414,10 +433,8 @@ static void mp3_synth_filter(mp3_decoder_t *dec, int ch, const float subbands[32
 static size_t mp3_skip_id3v2(const uint8_t *data, size_t len) {
     if (len >= 10 && data[0] == 'I' && data[1] == 'D' && data[2] == '3') {
         // Syncsafe integer size (4 bytes, 7 bits each)
-        size_t tag_size = ((size_t)(data[6] & 0x7F) << 21) |
-                          ((size_t)(data[7] & 0x7F) << 14) |
-                          ((size_t)(data[8] & 0x7F) << 7) |
-                          ((size_t)(data[9] & 0x7F));
+        size_t tag_size = ((size_t)(data[6] & 0x7F) << 21) | ((size_t)(data[7] & 0x7F) << 14) |
+                          ((size_t)(data[8] & 0x7F) << 7) | ((size_t)(data[9] & 0x7F));
         size_t total = 10 + tag_size;
         return (total <= len) ? total : len;
     }
@@ -436,9 +453,13 @@ static size_t mp3_find_sync(const uint8_t *data, size_t len, size_t start) {
     return len; // not found
 }
 
-int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
-                    int16_t **out_pcm, int *out_samples,
-                    int *out_channels, int *out_sample_rate) {
+int mp3_decode_file(mp3_decoder_t *dec,
+                    const uint8_t *data,
+                    size_t len,
+                    int16_t **out_pcm,
+                    int *out_samples,
+                    int *out_channels,
+                    int *out_sample_rate) {
     if (!dec || !data || len < 4)
         return -1;
 
@@ -530,12 +551,13 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                 to_save = (int)sizeof(dec->reservoir);
             if (dec->reservoir_size + to_save > (int)sizeof(dec->reservoir)) {
                 int shift = dec->reservoir_size + to_save - (int)sizeof(dec->reservoir);
-                memmove(dec->reservoir, dec->reservoir + shift,
-                        (size_t)(dec->reservoir_size - shift));
+                memmove(
+                    dec->reservoir, dec->reservoir + shift, (size_t)(dec->reservoir_size - shift));
                 dec->reservoir_size -= shift;
             }
             memcpy(dec->reservoir + dec->reservoir_size,
-                   frame_data + hdr.side_info_size, (size_t)to_save);
+                   frame_data + hdr.side_info_size,
+                   (size_t)to_save);
             dec->reservoir_size += to_save;
         }
 
@@ -557,7 +579,7 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                     part_end = bits.len;
 
                 // --- Read scalefactors ---
-                int scalefac_l[22]; // long block scalefactors
+                int scalefac_l[22];    // long block scalefactors
                 int scalefac_s[13][3]; // short block scalefactors [band][window]
                 memset(scalefac_l, 0, sizeof(scalefac_l));
                 memset(scalefac_s, 0, sizeof(scalefac_s));
@@ -574,18 +596,22 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                             scalefac_l[sfb] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                         for (int sfb = 3; sfb < 6; sfb++)
                             for (int win = 0; win < 3; win++)
-                                scalefac_s[sfb][win] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
+                                scalefac_s[sfb][win] =
+                                    slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                         for (int sfb = 6; sfb < 12; sfb++)
                             for (int win = 0; win < 3; win++)
-                                scalefac_s[sfb][win] = slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
+                                scalefac_s[sfb][win] =
+                                    slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
                     } else {
                         // Pure short blocks
                         for (int sfb = 0; sfb < 6; sfb++)
                             for (int win = 0; win < 3; win++)
-                                scalefac_s[sfb][win] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
+                                scalefac_s[sfb][win] =
+                                    slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                         for (int sfb = 6; sfb < 12; sfb++)
                             for (int win = 0; win < 3; win++)
-                                scalefac_s[sfb][win] = slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
+                                scalefac_s[sfb][win] =
+                                    slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
                     }
                 } else {
                     // Long blocks
@@ -610,7 +636,8 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                     int r0 = gi->region0_count + 1;
                     int r1 = gi->region1_count + 1;
                     region1_start = (r0 < 22) ? mp3_sfb_long_cumul[sr_idx][r0] : MP3_SBLIMIT;
-                    region2_start = (r0 + r1 < 22) ? mp3_sfb_long_cumul[sr_idx][r0 + r1] : MP3_SBLIMIT;
+                    region2_start =
+                        (r0 + r1 < 22) ? mp3_sfb_long_cumul[sr_idx][r0 + r1] : MP3_SBLIMIT;
                 }
                 if (region1_start > gi->big_values * 2)
                     region1_start = gi->big_values * 2;
@@ -705,11 +732,14 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                     for (int sfb = 0; sfb < 12; sfb++) {
                         int width = mp3_sfb_short_44100[sfb];
                         for (int win = 0; win < 3; win++) {
-                            double sfac_pow = pow(2.0, -0.5 * (double)(scalefac_s[sfb][win] * sfac_scale));
-                            double subblock_pow = pow(2.0, -0.5 * (double)(gi->subblock_gain[win] * 8));
+                            double sfac_pow =
+                                pow(2.0, -0.5 * (double)(scalefac_s[sfb][win] * sfac_scale));
+                            double subblock_pow =
+                                pow(2.0, -0.5 * (double)(gi->subblock_gain[win] * 8));
                             for (int i = 0; i < width; i++) {
                                 int idx = sfb * 3 * width + win * width + i;
-                                if (idx >= MP3_SBLIMIT) break;
+                                if (idx >= MP3_SBLIMIT)
+                                    break;
                                 double val = (double)abs(is_values[idx]);
                                 val = (is_values[idx] < 0 ? -1.0 : 1.0) * pow(val, 4.0 / 3.0);
                                 xr[idx] = (float)(val * global_gain_pow * sfac_pow * subblock_pow);
@@ -720,8 +750,10 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                     // Long blocks (or mixed)
                     for (int sfb = 0; sfb < 21; sfb++) {
                         int start = (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb] : sfb * 18;
-                        int end = (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb + 1] : (sfb + 1) * 18;
-                        if (end > MP3_SBLIMIT) end = MP3_SBLIMIT;
+                        int end =
+                            (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb + 1] : (sfb + 1) * 18;
+                        if (end > MP3_SBLIMIT)
+                            end = MP3_SBLIMIT;
 
                         int sf = scalefac_l[sfb];
                         if (gi->preflag && sfb < 22)
@@ -767,8 +799,7 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
                             mp3_imdct12(short_in, short_out);
                             // Window and place into 36-sample output
                             for (int i = 0; i < 12; i++)
-                                imdct_out[6 + win * 6 + i % 6] +=
-                                    short_out[i] * mp3_win_short[i];
+                                imdct_out[6 + win * 6 + i % 6] += short_out[i] * mp3_win_short[i];
                         }
                     } else {
                         // Long block: 36-point IMDCT
@@ -791,8 +822,7 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
 
                     // Overlap-add: first 18 samples = this_frame + prev_overlap
                     for (int i = 0; i < 18; i++) {
-                        samples[ch][sb * 18 + i] =
-                            imdct_out[i] + dec->overlap[ch][sb][i];
+                        samples[ch][sb * 18 + i] = imdct_out[i] + dec->overlap[ch][sb][i];
                         dec->overlap[ch][sb][i] = imdct_out[18 + i];
                     }
                 }
@@ -833,9 +863,9 @@ int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
 
                     // Interleave into output
                     for (int j = 0; j < 32; j++) {
-                        size_t out_idx = (pcm_len + (size_t)ss * 32 + (size_t)j) *
-                                             (size_t)hdr.channels +
-                                         (size_t)ch;
+                        size_t out_idx =
+                            (pcm_len + (size_t)ss * 32 + (size_t)j) * (size_t)hdr.channels +
+                            (size_t)ch;
                         if (out_idx < pcm_cap * (size_t)channels)
                             pcm[out_idx] = pcm_samples[j];
                     }
@@ -923,8 +953,8 @@ mp3_stream_t *mp3_stream_open(const char *filepath) {
     s->effective_len = (size_t)flen;
 
     // Skip ID3v1 tail
-    if (s->file_len >= 128 && data[s->file_len - 128] == 'T' &&
-        data[s->file_len - 127] == 'A' && data[s->file_len - 126] == 'G')
+    if (s->file_len >= 128 && data[s->file_len - 128] == 'T' && data[s->file_len - 127] == 'A' &&
+        data[s->file_len - 126] == 'G')
         s->effective_len = s->file_len - 128;
 
     // Skip ID3v2 header
@@ -991,8 +1021,13 @@ int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
         // This is suboptimal (re-parses from current pos) but correct.
         // A proper per-frame decode would refactor the inner loop, but the
         // existing code maintains state (overlap, synth) in the decoder struct.
-        int rc = mp3_decode_file(stream->dec, stream->file_data + stream->decode_pos,
-                                  (size_t)hdr.frame_size, &pcm, &samples, &ch, &sr);
+        int rc = mp3_decode_file(stream->dec,
+                                 stream->file_data + stream->decode_pos,
+                                 (size_t)hdr.frame_size,
+                                 &pcm,
+                                 &samples,
+                                 &ch,
+                                 &sr);
 
         stream->decode_pos = frame_end;
 
@@ -1030,7 +1065,8 @@ void mp3_stream_rewind(mp3_stream_t *stream) {
     if (!stream)
         return;
     stream->decode_pos = mp3_skip_id3v2(stream->file_data, stream->effective_len);
-    stream->decode_pos = mp3_find_sync(stream->file_data, stream->effective_len, stream->decode_pos);
+    stream->decode_pos =
+        mp3_find_sync(stream->file_data, stream->effective_len, stream->decode_pos);
 
     // Reset decoder state for clean restart
     memset(stream->dec->overlap, 0, sizeof(stream->dec->overlap));

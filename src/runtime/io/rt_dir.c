@@ -31,6 +31,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dir.h"
+#include "rt_error.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_path.h"
@@ -75,6 +76,22 @@
 #endif
 #define PATH_SEP '/'
 #endif
+
+static void rt_dir_trap_domain(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_DOMAIN_ERROR, Err_DomainError, -1, msg);
+}
+
+static void rt_dir_trap_runtime(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, msg);
+}
+
+static void rt_dir_trap_io(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_IO_ERROR, Err_IOError, -1, msg);
+}
+
+static void rt_dir_trap_not_found(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_FILE_NOT_FOUND, Err_FileNotFound, -1, msg);
+}
 
 /// @brief Check if a directory exists at the specified path.
 ///
@@ -178,21 +195,21 @@ int64_t rt_dir_exists(rt_string path) {
 void rt_dir_make(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
-        rt_trap("Dir.Make: invalid path");
+        rt_dir_trap_domain("Dir.Make: invalid path");
         return;
     }
 
 #ifdef _WIN32
     if (_mkdir(cpath) != 0 && errno != EEXIST) {
-        rt_trap("Dir.Make: failed to create directory");
+        rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #elif defined(__viperdos__)
     if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
-        rt_trap("Dir.Make: failed to create directory");
+        rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #else
     if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
-        rt_trap("Dir.Make: failed to create directory");
+        rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #endif
 }
@@ -248,7 +265,7 @@ void rt_dir_make(rt_string path) {
 void rt_dir_make_all(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
-        rt_trap("Dir.MakeAll: invalid path");
+        rt_dir_trap_domain("Dir.MakeAll: invalid path");
         return;
     }
 
@@ -259,7 +276,7 @@ void rt_dir_make_all(rt_string path) {
     // Make a mutable copy
     char *tmp = (char *)malloc(len + 1);
     if (!tmp) {
-        rt_trap("Dir.MakeAll: out of memory");
+        rt_dir_trap_runtime("Dir.MakeAll: out of memory");
         return;
     }
     memcpy(tmp, cpath, len + 1);
@@ -281,19 +298,19 @@ void rt_dir_make_all(rt_string path) {
 #ifdef _WIN32
                 if (_mkdir(tmp) != 0 && errno != EEXIST) {
                     free(tmp);
-                    rt_trap("Dir.MakeAll: failed to create intermediate directory");
+                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
 #elif defined(__viperdos__)
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
-                    rt_trap("Dir.MakeAll: failed to create intermediate directory");
+                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
 #else
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
-                    rt_trap("Dir.MakeAll: failed to create intermediate directory");
+                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
 #endif
@@ -309,19 +326,19 @@ void rt_dir_make_all(rt_string path) {
 #ifdef _WIN32
         if (_mkdir(tmp) != 0 && errno != EEXIST) {
             free(tmp);
-            rt_trap("Dir.MakeAll: failed to create directory");
+            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
             return;
         }
 #elif defined(__viperdos__)
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
-            rt_trap("Dir.MakeAll: failed to create directory");
+            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
             return;
         }
 #else
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
-            rt_trap("Dir.MakeAll: failed to create directory");
+            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
             return;
         }
 #endif
@@ -373,21 +390,21 @@ void rt_dir_make_all(rt_string path) {
 void rt_dir_remove(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
-        rt_trap("Dir.Remove: invalid path");
+        rt_dir_trap_domain("Dir.Remove: invalid path");
         return;
     }
 
 #ifdef _WIN32
     if (_rmdir(cpath) != 0) {
-        rt_trap("Dir.Remove: failed to remove directory");
+        rt_dir_trap_io("Dir.Remove: failed to remove directory");
     }
 #elif defined(__viperdos__)
     if (rmdir(cpath) != 0) {
-        rt_trap("Dir.Remove: failed to remove directory");
+        rt_dir_trap_io("Dir.Remove: failed to remove directory");
     }
 #else
     if (rmdir(cpath) != 0) {
-        rt_trap("Dir.Remove: failed to remove directory");
+        rt_dir_trap_io("Dir.Remove: failed to remove directory");
     }
 #endif
 }
@@ -468,7 +485,7 @@ static void delete_file(const char *path) {
 void rt_dir_remove_all(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
-        rt_trap("Dir.RemoveAll: invalid path");
+        rt_dir_trap_domain("Dir.RemoveAll: invalid path");
         return;
     }
 
@@ -709,21 +726,21 @@ void *rt_dir_list_seq(rt_string path) {
 void *rt_dir_entries_seq(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-        rt_trap("Viper.IO.Dir.Entries: invalid directory path");
+        rt_dir_trap_domain("Viper.IO.Dir.Entries: invalid directory path");
 
     struct stat st;
     if (stat(cpath, &st) != 0)
-        rt_trap("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 
 #ifdef _WIN32
     if ((st.st_mode & _S_IFDIR) == 0)
-        rt_trap("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 #elif defined(__viperdos__)
     if (!S_ISDIR(st.st_mode))
-        rt_trap("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 #else
     if (!S_ISDIR(st.st_mode))
-        rt_trap("Viper.IO.Dir.Entries: directory not found");
+        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 #endif
 
     void *result = rt_seq_new();
@@ -738,7 +755,7 @@ void *rt_dir_entries_seq(rt_string path) {
         DWORD err = GetLastError();
         if (err == ERROR_FILE_NOT_FOUND)
             return result;
-        rt_trap("Viper.IO.Dir.Entries: failed to open directory");
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
     }
 
     do {
@@ -753,7 +770,7 @@ void *rt_dir_entries_seq(rt_string path) {
     // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
     if (!dir)
-        rt_trap("Viper.IO.Dir.Entries: failed to open directory");
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
 
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
@@ -1057,13 +1074,13 @@ rt_string rt_dir_current(void) {
 
 #ifdef _WIN32
     if (_getcwd(buffer, PATH_MAX) == NULL) {
-        rt_trap("Dir.Current: failed to get current directory");
+        rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
 #else
     // Unix and ViperDOS: use POSIX getcwd.
     if (getcwd(buffer, PATH_MAX) == NULL) {
-        rt_trap("Dir.Current: failed to get current directory");
+        rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
 #endif
@@ -1120,21 +1137,21 @@ rt_string rt_dir_current(void) {
 void rt_dir_set_current(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
-        rt_trap("Dir.SetCurrent: invalid path");
+        rt_dir_trap_domain("Dir.SetCurrent: invalid path");
         return;
     }
 
 #ifdef _WIN32
     if (_chdir(cpath) != 0) {
-        rt_trap("Dir.SetCurrent: failed to change directory");
+        rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
     }
 #elif defined(__viperdos__)
     if (chdir(cpath) != 0) {
-        rt_trap("Dir.SetCurrent: failed to change directory");
+        rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
     }
 #else
     if (chdir(cpath) != 0) {
-        rt_trap("Dir.SetCurrent: failed to change directory");
+        rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
     }
 #endif
 }
@@ -1204,16 +1221,16 @@ void rt_dir_move(rt_string src, rt_string dst) {
     const char *cdst = NULL;
 
     if (!rt_file_path_from_vstr(src, &csrc) || !csrc) {
-        rt_trap("Dir.Move: invalid source path");
+        rt_dir_trap_domain("Dir.Move: invalid source path");
         return;
     }
 
     if (!rt_file_path_from_vstr(dst, &cdst) || !cdst) {
-        rt_trap("Dir.Move: invalid destination path");
+        rt_dir_trap_domain("Dir.Move: invalid destination path");
         return;
     }
 
     if (rename(csrc, cdst) != 0) {
-        rt_trap("Dir.Move: failed to move directory");
+        rt_dir_trap_io("Dir.Move: failed to move directory");
     }
 }

@@ -134,8 +134,8 @@ ExprPtr Parser::parsePrimary() {
             return nullptr;
 
         auto body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
-        return std::make_unique<LambdaExpr>(loc, std::move(params),
-                                            std::move(returnType), std::move(body));
+        return std::make_unique<LambdaExpr>(
+            loc, std::move(params), std::move(returnType), std::move(body));
     }
 
     // New expression

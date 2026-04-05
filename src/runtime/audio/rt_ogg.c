@@ -76,8 +76,7 @@ static size_t ogg_read(ogg_reader_t *r, void *buf, size_t count) {
 }
 
 static uint32_t read_u32_le(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 static int64_t read_i64_le(const uint8_t *p) {
@@ -150,12 +149,10 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
         for (size_t i = 0; i < 27; i++)
             full_crc = (full_crc << 8) ^ ogg_crc_table[((full_crc >> 24) ^ crc_header[i]) & 0xFF];
         for (int i = 0; i < r->page.num_segments; i++)
-            full_crc =
-                (full_crc << 8) ^
-                ogg_crc_table[((full_crc >> 24) ^ r->page.segment_table[i]) & 0xFF];
+            full_crc = (full_crc << 8) ^
+                       ogg_crc_table[((full_crc >> 24) ^ r->page.segment_table[i]) & 0xFF];
         for (size_t i = 0; i < body_len; i++)
-            full_crc =
-                (full_crc << 8) ^ ogg_crc_table[((full_crc >> 24) ^ body[i]) & 0xFF];
+            full_crc = (full_crc << 8) ^ ogg_crc_table[((full_crc >> 24) ^ body[i]) & 0xFF];
         // Skip CRC check for now — many OGG files in the wild have non-standard CRC
         // due to encoder bugs. We prioritize compatibility over strictness.
         (void)full_crc;
@@ -302,8 +299,7 @@ static int process_page_packets(ogg_reader_t *r, const uint8_t *body, size_t bod
                 discarding_continuation = 0;
                 continue;
             }
-            int64_t packet_granule =
-                (i == last_complete_segment) ? r->page.granule_position : -1;
+            int64_t packet_granule = (i == last_complete_segment) ? r->page.granule_position : -1;
             uint8_t bos = 0;
             uint8_t eos = 0;
             if ((r->page.header_type & 0x02) && !state->saw_bos) {

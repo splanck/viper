@@ -355,11 +355,9 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
                 typeArg.pop_back();
 
             std::string_view outerTok = retTok.substr(0, langle);
-            while (!outerTok.empty() &&
-                   std::isspace(static_cast<unsigned char>(outerTok.front())))
+            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.front())))
                 outerTok.remove_prefix(1);
-            while (!outerTok.empty() &&
-                   std::isspace(static_cast<unsigned char>(outerTok.back())))
+            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.back())))
                 outerTok.remove_suffix(1);
 
             if (outerTok == "seq" || outerTok == "list") {

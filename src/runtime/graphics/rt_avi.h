@@ -29,11 +29,11 @@ extern "C" {
 
 /// @brief Video stream info extracted from AVI header.
 typedef struct {
-    uint32_t fourcc;       /* codec FOURCC (e.g., 'MJPG', 'mjpg') */
+    uint32_t fourcc; /* codec FOURCC (e.g., 'MJPG', 'mjpg') */
     int32_t width, height;
     int32_t frame_count;
-    double fps;            /* from avih.dwMicroSecPerFrame */
-    double duration;       /* frame_count / fps */
+    double fps;      /* from avih.dwMicroSecPerFrame */
+    double duration; /* frame_count / fps */
 } avi_video_info_t;
 
 /// @brief Audio stream info extracted from AVI header.
@@ -46,9 +46,9 @@ typedef struct {
 
 /// @brief Descriptor for one chunk in the movi list.
 typedef struct {
-    const uint8_t *data;   /* pointer into file buffer (not owned) */
-    uint32_t size;         /* chunk payload size */
-    int8_t is_video;       /* 1=video, 0=audio */
+    const uint8_t *data; /* pointer into file buffer (not owned) */
+    uint32_t size;       /* chunk payload size */
+    int8_t is_video;     /* 1=video, 0=audio */
 } avi_chunk_t;
 
 /// @brief Parsed AVI file context.
@@ -77,8 +77,8 @@ void avi_free(avi_context_t *ctx);
 /// @brief Get video frame data at given frame index.
 /// @return Pointer to compressed frame data, or NULL. Sets *out_size.
 const uint8_t *avi_get_video_frame(const avi_context_t *ctx,
-                                    int32_t frame_index,
-                                    uint32_t *out_size);
+                                   int32_t frame_index,
+                                   uint32_t *out_size);
 
 #ifdef __cplusplus
 }

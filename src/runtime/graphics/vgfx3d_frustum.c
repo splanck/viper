@@ -215,4 +215,6 @@ void vgfx3d_compute_mesh_aabb(const void *vertices,
     }
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

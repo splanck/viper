@@ -451,8 +451,8 @@ bool writeMachOExe(const std::string &path,
         writeLE32(file, machoSectionAlignLog2(sec.alignment));
         writeLE32(file, 0);
         writeLE32(file, 0); // reloff, nreloc
-        uint32_t flags = sec.executable ? (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS)
-                                        : S_REGULAR;
+        uint32_t flags =
+            sec.executable ? (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS) : S_REGULAR;
         if (isObjCSection(sec.name))
             flags = objcSectionFlags(machoSecName);
         writeLE32(file, flags);

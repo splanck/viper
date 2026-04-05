@@ -42,10 +42,10 @@ extern int8_t rt_tilemap_is_solid_at(void *tm, int64_t px, int64_t py);
 //=============================================================================
 
 typedef struct {
-    int64_t x, y;           // Centipixels (x100)
-    int64_t vx, vy;         // Centipixels per DT_BASE ms
-    int64_t width, height;  // Pixels
-    int64_t dir;            // 1 = right, -1 = left
+    int64_t x, y;          // Centipixels (x100)
+    int64_t vx, vy;        // Centipixels per DT_BASE ms
+    int64_t width, height; // Pixels
+    int64_t dir;           // 1 = right, -1 = left
     int64_t hp, max_hp;
     int64_t type;
     int8_t active;
@@ -84,37 +84,110 @@ void *rt_entity_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 // Property accessors
 //=============================================================================
 
-int64_t rt_entity_get_x(void *ent) { return ent ? get(ent)->x : 0; }
-int64_t rt_entity_get_y(void *ent) { return ent ? get(ent)->y : 0; }
-void rt_entity_set_x(void *ent, int64_t v) { if (ent) get(ent)->x = v; }
-void rt_entity_set_y(void *ent, int64_t v) { if (ent) get(ent)->y = v; }
+int64_t rt_entity_get_x(void *ent) {
+    return ent ? get(ent)->x : 0;
+}
 
-int64_t rt_entity_get_vx(void *ent) { return ent ? get(ent)->vx : 0; }
-int64_t rt_entity_get_vy(void *ent) { return ent ? get(ent)->vy : 0; }
-void rt_entity_set_vx(void *ent, int64_t v) { if (ent) get(ent)->vx = v; }
-void rt_entity_set_vy(void *ent, int64_t v) { if (ent) get(ent)->vy = v; }
+int64_t rt_entity_get_y(void *ent) {
+    return ent ? get(ent)->y : 0;
+}
 
-int64_t rt_entity_get_width(void *ent) { return ent ? get(ent)->width : 0; }
-int64_t rt_entity_get_height(void *ent) { return ent ? get(ent)->height : 0; }
+void rt_entity_set_x(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->x = v;
+}
 
-int64_t rt_entity_get_dir(void *ent) { return ent ? get(ent)->dir : 1; }
-void rt_entity_set_dir(void *ent, int64_t v) { if (ent) get(ent)->dir = v; }
+void rt_entity_set_y(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->y = v;
+}
 
-int64_t rt_entity_get_hp(void *ent) { return ent ? get(ent)->hp : 0; }
-void rt_entity_set_hp(void *ent, int64_t v) { if (ent) get(ent)->hp = v; }
-int64_t rt_entity_get_max_hp(void *ent) { return ent ? get(ent)->max_hp : 0; }
-void rt_entity_set_max_hp(void *ent, int64_t v) { if (ent) get(ent)->max_hp = v; }
+int64_t rt_entity_get_vx(void *ent) {
+    return ent ? get(ent)->vx : 0;
+}
 
-int64_t rt_entity_get_type(void *ent) { return ent ? get(ent)->type : 0; }
-void rt_entity_set_type(void *ent, int64_t v) { if (ent) get(ent)->type = v; }
+int64_t rt_entity_get_vy(void *ent) {
+    return ent ? get(ent)->vy : 0;
+}
 
-int8_t rt_entity_get_active(void *ent) { return ent ? get(ent)->active : 0; }
-void rt_entity_set_active(void *ent, int8_t v) { if (ent) get(ent)->active = v; }
+void rt_entity_set_vx(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->vx = v;
+}
 
-int8_t rt_entity_on_ground(void *ent) { return ent ? get(ent)->on_ground : 0; }
-int8_t rt_entity_hit_left(void *ent) { return ent ? get(ent)->hit_left : 0; }
-int8_t rt_entity_hit_right(void *ent) { return ent ? get(ent)->hit_right : 0; }
-int8_t rt_entity_hit_ceiling(void *ent) { return ent ? get(ent)->hit_ceiling : 0; }
+void rt_entity_set_vy(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->vy = v;
+}
+
+int64_t rt_entity_get_width(void *ent) {
+    return ent ? get(ent)->width : 0;
+}
+
+int64_t rt_entity_get_height(void *ent) {
+    return ent ? get(ent)->height : 0;
+}
+
+int64_t rt_entity_get_dir(void *ent) {
+    return ent ? get(ent)->dir : 1;
+}
+
+void rt_entity_set_dir(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->dir = v;
+}
+
+int64_t rt_entity_get_hp(void *ent) {
+    return ent ? get(ent)->hp : 0;
+}
+
+void rt_entity_set_hp(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->hp = v;
+}
+
+int64_t rt_entity_get_max_hp(void *ent) {
+    return ent ? get(ent)->max_hp : 0;
+}
+
+void rt_entity_set_max_hp(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->max_hp = v;
+}
+
+int64_t rt_entity_get_type(void *ent) {
+    return ent ? get(ent)->type : 0;
+}
+
+void rt_entity_set_type(void *ent, int64_t v) {
+    if (ent)
+        get(ent)->type = v;
+}
+
+int8_t rt_entity_get_active(void *ent) {
+    return ent ? get(ent)->active : 0;
+}
+
+void rt_entity_set_active(void *ent, int8_t v) {
+    if (ent)
+        get(ent)->active = v;
+}
+
+int8_t rt_entity_on_ground(void *ent) {
+    return ent ? get(ent)->on_ground : 0;
+}
+
+int8_t rt_entity_hit_left(void *ent) {
+    return ent ? get(ent)->hit_left : 0;
+}
+
+int8_t rt_entity_hit_right(void *ent) {
+    return ent ? get(ent)->hit_right : 0;
+}
+
+int8_t rt_entity_hit_ceiling(void *ent) {
+    return ent ? get(ent)->hit_ceiling : 0;
+}
 
 //=============================================================================
 // Physics: Gravity
@@ -247,8 +320,8 @@ void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
 //=============================================================================
 
 /// @brief Apply gravity then move-and-collide in one call (convenience wrapper).
-void rt_entity_update_physics(void *ent, void *tilemap,
-                              int64_t gravity, int64_t max_fall, int64_t dt) {
+void rt_entity_update_physics(
+    void *ent, void *tilemap, int64_t gravity, int64_t max_fall, int64_t dt) {
     rt_entity_apply_gravity(ent, gravity, max_fall, dt);
     rt_entity_move_and_collide(ent, tilemap, dt);
 }
@@ -292,6 +365,5 @@ int8_t rt_entity_overlaps(void *ent, void *other) {
     entity_impl *b = get(other);
     int64_t ax = a->x / 100, ay = a->y / 100;
     int64_t bx = b->x / 100, by = b->y / 100;
-    return ax < bx + b->width && ax + a->width > bx &&
-           ay < by + b->height && ay + a->height > by;
+    return ax < bx + b->width && ax + a->width > bx && ay < by + b->height && ay + a->height > by;
 }

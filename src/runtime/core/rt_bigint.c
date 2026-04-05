@@ -40,7 +40,7 @@
 #include "rt_string.h"
 
 // External trap function
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 #include <stdbool.h>
 #include <stdint.h>

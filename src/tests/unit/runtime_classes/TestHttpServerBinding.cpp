@@ -23,9 +23,9 @@
 namespace {
 
 bool hasExtern(const il::core::Module &module, std::string_view name) {
-    return std::any_of(module.externs.begin(), module.externs.end(), [&](const il::core::Extern &e) {
-        return e.name == name;
-    });
+    return std::any_of(module.externs.begin(),
+                       module.externs.end(),
+                       [&](const il::core::Extern &e) { return e.name == name; });
 }
 
 int countCallsTo(const il::core::Module &module, std::string_view name) {

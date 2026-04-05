@@ -61,26 +61,23 @@ int main() {
     CodeSection text;
     CodeSection rodata;
 
-    const uint32_t mainSym =
-        text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
-    text.emit8(0x55);             // push rbp
+    const uint32_t mainSym = text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0x55); // push rbp
     text.emit8(0x48);
     text.emit8(0x89);
-    text.emit8(0xE5);             // mov rbp, rsp
+    text.emit8(0xE5); // mov rbp, rsp
     text.emit8(0x48);
     text.emit8(0x83);
     text.emit8(0xEC);
-    text.emit8(0x20);             // sub rsp, 32
-    text.emit8(0xC3);             // ret
+    text.emit8(0x20); // sub rsp, 32
+    text.emit8(0xC3); // ret
 
     Win64UnwindEntry unwind{};
     unwind.symbolIndex = mainSym;
     unwind.functionLength = 9;
     unwind.prologueSize = 8;
-    unwind.codes.push_back(
-        {Win64UnwindCode::Kind::PushNonVol, 1, 5, 0});   // RBP
-    unwind.codes.push_back(
-        {Win64UnwindCode::Kind::AllocStack, 8, 0, 32});  // sub rsp, 32
+    unwind.codes.push_back({Win64UnwindCode::Kind::PushNonVol, 1, 5, 0});  // RBP
+    unwind.codes.push_back({Win64UnwindCode::Kind::AllocStack, 8, 0, 32}); // sub rsp, 32
     text.addWin64UnwindEntry(std::move(unwind));
 
     std::ostringstream err;
@@ -159,7 +156,8 @@ int main() {
         std::ostringstream multiErr;
         CoffWriter multiWriter(ObjArch::AArch64);
         const std::string multiPath = "build/test-out/coff_arm64_multitext.obj";
-        ASSERT(multiWriter.write(multiPath, std::vector<CodeSection>{textA, textB}, rodataMulti, multiErr));
+        ASSERT(multiWriter.write(
+            multiPath, std::vector<CodeSection>{textA, textB}, rodataMulti, multiErr));
 
         ObjFile multiObj;
         ASSERT(readObjFile(multiPath, multiObj, multiErr));

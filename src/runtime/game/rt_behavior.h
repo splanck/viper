@@ -37,8 +37,8 @@ void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_fr
 
 /// @brief Apply all enabled behaviors to an entity.
 /// target_x/y: player position (for Chase/Shoot). Pass 0,0 if unused.
-void rt_behavior_update(void *bhv, void *entity, void *tilemap,
-                        int64_t target_x, int64_t target_y, int64_t dt);
+void rt_behavior_update(
+    void *bhv, void *entity, void *tilemap, int64_t target_x, int64_t target_y, int64_t dt);
 
 int8_t rt_behavior_shoot_ready(void *bhv);
 int64_t rt_behavior_anim_frame(void *bhv);

@@ -21,6 +21,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_string.h"
 #include "rt_videowidget.h"
 #include "rt_videoplayer.h"
 
@@ -30,7 +31,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern const char *rt_string_cstr(void *str);
+extern const char *rt_string_cstr(rt_string str);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 
@@ -50,7 +51,7 @@ extern void *rt_button_new(void *parent, void *text);
 extern void *rt_slider_new(void *parent, int64_t horizontal);
 extern void rt_slider_set_value(void *slider, double value);
 extern double rt_slider_get_value(void *slider);
-extern void *rt_string_from_bytes(const char *data, size_t len);
+extern rt_string rt_string_from_bytes(const char *data, size_t len);
 
 /* VideoPlayer functions */
 extern void *rt_videoplayer_open(void *path);
@@ -76,10 +77,10 @@ typedef struct {
 typedef struct {
     void *vptr;
     /* Owned components */
-    void *player;           /* rt_videoplayer */
-    void *root_widget;      /* VBox container attached to parent */
-    void *image_widget;     /* vg_image_t for video display */
-    void *controls_widget;  /* HBox container for transport controls */
+    void *player;          /* rt_videoplayer */
+    void *root_widget;     /* VBox container attached to parent */
+    void *image_widget;    /* vg_image_t for video display */
+    void *controls_widget; /* HBox container for transport controls */
     void *play_button;
     void *pause_button;
     void *stop_button;
@@ -106,15 +107,14 @@ static void videowidget_finalizer(void *obj) {
 }
 
 /// @brief Convert Viper Pixels (uint32 0xRRGGBBAA) to byte-order RGBA for vg_image.
-static void pixels_to_rgba_bytes(const uint32_t *src, uint8_t *dst,
-                                  int32_t width, int32_t height) {
+static void pixels_to_rgba_bytes(const uint32_t *src, uint8_t *dst, int32_t width, int32_t height) {
     int32_t count = width * height;
     for (int32_t i = 0; i < count; i++) {
         uint32_t px = src[i];
         dst[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF); /* R */
         dst[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); /* G */
         dst[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);  /* B */
-        dst[i * 4 + 3] = (uint8_t)(px & 0xFF);          /* A */
+        dst[i * 4 + 3] = (uint8_t)(px & 0xFF);         /* A */
     }
 }
 
@@ -133,8 +133,7 @@ void *rt_videowidget_new(void *parent, void *path) {
         return NULL;
 
     /* Create widget */
-    rt_videowidget *w =
-        (rt_videowidget *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videowidget));
+    rt_videowidget *w = (rt_videowidget *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videowidget));
     if (!w)
         return NULL;
     memset(w, 0, sizeof(*w));
@@ -164,12 +163,12 @@ void *rt_videowidget_new(void *parent, void *path) {
     if (w->controls_widget) {
         rt_widget_add_child(w->root_widget, w->controls_widget);
         rt_container_set_spacing(w->controls_widget, 8.0);
-        w->play_button = rt_button_new(
-            w->controls_widget, rt_string_from_bytes("Play", strlen("Play")));
-        w->pause_button = rt_button_new(
-            w->controls_widget, rt_string_from_bytes("Pause", strlen("Pause")));
-        w->stop_button = rt_button_new(
-            w->controls_widget, rt_string_from_bytes("Stop", strlen("Stop")));
+        w->play_button =
+            rt_button_new(w->controls_widget, rt_string_from_bytes("Play", strlen("Play")));
+        w->pause_button =
+            rt_button_new(w->controls_widget, rt_string_from_bytes("Pause", strlen("Pause")));
+        w->stop_button =
+            rt_button_new(w->controls_widget, rt_string_from_bytes("Stop", strlen("Stop")));
         w->position_slider = rt_slider_new(w->controls_widget, 1);
         if (w->position_slider) {
             rt_widget_set_flex(w->position_slider, 1.0);
@@ -238,10 +237,8 @@ void rt_videowidget_update(void *obj, double dt) {
     if (frame && w->image_widget && w->rgba_buf) {
         px_view *px = (px_view *)frame;
         if (px->data && px->width == w->video_width && px->height == w->video_height) {
-            pixels_to_rgba_bytes(px->data, w->rgba_buf, w->video_width,
-                                  w->video_height);
-            rt_image_set_pixels(w->image_widget, w->rgba_buf,
-                                 w->video_width, w->video_height);
+            pixels_to_rgba_bytes(px->data, w->rgba_buf, w->video_width, w->video_height);
+            rt_image_set_pixels(w->image_widget, w->rgba_buf, w->video_width, w->video_height);
         }
     }
 
@@ -266,7 +263,6 @@ void rt_videowidget_update(void *obj, double dt) {
             w->slider_last_value = playback_value;
         }
     }
-
 }
 
 void rt_videowidget_set_show_controls(void *obj, int8_t show) {
@@ -310,4 +306,6 @@ double rt_videowidget_get_duration(void *obj) {
     return rt_videoplayer_get_duration(((rt_videowidget *)obj)->player);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

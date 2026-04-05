@@ -659,9 +659,9 @@ typedef struct vg_dropdown {
     int item_capacity;  ///< Allocated capacity
     int selected_index; ///< Currently selected index (-1 = none)
 
-    vg_font_t *font;         ///< Font for rendering
-    float font_size;         ///< Font size
-    char *placeholder;       ///< Placeholder when nothing selected (owned)
+    vg_font_t *font;   ///< Font for rendering
+    float font_size;   ///< Font size
+    char *placeholder; ///< Placeholder when nothing selected (owned)
 
     bool open;             ///< Is dropdown list open
     int hovered_index;     ///< Hovered item index

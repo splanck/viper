@@ -25,14 +25,33 @@ All rendering dispatches through a vtable:
 ```c
 typedef struct vgfx3d_backend {
     const char *name;
+    /* Lifecycle */
     void *(*create_ctx)(vgfx_window_t win, int32_t w, int32_t h);
     void (*destroy_ctx)(void *ctx);
+    /* Frame */
     void (*clear)(void *ctx, vgfx_window_t win, float r, float g, float b);
+    void (*resize)(void *ctx, int32_t w, int32_t h);
     void (*begin_frame)(void *ctx, const vgfx3d_camera_params_t *cam);
     void (*submit_draw)(void *ctx, vgfx_window_t win, const vgfx3d_draw_cmd_t *cmd,
                         const vgfx3d_light_params_t *lights, int32_t light_count,
                         const float *ambient, int8_t wireframe, int8_t backface_cull);
     void (*end_frame)(void *ctx);
+    /* Render target */
+    void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
+    /* Shadow mapping */
+    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
+    void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
+    void (*shadow_end)(void *ctx, float bias);
+    /* Skybox */
+    void (*draw_skybox)(void *ctx, const void *cubemap);
+    /* Instanced rendering (NULL = N individual submit_draw fallback) */
+    void (*submit_draw_instanced)(void *ctx, vgfx_window_t win, const vgfx3d_draw_cmd_t *cmd,
+                                  const float *instance_matrices, int32_t instance_count, ...);
+    /* Display */
+    void (*present)(void *ctx);
+    void (*readback_rgba)(void *ctx, uint8_t *out, int32_t w, int32_t h);
+    void (*show_gpu_layer)(void *ctx, vgfx_window_t win);
+    void (*hide_gpu_layer)(void *ctx, vgfx_window_t win);
 } vgfx3d_backend_t;
 ```
 

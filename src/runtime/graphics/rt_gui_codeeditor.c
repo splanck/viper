@@ -28,7 +28,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_error.h"
 #include "rt_gui_internal.h"
+#include "rt_pixels.h"
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -115,9 +117,9 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
 static const char *const zia_keywords[] = {
-    "func",  "expose", "hide",   "class",  "struct",   "var",   "new",  "if", "else", "while",
-    "for",   "in",     "return", "break",  "continue", "do",    "and",  "or", "not",  "true",
-    "false", "null",   "module", "bind",   "self",     "match", "enum", NULL};
+    "func",  "expose", "hide",   "class", "struct",   "var",   "new",  "if", "else", "while",
+    "for",   "in",     "return", "break", "continue", "do",    "and",  "or", "not",  "true",
+    "false", "null",   "module", "bind",  "self",     "match", "enum", NULL};
 
 static const char *const zia_types[] = {"Integer",
                                         "Boolean",
@@ -430,6 +432,50 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     ce->gutter_width = (float)((int)width) * ce->char_width;
 }
 
+static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
+    vg_icon_t icon = {0};
+    if (!pixels)
+        return icon;
+
+    int64_t width = rt_pixels_width(pixels);
+    int64_t height = rt_pixels_height(pixels);
+    const uint32_t *raw = rt_pixels_raw_buffer(pixels);
+    if (width <= 0 || height <= 0 || !raw)
+        return icon;
+
+    size_t pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count / (size_t)width != (size_t)height)
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
+    if (width > UINT32_MAX || height > UINT32_MAX || pixel_count > SIZE_MAX / 4)
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
+
+    uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
+    if (!rgba)
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CodeEditor.SetGutterIcon: allocation failed");
+
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint32_t px = raw[i];
+        rgba[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF);
+        rgba[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF);
+        rgba[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);
+        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);
+    }
+
+    icon = vg_icon_from_pixels(rgba, (uint32_t)width, (uint32_t)height);
+    free(rgba);
+    if (icon.type == VG_ICON_NONE)
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CodeEditor.SetGutterIcon: allocation failed");
+    return icon;
+}
+
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot) {
     if (!editor)
         return;
@@ -439,15 +485,20 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     /* Update existing icon on same line+type if present */
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type) {
+            vg_icon_destroy(&ce->gutter_icons[i].image);
+            ce->gutter_icons[i].image = rt_codeeditor_icon_from_pixels(pixels);
             ce->base.needs_paint = true;
-            return; /* already registered */
+            return;
         }
     }
     if (ce->gutter_icon_count >= ce->gutter_icon_cap) {
         int new_cap = ce->gutter_icon_cap ? ce->gutter_icon_cap * 2 : 8;
         void *p = realloc(ce->gutter_icons, (size_t)new_cap * sizeof(*ce->gutter_icons));
         if (!p)
-            return;
+            rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                               Err_RuntimeError,
+                               -1,
+                               "CodeEditor.SetGutterIcon: allocation failed");
         ce->gutter_icons = p;
         ce->gutter_icon_cap = new_cap;
     }
@@ -457,7 +508,7 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     icon->line = (int)line;
     icon->type = type;
     icon->color = s_type_colors[type < 0 || type >= 4 ? 0 : type];
-    (void)pixels; /* pixel icons not yet blitted; use colored disc */
+    icon->image = rt_codeeditor_icon_from_pixels(pixels);
     ce->base.needs_paint = true;
 }
 
@@ -468,8 +519,12 @@ void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     int type = (int)(slot & 3);
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type) {
-            /* Swap-remove */
-            ce->gutter_icons[i] = ce->gutter_icons[--ce->gutter_icon_count];
+            int last = --ce->gutter_icon_count;
+            vg_icon_destroy(&ce->gutter_icons[i].image);
+            if (i != last) {
+                ce->gutter_icons[i] = ce->gutter_icons[last];
+            }
+            memset(&ce->gutter_icons[last], 0, sizeof(ce->gutter_icons[last]));
             ce->base.needs_paint = true;
             return;
         }
@@ -482,11 +537,17 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int type = (int)(slot & 3);
     int w = 0;
+    int original_count = ce->gutter_icon_count;
     for (int i = 0; i < ce->gutter_icon_count; i++) {
-        if (ce->gutter_icons[i].type != type)
+        if (ce->gutter_icons[i].type != type) {
             ce->gutter_icons[w++] = ce->gutter_icons[i];
+            continue;
+        }
+        vg_icon_destroy(&ce->gutter_icons[i].image);
     }
     ce->gutter_icon_count = w;
+    for (int i = w; i < original_count; i++)
+        memset(&ce->gutter_icons[i], 0, sizeof(ce->gutter_icons[i]));
     ce->base.needs_paint = true;
 }
 
@@ -927,6 +988,7 @@ void rt_codeeditor_select_all(void *editor) {
     if (editor)
         vg_codeeditor_select_all((vg_codeeditor_t *)editor);
 }
+
 //=============================================================================
 // CodeEditor Completion Helpers
 //=============================================================================

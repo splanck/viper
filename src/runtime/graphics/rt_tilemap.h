@@ -337,12 +337,16 @@ int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key)
 //=========================================================================
 
 /// @brief Register an animated tile. Frames default to base_id, base_id+1, ...
-void rt_tilemap_set_tile_anim(void *tm, int64_t base_tile_id,
-                              int64_t frame_count, int64_t ms_per_frame);
+void rt_tilemap_set_tile_anim(void *tm,
+                              int64_t base_tile_id,
+                              int64_t frame_count,
+                              int64_t ms_per_frame);
 
 /// @brief Override a specific frame's tile ID for a registered animation.
-void rt_tilemap_set_tile_anim_frame(void *tm, int64_t base_tile_id,
-                                    int64_t frame_idx, int64_t tile_id);
+void rt_tilemap_set_tile_anim_frame(void *tm,
+                                    int64_t base_tile_id,
+                                    int64_t frame_idx,
+                                    int64_t tile_id);
 
 /// @brief Advance all tile animations by dt milliseconds.
 void rt_tilemap_update_anims(void *tm, int64_t dt_ms);

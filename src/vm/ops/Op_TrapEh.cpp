@@ -86,8 +86,7 @@ VM::ExecResult handleErrGet(VM &vm,
             // The message persists in vm->trapToken.message even after the token
             // valid flag is cleared during handler dispatch.
             std::string msg = vm_current_trap_message();
-            out.str = msg.empty() ? rt_str_empty()
-                                  : rt_string_from_bytes(msg.c_str(), msg.size());
+            out.str = msg.empty() ? rt_str_empty() : rt_string_from_bytes(msg.c_str(), msg.size());
             break;
         }
         default:

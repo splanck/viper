@@ -68,10 +68,14 @@ class VpaWriter {
     bool writeToFile(const std::string &path, std::string &err) const;
 
     /// @brief Number of entries added so far.
-    size_t entryCount() const noexcept { return entries_.size(); }
+    size_t entryCount() const noexcept {
+        return entries_.size();
+    }
 
     /// @brief Check if any entries have been added.
-    bool empty() const noexcept { return entries_.empty(); }
+    bool empty() const noexcept {
+        return entries_.empty();
+    }
 
   private:
     /// @brief Check if a file extension should skip compression.

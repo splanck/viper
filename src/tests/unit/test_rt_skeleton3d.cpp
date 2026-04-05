@@ -330,7 +330,7 @@ static void test_crossfade_basic() {
     /* Player: play A, crossfade to B */
     void *player = rt_anim_player3d_new(skel);
     rt_anim_player3d_play(player, anim_a);
-    rt_anim_player3d_update(player, 0.1); /* advance a bit */
+    rt_anim_player3d_update(player, 0.1);            /* advance a bit */
     rt_anim_player3d_crossfade(player, anim_b, 0.5); /* 0.5 sec crossfade */
     /* Step to midpoint of crossfade */
     rt_anim_player3d_update(player, 0.25);

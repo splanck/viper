@@ -156,6 +156,33 @@ static pthread_t g_main_thread_;
 #endif
 static int g_main_thread_set_ = 0;
 
+static void rt_capture_process_main_thread_(void) {
+    int expected = 0;
+    if (!__atomic_compare_exchange_n(
+            &g_main_thread_set_, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        return;
+    }
+#if RT_PLATFORM_WINDOWS
+    g_main_thread_id_ = GetCurrentThreadId();
+#elif !RT_PLATFORM_VIPERDOS
+    g_main_thread_ = pthread_self();
+#endif
+}
+
+#if RT_PLATFORM_WINDOWS
+static void __cdecl rt_capture_process_main_thread_ctor(void) {
+    rt_capture_process_main_thread_();
+}
+
+#pragma section(".CRT$XCU", read)
+__declspec(allocate(".CRT$XCU")) void(__cdecl *rt_capture_process_main_thread_ctor_)(void) =
+    rt_capture_process_main_thread_ctor;
+#elif !RT_PLATFORM_VIPERDOS
+__attribute__((constructor)) static void rt_capture_process_main_thread_ctor(void) {
+    rt_capture_process_main_thread_();
+}
+#endif
+
 void rt_set_main_thread(void) {
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
@@ -167,7 +194,7 @@ void rt_set_main_thread(void) {
 
 int8_t rt_is_main_thread(void) {
     if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
-        return 1; // Before init, assume main thread (avoids false positives)
+        rt_capture_process_main_thread_();
 #if RT_PLATFORM_WINDOWS
     return GetCurrentThreadId() == g_main_thread_id_;
 #elif RT_PLATFORM_VIPERDOS
@@ -179,8 +206,13 @@ int8_t rt_is_main_thread(void) {
 
 void rt_assert_main_thread_(const char *file, int line) {
     if (!rt_is_main_thread()) {
-        fprintf(stderr, "%s:%d: GUI/input state accessed from non-main thread\n", file, line);
-        abort();
+        char buffer[256];
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "%s:%d: GUI/input state accessed from non-main thread",
+                 file ? file : "<unknown>",
+                 line);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, line, buffer);
     }
 }
 
@@ -215,9 +247,6 @@ static void rt_legacy_ensure_init(void) {
     if (__atomic_compare_exchange_n(
             &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         rt_context_init(&g_legacy_ctx);
-        // The first thread to reach here is the main thread.
-        if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
-            rt_set_main_thread();
         __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
         return;
     }

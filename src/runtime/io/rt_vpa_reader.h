@@ -36,21 +36,21 @@ extern "C" {
 
 /// @brief A single entry in a VPA table of contents.
 typedef struct {
-    char *name;            ///< Asset name (heap-allocated, owned by archive).
-    uint64_t data_offset;  ///< Byte offset of data in blob/file.
-    uint64_t data_size;    ///< Original uncompressed size.
-    uint64_t stored_size;  ///< Size in archive (may differ if compressed).
-    int compressed;        ///< 1 if entry is DEFLATE-compressed.
+    char *name;           ///< Asset name (heap-allocated, owned by archive).
+    uint64_t data_offset; ///< Byte offset of data in blob/file.
+    uint64_t data_size;   ///< Original uncompressed size.
+    uint64_t stored_size; ///< Size in archive (may differ if compressed).
+    int compressed;       ///< 1 if entry is DEFLATE-compressed.
 } vpa_entry_t;
 
 /// @brief A parsed VPA archive (memory-backed or file-backed).
 typedef struct {
-    vpa_entry_t *entries;  ///< Array of TOC entries (sorted by name).
-    uint32_t count;        ///< Number of entries.
+    vpa_entry_t *entries; ///< Array of TOC entries (sorted by name).
+    uint32_t count;       ///< Number of entries.
 
-    const uint8_t *blob;   ///< Non-NULL for memory-backed (embedded) archives.
-    size_t blob_size;      ///< Size of memory blob.
-    FILE *file;            ///< Non-NULL for file-backed (mounted) archives.
+    const uint8_t *blob; ///< Non-NULL for memory-backed (embedded) archives.
+    size_t blob_size;    ///< Size of memory blob.
+    FILE *file;          ///< Non-NULL for file-backed (mounted) archives.
 } vpa_archive_t;
 
 /// @brief Open a VPA archive from a memory buffer.
@@ -90,8 +90,7 @@ const vpa_entry_t *vpa_find(const vpa_archive_t *archive, const char *name);
 /// @param entry     Entry to read (from vpa_find).
 /// @param out_size  Set to the uncompressed data size on success.
 /// @return Heap-allocated data buffer, or NULL on error.
-uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry,
-                        size_t *out_size);
+uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, size_t *out_size);
 
 /// @brief Close and free a VPA archive.
 ///

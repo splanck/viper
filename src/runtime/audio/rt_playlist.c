@@ -40,7 +40,7 @@
 #include <string.h>
 #include <time.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Structure

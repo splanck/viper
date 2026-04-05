@@ -202,11 +202,8 @@ static bool socket_recv_timed_out(void) {
 #endif
 }
 
-static bool connect_socket_with_timeout(socket_t sock,
-                                        const struct sockaddr *addr,
-                                        socklen_t addrlen,
-                                        int timeout_ms,
-                                        int *err_out) {
+static bool connect_socket_with_timeout(
+    socket_t sock, const struct sockaddr *addr, socklen_t addrlen, int timeout_ms, int *err_out) {
     if (err_out)
         *err_out = 0;
 
@@ -787,11 +784,7 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
 #ifdef IPV6_V6ONLY
         if (rp->ai_family == AF_INET6) {
             int v6only = address ? 1 : 0;
-            setsockopt(candidate,
-                       IPPROTO_IPV6,
-                       IPV6_V6ONLY,
-                       (const char *)&v6only,
-                       sizeof(v6only));
+            setsockopt(candidate, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&v6only, sizeof(v6only));
         }
 #endif
 

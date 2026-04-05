@@ -43,7 +43,7 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern const char *rt_string_cstr(rt_string s);
 
 #define MESH_INIT_VERTS 64
@@ -671,6 +671,7 @@ typedef struct {
 
 static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count)
     __attribute__((unused));
+
 static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count) {
     *count = 0;
     FILE *f = fopen(mtl_path, "r");
@@ -939,8 +940,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
 //=============================================================================
 
 static uint32_t stl_read_u32_le(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 static float stl_read_f32_le(const uint8_t *p) {
@@ -1102,4 +1102,6 @@ void *rt_mesh3d_from_stl(rt_string path) {
     return mesh;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

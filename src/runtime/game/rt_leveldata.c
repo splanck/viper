@@ -42,10 +42,13 @@ extern int64_t rt_box_type(void *obj);
 
 // Safe integer extraction from JSON value (may be boxed as i64 or f64)
 static int64_t json_val_to_i64(void *val) {
-    if (!val) return 0;
+    if (!val)
+        return 0;
     int64_t tag = rt_box_type(val);
-    if (tag == 0) return rt_unbox_i64(val);  // RT_BOX_I64 = 0
-    if (tag == 1) return (int64_t)rt_unbox_f64(val);  // RT_BOX_F64 = 1
+    if (tag == 0)
+        return rt_unbox_i64(val); // RT_BOX_I64 = 0
+    if (tag == 1)
+        return (int64_t)rt_unbox_f64(val); // RT_BOX_F64 = 1
     return 0;
 }
 
@@ -100,12 +103,13 @@ void *rt_leveldata_load(void *path) {
     int64_t th = rt_jsonpath_get_int(root, rt_const_cstr("tileHeight"));
     if (w <= 0 || h <= 0)
         return NULL;
-    if (tw <= 0) tw = 32;
-    if (th <= 0) th = 32;
+    if (tw <= 0)
+        tw = 32;
+    if (th <= 0)
+        th = 32;
 
     // Create level data
-    leveldata_impl *ld =
-        (leveldata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(leveldata_impl));
+    leveldata_impl *ld = (leveldata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(leveldata_impl));
     if (!ld)
         return NULL;
     memset(ld, 0, sizeof(leveldata_impl));
@@ -116,7 +120,10 @@ void *rt_leveldata_load(void *path) {
         rt_string theme = rt_jsonpath_get_str(props, rt_const_cstr("theme"));
         if (theme) {
             const char *ct = rt_string_cstr(theme);
-            if (ct) { strncpy(ld->theme, ct, 31); ld->theme[31] = '\0'; }
+            if (ct) {
+                strncpy(ld->theme, ct, 31);
+                ld->theme[31] = '\0';
+            }
         }
         ld->player_start_x = rt_jsonpath_get_int(props, rt_const_cstr("playerStartX"));
         ld->player_start_y = rt_jsonpath_get_int(props, rt_const_cstr("playerStartY"));
@@ -131,14 +138,18 @@ void *rt_leveldata_load(void *path) {
         int64_t layerCount = rt_seq_len(layers);
         for (int64_t li = 0; li < layerCount; li++) {
             void *layer = rt_seq_get(layers, li);
-            if (!layer) continue;
+            if (!layer)
+                continue;
             rt_string layerType = rt_jsonpath_get_str(layer, rt_const_cstr("type"));
-            if (!layerType) continue;
+            if (!layerType)
+                continue;
             const char *typeStr = rt_string_cstr(layerType);
-            if (!typeStr || strcmp(typeStr, "tiles") != 0) continue;
+            if (!typeStr || strcmp(typeStr, "tiles") != 0)
+                continue;
 
             void *data = rt_jsonpath_get(layer, rt_const_cstr("data"));
-            if (!data) continue;
+            if (!data)
+                continue;
             int64_t dataLen = rt_seq_len(data);
             for (int64_t i = 0; i < dataLen && i < w * h; i++) {
                 void *val = rt_seq_get(data, i);
@@ -156,7 +167,8 @@ void *rt_leveldata_load(void *path) {
         int64_t objCount = rt_seq_len(objects);
         for (int64_t i = 0; i < objCount && ld->object_count < LEVEL_MAX_OBJECTS; i++) {
             void *obj = rt_seq_get(objects, i);
-            if (!obj) continue;
+            if (!obj)
+                continue;
 
             level_object_t *lo = &ld->objects[ld->object_count];
             memset(lo, 0, sizeof(level_object_t));
@@ -165,11 +177,17 @@ void *rt_leveldata_load(void *path) {
             rt_string oid = rt_jsonpath_get_str(obj, rt_const_cstr("id"));
             if (otype) {
                 const char *s = rt_string_cstr(otype);
-                if (s) { strncpy(lo->type, s, 31); lo->type[31] = '\0'; }
+                if (s) {
+                    strncpy(lo->type, s, 31);
+                    lo->type[31] = '\0';
+                }
             }
             if (oid) {
                 const char *s = rt_string_cstr(oid);
-                if (s) { strncpy(lo->id, s, 31); lo->id[31] = '\0'; }
+                if (s) {
+                    strncpy(lo->id, s, 31);
+                    lo->id[31] = '\0';
+                }
             }
             lo->x = rt_jsonpath_get_int(obj, rt_const_cstr("x"));
             lo->y = rt_jsonpath_get_int(obj, rt_const_cstr("y"));

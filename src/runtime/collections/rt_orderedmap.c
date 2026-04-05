@@ -34,6 +34,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_orderedmap.h"
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -94,12 +95,16 @@ static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) 
 static void om_resize(rt_orderedmap_impl *m) {
     // Guard against integer overflow before doubling.
     if (m->capacity > INT64_MAX / 2)
-        rt_trap("OrderedMap: capacity overflow during resize");
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: capacity overflow during resize");
 
     int64_t new_cap = m->capacity * 2;
     rt_om_entry **new_buckets = (rt_om_entry **)calloc((size_t)new_cap, sizeof(rt_om_entry *));
     if (!new_buckets)
-        rt_trap("OrderedMap: memory allocation failed during resize");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "OrderedMap: memory allocation failed during resize");
 
     // Re-hash all entries via insertion-order list
     rt_om_entry *e = m->head;
@@ -145,7 +150,10 @@ void *rt_orderedmap_new(void) {
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));
     if (!m->buckets)
-        rt_trap("OrderedMap: memory allocation failed");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "OrderedMap: memory allocation failed");
     m->head = m->tail = NULL;
     rt_obj_set_finalizer(m, orderedmap_finalizer);
     return m;
@@ -205,11 +213,15 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     // Create new entry
     rt_om_entry *e = (rt_om_entry *)calloc(1, sizeof(rt_om_entry));
     if (!e)
-        rt_trap("OrderedMap: entry allocation failed");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "OrderedMap: entry allocation failed");
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);
-        rt_trap("OrderedMap: key allocation failed");
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: key allocation failed");
     }
     memcpy(e->key, kstr, klen + 1);
     e->key_len = klen;

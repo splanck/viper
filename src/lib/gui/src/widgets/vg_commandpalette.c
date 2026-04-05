@@ -187,8 +187,7 @@ static void remove_query_char(vg_commandpalette_t *palette) {
     size_t new_len = len;
     do {
         new_len--;
-    } while (new_len > 0 &&
-             (((unsigned char)palette->current_query[new_len] & 0xC0) == 0x80));
+    } while (new_len > 0 && (((unsigned char)palette->current_query[new_len] & 0xC0) == 0x80));
     palette->current_query[new_len] = '\0';
     if (new_len == 0) {
         free(palette->current_query);
@@ -288,13 +287,13 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     // Draw search input area
     float search_height = 36;
     if (palette->font) {
-        const char *query = (palette->current_query && palette->current_query[0])
-                                ? palette->current_query
-                                : (palette->placeholder_text ? palette->placeholder_text
-                                                             : "Type to search...");
-        uint32_t query_color =
-            (palette->current_query && palette->current_query[0]) ? palette->text_color
-                                                                  : palette->shortcut_color;
+        const char *query =
+            (palette->current_query && palette->current_query[0])
+                ? palette->current_query
+                : (palette->placeholder_text ? palette->placeholder_text : "Type to search...");
+        uint32_t query_color = (palette->current_query && palette->current_query[0])
+                                   ? palette->text_color
+                                   : palette->shortcut_color;
         vg_font_draw_text(canvas,
                           palette->font,
                           palette->font_size,

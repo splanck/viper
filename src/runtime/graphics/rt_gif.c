@@ -168,8 +168,8 @@ static int lzw_read_code(lzw_state_t *s) {
 }
 
 /// @brief Emit the string for a code into the output buffer.
-static int lzw_emit_string(lzw_state_t *s, int code, uint8_t *out, size_t out_cap,
-                            size_t *out_pos) {
+static int lzw_emit_string(
+    lzw_state_t *s, int code, uint8_t *out, size_t out_cap, size_t *out_pos) {
     if (code < 0 || code >= s->table_size)
         return -1;
     int len = s->table[code].length;
@@ -199,8 +199,11 @@ static uint8_t lzw_first_byte(lzw_state_t *s, int code) {
 
 /// @brief Decompress LZW data into color indices.
 /// @return malloc'd index buffer, or NULL on failure.
-static uint8_t *lzw_decompress(int min_code_size, const uint8_t *data, size_t data_len,
-                                size_t expected_pixels, size_t *out_len) {
+static uint8_t *lzw_decompress(int min_code_size,
+                               const uint8_t *data,
+                               size_t data_len,
+                               size_t expected_pixels,
+                               size_t *out_len) {
     if (min_code_size < 2 || min_code_size > 11)
         return NULL;
 
@@ -237,13 +240,11 @@ static uint8_t *lzw_decompress(int min_code_size, const uint8_t *data, size_t da
             if (prev_code >= 0 && state.next_code < LZW_MAX_TABLE_SIZE) {
                 state.table[state.next_code].prefix = (uint16_t)prev_code;
                 state.table[state.next_code].suffix = lzw_first_byte(&state, code);
-                state.table[state.next_code].length =
-                    state.table[prev_code].length + 1;
+                state.table[state.next_code].length = state.table[prev_code].length + 1;
                 state.next_code++;
                 state.table_size = state.next_code;
                 // Grow code size if needed
-                if (state.next_code >= (1 << state.code_size) &&
-                    state.code_size < LZW_MAX_BITS)
+                if (state.next_code >= (1 << state.code_size) && state.code_size < LZW_MAX_BITS)
                     state.code_size++;
             }
         } else if (code == state.next_code && prev_code >= 0) {
@@ -258,12 +259,10 @@ static uint8_t *lzw_decompress(int min_code_size, const uint8_t *data, size_t da
             if (state.next_code < LZW_MAX_TABLE_SIZE) {
                 state.table[state.next_code].prefix = (uint16_t)prev_code;
                 state.table[state.next_code].suffix = first;
-                state.table[state.next_code].length =
-                    state.table[prev_code].length + 1;
+                state.table[state.next_code].length = state.table[prev_code].length + 1;
                 state.next_code++;
                 state.table_size = state.next_code;
-                if (state.next_code >= (1 << state.code_size) &&
-                    state.code_size < LZW_MAX_BITS)
+                if (state.next_code >= (1 << state.code_size) && state.code_size < LZW_MAX_BITS)
                     state.code_size++;
             }
         } else {
@@ -285,8 +284,11 @@ static uint8_t *lzw_decompress(int min_code_size, const uint8_t *data, size_t da
 static const int gif_interlace_start[4] = {0, 4, 2, 1};
 static const int gif_interlace_step[4] = {8, 8, 4, 2};
 
-int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
-                    int *out_frame_count, int *out_width, int *out_height) {
+int gif_decode_file(const char *filepath,
+                    gif_frame_t **out_frames,
+                    int *out_frame_count,
+                    int *out_width,
+                    int *out_height) {
     if (!filepath || !out_frames || !out_frame_count)
         return 0;
 
@@ -319,8 +321,7 @@ int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
 
     // Verify GIF signature
     uint8_t sig[6];
-    if (!gif_read(r, sig, 6) ||
-        (memcmp(sig, "GIF87a", 6) != 0 && memcmp(sig, "GIF89a", 6) != 0)) {
+    if (!gif_read(r, sig, 6) || (memcmp(sig, "GIF87a", 6) != 0 && memcmp(sig, "GIF89a", 6) != 0)) {
         free(file_data);
         return 0;
     }
@@ -462,8 +463,8 @@ int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
             // Decompress LZW
             size_t pixel_count = (size_t)img_w * (size_t)img_h;
             size_t index_len = 0;
-            uint8_t *indices = lzw_decompress(min_code_size, lzw_data, lzw_data_len,
-                                               pixel_count, &index_len);
+            uint8_t *indices =
+                lzw_decompress(min_code_size, lzw_data, lzw_data_len, pixel_count, &index_len);
             free(lzw_data);
             if (!indices)
                 continue;
@@ -481,12 +482,12 @@ int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
                     actual_y = -1;
                     int row_in_pass = y;
                     for (int pass = 0; pass < 4; pass++) {
-                        int pass_rows = (img_h - gif_interlace_start[pass] +
-                                         gif_interlace_step[pass] - 1) /
-                                        gif_interlace_step[pass];
+                        int pass_rows =
+                            (img_h - gif_interlace_start[pass] + gif_interlace_step[pass] - 1) /
+                            gif_interlace_step[pass];
                         if (row_in_pass < pass_rows) {
-                            actual_y = gif_interlace_start[pass] +
-                                       row_in_pass * gif_interlace_step[pass];
+                            actual_y =
+                                gif_interlace_start[pass] + row_in_pass * gif_interlace_step[pass];
                             break;
                         }
                         row_in_pass -= pass_rows;
@@ -513,10 +514,9 @@ int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
                         continue; // transparent — don't overwrite canvas
 
                     if (color_idx < color_count) {
-                        uint32_t rgba =
-                            ((uint32_t)color_table[color_idx * 3] << 24) |
-                            ((uint32_t)color_table[color_idx * 3 + 1] << 16) |
-                            ((uint32_t)color_table[color_idx * 3 + 2] << 8) | 0xFF;
+                        uint32_t rgba = ((uint32_t)color_table[color_idx * 3] << 24) |
+                                        ((uint32_t)color_table[color_idx * 3 + 1] << 16) |
+                                        ((uint32_t)color_table[color_idx * 3 + 2] << 8) | 0xFF;
                         canvas[canvas_y * screen_w + canvas_x] = rgba;
                     }
                 }
@@ -531,8 +531,8 @@ int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
                 // Grow frames array if needed
                 if (frame_count >= frame_cap) {
                     frame_cap *= 2;
-                    gif_frame_t *new_frames = (gif_frame_t *)realloc(
-                        frames, (size_t)frame_cap * sizeof(gif_frame_t));
+                    gif_frame_t *new_frames =
+                        (gif_frame_t *)realloc(frames, (size_t)frame_cap * sizeof(gif_frame_t));
                     if (!new_frames)
                         break;
                     frames = new_frames;

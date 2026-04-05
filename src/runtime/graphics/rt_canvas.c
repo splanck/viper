@@ -46,6 +46,11 @@ static void rt_canvas_finalize(void *obj) {
     }
 }
 
+/// @brief Report that Canvas support is compiled into this runtime.
+int8_t rt_canvas_is_available(void) {
+    return 1;
+}
+
 /// @brief Create a new Canvas window with the given title and dimensions.
 /// @details Allocates a GC-managed rt_canvas struct, initializes the ViperGFX
 ///   window backend, sets up HiDPI coordinate scaling, and initializes keyboard,
@@ -670,4 +675,6 @@ void rt_canvas_get_monitor_size(void *canvas_ptr, int64_t *out_w, int64_t *out_h
         *out_h = (int64_t)h;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

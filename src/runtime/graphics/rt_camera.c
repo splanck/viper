@@ -332,7 +332,9 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
     camera_clamp_bounds(camera);
 }
 
-void rt_camera_smooth_follow(void *camera_ptr, int64_t target_x, int64_t target_y,
+void rt_camera_smooth_follow(void *camera_ptr,
+                             int64_t target_x,
+                             int64_t target_y,
                              int64_t lerp_pct) {
     if (!camera_ptr) {
         rt_trap("Camera.SmoothFollow: null camera");

@@ -116,8 +116,7 @@ std::string readText(const fs::path &path) {
 
 std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
     const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
-    const std::regex re(
-        R"RTFUNC(RT_FUNC\([^,]+,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
+    const std::regex re(R"RTFUNC(RT_FUNC\([^,]+,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
     std::unordered_map<std::string, std::string> out;
     for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) {
         out.emplace((*it)[2].str(), (*it)[1].str());

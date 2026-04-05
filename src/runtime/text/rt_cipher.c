@@ -40,7 +40,7 @@
 #include <string.h>
 
 // External trap function (defined in rt_io.c)
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Constants
@@ -175,13 +175,14 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     memcpy(out_data + CIPHER_SALT_SIZE, nonce, CIPHER_NONCE_SIZE);
 
     // Encrypt: ciphertext goes after salt + nonce
-    size_t encrypted_len = rt_chacha20_poly1305_encrypt(key,
-                                                        nonce,
-                                                        NULL,
-                                                        0, // No AAD
-                                                        plain_data,
-                                                        (size_t)plain_len,
-                                                        out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
+    size_t encrypted_len =
+        rt_chacha20_poly1305_encrypt(key,
+                                     nonce,
+                                     NULL,
+                                     0, // No AAD
+                                     plain_data,
+                                     (size_t)plain_len,
+                                     out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
     if (encrypted_len == 0 && plain_len != 0) {
         cipher_secure_zero(key, sizeof(key));
         rt_trap("Cipher.Encrypt: encryption failed");
@@ -254,13 +255,8 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
 
     if (decrypt_result < 0) {
         derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
-        decrypt_result = rt_chacha20_poly1305_decrypt(key,
-                                                      nonce,
-                                                      NULL,
-                                                      0,
-                                                      encrypted,
-                                                      (size_t)encrypted_len,
-                                                      plain_data);
+        decrypt_result = rt_chacha20_poly1305_decrypt(
+            key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
         if (decrypt_result < 0) {
             cipher_secure_zero(key, sizeof(key));
             rt_trap("Cipher.Decrypt: authentication failed (wrong password or corrupted data)");

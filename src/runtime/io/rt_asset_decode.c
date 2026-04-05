@@ -72,7 +72,8 @@ static int iext(const char *name, const char *ext) {
 }
 
 /// @brief Write data to a temp file, call a file-based loader, delete temp.
-static void *load_via_tempfile(const uint8_t *data, size_t size,
+static void *load_via_tempfile(const uint8_t *data,
+                               size_t size,
                                const char *ext,
                                void *(*loader)(void *path_str)) {
     // Build temp path

@@ -67,18 +67,14 @@ RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Lazy.FlatMap", "rt_lazy_flat_map_wrapper"
 
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Sprite.DrawTransformed",
                                 "rt_sprite_draw_transformed")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.New",
-                                "rt_sprite_animator_new")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.New", "rt_sprite_animator_new")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Destroy",
                                 "rt_sprite_animator_destroy")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.AddClip",
                                 "rt_sprite_animator_add_clip_str")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Play",
-                                "rt_sprite_animator_play_str")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Stop",
-                                "rt_sprite_animator_stop")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Update",
-                                "rt_sprite_animator_update")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Play", "rt_sprite_animator_play_str")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Stop", "rt_sprite_animator_stop")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.Update", "rt_sprite_animator_update")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_IsPlaying",
                                 "rt_sprite_animator_is_playing")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_Current",
@@ -125,12 +121,12 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "New", "obj(ptr)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "Map", "obj(ptr)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Lazy", "FlatMap", "obj(ptr)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Sprite", "DrawTransformed",
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Sprite",
+                              "DrawTransformed",
                               "void(obj,i64,i64,i64,i64,i64,i64,i64)")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "AddClip",
-                              "i1(str,i64,i64,i64,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "AddClip", "i1(str,i64,i64,i64,i64)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Play", "i1(str)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Update", "void(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Destroy", "void()")

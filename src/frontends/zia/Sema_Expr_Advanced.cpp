@@ -1007,7 +1007,8 @@ TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
     TypeRef valueType = typeIt->second;
     if (!valueType || valueType->kind != TypeKindSem::Struct) {
         error(expr->loc,
-              "'" + expr->typeName + "' is not a struct type; struct literal requires a struct type");
+              "'" + expr->typeName +
+                  "' is not a struct type; struct literal requires a struct type");
         return types::unknown();
     }
 

@@ -353,8 +353,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
     while (!cq->head && !cq->closed) {
         DWORD now = GetTickCount();
         DWORD elapsed = now - start;
-        DWORD remaining =
-            (elapsed >= (DWORD)timeout_ms) ? 0 : (DWORD)timeout_ms - elapsed;
+        DWORD remaining = (elapsed >= (DWORD)timeout_ms) ? 0 : (DWORD)timeout_ms - elapsed;
         if (remaining == 0) {
             CQ_UNLOCK(cq);
             return NULL;
@@ -366,13 +365,12 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         }
     }
 #else
-    cq_deadline_t deadline =
-        cq_deadline_ms_from_now(timeout_ms, cq->cond_uses_monotonic);
+    cq_deadline_t deadline = cq_deadline_ms_from_now(timeout_ms, cq->cond_uses_monotonic);
 
     CQ_LOCK(cq);
     while (!cq->head && !cq->closed) {
-        int rc = cq_cond_timedwait_deadline(&cq->cond, &cq->mutex, deadline,
-                                            cq->cond_uses_monotonic);
+        int rc =
+            cq_cond_timedwait_deadline(&cq->cond, &cq->mutex, deadline, cq->cond_uses_monotonic);
         if (rc == ETIMEDOUT) {
             // Timeout or error
             CQ_UNLOCK(cq);

@@ -56,7 +56,7 @@ TEST(GameMenu, ConfirmReturnsIndex) {
     rt_uimenulist_add_item(menu, rt_const_cstr("Start"));
     rt_uimenulist_add_item(menu, rt_const_cstr("Quit"));
 
-    rt_uimenulist_handle_input(menu, 0, 1, 0); // → 1
+    rt_uimenulist_handle_input(menu, 0, 1, 0);                  // → 1
     int64_t result = rt_uimenulist_handle_input(menu, 0, 0, 1); // confirm
     EXPECT_EQ(result, 1);
 }
@@ -77,4 +77,6 @@ TEST(GameButton, CreateAndPosition) {
     EXPECT_EQ(rt_gamebutton_get_x(btn), 50);
 }
 
-int main() { return viper_test::run_all_tests(); }
+int main() {
+    return viper_test::run_all_tests();
+}

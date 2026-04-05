@@ -83,7 +83,7 @@ typedef struct pool_impl {
 static void pool_finalizer(void *obj);
 static void worker_entry(void *arg);
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Pool Management

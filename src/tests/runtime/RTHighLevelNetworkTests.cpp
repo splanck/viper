@@ -256,7 +256,8 @@ static void test_sse_chunked_event() {
 
     rt_string event_type = rt_sse_last_event_type(sse);
     rt_string event_id = rt_sse_last_event_id(sse);
-    test_result("SSE chunked event type captured", strcmp(rt_string_cstr(event_type), "multi") == 0);
+    test_result("SSE chunked event type captured",
+                strcmp(rt_string_cstr(event_type), "multi") == 0);
     test_result("SSE chunked event id captured", strcmp(rt_string_cstr(event_id), "7") == 0);
 
     rt_sse_close(sse);
@@ -290,7 +291,8 @@ static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
                              rt_const_cstr(".leading line\nsecond line"));
 
     test_result("SMTP send succeeds", ok == 1);
-    test_result("SMTP last error is empty", strcmp(rt_string_cstr(rt_smtp_last_error(smtp)), "") == 0);
+    test_result("SMTP last error is empty",
+                strcmp(rt_string_cstr(rt_smtp_last_error(smtp)), "") == 0);
 
     server.join();
 

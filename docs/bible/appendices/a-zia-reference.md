@@ -14,8 +14,8 @@ A comprehensive reference for Zia syntax and features. This appendix is designed
 6. [Functions](#functions)
 7. [Collections](#collections)
 8. [Strings](#strings)
-9. [Values (Structures)](#values-structures)
-10. [Entities (Objects)](#classes-objects)
+9. [Structs (Value Types)](#structs-value-types)
+10. [Classes (Reference Types)](#classes-reference-types)
 11. [Visibility Modifiers](#visibility-modifiers)
 12. [Inheritance](#inheritance)
 13. [Interfaces](#interfaces)
@@ -926,11 +926,11 @@ var lines = "Line 1\nLine 2\nLine 3";
 
 ---
 
-## Values (Structures)
+## Structs (Value Types)
 
-Values group related data together. They have value semantics -- assignment creates a copy.
+Structs group related data together. They have value semantics — assignment creates a copy.
 
-### Defining Values
+### Defining Structs
 
 ```rust
 struct Point {
@@ -1025,11 +1025,11 @@ Terminal.Say(p2.x);  // 99.0 - only p2 changed
 
 ---
 
-## Entities (Objects)
+## Classes (Reference Types)
 
-Entities combine data and behavior with reference semantics and support for inheritance.
+Classes combine data and behavior with reference semantics and support for inheritance.
 
-### Defining Entities
+### Defining Classes
 
 ```rust
 class Counter {
@@ -2156,7 +2156,7 @@ func name(param: Type) -> ReturnType {
 }
 ```
 
-### Entity Definition
+### Class Definition
 ```rust
 class Name {
     hide field: Type;
@@ -2165,7 +2165,7 @@ class Name {
 }
 ```
 
-### Value Definition
+### Struct Definition
 ```rust
 struct Name {
     field: Type;

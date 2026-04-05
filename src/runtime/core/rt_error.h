@@ -24,12 +24,28 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include <stdint.h>
 #include "rt_string.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/// @brief Canonical runtime trap kinds shared by the native runtime and VM.
+typedef enum RtTrapKind {
+    RT_TRAP_KIND_DIVIDE_BY_ZERO = 0,
+    RT_TRAP_KIND_OVERFLOW = 1,
+    RT_TRAP_KIND_INVALID_CAST = 2,
+    RT_TRAP_KIND_DOMAIN_ERROR = 3,
+    RT_TRAP_KIND_BOUNDS = 4,
+    RT_TRAP_KIND_FILE_NOT_FOUND = 5,
+    RT_TRAP_KIND_EOF = 6,
+    RT_TRAP_KIND_IO_ERROR = 7,
+    RT_TRAP_KIND_INVALID_OPERATION = 8,
+    RT_TRAP_KIND_RUNTIME_ERROR = 9,
+    RT_TRAP_KIND_INTERRUPT = 10,
+    RT_TRAP_KIND_NETWORK_ERROR = 11
+} RtTrapKind;
 
 /// @brief Canonical runtime error codes surfaced by runtime helpers.
 enum Err {
@@ -112,6 +128,18 @@ int32_t rt_err_to_trap_kind(int32_t code);
 /// @param msg User-visible trap message.
 /// @return Opaque token value suitable for carrying the Error-typed result in native codegen.
 void *rt_trap_error_make(int32_t code, rt_string msg);
+
+/// @brief Raise a trap with explicit trap metadata.
+/// @param kind Canonical trap classification.
+/// @param code Secondary runtime error code (Err_* or 0).
+/// @param line Source line number (-1 if unknown).
+/// @param msg User-visible trap message.
+void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg);
+
+/// @brief Raise a trap classified from a legacy Err_* code while preserving @p msg.
+/// @param code Legacy Err_* code.
+/// @param msg User-visible trap message.
+void rt_trap_raise_error_msg(int32_t code, const char *msg);
 
 /// @brief Raise a trap classified from a legacy runtime Err_* code.
 /// @param code Legacy Err_* code.

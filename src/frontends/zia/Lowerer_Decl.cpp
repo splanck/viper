@@ -212,8 +212,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
                         std::string key = base->name + "." + fieldExpr->field;
                         auto it = enumVariantValues_.find(key);
                         if (it != enumVariantValues_.end()) {
-                            globalConstants_[qualifiedName] =
-                                il::core::Value::constInt(it->second);
+                            globalConstants_[qualifiedName] = il::core::Value::constInt(it->second);
                             continue;
                         }
                     }

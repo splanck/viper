@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-10
+last-verified: 2026-04-05
 ---
 
 # GameBase + IScene — Game Loop Framework
@@ -304,3 +304,10 @@ The overlay is rendered automatically — GameBase handles the `BoxAlpha` render
 | `examples/games/lib/iscene.zia` | IScene interface definition |
 | `examples/games/lib/gamebase.zia` | GameBase class + NullScene sentinel |
 | `examples/games/lib/test_gamebase.zia` | Validation test (Red/Blue scene switching) |
+
+## See Also
+
+- [Scene Manager](scenemanager.md) — Multi-scene transitions with crossfade
+- [Game Utilities](core.md) — Timer, StateMachine, ObjectPool
+- [Visual Effects](effects.md) — ScreenFX for shake, fade, flash
+- [Viper Runtime Library](../README.md)

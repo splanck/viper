@@ -83,6 +83,36 @@ static void test_roundtrip_hex() {
     rt_string_unref(hex);
 }
 
+static void test_from_hsl_primary_red() {
+    assert(rt_color_from_hsl(0, 100, 50) == rgb(255, 0, 0));
+}
+
+static void test_get_hsl_components() {
+    int64_t red = rgb(255, 0, 0);
+    assert(rt_color_get_h(red) == 0);
+    assert(rt_color_get_s(red) == 100);
+    assert(rt_color_get_l(red) == 50);
+}
+
+static void test_lerp_midpoint() {
+    int64_t c = rt_color_lerp(rgb(0, 0, 0), rgb(200, 100, 50), 50);
+    assert(c == rgb(100, 50, 25));
+}
+
+static void test_brighten_and_darken() {
+    int64_t c = rgb(100, 150, 200);
+    int64_t brighter = rt_color_brighten(c, 50);
+    int64_t darker = rt_color_darken(c, 50);
+
+    assert(((brighter >> 16) & 0xFF) > 100);
+    assert(((brighter >> 8) & 0xFF) > 150);
+    assert((brighter & 0xFF) > 200);
+
+    assert(((darker >> 16) & 0xFF) < 100);
+    assert(((darker >> 8) & 0xFF) < 150);
+    assert((darker & 0xFF) < 200);
+}
+
 static void test_complement_red() {
     // Red's complement should be cyan-ish
     int64_t red = rgb(255, 0, 0);
@@ -166,6 +196,10 @@ int main() {
     test_to_hex_black();
     test_to_hex_white();
     test_roundtrip_hex();
+    test_from_hsl_primary_red();
+    test_get_hsl_components();
+    test_lerp_midpoint();
+    test_brighten_and_darken();
     test_complement_red();
     test_grayscale();
     test_invert();

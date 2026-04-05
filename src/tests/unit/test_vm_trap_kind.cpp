@@ -28,7 +28,7 @@
 using il::vm::TrapKind;
 
 int main() {
-    constexpr std::array<std::pair<TrapKind, std::string_view>, 10> cases{{
+    constexpr std::array<std::pair<TrapKind, std::string_view>, 12> cases{{
         {TrapKind::DivideByZero, "DivideByZero"},
         {TrapKind::Overflow, "Overflow"},
         {TrapKind::InvalidCast, "InvalidCast"},
@@ -39,6 +39,8 @@ int main() {
         {TrapKind::IOError, "IOError"},
         {TrapKind::InvalidOperation, "InvalidOperation"},
         {TrapKind::RuntimeError, "RuntimeError"},
+        {TrapKind::Interrupt, "Interrupt"},
+        {TrapKind::NetworkError, "NetworkError"},
     }};
 
     for (const auto &[kind, name] : cases) {

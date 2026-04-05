@@ -39,7 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 #ifdef _WIN32
 #include <direct.h>

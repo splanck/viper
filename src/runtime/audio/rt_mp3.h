@@ -46,9 +46,13 @@ void mp3_decoder_free(mp3_decoder_t *dec);
 /// @param out_channels Receives channel count (1 or 2).
 /// @param out_sample_rate Receives sample rate (e.g., 44100).
 /// @return 0 on success, -1 on failure.
-int mp3_decode_file(mp3_decoder_t *dec, const uint8_t *data, size_t len,
-                    int16_t **out_pcm, int *out_samples,
-                    int *out_channels, int *out_sample_rate);
+int mp3_decode_file(mp3_decoder_t *dec,
+                    const uint8_t *data,
+                    size_t len,
+                    int16_t **out_pcm,
+                    int *out_samples,
+                    int *out_channels,
+                    int *out_sample_rate);
 
 /// @brief Opaque MP3 streaming decoder handle.
 typedef struct mp3_stream mp3_stream_t;
@@ -60,7 +64,8 @@ mp3_stream_t *mp3_stream_open(const char *filepath);
 
 /// @brief Decode the next MP3 frame (up to 1152 stereo samples).
 /// @param stream Stream handle.
-/// @param out_pcm Receives pointer to interleaved 16-bit PCM (internal buffer, valid until next call).
+/// @param out_pcm Receives pointer to interleaved 16-bit PCM (internal buffer, valid until next
+/// call).
 /// @return Number of samples per channel, 0 on EOF, -1 on error.
 int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm);
 

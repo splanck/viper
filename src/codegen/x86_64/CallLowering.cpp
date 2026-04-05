@@ -161,10 +161,9 @@ void lowerCall(MBasicBlock &block,
 
         // Win64 variadic/unprototyped calls must mirror FP register arguments
         // into the corresponding positional integer register slot as raw bits.
-        insertInstr(MInstr::make(
-            MOpcode::MOVQxr,
-            {makePhysOperand(RegClass::GPR, target.intArgOrder[loc.regIndex]),
-             makePhysOperand(RegClass::XMM, xmmReg)}));
+        insertInstr(MInstr::make(MOpcode::MOVQxr,
+                                 {makePhysOperand(RegClass::GPR, target.intArgOrder[loc.regIndex]),
+                                  makePhysOperand(RegClass::XMM, xmmReg)}));
     };
 
     // Stack alignment is handled statically by FrameLowering which folds
@@ -196,28 +195,28 @@ void lowerCall(MBasicBlock &block,
 
             if (loc.inRegister) {
                 const PhysReg destReg = target.intArgOrder[loc.regIndex];
-                insertInstr(MInstr::make(
-                    MOpcode::MOVrr, {makePhysOperand(RegClass::GPR, destReg), scratch}));
+                insertInstr(MInstr::make(MOpcode::MOVrr,
+                                         {makePhysOperand(RegClass::GPR, destReg), scratch}));
             } else {
-                const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
-                                                             loc.stackSlotIndex * kSlotSizeBytes);
+                const auto slotOffset =
+                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
                 insertInstr(MInstr::make(MOpcode::MOVrm, {makeStackSlot(slotOffset), scratch}));
             }
         } else {
             if (loc.inRegister) {
                 const PhysReg destReg = target.f64ArgOrder[loc.regIndex];
-                insertInstr(MInstr::make(
-                    MOpcode::MOVSDrr,
-                    {makePhysOperand(RegClass::XMM, destReg),
-                     makeVRegOperand(RegClass::XMM, arg.vreg)}));
+                insertInstr(MInstr::make(MOpcode::MOVSDrr,
+                                         {makePhysOperand(RegClass::XMM, destReg),
+                                          makeVRegOperand(RegClass::XMM, arg.vreg)}));
                 maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
-                const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
-                                                             loc.stackSlotIndex * kSlotSizeBytes);
+                const auto slotOffset =
+                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
                 const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
-                insertInstr(MInstr::make(
-                    MOpcode::MOVSDrr, {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
-                insertInstr(MInstr::make(MOpcode::MOVSDrm, {makeStackSlot(slotOffset), scratchXmm}));
+                insertInstr(MInstr::make(MOpcode::MOVSDrr,
+                                         {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
+                insertInstr(
+                    MInstr::make(MOpcode::MOVSDrm, {makeStackSlot(slotOffset), scratchXmm}));
             }
         }
     }
@@ -235,8 +234,8 @@ void lowerCall(MBasicBlock &block,
                     MOpcode::MOVri,
                     {makePhysOperand(RegClass::GPR, destReg), makeImmOperand(arg.imm)}));
             } else {
-                const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
-                                                             loc.stackSlotIndex * kSlotSizeBytes);
+                const auto slotOffset =
+                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
                 const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(arg.imm)}));
                 insertInstr(MInstr::make(MOpcode::MOVrm, {makeStackSlot(slotOffset), scratch}));
@@ -246,17 +245,18 @@ void lowerCall(MBasicBlock &block,
                 const PhysReg destReg = target.f64ArgOrder[loc.regIndex];
                 const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
-                insertInstr(MInstr::make(
-                    MOpcode::MOVQrx, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
+                insertInstr(MInstr::make(MOpcode::MOVQrx,
+                                         {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
                 maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
-                const auto slotOffset = static_cast<int32_t>(target.shadowSpace +
-                                                             loc.stackSlotIndex * kSlotSizeBytes);
+                const auto slotOffset =
+                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
                 const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                 const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
                 insertInstr(MInstr::make(MOpcode::MOVQrx, {scratchXmm, scratchGpr}));
-                insertInstr(MInstr::make(MOpcode::MOVSDrm, {makeStackSlot(slotOffset), scratchXmm}));
+                insertInstr(
+                    MInstr::make(MOpcode::MOVSDrm, {makeStackSlot(slotOffset), scratchXmm}));
             }
         }
     }
@@ -270,9 +270,8 @@ void lowerCall(MBasicBlock &block,
     // lanes earlier in lowering and does not use %al.
     if (plan.isVarArg && target.shadowSpace == 0) {
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-        insertInstr(
-            MInstr::make(MOpcode::MOVri,
-                         {rax, makeImmOperand(static_cast<int64_t>(layout.fprRegsUsed))}));
+        insertInstr(MInstr::make(MOpcode::MOVri,
+                                 {rax, makeImmOperand(static_cast<int64_t>(layout.fprRegsUsed))}));
     }
 }
 

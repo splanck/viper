@@ -43,7 +43,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// @brief Allocate a zeroed payload tagged as a heap object.
 /// @details Requests storage from @ref rt_heap_alloc with the

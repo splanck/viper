@@ -26,10 +26,11 @@
 #include <string>
 
 #if defined(_WIN32)
-#include <io.h>
 #include <cstdlib>
+#include <io.h>
 #define close _close
 #define fileno _fileno
+
 static std::string tmpPath(const char *name) {
     const char *tmp = std::getenv("TEMP");
     if (!tmp)
@@ -38,6 +39,7 @@ static std::string tmpPath(const char *name) {
 }
 #else
 #include <unistd.h>
+
 static std::string tmpPath(const char *name) {
     return std::string("/tmp/") + name;
 }

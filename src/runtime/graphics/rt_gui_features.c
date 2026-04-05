@@ -1201,7 +1201,8 @@ int64_t rt_app_get_dropped_file_count(void *app) {
 rt_string rt_app_get_dropped_file(void *app, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    if (gui_app && index >= 0 && index < gui_app->file_drop.file_count && gui_app->file_drop.files) {
+    if (gui_app && index >= 0 && index < gui_app->file_drop.file_count &&
+        gui_app->file_drop.files) {
         char *file = gui_app->file_drop.files[index];
         if (file) {
             return rt_string_from_bytes(file, strlen(file));
@@ -1224,9 +1225,8 @@ void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
     }
 
     // Grow array
-    char **new_files =
-        (char **)realloc(app->file_drop.files,
-                         (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
+    char **new_files = (char **)realloc(app->file_drop.files,
+                                        (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
     if (!new_files)
         return;
     app->file_drop.files = new_files;

@@ -202,7 +202,8 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
             break;
 
         if (memberIndex > 0 && memberIndex <= memberCount) {
-            const uint32_t memberOffset = readLE32(offsets + static_cast<size_t>(memberIndex - 1) * 4);
+            const uint32_t memberOffset =
+                readLE32(offsets + static_cast<size_t>(memberIndex - 1) * 4);
             symbols.emplace_back(std::string(namePtr, nul), memberOffset);
         }
 
@@ -305,8 +306,8 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             } else if (resolvedName.size() > 1 && resolvedName[0] == '/' &&
                        resolvedName[1] >= '0' && resolvedName[1] <= '9') {
                 size_t offset = 0;
-                for (size_t i = 1; i < resolvedName.size() && resolvedName[i] >= '0' &&
-                                   resolvedName[i] <= '9';
+                for (size_t i = 1;
+                     i < resolvedName.size() && resolvedName[i] >= '0' && resolvedName[i] <= '9';
                      ++i)
                     offset = offset * 10 + (resolvedName[i] - '0');
                 if (offset < longNames.size()) {

@@ -110,8 +110,7 @@ class A64BinaryEncoder {
 
     /// Emit a stack-argument store using SP-relative addressing or a scratch base for
     /// oversized offsets.
-    void encodeSpOffsetStore(
-        uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs);
+    void encodeSpOffsetStore(uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs);
 
     /// Emit a single 32-bit instruction word.
     void emit32(uint32_t word, objfile::CodeSection &cs) {

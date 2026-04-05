@@ -41,39 +41,39 @@ typedef struct {
      * geometry is transient and should use the streaming upload path. */
     const void *geometry_key;
     uint32_t geometry_revision;
-    float model_matrix[16];   /* row-major float */
+    float model_matrix[16];      /* row-major float */
     float prev_model_matrix[16]; /* previous-frame row-major float */
-    float diffuse_color[4];   /* RGBA material color */
-    float specular[3];        /* RGB specular color */
-    float shininess;          /* specular exponent */
-    float alpha;              /* opacity [0.0=invisible, 1.0=opaque] */
-    int8_t unlit;             /* skip lighting if true */
-    const void *texture;      /* Pixels object (diffuse, slot 0) or NULL */
-    const void *normal_map;   /* Pixels (normal map, slot 1) or NULL */
-    const void *specular_map; /* Pixels (specular map, slot 2) or NULL */
-    const void *emissive_map; /* Pixels (emissive map, slot 3) or NULL */
-    float emissive_color[3];  /* emissive color multiplier */
-    const void *env_map;      /* CubeMap3D (environment reflections) or NULL */
-    float reflectivity;       /* [0.0=no reflection, 1.0=mirror] */
+    float diffuse_color[4];      /* RGBA material color */
+    float specular[3];           /* RGB specular color */
+    float shininess;             /* specular exponent */
+    float alpha;                 /* opacity [0.0=invisible, 1.0=opaque] */
+    int8_t unlit;                /* skip lighting if true */
+    const void *texture;         /* Pixels object (diffuse, slot 0) or NULL */
+    const void *normal_map;      /* Pixels (normal map, slot 1) or NULL */
+    const void *specular_map;    /* Pixels (specular map, slot 2) or NULL */
+    const void *emissive_map;    /* Pixels (emissive map, slot 3) or NULL */
+    float emissive_color[3];     /* emissive color multiplier */
+    const void *env_map;         /* CubeMap3D (environment reflections) or NULL */
+    float reflectivity;          /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
-    const void *splat_map;         /* RGBA weight texture (NULL = not terrain) */
-    const void *splat_layers[4];   /* Layer textures */
-    float splat_layer_scales[4];   /* UV tiling per layer */
-    int8_t has_splat;              /* 1 = terrain splat active */
+    const void *splat_map;       /* RGBA weight texture (NULL = not terrain) */
+    const void *splat_layers[4]; /* Layer textures */
+    float splat_layer_scales[4]; /* UV tiling per layer */
+    int8_t has_splat;            /* 1 = terrain splat active */
     /* GPU skeletal skinning (MTL-09): set by rt_skeleton3d.c for GPU path */
-    const float *bone_palette;     /* bone_count * 16 floats (4x4 row-major) */
+    const float *bone_palette;      /* bone_count * 16 floats (4x4 row-major) */
     const float *prev_bone_palette; /* previous-frame palette or NULL */
-    int32_t bone_count;            /* number of bones (0 = no skinning) */
+    int32_t bone_count;             /* number of bones (0 = no skinning) */
     /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
-    const float *morph_deltas;     /* shape_count * vertex_count * 3 floats */
-    const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats or NULL */
-    const float *morph_weights;    /* shape_count floats */
-    const float *prev_morph_weights; /* previous-frame shape_count floats or NULL */
-    int32_t morph_shape_count;     /* number of active morph shapes (0 = none) */
+    const float *morph_deltas;           /* shape_count * vertex_count * 3 floats */
+    const float *morph_normal_deltas;    /* shape_count * vertex_count * 3 floats or NULL */
+    const float *morph_weights;          /* shape_count floats */
+    const float *prev_morph_weights;     /* previous-frame shape_count floats or NULL */
+    int32_t morph_shape_count;           /* number of active morph shapes (0 = none) */
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
-    int8_t has_prev_model_matrix;  /* 1 when prev_model_matrix is valid */
-    int8_t has_prev_instance_matrices; /* 1 when prev_instance_matrices matches instance_count */
-    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */
+    int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
+    int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
 
@@ -142,8 +142,7 @@ typedef struct vgfx3d_backend {
      * shadow_begin: initialize depth buffer, store light VP.
      * shadow_draw: depth-only rasterize one mesh into the shadow map.
      * shadow_end: finalize shadow state for lookup in main pass. */
-    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h,
-                         const float *light_vp);
+    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, float bias);
 

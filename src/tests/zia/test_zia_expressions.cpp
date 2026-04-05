@@ -331,8 +331,7 @@ func start() {
             continue;
         for (const auto &block : fn.blocks) {
             for (const auto &instr : block.instructions) {
-                if (instr.op == il::core::Opcode::Call &&
-                    instr.callee == "Viper.String.Equals") {
+                if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.String.Equals") {
                     foundEqualsCall = true;
                 }
             }

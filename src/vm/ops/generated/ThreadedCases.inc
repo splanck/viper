@@ -23,480 +23,420 @@
 //
 //===----------------------------------------------------------------------===//
 
-LBL_Add:
-{
+LBL_Add : {
     vm.inline_handle_Add(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Sub:
-{
+LBL_Sub : {
     vm.inline_handle_Sub(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Mul:
-{
+LBL_Mul : {
     vm.inline_handle_Mul(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_IAddOvf:
-{
+LBL_IAddOvf : {
     vm.inline_handle_IAddOvf(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ISubOvf:
-{
+LBL_ISubOvf : {
     vm.inline_handle_ISubOvf(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_IMulOvf:
-{
+LBL_IMulOvf : {
     vm.inline_handle_IMulOvf(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SDiv:
-{
+LBL_SDiv : {
     vm.inline_handle_SDiv(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UDiv:
-{
+LBL_UDiv : {
     vm.inline_handle_UDiv(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SRem:
-{
+LBL_SRem : {
     vm.inline_handle_SRem(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_URem:
-{
+LBL_URem : {
     vm.inline_handle_URem(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SDivChk0:
-{
+LBL_SDivChk0 : {
     vm.inline_handle_SDivChk0(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UDivChk0:
-{
+LBL_UDivChk0 : {
     vm.inline_handle_UDivChk0(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SRemChk0:
-{
+LBL_SRemChk0 : {
     vm.inline_handle_SRemChk0(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_URemChk0:
-{
+LBL_URemChk0 : {
     vm.inline_handle_URemChk0(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_IdxChk:
-{
+LBL_IdxChk : {
     vm.inline_handle_IdxChk(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_And:
-{
+LBL_And : {
     vm.inline_handle_And(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Or:
-{
+LBL_Or : {
     vm.inline_handle_Or(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Xor:
-{
+LBL_Xor : {
     vm.inline_handle_Xor(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Shl:
-{
+LBL_Shl : {
     vm.inline_handle_Shl(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_LShr:
-{
+LBL_LShr : {
     vm.inline_handle_LShr(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_AShr:
-{
+LBL_AShr : {
     vm.inline_handle_AShr(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FAdd:
-{
+LBL_FAdd : {
     vm.inline_handle_FAdd(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FSub:
-{
+LBL_FSub : {
     vm.inline_handle_FSub(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FMul:
-{
+LBL_FMul : {
     vm.inline_handle_FMul(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FDiv:
-{
+LBL_FDiv : {
     vm.inline_handle_FDiv(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ICmpEq:
-{
+LBL_ICmpEq : {
     vm.inline_handle_ICmpEq(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ICmpNe:
-{
+LBL_ICmpNe : {
     vm.inline_handle_ICmpNe(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SCmpLT:
-{
+LBL_SCmpLT : {
     vm.inline_handle_SCmpLT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SCmpLE:
-{
+LBL_SCmpLE : {
     vm.inline_handle_SCmpLE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SCmpGT:
-{
+LBL_SCmpGT : {
     vm.inline_handle_SCmpGT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SCmpGE:
-{
+LBL_SCmpGE : {
     vm.inline_handle_SCmpGE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UCmpLT:
-{
+LBL_UCmpLT : {
     vm.inline_handle_UCmpLT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UCmpLE:
-{
+LBL_UCmpLE : {
     vm.inline_handle_UCmpLE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UCmpGT:
-{
+LBL_UCmpGT : {
     vm.inline_handle_UCmpGT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_UCmpGE:
-{
+LBL_UCmpGE : {
     vm.inline_handle_UCmpGE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpEQ:
-{
+LBL_FCmpEQ : {
     vm.inline_handle_FCmpEQ(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpNE:
-{
+LBL_FCmpNE : {
     vm.inline_handle_FCmpNE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpLT:
-{
+LBL_FCmpLT : {
     vm.inline_handle_FCmpLT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpLE:
-{
+LBL_FCmpLE : {
     vm.inline_handle_FCmpLE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpGT:
-{
+LBL_FCmpGT : {
     vm.inline_handle_FCmpGT(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpGE:
-{
+LBL_FCmpGE : {
     vm.inline_handle_FCmpGE(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpOrd:
-{
+LBL_FCmpOrd : {
     vm.inline_handle_FCmpOrd(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_FCmpUno:
-{
+LBL_FCmpUno : {
     vm.inline_handle_FCmpUno(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Sitofp:
-{
+LBL_Sitofp : {
     vm.inline_handle_Sitofp(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Fptosi:
-{
+LBL_Fptosi : {
     vm.inline_handle_Fptosi(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastFpToSiRteChk:
-{
+LBL_CastFpToSiRteChk : {
     vm.inline_handle_CastFpToSiRteChk(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastFpToUiRteChk:
-{
+LBL_CastFpToUiRteChk : {
     vm.inline_handle_CastFpToUiRteChk(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastSiNarrowChk:
-{
+LBL_CastSiNarrowChk : {
     vm.inline_handle_CastSiNarrowChk(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastUiNarrowChk:
-{
+LBL_CastUiNarrowChk : {
     vm.inline_handle_CastUiNarrowChk(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastSiToFp:
-{
+LBL_CastSiToFp : {
     vm.inline_handle_CastSiToFp(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CastUiToFp:
-{
+LBL_CastUiToFp : {
     vm.inline_handle_CastUiToFp(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Zext1:
-{
+LBL_Zext1 : {
     vm.inline_handle_Zext1(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Trunc1:
-{
+LBL_Trunc1 : {
     vm.inline_handle_Trunc1(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Alloca:
-{
+LBL_Alloca : {
     vm.inline_handle_Alloca(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_GEP:
-{
+LBL_GEP : {
     vm.inline_handle_GEP(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Load:
-{
+LBL_Load : {
     vm.inline_handle_Load(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Store:
-{
+LBL_Store : {
     vm.inline_handle_Store(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_AddrOf:
-{
+LBL_AddrOf : {
     vm.inline_handle_AddrOf(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ConstStr:
-{
+LBL_ConstStr : {
     vm.inline_handle_ConstStr(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_GAddr:
-{
+LBL_GAddr : {
     auto exec =
         il::vm::detail::handleGAddr(vm, state.fr, *currentInstr, *state.blocks, state.bb, state.ip);
     vm.handleInlineResult(state, exec);
@@ -505,177 +445,154 @@ LBL_GAddr:
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ConstNull:
-{
+LBL_ConstNull : {
     vm.inline_handle_ConstNull(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ConstF64:
-{
+LBL_ConstF64 : {
     vm.inline_handle_ConstF64(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Call:
-{
+LBL_Call : {
     vm.inline_handle_Call(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_CallIndirect:
-{
+LBL_CallIndirect : {
     vm.inline_handle_CallIndirect(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_SwitchI32:
-{
+LBL_SwitchI32 : {
     vm.inline_handle_SwitchI32(state);
     // SwitchI32 modifies ip/bb, use slow path to handle the jump
     goto LBL_SLOW_PATH;
 }
 
-LBL_Br:
-{
+LBL_Br : {
     vm.inline_handle_Br(state);
     // Br modifies ip/bb, use slow path to handle the jump
     goto LBL_SLOW_PATH;
 }
 
-LBL_CBr:
-{
+LBL_CBr : {
     vm.inline_handle_CBr(state);
     // CBr modifies ip/bb, use slow path to handle the jump
     goto LBL_SLOW_PATH;
 }
 
-LBL_Ret:
-{
+LBL_Ret : {
     vm.inline_handle_Ret(state);
     // Ret sets exitRequested, go to slow path to return
     goto LBL_SLOW_PATH;
 }
 
-LBL_TrapKind:
-{
+LBL_TrapKind : {
     vm.inline_handle_TrapKind(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_TrapFromErr:
-{
+LBL_TrapFromErr : {
     vm.inline_handle_TrapFromErr(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_TrapErr:
-{
+LBL_TrapErr : {
     vm.inline_handle_TrapErr(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ErrGetKind:
-{
+LBL_ErrGetKind : {
     vm.inline_handle_ErrGetKind(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ErrGetCode:
-{
+LBL_ErrGetCode : {
     vm.inline_handle_ErrGetCode(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ErrGetIp:
-{
+LBL_ErrGetIp : {
     vm.inline_handle_ErrGetIp(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ErrGetLine:
-{
+LBL_ErrGetLine : {
     vm.inline_handle_ErrGetLine(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ErrGetMsg:
-{
+LBL_ErrGetMsg : {
     vm.inline_handle_ErrGetMsg(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_EhPush:
-{
+LBL_EhPush : {
     vm.inline_handle_EhPush(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_EhPop:
-{
+LBL_EhPop : {
     vm.inline_handle_EhPop(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_ResumeSame:
-{
+LBL_ResumeSame : {
     vm.inline_handle_ResumeSame(state);
     // ResumeSame modifies ip, use slow path
     goto LBL_SLOW_PATH;
 }
 
-LBL_ResumeNext:
-{
+LBL_ResumeNext : {
     vm.inline_handle_ResumeNext(state);
     // ResumeNext modifies ip, use slow path
     goto LBL_SLOW_PATH;
 }
 
-LBL_ResumeLabel:
-{
+LBL_ResumeLabel : {
     vm.inline_handle_ResumeLabel(state);
     // ResumeLabel modifies ip/bb, use slow path
     goto LBL_SLOW_PATH;
 }
 
-LBL_EhEntry:
-{
+LBL_EhEntry : {
     vm.inline_handle_EhEntry(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();
 }
 
-LBL_Trap:
-{
+LBL_Trap : {
     vm.inline_handle_Trap(state);
     // Trap may modify control flow, use slow path
     goto LBL_SLOW_PATH;

@@ -61,7 +61,7 @@ bool Parser::checkIdentifierLike() {
     // These keywords can be used as identifiers in parameter/variable contexts
     switch (peek().kind) {
         case TokenKind::KwStruct: // Common parameter name (e.g., setValue(Integer value))
-        case TokenKind::KwMatch: // Common variable name (e.g., var match = false)
+        case TokenKind::KwMatch:  // Common variable name (e.g., var match = false)
             return true;
         default:
             return false;

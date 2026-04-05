@@ -136,8 +136,7 @@ void rt_camera_clear_bounds(void *camera);
 /// @param target_x Target world X (center of follow).
 /// @param target_y Target world Y (center of follow).
 /// @param lerp_pct Interpolation speed 0-1000 (1000 = instant, 100 = slow smooth).
-void rt_camera_smooth_follow(void *camera, int64_t target_x, int64_t target_y,
-                             int64_t lerp_pct);
+void rt_camera_smooth_follow(void *camera, int64_t target_x, int64_t target_y, int64_t lerp_pct);
 
 /// @brief Set camera deadzone size. Target within the deadzone won't move the camera.
 /// @param camera Camera object.

@@ -64,7 +64,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern int64_t rt_clock_ticks_us(void);
 extern void rt_keyboard_set_canvas(vgfx_window_t win);
 extern void rt_keyboard_begin_frame(void);
@@ -1022,8 +1022,7 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
         if (vgfx_get_framebuffer(c->gfx_win, &fb)) {
             uint32_t rgba = ((uint32_t)(uint8_t)((float)r * 255.0f)) |
                             ((uint32_t)(uint8_t)((float)g * 255.0f) << 8) |
-                            ((uint32_t)(uint8_t)((float)b * 255.0f) << 16) |
-                            0xFF000000u;
+                            ((uint32_t)(uint8_t)((float)b * 255.0f) << 16) | 0xFF000000u;
             uint32_t *row = (uint32_t *)fb.pixels;
             int32_t row_stride = fb.stride / 4;
             for (int32_t y = 0; y < fb.height; y++) {
@@ -1096,15 +1095,8 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
                                  NULL);
 }
 
-static int canvas3d_queue_screen_rect(rt_canvas3d *c,
-                                      float x,
-                                      float y,
-                                      float w,
-                                      float h,
-                                      float r,
-                                      float g,
-                                      float b,
-                                      float a) {
+static int canvas3d_queue_screen_rect(
+    rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a) {
     vgfx3d_vertex_t verts[4];
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
 
@@ -1150,8 +1142,8 @@ static int canvas3d_queue_screen_line(rt_canvas3d *c,
     dy = y1 - y0;
     len = sqrtf(dx * dx + dy * dy);
     if (len < 1e-4f)
-        return canvas3d_queue_screen_rect(c, x0 - thickness * 0.5f, y0 - thickness * 0.5f,
-                                          thickness, thickness, r, g, b, a);
+        return canvas3d_queue_screen_rect(
+            c, x0 - thickness * 0.5f, y0 - thickness * 0.5f, thickness, thickness, r, g, b, a);
     px = -dy / len;
     py = dx / len;
     half = thickness * 0.5f;
@@ -1490,8 +1482,11 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.geometry_key = mesh;
     dd->cmd.geometry_revision = mesh->geometry_revision;
     mat4_d2f(model_matrix, dd->cmd.model_matrix);
-    canvas3d_resolve_previous_model(
-        c, motion_key, dd->cmd.model_matrix, dd->cmd.prev_model_matrix, &dd->cmd.has_prev_model_matrix);
+    canvas3d_resolve_previous_model(c,
+                                    motion_key,
+                                    dd->cmd.model_matrix,
+                                    dd->cmd.prev_model_matrix,
+                                    &dd->cmd.has_prev_model_matrix);
     dd->cmd.diffuse_color[0] = (float)mat->diffuse[0];
     dd->cmd.diffuse_color[1] = (float)mat->diffuse[1];
     dd->cmd.diffuse_color[2] = (float)mat->diffuse[2];
@@ -1677,8 +1672,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     {
         float batch_sort_key = FLT_MAX;
         for (int32_t i = 0; i < instance_count; i++) {
-            float key =
-                canvas3d_compute_sort_key(c, &instance_matrices[(size_t)i * 16u]);
+            float key = canvas3d_compute_sort_key(c, &instance_matrices[(size_t)i * 16u]);
             if (key < batch_sort_key)
                 batch_sort_key = key;
         }
@@ -1779,10 +1773,10 @@ void rt_canvas3d_end(void *obj) {
                         float b;
                         uint8_t *dst;
 
-                        world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] +
-                                   inv_vp[2] * clip[2] + inv_vp[3] * clip[3];
-                        world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] +
-                                   inv_vp[6] * clip[2] + inv_vp[7] * clip[3];
+                        world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] + inv_vp[2] * clip[2] +
+                                   inv_vp[3] * clip[3];
+                        world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] + inv_vp[6] * clip[2] +
+                                   inv_vp[7] * clip[3];
                         world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] +
                                    inv_vp[10] * clip[2] + inv_vp[11] * clip[3];
                         world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] +
@@ -2388,8 +2382,8 @@ void *rt_canvas3d_screenshot(void *obj) {
     if (c->backend && c->backend != &vgfx3d_software_backend && c->backend->readback_rgba) {
         size_t row_bytes = (size_t)shot_w * 4u;
         uint8_t *rgba = (uint8_t *)malloc((size_t)shot_h * row_bytes);
-        if (rgba && c->backend->readback_rgba(c->backend_ctx, rgba, shot_w, shot_h,
-                                              (int32_t)row_bytes)) {
+        if (rgba &&
+            c->backend->readback_rgba(c->backend_ctx, rgba, shot_w, shot_h, (int32_t)row_bytes)) {
             for (int32_t y = 0; y < shot_h; y++)
                 for (int32_t x = 0; x < shot_w; x++) {
                     const uint8_t *src = &rgba[(size_t)y * row_bytes + (size_t)x * 4u];
@@ -2591,4 +2585,6 @@ void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
     ((rt_canvas3d *)obj)->occlusion_culling = enabled;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

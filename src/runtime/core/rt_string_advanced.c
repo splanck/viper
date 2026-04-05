@@ -26,11 +26,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_string_internal.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_string_internal.h"
 
 #include <ctype.h>
 #include <stddef.h>

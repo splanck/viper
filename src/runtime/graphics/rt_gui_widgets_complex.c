@@ -491,7 +491,8 @@ int64_t rt_widget_is_focused(void *widget) {
 /// @param widget
 void rt_gui_set_last_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = widget ? rt_gui_app_from_widget((vg_widget_t *)widget) : rt_gui_get_active_app();
+    rt_gui_app_t *app =
+        widget ? rt_gui_app_from_widget((vg_widget_t *)widget) : rt_gui_get_active_app();
     if (app)
         app->last_clicked = (vg_widget_t *)widget;
 }
@@ -829,8 +830,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     char *ctext = rt_string_to_cstr(text);
-    vg_radiobutton_t *radio =
-        vg_radiobutton_create(parent_widget, ctext, (vg_radiogroup_t *)group);
+    vg_radiobutton_t *radio = vg_radiobutton_create(parent_widget, ctext, (vg_radiogroup_t *)group);
     free(ctext);
     rt_gui_apply_default_font((vg_widget_t *)radio);
     return radio;
@@ -993,7 +993,7 @@ int64_t rt_image_load_file(void *image, void *path) {
         rgba[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF); // R
         rgba[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); // G
         rgba[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);  // B
-        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);          // A
+        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);         // A
     }
 
     vg_image_set_pixels((vg_image_t *)image, rgba, (int)w, (int)h);

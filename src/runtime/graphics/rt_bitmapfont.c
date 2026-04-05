@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bitmapfont.h"
+#include "rt_error.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -722,6 +723,10 @@ void rt_canvas_text_font_right(
 
 #else // !VIPER_ENABLE_GRAPHICS — stubs
 
+static void rt_bitmapfont_canvas_unavailable_(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
+}
+
 void rt_canvas_text_font(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;
@@ -730,6 +735,7 @@ void rt_canvas_text_font(
     (void)text;
     (void)font;
     (void)color;
+    rt_bitmapfont_canvas_unavailable_("Canvas.TextFont: graphics support not compiled in");
 }
 
 void rt_canvas_text_font_bg(
@@ -741,6 +747,7 @@ void rt_canvas_text_font_bg(
     (void)font;
     (void)fg;
     (void)bg;
+    rt_bitmapfont_canvas_unavailable_("Canvas.TextFontBg: graphics support not compiled in");
 }
 
 void rt_canvas_text_font_scaled(
@@ -752,6 +759,7 @@ void rt_canvas_text_font_scaled(
     (void)font;
     (void)scale;
     (void)color;
+    rt_bitmapfont_canvas_unavailable_("Canvas.TextFontScaled: graphics support not compiled in");
 }
 
 void rt_canvas_text_font_centered(
@@ -761,6 +769,7 @@ void rt_canvas_text_font_centered(
     (void)text;
     (void)font;
     (void)color;
+    rt_bitmapfont_canvas_unavailable_("Canvas.TextFontCentered: graphics support not compiled in");
 }
 
 void rt_canvas_text_font_right(
@@ -771,6 +780,7 @@ void rt_canvas_text_font_right(
     (void)text;
     (void)font;
     (void)color;
+    rt_bitmapfont_canvas_unavailable_("Canvas.TextFontRight: graphics support not compiled in");
 }
 
 #endif // VIPER_ENABLE_GRAPHICS

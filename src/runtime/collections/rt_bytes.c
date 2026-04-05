@@ -34,6 +34,7 @@
 #include "rt_bytes.h"
 
 #include "rt_codec.h"
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -65,6 +66,26 @@ typedef struct rt_bytes_impl {
     uint8_t *data; ///< Pointer to inline byte storage (immediately follows struct).
 } rt_bytes_impl;
 
+static void rt_bytes_trap_runtime(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, msg);
+}
+
+static void rt_bytes_trap_domain(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_DOMAIN_ERROR, Err_DomainError, -1, msg);
+}
+
+static void rt_bytes_trap_invalid_operation(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, msg);
+}
+
+static void rt_bytes_trap_bounds(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_BOUNDS, Err_Bounds, -1, msg);
+}
+
+static void rt_bytes_trap_overflow(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, msg);
+}
+
 /// @brief Allocates a new Bytes object with the specified length.
 ///
 /// This internal helper performs the actual memory allocation for a Bytes
@@ -92,15 +113,15 @@ static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
     size_t total = sizeof(rt_bytes_impl);
     if (len > 0) {
         if ((uint64_t)len > (uint64_t)SIZE_MAX - total)
-            rt_trap("Bytes: memory allocation failed");
+            rt_bytes_trap_runtime("Bytes: memory allocation failed");
         total += (size_t)len;
     }
     if (total > (size_t)INT64_MAX)
-        rt_trap("Bytes: memory allocation failed");
+        rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)total);
     if (!bytes)
-        rt_trap("Bytes: memory allocation failed");
+        rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
     bytes->len = len;
     bytes->data = len > 0 ? ((uint8_t *)bytes + sizeof(rt_bytes_impl)) : NULL;
@@ -256,7 +277,7 @@ void *rt_bytes_from_hex(rt_string hex) {
     size_t hex_len = strlen(hex_str);
 
     if (hex_len % 2 != 0)
-        rt_trap("Bytes.FromHex: hex string length must be even");
+        rt_bytes_trap_domain("Bytes.FromHex: hex string length must be even");
 
     int64_t len = (int64_t)(hex_len / 2);
     rt_bytes_impl *bytes = rt_bytes_alloc(len);
@@ -265,7 +286,7 @@ void *rt_bytes_from_hex(rt_string hex) {
         int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
 
         if (hi < 0 || lo < 0)
-            rt_trap("Bytes.FromHex: invalid hex character");
+            rt_bytes_trap_domain("Bytes.FromHex: invalid hex character");
 
         bytes->data[i] = (uint8_t)((hi << 4) | lo);
     }
@@ -325,12 +346,12 @@ int8_t rt_bytes_is_empty(void *obj) {
 /// @see rt_bytes_set For modifying a byte
 int64_t rt_bytes_get(void *obj, int64_t idx) {
     if (!obj)
-        rt_trap("Bytes.Get: null bytes");
+        rt_bytes_trap_invalid_operation("Bytes.Get: null bytes");
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
 
     if (idx < 0 || idx >= bytes->len)
-        rt_trap("Bytes.Get: index out of bounds");
+        rt_bytes_trap_bounds("Bytes.Get: index out of bounds");
 
     return bytes->data[idx];
 }
@@ -364,12 +385,12 @@ int64_t rt_bytes_get(void *obj, int64_t idx) {
 /// @see rt_bytes_fill For setting all bytes to the same value
 void rt_bytes_set(void *obj, int64_t idx, int64_t val) {
     if (!obj)
-        rt_trap("Bytes.Set: null bytes");
+        rt_bytes_trap_invalid_operation("Bytes.Set: null bytes");
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
 
     if (idx < 0 || idx >= bytes->len)
-        rt_trap("Bytes.Set: index out of bounds");
+        rt_bytes_trap_bounds("Bytes.Set: index out of bounds");
 
     bytes->data[idx] = (uint8_t)(val & 0xFF);
 }
@@ -458,24 +479,24 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
 /// @see rt_bytes_slice For extracting bytes as a new object
 void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64_t count) {
     if (!dst)
-        rt_trap("Bytes.Copy: null destination");
+        rt_bytes_trap_invalid_operation("Bytes.Copy: null destination");
     if (!src)
-        rt_trap("Bytes.Copy: null source");
+        rt_bytes_trap_invalid_operation("Bytes.Copy: null source");
 
     rt_bytes_impl *dst_bytes = (rt_bytes_impl *)dst;
     rt_bytes_impl *src_bytes = (rt_bytes_impl *)src;
 
     if (count < 0)
-        rt_trap("Bytes.Copy: count cannot be negative");
+        rt_bytes_trap_domain("Bytes.Copy: count cannot be negative");
 
     if (count == 0)
         return;
 
     if (src_idx < 0 || src_idx + count > src_bytes->len)
-        rt_trap("Bytes.Copy: source range out of bounds");
+        rt_bytes_trap_bounds("Bytes.Copy: source range out of bounds");
 
     if (dst_idx < 0 || dst_idx + count > dst_bytes->len)
-        rt_trap("Bytes.Copy: destination range out of bounds");
+        rt_bytes_trap_bounds("Bytes.Copy: destination range out of bounds");
 
     memmove(dst_bytes->data + dst_idx, src_bytes->data + src_idx, (size_t)count);
 }
@@ -592,7 +613,7 @@ rt_string rt_bytes_to_base64(void *obj) {
 
     char *out = (char *)malloc(output_len + 1);
     if (!out)
-        rt_trap("Bytes: memory allocation failed");
+        rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
     size_t i = 0;
     size_t o = 0;
@@ -673,7 +694,7 @@ void *rt_bytes_from_base64(rt_string b64) {
         return rt_bytes_new(0);
 
     if (b64_len % 4 != 0)
-        rt_trap("Bytes.FromBase64: base64 length must be a multiple of 4");
+        rt_bytes_trap_domain("Bytes.FromBase64: base64 length must be a multiple of 4");
 
     size_t padding = 0;
     if (b64_len >= 1 && b64_str[b64_len - 1] == '=') {
@@ -684,7 +705,7 @@ void *rt_bytes_from_base64(rt_string b64) {
 
     for (size_t i = 0; i < b64_len - padding; ++i) {
         if (b64_str[i] == '=')
-            rt_trap("Bytes.FromBase64: invalid padding");
+            rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
     }
 
     size_t out_len = (b64_len / 4) * 3 - padding;
@@ -692,7 +713,7 @@ void *rt_bytes_from_base64(rt_string b64) {
         return rt_bytes_new(0);
 
     if (out_len > (size_t)INT64_MAX)
-        rt_trap("Bytes.FromBase64: decoded data too large");
+        rt_bytes_trap_overflow("Bytes.FromBase64: decoded data too large");
 
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)out_len);
 
@@ -710,18 +731,18 @@ void *rt_bytes_from_base64(rt_string b64) {
 
         if (v0 < 0 || v1 < 0) {
             if (v0 == -2 || v1 == -2)
-                rt_trap("Bytes.FromBase64: invalid padding");
-            rt_trap("Bytes.FromBase64: invalid base64 character");
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+            rt_bytes_trap_domain("Bytes.FromBase64: invalid base64 character");
         }
 
         if (v2 == -1 || v3 == -1)
-            rt_trap("Bytes.FromBase64: invalid base64 character");
+            rt_bytes_trap_domain("Bytes.FromBase64: invalid base64 character");
 
         if (v2 == -2) {
             if (v3 != -2 || i + 4 != b64_len)
-                rt_trap("Bytes.FromBase64: invalid padding");
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
             if ((v1 & 0x0F) != 0)
-                rt_trap("Bytes.FromBase64: invalid padding");
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
 
             uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12);
             bytes->data[out_pos++] = (uint8_t)((triple >> 16) & 0xFF);
@@ -730,9 +751,9 @@ void *rt_bytes_from_base64(rt_string b64) {
 
         if (v3 == -2) {
             if (i + 4 != b64_len)
-                rt_trap("Bytes.FromBase64: invalid padding");
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
             if ((v2 & 0x03) != 0)
-                rt_trap("Bytes.FromBase64: invalid padding");
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
 
             uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12) | ((uint32_t)v2 << 6);
             bytes->data[out_pos++] = (uint8_t)((triple >> 16) & 0xFF);
@@ -748,7 +769,7 @@ void *rt_bytes_from_base64(rt_string b64) {
     }
 
     if (out_pos != out_len)
-        rt_trap("Bytes.FromBase64: invalid padding");
+        rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
 
     return bytes;
 }
@@ -884,7 +905,7 @@ uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len) {
 
     uint8_t *data = (uint8_t *)malloc((size_t)impl->len);
     if (!data)
-        rt_trap("Bytes: memory allocation failed");
+        rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
     memcpy(data, impl->data, (size_t)impl->len);
     return data;
@@ -897,9 +918,9 @@ uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len) {
 /// @brief Validate offset and size for binary read/write.
 static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t size) {
     if (!b)
-        rt_trap("Bytes: null object");
+        rt_bytes_trap_invalid_operation("Bytes: null object");
     if (offset < 0 || size < 0 || size > b->len || offset > b->len - size)
-        rt_trap("Bytes: binary read/write out of bounds");
+        rt_bytes_trap_bounds("Bytes: binary read/write out of bounds");
 }
 
 int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {

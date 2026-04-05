@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// Internal structure for SortedSet.
 struct rt_sortedset_impl {

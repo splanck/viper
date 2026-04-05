@@ -11,13 +11,13 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, documentation, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, IL optimizer, documentation, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
 - **Video Playback** — MJPEG/AVI video decoder with `VideoPlayer` runtime class (Open/Play/Pause/Stop/Seek/Update), MJPEG DHT injection for AVI compatibility, AVI RIFF container parser, Theora codec infrastructure (header parsing, YCbCr 4:2:0→RGB conversion, OGG multi-stream demux), GUI `VideoWidget` for Viper.GUI applications, and Image widget paint fix for the GUI library.
 - **Graphics Backend Hardening** — Generation-aware texture/cubemap caching across all 4 backends (Metal/D3D11/OpenGL/SW), Canvas3D window resize handling, GPU screenshot readback, InstanceBatch3D memory safety, Mesh3D inverse-transpose normal transform, Pixels mutation tracking, and macOS default application menu.
-- **Native Linker Hardening** — BranchTrampoline rewritten with boundary-based placement, SectionMerger VA logic extracted as shared API, SymbolResolver platform-aware dynamic symbol classification, RelocApplier range-checked REL32, multi-section COFF writer for function-level code sections, and Windows ARM64 native link gating.
+- **Native Linker Hardening** — BranchTrampoline rewritten with boundary-based placement, SectionMerger VA logic extracted as shared API, SymbolResolver platform-aware dynamic symbol classification, RelocApplier range-checked REL32, multi-section COFF writer for function-level code sections, Windows ARM64 native link gating, Mach-O ObjC section flags and symbol normalization for framework auto-linking.
 - **Metal Backend: macOS 26 Compatibility** — Offscreen texture readback replaces CAMetalLayer direct presentation for macOS Tahoe compatibility. Backend vtable extended with `show/hide_gpu_layer` function pointers to fix software backend crash from duplicate global symbols.
 - **Media Codec Suite** — From-scratch implementations of JPEG, GIF (animated), OGG Vorbis, and MP3 decoders. Extended PNG decoder to all color types, bit depths, interlacing, and transparency. Extended WAV loader to 24-bit and float32 PCM. Added OGG/MP3 music streaming with on-the-fly resampling. Added `Pixels.Load()` auto-detect, JPEG EXIF orientation, fast FFT-based IMDCT for Vorbis, and multi-pass residue decoding. 16 new runtime source files, 8 new tests.
 - **Audio Streaming Overhaul** — OGG reader extended with `ogg_reader_next_packet_ex()` providing per-packet serial number, granule position, and BOS/EOS flags. Music streaming now selects the correct Vorbis logical stream in multi-stream OGG containers (e.g., `.ogv` files with both Theora video and Vorbis audio). Unified `vaud_music_seek_output_frame()` handles seek/rewind/loop-restart across all formats (WAV/OGG/MP3). `source_sample_rate` field separates file sample rate from mixer rate for correct duration reporting and resampling.
@@ -30,7 +30,8 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, shadow mapping, and material shader hooks (Toon/Fresnel/Emissive shading models).
 - **Codegen Pipeline Decomposition** — Both x86_64 and AArch64 backends refactored from monolithic per-function pipelines into composable pass-based architectures. x86_64 exposes `legalizeModuleToMIR`/`allocateModuleMIR`/`optimizeModuleMIR`/`emitMIRToAssembly`/`emitMIRToBinary` public APIs. AArch64 uses `PassManager`-based composition with Scheduler and BlockLayout passes at O1+. EH-sensitive modules bypass IL optimizations. New `CodeSection::appendSection()` and `DebugLineTable::append()` for per-function section merging.
 - **Windows x86_64 Codegen Hardening** — CoffWriter cross-section symbol resolution, X64BinaryEncoder runtime symbol mapping, operand materialisation for TESTrr/call.indirect, SETcc REX prefix for byte registers, SSE RIP-relative MOVSD encoding, unsafe spill slot reuse disabled, and process isolation hang fix. Windows native executables now assemble, link, and run correctly.
-- **AArch64 Codegen Hardening** — Immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
+- **AArch64 Codegen Hardening** — Register allocator protected-use eviction (prevents source operand clobbering during def allocation), operandRoles fix for immediate-ALU instructions, FPR load/store classification, spill slot reuse for clean values across calls, immediate utils extraction, binary encoder fixes, refcount injection bugfix, fastpath improvements, trap message forwarding, error field extraction via TLS bridge, Apple M-series scheduler latency tuning, and 10+ new codegen tests.
+- **IL Optimizer Correctness** — EarlyCSE and GVN passes now enforce textual block ordering when replacing across dominator-ordered blocks, preventing use-before-def violations where a dominating definition appears later in the block list.
 - **Zia Compiler Bug Fixes** — String bracket-index crash, `List[Boolean]` unboxing truncation, `catch(e)` binding via TLS message passing, `String.Contains()` method alias. New `ErrGetMsg` IL opcode and `rt_throw_msg_set/get` runtime functions for exception message propagation.
 - **10 Game Engine APIs** — Entity (2D game object with built-in physics), Behavior (composable AI presets), Raycast2D (tilemap line-of-sight), LevelData (JSON level loader), SceneManager (multi-scene transitions), Camera.SmoothFollow (deadzone + lerp tracking), AnimStateMachine named states (play-by-name), MenuList.HandleInput (input convenience), Config.Load (JSON config), Tilemap.SetTileAnim (per-tile frame animation). 10 new runtime classes, 3,800+ LOC in C.
 - **Asset Embedding System (VPA)** — Compile-time asset packaging via `embed`, `pack`, and `pack-compressed` project directives. VPA binary format with `AssetCompiler` and `VpaWriter` toolchain. `Assets.Load`/`LoadBytes`/`Exists`/`Mount` runtime API. Asset blobs injected into `.rodata` via the native assembler for zero-file-dependency executables. Cross-platform `Path.ExeDir()` for relative asset resolution.
@@ -43,17 +44,17 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database restructured with 10 new engine features, 8 Graphics3D API demos.
+- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database (renamed from sqldb, 10 new SQL features, deep runtime API migration replacing hand-rolled utilities with Map/StringBuilder/Json/Csv, -351 net LOC), 8 Graphics3D API demos.
 - **Documentation** — 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed, comprehensive 3D API docs overhaul, game engine docs.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 84 | +84 |
-| Source files | 2,671 | 2,810 | +139 |
-| Production SLOC | ~348K | ~428K | +80K |
-| Test count | 1,351 | 1,401 | +50 |
+| Commits | — | 86 | +86 |
+| Source files | 2,671 | 2,805 | +134 |
+| Production SLOC | ~348K | ~424K | +76K |
+| Test count | 1,351 | 1,393 | +42 |
 
 ---
 
@@ -246,7 +247,7 @@ ELF writer now emits `STT_OBJECT` for rodata symbols (previously `STT_FUNC`). Ne
 
 #### New Tests
 
-- `test_native_linker` — Windows ARM64 gating diagnostic (53 LOC)
+- `test_native_linker` — Windows ARM64 gating diagnostic (53 LOC), macOS ObjC framework linking with section flag and symbol validation
 - `test_branch_trampoline` — Updated for boundary-based placement, added relocation application verification and `countInsn()` helper
 - `test_reloc_applier` — COFF AArch64 BRANCH26 relocation patching (54 LOC added)
 - `test_symbol_resolver` — Platform-aware resolution tests (29 LOC added)
@@ -302,6 +303,11 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Immediate utils extraction** — `A64ImmediateUtils.hpp` helper for immediate encoding, asm emitter hardening, binary encoder fixes, arithmetic/call fastpath improvements, regpool and symbol resolver fixes.
 - **Trap message forwarding** — `TrapErr` now materialises the message string operand into x0 and passes it to `rt_trap()`, enabling catch handlers to display the user's throw message in native executables.
 - **Error field extraction via TLS** — `ErrGetKind`, `ErrGetCode`, and `ErrGetLine` now call runtime TLS accessors (`rt_trap_get_kind/code/line`) instead of returning hardcoded 0. `rt_trap()` auto-classifies the trap kind from the message prefix. Enables typed catch (`catch(e: DivideByZero)`) in native code.
+- **Register allocator protected-use eviction** — `protectedUseGPR_`/`protectedUseFPR_` sets prevent the LRU and furthest-use victim selectors from evicting source operands of the currently-allocating instruction. Fixes the pattern where materializing a GEP destination register could evict the GEP base register, corrupting subsequent field stores (broke BowlingGame.init in the 3D bowling demo).
+- **OperandRoles fix for immediate-ALU** — `isUseDefImmLike` opcodes (AddRI, SubRI, etc.) now correctly classify operand 0 as DEF-only instead of USE+DEF. Prevents `computeNextUses` from recording spurious use positions for destination registers.
+- **FPR load/store classification** — `isMemLd` and `isMemSt` now include `LdrFprFpImm`, `LdrFprBaseImm`, `StrFprFpImm`, `StrFprBaseImm`, and `StrFprSpImm`. Fixes floating-point operand tracking in the register allocator.
+- **Clean FPR spill slot reuse** — Values loaded from memory (e.g., rodata FP constants) that are not marked dirty still get assigned spill slots when they survive a call in caller-saved FPR registers. Previously, clean loads were dropped without spilling, causing reloads from uninitialized frame offsets.
+- **Dead vreg early release** — When `getNextUseDistance` returns `UINT_MAX` (no future uses), the physical register is released immediately without generating a spill store, reducing unnecessary memory traffic.
 - **Apple M-series scheduler tuning** — Instruction latency model updated for Firestorm cores: FP divide 3→10 cycles, integer divide 3→7, FP multiply 3→4. Improves instruction scheduling for FP-heavy code.
 - **Secondary scratch register (kScratchGPR2)** — X16 (IP0) formalized as `kScratchGPR2` for post-RA helper sequences that need a second temporary while `kScratchGPR` (X9) holds the base value. X16 excluded from register allocator pool. AsmEmitter and A64BinaryEncoder updated to use the named constant instead of hardcoded `PhysReg::X16`.
 - **Pipeline decomposition** — `PassManager`-based pass composition replacing direct function calls in `runCodegenPipeline`. Scheduler and BlockLayout passes added to the O1+ pipeline (previously only peephole ran post-RA). EH-sensitive modules (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext` opcodes) bypass IL optimizations to avoid structural invariant violations. Virtual register space partitioned into three ranges: general vregs (`kFirstVirtualRegId`=1), phi-inserted vregs (`kPhiVRegStart`=40000), and cross-block spill keys (`kCrossBlockSpillKeyStart`=50000) with overflow guards.
@@ -315,11 +321,18 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **`seedDebugFiles()` helper** — Scans MIR for maximum file ID and populates debug table file entries from `debugSourcePath`, normalizing paths via `std::filesystem::path::lexically_normal()`. Replaces hardcoded `addFile("<source>")`.
 - **`FrameLayout::ensureSpill` vreg widened** — Parameter type changed from `uint16_t` to `uint32_t` to accommodate the expanded virtual register space.
 
+**IL optimizer:**
+- **EarlyCSE textual ordering guard** — CSE replacements now track the defining block for each available expression via `AvailableExpr{value, block}`. `isTextuallyAvailable()` checks that the defining block appears at or before the use block in the function's block list, preventing replacements that would create textual use-before-def violations in the IL.
+- **GVN textual ordering guard** — Same `isTextuallyAvailable()` guard applied to both expression value-numbering and redundant load elimination. Available values stored as `vector<AvailableValue>` (searched most-recent-first) to preserve dominator-scoped lookup correctness while filtering by textual order.
+
 **Native linker:**
 - `RtComponent::Game` — Game runtime classes link correctly via `libviper_rt_game.a` after directory reorganization.
 - `-lshell32` — Added to Windows linker command for `DragQueryFile`/`DragAcceptFiles` GUI support.
 - **PeExeWriter hardening** — Import table construction and section alignment fixes for Windows native executables.
 - **NativeLinker improvements** — Enhanced platform detection and link-time error diagnostics.
+- **Mach-O ObjC section flags** — ObjC metadata sections now emit proper Mach-O section types: `S_CSTRING_LITERALS` for `__objc_classname`/`__objc_methname`/`__objc_methtype`, `S_LITERAL_POINTERS` for `__objc_selrefs`, `S_ATTR_NO_DEAD_STRIP` for class/category/protocol lists, and `S_COALESCED` for `__objc_protolist`. Section alignment emitted as log2 power-of-two.
+- **Mach-O symbol name fallback** — `findWithMachoFallback` now searches bidirectionally: plain name, underscore-stripped name, and underscore-prefixed name. `SymbolResolver` uses this for both undefined symbol lookup and defined symbol resolution, fixing cross-object symbol matching between Mach-O and ELF naming conventions.
+- **ObjC framework symbol normalization** — `normalizeMacFrameworkSymbol()` strips `OBJC_CLASS_$_`, `OBJC_METACLASS_$_`, and `OBJC_EHTYPE_$_` prefixes for framework rule matching. `isObjcClassLookupSymbol()` recognizes ObjC class references regardless of leading underscore count, enabling flat-namespace lookup for classes whose defining framework can't be determined from the symbol prefix alone.
 - **Windows ARM64 import stubs** — `generateWindowsImports()` now emits AArch64 `ADRP`/`LDR`/`BR` sequences for import thunks alongside x86_64 `JMP [rip+disp32]` stubs, with correct COFF ARM64 relocation types (`kPageRel21`, `kPageOff12L`). Machine type set to `0xAA64` for ARM64 COFF objects.
 
 **Runtime:**
@@ -431,6 +444,7 @@ All GPU backends (Metal, D3D11, OpenGL) now track a `generation` counter on `Pix
 - **Skybox pipeline** — Dedicated `skyboxPipeline` render pipeline state with depth test enabled but depth write disabled, separate `skyboxDepthState`, pre-built `skyboxVertexBuffer` (36-vertex unit cube). Skybox drawn first in render pass before scene geometry.
 - **Cubemap sampler** — Separate `cubeSampler` with linear min/mag/mip filtering for environment maps. `defaultCubemap` (1x1 black) serves as fallback when no cubemap is bound.
 - **Separate view/projection matrices** — `_view[16]` and `_projection[16]` stored alongside combined `_vp[16]` for shader passes that need individual matrices (e.g., skybox strips translation from view).
+- **Diagnostic logging** — `NSLog` trace messages added for nil returns from `MTLCreateSystemDefaultDevice`, `vgfx_get_native_view`, `newCommandQueue`, and missing shader entrypoints, replacing silent NULL returns that were difficult to debug on unsupported hardware.
 
 #### macOS Default Application Menu
 
@@ -785,3 +799,14 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - Cipher `rt_cipher_decrypt` did not fall back gracefully when PBKDF2-derived key failed authentication — now tries legacy HKDF derivation before trapping
 - Graphics3D texture ownership: CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D did not retain their texture/mesh/material references — GC could collect them while still in use. All now use retain/release with finalizer cleanup
 - ViperSQL demo: 9 bug fixes (modulo operator, REPLACE parsing, JOIN IS NULL, window PARTITION BY, LIKE case sensitivity, ALTER TABLE locking, CSV validation, persistence NULL crash, distinct hash function)
+- AArch64 regalloc: current-instruction source operands could be evicted while allocating the same instruction's def register, corrupting GEP base pointers under register pressure (broke 3D bowling BowlingGame.init)
+- AArch64 regalloc: `operandRoles` for immediate-ALU opcodes (AddRI, SubRI, etc.) classified operand 0 as USE+DEF instead of DEF-only, inflating use-position counts and biasing spill decisions
+- AArch64 regalloc: FPR loads/stores (`LdrFprFpImm`, `LdrFprBaseImm`, `StrFprFpImm`, etc.) not recognized by `isMemLd`/`isMemSt`, causing incorrect register liveness tracking for floating-point operands
+- AArch64 regalloc: clean FPR values loaded from rodata/memory dropped across calls without spilling — caller-saved FP registers were not preserved because the dirty flag was never set for load destinations
+- EarlyCSE: dominator-ordered replacement could substitute a temp defined in a textually-later block, creating an illegal use-before-def in the IL
+- GVN: same textual-ordering bug as EarlyCSE — redundant load elimination and expression value-numbering could replace with values from textually-later dominating blocks
+- Mach-O linker: ObjC metadata sections emitted with generic flags instead of proper Mach-O section types (`S_CSTRING_LITERALS`, `S_LITERAL_POINTERS`, `S_ATTR_NO_DEAD_STRIP`), causing `ld` warnings and potential dead-strip of ObjC metadata
+- Mach-O linker: section alignment always emitted as 0 instead of log2 of the actual alignment, causing linker alignment violations for sections requiring >1-byte alignment
+- Mach-O linker: symbol resolution failed when object files used different underscore conventions — `findWithMachoFallback` only searched plain and prefixed names, not stripped names
+- Mach-O linker: ObjC class symbols (`OBJC_CLASS_$_CAMetalLayer`, etc.) with varying leading underscore counts failed framework rule matching — `normalizeMacFrameworkSymbol` now strips ObjC prefixes for correct matching
+- Metal 3D backend: nil returns from `MTLCreateSystemDefaultDevice`, `vgfx_get_native_view`, and `newCommandQueue` silently returned NULL without diagnostics — added `NSLog` trace messages

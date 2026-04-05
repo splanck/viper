@@ -165,21 +165,23 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 #ifdef _WIN32
     if (!buildDir.empty()) {
 #if defined(NDEBUG)
-        return pickFirstExisting({buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
-                                      "Release" / objLibName,
-                                  buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
-                                      "Debug" / objLibName,
-                                  buildDir / "src/runtime/Release" / libName,
-                                  buildDir / "src/runtime/Debug" / libName,
-                                  buildDir / "src/runtime" / libName});
+        return pickFirstExisting(
+            {buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Release" /
+                 objLibName,
+             buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Debug" /
+                 objLibName,
+             buildDir / "src/runtime/Release" / libName,
+             buildDir / "src/runtime/Debug" / libName,
+             buildDir / "src/runtime" / libName});
 #else
-        return pickFirstExisting({buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
-                                      "Debug" / objLibName,
-                                  buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") /
-                                      "Release" / objLibName,
-                                  buildDir / "src/runtime/Debug" / libName,
-                                  buildDir / "src/runtime/Release" / libName,
-                                  buildDir / "src/runtime" / libName});
+        return pickFirstExisting(
+            {buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Debug" /
+                 objLibName,
+             buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Release" /
+                 objLibName,
+             buildDir / "src/runtime/Debug" / libName,
+             buildDir / "src/runtime/Release" / libName,
+             buildDir / "src/runtime" / libName});
 #endif
     }
 #else

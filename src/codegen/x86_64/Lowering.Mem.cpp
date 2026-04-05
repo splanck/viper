@@ -38,8 +38,8 @@ namespace {
 
 CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     CallArg arg{};
-    arg.cls = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArgClass::GPR
-                                                                : CallArgClass::FPR;
+    arg.cls =
+        builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArgClass::GPR : CallArgClass::FPR;
 
     if (builder.isImmediate(argVal)) {
         arg.isImm = true;
@@ -94,22 +94,23 @@ void emitRetainStringResultCall(const VReg &resultVReg, MIRBuilder &builder) {
     retainPlan.numNamedArgs = retainPlan.args.size();
 
     const uint32_t callPlanId = builder.recordCallPlan(std::move(retainPlan));
-    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_str_retain_maybe"}), callPlanId));
+    builder.append(
+        makePlannedCall(makeLabelOperand(std::string{"rt_str_retain_maybe"}), callPlanId));
 }
 
 void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBuilder &builder) {
     const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
     if (instr.resultKind == ILValue::Kind::F64) {
-        const Operand retReg = makePhysRegOperand(
-            RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
+        const Operand retReg =
+            makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
         builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
     } else if (instr.resultKind == ILValue::Kind::I1) {
-        const Operand retReg = makePhysRegOperand(
-            RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+        const Operand retReg =
+            makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
         builder.append(MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
     } else {
-        const Operand retReg = makePhysRegOperand(
-            RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+        const Operand retReg =
+            makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
         builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
     }
 
@@ -197,8 +198,7 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     if (std::holds_alternative<OpImm>(calleeOp)) {
         const VReg tmp = builder.makeTempVReg(RegClass::GPR);
         const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
-        builder.append(
-            MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, calleeOp}));
+        builder.append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, calleeOp}));
         calleeOp = makeVRegOperand(tmp.cls, tmp.id);
     }
     builder.append(makePlannedCall(std::move(calleeOp), callPlanId));

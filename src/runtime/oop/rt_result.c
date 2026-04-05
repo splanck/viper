@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_result.h"
+#include "rt_error.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -156,7 +157,7 @@ int8_t rt_result_is_err(void *obj) {
 // Value Extraction
 //=============================================================================
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void trap_with_message(const char *msg) {
     rt_trap(msg);
@@ -297,28 +298,30 @@ void *rt_result_err_value(void *obj) {
 
 void *rt_result_expect(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
+    char buffer[256];
     if (!obj) {
-        fprintf(stderr, "Result expect: %s (NULL Result)\n", msg_str);
-        abort();
+        snprintf(buffer, sizeof(buffer), "Result expect: %s (NULL Result)", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_OK) {
-        fprintf(stderr, "Result expect: %s\n", msg_str);
-        abort();
+        snprintf(buffer, sizeof(buffer), "Result expect: %s", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     return r->value.ptr;
 }
 
 void *rt_result_expect_err(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
+    char buffer[256];
     if (!obj) {
-        fprintf(stderr, "Result expect_err: %s (NULL Result)\n", msg_str);
-        abort();
+        snprintf(buffer, sizeof(buffer), "Result expect_err: %s (NULL Result)", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR) {
-        fprintf(stderr, "Result expect_err: %s\n", msg_str);
-        abort();
+        snprintf(buffer, sizeof(buffer), "Result expect_err: %s", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     return r->value.ptr;
 }

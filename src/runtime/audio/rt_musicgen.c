@@ -760,7 +760,8 @@ void *rt_musicgen_new(int64_t bpm) {
     return song;
 }
 
-/// @brief Add a synthesis channel with the given waveform (0=sine, 1=square, 2=saw, 3=triangle, 4=noise).
+/// @brief Add a synthesis channel with the given waveform (0=sine, 1=square, 2=saw, 3=triangle,
+/// 4=noise).
 int64_t rt_musicgen_add_channel(void *song_ptr, int64_t waveform) {
     if (!song_ptr)
         return -1;

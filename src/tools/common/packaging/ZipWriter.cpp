@@ -179,15 +179,14 @@ void ZipWriter::addFile(const std::string &name,
     writeBytes(writeData, writeLen);
 
     entries_.push_back(std::move(e));
-    layoutEntries_.push_back(
-        LayoutEntry{name,
-                    entries_.back().localOffset,
-                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
-                                          name.size()),
-                    entries_.back().compressedSize,
-                    entries_.back().uncompressedSize,
-                    entries_.back().method,
-                    false});
+    layoutEntries_.push_back(LayoutEntry{
+        name,
+        entries_.back().localOffset,
+        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + name.size()),
+        entries_.back().compressedSize,
+        entries_.back().uncompressedSize,
+        entries_.back().method,
+        false});
 }
 
 void ZipWriter::addFileString(const std::string &name,
@@ -232,15 +231,14 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     writeBytes(reinterpret_cast<const uint8_t *>(dirName.data()), dirName.size());
 
     entries_.push_back(std::move(e));
-    layoutEntries_.push_back(
-        LayoutEntry{dirName,
-                    entries_.back().localOffset,
-                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
-                                          dirName.size()),
-                    0,
-                    0,
-                    entries_.back().method,
-                    true});
+    layoutEntries_.push_back(LayoutEntry{
+        dirName,
+        entries_.back().localOffset,
+        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + dirName.size()),
+        0,
+        0,
+        entries_.back().method,
+        true});
 }
 
 void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
@@ -283,15 +281,14 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     writeBytes(data, len);
 
     entries_.push_back(std::move(e));
-    layoutEntries_.push_back(
-        LayoutEntry{name,
-                    entries_.back().localOffset,
-                    static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize +
-                                          name.size()),
-                    entries_.back().compressedSize,
-                    entries_.back().uncompressedSize,
-                    entries_.back().method,
-                    false});
+    layoutEntries_.push_back(LayoutEntry{
+        name,
+        entries_.back().localOffset,
+        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + name.size()),
+        entries_.back().compressedSize,
+        entries_.back().uncompressedSize,
+        entries_.back().method,
+        false});
 }
 
 void ZipWriter::writeCentralDirectory() {

@@ -42,8 +42,11 @@ typedef struct {
 /// @param out_width Receives logical screen width.
 /// @param out_height Receives logical screen height.
 /// @return Frame count (>0) on success, 0 on failure.
-int gif_decode_file(const char *filepath, gif_frame_t **out_frames,
-                    int *out_frame_count, int *out_width, int *out_height);
+int gif_decode_file(const char *filepath,
+                    gif_frame_t **out_frames,
+                    int *out_frame_count,
+                    int *out_width,
+                    int *out_height);
 
 #ifdef __cplusplus
 }

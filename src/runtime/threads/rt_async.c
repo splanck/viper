@@ -43,7 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void async_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -402,8 +402,7 @@ static void *rt_async_map_impl(void *future, void *mapper, void *arg, int8_t ret
 
     void *promise = rt_promise_new();
     void *result_future = rt_promise_get_future(promise);
-    async_map_state *state =
-        (async_map_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_map_state));
+    async_map_state *state = (async_map_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_map_state));
     if (!state) {
         async_promise_error_cstr(promise, "alloc failed");
         if (rt_obj_release_check0(promise))
@@ -526,8 +525,7 @@ void *rt_async_any(void *futures) {
         return future;
     }
 
-    async_any_state *state =
-        (async_any_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_any_state));
+    async_any_state *state = (async_any_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_any_state));
     if (!state) {
         async_promise_error_cstr(promise, "alloc failed");
         if (rt_obj_release_check0(promise))
@@ -711,8 +709,7 @@ void *rt_async_all(void *futures) {
         return future;
     }
 
-    async_all_state *state =
-        (async_all_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_all_state));
+    async_all_state *state = (async_all_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_all_state));
     if (!state) {
         async_promise_error_cstr(promise, "alloc failed");
         if (rt_obj_release_check0(promise))

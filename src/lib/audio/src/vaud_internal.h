@@ -107,15 +107,15 @@ typedef enum {
 /// @brief Streaming music instance.
 /// @details Manages file I/O, buffering, and playback state for streamed audio.
 struct vaud_music {
-    vaud_context_t ctx;      ///< Owning context
-    void *file;              ///< FILE pointer for streaming
-    int64_t data_offset;     ///< Offset to PCM data in file
-    int64_t data_size;       ///< Total PCM data size in bytes
-    int64_t frame_count;     ///< Total output frames after any resampling
-    int32_t sample_rate;     ///< Playback sample rate (always mixer rate)
+    vaud_context_t ctx;         ///< Owning context
+    void *file;                 ///< FILE pointer for streaming
+    int64_t data_offset;        ///< Offset to PCM data in file
+    int64_t data_size;          ///< Total PCM data size in bytes
+    int64_t frame_count;        ///< Total output frames after any resampling
+    int32_t sample_rate;        ///< Playback sample rate (always mixer rate)
     int32_t source_sample_rate; ///< Source file/stream sample rate before resampling
-    int32_t channels;        ///< File channel count
-    int32_t bits_per_sample; ///< Bits per sample in file
+    int32_t channels;           ///< File channel count
+    int32_t bits_per_sample;    ///< Bits per sample in file
 
     vaud_music_state state; ///< Current playback state
     int64_t position;       ///< Current frame position
@@ -129,21 +129,21 @@ struct vaud_music {
     int32_t buffer_position;                        ///< Frame position within current buffer
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
-    int16_t *resample_buf;  ///< Temp buffer for raw frames before resampling
-    int64_t resample_cap;   ///< Capacity of resample_buf in frames
+    int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
+    int64_t resample_cap;  ///< Capacity of resample_buf in frames
 
     // Format-specific streaming (0=WAV, 1=OGG, 2=MP3)
-    int format;             ///< Audio format identifier
-    void *ogg_reader;       ///< ogg_reader_t* for OGG streaming
-    void *vorbis_dec;       ///< vorbis_decoder_t* for OGG streaming
-    void *mp3_stream;       ///< mp3_stream_t* for MP3 streaming
-    uint32_t ogg_serial;    ///< Selected Vorbis logical stream for OGG playback
-    char *filepath;         ///< Retained source path (for diagnostics/future reopen paths)
+    int format;          ///< Audio format identifier
+    void *ogg_reader;    ///< ogg_reader_t* for OGG streaming
+    void *vorbis_dec;    ///< vorbis_decoder_t* for OGG streaming
+    void *mp3_stream;    ///< mp3_stream_t* for MP3 streaming
+    uint32_t ogg_serial; ///< Selected Vorbis logical stream for OGG playback
+    char *filepath;      ///< Retained source path (for diagnostics/future reopen paths)
 
     // Leftover PCM from last decode (variable packet sizes)
-    int16_t *leftover_buf;  ///< Excess decoded frames
-    int32_t leftover_frames;///< Number of leftover frames
-    int32_t leftover_cap;   ///< Capacity of leftover buffer in frames
+    int16_t *leftover_buf;   ///< Excess decoded frames
+    int32_t leftover_frames; ///< Number of leftover frames
+    int32_t leftover_cap;    ///< Capacity of leftover buffer in frames
 };
 
 //===----------------------------------------------------------------------===//

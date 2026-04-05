@@ -369,15 +369,15 @@ typedef void (*rt_thread_entry_fn)(void *);
 /// └────────────────────┴────────────────────────────────────────┘
 /// ```
 typedef struct RtThread {
-    pthread_mutex_t mu;       ///< Mutex protecting state access.
-    pthread_cond_t cv;        ///< Condition var for Join() signaling.
-    pthread_t pthread;        ///< OS thread handle.
-    int finished;             ///< 1 when thread has completed.
-    int64_t id;               ///< Unique thread identifier.
-    RtContext *inherited_ctx; ///< Parent's runtime context.
-    rt_thread_entry_fn entry; ///< User's entry function.
-    void *arg;                ///< Argument to entry function.
-    int8_t owns_arg;          ///< 1 when arg is a retained runtime object.
+    pthread_mutex_t mu;         ///< Mutex protecting state access.
+    pthread_cond_t cv;          ///< Condition var for Join() signaling.
+    pthread_t pthread;          ///< OS thread handle.
+    int finished;               ///< 1 when thread has completed.
+    int64_t id;                 ///< Unique thread identifier.
+    RtContext *inherited_ctx;   ///< Parent's runtime context.
+    rt_thread_entry_fn entry;   ///< User's entry function.
+    void *arg;                  ///< Argument to entry function.
+    int8_t owns_arg;            ///< 1 when arg is a retained runtime object.
     int8_t cond_uses_monotonic; ///< 1 when cv uses monotonic timed waits.
 } RtThread;
 
@@ -1074,8 +1074,9 @@ rt_string rt_thread_get_error(void *obj) {
     rt_monitor_enter(ctx->monitor);
     int8_t trapped = ctx->trapped;
     int has_error = ctx->error[0] != '\0';
-    rt_string result =
-        (!trapped || !has_error) ? rt_const_cstr("") : rt_string_from_bytes(ctx->error, strlen(ctx->error));
+    rt_string result = (!trapped || !has_error)
+                           ? rt_const_cstr("")
+                           : rt_string_from_bytes(ctx->error, strlen(ctx->error));
     rt_monitor_exit(ctx->monitor);
     if (!trapped || !has_error)
         return rt_const_cstr("");

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-12
+last-verified: 2026-04-05
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -359,9 +359,10 @@ Section Data (file-aligned to 0x200)
 
 ### macOS: Code Signing
 
-macOS Ventura+ requires ad-hoc code signing for arm64 executables. The current implementation relies on the system
-`codesign` tool as a post-processing step when using the system linker path. The native path produces unsigned
-binaries which work on x86_64 and on arm64 with the appropriate system settings.
+macOS Ventura+ requires ad-hoc code signing for arm64 executables. The native linker includes
+`MachOCodeSign.hpp/.cpp` which produces ad-hoc signed binaries (`LC_CODE_SIGNATURE` load command with
+a `CodeDirectory` hash). The system `codesign` tool is used as a fallback when the built-in signer is
+insufficient.
 
 ### Linux: CRT Startup
 
@@ -453,14 +454,31 @@ Default behavior: the native assembler and native linker are used by default. Pa
 | `codegen/common/linker/PeExeWriter.hpp` | 42 | `writePeExe()` interface |
 | `codegen/common/linker/PeExeWriter.cpp` | 267 | PE32+ executable output |
 
-### Top-Level Orchestrator (Phase 19)
+### Additional Linker Passes
 
-| File | LOC | Purpose |
-|------|-----|---------|
-| `codegen/common/linker/NativeLinker.hpp` | 52 | `nativeLink()` interface + options struct |
-| `codegen/common/linker/NativeLinker.cpp` | 130 | Full pipeline orchestration |
+| File | Purpose |
+|------|---------|
+| `codegen/common/linker/BranchTrampoline.hpp/.cpp` | AArch64 branch trampoline insertion for ±128MB range |
+| `codegen/common/linker/DeadStripPass.hpp/.cpp` | Unreferenced section removal via reachability |
+| `codegen/common/linker/DynStubGen.hpp/.cpp` | Dynamic symbol stub generation |
+| `codegen/common/linker/ICF.hpp/.cpp` | Identical Code Folding |
+| `codegen/common/linker/MachOBindRebase.hpp/.cpp` | Mach-O bind/rebase opcode emission |
+| `codegen/common/linker/MachOCodeSign.hpp/.cpp` | Mach-O ad-hoc code signing |
+| `codegen/common/linker/NameMangling.hpp` | Platform-aware symbol name mangling and Mach-O fallback |
+| `codegen/common/linker/StringDedup.hpp/.cpp` | String deduplication for merged sections |
+| `codegen/common/linker/AlignUtil.hpp` | Alignment calculation utilities |
+| `codegen/common/linker/ExeWriterUtil.hpp` | Shared executable writer utilities |
+| `codegen/common/linker/RelocClassify.hpp` | Relocation classification utilities |
+| `codegen/common/linker/RelocConstants.hpp` | Relocation type constants |
 
-### Total: 22 files, ~3,971 LOC
+### Top-Level Orchestrator
+
+| File | Purpose |
+|------|---------|
+| `codegen/common/linker/NativeLinker.hpp` | `nativeLink()` interface + options struct |
+| `codegen/common/linker/NativeLinker.cpp` | Full pipeline orchestration (~1,365 LOC) |
+
+### Total: 41 files, ~9,600 LOC
 
 ---
 

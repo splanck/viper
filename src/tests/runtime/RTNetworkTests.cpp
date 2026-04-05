@@ -301,7 +301,8 @@ static void test_server_client_connect_ipv6() {
     test_result("IPv6 client connects successfully", client != nullptr);
     test_result("IPv6 client is open", rt_tcp_is_open(client) == 1);
     test_result("IPv6 client port is correct", rt_tcp_port(client) == port);
-    test_result("IPv6 host property preserved", strcmp(rt_string_cstr(rt_tcp_host(client)), "::1") == 0);
+    test_result("IPv6 host property preserved",
+                strcmp(rt_string_cstr(rt_tcp_host(client)), "::1") == 0);
 
     const char *test_msg = "ipv6";
     void *send_data = make_bytes_str(test_msg);
@@ -425,8 +426,7 @@ static void test_connection_pool_reuses_live_connection() {
     void *msg1 = make_bytes_str("one");
     rt_tcp_send_all(conn1, msg1);
     void *echo1 = rt_tcp_recv_exact(conn1, 3);
-    test_result("First pooled round-trip succeeds",
-                memcmp(get_bytes_data(echo1), "one", 3) == 0);
+    test_result("First pooled round-trip succeeds", memcmp(get_bytes_data(echo1), "one", 3) == 0);
 
     rt_connpool_release(pool, conn1);
     test_result("Pool has one available connection", rt_connpool_available(pool) == 1);
@@ -437,8 +437,7 @@ static void test_connection_pool_reuses_live_connection() {
     void *msg2 = make_bytes_str("two");
     rt_tcp_send_all(conn2, msg2);
     void *echo2 = rt_tcp_recv_exact(conn2, 3);
-    test_result("Second pooled round-trip succeeds",
-                memcmp(get_bytes_data(echo2), "two", 3) == 0);
+    test_result("Second pooled round-trip succeeds", memcmp(get_bytes_data(echo2), "two", 3) == 0);
 
     rt_connpool_release(pool, conn2);
     rt_connpool_clear(pool);
@@ -849,7 +848,8 @@ static void test_dns_resolve_localhost() {
 
     const char *ip = rt_string_cstr(result);
     test_result("DNS Resolve localhost returns IP", ip != nullptr);
-    test_result("DNS Resolve localhost is loopback", strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
+    test_result("DNS Resolve localhost is loopback",
+                strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
 }
 
 /// @brief Test DNS resolve4 localhost
@@ -1465,8 +1465,8 @@ static void test_url_query_map() {
     int64_t len = rt_map_len(map);
     test_result("QueryMap has 2 entries", len == 2);
 
-    const char *name = rt_string_cstr((rt_string)rt_map_get(map, rt_const_cstr("name")));
-    const char *age = rt_string_cstr((rt_string)rt_map_get(map, rt_const_cstr("age")));
+    const char *name = rt_string_cstr(rt_map_get_str(map, rt_const_cstr("name")));
+    const char *age = rt_string_cstr(rt_map_get_str(map, rt_const_cstr("age")));
     test_result("QueryMap has correct name", strcmp(name, "John") == 0);
     test_result("QueryMap has correct age", strcmp(age, "30") == 0);
 }
@@ -1539,8 +1539,8 @@ static void test_url_encode_decode_query() {
 
     // Create a map and encode it
     void *map = rt_map_new();
-    rt_map_set(map, rt_const_cstr("name"), (void *)rt_const_cstr("John Doe"));
-    rt_map_set(map, rt_const_cstr("city"), (void *)rt_const_cstr("New York"));
+    rt_map_set_str(map, rt_const_cstr("name"), rt_const_cstr("John Doe"));
+    rt_map_set_str(map, rt_const_cstr("city"), rt_const_cstr("New York"));
 
     rt_string query = rt_url_encode_query(map);
     const char *query_str = rt_string_cstr(query);
@@ -1553,6 +1553,12 @@ static void test_url_encode_decode_query() {
     void *decoded_map = rt_url_decode_query(query);
     int64_t len = rt_map_len(decoded_map);
     test_result("DecodeQuery has 2 entries", len == 2);
+    test_result("DecodeQuery name matches",
+                strcmp(rt_string_cstr(rt_map_get_str(decoded_map, rt_const_cstr("name"))),
+                       "John Doe") == 0);
+    test_result("DecodeQuery city matches",
+                strcmp(rt_string_cstr(rt_map_get_str(decoded_map, rt_const_cstr("city"))),
+                       "New York") == 0);
 }
 
 /// @brief Test URL validation.
@@ -1637,13 +1643,12 @@ int main() {
     test_url_new();
     test_url_host_port();
     test_url_authority();
-    // Query param tests temporarily disabled pending debugging
-    // test_url_query_params();
-    // test_url_query_map();
+    test_url_query_params();
+    test_url_query_map();
     test_url_clone();
     test_url_resolve();
     test_url_encode_decode();
-    // test_url_encode_decode_query();
+    test_url_encode_decode_query();
     test_url_is_valid();
     test_url_scheme_case();
 

@@ -34,8 +34,8 @@
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 
-#include <cstdio>
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -276,8 +276,8 @@ int cmdPackage(int argc, char **argv) {
         archStr = args.archOverride;
     } else if (proj.packageConfig.targetArchitectures.size() == 1) {
         archStr = proj.packageConfig.targetArchitectures.front();
-        arch = (archStr == "arm64") ? viper::tools::TargetArch::ARM64
-                                    : viper::tools::TargetArch::X64;
+        arch =
+            (archStr == "arm64") ? viper::tools::TargetArch::ARM64 : viper::tools::TargetArch::X64;
     } else {
         archStr = (arch == viper::tools::TargetArch::ARM64) ? "arm64" : "x64";
     }

@@ -196,8 +196,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
         if (isUserClassNew && slotInfo.isObject) {
             lowerer_.requestHelper(RuntimeFeature::ObjReleaseChk0);
             lowerer_.curLoc = {};
-            lowerer_.emitCallRet(
-                lowerer_.ilBoolTy(), "rt_obj_release_check0", {newTempValue});
+            lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_obj_release_check0", {newTempValue});
         }
     } else if (auto *mc = as<const MethodCallExpr>(*stmt.target)) {
         // Handle array field assignment (obj.arrayField(index) = value). (BUG-056)

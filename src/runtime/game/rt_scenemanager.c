@@ -28,15 +28,15 @@ typedef struct {
 typedef struct {
     sm_scene_t scenes[SM_MAX_SCENES];
     int32_t count;
-    int32_t current;           // Index into scenes[] (-1 = none)
-    int32_t previous;          // Previous scene index
+    int32_t current;  // Index into scenes[] (-1 = none)
+    int32_t previous; // Previous scene index
     int8_t just_entered;
     int8_t just_exited;
     // Transition
     int8_t transitioning;
-    int32_t next_scene;        // Target scene during transition
-    int64_t trans_timer;       // Countdown ms
-    int64_t trans_duration;    // Total duration ms
+    int32_t next_scene;     // Target scene during transition
+    int64_t trans_timer;    // Countdown ms
+    int64_t trans_duration; // Total duration ms
 } scenemanager_impl;
 
 static scenemanager_impl *get(void *mgr) {
@@ -118,7 +118,8 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
     sm->trans_timer = sm->trans_duration;
 }
 
-/// @brief Advance the scene manager by dt milliseconds. Clears one-shot flags, completes transitions.
+/// @brief Advance the scene manager by dt milliseconds. Clears one-shot flags, completes
+/// transitions.
 void rt_scenemanager_update(void *mgr, int64_t dt) {
     if (!mgr)
         return;

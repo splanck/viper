@@ -129,9 +129,13 @@ static void test_instbatch_remove_keeps_motion_history_aligned() {
 
     EXPECT_TRUE(rt_instbatch3d_count(batch) == 2, "Batch remove keeps the expected instance count");
     EXPECT_NEAR(view->transforms[3], 2.0, 0.01, "Batch remove swap-moves the last transform");
-    EXPECT_NEAR(view->current_snapshot[3], 30.0, 0.01,
+    EXPECT_NEAR(view->current_snapshot[3],
+                30.0,
+                0.01,
                 "Batch remove keeps current motion history aligned with swapped transforms");
-    EXPECT_NEAR(view->prev_transforms[3], 300.0, 0.01,
+    EXPECT_NEAR(view->prev_transforms[3],
+                300.0,
+                0.01,
                 "Batch remove keeps previous motion history aligned with swapped transforms");
 }
 

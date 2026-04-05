@@ -284,8 +284,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             // Retrieve the thrown message via the runtime function.
             // For user throws, this returns the message from throw "msg".
             // For system errors (div by zero etc.), returns empty string.
-            Value msgStr = emitCallRet(Type(Type::Kind::Str),
-                                       "Viper.Error.GetThrowMsg", {});
+            Value msgStr = emitCallRet(Type(Type::Kind::Str), "Viper.Error.GetThrowMsg", {});
             createSlot(stmt->catchVar, Type(Type::Kind::Str));
             storeToSlot(stmt->catchVar, msgStr, Type(Type::Kind::Str));
         }

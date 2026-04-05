@@ -124,7 +124,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     std::unordered_map<std::string, std::vector<RegClass>>
         phiRegClass; // block label -> reg class per param
     std::unordered_map<std::string, std::vector<int>>
-        phiSpillOffset;         // block label -> spill offset per param
+        phiSpillOffset;                 // block label -> spill offset per param
     uint16_t phiNextId = kPhiVRegStart; // reserve a distinct vreg range for phi temporaries
     for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) // Start at 1, skip entry block
     {
@@ -208,8 +208,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                 viper::codegen::common::CallArgLayoutConfig{
                     .maxGPRArgs = ti_->intArgOrder.size(),
                     .maxFPRArgs = ti_->f64ArgOrder.size(),
-                    .slotModel =
-                        viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
+                    .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
                     .variadicTailOnStack = false,
                     .numNamedArgs = paramClasses.size()});
 

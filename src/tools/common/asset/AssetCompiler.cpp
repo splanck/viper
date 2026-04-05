@@ -73,11 +73,14 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
 /// @param entries   Output: pairs of (relative name, absolute path).
 /// @param err       Set on error.
 /// @return true on success.
-static bool enumerateDir(const fs::path &dir, const fs::path &rootDir,
+static bool enumerateDir(const fs::path &dir,
+                         const fs::path &rootDir,
                          std::vector<std::pair<std::string, fs::path>> &entries,
                          std::string &err) {
     std::error_code ec;
-    for (auto it = fs::recursive_directory_iterator(dir, ec); it != fs::recursive_directory_iterator(); ++it) {
+    for (auto it = fs::recursive_directory_iterator(dir, ec);
+         it != fs::recursive_directory_iterator();
+         ++it) {
         if (ec) {
             err = "directory enumeration error in " + dir.string() + ": " + ec.message();
             return false;
@@ -106,8 +109,11 @@ static bool enumerateDir(const fs::path &dir, const fs::path &rootDir,
 /// @param compress    Whether to compress entries.
 /// @param err         Set on error.
 /// @return true on success.
-static bool addSourceToWriter(const std::string &sourcePath, const fs::path &rootDir,
-                              VpaWriter &writer, bool compress, std::string &err) {
+static bool addSourceToWriter(const std::string &sourcePath,
+                              const fs::path &rootDir,
+                              VpaWriter &writer,
+                              bool compress,
+                              std::string &err) {
     fs::path absPath = rootDir / sourcePath;
 
     std::error_code ec;
@@ -142,11 +148,9 @@ static bool addSourceToWriter(const std::string &sourcePath, const fs::path &roo
 
 // ─── compileAssets ──────────────────────────────────────────────────────────
 
-std::optional<AssetBundle> compileAssets(
-    const il::tools::common::ProjectConfig &config,
-    const std::string &outputDir,
-    std::string &err) {
-
+std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig &config,
+                                         const std::string &outputDir,
+                                         std::string &err) {
     AssetBundle bundle;
     fs::path rootDir(config.rootDir);
 
@@ -188,8 +192,7 @@ std::optional<AssetBundle> compileAssets(
             return std::nullopt;
 
         bundle.packFilePaths.push_back(vpaPath.string());
-        std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into "
-                  << vpaName << "\n";
+        std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName << "\n";
     }
 
     return bundle;

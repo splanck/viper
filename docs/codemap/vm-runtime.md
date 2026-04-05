@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # CODEMAP: Virtual Machine
@@ -10,7 +10,7 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 
 ## Overview
 
-- **Total source files**: 58 (.hpp/.cpp)
+- **Total source files**: 59 (.hpp/.cpp)
 - **Subdirectories**: debug/, ops/, ops/common/, ops/generated/, ops/schema/
 
 ## Core Infrastructure

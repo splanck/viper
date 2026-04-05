@@ -58,11 +58,8 @@ typedef void (*rt_http_server_handler_cleanup_fn)(void *ctx);
 void rt_http_server_bind_handler(void *server, rt_string handler_tag, void *entry);
 
 /// @brief Bind a handler tag to a dispatcher with persistent context.
-void rt_http_server_bind_handler_dispatch(void *server,
-                                          rt_string handler_tag,
-                                          void *dispatch,
-                                          void *ctx,
-                                          void *cleanup);
+void rt_http_server_bind_handler_dispatch(
+    void *server, rt_string handler_tag, void *dispatch, void *ctx, void *cleanup);
 
 /// @brief Start accepting connections (blocks on accept loop in background thread).
 void rt_http_server_start(void *server);

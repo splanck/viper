@@ -43,7 +43,7 @@ extern double rt_unbox_f64(void *boxed);
 extern int64_t rt_unbox_i1(void *boxed);
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
@@ -231,11 +231,8 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
     return output;
 }
 
-static int gltf_parse_data_uri(const char *uri,
-                               char *mime_buf,
-                               size_t mime_buf_cap,
-                               uint8_t **out_data,
-                               size_t *out_len) {
+static int gltf_parse_data_uri(
+    const char *uri, char *mime_buf, size_t mime_buf_cap, uint8_t **out_data, size_t *out_len) {
     const char *comma;
     const char *payload;
     size_t mime_len = 0;
@@ -281,11 +278,8 @@ static int gltf_parse_data_uri(const char *uri,
     return 1;
 }
 
-static const uint8_t *gltf_get_buffer_view_data(void *root,
-                                                int64_t view_idx,
-                                                gltf_buffer_t *buffers,
-                                                int buf_count,
-                                                size_t *out_len) {
+static const uint8_t *gltf_get_buffer_view_data(
+    void *root, int64_t view_idx, gltf_buffer_t *buffers, int buf_count, size_t *out_len) {
     void *views = jarr(root, "bufferViews");
     if (!views || view_idx < 0 || view_idx >= jarr_len(views))
         return NULL;
@@ -305,9 +299,12 @@ static const uint8_t *gltf_get_buffer_view_data(void *root,
 }
 
 /// @brief Read accessor data: resolve bufferView → buffer → byte range.
-static const uint8_t *gltf_get_accessor_data(void *root, int64_t accessor_idx,
-                                               gltf_buffer_t *buffers, int buf_count,
-                                               int *out_count, int *out_stride) {
+static const uint8_t *gltf_get_accessor_data(void *root,
+                                             int64_t accessor_idx,
+                                             gltf_buffer_t *buffers,
+                                             int buf_count,
+                                             int *out_count,
+                                             int *out_stride) {
     void *accessors = jarr(root, "accessors");
     if (!accessors || accessor_idx < 0 || accessor_idx >= jarr_len(accessors))
         return NULL;
@@ -473,9 +470,8 @@ void *rt_gltf_load(rt_string path) {
     if ((size_t)fsize >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C &&
         file_data[2] == 0x54 && file_data[3] == 0x46) {
         // GLB binary container
-        uint32_t version =
-            file_data[4] | ((uint32_t)file_data[5] << 8) | ((uint32_t)file_data[6] << 16) |
-            ((uint32_t)file_data[7] << 24);
+        uint32_t version = file_data[4] | ((uint32_t)file_data[5] << 8) |
+                           ((uint32_t)file_data[6] << 16) | ((uint32_t)file_data[7] << 24);
         (void)version;
 
         // Parse chunks
@@ -531,7 +527,8 @@ void *rt_gltf_load(rt_string path) {
     // Load buffers
     void *buffers_arr = jarr(root, "buffers");
     int buf_count = (int)jarr_len(buffers_arr);
-    gltf_buffer_t *buffers = (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
+    gltf_buffer_t *buffers =
+        (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
     if (!buffers) {
         free(file_data);
         return NULL;
@@ -551,7 +548,8 @@ void *rt_gltf_load(rt_string path) {
                 char mime_type[64];
                 uint8_t *decoded = NULL;
                 size_t decoded_len = 0;
-                if (gltf_parse_data_uri(uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
+                if (gltf_parse_data_uri(
+                        uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
                     buffers[i].data = decoded;
                     buffers[i].len = decoded_len;
                 }
@@ -613,7 +611,8 @@ void *rt_gltf_load(rt_string path) {
 
         if (uri && strncmp(uri, "data:", 5) == 0) {
             char parsed_mime[64];
-            if (gltf_parse_data_uri(uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
+            if (gltf_parse_data_uri(
+                    uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
                 image_data = owned_data;
                 if (!mime_type && parsed_mime[0] != '\0')
                     mime_type = parsed_mime;
@@ -674,13 +673,15 @@ void *rt_gltf_load(rt_string path) {
                 {
                     void *base_tex = jget(pbr, "baseColorTexture");
                     int64_t tex_idx = jint(base_tex, "index", -1);
-                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
+                        texture_images[tex_idx])
                         rt_material3d_set_texture(mat, texture_images[tex_idx]);
                 }
                 {
                     void *mr_tex = jget(pbr, "metallicRoughnessTexture");
                     int64_t tex_idx = jint(mr_tex, "index", -1);
-                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
+                        texture_images[tex_idx])
                         rt_material3d_set_specular_map(mat, texture_images[tex_idx]);
                 }
                 double roughness = jnum(pbr, "roughnessFactor", 1.0);
@@ -702,13 +703,15 @@ void *rt_gltf_load(rt_string path) {
             {
                 void *normal_tex = jget(mat_json, "normalTexture");
                 int64_t tex_idx = jint(normal_tex, "index", -1);
-                if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
+                    texture_images[tex_idx])
                     rt_material3d_set_normal_map(mat, texture_images[tex_idx]);
             }
             {
                 void *emissive_tex = jget(mat_json, "emissiveTexture");
                 int64_t tex_idx = jint(emissive_tex, "index", -1);
-                if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx])
+                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
+                    texture_images[tex_idx])
                     rt_material3d_set_emissive_map(mat, texture_images[tex_idx]);
             }
 
@@ -755,9 +758,8 @@ void *rt_gltf_load(rt_string path) {
 
                     // Read position data
                     int pos_count = 0, pos_stride = 0;
-                    const uint8_t *pos_data =
-                        gltf_get_accessor_data(root, pos_acc, buffers, buf_count,
-                                                &pos_count, &pos_stride);
+                    const uint8_t *pos_data = gltf_get_accessor_data(
+                        root, pos_acc, buffers, buf_count, &pos_count, &pos_stride);
                     if (!pos_data || pos_count == 0)
                         continue;
 
@@ -765,15 +767,15 @@ void *rt_gltf_load(rt_string path) {
                     int norm_count = 0, norm_stride = 0;
                     const uint8_t *norm_data = NULL;
                     if (norm_acc >= 0)
-                        norm_data = gltf_get_accessor_data(root, norm_acc, buffers, buf_count,
-                                                            &norm_count, &norm_stride);
+                        norm_data = gltf_get_accessor_data(
+                            root, norm_acc, buffers, buf_count, &norm_count, &norm_stride);
 
                     // Read UV data (optional)
                     int uv_count = 0, uv_stride = 0;
                     const uint8_t *uv_data = NULL;
                     if (uv_acc >= 0)
-                        uv_data = gltf_get_accessor_data(root, uv_acc, buffers, buf_count,
-                                                          &uv_count, &uv_stride);
+                        uv_data = gltf_get_accessor_data(
+                            root, uv_acc, buffers, buf_count, &uv_count, &uv_stride);
 
                     // Create mesh and populate vertices
                     void *mesh = rt_mesh3d_new();
@@ -781,17 +783,20 @@ void *rt_gltf_load(rt_string path) {
                         continue;
 
                     for (int vi = 0; vi < pos_count; vi++) {
-                        const float *p = (const float *)(pos_data + (size_t)vi * (size_t)pos_stride);
+                        const float *p =
+                            (const float *)(pos_data + (size_t)vi * (size_t)pos_stride);
                         float nx = 0, ny = 0, nz = 0;
                         if (norm_data && vi < norm_count) {
-                            const float *n = (const float *)(norm_data + (size_t)vi * (size_t)norm_stride);
+                            const float *n =
+                                (const float *)(norm_data + (size_t)vi * (size_t)norm_stride);
                             nx = n[0];
                             ny = n[1];
                             nz = n[2];
                         }
                         float u = 0, v = 0;
                         if (uv_data && vi < uv_count) {
-                            const float *t = (const float *)(uv_data + (size_t)vi * (size_t)uv_stride);
+                            const float *t =
+                                (const float *)(uv_data + (size_t)vi * (size_t)uv_stride);
                             u = t[0];
                             v = t[1];
                         }
@@ -801,9 +806,8 @@ void *rt_gltf_load(rt_string path) {
                     // Read indices (optional — if absent, use sequential)
                     if (idx_acc >= 0) {
                         int idx_count = 0, idx_stride = 0;
-                        const uint8_t *idx_data =
-                            gltf_get_accessor_data(root, idx_acc, buffers, buf_count,
-                                                    &idx_count, &idx_stride);
+                        const uint8_t *idx_data = gltf_get_accessor_data(
+                            root, idx_acc, buffers, buf_count, &idx_count, &idx_stride);
                         // Determine index component type
                         void *acc_obj = rt_seq_get(jarr(root, "accessors"), idx_acc);
                         int comp_type = (int)jint(acc_obj, "componentType", 5123);
@@ -816,13 +820,19 @@ void *rt_gltf_load(rt_string path) {
                                     i1 = idx_data[(ii + 1) * idx_stride];
                                     i2 = idx_data[(ii + 2) * idx_stride];
                                 } else if (comp_type == 5123) { // UNSIGNED_SHORT
-                                    i0 = *(const uint16_t *)(idx_data + (size_t)ii * (size_t)idx_stride);
-                                    i1 = *(const uint16_t *)(idx_data + (size_t)(ii + 1) * (size_t)idx_stride);
-                                    i2 = *(const uint16_t *)(idx_data + (size_t)(ii + 2) * (size_t)idx_stride);
+                                    i0 = *(const uint16_t *)(idx_data +
+                                                             (size_t)ii * (size_t)idx_stride);
+                                    i1 = *(const uint16_t *)(idx_data +
+                                                             (size_t)(ii + 1) * (size_t)idx_stride);
+                                    i2 = *(const uint16_t *)(idx_data +
+                                                             (size_t)(ii + 2) * (size_t)idx_stride);
                                 } else { // UNSIGNED_INT (5125)
-                                    i0 = *(const uint32_t *)(idx_data + (size_t)ii * (size_t)idx_stride);
-                                    i1 = *(const uint32_t *)(idx_data + (size_t)(ii + 1) * (size_t)idx_stride);
-                                    i2 = *(const uint32_t *)(idx_data + (size_t)(ii + 2) * (size_t)idx_stride);
+                                    i0 = *(const uint32_t *)(idx_data +
+                                                             (size_t)ii * (size_t)idx_stride);
+                                    i1 = *(const uint32_t *)(idx_data +
+                                                             (size_t)(ii + 1) * (size_t)idx_stride);
+                                    i2 = *(const uint32_t *)(idx_data +
+                                                             (size_t)(ii + 2) * (size_t)idx_stride);
                                 }
                                 rt_mesh3d_add_triangle(mesh, i0, i1, i2);
                             }
@@ -892,4 +902,6 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
     return a->materials[index];
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

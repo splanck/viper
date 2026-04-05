@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper VM — Architecture & Implementation Guide
@@ -24,6 +24,13 @@ programs. This document covers the VM's design philosophy, architecture, executi
 9. [Debug & Tracing](#debug--tracing)
 10. [Source Code Guide](#source-code-guide)
 11. [Performance Features](#performance-features)
+12. [Best Practices](#best-practices)
+13. [Further Reading](#further-reading)
+
+**Appendices**
+- [Performance Tuning](#appendix-performance-tuning)
+- [Concurrency Model](#appendix-concurrency-model)
+- [Runtime ABI Reference](#appendix-runtime-abi-reference)
 
 ---
 
@@ -1024,11 +1031,13 @@ Allows embedding applications to maintain responsiveness.
 - `src/runtime/` — C runtime library
 - `src/tests/vm/` — VM unit tests
 
-## Performance Tuning and Benchmarking
+---
 
-This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.
+## Appendix: Performance Tuning
 
-## Dispatch Modes
+This section summarizes runtime tuning knobs and benchmarking for the VM.
+
+### Dispatch Modes
 
 - Env `VIPER_DISPATCH`:
     - `table`: function-table dispatch via `executeOpcode`
@@ -1041,7 +1050,7 @@ This guide summarizes runtime tuning knobs for the VM and how to benchmark dispa
 - Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see
   `RunConfig::interruptEveryN`).
 
-## Switch Backend Heuristics
+### Switch Backend Heuristics
 
 Switch dispatch selects a backend per instruction. Heuristics can be tuned via env:
 
@@ -1052,7 +1061,7 @@ Switch dispatch selects a backend per instruction. Heuristics can be tuned via e
 
 If `VIPER_SWITCH_MODE` is set to `dense|sorted|hashed|linear|auto`, it overrides the heuristic for all instructions.
 
-## Benchmarking
+### Benchmarking
 
 Use the helper script to compare dispatch performance across modes:
 
@@ -1076,7 +1085,9 @@ RUNS_PER_CASE=5 IL_DIR='src/tests/il/e2e' scripts/vm_benchmark.sh
 The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture
 counts.
 
-### Concurrency Model
+---
+
+## Appendix: Concurrency Model
 
 Each `VM` instance is single‑threaded: only one host thread may execute within a given VM instance at a time. To
 parallelize at the *embedder* level, create one VM per host thread (each VM has its own program state).
@@ -1091,7 +1102,9 @@ already active on the same thread triggers an assertion.
 
 ---
 
-## Runtime ABI Reference
+---
+
+## Appendix: Runtime ABI Reference
 
 Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. This section documents the core ABI surface
 available to both the VM and native backends. For the complete list see the [Runtime Library Reference](viperlib/README.md).

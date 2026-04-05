@@ -157,7 +157,7 @@ class FrameBuilder : public common::FrameLayout {
 
     MFunction *fn_{};
     common::DownwardFrameCursor slotCursor_{kSlotSizeBytes};
-    uint32_t blockEpoch_{0};          ///< Monotonically-increasing block counter.
+    uint32_t blockEpoch_{0}; ///< Monotonically-increasing block counter.
 
     /// Lifetime records for every slot allocated via ensureSpillWithReuse().
     std::vector<SlotLifetime> slotLifetimes_;

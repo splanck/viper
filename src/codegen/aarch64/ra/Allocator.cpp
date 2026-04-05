@@ -208,8 +208,9 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
         auto posIt = posMap.find(id);
         if (posIt != posMap.end() && !posIt->second.empty())
             trueLastUse = posIt->second.back();
-        const int off =
-            (st.fpOffset != 0) ? st.fpOffset : fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
+        const int off = (st.fpOffset != 0)
+                            ? st.fpOffset
+                            : fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
         st.fpOffset = off;
         if (cls == RegClass::GPR)
             prefix.push_back(makeStrFp(st.phys, off));

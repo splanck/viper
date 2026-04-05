@@ -86,14 +86,15 @@ void buildDebPackage(const LinuxBuildParams &params) {
                             fs::relative(entry.path(), srcPath).generic_string(), "asset path");
                         auto fileData = readFile(entry.path().string());
                         dataFiles.push_back(
-                            {joinPackageRelativePath(sharePrefix, relPath, "asset path"), fileData});
+                            {joinPackageRelativePath(sharePrefix, relPath, "asset path"),
+                             fileData});
                     }
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
             dataFiles.push_back({joinPackageRelativePath(sharePrefix,
-                                                        srcPath.filename().generic_string(),
-                                                        "asset path"),
+                                                         srcPath.filename().generic_string(),
+                                                         "asset path"),
                                  fileData});
         }
     }
@@ -336,8 +337,8 @@ void buildTarball(const LinuxBuildParams &params) {
                     if (entry.is_directory()) {
                         auto relPath = sanitizePackageRelativePath(
                             fs::relative(entry.path(), srcPath).generic_string(), "asset path");
-                        tar.addDirectory(
-                            joinPackageRelativePath(prefix, relPath, "asset path"), 0755);
+                        tar.addDirectory(joinPackageRelativePath(prefix, relPath, "asset path"),
+                                         0755);
                     } else if (entry.is_regular_file()) {
                         auto relPath = sanitizePackageRelativePath(
                             fs::relative(entry.path(), srcPath).generic_string(), "asset path");
@@ -350,11 +351,11 @@ void buildTarball(const LinuxBuildParams &params) {
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            tar.addFile(joinPackageRelativePath(
-                            prefix, srcPath.filename().generic_string(), "asset path"),
-                        fileData.data(),
-                        fileData.size(),
-                        0644);
+            tar.addFile(
+                joinPackageRelativePath(prefix, srcPath.filename().generic_string(), "asset path"),
+                fileData.data(),
+                fileData.size(),
+                0644);
         }
     }
 

@@ -81,8 +81,8 @@ void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64
 void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt);
 
 /// @brief Apply gravity + move + collide in one call.
-void rt_entity_update_physics(void *ent, void *tilemap,
-                              int64_t gravity, int64_t max_fall, int64_t dt);
+void rt_entity_update_physics(
+    void *ent, void *tilemap, int64_t gravity, int64_t max_fall, int64_t dt);
 
 /// @brief Check if entity is at a platform edge (no solid tile below leading edge).
 int8_t rt_entity_at_edge(void *ent, void *tilemap);

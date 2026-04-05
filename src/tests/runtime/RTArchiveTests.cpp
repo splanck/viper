@@ -299,7 +299,8 @@ static void test_extract_operations() {
 
     void *reader = rt_archive_open(rt_const_cstr(zip_path));
     rt_archive_extract(reader, rt_const_cstr("hello.txt"), rt_const_cstr(single_out));
-    test_result("Extract writes absolute destination", file_equals_text(single_out, "Hello extract"));
+    test_result("Extract writes absolute destination",
+                file_equals_text(single_out, "Hello extract"));
 
     mkdir_p(extract_dir);
     rt_archive_extract_all(reader, rt_const_cstr(extract_dir));
@@ -317,7 +318,8 @@ static void test_extract_operations() {
     snprintf(hello_path, sizeof(hello_path), "%s/hello.txt", extract_dir);
 #endif
     test_result("ExtractAll writes hello.txt", file_equals_text(hello_path, "Hello extract"));
-    test_result("ExtractAll writes nested/world.txt", file_equals_text(nested_path, "Nested extract"));
+    test_result("ExtractAll writes nested/world.txt",
+                file_equals_text(nested_path, "Nested extract"));
 
     delete_file(single_out);
     delete_file(zip_path);

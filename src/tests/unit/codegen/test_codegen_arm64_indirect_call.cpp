@@ -61,8 +61,7 @@ TEST(Arm64IndirectCall, PointerCallUsesBlrRatherThanDirectBl) {
     bool sawDirectBl = false;
     for (const auto &mi : mir.blocks.front().instrs) {
         if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
-            mi.ops[0].reg.isPhys &&
-            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
+            mi.ops[0].reg.isPhys && static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
             sawBlr = true;
         }
         if (mi.opc == MOpcode::Bl)
@@ -120,8 +119,7 @@ TEST(Arm64IndirectCall, FloatingArgumentsStayInFprLanes) {
             sawFprMarshal = true;
         }
         if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
-            mi.ops[0].reg.isPhys &&
-            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
+            mi.ops[0].reg.isPhys && static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X9) {
             sawBlr = true;
         }
     }
@@ -182,8 +180,8 @@ TEST(Arm64IndirectCall, OverflowArgumentsUseStackArea) {
     bool sawBlr = false;
     bool sawStackFree = false;
     for (const auto &mi : mir.blocks.front().instrs) {
-        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
-            mi.ops[0].imm == 16) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
             sawStackAlloc = true;
         }
         if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
@@ -195,8 +193,8 @@ TEST(Arm64IndirectCall, OverflowArgumentsUseStackArea) {
         }
         if (mi.opc == MOpcode::Blr)
             sawBlr = true;
-        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
-            mi.ops[0].imm == 16) {
+        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
             sawStackFree = true;
         }
     }

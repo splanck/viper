@@ -396,17 +396,16 @@ LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
     // `obj is T` should return true when obj's runtime type is T or any
     // subclass of T (standard OOP semantics).
     std::vector<int64_t> matchIds;
-    std::function<void(const std::string &)> collectDescendants =
-        [&](const std::string &name) {
-            auto cit = classTypes_.find(name);
-            if (cit == classTypes_.end())
-                return;
-            matchIds.push_back(static_cast<int64_t>(cit->second.classId));
-            for (const auto &[className, info] : classTypes_) {
-                if (info.baseClass == name)
-                    collectDescendants(className);
-            }
-        };
+    std::function<void(const std::string &)> collectDescendants = [&](const std::string &name) {
+        auto cit = classTypes_.find(name);
+        if (cit == classTypes_.end())
+            return;
+        matchIds.push_back(static_cast<int64_t>(cit->second.classId));
+        for (const auto &[className, info] : classTypes_) {
+            if (info.baseClass == name)
+                collectDescendants(className);
+        }
+    };
     collectDescendants(targetName);
 
     // Emit: classId = call rt_obj_class_id(source)

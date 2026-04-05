@@ -36,6 +36,10 @@ extern "C" {
 // Canvas Functions
 //=========================================================================
 
+/// @brief Report whether graphics support is compiled into this runtime.
+/// @return 1 when ViperGFX-backed Canvas support is available, 0 otherwise.
+int8_t rt_canvas_is_available(void);
+
 /// @brief Create a new graphics canvas.
 /// @param title Window title (runtime string).
 /// @param width Canvas width in pixels.

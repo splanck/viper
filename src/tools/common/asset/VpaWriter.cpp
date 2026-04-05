@@ -54,8 +54,20 @@ bool VpaWriter::isPreCompressed(const std::string &name) {
 
     // Formats that are already compressed — DEFLATE would make them larger.
     static const char *skip[] = {
-        ".png", ".jpg",  ".jpeg", ".gif",  ".ogg", ".mp3",  ".vaf",
-        ".glb", ".gz",   ".zip",  ".vpa",  ".zst", ".br",   ".webp",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ogg",
+        ".mp3",
+        ".vaf",
+        ".glb",
+        ".gz",
+        ".zip",
+        ".vpa",
+        ".zst",
+        ".br",
+        ".webp",
     };
     for (const char *s : skip) {
         if (ext == s)

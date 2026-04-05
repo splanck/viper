@@ -838,4 +838,6 @@ int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
     return rt_pixels_save_png(pixels, path);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

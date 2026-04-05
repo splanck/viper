@@ -27,8 +27,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_pixels_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 
 #include "rt_bytes.h"
 #include "rt_compress.h"
@@ -501,30 +501,42 @@ void *rt_pixels_load_png(void *path) {
     if (bpp < 1)
         bpp = 1;
 
-    // Helper: compute row stride for a given image width
-    #define PNG_STRIDE(w) (bit_depth < 8 \
-        ? (((size_t)(w) * (size_t)bit_depth * (size_t)samples_per_pixel + 7) / 8) \
-        : ((size_t)(w) * (size_t)samples_per_pixel * ((size_t)bit_depth / 8)))
+// Helper: compute row stride for a given image width
+#define PNG_STRIDE(w)                                                                              \
+    (bit_depth < 8 ? (((size_t)(w) * (size_t)bit_depth * (size_t)samples_per_pixel + 7) / 8)       \
+                   : ((size_t)(w) * (size_t)samples_per_pixel * ((size_t)bit_depth / 8)))
 
-    // Helper: reconstruct one filtered row
-    #define PNG_FILTER_ROW(dst, src, prev, row_stride) do { \
-        uint8_t filt = *(src)++; \
-        for (size_t fi = 0; fi < (row_stride); fi++) { \
-            uint8_t rb = (src)[fi]; \
-            uint8_t fa = (fi >= (size_t)bpp) ? (dst)[fi - bpp] : 0; \
-            uint8_t fb = (prev) ? (prev)[fi] : 0; \
-            uint8_t fc = ((prev) && fi >= (size_t)bpp) ? (prev)[fi - bpp] : 0; \
-            switch (filt) { \
-                case 0: (dst)[fi] = rb; break; \
-                case 1: (dst)[fi] = rb + fa; break; \
-                case 2: (dst)[fi] = rb + fb; break; \
-                case 3: (dst)[fi] = rb + (uint8_t)(((int)fa + (int)fb) / 2); break; \
-                case 4: (dst)[fi] = rb + paeth_predict(fa, fb, fc); break; \
-                default: goto cleanup; \
-            } \
-        } \
-        (src) += (row_stride); \
-    } while(0)
+// Helper: reconstruct one filtered row
+#define PNG_FILTER_ROW(dst, src, prev, row_stride)                                                 \
+    do {                                                                                           \
+        uint8_t filt = *(src)++;                                                                   \
+        for (size_t fi = 0; fi < (row_stride); fi++) {                                             \
+            uint8_t rb = (src)[fi];                                                                \
+            uint8_t fa = (fi >= (size_t)bpp) ? (dst)[fi - bpp] : 0;                                \
+            uint8_t fb = (prev) ? (prev)[fi] : 0;                                                  \
+            uint8_t fc = ((prev) && fi >= (size_t)bpp) ? (prev)[fi - bpp] : 0;                     \
+            switch (filt) {                                                                        \
+                case 0:                                                                            \
+                    (dst)[fi] = rb;                                                                \
+                    break;                                                                         \
+                case 1:                                                                            \
+                    (dst)[fi] = rb + fa;                                                           \
+                    break;                                                                         \
+                case 2:                                                                            \
+                    (dst)[fi] = rb + fb;                                                           \
+                    break;                                                                         \
+                case 3:                                                                            \
+                    (dst)[fi] = rb + (uint8_t)(((int)fa + (int)fb) / 2);                           \
+                    break;                                                                         \
+                case 4:                                                                            \
+                    (dst)[fi] = rb + paeth_predict(fa, fb, fc);                                    \
+                    break;                                                                         \
+                default:                                                                           \
+                    goto cleanup;                                                                  \
+            }                                                                                      \
+        }                                                                                          \
+        (src) += (row_stride);                                                                     \
+    } while (0)
 
     size_t stride = PNG_STRIDE(width);
 
@@ -544,8 +556,10 @@ void *rt_pixels_load_png(void *path) {
         const uint8_t *src_end = raw->data + raw->len;
 
         for (int pass = 0; pass < 7; pass++) {
-            uint32_t sub_w = (width + (uint32_t)a7_dx[pass] - 1 - (uint32_t)a7_x0[pass]) / (uint32_t)a7_dx[pass];
-            uint32_t sub_h = (height + (uint32_t)a7_dy[pass] - 1 - (uint32_t)a7_y0[pass]) / (uint32_t)a7_dy[pass];
+            uint32_t sub_w =
+                (width + (uint32_t)a7_dx[pass] - 1 - (uint32_t)a7_x0[pass]) / (uint32_t)a7_dx[pass];
+            uint32_t sub_h = (height + (uint32_t)a7_dy[pass] - 1 - (uint32_t)a7_y0[pass]) /
+                             (uint32_t)a7_dy[pass];
             if (sub_w == 0 || sub_h == 0)
                 continue;
 
@@ -571,10 +585,12 @@ void *rt_pixels_load_png(void *path) {
             int px_bytes = (bit_depth < 8) ? 1 : (samples_per_pixel * bit_depth / 8);
             for (uint32_t sy = 0; sy < sub_h; sy++) {
                 uint32_t dy = (uint32_t)a7_y0[pass] + sy * (uint32_t)a7_dy[pass];
-                if (dy >= height) continue;
+                if (dy >= height)
+                    continue;
                 for (uint32_t sx = 0; sx < sub_w; sx++) {
                     uint32_t dx = (uint32_t)a7_x0[pass] + sx * (uint32_t)a7_dx[pass];
-                    if (dx >= width) continue;
+                    if (dx >= width)
+                        continue;
 
                     if (bit_depth >= 8) {
                         // Byte-aligned: copy px_bytes
@@ -618,15 +634,15 @@ void *rt_pixels_load_png(void *path) {
         }
     }
 
-    #undef PNG_STRIDE
+#undef PNG_STRIDE
 
     // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
     pixels = pixels_alloc((int64_t)width, (int64_t)height);
     if (!pixels)
         goto cleanup;
 
-    // Helper: downscale 16-bit big-endian sample to 8-bit with rounding.
-    #define PNG_DOWN16(p) ((uint8_t)(((((uint16_t)(p)[0] << 8) | (p)[1]) + 128) >> 8))
+// Helper: downscale 16-bit big-endian sample to 8-bit with rounding.
+#define PNG_DOWN16(p) ((uint8_t)(((((uint16_t)(p)[0] << 8) | (p)[1]) + 128) >> 8))
 
     for (uint32_t y = 0; y < height; y++) {
         const uint8_t *row = img + y * stride;
@@ -652,8 +668,8 @@ void *rt_pixels_load_png(void *path) {
                     }
                     r = g = b_ch = gray;
                     if (has_trns_gray) {
-                        uint8_t key = (bit_depth == 16) ? (uint8_t)(trns_gray >> 8)
-                                                        : (uint8_t)trns_gray;
+                        uint8_t key =
+                            (bit_depth == 16) ? (uint8_t)(trns_gray >> 8) : (uint8_t)trns_gray;
                         if (gray == key)
                             alpha = 0;
                     }
@@ -946,35 +962,29 @@ save_cleanup:
 //=============================================================================
 
 // JPEG marker constants
-#define JPEG_SOI  0xFFD8
-#define JPEG_EOI  0xFFD9
+#define JPEG_SOI 0xFFD8
+#define JPEG_EOI 0xFFD9
 #define JPEG_SOF0 0xFFC0 // Baseline DCT
-#define JPEG_DHT  0xFFC4
-#define JPEG_DQT  0xFFDB
-#define JPEG_SOS  0xFFDA
-#define JPEG_DRI  0xFFDD
+#define JPEG_DHT 0xFFC4
+#define JPEG_DQT 0xFFDB
+#define JPEG_SOS 0xFFDA
+#define JPEG_DRI 0xFFDD
 #define JPEG_RST0 0xFFD0
 
 // Zigzag order for 8x8 block
 static const uint8_t jpeg_zigzag[64] = {
-     0,  1,  8, 16,  9,  2,  3, 10,
-    17, 24, 32, 25, 18, 11,  4,  5,
-    12, 19, 26, 33, 40, 48, 41, 34,
-    27, 20, 13,  6,  7, 14, 21, 28,
-    35, 42, 49, 56, 57, 50, 43, 36,
-    29, 22, 15, 23, 30, 37, 44, 51,
-    58, 59, 52, 45, 38, 31, 39, 46,
-    53, 60, 61, 54, 47, 55, 62, 63
-};
+    0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,  12, 19, 26, 33, 40, 48,
+    41, 34, 27, 20, 13, 6,  7,  14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+    30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
 
 // Huffman table (max 16-bit codes)
 typedef struct {
     uint8_t bits[17];     // bits[i] = number of codes of length i (1..16)
     uint8_t huffval[256]; // symbol values
     // Derived tables for fast decode:
-    int maxcode[18];      // max code value + 1 for each length (-1 if none)
-    int valptr[17];       // index into huffval for first code of each length
-    int mincode[17];      // minimum code for each length
+    int maxcode[18]; // max code value + 1 for each length (-1 if none)
+    int valptr[17];  // index into huffval for first code of each length
+    int mincode[17]; // minimum code for each length
 } jpeg_huff_t;
 
 // JPEG decoder context
@@ -1001,7 +1011,7 @@ typedef struct {
 
     // SOS component mapping
     uint8_t scan_comp_count;
-    uint8_t scan_comp_idx[4];   // index into comp_* arrays
+    uint8_t scan_comp_idx[4]; // index into comp_* arrays
     uint8_t scan_dc_table[4];
     uint8_t scan_ac_table[4];
 
@@ -1109,9 +1119,12 @@ static int jpeg_extend(int val, int bits) {
 }
 
 // Decode one 8x8 block of DCT coefficients
-static int jpeg_decode_block(jpeg_ctx_t *ctx, int16_t block[64],
-                             jpeg_huff_t *dc_ht, jpeg_huff_t *ac_ht,
-                             int16_t *dc_pred, const int16_t qt[64]) {
+static int jpeg_decode_block(jpeg_ctx_t *ctx,
+                             int16_t block[64],
+                             jpeg_huff_t *dc_ht,
+                             jpeg_huff_t *ac_ht,
+                             int16_t *dc_pred,
+                             const int16_t qt[64]) {
     memset(block, 0, sizeof(int16_t) * 64);
 
     // DC coefficient
@@ -1162,7 +1175,7 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx, int16_t block[64],
 
 // AAN (Arai, Agui, Nakajima) integer IDCT
 // Fixed-point: 12-bit fractional precision
-#define JPEG_FIX_1  4096
+#define JPEG_FIX_1 4096
 #define JPEG_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
 #define JPEG_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 
@@ -1173,8 +1186,10 @@ static void jpeg_idct_row(int32_t *row) {
     // Even part
     int32_t s0 = x0 + x4;
     int32_t s1 = x0 - x4;
-    int32_t s2 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int32_t s3 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int32_t s2 =
+        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int32_t s3 =
+        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
     int32_t e0 = s0 + s3;
     int32_t e1 = s1 + s2;
@@ -1216,8 +1231,10 @@ static void jpeg_idct_col(int32_t *workspace, int col) {
 
     int32_t s0 = x0 + x4;
     int32_t s1 = x0 - x4;
-    int32_t s2 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int32_t s3 = JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int32_t s2 =
+        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int32_t s3 =
+        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
     int32_t e0 = s0 + s3;
     int32_t e1 = s1 + s2;
@@ -1526,8 +1543,11 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                             // Decode each block in this component's MCU contribution
                             for (int bv = 0; bv < v_samp; bv++) {
                                 for (int bh = 0; bh < h_samp; bh++) {
-                                    if (jpeg_decode_block(&ctx, block, &ctx.huff[dc_idx],
-                                                          &ctx.huff[ac_idx], &ctx.dc_pred[ci],
+                                    if (jpeg_decode_block(&ctx,
+                                                          block,
+                                                          &ctx.huff[dc_idx],
+                                                          &ctx.huff[ac_idx],
+                                                          &ctx.dc_pred[ci],
                                                           ctx.qt[qt_idx]) != 0)
                                         goto jpeg_fail;
 
@@ -1560,9 +1580,9 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                     for (int y = 0; y < ctx.height; y++) {
                         for (int x = 0; x < ctx.width; x++) {
                             uint8_t gray = comp_data[0][y * comp_stride + x];
-                            pixels->data[y * ctx.width + x] =
-                                ((uint32_t)gray << 24) | ((uint32_t)gray << 16) |
-                                ((uint32_t)gray << 8) | 0xFF;
+                            pixels->data[y * ctx.width + x] = ((uint32_t)gray << 24) |
+                                                              ((uint32_t)gray << 16) |
+                                                              ((uint32_t)gray << 8) | 0xFF;
                         }
                     }
                 } else if (ctx.num_components >= 3) {
@@ -1586,10 +1606,9 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                             int g = yy_val - ((cb_val * 88 + cr_val * 183) >> 8);
                             int b = yy_val + ((cb_val * 454) >> 8);
 
-                            pixels->data[y * ctx.width + x] =
-                                ((uint32_t)jpeg_clamp(r) << 24) |
-                                ((uint32_t)jpeg_clamp(g) << 16) |
-                                ((uint32_t)jpeg_clamp(b) << 8) | 0xFF;
+                            pixels->data[y * ctx.width + x] = ((uint32_t)jpeg_clamp(r) << 24) |
+                                                              ((uint32_t)jpeg_clamp(g) << 16) |
+                                                              ((uint32_t)jpeg_clamp(b) << 8) | 0xFF;
                         }
                     }
                 }
@@ -1606,25 +1625,26 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                         size_t tiff_len = data_len - 6;
                         if (tiff_len >= 8) {
                             int big = (tiff[0] == 'M' && tiff[1] == 'M');
-                            uint32_t ifd_off = big
-                                ? ((uint32_t)tiff[4] << 24 | (uint32_t)tiff[5] << 16 |
-                                   (uint32_t)tiff[6] << 8 | tiff[7])
-                                : ((uint32_t)tiff[7] << 24 | (uint32_t)tiff[6] << 16 |
-                                   (uint32_t)tiff[5] << 8 | tiff[4]);
+                            uint32_t ifd_off =
+                                big ? ((uint32_t)tiff[4] << 24 | (uint32_t)tiff[5] << 16 |
+                                       (uint32_t)tiff[6] << 8 | tiff[7])
+                                    : ((uint32_t)tiff[7] << 24 | (uint32_t)tiff[6] << 16 |
+                                       (uint32_t)tiff[5] << 8 | tiff[4]);
                             if (ifd_off + 2 <= tiff_len) {
-                                uint16_t count = big
-                                    ? (uint16_t)((tiff[ifd_off] << 8) | tiff[ifd_off + 1])
-                                    : (uint16_t)(tiff[ifd_off] | (tiff[ifd_off + 1] << 8));
+                                uint16_t count =
+                                    big ? (uint16_t)((tiff[ifd_off] << 8) | tiff[ifd_off + 1])
+                                        : (uint16_t)(tiff[ifd_off] | (tiff[ifd_off + 1] << 8));
                                 for (int ei = 0; ei < count; ei++) {
                                     size_t entry = ifd_off + 2 + (size_t)ei * 12;
-                                    if (entry + 12 > tiff_len) break;
-                                    uint16_t tag = big
-                                        ? (uint16_t)((tiff[entry] << 8) | tiff[entry + 1])
-                                        : (uint16_t)(tiff[entry] | (tiff[entry + 1] << 8));
+                                    if (entry + 12 > tiff_len)
+                                        break;
+                                    uint16_t tag =
+                                        big ? (uint16_t)((tiff[entry] << 8) | tiff[entry + 1])
+                                            : (uint16_t)(tiff[entry] | (tiff[entry + 1] << 8));
                                     if (tag == 0x0112) { // Orientation
-                                        exif_orientation = big
-                                            ? (int)((tiff[entry + 8] << 8) | tiff[entry + 9])
-                                            : (int)(tiff[entry + 8] | (tiff[entry + 9] << 8));
+                                        exif_orientation =
+                                            big ? (int)((tiff[entry + 8] << 8) | tiff[entry + 9])
+                                                : (int)(tiff[entry + 8] | (tiff[entry + 9] << 8));
                                         break;
                                     }
                                 }
@@ -1641,22 +1661,41 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
     if (pixels && exif_orientation > 1 && exif_orientation <= 8) {
         rt_pixels_impl *rotated = NULL;
         switch (exif_orientation) {
-            case 2: rotated = (rt_pixels_impl *)rt_pixels_flip_h(pixels); break;
-            case 3: rotated = (rt_pixels_impl *)rt_pixels_rotate_180(pixels); break;
-            case 4: rotated = (rt_pixels_impl *)rt_pixels_flip_v(pixels); break;
+            case 2:
+                rotated = (rt_pixels_impl *)rt_pixels_flip_h(pixels);
+                break;
+            case 3:
+                rotated = (rt_pixels_impl *)rt_pixels_rotate_180(pixels);
+                break;
+            case 4:
+                rotated = (rt_pixels_impl *)rt_pixels_flip_v(pixels);
+                break;
             case 5: {
                 void *t = rt_pixels_rotate_cw(pixels);
-                if (t) { rotated = (rt_pixels_impl *)rt_pixels_flip_h(t); rt_obj_release_check0(t); rt_obj_free(t); }
+                if (t) {
+                    rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
+                    rt_obj_release_check0(t);
+                    rt_obj_free(t);
+                }
                 break;
             }
-            case 6: rotated = (rt_pixels_impl *)rt_pixels_rotate_cw(pixels); break;
+            case 6:
+                rotated = (rt_pixels_impl *)rt_pixels_rotate_cw(pixels);
+                break;
             case 7: {
                 void *t = rt_pixels_rotate_ccw(pixels);
-                if (t) { rotated = (rt_pixels_impl *)rt_pixels_flip_h(t); rt_obj_release_check0(t); rt_obj_free(t); }
+                if (t) {
+                    rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
+                    rt_obj_release_check0(t);
+                    rt_obj_free(t);
+                }
                 break;
             }
-            case 8: rotated = (rt_pixels_impl *)rt_pixels_rotate_ccw(pixels); break;
-            default: break;
+            case 8:
+                rotated = (rt_pixels_impl *)rt_pixels_rotate_ccw(pixels);
+                break;
+            default:
+                break;
         }
         if (rotated) {
             // Original pixels will be GC'd; return the rotated version

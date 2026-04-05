@@ -31,17 +31,17 @@
 #include "InstallerStubGen.hpp"
 #include "LnkWriter.hpp"
 #include "PEBuilder.hpp"
+#include "PackageConfig.hpp"
 #include "PkgDeflate.hpp"
 #include "PkgGzip.hpp"
-#include "PkgUtils.hpp"
 #include "PkgPNG.hpp"
+#include "PkgUtils.hpp"
 #include "PkgVerify.hpp"
 #include "PlistGenerator.hpp"
 #include "TarWriter.hpp"
+#include "WindowsPackageBuilder.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
-#include "PackageConfig.hpp"
-#include "WindowsPackageBuilder.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -957,8 +957,7 @@ TEST(InstallerStub, GeneratesValidPE) {
     layout.overlayFileOffset = 0x400;
     layout.installDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
     layout.uninstallDirectories = layout.installDirectories;
-    layout.installFiles.push_back(
-        {WindowsInstallRoot::InstallDir, "testapp.exe", 0x80, 16});
+    layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x80, 16});
     auto stub = buildInstallerStub(layout, "x64");
 
     // Should produce non-empty .text and imports
@@ -985,8 +984,7 @@ TEST(InstallerStub, UninstallerGeneratesValidPE) {
     layout.publisher = "Viper";
     layout.identifier = "org.viper.testapp";
     layout.uninstallDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
-    layout.uninstallFiles.push_back(
-        {WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
+    layout.uninstallFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
     auto stub = buildUninstallerStub(layout, "x64");
 
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
@@ -1015,8 +1013,7 @@ TEST(InstallerStub, ARM64UsesX64Bootstrap) {
 
 TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     namespace fs = std::filesystem;
-    const fs::path tmpRoot =
-        fs::temp_directory_path() / "viper_packaging_windows_builder_test";
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_builder_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets" / "themes");
 

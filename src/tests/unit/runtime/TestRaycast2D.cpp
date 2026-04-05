@@ -5,10 +5,10 @@
 #include "tests/TestHarness.hpp"
 
 extern "C" {
-int8_t rt_collision_line_rect(double x1, double y1, double x2, double y2,
-                              double rx, double ry, double rw, double rh);
-int8_t rt_collision_line_circle(double x1, double y1, double x2, double y2,
-                                double cx, double cy, double r);
+int8_t rt_collision_line_rect(
+    double x1, double y1, double x2, double y2, double rx, double ry, double rw, double rh);
+int8_t rt_collision_line_circle(
+    double x1, double y1, double x2, double y2, double cx, double cy, double r);
 }
 
 TEST(Raycast, LineRectHit) {
@@ -37,4 +37,6 @@ TEST(Raycast, LineCircleTangent) {
     EXPECT_TRUE(rt_collision_line_circle(0, 3, 10, 3, 5, 0, 3));
 }
 
-int main() { return viper_test::run_all_tests(); }
+int main() {
+    return viper_test::run_all_tests();
+}

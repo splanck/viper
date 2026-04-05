@@ -27,9 +27,9 @@
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "viper/il/io/FormatUtils.hpp"
 
-#include <cstdint>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <optional>

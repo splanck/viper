@@ -36,9 +36,9 @@
 
 /// @brief Pixels implementation structure.
 typedef struct rt_pixels_impl {
-    int64_t width;  ///< Width in pixels.
-    int64_t height; ///< Height in pixels.
-    uint32_t *data; ///< Pixel storage (RGBA, row-major).
+    int64_t width;       ///< Width in pixels.
+    int64_t height;      ///< Height in pixels.
+    uint32_t *data;      ///< Pixel storage (RGBA, row-major).
     uint64_t generation; ///< Monotonic content version for GPU caches.
 } rt_pixels_impl;
 

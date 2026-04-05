@@ -643,12 +643,12 @@ static void test_native_wide_index() {
 
     BytecodeVM vm;
     for (uint32_t i = 0; i <= 256; ++i) {
-        vm.registerNativeHandler(
-            "native_" + std::to_string(i), [i](BCSlot *args, uint32_t argCount, BCSlot *result) {
-                assert(argCount == 0);
-                (void)args;
-                result->i64 = static_cast<int64_t>(i);
-            });
+        vm.registerNativeHandler("native_" + std::to_string(i),
+                                 [i](BCSlot *args, uint32_t argCount, BCSlot *result) {
+                                     assert(argCount == 0);
+                                     (void)args;
+                                     result->i64 = static_cast<int64_t>(i);
+                                 });
     }
 
     vm.load(&bcModule);

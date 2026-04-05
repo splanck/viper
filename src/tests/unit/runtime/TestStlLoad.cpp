@@ -96,16 +96,15 @@ TEST(StlLoadTest, BinaryOneTriangle) {
 }
 
 TEST(StlLoadTest, AsciiOneTriangle) {
-    const char *ascii_stl =
-        "solid test\n"
-        "  facet normal 0 1 0\n"
-        "    outer loop\n"
-        "      vertex 0 0 0\n"
-        "      vertex 1 0 0\n"
-        "      vertex 0 0 1\n"
-        "    endloop\n"
-        "  endfacet\n"
-        "endsolid test\n";
+    const char *ascii_stl = "solid test\n"
+                            "  facet normal 0 1 0\n"
+                            "    outer loop\n"
+                            "      vertex 0 0 0\n"
+                            "      vertex 1 0 0\n"
+                            "      vertex 0 0 1\n"
+                            "    endloop\n"
+                            "  endfacet\n"
+                            "endsolid test\n";
 
     const char *path = write_temp("one_tri_ascii.stl", ascii_stl, strlen(ascii_stl));
     void *rts = rt_const_cstr(path);

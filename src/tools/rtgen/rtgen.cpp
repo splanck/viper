@@ -808,8 +808,7 @@ static std::string relativePathString(const fs::path &path, const fs::path &base
 }
 
 static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclarations(
-    const fs::path &runtimeDir,
-    const fs::path &repoRoot) {
+    const fs::path &runtimeDir, const fs::path &repoRoot) {
     std::unordered_map<std::string, RuntimePrototype> result;
     if (!fs::exists(runtimeDir))
         return result;
@@ -871,8 +870,8 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
     return result;
 }
 
-static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(const fs::path &runtimeDir,
-                                                                           const fs::path &repoRoot) {
+static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
+    const fs::path &runtimeDir, const fs::path &repoRoot) {
     std::unordered_map<std::string, CSignature> result;
     auto decls = loadRuntimeHeaderDeclarations(runtimeDir, repoRoot);
     for (auto &[symbol, proto] : decls) {
@@ -928,7 +927,8 @@ static std::string fileHeader(const std::string &filename, const std::string &pu
     return out.str();
 }
 
-static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state, const std::string &idOrCanonical) {
+static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state,
+                                             const std::string &idOrCanonical) {
     if (auto it = state.func_by_id.find(idOrCanonical); it != state.func_by_id.end())
         return &state.functions[it->second];
     if (auto it = state.func_by_canonical.find(idOrCanonical); it != state.func_by_canonical.end())
@@ -1052,9 +1052,8 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
                 }
             }
             if (!hasCtorMethod) {
-                if (const auto *ctorFunc = resolveRuntimeFunc(state, cls.ctor_id.empty()
-                                                                     ? outClass.ctorCanonical
-                                                                     : cls.ctor_id)) {
+                if (const auto *ctorFunc = resolveRuntimeFunc(
+                        state, cls.ctor_id.empty() ? outClass.ctorCanonical : cls.ctor_id)) {
                     ResolvedRuntimeMethod ctorMethod;
                     ctorMethod.name = lastSegment(ctorFunc->canonical);
                     ctorMethod.signature = ctorFunc->signature;
@@ -1131,7 +1130,8 @@ static void scanMacroCalls(const std::string &text,
             }
         }
         if (depth != 0) {
-            std::cerr << "error: unterminated " << macroName << " macro in runtime surface policy\n";
+            std::cerr << "error: unterminated " << macroName
+                      << " macro in runtime surface policy\n";
             std::exit(1);
         }
 
@@ -1921,17 +1921,16 @@ static int runAudit(const ParseState &state,
             continue;
 
         addUnclassifiedFinding("unclassified runtime header symbol " + symbol + " declared in " +
-                               proto.headerPath +
-                               " is not represented in runtime.def or policy");
+                               proto.headerPath + " is not represented in runtime.def or policy");
     }
 
     std::sort(errors.begin(), errors.end());
     std::sort(headerSyncFindings.begin(), headerSyncFindings.end());
     std::sort(unclassifiedFindings.begin(), unclassifiedFindings.end());
 
-    std::cout << "rtgen audit: " << state.functions.size() << " functions, "
-              << state.aliases.size() << " aliases, " << state.classes.size() << " classes, "
-              << headerDecls.size() << " header declarations\n";
+    std::cout << "rtgen audit: " << state.functions.size() << " functions, " << state.aliases.size()
+              << " aliases, " << state.classes.size() << " classes, " << headerDecls.size()
+              << " header declarations\n";
 
     if (!summaryOnly) {
         for (const auto &finding : headerSyncFindings)
@@ -1943,8 +1942,8 @@ static int runAudit(const ParseState &state,
     }
 
     if (strictHeaderSync && !headerSyncFindings.empty()) {
-        std::cerr << "error: strict header sync mode is enabled and "
-                  << headerSyncFindings.size() << " runtime.def/header mismatch(es) were found\n";
+        std::cerr << "error: strict header sync mode is enabled and " << headerSyncFindings.size()
+                  << " runtime.def/header mismatch(es) were found\n";
         return 1;
     }
     if (strictUnclassified && !unclassifiedFindings.empty()) {
@@ -1978,8 +1977,9 @@ static int runAudit(const ParseState &state,
 
 static void printUsage(const char *prog) {
     std::cerr << "Usage: " << prog << " <input.def> <output_dir>\n";
-    std::cerr << "       " << prog
-              << " --audit [--strict-header-sync] [--strict-unclassified] [--summary-only] <input.def>\n";
+    std::cerr
+        << "       " << prog
+        << " --audit [--strict-header-sync] [--strict-unclassified] [--summary-only] <input.def>\n";
     std::cerr << "\n";
     std::cerr << "Generates runtime registry .inc files from runtime.def\n";
 }

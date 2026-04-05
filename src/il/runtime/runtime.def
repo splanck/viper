@@ -1190,6 +1190,7 @@ RT_FUNC(ExecLastExitCode,rt_exec_last_exit_code,"Viper.Exec.LastExitCode", "i64(
 // GRAPHICS - CANVAS
 //=============================================================================
 
+RT_FUNC(CanvasIsAvailable, rt_canvas_is_available, "Viper.Graphics.Canvas.IsAvailable", "i1()")
 RT_FUNC(CanvasBox,         rt_canvas_box,          "Viper.Graphics.Canvas.Box",             "void(obj,i64,i64,i64,i64,i64)")
 RT_FUNC(CanvasClear,       rt_canvas_clear,        "Viper.Graphics.Canvas.Clear",           "void(obj,i64)")
 RT_FUNC(CanvasDisc,        rt_canvas_disc,         "Viper.Graphics.Canvas.Disc",            "void(obj,i64,i64,i64,i64)")
@@ -2444,6 +2445,7 @@ RT_FUNC(AppGetDroppedFile,         rt_app_get_dropped_file,         "Viper.GUI.A
 // SOUND - AUDIO SYSTEM
 //=============================================================================
 
+RT_FUNC(AudioIsAvailable,      rt_audio_is_available,      "Viper.Sound.Audio.IsAvailable",      "i1()")
 RT_FUNC(AudioInit,             rt_audio_init,             "Viper.Sound.Audio.Init",             "i64()")
 RT_FUNC(AudioShutdown,         rt_audio_shutdown,         "Viper.Sound.Audio.Shutdown",         "void()")
 RT_FUNC(AudioSetMasterVolume,  rt_audio_set_master_volume, "Viper.Sound.Audio.SetMasterVolume", "void(i64)")
@@ -6122,6 +6124,7 @@ RT_CLASS_END()
 
 // Viper.Graphics.Canvas - drawing surface
 RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
+    RT_METHOD("IsAvailable", "i1()", CanvasIsAvailable)
     RT_PROP("DeltaTime", "i64", CanvasGetDeltaTime, none)
     RT_PROP("Height", "i64", CanvasHeight, none)
     RT_PROP("ShouldClose", "i1", CanvasShouldClose, none)
@@ -7018,6 +7021,7 @@ RT_CLASS_END()
 
 // Viper.Sound.Audio - audio system control (static class)
 RT_CLASS_BEGIN("Viper.Sound.Audio", Audio, "obj", none)
+    RT_METHOD("IsAvailable", "i1()", AudioIsAvailable)
     RT_METHOD("Init", "i64()", AudioInit)
     RT_METHOD("Shutdown", "void()", AudioShutdown)
     RT_METHOD("SetMasterVolume", "void(i64)", AudioSetMasterVolume)

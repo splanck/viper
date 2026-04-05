@@ -36,8 +36,7 @@ static void test_snapshot_includes_advanced_effects(void) {
     EXPECT_TRUE(snapshot.dof_focus_distance == 12.0f && snapshot.dof_aperture == 2.5f &&
                     snapshot.dof_max_blur == 4.0f,
                 "Snapshot includes DOF parameters");
-    EXPECT_TRUE(snapshot.motion_blur_enabled == 1,
-                "Snapshot includes motion-blur enable flag");
+    EXPECT_TRUE(snapshot.motion_blur_enabled == 1, "Snapshot includes motion-blur enable flag");
     EXPECT_TRUE(snapshot.motion_blur_intensity == 0.7f && snapshot.motion_blur_samples == 5,
                 "Snapshot includes motion-blur parameters");
 }

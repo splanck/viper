@@ -42,7 +42,7 @@
 #include <string.h>
 
 // Forward declarations
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 #define AES_STR_MAGIC0 'V'
 #define AES_STR_MAGIC1 'A'
@@ -906,7 +906,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     memcpy(out + 8, salt, sizeof(salt));
     memcpy(out + 24, nonce, sizeof(nonce));
 
-    cipher_len = rt_aes128_gcm_encrypt(key, nonce, NULL, 0, data_cstr, plain_len, out + AES_STR_HEADER_LEN);
+    cipher_len =
+        rt_aes128_gcm_encrypt(key, nonce, NULL, 0, data_cstr, plain_len, out + AES_STR_HEADER_LEN);
     if (cipher_len == 0 && plain_len != 0) {
         aes_secure_zero(key, sizeof(key));
         aes_secure_zero(salt, sizeof(salt));

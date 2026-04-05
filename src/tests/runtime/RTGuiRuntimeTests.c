@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_gui.h"
 #include "../../runtime/graphics/rt_gui_internal.h"
+#include "rt_gui.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -258,7 +258,8 @@ static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
     assert(app.command_palette_count == 1);
     assert(app.command_palettes[0] != NULL);
 
-    rt_shortcuts_register(rt_const_cstr("palette"), rt_const_cstr("Ctrl+Shift+P"), rt_const_cstr(""));
+    rt_shortcuts_register(
+        rt_const_cstr("palette"), rt_const_cstr("Ctrl+Shift+P"), rt_const_cstr(""));
     assert(app.shortcut_count == 1);
     assert(app.shortcuts != NULL);
 

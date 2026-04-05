@@ -912,10 +912,23 @@ void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
     btn->border_color = color;
 }
 
-int64_t rt_gamebutton_get_x(void *ptr) { return ptr ? ((rt_gamebutton_impl *)ptr)->x : 0; }
-int64_t rt_gamebutton_get_y(void *ptr) { return ptr ? ((rt_gamebutton_impl *)ptr)->y : 0; }
-void rt_gamebutton_set_x(void *ptr, int64_t v) { if (ptr) ((rt_gamebutton_impl *)ptr)->x = v; }
-void rt_gamebutton_set_y(void *ptr, int64_t v) { if (ptr) ((rt_gamebutton_impl *)ptr)->y = v; }
+int64_t rt_gamebutton_get_x(void *ptr) {
+    return ptr ? ((rt_gamebutton_impl *)ptr)->x : 0;
+}
+
+int64_t rt_gamebutton_get_y(void *ptr) {
+    return ptr ? ((rt_gamebutton_impl *)ptr)->y : 0;
+}
+
+void rt_gamebutton_set_x(void *ptr, int64_t v) {
+    if (ptr)
+        ((rt_gamebutton_impl *)ptr)->x = v;
+}
+
+void rt_gamebutton_set_y(void *ptr, int64_t v) {
+    if (ptr)
+        ((rt_gamebutton_impl *)ptr)->y = v;
+}
 
 void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     if (!ptr || !canvas)

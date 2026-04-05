@@ -22,10 +22,10 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include "rt_postfx3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
-#include "rt_postfx3d.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -36,8 +36,7 @@
 // Objective-C wrapper to hold Metal objects under ARC
 //=============================================================================
 
-@interface VGFXMetalContext : NSObject
-{
+@interface VGFXMetalContext : NSObject {
   @public
     float _view[16];
     float _projection[16];
@@ -353,7 +352,8 @@ static NSString *metal_shader_source =
      "    if (obj.flags0.y == 0)\n"
      "        prevSkinnedPos = float4(prevPos, 1.0);\n"
      "    float4x4 prevModel = obj.flags1.x != 0 ? obj.prevModelMatrix : obj.modelMatrix;\n"
-     "    float hasHistory = (obj.flags1.x != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : 0.0;\n"
+     "    float hasHistory = (obj.flags1.x != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
+     "0.0;\n"
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
      "                       normalize(skinnedNormal),\n"
@@ -404,7 +404,8 @@ static NSString *metal_shader_source =
      "    if (obj.flags0.y == 0)\n"
      "        prevSkinnedPos = float4(prevPos, 1.0);\n"
      "    float4x4 prevModel = obj.flags1.z != 0 ? inst.prevModelMatrix : inst.modelMatrix;\n"
-     "    float hasHistory = (obj.flags1.z != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : 0.0;\n"
+     "    float hasHistory = (obj.flags1.z != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
+     "0.0;\n"
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
      "                       normalize(skinnedNormal),\n"
@@ -478,10 +479,14 @@ static NSString *metal_shader_source =
      "        float wsum = sp.r + sp.g + sp.b + sp.a;\n"
      "        if (wsum > 0.001) sp /= wsum;\n"
      "        float3 blended = float3(0);\n"
-     "        if (sp.r > 0.001) blended += splatLayer0.sample(texSampler, in.uv * material.splatScales.x).rgb * sp.r;\n"
-     "        if (sp.g > 0.001) blended += splatLayer1.sample(texSampler, in.uv * material.splatScales.y).rgb * sp.g;\n"
-     "        if (sp.b > 0.001) blended += splatLayer2.sample(texSampler, in.uv * material.splatScales.z).rgb * sp.b;\n"
-     "        if (sp.a > 0.001) blended += splatLayer3.sample(texSampler, in.uv * material.splatScales.w).rgb * sp.a;\n"
+     "        if (sp.r > 0.001) blended += splatLayer0.sample(texSampler, in.uv * "
+     "material.splatScales.x).rgb * sp.r;\n"
+     "        if (sp.g > 0.001) blended += splatLayer1.sample(texSampler, in.uv * "
+     "material.splatScales.y).rgb * sp.g;\n"
+     "        if (sp.b > 0.001) blended += splatLayer2.sample(texSampler, in.uv * "
+     "material.splatScales.z).rgb * sp.b;\n"
+     "        if (sp.a > 0.001) blended += splatLayer3.sample(texSampler, in.uv * "
+     "material.splatScales.w).rgb * sp.a;\n"
      "        baseColor = blended * material.diffuseColor.rgb;\n"
      "    }\n"
      "    float3 N = normalize(in.normal);\n"
@@ -548,7 +553,8 @@ static NSString *metal_shader_source =
      "            suv.xy = suv.xy * 0.5 + 0.5;\n"
      "            suv.y = 1.0 - suv.y;\n"
      "            if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
-     "                float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z);\n"
+     "                float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
+     "scene.fogParams.z);\n"
      "                atten *= mix(0.15, 1.0, shadow);\n"
      "            }\n"
      "        }\n"
@@ -606,8 +612,7 @@ static NSString *metal_shader_source =
 // Uniform buffer structs (must match shader)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     float m[16];
     float prev_m[16];
     float vp[16];
@@ -616,8 +621,7 @@ typedef struct
     int32_t flags1[4];
 } mtl_per_object_t;
 
-typedef struct
-{
+typedef struct {
     float cp[4];
     float ac[4];
     float fc[4];
@@ -627,8 +631,7 @@ typedef struct
     float shadow_vp[16];
 } mtl_per_scene_t;
 
-typedef struct
-{
+typedef struct {
     int32_t type;
     float _p0, _p1, _p2;
     float dir[4];
@@ -640,8 +643,7 @@ typedef struct
     float outer_cos;
 } mtl_light_t;
 
-typedef struct
-{
+typedef struct {
     float dc[4];
     float sc[4];
     float ec[4];
@@ -653,15 +655,13 @@ typedef struct
     float customParams[8];
 } mtl_per_material_t;
 
-typedef struct
-{
+typedef struct {
     float model[16];
     float normal[16];
     float prev_model[16];
 } mtl_instance_t;
 
-typedef struct
-{
+typedef struct {
     float projection[16];
     float viewRotation[16];
 } mtl_skybox_params_t;
@@ -670,23 +670,20 @@ typedef struct
 // Helpers
 //=============================================================================
 
-static void transpose4x4(const float *src, float *dst)
-{
+static void transpose4x4(const float *src, float *dst) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             dst[c * 4 + r] = src[r * 4 + c];
 }
 
-static void mat4f_mul(const float *a, const float *b, float *out)
-{
+static void mat4f_mul(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
-static void mat4f_identity(float *out)
-{
+static void mat4f_identity(float *out) {
     if (!out)
         return;
     memset(out, 0, sizeof(float) * 16);
@@ -697,22 +694,18 @@ static void mat4f_identity(float *out)
 }
 
 static const float metal_skybox_vertices[] = {
-    -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
-    1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
-    1.0f, -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
-    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
-    -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f,
-    1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
+    1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
+    -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+    -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
+    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
 };
 
-static MTLVertexDescriptor *create_skybox_vertex_descriptor(void)
-{
+static MTLVertexDescriptor *create_skybox_vertex_descriptor(void) {
     MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
     d.attributes[0].format = MTLVertexFormatFloat3;
     d.attributes[0].offset = 0;
@@ -726,8 +719,7 @@ static MTLVertexDescriptor *create_skybox_vertex_descriptor(void)
 static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
                                               int32_t w,
                                               int32_t h,
-                                              MTLTextureUsage usage)
-{
+                                              MTLTextureUsage usage) {
     MTLTextureDescriptor *td;
     if (!ctx || !ctx.device || w <= 0 || h <= 0)
         return nil;
@@ -743,8 +735,7 @@ static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
 static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
                                               int32_t w,
                                               int32_t h,
-                                              MTLTextureUsage usage)
-{
+                                              MTLTextureUsage usage) {
     MTLTextureDescriptor *td;
     if (!ctx || !ctx.device || w <= 0 || h <= 0)
         return nil;
@@ -759,8 +750,7 @@ static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
 
 static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContext *ctx,
                                                                  BOOL loadExistingColor,
-                                                                 BOOL loadExistingDepth)
-{
+                                                                 BOOL loadExistingDepth) {
     MTLRenderPassDescriptor *rp;
     id<MTLTexture> color;
     id<MTLTexture> motion;
@@ -776,21 +766,17 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
 
     rp = [MTLRenderPassDescriptor renderPassDescriptor];
     rp.colorAttachments[0].texture = color;
-    rp.colorAttachments[0].loadAction =
-        loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
+    rp.colorAttachments[0].loadAction = loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
     rp.colorAttachments[0].storeAction = MTLStoreActionStore;
-    rp.colorAttachments[0].clearColor =
-        MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
+    rp.colorAttachments[0].clearColor = MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
 
     rp.colorAttachments[1].texture = motion;
-    rp.colorAttachments[1].loadAction =
-        loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
+    rp.colorAttachments[1].loadAction = loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
     rp.colorAttachments[1].storeAction = MTLStoreActionStore;
     rp.colorAttachments[1].clearColor = MTLClearColorMake(0.5, 0.5, 0.0, 1.0);
 
     rp.depthAttachment.texture = depth;
-    rp.depthAttachment.loadAction =
-        loadExistingDepth ? MTLLoadActionLoad : MTLLoadActionClear;
+    rp.depthAttachment.loadAction = loadExistingDepth ? MTLLoadActionLoad : MTLLoadActionClear;
     rp.depthAttachment.storeAction = MTLStoreActionStore;
     rp.depthAttachment.clearDepth = 1.0;
     return rp;
@@ -798,8 +784,7 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
 
 static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
                                       BOOL loadExistingColor,
-                                      BOOL loadExistingDepth)
-{
+                                      BOOL loadExistingDepth) {
     double vw, vh;
     MTLViewport viewport;
     MTLRenderPassDescriptor *rp;
@@ -828,8 +813,7 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
     [ctx.encoder setCullMode:MTLCullModeBack];
 }
 
-static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h)
-{
+static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h) {
     if (!ctx || w <= 0 || h <= 0)
         return;
     ctx.offscreenColor =
@@ -839,11 +823,8 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
     ctx.depthTexture =
         metal_new_depth_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
     if (ctx.postfxPipeline) {
-        ctx.postfxColorTexture =
-            metal_new_color_texture(ctx,
-                                    w,
-                                    h,
-                                    MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+        ctx.postfxColorTexture = metal_new_color_texture(
+            ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
     } else
         ctx.postfxColorTexture = nil;
     ctx.displayTexture = nil;
@@ -852,8 +833,7 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
 static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
                                              const uint8_t *rgba,
                                              int32_t w,
-                                             int32_t h)
-{
+                                             int32_t h) {
     uint8_t *bgra;
     size_t pixel_count;
     if (!tex || !rgba || w <= 0 || h <= 0)
@@ -876,12 +856,8 @@ static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
     return 1;
 }
 
-static int metal_copy_texture_to_rgba(id<MTLTexture> tex,
-                                      uint8_t *dst_rgba,
-                                      int32_t w,
-                                      int32_t h,
-                                      int32_t stride)
-{
+static int metal_copy_texture_to_rgba(
+    id<MTLTexture> tex, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     int32_t copy_w;
     int32_t copy_h;
     if (!tex || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
@@ -894,9 +870,9 @@ static int metal_copy_texture_to_rgba(id<MTLTexture> tex,
         return 0;
 
     [tex getBytes:dst_rgba
-      bytesPerRow:(NSUInteger)stride
-       fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
-      mipmapLevel:0];
+        bytesPerRow:(NSUInteger)stride
+         fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
+        mipmapLevel:0];
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *row = dst_rgba + (size_t)y * (size_t)stride;
@@ -910,8 +886,7 @@ static int metal_copy_texture_to_rgba(id<MTLTexture> tex,
     return 1;
 }
 
-static void metal_update_layer_size(VGFXMetalContext *ctx)
-{
+static void metal_update_layer_size(VGFXMetalContext *ctx) {
     if (!ctx)
         return;
     if (ctx.metalLayer) {
@@ -933,8 +908,7 @@ static void metal_finish_encoding(VGFXMetalContext *ctx) {
     }
 }
 
-static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
-{
+static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted) {
     if (!ctx)
         return;
     metal_finish_encoding(ctx);
@@ -958,8 +932,7 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
     }
 }
 
-static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture)
-{
+static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     vgfx_framebuffer_t fb;
     if (!ctx || !texture || !ctx.vgfxWin)
         return;
@@ -969,8 +942,7 @@ static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTe
     ctx.displayTexture = texture;
 }
 
-static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture)
-{
+static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     NSUInteger copy_w;
     NSUInteger copy_h;
     id<CAMetalDrawable> drawable;
@@ -1009,17 +981,15 @@ static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture)
     return YES;
 }
 
-static id<MTLBuffer> metal_new_shared_buffer(VGFXMetalContext *ctx, const void *bytes, size_t length)
-{
+static id<MTLBuffer> metal_new_shared_buffer(VGFXMetalContext *ctx,
+                                             const void *bytes,
+                                             size_t length) {
     if (!ctx || !bytes || length == 0)
         return nil;
-    return [ctx.device newBufferWithBytes:bytes
-                                   length:length
-                                  options:MTLResourceStorageModeShared];
+    return [ctx.device newBufferWithBytes:bytes length:length options:MTLResourceStorageModeShared];
 }
 
-static void metal_cache_evict_if_needed(VGFXMetalContext *ctx)
-{
+static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
     NSValue *oldestKey = nil;
     VGFXMetalGeometryCacheEntry *oldestEntry = nil;
 
@@ -1039,8 +1009,7 @@ static void metal_cache_evict_if_needed(VGFXMetalContext *ctx)
 static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
                                        const vgfx3d_draw_cmd_t *cmd,
                                        id<MTLBuffer> *outVB,
-                                       id<MTLBuffer> *outIB)
-{
+                                       id<MTLBuffer> *outIB) {
     if (!outVB || !outIB) {
         return;
     }
@@ -1058,14 +1027,10 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
             !entry.vertexBuffer || !entry.indexBuffer) {
             metal_cache_evict_if_needed(ctx);
             entry = [[VGFXMetalGeometryCacheEntry alloc] init];
-            entry.vertexBuffer =
-                metal_new_shared_buffer(ctx,
-                                        cmd->vertices,
-                                        (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
-            entry.indexBuffer =
-                metal_new_shared_buffer(ctx,
-                                        cmd->indices,
-                                        (size_t)cmd->index_count * sizeof(uint32_t));
+            entry.vertexBuffer = metal_new_shared_buffer(
+                ctx, cmd->vertices, (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
+            entry.indexBuffer = metal_new_shared_buffer(
+                ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
             entry.revision = cmd->geometry_revision;
             entry.vertexCount = cmd->vertex_count;
             entry.indexCount = cmd->index_count;
@@ -1077,14 +1042,13 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         return;
     }
 
-    *outVB =
-        metal_new_shared_buffer(ctx, cmd->vertices, (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
+    *outVB = metal_new_shared_buffer(
+        ctx, cmd->vertices, (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
     *outIB =
         metal_new_shared_buffer(ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
 }
 
-static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx)
-{
+static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
     if (!ctx)
         return nil;
     if (ctx.rttActive && ctx.rttColorTexture)
@@ -1098,8 +1062,7 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx)
 // Vertex descriptor (80-byte vgfx3d_vertex_t)
 //=============================================================================
 
-static MTLVertexDescriptor *create_vertex_descriptor(void)
-{
+static MTLVertexDescriptor *create_vertex_descriptor(void) {
     MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
     d.attributes[0].format = MTLVertexFormatFloat3;
     d.attributes[0].offset = 0;
@@ -1132,20 +1095,16 @@ static MTLVertexDescriptor *create_vertex_descriptor(void)
 // Backend vtable
 //=============================================================================
 
-static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
-{
-    @autoreleasepool
-    {
+static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
+    @autoreleasepool {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-        if (!device)
-        {
+        if (!device) {
             NSLog(@ "[Metal] MTLCreateSystemDefaultDevice returned nil");
             return NULL;
         }
 
         NSView *view = (__bridge NSView *)vgfx_get_native_view(win);
-        if (!view)
-        {
+        if (!view) {
             NSLog(@ "[Metal] vgfx_get_native_view returned nil");
             return NULL;
         }
@@ -1172,8 +1131,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         metal_update_layer_size(ctx);
 
         ctx.commandQueue = [device newCommandQueue];
-        if (!ctx.commandQueue)
-        {
+        if (!ctx.commandQueue) {
             NSLog(@ "[Metal] newCommandQueue returned nil");
             return NULL;
         }
@@ -1186,8 +1144,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
 
         NSError *error = nil;
         ctx.library = [device newLibraryWithSource:metal_shader_source options:nil error:&error];
-        if (!ctx.library)
-        {
+        if (!ctx.library) {
             NSLog(@ "[Metal] Shader error: %@", error);
             return NULL;
         }
@@ -1197,8 +1154,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         id<MTLFunction> vfInstanced = [ctx.library newFunctionWithName:@ "vertex_main_instanced"];
         id<MTLFunction> vfShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
         id<MTLFunction> ff = [ctx.library newFunctionWithName:@ "fragment_main"];
-        if (!vf || !vfInstanced || !vfShadow || !ff)
-        {
+        if (!vf || !vfInstanced || !vfShadow || !ff) {
             NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ ff=%@)",
                   vf,
                   vfInstanced,
@@ -1222,8 +1178,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         pd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
         ctx.pipelineState = [device newRenderPipelineStateWithDescriptor:pd error:&error];
-        if (!ctx.pipelineState)
-        {
+        if (!ctx.pipelineState) {
             NSLog(@ "Metal pipeline error: %@", error);
             return NULL;
         }
@@ -1241,8 +1196,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         ipd.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         ipd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
         ctx.instancedPipelineState = [device newRenderPipelineStateWithDescriptor:ipd error:&error];
-        if (!ctx.instancedPipelineState)
-        {
+        if (!ctx.instancedPipelineState) {
             NSLog(@ "Metal instanced pipeline error: %@", error);
             return NULL;
         }
@@ -1279,9 +1233,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
             sd.magFilter = MTLSamplerMinMagFilterLinear;
             ctx.defaultSampler = [device newSamplerStateWithDescriptor:sd];
 
-            MTLTextureDescriptor *cubeDesc = [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                                                    size:1
-                                                                                               mipmapped:NO];
+            MTLTextureDescriptor *cubeDesc =
+                [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                      size:1
+                                                                 mipmapped:NO];
             cubeDesc.usage = MTLTextureUsageShaderRead;
             cubeDesc.storageMode = MTLStorageModeShared;
             ctx.defaultCubemap = [device newTextureWithDescriptor:cubeDesc];
@@ -1323,8 +1278,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
             spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
             spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
             NSError *shadowErr = nil;
-            ctx.shadowPipeline = [device newRenderPipelineStateWithDescriptor:spd
-                                                                       error:&shadowErr];
+            ctx.shadowPipeline = [device newRenderPipelineStateWithDescriptor:spd error:&shadowErr];
             /* Non-fatal: shadow mapping disabled if pipeline fails */
 
             /* Comparison sampler for shadow lookup */
@@ -1344,227 +1298,256 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
         /* MTL-11: Post-processing fullscreen quad shader + pipeline */
         {
             NSArray<NSString *> *postfxChunks = @[
+                [NSString
+                    stringWithUTF8String:
+                        "#include <metal_stdlib>\n"
+                        "using namespace metal;\n"
+                        "struct FullscreenVert { float4 position [[position]]; float2 uv; };\n"
+                        "struct PostFXParams {\n"
+                        "    float4x4 invViewProjection;\n"
+                        "    float4x4 prevViewProjection;\n"
+                        "    float4 cameraPosition;\n"
+                        "    float2 invResolution;\n"
+                        "    int bloomEnabled;\n"
+                        "    float bloomThreshold;\n"
+                        "    float bloomStrength;\n"
+                        "    int tonemapMode;\n"
+                        "    float tonemapExposure;\n"
+                        "    int fxaaEnabled;\n"
+                        "    int colorGradeEnabled;\n"
+                        "    float cgBright;\n"
+                        "    float cgContrast;\n"
+                        "    float cgSat;\n"
+                        "    int vignetteEnabled;\n"
+                        "    float vigRadius;\n"
+                        "    float vigSoftness;\n"
+                        "    int ssaoEnabled;\n"
+                        "    float ssaoRadius;\n"
+                        "    float ssaoIntensity;\n"
+                        "    int ssaoSamples;\n"
+                        "    int dofEnabled;\n"
+                        "    float dofFocusDist;\n"
+                        "    float dofAperture;\n"
+                        "    float dofMaxBlur;\n"
+                        "    int motionBlurEnabled;\n"
+                        "    float motionBlurIntensity;\n"
+                        "    int motionBlurSamples;\n"
+                        "    float _pad;\n"
+                        "};\n"
+                        "vertex FullscreenVert fullscreen_vs(uint vid [[vertex_id]]) {\n"
+                        "    float2 positions[4] = {float2(-1,-1), float2(1,-1), float2(-1,1), "
+                        "float2(1,1)};\n"
+                        "    float2 uvs[4] = {float2(0,1), float2(1,1), float2(0,0), "
+                        "float2(1,0)};\n"
+                        "    FullscreenVert out;\n"
+                        "    out.position = float4(positions[vid], 0, 1);\n"
+                        "    out.uv = uvs[vid];\n"
+                        "    return out;\n"
+                        "}\n"],
+                [NSString
+                    stringWithUTF8String:
+                        "float3 sampleScene(texture2d<float> sceneTex, sampler s, float2 uv) { "
+                        "return sceneTex.sample(s, uv).rgb; }\n"
+                        "float sampleDepth(depth2d<float> depthTex, sampler s, float2 uv) { return "
+                        "depthTex.sample(s, uv); }\n"
+                        "float3 sampleMotion(texture2d<float> motionTex, sampler s, float2 uv) { "
+                        "return motionTex.sample(s, uv).rgb; }\n"
+                        "float3 reconstructWorld(constant PostFXParams &p, float2 uv, float depth) "
+                        "{\n"
+                        "    float4 clip = float4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+                        "    float4 world = p.invViewProjection * clip;\n"
+                        "    return world.xyz / max(world.w, 0.0001);\n"
+                        "}\n"
+                        "float computeSsao(constant PostFXParams &p, depth2d<float> depthTex, "
+                        "sampler s, float2 uv, float centerDepth) {\n"
+                        "    float radius = max(p.ssaoRadius, 0.0001) * max(p.invResolution.x, "
+                        "p.invResolution.y) * 120.0;\n"
+                        "    float2 offsets[8] = {float2(1.0, 0.0), float2(-1.0, 0.0), float2(0.0, "
+                        "1.0), float2(0.0, -1.0),\n"
+                        "                         float2(0.707, 0.707), float2(-0.707, 0.707), "
+                        "float2(0.707, -0.707), float2(-0.707, -0.707)};\n"
+                        "    int count = clamp(p.ssaoSamples, 1, 8);\n"
+                        "    float occ = 0.0;\n"
+                        "    for (int i = 0; i < count; i++) {\n"
+                        "        float sd = sampleDepth(depthTex, s, uv + offsets[i] * radius);\n"
+                        "        occ += max(sd - centerDepth, 0.0);\n"
+                        "    }\n"
+                        "    return 1.0 - clamp((occ / float(count)) * p.ssaoIntensity * 32.0, "
+                        "0.0, 1.0);\n"
+                        "}\n"
+                        "float2 cameraVelocity(constant PostFXParams &p, float2 uv, float3 "
+                        "worldPos) {\n"
+                        "    float4 prevClip = p.prevViewProjection * float4(worldPos, 1.0);\n"
+                        "    float2 prevUv = prevClip.xy / max(prevClip.w, 0.0001) * 0.5 + 0.5;\n"
+                        "    return uv - prevUv;\n"
+                        "}\n"],
+                [NSString
+                    stringWithUTF8String:
+                        "float3 applyMotionBlur(constant PostFXParams &p,\n"
+                        "                       texture2d<float> sceneTex,\n"
+                        "                       texture2d<float> motionTex,\n"
+                        "                       depth2d<float> depthTex,\n"
+                        "                       sampler s,\n"
+                        "                       float2 uv,\n"
+                        "                       float3 color,\n"
+                        "                       float3 worldPos) {\n"
+                        "    float3 motionSample = sampleMotion(motionTex, s, uv);\n"
+                        "    float2 velocity = motionSample.xy * 2.0 - 1.0;\n"
+                        "    if (motionSample.z < 0.5)\n"
+                        "        velocity = cameraVelocity(p, uv, worldPos);\n"
+                        "    velocity *= p.motionBlurIntensity;\n"
+                        "    if (length(velocity) < 0.0005)\n"
+                        "        return color;\n"
+                        "    int taps = clamp(p.motionBlurSamples, 2, 8);\n"
+                        "    float3 acc = float3(0.0);\n"
+                        "    float weight = 0.0;\n"
+                        "    for (int i = 0; i < taps; i++) {\n"
+                        "        float t = (float(i) / float(taps - 1)) - 0.5;\n"
+                        "        acc += sampleScene(sceneTex, s, uv + velocity * t);\n"
+                        "        weight += 1.0;\n"
+                        "    }\n"
+                        "    return acc / max(weight, 1.0);\n"
+                        "}\n"
+                        "float3 applyDof(constant PostFXParams &p,\n"
+                        "                texture2d<float> sceneTex,\n"
+                        "                sampler s,\n"
+                        "                float2 uv,\n"
+                        "                float3 color,\n"
+                        "                float3 worldPos) {\n"
+                        "    float dist = length(worldPos - p.cameraPosition.xyz);\n"
+                        "    float blur = clamp(abs(dist - p.dofFocusDist) * max(p.dofAperture, "
+                        "0.0) * 0.02, 0.0, p.dofMaxBlur);\n"
+                        "    if (blur < 0.001)\n"
+                        "        return color;\n"
+                        "    float2 stepUv = p.invResolution * blur;\n"
+                        "    float3 acc = color * 0.4;\n"
+                        "    acc += sampleScene(sceneTex, s, uv + float2(stepUv.x, 0.0)) * 0.15;\n"
+                        "    acc += sampleScene(sceneTex, s, uv - float2(stepUv.x, 0.0)) * 0.15;\n"
+                        "    acc += sampleScene(sceneTex, s, uv + float2(0.0, stepUv.y)) * 0.15;\n"
+                        "    acc += sampleScene(sceneTex, s, uv - float2(0.0, stepUv.y)) * 0.15;\n"
+                        "    return acc;\n"
+                        "}\n"],
                 [NSString stringWithUTF8String:
-                    "#include <metal_stdlib>\n"
-                    "using namespace metal;\n"
-                    "struct FullscreenVert { float4 position [[position]]; float2 uv; };\n"
-                    "struct PostFXParams {\n"
-                    "    float4x4 invViewProjection;\n"
-                    "    float4x4 prevViewProjection;\n"
-                    "    float4 cameraPosition;\n"
-                    "    float2 invResolution;\n"
-                    "    int bloomEnabled;\n"
-                    "    float bloomThreshold;\n"
-                    "    float bloomStrength;\n"
-                    "    int tonemapMode;\n"
-                    "    float tonemapExposure;\n"
-                    "    int fxaaEnabled;\n"
-                    "    int colorGradeEnabled;\n"
-                    "    float cgBright;\n"
-                    "    float cgContrast;\n"
-                    "    float cgSat;\n"
-                    "    int vignetteEnabled;\n"
-                    "    float vigRadius;\n"
-                    "    float vigSoftness;\n"
-                    "    int ssaoEnabled;\n"
-                    "    float ssaoRadius;\n"
-                    "    float ssaoIntensity;\n"
-                    "    int ssaoSamples;\n"
-                    "    int dofEnabled;\n"
-                    "    float dofFocusDist;\n"
-                    "    float dofAperture;\n"
-                    "    float dofMaxBlur;\n"
-                    "    int motionBlurEnabled;\n"
-                    "    float motionBlurIntensity;\n"
-                    "    int motionBlurSamples;\n"
-                    "    float _pad;\n"
-                    "};\n"
-                    "vertex FullscreenVert fullscreen_vs(uint vid [[vertex_id]]) {\n"
-                    "    float2 positions[4] = {float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1)};\n"
-                    "    float2 uvs[4] = {float2(0,1), float2(1,1), float2(0,0), float2(1,0)};\n"
-                    "    FullscreenVert out;\n"
-                    "    out.position = float4(positions[vid], 0, 1);\n"
-                    "    out.uv = uvs[vid];\n"
-                    "    return out;\n"
-                    "}\n"
-                ],
+                              "float3 applyFxaa(constant PostFXParams &p, texture2d<float> "
+                              "sceneTex, sampler s, float2 uv, float3 color) {\n"
+                              "    float3 lv = float3(0.299, 0.587, 0.114);\n"
+                              "    float lumaM = dot(color, lv);\n"
+                              "    float lumaN = dot(sampleScene(sceneTex, s, uv + float2(0.0, "
+                              "-p.invResolution.y)), lv);\n"
+                              "    float lumaS = dot(sampleScene(sceneTex, s, uv + float2(0.0, "
+                              "p.invResolution.y)), lv);\n"
+                              "    float lumaE = dot(sampleScene(sceneTex, s, uv + "
+                              "float2(p.invResolution.x, 0.0)), lv);\n"
+                              "    float lumaW = dot(sampleScene(sceneTex, s, uv + "
+                              "float2(-p.invResolution.x, 0.0)), lv);\n"
+                              "    float edge = fabs(lumaN + lumaS - 2.0 * lumaM) + fabs(lumaE + "
+                              "lumaW - 2.0 * lumaM);\n"
+                              "    if (edge < 0.08)\n"
+                              "        return color;\n"
+                              "    float3 avg = (sampleScene(sceneTex, s, uv + "
+                              "float2(p.invResolution.x, 0.0)) +\n"
+                              "                  sampleScene(sceneTex, s, uv + "
+                              "float2(-p.invResolution.x, 0.0)) +\n"
+                              "                  sampleScene(sceneTex, s, uv + float2(0.0, "
+                              "p.invResolution.y)) +\n"
+                              "                  sampleScene(sceneTex, s, uv + float2(0.0, "
+                              "-p.invResolution.y))) * 0.25;\n"
+                              "    return mix(color, avg, 0.5);\n"
+                              "}\n"],
                 [NSString stringWithUTF8String:
-                    "float3 sampleScene(texture2d<float> sceneTex, sampler s, float2 uv) { return sceneTex.sample(s, uv).rgb; }\n"
-                    "float sampleDepth(depth2d<float> depthTex, sampler s, float2 uv) { return depthTex.sample(s, uv); }\n"
-                    "float3 sampleMotion(texture2d<float> motionTex, sampler s, float2 uv) { return motionTex.sample(s, uv).rgb; }\n"
-                    "float3 reconstructWorld(constant PostFXParams &p, float2 uv, float depth) {\n"
-                    "    float4 clip = float4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
-                    "    float4 world = p.invViewProjection * clip;\n"
-                    "    return world.xyz / max(world.w, 0.0001);\n"
-                    "}\n"
-                    "float computeSsao(constant PostFXParams &p, depth2d<float> depthTex, sampler s, float2 uv, float centerDepth) {\n"
-                    "    float radius = max(p.ssaoRadius, 0.0001) * max(p.invResolution.x, p.invResolution.y) * 120.0;\n"
-                    "    float2 offsets[8] = {float2(1.0, 0.0), float2(-1.0, 0.0), float2(0.0, 1.0), float2(0.0, -1.0),\n"
-                    "                         float2(0.707, 0.707), float2(-0.707, 0.707), float2(0.707, -0.707), float2(-0.707, -0.707)};\n"
-                    "    int count = clamp(p.ssaoSamples, 1, 8);\n"
-                    "    float occ = 0.0;\n"
-                    "    for (int i = 0; i < count; i++) {\n"
-                    "        float sd = sampleDepth(depthTex, s, uv + offsets[i] * radius);\n"
-                    "        occ += max(sd - centerDepth, 0.0);\n"
-                    "    }\n"
-                    "    return 1.0 - clamp((occ / float(count)) * p.ssaoIntensity * 32.0, 0.0, 1.0);\n"
-                    "}\n"
-                    "float2 cameraVelocity(constant PostFXParams &p, float2 uv, float3 worldPos) {\n"
-                    "    float4 prevClip = p.prevViewProjection * float4(worldPos, 1.0);\n"
-                    "    float2 prevUv = prevClip.xy / max(prevClip.w, 0.0001) * 0.5 + 0.5;\n"
-                    "    return uv - prevUv;\n"
-                    "}\n"
-                ],
-                [NSString stringWithUTF8String:
-                    "float3 applyMotionBlur(constant PostFXParams &p,\n"
-                    "                       texture2d<float> sceneTex,\n"
-                    "                       texture2d<float> motionTex,\n"
-                    "                       depth2d<float> depthTex,\n"
-                    "                       sampler s,\n"
-                    "                       float2 uv,\n"
-                    "                       float3 color,\n"
-                    "                       float3 worldPos) {\n"
-                    "    float3 motionSample = sampleMotion(motionTex, s, uv);\n"
-                    "    float2 velocity = motionSample.xy * 2.0 - 1.0;\n"
-                    "    if (motionSample.z < 0.5)\n"
-                    "        velocity = cameraVelocity(p, uv, worldPos);\n"
-                    "    velocity *= p.motionBlurIntensity;\n"
-                    "    if (length(velocity) < 0.0005)\n"
-                    "        return color;\n"
-                    "    int taps = clamp(p.motionBlurSamples, 2, 8);\n"
-                    "    float3 acc = float3(0.0);\n"
-                    "    float weight = 0.0;\n"
-                    "    for (int i = 0; i < taps; i++) {\n"
-                    "        float t = (float(i) / float(taps - 1)) - 0.5;\n"
-                    "        acc += sampleScene(sceneTex, s, uv + velocity * t);\n"
-                    "        weight += 1.0;\n"
-                    "    }\n"
-                    "    return acc / max(weight, 1.0);\n"
-                    "}\n"
-                    "float3 applyDof(constant PostFXParams &p,\n"
-                    "                texture2d<float> sceneTex,\n"
-                    "                sampler s,\n"
-                    "                float2 uv,\n"
-                    "                float3 color,\n"
-                    "                float3 worldPos) {\n"
-                    "    float dist = length(worldPos - p.cameraPosition.xyz);\n"
-                    "    float blur = clamp(abs(dist - p.dofFocusDist) * max(p.dofAperture, 0.0) * 0.02, 0.0, p.dofMaxBlur);\n"
-                    "    if (blur < 0.001)\n"
-                    "        return color;\n"
-                    "    float2 stepUv = p.invResolution * blur;\n"
-                    "    float3 acc = color * 0.4;\n"
-                    "    acc += sampleScene(sceneTex, s, uv + float2(stepUv.x, 0.0)) * 0.15;\n"
-                    "    acc += sampleScene(sceneTex, s, uv - float2(stepUv.x, 0.0)) * 0.15;\n"
-                    "    acc += sampleScene(sceneTex, s, uv + float2(0.0, stepUv.y)) * 0.15;\n"
-                    "    acc += sampleScene(sceneTex, s, uv - float2(0.0, stepUv.y)) * 0.15;\n"
-                    "    return acc;\n"
-                    "}\n"
-                ],
-                [NSString stringWithUTF8String:
-                    "float3 applyFxaa(constant PostFXParams &p, texture2d<float> sceneTex, sampler s, float2 uv, float3 color) {\n"
-                    "    float3 lv = float3(0.299, 0.587, 0.114);\n"
-                    "    float lumaM = dot(color, lv);\n"
-                    "    float lumaN = dot(sampleScene(sceneTex, s, uv + float2(0.0, -p.invResolution.y)), lv);\n"
-                    "    float lumaS = dot(sampleScene(sceneTex, s, uv + float2(0.0, p.invResolution.y)), lv);\n"
-                    "    float lumaE = dot(sampleScene(sceneTex, s, uv + float2(p.invResolution.x, 0.0)), lv);\n"
-                    "    float lumaW = dot(sampleScene(sceneTex, s, uv + float2(-p.invResolution.x, 0.0)), lv);\n"
-                    "    float edge = fabs(lumaN + lumaS - 2.0 * lumaM) + fabs(lumaE + lumaW - 2.0 * lumaM);\n"
-                    "    if (edge < 0.08)\n"
-                    "        return color;\n"
-                    "    float3 avg = (sampleScene(sceneTex, s, uv + float2(p.invResolution.x, 0.0)) +\n"
-                    "                  sampleScene(sceneTex, s, uv + float2(-p.invResolution.x, 0.0)) +\n"
-                    "                  sampleScene(sceneTex, s, uv + float2(0.0, p.invResolution.y)) +\n"
-                    "                  sampleScene(sceneTex, s, uv + float2(0.0, -p.invResolution.y))) * 0.25;\n"
-                    "    return mix(color, avg, 0.5);\n"
-                    "}\n"
-                ],
-                [NSString stringWithUTF8String:
-                    "fragment float4 postfx_fs(\n"
-                    "    FullscreenVert in [[stage_in]],\n"
-                    "    texture2d<float> sceneTex [[texture(0)]],\n"
-                    "    depth2d<float> depthTex [[texture(1)]],\n"
-                    "    texture2d<float> motionTex [[texture(2)]],\n"
-                    "    sampler s [[sampler(0)]],\n"
-                    "    constant PostFXParams &p [[buffer(0)]]) {\n"
-                    "    float3 color = sampleScene(sceneTex, s, in.uv);\n"
-                    "    float depth = sampleDepth(depthTex, s, in.uv);\n"
-                    "    float3 worldPos = reconstructWorld(p, in.uv, depth);\n"
-                    "    if (p.motionBlurEnabled != 0) color = applyMotionBlur(p, sceneTex, motionTex, depthTex, s, in.uv, color, worldPos);\n"
-                    "    if (p.dofEnabled != 0) color = applyDof(p, sceneTex, s, in.uv, color, worldPos);\n"
-                    "    if (p.ssaoEnabled != 0) color *= computeSsao(p, depthTex, s, in.uv, depth);\n"
-                    "    if (p.fxaaEnabled != 0) color = applyFxaa(p, sceneTex, s, in.uv, color);\n"
-                    "    if (p.bloomEnabled) {\n"
-                    "        float br = dot(color, float3(0.2126,0.7152,0.0722));\n"
-                    "        if (br > p.bloomThreshold)\n"
-                    "            color += (color - p.bloomThreshold) * p.bloomStrength;\n"
-                    "    }\n"
-                    "    if (p.tonemapMode == 1) {\n"
-                    "        color *= p.tonemapExposure;\n"
-                    "        color = color / (color + 1.0);\n"
-                    "    }\n"
-                    "    if (p.tonemapMode == 2) {\n"
-                    "        float3 x = color * p.tonemapExposure;\n"
-                        "        color = (x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14);\n"
-                    "    }\n"
-                    "    if (p.colorGradeEnabled) {\n"
-                    "        color = (color - 0.5) * p.cgContrast + 0.5;\n"
-                    "        color += p.cgBright;\n"
-                    "        float luma = dot(color, float3(0.299,0.587,0.114));\n"
-                    "        color = mix(float3(luma), color, p.cgSat);\n"
-                    "    }\n"
-                    "    if (p.vignetteEnabled) {\n"
-                    "        float2 ctr = in.uv - 0.5;\n"
-                    "        float d = length(ctr);\n"
-                    "        float vig = 1.0 - smoothstep(p.vigRadius, p.vigRadius + p.vigSoftness, d);\n"
-                    "        color *= vig;\n"
-                    "    }\n"
-                    "    return float4(color, 1.0);\n"
-                    "}\n"
-                ]
+                              "fragment float4 postfx_fs(\n"
+                              "    FullscreenVert in [[stage_in]],\n"
+                              "    texture2d<float> sceneTex [[texture(0)]],\n"
+                              "    depth2d<float> depthTex [[texture(1)]],\n"
+                              "    texture2d<float> motionTex [[texture(2)]],\n"
+                              "    sampler s [[sampler(0)]],\n"
+                              "    constant PostFXParams &p [[buffer(0)]]) {\n"
+                              "    float3 color = sampleScene(sceneTex, s, in.uv);\n"
+                              "    float depth = sampleDepth(depthTex, s, in.uv);\n"
+                              "    float3 worldPos = reconstructWorld(p, in.uv, depth);\n"
+                              "    if (p.motionBlurEnabled != 0) color = applyMotionBlur(p, "
+                              "sceneTex, motionTex, depthTex, s, in.uv, color, worldPos);\n"
+                              "    if (p.dofEnabled != 0) color = applyDof(p, sceneTex, s, in.uv, "
+                              "color, worldPos);\n"
+                              "    if (p.ssaoEnabled != 0) color *= computeSsao(p, depthTex, s, "
+                              "in.uv, depth);\n"
+                              "    if (p.fxaaEnabled != 0) color = applyFxaa(p, sceneTex, s, "
+                              "in.uv, color);\n"
+                              "    if (p.bloomEnabled) {\n"
+                              "        float br = dot(color, float3(0.2126,0.7152,0.0722));\n"
+                              "        if (br > p.bloomThreshold)\n"
+                              "            color += (color - p.bloomThreshold) * p.bloomStrength;\n"
+                              "    }\n"
+                              "    if (p.tonemapMode == 1) {\n"
+                              "        color *= p.tonemapExposure;\n"
+                              "        color = color / (color + 1.0);\n"
+                              "    }\n"
+                              "    if (p.tonemapMode == 2) {\n"
+                              "        float3 x = color * p.tonemapExposure;\n"
+                              "        color = (x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14);\n"
+                              "    }\n"
+                              "    if (p.colorGradeEnabled) {\n"
+                              "        color = (color - 0.5) * p.cgContrast + 0.5;\n"
+                              "        color += p.cgBright;\n"
+                              "        float luma = dot(color, float3(0.299,0.587,0.114));\n"
+                              "        color = mix(float3(luma), color, p.cgSat);\n"
+                              "    }\n"
+                              "    if (p.vignetteEnabled) {\n"
+                              "        float2 ctr = in.uv - 0.5;\n"
+                              "        float d = length(ctr);\n"
+                              "        float vig = 1.0 - smoothstep(p.vigRadius, p.vigRadius + "
+                              "p.vigSoftness, d);\n"
+                              "        color *= vig;\n"
+                              "    }\n"
+                              "    return float4(color, 1.0);\n"
+                              "}\n"]
             ];
-            NSString *postfxSrc = [postfxChunks componentsJoinedByString:@""];
+            NSString *postfxSrc = [postfxChunks componentsJoinedByString:@ ""];
 
             NSError *pfxErr = nil;
             ctx.postfxLibrary = [device newLibraryWithSource:postfxSrc options:nil error:&pfxErr];
-            if (ctx.postfxLibrary)
-            {
+            if (ctx.postfxLibrary) {
                 id<MTLFunction> pfxVS = [ctx.postfxLibrary newFunctionWithName:@ "fullscreen_vs"];
                 id<MTLFunction> pfxFS = [ctx.postfxLibrary newFunctionWithName:@ "postfx_fs"];
-                if (pfxVS && pfxFS)
-                {
+                if (pfxVS && pfxFS) {
                     MTLRenderPipelineDescriptor *ppd = [[MTLRenderPipelineDescriptor alloc] init];
                     ppd.vertexFunction = pfxVS;
                     ppd.fragmentFunction = pfxFS;
                     ppd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
                     ctx.postfxPipeline = [device newRenderPipelineStateWithDescriptor:ppd
-                                                                               error:&pfxErr];
+                                                                                error:&pfxErr];
                 }
             }
             /* Non-fatal: postfx disabled if pipeline compilation fails */
         }
 
         {
-            NSString *skyboxSrc = @
+            NSString *skyboxSrc =
+                @
                 "#include <metal_stdlib>\n"
-                "using namespace metal;\n"
-                "struct SkyboxIn { float3 position [[attribute(0)]]; };\n"
-                "struct SkyboxOut { float4 position [[position]]; float3 dir; };\n"
-                "struct SkyboxParams { float4x4 projection; float4x4 viewRotation; };\n"
-                "vertex SkyboxOut skybox_vs(SkyboxIn in [[stage_in]], constant SkyboxParams &p [[buffer(0)]]) {\n"
-                "    SkyboxOut out;\n"
-                "    float4 pos = p.projection * p.viewRotation * float4(in.position, 1.0);\n"
-                "    out.position = float4(pos.x, pos.y, pos.w, pos.w);\n"
-                "    out.dir = in.position;\n"
-                "    return out;\n"
-                "}\n"
-                "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], texturecube<float> skyboxTex [[texture(0)]], sampler s [[sampler(0)]]) {\n"
-                "    return skyboxTex.sample(s, normalize(in.dir));\n"
-                "}\n";
+                 "using namespace metal;\n"
+                 "struct SkyboxIn { float3 position [[attribute(0)]]; };\n"
+                 "struct SkyboxOut { float4 position [[position]]; float3 dir; };\n"
+                 "struct SkyboxParams { float4x4 projection; float4x4 viewRotation; };\n"
+                 "vertex SkyboxOut skybox_vs(SkyboxIn in [[stage_in]], constant SkyboxParams &p "
+                 "[[buffer(0)]]) {\n"
+                 "    SkyboxOut out;\n"
+                 "    float4 pos = p.projection * p.viewRotation * float4(in.position, 1.0);\n"
+                 "    out.position = float4(pos.x, pos.y, pos.w, pos.w);\n"
+                 "    out.dir = in.position;\n"
+                 "    return out;\n"
+                 "}\n"
+                 "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], texturecube<float> "
+                 "skyboxTex [[texture(0)]], sampler s [[sampler(0)]]) {\n"
+                 "    return skyboxTex.sample(s, normalize(in.dir));\n"
+                 "}\n";
             NSError *skyErr = nil;
-            id<MTLLibrary> skyLib = [device newLibraryWithSource:skyboxSrc options:nil error:&skyErr];
+            id<MTLLibrary> skyLib = [device newLibraryWithSource:skyboxSrc
+                                                         options:nil
+                                                           error:&skyErr];
             if (skyLib) {
-                id<MTLFunction> skyVS = [skyLib newFunctionWithName:@"skybox_vs"];
-                id<MTLFunction> skyFS = [skyLib newFunctionWithName:@"skybox_fs"];
+                id<MTLFunction> skyVS = [skyLib newFunctionWithName:@ "skybox_vs"];
+                id<MTLFunction> skyFS = [skyLib newFunctionWithName:@ "skybox_fs"];
                 if (skyVS && skyFS) {
                     MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
                     spd.vertexFunction = skyVS;
@@ -1572,13 +1555,13 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
                     spd.vertexDescriptor = create_skybox_vertex_descriptor();
                     spd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
                     spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-                    ctx.skyboxPipeline = [device newRenderPipelineStateWithDescriptor:spd error:&skyErr];
+                    ctx.skyboxPipeline = [device newRenderPipelineStateWithDescriptor:spd
+                                                                                error:&skyErr];
                 }
             }
-            ctx.skyboxVertexBuffer =
-                [device newBufferWithBytes:metal_skybox_vertices
-                                    length:sizeof(metal_skybox_vertices)
-                                   options:MTLResourceStorageModeShared];
+            ctx.skyboxVertexBuffer = [device newBufferWithBytes:metal_skybox_vertices
+                                                         length:sizeof(metal_skybox_vertices)
+                                                        options:MTLResourceStorageModeShared];
         }
 
         metal_recreate_main_targets(ctx, w, h);
@@ -1588,12 +1571,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     }
 }
 
-static void metal_destroy_ctx(void *ctx_ptr)
-{
+static void metal_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge_transfer VGFXMetalContext *)ctx_ptr;
         [ctx.metalLayer removeFromSuperlayer];
         ctx.metalLayer = nil;
@@ -1601,8 +1582,7 @@ static void metal_destroy_ctx(void *ctx_ptr)
     }
 }
 
-static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
-{
+static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
     ctx.clearR = r;
@@ -1610,10 +1590,8 @@ static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
     ctx.clearB = b;
 }
 
-static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
-{
-    @autoreleasepool
-    {
+static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx)
             return;
@@ -1650,14 +1628,12 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
         /* Reuse the command buffer if one is already open (multi-pass frame).
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
          * after an RTT pass will create a fresh one. */
-        if (!ctx.cmdBuf)
-        {
+        if (!ctx.cmdBuf) {
             ctx.cmdBuf = [ctx.commandQueue commandBuffer];
             if (!ctx.cmdBuf)
                 return;
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
-        }
-        else if (!ctx.frameBuffers)
+        } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
         ctx.drawable = nil;
         metal_begin_scene_encoder(ctx, cam->load_existing_color, cam->load_existing_depth);
@@ -1669,8 +1645,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
 
 /// MTL-03: Retrieve or create a cached MTLTexture from a Pixels object pointer.
 /// Cache is keyed by the raw void* (Pixels identity). Conversion is RGBA→BGRA.
-static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr)
-{
+static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr) {
     int32_t tw = 0;
     int32_t th = 0;
     uint8_t *rgba = NULL;
@@ -1706,8 +1681,7 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
     return cached.texture;
 }
 
-static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap)
-{
+static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap) {
     int32_t face_size = 0;
     uint8_t *faces[6];
     uint64_t generation;
@@ -1751,12 +1725,13 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
             bgra[i * 4 + 2] = faces[face][i * 4 + 0];
             bgra[i * 4 + 3] = faces[face][i * 4 + 3];
         }
-        [cached.texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)face_size, (NSUInteger)face_size)
-                          mipmapLevel:0
-                                slice:face
-                            withBytes:bgra
-                          bytesPerRow:(NSUInteger)(face_size * 4)
-                        bytesPerImage:(NSUInteger)(face_size * face_size * 4)];
+        [cached.texture
+            replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)face_size, (NSUInteger)face_size)
+              mipmapLevel:0
+                    slice:face
+                withBytes:bgra
+              bytesPerRow:(NSUInteger)(face_size * 4)
+            bytesPerImage:(NSUInteger)(face_size * face_size * 4)];
         free(bgra);
     }
 
@@ -1775,10 +1750,8 @@ static void metal_submit_draw(void *ctx_ptr,
                               int32_t light_count,
                               const float *ambient,
                               int8_t wireframe,
-                              int8_t backface_cull)
-{
-    @autoreleasepool
-    {
+                              int8_t backface_cull) {
+    @autoreleasepool {
         (void)win;
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
@@ -1790,8 +1763,8 @@ static void metal_submit_draw(void *ctx_ptr,
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
 
         /* MTL-08: Wireframe mode via fill mode toggle */
-        [ctx.encoder setTriangleFillMode:wireframe ? MTLTriangleFillModeLines
-                                                   : MTLTriangleFillModeFill];
+        [ctx.encoder
+            setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
 
         /* Switch depth state: no Z-write for transparent draws */
         if (cmd->alpha < 1.0f)
@@ -1806,8 +1779,7 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* Retain buffers until frame commit — prevents ARC from releasing
          * them before the GPU executes the draw commands. */
-        if (ctx.frameBuffers)
-        {
+        if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
         }
@@ -1816,7 +1788,8 @@ static void metal_submit_draw(void *ctx_ptr,
         mtl_per_object_t obj;
         memset(&obj, 0, sizeof(obj));
         transpose4x4(cmd->model_matrix, obj.m);
-        transpose4x4(cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix, obj.prev_m);
+        transpose4x4(cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix,
+                     obj.prev_m);
         float vp_t[16];
         float normal_m[16];
         transpose4x4(ctx->_vp, vp_t);
@@ -1837,8 +1810,7 @@ static void metal_submit_draw(void *ctx_ptr,
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* MTL-09: Bind bone palette if skinning active */
-        if (has_skinning)
-        {
+        if (has_skinning) {
             size_t bsz = (size_t)capped_bone_count * 16 * sizeof(float);
             id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
                                                             length:bsz
@@ -1847,9 +1819,10 @@ static void metal_submit_draw(void *ctx_ptr,
             if (ctx.frameBuffers)
                 [ctx.frameBuffers addObject:boneBuf];
             if (has_prev_skinning) {
-                id<MTLBuffer> prevBoneBuf = [ctx.device newBufferWithBytes:cmd->prev_bone_palette
-                                                                     length:bsz
-                                                                    options:MTLResourceStorageModeShared];
+                id<MTLBuffer> prevBoneBuf =
+                    [ctx.device newBufferWithBytes:cmd->prev_bone_palette
+                                            length:bsz
+                                           options:MTLResourceStorageModeShared];
                 [ctx.encoder setVertexBuffer:prevBoneBuf offset:0 atIndex:7];
                 if (ctx.frameBuffers)
                     [ctx.frameBuffers addObject:prevBoneBuf];
@@ -1857,29 +1830,27 @@ static void metal_submit_draw(void *ctx_ptr,
         }
 
         /* MTL-10: Bind morph deltas/weights if morph active */
-        if (cmd->morph_deltas && cmd->morph_shape_count > 0)
-        {
-            size_t dsz =
-                (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
+        if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
+            size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
             id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                              length:dsz
-                                                             options:MTLResourceStorageModeShared];
+                                                             length:dsz
+                                                            options:MTLResourceStorageModeShared];
             [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
             size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
             id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                           length:wsz
-                                                          options:MTLResourceStorageModeShared];
+                                                          length:wsz
+                                                         options:MTLResourceStorageModeShared];
             [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
             if (cmd->prev_morph_weights) {
-                id<MTLBuffer> prevWtBuf = [ctx.device newBufferWithBytes:cmd->prev_morph_weights
-                                                                  length:wsz
-                                                                 options:MTLResourceStorageModeShared];
+                id<MTLBuffer> prevWtBuf =
+                    [ctx.device newBufferWithBytes:cmd->prev_morph_weights
+                                            length:wsz
+                                           options:MTLResourceStorageModeShared];
                 [ctx.encoder setVertexBuffer:prevWtBuf offset:0 atIndex:8];
                 if (ctx.frameBuffers)
                     [ctx.frameBuffers addObject:prevWtBuf];
             }
-            if (ctx.frameBuffers)
-            {
+            if (ctx.frameBuffers) {
                 [ctx.frameBuffers addObject:deltaBuf];
                 [ctx.frameBuffers addObject:wtBuf];
             }
@@ -1951,49 +1922,42 @@ static void metal_submit_draw(void *ctx_ptr,
             [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
 
         /* MTL-03: Bind cached textures for each material map slot */
-        if (cmd->texture)
-        {
+        if (cmd->texture) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
-        if (cmd->normal_map)
-        {
+        if (cmd->normal_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->normal_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
-        if (cmd->specular_map)
-        {
+        if (cmd->specular_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->specular_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
-        if (cmd->emissive_map)
-        {
+        if (cmd->emissive_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
         /* MTL-14: Terrain splat textures (slots 5-9) */
-        if (cmd->has_splat && cmd->splat_map)
-        {
+        if (cmd->has_splat && cmd->splat_map) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
                 [ctx.encoder setFragmentTexture:sp atIndex:5];
-            for (int si = 0; si < 4; si++)
-            {
-                if (cmd->splat_layers[si])
-                {
+            for (int si = 0; si < 4; si++) {
+                if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
                         [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
                 }
             }
         }
-        if (cmd->env_map && cmd->reflectivity > 0.0001f)
-        {
-            id<MTLTexture> envTex = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+        if (cmd->env_map && cmd->reflectivity > 0.0001f) {
+            id<MTLTexture> envTex =
+                metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
                 [ctx.encoder setFragmentTexture:envTex atIndex:10];
         }
@@ -2002,8 +1966,7 @@ static void metal_submit_draw(void *ctx_ptr,
         {
             mtl_light_t ml[8];
             memset(ml, 0, sizeof(ml));
-            for (int32_t i = 0; i < light_count && i < 8; i++)
-            {
+            for (int32_t i = 0; i < light_count && i < 8; i++) {
                 ml[i].type = lights[i].type;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
@@ -2031,18 +1994,15 @@ static void metal_submit_draw(void *ctx_ptr,
     }
 }
 
-static void metal_end_frame(void *ctx_ptr)
-{
-    @autoreleasepool
-    {
+static void metal_end_frame(void *ctx_ptr) {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx || !ctx.encoder || !ctx.inFrame)
             return;
 
         [ctx.encoder endEncoding];
 
-        if (ctx.rttActive && ctx.rttTarget && ctx.rttColorTexture)
-        {
+        if (ctx.rttActive && ctx.rttTarget && ctx.rttColorTexture) {
             /* RTT path: commit GPU work, wait for completion, then read back
              * the color texture to the CPU-side color_buf for AsPixels(). */
             [ctx.cmdBuf commit];
@@ -2051,23 +2011,19 @@ static void metal_end_frame(void *ctx_ptr)
             /* Read GPU texture → CPU buffer (BGRA → RGBA conversion) */
             int32_t w = ctx.rttWidth, h = ctx.rttHeight;
             uint8_t *dst = ctx.rttTarget ? ctx.rttTarget->color_buf : NULL;
-            if (dst)
-            {
+            if (dst) {
                 [ctx.rttColorTexture getBytes:dst
                                   bytesPerRow:(NSUInteger)(w * 4)
                                    fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
                                   mipmapLevel:0];
                 /* BGRA → RGBA in-place */
-                for (int32_t i = 0; i < w * h; i++)
-                {
+                for (int32_t i = 0; i < w * h; i++) {
                     uint8_t tmp = dst[i * 4];
                     dst[i * 4] = dst[i * 4 + 2];
                     dst[i * 4 + 2] = tmp;
                 }
             }
-        }
-        else
-        {
+        } else {
             /* On-screen path: DON'T commit yet. The command buffer stays open
              * so subsequent Begin/End pairs add more render passes to the same
              * buffer. Commit + present happens in metal_present() at Flip time. */
@@ -2084,12 +2040,10 @@ static void metal_end_frame(void *ctx_ptr)
 /// @brief Present the most recent on-screen drawable. Called from Flip().
 /// Commits the frame's command buffer (which contains all render passes)
 /// and presents the drawable to the display in one atomic operation.
-static void metal_present(void *backend_ctx)
-{
+static void metal_present(void *backend_ctx) {
     if (!backend_ctx)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (metal_present_texture(ctx, ctx.offscreenColor))
             metal_commit_pending(ctx, NO);
@@ -2100,12 +2054,10 @@ static void metal_present(void *backend_ctx)
     }
 }
 
-static void metal_resize(void *ctx_ptr, int32_t w, int32_t h)
-{
+static void metal_resize(void *ctx_ptr, int32_t w, int32_t h) {
     if (!ctx_ptr || w <= 0 || h <= 0)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx || (ctx.width == w && ctx.height == h))
             return;
@@ -2117,16 +2069,11 @@ static void metal_resize(void *ctx_ptr, int32_t w, int32_t h)
     }
 }
 
-static int metal_readback_rgba(void *ctx_ptr,
-                               uint8_t *dst_rgba,
-                               int32_t w,
-                               int32_t h,
-                               int32_t stride)
-{
+static int metal_readback_rgba(
+    void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     if (!ctx_ptr)
         return 0;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLTexture> texture;
         if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
@@ -2147,16 +2094,13 @@ static int metal_readback_rgba(void *ctx_ptr,
 /// to GPU textures instead of the on-screen CAMetalLayer drawable. When rt is NULL,
 /// rendering reverts to the screen. After rendering, end_frame copies the GPU color
 /// texture back to rt->color_buf for CPU readback (AsPixels).
-static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
-{
-    @autoreleasepool
-    {
+static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx)
             return;
 
-        if (!rt)
-        {
+        if (!rt) {
             /* Disable RTT — revert to on-screen rendering */
             ctx.rttActive = NO;
             ctx.rttColorTexture = nil;
@@ -2204,26 +2148,22 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 // MTL-12: Shadow mapping
 //=============================================================================
 
-static void metal_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32_t h,
-                               const float *light_vp)
-{
-    @autoreleasepool
-    {
+static void metal_shadow_begin(
+    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    @autoreleasepool {
         (void)depth_buf; /* GPU shadows use MTLTexture, not CPU buffer */
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx || !ctx.shadowPipeline)
             return;
 
         /* Create/recreate shadow depth texture if size changed */
-        if (!ctx.shadowDepthTexture ||
-            (int32_t)ctx.shadowDepthTexture.width != w ||
-            (int32_t)ctx.shadowDepthTexture.height != h)
-        {
-            MTLTextureDescriptor *desc = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-                                             width:(NSUInteger)w
-                                            height:(NSUInteger)h
-                                         mipmapped:NO];
+        if (!ctx.shadowDepthTexture || (int32_t)ctx.shadowDepthTexture.width != w ||
+            (int32_t)ctx.shadowDepthTexture.height != h) {
+            MTLTextureDescriptor *desc =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                                   width:(NSUInteger)w
+                                                                  height:(NSUInteger)h
+                                                               mipmapped:NO];
             desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
             desc.storageMode = MTLStorageModePrivate;
             ctx.shadowDepthTexture = [ctx.device newTextureWithDescriptor:desc];
@@ -2258,10 +2198,8 @@ static void metal_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32
     }
 }
 
-static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd)
-{
-    @autoreleasepool
-    {
+static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
@@ -2272,8 +2210,7 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd)
         if (!vb || !ib)
             return;
         [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
-        if (ctx.frameBuffers)
-        {
+        if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
         }
@@ -2305,11 +2242,11 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd)
             size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
             size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
             id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                              length:dsz
-                                                             options:MTLResourceStorageModeShared];
+                                                             length:dsz
+                                                            options:MTLResourceStorageModeShared];
             id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                           length:wsz
-                                                          options:MTLResourceStorageModeShared];
+                                                          length:wsz
+                                                         options:MTLResourceStorageModeShared];
             [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
             [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
             if (ctx.frameBuffers) {
@@ -2326,10 +2263,8 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd)
     }
 }
 
-static void metal_shadow_end(void *ctx_ptr, float bias)
-{
-    @autoreleasepool
-    {
+static void metal_shadow_end(void *ctx_ptr, float bias) {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx || !ctx.encoder)
             return;
@@ -2354,10 +2289,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                                         int32_t light_count,
                                         const float *ambient,
                                         int8_t wireframe,
-                                        int8_t backface_cull)
-{
-    @autoreleasepool
-    {
+                                        int8_t backface_cull) {
+    @autoreleasepool {
         (void)win;
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         mtl_instance_t *instance_data = NULL;
@@ -2376,15 +2309,18 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             vgfx3d_compute_normal_matrix4(&instance_matrices[(size_t)i * 16u], normal_m);
             transpose4x4(normal_m, instance_data[i].normal);
             if (cmd->has_prev_instance_matrices && cmd->prev_instance_matrices)
-                transpose4x4(&cmd->prev_instance_matrices[(size_t)i * 16u], instance_data[i].prev_model);
+                transpose4x4(&cmd->prev_instance_matrices[(size_t)i * 16u],
+                             instance_data[i].prev_model);
             else
-                memcpy(instance_data[i].prev_model, instance_data[i].model, sizeof(instance_data[i].prev_model));
+                memcpy(instance_data[i].prev_model,
+                       instance_data[i].model,
+                       sizeof(instance_data[i].prev_model));
         }
 
         [ctx.encoder setRenderPipelineState:ctx.instancedPipelineState];
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
-        [ctx.encoder setTriangleFillMode:wireframe ? MTLTriangleFillModeLines
-                                                   : MTLTriangleFillModeFill];
+        [ctx.encoder
+            setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
         if (cmd->alpha < 1.0f)
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
@@ -2392,15 +2328,14 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
 
         /* Vertex/index buffers */
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
-        instBuf =
-            metal_new_shared_buffer(ctx, instance_data, (NSUInteger)instance_count * sizeof(mtl_instance_t));
+        instBuf = metal_new_shared_buffer(
+            ctx, instance_data, (NSUInteger)instance_count * sizeof(mtl_instance_t));
         free(instance_data);
         if (!vb || !ib || !instBuf)
             return;
         [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
         [ctx.encoder setVertexBuffer:instBuf offset:0 atIndex:6];
-        if (ctx.frameBuffers)
-        {
+        if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
             [ctx.frameBuffers addObject:instBuf];
@@ -2485,9 +2420,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             if (ctx.frameBuffers)
                 [ctx.frameBuffers addObject:boneBuf];
             if (has_prev_skinning) {
-                id<MTLBuffer> prevBoneBuf = [ctx.device newBufferWithBytes:cmd->prev_bone_palette
-                                                                     length:bsz
-                                                                    options:MTLResourceStorageModeShared];
+                id<MTLBuffer> prevBoneBuf =
+                    [ctx.device newBufferWithBytes:cmd->prev_bone_palette
+                                            length:bsz
+                                           options:MTLResourceStorageModeShared];
                 [ctx.encoder setVertexBuffer:prevBoneBuf offset:0 atIndex:7];
                 if (ctx.frameBuffers)
                     [ctx.frameBuffers addObject:prevBoneBuf];
@@ -2495,15 +2431,14 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         }
 
         if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
-            size_t dsz =
-                (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
+            size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
             size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
             id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                              length:dsz
-                                                             options:MTLResourceStorageModeShared];
+                                                             length:dsz
+                                                            options:MTLResourceStorageModeShared];
             id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                           length:wsz
-                                                          options:MTLResourceStorageModeShared];
+                                                          length:wsz
+                                                         options:MTLResourceStorageModeShared];
             [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
             [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
             if (ctx.frameBuffers) {
@@ -2511,9 +2446,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 [ctx.frameBuffers addObject:wtBuf];
             }
             if (cmd->prev_morph_weights) {
-                id<MTLBuffer> prevWtBuf = [ctx.device newBufferWithBytes:cmd->prev_morph_weights
-                                                                  length:wsz
-                                                                 options:MTLResourceStorageModeShared];
+                id<MTLBuffer> prevWtBuf =
+                    [ctx.device newBufferWithBytes:cmd->prev_morph_weights
+                                            length:wsz
+                                           options:MTLResourceStorageModeShared];
                 [ctx.encoder setVertexBuffer:prevWtBuf offset:0 atIndex:8];
                 if (ctx.frameBuffers)
                     [ctx.frameBuffers addObject:prevWtBuf];
@@ -2531,48 +2467,41 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
         if (ctx.cubeSampler)
             [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
-        if (cmd->texture)
-        {
+        if (cmd->texture) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
-        if (cmd->normal_map)
-        {
+        if (cmd->normal_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->normal_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
-        if (cmd->specular_map)
-        {
+        if (cmd->specular_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->specular_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
-        if (cmd->emissive_map)
-        {
+        if (cmd->emissive_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
-        if (cmd->has_splat && cmd->splat_map)
-        {
+        if (cmd->has_splat && cmd->splat_map) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
                 [ctx.encoder setFragmentTexture:sp atIndex:5];
-            for (int si = 0; si < 4; si++)
-            {
-                if (cmd->splat_layers[si])
-                {
+            for (int si = 0; si < 4; si++) {
+                if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
                         [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
                 }
             }
         }
-        if (cmd->env_map && cmd->reflectivity > 0.0001f)
-        {
-            id<MTLTexture> envTex = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+        if (cmd->env_map && cmd->reflectivity > 0.0001f) {
+            id<MTLTexture> envTex =
+                metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
                 [ctx.encoder setFragmentTexture:envTex atIndex:10];
         }
@@ -2581,8 +2510,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         {
             mtl_light_t ml[8];
             memset(ml, 0, sizeof(ml));
-            for (int32_t i = 0; i < light_count && i < 8; i++)
-            {
+            for (int32_t i = 0; i < light_count && i < 8; i++) {
                 ml[i].type = lights[i].type;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
@@ -2616,8 +2544,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
 //=============================================================================
 
 /* C-side PostFX params struct (must match MSL PostFXParams) */
-typedef struct
-{
+typedef struct {
     float invViewProjection[16];
     float prevViewProjection[16];
     float cameraPosition[4];
@@ -2646,12 +2573,10 @@ typedef struct
 /// @brief Metal PostFX presentation: render fullscreen quad with PostFX shader.
 /// Runs the fullscreen post-processing pass into an offscreen texture, then
 /// presents that texture through the CAMetalLayer drawable when available.
-static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot_t *postfx)
-{
+static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot_t *postfx) {
     if (!backend_ctx || !postfx)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (!ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
             !ctx.offscreenMotion || !ctx.depthTexture || !ctx.cmdBuf) {
@@ -2666,14 +2591,12 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
         rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 
         /* End the current scene encoder if still active */
-        if (ctx.encoder)
-        {
+        if (ctx.encoder) {
             [ctx.encoder endEncoding];
             ctx.encoder = nil;
         }
 
-        id<MTLRenderCommandEncoder> pfxEncoder =
-            [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+        id<MTLRenderCommandEncoder> pfxEncoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
         if (!pfxEncoder)
             return;
 
@@ -2683,8 +2606,9 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
         [pfxEncoder setFragmentTexture:ctx.offscreenColor atIndex:0];
         [pfxEncoder setFragmentTexture:ctx.depthTexture atIndex:1];
         [pfxEncoder setFragmentTexture:ctx.offscreenMotion atIndex:2];
-        [pfxEncoder setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
-                                    atIndex:0];
+        [pfxEncoder
+            setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                            atIndex:0];
 
         /* Fill PostFX uniform params from snapshot */
         mtl_postfx_params_t params;
@@ -2722,9 +2646,7 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
         [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
 
         /* Draw fullscreen quad as triangle strip (4 vertices, no VBO needed) */
-        [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                       vertexStart:0
-                       vertexCount:4];
+        [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
         [pfxEncoder endEncoding];
         if (metal_present_texture(ctx, ctx.postfxColorTexture))
             metal_commit_pending(ctx, NO);
@@ -2735,12 +2657,10 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
     }
 }
 
-static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr)
-{
+static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     if (!ctx_ptr || !cubemap_ptr)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLTexture> cubemap = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cubemap_ptr);
         mtl_skybox_params_t params;
@@ -2770,7 +2690,7 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr)
         [ctx.encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
         [ctx.encoder setFragmentTexture:cubemap atIndex:0];
         [ctx.encoder setFragmentSamplerState:(ctx.cubeSampler ? ctx.cubeSampler : ctx.sharedSampler)
-                                    atIndex:0];
+                                     atIndex:0];
         [ctx.encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:36];
         [ctx.encoder setRenderPipelineState:ctx.pipelineState];
         [ctx.encoder setDepthStencilState:ctx.depthState];
@@ -2779,24 +2699,20 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr)
 }
 
 /* Hide the Metal layer during software RTT or 2D mode */
-static void metal_hide_gpu_layer(void *backend_ctx)
-{
+static void metal_hide_gpu_layer(void *backend_ctx) {
     if (!backend_ctx)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (ctx.metalLayer)
             ctx.metalLayer.hidden = YES;
     }
 }
 
-static void metal_show_gpu_layer(void *backend_ctx)
-{
+static void metal_show_gpu_layer(void *backend_ctx) {
     if (!backend_ctx)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         if (ctx.metalLayer) {
             metal_update_layer_size(ctx);

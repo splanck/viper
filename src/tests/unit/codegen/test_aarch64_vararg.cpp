@@ -133,16 +133,16 @@ TEST(AArch64Vararg, SmallVarArgCallStillSpillsAnonymousArgsToStack) {
     bool sawStackStore = false;
     bool sawStackFree = false;
     for (const auto &mi : mir.blocks.front().instrs) {
-        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
-            mi.ops[0].imm == 16) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
             sawStackAlloc = true;
         }
         if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
             mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
             sawStackStore = true;
         }
-        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Imm &&
-            mi.ops[0].imm == 16) {
+        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
             sawStackFree = true;
         }
     }

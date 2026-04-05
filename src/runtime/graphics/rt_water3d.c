@@ -34,7 +34,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
@@ -54,10 +54,10 @@ extern void rt_material3d_set_color(void *m, double r, double g, double b);
 #define WATER_MAX_WAVES 8
 
 typedef struct {
-    double dir[2];      /* normalized wave direction */
+    double dir[2]; /* normalized wave direction */
     double speed;
     double amplitude;
-    double frequency;   /* 2*PI / wavelength */
+    double frequency; /* 2*PI / wavelength */
 } water_wave_t;
 
 typedef struct {
@@ -79,7 +79,7 @@ typedef struct {
     /* Phase B: Gerstner multi-wave */
     water_wave_t waves[WATER_MAX_WAVES];
     int32_t wave_count;
-    int32_t resolution;  /* grid resolution (default WATER_GRID) */
+    int32_t resolution; /* grid resolution (default WATER_GRID) */
 } rt_water3d;
 
 static void water3d_release_ref(void **slot) {
@@ -213,14 +213,16 @@ void rt_water3d_set_resolution(void *obj, int64_t res) {
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
-    if (res < 8) res = 8;
-    if (res > 256) res = 256;
+    if (res < 8)
+        res = 8;
+    if (res > 256)
+        res = 256;
     w->resolution = (int32_t)res;
 }
 
 /// @brief Add a Gerstner wave to the water.
-void rt_water3d_add_wave(void *obj, double dirX, double dirZ,
-                          double speed, double amplitude, double wavelength) {
+void rt_water3d_add_wave(
+    void *obj, double dirX, double dirZ, double speed, double amplitude, double wavelength) {
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
@@ -350,4 +352,6 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     rt_canvas3d_set_backface_cull(canvas, 1);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

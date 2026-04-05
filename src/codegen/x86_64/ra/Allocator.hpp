@@ -90,7 +90,8 @@ class LinearScanAllocator {
     std::unordered_set<uint16_t> activeGPR_{};
     /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.
     std::unordered_set<uint16_t> activeXMM_{};
-    std::unordered_set<uint16_t> pinnedForInstr_{}; ///< Vregs materialized or referenced by the current instruction.
+    std::unordered_set<uint16_t>
+        pinnedForInstr_{}; ///< Vregs materialized or referenced by the current instruction.
     std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
 
     /// @brief Argument registers reserved during call setup, with their class.
@@ -98,6 +99,7 @@ class LinearScanAllocator {
         PhysReg phys{PhysReg::RAX};
         RegClass cls{RegClass::GPR};
     };
+
     std::vector<ReservedReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
 
     /// @brief Precomputed bitset of caller-saved GPR registers for O(1) lookup.
@@ -164,7 +166,8 @@ class LinearScanAllocator {
     ///          cooperates with the coalescer to apply PX_COPY eliminations.
     void processBlock(MBasicBlock &block, Coalescer &coalescer);
 
-    /// @brief Record vregs referenced by the current instruction so they cannot be spilled mid-rewrite.
+    /// @brief Record vregs referenced by the current instruction so they cannot be spilled
+    /// mid-rewrite.
     void pinInstructionVRegs(const MInstr &instr);
 
     /// @brief Release or spill registers at block boundaries using CFG-aware liveOut.

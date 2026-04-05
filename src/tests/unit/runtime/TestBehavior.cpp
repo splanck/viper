@@ -72,4 +72,6 @@ TEST(Behavior, NullSafe) {
     EXPECT_EQ(rt_behavior_anim_frame(nullptr), 0);
 }
 
-int main() { return viper_test::run_all_tests(); }
+int main() {
+    return viper_test::run_all_tests();
+}

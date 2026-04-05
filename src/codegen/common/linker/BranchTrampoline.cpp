@@ -283,14 +283,16 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         size_t boundary = 0;
         size_t size = 0;
     };
+
     std::vector<IslandPlacement> placements;
     placements.reserve(islands.size());
 
     size_t cursor = 0;
     for (const auto &[boundary, entries] : islands) {
         const size_t clampedBoundary = std::min(boundary, originalText.size());
-        newText.insert(
-            newText.end(), originalText.begin() + static_cast<std::ptrdiff_t>(cursor), originalText.begin() + static_cast<std::ptrdiff_t>(clampedBoundary));
+        newText.insert(newText.end(),
+                       originalText.begin() + static_cast<std::ptrdiff_t>(cursor),
+                       originalText.begin() + static_cast<std::ptrdiff_t>(clampedBoundary));
         const size_t islandOffset = newText.size();
         for (size_t i = 0; i < entries.size(); ++i) {
             entries[i]->actualOffset = islandOffset + i * kTrampolineSize;
@@ -299,8 +301,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         placements.push_back({boundary, entries.size() * kTrampolineSize});
         cursor = clampedBoundary;
     }
-    newText.insert(
-        newText.end(), originalText.begin() + static_cast<std::ptrdiff_t>(cursor), originalText.end());
+    newText.insert(newText.end(),
+                   originalText.begin() + static_cast<std::ptrdiff_t>(cursor),
+                   originalText.end());
     textSec.data = std::move(newText);
 
     for (auto &chunk : textSec.chunks) {
@@ -327,8 +330,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
     for (auto &[key, trampoline] : trampolines) {
         const uint64_t tramVA = textSec.virtualAddr + trampoline.actualOffset;
-        layout.globalSyms[trampoline.symbolName] = GlobalSymEntry{
-            trampoline.symbolName, GlobalSymEntry::Global, 0, 0, 0, tramVA};
+        layout.globalSyms[trampoline.symbolName] =
+            GlobalSymEntry{trampoline.symbolName, GlobalSymEntry::Global, 0, 0, 0, tramVA};
 
         uint8_t *tramp = textSec.data.data() + trampoline.actualOffset;
         writeLE32At(tramp + 0, 0x90000010); // ADRP x16
@@ -371,8 +374,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         if (patchOff + 4 > outSec.data.size())
             continue;
 
-        const auto trampIt = std::find_if(
-            trampolines.begin(), trampolines.end(), [&](const auto &entry) {
+        const auto trampIt =
+            std::find_if(trampolines.begin(), trampolines.end(), [&](const auto &entry) {
                 return entry.second.symbolName == oob.trampolineSymName;
             });
         if (trampIt == trampolines.end())
@@ -397,8 +400,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         writeLE32At(patch, insn);
 
         auto &obj = objects[oob.objIdx];
-        const std::string symbolKey =
-            std::to_string(oob.objIdx) + ":" + oob.trampolineSymName;
+        const std::string symbolKey = std::to_string(oob.objIdx) + ":" + oob.trampolineSymName;
         auto symIt = syntheticSymIndexByObjectAndName.find(symbolKey);
         uint32_t trampolineSymIdx = 0;
         if (symIt != syntheticSymIndexByObjectAndName.end()) {

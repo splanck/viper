@@ -28,7 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Structures

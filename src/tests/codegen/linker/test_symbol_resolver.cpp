@@ -259,13 +259,8 @@ int main() {
         std::unordered_set<std::string> dynamicSyms;
         std::ostringstream err;
 
-        bool ok = resolveSymbols(initObjs,
-                                 archives,
-                                 globalSyms,
-                                 allObjects,
-                                 dynamicSyms,
-                                 err,
-                                 LinkPlatform::macOS);
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::macOS);
         CHECK(ok);
         CHECK(dynamicSyms.count("CFStringCreateWithCString") == 1);
         // CF* prefix is known — no warning expected.

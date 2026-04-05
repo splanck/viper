@@ -535,7 +535,8 @@ IlType BuiltinLowerContext::fallbackResultType() const {
         case BuiltinLoweringRule::ResultSpec::Kind::Fixed:
             return typeFromExpr(*lowerer_, rule_->result.type);
         case BuiltinLoweringRule::ResultSpec::Kind::FromArg:
-            if (rule_->result.argIndex < originalTypes_.size() && originalTypes_[rule_->result.argIndex]) {
+            if (rule_->result.argIndex < originalTypes_.size() &&
+                originalTypes_[rule_->result.argIndex]) {
                 return typeFromExpr(*lowerer_, *originalTypes_[rule_->result.argIndex]);
             }
             return typeFromExpr(*lowerer_, rule_->result.type);

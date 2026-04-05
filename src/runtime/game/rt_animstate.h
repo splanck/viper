@@ -107,8 +107,8 @@ int8_t rt_animstate_is_anim_finished(void *asm_);
 int64_t rt_animstate_progress(void *asm_);
 
 /// @brief Add a named animation state (auto-assigns integer ID).
-void rt_animstate_add_named(void *asm_, void *name, int64_t start, int64_t end,
-                            int64_t dur, int8_t loop);
+void rt_animstate_add_named(
+    void *asm_, void *name, int64_t start, int64_t end, int64_t dur, int8_t loop);
 
 /// @brief Transition to a state by name.
 void rt_animstate_play(void *asm_, void *name);

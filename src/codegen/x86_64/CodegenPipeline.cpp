@@ -23,8 +23,8 @@
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
-#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "codegen/x86_64/passes/BinaryEmitPass.hpp"
@@ -62,8 +62,7 @@ constexpr const char *kCcCommand = "cc";
 
 constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
 
-std::filesystem::path pickFirstExisting(
-    std::initializer_list<std::filesystem::path> candidates) {
+std::filesystem::path pickFirstExisting(std::initializer_list<std::filesystem::path> candidates) {
     for (const auto &candidate : candidates) {
         if (common::fileExists(candidate))
             return candidate;
@@ -393,7 +392,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     // Add Windows system libraries needed for graphics, input, and audio
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
-    cmd.push_back("-lshell32");  // Required by vipergfx (DragQueryFile, DragAcceptFiles)
+    cmd.push_back("-lshell32"); // Required by vipergfx (DragQueryFile, DragAcceptFiles)
     cmd.push_back("-lxinput");
     cmd.push_back("-lole32");    // Required by viperaud (WASAPI/COM)
     cmd.push_back("-liphlpapi"); // Required by rt_network (GetAdaptersAddresses)
@@ -507,9 +506,8 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
         const auto guiLib = ctx.buildDir.empty()
                                 ? std::filesystem::path("src/lib/gui/libvipergui.a")
                                 : ctx.buildDir / "src/lib/gui/libvipergui.a";
-        const auto gfxLib =
-            ctx.buildDir.empty() ? std::filesystem::path("lib/libvipergfx.a")
-                                 : ctx.buildDir / "lib/libvipergfx.a";
+        const auto gfxLib = ctx.buildDir.empty() ? std::filesystem::path("lib/libvipergfx.a")
+                                                 : ctx.buildDir / "lib/libvipergfx.a";
 #endif
         appendIfExists(guiLib);
         appendIfExists(gfxLib);
@@ -527,9 +525,8 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
                                             ctx.buildDir / "lib/viperaud.lib"});
 #endif
 #else
-        const auto audLib =
-            ctx.buildDir.empty() ? std::filesystem::path("lib/libviperaud.a")
-                                 : ctx.buildDir / "lib/libviperaud.a";
+        const auto audLib = ctx.buildDir.empty() ? std::filesystem::path("lib/libviperaud.a")
+                                                 : ctx.buildDir / "lib/libviperaud.a";
 #endif
         appendIfExists(audLib);
     }
@@ -760,12 +757,12 @@ PipelineResult CodegenPipeline::run() {
 #endif
                 auto &rodata = *pipelineModule.binaryRodata;
                 rodata.alignTo(16);
-                rodata.defineSymbol(blobLabel, objfile::SymbolBinding::Global,
-                                   objfile::SymbolSection::Rodata);
+                rodata.defineSymbol(
+                    blobLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
                 rodata.emitBytes(assetBlob.data(), assetBlob.size());
                 rodata.alignTo(8);
-                rodata.defineSymbol(sizeLabel, objfile::SymbolBinding::Global,
-                                   objfile::SymbolSection::Rodata);
+                rodata.defineSymbol(
+                    sizeLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
                 rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
             }
         }
@@ -868,7 +865,8 @@ PipelineResult CodegenPipeline::run() {
 
         int linkExit = 0;
         if (opts_.link_mode == LinkMode::Native)
-            linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
+            linkExit =
+                linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
         else if (linker::detectLinkPlatform() == linker::LinkPlatform::Windows)
             linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
         else

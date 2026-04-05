@@ -200,8 +200,7 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 
     // Check if the last parameter is variadic (typed as List[T] from a ...T declaration)
     FunctionDecl *funcDecl = getFunctionDecl(calleeName);
-    bool hasVariadic = funcDecl && !funcDecl->params.empty() &&
-                       funcDecl->params.back().isVariadic;
+    bool hasVariadic = funcDecl && !funcDecl->params.empty() && funcDecl->params.back().isVariadic;
     size_t fixedParams = hasVariadic ? numParams - 1 : numParams;
 
     // Check argument count (with default parameter and variadic support)
@@ -754,7 +753,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             std::string fullMethodName = "Viper.String." + fieldExpr->field;
             Symbol *sym = nullptr;
             const auto &registry = il::runtime::RuntimeRegistry::instance();
-            if (auto method = registry.findMethod("Viper.String", fieldExpr->field, expr->args.size());
+            if (auto method =
+                    registry.findMethod("Viper.String", fieldExpr->field, expr->args.size());
                 method && method->target && *method->target) {
                 sym = lookupSymbol(method->target);
                 if (sym && sym->kind == Symbol::Kind::Function)

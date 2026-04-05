@@ -37,7 +37,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 /*==========================================================================
@@ -638,4 +638,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_canvas3d_draw_mesh(canvas3d, &tmp_mesh, rt_mat4_identity(), mat);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

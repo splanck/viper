@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # How to Write a Viper Frontend
@@ -3401,6 +3401,31 @@ builder_.setInsertPoint(handler);
 builder_.emitResumeNext(Value::temp(resumeTokId), loc);
 ```
 
+### ADDFILE Directive (Parse-Time Include)
+
+BASIC frontends can support a simple include directive that splices another BASIC file into the current
+program at parse time.
+
+- **Syntax:** `ADDFILE "path.bas"`
+- **Scope:** File-scope only (top level). Not permitted inside `SUB`/`FUNCTION`/`CLASS`/`NAMESPACE` bodies.
+- **Behavior:**
+    - Loads the referenced `.bas` file and parses it as a nested program.
+    - Appends included procedures to the current program's procedure list.
+    - Inserts included top-level statements where the directive appears, preserving order.
+- **Path Resolution:**
+    - Relative paths are resolved against the directory of the including file.
+    - Absolute paths are supported as-is.
+- **Safety:**
+    - Cycle detection prevents recursive inclusion of the same file; a diagnostic is emitted.
+    - Depth limit (default: 32) guards against runaway recursion; exceeding the limit triggers a diagnostic.
+- **Diagnostics:**
+    - I/O failures (unreadable/missing files) report the resolved path.
+    - Each included file is registered with the SourceManager so diagnostics point to the correct file and line.
+- **Notes:**
+    - A numeric line label may precede the directive (e.g., `100 ADDFILE "inc.bas"`); the label is recorded
+      and the directive still applies.
+    - Any trailing tokens on the directive line are ignored up to end-of-line; inline comments are acceptable.
+
 ---
 
 ## 14. Testing Strategy
@@ -3770,28 +3795,3 @@ This guide has covered everything needed to implement a new frontend:
 - **Leverage runtime** — Use existing runtime functions
 
 Good luck building your frontend!
-
-### ADDFILE Directive (Parse-Time Include)
-
-BASIC front-ends can support a simple include directive that splices another BASIC file into the current program at
-parse time.
-
-- Syntax: `ADDFILE "path.bas"`
-- Scope: File-scope only (top level). Not permitted inside `SUB`/`FUNCTION`/`CLASS`/`NAMESPACE` bodies.
-- Behavior:
-    - Loads the referenced `.bas` file and parses it as a nested program.
-    - Appends included procedures to the current program’s procedure list.
-    - Inserts included top-level statements where the directive appears, preserving order.
-- Path Resolution:
-    - Relative paths are resolved against the directory of the including file.
-    - Absolute paths are supported as-is.
-- Safety:
-    - Cycle detection prevents recursive inclusion of the same file; a diagnostic is emitted.
-    - Depth limit (default: 32) guards against runaway recursion; exceeding the limit triggers a diagnostic.
-- Diagnostics:
-    - I/O failures (unreadable/missing files) report the resolved path.
-    - Each included file is registered with the SourceManager so diagnostics point to the correct file and line.
-- Notes:
-    - A numeric line label may precede the directive (e.g., `100 ADDFILE "inc.bas"`); the label is recorded and the
-      directive still applies.
-    - Any trailing tokens on the directive line are ignored up to end-of-line; inline comments are acceptable.

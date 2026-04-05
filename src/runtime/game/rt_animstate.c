@@ -32,7 +32,7 @@
 
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern rt_string rt_const_cstr(const char *s);
 
 //=============================================================================
@@ -48,7 +48,7 @@ typedef struct {
     int64_t frame_duration; // frames per animation frame
     int8_t loop;
     int8_t valid;
-    char name[32];          // String name for named state lookup (null-terminated)
+    char name[32]; // String name for named state lookup (null-terminated)
 } anim_clip_t;
 
 typedef struct {
@@ -72,8 +72,8 @@ typedef struct {
     int32_t active_clip_idx; // -1 if none
 
     // Frame event (fires when animation reaches a specific frame)
-    int64_t event_frame;     // Frame to trigger on (-1 = disabled)
-    int8_t event_triggered;  // Set to 1 when event_frame is reached
+    int64_t event_frame;    // Frame to trigger on (-1 = disabled)
+    int8_t event_triggered; // Set to 1 when event_frame is reached
 } animstate_impl;
 
 //=============================================================================
@@ -243,7 +243,8 @@ void rt_animstate_update(void *asm_) {
         a->event_triggered = 1;
 }
 
-/// @brief Reset the just_entered and just_exited one-shot flags (call once per frame after checking).
+/// @brief Reset the just_entered and just_exited one-shot flags (call once per frame after
+/// checking).
 void rt_animstate_clear_flags(void *asm_) {
     if (!asm_)
         return;
@@ -315,8 +316,8 @@ int64_t rt_animstate_progress(void *asm_) {
 // Named State API
 //=============================================================================
 
-void rt_animstate_add_named(void *asm_, void *name_str,
-                            int64_t start, int64_t end, int64_t dur, int8_t loop) {
+void rt_animstate_add_named(
+    void *asm_, void *name_str, int64_t start, int64_t end, int64_t dur, int8_t loop) {
     if (!asm_ || !name_str)
         return;
     animstate_impl *a = get(asm_);

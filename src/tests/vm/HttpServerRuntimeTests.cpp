@@ -25,11 +25,14 @@ int main() {
     Module m;
     il::build::IRBuilder b(m);
 
-    b.addExtern(
-        "Viper.Network.ServerRes.Send", Type(Type::Kind::Void), {Type(Type::Kind::Ptr), Type(Type::Kind::Str)});
+    b.addExtern("Viper.Network.ServerRes.Send",
+                Type(Type::Kind::Void),
+                {Type(Type::Kind::Ptr), Type(Type::Kind::Str)});
 
-    auto &handler = b.startFunction(
-        "handler", Type(Type::Kind::Void), {{"req", Type(Type::Kind::Ptr)}, {"res", Type(Type::Kind::Ptr)}});
+    auto &handler =
+        b.startFunction("handler",
+                        Type(Type::Kind::Void),
+                        {{"req", Type(Type::Kind::Ptr)}, {"res", Type(Type::Kind::Ptr)}});
     auto &entry = b.createBlock(handler, "entry", handler.params);
     b.setInsertPoint(entry);
 

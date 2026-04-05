@@ -322,11 +322,8 @@ TEST(PeWriter, ImportDirectoryIsWritten) {
     std::string path = "build/test-out/pe_test_imports.exe";
     std::filesystem::create_directories("build/test-out");
 
-    bool ok = writePeExe(path,
-                         layout,
-                         LinkArch::X86_64,
-                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
-                         err);
+    bool ok = writePeExe(
+        path, layout, LinkArch::X86_64, {DllImport{"kernel32.dll", {"ExitProcess"}, {}}}, err);
     ASSERT_TRUE(ok);
 
     auto data = readBinaryFile(path);
@@ -353,11 +350,8 @@ TEST(PeWriter, StartupStubBecomesEntryPoint) {
     std::string path = "build/test-out/pe_test_stub_entry.exe";
     std::filesystem::create_directories("build/test-out");
 
-    bool ok = writePeExe(path,
-                         layout,
-                         LinkArch::X86_64,
-                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
-                         err);
+    bool ok = writePeExe(
+        path, layout, LinkArch::X86_64, {DllImport{"kernel32.dll", {"ExitProcess"}, {}}}, err);
     ASSERT_TRUE(ok);
 
     auto data = readBinaryFile(path);

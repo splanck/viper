@@ -49,7 +49,7 @@
 #include <unistd.h>
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
 
 //=============================================================================
@@ -809,8 +809,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
                 bool chunked = false;
                 if (!parse_content_length_header_block(
                         buf, header_end_pos, &content_length, &chunked) ||
-                    chunked ||
-                    content_length > HTTP_REQ_MAX_BODY) {
+                    chunked || content_length > HTTP_REQ_MAX_BODY) {
                     bad_request = true;
                     break;
                 }
@@ -922,7 +921,9 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
     }
 }
 
-static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res) {
+static void build_route_response(rt_http_server_impl *server,
+                                 server_req_t *req,
+                                 server_res_t *res) {
     rt_string method_str = rt_string_from_bytes(req->method, strlen(req->method));
     rt_string path_str = rt_string_from_bytes(req->path, strlen(req->path));
     void *match = rt_http_router_match(server->router, method_str, path_str);
@@ -1024,7 +1025,10 @@ void *rt_http_server_new(int64_t port) {
     return server;
 }
 
-static void add_route_binding(void *obj, rt_string pattern, rt_string handler_tag, void *(*adder)(void *, rt_string)) {
+static void add_route_binding(void *obj,
+                              rt_string pattern,
+                              rt_string handler_tag,
+                              void *(*adder)(void *, rt_string)) {
     if (!obj || !adder)
         return;
 
@@ -1066,11 +1070,8 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     }
 }
 
-void rt_http_server_bind_handler_dispatch(void *obj,
-                                          rt_string handler_tag,
-                                          void *dispatch,
-                                          void *ctx,
-                                          void *cleanup) {
+void rt_http_server_bind_handler_dispatch(
+    void *obj, rt_string handler_tag, void *dispatch, void *ctx, void *cleanup) {
     if (!obj || !dispatch)
         return;
 

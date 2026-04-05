@@ -79,7 +79,8 @@ static void debounce_finalizer(void *obj) {
     (void)obj;
 }
 
-/// @brief Create a new debouncer — signal() must be followed by delay_ms of quiet before is_ready() returns true.
+/// @brief Create a new debouncer — signal() must be followed by delay_ms of quiet before is_ready()
+/// returns true.
 void *rt_debounce_new(int64_t delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_debounce_data));
     if (!obj) {

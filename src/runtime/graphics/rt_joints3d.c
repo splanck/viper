@@ -32,7 +32,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /* Access body internals — these match the rt_body3d struct layout in rt_physics3d.c */
 typedef struct {
@@ -172,8 +172,8 @@ static void spring_joint_finalizer(void *obj) {
 /// @param stiffness   Spring constant k (higher = stiffer, less stretch).
 /// @param damping     Velocity damping coefficient (higher = less oscillation).
 /// @return Opaque joint handle, or NULL on failure.
-void *rt_spring_joint3d_new(void *body_a, void *body_b, double rest_length,
-                            double stiffness, double damping) {
+void *rt_spring_joint3d_new(
+    void *body_a, void *body_b, double rest_length, double stiffness, double damping) {
     if (!body_a || !body_b) {
         rt_trap("SpringJoint3D.New: both bodies must be non-null");
         return NULL;
@@ -285,4 +285,6 @@ void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
         solve_spring((rt_spring_joint3d *)joint, dt);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

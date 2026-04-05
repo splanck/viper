@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper IL — Complete Guide
@@ -771,6 +771,7 @@ IL provides a structured error handling system with error values, handler stacks
 | `err.get_ip` | `err.get_ip %err` | `i64` |
 | `err.get_kind` | `err.get_kind %err` | `i32` |
 | `err.get_line` | `err.get_line %err` | `i32` |
+| `err.get_msg` | `err.get_msg` | `str` |
 
 **Example:**
 

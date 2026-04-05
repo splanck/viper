@@ -154,8 +154,8 @@ static void test_reduce_identity_applied_once() {
     assert(pool != NULL);
     g_identity_hits.store(0, std::memory_order_release);
 
-    void *result = rt_parallel_reduce_pool(seq, (void *)count_identity_seed_hits,
-                                           g_reduce_identity_sentinel, pool);
+    void *result = rt_parallel_reduce_pool(
+        seq, (void *)count_identity_seed_hits, g_reduce_identity_sentinel, pool);
     int64_t sum = (int64_t)(intptr_t)result;
     assert(sum == expected);
     assert(g_identity_hits.load(std::memory_order_acquire) == 1);

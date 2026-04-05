@@ -214,7 +214,7 @@ TEST(CompilerBridge, HoverOnMethodViaDot) {
     // Line 14: "    var r = s.getSpeed();" — cursor on 'getSpeed' at col 17
     std::string source = "module Test;\n"                            // 1
                          "\n"                                        // 2
-                         "class Ship {\n"                           // 3
+                         "class Ship {\n"                            // 3
                          "    hide Integer speed;\n"                 // 4
                          "    expose func init() {\n"                // 5
                          "        speed = 0;\n"                      // 6
@@ -240,7 +240,7 @@ TEST(CompilerBridge, HoverOnFieldViaDot) {
     // Line 11: "    s.speed = 10;" — 's' at col 5, '.' at 6, 'speed' starts at col 7
     std::string source = "module Test;\n"              // 1
                          "\n"                          // 2
-                         "class Ship {\n"             // 3
+                         "class Ship {\n"              // 3
                          "    expose Integer speed;\n" // 4
                          "    expose func init() {\n"  // 5
                          "        speed = 0;\n"        // 6

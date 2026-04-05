@@ -40,7 +40,8 @@ void rt_obj_free(void *obj);
 // Helper to load JPEG from a C string path
 static void *load_jpeg(const char *path) {
     void *rts = rt_const_cstr(path);
-    if (!rts) return nullptr;
+    if (!rts)
+        return nullptr;
     void *result = rt_pixels_load_jpeg(rts);
     return result;
 }
@@ -48,7 +49,8 @@ static void *load_jpeg(const char *path) {
 // Helper to load PNG from a C string path
 static void *load_png(const char *path) {
     void *rts = rt_const_cstr(path);
-    if (!rts) return nullptr;
+    if (!rts)
+        return nullptr;
     void *result = rt_pixels_load_png(rts);
     return result;
 }

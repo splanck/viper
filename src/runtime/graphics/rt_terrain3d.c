@@ -35,7 +35,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
@@ -53,17 +53,17 @@ typedef struct {
     void *vptr;
     float *heights;
     int32_t width, depth;
-    double scale[3]; /* x_spacing, y_scale, z_spacing */
-    void **chunk_meshes;          /* LOD 0 (full res) mesh cache */
-    void **chunk_meshes_lod1;     /* LOD 1 (step=2) mesh cache */
-    void **chunk_meshes_lod2;     /* LOD 2 (step=4) mesh cache */
-    float *chunk_aabbs;           /* 6 floats per chunk: min[3], max[3] */
+    double scale[3];          /* x_spacing, y_scale, z_spacing */
+    void **chunk_meshes;      /* LOD 0 (full res) mesh cache */
+    void **chunk_meshes_lod1; /* LOD 1 (step=2) mesh cache */
+    void **chunk_meshes_lod2; /* LOD 2 (step=4) mesh cache */
+    float *chunk_aabbs;       /* 6 floats per chunk: min[3], max[3] */
     int32_t chunks_x, chunks_z;
     void *material;
     /* LOD distance thresholds */
-    float lod_dist1;              /* distance beyond which LOD 1 is used */
-    float lod_dist2;              /* distance beyond which LOD 2 is used */
-    float skirt_depth;            /* depth of crack-hiding skirts (0 = disabled) */
+    float lod_dist1;   /* distance beyond which LOD 1 is used */
+    float lod_dist2;   /* distance beyond which LOD 2 is used */
+    float skirt_depth; /* depth of crack-hiding skirts (0 = disabled) */
     /* Splat map: RGBA Pixels where R/G/B/A = weight for layers 0-3 */
     void *splat_map;
     void *layer_textures[TERRAIN_MAX_SPLAT_LAYERS];
@@ -133,10 +133,11 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
 
 /// @brief Generate terrain heights directly from Perlin noise (fast native path).
 /// Bypasses the Pixels intermediate — writes directly to float heightmap.
-extern double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence);
+extern double rt_perlin_octave2d(
+    void *obj, double x, double y, int64_t octaves, double persistence);
 
-void rt_terrain3d_generate_perlin(void *obj, void *perlin, double scale,
-                                   int64_t octaves, double persistence) {
+void rt_terrain3d_generate_perlin(
+    void *obj, void *perlin, double scale, int64_t octaves, double persistence) {
     if (!obj || !perlin)
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
@@ -235,10 +236,12 @@ void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
 static uint32_t sample_pixels_uv(void *pixels, double u, double v) {
     if (!pixels)
         return 0xFFFFFFFF;
+
     typedef struct {
         int64_t w, h;
         uint32_t *data;
     } px_view;
+
     px_view *pv = (px_view *)pixels;
     if (!pv->data || pv->w == 0 || pv->h == 0)
         return 0xFFFFFFFF;
@@ -404,9 +407,12 @@ static void bake_splat_texture(rt_terrain3d *t) {
             int32_t cr = (int32_t)(br * 255);
             int32_t cg = (int32_t)(bg * 255);
             int32_t cb = (int32_t)(bb * 255);
-            if (cr > 255) cr = 255;
-            if (cg > 255) cg = 255;
-            if (cb > 255) cb = 255;
+            if (cr > 255)
+                cr = 255;
+            if (cg > 255)
+                cg = 255;
+            if (cb > 255)
+                cb = 255;
             int64_t color = ((int64_t)cr << 16) | ((int64_t)cg << 8) | (int64_t)cb;
             rt_pixels_set(baked, x, y, color);
         }
@@ -416,10 +422,17 @@ static void bake_splat_texture(rt_terrain3d *t) {
 }
 
 /// @brief Compute per-vertex data at grid position (ix, iz).
-static void terrain_vertex(rt_terrain3d *t, int32_t ix, int32_t iz,
-                            double *wx, double *wy, double *wz,
-                            double *nx, double *ny, double *nz_n,
-                            double *u, double *v) {
+static void terrain_vertex(rt_terrain3d *t,
+                           int32_t ix,
+                           int32_t iz,
+                           double *wx,
+                           double *wy,
+                           double *wz,
+                           double *nx,
+                           double *ny,
+                           double *nz_n,
+                           double *u,
+                           double *v) {
     *wx = (double)ix * t->scale[0];
     *wy = (double)sample_height(t, ix, iz) * t->scale[1];
     *wz = (double)iz * t->scale[2];
@@ -443,8 +456,7 @@ static void terrain_vertex(rt_terrain3d *t, int32_t ix, int32_t iz,
 /// @brief Build mesh for one terrain chunk at a given LOD step.
 /// @param step 1=full res (LOD 0), 2=half (LOD 1), 4=quarter (LOD 2).
 /// @param aabb_out If non-NULL, receives the chunk's AABB (6 floats: min[3], max[3]).
-static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
-                          int32_t step, float *aabb_out) {
+static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, float *aabb_out) {
     void *mesh = rt_mesh3d_new();
     int32_t x0 = cx * TERRAIN_CHUNK_SIZE;
     int32_t z0 = cz * TERRAIN_CHUNK_SIZE;
@@ -472,20 +484,28 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
         for (int32_t dx = 0; dx <= cols; dx += step) {
             int32_t ix = x0 + dx, iz = z0 + dz;
             /* Clamp to terrain bounds */
-            if (ix >= t->width) ix = t->width - 1;
-            if (iz >= t->depth) iz = t->depth - 1;
+            if (ix >= t->width)
+                ix = t->width - 1;
+            if (iz >= t->depth)
+                iz = t->depth - 1;
 
             double wx, wy, wz, nx, ny, nz_n, u, v;
             terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
             rt_mesh3d_add_vertex(mesh, wx, wy, wz, nx, ny, nz_n, u, v);
 
             /* Update AABB */
-            if ((float)wx < aabb_min[0]) aabb_min[0] = (float)wx;
-            if ((float)wy < aabb_min[1]) aabb_min[1] = (float)wy;
-            if ((float)wz < aabb_min[2]) aabb_min[2] = (float)wz;
-            if ((float)wx > aabb_max[0]) aabb_max[0] = (float)wx;
-            if ((float)wy > aabb_max[1]) aabb_max[1] = (float)wy;
-            if ((float)wz > aabb_max[2]) aabb_max[2] = (float)wz;
+            if ((float)wx < aabb_min[0])
+                aabb_min[0] = (float)wx;
+            if ((float)wy < aabb_min[1])
+                aabb_min[1] = (float)wy;
+            if ((float)wz < aabb_min[2])
+                aabb_min[2] = (float)wz;
+            if ((float)wx > aabb_max[0])
+                aabb_max[0] = (float)wx;
+            if ((float)wy > aabb_max[1])
+                aabb_max[1] = (float)wy;
+            if ((float)wz > aabb_max[2])
+                aabb_max[2] = (float)wz;
 
             vert_cols++;
         }
@@ -511,13 +531,14 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
         /* Top edge (z = z0) */
         for (int32_t rx = 0; rx < vert_cols; rx++) {
             int32_t ix = x0 + rx * step;
-            if (ix >= t->width) ix = t->width - 1;
+            if (ix >= t->width)
+                ix = t->width - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
             terrain_vertex(t, ix, z0, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
             rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
         }
         for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
-            int64_t top = (int64_t)rx; /* top edge vertex */
+            int64_t top = (int64_t)rx;              /* top edge vertex */
             int64_t bot = skirt_base + (int64_t)rx; /* skirt vertex */
             rt_mesh3d_add_triangle(mesh, top, bot, top + 1);
             rt_mesh3d_add_triangle(mesh, top + 1, bot, bot + 1);
@@ -529,8 +550,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
         for (int32_t rx = 0; rx < vert_cols; rx++) {
             int32_t ix = x0 + rx * step;
             int32_t iz = z0 + rows;
-            if (ix >= t->width) ix = t->width - 1;
-            if (iz >= t->depth) iz = t->depth - 1;
+            if (ix >= t->width)
+                ix = t->width - 1;
+            if (iz >= t->depth)
+                iz = t->depth - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
             terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
             rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
@@ -546,7 +569,8 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
         /* Left edge (x = x0) */
         for (int32_t rz = 0; rz < vert_rows; rz++) {
             int32_t iz = z0 + rz * step;
-            if (iz >= t->depth) iz = t->depth - 1;
+            if (iz >= t->depth)
+                iz = t->depth - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
             terrain_vertex(t, x0, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
             rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, -1, 0, 0, u, v);
@@ -563,8 +587,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
         for (int32_t rz = 0; rz < vert_rows; rz++) {
             int32_t ix = x0 + cols;
             int32_t iz = z0 + rz * step;
-            if (ix >= t->width) ix = t->width - 1;
-            if (iz >= t->depth) iz = t->depth - 1;
+            if (ix >= t->width)
+                ix = t->width - 1;
+            if (iz >= t->depth)
+                iz = t->depth - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
             terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
             rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 1, 0, 0, u, v);
@@ -573,7 +599,8 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz,
             int64_t top = (int64_t)(rz * vert_cols + vert_cols - 1);
             int64_t bot = skirt_base + (int64_t)rz;
             rt_mesh3d_add_triangle(mesh, top, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot);
-            rt_mesh3d_add_triangle(mesh, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot + 1, bot);
+            rt_mesh3d_add_triangle(
+                mesh, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot + 1, bot);
         }
     }
 
@@ -636,8 +663,7 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
 
             /* Ensure LOD 0 mesh + AABB are built (AABB computed from LOD 0) */
             if (!t->chunk_meshes[idx])
-                t->chunk_meshes[idx] = build_chunk(t, cx, cz, 1,
-                                                    &t->chunk_aabbs[idx * 6]);
+                t->chunk_meshes[idx] = build_chunk(t, cx, cz, 1, &t->chunk_aabbs[idx * 6]);
 
             /* Phase A: Frustum culling */
             float *aabb = &t->chunk_aabbs[idx * 6];
@@ -681,7 +707,8 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
             }
         }
     }
-
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

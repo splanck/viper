@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Object Layout and Call ABI (Milestone B)
@@ -13,7 +13,7 @@ languages use the same ABI for runtime compatibility.
 
 - Objects begin with a vtable pointer (vptr) at offset 0.
 - The vtable is a contiguous array of function pointers ordered by slot number.
-- Slot order is base‑first and append‑only per class (see `../oop-semantics.md`).
+- Slot order is base‑first and append‑only per class.
 
 ## Method name mangling
 

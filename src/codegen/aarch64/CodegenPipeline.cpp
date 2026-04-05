@@ -14,7 +14,6 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 
-#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
@@ -25,6 +24,7 @@
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
 #include "codegen/common/LinkerSupport.hpp"
+#include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "common/RunProcess.hpp"
@@ -495,13 +495,13 @@ PipelineResult CodegenPipeline::run() {
                 auto &rodata = *pipelineModule.binaryRodata;
                 rodata.alignTo(16);
                 rodata.defineSymbol("viper_asset_blob",
-                                   objfile::SymbolBinding::Global,
-                                   objfile::SymbolSection::Rodata);
+                                    objfile::SymbolBinding::Global,
+                                    objfile::SymbolSection::Rodata);
                 rodata.emitBytes(assetBlob.data(), assetBlob.size());
                 rodata.alignTo(8);
                 rodata.defineSymbol("viper_asset_blob_size",
-                                   objfile::SymbolBinding::Global,
-                                   objfile::SymbolSection::Rodata);
+                                    objfile::SymbolBinding::Global,
+                                    objfile::SymbolSection::Rodata);
                 rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
             }
         }

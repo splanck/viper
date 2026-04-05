@@ -82,8 +82,7 @@
 ///          NSWindow, custom view, delegate, and close request flag.
 ///
 /// @invariant window != nil implies view != nil && delegate != nil
-typedef struct
-{
+typedef struct {
     NSWindow *window;             ///< Native NSWindow instance
     VGFXView *view;               ///< Custom view for framebuffer display
     VGFXWindowDelegate *delegate; ///< Delegate for window events
@@ -93,44 +92,40 @@ typedef struct
 static BOOL g_finish_launching_called = NO;
 static NSMenu *g_default_main_menu = nil;
 
-static NSString *vgfx_macos_app_name(const char *preferred_title)
-{
-    if (preferred_title && preferred_title[0] != '\0')
-    {
+static NSString *vgfx_macos_app_name(const char *preferred_title) {
+    if (preferred_title && preferred_title[0] != '\0') {
         NSString *title = [NSString stringWithUTF8String:preferred_title];
-        if (title.length > 0)
-        {
+        if (title.length > 0) {
             return title;
         }
     }
 
-    NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
-    if (bundle_name.length > 0)
-    {
+    NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@ "CFBundleName"];
+    if (bundle_name.length > 0) {
         return bundle_name;
     }
 
     NSString *process_name = [[NSProcessInfo processInfo] processName];
-    return process_name.length > 0 ? process_name : @"Viper";
+    return process_name.length > 0 ? process_name : @ "Viper";
 }
 
-static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name)
-{
+static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name) {
     NSMenu *app_menu = [[NSMenu alloc] initWithTitle:app_name];
     [app_menu setAutoenablesItems:NO];
 
     NSMenuItem *about_item =
-        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"About %@", app_name]
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "About %@", app_name]
                                    action:@selector(orderFrontStandardAboutPanel:)
-                            keyEquivalent:@""];
+                            keyEquivalent:@ ""];
     [about_item setTarget:NSApp];
     [app_menu addItem:about_item];
 
     [app_menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *services_root =
-        [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
-    NSMenu *services_menu = [[NSMenu alloc] initWithTitle:@"Services"];
+    NSMenuItem *services_root = [[NSMenuItem alloc] initWithTitle:@ "Services"
+                                                           action:nil
+                                                    keyEquivalent:@ ""];
+    NSMenu *services_menu = [[NSMenu alloc] initWithTitle:@ "Services"];
     [services_menu setAutoenablesItems:NO];
     [services_root setSubmenu:services_menu];
     [NSApp setServicesMenu:services_menu];
@@ -138,34 +133,35 @@ static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name)
 
     [app_menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *hide_item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Hide %@", app_name]
-                                                       action:@selector(hide:)
-                                                keyEquivalent:@"h"];
+    NSMenuItem *hide_item =
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "Hide %@", app_name]
+                                   action:@selector(hide:)
+                            keyEquivalent:@ "h"];
     [hide_item setTarget:NSApp];
     [hide_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [app_menu addItem:hide_item];
 
     NSMenuItem *hide_others_item =
-        [[NSMenuItem alloc] initWithTitle:@"Hide Others"
+        [[NSMenuItem alloc] initWithTitle:@ "Hide Others"
                                    action:@selector(hideOtherApplications:)
-                            keyEquivalent:@"h"];
+                            keyEquivalent:@ "h"];
     [hide_others_item setTarget:NSApp];
     [hide_others_item
         setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
     [app_menu addItem:hide_others_item];
 
-    NSMenuItem *show_all_item =
-        [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:)
-                            keyEquivalent:@""];
+    NSMenuItem *show_all_item = [[NSMenuItem alloc] initWithTitle:@ "Show All"
+                                                           action:@selector(unhideAllApplications:)
+                                                    keyEquivalent:@ ""];
     [show_all_item setTarget:NSApp];
     [app_menu addItem:show_all_item];
 
     [app_menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *quit_item =
-        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", app_name]
+        [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@ "Quit %@", app_name]
                                    action:@selector(quitApplication:)
-                            keyEquivalent:@"q"];
+                            keyEquivalent:@ "q"];
     [quit_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [quit_item setTarget:[VGFXMacAppMenuDispatcher shared]];
     [app_menu addItem:quit_item];
@@ -173,22 +169,21 @@ static NSMenu *vgfx_macos_build_default_app_menu(NSString *app_name)
     return app_menu;
 }
 
-static NSMenu *vgfx_macos_build_default_window_menu(void)
-{
-    NSMenu *window_menu = [[NSMenu alloc] initWithTitle:@"Window"];
+static NSMenu *vgfx_macos_build_default_window_menu(void) {
+    NSMenu *window_menu = [[NSMenu alloc] initWithTitle:@ "Window"];
     [window_menu setAutoenablesItems:NO];
 
-    NSMenuItem *minimize_item =
-        [[NSMenuItem alloc] initWithTitle:@"Minimize"
-                                   action:@selector(performMiniaturize:)
-                            keyEquivalent:@"m"];
+    NSMenuItem *minimize_item = [[NSMenuItem alloc] initWithTitle:@ "Minimize"
+                                                           action:@selector(performMiniaturize:)
+                                                    keyEquivalent:@ "m"];
     [minimize_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [minimize_item setTarget:nil];
     [minimize_item setEnabled:YES];
     [window_menu addItem:minimize_item];
 
-    NSMenuItem *zoom_item =
-        [[NSMenuItem alloc] initWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+    NSMenuItem *zoom_item = [[NSMenuItem alloc] initWithTitle:@ "Zoom"
+                                                       action:@selector(performZoom:)
+                                                keyEquivalent:@ ""];
     [zoom_item setTarget:nil];
     [zoom_item setEnabled:YES];
     [window_menu addItem:zoom_item];
@@ -196,9 +191,9 @@ static NSMenu *vgfx_macos_build_default_window_menu(void)
     [window_menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *bring_all_to_front_item =
-        [[NSMenuItem alloc] initWithTitle:@"Bring All to Front"
+        [[NSMenuItem alloc] initWithTitle:@ "Bring All to Front"
                                    action:@selector(arrangeInFront:)
-                            keyEquivalent:@""];
+                            keyEquivalent:@ ""];
     [bring_all_to_front_item setTarget:NSApp];
     [bring_all_to_front_item setEnabled:YES];
     [window_menu addItem:bring_all_to_front_item];
@@ -207,18 +202,18 @@ static NSMenu *vgfx_macos_build_default_window_menu(void)
     return window_menu;
 }
 
-static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title)
-{
+static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title) {
     NSString *app_name = vgfx_macos_app_name(preferred_title);
-    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
+    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@ ""];
     [main_menu setAutoenablesItems:NO];
 
-    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@ "" action:nil keyEquivalent:@ ""];
     [app_root setSubmenu:vgfx_macos_build_default_app_menu(app_name)];
     [main_menu addItem:app_root];
 
-    NSMenuItem *window_root =
-        [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+    NSMenuItem *window_root = [[NSMenuItem alloc] initWithTitle:@ "Window"
+                                                         action:nil
+                                                  keyEquivalent:@ ""];
     [window_root setSubmenu:vgfx_macos_build_default_window_menu()];
     [window_root setEnabled:YES];
     [main_menu addItem:window_root];
@@ -226,23 +221,18 @@ static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title)
     return main_menu;
 }
 
-void vgfx_platform_macos_finish_launching_if_needed(void)
-{
-    @autoreleasepool
-    {
+void vgfx_platform_macos_finish_launching_if_needed(void) {
+    @autoreleasepool {
         [NSApplication sharedApplication];
-        if (!g_finish_launching_called)
-        {
+        if (!g_finish_launching_called) {
             [NSApp finishLaunching];
             g_finish_launching_called = YES;
         }
     }
 }
 
-void vgfx_platform_macos_install_default_main_menu(const char *preferred_title)
-{
-    @autoreleasepool
-    {
+void vgfx_platform_macos_install_default_main_menu(const char *preferred_title) {
+    @autoreleasepool {
         [NSApplication sharedApplication];
         vgfx_platform_macos_finish_launching_if_needed();
         g_default_main_menu = vgfx_macos_build_default_main_menu(preferred_title);
@@ -250,14 +240,11 @@ void vgfx_platform_macos_install_default_main_menu(const char *preferred_title)
     }
 }
 
-void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title)
-{
-    @autoreleasepool
-    {
+void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title) {
+    @autoreleasepool {
         [NSApplication sharedApplication];
         NSMenu *current_menu = [NSApp mainMenu];
-        if (current_menu && current_menu != g_default_main_menu)
-        {
+        if (current_menu && current_menu != g_default_main_menu) {
             return;
         }
         vgfx_platform_macos_install_default_main_menu(preferred_title);
@@ -266,28 +253,23 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title)
 
 @implementation VGFXMacAppMenuDispatcher
 
-+ (instancetype)shared
-{
++ (instancetype)shared {
     static VGFXMacAppMenuDispatcher *shared = nil;
-    if (!shared)
-    {
+    if (!shared) {
         shared = [[VGFXMacAppMenuDispatcher alloc] init];
     }
     return shared;
 }
 
-- (void)quitApplication:(id)sender
-{
+- (void)quitApplication:(id)sender {
     (void)sender;
 
     NSWindow *target_window = [NSApp keyWindow];
-    if (!target_window)
-    {
+    if (!target_window) {
         target_window = [NSApp mainWindow];
     }
 
-    if (target_window)
-    {
+    if (target_window) {
         [target_window performClose:nil];
         return;
     }
@@ -318,11 +300,9 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title)
 ///            - Arrows: VGFX_KEY_LEFT/RIGHT/UP/DOWN
 ///            - Enter: VGFX_KEY_ENTER (both main and numpad)
 ///            - Escape: VGFX_KEY_ESCAPE
-static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
-{
+static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars) {
     /* Try to use character first (handles A-Z, 0-9, SPACE) */
-    if (chars && [chars length] > 0)
-    {
+    if (chars && [chars length] > 0) {
         unichar c = [[chars uppercaseString] characterAtIndex:0];
         if (c >= 'A' && c <= 'Z')
             return (vgfx_key_t)c;
@@ -333,8 +313,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     }
 
     /* Special keys by keycode (macOS-specific virtual key codes) */
-    switch (keycode)
-    {
+    switch (keycode) {
         case 0x24:
             return VGFX_KEY_ENTER; /* Return key */
         case 0x4C:
@@ -377,11 +356,9 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///
 /// @param frameRect Initial frame rectangle for the view (in window coordinates)
 /// @return Initialized VGFXView instance, or nil on failure
-- (id)initWithFrame:(NSRect)frameRect
-{
+- (id)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
-    if (self)
-    {
+    if (self) {
         _vgfxWindow = NULL;
         // Register as a file drop target
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
@@ -394,8 +371,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///          bounds with opaque content, enabling faster compositing.
 ///
 /// @return YES (view is always opaque)
-- (BOOL)isOpaque
-{
+- (BOOL)isOpaque {
     return YES;
 }
 
@@ -404,8 +380,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///          won't receive key presses.
 ///
 /// @return YES (view accepts first responder status)
-- (BOOL)acceptsFirstResponder
-{
+- (BOOL)acceptsFirstResponder {
     return YES;
 }
 
@@ -415,8 +390,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///
 /// @param event The mouse-down event (unused)
 /// @return YES (always accept first mouse click)
-- (BOOL)acceptsFirstMouse:(NSEvent *)event
-{
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
     (void)event;
     return YES;
 }
@@ -436,12 +410,10 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///            4. Flip coordinate system (Cocoa bottom-left → top-left)
 ///            5. Draw CGImage to view's CGContext
 ///            6. Restore coordinate system and cleanup
-- (void)drawRect:(NSRect)dirtyRect
-{
+- (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
 
-    if (!_vgfxWindow || !_vgfxWindow->pixels)
-    {
+    if (!_vgfxWindow || !_vgfxWindow->pixels) {
         /* No framebuffer available - clear to black */
         [[NSColor blackColor] setFill];
         NSRectFill(self.bounds);
@@ -504,13 +476,11 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 // NSDraggingDestination — File Drop Support
 //===------------------------------------------------------------------===//
 
-- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender
-{
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
     return NSDragOperationCopy;
 }
 
-- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender
-{
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
     if (!_vgfxWindow)
         return NO;
 
@@ -520,8 +490,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
                           options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
 
     int64_t timestamp = vgfx_platform_now_ms();
-    for (NSURL *url in urls)
-    {
+    for (NSURL *url in urls) {
         const char *path = [[url path] UTF8String];
         if (!path)
             continue;
@@ -559,8 +528,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///
 /// @post close_requested flag set to 1
 /// @post CLOSE event enqueued in the event queue
-- (BOOL)windowShouldClose:(NSWindow *)sender
-{
+- (BOOL)windowShouldClose:(NSWindow *)sender {
     (void)sender;
 
     if (!_vgfxWindow)
@@ -600,8 +568,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 /// @warning Framebuffer reallocation may fail (memory allocation).  In that
 ///          case, the window will have a NULL framebuffer and rendering will
 ///          display black (handled in drawRect:).
-- (void)windowDidResize:(NSNotification *)notification
-{
+- (void)windowDidResize:(NSNotification *)notification {
     (void)notification;
 
     if (!_vgfxWindow)
@@ -620,8 +587,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     int32_t new_height = (int32_t)(contentRect.size.height * sf);
 
     /* Only handle if size actually changed (avoid redundant reallocation) */
-    if (new_width == _vgfxWindow->width && new_height == _vgfxWindow->height)
-    {
+    if (new_width == _vgfxWindow->width && new_height == _vgfxWindow->height) {
         return;
     }
 
@@ -634,21 +600,18 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
      * mechanism used at creation time via aligned_alloc_wrapper) to preserve
      * the cache-line alignment guarantee.  posix_memalign memory is freed with
      * regular free() — no separate aligned_free needed on POSIX platforms. */
-    if (_vgfxWindow->pixels)
-    {
+    if (_vgfxWindow->pixels) {
         free(_vgfxWindow->pixels);
         _vgfxWindow->pixels = NULL;
     }
 
     size_t buffer_size = (size_t)new_width * (size_t)new_height * 4;
     void *aligned_buf = NULL;
-    if (posix_memalign(&aligned_buf, VGFX_FRAMEBUFFER_ALIGNMENT, buffer_size) == 0)
-    {
+    if (posix_memalign(&aligned_buf, VGFX_FRAMEBUFFER_ALIGNMENT, buffer_size) == 0) {
         _vgfxWindow->pixels = (uint8_t *)aligned_buf;
     }
 
-    if (_vgfxWindow->pixels)
-    {
+    if (_vgfxWindow->pixels) {
         /* Clear framebuffer to black (RGB = 0, 0, 0) with fully opaque alpha,
          * matching the initialization in vgfx_create_window(). */
         memset(_vgfxWindow->pixels, 0, buffer_size);
@@ -666,8 +629,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
      * While the user drags the resize handle, Cocoa runs a modal loop that
      * blocks our main thread.  The registered callback (if any) calls
      * rt_gui_app_render, keeping the window content visible. */
-    if (_vgfxWindow->on_resize)
-    {
+    if (_vgfxWindow->on_resize) {
         _vgfxWindow->on_resize(_vgfxWindow->on_resize_userdata, new_width, new_height);
     }
 }
@@ -679,8 +641,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 /// @param notification Notification object (unused)
 ///
 /// @post FOCUS_GAINED event enqueued in the event queue
-- (void)windowDidBecomeKey:(NSNotification *)notification
-{
+- (void)windowDidBecomeKey:(NSNotification *)notification {
     (void)notification;
 
     if (!_vgfxWindow)
@@ -697,8 +658,7 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 /// @param notification Notification object (unused)
 ///
 /// @post FOCUS_LOST event enqueued in the event queue
-- (void)windowDidResignKey:(NSNotification *)notification
-{
+- (void)windowDidResignKey:(NSNotification *)notification {
     (void)notification;
 
     if (!_vgfxWindow)
@@ -721,10 +681,8 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 ///          are fully available.
 ///
 /// @return Scale factor ≥ 1.0 (2.0 on Retina, 1.0 on standard displays)
-float vgfx_platform_get_display_scale(void)
-{
-    @autoreleasepool
-    {
+float vgfx_platform_get_display_scale(void) {
+    @autoreleasepool {
         /* Ensure NSApp is initialized before querying screen properties.
          * Calling sharedApplication multiple times is safe (singleton). */
         [NSApplication sharedApplication];
@@ -761,13 +719,11 @@ float vgfx_platform_get_display_scale(void)
 ///            - Resizable (optional, based on params->resizable)
 ///            - Centered on screen
 ///            - Made key and ordered front (visible and focused)
-int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params)
-{
+int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         /* Ensure NSApplication is initialized (singleton) */
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -776,8 +732,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         /* Allocate platform data structure */
         vgfx_macos_platform *platform =
             (vgfx_macos_platform *)calloc(1, sizeof(vgfx_macos_platform));
-        if (!platform)
-        {
+        if (!platform) {
             vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate platform data");
             return 0;
         }
@@ -789,8 +744,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         NSWindowStyleMask styleMask =
             NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
 
-        if (params->resizable)
-        {
+        if (params->resizable) {
             styleMask |= NSWindowStyleMaskResizable;
         }
 
@@ -802,8 +756,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                           backing:NSBackingStoreBuffered /* Double-buffered */
                                             defer:NO];                   /* Create immediately */
 
-        if (!platform->window)
-        {
+        if (!platform->window) {
             free(platform);
             win->platform_data = NULL;
             vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create NSWindow");
@@ -845,32 +798,27 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
 /// @post NSWindow closed and released (if it existed)
-void vgfx_platform_destroy_window(struct vgfx_window *win)
-{
+void vgfx_platform_destroy_window(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         /* Close and release window */
-        if (platform->window)
-        {
+        if (platform->window) {
             [platform->window setDelegate:nil]; /* Clear delegate to avoid stale pointer */
             [platform->window close];
             platform->window = nil;
         }
 
         /* Release delegate (ARC will deallocate) */
-        if (platform->delegate)
-        {
+        if (platform->delegate) {
             platform->delegate = nil;
         }
 
         /* Release view (ARC will deallocate) */
-        if (platform->view)
-        {
+        if (platform->view) {
             platform->view = nil;
         }
 
@@ -904,8 +852,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
 ///            - NSEvent coordinates: origin at bottom-left
 ///            - ViperGFX coordinates: origin at top-left
 ///            - Conversion: vgfx_y = (view_height - ns_y - 1)
-static int macos_modifiers(NSEventModifierFlags flags)
-{
+static int macos_modifiers(NSEventModifierFlags flags) {
     int mods = 0;
     if (flags & NSEventModifierFlagShift)
         mods |= VGFX_MOD_SHIFT;
@@ -918,29 +865,24 @@ static int macos_modifiers(NSEventModifierFlags flags)
     return mods;
 }
 
-static uint32_t macos_first_codepoint(NSString *string)
-{
+static uint32_t macos_first_codepoint(NSString *string) {
     if (!string || [string length] == 0)
         return 0;
     unichar high = [string characterAtIndex:0];
-    if (high >= 0xD800 && high <= 0xDBFF && [string length] > 1)
-    {
+    if (high >= 0xD800 && high <= 0xDBFF && [string length] > 1) {
         unichar low = [string characterAtIndex:1];
-        if (low >= 0xDC00 && low <= 0xDFFF)
-        {
+        if (low >= 0xDC00 && low <= 0xDFFF) {
             return 0x10000 + ((((uint32_t)high - 0xD800) << 10) | ((uint32_t)low - 0xDC00));
         }
     }
     return (uint32_t)high;
 }
 
-int vgfx_platform_process_events(struct vgfx_window *win)
-{
+int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         /* Process all pending events without blocking (non-blocking poll) */
@@ -948,42 +890,35 @@ int vgfx_platform_process_events(struct vgfx_window *win)
         while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
                                            untilDate:[NSDate distantPast] /* Don't wait */
                                               inMode:NSDefaultRunLoopMode
-                                             dequeue:YES]))
-        { /* Remove from queue */
+                                             dequeue:YES])) { /* Remove from queue */
 
             NSEventType eventType = [event type];
-            if (eventType == NSEventTypeKeyDown)
-            {
+            if (eventType == NSEventTypeKeyDown) {
                 /* Let the native app menu consume key equivalents (Cmd+N, F5, etc.)
                    before we translate the event into Viper input. We still avoid
                    forwarding arbitrary key presses to NSApp, which prevents the
                    system beep for unhandled navigation keys. */
                 NSMenu *mainMenu = [NSApp mainMenu];
-                if (mainMenu && [mainMenu performKeyEquivalent:event])
-                {
+                if (mainMenu && [mainMenu performKeyEquivalent:event]) {
                     continue;
                 }
             }
 
             /* Don't forward keyboard events to NSApp - we handle them directly.
                This prevents the system beep when arrow keys are pressed. */
-            if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp)
-            {
+            if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp) {
                 [NSApp sendEvent:event];
             }
 
             /* Translate to ViperGFX events */
             int64_t timestamp = vgfx_platform_now_ms();
 
-            switch ([event type])
-            {
-                case NSEventTypeKeyDown:
-                {
+            switch ([event type]) {
+                case NSEventTypeKeyDown: {
                     NSEventModifierFlags flags = [event modifierFlags];
                     vgfx_key_t key =
                         translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
-                    if (key != VGFX_KEY_UNKNOWN && key < 512)
-                    {
+                    if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 1; /* Update input state */
 
                         int mods = macos_modifiers(flags);
@@ -999,32 +934,29 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                     NSString *characters = [event characters];
                     uint32_t codepoint = macos_first_codepoint(characters);
-                    if (codepoint >= 0x20 && codepoint != 0x7F)
-                    {
-                        vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
-                                                   .time_ms = timestamp,
-                                                   .data.text = {.codepoint = codepoint,
-                                                                 .modifiers =
-                                                                     macos_modifiers(flags)}};
+                    if (codepoint >= 0x20 && codepoint != 0x7F) {
+                        vgfx_event_t text_event = {
+                            .type = VGFX_EVENT_TEXT_INPUT,
+                            .time_ms = timestamp,
+                            .data.text = {.codepoint = codepoint,
+                                          .modifiers = macos_modifiers(flags)}};
                         vgfx_internal_enqueue_event(win, &text_event);
                     }
                     break;
                 }
 
-                case NSEventTypeKeyUp:
-                {
+                case NSEventTypeKeyUp: {
                     vgfx_key_t key =
                         translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
-                    if (key != VGFX_KEY_UNKNOWN && key < 512)
-                    {
+                    if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 0; /* Update input state */
 
-                        vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_UP,
-                                                   .time_ms = timestamp,
-                                                   .data.key = {.key = key,
-                                                                .is_repeat = 0,
-                                                                .modifiers = macos_modifiers(
-                                                                    [event modifierFlags])}};
+                        vgfx_event_t vgfx_event = {
+                            .type = VGFX_EVENT_KEY_UP,
+                            .time_ms = timestamp,
+                            .data.key = {.key = key,
+                                         .is_repeat = 0,
+                                         .modifiers = macos_modifiers([event modifierFlags])}};
                         vgfx_internal_enqueue_event(win, &vgfx_event);
                     }
                     break;
@@ -1033,8 +965,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 case NSEventTypeMouseMoved:
                 case NSEventTypeLeftMouseDragged:
                 case NSEventTypeRightMouseDragged:
-                case NSEventTypeOtherMouseDragged:
-                {
+                case NSEventTypeOtherMouseDragged: {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
@@ -1056,8 +987,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                 case NSEventTypeLeftMouseDown:
                 case NSEventTypeRightMouseDown:
-                case NSEventTypeOtherMouseDown:
-                {
+                case NSEventTypeOtherMouseDown: {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
@@ -1067,17 +997,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                     /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                    if ([event type] == NSEventTypeRightMouseDown)
-                    {
+                    if ([event type] == NSEventTypeRightMouseDown) {
                         button = VGFX_MOUSE_RIGHT;
-                    }
-                    else if ([event type] == NSEventTypeOtherMouseDown)
-                    {
+                    } else if ([event type] == NSEventTypeOtherMouseDown) {
                         button = VGFX_MOUSE_MIDDLE;
                     }
 
-                    if (button < 8)
-                    {
+                    if (button < 8) {
                         win->mouse_button_state[button] = 1; /* Update input state */
                     }
 
@@ -1091,8 +1017,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                 case NSEventTypeLeftMouseUp:
                 case NSEventTypeRightMouseUp:
-                case NSEventTypeOtherMouseUp:
-                {
+                case NSEventTypeOtherMouseUp: {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
@@ -1102,17 +1027,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 
                     /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                    if ([event type] == NSEventTypeRightMouseUp)
-                    {
+                    if ([event type] == NSEventTypeRightMouseUp) {
                         button = VGFX_MOUSE_RIGHT;
-                    }
-                    else if ([event type] == NSEventTypeOtherMouseUp)
-                    {
+                    } else if ([event type] == NSEventTypeOtherMouseUp) {
                         button = VGFX_MOUSE_MIDDLE;
                     }
 
-                    if (button < 8)
-                    {
+                    if (button < 8) {
                         win->mouse_button_state[button] = 0; /* Update input state */
                     }
 
@@ -1124,8 +1045,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     break;
                 }
 
-                case NSEventTypeScrollWheel:
-                {
+                case NSEventTypeScrollWheel: {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
                     float sf = win->scale_factor;
@@ -1133,14 +1053,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
 
                     float dx, dy;
-                    if ([event hasPreciseScrollingDeltas])
-                    {
+                    if ([event hasPreciseScrollingDeltas]) {
                         /* Trackpad: values are in points — convert to pixels */
                         dx = (float)[event scrollingDeltaX] * sf;
                         dy = -(float)[event scrollingDeltaY] * sf;
-                    }
-                    else
-                    {
+                    } else {
                         /* Traditional scroll wheel: deltaY is in lines (typically ±1/3) */
                         dx = (float)[event deltaX];
                         dy = -(float)[event deltaY];
@@ -1177,13 +1094,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 /// @pre  win->pixels != NULL (framebuffer valid)
 /// @pre  win->platform_data != NULL
 /// @post Framebuffer contents visible on screen
-int vgfx_platform_present(struct vgfx_window *win)
-{
+int vgfx_platform_present(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         if (!platform->view)
@@ -1212,13 +1127,11 @@ int vgfx_platform_present(struct vgfx_window *win)
 ///            - mach_timebase_info() provides numer/denom for conversion
 ///            - nanoseconds = mach_time * numer / denom
 ///            - milliseconds = nanoseconds / 1000000
-int64_t vgfx_platform_now_ms(void)
-{
+int64_t vgfx_platform_now_ms(void) {
     static mach_timebase_info_data_t timebase;
     static int initialized = 0;
 
-    if (!initialized)
-    {
+    if (!initialized) {
         mach_timebase_info(&timebase); /* Query conversion factors once */
         initialized = 1;
     }
@@ -1236,10 +1149,8 @@ int64_t vgfx_platform_now_ms(void)
 /// @param ms Duration to sleep in milliseconds
 ///
 /// @post Thread sleeps for approximately ms milliseconds (may be longer)
-void vgfx_platform_sleep_ms(int32_t ms)
-{
-    if (ms > 0)
-    {
+void vgfx_platform_sleep_ms(int32_t ms) {
+    if (ms > 0) {
         struct timespec ts;
         ts.tv_sec = ms / 1000;              /* Whole seconds */
         ts.tv_nsec = (ms % 1000) * 1000000; /* Fractional seconds in nanoseconds */
@@ -1254,14 +1165,11 @@ void vgfx_platform_sleep_ms(int32_t ms)
 /// @brief Check if the clipboard contains data in the specified format.
 /// @param format Clipboard format to check for
 /// @return 1 if data is available, 0 otherwise
-int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
-{
-    @autoreleasepool
-    {
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
+    @autoreleasepool {
         NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 
-        switch (format)
-        {
+        switch (format) {
             case VGFX_CLIPBOARD_TEXT:
                 return [pasteboard availableTypeFromArray:@[ NSPasteboardTypeString ]] != nil ? 1
                                                                                               : 0;
@@ -1286,10 +1194,8 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
 /// @details Returns a malloc'd UTF-8 string containing the clipboard text.
 ///          The caller is responsible for freeing the returned string.
 /// @return Clipboard text (caller must free), or NULL if not available
-char *vgfx_clipboard_get_text(void)
-{
-    @autoreleasepool
-    {
+char *vgfx_clipboard_get_text(void) {
+    @autoreleasepool {
         NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
         NSString *string = [pasteboard stringForType:NSPasteboardTypeString];
 
@@ -1307,18 +1213,14 @@ char *vgfx_clipboard_get_text(void)
 /// @brief Set text to the clipboard.
 /// @details Copies the specified UTF-8 string to the system clipboard.
 /// @param text Text to copy (NULL clears text from clipboard)
-void vgfx_clipboard_set_text(const char *text)
-{
-    @autoreleasepool
-    {
+void vgfx_clipboard_set_text(const char *text) {
+    @autoreleasepool {
         NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
         [pasteboard clearContents];
 
-        if (text)
-        {
+        if (text) {
             NSString *string = [NSString stringWithUTF8String:text];
-            if (string)
-            {
+            if (string) {
                 [pasteboard setString:string forType:NSPasteboardTypeString];
             }
         }
@@ -1326,10 +1228,8 @@ void vgfx_clipboard_set_text(const char *text)
 }
 
 /// @brief Clear all clipboard contents.
-void vgfx_clipboard_clear(void)
-{
-    @autoreleasepool
-    {
+void vgfx_clipboard_clear(void) {
+    @autoreleasepool {
         NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
         [pasteboard clearContents];
     }
@@ -1344,17 +1244,14 @@ void vgfx_clipboard_clear(void)
 ///
 /// @param win   Pointer to the window structure
 /// @param title New title string (UTF-8)
-void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
-{
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
     if (!win || !win->platform_data || !title)
         return;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
-        if (platform->window)
-        {
+        if (platform->window) {
             [platform->window setTitle:[NSString stringWithUTF8String:title]];
         }
 
@@ -1369,13 +1266,11 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
 /// @param win        Pointer to the window structure
 /// @param fullscreen 1 for fullscreen, 0 for windowed
 /// @return 1 on success, 0 on failure
-int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
-{
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
     if (!win || !win->platform_data)
         return 0;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         if (!platform->window)
@@ -1386,12 +1281,9 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
             ([platform->window styleMask] & NSWindowStyleMaskFullScreen) != 0;
 
         /* Only toggle if state needs to change */
-        if (fullscreen && !is_currently_fullscreen)
-        {
+        if (fullscreen && !is_currently_fullscreen) {
             [platform->window toggleFullScreen:nil];
-        }
-        else if (!fullscreen && is_currently_fullscreen)
-        {
+        } else if (!fullscreen && is_currently_fullscreen) {
             [platform->window toggleFullScreen:nil];
         }
 
@@ -1402,13 +1294,11 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
 /// @brief Check if the window is in fullscreen mode.
 /// @param win Pointer to the window structure
 /// @return 1 if fullscreen, 0 if windowed
-int vgfx_platform_is_fullscreen(struct vgfx_window *win)
-{
+int vgfx_platform_is_fullscreen(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         if (!platform->window)
@@ -1418,36 +1308,30 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
     }
 }
 
-void vgfx_platform_minimize(struct vgfx_window *win)
-{
+void vgfx_platform_minimize(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window)
             [platform->window miniaturize:nil];
     }
 }
 
-void vgfx_platform_maximize(struct vgfx_window *win)
-{
+void vgfx_platform_maximize(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window && ![platform->window isZoomed])
             [platform->window zoom:nil];
     }
 }
 
-void vgfx_platform_restore(struct vgfx_window *win)
-{
+void vgfx_platform_restore(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (!platform->window)
             return;
@@ -1458,40 +1342,33 @@ void vgfx_platform_restore(struct vgfx_window *win)
     }
 }
 
-int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         return (platform->window && [platform->window isMiniaturized]) ? 1 : 0;
     }
 }
 
-int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         return (platform->window && [platform->window isZoomed]) ? 1 : 0;
     }
 }
 
-void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y)
-{
-    if (!win || !win->platform_data)
-    {
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y) {
+    if (!win || !win->platform_data) {
         if (out_x)
             *out_x = 0;
         if (out_y)
             *out_y = 0;
         return;
     }
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (!platform->window)
             return;
@@ -1503,54 +1380,44 @@ void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t
     }
 }
 
-void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
-{
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window)
             [platform->window setFrameOrigin:NSMakePoint((CGFloat)x, (CGFloat)y)];
     }
 }
 
-void vgfx_platform_focus(struct vgfx_window *win)
-{
+void vgfx_platform_focus(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window)
             [platform->window makeKeyAndOrderFront:nil];
     }
 }
 
-int32_t vgfx_platform_is_focused(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         return (platform->window && [platform->window isKeyWindow]) ? 1 : 0;
     }
 }
 
-void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
-{
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
     if (win)
         win->prevent_close = prevent;
 }
 
-void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
-{
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
     (void)win;
-    @autoreleasepool
-    {
-        switch (cursor_type)
-        {
+    @autoreleasepool {
+        switch (cursor_type) {
             case 1:
                 [[NSCursor pointingHandCursor] set];
                 break;
@@ -1573,11 +1440,9 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
     }
 }
 
-void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
-{
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) {
     (void)win;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         if (visible)
             [NSCursor unhide];
         else
@@ -1585,17 +1450,14 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
     }
 }
 
-void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h)
-{
+void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
     if (out_w)
         *out_w = 0;
     if (out_h)
         *out_h = 0;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         NSScreen *screen = nil;
-        if (win && win->platform_data)
-        {
+        if (win && win->platform_data) {
             vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
             screen = platform->window ? [platform->window screen] : nil;
         }
@@ -1609,12 +1471,10 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
     }
 }
 
-void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h)
-{
+void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h) {
     if (!win || !win->platform_data)
         return;
-    @autoreleasepool
-    {
+    @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (!platform->window)
             return;
@@ -1624,14 +1484,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     }
 }
 
-void *vgfx_get_native_display(vgfx_window_t window)
-{
+void *vgfx_get_native_display(vgfx_window_t window) {
     (void)window;
     return NULL; /* macOS doesn't have a separate display connection */
 }
 
-void *vgfx_get_native_view(vgfx_window_t window)
-{
+void *vgfx_get_native_view(vgfx_window_t window) {
     if (!window)
         return NULL;
     vgfx_macos_platform *platform = (vgfx_macos_platform *)window->platform_data;
@@ -1640,8 +1498,7 @@ void *vgfx_get_native_view(vgfx_window_t window)
     return (__bridge void *)platform->view;
 }
 
-void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y)
-{
+void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
     if (!win || !win->platform_data)
         return;
     vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
@@ -1662,13 +1519,11 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y)
     CGAssociateMouseAndMouseCursorPosition(true);
 }
 
-void vgfx_platform_hide_cursor(void)
-{
+void vgfx_platform_hide_cursor(void) {
     [NSCursor hide];
 }
 
-void vgfx_platform_show_cursor(void)
-{
+void vgfx_platform_show_cursor(void) {
     [NSCursor unhide];
 }
 

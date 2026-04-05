@@ -31,7 +31,7 @@
 #include <string.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /* Access existing Vec3 and Mat4 public API */
 extern void *rt_vec3_new(double x, double y, double z);
@@ -149,8 +149,13 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
 }
 
 /* Build orthographic projection matrix */
-static void build_ortho(double *m, double left, double right, double bottom, double top,
-                        double near_val, double far_val) {
+static void build_ortho(double *m,
+                        double left,
+                        double right,
+                        double bottom,
+                        double top,
+                        double near_val,
+                        double far_val) {
     memset(m, 0, 16 * sizeof(double));
     double rl = right - left;
     double tb = top - bottom;
@@ -632,4 +637,6 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     build_look_at(cam->view, cam->eye, look, up);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

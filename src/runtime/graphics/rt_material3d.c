@@ -36,7 +36,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void material_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -220,4 +220,6 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     m->emissive[2] = b;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

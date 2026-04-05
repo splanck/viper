@@ -55,10 +55,9 @@ struct AssetBundle {
 /// @param outputDir Directory for .vpa output files.
 /// @param err       Set to error message on failure.
 /// @return AssetBundle on success, nullopt on failure.
-std::optional<AssetBundle> compileAssets(
-    const il::tools::common::ProjectConfig &config,
-    const std::string &outputDir,
-    std::string &err);
+std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig &config,
+                                         const std::string &outputDir,
+                                         std::string &err);
 
 /// @brief Write a .o file containing the embedded blob as rodata symbols.
 ///

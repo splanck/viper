@@ -60,7 +60,7 @@ typedef struct ogg_packet_node_t ogg_packet_node_t;
 
 /// @brief OGG file reader
 typedef struct {
-    FILE *file;        // NULL for memory-based reading
+    FILE *file; // NULL for memory-based reading
     const uint8_t *mem;
     size_t mem_len;
     size_t mem_pos;

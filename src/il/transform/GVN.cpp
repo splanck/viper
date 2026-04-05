@@ -252,8 +252,7 @@ void visitBlock(Function &F,
 
         // Default: advance
         ++idx;
-    next_instruction:
-        ;
+    next_instruction:;
     }
 
     // Recurse to children in dominator-tree preorder

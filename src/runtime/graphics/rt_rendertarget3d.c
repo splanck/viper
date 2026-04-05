@@ -36,7 +36,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_pixels_new(int64_t width, int64_t height);
 
 //=============================================================================
@@ -223,4 +223,6 @@ void rt_canvas3d_reset_render_target(void *canvas) {
     c->render_target = NULL;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

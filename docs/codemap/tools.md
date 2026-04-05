@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # CODEMAP: Tools
@@ -10,7 +10,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ## Overview
 
-- **Total source files**: 113 (.hpp/.cpp)
+- **Total source files**: 117 (.hpp/.cpp)
 
 ## User-Facing Tools
 

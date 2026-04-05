@@ -116,10 +116,9 @@ ExprPtr Parser::parseAssignment() {
     Token compTok;
     if (match(TokenKind::PlusEqual, &compTok) || match(TokenKind::MinusEqual, &compTok) ||
         match(TokenKind::StarEqual, &compTok) || match(TokenKind::SlashEqual, &compTok) ||
-        match(TokenKind::PercentEqual, &compTok) ||
-        match(TokenKind::ShiftLeftEqual, &compTok) || match(TokenKind::ShiftRightEqual, &compTok) ||
-        match(TokenKind::AmpersandEqual, &compTok) || match(TokenKind::PipeEqual, &compTok) ||
-        match(TokenKind::CaretEqual, &compTok)) {
+        match(TokenKind::PercentEqual, &compTok) || match(TokenKind::ShiftLeftEqual, &compTok) ||
+        match(TokenKind::ShiftRightEqual, &compTok) || match(TokenKind::AmpersandEqual, &compTok) ||
+        match(TokenKind::PipeEqual, &compTok) || match(TokenKind::CaretEqual, &compTok)) {
         SourceLoc loc = compTok.loc;
         BinaryOp op = compoundOp(compTok.kind);
 

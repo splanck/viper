@@ -28,8 +28,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_pixels_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 
 #include "rt_internal.h"
 
@@ -632,4 +632,3 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
 
     return result;
 }
-

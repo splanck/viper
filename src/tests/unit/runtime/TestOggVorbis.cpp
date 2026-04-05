@@ -137,8 +137,8 @@ static std::vector<uint8_t> make_theora_ident_packet() {
     packet[7] = 3;
     packet[8] = 2;
     packet[9] = 1;
-    packet[11] = 1; // frame width in 16px blocks
-    packet[13] = 1; // frame height in 16px blocks
+    packet[11] = 1;  // frame width in 16px blocks
+    packet[13] = 1;  // frame height in 16px blocks
     packet[16] = 16; // visible picture width
     packet[19] = 16; // visible picture height
     packet[25] = 24; // fps numerator
@@ -215,31 +215,31 @@ static std::vector<uint8_t> make_theora_iframe_packet(bool brighten_first_block)
     BitWriter bw;
     // data packet marker + frame header
     bw.push_bit(0);
-    bw.push_bit(0);       // intra frame
-    bw.push_bits(0, 6);   // qi0
-    bw.push_bit(0);       // NQIS = 1
-    bw.push_bits(0, 3);   // reserved
+    bw.push_bit(0);     // intra frame
+    bw.push_bits(0, 6); // qi0
+    bw.push_bit(0);     // NQIS = 1
+    bw.push_bits(0, 3); // reserved
 
     // ti = 0 table indices
-    bw.push_bits(0, 4);   // hti_L
-    bw.push_bits(0, 4);   // hti_C
+    bw.push_bits(0, 4); // hti_L
+    bw.push_bits(0, 4); // hti_C
 
     // Six coded blocks in a 16x16 4:2:0 frame: 4 luma + cb + cr.
     if (brighten_first_block) {
-        bw.push_bit(1);       // token 22
-        bw.push_bit(0);       // sign
-        bw.push_bits(0, 9);   // magnitude => 69
+        bw.push_bit(1);     // token 22
+        bw.push_bit(0);     // sign
+        bw.push_bits(0, 9); // magnitude => 69
     } else {
-        bw.push_bit(0);       // token 0 (EOB)
+        bw.push_bit(0); // token 0 (EOB)
     }
     for (int i = 1; i < 6; i++)
-        bw.push_bit(0);       // token 0 (EOB)
+        bw.push_bit(0); // token 0 (EOB)
 
     // ti = 1 table indices
     bw.push_bits(0, 4);
     bw.push_bits(0, 4);
     if (brighten_first_block)
-        bw.push_bit(0);       // finish first block with EOB
+        bw.push_bit(0); // finish first block with EOB
 
     bw.flush();
     return bw.bytes;
@@ -248,22 +248,22 @@ static std::vector<uint8_t> make_theora_iframe_packet(bool brighten_first_block)
 static std::vector<uint8_t> make_theora_copy_pframe_packet() {
     BitWriter bw;
     bw.push_bit(0);
-    bw.push_bit(1);       // inter frame
-    bw.push_bits(0, 6);   // qi0
-    bw.push_bit(0);       // NQIS = 1
+    bw.push_bit(1);     // inter frame
+    bw.push_bits(0, 6); // qi0
+    bw.push_bit(0);     // NQIS = 1
 
     // Long-run coded superblock flags: all 3 superblocks are not partially coded.
     bw.push_bit(0);
     bw.push_bits(0b10, 2);
-    bw.push_bit(1);       // run length 3
+    bw.push_bit(1); // run length 3
 
     // Long-run fully coded flags: all 3 are uncoded.
     bw.push_bit(0);
     bw.push_bits(0b10, 2);
-    bw.push_bit(1);       // run length 3
+    bw.push_bit(1); // run length 3
 
-    bw.push_bits(7, 3);   // direct mb mode scheme; unused because no coded luma blocks
-    bw.push_bit(0);       // MVMODE
+    bw.push_bits(7, 3); // direct mb mode scheme; unused because no coded luma blocks
+    bw.push_bit(0);     // MVMODE
 
     // ti=0 and ti=1 still carry table indices even with no active coded blocks.
     bw.push_bits(0, 4);
@@ -278,49 +278,49 @@ static std::vector<uint8_t> make_theora_copy_pframe_packet() {
 static std::vector<uint8_t> make_theora_partial_intra_pframe_packet() {
     BitWriter bw;
     bw.push_bit(0);
-    bw.push_bit(1);       // inter frame
-    bw.push_bits(0, 6);   // qi0
-    bw.push_bit(0);       // NQIS = 1
+    bw.push_bit(1);     // inter frame
+    bw.push_bits(0, 6); // qi0
+    bw.push_bit(0);     // NQIS = 1
 
     // Superblock partial-coded flags: Y=1, Cb=0, Cr=0.
     bw.push_bit(1);
-    bw.push_bit(0);       // run length 1
+    bw.push_bit(0); // run length 1
     bw.push_bit(0);
     bw.push_bit(1);
     bw.push_bit(0);
-    bw.push_bit(0);       // run length 2
+    bw.push_bit(0); // run length 2
 
     // Fully coded flags for the two uncoded chroma superblocks: both 0.
     bw.push_bit(0);
     bw.push_bit(1);
     bw.push_bit(0);
-    bw.push_bit(0);       // run length 2
+    bw.push_bit(0); // run length 2
 
     // Partial Y superblock block bits: [1,0,0,0].
     bw.push_bit(1);
-    bw.push_bit(0);       // run length 1
+    bw.push_bit(0); // run length 1
     bw.push_bit(0);
     bw.push_bit(1);
     bw.push_bit(0);
-    bw.push_bit(1);       // run length 3
+    bw.push_bit(1); // run length 3
 
-    bw.push_bits(7, 3);   // direct mb mode scheme
-    bw.push_bits(1, 3);   // mode 1 = intra
-    bw.push_bit(0);       // MVMODE
+    bw.push_bits(7, 3); // direct mb mode scheme
+    bw.push_bits(1, 3); // mode 1 = intra
+    bw.push_bit(0);     // MVMODE
 
     // ti = 0 tables
     bw.push_bits(0, 4);
     bw.push_bits(0, 4);
 
     // First and only coded block gets a strong positive DC token.
-    bw.push_bit(1);       // token 22
-    bw.push_bit(0);       // sign
-    bw.push_bits(0, 9);   // magnitude 69
+    bw.push_bit(1);     // token 22
+    bw.push_bit(0);     // sign
+    bw.push_bits(0, 9); // magnitude 69
 
     // ti = 1 tables
     bw.push_bits(0, 4);
     bw.push_bits(0, 4);
-    bw.push_bit(0);       // EOB
+    bw.push_bit(0); // EOB
 
     bw.flush();
     return bw.bytes;
@@ -494,7 +494,7 @@ TEST(VorbisDecoderTest, AcceptValidIdentHeader) {
     // bitrates (16-27): all zero
     // blocksize_0 = 8 (256 samples), blocksize_1 = 11 (2048 samples)
     ident[28] = (11 << 4) | 8; // packed: high nibble = bs1, low nibble = bs0
-    ident[29] = 1; // framing bit
+    ident[29] = 1;             // framing bit
 
     int rc = vorbis_decode_header(dec, ident, sizeof(ident), 0);
     EXPECT_EQ(rc, 0);

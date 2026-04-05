@@ -531,8 +531,8 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     pthread_mutex_lock(&p->mutex);
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
-        int rc = future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline,
-                                                p->cond_uses_monotonic);
+        int rc =
+            future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
     }
@@ -692,8 +692,8 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     pthread_mutex_lock(&p->mutex);
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
-        int rc = future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline,
-                                                p->cond_uses_monotonic);
+        int rc =
+            future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
     }
@@ -757,8 +757,8 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
     pthread_mutex_lock(&p->mutex);
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
-        int rc = future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline,
-                                                p->cond_uses_monotonic);
+        int rc =
+            future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
     }
@@ -825,9 +825,7 @@ int8_t rt_future_on_complete(void *obj, void (*callback)(void *future, void *ctx
     return rt_future_on_complete_ex(obj, callback, ctx, NULL);
 }
 
-int8_t rt_future_cancel_listener(void *obj,
-                                 void (*callback)(void *future, void *ctx),
-                                 void *ctx) {
+int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void *ctx), void *ctx) {
     if (!obj || !callback)
         return 0;
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper Arithmetic Semantics Reference
@@ -198,5 +198,6 @@ Type hierarchy: `INTEGER% (I16) < LONG& (I64) < SINGLE! (F64) < DOUBLE# (F64)`
 | `TRUE` | `-1` (I64) | BASIC uses `-1` for true |
 
 **Key difference**: BASIC integer division and modulo always use checked variants
-(`sdiv.chk0`, `srem.chk0`), while Zia defaults to unchecked (`sdiv`, `srem`)
-unless `overflowChecks` is enabled.
+(`sdiv.chk0`, `srem.chk0`). Zia also defaults to checked variants (`sdiv.chk0`,
+`srem.chk0`) since `overflowChecks` is `true` by default. Pass
+`--no-overflow-checks` for unchecked `sdiv`/`srem`.

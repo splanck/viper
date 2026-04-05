@@ -31,7 +31,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -355,4 +355,6 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     xf->dirty = 1;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

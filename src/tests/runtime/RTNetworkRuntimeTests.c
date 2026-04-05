@@ -195,8 +195,8 @@ static void test_http_server_response_filters_managed_and_injected_headers(void)
     const char *header_names[] = {"Connection", "X-Good", "X-Bad"};
     const char *header_values[] = {"keep-alive", "ok", "evil\r\nX-Injected: yes"};
     size_t resp_len = 0;
-    char *resp = rt_http_server_test_build_response(
-        200, "{}", 2, header_names, header_values, 3, &resp_len);
+    char *resp =
+        rt_http_server_test_build_response(200, "{}", 2, header_names, header_values, 3, &resp_len);
     ASSERT(resp != NULL);
     if (resp) {
         ASSERT(strstr(resp, "Connection: keep-alive\r\n") == NULL);
@@ -242,8 +242,7 @@ static void test_http_server_reports_missing_handler_binding(void) {
     void *server = rt_http_server_new(8081);
     rt_http_server_get(server, rt_const_cstr("/missing"), rt_const_cstr("missing_handler"));
 
-    rt_string raw =
-        rt_const_cstr("GET /missing HTTP/1.1\r\nHost: example.test\r\n\r\n");
+    rt_string raw = rt_const_cstr("GET /missing HTTP/1.1\r\nHost: example.test\r\n\r\n");
     rt_string response = (rt_string)rt_http_server_process_request(server, raw);
     const char *response_cstr = rt_string_cstr(response);
 

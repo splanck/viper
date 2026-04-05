@@ -283,11 +283,8 @@ static int64_t parallel_choose_task_count(void *pool, int64_t count) {
     return task_count > 0 ? task_count : 1;
 }
 
-static void parallel_split_range(int64_t count,
-                                 int64_t task_count,
-                                 int64_t task_index,
-                                 int64_t *start_out,
-                                 int64_t *end_out) {
+static void parallel_split_range(
+    int64_t count, int64_t task_count, int64_t task_index, int64_t *start_out, int64_t *end_out) {
     int64_t base = count / task_count;
     int64_t remainder = count % task_count;
     int64_t start = task_index * base + (task_index < remainder ? task_index : remainder);

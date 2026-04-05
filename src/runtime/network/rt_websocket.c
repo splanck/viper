@@ -30,7 +30,7 @@
 #include <string.h>
 
 // Forward declarations (defined in rt_io.c).
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
 
 #include "rt_error.h"
@@ -902,7 +902,10 @@ static int ws_recv_frame(
 
 static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, size_t len);
 
-static int ws_recv_message(rt_ws_impl *ws, uint8_t **data_out, size_t *len_out, uint8_t *opcode_out) {
+static int ws_recv_message(rt_ws_impl *ws,
+                           uint8_t **data_out,
+                           size_t *len_out,
+                           uint8_t *opcode_out) {
     uint8_t *frag_buf = NULL;
     size_t frag_len = 0;
     uint8_t frag_opcode = 0;

@@ -41,7 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 // Generate standard array helper functions using macros from rt_internal.h
 RT_ARR_DEFINE_HDR_FN(rt_arr_str_hdr, rt_string)

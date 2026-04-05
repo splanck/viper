@@ -73,7 +73,7 @@ static void *parse_document(const char *input, size_t len);
 // Helper Functions
 //=============================================================================
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void set_error(const char *msg) {
     strncpy(xml_last_error, msg, sizeof(xml_last_error) - 1);

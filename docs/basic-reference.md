@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper BASIC — Reference
@@ -29,15 +29,23 @@ Complete language reference for Viper BASIC. This document describes **statement
 
 ## Table of Contents
 
+**Language Core**
 - [Statements A–Z](#statements-az)
 - [Expressions & Operators](#expressions--operators)
 - [Built-in Functions](#built-in-functions)
-- [Namespaces & USING](#namespaces--using)
-- [ViperLib & Namespaces](#viperlib--namespaces)
-- [Reserved Root](#reserved-root)
-- [Keyword Index](#keyword-index)
+
+**Object-Oriented Programming**
+- [OOP Semantics](#oop-semantics) — Inheritance, interfaces, properties, destructors
 - [Runtime Classes (Viper.*)](#runtime-classes-viper)
 - [Runtime Classes Usage Examples](#runtime-classes-usage-examples)
+
+**Modules & Namespaces**
+- [ViperLib & Namespaces](#viperlib--namespaces)
+- [Reserved Root](#reserved-root)
+- [Namespaces & USING](#namespaces--using)
+
+**Quick Reference**
+- [Keyword Index](#keyword-index)
 
 ---
 

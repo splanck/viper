@@ -35,15 +35,13 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
-    void *m, double x, double y, double z, double nx, double ny, double nz,
-    double u, double v);
+    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
-extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform,
-                                   void *material);
+extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -116,8 +114,7 @@ static uint32_t lcg_next(uint32_t *state) {
 }
 
 void *rt_vegetation3d_new(void *blade_texture) {
-    rt_vegetation3d *v =
-        (rt_vegetation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_vegetation3d));
+    rt_vegetation3d *v = (rt_vegetation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_vegetation3d));
     if (!v) {
         rt_trap("Vegetation3D.New: allocation failed");
         return NULL;
@@ -160,8 +157,7 @@ void rt_vegetation3d_set_density_map(void *obj, void *pixels) {
         ((rt_vegetation3d *)obj)->density_map = pixels;
 }
 
-void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength,
-                                      double turbulence) {
+void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, double turbulence) {
     if (!obj)
         return;
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
@@ -170,8 +166,7 @@ void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength,
     v->wind_turbulence = turbulence;
 }
 
-void rt_vegetation3d_set_lod_distances(void *obj, double near_dist,
-                                        double far_dist) {
+void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
     if (!obj)
         return;
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
@@ -179,8 +174,7 @@ void rt_vegetation3d_set_lod_distances(void *obj, double near_dist,
     v->lod_far = (float)far_dist;
 }
 
-void rt_vegetation3d_set_blade_size(void *obj, double width, double height,
-                                     double variation) {
+void rt_vegetation3d_set_blade_size(void *obj, double width, double height, double variation) {
     if (!obj)
         return;
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
@@ -197,13 +191,24 @@ void rt_vegetation3d_set_blade_size(void *obj, double width, double height,
 }
 
 /// @brief Build a row-major 4x4 transform: translate(x,y,z) * rotateY(angle) * scale(s).
-static void build_transform(float *out, double x, double y, double z,
-                              double angle, double s) {
+static void build_transform(float *out, double x, double y, double z, double angle, double s) {
     double ca = cos(angle), sa = sin(angle);
-    /* Row 0 */ out[0] = (float)(ca * s);  out[1] = 0;          out[2] = (float)(sa * s);  out[3] = (float)x;
-    /* Row 1 */ out[4] = 0;                out[5] = (float)s;   out[6] = 0;                out[7] = (float)y;
-    /* Row 2 */ out[8] = (float)(-sa * s); out[9] = 0;          out[10] = (float)(ca * s); out[11] = (float)z;
-    /* Row 3 */ out[12] = 0;               out[13] = 0;         out[14] = 0;               out[15] = 1.0f;
+    /* Row 0 */ out[0] = (float)(ca * s);
+    out[1] = 0;
+    out[2] = (float)(sa * s);
+    out[3] = (float)x;
+    /* Row 1 */ out[4] = 0;
+    out[5] = (float)s;
+    out[6] = 0;
+    out[7] = (float)y;
+    /* Row 2 */ out[8] = (float)(-sa * s);
+    out[9] = 0;
+    out[10] = (float)(ca * s);
+    out[11] = (float)z;
+    /* Row 3 */ out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+    out[15] = 1.0f;
 }
 
 void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
@@ -218,16 +223,15 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         int32_t width, depth;
         double scale[3];
     } terrain_view;
+
     terrain_view *tv = (terrain_view *)terrain;
     double tw = tv->width * tv->scale[0];
     double td = tv->depth * tv->scale[2];
 
     /* Allocate storage */
     int32_t cap = (int32_t)count;
-    v->base_transforms = (float *)realloc(v->base_transforms,
-                                           (size_t)cap * 16 * sizeof(float));
-    v->positions = (float *)realloc(v->positions,
-                                     (size_t)cap * 3 * sizeof(float));
+    v->base_transforms = (float *)realloc(v->base_transforms, (size_t)cap * 16 * sizeof(float));
+    v->positions = (float *)realloc(v->positions, (size_t)cap * 3 * sizeof(float));
     v->capacity = cap;
     v->total_count = 0;
 
@@ -256,16 +260,12 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         double wy = rt_terrain3d_get_height_at(terrain, wx, wz);
 
         /* Random Y rotation + scale variation */
-        double angle =
-            ((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) * 6.283185307;
+        double angle = ((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) * 6.283185307;
         double scale_var =
-            1.0 +
-            (((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) - 0.5) * 2.0 *
-                v->size_variation;
+            1.0 + (((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) - 0.5) * 2.0 * v->size_variation;
 
         int32_t idx = v->total_count;
-        build_transform(&v->base_transforms[idx * 16], wx, wy, wz, angle,
-                         scale_var);
+        build_transform(&v->base_transforms[idx * 16], wx, wy, wz, angle, scale_var);
         v->positions[idx * 3 + 0] = (float)wx;
         v->positions[idx * 3 + 1] = (float)wy;
         v->positions[idx * 3 + 2] = (float)wz;
@@ -273,8 +273,7 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     }
 }
 
-void rt_vegetation3d_update(void *obj, double dt, double camX, double camY,
-                             double camZ) {
+void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, double camZ) {
     if (!obj || dt <= 0)
         return;
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
@@ -283,9 +282,8 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY,
     /* Ensure visible buffer is large enough */
     if (v->visible_capacity < v->total_count) {
         v->visible_capacity = v->total_count;
-        v->visible_transforms = (float *)realloc(
-            v->visible_transforms,
-            (size_t)v->visible_capacity * 16 * sizeof(float));
+        v->visible_transforms = (float *)realloc(v->visible_transforms,
+                                                 (size_t)v->visible_capacity * 16 * sizeof(float));
     }
     v->visible_count = 0;
 
@@ -316,8 +314,7 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY,
 
         /* Apply wind shear to the transform's Y-column entries.
          * This bends the blade tops in the wind direction. */
-        double phase = v->wind_turbulence * (bx * 0.1 + bz * 0.07) +
-                       v->time * v->wind_speed;
+        double phase = v->wind_turbulence * (bx * 0.1 + bz * 0.07) + v->time * v->wind_speed;
         float wind_x = (float)(sin(phase) * v->wind_strength);
         float wind_z = (float)(cos(phase * 0.7) * v->wind_strength * 0.5);
         dst[1] += wind_x; /* shear X column by wind */
@@ -350,4 +347,6 @@ void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
     c->backface_cull = prev_cull;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

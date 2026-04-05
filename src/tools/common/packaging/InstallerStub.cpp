@@ -180,8 +180,8 @@ uint32_t computeIATOffset(const std::vector<PEImport> &imports) {
 void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen) {
     const uint32_t textRVA = kTextRVA;
     const uint32_t rdataRVA =
-        kRdataBaseRVA + (alignUp(static_cast<uint32_t>(gen.codeSize()), kSectionAlignment) -
-                         kSectionAlignment);
+        kRdataBaseRVA +
+        (alignUp(static_cast<uint32_t>(gen.codeSize()), kSectionAlignment) - kSectionAlignment);
 
     const uint32_t iatOff = computeIATOffset(stub.imports);
     const uint32_t iatBaseRVA = rdataRVA + iatOff;
@@ -332,11 +332,8 @@ void emitComposePath(InstallerStubGen &gen,
     gen.callIATSlot(catSlot);
 }
 
-void emitMessageBox(InstallerStubGen &gen,
-                    uint32_t slot,
-                    uint32_t titleOff,
-                    uint32_t messageOff,
-                    uint32_t flags) {
+void emitMessageBox(
+    InstallerStubGen &gen, uint32_t slot, uint32_t titleOff, uint32_t messageOff, uint32_t flags) {
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
     gen.leaRipData(X64Reg::RDX, messageOff);
     gen.leaRipData(X64Reg::R8, titleOff);
@@ -488,8 +485,7 @@ void emitExtractFile(InstallerStubGen &gen,
     gen.jz(errorLabel);
 
     const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
-    emitComposePath(
-        gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
+    emitComposePath(gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.movRegImm32(X64Reg::RDX, kGenericWrite);
@@ -523,8 +519,7 @@ void emitDeleteFile(InstallerStubGen &gen,
                     uint32_t catSlot,
                     uint32_t deleteSlot) {
     const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
-    emitComposePath(
-        gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
+    emitComposePath(gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.callIATSlot(deleteSlot);
 }
@@ -536,8 +531,7 @@ void emitRemoveDirectory(InstallerStubGen &gen,
                          uint32_t catSlot,
                          uint32_t removeSlot) {
     const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
-    emitComposePath(
-        gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
+    emitComposePath(gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.callIATSlot(removeSlot);
 }
@@ -661,8 +655,11 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kRegKeyOff);
     gen.callIATSlot(kI_RegCreateKeyW);
 
-    emitRegSetConstString(
-        gen, kI_RegSetValueExW, regDisplayNameOff, displayNameOff, wideBytesFor(layout.displayName));
+    emitRegSetConstString(gen,
+                          kI_RegSetValueExW,
+                          regDisplayNameOff,
+                          displayNameOff,
+                          wideBytesFor(layout.displayName));
     emitRegSetConstString(
         gen, kI_RegSetValueExW, regDisplayVersionOff, versionOff, wideBytesFor(version));
     emitRegSetConstString(
@@ -743,8 +740,7 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
                        false);
 
     for (const auto &file : layout.uninstallFiles) {
-        emitDeleteFile(
-            gen, file, slashOff, kU_lstrcpyW, kU_lstrcatW, kU_DeleteFileW);
+        emitDeleteFile(gen, file, slashOff, kU_lstrcpyW, kU_lstrcatW, kU_DeleteFileW);
     }
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kSelfPathOff);
@@ -753,8 +749,7 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.callIATSlot(kU_MoveFileExW);
 
     for (const auto &dir : layout.uninstallDirectories) {
-        emitRemoveDirectory(
-            gen, dir, slashOff, kU_lstrcpyW, kU_lstrcatW, kU_RemoveDirectoryW);
+        emitRemoveDirectory(gen, dir, slashOff, kU_lstrcpyW, kU_lstrcatW, kU_RemoveDirectoryW);
     }
 
     if (needsMenuPath(layout)) {

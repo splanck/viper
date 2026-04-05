@@ -27,15 +27,15 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_sprite3d.h"
-#include "rt_terrain3d.h"
 #include "rt_internal.h"
+#include "rt_sprite3d.h"
 #include "rt_string.h"
+#include "rt_terrain3d.h"
 #include <cassert>
-#include <csetjmp>
 #include <cmath>
-#include <cstdlib>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -916,7 +916,7 @@ static void test_rendertarget_null_safety() {
 namespace {
 static int g_postfx_release_count = 0;
 static int g_render_target_release_count = 0;
-}
+} // namespace
 
 extern "C" void tracked_postfx_finalizer(void *obj) {
     (void)obj;
@@ -975,7 +975,8 @@ static void test_canvas_render_target_retains_owned_reference() {
         FAIL("Canvas3D did not retain RenderTarget3D");
         return;
     }
-    if (canvas.render_target_owner == rt && canvas.render_target == ((rt_rendertarget3d *)rt)->target) {
+    if (canvas.render_target_owner == rt &&
+        canvas.render_target == ((rt_rendertarget3d *)rt)->target) {
         /* expected path */
     } else {
         FAIL("Canvas3D render target pointers were not updated");
@@ -1189,9 +1190,9 @@ static void test_metal_tangents_for_normal_map() {
     TEST("MTL-04: Mesh3D.CalcTangents — required for Metal normal maps");
     void *m = rt_mesh3d_new();
     rt_mesh3d_add_vertex(m, -1, 0, -1, 0, 1, 0, 0, 0);
-    rt_mesh3d_add_vertex(m,  1, 0, -1, 0, 1, 0, 1, 0);
-    rt_mesh3d_add_vertex(m,  1, 0,  1, 0, 1, 0, 1, 1);
-    rt_mesh3d_add_vertex(m, -1, 0,  1, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, 1, 0, -1, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 1, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, -1, 0, 1, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 2, 1);
     rt_mesh3d_add_triangle(m, 0, 3, 2);
     rt_mesh3d_calc_tangents(m);
@@ -1245,8 +1246,10 @@ static void test_metal_terrain_splat_for_gpu() {
 }
 
 extern "C" void *rt_postfx3d_new(void);
-extern "C" void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity,
-                                       int64_t blur_passes);
+extern "C" void rt_postfx3d_add_bloom(void *obj,
+                                      double threshold,
+                                      double intensity,
+                                      int64_t blur_passes);
 extern "C" void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
 extern "C" void rt_postfx3d_add_fxaa(void *obj);
 extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softness);

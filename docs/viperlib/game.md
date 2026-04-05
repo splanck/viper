@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-25
+last-verified: 2026-04-05
 ---
 
 # Game
@@ -678,46 +678,6 @@ A 2D integer grid. Stores one integer value per cell with get/set/fill operation
 
 ---
 
-## Current Limits
-
-| Class | Limit | Constant | Notes |
-|---|---|---|---|
-| Physics2D | 256 bodies/world | `PH_MAX_BODIES` | Traps on overflow |
-| Physics2D | 8×8 broad-phase cells | `BPG_DIM = 8` | Per-world |
-| Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | |
-| Quadtree | 256 query results | `RT_QUADTREE_MAX_RESULTS` | Detect with `QueryWasTruncated()` |
-| Quadtree | 4096 total items | Internal | |
-| Quadtree | 1024 overlap pairs | Internal | |
-| StateMachine | 256 states | `RT_STATE_MAX` | Traps on overflow |
-| ButtonGroup | 256 buttons | `RT_BUTTONGROUP_MAX` | Traps on overflow |
-| SpriteAnim | No limit | — | Start/end frame are plain integers |
-
----
-
-## Coordinate Systems
-
-Viper Game APIs use **integer world coordinates** with no fixed unit. Choose a coordinate
-scale that suits your game and stay consistent:
-
-| System | Scale | Used by |
-|---|---|---|
-| World pixels | 1 = 1 pixel | Camera, Physics2D, Quadtree, Tilemap, ScreenFX |
-| PathFollower | 1000 = 1 world unit | PathFollower only |
-
-When mixing PathFollower with Camera or Physics2D, convert between scales:
-
-```rust
-// PathFollower uses ×1000 scale; camera uses pixel scale
-var camX = follower.GetX() / 1000;
-var camY = follower.GetY() / 1000;
-cam.Follow(camX, camY);
-```
-
-> **ScreenFX color** uses `0xRRGGBBAA`; **Canvas drawing** uses `0x00RRGGBB`.
-> These formats are incompatible — always check which is expected.
-
----
-
 ## Viper.Game.Lighting2D
 
 A 2D darkness overlay system with a pulsing player light and pooled dynamic point lights.
@@ -851,3 +811,50 @@ interval. `Skip()` instantly reveals all remaining text.
 | `Update(dt)` | `Boolean(Integer)` | Advance reveal; returns true on completion |
 | `Skip()` | `none()` | Reveal all remaining text instantly |
 | `Reset()` | `none()` | Clear text and state |
+
+---
+
+## Coordinate Systems
+
+Viper Game APIs use **integer world coordinates** with no fixed unit. Choose a coordinate
+scale that suits your game and stay consistent:
+
+| System | Scale | Used by |
+|---|---|---|
+| World pixels | 1 = 1 pixel | Camera, Physics2D, Quadtree, Tilemap, ScreenFX |
+| PathFollower | 1000 = 1 world unit | PathFollower only |
+
+When mixing PathFollower with Camera or Physics2D, convert between scales:
+
+```rust
+// PathFollower uses ×1000 scale; camera uses pixel scale
+var camX = follower.GetX() / 1000;
+var camY = follower.GetY() / 1000;
+cam.Follow(camX, camY);
+```
+
+> **ScreenFX color** uses `0xRRGGBBAA`; **Canvas drawing** uses `0x00RRGGBB`.
+> These formats are incompatible — always check which is expected.
+
+## Current Limits
+
+| Class | Limit | Constant | Notes |
+|---|---|---|---|
+| Physics2D | 256 bodies/world | `PH_MAX_BODIES` | Traps on overflow |
+| Physics2D | 8×8 broad-phase cells | `BPG_DIM = 8` | Per-world |
+| Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | |
+| Quadtree | 256 query results | `RT_QUADTREE_MAX_RESULTS` | Detect with `QueryWasTruncated()` |
+| Quadtree | 4096 total items | Internal | |
+| Quadtree | 1024 overlap pairs | Internal | |
+| StateMachine | 256 states | `RT_STATE_MAX` | Traps on overflow |
+| ButtonGroup | 256 buttons | `RT_BUTTONGROUP_MAX` | Traps on overflow |
+| SpriteAnim | No limit | — | Start/end frame are plain integers |
+
+## See Also
+
+- [Game Engine Documentation](../gameengine/README.md) — Guides, tutorials, example games
+- [Game Module Index](game/README.md) — Per-topic documentation pages
+- [Graphics](graphics/README.md) — Canvas, Sprites, Tilemap
+- [Input](input.md) — Keyboard, Mouse, Gamepad
+- [Audio](audio.md) — Sound effects and music
+- [Viper Runtime Library](README.md)

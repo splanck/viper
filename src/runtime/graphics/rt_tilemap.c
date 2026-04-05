@@ -895,8 +895,10 @@ int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
 // Tile Animation
 //=============================================================================
 
-void rt_tilemap_set_tile_anim(void *tilemap_ptr, int64_t base_tile_id,
-                              int64_t frame_count, int64_t ms_per_frame) {
+void rt_tilemap_set_tile_anim(void *tilemap_ptr,
+                              int64_t base_tile_id,
+                              int64_t frame_count,
+                              int64_t ms_per_frame) {
     if (!tilemap_ptr || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES)
         return;
     rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
@@ -913,8 +915,10 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr, int64_t base_tile_id,
         anim->frame_tiles[i] = base_tile_id + i;
 }
 
-void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr, int64_t base_tile_id,
-                                    int64_t frame_idx, int64_t tile_id) {
+void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr,
+                                    int64_t base_tile_id,
+                                    int64_t frame_idx,
+                                    int64_t tile_id) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;

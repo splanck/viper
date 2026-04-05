@@ -509,8 +509,7 @@ static void test_music_seek_resampled_wav() {
     }
 
     int64_t duration_ms = rt_music_get_duration(music);
-    ASSERT(duration_ms >= 950 && duration_ms <= 1050,
-           "resampled WAV duration stays near 1000ms");
+    ASSERT(duration_ms >= 950 && duration_ms <= 1050, "resampled WAV duration stays near 1000ms");
 
     rt_music_seek(music, 500);
     int64_t pos_ms = rt_music_get_position(music);

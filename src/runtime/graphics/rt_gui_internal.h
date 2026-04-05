@@ -85,11 +85,11 @@ typedef enum {
 
 typedef struct {
     uint64_t magic;
-    vgfx_window_t window;      ///< Underlying graphics window handle.
-    vg_widget_t *root;         ///< Root widget container for the UI hierarchy.
-    vg_font_t *default_font;   ///< Default font for widgets (lazily loaded).
-    float default_font_size;   ///< Default font size in points.
-    int default_font_owned;    ///< Non-zero when default_font is owned by the app.
+    vgfx_window_t window;    ///< Underlying graphics window handle.
+    vg_widget_t *root;       ///< Root widget container for the UI hierarchy.
+    vg_font_t *default_font; ///< Default font for widgets (lazily loaded).
+    float default_font_size; ///< Default font size in points.
+    int default_font_owned;  ///< Non-zero when default_font is owned by the app.
     vg_font_t **retired_fonts;
     int retired_font_count;
     int retired_font_cap;
@@ -97,14 +97,14 @@ typedef struct {
     vg_widget_t *last_clicked; ///< Widget clicked during the current frame.
     vg_statusbar_item_t *last_statusbar_clicked;
     vg_toolbar_item_t *last_toolbar_clicked;
-    int32_t mouse_x;           ///< Current mouse X coordinate in window space.
-    int32_t mouse_y;           ///< Current mouse Y coordinate in window space.
+    int32_t mouse_x; ///< Current mouse X coordinate in window space.
+    int32_t mouse_y; ///< Current mouse Y coordinate in window space.
     uint64_t last_event_time_ms;
     vg_theme_t *theme;
     const vg_theme_t *theme_base;
     float theme_scale;
     rt_gui_theme_kind_t theme_kind;
-    char *title;               ///< Window title (owned, heap-allocated).
+    char *title; ///< Window title (owned, heap-allocated).
     vg_dialog_t **dialog_stack;
     int dialog_count;
     int dialog_cap;
@@ -228,15 +228,19 @@ static inline bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar) {
     (void)menubar;
     return false;
 }
+
 static inline void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar) {
     (void)menubar;
 }
+
 static inline void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar) {
     (void)menubar;
 }
+
 static inline void rt_gui_macos_menu_sync_app(rt_gui_app_t *app) {
     (void)app;
 }
+
 static inline void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app) {
     (void)app;
 }

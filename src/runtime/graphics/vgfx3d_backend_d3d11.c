@@ -43,10 +43,22 @@
 #pragma comment(lib, "dxguid.lib")
 
 static const float k_identity4x4[16] = {
-    1.0f, 0.0f, 0.0f, 0.0f,
-    0.0f, 1.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 1.0f, 0.0f,
-    0.0f, 0.0f, 0.0f, 1.0f,
+    1.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    1.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    1.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    1.0f,
 };
 
 static const char *d3d11_shader_source =
@@ -222,7 +234,8 @@ static const char *d3d11_shader_source =
     "}\n"
     "\n"
     "float4 skinPosition(float4 pos, uint4 boneIdx, float4 boneWt, int usePrevPalette) {\n"
-    "    if ((usePrevPalette != 0 && hasPrevSkinning == 0) || (usePrevPalette == 0 && hasSkinning == 0))\n"
+    "    if ((usePrevPalette != 0 && hasPrevSkinning == 0) || (usePrevPalette == 0 && hasSkinning "
+    "== 0))\n"
     "        return pos;\n"
     "    float4 skinned = float4(0.0, 0.0, 0.0, 0.0);\n"
     "    for (int i = 0; i < 4; i++) {\n"
@@ -230,7 +243,8 @@ static const char *d3d11_shader_source =
     "        if (w <= 0.0001)\n"
     "            continue;\n"
     "        uint idx = min(boneIdx[i], 127u);\n"
-    "        row_major float4x4 bm = usePrevPalette != 0 ? prevBonePalette[idx] : bonePalette[idx];\n"
+    "        row_major float4x4 bm = usePrevPalette != 0 ? prevBonePalette[idx] : "
+    "bonePalette[idx];\n"
     "        skinned += mul(pos, bm) * w;\n"
     "    }\n"
     "    return skinned;\n"
@@ -291,7 +305,8 @@ static const char *d3d11_shader_source =
     "    float3 nrm = applyMorphNormal(input.normal, vid, 0);\n"
     "    float3 tan = input.tangent;\n"
     "    float4 skinnedPos = skinPosition(float4(pos, 1.0), input.boneIdx, input.boneWt, 0);\n"
-    "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, 1);\n"
+    "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, "
+    "1);\n"
     "    float3 skinnedNormal = normalize(skinVector(nrm, input.boneIdx, input.boneWt));\n"
     "    float3 skinnedTangent = normalize(skinVector(tan, input.boneIdx, input.boneWt));\n"
     "    if (hasSkinning == 0) {\n"
@@ -310,7 +325,8 @@ static const char *d3d11_shader_source =
     "                       modelMatrix,\n"
     "                       normalMatrix,\n"
     "                       hasPrevModelMatrix != 0 ? prevModelMatrix : modelMatrix,\n"
-    "                       (hasPrevModelMatrix != 0 || hasPrevSkinning != 0 || hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
+    "                       (hasPrevModelMatrix != 0 || hasPrevSkinning != 0 || "
+    "hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
     "}\n"
     "\n"
     "PS_INPUT VSMainInstanced(VS_INPUT_INSTANCED input, uint vid : SV_VertexID) {\n"
@@ -331,7 +347,8 @@ static const char *d3d11_shader_source =
     "    float3 nrm = applyMorphNormal(input.normal, vid, 0);\n"
     "    float3 tan = input.tangent;\n"
     "    float4 skinnedPos = skinPosition(float4(pos, 1.0), input.boneIdx, input.boneWt, 0);\n"
-    "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, 1);\n"
+    "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, "
+    "1);\n"
     "    float3 skinnedNormal = normalize(skinVector(nrm, input.boneIdx, input.boneWt));\n"
     "    float3 skinnedTangent = normalize(skinVector(tan, input.boneIdx, input.boneWt));\n"
     "    if (hasSkinning == 0) {\n"
@@ -350,7 +367,8 @@ static const char *d3d11_shader_source =
     "                       instModel,\n"
     "                       instNormal,\n"
     "                       hasPrevInstanceMatrices != 0 ? prevModel : instModel,\n"
-    "                       (hasPrevInstanceMatrices != 0 || hasPrevSkinning != 0 || hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
+    "                       (hasPrevInstanceMatrices != 0 || hasPrevSkinning != 0 || "
+    "hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
     "}\n"
     "\n"
     "float sampleShadow(float3 worldPos) {\n"
@@ -381,10 +399,14 @@ static const char *d3d11_shader_source =
     "        float sum = sp.r + sp.g + sp.b + sp.a;\n"
     "        if (sum > 0.0001) {\n"
     "            sp /= sum;\n"
-    "            float3 splatColor = splatLayer0.Sample(texSampler, input.uv * splatScales.x).rgb * sp.r +\n"
-    "                                splatLayer1.Sample(texSampler, input.uv * splatScales.y).rgb * sp.g +\n"
-    "                                splatLayer2.Sample(texSampler, input.uv * splatScales.z).rgb * sp.b +\n"
-    "                                splatLayer3.Sample(texSampler, input.uv * splatScales.w).rgb * sp.a;\n"
+    "            float3 splatColor = splatLayer0.Sample(texSampler, input.uv * splatScales.x).rgb "
+    "* sp.r +\n"
+    "                                splatLayer1.Sample(texSampler, input.uv * splatScales.y).rgb "
+    "* sp.g +\n"
+    "                                splatLayer2.Sample(texSampler, input.uv * splatScales.z).rgb "
+    "* sp.b +\n"
+    "                                splatLayer3.Sample(texSampler, input.uv * splatScales.w).rgb "
+    "* sp.a;\n"
     "            baseColor = splatColor * diffuseColor.rgb * input.color.rgb;\n"
     "        }\n"
     "    }\n"
@@ -445,22 +467,23 @@ static const char *d3d11_shader_source =
     "                float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
     "                if (shadingModel == 1)\n"
     "                    spec = spec >= max(customParams[1], 0.5) ? 1.0 : 0.0;\n"
-    "                result += lights[i].color.rgb * lights[i].intensity * spec * specColor * atten;\n"
+    "                result += lights[i].color.rgb * lights[i].intensity * spec * specColor * "
+    "atten;\n"
     "            }\n"
-        "        }\n"
-        "        result += emissive;\n"
-        "        if (hasEnvMap != 0) {\n"
+    "        }\n"
+    "        result += emissive;\n"
+    "        if (hasEnvMap != 0) {\n"
     "            float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
     "            float3 R = reflect(-V, normalize(N));\n"
-        "            float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
-        "            result = lerp(result, envColor, saturate(reflectivity));\n"
-        "        }\n"
+    "            float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
+    "            result = lerp(result, envColor, saturate(reflectivity));\n"
+    "        }\n"
     "    }\n"
     "    if (shadingModel == 4) {\n"
     "        float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
     "        float ndv = saturate(dot(N, V));\n"
     "        float power = max(customParams[0], 1.0);\n"
-        "        float bias = customParams[1];\n"
+    "        float bias = customParams[1];\n"
     "        finalAlpha *= saturate(pow(1.0 - ndv, power) + bias);\n"
     "    } else if (shadingModel == 5) {\n"
     "        float strength = max(customParams[0], 1.0);\n"
@@ -563,7 +586,8 @@ static const char *d3d11_postfx_shader_source =
     "    float2 uv : TEXCOORD0;\n"
     "};\n"
     "VS_OUTPUT VSPostFX(uint vid : SV_VertexID) {\n"
-    "    float2 pos = vid == 0 ? float2(-1.0, -1.0) : (vid == 1 ? float2(-1.0, 3.0) : float2(3.0, -1.0));\n"
+    "    float2 pos = vid == 0 ? float2(-1.0, -1.0) : (vid == 1 ? float2(-1.0, 3.0) : float2(3.0, "
+    "-1.0));\n"
     "    VS_OUTPUT output;\n"
     "    output.pos = float4(pos, 0.0, 1.0);\n"
     "    output.uv = float2((pos.x + 1.0) * 0.5, 1.0 - (pos.y + 1.0) * 0.5);\n"
@@ -621,7 +645,8 @@ static const char *d3d11_postfx_shader_source =
     "        return color;\n"
     "    float3 worldPos = reconstructWorld(uv, depth);\n"
     "    float dist = length(worldPos - cameraPosition.xyz);\n"
-    "    float blur = saturate(abs(dist - dofFocusDistance) / max(dofAperture, 0.001)) * dofMaxBlur;\n"
+    "    float blur = saturate(abs(dist - dofFocusDistance) / max(dofAperture, 0.001)) * "
+    "dofMaxBlur;\n"
     "    if (blur < 0.001)\n"
     "        return color;\n"
     "    float2 radius = invResolution * blur * 8.0;\n"
@@ -1001,8 +1026,8 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
 
 static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     char buffer[256];
-    snprintf(buffer, sizeof(buffer), "[vgfx3d_d3d11] %s failed (hr=0x%08lx)\n", msg,
-             (unsigned long)hr);
+    snprintf(
+        buffer, sizeof(buffer), "[vgfx3d_d3d11] %s failed (hr=0x%08lx)\n", msg, (unsigned long)hr);
     OutputDebugStringA(buffer);
     fputs(buffer, stderr);
 }
@@ -1013,7 +1038,10 @@ static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
     {
         const char *text = (const char *)ID3D10Blob_GetBufferPointer(err_blob);
         char buffer[1024];
-        snprintf(buffer, sizeof(buffer), "[vgfx3d_d3d11] %s compile failed: %s\n", stage,
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "[vgfx3d_d3d11] %s compile failed: %s\n",
+                 stage,
                  text ? text : "(no compiler output)");
         OutputDebugStringA(buffer);
         fputs(buffer, stderr);
@@ -1440,8 +1468,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     generation = vgfx3d_get_pixels_generation(pixels);
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels &&
-            ctx->tex_cache[i].generation == generation)
+        if (ctx->tex_cache[i].pixels_ptr == pixels && ctx->tex_cache[i].generation == generation)
             return ctx->tex_cache[i].srv;
     }
 
@@ -1449,7 +1476,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         if (ctx->tex_cache[i].pixels_ptr == pixels) {
             SAFE_RELEASE(ctx->tex_cache[i].srv);
             SAFE_RELEASE(ctx->tex_cache[i].tex);
-            if (FAILED(d3d11_create_texture_srv(ctx, pixels, &ctx->tex_cache[i].tex, &ctx->tex_cache[i].srv)))
+            if (FAILED(d3d11_create_texture_srv(
+                    ctx, pixels, &ctx->tex_cache[i].tex, &ctx->tex_cache[i].srv)))
                 return NULL;
             ctx->tex_cache[i].generation = generation;
             return ctx->tex_cache[i].srv;
@@ -1551,10 +1579,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
         if (ctx->cubemap_cache[i].cubemap_ptr == cubemap) {
             SAFE_RELEASE(ctx->cubemap_cache[i].srv);
             SAFE_RELEASE(ctx->cubemap_cache[i].tex);
-            if (FAILED(d3d11_create_cubemap_srv(ctx,
-                                                cubemap,
-                                                &ctx->cubemap_cache[i].tex,
-                                                &ctx->cubemap_cache[i].srv)))
+            if (FAILED(d3d11_create_cubemap_srv(
+                    ctx, cubemap, &ctx->cubemap_cache[i].tex, &ctx->cubemap_cache[i].srv)))
                 return NULL;
             ctx->cubemap_cache[i].generation = generation;
             return ctx->cubemap_cache[i].srv;
@@ -1660,8 +1686,8 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
     desc.Format = shader_readable ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_D32_FLOAT;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_DEPTH_STENCIL |
-                     (shader_readable && out_srv ? D3D11_BIND_SHADER_RESOURCE : 0);
+    desc.BindFlags =
+        D3D11_BIND_DEPTH_STENCIL | (shader_readable && out_srv ? D3D11_BIND_SHADER_RESOURCE : 0);
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
     if (FAILED(hr))
@@ -1751,13 +1777,8 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
         d3d11_destroy_scene_targets(ctx);
         return hr;
     }
-    hr = d3d11_create_depth_target(ctx,
-                                   width,
-                                   height,
-                                   1,
-                                   &ctx->scene_depth_tex,
-                                   &ctx->scene_dsv,
-                                   &ctx->scene_depth_srv);
+    hr = d3d11_create_depth_target(
+        ctx, width, height, 1, &ctx->scene_depth_tex, &ctx->scene_dsv, &ctx->scene_depth_srv);
     if (FAILED(hr)) {
         d3d11_destroy_scene_targets(ctx);
         return hr;
@@ -1795,7 +1816,8 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
 
     d3d11_destroy_rtt_targets(ctx);
 
-    hr = d3d11_create_color_target(ctx, rt->width, rt->height, &ctx->rtt_color_tex, &ctx->rtt_rtv, NULL);
+    hr = d3d11_create_color_target(
+        ctx, rt->width, rt->height, &ctx->rtt_color_tex, &ctx->rtt_rtv, NULL);
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_depth_target(
@@ -1836,13 +1858,8 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t width, 
         return S_OK;
 
     d3d11_destroy_shadow_targets(ctx);
-    hr = d3d11_create_depth_target(ctx,
-                                   width,
-                                   height,
-                                   1,
-                                   &ctx->shadow_depth_tex,
-                                   &ctx->shadow_dsv,
-                                   &ctx->shadow_srv);
+    hr = d3d11_create_depth_target(
+        ctx, width, height, 1, &ctx->shadow_depth_tex, &ctx->shadow_dsv, &ctx->shadow_srv);
     if (FAILED(hr))
         return hr;
     ctx->shadow_width = width;
@@ -1855,7 +1872,8 @@ static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
 
     if (!ctx)
         return;
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, ctx->current_rtv_count, ctx->current_rtvs, ctx->current_dsv);
+    ID3D11DeviceContext_OMSetRenderTargets(
+        ctx->ctx, ctx->current_rtv_count, ctx->current_rtvs, ctx->current_dsv);
 
     memset(&viewport, 0, sizeof(viewport));
     viewport.TopLeftX = 0.0f;
@@ -1928,7 +1946,8 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
     if (!load_existing_color && ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
     if (!load_existing_depth && ctx->current_dsv)
-        ID3D11DeviceContext_ClearDepthStencilView(ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+        ID3D11DeviceContext_ClearDepthStencilView(
+            ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
 static void d3d11_bind_common_state(d3d11_context_t *ctx) {
@@ -1945,8 +1964,7 @@ static void d3d11_bind_common_state(d3d11_context_t *ctx) {
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 2, 1, &ctx->linear_clamp_sampler);
 }
 
-static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd,
-                                      d3d_per_object_t *object_data) {
+static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_object_t *object_data) {
     int morph_count = 0;
 
     memset(object_data, 0, sizeof(*object_data));
@@ -1957,7 +1975,8 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd,
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, object_data->normal);
 
     object_data->has_prev_model_matrix = cmd->has_prev_model_matrix ? 1 : 0;
-    object_data->has_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
+    object_data->has_skinning =
+        (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
     object_data->has_prev_skinning =
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
@@ -1969,7 +1988,8 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd,
     }
     object_data->morph_shape_count = morph_count;
     object_data->vertex_count = morph_count > 0 ? (int32_t)cmd->vertex_count : 0;
-    object_data->has_prev_morph_weights = (morph_count > 0 && cmd->prev_morph_weights != NULL) ? 1 : 0;
+    object_data->has_prev_morph_weights =
+        (morph_count > 0 && cmd->prev_morph_weights != NULL) ? 1 : 0;
     object_data->has_morph_normal_deltas =
         (morph_count > 0 && cmd->morph_normal_deltas != NULL) ? 1 : 0;
     if (morph_count > 0) {
@@ -1992,7 +2012,9 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                                      d3d_per_scene_t *scene_data) {
     memset(scene_data, 0, sizeof(*scene_data));
     memcpy(scene_data->vp, ctx->vp, sizeof(scene_data->vp));
-    memcpy(scene_data->prev_vp, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp, sizeof(scene_data->prev_vp));
+    memcpy(scene_data->prev_vp,
+           ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp,
+           sizeof(scene_data->prev_vp));
     memcpy(scene_data->shadow_vp, ctx->shadow_vp, sizeof(scene_data->shadow_vp));
     memcpy(scene_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
     scene_data->camera_pos[3] = 1.0f;
@@ -2009,7 +2031,8 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->fog_near = ctx->fog_near;
     scene_data->fog_far = ctx->fog_far;
     scene_data->shadow_bias = ctx->shadow_bias;
-    scene_data->light_count = lights ? (light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count)) : 0;
+    scene_data->light_count =
+        lights ? (light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count)) : 0;
     scene_data->shadow_enabled = (ctx->shadow_active && ctx->shadow_srv) ? 1 : 0;
 }
 
@@ -2041,7 +2064,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->has_splat = has_splat;
     material_data->shading_model = cmd->shading_model;
     memcpy(material_data->custom_params, cmd->custom_params, sizeof(material_data->custom_params));
-    memcpy(material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
+    memcpy(
+        material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
 
 static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
@@ -2085,8 +2109,9 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
     hr = d3d11_update_constant_buffer(
         ctx,
         ctx->cb_prev_bones,
-        object_data->has_prev_skinning ? cmd->prev_bone_palette :
-                                         (object_data->has_skinning ? cmd->bone_palette : k_zero_bones),
+        object_data->has_prev_skinning
+            ? cmd->prev_bone_palette
+            : (object_data->has_skinning ? cmd->bone_palette : k_zero_bones),
         sizeof(k_zero_bones));
     if (FAILED(hr))
         d3d11_log_hresult("Map(cbPrevBones)", hr);
@@ -2100,8 +2125,12 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
     }
 
     morph_count = (size_t)object_data->morph_shape_count * (size_t)cmd->vertex_count * 3u;
-    hr = d3d11_update_float_srv_buffer(
-        ctx, &ctx->morph_buffer, &ctx->morph_srv, &ctx->morph_buffer_size, cmd->morph_deltas, morph_count);
+    hr = d3d11_update_float_srv_buffer(ctx,
+                                       &ctx->morph_buffer,
+                                       &ctx->morph_srv,
+                                       &ctx->morph_buffer_size,
+                                       cmd->morph_deltas,
+                                       morph_count);
     if (FAILED(hr)) {
         d3d11_log_hresult("Create/UpdateBuffer(morphDeltas)", hr);
         object_data->morph_shape_count = 0;
@@ -2143,7 +2172,8 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_IASetInputLayout(
         ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
-    ID3D11DeviceContext_VSSetShader(ctx->ctx, instanced ? ctx->vs_instanced : ctx->vs_main, NULL, 0);
+    ID3D11DeviceContext_VSSetShader(
+        ctx->ctx, instanced ? ctx->vs_instanced : ctx->vs_main, NULL, 0);
     ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_main, NULL, 0);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_per_object);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
@@ -2161,7 +2191,8 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
-    ID3D11ShaderResourceView *null_ps[11] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    ID3D11ShaderResourceView *null_ps[11] = {
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
     if (!ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
@@ -2181,7 +2212,9 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
                                       d3d_postfx_cb_t *postfx_data) {
     memset(postfx_data, 0, sizeof(*postfx_data));
     memcpy(postfx_data->inv_vp, ctx->inv_vp, sizeof(postfx_data->inv_vp));
-    memcpy(postfx_data->prev_vp, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp, sizeof(postfx_data->prev_vp));
+    memcpy(postfx_data->prev_vp,
+           ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp,
+           sizeof(postfx_data->prev_vp));
     memcpy(postfx_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
     postfx_data->camera_pos[3] = 1.0f;
     postfx_data->inv_resolution[0] = ctx->scene_width > 0 ? 1.0f / (float)ctx->scene_width : 0.0f;
@@ -2290,7 +2323,8 @@ static void d3d11_submit_draw(void *ctx_ptr,
     ID3D11Buffer *mesh_ib = NULL;
 
     (void)win;
-    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
 
     d3d11_prepare_object_data(cmd, &object_data);
@@ -2323,7 +2357,8 @@ static void d3d11_submit_draw(void *ctx_ptr,
                                 draw_resources.has_env_map,
                                 has_splat,
                                 &material_data);
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerMaterial)", hr);
         d3d11_unbind_draw_resources(ctx);
@@ -2372,21 +2407,27 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     ID3D11Buffer *mesh_ib = NULL;
 
     (void)win;
-    if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices || !cmd->indices)
+    if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices ||
+        !cmd->indices)
         return;
 
-    instance_data = (d3d_instance_data_t *)malloc((size_t)instance_count * sizeof(d3d_instance_data_t));
+    instance_data =
+        (d3d_instance_data_t *)malloc((size_t)instance_count * sizeof(d3d_instance_data_t));
     if (!instance_data)
         return;
     for (int32_t i = 0; i < instance_count; i++) {
-        memcpy(instance_data[i].model, &instance_matrices[(size_t)i * 16u], sizeof(instance_data[i].model));
+        memcpy(instance_data[i].model,
+               &instance_matrices[(size_t)i * 16u],
+               sizeof(instance_data[i].model));
         vgfx3d_compute_normal_matrix4(&instance_matrices[(size_t)i * 16u], instance_data[i].normal);
         if (cmd->has_prev_instance_matrices && cmd->prev_instance_matrices)
             memcpy(instance_data[i].prev_model,
                    &cmd->prev_instance_matrices[(size_t)i * 16u],
                    sizeof(instance_data[i].prev_model));
         else
-            memcpy(instance_data[i].prev_model, instance_data[i].model, sizeof(instance_data[i].prev_model));
+            memcpy(instance_data[i].prev_model,
+                   instance_data[i].model,
+                   sizeof(instance_data[i].prev_model));
     }
 
     d3d11_prepare_object_data(cmd, &object_data);
@@ -2424,7 +2465,8 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                 draw_resources.has_env_map,
                                 has_splat,
                                 &material_data);
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerMaterial)", hr);
         d3d11_unbind_draw_resources(ctx);
@@ -2484,18 +2526,15 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     D3D11_BUFFER_DESC cb_desc;
     D3D11_BUFFER_DESC skybox_desc;
     static const float skybox_vertices[] = {
-        -1.0f, -1.0f, -1.0f,  -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f,
-        -1.0f, -1.0f, -1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
-        -1.0f, -1.0f, 1.0f,   1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,
-        -1.0f, -1.0f, 1.0f,   1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
-        -1.0f, 1.0f,  -1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-        -1.0f, 1.0f,  -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f,
-        -1.0f, -1.0f, -1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
-        -1.0f, -1.0f, -1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
-        1.0f,  -1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,
-        1.0f,  -1.0f, -1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, -1.0f,
+        1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
+        -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
+        -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+        1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,
+        -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,
+        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,
+        -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,
+        1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
     };
     D3D11_SUBRESOURCE_DATA skybox_init;
     HRESULT hr;
@@ -2546,7 +2585,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("IDXGISwapChain::GetBuffer", hr);
         goto fail;
     }
-    hr = ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+    hr = ID3D11Device_CreateRenderTargetView(
+        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRenderTargetView(backbuffer)", hr);
         goto fail;
@@ -2575,7 +2615,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         goto fail;
     }
     depth_desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state_readonly_lequal);
+    hr = ID3D11Device_CreateDepthStencilState(
+        ctx->device, &depth_desc, &ctx->depth_state_readonly_lequal);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateDepthStencilState(skybox)", hr);
         goto fail;
@@ -2602,17 +2643,20 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateRasterizerState(solid+cull)", hr);
         goto fail;
     }
-    hr = d3d11_create_rasterizer_state(ctx, D3D11_FILL_SOLID, D3D11_CULL_NONE, &ctx->rs_solid_no_cull);
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_SOLID, D3D11_CULL_NONE, &ctx->rs_solid_no_cull);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRasterizerState(solid+nocull)", hr);
         goto fail;
     }
-    hr = d3d11_create_rasterizer_state(ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_BACK, &ctx->rs_wire_cull);
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_BACK, &ctx->rs_wire_cull);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRasterizerState(wire+cull)", hr);
         goto fail;
     }
-    hr = d3d11_create_rasterizer_state(ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_NONE, &ctx->rs_wire_no_cull);
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_NONE, &ctx->rs_wire_no_cull);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRasterizerState(wire+nocull)", hr);
         goto fail;
@@ -2801,7 +2845,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
             instanced_layout[elem].SemanticIndex = 4u + (UINT)row;
             instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             instanced_layout[elem].InputSlot = 1;
-            instanced_layout[elem].AlignedByteOffset = (UINT)(offsetof(d3d_instance_data_t, model) + row * 16);
+            instanced_layout[elem].AlignedByteOffset =
+                (UINT)(offsetof(d3d_instance_data_t, model) + row * 16);
             instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
             instanced_layout[elem].InstanceDataStepRate = 1;
         }
@@ -2810,7 +2855,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
             instanced_layout[elem].SemanticIndex = 8u + (UINT)row;
             instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             instanced_layout[elem].InputSlot = 1;
-            instanced_layout[elem].AlignedByteOffset = (UINT)(offsetof(d3d_instance_data_t, normal) + row * 16);
+            instanced_layout[elem].AlignedByteOffset =
+                (UINT)(offsetof(d3d_instance_data_t, normal) + row * 16);
             instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
             instanced_layout[elem].InstanceDataStepRate = 1;
         }
@@ -2819,7 +2865,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
             instanced_layout[elem].SemanticIndex = 12u + (UINT)row;
             instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             instanced_layout[elem].InputSlot = 1;
-            instanced_layout[elem].AlignedByteOffset = (UINT)(offsetof(d3d_instance_data_t, prev_model) + row * 16);
+            instanced_layout[elem].AlignedByteOffset =
+                (UINT)(offsetof(d3d_instance_data_t, prev_model) + row * 16);
             instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
             instanced_layout[elem].InstanceDataStepRate = 1;
         }
@@ -3134,7 +3181,8 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
         d3d11_log_hresult("IDXGISwapChain::GetBuffer(resize)", hr);
         return;
     }
-    hr = ID3D11Device_CreateRenderTargetView(ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+    hr = ID3D11Device_CreateRenderTargetView(
+        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
     SAFE_RELEASE(back_buffer);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRenderTargetView(backbuffer resize)", hr);
@@ -3151,7 +3199,8 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->height = h;
 }
 
-static int d3d11_readback_rgba(void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+static int d3d11_readback_rgba(
+    void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     ID3D11Texture2D *staging = NULL;
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -3170,8 +3219,10 @@ static int d3d11_readback_rgba(void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int3
     }
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
-    ID3D11DeviceContext_CopyResource(ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)ctx->scene_color_tex);
-    hr = ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
+    ID3D11DeviceContext_CopyResource(
+        ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)ctx->scene_color_tex);
+    hr =
+        ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(sceneStaging)", hr);
         SAFE_RELEASE(staging);
@@ -3259,7 +3310,8 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     }
 }
 
-static void d3d11_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
+static void d3d11_shadow_begin(
+    void *ctx_ptr, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_VIEWPORT viewport;
     HRESULT hr;
@@ -3275,7 +3327,8 @@ static void d3d11_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t width, i
 
     memcpy(ctx->shadow_vp, light_vp, sizeof(ctx->shadow_vp));
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv);
-    ID3D11DeviceContext_ClearDepthStencilView(ctx->ctx, ctx->shadow_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    ID3D11DeviceContext_ClearDepthStencilView(
+        ctx->ctx, ctx->shadow_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
     memset(&viewport, 0, sizeof(viewport));
     viewport.Width = (FLOAT)width;
     viewport.Height = (FLOAT)height;
@@ -3300,7 +3353,8 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
 
-    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
 
     d3d11_prepare_object_data(cmd, &object_data);

@@ -299,7 +299,8 @@ static void test_owned_try_get_survives_future_release() {
     if (rt_obj_release_check0(promise))
         rt_obj_free(promise);
 
-    test_result(rt_seq_len(got) == 0, "owned_try_get: returned seq survives future/promise release");
+    test_result(rt_seq_len(got) == 0,
+                "owned_try_get: returned seq survives future/promise release");
     if (rt_obj_release_check0(got))
         rt_obj_free(got);
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # BASIC Frontend Grammar Notes
@@ -279,3 +279,21 @@ END CLASS
 ```
 
 The static constructor is parameterless and is invoked by the module initializer before any user code runs.
+
+## Enum declarations
+
+Enumerations declare named integer constants:
+
+```basic
+ENUM Color
+  Red
+  Green = 5
+  Blue
+END ENUM
+```
+
+- Members default to sequential values starting from 0.
+- Explicit values may be assigned; subsequent members continue from the last explicit value.
+- Enum members are accessed via the enum name: `Color.Red`, `Color.Green`.
+- Enum names are registered in the OOP index and participate in name resolution.
+- Keywords that collide with enum names (e.g. `Color`) are handled by `canBeUsedAsName()` in the parser.

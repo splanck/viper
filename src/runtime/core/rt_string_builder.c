@@ -36,6 +36,7 @@
 
 #include "rt_string_builder.h"
 
+#include "rt_error.h"
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
@@ -43,7 +44,6 @@
 #include "rt_sb_bridge.h"
 #include "rt_string.h"
 
-#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -406,8 +406,10 @@ typedef struct {
 ///          returns a pointer to the embedded builder for use by bridge functions.
 static rt_string_builder *get_builder(void *sb) {
     if (!sb) {
-        // Fail loudly on null StringBuilder
-        assert(0 && "rt_text_sb_* called with null StringBuilder object");
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION,
+                           Err_InvalidOperation,
+                           -1,
+                           "StringBuilder: null receiver");
         return NULL;
     }
 
@@ -416,13 +418,29 @@ static rt_string_builder *get_builder(void *sb) {
     return &obj->builder;
 }
 
+static void rt_text_sb_trap_status(const char *op, rt_sb_status_t status) {
+    switch (status) {
+        case RT_SB_OK:
+            return;
+        case RT_SB_ERROR_ALLOC:
+            rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, op);
+            return;
+        case RT_SB_ERROR_OVERFLOW:
+            rt_trap_raise_kind(RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, op);
+            return;
+        case RT_SB_ERROR_INVALID:
+        case RT_SB_ERROR_FORMAT:
+        default:
+            rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, op);
+            return;
+    }
+}
+
 /// @brief Return the current content length of the embedded builder in bytes.
 /// @details Exposes StringBuilder.Length to the runtime dispatch layer. Returns
 ///          0 for a null receiver so callers never observe an error path.
 int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return 0;
 
     // Return the current string length in bytes
     // Note: for ASCII/UTF-8, byte length = character count for ASCII chars
@@ -434,8 +452,6 @@ int64_t rt_text_sb_get_length(void *sb) {
 ///          includes space for the null terminator.
 int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return 0;
 
     // Return the current allocated capacity in bytes
     return (int64_t)builder->cap;
@@ -447,31 +463,11 @@ int64_t rt_text_sb_get_capacity(void *sb) {
 ///          Null strings are treated as empty (no bytes appended).
 void *rt_text_sb_append(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return sb;
-
-    // Get the string data - rt_string is a pointer to struct with data field
     const char *str_data = s ? s->data : NULL;
     size_t str_len = s ? rt_str_len(s) : 0;
-
-    if (str_data && str_len > 0) {
-        // Need to append the string data - we'll have to make a null-terminated copy
-        // or add each character. Since we have the data and length, let's reserve
-        // space and copy directly.
-
-        // First, ensure we have enough space
-        rt_sb_status_t status = rt_sb_reserve(builder, builder->len + str_len + 1);
-        if (status == RT_SB_OK) {
-            // Copy the string data directly
-            memcpy(builder->data + builder->len, str_data, str_len);
-            builder->len += str_len;
-            builder->data[builder->len] = '\0';
-        } else if (status != RT_SB_ERROR_ALLOC) {
-            // For errors other than allocation failure, fail loudly
-            assert(0 && "rt_text_sb_append failed with unexpected error");
-        }
-        // For allocation failure, silently continue (could alternatively trap)
-    }
+    rt_sb_status_t status = rt_sb_append_bytes(builder, str_data, str_len);
+    if (status != RT_SB_OK)
+        rt_text_sb_trap_status("StringBuilder.Append failed", status);
 
     // Return the receiver for method chaining
     return sb;
@@ -483,31 +479,27 @@ void *rt_text_sb_append(void *sb, rt_string s) {
 ///          chaining.
 void *rt_text_sb_append_line(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return sb;
-
     const char *str_data = s ? s->data : NULL;
     size_t str_len = s ? (size_t)rt_str_len(s) : 0;
 
     // Reserve enough space for string bytes + '\n' + NUL terminator.
     size_t required = builder->len + str_len + 2;
     if (required < builder->len) {
-        assert(0 && "rt_text_sb_append_line: size overflow");
-        return sb;
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "StringBuilder.AppendLine overflow");
     }
 
     rt_sb_status_t status = rt_sb_reserve(builder, required);
-    if (status == RT_SB_OK) {
-        if (str_data && str_len > 0) {
-            memcpy(builder->data + builder->len, str_data, str_len);
-            builder->len += str_len;
-        }
+    if (status != RT_SB_OK)
+        rt_text_sb_trap_status("StringBuilder.AppendLine failed", status);
 
-        builder->data[builder->len++] = '\n';
-        builder->data[builder->len] = '\0';
-    } else if (status != RT_SB_ERROR_ALLOC) {
-        assert(0 && "rt_text_sb_append_line failed with unexpected error");
+    if (str_data && str_len > 0) {
+        memcpy(builder->data + builder->len, str_data, str_len);
+        builder->len += str_len;
     }
+
+    builder->data[builder->len++] = '\n';
+    builder->data[builder->len] = '\0';
 
     return sb;
 }
@@ -518,8 +510,6 @@ void *rt_text_sb_append_line(void *sb, rt_string s) {
 ///          The builder's state is unchanged (callers can continue appending).
 rt_string rt_text_sb_to_string(void *sb) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return rt_str_empty();
 
     // Create a string from the builder's current contents
     // The builder maintains a null-terminated buffer
@@ -535,8 +525,6 @@ rt_string rt_text_sb_to_string(void *sb) {
 ///          builder can be reused without freeing and re-allocating storage.
 void rt_text_sb_clear(void *sb) {
     rt_string_builder *builder = get_builder(sb);
-    if (!builder)
-        return;
 
     // Reset the builder to empty state while keeping allocated memory
     builder->len = 0;

@@ -38,15 +38,15 @@
 #include <strings.h>
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Structure
 //=============================================================================
 
 typedef struct {
-    void *tcp;               // TCP connection for http://
-    rt_tls_session_t *tls;   // TLS session for https://
+    void *tcp;             // TCP connection for http://
+    rt_tls_session_t *tls; // TLS session for https://
     bool is_open;
     char *last_event_type; // Most recent "event:" field
     char *last_event_id;   // Most recent "id:" field
@@ -480,9 +480,8 @@ void *rt_sse_connect(rt_string url) {
         rt_trap("SSE: no HTTP response");
     }
     const char *status_cstr = rt_string_cstr(status_line);
-    int ok_status =
-        status_cstr && (strncmp(status_cstr, "HTTP/1.1 200", 12) == 0 ||
-                        strncmp(status_cstr, "HTTP/1.0 200", 12) == 0);
+    int ok_status = status_cstr && (strncmp(status_cstr, "HTTP/1.1 200", 12) == 0 ||
+                                    strncmp(status_cstr, "HTTP/1.0 200", 12) == 0);
     rt_string_unref(status_line);
     if (!ok_status) {
         rt_string_unref(query);

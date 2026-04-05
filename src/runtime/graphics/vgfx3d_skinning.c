@@ -68,4 +68,6 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
     }
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

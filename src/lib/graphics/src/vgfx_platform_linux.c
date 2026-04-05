@@ -579,19 +579,18 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     int is_repeat = win->key_state[key]; /* Already pressed = repeat */
                     win->key_state[key] = 1;             /* Update input state */
 
-                    vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_DOWN,
-                                               .time_ms = timestamp,
-                                               .data.key = {.key = key,
-                                                            .is_repeat = is_repeat,
-                                                            .modifiers = mods}};
+                    vgfx_event_t vgfx_event = {
+                        .type = VGFX_EVENT_KEY_DOWN,
+                        .time_ms = timestamp,
+                        .data.key = {.key = key, .is_repeat = is_repeat, .modifiers = mods}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
                 uint32_t codepoint = utf8_first_codepoint(text_buf, text_len);
                 if (codepoint >= 0x20 && codepoint != 0x7F) {
-                    vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
-                                               .time_ms = timestamp,
-                                               .data.text = {.codepoint = codepoint,
-                                                             .modifiers = mods}};
+                    vgfx_event_t text_event = {
+                        .type = VGFX_EVENT_TEXT_INPUT,
+                        .time_ms = timestamp,
+                        .data.text = {.codepoint = codepoint, .modifiers = mods}};
                     vgfx_internal_enqueue_event(win, &text_event);
                 }
                 break;
@@ -617,12 +616,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 if (key != VGFX_KEY_UNKNOWN && key < 512) {
                     win->key_state[key] = 0; /* Update input state */
 
-                    vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_UP,
-                                               .time_ms = timestamp,
-                                               .data.key = {.key = key,
-                                                            .is_repeat = 0,
-                                                            .modifiers =
-                                                                x11_modifiers(event.xkey.state)}};
+                    vgfx_event_t vgfx_event = {
+                        .type = VGFX_EVENT_KEY_UP,
+                        .time_ms = timestamp,
+                        .data.key = {.key = key,
+                                     .is_repeat = 0,
+                                     .modifiers = x11_modifiers(event.xkey.state)}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
                 break;

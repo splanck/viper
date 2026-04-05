@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-10
+last-verified: 2026-04-05
 ---
 
 # CODEMAP: Zia Language Server

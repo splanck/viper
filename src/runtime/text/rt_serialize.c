@@ -47,7 +47,7 @@
 #include <strings.h>
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// Thread-local error message.
 static _Thread_local rt_string g_last_error = NULL;

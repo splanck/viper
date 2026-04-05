@@ -38,7 +38,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /*==========================================================================
  * Effect types
@@ -650,51 +650,53 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
         if (!e->enabled)
             continue;
         switch (e->type) {
-        case POSTFX_BLOOM:
-            out->bloom_enabled = 1;
-            out->bloom_threshold = e->p.bloom.threshold;
-            out->bloom_intensity = e->p.bloom.intensity;
-            break;
-        case POSTFX_TONEMAP:
-            out->tonemap_mode = (int8_t)e->p.tonemap.mode;
-            out->tonemap_exposure = e->p.tonemap.exposure;
-            break;
-        case POSTFX_FXAA:
-            out->fxaa_enabled = 1;
-            break;
-        case POSTFX_COLOR_GRADE:
-            out->color_grade_enabled = 1;
-            out->cg_brightness = e->p.color_grade.brightness;
-            out->cg_contrast = e->p.color_grade.contrast;
-            out->cg_saturation = e->p.color_grade.saturation;
-            break;
-        case POSTFX_VIGNETTE:
-            out->vignette_enabled = 1;
-            out->vignette_radius = e->p.vignette.radius;
-            out->vignette_softness = e->p.vignette.softness;
-            break;
-        case POSTFX_SSAO:
-            out->ssao_enabled = 1;
-            out->ssao_radius = e->p.ssao.ao_radius;
-            out->ssao_intensity = e->p.ssao.ao_intensity;
-            out->ssao_samples = e->p.ssao.ao_samples;
-            break;
-        case POSTFX_DOF:
-            out->dof_enabled = 1;
-            out->dof_focus_distance = e->p.dof.focus_distance;
-            out->dof_aperture = e->p.dof.aperture;
-            out->dof_max_blur = e->p.dof.max_blur;
-            break;
-        case POSTFX_MOTION_BLUR:
-            out->motion_blur_enabled = 1;
-            out->motion_blur_intensity = e->p.motion_blur.mb_intensity;
-            out->motion_blur_samples = e->p.motion_blur.mb_samples;
-            break;
-        default:
-            break;
+            case POSTFX_BLOOM:
+                out->bloom_enabled = 1;
+                out->bloom_threshold = e->p.bloom.threshold;
+                out->bloom_intensity = e->p.bloom.intensity;
+                break;
+            case POSTFX_TONEMAP:
+                out->tonemap_mode = (int8_t)e->p.tonemap.mode;
+                out->tonemap_exposure = e->p.tonemap.exposure;
+                break;
+            case POSTFX_FXAA:
+                out->fxaa_enabled = 1;
+                break;
+            case POSTFX_COLOR_GRADE:
+                out->color_grade_enabled = 1;
+                out->cg_brightness = e->p.color_grade.brightness;
+                out->cg_contrast = e->p.color_grade.contrast;
+                out->cg_saturation = e->p.color_grade.saturation;
+                break;
+            case POSTFX_VIGNETTE:
+                out->vignette_enabled = 1;
+                out->vignette_radius = e->p.vignette.radius;
+                out->vignette_softness = e->p.vignette.softness;
+                break;
+            case POSTFX_SSAO:
+                out->ssao_enabled = 1;
+                out->ssao_radius = e->p.ssao.ao_radius;
+                out->ssao_intensity = e->p.ssao.ao_intensity;
+                out->ssao_samples = e->p.ssao.ao_samples;
+                break;
+            case POSTFX_DOF:
+                out->dof_enabled = 1;
+                out->dof_focus_distance = e->p.dof.focus_distance;
+                out->dof_aperture = e->p.dof.aperture;
+                out->dof_max_blur = e->p.dof.max_blur;
+                break;
+            case POSTFX_MOTION_BLUR:
+                out->motion_blur_enabled = 1;
+                out->motion_blur_intensity = e->p.motion_blur.mb_intensity;
+                out->motion_blur_samples = e->p.motion_blur.mb_samples;
+                break;
+            default:
+                break;
         }
     }
     return 1;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

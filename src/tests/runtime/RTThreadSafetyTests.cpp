@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_platform.h"
@@ -110,6 +111,22 @@ static void test_main_thread_detection(void) {
     printf("test_main_thread_detection: PASSED\n");
 }
 
+static void test_legacy_init_preserves_startup_main_thread(void) {
+    bool worker_is_main = true;
+
+    std::thread worker([&]() {
+        (void)rt_legacy_context();
+        worker_is_main = rt_is_main_thread() != 0;
+    });
+    worker.join();
+
+    (void)rt_legacy_context();
+    assert(rt_is_main_thread() && "startup thread must remain the main thread");
+    assert(!worker_is_main && "worker thread must not become main via legacy init");
+
+    printf("test_legacy_init_preserves_startup_main_thread: PASSED\n");
+}
+
 // ============================================================================
 // Test 3: String interning is thread-safe under concurrent access
 // ============================================================================
@@ -190,6 +207,7 @@ static void test_atomic_violation_mode(void) {
 
 int main() {
     test_tls_parser_errors_independent();
+    test_legacy_init_preserves_startup_main_thread();
     test_main_thread_detection();
     test_string_intern_concurrent();
     test_atomic_violation_mode();

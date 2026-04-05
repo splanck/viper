@@ -331,8 +331,7 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
 
         if (app->shortcuts[i].parsed_ctrl == has_ctrl &&
             app->shortcuts[i].parsed_shift == has_shift &&
-            app->shortcuts[i].parsed_alt == has_alt &&
-            app->shortcuts[i].parsed_key == upper_key) {
+            app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
             app->shortcuts[i].triggered = 1;
             free(app->triggered_shortcut_id);
             app->triggered_shortcut_id = app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;

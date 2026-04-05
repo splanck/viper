@@ -40,7 +40,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -1164,8 +1164,8 @@ static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src
 }
 
 /// @brief Append a formatted string to a dynamic buffer.
-__attribute__((format(printf, 4, 5)))
-static int vscn_append(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
+__attribute__((format(printf, 4, 5))) static int vscn_append(
+    char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
     va_list ap;
     char *nb;
     va_start(ap, fmt);
@@ -1275,11 +1275,8 @@ static void vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t 
         vscn_collect_node_assets(node->children[i], ctx);
 }
 
-static int vscn_serialize_texture(rt_pixels_impl *pixels,
-                                  char **buf,
-                                  size_t *len,
-                                  size_t *cap,
-                                  int depth) {
+static int vscn_serialize_texture(
+    rt_pixels_impl *pixels, char **buf, size_t *len, size_t *cap, int depth) {
     char indent[64];
     size_t pixel_count;
     size_t rgba_len;
@@ -1398,23 +1395,15 @@ static int vscn_serialize_material(rt_material3d *material,
     }
 
     for (int i = 0; i < 8; i++) {
-        if (!vscn_append(buf,
-                         len,
-                         cap,
-                         "%s%.17g",
-                         i == 0 ? "" : ", ",
-                         material->custom_params[i])) {
+        if (!vscn_append(
+                buf, len, cap, "%s%.17g", i == 0 ? "" : ", ", material->custom_params[i])) {
             return 0;
         }
     }
     return vscn_append(buf, len, cap, "]}");
 }
 
-static int vscn_serialize_mesh(rt_mesh3d *mesh,
-                               char **buf,
-                               size_t *len,
-                               size_t *cap,
-                               int depth) {
+static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t *cap, int depth) {
     char indent[64];
     size_t vertex_bytes_len = (size_t)mesh->vertex_count * sizeof(vgfx3d_vertex_t);
     size_t index_bytes_len = (size_t)mesh->index_count * sizeof(uint32_t);
@@ -1473,17 +1462,40 @@ static int vscn_serialize_node(rt_scene_node3d *node,
     if (!vscn_append(buf, len, cap, "%s{\n", indent) ||
         !vscn_append(buf, len, cap, "%s  \"name\": ", indent) ||
         !vscn_append_json_string(buf, len, cap, name) ||
-        !vscn_append(buf, len, cap, ",\n%s  \"position\": [%.6f, %.6f, %.6f],\n", indent,
-                     node->position[0], node->position[1], node->position[2]) ||
-        !vscn_append(buf, len, cap, "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n", indent,
-                     node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]) ||
-        !vscn_append(buf, len, cap, "%s  \"scale\": [%.6f, %.6f, %.6f],\n", indent,
-                     node->scale_xyz[0], node->scale_xyz[1], node->scale_xyz[2]) ||
-        !vscn_append(buf, len, cap, "%s  \"visible\": %s,\n", indent,
-                     node->visible ? "true" : "false") ||
-        !vscn_append(buf, len, cap, "%s  \"hasMesh\": %s,\n", indent,
-                     node->mesh ? "true" : "false") ||
-        !vscn_append(buf, len, cap, "%s  \"hasMaterial\": %s,\n", indent,
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     ",\n%s  \"position\": [%.6f, %.6f, %.6f],\n",
+                     indent,
+                     node->position[0],
+                     node->position[1],
+                     node->position[2]) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "%s  \"rotation\": [%.6f, %.6f, %.6f, %.6f],\n",
+                     indent,
+                     node->rotation[0],
+                     node->rotation[1],
+                     node->rotation[2],
+                     node->rotation[3]) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "%s  \"scale\": [%.6f, %.6f, %.6f],\n",
+                     indent,
+                     node->scale_xyz[0],
+                     node->scale_xyz[1],
+                     node->scale_xyz[2]) ||
+        !vscn_append(
+            buf, len, cap, "%s  \"visible\": %s,\n", indent, node->visible ? "true" : "false") ||
+        !vscn_append(
+            buf, len, cap, "%s  \"hasMesh\": %s,\n", indent, node->mesh ? "true" : "false") ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "%s  \"hasMaterial\": %s,\n",
+                     indent,
                      node->material ? "true" : "false") ||
         !vscn_append(buf,
                      len,
@@ -1567,17 +1579,17 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     }
 
     for (size_t i = 0; i < (size_t)width * (size_t)height; i++) {
-        pixels->data[i] = ((uint32_t)rgba[i * 4 + 0] << 24) |
-                          ((uint32_t)rgba[i * 4 + 1] << 16) |
-                          ((uint32_t)rgba[i * 4 + 2] << 8) |
-                          (uint32_t)rgba[i * 4 + 3];
+        pixels->data[i] = ((uint32_t)rgba[i * 4 + 0] << 24) | ((uint32_t)rgba[i * 4 + 1] << 16) |
+                          ((uint32_t)rgba[i * 4 + 2] << 8) | (uint32_t)rgba[i * 4 + 3];
     }
     free(rgba);
     pixels_touch(pixels);
     return pixels;
 }
 
-static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj, rt_pixels_impl **textures, int tex_count) {
+static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj,
+                                        rt_pixels_impl **textures,
+                                        int tex_count) {
     void *faces_arr;
     void *faces[6];
 
@@ -1594,7 +1606,8 @@ static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj, rt_pixels_impl **text
         faces[i] = textures[index];
     }
 
-    return (rt_cubemap3d *)rt_cubemap3d_new(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
+    return (rt_cubemap3d *)rt_cubemap3d_new(
+        faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
 }
 
 static rt_material3d *vscn_parse_material(void *material_obj,
@@ -1637,7 +1650,8 @@ static rt_material3d *vscn_parse_material(void *material_obj,
     material->alpha = vjson_f64(material_obj, "alpha", material->alpha);
     material->reflectivity = vjson_f64(material_obj, "reflectivity", material->reflectivity);
     material->unlit = vjson_bool(material_obj, "unlit", material->unlit);
-    material->shading_model = (int32_t)vjson_i64(material_obj, "shadingModel", material->shading_model);
+    material->shading_model =
+        (int32_t)vjson_i64(material_obj, "shadingModel", material->shading_model);
 
     arr = vjson_get(material_obj, "customParams");
     for (int i = 0; i < 8; i++) {
@@ -1724,7 +1738,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     }
 
     if (vertex_count > 0) {
-        vgfx3d_vertex_t *vertices = (vgfx3d_vertex_t *)malloc((size_t)vertex_count * sizeof(vgfx3d_vertex_t));
+        vgfx3d_vertex_t *vertices =
+            (vgfx3d_vertex_t *)malloc((size_t)vertex_count * sizeof(vgfx3d_vertex_t));
         if (!vertices) {
             free(vertices_raw);
             free(indices_raw);
@@ -1834,9 +1849,8 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
             void *lod_obj = rt_seq_get(arr, i);
             int64_t mesh_index = vjson_i64(lod_obj, "mesh", -1);
             if (mesh_index >= 0 && mesh_index < mesh_count && meshes[mesh_index]) {
-                rt_scene_node3d_add_lod(node,
-                                        vjson_f64(lod_obj, "distance", 0.0),
-                                        meshes[mesh_index]);
+                rt_scene_node3d_add_lod(
+                    node, vjson_f64(lod_obj, "distance", 0.0), meshes[mesh_index]);
             }
         }
     }
@@ -1913,12 +1927,8 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     }
 
     for (int32_t i = 0; i < ctx.cubemaps.count; i++) {
-        if (!vscn_serialize_cubemap((rt_cubemap3d *)ctx.cubemaps.items[i],
-                                    &ctx,
-                                    &buf,
-                                    &len,
-                                    &cap,
-                                    2) ||
+        if (!vscn_serialize_cubemap(
+                (rt_cubemap3d *)ctx.cubemaps.items[i], &ctx, &buf, &len, &cap, 2) ||
             (i < ctx.cubemaps.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
             !vscn_append(&buf, &len, &cap, "\n")) {
             vscn_free_ptr_table(&ctx.meshes);
@@ -1941,12 +1951,8 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     }
 
     for (int32_t i = 0; i < ctx.materials.count; i++) {
-        if (!vscn_serialize_material((rt_material3d *)ctx.materials.items[i],
-                                     &ctx,
-                                     &buf,
-                                     &len,
-                                     &cap,
-                                     2) ||
+        if (!vscn_serialize_material(
+                (rt_material3d *)ctx.materials.items[i], &ctx, &buf, &len, &cap, 2) ||
             (i < ctx.materials.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
             !vscn_append(&buf, &len, &cap, "\n")) {
             vscn_free_ptr_table(&ctx.meshes);
@@ -2144,11 +2150,8 @@ void *rt_scene3d_load(rt_string path) {
     for (int i = 0; i < cubemap_count; i++)
         cubemaps[i] = vscn_parse_cubemap(rt_seq_get(cubemaps_arr, (int64_t)i), textures, tex_count);
     for (int i = 0; i < material_count; i++)
-        materials[i] = vscn_parse_material(rt_seq_get(materials_arr, (int64_t)i),
-                                           textures,
-                                           tex_count,
-                                           cubemaps,
-                                           cubemap_count);
+        materials[i] = vscn_parse_material(
+            rt_seq_get(materials_arr, (int64_t)i), textures, tex_count, cubemaps, cubemap_count);
     for (int i = 0; i < mesh_count; i++)
         meshes[i] = vscn_parse_mesh(rt_seq_get(meshes_arr, (int64_t)i));
 
@@ -2163,8 +2166,8 @@ void *rt_scene3d_load(rt_string path) {
 
     if (nodes_arr) {
         for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
-            rt_scene_node3d *node =
-                vscn_parse_node(rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count);
+            rt_scene_node3d *node = vscn_parse_node(
+                rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count);
             if (node) {
                 rt_scene_node3d_add_child(scene->root, node);
                 {
@@ -2184,4 +2187,6 @@ void *rt_scene3d_load(rt_string path) {
     return scene;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

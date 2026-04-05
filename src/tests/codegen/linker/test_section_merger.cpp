@@ -228,11 +228,11 @@ int main() {
 
     // --- Windows unwind sections keep their original names ---
     {
-        auto obj =
-            makeObj("test.obj",
-                    ObjFileFormat::COFF,
-                    {makeSection(".xdata", 8, false, false), makeSection(".pdata", 12, false, false),
-                     makeSection(".text", 16, true, false)});
+        auto obj = makeObj("test.obj",
+                           ObjFileFormat::COFF,
+                           {makeSection(".xdata", 8, false, false),
+                            makeSection(".pdata", 12, false, false),
+                            makeSection(".text", 16, true, false)});
 
         std::vector<ObjFile> objs = {obj};
         LinkLayout layout;

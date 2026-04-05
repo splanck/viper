@@ -35,9 +35,14 @@ extern "C" {
 /// @param y_stride  Bytes per row in Y plane.
 /// @param c_stride  Bytes per row in Cb/Cr planes.
 /// @param rgba_out  Output array (width × height uint32_t, 0xRRGGBBAA).
-void ycbcr420_to_rgba(const uint8_t *y_plane, const uint8_t *cb_plane,
-                       const uint8_t *cr_plane, int32_t width, int32_t height,
-                       int32_t y_stride, int32_t c_stride, uint32_t *rgba_out);
+void ycbcr420_to_rgba(const uint8_t *y_plane,
+                      const uint8_t *cb_plane,
+                      const uint8_t *cr_plane,
+                      int32_t width,
+                      int32_t height,
+                      int32_t y_stride,
+                      int32_t c_stride,
+                      uint32_t *rgba_out);
 
 #ifdef __cplusplus
 }

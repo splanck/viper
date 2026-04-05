@@ -29,7 +29,7 @@
 #include <string.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
@@ -143,8 +143,14 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
 /// @param inner_angle Full-brightness cone half-angle in degrees.
 /// @param outer_angle Outer cone half-angle in degrees (falloff edge).
 /// @return Opaque light handle, or NULL on failure.
-void *rt_light3d_new_spot(void *position, void *direction, double r, double g, double b,
-                          double attenuation, double inner_angle, double outer_angle) {
+void *rt_light3d_new_spot(void *position,
+                          void *direction,
+                          double r,
+                          double g,
+                          double b,
+                          double attenuation,
+                          double inner_angle,
+                          double outer_angle) {
     if (!position || !direction) {
         rt_trap("Light3D.NewSpot: position and direction must not be null");
         return NULL;
@@ -200,4 +206,6 @@ void rt_light3d_set_color(void *obj, double r, double g, double b) {
     l->color[2] = b;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

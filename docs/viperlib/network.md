@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Network
@@ -390,30 +390,6 @@ The networking implementation uses the Berkeley sockets API:
 - **IoT hubs:** Receive data from devices
 
 ---
-
-## Implementation Notes
-
-### Threading
-
-Each connection object is independent and can be used from a single thread. For multi-threaded servers handling concurrent clients, each client connection should be handled in a separate thread.
-
-### Connection Limits
-
-The server uses the system's default listen backlog (`SOMAXCONN`), which varies by platform:
-
-| Platform | Typical Backlog |
-|----------|-----------------|
-| Linux    | 128             |
-| macOS    | 128             |
-| Windows  | 200             |
-
-### Resource Cleanup
-
-Always call `Close()` on connections and servers when done to release system resources. Connections that are garbage collected without being closed may leak file descriptors.
-
-### IPv4 Only
-
-The current implementation supports IPv4 only. IPv6 support may be added in a future release.
 
 ---
 
@@ -2033,3 +2009,29 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
 > **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the platform trust store plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
+
+---
+
+## Implementation Notes
+
+### Threading
+
+Each connection object is independent and can be used from a single thread. For multi-threaded servers handling concurrent clients, each client connection should be handled in a separate thread.
+
+### Connection Limits
+
+The server uses the system's default listen backlog (`SOMAXCONN`), which varies by platform:
+
+| Platform | Typical Backlog |
+|----------|-----------------|
+| Linux    | 128             |
+| macOS    | 128             |
+| Windows  | 200             |
+
+### Resource Cleanup
+
+Always call `Close()` on connections and servers when done to release system resources. Connections that are garbage collected without being closed may leak file descriptors.
+
+### IPv4 Only
+
+The current implementation supports IPv4 only. IPv6 support may be added in a future release.

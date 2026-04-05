@@ -530,8 +530,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
             s.data = importResult.data;
         }
         if (!params.rdataSection.empty()) {
-            s.data.insert(
-                s.data.end(), params.rdataSection.begin(), params.rdataSection.end());
+            s.data.insert(s.data.end(), params.rdataSection.begin(), params.rdataSection.end());
         }
         s.virtualSize = static_cast<uint32_t>(s.data.size());
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);

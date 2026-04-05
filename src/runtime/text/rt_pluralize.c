@@ -38,7 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 // Irregular plural forms (singular -> plural)
 typedef struct {

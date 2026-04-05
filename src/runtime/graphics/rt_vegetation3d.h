@@ -28,14 +28,11 @@ extern "C" {
 
 void *rt_vegetation3d_new(void *blade_texture);
 void rt_vegetation3d_set_density_map(void *veg, void *pixels);
-void rt_vegetation3d_set_wind_params(void *veg, double speed, double strength,
-                                      double turbulence);
+void rt_vegetation3d_set_wind_params(void *veg, double speed, double strength, double turbulence);
 void rt_vegetation3d_set_lod_distances(void *veg, double near_dist, double far_dist);
-void rt_vegetation3d_set_blade_size(void *veg, double width, double height,
-                                     double variation);
+void rt_vegetation3d_set_blade_size(void *veg, double width, double height, double variation);
 void rt_vegetation3d_populate(void *veg, void *terrain, int64_t count);
-void rt_vegetation3d_update(void *veg, double dt, double camX, double camY,
-                             double camZ);
+void rt_vegetation3d_update(void *veg, double dt, double camX, double camY, double camZ);
 void rt_canvas3d_draw_vegetation(void *canvas, void *veg);
 
 #ifdef __cplusplus

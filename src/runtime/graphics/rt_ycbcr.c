@@ -24,14 +24,21 @@
 #include "rt_ycbcr.h"
 
 static inline int32_t clamp255(int32_t v) {
-    if (v < 0) return 0;
-    if (v > 255) return 255;
+    if (v < 0)
+        return 0;
+    if (v > 255)
+        return 255;
     return v;
 }
 
-void ycbcr420_to_rgba(const uint8_t *y_plane, const uint8_t *cb_plane,
-                       const uint8_t *cr_plane, int32_t width, int32_t height,
-                       int32_t y_stride, int32_t c_stride, uint32_t *rgba_out) {
+void ycbcr420_to_rgba(const uint8_t *y_plane,
+                      const uint8_t *cb_plane,
+                      const uint8_t *cr_plane,
+                      int32_t width,
+                      int32_t height,
+                      int32_t y_stride,
+                      int32_t c_stride,
+                      uint32_t *rgba_out) {
     if (!y_plane || !cb_plane || !cr_plane || !rgba_out)
         return;
     if (width <= 0 || height <= 0)
@@ -58,8 +65,7 @@ void ycbcr420_to_rgba(const uint8_t *y_plane, const uint8_t *cb_plane,
             b = clamp255(b);
 
             /* Pack as 0xRRGGBBAA (Viper Pixels format) */
-            out_row[col] = ((uint32_t)r << 24) | ((uint32_t)g << 16) |
-                           ((uint32_t)b << 8) | 0xFF;
+            out_row[col] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
         }
     }
 }

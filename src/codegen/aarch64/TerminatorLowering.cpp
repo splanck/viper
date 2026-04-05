@@ -239,8 +239,7 @@ void lowerTerminators(const il::core::Function &fn,
                     }
                 } else {
                     outBB.instrs.push_back(
-                        MInstr{MOpcode::MovRI,
-                               {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+                        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
                 }
                 outBB.instrs.push_back(
                     MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
@@ -303,8 +302,7 @@ void lowerTerminators(const il::core::Function &fn,
                                 // Phi-edge FPR copy: clears dirty flag in RA to
                                 // suppress redundant block-end spill of this vreg.
                                 edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
-                                                               {MOperand::vregOp(RegClass::FPR,
-                                                                                 sv),
+                                                               {MOperand::vregOp(RegClass::FPR, sv),
                                                                 MOperand::immOp(offset)}});
                             } else {
                                 if (scls == RegClass::FPR) {
@@ -319,8 +317,7 @@ void lowerTerminators(const il::core::Function &fn,
                                 // Phi-edge GPR copy: clears dirty flag in RA to
                                 // suppress redundant block-end spill of this vreg.
                                 edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
-                                                               {MOperand::vregOp(RegClass::GPR,
-                                                                                 sv),
+                                                               {MOperand::vregOp(RegClass::GPR, sv),
                                                                 MOperand::immOp(offset)}});
                             }
                         }
@@ -368,13 +365,12 @@ void lowerTerminators(const il::core::Function &fn,
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::CmpRR,
                                                    {MOperand::regOp(src0), MOperand::regOp(src1)}});
-                                        outBB.instrs.push_back(MInstr{
-                                            MOpcode::BCond,
-                                            {MOperand::condOp(cc),
-                                             MOperand::labelOp(trueEdgeLbl)}});
                                         outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br,
-                                                   {MOperand::labelOp(falseEdgeLbl)}});
+                                            MInstr{MOpcode::BCond,
+                                                   {MOperand::condOp(cc),
+                                                    MOperand::labelOp(trueEdgeLbl)}});
+                                        outBB.instrs.push_back(
+                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
                                         loweredViaCompare = true;
                                     }
                                 } else if (o0.kind == il::core::Value::Kind::Temp &&
@@ -391,13 +387,12 @@ void lowerTerminators(const il::core::Function &fn,
                                         outBB.instrs.push_back(MInstr{MOpcode::CmpRI,
                                                                       {MOperand::regOp(PhysReg::X0),
                                                                        MOperand::immOp(o1.i64)}});
-                                        outBB.instrs.push_back(MInstr{
-                                            MOpcode::BCond,
-                                            {MOperand::condOp(cc),
-                                             MOperand::labelOp(trueEdgeLbl)}});
                                         outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br,
-                                                   {MOperand::labelOp(falseEdgeLbl)}});
+                                            MInstr{MOpcode::BCond,
+                                                   {MOperand::condOp(cc),
+                                                    MOperand::labelOp(trueEdgeLbl)}});
+                                        outBB.instrs.push_back(
+                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
                                         loweredViaCompare = true;
                                     }
                                 }
@@ -422,9 +417,9 @@ void lowerTerminators(const il::core::Function &fn,
                         outBB.instrs.push_back(
                             MInstr{MOpcode::CmpRI,
                                    {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});
-                        outBB.instrs.push_back(MInstr{
-                            MOpcode::BCond,
-                            {MOperand::condOp("ne"), MOperand::labelOp(trueEdgeLbl)}});
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::BCond,
+                                   {MOperand::condOp("ne"), MOperand::labelOp(trueEdgeLbl)}});
                         outBB.instrs.push_back(
                             MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
                     }

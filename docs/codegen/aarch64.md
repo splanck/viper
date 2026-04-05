@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -11,14 +11,15 @@ programs, and the development roadmap. It is kept developer-focused with concret
 
 ## Executive Summary
 
-### Current Status (March 2026)
+### Current Status (April 2026)
 
 - **End-to-end validated on Apple Silicon**: All demo games compile and run natively
-- **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
+- **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer and protected-use eviction), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
 - **Immediate utils**: Extracted `A64ImmediateUtils.hpp` for consistent immediate encoding
 - **Binary encoder**: Direct object code emission (bypassing assembler text)
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
-- **121 codegen tests passing**
+- **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
+- **117 codegen test files**
 
 ## Source File Map
 
@@ -106,12 +107,16 @@ MIR opcode categories:
 
 | File | Purpose |
 |------|---------|
-| `src/codegen/aarch64/ra/Allocator.hpp`/`.cpp` | Linear-scan register allocator |
+| `src/codegen/aarch64/ra/Allocator.hpp`/`.cpp` | Linear-scan register allocator with protected-use eviction |
 | `src/codegen/aarch64/ra/Liveness.hpp`/`.cpp` | Live variable analysis |
 | `src/codegen/aarch64/ra/RegPools.hpp`/`.cpp` | Physical register pools (GPR/FPR) |
-| `src/codegen/aarch64/ra/OperandRoles.hpp`/`.cpp` | Operand use/def classification |
+| `src/codegen/aarch64/ra/OperandRoles.hpp`/`.cpp` | Per-operand use/def role classification |
+| `src/codegen/aarch64/ra/OpcodeClassify.hpp` | Opcode classification (call, terminator, mem load/store) |
+| `src/codegen/aarch64/ra/InstrBuilders.hpp` | MIR instruction builder helpers for spill/reload |
+| `src/codegen/aarch64/ra/RegClassify.hpp` | Register class classification |
 | `src/codegen/aarch64/ra/VState.hpp` | Virtual register state tracking |
 | `src/codegen/aarch64/Coalescer.hpp`/`.cpp` | Pre-RA register coalescer (~270 LOC) |
+| `src/codegen/aarch64/LivenessAnalysis.hpp`/`.cpp` | CFG-level liveness analysis |
 
 ### Frame layout
 
@@ -241,7 +246,7 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 
 ## Tests
 
-89 AArch64-specific test files live in `src/tests/unit/codegen/`. Selected coverage:
+96 AArch64-specific test files live in `src/tests/unit/codegen/`. Selected coverage:
 
 | Test file | Coverage |
 |-----------|---------|
@@ -399,7 +404,7 @@ New MIR opcodes added to support these patterns: `Cbnz`, `MAddRRRR`, `Csel`, `Ld
 
 ### Architectural Gaps
 
-- **AArch64 PassManager**: `CodegenPipeline` orchestrates passes but lacks per-pass error checking and verification hooks
+- **AArch64 PassManager**: `CodegenPipeline` now uses `PassManager`-based composition with Scheduler and BlockLayout passes at O1+; per-pass verification hooks remain limited
 - **Darwin symbol fixup**: Uses string search-and-replace on full assembly output (fragile); needs redesign
 - **Debug information**: DWARF v5 emitted by native linker; source-level debugging available
 - **Instruction scheduling**: Post-RA scheduler implemented; further scheduling opportunities remain

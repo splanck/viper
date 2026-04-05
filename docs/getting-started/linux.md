@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-05
+last-verified: 2026-04-05
 ---
 
 # Getting Started on Linux

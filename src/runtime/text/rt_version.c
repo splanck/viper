@@ -437,7 +437,8 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     return cmp == 0 ? 1 : 0;
 }
 
-/// @brief Return a new version string with the major component incremented and minor/patch reset to 0.
+/// @brief Return a new version string with the major component incremented and minor/patch reset to
+/// 0.
 rt_string rt_version_bump_major(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);

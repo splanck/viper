@@ -108,7 +108,7 @@ bool computeTempTo(const il::core::Instr &prod,
                 MOperand::regOp(r0),
                 imm,
                 (opc == MOpcode::AddRI || opc == MOpcode::AddOvfRI) ? SignedImmArithKind::Add
-                                                                     : SignedImmArithKind::Sub,
+                                                                    : SignedImmArithKind::Sub,
                 (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::AddOvfRI
                                                                        : MOpcode::AddRI,
                 (opc == MOpcode::AddOvfRI || opc == MOpcode::SubOvfRI) ? MOpcode::SubOvfRI

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper Architecture Overview
@@ -163,16 +163,20 @@ Key design points:
 - **DCE** – removes unreachable code and unused values.
 - **DSE** – dead store elimination.
 - **EarlyCSE** – early common subexpression elimination.
+- **EHOpt** – exception handling optimization.
 - **GVN** – global value numbering.
 - **IndVarSimplify** – induction variable simplification.
 - **Inline** – function inlining.
 - **LateCleanup** – post-optimization cleanup pass.
 - **LICM** – loop-invariant code motion.
+- **LoopRotate** – loop rotation (header to latch).
 - **LoopSimplify** – loop normalization.
 - **LoopUnroll** – loop unrolling.
 - **Mem2Reg** – memory-to-register promotion.
 - **Peephole** – rewrites short instruction sequences.
+- **Reassociate** – expression reassociation for constants.
 - **SCCP** – sparse conditional constant propagation.
+- **SiblingRecursion** – sibling/tail recursion optimization.
 - **SimplifyCFG** – control flow graph simplification.
 
 The verifier runs after passes to enforce correctness before execution or code generation.
@@ -353,8 +357,10 @@ bumping the IL version and updating consumers.
 
 - `il::core`, `il::build`, `il::io`, `il::verify` for IL infrastructure.
 - `il::vm` for the VM engine.
-- `il::codegen::x86_64` for the native backend.
+- `viper::codegen::x64` for the x86-64 native backend.
+- `viper::codegen::aarch64` for the AArch64 native backend.
 - `fe::basic` for the BASIC front end.
+- `il::frontends::zia` for the Zia front end.
 - `rt` (C ABI) for the runtime library.
 
 ### Testing strategy

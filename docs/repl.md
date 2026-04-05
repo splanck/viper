@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper REPL
@@ -342,7 +342,11 @@ Expression auto-print results are colored based on their detected type. Explicit
 
 Colors are automatically disabled when output is piped or redirected.
 
-## Architecture
+---
+
+## Architecture (Developer Reference)
+
+> This section is for contributors. Users can safely skip it.
 
 The REPL compiles each input to a fresh IL (Intermediate Language) module and executes it via the BytecodeVM. Both language adapters share the same core session loop (`ReplSession`), line editor, meta-command registry, and pretty printer.
 

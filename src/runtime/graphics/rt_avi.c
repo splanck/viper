@@ -31,8 +31,7 @@
  *=========================================================================*/
 
 static uint32_t read_le32(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 static uint16_t read_le16(const uint8_t *p) {
@@ -40,12 +39,12 @@ static uint16_t read_le16(const uint8_t *p) {
 }
 
 static uint32_t make_fourcc(char a, char b, char c, char d) {
-    return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) |
-           ((uint32_t)(uint8_t)c << 16) | ((uint32_t)(uint8_t)d << 24);
+    return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) | ((uint32_t)(uint8_t)c << 16) |
+           ((uint32_t)(uint8_t)d << 24);
 }
 
 #define FOURCC_RIFF make_fourcc('R', 'I', 'F', 'F')
-#define FOURCC_AVI  make_fourcc('A', 'V', 'I', ' ')
+#define FOURCC_AVI make_fourcc('A', 'V', 'I', ' ')
 #define FOURCC_LIST make_fourcc('L', 'I', 'S', 'T')
 #define FOURCC_hdrl make_fourcc('h', 'd', 'r', 'l')
 #define FOURCC_strl make_fourcc('s', 't', 'r', 'l')
@@ -60,8 +59,7 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
  * Chunk addition
  *=========================================================================*/
 
-static int add_chunk(avi_context_t *ctx, const uint8_t *data, uint32_t size,
-                      int8_t is_video) {
+static int add_chunk(avi_context_t *ctx, const uint8_t *data, uint32_t size, int8_t is_video) {
     if (ctx->chunk_count >= ctx->chunk_capacity) {
         int32_t new_cap = ctx->chunk_capacity < 64 ? 64 : ctx->chunk_capacity * 2;
         avi_chunk_t *new_chunks =
@@ -102,13 +100,11 @@ static void parse_avih(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
     else
         ctx->video.fps = 30.0; /* default */
     if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
-        ctx->video.duration =
-            (double)ctx->video.frame_count / ctx->video.fps;
+        ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
 }
 
 /// @brief Parse a stream header (strh chunk).
-static void parse_strh(avi_context_t *ctx, const uint8_t *data, uint32_t size,
-                        int *stream_type) {
+static void parse_strh(avi_context_t *ctx, const uint8_t *data, uint32_t size, int *stream_type) {
     if (size < 48)
         return;
     uint32_t fcc_type = read_le32(data + 0);
@@ -126,8 +122,7 @@ static void parse_strh(avi_context_t *ctx, const uint8_t *data, uint32_t size,
 }
 
 /// @brief Parse a stream format (strf chunk) for video.
-static void parse_strf_video(avi_context_t *ctx, const uint8_t *data,
-                              uint32_t size) {
+static void parse_strf_video(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
     if (size < 40)
         return;
     /* BITMAPINFOHEADER */
@@ -143,8 +138,7 @@ static void parse_strf_video(avi_context_t *ctx, const uint8_t *data,
 }
 
 /// @brief Parse a stream format (strf chunk) for audio.
-static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data,
-                              uint32_t size) {
+static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
     if (size < 16)
         return;
     /* WAVEFORMATEX */
@@ -159,11 +153,16 @@ static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data,
  *=========================================================================*/
 
 /// @brief Walk chunks at a given level, calling handler for each.
-static int walk_chunks(const uint8_t *data, size_t len, size_t start,
-                        void (*handler)(avi_context_t *, uint32_t fourcc,
-                                        const uint8_t *payload, uint32_t size,
-                                        void *extra),
-                        avi_context_t *ctx, void *extra) {
+static int walk_chunks(const uint8_t *data,
+                       size_t len,
+                       size_t start,
+                       void (*handler)(avi_context_t *,
+                                       uint32_t fourcc,
+                                       const uint8_t *payload,
+                                       uint32_t size,
+                                       void *extra),
+                       avi_context_t *ctx,
+                       void *extra) {
     size_t pos = start;
     while (pos + 8 <= len) {
         uint32_t fourcc = read_le32(data + pos);
@@ -183,8 +182,8 @@ static int walk_chunks(const uint8_t *data, size_t len, size_t start,
  *=========================================================================*/
 
 /// @brief Handle chunks inside a strl LIST.
-static void handle_strl(avi_context_t *ctx, uint32_t fourcc,
-                         const uint8_t *payload, uint32_t size, void *extra) {
+static void handle_strl(
+    avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     int *stream_type = (int *)extra;
     if (fourcc == FOURCC_strh)
         parse_strh(ctx, payload, size, stream_type);
@@ -197,8 +196,8 @@ static void handle_strl(avi_context_t *ctx, uint32_t fourcc,
 }
 
 /// @brief Handle chunks inside the hdrl LIST.
-static void handle_hdrl(avi_context_t *ctx, uint32_t fourcc,
-                         const uint8_t *payload, uint32_t size, void *extra) {
+static void handle_hdrl(
+    avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     (void)extra;
     if (fourcc == FOURCC_avih) {
         parse_avih(ctx, payload, size);
@@ -212,8 +211,8 @@ static void handle_hdrl(avi_context_t *ctx, uint32_t fourcc,
 }
 
 /// @brief Handle chunks inside the movi LIST.
-static void handle_movi(avi_context_t *ctx, uint32_t fourcc,
-                         const uint8_t *payload, uint32_t size, void *extra) {
+static void handle_movi(
+    avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     (void)extra;
     /* Check chunk type by last 2 chars of FOURCC:
      * 'dc' or 'db' = compressed/DIB video, 'wb' = wave bytes (audio) */
@@ -228,8 +227,8 @@ static void handle_movi(avi_context_t *ctx, uint32_t fourcc,
 }
 
 /// @brief Handle top-level RIFF chunks.
-static void handle_top(avi_context_t *ctx, uint32_t fourcc,
-                        const uint8_t *payload, uint32_t size, void *extra) {
+static void handle_top(
+    avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     (void)extra;
     if (fourcc == FOURCC_LIST && size >= 4) {
         uint32_t list_type = read_le32(payload);
@@ -264,8 +263,7 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
 
     /* Build video frame index */
     if (ctx->chunk_count > 0) {
-        ctx->video_indices =
-            (int32_t *)malloc((size_t)ctx->chunk_count * sizeof(int32_t));
+        ctx->video_indices = (int32_t *)malloc((size_t)ctx->chunk_count * sizeof(int32_t));
         if (ctx->video_indices) {
             ctx->video_frame_count = 0;
             for (int32_t i = 0; i < ctx->chunk_count; i++) {
@@ -279,8 +277,7 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
         if (ctx->video_frame_count > 0 && ctx->video.frame_count == 0)
             ctx->video.frame_count = ctx->video_frame_count;
         if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
-            ctx->video.duration =
-                (double)ctx->video.frame_count / ctx->video.fps;
+            ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
     }
 
     return (ctx->video_frame_count > 0) ? 0 : -1;
@@ -298,8 +295,8 @@ void avi_free(avi_context_t *ctx) {
 }
 
 const uint8_t *avi_get_video_frame(const avi_context_t *ctx,
-                                    int32_t frame_index,
-                                    uint32_t *out_size) {
+                                   int32_t frame_index,
+                                   uint32_t *out_size) {
     if (!ctx || frame_index < 0 || frame_index >= ctx->video_frame_count)
         return NULL;
     int32_t chunk_idx = ctx->video_indices[frame_index];

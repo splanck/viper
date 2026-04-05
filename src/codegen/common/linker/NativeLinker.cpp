@@ -55,7 +55,8 @@ void registerSyntheticSymbols(const ObjFile &obj,
                               std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     for (size_t i = 1; i < obj.symbols.size(); ++i) {
         const auto &sym = obj.symbols[i];
-        if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined || sym.name.empty())
+        if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined ||
+            sym.name.empty())
             continue;
 
         GlobalSymEntry e;
@@ -98,11 +99,11 @@ std::string stripImpPrefix(const std::string &name) {
 bool usesDebugWindowsRuntime(const std::vector<std::string> &archivePaths) {
     for (const auto &path : archivePaths) {
         std::string lower = path;
-        std::transform(lower.begin(),
-                       lower.end(),
-                       lower.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (lower.find("\\debug\\") != std::string::npos || lower.find("/debug/") != std::string::npos ||
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (lower.find("\\debug\\") != std::string::npos ||
+            lower.find("/debug/") != std::string::npos ||
             lower.rfind("msvcrtd.lib") != std::string::npos ||
             lower.rfind("ucrtd.lib") != std::string::npos ||
             lower.rfind("vcruntimed.lib") != std::string::npos)
@@ -140,9 +141,8 @@ std::string normalizeMacFrameworkSymbol(const std::string &name) {
 bool isWindowsHelperSymbol(const std::string &name) {
     return name == "_fltused" || name == "__security_cookie" || name == "__security_check_cookie" ||
            name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-           name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
-           name == "_RTC_CheckStackVars" || name == "__report_rangecheckfailure" ||
-           name == "__chkstk" || name == "_tls_index" ||
+           name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
+           name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
            name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
            name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
            name == "__vcrt_thread_attach" || name == "__vcrt_thread_detach" ||
@@ -152,56 +152,132 @@ bool isWindowsHelperSymbol(const std::string &name) {
            name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
            name == "__scrt_exe_initialize_mta" ||
            name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
-           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" ||
-           name == "vm_trap" || name == "rt_audio_shutdown";
+           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" || name == "vm_trap" ||
+           name == "rt_audio_shutdown";
 }
 
 std::string dllForImport(const std::string &name, bool debugRuntime) {
     static const std::unordered_set<std::string> kernel32 = {
-        "ExitProcess",               "FreeLibrary",              "GetCurrentProcessId",
-        "GetCurrentThreadId",        "GetEnvironmentVariableA",  "GetLastError",
-        "GetModuleHandleW",          "GetProcAddress",           "GetProcessHeap",
-        "GetStartupInfoW",           "GetStdHandle",             "GetSystemTimeAsFileTime",
-        "HeapAlloc",                 "HeapFree",                 "IsDebuggerPresent",
-        "InitOnceExecuteOnce",       "InitializeCriticalSection","InitializeSListHead",
-        "LeaveCriticalSection",      "DeleteCriticalSection",    "EnterCriticalSection",
-        "MultiByteToWideChar",       "RaiseException",
-        "SetEnvironmentVariableA",   "SetUnhandledExceptionFilter",
-        "SetErrorMode",              "SwitchToThread",           "WriteFile",
-        "GetTickCount64",            "AddVectoredExceptionHandler",
-        "GlobalAlloc",               "GlobalFree",               "GlobalLock",
+        "ExitProcess",
+        "FreeLibrary",
+        "GetCurrentProcessId",
+        "GetCurrentThreadId",
+        "GetEnvironmentVariableA",
+        "GetLastError",
+        "GetModuleHandleW",
+        "GetProcAddress",
+        "GetProcessHeap",
+        "GetStartupInfoW",
+        "GetStdHandle",
+        "GetSystemTimeAsFileTime",
+        "HeapAlloc",
+        "HeapFree",
+        "IsDebuggerPresent",
+        "InitOnceExecuteOnce",
+        "InitializeCriticalSection",
+        "InitializeSListHead",
+        "LeaveCriticalSection",
+        "DeleteCriticalSection",
+        "EnterCriticalSection",
+        "MultiByteToWideChar",
+        "RaiseException",
+        "SetEnvironmentVariableA",
+        "SetUnhandledExceptionFilter",
+        "SetErrorMode",
+        "SwitchToThread",
+        "WriteFile",
+        "GetTickCount64",
+        "AddVectoredExceptionHandler",
+        "GlobalAlloc",
+        "GlobalFree",
+        "GlobalLock",
         "GlobalUnlock",
-        "InitializeSRWLock",         "AcquireSRWLockExclusive",  "AcquireSRWLockShared",
-        "ReleaseSRWLockExclusive",   "ReleaseSRWLockShared",     "QueryPerformanceCounter",
-        "VirtualQuery",              "WideCharToMultiByte",      "Beep",
-        "CloseHandle",               "CreateEventA",             "CreateFileA",
-        "CreatePipe",                "CreateProcessA",           "CreateThread",
-        "FindClose",                 "FindFirstFileA",           "FindNextFileA",
-        "GetConsoleMode",            "GetExitCodeProcess",       "GetOverlappedResult",
-        "InitializeConditionVariable","QueryPerformanceFrequency","ReadDirectoryChangesW",
-        "ReadFile",                  "SetConsoleCP",             "SetConsoleMode",
-        "SetConsoleOutputCP",        "SetEvent",                 "SetHandleInformation",
-        "Sleep",                     "SleepConditionVariableCS", "WaitForMultipleObjects",
-        "WaitForSingleObject",       "WakeConditionVariable",
+        "InitializeSRWLock",
+        "AcquireSRWLockExclusive",
+        "AcquireSRWLockShared",
+        "ReleaseSRWLockExclusive",
+        "ReleaseSRWLockShared",
+        "QueryPerformanceCounter",
+        "VirtualQuery",
+        "WideCharToMultiByte",
+        "Beep",
+        "CloseHandle",
+        "CreateEventA",
+        "CreateFileA",
+        "CreatePipe",
+        "CreateProcessA",
+        "CreateThread",
+        "FindClose",
+        "FindFirstFileA",
+        "FindNextFileA",
+        "GetConsoleMode",
+        "GetExitCodeProcess",
+        "GetOverlappedResult",
+        "InitializeConditionVariable",
+        "QueryPerformanceFrequency",
+        "ReadDirectoryChangesW",
+        "ReadFile",
+        "SetConsoleCP",
+        "SetConsoleMode",
+        "SetConsoleOutputCP",
+        "SetEvent",
+        "SetHandleInformation",
+        "Sleep",
+        "SleepConditionVariableCS",
+        "WaitForMultipleObjects",
+        "WaitForSingleObject",
+        "WakeConditionVariable",
     };
     static const std::unordered_set<std::string> user32 = {
-        "AdjustWindowRect",          "BeginPaint",               "ClientToScreen",
-        "CloseClipboard",            "CreateWindowExW",          "DefWindowProcW",
-        "DestroyWindow",             "DispatchMessageW",         "EmptyClipboard",
-        "EndPaint",                  "GetClipboardData",         "GetDC",
-        "GetMonitorInfoA",           "GetSystemMetrics",         "GetWindowLongA",
-        "GetWindowLongPtrA",         "GetWindowRect",            "IsClipboardFormatAvailable",
-        "IsIconic",                  "IsZoomed",                 "LoadCursorA",
-        "MonitorFromWindow",         "OpenClipboard",            "PeekMessageW",
-        "RegisterClassExW",          "RegisterClipboardFormatW", "ReleaseDC",
-        "SetClipboardData",          "SetCursor",                "SetCursorPos",
-        "SetForegroundWindow",       "SetWindowLongA",           "SetWindowLongPtrW",
-        "SetWindowPos",              "SetWindowTextW",           "ShowCursor",
-        "ShowWindow",                "TranslateMessage",         "UpdateWindow",
+        "AdjustWindowRect",
+        "BeginPaint",
+        "ClientToScreen",
+        "CloseClipboard",
+        "CreateWindowExW",
+        "DefWindowProcW",
+        "DestroyWindow",
+        "DispatchMessageW",
+        "EmptyClipboard",
+        "EndPaint",
+        "GetClipboardData",
+        "GetDC",
+        "GetMonitorInfoA",
+        "GetSystemMetrics",
+        "GetWindowLongA",
+        "GetWindowLongPtrA",
+        "GetWindowRect",
+        "IsClipboardFormatAvailable",
+        "IsIconic",
+        "IsZoomed",
+        "LoadCursorA",
+        "MonitorFromWindow",
+        "OpenClipboard",
+        "PeekMessageW",
+        "RegisterClassExW",
+        "RegisterClipboardFormatW",
+        "ReleaseDC",
+        "SetClipboardData",
+        "SetCursor",
+        "SetCursorPos",
+        "SetForegroundWindow",
+        "SetWindowLongA",
+        "SetWindowLongPtrW",
+        "SetWindowPos",
+        "SetWindowTextW",
+        "ShowCursor",
+        "ShowWindow",
+        "TranslateMessage",
+        "UpdateWindow",
     };
     static const std::unordered_set<std::string> gdi32 = {
-        "CreateCompatibleDC", "CreateDIBSection", "DeleteDC",      "DeleteObject",
-        "GetDeviceCaps",      "GetStockObject",   "SelectObject",  "StretchBlt",
+        "CreateCompatibleDC",
+        "CreateDIBSection",
+        "DeleteDC",
+        "DeleteObject",
+        "GetDeviceCaps",
+        "GetStockObject",
+        "SelectObject",
+        "StretchBlt",
     };
     static const std::unordered_set<std::string> shell32 = {
         "DragAcceptFiles",
@@ -342,9 +418,18 @@ WindowsImportPlan generateWindowsImports(LinkArch arch,
             if (arch == LinkArch::AArch64) {
                 textSec.data.insert(textSec.data.end(),
                                     {
-                                        0x10, 0x00, 0x00, 0x90, // adrp x16, __imp_fn
-                                        0x10, 0x02, 0x40, 0xF9, // ldr  x16, [x16, #lo12]
-                                        0x00, 0x02, 0x1F, 0xD6, // br   x16
+                                        0x10,
+                                        0x00,
+                                        0x00,
+                                        0x90, // adrp x16, __imp_fn
+                                        0x10,
+                                        0x02,
+                                        0x40,
+                                        0xF9, // ldr  x16, [x16, #lo12]
+                                        0x00,
+                                        0x02,
+                                        0x1F,
+                                        0xD6, // br   x16
                                     });
             } else {
                 textSec.data.insert(textSec.data.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
@@ -456,27 +541,26 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         return static_cast<uint32_t>(obj.symbols.size() - 1);
     };
 
-    auto addAbs64DataRef =
-        [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
-            while ((dataSec.data.size() % align) != 0)
-                dataSec.data.push_back(0);
-            const size_t off = dataSec.data.size();
-            dataSec.data.resize(off + 8, 0);
-            ObjSymbol sym;
-            sym.name = name;
-            sym.binding = ObjSymbol::Global;
-            sym.sectionIndex = 2;
-            sym.offset = off;
-            obj.symbols.push_back(std::move(sym));
+    auto addAbs64DataRef = [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
+        while ((dataSec.data.size() % align) != 0)
+            dataSec.data.push_back(0);
+        const size_t off = dataSec.data.size();
+        dataSec.data.resize(off + 8, 0);
+        ObjSymbol sym;
+        sym.name = name;
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 2;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
 
-            ObjReloc reloc;
-            reloc.offset = off;
-            reloc.type = coff_x64::kAddr64;
-            reloc.symIndex = targetSymIdx;
-            reloc.addend = 0;
-            dataSec.relocs.push_back(reloc);
-            return static_cast<uint32_t>(obj.symbols.size() - 1);
-        };
+        ObjReloc reloc;
+        reloc.offset = off;
+        reloc.type = coff_x64::kAddr64;
+        reloc.symIndex = targetSymIdx;
+        reloc.addend = 0;
+        dataSec.relocs.push_back(reloc);
+        return static_cast<uint32_t>(obj.symbols.size() - 1);
+    };
 
     auto addImportAlias = [&](const std::string &name, uint32_t targetSymIdx) {
         if (dynamicSyms.count("__imp_" + name))
@@ -506,15 +590,13 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         addImportAlias("_is_c_termination_complete", idx);
     }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
-        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
-                                     {0, 0, 0, 0, 0, 0, 0, 0},
-                                     8);
+        const uint32_t idx = addData(
+            "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
         addImportAlias("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", idx);
     }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")) {
-        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
-                                     {0, 0, 0, 0, 0, 0, 0, 0},
-                                     8);
+        const uint32_t idx = addData(
+            "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
         addImportAlias("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", idx);
     }
 
@@ -548,18 +630,18 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
     }
     if (needsHelper("__chkstk")) {
         std::vector<uint8_t> chkstk = {
-            0x49, 0x89, 0xC2,                   // mov r10, rax
-            0x49, 0x89, 0xE3,                   // mov r11, rsp
+            0x49, 0x89, 0xC2,                         // mov r10, rax
+            0x49, 0x89, 0xE3,                         // mov r11, rsp
             0x49, 0x81, 0xFA, 0x00, 0x10, 0x00, 0x00, // cmp r10, 0x1000
-            0x72, 0x1B,                         // jb tail
+            0x72, 0x1B,                               // jb tail
             0x49, 0x81, 0xEB, 0x00, 0x10, 0x00, 0x00, // sub r11, 0x1000
-            0x41, 0xF6, 0x03, 0x00,             // test byte ptr [r11], 0
+            0x41, 0xF6, 0x03, 0x00,                   // test byte ptr [r11], 0
             0x49, 0x81, 0xEA, 0x00, 0x10, 0x00, 0x00, // sub r10, 0x1000
             0x49, 0x81, 0xFA, 0x00, 0x10, 0x00, 0x00, // cmp r10, 0x1000
-            0x73, 0xE5,                         // jae probe_loop
-            0x4D, 0x29, 0xD3,                   // sub r11, r10
-            0x41, 0xF6, 0x03, 0x00,             // test byte ptr [r11], 0
-            0xC3,                               // ret
+            0x73, 0xE5,                               // jae probe_loop
+            0x4D, 0x29, 0xD3,                         // sub r11, r10
+            0x41, 0xF6, 0x03, 0x00,                   // test byte ptr [r11], 0
+            0xC3,                                     // ret
         };
         const size_t off = textSec.data.size();
         textSec.data.insert(textSec.data.end(), chkstk.begin(), chkstk.end());
@@ -581,18 +663,15 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         addImportAlias("__vcrt_initialize", idx);
     }
     if (needsHelper("__vcrt_thread_attach")) {
-        const uint32_t idx =
-            addRetFn("__vcrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__vcrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__vcrt_thread_attach", idx);
     }
     if (needsHelper("__vcrt_thread_detach")) {
-        const uint32_t idx =
-            addRetFn("__vcrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__vcrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__vcrt_thread_detach", idx);
     }
     if (needsHelper("__vcrt_uninitialize")) {
-        const uint32_t idx =
-            addRetFn("__vcrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__vcrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__vcrt_uninitialize", idx);
     }
     if (needsHelper("__vcrt_uninitialize_critical")) {
@@ -604,18 +683,15 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         addImportAlias("__acrt_initialize", idx);
     }
     if (needsHelper("__acrt_thread_attach")) {
-        const uint32_t idx =
-            addRetFn("__acrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__acrt_thread_attach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__acrt_thread_attach", idx);
     }
     if (needsHelper("__acrt_thread_detach")) {
-        const uint32_t idx =
-            addRetFn("__acrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__acrt_thread_detach", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__acrt_thread_detach", idx);
     }
     if (needsHelper("__acrt_uninitialize")) {
-        const uint32_t idx =
-            addRetFn("__acrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
+        const uint32_t idx = addRetFn("__acrt_uninitialize", {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3});
         addImportAlias("__acrt_uninitialize", idx);
     }
     if (needsHelper("__acrt_uninitialize_critical")) {
@@ -785,15 +861,13 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         addImportAlias("_is_c_termination_complete", idx);
     }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
-        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
-                                     {0, 0, 0, 0, 0, 0, 0, 0},
-                                     8);
+        const uint32_t idx = addData(
+            "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
         addImportAlias("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", idx);
     }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")) {
-        const uint32_t idx = addData("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
-                                     {0, 0, 0, 0, 0, 0, 0, 0},
-                                     8);
+        const uint32_t idx = addData(
+            "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
         addImportAlias("?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9", idx);
     }
 
@@ -972,14 +1046,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     std::vector<ObjFile> allObjects;
     std::unordered_set<std::string> dynamicSyms;
     const bool debugWindowsRuntime =
-        opts.platform == LinkPlatform::Windows &&
-        (usesDebugWindowsRuntime(opts.archivePaths)
+        opts.platform == LinkPlatform::Windows && (usesDebugWindowsRuntime(opts.archivePaths)
 #if defined(NDEBUG)
-             || false
+                                                   || false
 #else
-             || true
+                                                   || true
 #endif
-        );
+                                                  );
 
     if (!resolveSymbols(
             initialObjects, archives, globalSyms, allObjects, dynamicSyms, err, opts.platform)) {
@@ -1019,17 +1092,17 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         const bool haveVmTrapDefault = globalSyms.find("vm_trap_default") != globalSyms.end();
         const bool needTlsIndex =
             std::any_of(allObjects.begin(), allObjects.end(), [](const ObjFile &obj) {
-                return std::any_of(obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
-                    return sec.alloc && sec.tls && !sec.data.empty();
-                });
+                return std::any_of(
+                    obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
+                        return sec.alloc && sec.tls && !sec.data.empty();
+                    });
             });
 
         if (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64) {
-            ObjFile helperObj = (opts.arch == LinkArch::AArch64)
-                                    ? generateWindowsArm64Helpers(
-                                          dynamicSyms, haveVmTrapDefault, needTlsIndex)
-                                    : generateWindowsX64Helpers(
-                                          dynamicSyms, haveVmTrapDefault, needTlsIndex);
+            ObjFile helperObj =
+                (opts.arch == LinkArch::AArch64)
+                    ? generateWindowsArm64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex)
+                    : generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
             if (!helperObj.sections.empty()) {
                 const size_t helperIdx = allObjects.size();
                 allObjects.push_back(std::move(helperObj));
@@ -1260,11 +1333,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                         break;
                 }
                 if (needed)
-                    if (std::none_of(dylibs.begin(),
-                                     dylibs.end(),
-                                     [&](const DylibImport &imp) {
-                                         return imp.path == rule.dylibPath;
-                                     }))
+                    if (std::none_of(dylibs.begin(), dylibs.end(), [&](const DylibImport &imp) {
+                            return imp.path == rule.dylibPath;
+                        }))
                         dylibs.push_back({rule.dylibPath});
             }
 
@@ -1325,8 +1396,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 }
             }
 
-            writeOk = writeMachOExe(
-                opts.exePath, layout, opts.arch, dylibs, dynamicSyms, symOrdinals, opts.stackSize, err);
+            writeOk = writeMachOExe(opts.exePath,
+                                    layout,
+                                    opts.arch,
+                                    dylibs,
+                                    dynamicSyms,
+                                    symOrdinals,
+                                    opts.stackSize,
+                                    err);
             break;
         }
         case LinkPlatform::Windows: {
@@ -1341,15 +1418,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 }
             }
             const bool emitStartupStub = opts.entrySymbol == "main";
-            writeOk = writePeExe(
-                opts.exePath,
-                layout,
-                opts.arch,
-                peImports,
-                peImportSlotRvas,
-                emitStartupStub,
-                opts.stackSize,
-                err);
+            writeOk = writePeExe(opts.exePath,
+                                 layout,
+                                 opts.arch,
+                                 peImports,
+                                 peImportSlotRvas,
+                                 emitStartupStub,
+                                 opts.stackSize,
+                                 err);
             break;
         }
     }

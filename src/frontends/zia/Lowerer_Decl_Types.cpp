@@ -89,8 +89,8 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
 }
 
 void Lowerer::computeClassFieldLayout(ClassDecl &decl,
-                                       ClassTypeInfo &info,
-                                       const std::string &qualifiedName) {
+                                      ClassTypeInfo &info,
+                                      const std::string &qualifiedName) {
     (void)qualifiedName; // used implicitly via caller context
     for (auto &member : decl.members) {
         if (member->kind != DeclKind::Field)
@@ -131,8 +131,8 @@ void Lowerer::computeClassFieldLayout(ClassDecl &decl,
 }
 
 void Lowerer::buildClassVtable(ClassDecl &decl,
-                                ClassTypeInfo &info,
-                                const std::string &qualifiedName) {
+                               ClassTypeInfo &info,
+                               const std::string &qualifiedName) {
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());

@@ -140,8 +140,8 @@ typedef void (*PFNGLBINDBUFFERPROC)(GLenum, GLuint);
 typedef void (*PFNGLBINDBUFFERBASEPROC)(GLenum, GLuint, GLuint);
 typedef void (*PFNGLBUFFERDATAPROC)(GLenum, GLsizeiptr, const void *, GLenum);
 typedef void (*PFNGLBUFFERSUBDATAPROC)(GLenum, GLintptr, GLsizeiptr, const void *);
-typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(GLuint, GLint, GLenum, GLboolean, GLsizei,
-                                             const void *);
+typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(
+    GLuint, GLint, GLenum, GLboolean, GLsizei, const void *);
 typedef void (*PFNGLVERTEXATTRIBIPOINTERPROC)(GLuint, GLint, GLenum, GLsizei, const void *);
 typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
 typedef void (*PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint);
@@ -155,8 +155,8 @@ typedef void (*PFNGLGENTEXTURESPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETETEXTURESPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum);
 typedef void (*PFNGLBINDTEXTUREPROC)(GLenum, GLuint);
-typedef void (*PFNGLTEXIMAGE2DPROC)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum,
-                                    const void *);
+typedef void (*PFNGLTEXIMAGE2DPROC)(
+    GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
 typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum, GLenum, GLint);
 typedef void (*PFNGLTEXBUFFERPROC)(GLenum, GLenum, GLuint);
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei, GLuint *);
@@ -263,6 +263,7 @@ static void gl_check_error(const char *file, int line) {
     if (err != GL_NO_ERROR)
         fprintf(stderr, "GL error 0x%04X at %s:%d\n", (unsigned)err, file, line);
 }
+
 #define GL_CHECK() gl_check_error(__FILE__, __LINE__)
 #else
 #define GL_CHECK() ((void)0)
@@ -278,8 +279,8 @@ typedef void (*PFNGLXSWAPBUFFERSPROC)(Display *, GLXDrawable);
 typedef int (*PFNGLXMAKECURRENTPROC)(Display *, GLXDrawable, GLXContext);
 typedef void (*PFNGLXDESTROYCONTEXTPROC)(Display *, GLXContext);
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSPROC)(const unsigned char *);
-typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(Display *, GLXFBConfig, GLXContext, int,
-                                                        const int *);
+typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(
+    Display *, GLXFBConfig, GLXContext, int, const int *);
 
 static struct {
     PFNGLXCHOOSEFBCONFIGPROC ChooseFBConfig;
@@ -413,9 +414,11 @@ typedef struct {
     float fog_color[3];
     float clearR, clearG, clearB;
 
-    GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix, uShadowVP;
+    GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
+        uShadowVP;
     GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
-    GLint uUnlit, uShadingModel, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap, uHasEmissiveMap;
+    GLint uUnlit, uShadingModel, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap,
+        uHasEmissiveMap;
     GLint uHasEnvMap, uReflectivity;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
@@ -480,8 +483,8 @@ static int mat4f_inverse_gl(const float *m, float *out) {
              m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
     inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
               m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
-             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
     inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
              m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
     inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
@@ -490,12 +493,12 @@ static int mat4f_inverse_gl(const float *m, float *out) {
               m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
     inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
              m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
-             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
-              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
-              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     {
         float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
@@ -518,18 +521,18 @@ static int load_gl(void) {
     if (!gl.lib)
         return -1;
 
-#define LOAD(name)                                                                                  \
-    gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                       \
-    if (!gl.name)                                                                                   \
-        return -1
-#define LOADX(name)                                                                                 \
-    glx.name = (__typeof__(glx.name))dlsym(gl.lib, "glX" #name);                                    \
-    if (!glx.name)                                                                                  \
-        return -1
-#define LOADP(name)                                                                                 \
+#define LOAD(name)                                                                                 \
+    gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
+    if (!gl.name)                                                                                  \
+    return -1
+#define LOADX(name)                                                                                \
+    glx.name = (__typeof__(glx.name))dlsym(gl.lib, "glX" #name);                                   \
+    if (!glx.name)                                                                                 \
+    return -1
+#define LOADP(name)                                                                                \
     gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);          \
-    if (!gl.name)                                                                                   \
-        return -1
+    if (!gl.name)                                                                                  \
+    return -1
 
     LOAD(GetError);
     LOAD(Clear);
@@ -550,9 +553,8 @@ static int load_gl(void) {
     LOADX(MakeCurrent);
     LOADX(DestroyContext);
     LOADX(GetProcAddress);
-    glx.CreateContextAttribsARB =
-        (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
-            (const unsigned char *)"glXCreateContextAttribsARB");
+    glx.CreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
+        (const unsigned char *)"glXCreateContextAttribsARB");
 
     LOADP(PolygonMode);
     LOADP(DrawElements);
@@ -694,7 +696,8 @@ static const char *glsl_vertex_src =
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
     "            int b = min(int(aBoneIdx[i]), 127);\n"
-    "            mat4 bm = (usePrevPalette != 0 && uHasPrevSkinning != 0) ? uPrevBonePalette[b] : uBonePalette[b];\n"
+    "            mat4 bm = (usePrevPalette != 0 && uHasPrevSkinning != 0) ? uPrevBonePalette[b] : "
+    "uBonePalette[b];\n"
     "            skinnedPos += bm * localPos * bw;\n"
     "        }\n"
     "    }\n"
@@ -731,10 +734,12 @@ static const char *glsl_vertex_src =
     "    if (uUseInstancing != 0) {\n"
     "        model = transpose(mat4(aInstanceRow0, aInstanceRow1, aInstanceRow2, aInstanceRow3));\n"
     "        prevModel = (uHasPrevInstanceMatrices != 0)\n"
-    "            ? transpose(mat4(aPrevInstanceRow0, aPrevInstanceRow1, aPrevInstanceRow2, aPrevInstanceRow3))\n"
+    "            ? transpose(mat4(aPrevInstanceRow0, aPrevInstanceRow1, aPrevInstanceRow2, "
+    "aPrevInstanceRow3))\n"
     "            : model;\n"
     "    }\n"
-    "    mat3 normalMatrix = (uUseInstancing != 0) ? transpose(inverse(mat3(model))) : mat3(uNormalMatrix);\n"
+    "    mat3 normalMatrix = (uUseInstancing != 0) ? transpose(inverse(mat3(model))) : "
+    "mat3(uNormalMatrix);\n"
     "    vec4 wp = model * localPos;\n"
     "    vec4 prevWp = prevModel * prevLocalPos;\n"
     "    gl_Position = uViewProjection * wp;\n"
@@ -745,7 +750,8 @@ static const char *glsl_vertex_src =
     "    vColor = aColor;\n"
     "    vCurrClip = gl_Position;\n"
     "    vPrevClip = uPrevViewProjection * prevWp;\n"
-    "    vHasObjectHistory = float((uHasPrevModelMatrix != 0) || (uHasPrevInstanceMatrices != 0) ||\n"
+    "    vHasObjectHistory = float((uHasPrevModelMatrix != 0) || (uHasPrevInstanceMatrices != 0) "
+    "||\n"
     "                             (uHasPrevSkinning != 0) || (uHasPrevMorphWeights != 0));\n"
     "}\n";
 
@@ -864,7 +870,8 @@ static const char *glsl_fragment_src =
     "        }\n"
     "        if (uFogEnabled != 0) {\n"
     "            float dist = length(uCameraPos - vWorldPos);\n"
-    "            float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);\n"
+    "            float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, "
+    "1.0);\n"
     "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
     "        }\n"
     "        FragColor = vec4(unlitColor, finalAlpha);\n"
@@ -896,7 +903,8 @@ static const char *glsl_fragment_src =
     "            vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "            float d = length(toLight);\n"
     "            L = toLight / max(d, 0.0001);\n"
-    "            float cone = smoothstep(uLightOuterCos[i], uLightInnerCos[i], dot(normalize(-uLightDir[i]), L));\n"
+    "            float cone = smoothstep(uLightOuterCos[i], uLightInnerCos[i], "
+    "dot(normalize(-uLightDir[i]), L));\n"
     "            atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
     "        } else {\n"
     "            continue;\n"
@@ -931,7 +939,8 @@ static const char *glsl_fragment_src =
     "    }\n"
     "    if (uFogEnabled != 0) {\n"
     "        float dist = length(uCameraPos - vWorldPos);\n"
-    "        float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);\n"
+    "        float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, "
+    "1.0);\n"
     "        result = mix(result, uFogColor, fogFactor);\n"
     "    }\n"
     "    FragColor = vec4(result, finalAlpha);\n"
@@ -983,9 +992,8 @@ static const char *glsl_shadow_vertex_src =
     "    gl_Position = uViewProjection * (uModelMatrix * localPos);\n"
     "}\n";
 
-static const char *glsl_shadow_fragment_src =
-    "#version 330 core\n"
-    "void main() {}\n";
+static const char *glsl_shadow_fragment_src = "#version 330 core\n"
+                                              "void main() {}\n";
 
 static const char *glsl_skybox_vertex_src =
     "#version 330 core\n"
@@ -999,28 +1007,24 @@ static const char *glsl_skybox_vertex_src =
     "    gl_Position = pos.xyww;\n"
     "}\n";
 
-static const char *glsl_skybox_fragment_src =
-    "#version 330 core\n"
-    "in vec3 vDir;\n"
-    "out vec4 FragColor;\n"
-    "uniform samplerCube uSkybox;\n"
-    "void main() {\n"
-    "    FragColor = texture(uSkybox, normalize(vDir));\n"
-    "}\n";
+static const char *glsl_skybox_fragment_src = "#version 330 core\n"
+                                              "in vec3 vDir;\n"
+                                              "out vec4 FragColor;\n"
+                                              "uniform samplerCube uSkybox;\n"
+                                              "void main() {\n"
+                                              "    FragColor = texture(uSkybox, normalize(vDir));\n"
+                                              "}\n";
 
 static const float gl_skybox_vertices[] = {
-    -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
-    1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
-    1.0f, -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
-    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
-    -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f,
-    -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f,
-    1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
+    1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
+    -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+    -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+    -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
+    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
 };
 
 static const char *glsl_postfx_vertex_src =
@@ -1079,9 +1083,12 @@ static const char *glsl_postfx_fragment_src =
     "    return world.xyz / max(world.w, 0.0001);\n"
     "}\n"
     "float computeSsao(vec2 uv, float centerDepth) {\n"
-    "    float radius = max(uSsaoRadius, 0.0001) * max(uInvResolution.x, uInvResolution.y) * 120.0;\n"
-    "    vec2 offsets[8] = vec2[](vec2(1.0, 0.0), vec2(-1.0, 0.0), vec2(0.0, 1.0), vec2(0.0, -1.0),\n"
-    "                            vec2(0.707, 0.707), vec2(-0.707, 0.707), vec2(0.707, -0.707), vec2(-0.707, -0.707));\n"
+    "    float radius = max(uSsaoRadius, 0.0001) * max(uInvResolution.x, uInvResolution.y) * "
+    "120.0;\n"
+    "    vec2 offsets[8] = vec2[](vec2(1.0, 0.0), vec2(-1.0, 0.0), vec2(0.0, 1.0), vec2(0.0, "
+    "-1.0),\n"
+    "                            vec2(0.707, 0.707), vec2(-0.707, 0.707), vec2(0.707, -0.707), "
+    "vec2(-0.707, -0.707));\n"
     "    int count = clamp(uSsaoSamples, 1, 8);\n"
     "    float occ = 0.0;\n"
     "    for (int i = 0; i < count; i++) {\n"
@@ -1093,7 +1100,8 @@ static const char *glsl_postfx_fragment_src =
     "}\n"
     "vec3 applyDof(vec2 uv, vec3 color, vec3 worldPos) {\n"
     "    float dist = length(worldPos - uCameraPos);\n"
-    "    float blur = clamp(abs(dist - uDofFocusDistance) * max(uDofAperture, 0.0) * 0.02, 0.0, uDofMaxBlur);\n"
+    "    float blur = clamp(abs(dist - uDofFocusDistance) * max(uDofAperture, 0.0) * 0.02, 0.0, "
+    "uDofMaxBlur);\n"
     "    if (blur < 0.001) return color;\n"
     "    vec2 stepUv = uInvResolution * blur;\n"
     "    vec3 acc = color * 0.4;\n"
@@ -1129,10 +1137,14 @@ static const char *glsl_postfx_fragment_src =
     "}\n"
     "vec3 applyFxaa(vec2 uv, vec3 color) {\n"
     "    float lumaM = dot(color, vec3(0.299, 0.587, 0.114));\n"
-    "    float lumaN = dot(sampleScene(uv + vec2(0.0, -uInvResolution.y)), vec3(0.299, 0.587, 0.114));\n"
-    "    float lumaS = dot(sampleScene(uv + vec2(0.0, uInvResolution.y)), vec3(0.299, 0.587, 0.114));\n"
-    "    float lumaE = dot(sampleScene(uv + vec2(uInvResolution.x, 0.0)), vec3(0.299, 0.587, 0.114));\n"
-    "    float lumaW = dot(sampleScene(uv + vec2(-uInvResolution.x, 0.0)), vec3(0.299, 0.587, 0.114));\n"
+    "    float lumaN = dot(sampleScene(uv + vec2(0.0, -uInvResolution.y)), vec3(0.299, 0.587, "
+    "0.114));\n"
+    "    float lumaS = dot(sampleScene(uv + vec2(0.0, uInvResolution.y)), vec3(0.299, 0.587, "
+    "0.114));\n"
+    "    float lumaE = dot(sampleScene(uv + vec2(uInvResolution.x, 0.0)), vec3(0.299, 0.587, "
+    "0.114));\n"
+    "    float lumaW = dot(sampleScene(uv + vec2(-uInvResolution.x, 0.0)), vec3(0.299, 0.587, "
+    "0.114));\n"
     "    float edge = abs(lumaN + lumaS - 2.0 * lumaM) + abs(lumaE + lumaW - 2.0 * lumaM);\n"
     "    if (edge < 0.08) return color;\n"
     "    vec3 avg = (sampleScene(uv + vec2(uInvResolution.x, 0.0)) +\n"
@@ -1151,10 +1163,14 @@ static const char *glsl_postfx_fragment_src =
     "    if (uFxaaEnabled != 0) color = applyFxaa(vUV, color);\n"
     "    if (uBloomEnabled != 0) {\n"
     "        vec3 bright = max(color - vec3(uBloomThreshold), vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV + vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV - vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV + vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV - vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), vec3(0.0));\n"
+    "        bright += max(sampleScene(vUV + vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), "
+    "vec3(0.0));\n"
+    "        bright += max(sampleScene(vUV - vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), "
+    "vec3(0.0));\n"
+    "        bright += max(sampleScene(vUV + vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), "
+    "vec3(0.0));\n"
+    "        bright += max(sampleScene(vUV - vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), "
+    "vec3(0.0));\n"
     "        color += bright * (uBloomIntensity / 5.0);\n"
     "    }\n"
     "    if (uTonemapMode == 1) {\n"
@@ -1162,7 +1178,8 @@ static const char *glsl_postfx_fragment_src =
     "        color = color / (vec3(1.0) + color);\n"
     "    } else if (uTonemapMode == 2) {\n"
     "        color *= uTonemapExposure;\n"
-    "        color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);\n"
+    "        color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + "
+    "0.14), 0.0, 1.0);\n"
     "    }\n"
     "    if (uColorGradeEnabled != 0) {\n"
     "        color += vec3(uCgBrightness);\n"
@@ -1311,9 +1328,8 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
 
     if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
         int32_t new_cap = ctx->texture_cache_capacity > 0 ? ctx->texture_cache_capacity * 2 : 16;
-        gl_texture_cache_entry_t *nv =
-            (gl_texture_cache_entry_t *)realloc(ctx->texture_cache,
-                                                (size_t)new_cap * sizeof(gl_texture_cache_entry_t));
+        gl_texture_cache_entry_t *nv = (gl_texture_cache_entry_t *)realloc(
+            ctx->texture_cache, (size_t)new_cap * sizeof(gl_texture_cache_entry_t));
         if (!nv) {
             gl.DeleteTextures(1, &tex);
             return 0;
@@ -1400,9 +1416,8 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
 
     if (ctx->cubemap_cache_count >= ctx->cubemap_cache_capacity) {
         int32_t new_cap = ctx->cubemap_cache_capacity > 0 ? ctx->cubemap_cache_capacity * 2 : 8;
-        gl_cubemap_cache_entry_t *nv =
-            (gl_cubemap_cache_entry_t *)realloc(ctx->cubemap_cache,
-                                                (size_t)new_cap * sizeof(gl_cubemap_cache_entry_t));
+        gl_cubemap_cache_entry_t *nv = (gl_cubemap_cache_entry_t *)realloc(
+            ctx->cubemap_cache, (size_t)new_cap * sizeof(gl_cubemap_cache_entry_t));
         if (!nv) {
             gl.DeleteTextures(1, &tex);
             return 0;
@@ -1474,7 +1489,8 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 
     gl.GenTextures(1, &ctx->scene_depth_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    gl.TexImage2D(
+        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -1788,9 +1804,12 @@ static void configure_instance_attributes(gl_context_t *ctx,
     gl.EnableVertexAttribArray(9);
     gl.EnableVertexAttribArray(10);
     gl.VertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)0);
-    gl.VertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(4 * sizeof(float)));
-    gl.VertexAttribPointer(9, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(8 * sizeof(float)));
-    gl.VertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(12 * sizeof(float)));
+    gl.VertexAttribPointer(
+        8, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(4 * sizeof(float)));
+    gl.VertexAttribPointer(
+        9, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(8 * sizeof(float)));
+    gl.VertexAttribPointer(
+        10, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void *)(12 * sizeof(float)));
     gl.VertexAttribDivisor(7, 1);
     gl.VertexAttribDivisor(8, 1);
     gl.VertexAttribDivisor(9, 1);
@@ -1917,8 +1936,7 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl.Uniform1i(uMorphDeltas, 10);
     gl.ActiveTexture(GL_TEXTURE0 + 11);
     if (uHasMorphNormalDeltas >= 0)
-        gl.Uniform1i(uHasMorphNormalDeltas,
-                     (morph_count > 0 && cmd->morph_normal_deltas) ? 1 : 0);
+        gl.Uniform1i(uHasMorphNormalDeltas, (morph_count > 0 && cmd->morph_normal_deltas) ? 1 : 0);
     if (morph_count > 0 && cmd->morph_normal_deltas && uMorphNormalDeltas >= 0) {
         size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
         ensure_buffer_capacity(GL_TEXTURE_BUFFER,
@@ -1954,8 +1972,10 @@ static void upload_light_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
-        gl.Uniform3f(
-            ctx->uLightDir[i], lights[i].direction[0], lights[i].direction[1], lights[i].direction[2]);
+        gl.Uniform3f(ctx->uLightDir[i],
+                     lights[i].direction[0],
+                     lights[i].direction[1],
+                     lights[i].direction[2]);
         gl.Uniform3f(
             ctx->uLightPos[i], lights[i].position[0], lights[i].position[1], lights[i].position[2]);
         gl.Uniform3f(
@@ -1982,7 +2002,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
                         GL_TRUE,
                         cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix);
     gl.UniformMatrix4fv(ctx->uViewProjection, 1, GL_TRUE, ctx->vp);
-    gl.UniformMatrix4fv(ctx->uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
+    gl.UniformMatrix4fv(
+        ctx->uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
     gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, normal_matrix);
     gl.UniformMatrix4fv(ctx->uShadowVP, 1, GL_TRUE, ctx->shadow_vp);
 
@@ -2036,7 +2057,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     GLuint normal_tex = cmd->normal_map ? gl_get_cached_texture(ctx, cmd->normal_map) : 0;
     GLuint specular_tex = cmd->specular_map ? gl_get_cached_texture(ctx, cmd->specular_map) : 0;
     GLuint emissive_tex = cmd->emissive_map ? gl_get_cached_texture(ctx, cmd->emissive_map) : 0;
-    GLuint env_tex = cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
+    GLuint env_tex =
+        cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
     GLuint splat_layer0 =
         cmd->splat_layers[0] ? gl_get_cached_texture(ctx, cmd->splat_layers[0]) : 0;
@@ -2054,8 +2076,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     gl.Uniform1i(ctx->uHasEmissiveMap, emissive_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasSplat, has_splat ? 1 : 0);
 
-    bind_texture_unit(
-        ctx->uDiffuseTex, 0, GL_TEXTURE_2D, diffuse_tex);
+    bind_texture_unit(ctx->uDiffuseTex, 0, GL_TEXTURE_2D, diffuse_tex);
     bind_texture_unit(ctx->uNormalTex, 1, GL_TEXTURE_2D, normal_tex);
     bind_texture_unit(ctx->uSpecularTex, 2, GL_TEXTURE_2D, specular_tex);
     bind_texture_unit(ctx->uEmissiveTex, 3, GL_TEXTURE_2D, emissive_tex);
@@ -2121,7 +2142,8 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
                  1.0f / (float)ctx->scene_height);
     gl.Uniform3f(ctx->postfx_uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
     gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->inv_vp);
-    gl.UniformMatrix4fv(ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
+    gl.UniformMatrix4fv(
+        ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
 
     if (snapshot) {
         gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
@@ -2292,8 +2314,7 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uModelMatrix = gl.GetUniformLocation(ctx->shadow_program, "uModelMatrix");
     ctx->shadow_uViewProjection = gl.GetUniformLocation(ctx->shadow_program, "uViewProjection");
     ctx->shadow_uHasSkinning = gl.GetUniformLocation(ctx->shadow_program, "uHasSkinning");
-    ctx->shadow_uMorphShapeCount =
-        gl.GetUniformLocation(ctx->shadow_program, "uMorphShapeCount");
+    ctx->shadow_uMorphShapeCount = gl.GetUniformLocation(ctx->shadow_program, "uMorphShapeCount");
     ctx->shadow_uVertexCount = gl.GetUniformLocation(ctx->shadow_program, "uVertexCount");
     ctx->shadow_uMorphWeights = gl.GetUniformLocation(ctx->shadow_program, "uMorphWeights[0]");
     ctx->shadow_uMorphDeltas = gl.GetUniformLocation(ctx->shadow_program, "uMorphDeltas");
@@ -2321,18 +2342,15 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uCgBrightness = gl.GetUniformLocation(ctx->postfx_program, "uCgBrightness");
     ctx->postfx_uCgContrast = gl.GetUniformLocation(ctx->postfx_program, "uCgContrast");
     ctx->postfx_uCgSaturation = gl.GetUniformLocation(ctx->postfx_program, "uCgSaturation");
-    ctx->postfx_uVignetteEnabled =
-        gl.GetUniformLocation(ctx->postfx_program, "uVignetteEnabled");
+    ctx->postfx_uVignetteEnabled = gl.GetUniformLocation(ctx->postfx_program, "uVignetteEnabled");
     ctx->postfx_uVignetteRadius = gl.GetUniformLocation(ctx->postfx_program, "uVignetteRadius");
-    ctx->postfx_uVignetteSoftness =
-        gl.GetUniformLocation(ctx->postfx_program, "uVignetteSoftness");
+    ctx->postfx_uVignetteSoftness = gl.GetUniformLocation(ctx->postfx_program, "uVignetteSoftness");
     ctx->postfx_uSsaoEnabled = gl.GetUniformLocation(ctx->postfx_program, "uSsaoEnabled");
     ctx->postfx_uSsaoRadius = gl.GetUniformLocation(ctx->postfx_program, "uSsaoRadius");
     ctx->postfx_uSsaoIntensity = gl.GetUniformLocation(ctx->postfx_program, "uSsaoIntensity");
     ctx->postfx_uSsaoSamples = gl.GetUniformLocation(ctx->postfx_program, "uSsaoSamples");
     ctx->postfx_uDofEnabled = gl.GetUniformLocation(ctx->postfx_program, "uDofEnabled");
-    ctx->postfx_uDofFocusDistance =
-        gl.GetUniformLocation(ctx->postfx_program, "uDofFocusDistance");
+    ctx->postfx_uDofFocusDistance = gl.GetUniformLocation(ctx->postfx_program, "uDofFocusDistance");
     ctx->postfx_uDofAperture = gl.GetUniformLocation(ctx->postfx_program, "uDofAperture");
     ctx->postfx_uDofMaxBlur = gl.GetUniformLocation(ctx->postfx_program, "uDofMaxBlur");
     ctx->postfx_uMotionBlurEnabled =
@@ -2527,8 +2545,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(4 * 1024 * 1024), NULL, GL_STREAM_DRAW);
     ctx->mesh_vbo_capacity = 4u * 1024u * 1024u;
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
-    gl.BufferData(
-        GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(1 * 1024 * 1024), NULL, GL_STREAM_DRAW);
+    gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(1 * 1024 * 1024), NULL, GL_STREAM_DRAW);
     ctx->mesh_ibo_capacity = 1u * 1024u * 1024u;
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(64 * 1024), NULL, GL_STREAM_DRAW);
@@ -2649,10 +2666,22 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     static const float kIdentity4x4[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     if (!ctx || !cam)
         return;
@@ -2787,7 +2816,8 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
         destroy_scene_targets(ctx);
 }
 
-static int gl_readback_rgba(void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+static int gl_readback_rgba(
+    void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int32_t copy_w, copy_h;
     uint8_t *tmp;
@@ -2852,8 +2882,8 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     ensure_rtt_targets(ctx, rt);
 }
 
-static void gl_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32_t h,
-                            const float *light_vp) {
+static void gl_shadow_begin(
+    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     (void)depth_buf;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx || !light_vp)
@@ -2925,7 +2955,8 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     configure_instance_attributes(ctx,
                                   instance_matrices,
-                                  cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices : NULL,
+                                  cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices
+                                                                  : NULL,
                                   instance_count);
     gl.DrawElementsInstanced(
         GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);

@@ -157,8 +157,8 @@ static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
 
     // COFF file header.
     appendLE16(obj, kMachineAmd64);
-    appendLE16(obj, 1);  // NumberOfSections
-    appendLE32(obj, 0);  // TimeDateStamp
+    appendLE16(obj, 1);           // NumberOfSections
+    appendLE32(obj, 0);           // TimeDateStamp
     appendLE32(obj, 20 + 40 + 8); // PointerToSymbolTable
     appendLE32(obj, 0);           // NumberOfSymbols
     appendLE16(obj, 0);           // SizeOfOptionalHeader
@@ -168,14 +168,14 @@ static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
     const std::string name = ".bss";
     for (size_t i = 0; i < 8; ++i)
         obj.push_back(i < name.size() ? static_cast<uint8_t>(name[i]) : 0);
-    appendLE32(obj, 8);           // VirtualSize
-    appendLE32(obj, 0);           // VirtualAddress
-    appendLE32(obj, 8);           // SizeOfRawData
-    appendLE32(obj, 20 + 40);     // PointerToRawData
-    appendLE32(obj, 0);           // PointerToRelocations
-    appendLE32(obj, 0);           // PointerToLinenumbers
-    appendLE16(obj, 0);           // NumberOfRelocations
-    appendLE16(obj, 0);           // NumberOfLinenumbers
+    appendLE32(obj, 8);       // VirtualSize
+    appendLE32(obj, 0);       // VirtualAddress
+    appendLE32(obj, 8);       // SizeOfRawData
+    appendLE32(obj, 20 + 40); // PointerToRawData
+    appendLE32(obj, 0);       // PointerToRelocations
+    appendLE32(obj, 0);       // PointerToLinenumbers
+    appendLE16(obj, 0);       // NumberOfRelocations
+    appendLE16(obj, 0);       // NumberOfLinenumbers
     appendLE32(obj, kScnCntUninitializedData | kScnMemRead | kScnMemWrite);
 
     // Bogus bytes that must not be copied into the output section.
@@ -194,7 +194,8 @@ int main() {
     const auto buildDir = findBuildDir();
     ASSERT(buildDir.has_value());
 
-    const auto archivePath = runtimeArchivePath(*buildDir, archiveNameForComponent(RtComponent::Base));
+    const auto archivePath =
+        runtimeArchivePath(*buildDir, archiveNameForComponent(RtComponent::Base));
     ASSERT(fileExists(archivePath));
 
     Archive ar;
@@ -279,8 +280,8 @@ int main() {
     allObjects.clear();
     dynamicSyms.clear();
     std::ostringstream transitiveErr;
-    const bool transitiveResolved =
-        resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, transitiveErr);
+    const bool transitiveResolved = resolveSymbols(
+        initialObjects, archives, globalSyms, allObjects, dynamicSyms, transitiveErr);
     if (!transitiveResolved)
         std::cerr << transitiveErr.str();
     ASSERT(transitiveResolved);
@@ -340,7 +341,8 @@ int main() {
         ObjFile syntheticObj;
         std::ostringstream parseErr;
         const auto bytes = makeSyntheticCoffBssWithBogusRawData();
-        ASSERT(readObjFile(bytes.data(), bytes.size(), "synthetic-bss.obj", syntheticObj, parseErr));
+        ASSERT(
+            readObjFile(bytes.data(), bytes.size(), "synthetic-bss.obj", syntheticObj, parseErr));
         CHECK(parseErr.str().empty());
         ASSERT(syntheticObj.sections.size() >= 2);
         CHECK(syntheticObj.sections[1].name == ".bss");

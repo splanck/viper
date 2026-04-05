@@ -20,8 +20,8 @@
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 
-#include <array>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <limits>
 
@@ -55,7 +55,8 @@ static bool writeCheckedRel32(uint8_t *patch,
                               const std::string &symName,
                               const char *kind,
                               std::ostream &err) {
-    if (value < std::numeric_limits<int32_t>::min() || value > std::numeric_limits<int32_t>::max()) {
+    if (value < std::numeric_limits<int32_t>::min() ||
+        value > std::numeric_limits<int32_t>::max()) {
         err << "error: " << obj.name << ": " << kind << " relocation out of range";
         if (!symName.empty())
             err << " for '" << symName << "'";
@@ -142,9 +143,8 @@ static bool resolveSymAddr(const std::string &symName,
     // Skip truly unresolved symbols: Undefined/Dynamic binding with no
     // address set.  Dynamic symbols that DO have a resolved address (e.g.
     // GOT stubs, import thunks) must still be resolvable here.
-    if (it->second.resolvedAddr == 0 &&
-        (it->second.binding == GlobalSymEntry::Undefined ||
-         it->second.binding == GlobalSymEntry::Dynamic))
+    if (it->second.resolvedAddr == 0 && (it->second.binding == GlobalSymEntry::Undefined ||
+                                         it->second.binding == GlobalSymEntry::Dynamic))
         return false;
     addr = it->second.resolvedAddr;
     return true;
@@ -266,7 +266,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
                         }
                         const uint32_t val = static_cast<uint32_t>(
-                            static_cast<int64_t>(S) - static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                            static_cast<int64_t>(S) -
+                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
                         writeLE32(patch, val);
                         continue;
                     }
@@ -287,8 +288,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     }
                     if (rel.type == coff_x64::kAddr32Nb) {
                         const uint64_t imageBase = 0x140000000ULL;
-                        const uint32_t val = static_cast<uint32_t>(
-                            static_cast<int64_t>(S) + A - static_cast<int64_t>(imageBase));
+                        const uint32_t val = static_cast<uint32_t>(static_cast<int64_t>(S) + A -
+                                                                   static_cast<int64_t>(imageBase));
                         writeLE32(patch, val);
                         continue;
                     }
@@ -304,8 +305,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             (rel.type == coff_x64::kRel32)
                                 ? 0
                                 : static_cast<int64_t>(rel.type - coff_x64::kRel32);
-                        const int64_t val = static_cast<int64_t>(S) + A -
-                                            static_cast<int64_t>(P) - 4 - extraBias;
+                        const int64_t val =
+                            static_cast<int64_t>(S) + A - static_cast<int64_t>(P) - 4 - extraBias;
                         if (!writeCheckedRel32(patch, val, obj, symName, "COFF REL32", err))
                             return false;
                         continue;

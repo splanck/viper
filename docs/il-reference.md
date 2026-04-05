@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper IL — Reference
@@ -550,6 +550,12 @@ trap.from_err i32 6
 ```llvm
 %ln = err.get_line %e
 %line = err.get_line %err
+```
+
+**`err.get_msg`** — Extract error message string from the current trap context; returns `str`. Used by `catch(e)` to retrieve the `throw` message.
+
+```llvm
+%msg = err.get_msg
 ```
 
 **`extern`** — Declare external function signature (from runtime or other modules).

@@ -35,7 +35,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
@@ -43,9 +43,9 @@ extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 typedef struct {
     void *vptr;
-    void *mesh;        /* retained Mesh3D */
-    void *material;    /* retained Material3D */
-    float *transforms; /* N * 16 floats */
+    void *mesh;              /* retained Mesh3D */
+    void *material;          /* retained Material3D */
+    float *transforms;       /* N * 16 floats */
     float *current_snapshot; /* current-frame snapshot for motion history */
     float *prev_transforms;  /* previous-frame transforms */
     int32_t instance_count;
@@ -56,7 +56,10 @@ typedef struct {
     int8_t has_prev_snapshot;
 } rt_instbatch3d;
 
-static void instbatch_copy_matrix_slot(float *dst, int32_t dst_idx, const float *src, int32_t src_idx) {
+static void instbatch_copy_matrix_slot(float *dst,
+                                       int32_t dst_idx,
+                                       const float *src,
+                                       int32_t src_idx) {
     if (!dst || !src || dst_idx < 0 || src_idx < 0)
         return;
     memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
@@ -304,7 +307,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                     const float *src = &b->transforms[(size_t)i * 16u];
                     if (!instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
                         continue;
-                    memcpy(&visible_transforms[(size_t)visible_count * 16u], src, 16u * sizeof(float));
+                    memcpy(
+                        &visible_transforms[(size_t)visible_count * 16u], src, 16u * sizeof(float));
                     if (visible_prev) {
                         memcpy(&visible_prev[(size_t)visible_count * 16u],
                                &submit_prev[(size_t)i * 16u],
@@ -339,4 +343,6 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     }
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

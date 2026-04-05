@@ -20,50 +20,95 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
+#include <setjmp.h>
 #include <string>
-
-// ── vm_trap override ────────────────────────────────────────────────────────
-namespace {
-int g_trap_count = 0;
-std::string g_last_trap;
-} // namespace
-
-extern "C" void vm_trap(const char *msg) {
-    g_trap_count++;
-    g_last_trap = msg ? msg : "";
-}
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-/// On a non-graphics build, rt_canvas_new must trap with "not compiled in".
-/// On a real-graphics build where the display is unavailable, it must trap
-/// with "display server unavailable". If the display IS available (dev
-/// machine), the test skips — no failure, no trap expected.
-static void test_canvas_new_traps_or_skips() {
-    g_trap_count = 0;
-    g_last_trap.clear();
+namespace {
 
-    void *canvas = rt_canvas_new(NULL, 640, 480);
+using TrapFn = void (*)();
 
-    if (g_trap_count > 0) {
-        // Either the stub fired ("not compiled in") or the real
-        // implementation failed ("display server unavailable").
-        assert(canvas == NULL);
-        assert(g_last_trap.find("Canvas") != std::string::npos ||
-               g_last_trap.find("canvas") != std::string::npos ||
-               g_last_trap.find("graphics") != std::string::npos);
-        printf("  PASS: rt_canvas_new → trap '%s'\n", g_last_trap.c_str());
-    } else {
-        // Real graphics build, display available → window created.
-        // Clean up and skip — there's nothing to test in this scenario.
-        if (canvas)
-            rt_canvas_destroy(canvas);
-        printf("  SKIP: display available, window created (no trap needed)\n");
+static void expect_invalid_operation(TrapFn fn, const char *snippet) {
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    if (setjmp(env) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        assert(false && "expected trap");
     }
+
+    const char *message = rt_trap_get_error();
+    assert(rt_trap_get_kind() == RT_TRAP_KIND_INVALID_OPERATION);
+    assert(rt_trap_get_code() == Err_InvalidOperation);
+    assert(message != nullptr);
+    assert(std::strstr(message, snippet) != nullptr);
+    rt_trap_clear_recovery();
+}
+
+static void trap_canvas_new() {
+    (void)rt_canvas_new(NULL, 640, 480);
+}
+
+static void trap_canvas_width() {
+    (void)rt_canvas_width(reinterpret_cast<void *>(1));
+}
+
+} // namespace
+
+static void test_canvas_availability_flag() {
+    int8_t available = rt_canvas_is_available();
+    assert(available == 0 || available == 1);
+}
+
+static void test_canvas_text_metrics_are_backend_free() {
+    rt_string text = rt_const_cstr("abc");
+    assert(rt_canvas_text_width(text) == 24);
+    assert(rt_canvas_text_height() == 8);
+    assert(rt_canvas_text_scaled_width(text, 3) == 72);
+}
+
+/// On a non-graphics build, rt_canvas_new must trap with InvalidOperation.
+/// On a real-graphics build where the display is unavailable, it may still
+/// trap, but the availability flag must remain true because the backend was
+/// compiled in.
+static void test_canvas_new_contract() {
+    if (!rt_canvas_is_available()) {
+        expect_invalid_operation(trap_canvas_new, "not compiled in");
+        return;
+    }
+
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    if (setjmp(env) == 0) {
+        void *canvas = rt_canvas_new(NULL, 640, 480);
+        rt_trap_clear_recovery();
+        if (canvas) {
+            rt_canvas_destroy(canvas);
+            std::printf("  SKIP: display available, window created\n");
+        }
+        return;
+    }
+
+    const char *message = rt_trap_get_error();
+    assert(message != nullptr);
+    assert(std::strstr(message, "Canvas") != nullptr || std::strstr(message, "graphics") != nullptr ||
+           std::strstr(message, "display") != nullptr);
+    rt_trap_clear_recovery();
+}
+
+static void test_canvas_ops_trap_when_unavailable() {
+    if (rt_canvas_is_available())
+        return;
+    expect_invalid_operation(trap_canvas_width, "not compiled in");
 }
 
 int main() {
-    test_canvas_new_traps_or_skips();
+    test_canvas_availability_flag();
+    test_canvas_text_metrics_are_backend_free();
+    test_canvas_new_contract();
+    test_canvas_ops_trap_when_unavailable();
 
     printf("All canvas-unavailable tests passed.\n");
     return 0;

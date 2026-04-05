@@ -42,7 +42,7 @@
 
 // ─── External declarations ──────────────────────────────────────────────────
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern rt_string rt_string_from_bytes(const char *data, size_t len);
 extern const char *rt_string_cstr(rt_string s);
 extern size_t rt_string_len(rt_string s);
@@ -79,9 +79,9 @@ __attribute__((weak)) const unsigned long long viper_asset_blob_size = 0;
 // ─── Global state ───────────────────────────────────────────────────────────
 
 static struct {
-    vpa_archive_t *embedded;                   // From .rodata blob (NULL if none)
-    vpa_archive_t *packs[RT_ASSET_MAX_PACKS];  // Mounted pack files
-    char *pack_paths[RT_ASSET_MAX_PACKS];      // Paths for unmount matching
+    vpa_archive_t *embedded;                  // From .rodata blob (NULL if none)
+    vpa_archive_t *packs[RT_ASSET_MAX_PACKS]; // Mounted pack files
+    char *pack_paths[RT_ASSET_MAX_PACKS];     // Paths for unmount matching
     int pack_count;
     int initialized;
 } g_asset_mgr;
@@ -220,8 +220,7 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
     // viper_asset_blob_size. When linked, these override the weak defaults below.
     if (!g_asset_mgr.embedded) {
         if (viper_asset_blob_size >= 32)
-            g_asset_mgr.embedded =
-                vpa_open_memory(viper_asset_blob, (size_t)viper_asset_blob_size);
+            g_asset_mgr.embedded = vpa_open_memory(viper_asset_blob, (size_t)viper_asset_blob_size);
     }
 
     // Auto-discover .vpa packs next to executable

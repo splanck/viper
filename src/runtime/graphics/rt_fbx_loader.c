@@ -40,7 +40,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
 
@@ -1556,8 +1556,7 @@ void *rt_fbx_load(rt_string path) {
                     // Assign based on property name in Connection
                     if (strcmp(prop_name, "DiffuseColor") == 0 || *prop_name == '\0')
                         rt_material3d_set_texture(mat, pixels);
-                    else if (strcmp(prop_name, "NormalMap") == 0 ||
-                             strcmp(prop_name, "Bump") == 0)
+                    else if (strcmp(prop_name, "NormalMap") == 0 || strcmp(prop_name, "Bump") == 0)
                         rt_material3d_set_normal_map(mat, pixels);
                     else if (strcmp(prop_name, "SpecularColor") == 0)
                         rt_material3d_set_specular_map(mat, pixels);
@@ -1651,8 +1650,7 @@ void *rt_fbx_load(rt_string path) {
             // Create morph target if not yet created for this mesh
             rt_mesh3d *mesh = (rt_mesh3d *)asset->meshes[mesh_idx];
             if (!asset->morph_targets[mesh_idx]) {
-                asset->morph_targets[mesh_idx] =
-                    rt_morphtarget3d_new((int64_t)mesh->vertex_count);
+                asset->morph_targets[mesh_idx] = rt_morphtarget3d_new((int64_t)mesh->vertex_count);
             }
             void *morph = asset->morph_targets[mesh_idx];
             if (!morph)
@@ -1788,4 +1786,6 @@ void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
     return a->morph_targets[mesh_index];
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

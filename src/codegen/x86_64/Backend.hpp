@@ -39,7 +39,7 @@ struct CodegenOptions {
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
     int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
     TargetABI targetABI{TargetABI::Host}; ///< Target ABI used for lowering/allocation.
-    std::string debugSourcePath{}; ///< Source path used for DWARF line table file entries.
+    std::string debugSourcePath{};        ///< Source path used for DWARF line table file entries.
 };
 
 /// \brief Aggregated result of a backend emission request.

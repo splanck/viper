@@ -48,7 +48,7 @@
 #include <unistd.h>
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /* JSON stream parser (from rt_json_stream.h / text module) */
 extern void *rt_json_stream_new(rt_string json);
@@ -373,7 +373,8 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
 
     if (ok) {
 #ifdef _WIN32
-        ok = MoveFileExA(tmp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 1 : 0;
+        ok =
+            MoveFileExA(tmp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 1 : 0;
 #else
         ok = (rename(tmp_path, path) == 0) ? 1 : 0;
 #endif
@@ -511,8 +512,7 @@ int8_t rt_savedata_save(void *obj) {
         } else {
             rt_sb_append_cstr(&sb, "\"");
             if (e->str_val)
-                json_escape_append(
-                    &sb, rt_string_cstr(e->str_val), (size_t)rt_str_len(e->str_val));
+                json_escape_append(&sb, rt_string_cstr(e->str_val), (size_t)rt_str_len(e->str_val));
             rt_sb_append_cstr(&sb, "\"");
         }
 

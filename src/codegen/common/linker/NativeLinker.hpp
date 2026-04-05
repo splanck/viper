@@ -38,7 +38,7 @@ struct NativeLinkerOptions {
     std::vector<std::string> archivePaths; ///< Runtime archive .a paths (in dependency order).
     LinkPlatform platform = detectLinkPlatform();
     LinkArch arch = detectLinkArch();
-    std::string entrySymbol = "main"; ///< Entry point symbol name.
+    std::string entrySymbol = "main";       ///< Entry point symbol name.
     std::vector<std::string> extraObjPaths; ///< Additional .o files to link (e.g. asset blob).
     std::size_t stackSize = 0; ///< Requested stack size in bytes; 0 uses format defaults.
 };

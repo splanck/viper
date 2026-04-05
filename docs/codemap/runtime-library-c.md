@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # CODEMAP: Runtime Library (C)
@@ -9,11 +9,11 @@ last-verified: 2026-03-04
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,
 graphics, audio, input, networking, system, diagnostics, crypto, time, and threading support.
 
-Last updated: 2026-02-17
+Last updated: 2026-04-05
 
 ## Overview
 
-- **Total source files**: 522 (.c/.h/.cpp/.hpp/.m)
+- **Total source files**: 581 (.c/.h/.cpp/.hpp/.m)
 
 ## Memory Management
 
@@ -42,6 +42,18 @@ Last updated: 2026-02-17
 | `rt_string_encode.c`  | String encoding utilities                               |
 | `rt_string_format.c`  | String formatting helpers                               |
 | `rt_string_ops.c`     | Core string manipulation: concat, substring, trim, case |
+| `rt_compiled_pattern.c` | Compiled regex patterns                               |
+| `rt_compiled_pattern.h` | Compiled pattern declarations                         |
+| `rt_diff.c`             | Text diff implementation                              |
+| `rt_diff.h`             | Diff declarations                                     |
+| `rt_glob.c`             | Glob pattern matching                                 |
+| `rt_glob.h`             | Glob declarations                                     |
+| `rt_pluralize.c`        | Pluralization rules                                   |
+| `rt_pluralize.h`        | Pluralize declarations                                |
+| `rt_scanner.c`          | Text scanner/tokenizer                                |
+| `rt_scanner.h`          | Scanner declarations                                  |
+| `rt_textwrap.c`         | Text wrapping utilities                               |
+| `rt_textwrap.h`         | Text wrap declarations                                |
 
 ## Arrays
 
@@ -88,6 +100,50 @@ Last updated: 2026-02-17
 | `rt_stack.h`          | Stack declarations                                 |
 | `rt_treemap.c`        | Sorted tree map implementation                     |
 | `rt_treemap.h`        | Tree map declarations                              |
+| `rt_bigint.c`         | Big integer arithmetic                             |
+| `rt_bigint.h`         | Big integer declarations                           |
+| `rt_bimap.c`          | Bidirectional map implementation                   |
+| `rt_bimap.h`          | Bimap declarations                                 |
+| `rt_binbuf.c`         | Binary buffer (positioned I/O)                     |
+| `rt_binbuf.h`         | Binary buffer declarations                         |
+| `rt_bitset.c`         | Bitset implementation                              |
+| `rt_bitset.h`         | Bitset declarations                                |
+| `rt_bloomfilter.c`    | Bloom filter implementation                        |
+| `rt_bloomfilter.h`    | Bloom filter declarations                          |
+| `rt_convert_coll.c`   | Collection conversion utilities                    |
+| `rt_convert_coll.h`   | Collection conversion declarations                 |
+| `rt_countmap.c`       | Counting map implementation                        |
+| `rt_countmap.h`       | Count map declarations                             |
+| `rt_defaultmap.c`     | Map with default values                            |
+| `rt_defaultmap.h`     | Default map declarations                           |
+| `rt_deque.c`          | Double-ended queue implementation                  |
+| `rt_deque.h`          | Deque declarations                                 |
+| `rt_frozenmap.c`      | Immutable map implementation                       |
+| `rt_frozenmap.h`      | Frozen map declarations                            |
+| `rt_frozenset.c`      | Immutable set implementation                       |
+| `rt_frozenset.h`      | Frozen set declarations                            |
+| `rt_intmap.c`         | Integer-keyed map implementation                   |
+| `rt_intmap.h`         | IntMap declarations                                |
+| `rt_lazyseq.c`        | Lazy sequence evaluation                           |
+| `rt_lazyseq.h`        | Lazy sequence declarations                         |
+| `rt_lrucache.c`       | LRU cache implementation                           |
+| `rt_lrucache.h`       | LRU cache declarations                             |
+| `rt_multimap.c`       | Multi-value map implementation                     |
+| `rt_multimap.h`       | Multimap declarations                              |
+| `rt_orderedmap.c`     | Insertion-ordered map implementation               |
+| `rt_orderedmap.h`     | Ordered map declarations                           |
+| `rt_set.c`            | Hash set implementation                            |
+| `rt_set.h`            | Set declarations                                   |
+| `rt_sortedset.c`      | Sorted set implementation                          |
+| `rt_sortedset.h`      | Sorted set declarations                            |
+| `rt_sparsearray.c`    | Sparse array implementation                        |
+| `rt_sparsearray.h`    | Sparse array declarations                          |
+| `rt_trie.c`           | Trie data structure                                |
+| `rt_trie.h`           | Trie declarations                                  |
+| `rt_unionfind.c`      | Union-find (disjoint set)                          |
+| `rt_unionfind.h`      | Union-find declarations                            |
+| `rt_weakmap.c`        | Weak-reference map implementation                  |
+| `rt_weakmap.h`        | Weak map declarations                              |
 
 ## Numeric Operations
 
@@ -112,6 +168,12 @@ Last updated: 2026-02-17
 | `rt_vec2.h`        | 2D vector declarations                                       |
 | `rt_vec3.c`        | 3D vector math operations                                    |
 | `rt_vec3.h`        | 3D vector declarations                                       |
+| `rt_mat3.c`        | 3x3 matrix operations                                        |
+| `rt_mat3.h`        | Mat3 declarations                                            |
+| `rt_mat4.c`        | 4x4 matrix operations                                        |
+| `rt_mat4.h`        | Mat4 declarations                                            |
+| `rt_numfmt.c`      | Number formatting utilities                                  |
+| `rt_numfmt.h`      | Number format declarations                                   |
 
 ## Formatting & Output
 
@@ -174,6 +236,22 @@ Last updated: 2026-02-17
 | `rt_serialize.h`       | Serialization interface declarations                     |
 | `rt_template.c`        | Template string processing                               |
 | `rt_template.h`        | Template declarations                                    |
+| `rt_html.c`            | HTML generation utilities                                |
+| `rt_html.h`            | HTML declarations                                        |
+| `rt_ini.c`             | INI file parsing                                         |
+| `rt_ini.h`             | INI declarations                                         |
+| `rt_json.c`            | JSON parsing and generation                              |
+| `rt_json.h`            | JSON declarations                                        |
+| `rt_jsonpath.c`        | JSONPath query implementation                            |
+| `rt_jsonpath.h`        | JSONPath declarations                                    |
+| `rt_markdown.c`        | Markdown processing                                      |
+| `rt_markdown.h`        | Markdown declarations                                    |
+| `rt_toml.c`            | TOML parsing and generation                              |
+| `rt_toml.h`            | TOML declarations                                        |
+| `rt_xml.c`             | XML parsing and generation                               |
+| `rt_xml.h`             | XML declarations                                         |
+| `rt_yaml.c`            | YAML parsing and generation                              |
+| `rt_yaml.h`            | YAML declarations                                        |
 
 ## Archive & Compression
 
@@ -195,6 +273,16 @@ Last updated: 2026-02-17
 | `rt_stopwatch.c` | Stopwatch/elapsed time measurement |
 | `rt_stopwatch.h` | Stopwatch declarations             |
 | `rt_time.c`      | Timer and sleep functionality      |
+| `rt_dateonly.c`  | Date-only (no time) operations     |
+| `rt_dateonly.h`  | DateOnly declarations              |
+| `rt_daterange.c` | Date range operations              |
+| `rt_daterange.h` | Date range declarations            |
+| `rt_duration.c`  | Duration/time span operations      |
+| `rt_duration.h`  | Duration declarations              |
+| `rt_reltime.c`   | Relative time formatting           |
+| `rt_reltime.h`   | Relative time declarations         |
+| `rt_timer.c`     | Timer event implementation         |
+| `rt_timer.h`     | Timer declarations                 |
 
 ## System & Environment
 
@@ -316,9 +404,19 @@ Last updated: 2026-02-17
 
 ## GUI
 
-| File       | Purpose                                |
-|------------|----------------------------------------|
-| `rt_gui.h` | GUI declarations (Viper.GUI.*)         |
+| File                       | Purpose                          |
+|----------------------------|----------------------------------|
+| `rt_gui.h`                 | GUI declarations (Viper.GUI.*)   |
+| `rt_buttongroup.c`         | Button group widget              |
+| `rt_buttongroup.h`         | Button group declarations        |
+| `rt_gui_app.c`             | GUI application management       |
+| `rt_gui_codeeditor.c`      | Code editor widget               |
+| `rt_gui_features.c`        | Additional GUI features          |
+| `rt_gui_internal.h`        | Internal GUI declarations        |
+| `rt_gui_menus.c`           | Menu system implementation       |
+| `rt_gui_system.c`          | System integration               |
+| `rt_gui_widgets.c`         | Core widget implementations      |
+| `rt_gui_widgets_complex.c` | Complex widget implementations   |
 
 ## Input
 
@@ -337,6 +435,12 @@ Last updated: 2026-02-17
 | `rt_network.c`     | TCP/UDP socket operations  |
 | `rt_network.h`     | Network declarations       |
 | `rt_network_http.c`| HTTP client implementation |
+| `rt_restclient.c`  | REST client implementation |
+| `rt_restclient.h`  | REST client declarations   |
+| `rt_tls.c`         | TLS/SSL support            |
+| `rt_tls.h`         | TLS declarations           |
+| `rt_websocket.c`   | WebSocket client           |
+| `rt_websocket.h`   | WebSocket declarations     |
 
 ## Cryptography
 
@@ -350,6 +454,14 @@ Last updated: 2026-02-17
 | `rt_keyderive.h`| Key derivation declarations               |
 | `rt_rand.c`     | Cryptographically secure random numbers   |
 | `rt_rand.h`     | Secure random declarations                |
+| `rt_aes.c`      | AES encryption implementation             |
+| `rt_aes.h`      | AES declarations                          |
+| `rt_crc32.c`    | CRC32 implementation                      |
+| `rt_crc32.h`    | CRC32 declarations                        |
+| `rt_crypto.c`   | General cryptography utilities            |
+| `rt_crypto.h`   | Crypto declarations                       |
+| `rt_password.c` | Password hashing                          |
+| `rt_password.h` | Password declarations                     |
 
 ## OOP Support
 
@@ -383,6 +495,24 @@ Last updated: 2026-02-17
 | `rt_threads.c`             | OS thread helpers backing `Viper.Threads.Thread`    |
 | `rt_threads.h`             | Thread declarations                                 |
 | `rt_threads_primitives.cpp`| Low-level threading primitives (C++ implementation) |
+| `rt_cancellation.c`       | Cancellation token support                          |
+| `rt_cancellation.h`       | Cancellation declarations                           |
+| `rt_channel.c`            | Channel-based communication                         |
+| `rt_channel.h`            | Channel declarations                                |
+| `rt_concqueue.c`          | Concurrent queue implementation                     |
+| `rt_concqueue.h`          | Concurrent queue declarations                       |
+| `rt_debounce.c`           | Debounce logic implementation                       |
+| `rt_debounce.h`           | Debounce declarations                               |
+| `rt_future.c`             | Future/promise implementation                       |
+| `rt_future.h`             | Future declarations                                 |
+| `rt_parallel.c`           | Parallel execution utilities                        |
+| `rt_parallel.h`           | Parallel declarations                               |
+| `rt_ratelimit.c`          | Rate limiting implementation                        |
+| `rt_ratelimit.h`          | Rate limit declarations                             |
+| `rt_scheduler.c`          | Task scheduler implementation                       |
+| `rt_scheduler.h`          | Scheduler declarations                              |
+| `rt_threadpool.c`         | Thread pool implementation                          |
+| `rt_threadpool.h`         | Thread pool declarations                            |
 
 ## Diagnostics & Errors
 
@@ -446,183 +576,7 @@ Last updated: 2026-02-17
 | `rt_typewriter.c`   | Character-by-character text reveal effect               |
 | `rt_typewriter.h`   | Typewriter declarations                                |
 
-## GUI (Extended)
-
-| File                       | Purpose                          |
-|----------------------------|----------------------------------|
-| `rt_buttongroup.c`         | Button group widget              |
-| `rt_buttongroup.h`         | Button group declarations        |
-| `rt_gui.h`                 | GUI declarations (Viper.GUI.*)   |
-| `rt_gui_app.c`             | GUI application management       |
-| `rt_gui_codeeditor.c`      | Code editor widget               |
-| `rt_gui_features.c`        | Additional GUI features          |
-| `rt_gui_internal.h`        | Internal GUI declarations        |
-| `rt_gui_menus.c`           | Menu system implementation       |
-| `rt_gui_system.c`          | System integration               |
-| `rt_gui_widgets.c`         | Core widget implementations      |
-| `rt_gui_widgets_complex.c` | Complex widget implementations   |
-
-## Additional Collections
-
-| File                 | Purpose                              |
-|----------------------|--------------------------------------|
-| `rt_bigint.c`        | Big integer arithmetic               |
-| `rt_bigint.h`        | Big integer declarations             |
-| `rt_bimap.c`         | Bidirectional map implementation     |
-| `rt_bimap.h`         | Bimap declarations                   |
-| `rt_binbuf.c`        | Binary buffer (positioned I/O)       |
-| `rt_binbuf.h`        | Binary buffer declarations           |
-| `rt_bitset.c`        | Bitset implementation                |
-| `rt_bitset.h`        | Bitset declarations                  |
-| `rt_bloomfilter.c`   | Bloom filter implementation          |
-| `rt_bloomfilter.h`   | Bloom filter declarations            |
-| `rt_convert_coll.c`  | Collection conversion utilities      |
-| `rt_convert_coll.h`  | Collection conversion declarations   |
-| `rt_countmap.c`      | Counting map implementation          |
-| `rt_countmap.h`      | Count map declarations               |
-| `rt_defaultmap.c`    | Map with default values              |
-| `rt_defaultmap.h`    | Default map declarations             |
-| `rt_deque.c`         | Double-ended queue implementation    |
-| `rt_deque.h`         | Deque declarations                   |
-| `rt_frozenmap.c`     | Immutable map implementation         |
-| `rt_frozenmap.h`     | Frozen map declarations              |
-| `rt_frozenset.c`     | Immutable set implementation         |
-| `rt_frozenset.h`     | Frozen set declarations              |
-| `rt_intmap.c`        | Integer-keyed map implementation     |
-| `rt_intmap.h`        | IntMap declarations                  |
-| `rt_lazyseq.c`       | Lazy sequence evaluation             |
-| `rt_lazyseq.h`       | Lazy sequence declarations           |
-| `rt_lrucache.c`      | LRU cache implementation             |
-| `rt_lrucache.h`      | LRU cache declarations               |
-| `rt_multimap.c`      | Multi-value map implementation       |
-| `rt_multimap.h`      | Multimap declarations                |
-| `rt_orderedmap.c`    | Insertion-ordered map implementation |
-| `rt_orderedmap.h`    | Ordered map declarations             |
-| `rt_set.c`           | Hash set implementation              |
-| `rt_set.h`           | Set declarations                     |
-| `rt_sortedset.c`     | Sorted set implementation            |
-| `rt_sortedset.h`     | Sorted set declarations              |
-| `rt_sparsearray.c`   | Sparse array implementation          |
-| `rt_sparsearray.h`   | Sparse array declarations            |
-| `rt_trie.c`          | Trie data structure                  |
-| `rt_trie.h`          | Trie declarations                    |
-| `rt_unionfind.c`     | Union-find (disjoint set)            |
-| `rt_unionfind.h`     | Union-find declarations              |
-| `rt_weakmap.c`       | Weak-reference map implementation    |
-| `rt_weakmap.h`       | Weak map declarations                |
-
-## Additional Data Formats
-
-| File            | Purpose                       |
-|-----------------|-------------------------------|
-| `rt_html.c`     | HTML generation utilities     |
-| `rt_html.h`     | HTML declarations             |
-| `rt_ini.c`      | INI file parsing              |
-| `rt_ini.h`      | INI declarations              |
-| `rt_json.c`     | JSON parsing and generation   |
-| `rt_json.h`     | JSON declarations             |
-| `rt_jsonpath.c` | JSONPath query implementation |
-| `rt_jsonpath.h` | JSONPath declarations         |
-| `rt_markdown.c` | Markdown processing           |
-| `rt_markdown.h` | Markdown declarations         |
-| `rt_toml.c`     | TOML parsing and generation   |
-| `rt_toml.h`     | TOML declarations             |
-| `rt_xml.c`      | XML parsing and generation    |
-| `rt_xml.h`      | XML declarations              |
-| `rt_yaml.c`     | YAML parsing and generation   |
-| `rt_yaml.h`     | YAML declarations             |
-
-## Additional Math
-
-| File          | Purpose                     |
-|---------------|-----------------------------|
-| `rt_mat3.c`   | 3x3 matrix operations       |
-| `rt_mat3.h`   | Mat3 declarations           |
-| `rt_mat4.c`   | 4x4 matrix operations       |
-| `rt_mat4.h`   | Mat4 declarations           |
-| `rt_numfmt.c` | Number formatting utilities |
-| `rt_numfmt.h` | Number format declarations  |
-
-## Additional Time & Scheduling
-
-| File             | Purpose                        |
-|------------------|--------------------------------|
-| `rt_dateonly.c`  | Date-only (no time) operations |
-| `rt_dateonly.h`  | DateOnly declarations          |
-| `rt_daterange.c` | Date range operations          |
-| `rt_daterange.h` | Date range declarations        |
-| `rt_duration.c`  | Duration/time span operations  |
-| `rt_duration.h`  | Duration declarations          |
-| `rt_reltime.c`   | Relative time formatting       |
-| `rt_reltime.h`   | Relative time declarations     |
-| `rt_timer.c`     | Timer event implementation     |
-| `rt_timer.h`     | Timer declarations             |
-
-## Additional Concurrency
-
-| File                | Purpose                         |
-|---------------------|---------------------------------|
-| `rt_cancellation.c` | Cancellation token support      |
-| `rt_cancellation.h` | Cancellation declarations       |
-| `rt_channel.c`      | Channel-based communication     |
-| `rt_channel.h`      | Channel declarations            |
-| `rt_concqueue.c`    | Concurrent queue implementation |
-| `rt_concqueue.h`    | Concurrent queue declarations   |
-| `rt_debounce.c`     | Debounce logic implementation   |
-| `rt_debounce.h`     | Debounce declarations           |
-| `rt_future.c`       | Future/promise implementation   |
-| `rt_future.h`       | Future declarations             |
-| `rt_parallel.c`     | Parallel execution utilities    |
-| `rt_parallel.h`     | Parallel declarations           |
-| `rt_ratelimit.c`    | Rate limiting implementation    |
-| `rt_ratelimit.h`    | Rate limit declarations         |
-| `rt_scheduler.c`    | Task scheduler implementation   |
-| `rt_scheduler.h`    | Scheduler declarations          |
-| `rt_threadpool.c`   | Thread pool implementation      |
-| `rt_threadpool.h`   | Thread pool declarations        |
-
-## Additional Networking
-
-| File              | Purpose                         |
-|-------------------|---------------------------------|
-| `rt_restclient.c` | REST client implementation      |
-| `rt_restclient.h` | REST client declarations        |
-| `rt_tls.c`        | TLS/SSL support                 |
-| `rt_tls.h`        | TLS declarations                |
-| `rt_websocket.c`  | WebSocket client implementation |
-| `rt_websocket.h`  | WebSocket declarations          |
-
-## Additional Cryptography
-
-| File            | Purpose                        |
-|-----------------|--------------------------------|
-| `rt_aes.c`      | AES encryption implementation  |
-| `rt_aes.h`      | AES declarations               |
-| `rt_crc32.c`    | CRC32 implementation           |
-| `rt_crc32.h`    | CRC32 declarations             |
-| `rt_crypto.c`   | General cryptography utilities |
-| `rt_crypto.h`   | Crypto declarations            |
-| `rt_password.c` | Password hashing               |
-| `rt_password.h` | Password declarations          |
-
-## Additional Text & String
-
-| File                    | Purpose                       |
-|-------------------------|-------------------------------|
-| `rt_compiled_pattern.c` | Compiled regex patterns       |
-| `rt_compiled_pattern.h` | Compiled pattern declarations |
-| `rt_diff.c`             | Text diff implementation      |
-| `rt_diff.h`             | Diff declarations             |
-| `rt_glob.c`             | Glob pattern matching         |
-| `rt_glob.h`             | Glob declarations             |
-| `rt_pluralize.c`        | Pluralization rules           |
-| `rt_pluralize.h`        | Pluralize declarations        |
-| `rt_scanner.c`          | Text scanner/tokenizer        |
-| `rt_scanner.h`          | Scanner declarations          |
-| `rt_textwrap.c`         | Text wrapping utilities       |
-| `rt_textwrap.h`         | Text wrap declarations        |
-
-## Additional Utilities
+## Utilities
 
 | File                  | Purpose                        |
 |-----------------------|--------------------------------|

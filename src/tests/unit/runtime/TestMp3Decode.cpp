@@ -52,7 +52,8 @@ TEST(Mp3DecodeTest, RejectGarbage) {
     const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
     int16_t *pcm = nullptr;
     int samples = 0, channels = 0, sample_rate = 0;
-    int rc = mp3_decode_file(dec, garbage, sizeof(garbage), &pcm, &samples, &channels, &sample_rate);
+    int rc =
+        mp3_decode_file(dec, garbage, sizeof(garbage), &pcm, &samples, &channels, &sample_rate);
     EXPECT_EQ(rc, -1);
 
     mp3_decoder_free(dec);
@@ -63,8 +64,8 @@ TEST(Mp3DecodeTest, RejectWavAsMp3) {
     ASSERT_TRUE(dec != nullptr);
 
     // WAV RIFF header should not decode as MP3
-    const uint8_t wav[] = {'R', 'I', 'F', 'F', 0x00, 0x00, 0x00, 0x00,
-                           'W', 'A', 'V', 'E', 'f', 'm', 't', ' '};
+    const uint8_t wav[] = {
+        'R', 'I', 'F', 'F', 0x00, 0x00, 0x00, 0x00, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' '};
     int16_t *pcm = nullptr;
     int samples = 0, channels = 0, sample_rate = 0;
     int rc = mp3_decode_file(dec, wav, sizeof(wav), &pcm, &samples, &channels, &sample_rate);
@@ -83,11 +84,17 @@ TEST(Mp3DecodeTest, Id3v2SkipComputation) {
     // syncsafe: 100 = 0x00 0x00 0x00 0x64
     uint8_t id3[120];
     memset(id3, 0, sizeof(id3));
-    id3[0] = 'I'; id3[1] = 'D'; id3[2] = '3';
-    id3[3] = 3; id3[4] = 0; // version 2.3.0
+    id3[0] = 'I';
+    id3[1] = 'D';
+    id3[2] = '3';
+    id3[3] = 3;
+    id3[4] = 0; // version 2.3.0
     id3[5] = 0; // flags
     // Size: 100 in syncsafe (0x00 0x00 0x00 0x64)
-    id3[6] = 0; id3[7] = 0; id3[8] = 0; id3[9] = 100;
+    id3[6] = 0;
+    id3[7] = 0;
+    id3[8] = 0;
+    id3[9] = 100;
     // 100 bytes of padding (tag body), then 10 bytes of garbage (no valid frame)
     // Total: 110 + 10 = 120 bytes
 

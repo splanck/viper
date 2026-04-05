@@ -49,8 +49,7 @@ static uint16_t read16LE(const uint8_t *p) {
 }
 
 static uint32_t read32LE(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 static uint64_t read64LE(const uint8_t *p) {
@@ -67,15 +66,16 @@ static uint64_t read64LE(const uint8_t *p) {
 /// @param toc_size  Size of TOC region in bytes.
 /// @param out_count Set to number of entries parsed.
 /// @return Heap-allocated array of vpa_entry_t, or NULL on error.
-static vpa_entry_t *parse_toc(const uint8_t *toc_data, size_t toc_size,
-                              uint32_t expected_count, uint32_t *out_count) {
+static vpa_entry_t *parse_toc(const uint8_t *toc_data,
+                              size_t toc_size,
+                              uint32_t expected_count,
+                              uint32_t *out_count) {
     if (!toc_data || toc_size == 0) {
         *out_count = 0;
         return NULL;
     }
 
-    vpa_entry_t *entries =
-        (vpa_entry_t *)calloc(expected_count, sizeof(vpa_entry_t));
+    vpa_entry_t *entries = (vpa_entry_t *)calloc(expected_count, sizeof(vpa_entry_t));
     if (!entries) {
         *out_count = 0;
         return NULL;
@@ -309,8 +309,7 @@ const vpa_entry_t *vpa_find(const vpa_archive_t *archive, const char *name) {
 /// @brief Read and decompress an entry's data (returns malloc'd buffer, caller frees).
 /// @details For compressed entries, reads the compressed data then inflates via
 ///          DEFLATE. For uncompressed entries, copies raw bytes from the archive.
-uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry,
-                        size_t *out_size) {
+uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, size_t *out_size) {
     if (!archive || !entry || !out_size)
         return NULL;
 

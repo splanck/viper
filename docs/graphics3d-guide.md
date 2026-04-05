@@ -6,7 +6,72 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Namespace:** `Viper.Graphics3D`
 
-**Runtime types:** Canvas3D, Mesh3D, Camera3D, Material3D, Light3D, RenderTarget3D, CubeMap3D, Scene3D, SceneNode3D, Skeleton3D, Animation3D, AnimPlayer3D, AnimBlend3D, MorphTarget3D, Particles3D, PostFX3D, Ray3D, RayHit3D, AABB3D, Sphere3D, Segment3D, Capsule3D, Physics3DWorld, Physics3DBody, Character3D, Trigger3D, DistanceJoint3D, SpringJoint3D, Transform3D, Sprite3D, Decal3D, Water3D, Terrain3D, InstanceBatch3D, NavMesh3D, Path3D, Vegetation3D, TextureAtlas3D, Audio3D, FBX, GLTF
+---
+
+### Table of Contents
+
+**Getting Started**
+- [Quick Start](#quick-start)
+
+**Core Classes**
+- [Canvas3D](#canvas3d) — Window, frame loop, drawing, lighting
+- [Mesh3D](#mesh3d) — Geometry: box, sphere, plane, OBJ/FBX/glTF loading
+- [Camera3D](#camera3d) — Perspective and orthographic cameras
+- [Material3D](#material3d) — Color, textures, shading models
+- [Light3D](#light3d) — Directional, point, and spot lights
+
+**Rendering Infrastructure**
+- [RenderTarget3D](#rendertarget3d) — Off-screen render targets
+- [CubeMap3D](#cubemap3d) — Skybox and environment maps
+- [PostFX3D](#postfx3d) — Post-processing effects
+- [TextureAtlas3D](#textureatlas3d) — Texture atlas packing
+
+**Scene Management**
+- [Scene3D](#scene3d) — Scene graph with frustum culling
+- [SceneNode3D](#scenenode3d) — Hierarchical scene nodes
+- [Transform3D](#transform3d) — 3D transformation (position, rotation, scale)
+
+**Animation**
+- [Skeleton3D, Animation3D, AnimPlayer3D](#skeleton3d) — Skeletal animation
+- [AnimBlend3D](#animblend3d) — Animation blending
+- [MorphTarget3D](#morphtarget3d) — Morph target (blend shape) animation
+
+**Environment**
+- [Terrain3D](#terrain3d) — Heightmap terrain with LOD and splatting
+- [Water3D](#water3d) — Gerstner wave water simulation
+- [Vegetation3D](#vegetation3d) — Instanced grass and foliage
+- [InstanceBatch3D](#instancebatch3d) — GPU instanced rendering
+- [Sprite3D](#sprite3d) — Billboard sprites in 3D space
+- [Decal3D](#decal3d) — Projected decals
+
+**Physics**
+- [Physics3DWorld, Physics3DBody](#physics3dworld) — Rigid body physics
+- [Character3D](#character3d) — Character controller
+- [Trigger3D](#trigger3d) — Trigger volumes
+- [DistanceJoint3D, SpringJoint3D](#distancejoint3d) — Constraints
+
+**Navigation**
+- [NavMesh3D](#navmesh3d) — Navigation mesh pathfinding
+- [Path3D](#path3d) — 3D path waypoints
+
+**Collision Queries**
+- [Ray3D, RayHit3D, AABB3D, Sphere3D, Segment3D, Capsule3D](#particles3d) — Geometry queries
+
+**Media**
+- [VideoPlayer](#videoplayer) — Video playback (MJPEG/AVI, OGV)
+
+**Format Loaders**
+- [FBX](#fbx) — FBX file loader
+- [GLTF](#gltf) — glTF 2.0 loader
+
+**Operational Reference**
+- [Backend Selection](#backend-selection) — GPU vs. software rendering
+- [Performance Tips](#performance-tips)
+- [Resource Limits](#resource-limits)
+- [Error Handling](#error-handling)
+- [Threading](#threading)
+
+---
 
 ## Quick Start
 
@@ -621,56 +686,6 @@ func start() {
     Material3D.set_Reflectivity(chrome, 0.8);
 }
 ```
-
----
-
-## Backend Selection
-
-The GPU backend is selected automatically at startup:
-
-| Platform | Primary | Fallback |
-|----------|---------|----------|
-| macOS | Metal | Software |
-| Windows | Direct3D 11 | Software |
-| Linux | OpenGL 3.3 | Software |
-
-If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
-
-The software renderer is always available. It uses Gouraud shading by default but switches to per-pixel Blinn-Phong when a normal map is present. It supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
-
-The Metal backend (macOS) has near-full feature parity with the software renderer (94%). It supports: diffuse texture in both lit and unlit paths, spot light cone attenuation with smoothstep falloff, normal/specular/emissive map sampling (4 texture slots), linear distance fog, wireframe mode, per-frame texture caching, GPU skeletal skinning (4-bone vertex shader), GPU morph targets (vertex shader delta accumulation), shadow mapping (depth-only pass + comparison sampler), instanced rendering (shared vertex/index buffers), per-pixel terrain splatting (4-layer weight blend), and GPU post-processing (bloom, FXAA, tone mapping, vignette, color grading via fullscreen quad).
-
-The OpenGL backend (Linux) now implements OGL-01 through OGL-20: diffuse/normal/specular/emissive textures, vertex-color modulation, inverse-transpose normal matrices, spot lights, fog, wireframe mode, render-to-texture readback, shadow mapping, GPU post-processing, hardware instancing, GPU skinning + morph payload consumption, terrain splatting, persistent dynamic buffers, backend-owned cubemap skyboxes, material environment reflections, GPU morph normal-delta parity, and depth/history-based GPU postfx additions including SSAO, depth of field, and velocity-buffer motion blur.
-
-The D3D11 backend (Windows) now implements the full DX11 plan set as well: diffuse/normal/specular/emissive textures, vertex-color modulation, inverse-transpose normal matrices, spot lights, fog, wireframe mode, render-to-texture readback, shadow mapping, GPU post-processing, hardware instancing, GPU skinning + morph payload consumption, terrain splatting, persistent dynamic buffers, backend-owned cubemap skyboxes, material environment reflections, GPU morph normal-delta parity, and depth/history-based GPU postfx additions including SSAO, depth of field, and velocity-buffer motion blur. On non-Windows hosts, final backend validation still depends on the focused Windows CI lane.
-
-## Performance Tips
-
-- **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.
-- **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
-- **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
-- **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
-- **Non-uniform scaling:** Metal, OpenGL, and D3D11 use a proper inverse-transpose normal matrix. The software path still uses the model matrix directly, so non-uniform scaling can distort lighting there.
-
-## Resource Limits
-
-| Resource | Limit |
-|----------|-------|
-| Canvas dimensions | 8192 x 8192 |
-| Texture dimensions | 8192 x 8192 |
-| Mesh vertices | 16M (32-bit index buffer) |
-| Lights per scene | 8 |
-
-## Error Handling
-
-- Constructor failures (New/Load) trap with a descriptive message
-- Out-of-bounds indices trap
-- GPU allocation failure falls back to software (no trap)
-- `VIPER_ENABLE_GRAPHICS=OFF` builds: constructors trap, all other functions are silent no-ops
-
-## Threading
-
-All Graphics3D operations must be called from the main thread. `Begin`/`End` must not nest. Do not modify scene node transforms during `Draw()` traversal.
 
 ---
 
@@ -2382,3 +2397,53 @@ Canvas3D.DrawMesh(canvas, screenMesh, screenXform, screenMat);
 ```
 
 See `examples/apiaudit/graphics3d/video_demo.zia` for a complete example.
+
+---
+
+## Backend Selection
+
+The GPU backend is selected automatically at startup:
+
+| Platform | Primary | Fallback |
+|----------|---------|----------|
+| macOS | Metal | Software |
+| Windows | Direct3D 11 | Software |
+| Linux | OpenGL 3.3 | Software |
+
+If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
+
+**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
+
+**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, spot light cone attenuation, normal/specular/emissive maps, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, shadow mapping, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
+
+**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, spot lights, fog, wireframe, render-to-texture, shadow mapping, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
+
+**Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL. On non-Windows hosts, validation depends on the Windows CI lane.
+
+## Performance Tips
+
+- **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.
+- **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
+- **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
+- **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
+- **Non-uniform scaling:** Metal, OpenGL, and D3D11 use a proper inverse-transpose normal matrix. The software path still uses the model matrix directly, so non-uniform scaling can distort lighting there.
+
+## Resource Limits
+
+| Resource | Limit |
+|----------|-------|
+| Canvas dimensions | 8192 x 8192 |
+| Texture dimensions | 8192 x 8192 |
+| Mesh vertices | 16M (32-bit index buffer) |
+| Lights per scene | 8 |
+
+## Error Handling
+
+- Constructor failures (New/Load) trap with a descriptive message
+- Out-of-bounds indices trap
+- GPU allocation failure falls back to software (no trap)
+- `VIPER_ENABLE_GRAPHICS=OFF` builds: constructors trap, all other functions are silent no-ops
+
+## Threading
+
+All Graphics3D operations must be called from the main thread. `Begin`/`End` must not nest. Do not modify scene node transforms during `Draw()` traversal.

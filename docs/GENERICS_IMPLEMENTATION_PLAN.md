@@ -1,7 +1,7 @@
 ---
 status: draft
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Zia Generics Implementation Plan

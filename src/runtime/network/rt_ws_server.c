@@ -27,8 +27,8 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
-#include <stdbool.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +75,7 @@ typedef pthread_mutex_t ws_mutex_t;
 #define SEND_FLAGS 0
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern char *rt_ws_compute_accept_key(const char *key_cstr); // from rt_websocket.c
 extern ws_socket_t rt_tcp_socket_fd(void *obj);
 
@@ -294,11 +294,8 @@ static int ws_server_send_frame(void *tcp, uint8_t opcode, const void *data, siz
 }
 
 /// @brief Read a WebSocket frame from a TCP connection (client frames are masked).
-static int ws_server_recv_frame(void *tcp,
-                                uint8_t *fin_out,
-                                uint8_t *opcode_out,
-                                uint8_t **data_out,
-                                size_t *len_out) {
+static int ws_server_recv_frame(
+    void *tcp, uint8_t *fin_out, uint8_t *opcode_out, uint8_t **data_out, size_t *len_out) {
     *data_out = NULL;
     *len_out = 0;
 
@@ -751,7 +748,8 @@ rt_string rt_ws_server_client_recv(void *tcp) {
                     uint8_t next_opcode = 0;
                     uint8_t *next_data = NULL;
                     size_t next_len = 0;
-                    if (!ws_server_recv_frame(tcp, &next_fin, &next_opcode, &next_data, &next_len)) {
+                    if (!ws_server_recv_frame(
+                            tcp, &next_fin, &next_opcode, &next_data, &next_len)) {
                         free(message);
                         return rt_string_from_bytes("", 0);
                     }

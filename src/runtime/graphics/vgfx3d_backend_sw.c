@@ -48,11 +48,11 @@ typedef struct {
     float fog_near, fog_far;
     float fog_color[3];
     /* Shadow mapping state */
-    float *shadow_depth;       /* shadow depth buffer (during shadow pass) */
+    float *shadow_depth; /* shadow depth buffer (during shadow pass) */
     int32_t shadow_w, shadow_h;
-    float shadow_vp[16];       /* light view-projection matrix */
+    float shadow_vp[16]; /* light view-projection matrix */
     float shadow_bias;
-    int8_t shadow_active;      /* 1 = shadow map is populated and ready for lookup */
+    int8_t shadow_active; /* 1 = shadow map is populated and ready for lookup */
 } sw_context_t;
 
 static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t height) {
@@ -293,13 +293,12 @@ static void compute_lighting(pipe_vert_t *v,
             }
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
             /* Cone attenuation: smoothstep between outer and inner cosines */
-            float spot_dot = -(lx * light->direction[0] + ly * light->direction[1] +
-                               lz * light->direction[2]);
+            float spot_dot =
+                -(lx * light->direction[0] + ly * light->direction[1] + lz * light->direction[2]);
             if (spot_dot < light->outer_cos)
                 atten = 0.0f; /* outside cone */
             else if (spot_dot < light->inner_cos) {
-                float t = (spot_dot - light->outer_cos) /
-                          (light->inner_cos - light->outer_cos);
+                float t = (spot_dot - light->outer_cos) / (light->inner_cos - light->outer_cos);
                 atten *= t * t * (3.0f - 2.0f * t); /* smoothstep */
             }
         } else /* ambient */
@@ -344,33 +343,36 @@ static void compute_lighting(pipe_vert_t *v,
 
     /* Apply shading model post-processing */
     switch (cmd->shading_model) {
-    case 1: { /* Toon: quantize diffuse to N bands */
-        float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
-        r = floorf(r * bands) / bands;
-        g = floorf(g * bands) / bands;
-        b = floorf(b * bands) / bands;
-        break;
-    }
-    case 4: { /* Fresnel: angle-dependent alpha */
-        float ndv = nx * vx + ny * vy + nz * vz;
-        if (ndv < 0.0f) ndv = 0.0f;
-        float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
-        float bias = cmd->custom_params[1];
-        float fresnel = powf(1.0f - ndv, power) + bias;
-        if (fresnel < 0.0f) fresnel = 0.0f;
-        if (fresnel > 1.0f) fresnel = 1.0f;
-        v->color[3] *= fresnel;
-        break;
-    }
-    case 5: { /* Emissive glow: boost emissive by strength */
-        float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
-        r += cmd->emissive_color[0] * (strength - 1.0f);
-        g += cmd->emissive_color[1] * (strength - 1.0f);
-        b += cmd->emissive_color[2] * (strength - 1.0f);
-        break;
-    }
-    default: /* 0=BlinnPhong (already computed), 2=reserved, 3=Unlit (handled above) */
-        break;
+        case 1: { /* Toon: quantize diffuse to N bands */
+            float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+            r = floorf(r * bands) / bands;
+            g = floorf(g * bands) / bands;
+            b = floorf(b * bands) / bands;
+            break;
+        }
+        case 4: { /* Fresnel: angle-dependent alpha */
+            float ndv = nx * vx + ny * vy + nz * vz;
+            if (ndv < 0.0f)
+                ndv = 0.0f;
+            float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
+            float bias = cmd->custom_params[1];
+            float fresnel = powf(1.0f - ndv, power) + bias;
+            if (fresnel < 0.0f)
+                fresnel = 0.0f;
+            if (fresnel > 1.0f)
+                fresnel = 1.0f;
+            v->color[3] *= fresnel;
+            break;
+        }
+        case 5: { /* Emissive glow: boost emissive by strength */
+            float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+            r += cmd->emissive_color[0] * (strength - 1.0f);
+            g += cmd->emissive_color[1] * (strength - 1.0f);
+            b += cmd->emissive_color[2] * (strength - 1.0f);
+            break;
+        }
+        default: /* 0=BlinnPhong (already computed), 2=reserved, 3=Unlit (handled above) */
+            break;
     }
 
     v->color[0] = r;
@@ -437,17 +439,16 @@ static void sample_texture(
     float w01 = (1.0f - xf) * yf;
     float w11 = xf * yf;
 
-    *r = (((p00 >> 24) & 0xFF) * w00 + ((p10 >> 24) & 0xFF) * w10 +
-          ((p01 >> 24) & 0xFF) * w01 + ((p11 >> 24) & 0xFF) * w11) /
+    *r = (((p00 >> 24) & 0xFF) * w00 + ((p10 >> 24) & 0xFF) * w10 + ((p01 >> 24) & 0xFF) * w01 +
+          ((p11 >> 24) & 0xFF) * w11) /
          255.0f;
-    *g = (((p00 >> 16) & 0xFF) * w00 + ((p10 >> 16) & 0xFF) * w10 +
-          ((p01 >> 16) & 0xFF) * w01 + ((p11 >> 16) & 0xFF) * w11) /
+    *g = (((p00 >> 16) & 0xFF) * w00 + ((p10 >> 16) & 0xFF) * w10 + ((p01 >> 16) & 0xFF) * w01 +
+          ((p11 >> 16) & 0xFF) * w11) /
          255.0f;
-    *b = (((p00 >> 8) & 0xFF) * w00 + ((p10 >> 8) & 0xFF) * w10 +
-          ((p01 >> 8) & 0xFF) * w01 + ((p11 >> 8) & 0xFF) * w11) /
+    *b = (((p00 >> 8) & 0xFF) * w00 + ((p10 >> 8) & 0xFF) * w10 + ((p01 >> 8) & 0xFF) * w01 +
+          ((p11 >> 8) & 0xFF) * w11) /
          255.0f;
-    *a = ((p00 & 0xFF) * w00 + (p10 & 0xFF) * w10 + (p01 & 0xFF) * w01 +
-          (p11 & 0xFF) * w11) /
+    *a = ((p00 & 0xFF) * w00 + (p10 & 0xFF) * w10 + (p01 & 0xFF) * w01 + (p11 & 0xFF) * w11) /
          255.0f;
 }
 
@@ -617,11 +618,9 @@ static void raster_triangle(uint8_t *pixels,
                         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(pp_iw) > 1e-7f) {
                             float pp_u =
-                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) /
-                                pp_iw;
+                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / pp_iw;
                             float pp_vc =
-                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) /
-                                pp_iw;
+                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / pp_iw;
 
                             /* Interpolate world normal */
                             float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
@@ -754,8 +753,8 @@ static void raster_triangle(uint8_t *pixels,
                                     if (sd < lt->outer_cos)
                                         la = 0.0f;
                                     else if (sd < lt->inner_cos) {
-                                        float st = (sd - lt->outer_cos) /
-                                                   (lt->inner_cos - lt->outer_cos);
+                                        float st =
+                                            (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
                                         la *= st * st * (3.0f - 2.0f * st);
                                     }
                                 } else { /* ambient */
@@ -829,9 +828,15 @@ static void raster_triangle(uint8_t *pixels,
                                         /* Approximate slope from depth gradient in shadow map */
                                         float dz_du = 0.0f, dz_dv = 0.0f;
                                         if (sxi + 1 < fog_ctx->shadow_w)
-                                            dz_du = fog_ctx->shadow_depth[syi * fog_ctx->shadow_w + sxi + 1] - sz_map;
+                                            dz_du = fog_ctx->shadow_depth[syi * fog_ctx->shadow_w +
+                                                                          sxi + 1] -
+                                                    sz_map;
                                         if (syi + 1 < fog_ctx->shadow_h)
-                                            dz_dv = fog_ctx->shadow_depth[(syi + 1) * fog_ctx->shadow_w + sxi] - sz_map;
+                                            dz_dv =
+                                                fog_ctx
+                                                    ->shadow_depth[(syi + 1) * fog_ctx->shadow_w +
+                                                                   sxi] -
+                                                sz_map;
                                         float slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
                                         slope_bias += fog_ctx->shadow_bias * slope * 4.0f;
                                     }
@@ -942,20 +947,22 @@ static void draw_line(uint8_t *pixels,
  *=========================================================================*/
 
 /// @brief Rasterize a single triangle into a depth buffer (no color, no lighting).
-static void shadow_raster_tri(float *depth,
-                              int32_t sw,
-                              int32_t sh,
-                              float *sx,
-                              float *sy,
-                              float *sz) {
+static void shadow_raster_tri(
+    float *depth, int32_t sw, int32_t sh, float *sx, float *sy, float *sz) {
     /* Screen-space area (winding check) */
     float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
     if (area < 0.0f) {
         /* Swap v1/v2 to ensure positive area */
         float t;
-        t = sx[1]; sx[1] = sx[2]; sx[2] = t;
-        t = sy[1]; sy[1] = sy[2]; sy[2] = t;
-        t = sz[1]; sz[1] = sz[2]; sz[2] = t;
+        t = sx[1];
+        sx[1] = sx[2];
+        sx[2] = t;
+        t = sy[1];
+        sy[1] = sy[2];
+        sy[2] = t;
+        t = sz[1];
+        sz[1] = sz[2];
+        sz[2] = t;
         area = -area;
     }
     if (area < 1e-6f)
@@ -997,8 +1004,8 @@ static void shadow_raster_tri(float *depth,
     }
 }
 
-static void sw_shadow_begin(void *ctx_ptr, float *depth_buf, int32_t w, int32_t h,
-                            const float *light_vp) {
+static void sw_shadow_begin(
+    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || !depth_buf)
         return;
@@ -1052,8 +1059,8 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         if (!ok)
             continue;
 
-        shadow_raster_tri(ctx->shadow_depth, ctx->shadow_w, ctx->shadow_h, screen_x, screen_y,
-                          screen_z);
+        shadow_raster_tri(
+            ctx->shadow_depth, ctx->shadow_w, ctx->shadow_h, screen_x, screen_y, screen_z);
     }
 }
 
@@ -1466,4 +1473,6 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 #endif
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

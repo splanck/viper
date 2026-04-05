@@ -27,45 +27,15 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "rt_action.h"
-#include "rt_font.h"
 #include "rt_graphics.h"
-#include "rt_input.h"
-#include "rt_object.h"
-#include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void rt_trap(const char *msg);
-
-#ifdef VIPER_ENABLE_GRAPHICS
-
-#include "vgfx.h"
-
-/// @brief Internal canvas wrapper structure.
-/// @details Contains the vptr (for future OOP support) and the vgfx window handle.
-typedef struct {
-    void *vptr;              ///< VTable pointer (reserved for future use)
-    vgfx_window_t gfx_win;   ///< ViperGFX window handle
-    int64_t should_close;    ///< Close request flag
-    vgfx_event_t last_event; ///< Last polled event for retrieval
-    char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
-    int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
-    int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
-    int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)
-} rt_canvas;
-
-/// @brief Forward declaration for pixels internal access.
-typedef struct rt_pixels_impl {
-    int64_t width;
-    int64_t height;
-    uint32_t *data;
-} rt_pixels_impl;
 
 //=============================================================================
 // Static inline helpers — available to all translation units that include this
@@ -211,5 +181,35 @@ static inline void rtg_hsl_to_rgb(
     if (*b > 255)
         *b = 255;
 }
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_action.h"
+#include "rt_font.h"
+#include "rt_input.h"
+#include "rt_object.h"
+#include "rt_pixels.h"
+
+#include "vgfx.h"
+
+/// @brief Internal canvas wrapper structure.
+/// @details Contains the vptr (for future OOP support) and the vgfx window handle.
+typedef struct {
+    void *vptr;              ///< VTable pointer (reserved for future use)
+    vgfx_window_t gfx_win;   ///< ViperGFX window handle
+    int64_t should_close;    ///< Close request flag
+    vgfx_event_t last_event; ///< Last polled event for retrieval
+    char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
+    int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
+    int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
+    int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)
+} rt_canvas;
+
+/// @brief Forward declaration for pixels internal access.
+typedef struct rt_pixels_impl {
+    int64_t width;
+    int64_t height;
+    uint32_t *data;
+} rt_pixels_impl;
 
 #endif /* VIPER_ENABLE_GRAPHICS */

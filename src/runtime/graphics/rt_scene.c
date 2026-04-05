@@ -49,7 +49,7 @@
 #include <string.h>
 
 // Forward declaration from rt_io.c
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Structures
@@ -897,7 +897,8 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
             int64_t rotation = node->world_rotation;
 
             if (camera) {
-                rt_camera_world_to_screen(camera, node->world_x, node->world_y, &screen_x, &screen_y);
+                rt_camera_world_to_screen(
+                    camera, node->world_x, node->world_y, &screen_x, &screen_y);
                 int64_t zoom = rt_camera_get_zoom(camera);
                 final_sx = (node->world_scale_x * zoom) / 100;
                 final_sy = (node->world_scale_y * zoom) / 100;

@@ -103,7 +103,8 @@ static void tls_set_nonblocking(socket_t sock, int nonblocking) {
 static void tls_set_socket_timeout(socket_t sock, int timeout_ms, int is_recv) {
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
-    setsockopt(sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+    setsockopt(
+        sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
 #else
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
@@ -161,10 +162,9 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
 #define TLS_EXT_SUPPORTED_VERSIONS 43
 #define TLS_EXT_KEY_SHARE 51
 
-static const uint8_t TLS_HELLO_RETRY_RANDOM[32] = {0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11,
-                                                    0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
-                                                    0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E,
-                                                    0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C};
+static const uint8_t TLS_HELLO_RETRY_RANDOM[32] = {
+    0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
+    0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C};
 
 // Note: TLS_MAX_RECORD_SIZE, TLS_MAX_CIPHERTEXT, tls_state_t, traffic_keys_t,
 // and struct rt_tls_session are defined in rt_tls_internal.h.
@@ -585,7 +585,8 @@ static int send_client_hello(rt_tls_session_t *session) {
 
     // HelloRetryRequest cookie, if any
     if (session->hello_retry_cookie && session->hello_retry_cookie_len > 0) {
-        if (session->hello_retry_cookie_len > 0xFFFF - 2 || pos + 6 + session->hello_retry_cookie_len > sizeof(msg)) {
+        if (session->hello_retry_cookie_len > 0xFFFF - 2 ||
+            pos + 6 + session->hello_retry_cookie_len > sizeof(msg)) {
             session->error = "ClientHello: retry cookie too large";
             return RT_TLS_ERROR;
         }
@@ -654,7 +655,8 @@ static int process_server_hello(rt_tls_session_t *session,
 
     // Skip version (2)
     memcpy(session->server_random, data + 2, 32);
-    int is_hrr = memcmp(session->server_random, TLS_HELLO_RETRY_RANDOM, sizeof(TLS_HELLO_RETRY_RANDOM)) == 0;
+    int is_hrr =
+        memcmp(session->server_random, TLS_HELLO_RETRY_RANDOM, sizeof(TLS_HELLO_RETRY_RANDOM)) == 0;
 
     size_t pos = 34;
 
@@ -765,7 +767,8 @@ static int process_server_hello(rt_tls_session_t *session,
             return RT_TLS_ERROR_HANDSHAKE;
         }
         if (!session->have_client_hello_hash) {
-            session->error = "TLS: missing initial ClientHello transcript hash for HelloRetryRequest";
+            session->error =
+                "TLS: missing initial ClientHello transcript hash for HelloRetryRequest";
             return RT_TLS_ERROR_HANDSHAKE;
         }
 

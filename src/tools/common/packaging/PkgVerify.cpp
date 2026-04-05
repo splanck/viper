@@ -168,9 +168,8 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
             return false;
         }
 
-        size_t centralEnd =
-            pos + 46 + static_cast<size_t>(nameLen) + static_cast<size_t>(extraLen) +
-            static_cast<size_t>(entryCommentLen);
+        size_t centralEnd = pos + 46 + static_cast<size_t>(nameLen) +
+                            static_cast<size_t>(extraLen) + static_cast<size_t>(entryCommentLen);
         if (centralEnd > data.size() || centralEnd > static_cast<size_t>(cdOffset) + cdSize) {
             err << "ZIP: truncated central directory entry at offset " << pos << "\n";
             return false;

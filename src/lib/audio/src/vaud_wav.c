@@ -98,9 +98,12 @@ static inline int16_t f32_to_s16(const uint8_t *p) {
 /// @param audio_format 1=PCM, 3=IEEE float.
 /// @param left Output: left channel sample.
 /// @param right Output: right channel sample.
-static inline void decode_pcm_frame(const uint8_t *src, int32_t bits_per_sample,
-                                     int32_t channels, int32_t audio_format,
-                                     int16_t *left, int16_t *right) {
+static inline void decode_pcm_frame(const uint8_t *src,
+                                    int32_t bits_per_sample,
+                                    int32_t channels,
+                                    int32_t audio_format,
+                                    int16_t *left,
+                                    int16_t *right) {
     int bytes_per_sample = bits_per_sample / 8;
     switch (bits_per_sample) {
         case 8:
@@ -287,7 +290,8 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
 
     for (int64_t i = 0; i < frame_count; i++) {
         int16_t left, right;
-        decode_pcm_frame(src, info->bits_per_sample, info->channels, info->audio_format, &left, &right);
+        decode_pcm_frame(
+            src, info->bits_per_sample, info->channels, info->audio_format, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;

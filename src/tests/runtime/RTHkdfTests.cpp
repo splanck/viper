@@ -142,7 +142,8 @@ static void test_hkdf_repeatability() {
     for (int trial = 0; trial < 4; trial++) {
         uint8_t prk[32];
         rt_hkdf_extract(salt, 16, ikm, 32, prk);
-        test_result("Expand repeat trial succeeds", rt_hkdf_expand(prk, info, 8, results[trial], 64) == 0);
+        test_result("Expand repeat trial succeeds",
+                    rt_hkdf_expand(prk, info, 8, results[trial], 64) == 0);
     }
 
     // All results should be identical

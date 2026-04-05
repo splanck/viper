@@ -257,10 +257,8 @@ TEST(X64CallABI, Win64VarArgFpRegisterIsDuplicatedIntoIntegerLane) {
     plan.callee = "rt_sb_printf";
     plan.isVarArg = true;
     plan.numNamedArgs = 1;
-    plan.args.push_back(
-        CallArg{.cls = CallArgClass::GPR, .vreg = 1, .isImm = false, .imm = 0});
-    plan.args.push_back(
-        CallArg{.cls = CallArgClass::FPR, .vreg = 2, .isImm = false, .imm = 0});
+    plan.args.push_back(CallArg{.cls = CallArgClass::GPR, .vreg = 1, .isImm = false, .imm = 0});
+    plan.args.push_back(CallArg{.cls = CallArgClass::FPR, .vreg = 2, .isImm = false, .imm = 0});
 
     FrameInfo frame{};
     lowerCall(block, 0, plan, win64Target(), frame);

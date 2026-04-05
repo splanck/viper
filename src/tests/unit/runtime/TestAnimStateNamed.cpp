@@ -17,8 +17,8 @@
 extern "C" {
 #include "rt_string.h"
 void *rt_animstate_new(void);
-void rt_animstate_add_named(void *asm_, void *name, int64_t start, int64_t end,
-                            int64_t dur, int8_t loop);
+void rt_animstate_add_named(
+    void *asm_, void *name, int64_t start, int64_t end, int64_t dur, int8_t loop);
 void rt_animstate_play(void *asm_, void *name);
 void rt_animstate_update(void *asm_);
 void rt_animstate_clear_flags(void *asm_);
@@ -89,9 +89,9 @@ TEST(AnimStateNamed, EventAutoClears) {
     rt_animstate_set_initial(sm, 0);
     rt_animstate_set_event_frame(sm, 1);
 
-    rt_animstate_update(sm); // frame 0 → 1
-    EXPECT_TRUE(rt_animstate_event_fired(sm));   // first check: true
-    EXPECT_FALSE(rt_animstate_event_fired(sm));  // second check: auto-cleared
+    rt_animstate_update(sm);                    // frame 0 → 1
+    EXPECT_TRUE(rt_animstate_event_fired(sm));  // first check: true
+    EXPECT_FALSE(rt_animstate_event_fired(sm)); // second check: auto-cleared
 }
 
 int main() {

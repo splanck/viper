@@ -267,11 +267,10 @@ TEST(AArch64PassManager, ConditionalBranchLivenessTracksFallthroughSuccessor) {
 
     MBasicBlock elseBlock;
     elseBlock.name = "else";
-    elseBlock.instrs.push_back(MInstr{
-        MOpcode::AddRRR,
-        {MOperand::vregOp(RegClass::GPR, 2),
-         MOperand::vregOp(RegClass::GPR, 1),
-         MOperand::vregOp(RegClass::GPR, 1)}});
+    elseBlock.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                      {MOperand::vregOp(RegClass::GPR, 2),
+                                       MOperand::vregOp(RegClass::GPR, 1),
+                                       MOperand::vregOp(RegClass::GPR, 1)}});
     elseBlock.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
 
     MBasicBlock thenBlock;

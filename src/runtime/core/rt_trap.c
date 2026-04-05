@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_trap.h"
 
@@ -49,18 +50,15 @@
 ///          behaviour mirrors the VM trap hook so test suites observe consistent
 ///          failure semantics across execution modes.
 void rt_trap_div0(void) {
-    fprintf(stderr, "Viper runtime trap: division by zero\n");
-    fflush(stderr);
-    exit(1); // Match VM behavior if your VM uses a specific code; adjust here later if needed.
+    rt_trap_raise_kind(RT_TRAP_KIND_DIVIDE_BY_ZERO, 0, -1, "Viper runtime trap: division by zero");
 }
 
 /// @brief Report an integer-overflow trap and terminate the process.
 /// @details Mirrors the checked-arithmetic trap path used by the VM/native
 ///          backends so backend lowering can call a no-argument helper.
 void rt_trap_ovf(void) {
-    fprintf(stderr, "Viper runtime trap: integer overflow\n");
-    fflush(stderr);
-    exit(1);
+    rt_trap_raise_kind(
+        RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "Viper runtime trap: integer overflow");
 }
 
 /// @brief Assert that @p condition holds; otherwise trap with @p message.

@@ -6,16 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_graphics_stubs.c
-// Purpose: Stub implementations for all rt_canvas_* and rt_color_* functions
-//   when VIPER_ENABLE_GRAPHICS is not defined. Allows non-graphics builds to
-//   link cleanly without pulling in ViperGFX or platform windowing code.
+// Purpose: Stub implementations for graphics-disabled builds. Stateful Canvas
+//   operations fail loudly with a deterministic InvalidOperation trap, while
+//   backend-free helpers such as color math and text metrics remain usable.
 //
 // Key invariants:
 //   - This file is compiled only when VIPER_ENABLE_GRAPHICS is NOT defined.
-//   - rt_canvas_new traps immediately; all other canvas stubs are silent no-ops
-//     returning zero/NULL as appropriate.
-//   - rt_color_rgb/rgba/get_r/g/b/a provide correct bit manipulation so color
-//     logic works even without a canvas.
+//   - Canvas operations trap with Err_InvalidOperation instead of silently
+//     succeeding.
+//   - Pure Color helpers and text measurement stay functional without a
+//     graphics backend.
 //
 // Ownership/Lifetime:
 //   - No resources are allocated; all functions are stateless stubs.
@@ -28,9 +28,13 @@
 #include "rt_audio3d.h"
 #include "rt_canvas3d.h"
 #include "rt_decal3d.h"
+#include "rt_error.h"
 #include "rt_fbx_loader.h"
+#include "rt_gltf.h"
 #include "rt_graphics.h"
+#include "rt_graphics_internal.h"
 #include "rt_instbatch3d.h"
+#include "rt_joints3d.h"
 #include "rt_morphtarget3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_particles3d.h"
@@ -41,7 +45,6 @@
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_sprite3d.h"
-#include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
 #include "rt_transform3d.h"
@@ -49,14 +52,30 @@
 
 #include <stdint.h>
 
-extern void rt_trap(const char *msg);
+static void rt_graphics_unavailable_(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
+}
+
+#define RT_GRAPHICS_TRAP_VOID(msg)                                                                  \
+    do {                                                                                            \
+        rt_graphics_unavailable_(msg);                                                              \
+    } while (0)
+
+#define RT_GRAPHICS_TRAP_RET(msg, fallback)                                                         \
+    do {                                                                                            \
+        rt_graphics_unavailable_(msg);                                                              \
+        return (fallback);                                                                          \
+    } while (0)
+
+int8_t rt_canvas_is_available(void) {
+    return 0;
+}
 
 void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     (void)title;
     (void)width;
     (void)height;
-    rt_trap("Canvas.New: graphics support not compiled in");
-    return NULL;
+    RT_GRAPHICS_TRAP_RET("Canvas.New: graphics support not compiled in", NULL);
 }
 
 /// @brief Destroy and free destroy resources.
@@ -68,24 +87,25 @@ void rt_canvas_destroy(void *canvas) {
 /// @brief Return the width of the canvas or surface in pixels.
 int64_t rt_canvas_width(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.Width: graphics support not compiled in", 0);
 }
 
 /// @brief Return the height of the canvas or surface in pixels.
 int64_t rt_canvas_height(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.Height: graphics support not compiled in", 0);
 }
 
 /// @brief Close the should.
 int64_t rt_canvas_should_close(void *canvas) {
     (void)canvas;
-    return 1;
+    RT_GRAPHICS_TRAP_RET("Canvas.ShouldClose: graphics support not compiled in", 1);
 }
 
 /// @brief Present the back buffer to the screen (double-buffering swap).
 void rt_canvas_flip(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Flip: graphics support not compiled in");
 }
 
 /// @brief Clear all clear.
@@ -94,6 +114,7 @@ void rt_canvas_flip(void *canvas) {
 void rt_canvas_clear(void *canvas, int64_t color) {
     (void)canvas;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Clear: graphics support not compiled in");
 }
 
 /// @brief Draw a line between two points on the canvas.
@@ -104,6 +125,7 @@ void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2
     (void)x2;
     (void)y2;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Line: graphics support not compiled in");
 }
 
 /// @brief Draw a filled rectangle on the canvas.
@@ -114,6 +136,7 @@ void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int
     (void)w;
     (void)h;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Box: graphics support not compiled in");
 }
 
 /// @brief Draw an unfilled rectangle (outline) on the canvas.
@@ -124,6 +147,7 @@ void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, i
     (void)w;
     (void)h;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Frame: graphics support not compiled in");
 }
 
 /// @brief Draw a filled circle on the canvas.
@@ -133,6 +157,7 @@ void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
     (void)cy;
     (void)radius;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Disc: graphics support not compiled in");
 }
 
 /// @brief Draw an unfilled circle (outline) on the canvas.
@@ -142,6 +167,7 @@ void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
     (void)cy;
     (void)radius;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Ring: graphics support not compiled in");
 }
 
 /// @brief Draw a single pixel at the given coordinates.
@@ -150,19 +176,20 @@ void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)x;
     (void)y;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Plot: graphics support not compiled in");
 }
 
 /// @brief Process pending window/input events and update the event queue.
 int64_t rt_canvas_poll(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.Poll: graphics support not compiled in", 0);
 }
 
 /// @brief Held the key.
 int64_t rt_canvas_key_held(void *canvas, int64_t key) {
     (void)canvas;
     (void)key;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.KeyHeld: graphics support not compiled in", 0);
 }
 
 /// @brief Draw text at the given position on the canvas.
@@ -172,6 +199,7 @@ void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t 
     (void)y;
     (void)text;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Text: graphics support not compiled in");
 }
 
 /// @brief Bg the text.
@@ -182,12 +210,14 @@ void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64
     (void)text;
     (void)fg;
     (void)bg;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextBg: graphics support not compiled in");
 }
 
 /// @brief Width the text.
 int64_t rt_canvas_text_width(rt_string text) {
-    (void)text;
-    return 0;
+    if (!text)
+        return 0;
+    return rt_str_len(text) * 8;
 }
 
 /// @brief Height the text.
@@ -203,6 +233,7 @@ void rt_canvas_text_scaled(
     (void)text;
     (void)scale;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextScaled: graphics support not compiled in");
 }
 
 void rt_canvas_text_scaled_bg(
@@ -214,13 +245,14 @@ void rt_canvas_text_scaled_bg(
     (void)scale;
     (void)fg;
     (void)bg;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextScaledBg: graphics support not compiled in");
 }
 
 /// @brief Scaled the width of the text.
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
-    (void)text;
-    (void)scale;
-    return 0;
+    if (!text || scale < 1)
+        return 0;
+    return rt_str_len(text) * 8 * scale;
 }
 
 /// @brief Centered the text.
@@ -229,6 +261,7 @@ void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t co
     (void)y;
     (void)text;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextCentered: graphics support not compiled in");
 }
 
 /// @brief Right the text.
@@ -238,6 +271,7 @@ void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string tex
     (void)y;
     (void)text;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextRight: graphics support not compiled in");
 }
 
 void rt_canvas_text_centered_scaled(
@@ -247,6 +281,7 @@ void rt_canvas_text_centered_scaled(
     (void)text;
     (void)scale;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TextCenteredScaled: graphics support not compiled in");
 }
 
 void rt_canvas_box_alpha(
@@ -258,6 +293,7 @@ void rt_canvas_box_alpha(
     (void)h;
     (void)color;
     (void)alpha;
+    RT_GRAPHICS_TRAP_VOID("Canvas.BoxAlpha: graphics support not compiled in");
 }
 
 void rt_canvas_disc_alpha(
@@ -268,6 +304,7 @@ void rt_canvas_disc_alpha(
     (void)radius;
     (void)color;
     (void)alpha;
+    RT_GRAPHICS_TRAP_VOID("Canvas.DiscAlpha: graphics support not compiled in");
 }
 
 void rt_canvas_ellipse_alpha(
@@ -279,6 +316,7 @@ void rt_canvas_ellipse_alpha(
     (void)ry;
     (void)color;
     (void)alpha;
+    RT_GRAPHICS_TRAP_VOID("Canvas.EllipseAlpha: graphics support not compiled in");
 }
 
 /// @brief Copy a rectangular region from one surface to another.
@@ -287,6 +325,7 @@ void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)x;
     (void)y;
     (void)pixels;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Blit: graphics support not compiled in");
 }
 
 void rt_canvas_blit_region(void *canvas,
@@ -305,6 +344,7 @@ void rt_canvas_blit_region(void *canvas,
     (void)sy;
     (void)w;
     (void)h;
+    RT_GRAPHICS_TRAP_VOID("Canvas.BlitRegion: graphics support not compiled in");
 }
 
 /// @brief Alpha the blit.
@@ -313,6 +353,7 @@ void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)x;
     (void)y;
     (void)pixels;
+    RT_GRAPHICS_TRAP_VOID("Canvas.BlitAlpha: graphics support not compiled in");
 }
 
 void rt_canvas_thick_line(void *canvas,
@@ -329,6 +370,7 @@ void rt_canvas_thick_line(void *canvas,
     (void)y2;
     (void)thickness;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.ThickLine: graphics support not compiled in");
 }
 
 void rt_canvas_round_box(
@@ -340,6 +382,7 @@ void rt_canvas_round_box(
     (void)h;
     (void)radius;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.RoundBox: graphics support not compiled in");
 }
 
 void rt_canvas_round_frame(
@@ -351,6 +394,7 @@ void rt_canvas_round_frame(
     (void)h;
     (void)radius;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.RoundFrame: graphics support not compiled in");
 }
 
 /// @brief Fill the flood.
@@ -359,6 +403,7 @@ void rt_canvas_flood_fill(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)x;
     (void)y;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.FloodFill: graphics support not compiled in");
 }
 
 void rt_canvas_triangle(void *canvas,
@@ -377,6 +422,7 @@ void rt_canvas_triangle(void *canvas,
     (void)x3;
     (void)y3;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Triangle: graphics support not compiled in");
 }
 
 void rt_canvas_triangle_frame(void *canvas,
@@ -395,6 +441,7 @@ void rt_canvas_triangle_frame(void *canvas,
     (void)x3;
     (void)y3;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.TriangleFrame: graphics support not compiled in");
 }
 
 /// @brief Ellipse operation.
@@ -406,6 +453,7 @@ void rt_canvas_ellipse(
     (void)rx;
     (void)ry;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Ellipse: graphics support not compiled in");
 }
 
 void rt_canvas_ellipse_frame(
@@ -416,6 +464,7 @@ void rt_canvas_ellipse_frame(
     (void)rx;
     (void)ry;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.EllipseFrame: graphics support not compiled in");
 }
 
 void rt_canvas_arc(void *canvas,
@@ -432,6 +481,7 @@ void rt_canvas_arc(void *canvas,
     (void)start_angle;
     (void)end_angle;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Arc: graphics support not compiled in");
 }
 
 void rt_canvas_arc_frame(void *canvas,
@@ -448,6 +498,7 @@ void rt_canvas_arc_frame(void *canvas,
     (void)start_angle;
     (void)end_angle;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.ArcFrame: graphics support not compiled in");
 }
 
 void rt_canvas_bezier(void *canvas,
@@ -466,6 +517,7 @@ void rt_canvas_bezier(void *canvas,
     (void)x2;
     (void)y2;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Bezier: graphics support not compiled in");
 }
 
 /// @brief Polyline operation.
@@ -474,6 +526,7 @@ void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color
     (void)points;
     (void)count;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Polyline: graphics support not compiled in");
 }
 
 /// @brief Polygon operation.
@@ -482,6 +535,7 @@ void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color)
     (void)points;
     (void)count;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Polygon: graphics support not compiled in");
 }
 
 /// @brief Frame the polygon.
@@ -490,6 +544,7 @@ void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t 
     (void)points;
     (void)count;
     (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.PolygonFrame: graphics support not compiled in");
 }
 
 /// @brief Get the pixel value.
@@ -501,7 +556,7 @@ int64_t rt_canvas_get_pixel(void *canvas, int64_t x, int64_t y) {
     (void)canvas;
     (void)x;
     (void)y;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetPixel: graphics support not compiled in", 0);
 }
 
 void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
@@ -510,7 +565,7 @@ void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t
     (void)y;
     (void)w;
     (void)h;
-    return NULL;
+    RT_GRAPHICS_TRAP_RET("Canvas.CopyRect: graphics support not compiled in", NULL);
 }
 
 /// @brief Save bmp.
@@ -520,7 +575,7 @@ void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t
 int64_t rt_canvas_save_bmp(void *canvas, rt_string path) {
     (void)canvas;
     (void)path;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.SaveBmp: graphics support not compiled in", 0);
 }
 
 /// @brief Save png.
@@ -530,7 +585,7 @@ int64_t rt_canvas_save_bmp(void *canvas, rt_string path) {
 int64_t rt_canvas_save_png(void *canvas, rt_string path) {
     (void)canvas;
     (void)path;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.SavePng: graphics support not compiled in", 0);
 }
 
 // Color constants — packed 0x00RRGGBB
@@ -604,42 +659,75 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
 
 /// @brief Hsl the from.
 int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
-    (void)h;
-    (void)s;
-    (void)l;
-    return 0;
+    h = ((h % 360) + 360) % 360;
+    if (s < 0)
+        s = 0;
+    if (s > 100)
+        s = 100;
+    if (l < 0)
+        l = 0;
+    if (l > 100)
+        l = 100;
+
+    int64_t r, g, b;
+    rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Get the h value.
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_h(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    return h;
 }
 
 /// @brief Get the s value.
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_s(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    return s;
 }
 
 /// @brief Get the l value.
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_l(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    return l;
 }
 
 /// @brief Lerp operation.
 int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
-    (void)c1;
-    (void)c2;
-    (void)t;
-    return 0;
+    if (t < 0)
+        t = 0;
+    if (t > 100)
+        t = 100;
+
+    int64_t r1 = (c1 >> 16) & 0xFF;
+    int64_t g1 = (c1 >> 8) & 0xFF;
+    int64_t b1 = c1 & 0xFF;
+    int64_t r2 = (c2 >> 16) & 0xFF;
+    int64_t g2 = (c2 >> 8) & 0xFF;
+    int64_t b2 = c2 & 0xFF;
+
+    int64_t r = r1 + (r2 - r1) * t / 100;
+    int64_t g = g1 + (g2 - g1) * t / 100;
+    int64_t b = b1 + (b2 - b1) * t / 100;
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Get the r value.
@@ -672,60 +760,143 @@ int64_t rt_color_get_a(int64_t color) {
 
 /// @brief Brighten operation.
 int64_t rt_color_brighten(int64_t color, int64_t amount) {
-    (void)color;
-    (void)amount;
-    return 0;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+
+    r = r + (255 - r) * amount / 100;
+    g = g + (255 - g) * amount / 100;
+    b = b + (255 - b) * amount / 100;
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Darken operation.
 int64_t rt_color_darken(int64_t color, int64_t amount) {
-    (void)color;
-    (void)amount;
-    return 0;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+
+    r = r - r * amount / 100;
+    g = g - g * amount / 100;
+    b = b - b * amount / 100;
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Hex the from.
 int64_t rt_color_from_hex(rt_string hex) {
-    (void)hex;
-    return 0;
+    const char *s = rt_string_cstr(hex);
+    if (!s)
+        return 0;
+    if (*s == '#')
+        s++;
+    size_t len = strlen(s);
+    unsigned long val = strtoul(s, NULL, 16);
+    if (len == 6)
+        return (int64_t)val;
+    if (len == 8) {
+        int64_t r = (val >> 24) & 0xFF;
+        int64_t g = (val >> 16) & 0xFF;
+        int64_t b = (val >> 8) & 0xFF;
+        int64_t a = val & 0xFF;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+    if (len == 3) {
+        int64_t r = (val >> 8) & 0xF;
+        int64_t g = (val >> 4) & 0xF;
+        int64_t b = val & 0xF;
+        return ((r | (r << 4)) << 16) | ((g | (g << 4)) << 8) | (b | (b << 4));
+    }
+    return (int64_t)val;
 }
 
 /// @brief Hex the to.
 rt_string rt_color_to_hex(int64_t color) {
-    (void)color;
-    return rt_string_from_bytes("#000000", 7);
+    char buf[10];
+    int64_t a = (color >> 24) & 0xFF;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int len;
+    if (a != 0)
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
+    else
+        len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);
+    return rt_string_from_bytes(buf, (size_t)len);
 }
 
 /// @brief Saturate operation.
 int64_t rt_color_saturate(int64_t color, int64_t amount) {
-    (void)color;
-    (void)amount;
-    return 0;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    s += amount;
+    if (s > 100)
+        s = 100;
+    rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Desaturate operation.
 int64_t rt_color_desaturate(int64_t color, int64_t amount) {
-    (void)color;
-    (void)amount;
-    return 0;
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    s -= amount;
+    if (s < 0)
+        s = 0;
+    rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Complement operation.
 int64_t rt_color_complement(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
+    h = (h + 180) % 360;
+    rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Grayscale operation.
 int64_t rt_color_grayscale(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t gray = (r * 299 + g * 587 + b * 114) / 1000;
+    return ((gray & 0xFF) << 16) | ((gray & 0xFF) << 8) | (gray & 0xFF);
 }
 
 /// @brief Invert operation.
 int64_t rt_color_invert(int64_t color) {
-    (void)color;
-    return 0;
+    int64_t r = 255 - ((color >> 16) & 0xFF);
+    int64_t g = 255 - ((color >> 8) & 0xFF);
+    int64_t b = 255 - (color & 0xFF);
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
 /// @brief Set the clip rect value.
@@ -740,12 +911,14 @@ void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int6
     (void)y;
     (void)w;
     (void)h;
+    RT_GRAPHICS_TRAP_VOID("Canvas.SetClipRect: graphics support not compiled in");
 }
 
 /// @brief Clear all clip rect.
 /// @param canvas
 void rt_canvas_clear_clip_rect(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.ClearClipRect: graphics support not compiled in");
 }
 
 /// @brief Set the title value.
@@ -754,6 +927,7 @@ void rt_canvas_clear_clip_rect(void *canvas) {
 void rt_canvas_set_title(void *canvas, rt_string title) {
     (void)canvas;
     (void)title;
+    RT_GRAPHICS_TRAP_VOID("Canvas.SetTitle: graphics support not compiled in");
 }
 
 /// @brief Get the title value.
@@ -761,7 +935,7 @@ void rt_canvas_set_title(void *canvas, rt_string title) {
 /// @return Result value.
 rt_string rt_canvas_get_title(void *canvas) {
     (void)canvas;
-    return rt_string_from_bytes("", 0);
+    RT_GRAPHICS_TRAP_RET("Canvas.GetTitle: graphics support not compiled in", rt_str_empty());
 }
 
 /// @brief Resize operation.
@@ -769,26 +943,30 @@ void rt_canvas_resize(void *canvas, int64_t width, int64_t height) {
     (void)canvas;
     (void)width;
     (void)height;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Resize: graphics support not compiled in");
 }
 
 /// @brief Close operation.
 void rt_canvas_close(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Close: graphics support not compiled in");
 }
 
 void *rt_canvas_screenshot(void *canvas) {
     (void)canvas;
-    return NULL;
+    RT_GRAPHICS_TRAP_RET("Canvas.Screenshot: graphics support not compiled in", NULL);
 }
 
 /// @brief Fullscreen operation.
 void rt_canvas_fullscreen(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Fullscreen: graphics support not compiled in");
 }
 
 /// @brief Windowed operation.
 void rt_canvas_windowed(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Windowed: graphics support not compiled in");
 }
 
 void rt_canvas_gradient_h(
@@ -800,6 +978,7 @@ void rt_canvas_gradient_h(
     (void)h;
     (void)c1;
     (void)c2;
+    RT_GRAPHICS_TRAP_VOID("Canvas.GradientH: graphics support not compiled in");
 }
 
 void rt_canvas_gradient_v(
@@ -811,6 +990,7 @@ void rt_canvas_gradient_v(
     (void)h;
     (void)c1;
     (void)c2;
+    RT_GRAPHICS_TRAP_VOID("Canvas.GradientV: graphics support not compiled in");
 }
 
 /// @brief Get the scale value.
@@ -818,7 +998,7 @@ void rt_canvas_gradient_v(
 /// @return Result value.
 double rt_canvas_get_scale(void *canvas) {
     (void)canvas;
-    return 1.0;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetScale: graphics support not compiled in", 1.0);
 }
 
 /// @brief Get the position value.
@@ -827,10 +1007,9 @@ double rt_canvas_get_scale(void *canvas) {
 /// @param y
 void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y) {
     (void)canvas;
-    if (x)
-        *x = 0;
-    if (y)
-        *y = 0;
+    (void)x;
+    (void)y;
+    RT_GRAPHICS_TRAP_VOID("Canvas.GetPosition: graphics support not compiled in");
 }
 
 /// @brief Set the position value.
@@ -841,6 +1020,7 @@ void rt_canvas_set_position(void *canvas, int64_t x, int64_t y) {
     (void)canvas;
     (void)x;
     (void)y;
+    RT_GRAPHICS_TRAP_VOID("Canvas.SetPosition: graphics support not compiled in");
 }
 
 /// @brief Get the fps value.
@@ -848,7 +1028,7 @@ void rt_canvas_set_position(void *canvas, int64_t x, int64_t y) {
 /// @return Result value.
 int64_t rt_canvas_get_fps(void *canvas) {
     (void)canvas;
-    return -1;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetFps: graphics support not compiled in", -1);
 }
 
 /// @brief Set the fps value.
@@ -857,6 +1037,7 @@ int64_t rt_canvas_get_fps(void *canvas) {
 void rt_canvas_set_fps(void *canvas, int64_t fps) {
     (void)canvas;
     (void)fps;
+    RT_GRAPHICS_TRAP_VOID("Canvas.SetFps: graphics support not compiled in");
 }
 
 /// @brief Get the delta time value.
@@ -864,7 +1045,7 @@ void rt_canvas_set_fps(void *canvas, int64_t fps) {
 /// @return Result value.
 int64_t rt_canvas_get_delta_time(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.DeltaTime: graphics support not compiled in", 0);
 }
 
 /// @brief Set the dt max value.
@@ -873,6 +1054,7 @@ int64_t rt_canvas_get_delta_time(void *canvas) {
 void rt_canvas_set_dt_max(void *canvas, int64_t max_ms) {
     (void)canvas;
     (void)max_ms;
+    RT_GRAPHICS_TRAP_VOID("Canvas.SetDTMax: graphics support not compiled in");
 }
 
 /// @brief Begin frame.
@@ -880,7 +1062,7 @@ void rt_canvas_set_dt_max(void *canvas, int64_t max_ms) {
 /// @return Result value.
 int64_t rt_canvas_begin_frame(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.BeginFrame: graphics support not compiled in", 0);
 }
 
 /// @brief Check if maximized.
@@ -888,12 +1070,13 @@ int64_t rt_canvas_begin_frame(void *canvas) {
 /// @return Result value.
 int8_t rt_canvas_is_maximized(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.IsMaximized: graphics support not compiled in", 0);
 }
 
 /// @brief Maximize operation.
 void rt_canvas_maximize(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Maximize: graphics support not compiled in");
 }
 
 /// @brief Check if minimized.
@@ -901,17 +1084,19 @@ void rt_canvas_maximize(void *canvas) {
 /// @return Result value.
 int8_t rt_canvas_is_minimized(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.IsMinimized: graphics support not compiled in", 0);
 }
 
 /// @brief Minimize operation.
 void rt_canvas_minimize(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Minimize: graphics support not compiled in");
 }
 
 /// @brief Restore operation.
 void rt_canvas_restore(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Restore: graphics support not compiled in");
 }
 
 /// @brief Check if focused.
@@ -919,18 +1104,20 @@ void rt_canvas_restore(void *canvas) {
 /// @return Result value.
 int8_t rt_canvas_is_focused(void *canvas) {
     (void)canvas;
-    return 0;
+    RT_GRAPHICS_TRAP_RET("Canvas.IsFocused: graphics support not compiled in", 0);
 }
 
 /// @brief Focus operation.
 void rt_canvas_focus(void *canvas) {
     (void)canvas;
+    RT_GRAPHICS_TRAP_VOID("Canvas.Focus: graphics support not compiled in");
 }
 
 /// @brief Close the prevent.
 void rt_canvas_prevent_close(void *canvas, int64_t prevent) {
     (void)canvas;
     (void)prevent;
+    RT_GRAPHICS_TRAP_VOID("Canvas.PreventClose: graphics support not compiled in");
 }
 
 /// @brief Get the monitor size value.
@@ -939,10 +1126,9 @@ void rt_canvas_prevent_close(void *canvas, int64_t prevent) {
 /// @param h
 void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h) {
     (void)canvas;
-    if (w)
-        *w = 0;
-    if (h)
-        *h = 0;
+    (void)w;
+    (void)h;
+    RT_GRAPHICS_TRAP_VOID("Canvas.GetMonitorSize: graphics support not compiled in");
 }
 
 //=============================================================================
@@ -956,7 +1142,7 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
     (void)ny;
     (void)pz;
     (void)nz;
-    rt_trap("CubeMap3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("CubeMap3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -992,7 +1178,7 @@ double rt_material3d_get_reflectivity(void *o) {
 void *rt_rendertarget3d_new(int64_t w, int64_t h) {
     (void)w;
     (void)h;
-    rt_trap("RenderTarget3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("RenderTarget3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1028,7 +1214,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     (void)title;
     (void)w;
     (void)h;
-    rt_trap("Canvas3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Canvas3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1161,29 +1347,33 @@ void *rt_canvas3d_screenshot(void *o) {
 }
 
 void *rt_mesh3d_new(void) {
-    rt_trap("Mesh3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.New: graphics support not compiled in");
     return NULL;
+}
+
+void rt_mesh3d_clear(void *o) {
+    (void)o;
 }
 
 void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     (void)sx;
     (void)sy;
     (void)sz;
-    rt_trap("Mesh3D.NewBox: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.NewBox: graphics support not compiled in");
     return NULL;
 }
 
 void *rt_mesh3d_new_sphere(double r, int64_t s) {
     (void)r;
     (void)s;
-    rt_trap("Mesh3D.NewSphere: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.NewSphere: graphics support not compiled in");
     return NULL;
 }
 
 void *rt_mesh3d_new_plane(double sx, double sz) {
     (void)sx;
     (void)sz;
-    rt_trap("Mesh3D.NewPlane: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.NewPlane: graphics support not compiled in");
     return NULL;
 }
 
@@ -1191,13 +1381,19 @@ void *rt_mesh3d_new_cylinder(double r, double h, int64_t s) {
     (void)r;
     (void)h;
     (void)s;
-    rt_trap("Mesh3D.NewCylinder: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.NewCylinder: graphics support not compiled in");
     return NULL;
 }
 
 void *rt_mesh3d_from_obj(rt_string p) {
     (void)p;
-    rt_trap("Mesh3D.FromOBJ: graphics support not compiled in");
+    rt_graphics_unavailable_("Mesh3D.FromOBJ: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_mesh3d_from_stl(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("Mesh3D.FromSTL: graphics support not compiled in");
     return NULL;
 }
 
@@ -1255,8 +1451,22 @@ void *rt_camera3d_new(double f, double a, double n, double fa) {
     (void)a;
     (void)n;
     (void)fa;
-    rt_trap("Camera3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Camera3D.New: graphics support not compiled in");
     return NULL;
+}
+
+void *rt_camera3d_new_ortho(double s, double a, double n, double fa) {
+    (void)s;
+    (void)a;
+    (void)n;
+    (void)fa;
+    rt_graphics_unavailable_("Camera3D.NewOrtho: graphics support not compiled in");
+    return NULL;
+}
+
+int8_t rt_camera3d_is_ortho(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Look the at of the camera3d.
@@ -1319,7 +1529,7 @@ void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int
 }
 
 void *rt_material3d_new(void) {
-    rt_trap("Material3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Material3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1327,13 +1537,13 @@ void *rt_material3d_new_color(double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
-    rt_trap("Material3D.NewColor: graphics support not compiled in");
+    rt_graphics_unavailable_("Material3D.NewColor: graphics support not compiled in");
     return NULL;
 }
 
 void *rt_material3d_new_textured(void *p) {
     (void)p;
-    rt_trap("Material3D.NewTextured: graphics support not compiled in");
+    rt_graphics_unavailable_("Material3D.NewTextured: graphics support not compiled in");
     return NULL;
 }
 
@@ -1375,8 +1585,16 @@ void rt_material3d_set_unlit(void *o, int8_t u) {
     (void)u;
 }
 
-void rt_material3d_set_shading_model(void *o, int64_t m) { (void)o; (void)m; }
-void rt_material3d_set_custom_param(void *o, int64_t i, double v) { (void)o; (void)i; (void)v; }
+void rt_material3d_set_shading_model(void *o, int64_t m) {
+    (void)o;
+    (void)m;
+}
+
+void rt_material3d_set_custom_param(void *o, int64_t i, double v) {
+    (void)o;
+    (void)i;
+    (void)v;
+}
 
 /// @brief Set the normal map of the material3d.
 void rt_material3d_set_normal_map(void *o, void *p) {
@@ -1414,7 +1632,7 @@ void *rt_light3d_new_directional(void *d, double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
-    rt_trap("Light3D.NewDirectional: graphics support not compiled in");
+    rt_graphics_unavailable_("Light3D.NewDirectional: graphics support not compiled in");
     return NULL;
 }
 
@@ -1424,7 +1642,7 @@ void *rt_light3d_new_point(void *p, double r, double g, double b, double a) {
     (void)g;
     (void)b;
     (void)a;
-    rt_trap("Light3D.NewPoint: graphics support not compiled in");
+    rt_graphics_unavailable_("Light3D.NewPoint: graphics support not compiled in");
     return NULL;
 }
 
@@ -1432,7 +1650,27 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
-    rt_trap("Light3D.NewAmbient: graphics support not compiled in");
+    rt_graphics_unavailable_("Light3D.NewAmbient: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_light3d_new_spot(void *p,
+                          void *d,
+                          double r,
+                          double g,
+                          double b,
+                          double a,
+                          double i,
+                          double o) {
+    (void)p;
+    (void)d;
+    (void)r;
+    (void)g;
+    (void)b;
+    (void)a;
+    (void)i;
+    (void)o;
+    rt_graphics_unavailable_("Light3D.NewSpot: graphics support not compiled in");
     return NULL;
 }
 
@@ -1452,7 +1690,7 @@ void rt_light3d_set_color(void *o, double r, double g, double b) {
 
 /* Scene3D / SceneNode3D stubs */
 void *rt_scene3d_new(void) {
-    rt_trap("Scene3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Scene3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1497,14 +1735,20 @@ int64_t rt_scene3d_get_node_count(void *s) {
     return 0;
 }
 
+int64_t rt_scene3d_save(void *s, rt_string path) {
+    (void)s;
+    (void)path;
+    RT_GRAPHICS_TRAP_RET("Scene3D.Save: graphics support not compiled in", 0);
+}
+
 void *rt_scene3d_load(rt_string path) {
     (void)path;
-    rt_trap("Scene3D.Load: graphics support not compiled in");
+    rt_graphics_unavailable_("Scene3D.Load: graphics support not compiled in");
     return NULL;
 }
 
 void *rt_scene_node3d_new(void) {
-    rt_trap("SceneNode3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("SceneNode3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1679,7 +1923,7 @@ void *rt_scene_node3d_get_lod_mesh(void *n, int64_t index) {
 
 /* Skeleton3D / Animation3D / AnimPlayer3D stubs */
 void *rt_skeleton3d_new(void) {
-    rt_trap("Skeleton3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Skeleton3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1726,7 +1970,7 @@ void *rt_skeleton3d_get_bone_bind_pose(void *s, int64_t i) {
 void *rt_animation3d_new(rt_string n, double d) {
     (void)n;
     (void)d;
-    rt_trap("Animation3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Animation3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1766,7 +2010,7 @@ rt_string rt_animation3d_get_name(void *a) {
 
 void *rt_anim_player3d_new(void *s) {
     (void)s;
-    rt_trap("AnimPlayer3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("AnimPlayer3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -1870,7 +2114,7 @@ void rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p
 /* FBX Loader stubs */
 void *rt_fbx_load(rt_string p) {
     (void)p;
-    rt_trap("FBX.Load: graphics support not compiled in");
+    rt_graphics_unavailable_("FBX.Load: graphics support not compiled in");
     return NULL;
 }
 
@@ -1922,10 +2166,45 @@ void *rt_fbx_get_material(void *f, int64_t i) {
     return NULL;
 }
 
+void *rt_fbx_get_morph_target(void *f, int64_t i) {
+    (void)f;
+    (void)i;
+    return NULL;
+}
+
+/* GLTF Loader stubs */
+void *rt_gltf_load(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("GLTF.Load: graphics support not compiled in");
+    return NULL;
+}
+
+int64_t rt_gltf_mesh_count(void *g) {
+    (void)g;
+    return 0;
+}
+
+void *rt_gltf_get_mesh(void *g, int64_t i) {
+    (void)g;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_gltf_material_count(void *g) {
+    (void)g;
+    return 0;
+}
+
+void *rt_gltf_get_material(void *g, int64_t i) {
+    (void)g;
+    (void)i;
+    return NULL;
+}
+
 /* MorphTarget3D stubs */
 void *rt_morphtarget3d_new(int64_t vc) {
     (void)vc;
-    rt_trap("MorphTarget3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("MorphTarget3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -2001,7 +2280,7 @@ void rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *m
 /* Particles3D stubs */
 void *rt_particles3d_new(int64_t n) {
     (void)n;
-    rt_trap("Particles3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Particles3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -2145,7 +2424,7 @@ int8_t rt_particles3d_get_emitting(void *o) {
 
 /* PostFX3D stubs */
 void *rt_postfx3d_new(void) {
-    rt_trap("PostFX3D.New: graphics support not compiled in");
+    rt_graphics_unavailable_("PostFX3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -2518,7 +2797,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     (void)gx;
     (void)gy;
     (void)gz;
-    rt_trap("Physics3DWorld.New: graphics support not compiled in");
+    rt_graphics_unavailable_("Physics3DWorld.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -2552,6 +2831,105 @@ void rt_world3d_set_gravity(void *w, double gx, double gy, double gz) {
     (void)gx;
     (void)gy;
     (void)gz;
+}
+
+void rt_world3d_add_joint(void *w, void *j, int64_t jt) {
+    (void)w;
+    (void)j;
+    (void)jt;
+}
+
+void rt_world3d_remove_joint(void *w, void *j) {
+    (void)w;
+    (void)j;
+}
+
+int64_t rt_world3d_joint_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+int64_t rt_world3d_get_collision_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+void *rt_world3d_get_collision_body_a(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+void *rt_world3d_get_collision_body_b(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+void *rt_world3d_get_collision_normal(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+double rt_world3d_get_collision_depth(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return 0.0;
+}
+
+/* Physics3D Joint stubs */
+void *rt_distance_joint3d_new(void *a, void *b, double d) {
+    (void)a;
+    (void)b;
+    (void)d;
+    rt_graphics_unavailable_("DistanceJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+double rt_distance_joint3d_get_distance(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+void rt_distance_joint3d_set_distance(void *j, double d) {
+    (void)j;
+    (void)d;
+}
+
+void *rt_spring_joint3d_new(void *a, void *b, double rl, double s, double d) {
+    (void)a;
+    (void)b;
+    (void)rl;
+    (void)s;
+    (void)d;
+    rt_graphics_unavailable_("SpringJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+double rt_spring_joint3d_get_stiffness(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+void rt_spring_joint3d_set_stiffness(void *j, double s) {
+    (void)j;
+    (void)s;
+}
+
+double rt_spring_joint3d_get_damping(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+void rt_spring_joint3d_set_damping(void *j, double d) {
+    (void)j;
+    (void)d;
+}
+
+double rt_spring_joint3d_get_rest_length(void *j) {
+    (void)j;
+    return 0.0;
 }
 
 /* Physics3D Body stubs */
@@ -3018,6 +3396,7 @@ void rt_canvas3d_draw_instanced(void *c, void *b) {
 void *rt_terrain3d_new(int64_t w, int64_t d) {
     (void)w;
     (void)d;
+    rt_graphics_unavailable_("Terrain3D.New: graphics support not compiled in");
     return NULL;
 }
 
@@ -3059,6 +3438,23 @@ void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz) {
     (void)sx;
     (void)sy;
     (void)sz;
+}
+
+void rt_terrain3d_set_splat_map(void *t, void *p) {
+    (void)t;
+    (void)p;
+}
+
+void rt_terrain3d_set_layer_texture(void *t, int64_t l, void *p) {
+    (void)t;
+    (void)l;
+    (void)p;
+}
+
+void rt_terrain3d_set_layer_scale(void *t, int64_t l, double s) {
+    (void)t;
+    (void)l;
+    (void)s;
 }
 
 /// @brief Get the height at of the terrain3d.
@@ -3298,15 +3694,43 @@ void rt_water3d_set_color(void *w, double r, double g, double b, double a) {
     (void)a;
 }
 
-void rt_water3d_set_texture(void *w, void *p) { (void)w; (void)p; }
-void rt_water3d_set_normal_map(void *w, void *p) { (void)w; (void)p; }
-void rt_water3d_set_env_map(void *w, void *c) { (void)w; (void)c; }
-void rt_water3d_set_reflectivity(void *w, double r) { (void)w; (void)r; }
-void rt_water3d_set_resolution(void *w, int64_t r) { (void)w; (void)r; }
-void rt_water3d_add_wave(void *w, double dx, double dz, double s, double a, double wl) {
-    (void)w; (void)dx; (void)dz; (void)s; (void)a; (void)wl;
+void rt_water3d_set_texture(void *w, void *p) {
+    (void)w;
+    (void)p;
 }
-void rt_water3d_clear_waves(void *w) { (void)w; }
+
+void rt_water3d_set_normal_map(void *w, void *p) {
+    (void)w;
+    (void)p;
+}
+
+void rt_water3d_set_env_map(void *w, void *c) {
+    (void)w;
+    (void)c;
+}
+
+void rt_water3d_set_reflectivity(void *w, double r) {
+    (void)w;
+    (void)r;
+}
+
+void rt_water3d_set_resolution(void *w, int64_t r) {
+    (void)w;
+    (void)r;
+}
+
+void rt_water3d_add_wave(void *w, double dx, double dz, double s, double a, double wl) {
+    (void)w;
+    (void)dx;
+    (void)dz;
+    (void)s;
+    (void)a;
+    (void)wl;
+}
+
+void rt_water3d_clear_waves(void *w) {
+    (void)w;
+}
 
 /// @brief Update the water3d state (called per frame/tick).
 void rt_water3d_update(void *w, double dt) {
@@ -3322,52 +3746,171 @@ void rt_canvas3d_draw_water(void *c, void *w, void *cam) {
 }
 
 /* Vegetation3D stubs */
-void *rt_vegetation3d_new(void *t) { (void)t; return NULL; }
-void rt_vegetation3d_set_density_map(void *v, void *p) { (void)v; (void)p; }
+void *rt_vegetation3d_new(void *t) {
+    (void)t;
+    return NULL;
+}
+
+void rt_vegetation3d_set_density_map(void *v, void *p) {
+    (void)v;
+    (void)p;
+}
+
 void rt_vegetation3d_set_wind_params(void *v, double s, double st, double t) {
-    (void)v; (void)s; (void)st; (void)t;
+    (void)v;
+    (void)s;
+    (void)st;
+    (void)t;
 }
+
 void rt_vegetation3d_set_lod_distances(void *v, double n, double f) {
-    (void)v; (void)n; (void)f;
+    (void)v;
+    (void)n;
+    (void)f;
 }
+
 void rt_vegetation3d_set_blade_size(void *v, double w, double h, double va) {
-    (void)v; (void)w; (void)h; (void)va;
+    (void)v;
+    (void)w;
+    (void)h;
+    (void)va;
 }
+
 void rt_vegetation3d_populate(void *v, void *t, int64_t c) {
-    (void)v; (void)t; (void)c;
+    (void)v;
+    (void)t;
+    (void)c;
 }
+
 void rt_vegetation3d_update(void *v, double dt, double cx, double cy, double cz) {
-    (void)v; (void)dt; (void)cx; (void)cy; (void)cz;
+    (void)v;
+    (void)dt;
+    (void)cx;
+    (void)cy;
+    (void)cz;
 }
-void rt_canvas3d_draw_vegetation(void *c, void *v) { (void)c; (void)v; }
+
+void rt_canvas3d_draw_vegetation(void *c, void *v) {
+    (void)c;
+    (void)v;
+}
 
 /* VideoWidget stubs */
-void *rt_videowidget_new(void *p, void *path) { (void)p; (void)path; return NULL; }
-void rt_videowidget_play(void *v) { (void)v; }
-void rt_videowidget_pause(void *v) { (void)v; }
-void rt_videowidget_stop(void *v) { (void)v; }
-void rt_videowidget_update(void *v, double dt) { (void)v; (void)dt; }
-void rt_videowidget_set_show_controls(void *v, int8_t s) { (void)v; (void)s; }
-void rt_videowidget_set_loop(void *v, int8_t l) { (void)v; (void)l; }
-void rt_videowidget_set_volume(void *v, double vol) { (void)v; (void)vol; }
-int64_t rt_videowidget_get_is_playing(void *v) { (void)v; return 0; }
-double rt_videowidget_get_position(void *v) { (void)v; return 0.0; }
-double rt_videowidget_get_duration(void *v) { (void)v; return 0.0; }
+void *rt_videowidget_new(void *p, void *path) {
+    (void)p;
+    (void)path;
+    return NULL;
+}
+
+void rt_videowidget_play(void *v) {
+    (void)v;
+}
+
+void rt_videowidget_pause(void *v) {
+    (void)v;
+}
+
+void rt_videowidget_stop(void *v) {
+    (void)v;
+}
+
+void rt_videowidget_update(void *v, double dt) {
+    (void)v;
+    (void)dt;
+}
+
+void rt_videowidget_set_show_controls(void *v, int8_t s) {
+    (void)v;
+    (void)s;
+}
+
+void rt_videowidget_set_loop(void *v, int8_t l) {
+    (void)v;
+    (void)l;
+}
+
+void rt_videowidget_set_volume(void *v, double vol) {
+    (void)v;
+    (void)vol;
+}
+
+int64_t rt_videowidget_get_is_playing(void *v) {
+    (void)v;
+    return 0;
+}
+
+double rt_videowidget_get_position(void *v) {
+    (void)v;
+    return 0.0;
+}
+
+double rt_videowidget_get_duration(void *v) {
+    (void)v;
+    return 0.0;
+}
 
 /* VideoPlayer stubs */
-void *rt_videoplayer_open(void *p) { (void)p; return NULL; }
-void rt_videoplayer_play(void *v) { (void)v; }
-void rt_videoplayer_pause(void *v) { (void)v; }
-void rt_videoplayer_stop(void *v) { (void)v; }
-void rt_videoplayer_seek(void *v, double s) { (void)v; (void)s; }
-void rt_videoplayer_update(void *v, double dt) { (void)v; (void)dt; }
-void rt_videoplayer_set_volume(void *v, double vol) { (void)v; (void)vol; }
-int64_t rt_videoplayer_get_width(void *v) { (void)v; return 0; }
-int64_t rt_videoplayer_get_height(void *v) { (void)v; return 0; }
-double rt_videoplayer_get_duration(void *v) { (void)v; return 0.0; }
-double rt_videoplayer_get_position(void *v) { (void)v; return 0.0; }
-int64_t rt_videoplayer_get_is_playing(void *v) { (void)v; return 0; }
-void *rt_videoplayer_get_frame(void *v) { (void)v; return NULL; }
+void *rt_videoplayer_open(void *p) {
+    (void)p;
+    return NULL;
+}
+
+void rt_videoplayer_play(void *v) {
+    (void)v;
+}
+
+void rt_videoplayer_pause(void *v) {
+    (void)v;
+}
+
+void rt_videoplayer_stop(void *v) {
+    (void)v;
+}
+
+void rt_videoplayer_seek(void *v, double s) {
+    (void)v;
+    (void)s;
+}
+
+void rt_videoplayer_update(void *v, double dt) {
+    (void)v;
+    (void)dt;
+}
+
+void rt_videoplayer_set_volume(void *v, double vol) {
+    (void)v;
+    (void)vol;
+}
+
+int64_t rt_videoplayer_get_width(void *v) {
+    (void)v;
+    return 0;
+}
+
+int64_t rt_videoplayer_get_height(void *v) {
+    (void)v;
+    return 0;
+}
+
+double rt_videoplayer_get_duration(void *v) {
+    (void)v;
+    return 0.0;
+}
+
+double rt_videoplayer_get_position(void *v) {
+    (void)v;
+    return 0.0;
+}
+
+int64_t rt_videoplayer_get_is_playing(void *v) {
+    (void)v;
+    return 0;
+}
+
+void *rt_videoplayer_get_frame(void *v) {
+    (void)v;
+    return NULL;
+}
 
 /* PostFX F5-F7 stubs */
 /// @brief Add the ssao of the postfx3d.
@@ -3393,7 +3936,7 @@ void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) {
     (void)s;
 }
 
-int vgfx3d_postfx_get_snapshot(void *postfx, void *out) {
+int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     (void)postfx;
     (void)out;
     return 0;

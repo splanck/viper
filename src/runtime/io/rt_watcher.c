@@ -77,11 +77,11 @@ typedef struct watcher_event {
 
 /// @brief Internal watcher implementation structure.
 typedef struct rt_watcher_impl {
-    void *watch_path;     ///< The path being watched (rt_string)
-    void *watch_dir_path; ///< Directory path used for full event path reconstruction (rt_string)
+    void *watch_path;      ///< The path being watched (rt_string)
+    void *watch_dir_path;  ///< Directory path used for full event path reconstruction (rt_string)
     void *watch_leaf_name; ///< Final path component when watching a single file (rt_string)
-    int8_t is_watching;   ///< 1 if actively watching
-    int8_t is_directory;  ///< 1 if watching a directory
+    int8_t is_watching;    ///< 1 if actively watching
+    int8_t is_directory;   ///< 1 if watching a directory
 
     // Event queue
     watcher_event events[WATCHER_EVENT_QUEUE_SIZE];
@@ -260,12 +260,14 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
         return;
 
     if (event.fflags & NOTE_DELETE)
-        watcher_queue_event_owned(w, RT_WATCH_EVENT_DELETED, rt_string_ref((rt_string)w->watch_path));
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_DELETED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_WRITE)
         watcher_queue_event_owned(
             w, RT_WATCH_EVENT_MODIFIED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_RENAME)
-        watcher_queue_event_owned(w, RT_WATCH_EVENT_RENAMED, rt_string_ref((rt_string)w->watch_path));
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_RENAMED, rt_string_ref((rt_string)w->watch_path));
     else if (event.fflags & NOTE_EXTEND)
         watcher_queue_event_owned(
             w, RT_WATCH_EVENT_MODIFIED, rt_string_ref((rt_string)w->watch_path));

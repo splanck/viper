@@ -42,7 +42,9 @@ void vorbis_decoder_free(vorbis_decoder_t *dec);
 /// @param packet_len Length of packet data.
 /// @param packet_num 0=identification, 1=comment, 2=setup.
 /// @return 0 on success, -1 on error.
-int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *packet_data, size_t packet_len,
+int vorbis_decode_header(vorbis_decoder_t *dec,
+                         const uint8_t *packet_data,
+                         size_t packet_len,
                          int packet_num);
 
 /// @brief Decode one audio packet into PCM samples.
@@ -52,8 +54,11 @@ int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *packet_data, size
 /// @param out_pcm Receives pointer to interleaved 16-bit PCM. Valid until next call.
 /// @param out_samples Receives number of output samples (per channel).
 /// @return 0 on success, -1 on error.
-int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *packet_data, size_t packet_len,
-                         int16_t **out_pcm, int *out_samples);
+int vorbis_decode_packet(vorbis_decoder_t *dec,
+                         const uint8_t *packet_data,
+                         size_t packet_len,
+                         int16_t **out_pcm,
+                         int *out_samples);
 
 /// @brief Get the sample rate from the identification header.
 int vorbis_get_sample_rate(const vorbis_decoder_t *dec);

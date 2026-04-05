@@ -287,13 +287,8 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     size_t pwd_len = (size_t)rt_str_len(password);
 
     uint8_t computed[HASH_LENGTH];
-    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd,
-                                   pwd_len,
-                                   salt,
-                                   salt_len,
-                                   (uint32_t)iterations,
-                                   computed,
-                                   HASH_LENGTH);
+    rt_keyderive_pbkdf2_sha256_raw(
+        (const uint8_t *)pwd, pwd_len, salt, salt_len, (uint32_t)iterations, computed, HASH_LENGTH);
 
     password_secure_zero(salt, salt_len);
     free(salt);

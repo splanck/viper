@@ -42,7 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// @brief Return the heap header associated with an object array payload.
 /// @details The payload pointer is the first element of the array; the header

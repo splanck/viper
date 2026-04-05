@@ -30,6 +30,10 @@
 extern "C" {
 #endif
 
+/// @brief Trap with the supplied message using the active runtime trap handler.
+/// @param msg Null-terminated trap message, or NULL for a generic trap.
+void rt_trap(const char *msg);
+
 /// @brief Traps the runtime on division by zero.
 void rt_trap_div0(void);
 

@@ -41,7 +41,7 @@
 #include <string.h>
 
 // External trap function (defined in rt_io.c)
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Stream Structure

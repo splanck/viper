@@ -48,8 +48,7 @@ void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
     const std::string clean = sanitizePackageRelativePath(relativePath, "windows package path");
     if (clean.empty())
         return;
-    const std::string key =
-        std::to_string(static_cast<unsigned long long>(root)) + ":" + clean;
+    const std::string key = std::to_string(static_cast<unsigned long long>(root)) + ":" + clean;
     if (!seen.insert(key).second)
         return;
     out.push_back(WindowsPackageDirEntry{root, clean});
@@ -175,8 +174,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                     if (entry.is_directory()) {
                         const std::string relInstall =
                             joinPackageRelativePath(targetDir, relPath, "asset path");
-                        addUniqueDir(
-                            layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
+                        addUniqueDir(layout.installDirectories,
+                                     installDirSet,
+                                     WindowsInstallRoot::InstallDir,
+                                     relInstall);
                         return;
                     }
                     if (!entry.is_regular_file())
@@ -184,8 +185,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
                     const std::string relInstall =
                         joinPackageRelativePath(targetDir, relPath, "asset path");
-                    addParentDirs(
-                        layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
+                    addParentDirs(layout.installDirectories,
+                                  installDirSet,
+                                  WindowsInstallRoot::InstallDir,
+                                  relInstall);
                     const auto data = readFile(entry.path().string());
                     addOverlayFile(zip,
                                    "app/" + relInstall,
@@ -200,8 +203,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         } else if (fs::is_regular_file(srcPath)) {
             const std::string relInstall = joinPackageRelativePath(
                 targetDir, srcPath.filename().generic_string(), "asset path");
-            addParentDirs(
-                layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
+            addParentDirs(layout.installDirectories,
+                          installDirSet,
+                          WindowsInstallRoot::InstallDir,
+                          relInstall);
             const auto data = readFile(srcPath.string());
             addOverlayFile(zip,
                            "app/" + relInstall,
@@ -287,8 +292,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     provisionalPe.iconData = icoData;
     provisionalPe.overlay = zipPayload;
     const auto provisionalBytes = buildPE(provisionalPe);
-    layout.overlayFileOffset =
-        static_cast<uint32_t>(provisionalBytes.size() - zipPayload.size());
+    layout.overlayFileOffset = static_cast<uint32_t>(provisionalBytes.size() - zipPayload.size());
 
     auto instStub = buildInstallerStub(layout, params.archStr);
     PEBuildParams pe;

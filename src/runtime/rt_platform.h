@@ -622,9 +622,9 @@ void rt_assert_main_thread_(const char *file, int line);
 #endif
 
 /// @def RT_ASSERT_MAIN_THREAD()
-/// In debug builds, aborts with a diagnostic if called from a non-main thread.
-/// In release builds (NDEBUG) or on ViperDOS (no threading), compiles to nothing.
-#if defined(NDEBUG) || RT_PLATFORM_VIPERDOS
+/// Traps with a diagnostic if called from a non-main thread.
+/// On ViperDOS (no threading), compiles to nothing.
+#if RT_PLATFORM_VIPERDOS
 #define RT_ASSERT_MAIN_THREAD() ((void)0)
 #else
 #define RT_ASSERT_MAIN_THREAD() rt_assert_main_thread_(__FILE__, __LINE__)

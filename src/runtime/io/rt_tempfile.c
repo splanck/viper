@@ -37,13 +37,13 @@
 #include "rt_path.h"
 #include "rt_string.h"
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <errno.h>
 
 #ifdef _WIN32
 #include <process.h>

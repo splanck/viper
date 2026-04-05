@@ -1766,8 +1766,8 @@ static void validateAsyncEntrySignature(const il::core::Function &fn) {
 
 static void validateHttpHandlerSignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
-    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 || fn.params[0].type.kind != Kind::Ptr ||
-        fn.params[1].type.kind != Kind::Ptr) {
+    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 ||
+        fn.params[0].type.kind != Kind::Ptr || fn.params[1].type.kind != Kind::Ptr) {
         rt_trap("HttpServer.BindHandler: invalid entry signature");
     }
 }
@@ -2033,12 +2033,12 @@ static void unified_http_server_bind_handler(void **args, void *result) {
         validateHttpHandlerSignature(*entryFn);
 
         auto *payload = new VmHttpHandlerPayload{&module, std::move(program), entryFn};
-        rt_http_server_bind_handler_dispatch(server,
-                                             tag,
-                                             reinterpret_cast<void *>(&vm_http_handler_dispatch_bc),
-                                             payload,
-                                             reinterpret_cast<void *>(
-                                                 &destroy_vm_http_handler_payload_bc));
+        rt_http_server_bind_handler_dispatch(
+            server,
+            tag,
+            reinterpret_cast<void *>(&vm_http_handler_dispatch_bc),
+            payload,
+            reinterpret_cast<void *>(&destroy_vm_http_handler_payload_bc));
         return;
     }
 
@@ -2050,8 +2050,8 @@ static void unified_http_server_bind_handler(void **args, void *result) {
             rt_trap("HttpServer.BindHandler: invalid bytecode entry");
         validateBytecodeHttpHandlerSignature(*entryFn);
 
-        auto *payload = new BytecodeHttpHandlerPayload{
-            bcModule, entryFn, bcVm->runtimeBridgeEnabled()};
+        auto *payload =
+            new BytecodeHttpHandlerPayload{bcModule, entryFn, bcVm->runtimeBridgeEnabled()};
         rt_http_server_bind_handler_dispatch(
             server,
             tag,

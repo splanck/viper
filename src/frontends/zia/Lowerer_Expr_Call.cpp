@@ -31,8 +31,7 @@ namespace {
 
 bool isHttpServerRouteRuntime(std::string_view callee) {
     return callee == "Viper.Network.HttpServer.Get" || callee == "Viper.Network.HttpServer.Post" ||
-           callee == "Viper.Network.HttpServer.Put" ||
-           callee == "Viper.Network.HttpServer.Delete";
+           callee == "Viper.Network.HttpServer.Put" || callee == "Viper.Network.HttpServer.Delete";
 }
 
 bool isHttpHandlerPtrType(TypeRef type) {
@@ -278,8 +277,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 // Try without module prefix
                 auto dotPos = resolvedFunction.rfind('.');
                 if (dotPos != std::string::npos)
-                    varFuncDecl = sema_.getFunctionDecl(
-                        resolvedFunction.substr(dotPos + 1));
+                    varFuncDecl = sema_.getFunctionDecl(resolvedFunction.substr(dotPos + 1));
             }
             if (varFuncDecl && !varFuncDecl->params.empty() &&
                 varFuncDecl->params.back().isVariadic) {
@@ -289,8 +287,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
                 for (size_t vi = fixedCount; vi < args.size(); ++vi) {
                     TypeRef argType = (vi < expr->args.size())
-                                         ? sema_.typeOf(expr->args[vi].value.get())
-                                         : nullptr;
+                                          ? sema_.typeOf(expr->args[vi].value.get())
+                                          : nullptr;
                     Type ilArgType = Type(Type::Kind::I64); // default
                     if (vi < paramTypes.size())
                         ilArgType = mapType(paramTypes[vi]);
@@ -357,13 +355,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         // Check for super.method() call - dispatch to parent class method
         if (fieldExpr->base->kind == ExprKind::SuperExpr) {
             Value selfPtr;
-            if (getSelfPtr(selfPtr) && currentClassType_ &&
-                !currentClassType_->baseClass.empty()) {
+            if (getSelfPtr(selfPtr) && currentClassType_ && !currentClassType_->baseClass.empty()) {
                 auto parentIt = classTypes_.find(currentClassType_->baseClass);
                 if (parentIt != classTypes_.end()) {
                     if (auto *method = parentIt->second.findMethod(fieldExpr->field)) {
-                        return lowerMethodCall(
-                            method, currentClassType_->baseClass, selfPtr, expr);
+                        return lowerMethodCall(method, currentClassType_->baseClass, selfPtr, expr);
                     }
                 }
             }
@@ -907,8 +903,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
                 for (size_t vi = fixedCount; vi < args.size(); ++vi) {
                     TypeRef argType = (vi < expr->args.size())
-                                         ? sema_.typeOf(expr->args[vi].value.get())
-                                         : nullptr;
+                                          ? sema_.typeOf(expr->args[vi].value.get())
+                                          : nullptr;
                     Type ilArgType = argType ? mapType(argType) : Type(Type::Kind::I64);
                     Value boxed = emitBoxValue(args[vi], ilArgType, argType);
                     emitCall(kListAdd, {list, boxed});

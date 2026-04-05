@@ -428,26 +428,27 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         } else if (directive == "embed") {
             // Format: embed <source-path>
             if (value.empty())
-                return makeManifestErr(manifestPath, lineNum,
-                                       "embed requires <source-path>; got empty value");
+                return makeManifestErr(
+                    manifestPath, lineNum, "embed requires <source-path>; got empty value");
             config.embedAssets.push_back({value});
 
         } else if (directive == "pack" || directive == "pack-compressed") {
             // Format: pack <name> <source-path>
             auto sp = value.find_first_of(" \t");
             if (sp == std::string::npos)
-                return makeManifestErr(
-                    manifestPath, lineNum,
-                    std::string(directive) + " requires <name> <source-path>; got '" + value + "'");
+                return makeManifestErr(manifestPath,
+                                       lineNum,
+                                       std::string(directive) +
+                                           " requires <name> <source-path>; got '" + value + "'");
             std::string packName = value.substr(0, sp);
             std::string packSrc = value.substr(value.find_first_not_of(" \t", sp));
             bool compressed = (directive == "pack-compressed");
 
             // Find existing group with same name, or create new one.
-            auto it = std::find_if(config.packGroups.begin(), config.packGroups.end(),
-                                   [&](const ProjectConfig::PackGroup &g) {
-                                       return g.name == packName;
-                                   });
+            auto it =
+                std::find_if(config.packGroups.begin(),
+                             config.packGroups.end(),
+                             [&](const ProjectConfig::PackGroup &g) { return g.name == packName; });
             if (it == config.packGroups.end()) {
                 config.packGroups.push_back({packName, {packSrc}, compressed});
             } else {

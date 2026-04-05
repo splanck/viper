@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Code Map
@@ -41,7 +41,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - Runtime: `src/runtime` (C sources and headers)
 - Support & Infra: `src/{common,parse,pass,support}`
 - Tests: `src/tests/{e2e,golden,perf,smoke,unit,...}`
-- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,rtgen,vbasic,viper,zia,zia-server}`
+- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,lsp-common,rtgen,vbasic,vbasic-server,viper,zia,zia-server}`
 - VM: `src/vm` (+ `ops/{common,generated}` and `debug/`)
 
 For architecture and layering, see [architecture.md](architecture.md).

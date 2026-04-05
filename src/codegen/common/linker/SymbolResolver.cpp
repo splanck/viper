@@ -393,12 +393,33 @@ static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__stack_chk_",
     };
     static const char *const kMacDynPrefixes[] = {
-        "CF",          "kCF",         "CG",         "kCG",         "NS",
-        "IOKit",       "IOHID",       "IOService",  "IORegistryEntry",
-        "objc_",       "OBJC_",       "_objc_",     "UTType",      "UTCopy",
-        "AudioQueue",  "AudioServices","AudioComponent",
-        "Sec",         "mach_",       "task_",      "host_",       "vm_",
-        "kern_",       "dispatch_",   "MTL",        "AudioObject", "AudioDevice",
+        "CF",
+        "kCF",
+        "CG",
+        "kCG",
+        "NS",
+        "IOKit",
+        "IOHID",
+        "IOService",
+        "IORegistryEntry",
+        "objc_",
+        "OBJC_",
+        "_objc_",
+        "UTType",
+        "UTCopy",
+        "AudioQueue",
+        "AudioServices",
+        "AudioComponent",
+        "Sec",
+        "mach_",
+        "task_",
+        "host_",
+        "vm_",
+        "kern_",
+        "dispatch_",
+        "MTL",
+        "AudioObject",
+        "AudioDevice",
     };
     static const char *const kWindowsDynPrefixes[] = {
         "__imp_",
@@ -457,9 +478,9 @@ static bool preferArchiveDefinition(const std::string &name) {
     return name.find("__scrt_") != std::string::npos ||
            name.find("__local_stdio_printf_options") != std::string::npos ||
            name.find("__local_stdio_scanf_options") != std::string::npos ||
-           name.rfind("__xi_", 0) == 0 ||
-           name.rfind("__xc_", 0) == 0 || name.rfind("__xl_", 0) == 0 ||
-           name.rfind("__dyn_tls_", 0) == 0 || name.rfind("__tls_", 0) == 0;
+           name.rfind("__xi_", 0) == 0 || name.rfind("__xc_", 0) == 0 ||
+           name.rfind("__xl_", 0) == 0 || name.rfind("__dyn_tls_", 0) == 0 ||
+           name.rfind("__tls_", 0) == 0;
 }
 
 bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
@@ -526,7 +547,8 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
                 size_t newIdx = allObjects.size();
                 allObjects.push_back(std::move(memberObj));
-                if (!addObjSymbols(allObjects[newIdx], newIdx, globalSyms, undefined, platform, err))
+                if (!addObjSymbols(
+                        allObjects[newIdx], newIdx, globalSyms, undefined, platform, err))
                     return false;
                 changed = true;
             }

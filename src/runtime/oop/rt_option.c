@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_option.h"
+#include "rt_error.h"
 #include "rt_object.h"
 #include "rt_result.h"
 #include "rt_string.h"
@@ -153,7 +154,7 @@ int8_t rt_option_is_none(void *obj) {
 // Value Extraction
 //=============================================================================
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void trap_with_message(const char *msg) {
     rt_trap(msg);
@@ -262,15 +263,21 @@ void *rt_option_value(void *obj) {
 // Expect
 //=============================================================================
 
+static const char *rt_option_expect_message(rt_string msg) {
+    return msg ? rt_string_cstr(msg) : "assertion failed";
+}
+
 void *rt_option_expect(void *obj, rt_string msg) {
+    const char *msg_str = rt_option_expect_message(msg);
+    char buffer[256];
     if (!obj) {
-        fprintf(stderr, "Option expect: %s (NULL Option)\n", rt_string_cstr(msg));
-        abort();
+        snprintf(buffer, sizeof(buffer), "Option expect: %s (NULL Option)", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME) {
-        fprintf(stderr, "Option expect: %s\n", rt_string_cstr(msg));
-        abort();
+        snprintf(buffer, sizeof(buffer), "Option expect: %s", msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
     }
     return o->value.ptr;
 }
@@ -341,7 +348,7 @@ void *rt_option_or_else_wrapper(void *obj, void *fn) {
 }
 
 void *rt_option_filter_wrapper(void *obj, void *pred) {
-    return rt_option_filter(obj, (int8_t(*)(void *))pred);
+    return rt_option_filter(obj, (int8_t (*)(void *))pred);
 }
 
 //=============================================================================

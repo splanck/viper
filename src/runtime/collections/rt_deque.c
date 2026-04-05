@@ -55,7 +55,7 @@ typedef struct {
 // Helper Functions
 //=============================================================================
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 static void trap_with_message(const char *msg) {
     rt_trap(msg);

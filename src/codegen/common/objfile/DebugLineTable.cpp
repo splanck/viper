@@ -53,10 +53,7 @@ void DebugLineTable::append(const DebugLineTable &other, uint64_t addressBias) {
         fileRemap[i + 1] = addFile(other.files_[i]);
 
     for (const auto &entry : other.entries_) {
-        addEntry(entry.address + addressBias,
-                 fileRemap[entry.fileIndex],
-                 entry.line,
-                 entry.column);
+        addEntry(entry.address + addressBias, fileRemap[entry.fileIndex], entry.line, entry.column);
     }
 }
 

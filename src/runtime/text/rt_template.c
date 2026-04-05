@@ -45,7 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// @brief Safely cast strlen() result to int, trapping on overflow.
 static int safe_strlen_int(const char *s) {

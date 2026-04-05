@@ -121,18 +121,17 @@ inline std::string sanitizePackageRelativePath(const std::string &raw,
 
     if (normalized.size() >= 2 && std::isalpha(static_cast<unsigned char>(normalized[0])) &&
         normalized[1] == ':') {
-        throw std::runtime_error(std::string(fieldName) + " must not use a drive prefix: '" +
-                                 raw + "'");
+        throw std::runtime_error(std::string(fieldName) + " must not use a drive prefix: '" + raw +
+                                 "'");
     }
 
     std::string out;
     std::size_t pos = 0;
     while (pos < normalized.size()) {
         std::size_t next = normalized.find('/', pos);
-        std::string_view segment =
-            next == std::string::npos
-                ? std::string_view(normalized).substr(pos)
-                : std::string_view(normalized).substr(pos, next - pos);
+        std::string_view segment = next == std::string::npos
+                                       ? std::string_view(normalized).substr(pos)
+                                       : std::string_view(normalized).substr(pos, next - pos);
 
         if (segment.empty())
             throw std::runtime_error(std::string(fieldName) + " contains an empty path segment: '" +
@@ -163,8 +162,8 @@ inline std::string sanitizePackageRelativePath(const std::string &raw,
 
 /// @brief Join two package-relative paths and sanitize the result.
 inline std::string joinPackageRelativePath(const std::string &base,
-                                          const std::string &leaf,
-                                          const char *fieldName = "package path") {
+                                           const std::string &leaf,
+                                           const char *fieldName = "package path") {
     const std::string cleanBase = sanitizePackageRelativePath(base, fieldName);
     const std::string cleanLeaf = sanitizePackageRelativePath(leaf, fieldName);
     if (cleanBase.empty())

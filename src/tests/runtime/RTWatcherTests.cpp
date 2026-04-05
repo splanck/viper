@@ -264,7 +264,8 @@ static void test_file_event_path() {
     int64_t event = poll_until_event(w);
     assert(event != RT_WATCH_EVENT_NONE);
     rt_string event_path = rt_watcher_event_path(w);
-    test_result("file event path is watched file", strcmp(rt_string_cstr(event_path), file_path) == 0);
+    test_result("file event path is watched file",
+                strcmp(rt_string_cstr(event_path), file_path) == 0);
 
     rt_watcher_stop(w);
     remove_file(file_path);

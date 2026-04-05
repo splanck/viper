@@ -179,8 +179,8 @@ static void test_password_invalid_input() {
     // Test 4: Excessive embedded iteration count is rejected
     {
         rt_string password = rt_const_cstr("password");
-        rt_string invalid_hash =
-            rt_const_cstr("PBKDF2$500000000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        rt_string invalid_hash = rt_const_cstr("PBKDF2$500000000$AAAAAAAAAAAAAAAAAAAAAA==$"
+                                               "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
         int8_t result = rt_password_verify(password, invalid_hash);
         test_result("Excessive iterations return 0", result == 0);
     }

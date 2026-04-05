@@ -19,8 +19,7 @@ void *rt_camera_new(int64_t width, int64_t height);
 void rt_camera_follow(void *cam, int64_t x, int64_t y);
 void rt_camera_smooth_follow(void *cam, int64_t x, int64_t y, int64_t lerp);
 void rt_camera_set_deadzone(void *cam, int64_t w, int64_t h);
-void rt_camera_set_bounds(void *cam, int64_t min_x, int64_t min_y,
-                          int64_t max_x, int64_t max_y);
+void rt_camera_set_bounds(void *cam, int64_t min_x, int64_t min_y, int64_t max_x, int64_t max_y);
 int64_t rt_camera_get_x(void *cam);
 int64_t rt_camera_get_y(void *cam);
 }
@@ -43,8 +42,8 @@ TEST(CameraEnhance, SmoothFollowConverges) {
 TEST(CameraEnhance, SmoothFollowInstantAt1000) {
     void *cam = rt_camera_new(800, 600);
     rt_camera_smooth_follow(cam, 1000, 500, 1000); // instant
-    EXPECT_EQ(rt_camera_get_x(cam), 600);  // 1000 - 400
-    EXPECT_EQ(rt_camera_get_y(cam), 200);  // 500 - 300
+    EXPECT_EQ(rt_camera_get_x(cam), 600);          // 1000 - 400
+    EXPECT_EQ(rt_camera_get_y(cam), 200);          // 500 - 300
 }
 
 TEST(CameraEnhance, DeadzoneNoMovement) {

@@ -27,15 +27,15 @@
 
 #include "rt_box.h"
 #include "rt_graphics.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
-#include "rt_heap.h"
+#include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "rt_pixels.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -597,7 +597,8 @@ void *rt_tilemap_load_from_file(rt_string path) {
                 const char *name_cstr = rt_string_cstr(lname);
                 if (name_cstr) {
                     memset(tilemap->layers[li].name, 0, sizeof(tilemap->layers[li].name));
-                    strncpy(tilemap->layers[li].name, name_cstr, sizeof(tilemap->layers[li].name) - 1);
+                    strncpy(
+                        tilemap->layers[li].name, name_cstr, sizeof(tilemap->layers[li].name) - 1);
                 }
             }
             if (li > 0) {
@@ -697,8 +698,7 @@ void *rt_tilemap_load_from_file(rt_string path) {
             for (int64_t fi = 0; fi < frame_count; fi++) {
                 void *boxed = rt_seq_get(frames, fi);
                 if (boxed)
-                    rt_tilemap_set_tile_anim_frame(
-                        tm, base_tile, fi, (int64_t)rt_unbox_f64(boxed));
+                    rt_tilemap_set_tile_anim_frame(tm, base_tile, fi, (int64_t)rt_unbox_f64(boxed));
             }
             if (tilemap->tile_anim_count > 0) {
                 tm_tile_anim *anim = &tilemap->tile_anims[tilemap->tile_anim_count - 1];

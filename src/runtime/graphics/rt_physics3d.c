@@ -37,7 +37,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -89,8 +89,8 @@ typedef struct {
     int32_t body_count;
     rt_contact3d contacts[PH3D_MAX_CONTACTS];
     int32_t contact_count;
-    /* Joint constraints */
-    #define PH3D_MAX_JOINTS 128
+/* Joint constraints */
+#define PH3D_MAX_JOINTS 128
     void *joints[PH3D_MAX_JOINTS];
     int32_t joint_types[PH3D_MAX_JOINTS];
     int32_t joint_count;
@@ -231,7 +231,8 @@ static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
     else if (a[1] > mx[1])
         closest_axis[1] = a[1];
     else
-        closest_axis[1] = clampd(cap->position[1], mn[1] > a[1] ? mn[1] : a[1], mx[1] < c[1] ? mx[1] : c[1]);
+        closest_axis[1] =
+            clampd(cap->position[1], mn[1] > a[1] ? mn[1] : a[1], mx[1] < c[1] ? mx[1] : c[1]);
 }
 
 static int bodies_can_collide(const rt_body3d *a, const rt_body3d *b) {
@@ -270,7 +271,10 @@ static int test_aabb_aabb(const rt_body3d *a, const rt_body3d *b, double *normal
     return 1;
 }
 
-static int test_sphere_sphere(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
+static int test_sphere_sphere(const rt_body3d *a,
+                              const rt_body3d *b,
+                              double *normal,
+                              double *depth) {
     double dx = b->position[0] - a->position[0];
     double dy = b->position[1] - a->position[1];
     double dz = b->position[2] - a->position[2];
@@ -295,7 +299,10 @@ static int test_sphere_sphere(const rt_body3d *a, const rt_body3d *b, double *no
     return 1;
 }
 
-static int test_aabb_sphere(const rt_body3d *aabb, const rt_body3d *sph, double *normal, double *depth) {
+static int test_aabb_sphere(const rt_body3d *aabb,
+                            const rt_body3d *sph,
+                            double *normal,
+                            double *depth) {
     /* Find closest point on AABB to sphere center */
     double closest[3];
     double amn[3], amx[3];
@@ -707,8 +714,8 @@ void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
     rt_world3d *w = (rt_world3d *)obj;
     if (index < 0 || index >= w->contact_count)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(w->contacts[index].normal[0], w->contacts[index].normal[1],
-                       w->contacts[index].normal[2]);
+    return rt_vec3_new(
+        w->contacts[index].normal[0], w->contacts[index].normal[1], w->contacts[index].normal[2]);
 }
 
 double rt_world3d_get_collision_depth(void *obj, int64_t index) {
@@ -910,7 +917,9 @@ typedef struct {
     int8_t hit;
 } rt_character_hit3d;
 
-static void character3d_set_ground_state(rt_character3d *ctrl, int8_t grounded, const double *normal) {
+static void character3d_set_ground_state(rt_character3d *ctrl,
+                                         int8_t grounded,
+                                         const double *normal) {
     if (!ctrl || !ctrl->body)
         return;
     ctrl->is_grounded = grounded;
@@ -992,7 +1001,9 @@ static void character3d_resolve_penetration(rt_character3d *ctrl) {
     }
 }
 
-static int character3d_sweep(rt_character3d *ctrl, const double *delta, rt_character_hit3d *out_hit) {
+static int character3d_sweep(rt_character3d *ctrl,
+                             const double *delta,
+                             rt_character_hit3d *out_hit) {
     if (!ctrl || !ctrl->body || vec3_len_sq(delta) < 1e-12)
         return 0;
 
@@ -1057,9 +1068,11 @@ static int character3d_sweep(rt_character3d *ctrl, const double *delta, rt_chara
 static int character3d_probe_ground(rt_character3d *ctrl) {
     if (!ctrl || !ctrl->body)
         return 0;
-    double probe_pos[3] = {ctrl->body->position[0], ctrl->body->position[1] - 0.05, ctrl->body->position[2]};
+    double probe_pos[3] = {
+        ctrl->body->position[0], ctrl->body->position[1] - 0.05, ctrl->body->position[2]};
     rt_character_hit3d hit;
-    if (character3d_test_position(ctrl, probe_pos, &hit) && character3d_normal_is_walkable(ctrl, hit.normal)) {
+    if (character3d_test_position(ctrl, probe_pos, &hit) &&
+        character3d_normal_is_walkable(ctrl, hit.normal)) {
         character3d_set_ground_state(ctrl, 1, hit.normal);
         return 1;
     }
@@ -1093,7 +1106,8 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
 
     {
         double down[3] = {0.0, -(ctrl->step_height + 0.05), 0.0};
-        if (character3d_sweep(ctrl, down, &hit) && character3d_normal_is_walkable(ctrl, hit.normal)) {
+        if (character3d_sweep(ctrl, down, &hit) &&
+            character3d_normal_is_walkable(ctrl, hit.normal)) {
             character3d_set_ground_state(ctrl, 1, hit.normal);
             return 1;
         }
@@ -1392,4 +1406,6 @@ void rt_trigger3d_set_bounds(
     t->bounds_max[2] = z0 > z1 ? z0 : z1;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_crc32.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_pixels.h"
-#include "rt_crc32.h"
 #include "rt_string.h"
 
 #include "tests/common/PosixCompat.h"
@@ -29,8 +29,7 @@ extern "C" void vm_trap(const char *msg) {
 }
 
 static uint32_t read_be32(const uint8_t *p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
-           (uint32_t)p[3];
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
 static void assert_png_chunk_crcs_valid(const char *path) {

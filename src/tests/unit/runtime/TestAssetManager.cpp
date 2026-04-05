@@ -29,8 +29,10 @@ int64_t rt_bytes_len(void *bytes);
 rt_string rt_const_cstr(const char *str);
 }
 
-static const char *write_vpa_temp(const char *name, const char *entry_name,
-                                  const uint8_t *data, size_t len) {
+static const char *write_vpa_temp(const char *name,
+                                  const char *entry_name,
+                                  const uint8_t *data,
+                                  size_t len) {
     static char path[256];
     snprintf(path, sizeof(path), "/tmp/viper_test_%s", name);
 

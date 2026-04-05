@@ -32,7 +32,7 @@
 #include <string.h>
 #include <strings.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Internal Structure
@@ -319,12 +319,14 @@ static rt_string resolve_redirect_url(rt_string current_url, rt_string location)
 
 static void *do_request(rt_http_client_impl *c, const char *method, rt_string url, rt_string body) {
     const char *url_cstr = rt_string_cstr(url);
-    rt_string current_url = rt_string_from_bytes(url_cstr ? url_cstr : "", url_cstr ? strlen(url_cstr) : 0);
+    rt_string current_url =
+        rt_string_from_bytes(url_cstr ? url_cstr : "", url_cstr ? strlen(url_cstr) : 0);
     const char *current_method = method;
     rt_string current_body = NULL;
     if (body) {
         const char *body_cstr = rt_string_cstr(body);
-        current_body = rt_string_from_bytes(body_cstr ? body_cstr : "", body_cstr ? strlen(body_cstr) : 0);
+        current_body =
+            rt_string_from_bytes(body_cstr ? body_cstr : "", body_cstr ? strlen(body_cstr) : 0);
     }
 
     int64_t redirects_left = c->follow_redirects ? c->max_redirects : 0;
@@ -339,7 +341,8 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
         apply_cookie_header(c, req, current_url);
         rt_http_req_set_max_redirects(req, 0);
 
-        if (current_body && strcmp(current_method, "GET") != 0 && strcmp(current_method, "DELETE") != 0)
+        if (current_body && strcmp(current_method, "GET") != 0 &&
+            strcmp(current_method, "DELETE") != 0)
             rt_http_req_set_body_str(req, current_body);
 
         final_res = rt_http_req_send(req);
@@ -366,7 +369,8 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
         current_url = next_url;
         redirects_left--;
 
-        if (status == 303 || ((status == 301 || status == 302) && strcmp(current_method, "POST") == 0)) {
+        if (status == 303 ||
+            ((status == 301 || status == 302) && strcmp(current_method, "POST") == 0)) {
             current_method = "GET";
             if (current_body) {
                 rt_string_unref(current_body);

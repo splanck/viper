@@ -611,8 +611,7 @@ bool Sema::analyze(ModuleDecl &module) {
                     for (const auto &param : cls->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
-                    classT =
-                        std::make_shared<ViperType>(TypeKindSem::Class, cls->name, paramTypes);
+                    classT = std::make_shared<ViperType>(TypeKindSem::Class, cls->name, paramTypes);
                 } else {
                     classT = types::classType(cls->name);
                 }

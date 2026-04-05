@@ -188,8 +188,7 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                             MOperand::regOp(PhysReg::X0),
                             MOperand::regOp(PhysReg::X0),
                             imm,
-                            (isAdd || isAddOvf) ? SignedImmArithKind::Add
-                                                : SignedImmArithKind::Sub,
+                            (isAdd || isAddOvf) ? SignedImmArithKind::Add : SignedImmArithKind::Sub,
                             (isAddOvf || isSubOvf) ? MOpcode::AddOvfRI : MOpcode::AddRI,
                             (isAddOvf || isSubOvf) ? MOpcode::SubOvfRI : MOpcode::SubRI,
                             (isAddOvf || isSubOvf) ? MOpcode::AddOvfRRR : MOpcode::AddRRR,

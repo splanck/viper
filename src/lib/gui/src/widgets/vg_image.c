@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 // vg_image.c - Image widget implementation
-#include "../../include/vg_widgets.h"
 #include "../../include/vg_widget.h"
+#include "../../include/vg_widgets.h"
 #include "vgfx.h"
 #include <stdlib.h>
 #include <string.h>
@@ -41,15 +41,19 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
 
     for (int row = 0; row < dh; row++) {
         int sy = row * sh / dh;
-        if (sy >= sh) sy = sh - 1;
+        if (sy >= sh)
+            sy = sh - 1;
         int fb_y = dy + row;
-        if (fb_y < 0 || fb_y >= fb.height) continue;
+        if (fb_y < 0 || fb_y >= fb.height)
+            continue;
 
         for (int col = 0; col < dw; col++) {
             int sx = col * sw / dw;
-            if (sx >= sw) sx = sw - 1;
+            if (sx >= sw)
+                sx = sw - 1;
             int fb_x = dx + col;
-            if (fb_x < 0 || fb_x >= fb.width) continue;
+            if (fb_x < 0 || fb_x >= fb.width)
+                continue;
 
             /* Source is RGBA bytes (R,G,B,A) */
             const uint8_t *src = &image->pixels[(sy * sw + sx) * 4];

@@ -125,7 +125,8 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
         dllNameSize += static_cast<uint32_t>(imp.dllName.size() + 1);
         for (const auto &fn : imp.functions) {
             auto importIt = imp.importNames.find(fn);
-            const std::string &importName = (importIt != imp.importNames.end()) ? importIt->second : fn;
+            const std::string &importName =
+                (importIt != imp.importNames.end()) ? importIt->second : fn;
             hintNameSize += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
         }
     }
@@ -172,19 +173,18 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
         putLE32(result.data, idtEntryOff + 12, sectionRva + curDllNameOff);
         putLE32(result.data, idtEntryOff + 16, firstThunkRva);
 
-        std::memcpy(result.data.data() + curDllNameOff,
-                    imp.dllName.c_str(),
-                    imp.dllName.size() + 1);
+        std::memcpy(
+            result.data.data() + curDllNameOff, imp.dllName.c_str(), imp.dllName.size() + 1);
         curDllNameOff += static_cast<uint32_t>(imp.dllName.size() + 1);
 
         for (const auto &fn : imp.functions) {
             auto importIt = imp.importNames.find(fn);
-            const std::string &importName = (importIt != imp.importNames.end()) ? importIt->second : fn;
+            const std::string &importName =
+                (importIt != imp.importNames.end()) ? importIt->second : fn;
             const uint32_t hintNameRva = sectionRva + curHintOff;
             putLE16(result.data, curHintOff, 0);
-            std::memcpy(result.data.data() + curHintOff + 2,
-                        importName.c_str(),
-                        importName.size() + 1);
+            std::memcpy(
+                result.data.data() + curHintOff + 2, importName.c_str(), importName.size() + 1);
             curHintOff += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
 
             putLE32(result.data, curIltOff, hintNameRva);
@@ -213,7 +213,8 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
         else if (firstThunkRva != 0) {
             minIatRva = std::min(minIatRva, firstThunkRva);
             maxIatEndRva =
-                std::max(maxIatEndRva, firstThunkRva + static_cast<uint32_t>((imp.functions.size() + 1) * 8));
+                std::max(maxIatEndRva,
+                         firstThunkRva + static_cast<uint32_t>((imp.functions.size() + 1) * 8));
         }
     }
 
@@ -266,17 +267,30 @@ std::vector<uint8_t> buildX64StartupStub(uint64_t imageBase,
                                          uint32_t exitProcessIatRva,
                                          std::ostream &err) {
     std::vector<uint8_t> stub = {
-        0x48, 0x83, 0xEC, 0x28,       // sub rsp, 40
-        0xE8, 0x00, 0x00, 0x00, 0x00, // call entry
-        0x89, 0xC1,                   // mov ecx, eax
-        0xFF, 0x15, 0x00, 0x00, 0x00, 0x00, // call [rip+disp32] ; ExitProcess
-        0xCC,                         // int3 if ExitProcess returns
+        0x48,
+        0x83,
+        0xEC,
+        0x28, // sub rsp, 40
+        0xE8,
+        0x00,
+        0x00,
+        0x00,
+        0x00, // call entry
+        0x89,
+        0xC1, // mov ecx, eax
+        0xFF,
+        0x15,
+        0x00,
+        0x00,
+        0x00,
+        0x00, // call [rip+disp32] ; ExitProcess
+        0xCC, // int3 if ExitProcess returns
     };
 
     const uint64_t stubVa = imageBase + stubRva;
     const int64_t callDisp = static_cast<int64_t>(entryAddr) - static_cast<int64_t>(stubVa + 9);
-    const int64_t iatDisp = static_cast<int64_t>(exitProcessIatRva) -
-                            static_cast<int64_t>(stubRva + 17);
+    const int64_t iatDisp =
+        static_cast<int64_t>(exitProcessIatRva) - static_cast<int64_t>(stubRva + 17);
 
     if (!fitsInt32(callDisp)) {
         err << "error: PE startup stub cannot reach entry point\n";
@@ -467,8 +481,8 @@ bool writePeExe(const std::string &path,
         sections.push_back(ps);
 
         if (sec.alloc) {
-            const uint32_t end =
-                ps.virtualAddress + static_cast<uint32_t>(alignUp(ps.virtualSize, sectionAlignment));
+            const uint32_t end = ps.virtualAddress +
+                                 static_cast<uint32_t>(alignUp(ps.virtualSize, sectionAlignment));
             nextGeneratedRva = std::max(nextGeneratedRva, end);
         }
     }
@@ -480,7 +494,8 @@ bool writePeExe(const std::string &path,
     TlsLayout tlsLayout{};
 
     if (!imports.empty()) {
-        const uint32_t importRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        const uint32_t importRva =
+            static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
         importLayout = buildImportTables(imports, importRva, slotRvas);
         generatedImportData = importLayout.data;
 
@@ -488,7 +503,8 @@ bool writePeExe(const std::string &path,
             for (auto &sec : sections) {
                 if (!sec.alloc || sec.data == nullptr)
                     continue;
-                if (slotRva < sec.virtualAddress || slotRva + 8 > sec.virtualAddress + sec.virtualSize)
+                if (slotRva < sec.virtualAddress ||
+                    slotRva + 8 > sec.virtualAddress + sec.virtualSize)
                     continue;
                 auto *bytes = const_cast<std::vector<uint8_t> *>(sec.data);
                 const size_t off = static_cast<size_t>(slotRva - sec.virtualAddress);
@@ -515,8 +531,8 @@ bool writePeExe(const std::string &path,
         importSec.virtualSize = static_cast<uint32_t>(generatedImportData.size());
         importSec.characteristics = sectionChars(false, false, true);
         sections.push_back(importSec);
-        nextGeneratedRva =
-            importRva + static_cast<uint32_t>(alignUp(generatedImportData.size(), sectionAlignment));
+        nextGeneratedRva = importRva + static_cast<uint32_t>(
+                                           alignUp(generatedImportData.size(), sectionAlignment));
     }
 
     const bool haveTls = layoutHasTls(layout);
@@ -548,8 +564,8 @@ bool writePeExe(const std::string &path,
 
         const uint32_t stubRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
         if (arch == LinkArch::AArch64) {
-            generatedStubData = buildAArch64StartupStub(
-                imageBase, layout.entryAddr, stubRva, exitIt->second, err);
+            generatedStubData =
+                buildAArch64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
         } else {
             generatedStubData =
                 buildX64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
@@ -596,7 +612,8 @@ bool writePeExe(const std::string &path,
 
         if (sec.alloc) {
             const uint32_t secEnd =
-                sec.virtualAddress + static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
+                sec.virtualAddress +
+                static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
             sizeOfImage = std::max(sizeOfImage, secEnd);
             if (sec.executable) {
                 sizeOfCode += sec.sizeOfRawData;

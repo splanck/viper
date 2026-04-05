@@ -141,9 +141,9 @@ enum class MOpcode {
 struct MInstr {
     static constexpr uint32_t kNoCallPlanId = UINT32_MAX;
 
-    MOpcode opcode{MOpcode::MOVrr};  ///< Opcode for the instruction.
-    std::vector<Operand> operands{}; ///< Operands in emission order.
-    il::support::SourceLoc loc{};    ///< Source location (for debug info).
+    MOpcode opcode{MOpcode::MOVrr};     ///< Opcode for the instruction.
+    std::vector<Operand> operands{};    ///< Operands in emission order.
+    il::support::SourceLoc loc{};       ///< Source location (for debug info).
     uint32_t callPlanId{kNoCallPlanId}; ///< Planned call ABI metadata for CALL instructions.
 
     /// \brief Create an instruction with the given operands.

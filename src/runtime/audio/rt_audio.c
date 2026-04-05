@@ -10,7 +10,8 @@
 //          ViperAUD (vaud) library. Provides Init/Shutdown, LoadSound,
 //          LoadMusic, Play/Stop/Pause/Resume for sounds and music, volume
 //          control, and IsPlaying queries. When audio is disabled at compile
-//          time, all functions are no-ops that return safe defaults.
+//          time, capability probes remain available and public playback/load
+//          operations fail with deterministic InvalidOperation traps.
 //
 // Key invariants:
 //   - All functions guard against NULL handles and return silently if passed one.
@@ -20,7 +21,7 @@
 //   - Sounds use ref-counting; the caller owns the reference from LoadSound.
 //   - Music is loaded as a single stream; only one music track plays at a time.
 //   - The VIPER_ENABLE_AUDIO compile flag controls whether real or stub impls
-//     are compiled; stubs are always safe no-ops.
+//     are compiled; stub playback/load entry points fail loudly.
 //
 // Ownership/Lifetime:
 //   - Sound objects are ref-counted via the runtime heap; callers must release.
@@ -32,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_error.h"
 #include "rt_mixgroup.h"
 #include "rt_mp3.h"
 #include "rt_object.h"
@@ -52,6 +54,7 @@
 /// @brief Per-group volume (0-100). Defaults to 100.
 static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 
+#ifdef VIPER_ENABLE_AUDIO
 /// @brief Crossfade state.
 static struct {
     void *fade_out;   ///< Music being faded out (NULL when not crossfading).
@@ -61,8 +64,6 @@ static struct {
     int64_t vol_out;  ///< Starting volume of fade-out track.
     int8_t active;    ///< 1 if crossfade in progress.
 } g_crossfade = {NULL, NULL, 0, 0, 100, 0};
-
-#ifdef VIPER_ENABLE_AUDIO
 
 #include "vaud.h"
 
@@ -134,6 +135,10 @@ static void rt_music_finalize(void *obj) {
 //===----------------------------------------------------------------------===//
 // Audio System Management
 //===----------------------------------------------------------------------===//
+
+int8_t rt_audio_is_available(void) {
+    return 1;
+}
 
 /// @brief Ensure the audio system is initialized.
 /// @details Uses double-checked locking with a spinlock to ensure thread-safe
@@ -379,7 +384,8 @@ static int ogg_decode_to_wav(const char *filepath, uint8_t **out_data, size_t *o
                 pcm_buf = new_buf;
                 pcm_cap = new_cap;
             }
-            memcpy(pcm_buf + pcm_frames * channels, frame_pcm,
+            memcpy(pcm_buf + pcm_frames * channels,
+                   frame_pcm,
                    (size_t)frame_samples * (size_t)channels * sizeof(int16_t));
             pcm_frames += (size_t)frame_samples;
         }
@@ -479,8 +485,7 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
 
     int16_t *pcm = NULL;
     int samples = 0, channels = 0, sample_rate = 0;
-    int rc = mp3_decode_file(dec, mf_data, (size_t)mf_len,
-                             &pcm, &samples, &channels, &sample_rate);
+    int rc = mp3_decode_file(dec, mf_data, (size_t)mf_len, &pcm, &samples, &channels, &sample_rate);
     mp3_decoder_free(dec);
     free(mf_data);
 
@@ -498,23 +503,36 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
 
     memcpy(wav, "RIFF", 4);
     uint32_t riff_sz = (uint32_t)(wav_size - 8);
-    wav[4] = (uint8_t)(riff_sz); wav[5] = (uint8_t)(riff_sz >> 8);
-    wav[6] = (uint8_t)(riff_sz >> 16); wav[7] = (uint8_t)(riff_sz >> 24);
+    wav[4] = (uint8_t)(riff_sz);
+    wav[5] = (uint8_t)(riff_sz >> 8);
+    wav[6] = (uint8_t)(riff_sz >> 16);
+    wav[7] = (uint8_t)(riff_sz >> 24);
     memcpy(wav + 8, "WAVE", 4);
     memcpy(wav + 12, "fmt ", 4);
-    wav[16] = 16; wav[17] = wav[18] = wav[19] = 0;
-    wav[20] = 1; wav[21] = 0;
-    wav[22] = (uint8_t)channels; wav[23] = 0;
-    wav[24] = (uint8_t)(sample_rate); wav[25] = (uint8_t)(sample_rate >> 8);
-    wav[26] = (uint8_t)(sample_rate >> 16); wav[27] = (uint8_t)(sample_rate >> 24);
+    wav[16] = 16;
+    wav[17] = wav[18] = wav[19] = 0;
+    wav[20] = 1;
+    wav[21] = 0;
+    wav[22] = (uint8_t)channels;
+    wav[23] = 0;
+    wav[24] = (uint8_t)(sample_rate);
+    wav[25] = (uint8_t)(sample_rate >> 8);
+    wav[26] = (uint8_t)(sample_rate >> 16);
+    wav[27] = (uint8_t)(sample_rate >> 24);
     uint32_t brate = (uint32_t)(sample_rate * channels * 2);
-    wav[28] = (uint8_t)(brate); wav[29] = (uint8_t)(brate >> 8);
-    wav[30] = (uint8_t)(brate >> 16); wav[31] = (uint8_t)(brate >> 24);
-    wav[32] = (uint8_t)(channels * 2); wav[33] = 0;
-    wav[34] = 16; wav[35] = 0;
+    wav[28] = (uint8_t)(brate);
+    wav[29] = (uint8_t)(brate >> 8);
+    wav[30] = (uint8_t)(brate >> 16);
+    wav[31] = (uint8_t)(brate >> 24);
+    wav[32] = (uint8_t)(channels * 2);
+    wav[33] = 0;
+    wav[34] = 16;
+    wav[35] = 0;
     memcpy(wav + 36, "data", 4);
-    wav[40] = (uint8_t)(data_size); wav[41] = (uint8_t)(data_size >> 8);
-    wav[42] = (uint8_t)(data_size >> 16); wav[43] = (uint8_t)(data_size >> 24);
+    wav[40] = (uint8_t)(data_size);
+    wav[41] = (uint8_t)(data_size >> 8);
+    wav[42] = (uint8_t)(data_size >> 16);
+    wav[43] = (uint8_t)(data_size >> 24);
     memcpy(wav + 44, pcm, data_size);
     free(pcm);
 
@@ -1085,6 +1103,14 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
 // Stub implementations when audio library is not available
 //===----------------------------------------------------------------------===//
 
+static void rt_audio_unavailable_(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
+}
+
+int8_t rt_audio_is_available(void) {
+    return 0;
+}
+
 int64_t rt_audio_init(void) {
     return 0;
 }
@@ -1107,12 +1133,14 @@ void rt_audio_stop_all_sounds(void) {}
 
 void *rt_sound_load(rt_string path) {
     (void)path;
+    rt_audio_unavailable_("Sound.Load: audio support not compiled in");
     return NULL;
 }
 
 void *rt_sound_load_mem(const void *data, int64_t size) {
     (void)data;
     (void)size;
+    rt_audio_unavailable_("Sound.LoadMem: audio support not compiled in");
     return NULL;
 }
 
@@ -1122,6 +1150,7 @@ void rt_sound_destroy(void *sound) {
 
 int64_t rt_sound_play(void *sound) {
     (void)sound;
+    rt_audio_unavailable_("Sound.Play: audio support not compiled in");
     return -1;
 }
 
@@ -1129,6 +1158,7 @@ int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
     (void)pan;
+    rt_audio_unavailable_("Sound.PlayEx: audio support not compiled in");
     return -1;
 }
 
@@ -1136,6 +1166,7 @@ int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
     (void)pan;
+    rt_audio_unavailable_("Sound.PlayLoop: audio support not compiled in");
     return -1;
 }
 
@@ -1160,6 +1191,7 @@ int64_t rt_voice_is_playing(int64_t voice_id) {
 
 void *rt_music_load(rt_string path) {
     (void)path;
+    rt_audio_unavailable_("Music.Load: audio support not compiled in");
     return NULL;
 }
 
@@ -1170,47 +1202,57 @@ void rt_music_destroy(void *music) {
 void rt_music_play(void *music, int64_t loop) {
     (void)music;
     (void)loop;
+    rt_audio_unavailable_("Music.Play: audio support not compiled in");
 }
 
 void rt_music_stop(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.Stop: audio support not compiled in");
 }
 
 void rt_music_pause(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.Pause: audio support not compiled in");
 }
 
 void rt_music_resume(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.Resume: audio support not compiled in");
 }
 
 void rt_music_set_volume(void *music, int64_t volume) {
     (void)music;
     (void)volume;
+    rt_audio_unavailable_("Music.SetVolume: audio support not compiled in");
 }
 
 int64_t rt_music_get_volume(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.GetVolume: audio support not compiled in");
     return 0;
 }
 
 int64_t rt_music_is_playing(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.IsPlaying: audio support not compiled in");
     return 0;
 }
 
 void rt_music_seek(void *music, int64_t position_ms) {
     (void)music;
     (void)position_ms;
+    rt_audio_unavailable_("Music.Seek: audio support not compiled in");
 }
 
 int64_t rt_music_get_position(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.GetPosition: audio support not compiled in");
     return 0;
 }
 
 int64_t rt_music_get_duration(void *music) {
     (void)music;
+    rt_audio_unavailable_("Music.GetDuration: audio support not compiled in");
     return 0;
 }
 
@@ -1235,6 +1277,7 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     (void)current_music;
     (void)new_music;
     (void)duration_ms;
+    rt_audio_unavailable_("Music.CrossfadeTo: audio support not compiled in");
 }
 
 int8_t rt_music_is_crossfading(void) {
@@ -1248,6 +1291,7 @@ void rt_music_crossfade_update(int64_t dt_ms) {
 int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     (void)sound;
     (void)group;
+    rt_audio_unavailable_("Sound.PlayInGroup: audio support not compiled in");
     return -1;
 }
 
@@ -1256,6 +1300,7 @@ int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int6
     (void)volume;
     (void)pan;
     (void)group;
+    rt_audio_unavailable_("Sound.PlayExInGroup: audio support not compiled in");
     return -1;
 }
 
@@ -1264,6 +1309,7 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
     (void)volume;
     (void)pan;
     (void)group;
+    rt_audio_unavailable_("Sound.PlayLoopInGroup: audio support not compiled in");
     return -1;
 }
 

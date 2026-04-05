@@ -549,7 +549,6 @@ static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
         vg_font_draw_text(
             canvas, bar->font, bar->font_size, text_x, text_y, bar->result_text, text_color);
     }
-
 }
 
 static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) {

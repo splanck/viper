@@ -1072,3 +1072,9 @@ bind Channel = Viper.Threads.Channel;
 ```
 
 Concurrency is powerful but demands discipline. Start simple — use channels and thread pools before reaching for low-level primitives. Test under load. And remember: the best concurrent code is code where threads don't share state at all.
+
+---
+
+*We've covered the full breadth of Viper's concurrency model. Part V takes you deeper into how Viper itself works — the compiler, the VM, and how to write fast, testable, well-architected code.*
+
+*[Continue to Part V: Mastery ->](../part5-mastery/25-how-viper-works.md)*

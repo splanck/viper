@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-09
+last-verified: 2026-04-05
 ---
 
 # Game Utilities
@@ -23,9 +23,16 @@ last-verified: 2026-03-09
 | [Platformer](../game.md#vipergameplatformercontroller) | PlatformerController — jump buffer, coyote time, acceleration curves |
 | [Achievement Tracking](../game.md#vipergameachievementtracker) | AchievementTracker — bitmask unlocks, stat counters, notification popup |
 | [Text Reveal](../game.md#vipergametypewriter) | Typewriter — character-by-character text animation |
+| [Entity System](entity.md) | Entity — 2D game object with position, velocity, HP, tilemap collision |
+| [Behavior AI](behavior.md) | Behavior — composable AI presets (patrol, chase, gravity, shoot) |
+| [Raycast](raycast.md) | Raycast2D — line-of-sight and line collision queries |
+| [Level Data](leveldata.md) | LevelData — JSON level loader with tilemap and object spawns |
+| [Scene Manager](scenemanager.md) | SceneManager — multi-scene transitions and lifecycle |
+| [Config](config.md) | Config — JSON configuration file loader |
+| [UI Menus](ui-menu.md) | MenuList, GameButton — game menu widgets |
 | [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
 | [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |
-| [UI Widgets](ui.md) | Label, Bar, Panel, NineSlice, MenuList — in-game HUD/menu widgets |
+| [UI Widgets](ui.md) | Label, Bar, Panel, NineSlice — in-game HUD widgets |
 | [Pathfinding](pathfinding.md) | A* grid pathfinding for AI navigation |
 
 ## See Also

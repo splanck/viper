@@ -32,7 +32,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
@@ -196,14 +196,22 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     float sy = fy - (float)y0;
 
     /* Clamp all 4 sample coordinates */
-    if (x0 < 0) x0 = 0;
-    if (x0 >= (int)fw) x0 = (int)fw - 1;
-    if (x1 < 0) x1 = 0;
-    if (x1 >= (int)fw) x1 = (int)fw - 1;
-    if (y0 < 0) y0 = 0;
-    if (y0 >= (int)fh) y0 = (int)fh - 1;
-    if (y1 < 0) y1 = 0;
-    if (y1 >= (int)fh) y1 = (int)fh - 1;
+    if (x0 < 0)
+        x0 = 0;
+    if (x0 >= (int)fw)
+        x0 = (int)fw - 1;
+    if (x1 < 0)
+        x1 = 0;
+    if (x1 >= (int)fw)
+        x1 = (int)fw - 1;
+    if (y0 < 0)
+        y0 = 0;
+    if (y0 >= (int)fh)
+        y0 = (int)fh - 1;
+    if (y1 < 0)
+        y1 = 0;
+    if (y1 >= (int)fh)
+        y1 = (int)fh - 1;
 
     /* Sample 4 texels */
     int64_t p00 = rt_pixels_get(face_pixels, x0, y0);
@@ -211,20 +219,21 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     int64_t p01 = rt_pixels_get(face_pixels, x0, y1);
     int64_t p11 = rt_pixels_get(face_pixels, x1, y1);
 
-    /* Extract channels and bilinear blend */
-    #define BL(ch, shift) do { \
-        float c00 = (float)((p00 >> (shift)) & 0xFF); \
-        float c10 = (float)((p10 >> (shift)) & 0xFF); \
-        float c01 = (float)((p01 >> (shift)) & 0xFF); \
-        float c11 = (float)((p11 >> (shift)) & 0xFF); \
-        *(ch) = ((c00 * (1-sx) + c10 * sx) * (1-sy) + \
-                 (c01 * (1-sx) + c11 * sx) * sy) / 255.0f; \
-    } while(0)
+/* Extract channels and bilinear blend */
+#define BL(ch, shift)                                                                              \
+    do {                                                                                           \
+        float c00 = (float)((p00 >> (shift)) & 0xFF);                                              \
+        float c10 = (float)((p10 >> (shift)) & 0xFF);                                              \
+        float c01 = (float)((p01 >> (shift)) & 0xFF);                                              \
+        float c11 = (float)((p11 >> (shift)) & 0xFF);                                              \
+        *(ch) =                                                                                    \
+            ((c00 * (1 - sx) + c10 * sx) * (1 - sy) + (c01 * (1 - sx) + c11 * sx) * sy) / 255.0f;  \
+    } while (0)
 
     BL(out_r, 24);
     BL(out_g, 16);
     BL(out_b, 8);
-    #undef BL
+#undef BL
 }
 
 //=============================================================================
@@ -285,4 +294,6 @@ double rt_material3d_get_reflectivity(void *obj) {
     return ((rt_material3d *)obj)->reflectivity;
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

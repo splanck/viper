@@ -46,7 +46,7 @@ static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -141,11 +141,11 @@ typedef struct {
     float crossfade_from_time;
     float speed;
     int8_t playing;
-    float *bone_palette;     /* bone_count * 16 floats */
-    float *prev_bone_palette; /* previous-frame palette for motion blur */
+    float *bone_palette;            /* bone_count * 16 floats */
+    float *prev_bone_palette;       /* previous-frame palette for motion blur */
     float *motion_palette_snapshot; /* last submitted palette snapshot */
-    float *local_transforms; /* bone_count * 16 floats (workspace) */
-    float *globals_buf;      /* bone_count * 16 floats (reused across frames) */
+    float *local_transforms;        /* bone_count * 16 floats (workspace) */
+    float *globals_buf;             /* bone_count * 16 floats (reused across frames) */
     int64_t last_motion_frame;
     int8_t has_prev_motion_palette;
 } rt_anim_player3d;
@@ -253,7 +253,8 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
         for (int i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
     } else {
-        if (dot > 1.0f) dot = 1.0f; // clamp for acosf domain safety
+        if (dot > 1.0f)
+            dot = 1.0f; // clamp for acosf domain safety
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;
@@ -587,8 +588,8 @@ static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_
 
 /// @brief Sample a channel at time t, returning separate TRS components
 /// instead of a composed matrix. Used for crossfade blending.
-static void sample_channel_trs(const vgfx3d_anim_channel_t *ch, float t,
-                               float *out_pos, float *out_rot, float *out_scl) {
+static void sample_channel_trs(
+    const vgfx3d_anim_channel_t *ch, float t, float *out_pos, float *out_rot, float *out_scl) {
     if (ch->keyframe_count == 0) {
         out_pos[0] = out_pos[1] = out_pos[2] = 0.0f;
         out_rot[0] = out_rot[1] = out_rot[2] = 0.0f;
@@ -770,8 +771,11 @@ static void compute_bone_palette(rt_anim_player3d *p) {
 
             /* Sample "from" animation into TRS */
             float from_pos[3], from_rot[4], from_scl[3];
-            sample_channel_trs(
-                &p->crossfade_from->channels[c], p->crossfade_from_time, from_pos, from_rot, from_scl);
+            sample_channel_trs(&p->crossfade_from->channels[c],
+                               p->crossfade_from_time,
+                               from_pos,
+                               from_rot,
+                               from_scl);
 
             /* Sample "to" (current) animation into TRS for this bone */
             float to_pos[3], to_rot[4], to_scl[3];
@@ -1003,13 +1007,8 @@ void rt_canvas3d_draw_mesh_skinned(
         tmp.bone_palette = p->bone_palette;
         tmp.prev_bone_palette = prev_palette;
         tmp.bone_count = p->skeleton->bone_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
-                                           &tmp,
-                                           ((mat4_impl *)transform)->m,
-                                           material,
-                                           transform,
-                                           prev_palette,
-                                           NULL);
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas, &tmp, ((mat4_impl *)transform)->m, material, transform, prev_palette, NULL);
         return;
     }
 
@@ -1307,13 +1306,8 @@ void rt_canvas3d_draw_mesh_blended(
         tmp.bone_palette = b->bone_palette;
         tmp.prev_bone_palette = prev_palette;
         tmp.bone_count = skel->bone_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(canvas,
-                                           &tmp,
-                                           ((mat4_impl *)transform)->m,
-                                           material,
-                                           transform,
-                                           prev_palette,
-                                           NULL);
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas, &tmp, ((mat4_impl *)transform)->m, material, transform, prev_palette, NULL);
         return;
     }
 
@@ -1346,4 +1340,6 @@ void rt_canvas3d_draw_mesh_blended(
     rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

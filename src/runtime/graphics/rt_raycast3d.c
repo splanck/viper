@@ -48,7 +48,10 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
-static void aabb3d_clamp_point_raw(const double *mn, const double *mx, const double *point, double *closest) {
+static void aabb3d_clamp_point_raw(const double *mn,
+                                   const double *mx,
+                                   const double *point,
+                                   double *closest) {
     closest[0] = clampd(point[0], mn[0], mx[0]);
     closest[1] = clampd(point[1], mn[1], mx[1]);
     closest[2] = clampd(point[2], mn[2], mx[2]);
@@ -109,8 +112,8 @@ static int mat4d_invert(const double *m, double *out) {
              m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
     inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
               m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
-             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
     inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
              m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
     inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
@@ -119,12 +122,12 @@ static int mat4d_invert(const double *m, double *out) {
               m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
     inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
              m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
-             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
-              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
-              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     {
         double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
@@ -375,9 +378,11 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
                             world_max[axis] = p[axis];
                     }
                 }
-                if (rt_ray3d_intersect_aabb_raw(world_origin, world_dir, world_min, world_max) < 0.0)
+                if (rt_ray3d_intersect_aabb_raw(world_origin, world_dir, world_min, world_max) <
+                    0.0)
                     return NULL;
-            } else if (rt_ray3d_intersect_aabb_raw(obj_origin, obj_dir, bounds_min, bounds_max) < 0.0) {
+            } else if (rt_ray3d_intersect_aabb_raw(obj_origin, obj_dir, bounds_min, bounds_max) <
+                       0.0) {
                 return NULL;
             }
         }
@@ -422,7 +427,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
                     continue;
                 {
                     double inv_det = 1.0 / det;
-                    double tvx = obj_origin[0] - ax, tvy = obj_origin[1] - ay, tvz = obj_origin[2] - az;
+                    double tvx = obj_origin[0] - ax, tvy = obj_origin[1] - ay,
+                           tvz = obj_origin[2] - az;
                     double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
                     if (u < 0.0 || u > 1.0)
                         continue;
@@ -461,9 +467,15 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
                 return NULL;
 
             {
-                double a[3] = {m->vertices[best_i0].pos[0], m->vertices[best_i0].pos[1], m->vertices[best_i0].pos[2]};
-                double b[3] = {m->vertices[best_i1].pos[0], m->vertices[best_i1].pos[1], m->vertices[best_i1].pos[2]};
-                double c[3] = {m->vertices[best_i2].pos[0], m->vertices[best_i2].pos[1], m->vertices[best_i2].pos[2]};
+                double a[3] = {m->vertices[best_i0].pos[0],
+                               m->vertices[best_i0].pos[1],
+                               m->vertices[best_i0].pos[2]};
+                double b[3] = {m->vertices[best_i1].pos[0],
+                               m->vertices[best_i1].pos[1],
+                               m->vertices[best_i1].pos[2]};
+                double c[3] = {m->vertices[best_i2].pos[0],
+                               m->vertices[best_i2].pos[1],
+                               m->vertices[best_i2].pos[2]};
                 if (has_transform) {
                     const double *model = ((mat4_impl *)transform_obj)->m;
                     mat4_transform_point_raw(model, a, a);
@@ -492,8 +504,9 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             }
 
             {
-                double nlen = sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
-                                   best_normal[2] * best_normal[2]);
+                double nlen =
+                    sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
+                         best_normal[2] * best_normal[2]);
                 if (nlen > 1e-8) {
                     best_normal[0] /= nlen;
                     best_normal[1] /= nlen;
@@ -771,4 +784,6 @@ int8_t rt_capsule3d_aabb_overlaps(
     }
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

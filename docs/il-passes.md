@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # IL Optimization Passes
@@ -251,8 +251,12 @@ Dominator-tree-scoped common subexpression elimination:
 - **Commutative normalization**: Uses the same `ValueKey` canonical form as GVN so `add a,b` and `add b,a`
   share a single table entry.
 - **Pure ops only**: Only instructions passing `makeValueKey` are eligible (no memory ops, calls, or terminators).
+- **Textual ordering guard**: Each available expression is stored as `AvailableExpr{value, block}`. Before
+  replacing, `isTextuallyAvailable()` verifies the defining block appears at or before the use block in the
+  function's block list. This prevents replacements where a dominator is textually later (e.g., entry→late→update
+  where late dominates update but appears after it), which would create an illegal use-before-def in the IL.
 - **Signature**: `bool runEarlyCSE(Module &M, Function &F)` — module reference needed for CFGContext construction.
-- **Tests**: `test_il_earlycse_domtree` — cross-block elimination, sibling-branch non-elimination.
+- **Tests**: `test_il_earlycse_domtree` — cross-block elimination, sibling-branch non-elimination, textually-unsafe cross-block CSE rejection.
 
 ## ValueKey (CSE/GVN Support)
 
@@ -305,7 +309,13 @@ Direct-call graph with strongly connected component analysis:
 - Assigns value numbers to expressions using dominator-tree-scoped hash tables.
 - Eliminates redundant computations including loads (load elimination) when no intervening store exists.
 - Uses `ValueKey` canonical forms for commutative normalization.
+- Available values stored as `vector<AvailableValue>` (searched most-recent-first) per expression key,
+  enabling multiple definitions of the same expression across different dominator-tree paths.
+- **Textual ordering guard**: Same `isTextuallyAvailable()` check as EarlyCSE — replacements are only
+  applied when the defining block appears at or before the use block in the function's block list.
+  Prevents use-before-def violations when a dominator appears later textually.
 - Implementation: `src/il/transform/GVN.cpp`
+- **Tests**: `test_GVN` — cross-block CSE, redundant load elimination, textual order guard for load elimination.
 
 ## LICM (Loop-Invariant Code Motion)
 
@@ -379,7 +389,7 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | `test_il_canonical_pipeline.cpp` | 4 | O1/O2 pass registration, SCCP execution via canonical pipeline |
 | `test_il_mem2reg_nonentry.cpp` | 2 | Non-entry-block alloca promotion, domination-filtered promotion |
 | `test_il_inline_threshold.cpp` | 3 | New default thresholds (80/8/3), 50-instr inline, oversized rejection |
-| `test_il_earlycse_domtree.cpp` | 2 | Cross-block CSE via domtree, sibling-branch non-elimination |
+| `test_il_earlycse_domtree.cpp` | 3 | Cross-block CSE via domtree, sibling-branch non-elimination, textually-unsafe rejection |
 | `test_il_callgraph_scc.cpp` | 4 | Linear chain SCC ordering, mutual recursion, self-recursion, isRecursive |
 
 ### SCCP ↔ CheckOpt Integration (2026-02-17)

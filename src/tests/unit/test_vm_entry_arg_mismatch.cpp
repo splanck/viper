@@ -75,6 +75,7 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
 
     return true;
 }
+
 Module buildEntryArgModule() {
     Module module;
     il::build::IRBuilder builder(module);

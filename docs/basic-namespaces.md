@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper BASIC Namespaces — Reference
@@ -15,27 +15,11 @@ see [basic-grammar.md](basic-grammar.md).
 Namespaces organize types (classes and interfaces) into hierarchical groups, preventing name collisions and improving
 code clarity. The namespace system includes:
 
-- **Namespace aliases**: Create shorthand names for long namespace paths
-- **NAMESPACE declarations**: Define nested namespace hierarchies
-- **Type resolution**: Automatic search through namespace hierarchy and imports
-- **USING directives**: Import namespaces for unqualified type references
-
-## Track A Implementation — Complete
-
-Track A is fully implemented and includes:
-
-- Syntax: `NAMESPACE A.B ... END NAMESPACE` (dotted segments form a nested hierarchy)
-- Declarations: procedures (SUB/FUNCTION) and types inside a namespace are considered fully-qualified at that path (
-  e.g., `A.B.F`, `A.Point`)
-- **USING directives**: Import namespaces for unqualified type references (both simple and aliased forms)
-- **Namespace aliases**: Create shorthand names with `USING Alias = Full.Path`
-- Type resolution algorithm: searches current namespace → parent namespaces → USING imports → global
-- Calls:
-    - Qualified: `A.B.F()` calls the exact fully-qualified procedure
-    - Unqualified: resolves via current namespace, parent-walk, and USING imports
-- Case-insensitive: all segments and identifiers are matched ignoring case. The following are equivalent: `Namespace`,
-  `NAMESPACE`, `nameSpace`; and `A.B.F` ≡ `a.b.f` for lookup and duplicate checks
-- Nine diagnostic error codes (E_NS_001 through E_NS_009) for comprehensive error handling
+- **NAMESPACE declarations** — `NAMESPACE A.B ... END NAMESPACE` (dotted segments form a nested hierarchy)
+- **USING directives** — Import namespaces for unqualified type references (simple and aliased forms)
+- **Type resolution** — Automatic search through current namespace → parent namespaces → USING imports → global
+- **Case-insensitive** — All segments and identifiers are matched ignoring case (`A.B.F` ≡ `a.b.f`)
+- **Nine diagnostic error codes** (E_NS_001 through E_NS_009) for comprehensive error handling
 
 ### Basic Examples
 
@@ -116,17 +100,6 @@ Both calls succeed. Without the USING directive, only the qualified call (`Lib.P
 - Identifiers and each segment of qualified names are compared case-insensitively
 - Canonicalization uses ASCII lowercase for resolution and duplicate checks
 - Examples (all equivalent): `A.B.F`, `a.b.f`, `A.b.f`, `a.B.F`
-
-## Known Limitations
-
-Current implementation has the following limitations:
-
-- **Case-sensitive qualified procedure calls**: Lowercase qualified calls like `a.b.f()` fail when the procedure is
-  defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
-- **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its
-  own imports.
-- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
-  directives to enable unqualified type references.
 
 ## NAMESPACE Declaration
 
@@ -1201,7 +1174,16 @@ END
 
 ---
 
-## Future Enhancements (Track B)
+## Known Limitations
+
+- **Case-sensitive qualified procedure calls**: Lowercase qualified calls like `a.b.f()` fail when the procedure is
+  defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
+- **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its
+  own imports.
+- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
+  directives to enable unqualified type references.
+
+## Future Enhancements
 
 The following features are planned for future releases:
 

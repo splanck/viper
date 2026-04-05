@@ -38,12 +38,12 @@ struct CallArgLayoutConfig {
 
 /// @brief Placement for one source-order argument after ABI assignment.
 struct CallArgLocation {
-    std::size_t argIndex{0};        ///< Source-order argument index.
+    std::size_t argIndex{0}; ///< Source-order argument index.
     CallArgClass cls{CallArgClass::GPR};
-    bool isVariadic{false};         ///< True when this argument is part of a variadic tail.
-    bool inRegister{false};         ///< True when the argument is passed in a register.
-    std::size_t regIndex{0};        ///< Class-specific or positional register slot index.
-    std::size_t stackSlotIndex{0};  ///< 0-based stack slot index among spilled arguments.
+    bool isVariadic{false};        ///< True when this argument is part of a variadic tail.
+    bool inRegister{false};        ///< True when the argument is passed in a register.
+    std::size_t regIndex{0};       ///< Class-specific or positional register slot index.
+    std::size_t stackSlotIndex{0}; ///< 0-based stack slot index among spilled arguments.
 };
 
 /// @brief Aggregate ABI placement summary for a call or function entry.

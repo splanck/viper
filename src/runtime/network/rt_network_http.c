@@ -39,7 +39,7 @@
 #endif
 
 // Forward declarations (defined in rt_io.c).
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
 
 //=============================================================================
@@ -1845,7 +1845,8 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
 
     rt_string value = rt_unbox_str(boxed);
     const char *value_cstr = rt_string_cstr(value);
-    rt_string copy = rt_string_from_bytes(value_cstr ? value_cstr : "", value_cstr ? strlen(value_cstr) : 0);
+    rt_string copy =
+        rt_string_from_bytes(value_cstr ? value_cstr : "", value_cstr ? strlen(value_cstr) : 0);
     rt_string_unref(value);
     return copy;
 }

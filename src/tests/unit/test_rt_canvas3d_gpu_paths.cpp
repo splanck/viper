@@ -74,20 +74,31 @@ static float *last_prev_instance_matrices_copy = nullptr;
 static int32_t last_readback_w = 0;
 static int32_t last_readback_h = 0;
 static int32_t last_readback_stride = 0;
+
 static void noop_end_frame(void *) {}
-static void record_draw_skybox(void *, const void *) { skybox_draw_calls++; }
+
+static void record_draw_skybox(void *, const void *) {
+    skybox_draw_calls++;
+}
+
 static void reset_shadow_counts(void) {
     shadow_begin_calls = 0;
     shadow_draw_calls = 0;
     shadow_end_calls = 0;
 }
+
 static void record_shadow_begin(void *, float *, int32_t, int32_t, const float *) {
     shadow_begin_calls++;
 }
+
 static void record_shadow_draw(void *, const vgfx3d_draw_cmd_t *) {
     shadow_draw_calls++;
 }
-static void record_shadow_end(void *, float) { shadow_end_calls++; }
+
+static void record_shadow_end(void *, float) {
+    shadow_end_calls++;
+}
+
 static void reset_recorded_instancing(void) {
     std::free(last_instance_matrices_copy);
     std::free(last_prev_instance_matrices_copy);
@@ -97,6 +108,7 @@ static void reset_recorded_instancing(void) {
     last_instance_count = 0;
     std::memset(&last_instanced_cmd, 0, sizeof(last_instanced_cmd));
 }
+
 static void record_draw_instanced(void *,
                                   vgfx_window_t,
                                   const vgfx3d_draw_cmd_t *cmd,
@@ -119,7 +131,8 @@ static void record_draw_instanced(void *,
             last_instance_matrices = last_instance_matrices_copy;
         }
     }
-    if (cmd && cmd->prev_instance_matrices && cmd->has_prev_instance_matrices && instance_count > 0) {
+    if (cmd && cmd->prev_instance_matrices && cmd->has_prev_instance_matrices &&
+        instance_count > 0) {
         size_t bytes = static_cast<size_t>(instance_count) * 16u * sizeof(float);
         last_prev_instance_matrices_copy = (float *)std::malloc(bytes);
         if (last_prev_instance_matrices_copy) {
@@ -130,6 +143,7 @@ static void record_draw_instanced(void *,
         }
     }
 }
+
 static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     last_readback_w = w;
     last_readback_h = h;
@@ -265,7 +279,8 @@ static void test_cpu_skinning_fallback_for_software(void) {
     EXPECT_TRUE(canvas.temp_buf_count == 1, "Software skinned draw allocates CPU temp buffer");
     EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
                 "Software skinned draw uses CPU-skinned vertex buffer");
-    EXPECT_TRUE(draws[0].cmd.bone_palette != nullptr, "Software skinned draw still forwards bone palette");
+    EXPECT_TRUE(draws[0].cmd.bone_palette != nullptr,
+                "Software skinned draw still forwards bone palette");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -287,17 +302,19 @@ static void test_gpu_morph_payload_for_opengl(void) {
     rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 2, "OpenGL morphed draw registers packed deltas and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 2,
+                "OpenGL morphed draw registers packed deltas and weights");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "OpenGL morphed draw keeps original mesh vertices for GPU morphing");
-    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr, "OpenGL morphed draw forwards packed morph deltas");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
+                "OpenGL morphed draw forwards packed morph deltas");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas == nullptr,
                 "OpenGL morphed draw leaves normal-delta payload null when absent");
-    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr, "OpenGL morphed draw forwards packed morph weights");
+    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr,
+                "OpenGL morphed draw forwards packed morph weights");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "OpenGL morphed draw forwards shape count");
     if (draws[0].cmd.morph_deltas && draws[0].cmd.morph_weights) {
-        EXPECT_TRUE(draws[0].cmd.morph_deltas[0] == 1.0f &&
-                        draws[0].cmd.morph_deltas[1] == 2.0f &&
+        EXPECT_TRUE(draws[0].cmd.morph_deltas[0] == 1.0f && draws[0].cmd.morph_deltas[1] == 2.0f &&
                         draws[0].cmd.morph_deltas[2] == 3.0f,
                     "OpenGL morphed draw packs vertex deltas in XYZ order");
         EXPECT_TRUE(draws[0].cmd.morph_weights[0] == 0.5f,
@@ -324,11 +341,14 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 2, "D3D11 morphed draw registers packed deltas and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 2,
+                "D3D11 morphed draw registers packed deltas and weights");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "D3D11 morphed draw keeps original mesh vertices for GPU morphing");
-    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr, "D3D11 morphed draw forwards packed morph deltas");
-    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr, "D3D11 morphed draw forwards packed morph weights");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
+                "D3D11 morphed draw forwards packed morph deltas");
+    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr,
+                "D3D11 morphed draw forwards packed morph weights");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "D3D11 morphed draw forwards shape count");
 
     cleanup_fake_canvas(&canvas);
@@ -443,8 +463,7 @@ static void test_cpu_morph_fallback_for_software(void) {
     EXPECT_TRUE(canvas.temp_buf_count == 1, "Software morphed draw allocates one CPU temp buffer");
     EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
                 "Software morphed draw uses CPU-morphed vertices");
-    EXPECT_TRUE(draws[0].cmd.morph_deltas == nullptr &&
-                    draws[0].cmd.morph_weights == nullptr &&
+    EXPECT_TRUE(draws[0].cmd.morph_deltas == nullptr && draws[0].cmd.morph_weights == nullptr &&
                     draws[0].cmd.morph_shape_count == 0,
                 "Software morphed draw leaves GPU morph payload empty");
 
@@ -469,8 +488,7 @@ static void test_env_map_payload_forwarded(void) {
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Env-map draw enqueues one draw");
     EXPECT_TRUE(draws[0].cmd.env_map == cubemap, "Env-map draw forwards cubemap payload");
-    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.75f,
-                "Env-map draw forwards reflectivity payload");
+    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.75f, "Env-map draw forwards reflectivity payload");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -703,7 +721,8 @@ static void test_instanced_material_payload_forwarded(void) {
     rt_canvas3d_draw_instanced(&canvas, batch);
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
 
-    EXPECT_TRUE(canvas.draw_count == 1, "Transparent instanced material draw enqueues one mesh draw");
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Transparent instanced material draw enqueues one mesh draw");
     EXPECT_TRUE(last_instance_count == 0,
                 "Transparent instanced material draw avoids backend instancing so it can sort");
     EXPECT_TRUE(draws[0].cmd.texture == px, "Instanced draw forwards diffuse texture");
@@ -711,10 +730,8 @@ static void test_instanced_material_payload_forwarded(void) {
     EXPECT_TRUE(draws[0].cmd.specular_map == px, "Instanced draw forwards specular map");
     EXPECT_TRUE(draws[0].cmd.emissive_map == px, "Instanced draw forwards emissive map");
     EXPECT_TRUE(draws[0].cmd.env_map == cubemap, "Instanced draw forwards environment map");
-    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.55f,
-                "Instanced draw forwards reflectivity");
-    EXPECT_TRUE(draws[0].cmd.specular[0] == 0.9f &&
-                    draws[0].cmd.specular[1] == 0.7f &&
+    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.55f, "Instanced draw forwards reflectivity");
+    EXPECT_TRUE(draws[0].cmd.specular[0] == 0.9f && draws[0].cmd.specular[1] == 0.7f &&
                     draws[0].cmd.specular[2] == 0.5f,
                 "Instanced draw forwards specular color");
     EXPECT_TRUE(draws[0].cmd.diffuse_color[3] == 0.8f,
@@ -758,11 +775,13 @@ static void test_instanced_runtime_culls_outside_frustum(void) {
     reset_canvas_frame(&canvas, 2);
     rt_canvas3d_draw_instanced(&canvas, batch);
     rt_canvas3d_end(&canvas);
-    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
-                "Instanced culling keeps previous-transform history enabled for surviving instances");
-    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr &&
-                    last_instanced_cmd.prev_instance_matrices[3] == 0.0f,
-                "Instanced culling keeps previous-transform history aligned to surviving instances");
+    EXPECT_TRUE(
+        last_instanced_cmd.has_prev_instance_matrices == 1,
+        "Instanced culling keeps previous-transform history enabled for surviving instances");
+    EXPECT_TRUE(
+        last_instanced_cmd.prev_instance_matrices != nullptr &&
+            last_instanced_cmd.prev_instance_matrices[3] == 0.0f,
+        "Instanced culling keeps previous-transform history aligned to surviving instances");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Instanced culling cleanup remains correct on later frames");
 

@@ -30,8 +30,8 @@
 #include <cstring>
 
 #ifdef _WIN32
-#include <process.h>
 #include <direct.h>
+#include <process.h>
 #define GETPID _getpid
 #else
 #include <sys/stat.h>

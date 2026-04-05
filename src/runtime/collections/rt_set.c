@@ -41,7 +41,7 @@
 
 #include <stdlib.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// Initial number of buckets.
 #define SET_INITIAL_CAPACITY 16

@@ -39,13 +39,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_string_internal.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_string_internal.h"
 
 #include <assert.h>
 #include <ctype.h>

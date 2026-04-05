@@ -33,12 +33,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_seq_internal.h"
 #include "rt_seq.h"
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
+#include "rt_seq_internal.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -1179,4 +1179,3 @@ void *rt_seq_clone(void *obj) {
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     return rt_seq_slice(obj, 0, seq->len);
 }
-

@@ -419,11 +419,10 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Without this, non-writable ObjC sections (e.g., __objc_classname) get
     // VAs after writable sections, causing __TEXT/__DATA segment overlap in
     // the Mach-O executable (SIGKILL on macOS ARM64).
-    std::stable_sort(layout.sections.begin(),
-                     layout.sections.end(),
-                     [](const OutputSection &a, const OutputSection &b) {
-                         return permClass(a) < permClass(b);
-                     });
+    std::stable_sort(
+        layout.sections.begin(),
+        layout.sections.end(),
+        [](const OutputSection &a, const OutputSection &b) { return permClass(a) < permClass(b); });
 
     assignSectionVirtualAddresses(layout, platform);
 

@@ -32,7 +32,7 @@ namespace viper::codegen::linker {
 
 /// DLL import for PE linking.
 struct DllImport {
-    std::string dllName; ///< DLL name (e.g., "kernel32.dll").
+    std::string dllName;                ///< DLL name (e.g., "kernel32.dll").
     std::vector<std::string> functions; ///< Linker-visible symbol names.
     std::unordered_map<std::string, std::string>
         importNames; ///< Optional PE import-name overrides keyed by symbol name.

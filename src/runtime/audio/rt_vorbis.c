@@ -101,7 +101,7 @@ typedef struct {
     // Codeword lengths (0 = unused entry)
     uint8_t *lengths;
     // VQ lookup: multiplicands for type 1/2 lookups
-    float *vq_table;    // dimensions * entries floats (expanded from multiplicands)
+    float *vq_table; // dimensions * entries floats (expanded from multiplicands)
     int lookup_type;
     float minimum_value;
     float delta_value;
@@ -193,8 +193,7 @@ static int codebook_decode_scalar(vorbis_codebook_t *cb, vorbis_bits_t *b) {
 
 static void codebook_decode_vq(vorbis_codebook_t *cb, int entry, float *out) {
     if (cb->vq_table && entry >= 0 && entry < cb->entries) {
-        memcpy(out, cb->vq_table + entry * cb->dimensions,
-               (size_t)cb->dimensions * sizeof(float));
+        memcpy(out, cb->vq_table + entry * cb->dimensions, (size_t)cb->dimensions * sizeof(float));
     } else {
         memset(out, 0, (size_t)cb->dimensions * sizeof(float));
     }
@@ -330,8 +329,12 @@ static void fft_radix2(float *re, float *im, int n) {
         j ^= bit;
         if (i < j) {
             float t;
-            t = re[i]; re[i] = re[j]; re[j] = t;
-            t = im[i]; im[i] = im[j]; im[j] = t;
+            t = re[i];
+            re[i] = re[j];
+            re[j] = t;
+            t = im[i];
+            im[i] = im[j];
+            im[j] = t;
         }
     }
     // Butterfly passes
@@ -462,8 +465,8 @@ static int decode_identification(vorbis_decoder_t *dec, const uint8_t *data, siz
         return -1;
 
     // Parse fields (all little-endian)
-    uint32_t version = data[7] | ((uint32_t)data[8] << 8) | ((uint32_t)data[9] << 16) |
-                       ((uint32_t)data[10] << 24);
+    uint32_t version =
+        data[7] | ((uint32_t)data[8] << 8) | ((uint32_t)data[9] << 16) | ((uint32_t)data[10] << 24);
     if (version != 0)
         return -1;
 
@@ -598,8 +601,7 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
                             off = (j / index_divisor) % lookup_values;
                         else
                             off = j * cb->dimensions + k;
-                        float val = cb->minimum_value +
-                                    (float)multiplicands[off] * cb->delta_value;
+                        float val = cb->minimum_value + (float)multiplicands[off] * cb->delta_value;
                         if (cb->sequence_p)
                             val += last;
                         cb->vq_table[j * cb->dimensions + k] = val;
@@ -781,8 +783,8 @@ int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
 // Audio packet decoding
 //===----------------------------------------------------------------------===//
 
-int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
-                         int16_t **out_pcm, int *out_samples) {
+int vorbis_decode_packet(
+    vorbis_decoder_t *dec, const uint8_t *data, size_t len, int16_t **out_pcm, int *out_samples) {
     if (!dec || !data || dec->headers_done != 7)
         return -1;
 
@@ -989,7 +991,7 @@ int vorbis_decode_packet(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
         // Decode classwords and unpack classifications
         {
             int classwords_per_ch = cb->dimensions;
-            for (int p = 0; p < parts_per_ch; ) {
+            for (int p = 0; p < parts_per_ch;) {
                 for (int c = 0; c < ch_count; c++) {
                     int cw = codebook_decode_scalar(cb, &bits);
                     if (cw < 0)

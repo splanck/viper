@@ -18,9 +18,7 @@ namespace viper::codegen::common {
 namespace {
 
 template <typename ClassAt>
-CallArgLayout planLayout(std::size_t count,
-                         ClassAt classAt,
-                         const CallArgLayoutConfig &config) {
+CallArgLayout planLayout(std::size_t count, ClassAt classAt, const CallArgLayoutConfig &config) {
     CallArgLayout layout{};
     layout.locations.reserve(count);
 
@@ -90,8 +88,7 @@ CallArgLayout planCallArgs(std::span<const CallArg> args, const CallArgLayoutCon
 
 CallArgLayout planParamClasses(std::span<const CallArgClass> classes,
                                const CallArgLayoutConfig &config) {
-    return planLayout(
-        classes.size(), [&](std::size_t index) { return classes[index]; }, config);
+    return planLayout(classes.size(), [&](std::size_t index) { return classes[index]; }, config);
 }
 
 } // namespace viper::codegen::common

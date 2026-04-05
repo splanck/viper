@@ -659,6 +659,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
 
+    viper_add_test(test_rt_trap_contracts ${VIPER_TESTS_DIR}/runtime/RTTrapContractTests.cpp)
+    target_link_libraries(test_rt_trap_contracts PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_trap_contracts test_rt_trap_contracts)
+
     viper_add_test(test_rt_errors_io ${VIPER_TESTS_DIR}/runtime/ErrorsIoTests.c)
     target_link_libraries(test_rt_errors_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_errors_io test_rt_errors_io)
@@ -918,6 +922,17 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_canvas_unavailable ${VIPER_TESTS_DIR}/runtime/RTCanvasUnavailableTests.cpp)
     target_link_libraries(test_rt_canvas_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_canvas_unavailable test_rt_canvas_unavailable)
+
+    viper_add_test(test_rt_graphics_surface_link ${VIPER_TESTS_DIR}/runtime/RTGraphicsSurfaceLinkTests.cpp)
+    target_link_libraries(test_rt_graphics_surface_link PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_graphics_surface_link test_rt_graphics_surface_link)
+
+    viper_add_test(test_rt_audio_unavailable ${VIPER_TESTS_DIR}/runtime/RTAudioUnavailableTests.cpp)
+    target_link_libraries(test_rt_audio_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    if (VIPER_ENABLE_AUDIO)
+        target_compile_definitions(test_rt_audio_unavailable PRIVATE VIPER_ENABLE_AUDIO=1)
+    endif ()
+    viper_add_ctest(test_rt_audio_unavailable test_rt_audio_unavailable)
 
     viper_add_test(test_rt_file_exhaustion ${VIPER_TESTS_DIR}/runtime/RTFileExhaustionTests.cpp)
     target_link_libraries(test_rt_file_exhaustion PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

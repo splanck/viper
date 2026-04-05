@@ -315,8 +315,7 @@ bool CoffWriter::write(const std::string &path,
     const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
     const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
     const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
-    const uint16_t numSections =
-        static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
+    const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
 
     std::vector<uint8_t> symtabBytes;
     std::vector<uint8_t> strtabBytes(4, 0);
@@ -472,8 +471,7 @@ bool CoffWriter::write(const std::string &path,
     if (hasPdata) {
         pdataDataOff = cursor;
         pdataRelocOff = pdataDataOff + pdataSize;
-        cursor =
-            static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+        cursor = static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {
@@ -639,8 +637,7 @@ bool CoffWriter::write(const std::string &path,
     const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
     const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
     const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
-    const uint16_t numSections =
-        static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
+    const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
 
     std::vector<uint8_t> symtabBytes;
     std::vector<uint8_t> strtabBytes(4, 0);
@@ -670,6 +667,7 @@ bool CoffWriter::write(const std::string &path,
         std::string name;
         uint16_t type = 0;
     };
+
     std::vector<PendingExternal> pendingExternals;
 
     std::vector<std::string> textSectionNames(textCount);
@@ -838,8 +836,7 @@ bool CoffWriter::write(const std::string &path,
     if (hasPdata) {
         pdataDataOff = cursor;
         pdataRelocOff = pdataDataOff + pdataSize;
-        cursor =
-            static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+        cursor = static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {

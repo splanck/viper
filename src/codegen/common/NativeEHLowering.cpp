@@ -177,7 +177,10 @@ static Instr makeCallVoid(const char *callee, std::vector<Value> operands = {}) 
     return instr;
 }
 
-static Instr makeCallResult(unsigned result, Type type, const char *callee, std::vector<Value> operands = {}) {
+static Instr makeCallResult(unsigned result,
+                            Type type,
+                            const char *callee,
+                            std::vector<Value> operands = {}) {
     Instr instr;
     instr.result = result;
     instr.op = Opcode::Call;
@@ -243,8 +246,8 @@ static Instr makeTrapFromErr(int32_t code) {
     return instr;
 }
 
-static std::vector<std::size_t> normalSuccessors(const Instr &terminator,
-                                                 const std::unordered_map<std::string, std::size_t> &blockIndex) {
+static std::vector<std::size_t> normalSuccessors(
+    const Instr &terminator, const std::unordered_map<std::string, std::size_t> &blockIndex) {
     std::vector<std::size_t> successors;
     switch (terminator.op) {
         case Opcode::Br:
@@ -268,9 +271,10 @@ static std::vector<std::size_t> normalSuccessors(const Instr &terminator,
     return successors;
 }
 
-static bool rewriteErrGetterForHandlerToken(const std::unordered_map<std::string, unsigned> &handlerErrParam,
-                                            const BasicBlock &block,
-                                            Instr &instr) {
+static bool rewriteErrGetterForHandlerToken(
+    const std::unordered_map<std::string, unsigned> &handlerErrParam,
+    const BasicBlock &block,
+    Instr &instr) {
     switch (instr.op) {
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
@@ -291,7 +295,8 @@ static bool rewriteErrGetterForHandlerToken(const std::unordered_map<std::string
     return true;
 }
 
-static std::vector<int> handlerEntryStackFor(const std::vector<ScopeInfo> &scopes, const std::string &handlerLabel) {
+static std::vector<int> handlerEntryStackFor(const std::vector<ScopeInfo> &scopes,
+                                             const std::string &handlerLabel) {
     for (const auto &scope : scopes) {
         if (scope.handlerLabel == handlerLabel)
             return scope.outerStack;
@@ -407,8 +412,8 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
             SiteInfo site;
             site.siteId = siteId;
             site.sameLabel = fn.name + ".__neh.site." + std::to_string(siteId);
-            site.nextLabel = isTerm ? invalidResumeLabel
-                                    : fn.name + ".__neh.cont." + std::to_string(siteId);
+            site.nextLabel =
+                isTerm ? invalidResumeLabel : fn.name + ".__neh.cont." + std::to_string(siteId);
             siteForInstr.emplace(PushKey{bi, ii}, site);
             scope.sites.push_back(site);
             handlerSites[scope.handlerLabel].push_back(site);
@@ -475,14 +480,15 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 const int scopeId = pushToScope.at(PushKey{bi, ii});
                 const auto &scope = scopes[static_cast<std::size_t>(scopeId)];
 
-                const unsigned frameTemp = reserveTemp(fn, "__neh.frame.alloc." + std::to_string(scopeId));
+                const unsigned frameTemp =
+                    reserveTemp(fn, "__neh.frame.alloc." + std::to_string(scopeId));
                 const unsigned setjmpTemp = reserveTemp(fn, "__neh.sj." + std::to_string(scopeId));
-                const unsigned caughtTemp = reserveTemp(fn, "__neh.caught." + std::to_string(scopeId));
+                const unsigned caughtTemp =
+                    reserveTemp(fn, "__neh.caught." + std::to_string(scopeId));
                 const std::string afterLabel = newLabel("after_push");
                 const std::string handlerEntryLabel = newLabel("handler_entry");
 
-                current.instructions.push_back(
-                    makeCallResult(frameTemp, ptrTy(), kFrameAlloc, {}));
+                current.instructions.push_back(makeCallResult(frameTemp, ptrTy(), kFrameAlloc, {}));
                 current.instructions.push_back(
                     makeStore(Value::temp(scope.slotTemp), Value::temp(frameTemp)));
                 current.instructions.push_back(makeCallVoid(kFramePush, {Value::temp(frameTemp)}));
@@ -504,9 +510,11 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
 
                 BasicBlock handlerEntry;
                 handlerEntry.label = handlerEntryLabel;
-                const unsigned frameLoad = reserveTemp(fn, "__neh.frame.load." + std::to_string(scopeId));
+                const unsigned frameLoad =
+                    reserveTemp(fn, "__neh.frame.load." + std::to_string(scopeId));
                 const unsigned siteTemp = reserveTemp(fn, "__neh.site." + std::to_string(scopeId));
-                handlerEntry.instructions.push_back(makeLoad(frameLoad, Value::temp(scope.slotTemp)));
+                handlerEntry.instructions.push_back(
+                    makeLoad(frameLoad, Value::temp(scope.slotTemp)));
                 handlerEntry.instructions.push_back(
                     makeCallVoid(kFramePop, {Value::temp(frameLoad)}));
                 handlerEntry.instructions.push_back(
@@ -525,7 +533,8 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                     if (handlerBlock.params.size() > 1)
                         handlerArgs.push_back(Value::temp(siteTemp));
                 }
-                handlerEntry.instructions.push_back(makeBr(scope.handlerLabel, std::move(handlerArgs)));
+                handlerEntry.instructions.push_back(
+                    makeBr(scope.handlerLabel, std::move(handlerArgs)));
                 handlerEntry.terminated = true;
                 appendBlock(std::move(handlerEntry));
 
@@ -541,10 +550,11 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                     const int scopeId = active.back();
                     active.pop_back();
                     const auto &scope = scopes[static_cast<std::size_t>(scopeId)];
-                    const unsigned frameLoad =
-                        reserveTemp(fn, "__neh.pop.frame." + std::to_string(scopeId) + "." +
-                                            std::to_string(ii));
-                    current.instructions.push_back(makeLoad(frameLoad, Value::temp(scope.slotTemp)));
+                    const unsigned frameLoad = reserveTemp(
+                        fn,
+                        "__neh.pop.frame." + std::to_string(scopeId) + "." + std::to_string(ii));
+                    current.instructions.push_back(
+                        makeLoad(frameLoad, Value::temp(scope.slotTemp)));
                     current.instructions.push_back(
                         makeCallVoid(kFramePop, {Value::temp(frameLoad)}));
                     current.instructions.push_back(
@@ -560,10 +570,9 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 handlerScopes.find(orig.label) != handlerScopes.end()) {
                 rewritten.changed = true;
                 if (instr.op == Opcode::ResumeLabel) {
-                    current.instructions.push_back(makeBr(instr.labels.empty() ? invalidResumeLabel
-                                                                              : instr.labels[0],
-                                                         instr.brArgs.empty() ? std::vector<Value>{}
-                                                                             : instr.brArgs[0]));
+                    current.instructions.push_back(
+                        makeBr(instr.labels.empty() ? invalidResumeLabel : instr.labels[0],
+                               instr.brArgs.empty() ? std::vector<Value>{} : instr.brArgs[0]));
                     current.terminated = true;
                     appendBlock(std::move(current));
                     current = {};
@@ -582,8 +591,9 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                         const auto &siteList = siteListIt->second;
                         for (std::size_t si = 0; si < siteList.size(); ++si) {
                             const auto &site = siteList[si];
-                            const std::string fallback =
-                                (si + 1 < siteList.size()) ? newLabel("resume_dispatch") : invalidResumeLabel;
+                            const std::string fallback = (si + 1 < siteList.size())
+                                                             ? newLabel("resume_dispatch")
+                                                             : invalidResumeLabel;
                             BasicBlock dispatch;
                             if (si == 0) {
                                 dispatch = std::move(current);

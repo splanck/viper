@@ -35,7 +35,7 @@
 #include <pthread.h>
 #endif
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 // Forward declarations for thread pool (from rt_threadpool.h)
 extern void *rt_threadpool_new(int64_t size);

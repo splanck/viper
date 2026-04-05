@@ -34,8 +34,8 @@ void rt_water3d_set_normal_map(void *water, void *pixels);
 void rt_water3d_set_env_map(void *water, void *cubemap);
 void rt_water3d_set_reflectivity(void *water, double r);
 void rt_water3d_set_resolution(void *water, int64_t resolution);
-void rt_water3d_add_wave(void *water, double dirX, double dirZ,
-                          double speed, double amplitude, double wavelength);
+void rt_water3d_add_wave(
+    void *water, double dirX, double dirZ, double speed, double amplitude, double wavelength);
 void rt_water3d_clear_waves(void *water);
 void rt_water3d_update(void *water, double dt);
 void rt_canvas3d_draw_water(void *canvas, void *water, void *camera);

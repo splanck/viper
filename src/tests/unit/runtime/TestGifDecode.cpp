@@ -82,23 +82,48 @@ TEST(GifDecodeTest, Minimal1x1Gif87a) {
     // GIF87a header + 1-color GCT (red) + 1x1 image + LZW data + trailer
     uint8_t gif[] = {
         // Header: "GIF87a"
-        'G', 'I', 'F', '8', '7', 'a',
+        'G',
+        'I',
+        'F',
+        '8',
+        '7',
+        'a',
         // Logical screen descriptor: width=1, height=1, GCT flag=1, GCT size=0 (2 colors)
-        0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00,
+        0x01,
+        0x00,
+        0x01,
+        0x00,
+        0x80,
+        0x00,
+        0x00,
         // Global color table: 2 entries (red, black)
-        0xFF, 0x00, 0x00, // color 0: red
-        0x00, 0x00, 0x00, // color 1: black
+        0xFF,
+        0x00,
+        0x00, // color 0: red
+        0x00,
+        0x00,
+        0x00, // color 1: black
         // Image descriptor: left=0, top=0, width=1, height=1, no LCT, not interlaced
-        0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+        0x2C,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
         // LZW min code size = 2
         0x02,
         // Sub-block: 2 bytes of LZW data (clear=4, index_0=0, end=5 packed LSB-first)
-        0x02, 0x44, 0x01,
+        0x02,
+        0x44,
+        0x01,
         // Block terminator
         0x00,
         // Trailer
-        0x3B
-    };
+        0x3B};
 
     const char *path = write_temp("minimal.gif", gif, sizeof(gif));
 

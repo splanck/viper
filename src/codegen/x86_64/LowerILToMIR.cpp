@@ -522,8 +522,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
         std::vector<CallArgClass> paramClasses;
         paramClasses.reserve(entryParams.paramIds.size());
         for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
-            const auto kind =
-                (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p] : ILValue::Kind::I64;
+            const auto kind = (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p]
+                                                                  : ILValue::Kind::I64;
             paramClasses.push_back(regClassFor(kind) == RegClass::XMM ? CallArgClass::FPR
                                                                       : CallArgClass::GPR);
         }
@@ -538,8 +538,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
                                 .numNamedArgs = paramClasses.size()});
         for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
             const int paramId = entryParams.paramIds[p];
-            const auto kind =
-                (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p] : ILValue::Kind::I64;
+            const auto kind = (p < entryParams.paramKinds.size()) ? entryParams.paramKinds[p]
+                                                                  : ILValue::Kind::I64;
             if (paramId < 0) {
                 continue;
             }

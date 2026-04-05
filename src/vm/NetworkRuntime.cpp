@@ -71,8 +71,8 @@ static const il::core::Function *resolveEntryFunction(const il::core::Module &mo
 
 static void validateHttpHandlerSignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
-    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 || fn.params[0].type.kind != Kind::Ptr ||
-        fn.params[1].type.kind != Kind::Ptr) {
+    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 ||
+        fn.params[0].type.kind != Kind::Ptr || fn.params[1].type.kind != Kind::Ptr) {
         rt_trap("HttpServer.BindHandler: invalid handler signature");
     }
 }
@@ -110,11 +110,12 @@ static void network_http_server_bind_handler_handler(void **args, void *result) 
     validateHttpHandlerSignature(*entryFn);
 
     auto *payload = new VmHttpHandlerPayload{&module, std::move(program), entryFn};
-    rt_http_server_bind_handler_dispatch(server,
-                                         tag,
-                                         reinterpret_cast<void *>(&vm_http_handler_dispatch),
-                                         payload,
-                                         reinterpret_cast<void *>(&vm_http_handler_payload_destroy));
+    rt_http_server_bind_handler_dispatch(
+        server,
+        tag,
+        reinterpret_cast<void *>(&vm_http_handler_dispatch),
+        payload,
+        reinterpret_cast<void *>(&vm_http_handler_payload_destroy));
 }
 
 } // namespace

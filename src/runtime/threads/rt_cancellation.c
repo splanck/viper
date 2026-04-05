@@ -31,6 +31,7 @@
 
 #include "rt_cancellation.h"
 
+#include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -45,8 +46,6 @@
 #else
 #include <stdatomic.h>
 #endif
-
-extern void rt_trap(const char *msg);
 
 // --- Internal structures ---
 
@@ -100,7 +99,10 @@ static inline void cancel_store(rt_cancellation_data *data, int value) {
 void *rt_cancellation_new(void) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
     if (!obj) {
-        rt_trap("CancelToken.New: memory allocation failed");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CancelToken.New: memory allocation failed");
         return NULL;
     }
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
@@ -142,7 +144,10 @@ void rt_cancellation_reset(void *token) {
 void *rt_cancellation_linked(void *parent) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
     if (!obj) {
-        rt_trap("CancelToken.Linked: memory allocation failed");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CancelToken.Linked: memory allocation failed");
         return NULL;
     }
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
@@ -162,5 +167,8 @@ int8_t rt_cancellation_check(void *token) {
 /// @brief Throw the if cancelled of the cancellation.
 void rt_cancellation_throw_if_cancelled(void *token) {
     if (rt_cancellation_check(token))
-        rt_trap("OperationCancelledException: cancellation was requested");
+        rt_trap_raise_kind(RT_TRAP_KIND_INTERRUPT,
+                           0,
+                           -1,
+                           "OperationCancelledException: cancellation was requested");
 }

@@ -35,8 +35,7 @@ static int tests_run = 0;
     } while (0)
 
 static std::string base64_encode(const uint8_t *data, size_t len) {
-    static const char chars[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string out(((len + 2) / 3) * 4, '=');
     size_t i = 0;
     size_t j = 0;
@@ -117,8 +116,9 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
     std::string gltf_json =
         "{\n"
         "  \"asset\": {\"version\": \"2.0\"},\n"
-        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," + buffer_b64 +
-        "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) + "}],\n"
+        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," +
+        buffer_b64 + "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) +
+        "}],\n"
         "  \"bufferViews\": [\n"
         "    {\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36},\n"
         "    {\"buffer\": 0, \"byteOffset\": 36, \"byteLength\": 36},\n"
@@ -131,7 +131,9 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
         "    {\"bufferView\": 2, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC2\"},\n"
         "    {\"bufferView\": 3, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}\n"
         "  ],\n"
-        "  \"images\": [{\"uri\": \"data:image/png;base64," + image_b64 + "\"}],\n"
+        "  \"images\": [{\"uri\": \"data:image/png;base64," +
+        image_b64 +
+        "\"}],\n"
         "  \"textures\": [{\"source\": 0}],\n"
         "  \"materials\": [{\n"
         "    \"pbrMetallicRoughness\": {\n"

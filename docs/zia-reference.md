@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-03-05
+last-verified: 2026-04-05
 ---
 
 # Zia — Reference
@@ -520,6 +520,27 @@ value as Type           // Type cast
 (x: Integer) => x * 2           // Typed parameter
 ```
 
+### `is` Type Check
+
+The `is` operator checks whether a value's runtime type matches a target type, including subclass relationships:
+
+```viper
+class Animal { }
+class Dog : Animal { }
+class Cat : Animal { }
+
+func check(a: Animal) {
+    if a is Dog {
+        // true if a is Dog or any subclass of Dog
+    }
+    if a is Animal {
+        // always true for any Animal subclass
+    }
+}
+```
+
+The `is` expression returns a `Boolean`. It is polymorphic: `obj is Base` returns `true` when `obj`'s runtime type is `Base` or any subclass of `Base`.
+
 ---
 
 ## Statements
@@ -784,6 +805,53 @@ func start() {
 ```
 
 `await` is valid on values of type `Viper.Threads.Future`. The awaited value is unboxed back to the async function's declared return type.
+
+### Variadic Parameters
+
+The last parameter of a function may be variadic, accepting zero or more arguments that are collected into a `List`:
+
+```viper
+func sum(nums: ...Integer) -> Integer {
+    var total = 0;
+    for i in 0..nums.Length {
+        total = total + nums.Get(i);
+    }
+    return total;
+}
+
+func start() {
+    var s = sum(1, 2, 3);   // s == 6
+    var z = sum();           // z == 0
+}
+```
+
+Only the last parameter may be variadic. Inside the function body, the variadic parameter is a `List[T]`.
+
+### Single-Expression Functions
+
+Functions whose body is a single expression can use `=` shorthand:
+
+```viper
+func double(x: Integer) -> Integer = x * 2;
+func greet(name: String) -> String = "Hello, " + name;
+```
+
+This desugars to a `return` statement wrapping the expression. Works for both top-level functions and class methods.
+
+### Type Alias Declarations
+
+Create compile-time type aliases with `type`:
+
+```viper
+type Name = String;
+type Score = Integer;
+
+func display(name: Name, score: Score) {
+    Terminal.PrintLine(name + ": " + score.ToString());
+}
+```
+
+Aliases are resolved during semantic analysis and have no runtime representation.
 
 ### Global Variable Declaration
 
@@ -1443,6 +1511,7 @@ From highest to lowest:
 | 2 | `-` `!`/`not` `~` `&` (unary) | Right |
 | 3 | `*` `/` `%` | Left |
 | 4 | `+` `-` | Left |
+| 4.5 | `<<` `>>` | Left |
 | 5 | `<` `<=` `>` `>=` | Left |
 | 6 | `==` `!=` | Left |
 | 7 | `&` | Left |
@@ -1453,7 +1522,7 @@ From highest to lowest:
 | 12 | `??` | Left |
 | 13 | `..` `..=` | Left |
 | 14 | `? :` | Right |
-| 15 | `=` `+=` `-=` `*=` `/=` `%=` | Right |
+| 15 | `=` `+=` `-=` `*=` `/=` `%=` `<<=` `>>=` `&=` `|=` `^=` | Right |
 
 ---
 
@@ -1472,7 +1541,8 @@ hide        if          implements  in          interface
 is          match       module      namespace   new
 not         null        or          override    property
 return      self        static      struct      super
-throw       true        try         var         while
+throw       true        try         type        var
+while
 ```
 
 `async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
@@ -1507,15 +1577,16 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ### Declarations
 
 ```text
-decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl
+decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl | typeAlias
+typeAlias   ::= "type" IDENT "=" type ";"
 classDecl   ::= "class" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 structDecl  ::= "struct" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
 enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]
-funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] block
+funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (block | "=" expr ";")
 genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
-param       ::= IDENT ":" type ["=" expr]
+param       ::= IDENT ":" ["..."] type ["=" expr]
 varDecl     ::= ("var" | "final") IDENT [":" type] ["=" expr] ";"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
 qualifiedName ::= IDENT ("." IDENT)*

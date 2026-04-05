@@ -15,8 +15,8 @@
 
 #include "rt.hpp"
 #include "rt_internal.h"
-#include "rt_physics3d.h"
 #include "rt_joints3d.h"
+#include "rt_physics3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -394,8 +394,7 @@ static void test_aabb_sphere_collision() {
     rt_world3d_add(world, sph);
     rt_world3d_step(world, 1.0 / 60.0);
 
-    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
-                "aabb-sphere: collision detected");
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0, "aabb-sphere: collision detected");
 }
 
 static void test_capsule_aabb_collision() {
@@ -408,8 +407,7 @@ static void test_capsule_aabb_collision() {
     rt_world3d_add(world, wall);
     rt_world3d_step(world, 1.0 / 60.0);
 
-    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
-                "capsule-aabb: collision recorded");
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1, "capsule-aabb: collision recorded");
     {
         void *pos = rt_body3d_get_position(capsule);
         EXPECT_TRUE(rt_vec3_x(pos) < 1.2, "capsule-aabb: capsule pushed out of wall");
@@ -430,8 +428,7 @@ static void test_collision_event_count() {
     rt_world3d_add(world, b);
     rt_world3d_step(world, 1.0 / 60.0);
 
-    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
-                "collision event: 1 contact recorded");
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1, "collision event: 1 contact recorded");
 }
 
 static void test_collision_event_bodies() {

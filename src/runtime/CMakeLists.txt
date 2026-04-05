@@ -201,7 +201,6 @@ set(RT_EXEC_SOURCES
 set(RT_GRAPHICS_SOURCES
         graphics/rt_action.c
         graphics/rt_font.c
-        graphics/rt_graphics.c
         graphics/rt_canvas.c
         graphics/rt_drawing.c
         graphics/rt_drawing_advanced.c
@@ -281,18 +280,67 @@ set(RT_GRAPHICS_SOURCES
         graphics/vgfx3d_backend_utils.c
 )
 
+set(RT_GRAPHICS_PLATFORM_SOURCES)
+
+set(RT_GRAPHICS_DISABLED_SOURCES
+        graphics/rt_action.c
+        graphics/rt_font.c
+        graphics/rt_gui_app.c
+        graphics/rt_gui_codeeditor.c
+        graphics/rt_gui_messagebox.c
+        graphics/rt_gui_filedialog.c
+        graphics/rt_gui_findbar.c
+        graphics/rt_gui_features.c
+        graphics/rt_gui_menus.c
+        graphics/rt_gui_system.c
+        graphics/rt_gui_widgets.c
+        graphics/rt_gui_widgets_complex.c
+        graphics/rt_input.c
+        graphics/rt_input_pad.c
+        graphics/rt_inputmgr.c
+        graphics/rt_keychord.c
+        graphics/rt_mat3.c
+        graphics/rt_mat4.c
+        graphics/rt_vec2.c
+        graphics/rt_vec3.c
+        graphics/rt_quat.c
+        graphics/rt_spline.c
+        graphics/rt_physics2d.c
+        graphics/rt_physics2d_joint.c
+        graphics/rt_pixels.c
+        graphics/rt_pixels_io.c
+        graphics/rt_pixels_transform.c
+        graphics/rt_pixels_draw.c
+        graphics/rt_gif.c
+        graphics/rt_sprite.c
+        graphics/rt_spritesheet.c
+        graphics/rt_camera.c
+        graphics/rt_tilemap.c
+        graphics/rt_tilemap_io.c
+        graphics/rt_scene.c
+        graphics/rt_spritebatch.c
+        graphics/rt_texatlas.c
+        graphics/rt_bitmapfont.c
+        graphics/fonts/embedded_font.c
+        graphics/rt_avi.c
+        graphics/rt_theora.c
+        graphics/rt_ycbcr.c
+        graphics/vgfx3d_backend_utils.c
+        graphics/rt_graphics_stubs.c
+)
+
 # GPU backends (platform-conditional)
 if (APPLE)
-    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_metal.m)
-    list(APPEND RT_GRAPHICS_SOURCES graphics/rt_gui_macos_menu.m)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/vgfx3d_backend_metal.m)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/rt_gui_macos_menu.m)
     set_source_files_properties(graphics/vgfx3d_backend_metal.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
     set_source_files_properties(graphics/rt_gui_macos_menu.m PROPERTIES COMPILE_FLAGS "-fobjc-arc -U_POSIX_C_SOURCE")
 endif ()
 if (WIN32)
-    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_d3d11.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/vgfx3d_backend_d3d11.c)
 endif ()
 if (UNIX AND NOT APPLE)
-    list(APPEND RT_GRAPHICS_SOURCES graphics/vgfx3d_backend_opengl.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/vgfx3d_backend_opengl.c)
 endif ()
 
 set(RT_AUDIO_SOURCES
@@ -368,6 +416,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/arrays/rt_array_str.h
         ${CMAKE_CURRENT_SOURCE_DIR}/arrays/rt_array_obj.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_heap.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_list.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_box.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_object.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_oop.h
@@ -631,6 +680,10 @@ install(FILES ${RT_PUBLIC_HEADERS}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime
 )
 
+install(FILES ${RT_PUBLIC_HEADERS}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
+)
+
 install(FILES ${PROJECT_SOURCE_DIR}/include/viper/runtime/rt.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
 )
@@ -640,6 +693,7 @@ option(VIPER_ENABLE_GRAPHICS "Enable ViperGFX graphics support" ON)
 
 if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     message(STATUS "viper_runtime: Graphics support enabled")
+    target_sources(viper_rt_graphics_obj PRIVATE ${RT_GRAPHICS_PLATFORM_SOURCES})
     target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
     target_include_directories(viper_rt_graphics_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
@@ -654,8 +708,8 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     endif ()
 else ()
     message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
-    # Compile stub implementations so non-graphics builds link cleanly.
-    target_sources(viper_rt_graphics_obj PRIVATE graphics/rt_graphics_stubs.c)
+    # Replace backend-dependent sources with the no-backend runtime surface.
+    set_property(TARGET viper_rt_graphics_obj PROPERTY SOURCES ${RT_GRAPHICS_DISABLED_SOURCES})
 endif ()
 
 # Audio support (optional, enabled by default)

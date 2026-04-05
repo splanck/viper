@@ -56,17 +56,14 @@
 // B.2 — TLS 1.3 Certificate message parser
 // ---------------------------------------------------------------------------
 
-static int tls_next_certificate_entry(const uint8_t *list,
-                                      size_t list_len,
-                                      size_t *pos,
-                                      const uint8_t **cert_der,
-                                      size_t *cert_len) {
+static int tls_next_certificate_entry(
+    const uint8_t *list, size_t list_len, size_t *pos, const uint8_t **cert_der, size_t *cert_len) {
     if (!list || !pos || !cert_der || !cert_len || *pos + 5 > list_len)
         return -1;
 
     size_t entry_pos = *pos;
-    size_t der_len =
-        ((size_t)list[entry_pos] << 16) | ((size_t)list[entry_pos + 1] << 8) | (size_t)list[entry_pos + 2];
+    size_t der_len = ((size_t)list[entry_pos] << 16) | ((size_t)list[entry_pos + 1] << 8) |
+                     (size_t)list[entry_pos + 2];
     entry_pos += 3;
     if (der_len == 0 || entry_pos + der_len + 2 > list_len)
         return -1;
@@ -326,7 +323,8 @@ static int san_ext_has_ip_match(const uint8_t *ext_val,
         if (t == 0x87) {
             if (saw_ip_san)
                 *saw_ip_san = 1;
-            if (vl == expected_ip_len && memcmp(names + pos + hl, expected_ip, expected_ip_len) == 0)
+            if (vl == expected_ip_len &&
+                memcmp(names + pos + hl, expected_ip, expected_ip_len) == 0)
                 return 1;
         }
         pos += hl + vl;
@@ -383,7 +381,8 @@ static int tls_cert_has_matching_ip_san(const uint8_t *der,
                         if (after_oid < vl3) {
                             uint8_t nt;
                             size_t nvl, nhl;
-                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0) {
+                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) ==
+                                0) {
                                 if (nt == 0x01)
                                     after_oid += nhl + nvl;
                                 if (after_oid < vl3) {
@@ -619,8 +618,11 @@ int tls_verify_hostname(rt_tls_session_t *session) {
 
     if (tls_hostname_is_ip_literal(host, ip_literal, &ip_literal_len)) {
         int saw_ip_san = 0;
-        if (tls_cert_has_matching_ip_san(
-                session->server_cert_der, session->server_cert_der_len, ip_literal, ip_literal_len, &saw_ip_san)) {
+        if (tls_cert_has_matching_ip_san(session->server_cert_der,
+                                         session->server_cert_der_len,
+                                         ip_literal,
+                                         ip_literal_len,
+                                         &saw_ip_san)) {
             return RT_TLS_OK;
         }
         session->error = saw_ip_san ? "TLS: certificate IP SAN mismatch"
@@ -681,8 +683,11 @@ int tls_verify_chain(rt_tls_session_t *session) {
         while (list_pos < session->server_cert_list_len) {
             const uint8_t *cert_der = NULL;
             size_t cert_len = 0;
-            if (tls_next_certificate_entry(
-                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+            if (tls_next_certificate_entry(session->server_cert_list,
+                                           session->server_cert_list_len,
+                                           &list_pos,
+                                           &cert_der,
+                                           &cert_len) != 0) {
                 CFRelease(certs);
                 session->error = "TLS: malformed certificate chain";
                 return RT_TLS_ERROR_HANDSHAKE;
@@ -779,11 +784,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
     CERT_CHAIN_PARA chain_para = {0};
     chain_para.cbSize = sizeof(chain_para);
 
-    HCERTSTORE extra_store = CertOpenStore(CERT_STORE_PROV_MEMORY,
-                                           0,
-                                           0,
-                                           CERT_STORE_CREATE_NEW_FLAG,
-                                           NULL);
+    HCERTSTORE extra_store =
+        CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
     if (!extra_store) {
         CertFreeCertificateContext(cert_ctx);
         session->error = "TLS: could not create intermediate certificate store";
@@ -796,8 +798,11 @@ int tls_verify_chain(rt_tls_session_t *session) {
         while (list_pos < session->server_cert_list_len) {
             const uint8_t *cert_der = NULL;
             size_t cert_len = 0;
-            if (tls_next_certificate_entry(
-                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+            if (tls_next_certificate_entry(session->server_cert_list,
+                                           session->server_cert_list_len,
+                                           &list_pos,
+                                           &cert_der,
+                                           &cert_len) != 0) {
                 CertCloseStore(extra_store, 0);
                 CertFreeCertificateContext(cert_ctx);
                 session->error = "TLS: malformed certificate chain";
@@ -820,8 +825,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
     }
 
     PCCERT_CHAIN_CONTEXT chain_ctx = NULL;
-    BOOL ok =
-        CertGetCertificateChain(NULL, cert_ctx, NULL, extra_store, &chain_para, 0, NULL, &chain_ctx);
+    BOOL ok = CertGetCertificateChain(
+        NULL, cert_ctx, NULL, extra_store, &chain_para, 0, NULL, &chain_ctx);
     CertCloseStore(extra_store, 0);
 
     if (!ok || !chain_ctx) {
@@ -879,8 +884,10 @@ typedef void (*tls_x509_store_free_fn)(tls_x509_store_t *);
 typedef int (*tls_x509_store_set_default_paths_fn)(tls_x509_store_t *);
 typedef tls_x509_store_ctx_t *(*tls_x509_store_ctx_new_fn)(void);
 typedef void (*tls_x509_store_ctx_free_fn)(tls_x509_store_ctx_t *);
-typedef int (*tls_x509_store_ctx_init_fn)(
-    tls_x509_store_ctx_t *, tls_x509_store_t *, tls_x509_t *, tls_openssl_stack_t *);
+typedef int (*tls_x509_store_ctx_init_fn)(tls_x509_store_ctx_t *,
+                                          tls_x509_store_t *,
+                                          tls_x509_t *,
+                                          tls_openssl_stack_t *);
 typedef int (*tls_x509_store_ctx_set_default_fn)(tls_x509_store_ctx_t *, const char *);
 typedef int (*tls_x509_verify_cert_fn)(tls_x509_store_ctx_t *);
 typedef tls_openssl_stack_t *(*tls_openssl_sk_new_null_fn)(void);
@@ -1259,8 +1266,11 @@ int tls_verify_chain(rt_tls_session_t *session) {
         while (list_pos < session->server_cert_list_len) {
             const uint8_t *cert_der = NULL;
             size_t cert_len = 0;
-            if (tls_next_certificate_entry(
-                    session->server_cert_list, session->server_cert_list_len, &list_pos, &cert_der, &cert_len) != 0) {
+            if (tls_next_certificate_entry(session->server_cert_list,
+                                           session->server_cert_list_len,
+                                           &list_pos,
+                                           &cert_der,
+                                           &cert_len) != 0) {
                 session->error = "TLS: malformed intermediate certificate chain";
                 goto linux_chain_cleanup;
             }

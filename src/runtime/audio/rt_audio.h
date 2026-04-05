@@ -33,6 +33,10 @@ extern "C" {
 // Audio System Management
 //=========================================================================
 
+/// @brief Report whether audio support is compiled into this runtime.
+/// @return 1 when the audio backend is available, 0 otherwise.
+int8_t rt_audio_is_available(void);
+
 /// @brief Initialize the audio system.
 /// @details Creates the global audio context. Called automatically on first use.
 /// @return 1 on success, 0 on failure.

@@ -23,8 +23,8 @@
 
 #include "vgfx.h"
 #include "vgfx3d_frustum.h"
-#include <math.h>
 #include <float.h>
+#include <math.h>
 #include <stdint.h>
 
 //=============================================================================
@@ -54,14 +54,14 @@ typedef struct {
     uint32_t index_count;
     uint32_t index_capacity;
     /* Transient: set by skinning path before draw, zero otherwise */
-    const float *bone_palette; /* bone_count * 16 floats (4x4 row-major) */
+    const float *bone_palette;      /* bone_count * 16 floats (4x4 row-major) */
     const float *prev_bone_palette; /* previous-frame palette for motion blur */
-    int32_t bone_count;        /* 0 = not skinned */
+    int32_t bone_count;             /* 0 = not skinned */
     /* Transient: set by DrawMeshMorphed GPU path before draw, zero otherwise */
-    const float *morph_deltas;  /* shape_count * vertex_count * 3 floats */
+    const float *morph_deltas;        /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats */
-    const float *morph_weights; /* shape_count floats */
-    const float *prev_morph_weights; /* previous-frame weights for motion blur */
+    const float *morph_weights;       /* shape_count floats */
+    const float *prev_morph_weights;  /* previous-frame weights for motion blur */
     int32_t morph_shape_count;
     float aabb_min[3];
     float aabb_max[3];
@@ -102,8 +102,11 @@ static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
         rt_mesh3d_reset_bounds(mesh);
         return;
     }
-    vgfx3d_compute_mesh_aabb(
-        mesh->vertices, mesh->vertex_count, sizeof(vgfx3d_vertex_t), mesh->aabb_min, mesh->aabb_max);
+    vgfx3d_compute_mesh_aabb(mesh->vertices,
+                             mesh->vertex_count,
+                             sizeof(vgfx3d_vertex_t),
+                             mesh->aabb_min,
+                             mesh->aabb_max);
     {
         float dx = mesh->aabb_max[0] - mesh->aabb_min[0];
         float dy = mesh->aabb_max[1] - mesh->aabb_min[1];
@@ -134,8 +137,8 @@ typedef struct {
     double shake_decay;
     double shake_offset[3];
     uint32_t shake_seed;
-    int8_t is_ortho;       /* 1 = orthographic projection */
-    double ortho_size;     /* half-extent of ortho view */
+    int8_t is_ortho;   /* 1 = orthographic projection */
+    double ortho_size; /* half-extent of ortho view */
 } rt_camera3d;
 
 //=============================================================================
@@ -156,7 +159,7 @@ typedef struct {
     void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
     double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
-    int32_t shading_model; /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
 

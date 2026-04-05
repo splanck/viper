@@ -379,8 +379,10 @@ static void normalize_selection(
     }
 }
 
-static void normalize_selection_range(
-    int *start_line, int *start_col, int *end_line, int *end_col) {
+static void normalize_selection_range(int *start_line,
+                                      int *start_col,
+                                      int *end_line,
+                                      int *end_col) {
     if (*start_line > *end_line || (*start_line == *end_line && *start_col > *end_col)) {
         int tmp = *start_line;
         *start_line = *end_line;
@@ -391,11 +393,8 @@ static void normalize_selection_range(
     }
 }
 
-static char *copy_text_range(vg_codeeditor_t *editor,
-                             int start_line,
-                             int start_col,
-                             int end_line,
-                             int end_col) {
+static char *copy_text_range(
+    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor)
         return NULL;
 
@@ -606,26 +605,22 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         int history_end_line = target->end_line;
         int history_end_col = target->end_col;
         const int has_old_text =
-            compare_positions(target->start_line, target->start_col, target->end_line, target->end_col) != 0;
+            compare_positions(
+                target->start_line, target->start_col, target->end_line, target->end_col) != 0;
 
         if (has_old_text) {
-            old_text = copy_text_range(editor,
-                                       target->start_line,
-                                       target->start_col,
-                                       target->end_line,
-                                       target->end_col);
-            delete_text_range_internal(editor,
-                                       target->start_line,
-                                       target->start_col,
-                                       target->end_line,
-                                       target->end_col);
+            old_text = copy_text_range(
+                editor, target->start_line, target->start_col, target->end_line, target->end_col);
+            delete_text_range_internal(
+                editor, target->start_line, target->start_col, target->end_line, target->end_col);
         } else {
             editor->cursor_line = target->start_line;
             editor->cursor_col = target->start_col;
         }
 
         if (replacement_text && replacement_text[0] != '\0')
-            insert_text_at_internal(editor, target->start_line, target->start_col, replacement_text);
+            insert_text_at_internal(
+                editor, target->start_line, target->start_col, replacement_text);
 
         new_lines[target->cursor_id] = editor->cursor_line;
         new_cols[target->cursor_id] = editor->cursor_col;
@@ -809,7 +804,11 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     editor->highlight_span_count = 0;
     editor->highlight_span_cap = 0;
 
-    free(editor->gutter_icons);
+    if (editor->gutter_icons) {
+        for (int i = 0; i < editor->gutter_icon_count; i++)
+            vg_icon_destroy(&editor->gutter_icons[i].image);
+        free(editor->gutter_icons);
+    }
     editor->gutter_icons = NULL;
     editor->gutter_icon_count = 0;
     editor->gutter_icon_cap = 0;
@@ -836,6 +835,68 @@ static void codeeditor_measure(vg_widget_t *widget, float available_width, float
     }
     if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
+    }
+}
+
+static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
+                                              const struct vg_gutter_icon *icon,
+                                              int32_t dst_x,
+                                              int32_t dst_y,
+                                              int32_t dst_w,
+                                              int32_t dst_h) {
+    if (!icon || icon->image.type != VG_ICON_IMAGE || !icon->image.data.image.pixels ||
+        dst_w <= 0 || dst_h <= 0)
+        return;
+
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(canvas, &fb))
+        return;
+
+    const uint8_t *src_pixels = icon->image.data.image.pixels;
+    int src_w = (int)icon->image.data.image.width;
+    int src_h = (int)icon->image.data.image.height;
+    if (src_w <= 0 || src_h <= 0)
+        return;
+
+    for (int row = 0; row < dst_h; row++) {
+        int src_y = row * src_h / dst_h;
+        if (src_y >= src_h)
+            src_y = src_h - 1;
+        int fb_y = dst_y + row;
+        if (fb_y < 0 || fb_y >= fb.height)
+            continue;
+
+        for (int col = 0; col < dst_w; col++) {
+            int src_x = col * src_w / dst_w;
+            if (src_x >= src_w)
+                src_x = src_w - 1;
+            int fb_x = dst_x + col;
+            if (fb_x < 0 || fb_x >= fb.width)
+                continue;
+
+            const uint8_t *src = &src_pixels[(src_y * src_w + src_x) * 4];
+            uint8_t alpha = src[3];
+            if (alpha == 0)
+                continue;
+
+            int fb_idx = fb_y * fb.stride + fb_x * 4;
+            if (alpha == 255) {
+                fb.pixels[fb_idx + 0] = src[0];
+                fb.pixels[fb_idx + 1] = src[1];
+                fb.pixels[fb_idx + 2] = src[2];
+                fb.pixels[fb_idx + 3] = 0xFF;
+                continue;
+            }
+
+            uint8_t dst_r = fb.pixels[fb_idx + 0];
+            uint8_t dst_g = fb.pixels[fb_idx + 1];
+            uint8_t dst_b = fb.pixels[fb_idx + 2];
+            uint8_t inv_alpha = (uint8_t)(255 - alpha);
+            fb.pixels[fb_idx + 0] = (uint8_t)((src[0] * alpha + dst_r * inv_alpha) / 255);
+            fb.pixels[fb_idx + 1] = (uint8_t)((src[1] * alpha + dst_g * inv_alpha) / 255);
+            fb.pixels[fb_idx + 2] = (uint8_t)((src[2] * alpha + dst_b * inv_alpha) / 255);
+            fb.pixels[fb_idx + 3] = 0xFF;
+        }
     }
 }
 
@@ -932,11 +993,21 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 struct vg_gutter_icon *icon = &editor->gutter_icons[g];
                 if (icon->line != i)
                     continue;
-                int32_t icon_r = 4; /* 4px radius dot */
-                int32_t icon_cx = (int32_t)widget->x + icon_r + 2;
-                int32_t icon_cy = (int32_t)line_y + (int32_t)(editor->line_height / 2.0f);
-                vgfx_fill_circle(
-                    (vgfx_window_t)canvas, icon_cx, icon_cy, icon_r, (vgfx_color_t)icon->color);
+                int32_t icon_box = (int32_t)editor->line_height - 4;
+                if (icon_box < 8)
+                    icon_box = 8;
+                int32_t icon_x = (int32_t)widget->x + 2;
+                int32_t icon_y = (int32_t)line_y + ((int32_t)editor->line_height - icon_box) / 2;
+                if (icon->image.type == VG_ICON_IMAGE && icon->image.data.image.pixels) {
+                    codeeditor_draw_gutter_icon_image(
+                        (vgfx_window_t)canvas, icon, icon_x, icon_y, icon_box, icon_box);
+                } else {
+                    int32_t icon_r = icon_box / 2;
+                    int32_t icon_cx = icon_x + icon_r;
+                    int32_t icon_cy = icon_y + icon_r;
+                    vgfx_fill_circle(
+                        (vgfx_window_t)canvas, icon_cx, icon_cy, icon_r, (vgfx_color_t)icon->color);
+                }
                 break; /* one icon per line */
             }
         }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # CODEMAP: Codegen
@@ -17,13 +17,74 @@ Native code generation backends for x86_64 and AArch64.
 
 | File                       | Purpose                                             |
 |----------------------------|-----------------------------------------------------|
+| `CallArgLayout.hpp/cpp`    | Shared call argument classification (SysV/Win64)    |
+| `CallLoweringPlan.hpp`     | Call lowering plan data structure                    |
 | `Diagnostics.hpp/cpp`      | Codegen-specific diagnostic reporting               |
+| `FrameLayout.hpp`          | Stack frame layout data structure                   |
+| `FrameLayoutUtils.hpp`     | Frame lowering utility functions                    |
+| `ICE.hpp`                  | Internal compiler error reporting                   |
 | `LabelUtil.hpp`            | Deterministic label generation for blocks and jumps |
 | `LinkerSupport.hpp/cpp`    | Platform linker invocation and object file support  |
+| `NativeEHLowering.hpp/cpp` | Structured EH to runtime call lowering              |
 | `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA deconstruction     |
 | `PassManager.hpp`          | Codegen pass manager interface                      |
+| `PeepholeCopyProp.hpp`     | Shared peephole copy propagation patterns           |
+| `PeepholeDCE.hpp`          | Shared peephole dead code elimination patterns      |
+| `PeepholeUtil.hpp`         | Shared peephole utility functions                   |
 | `RuntimeComponents.hpp`    | Runtime component descriptors for codegen           |
 | `TargetInfoBase.hpp`       | Base class for target-specific information          |
+
+### Register Allocation Utilities (`src/codegen/common/ra/`)
+
+| File                  | Purpose                                         |
+|-----------------------|-------------------------------------------------|
+| `ArchTraits.hpp`      | Architecture trait definitions for register alloc |
+| `DataflowLiveness.hpp`| Dataflow-based liveness analysis                |
+
+### Object File Writers (`src/codegen/common/objfile/`)
+
+| File                       | Purpose                                        |
+|----------------------------|------------------------------------------------|
+| `CodeSection.hpp`          | Code section data structure (symbols, relocs)  |
+| `CoffWriter.hpp/cpp`       | COFF (.obj) writer for Windows                 |
+| `DebugLineTable.hpp/cpp`   | DWARF debug line table builder                 |
+| `ElfWriter.hpp/cpp`        | ELF (.o) writer for Linux                      |
+| `MachOWriter.hpp/cpp`      | Mach-O (.o) writer for macOS                   |
+| `ObjectFileWriter.hpp/cpp` | Multi-format object file writer dispatcher     |
+| `ObjFileWriterUtil.hpp`    | Shared utility functions for object writers    |
+| `Relocation.hpp`           | Relocation entry data structures               |
+| `StringTable.hpp/cpp`      | String table builder for object files          |
+| `SymbolTable.hpp/cpp`      | Symbol table builder for object files          |
+
+### Native Linker (`src/codegen/common/linker/`)
+
+| File                       | Purpose                                           |
+|----------------------------|---------------------------------------------------|
+| `AlignUtil.hpp`            | Alignment calculation utilities                   |
+| `ArchiveReader.hpp/cpp`    | COFF/ELF archive (.lib/.a) reader                 |
+| `BranchTrampoline.hpp/cpp` | AArch64 branch trampoline insertion               |
+| `CoffReader.cpp`           | COFF object file reader                           |
+| `DeadStripPass.hpp/cpp`    | Unreferenced section removal                      |
+| `DynStubGen.hpp/cpp`       | Dynamic symbol stub generation                    |
+| `ElfExeWriter.hpp/cpp`     | ELF executable writer                             |
+| `ElfReader.cpp`            | ELF object file reader                            |
+| `ExeWriterUtil.hpp`        | Shared executable writer utilities                |
+| `ICF.hpp/cpp`              | Identical Code Folding                            |
+| `LinkTypes.hpp`            | Linker type definitions and structures            |
+| `MachOBindRebase.hpp/cpp`  | Mach-O bind/rebase opcode emission                |
+| `MachOCodeSign.hpp/cpp`    | Mach-O ad-hoc code signing                        |
+| `MachOExeWriter.hpp/cpp`   | Mach-O executable writer                          |
+| `MachOReader.cpp`          | Mach-O object file reader                         |
+| `NameMangling.hpp`         | Platform-aware symbol name mangling               |
+| `NativeLinker.hpp/cpp`     | Top-level native linker driver                    |
+| `ObjFileReader.hpp/cpp`    | Multi-format object file reader dispatcher        |
+| `PeExeWriter.hpp/cpp`      | PE32+ executable writer for Windows               |
+| `RelocApplier.hpp/cpp`     | Relocation patching with range checking           |
+| `RelocClassify.hpp`        | Relocation classification utilities               |
+| `RelocConstants.hpp`       | Relocation type constants                         |
+| `SectionMerger.hpp/cpp`    | Cross-object section merging and VA assignment    |
+| `StringDedup.hpp/cpp`      | String deduplication for merged sections          |
+| `SymbolResolver.hpp/cpp`   | Symbol resolution across objects and archives     |
 
 ## AArch64 Backend (`src/codegen/aarch64/`)
 
@@ -49,15 +110,43 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 | `OpcodeDispatch.hpp/cpp`    | Opcode-based dispatch for lowering |
 | `TerminatorLowering.hpp/cpp`| Block terminator lowering          |
 
-### Optimization & Register Allocation
+### Pipeline & Infrastructure
+
+| File                          | Purpose                                |
+|-------------------------------|----------------------------------------|
+| `CodegenPipeline.hpp/cpp`     | End-to-end AArch64 compilation pipeline|
+| `A64ImmediateUtils.hpp`       | Immediate encoding/decoding helpers    |
+| `LivenessAnalysis.hpp/cpp`    | CFG-level liveness analysis            |
+| `LowerOvf.hpp/cpp`            | Overflow-checked operation lowering    |
+| `FrameCodegen.hpp`            | Frame code generation helpers          |
+| `RegAllocLinear.hpp/cpp`      | Legacy linear scan (pre-ra/ refactor)  |
+
+### Register Allocation (`ra/`)
+
+| File                       | Purpose                                      |
+|----------------------------|----------------------------------------------|
+| `ra/Allocator.hpp/cpp`     | Linear scan register allocator with protected-use eviction |
+| `ra/Liveness.hpp/cpp`      | Liveness analysis for register alloc         |
+| `ra/InstrBuilders.hpp`     | MIR instruction builder helpers              |
+| `ra/OpcodeClassify.hpp`    | Opcode classification (call, terminator, mem)|
+| `ra/OperandRoles.hpp/cpp`  | Per-operand use/def role classification      |
+| `ra/RegClassify.hpp`       | Register class classification                |
+| `ra/RegPools.hpp/cpp`      | Physical register pool management            |
+| `ra/VState.hpp`            | Virtual register state tracking              |
+
+### Optimization
 
 | File                      | Purpose                              |
 |---------------------------|--------------------------------------|
-| `ra/Allocator.hpp/cpp`    | Linear scan register allocator       |
-| `ra/Liveness.hpp/cpp`     | Liveness analysis for register alloc |
 | `Coalescer.hpp/cpp`       | Pre-RA register coalescer            |
 | `Peephole.hpp/cpp`        | Top-level peephole dispatcher        |
-| `peephole/*.hpp/cpp`      | 6 peephole sub-passes (branch, copy-prop, identity, loop, memory, strength-reduce) |
+| `peephole/BranchOpt.hpp/cpp`       | Branch optimization sub-pass        |
+| `peephole/CopyPropDCE.hpp/cpp`     | Copy propagation and DCE sub-pass   |
+| `peephole/IdentityElim.hpp/cpp`    | Identity instruction elimination    |
+| `peephole/LoopOpt.hpp/cpp`         | Loop-level peephole optimization    |
+| `peephole/MemoryOpt.hpp/cpp`       | Memory access optimization          |
+| `peephole/PeepholeCommon.hpp`      | Shared peephole utilities           |
+| `peephole/StrengthReduce.hpp/cpp`  | Strength reduction sub-pass         |
 
 ### Emission
 
@@ -129,13 +218,15 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 
 ### Pipeline Passes (`passes/`)
 
-| File                   | Purpose                                 |
-|------------------------|-----------------------------------------|
-| `EmitPass.hpp/cpp`     | Assembly emission pass                  |
-| `LegalizePass.hpp/cpp` | Instruction selection/legalization pass |
-| `LoweringPass.hpp/cpp` | IL to MIR lowering pass                 |
-| `PassManager.hpp/cpp`  | Pass orchestration and sequencing       |
-| `RegAllocPass.hpp/cpp` | Register allocation pass                |
+| File                      | Purpose                                  |
+|---------------------------|------------------------------------------|
+| `BinaryEmitPass.hpp/cpp`  | Native binary object emission pass       |
+| `EmitPass.hpp/cpp`        | Assembly text emission pass              |
+| `LegalizePass.hpp/cpp`    | Instruction selection/legalization pass   |
+| `LoweringPass.hpp/cpp`    | IL to MIR lowering pass                  |
+| `PassManager.hpp/cpp`     | Pass orchestration and sequencing        |
+| `PeepholePass.hpp/cpp`    | Peephole optimization pass               |
+| `RegAllocPass.hpp/cpp`    | Register allocation pass                 |
 
 ### Register Allocation (`ra/`)
 
@@ -144,7 +235,15 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 | `Allocator.hpp/cpp`     | Linear scan register allocator |
 | `Coalescer.hpp/cpp`     | Copy coalescing                |
 | `LiveIntervals.hpp/cpp` | Live interval computation      |
+| `Liveness.hpp/cpp`      | Liveness analysis              |
 | `Spiller.hpp/cpp`       | Spill code insertion           |
+
+### Binary Encoder (`binenc/`)
+
+| File                       | Purpose                                     |
+|----------------------------|---------------------------------------------|
+| `X64BinaryEncoder.hpp/cpp` | x86-64 native binary instruction encoder    |
+| `X64Encoding.hpp`          | Encoding tables and format definitions      |
 
 ### Legacy Register Allocation
 

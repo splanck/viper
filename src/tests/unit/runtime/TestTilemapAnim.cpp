@@ -14,9 +14,9 @@ int64_t rt_tilemap_resolve_anim_tile(void *tm, int64_t tile);
 
 TEST(TilemapAnim, RegisterAndAdvance) {
     void *tm = rt_tilemap_new(10, 10, 32, 32);
-    rt_tilemap_set_tile_anim(tm, 5, 3, 100); // tile 5 → 3 frames, 100ms each
+    rt_tilemap_set_tile_anim(tm, 5, 3, 100);           // tile 5 → 3 frames, 100ms each
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 5); // frame 0 = base
-    rt_tilemap_update_anims(tm, 100); // advance 1 frame
+    rt_tilemap_update_anims(tm, 100);                  // advance 1 frame
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 6); // frame 1
     rt_tilemap_update_anims(tm, 100);
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 7); // frame 2
@@ -25,8 +25,8 @@ TEST(TilemapAnim, RegisterAndAdvance) {
 TEST(TilemapAnim, FrameWraps) {
     void *tm = rt_tilemap_new(10, 10, 32, 32);
     rt_tilemap_set_tile_anim(tm, 10, 2, 50);
-    rt_tilemap_update_anims(tm, 50);  // frame 1
-    rt_tilemap_update_anims(tm, 50);  // wraps to frame 0
+    rt_tilemap_update_anims(tm, 50); // frame 1
+    rt_tilemap_update_anims(tm, 50); // wraps to frame 0
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 10), 10);
 }
 
@@ -47,4 +47,6 @@ TEST(TilemapAnim, NonAnimatedUnchanged) {
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 99), 99); // not animated
 }
 
-int main() { return viper_test::run_all_tests(); }
+int main() {
+    return viper_test::run_all_tests();
+}

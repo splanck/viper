@@ -37,8 +37,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_file.h"
 #include "rt_error.h"
+#include "rt_file.h"
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
@@ -67,10 +67,7 @@
 // Thread-local trap recovery for safe threads
 // =============================================================================
 
-typedef enum {
-    RT_TRAP_RECOVERY_LEGACY = 0,
-    RT_TRAP_RECOVERY_NATIVE = 1
-} rt_trap_recovery_kind_t;
+typedef enum { RT_TRAP_RECOVERY_LEGACY = 0, RT_TRAP_RECOVERY_NATIVE = 1 } rt_trap_recovery_kind_t;
 
 typedef struct rt_trap_recovery_base {
     struct rt_trap_recovery_base *prev;
@@ -112,8 +109,7 @@ void rt_trap_set_recovery(jmp_buf *buf) {
 
 /// @brief Remove the thread-local trap recovery point and clear the saved error.
 void rt_trap_clear_recovery(void) {
-    if (rt_trap_recovery_top_ &&
-        rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_LEGACY) {
+    if (rt_trap_recovery_top_ && rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_LEGACY) {
         rt_trap_legacy_recovery_t *node = (rt_trap_legacy_recovery_t *)rt_trap_recovery_top_;
         rt_trap_recovery_top_ = node->base.prev;
         free(node);
@@ -191,30 +187,33 @@ static uintptr_t rt_capture_return_address(void) {
 #endif
 }
 
-void rt_trap(const char *msg) {
-    rt_trap_set_ip((uint64_t)rt_capture_return_address());
-    // Classify the trap kind from the message for native codegen's
-    // ErrGetKind/Code/Line. VM traps are classified separately.
-    if (msg) {
-        int32_t kind = 3; // DomainError default
-        if (msg[0] == 'D' && msg[1] == 'i') kind = 0;      // "Division by zero" → DivideByZero
-        else if (msg[0] == 'O')              kind = 1;      // "Overflow" → Overflow
-        else if (msg[0] == 'B')              kind = 4;      // "Bounds" → Bounds
-        else if (msg[0] == 'I' && msg[1] == 'n' && msg[2] == 'v')
-                                             kind = 2;      // "Invalid cast" → InvalidCast
-        rt_trap_fields_set(kind, 0, -1);
-    }
+static void rt_trap_dispatch(
+    const char *msg, int32_t kind, int32_t code, int32_t line, uintptr_t return_address) {
+    if (kind < RT_TRAP_KIND_DIVIDE_BY_ZERO || kind > RT_TRAP_KIND_NETWORK_ERROR)
+        kind = RT_TRAP_KIND_RUNTIME_ERROR;
+    rt_trap_set_ip((uint64_t)return_address);
+    rt_trap_fields_set(kind, code, line);
+    if (kind != RT_TRAP_KIND_NETWORK_ERROR)
+        rt_trap_net_code_ = 0;
     if (rt_trap_recovery_top_) {
         snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
         if (rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_NATIVE) {
-            rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)((char *)rt_trap_recovery_top_ -
-                                                                   offsetof(rt_native_eh_frame_t,
-                                                                            base));
+            rt_native_eh_frame_t *frame =
+                (rt_native_eh_frame_t *)((char *)rt_trap_recovery_top_ -
+                                         offsetof(rt_native_eh_frame_t, base));
             longjmp(frame->env, 1);
         }
         longjmp(*((rt_trap_legacy_recovery_t *)rt_trap_recovery_top_)->buf, 1);
     }
     vm_trap(msg);
+}
+
+void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg) {
+    rt_trap_dispatch(msg, kind, code, line, rt_capture_return_address());
+}
+
+void rt_trap(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_DOMAIN_ERROR, 0, -1, msg);
 }
 
 /// @brief Raise a network-specific trap with an error code.
@@ -225,9 +224,7 @@ void rt_trap(const char *msg) {
 /// @param err_code One of the Err_Connection*/Err_Dns*/Err_Network* codes.
 void rt_trap_net(const char *msg, int err_code) {
     rt_trap_net_code_ = err_code;
-    char buf[600];
-    snprintf(buf, sizeof(buf), "Network error %d: %s", err_code, msg ? msg : "unknown");
-    rt_trap(buf);
+    rt_trap_raise_kind(rt_err_to_trap_kind(err_code), err_code, -1, msg);
 }
 
 /// @brief Retrieve the error code from the most recent network trap.

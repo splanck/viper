@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-03-04
+last-verified: 2026-04-05
 ---
 
 # Viper Backend — Native Code Generation
@@ -40,7 +40,7 @@ and source code organization.
 ### What is the Viper Backend?
 
 The Viper backend is a **native code generator** that translates Viper IL (Intermediate Language) programs into
-executable x86-64 machine code. It implements the final compilation stage in the Viper toolchain:
+executable machine code for x86-64 and AArch64. It implements the final compilation stage in the Viper toolchain:
 
 ```text
 Source → Frontend → IL → Backend → Assembly → Executable
@@ -50,7 +50,7 @@ Source → Frontend → IL → Backend → Assembly → Executable
 
 | Feature           | Description                                              |
 |-------------------|----------------------------------------------------------|
-| **Target**        | x86-64 (AMD64) architecture                              |
+| **Target**        | x86-64 (AMD64) and AArch64 (ARM64) architectures         |
 | **ABI**           | System V AMD64 (Linux/macOS) and Windows x64             |
 | **Output**        | AT&T syntax assembly (GAS-compatible)                    |
 | **Strategy**      | SSA-based with linear scan register allocation           |

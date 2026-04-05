@@ -393,8 +393,8 @@ static void test_aead_tamper_detection() {
         uint8_t ciphertext[sizeof("ChaCha20-Poly1305") - 1 + 16];
         uint8_t plaintext[sizeof("ChaCha20-Poly1305") - 1];
 
-        size_t cipher_len = rt_chacha20_poly1305_encrypt(
-            key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
+        size_t cipher_len =
+            rt_chacha20_poly1305_encrypt(key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
         test_result("ChaCha20 encrypt length matches", cipher_len == strlen(msg) + 16);
         ciphertext[cipher_len - 1] ^= 0x01;
         test_result("ChaCha20 tamper detected",
@@ -411,11 +411,13 @@ static void test_aead_tamper_detection() {
         uint8_t ciphertext[sizeof("AES-GCM") - 1 + 16];
         uint8_t plaintext[sizeof("AES-GCM") - 1];
 
-        size_t cipher_len = rt_aes128_gcm_encrypt(key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
+        size_t cipher_len =
+            rt_aes128_gcm_encrypt(key, nonce, nullptr, 0, msg, strlen(msg), ciphertext);
         test_result("AES-GCM encrypt length matches", cipher_len == strlen(msg) + 16);
         ciphertext[0] ^= 0x80;
-        test_result("AES-GCM tamper detected",
-                    rt_aes128_gcm_decrypt(key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
+        test_result(
+            "AES-GCM tamper detected",
+            rt_aes128_gcm_decrypt(key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
     }
 
     printf("\n");

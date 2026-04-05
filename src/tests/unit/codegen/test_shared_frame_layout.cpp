@@ -29,8 +29,8 @@
 #include "tests/TestHarness.hpp"
 
 #include "codegen/aarch64/FrameBuilder.hpp"
-#include "codegen/common/CallArgLayout.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/common/CallArgLayout.hpp"
 #include "codegen/common/CallLoweringPlan.hpp"
 #include "codegen/common/FrameLayout.hpp"
 
@@ -221,8 +221,7 @@ TEST(SharedCallLayout, IndependentBanksKeepIntegerAndFloatRegistersSeparate) {
         planParamClasses(classes,
                          CallArgLayoutConfig{.maxGPRArgs = 2,
                                              .maxFPRArgs = 2,
-                                             .slotModel =
-                                                 CallSlotModel::IndependentRegisterBanks,
+                                             .slotModel = CallSlotModel::IndependentRegisterBanks,
                                              .variadicTailOnStack = false,
                                              .numNamedArgs = classes.size()});
 
@@ -244,8 +243,7 @@ TEST(SharedCallLayout, VariadicTailCanBeForcedOntoTheStack) {
         planParamClasses(classes,
                          CallArgLayoutConfig{.maxGPRArgs = 8,
                                              .maxFPRArgs = 8,
-                                             .slotModel =
-                                                 CallSlotModel::IndependentRegisterBanks,
+                                             .slotModel = CallSlotModel::IndependentRegisterBanks,
                                              .variadicTailOnStack = true,
                                              .numNamedArgs = 2});
 

@@ -23,14 +23,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BHV_PATROL       (1u << 0)
-#define BHV_CHASE        (1u << 1)
-#define BHV_GRAVITY      (1u << 2)
+#define BHV_PATROL (1u << 0)
+#define BHV_CHASE (1u << 1)
+#define BHV_GRAVITY (1u << 2)
 #define BHV_EDGE_REVERSE (1u << 3)
 #define BHV_WALL_REVERSE (1u << 4)
-#define BHV_SHOOT        (1u << 5)
-#define BHV_SINE_FLOAT   (1u << 6)
-#define BHV_ANIM_LOOP    (1u << 7)
+#define BHV_SHOOT (1u << 5)
+#define BHV_SINE_FLOAT (1u << 6)
+#define BHV_ANIM_LOOP (1u << 7)
 
 typedef struct {
     uint32_t flags;
@@ -82,7 +82,8 @@ void *rt_behavior_new(void) {
 
 /// @brief Add horizontal patrol behavior (entity walks left/right at given speed).
 void rt_behavior_add_patrol(void *bhv, int64_t speed) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_PATROL;
     b->patrol_speed = speed;
@@ -90,7 +91,8 @@ void rt_behavior_add_patrol(void *bhv, int64_t speed) {
 
 /// @brief Add chase-target behavior (entity moves toward the target when within range).
 void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_CHASE;
     b->chase_speed = speed;
@@ -99,7 +101,8 @@ void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
 
 /// @brief Add gravity behavior (applies downward acceleration with a terminal velocity).
 void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_GRAVITY;
     b->gravity = gravity;
@@ -108,19 +111,22 @@ void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
 
 /// @brief Add edge-reverse behavior (entity turns around at platform edges).
 void rt_behavior_add_edge_reverse(void *bhv) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     get(bhv)->flags |= BHV_EDGE_REVERSE;
 }
 
 /// @brief Add wall-reverse behavior (entity turns around when hitting a wall).
 void rt_behavior_add_wall_reverse(void *bhv) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     get(bhv)->flags |= BHV_WALL_REVERSE;
 }
 
 /// @brief Add shoot-on-cooldown behavior (shoot_ready flag sets after cooldown elapses).
 void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_SHOOT;
     b->shoot_cooldown_ms = cooldown_ms;
@@ -129,7 +135,8 @@ void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
 
 /// @brief Add sine-wave floating behavior (vertical oscillation for hovering enemies).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_SINE_FLOAT;
     b->float_amplitude = amplitude;
@@ -138,7 +145,8 @@ void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
 
 /// @brief Add frame-based animation loop (cycles through frames at the given interval).
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame) {
-    if (!bhv) return;
+    if (!bhv)
+        return;
     behavior_impl *b = get(bhv);
     b->flags |= BHV_ANIM_LOOP;
     b->anim_frames = frame_count;
@@ -149,8 +157,8 @@ void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_fr
 /// @details Applies behaviors in priority order: gravity, patrol, chase, sine
 ///          float, move+collide, wall reverse, edge reverse, shoot cooldown,
 ///          then animation loop. The target_x/target_y are the chase target position.
-void rt_behavior_update(void *bhv, void *entity, void *tilemap,
-                        int64_t target_x, int64_t target_y, int64_t dt) {
+void rt_behavior_update(
+    void *bhv, void *entity, void *tilemap, int64_t target_x, int64_t target_y, int64_t dt) {
     if (!bhv || !entity)
         return;
     behavior_impl *b = get(bhv);
@@ -231,7 +239,8 @@ void rt_behavior_update(void *bhv, void *entity, void *tilemap,
 
 /// @brief Check and consume the shoot-ready flag (returns 1 once, then resets).
 int8_t rt_behavior_shoot_ready(void *bhv) {
-    if (!bhv) return 0;
+    if (!bhv)
+        return 0;
     behavior_impl *b = get(bhv);
     if (b->shoot_ready) {
         b->shoot_ready = 0;

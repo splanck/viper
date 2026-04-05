@@ -40,10 +40,12 @@ static double listener_right[3] = {1, 0, 0};
 /* Per-voice max_distance tracking — avoids global state pollution
  * when multiple sounds have different falloff ranges. */
 #define MAX_3D_VOICES 64
+
 static struct {
     int64_t voice_id;
     double max_distance;
 } s_voice_dist[MAX_3D_VOICES];
+
 static int32_t s_voice_dist_count = 0;
 
 static void track_voice_distance(int64_t voice, double max_dist) {
@@ -167,4 +169,6 @@ void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
     rt_voice_set_pan(voice, pan);
 }
 
+#else
+typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

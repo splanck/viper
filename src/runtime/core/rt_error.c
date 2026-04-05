@@ -41,7 +41,7 @@ extern "C" {
 ///          for pointer identity or performing atomic replacements.
 const RtError RT_ERROR_NONE = {Err_None, 0};
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 /// Thread-local storage for the most recently thrown message.
 /// This enables catch(e) handlers to retrieve the throw message
@@ -81,31 +81,44 @@ void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
     tls_trap_line = line;
 }
 
-void rt_trap_set_ip(uint64_t ip) { tls_trap_ip = ip; }
+void rt_trap_set_ip(uint64_t ip) {
+    tls_trap_ip = ip;
+}
 
-int64_t rt_trap_get_kind(void) { return (int64_t)tls_trap_kind; }
-int64_t rt_trap_get_code(void) { return (int64_t)tls_trap_code; }
-int64_t rt_trap_get_ip(void) { return (int64_t)tls_trap_ip; }
-int64_t rt_trap_get_line(void) { return (int64_t)tls_trap_line; }
+int64_t rt_trap_get_kind(void) {
+    return (int64_t)tls_trap_kind;
+}
+
+int64_t rt_trap_get_code(void) {
+    return (int64_t)tls_trap_code;
+}
+
+int64_t rt_trap_get_ip(void) {
+    return (int64_t)tls_trap_ip;
+}
+
+int64_t rt_trap_get_line(void) {
+    return (int64_t)tls_trap_line;
+}
 
 int32_t rt_err_to_trap_kind(int32_t code) {
     switch (code) {
         case Err_FileNotFound:
-            return 5;
+            return RT_TRAP_KIND_FILE_NOT_FOUND;
         case Err_EOF:
-            return 6;
+            return RT_TRAP_KIND_EOF;
         case Err_IOError:
-            return 7;
+            return RT_TRAP_KIND_IO_ERROR;
         case Err_Overflow:
-            return 1;
+            return RT_TRAP_KIND_OVERFLOW;
         case Err_InvalidCast:
-            return 2;
+            return RT_TRAP_KIND_INVALID_CAST;
         case Err_DomainError:
-            return 3;
+            return RT_TRAP_KIND_DOMAIN_ERROR;
         case Err_Bounds:
-            return 4;
+            return RT_TRAP_KIND_BOUNDS;
         case Err_InvalidOperation:
-            return 8;
+            return RT_TRAP_KIND_INVALID_OPERATION;
         case Err_ConnectionRefused:
         case Err_HostNotFound:
         case Err_ConnectionReset:
@@ -116,11 +129,11 @@ int32_t rt_err_to_trap_kind(int32_t code) {
         case Err_TlsError:
         case Err_NetworkError:
         case Err_ProtocolError:
-            return 11;
+            return RT_TRAP_KIND_NETWORK_ERROR;
         case Err_None:
-            return 9;
+            return RT_TRAP_KIND_RUNTIME_ERROR;
         default:
-            return 9;
+            return RT_TRAP_KIND_RUNTIME_ERROR;
     }
 }
 
@@ -130,9 +143,13 @@ void *rt_trap_error_make(int32_t code, rt_string msg) {
     return (void *)(uintptr_t)(uint32_t)code;
 }
 
-void rt_trap_raise_error(int32_t code) {
+void rt_trap_raise_error_msg(int32_t code, const char *msg) {
     rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
-    rt_trap(NULL);
+    rt_trap(msg);
+}
+
+void rt_trap_raise_error(int32_t code) {
+    rt_trap_raise_error_msg(code, NULL);
 }
 
 #ifdef __cplusplus

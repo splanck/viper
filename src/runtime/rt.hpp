@@ -28,6 +28,13 @@ extern "C" {
 /// @param msg Null-terminated message string.
 void rt_trap(const char *msg);
 
+/// @brief Raise a trap with explicit trap metadata.
+/// @param kind Canonical trap classification.
+/// @param code Secondary runtime error code (Err_* or 0).
+/// @param line Source line number (-1 if unknown).
+/// @param msg User-visible trap message.
+void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg);
+
 /// @brief Trap when @p condition is false with the provided diagnostic.
 /// @param condition Boolean flag; zero triggers a trap.
 /// @param message Runtime string describing the assertion; defaults to

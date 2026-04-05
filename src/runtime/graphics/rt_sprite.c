@@ -585,16 +585,22 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     // If no transform at all, use simple blit
     if (scale_x == 100 && scale_y == 100 && rotation == 0 && !sprite->flip_x && !sprite->flip_y &&
         tint_color == 0 && alpha >= 255) {
-        rt_canvas_blit_alpha(
-            canvas_ptr, x - sprite->origin_x, y - sprite->origin_y, frame);
+        rt_canvas_blit_alpha(canvas_ptr, x - sprite->origin_x, y - sprite->origin_y, frame);
         return;
     }
 
     int64_t origin_x = 0;
     int64_t origin_y = 0;
     int8_t origin_centered = 0;
-    void *transformed = sprite_prepare_pixels(
-        sprite, scale_x, scale_y, rotation, tint_color, alpha, &origin_x, &origin_y, &origin_centered);
+    void *transformed = sprite_prepare_pixels(sprite,
+                                              scale_x,
+                                              scale_y,
+                                              rotation,
+                                              tint_color,
+                                              alpha,
+                                              &origin_x,
+                                              &origin_y,
+                                              &origin_centered);
     if (!transformed)
         return;
 

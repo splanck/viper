@@ -233,7 +233,8 @@ StmtPtr Parser::parseVarDecl() {
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;
 
-    return std::make_unique<VarStmt>(loc, std::move(name), std::move(type), std::move(init), isFinal);
+    return std::make_unique<VarStmt>(
+        loc, std::move(name), std::move(type), std::move(init), isFinal);
 }
 
 /// @brief Parse a Java-style local variable declaration (Type name = expr;).

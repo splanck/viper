@@ -42,8 +42,7 @@
 
 /// @brief macOS-specific platform data.
 /// @details Stores AudioQueue state and buffer references.
-typedef struct
-{
+typedef struct {
     AudioQueueRef queue;                                 ///< The audio queue
     AudioQueueBufferRef buffers[VAUD_MACOS_NUM_BUFFERS]; ///< Audio buffers
     AudioStreamBasicDescription format;                  ///< Audio format description
@@ -60,18 +59,14 @@ typedef struct
 /// @param user_data Pointer to our audio context.
 /// @param queue The audio queue.
 /// @param buffer The buffer to fill.
-static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBufferRef buffer)
-{
+static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBufferRef buffer) {
     vaud_context_t ctx = (vaud_context_t)user_data;
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
 
-    if (!ctx->running || plat->paused)
-    {
+    if (!ctx->running || plat->paused) {
         /* Fill with silence when paused or stopping */
         memset(buffer->mAudioData, 0, buffer->mAudioDataBytesCapacity);
-    }
-    else
-    {
+    } else {
         /* Render mixed audio into the buffer */
         int32_t frames = VAUD_BUFFER_FRAMES;
         vaud_mixer_render(ctx, (int16_t *)buffer->mAudioData, frames);
@@ -88,15 +83,13 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
 // Platform Interface Implementation
 //===----------------------------------------------------------------------===//
 
-int vaud_platform_init(vaud_context_t ctx)
-{
+int vaud_platform_init(vaud_context_t ctx) {
     if (!ctx)
         return 0;
 
     /* Allocate platform data */
     vaud_macos_data *plat = (vaud_macos_data *)calloc(1, sizeof(vaud_macos_data));
-    if (!plat)
-    {
+    if (!plat) {
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate macOS audio data");
         return 0;
     }
@@ -123,8 +116,7 @@ int vaud_platform_init(vaud_context_t ctx)
                                           0,    /* Flags */
                                           &plat->queue);
 
-    if (status != noErr)
-    {
+    if (status != noErr) {
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create AudioQueue");
@@ -134,14 +126,11 @@ int vaud_platform_init(vaud_context_t ctx)
     /* Allocate and prime the audio buffers */
     UInt32 buffer_size = VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t);
 
-    for (int i = 0; i < VAUD_MACOS_NUM_BUFFERS; i++)
-    {
+    for (int i = 0; i < VAUD_MACOS_NUM_BUFFERS; i++) {
         status = AudioQueueAllocateBuffer(plat->queue, buffer_size, &plat->buffers[i]);
-        if (status != noErr)
-        {
+        if (status != noErr) {
             /* Clean up already allocated buffers */
-            for (int j = 0; j < i; j++)
-            {
+            for (int j = 0; j < i; j++) {
                 AudioQueueFreeBuffer(plat->queue, plat->buffers[j]);
             }
             AudioQueueDispose(plat->queue, true);
@@ -161,10 +150,8 @@ int vaud_platform_init(vaud_context_t ctx)
 
     /* Start the audio queue */
     status = AudioQueueStart(plat->queue, NULL);
-    if (status != noErr)
-    {
-        for (int i = 0; i < VAUD_MACOS_NUM_BUFFERS; i++)
-        {
+    if (status != noErr) {
+        for (int i = 0; i < VAUD_MACOS_NUM_BUFFERS; i++) {
             AudioQueueFreeBuffer(plat->queue, plat->buffers[i]);
         }
         AudioQueueDispose(plat->queue, true);
@@ -177,8 +164,7 @@ int vaud_platform_init(vaud_context_t ctx)
     return 1;
 }
 
-void vaud_platform_shutdown(vaud_context_t ctx)
-{
+void vaud_platform_shutdown(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -192,8 +178,7 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     ctx->platform_data = NULL;
 }
 
-void vaud_platform_pause(vaud_context_t ctx)
-{
+void vaud_platform_pause(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -203,8 +188,7 @@ void vaud_platform_pause(vaud_context_t ctx)
     AudioQueuePause(plat->queue);
 }
 
-void vaud_platform_resume(vaud_context_t ctx)
-{
+void vaud_platform_resume(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -218,11 +202,9 @@ void vaud_platform_resume(vaud_context_t ctx)
 // Timing
 //===----------------------------------------------------------------------===//
 
-int64_t vaud_platform_now_ms(void)
-{
+int64_t vaud_platform_now_ms(void) {
     static mach_timebase_info_data_t timebase = {0};
-    if (timebase.denom == 0)
-    {
+    if (timebase.denom == 0) {
         mach_timebase_info(&timebase);
     }
 

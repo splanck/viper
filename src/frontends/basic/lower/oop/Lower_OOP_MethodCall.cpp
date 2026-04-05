@@ -36,8 +36,7 @@ namespace {
 
 bool isHttpServerRouteTarget(const std::string &target) {
     return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
-           target == "Viper.Network.HttpServer.Put" ||
-           target == "Viper.Network.HttpServer.Delete";
+           target == "Viper.Network.HttpServer.Put" || target == "Viper.Network.HttpServer.Delete";
 }
 
 bool isValidHttpHandlerSignature(const ::il::frontends::basic::ProcedureSignature *sig) {
@@ -261,7 +260,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             // so extern declarations can include the accessor alongside
             // canonical function names selected at call sites.
             runtimeTracker.trackCalleeName(info->target);
-            if (isHttpServerRouteTarget(info->target) && expr.args.size() == 2 && args.size() >= 3) {
+            if (isHttpServerRouteTarget(info->target) && expr.args.size() == 2 &&
+                args.size() >= 3) {
                 if (const auto *tagExpr = as<const StringExpr>(*expr.args[1])) {
                     std::string handlerTarget = resolveHttpHandlerTarget(*this, tagExpr->value);
                     if (!handlerTarget.empty()) {

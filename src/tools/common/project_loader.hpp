@@ -84,9 +84,9 @@ struct ProjectConfig {
 
     /// @brief A named group of assets to pack into a .vpa file.
     struct PackGroup {
-        std::string name;                     ///< Pack name → produces <name>.vpa.
-        std::vector<std::string> sources;     ///< File/dir paths relative to project root.
-        bool compressed{false};               ///< DEFLATE compress entries.
+        std::string name;                 ///< Pack name → produces <name>.vpa.
+        std::vector<std::string> sources; ///< File/dir paths relative to project root.
+        bool compressed{false};           ///< DEFLATE compress entries.
     };
 
     /// @brief Assets to embed in the executable's .rodata section.

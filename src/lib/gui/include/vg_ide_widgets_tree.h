@@ -349,25 +349,25 @@ typedef struct vg_accelerator {
 
 /// @brief Menu item structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu_item {
-    char *text;                 ///< Item text (owned, heap-allocated)
-    char *shortcut;             ///< Keyboard shortcut text (owned, heap-allocated)
-    vg_accelerator_t accel;     ///< Parsed accelerator
-    void (*action)(void *data); ///< Action callback
-    void *action_data;          ///< Action data
-    bool enabled;               ///< Is item enabled
-    bool checked;               ///< Is item checked (for toggles)
-    bool separator;             ///< Is this a separator
-    bool was_clicked;           ///< Set true when item is clicked (cleared on read)
-    vg_icon_t icon;             ///< Optional icon (VG_ICON_NONE = no icon)
+    char *text;                  ///< Item text (owned, heap-allocated)
+    char *shortcut;              ///< Keyboard shortcut text (owned, heap-allocated)
+    vg_accelerator_t accel;      ///< Parsed accelerator
+    void (*action)(void *data);  ///< Action callback
+    void *action_data;           ///< Action data
+    bool enabled;                ///< Is item enabled
+    bool checked;                ///< Is item checked (for toggles)
+    bool separator;              ///< Is this a separator
+    bool was_clicked;            ///< Set true when item is clicked (cleared on read)
+    vg_icon_t icon;              ///< Optional icon (VG_ICON_NONE = no icon)
     struct vg_menu *parent_menu; ///< Owning menu for change propagation.
-    struct vg_menu *submenu;    ///< Submenu (if any)
+    struct vg_menu *submenu;     ///< Submenu (if any)
     struct vg_menu_item *next;
     struct vg_menu_item *prev;
 };
 
 /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu {
-    char *title;                    ///< Menu title (owned, heap-allocated)
+    char *title;                      ///< Menu title (owned, heap-allocated)
     struct vg_menubar *owner_menubar; ///< Owning menubar for change propagation.
     vg_menu_item_t *first_item;
     vg_menu_item_t *last_item;

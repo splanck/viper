@@ -44,7 +44,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 //=============================================================================
 // Type Constants
@@ -893,7 +893,8 @@ rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
 // Public API - Type Inspection
 //=============================================================================
 
-/// @brief Get the YAML type name of a parsed value ("map", "seq", "string", "number", "bool", "null").
+/// @brief Get the YAML type name of a parsed value ("map", "seq", "string", "number", "bool",
+/// "null").
 rt_string rt_yaml_type_of(void *obj) {
     if (!obj)
         return rt_string_from_bytes("null", 4);

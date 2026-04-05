@@ -123,19 +123,19 @@ static void moveValueToArg(const il::core::Value &value,
     if (cls != RegClass::GPR)
         throw std::runtime_error(std::string("AArch64 lowering: expected GPR for ") + what);
     out.instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::regOp(dstReg), MOperand::vregOp(RegClass::GPR, src)}});
+        MInstr{MOpcode::MovRR, {MOperand::regOp(dstReg), MOperand::vregOp(RegClass::GPR, src)}});
 }
 
-static void captureGprCallResult(const il::core::Instr &ins, LoweringContext &ctx, MBasicBlock &out) {
+static void captureGprCallResult(const il::core::Instr &ins,
+                                 LoweringContext &ctx,
+                                 MBasicBlock &out) {
     if (!ins.result)
         return;
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
-    out.instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+    out.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
 }
 
 bool lowerInstruction(const il::core::Instr &ins,
@@ -491,10 +491,8 @@ bool lowerInstruction(const il::core::Instr &ins,
         // Bare trap — no message available, pass NULL to rt_trap.
         case Opcode::Trap:
             bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRI,
-                       {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
             return true;
 
         case Opcode::TrapKind:
@@ -505,7 +503,8 @@ bool lowerInstruction(const il::core::Instr &ins,
         // trap.err constructs the current error payload and returns an opaque token.
         case Opcode::TrapErr: {
             if (ins.operands.size() < 2)
-                throw std::runtime_error("AArch64 lowering: trap.err expects code and text operands");
+                throw std::runtime_error(
+                    "AArch64 lowering: trap.err expects code and text operands");
             moveValueToArg(ins.operands[0], bbIn, ctx, PhysReg::X0, bbOut(), "trap.err code");
             moveValueToArg(ins.operands[1], bbIn, ctx, PhysReg::X1, bbOut(), "trap.err message");
             bbOut().instrs.push_back(
@@ -521,10 +520,18 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::ErrGetLine: {
             const char *rtFunc = nullptr;
             switch (ins.op) {
-                case Opcode::ErrGetKind: rtFunc = "rt_trap_get_kind"; break;
-                case Opcode::ErrGetCode: rtFunc = "rt_trap_get_code"; break;
-                case Opcode::ErrGetLine: rtFunc = "rt_trap_get_line"; break;
-                default: rtFunc = "rt_trap_get_kind"; break;
+                case Opcode::ErrGetKind:
+                    rtFunc = "rt_trap_get_kind";
+                    break;
+                case Opcode::ErrGetCode:
+                    rtFunc = "rt_trap_get_code";
+                    break;
+                case Opcode::ErrGetLine:
+                    rtFunc = "rt_trap_get_line";
+                    break;
+                default:
+                    rtFunc = "rt_trap_get_kind";
+                    break;
             }
             bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(rtFunc)}});
             captureGprCallResult(ins, ctx, bbOut());
@@ -548,9 +555,9 @@ bool lowerInstruction(const il::core::Instr &ins,
         // native EH rewrite before they reach backend instruction selection.
         case Opcode::ResumeSame:
         case Opcode::ResumeNext:
-            throw std::runtime_error(std::string("AArch64 lowering received raw ") +
-                                     il::core::toString(ins.op) +
-                                     " after NativeEHLowering; structured EH rewrite is incomplete.");
+            throw std::runtime_error(
+                std::string("AArch64 lowering received raw ") + il::core::toString(ins.op) +
+                " after NativeEHLowering; structured EH rewrite is incomplete.");
 
         default:
             // Opcode not handled - caller should process

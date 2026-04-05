@@ -69,7 +69,7 @@ typedef struct channel_impl {
 
 static void channel_finalizer(void *obj);
 
-extern void rt_trap(const char *msg);
+#include "rt_trap.h"
 
 #if defined(_WIN32)
 typedef struct {
@@ -203,7 +203,8 @@ void *rt_channel_new(int64_t capacity) {
 // Public API - Send Operations
 //=============================================================================
 
-/// @brief Send an item into the channel, blocking if the buffer is full (or until a receiver is ready for sync channels).
+/// @brief Send an item into the channel, blocking if the buffer is full (or until a receiver is
+/// ready for sync channels).
 void rt_channel_send(void *channel, void *item) {
     if (!channel) {
         rt_trap("Channel.Send: nil channel");

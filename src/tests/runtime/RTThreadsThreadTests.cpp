@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_threads.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_threads.h"
 
 #include "common/ProcessIsolation.hpp"
 #include <atomic>

@@ -19,8 +19,8 @@
 
 #include "codegen/common/RuntimeComponents.hpp"
 
-#include <filesystem>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -51,9 +51,7 @@ bool readFileToString(const std::filesystem::path &path, std::string &dst);
 /// @param text File contents to persist.
 /// @param err Output stream for human-readable error messages.
 /// @return True on success, false when the file could not be written.
-bool writeTextFile(const std::filesystem::path &path,
-                   std::string_view text,
-                   std::ostream &err);
+bool writeTextFile(const std::filesystem::path &path, std::string_view text, std::ostream &err);
 
 /// @brief Search for the CMake build directory by walking parent directories.
 /// @details Starts from the current working directory and walks upward looking

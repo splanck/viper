@@ -51,7 +51,7 @@ struct FrameInfo {
     int frameSize{0};                       ///< Total size of the frame below %rbp.
     std::vector<PhysReg> usedCalleeSaved{}; ///< Callee-saved registers touched by the function.
     bool prologueEmitted{false};            ///< True when frame lowering inserted setup/teardown.
-    bool usesChkstk{false};                 ///< True when the Windows large-frame probe helper is used.
+    bool usesChkstk{false}; ///< True when the Windows large-frame probe helper is used.
     std::vector<Win64UnwindOp> win64UnwindOps{}; ///< Win64 unwind plan for native COFF emission.
 };
 

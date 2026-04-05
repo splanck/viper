@@ -529,7 +529,7 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::string &typeName,
-                                                               CallExpr *expr) {
+                                                                CallExpr *expr) {
     const StructTypeInfo *infoPtr = getOrCreateStructTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;
@@ -601,7 +601,7 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string &typeName,
-                                                                CallExpr *expr) {
+                                                               CallExpr *expr) {
     const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;

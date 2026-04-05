@@ -46,11 +46,11 @@ TEST(Entity, ApplyGravityCapsMaxFall) {
 
 TEST(Entity, MoveWithoutTilemap) {
     void *e = rt_entity_new(10000, 20000, 16, 16); // (100, 200) in pixels
-    rt_entity_set_vx(e, 500);  // 5 px/frame in centipixels
-    rt_entity_set_vy(e, -200); // -2 px/frame
-    rt_entity_move_and_collide(e, nullptr, 16); // dt = DT_BASE
-    EXPECT_EQ(rt_entity_get_x(e), 10000 + 500); // moved by vx
-    EXPECT_EQ(rt_entity_get_y(e), 20000 - 200); // moved by vy
+    rt_entity_set_vx(e, 500);                      // 5 px/frame in centipixels
+    rt_entity_set_vy(e, -200);                     // -2 px/frame
+    rt_entity_move_and_collide(e, nullptr, 16);    // dt = DT_BASE
+    EXPECT_EQ(rt_entity_get_x(e), 10000 + 500);    // moved by vx
+    EXPECT_EQ(rt_entity_get_y(e), 20000 - 200);    // moved by vy
 }
 
 TEST(Entity, HPProperties) {
@@ -70,11 +70,11 @@ TEST(Entity, TypeAndActive) {
 }
 
 TEST(Entity, OverlapsAABB) {
-    void *a = rt_entity_new(0, 0, 10, 10);       // (0,0) in pixels
-    void *b = rt_entity_new(500, 500, 10, 10);    // (5,5) in pixels — overlaps
+    void *a = rt_entity_new(0, 0, 10, 10);     // (0,0) in pixels
+    void *b = rt_entity_new(500, 500, 10, 10); // (5,5) in pixels — overlaps
     EXPECT_TRUE(rt_entity_overlaps(a, b));
 
-    void *c = rt_entity_new(2000, 2000, 10, 10);  // (20,20) — no overlap
+    void *c = rt_entity_new(2000, 2000, 10, 10); // (20,20) — no overlap
     EXPECT_FALSE(rt_entity_overlaps(a, c));
 }
 
@@ -82,7 +82,7 @@ TEST(Entity, NullSafe) {
     EXPECT_EQ(rt_entity_get_x(nullptr), 0);
     EXPECT_EQ(rt_entity_get_vy(nullptr), 0);
     EXPECT_FALSE(rt_entity_on_ground(nullptr));
-    rt_entity_apply_gravity(nullptr, 78, 1350, 16); // no crash
+    rt_entity_apply_gravity(nullptr, 78, 1350, 16);   // no crash
     rt_entity_move_and_collide(nullptr, nullptr, 16); // no crash
     EXPECT_FALSE(rt_entity_overlaps(nullptr, nullptr));
 }

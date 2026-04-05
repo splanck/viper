@@ -106,7 +106,7 @@ LowerResult Lowerer::coerceValueToType(Value value,
     Type targetIlType = mapType(targetType);
     TypeRef effectiveSource = sourceType;
     bool sourceIsUnknownish = !effectiveSource || effectiveSource->kind == TypeKindSem::Unknown ||
-                             effectiveSource->kind == TypeKindSem::Any;
+                              effectiveSource->kind == TypeKindSem::Any;
 
     if (sourceIsUnknownish && valueIlType.kind == Type::Kind::Ptr &&
         targetIlType.kind != Type::Kind::Ptr) {
@@ -153,8 +153,7 @@ LowerResult Lowerer::coerceValueToType(Value value,
             targetType->kind == TypeKindSem::Integer) {
             return {widenByteToInteger(value), Type(Type::Kind::I64)};
         }
-        if (effectiveSource->kind == TypeKindSem::Byte &&
-            targetType->kind == TypeKindSem::Number) {
+        if (effectiveSource->kind == TypeKindSem::Byte && targetType->kind == TypeKindSem::Number) {
             Value widened = widenByteToInteger(value);
             return {emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), widened),
                     Type(Type::Kind::F64)};

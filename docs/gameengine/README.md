@@ -98,44 +98,47 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 
 ## Guides by Topic
 
+> **Note:** Guide pages below marked *(planned)* are not yet written. For current API details, see the
+> [Runtime Library Reference](../viperlib/README.md) and [Graphics3D Guide](../graphics3d-guide.md).
+
 ### Rendering
 
-- [2D Graphics](2d-graphics.md) — Canvas drawing, Pixels image buffers, bitmap fonts, color utilities
-- [3D Graphics](3d-graphics.md) — Canvas3D, meshes, materials, lighting, scene graph, skeletal animation
-- [Sprites & Animation](sprites-and-animation.md) — SpriteSheet, SpriteBatch, SpriteAnimation, AnimStateMachine
-- [Tilemaps](tilemap-guide.md) — Creation, layers, auto-tiling, tile collision, CSV import/export
-- [Camera](camera-guide.md) — Camera2D (follow, zoom, parallax, bounds) and Camera3D (perspective, orbit)
+- 2D Graphics *(planned)* — Canvas drawing, Pixels image buffers, bitmap fonts, color utilities
+- 3D Graphics *(planned)* — Canvas3D, meshes, materials, lighting, scene graph, skeletal animation
+- Sprites & Animation *(planned)* — SpriteSheet, SpriteBatch, SpriteAnimation, AnimStateMachine
+- Tilemaps *(planned)* — Creation, layers, auto-tiling, tile collision, CSV import/export
+- Camera *(planned)* — Camera2D (follow, zoom, parallax, bounds) and Camera3D (perspective, orbit)
 
 ### Gameplay
 
-- [Entity System](entity-system.md) — Entity (position, velocity, health, collision) and composable Behaviors
-- [Physics & Collision](physics-guide.md) — Physics2D world, rigid bodies, joints, raycasting, quadtree
-- [Pathfinding & AI](pathfinding-and-ai.md) — A* grid pathfinder, quadtree spatial queries, behavior presets
-- [Scene Management](scene-management.md) — GameBase, IScene lifecycle, SceneManager, LevelData, Config
+- Entity System *(planned)* — Entity (position, velocity, health, collision) and composable Behaviors
+- Physics & Collision *(planned)* — Physics2D world, rigid bodies, joints, raycasting, quadtree
+- Pathfinding & AI *(planned)* — A* grid pathfinder, quadtree spatial queries, behavior presets
+- Scene Management *(planned)* — GameBase, IScene lifecycle, SceneManager, LevelData, Config
 
 ### Presentation
 
-- [Audio](audio-guide.md) — Sound effects, music streaming, procedural synthesis, playlists, spatial audio
-- [Screen Effects](screen-effects.md) — ScreenFX (shake, fade, wipe), ParticleEmitter, Lighting2D
-- [Game UI](game-ui.md) — Labels, health bars, panels, nine-slice, menus, dialogue system
+- Audio *(planned)* — Sound effects, music streaming, procedural synthesis, playlists, spatial audio
+- Screen Effects *(planned)* — ScreenFX (shake, fade, wipe), ParticleEmitter, Lighting2D
+- Game UI *(planned)* — Labels, health bars, panels, nine-slice, menus, dialogue system
 
 ### Infrastructure
 
-- [Input](input-guide.md) — Keyboard, mouse, gamepad, action mapping, InputManager
-- [Persistence & Assets](persistence-and-assets.md) — SaveData, VPA archives, asset embedding and loading
-- [Game Utilities](game-utilities.md) — Timer, Tween, StateMachine, ObjectPool, PlatformerController, and more
-- [Math for Games](math-for-games.md) — Vec2/3, Mat3/4, Quaternion, easing functions, noise
-- [Cross-Platform](cross-platform.md) — macOS/Windows/Linux differences, GPU backend selection
+- Input *(planned)* — Keyboard, mouse, gamepad, action mapping, InputManager
+- Persistence & Assets *(planned)* — SaveData, VPA archives, asset embedding and loading
+- Game Utilities *(planned)* — Timer, Tween, StateMachine, ObjectPool, PlatformerController, and more
+- Math for Games *(planned)* — Vec2/3, Mat3/4, Quaternion, easing functions, noise
+- Cross-Platform *(planned)* — macOS/Windows/Linux differences, GPU backend selection
 
 ---
 
 ## Tutorials
 
-Step-by-step guides that build complete games from scratch:
+> Step-by-step tutorials are planned. For now, see the [Example Games](examples/README.md).
 
-- [Your First Platformer](examples/your-first-platformer.md) — Entity + Tilemap + Camera + Animation
-- [Arcade Shooter](examples/arcade-shooter.md) — ObjectPool + Particles + ScreenFX + Score tracking
-- [3D Dungeon Crawler](examples/3d-dungeon-crawler.md) — Canvas3D + Mesh loading + Lighting + FPS controls
+- Your First Platformer *(planned)* — Entity + Tilemap + Camera + Animation
+- Arcade Shooter *(planned)* — ObjectPool + Particles + ScreenFX + Score tracking
+- 3D Dungeon Crawler *(planned)* — Canvas3D + Mesh loading + Lighting + FPS controls
 
 ---
 

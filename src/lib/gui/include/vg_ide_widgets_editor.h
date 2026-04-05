@@ -181,10 +181,11 @@ typedef struct vg_codeeditor {
 
     // Gutter icons (breakpoints, diagnostics, etc.)
     struct vg_gutter_icon {
-        int line;       ///< 0-based line number
-        int type;       ///< 0=breakpoint, 1=warning, 2=error, 3=info
-        uint32_t color; ///< Icon color (0x00RRGGBB)
-    } *gutter_icons;    ///< Owned array; NULL when unused
+        int line;        ///< 0-based line number
+        int type;        ///< 0=breakpoint, 1=warning, 2=error, 3=info
+        uint32_t color;  ///< Icon color (0x00RRGGBB)
+        vg_icon_t image; ///< Optional RGBA icon; falls back to colored disc when absent.
+    } *gutter_icons;     ///< Owned array; NULL when unused
 
     int gutter_icon_count; ///< Active icon count
     int gutter_icon_cap;   ///< Allocated capacity
@@ -208,11 +209,11 @@ typedef struct vg_codeeditor {
 
     // Extra cursors (multi-cursor editing state)
     struct vg_extra_cursor {
-        int line;                ///< 0-based line number
-        int col;                 ///< 0-based column number
+        int line;                 ///< 0-based line number
+        int col;                  ///< 0-based column number
         vg_selection_t selection; ///< Per-cursor selection range
-        bool has_selection;      ///< Whether this cursor owns an active selection
-    } *extra_cursors; ///< Owned array; NULL when unused
+        bool has_selection;       ///< Whether this cursor owns an active selection
+    } *extra_cursors;             ///< Owned array; NULL when unused
 
     int extra_cursor_count; ///< Active extra cursor count
     int extra_cursor_cap;   ///< Allocated capacity

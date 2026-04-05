@@ -359,8 +359,7 @@ static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *e
                 continue;
             float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
             float ax = 0.0f, ay = 0.0f, aw = 0.0f, ah = 0.0f;
-            if (!notification_bounds_for_index(
-                    mgr, i, &x, &y, &w, &h, &ax, &ay, &aw, &ah)) {
+            if (!notification_bounds_for_index(mgr, i, &x, &y, &w, &h, &ax, &ay, &aw, &ah)) {
                 continue;
             }
             float px = event->mouse.screen_x;

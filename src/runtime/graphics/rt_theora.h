@@ -33,20 +33,20 @@ extern "C" {
 typedef struct {
     /* Identification header fields */
     uint8_t version_major, version_minor, version_sub;
-    uint32_t frame_width, frame_height;       /* encoded frame (multiple of 16) */
-    uint32_t pic_width, pic_height;           /* visible picture */
-    uint32_t pic_x, pic_y;                    /* picture offset within frame */
-    uint32_t fps_num, fps_den;                /* frame rate fraction */
-    uint32_t aspect_num, aspect_den;          /* pixel aspect ratio */
-    uint8_t color_space;                      /* 0=unspecified, 1=Rec470M, 2=Rec470BG */
-    uint8_t pixel_format;                     /* 0=4:2:0, 2=4:2:2, 3=4:4:4 */
+    uint32_t frame_width, frame_height; /* encoded frame (multiple of 16) */
+    uint32_t pic_width, pic_height;     /* visible picture */
+    uint32_t pic_x, pic_y;              /* picture offset within frame */
+    uint32_t fps_num, fps_den;          /* frame rate fraction */
+    uint32_t aspect_num, aspect_den;    /* pixel aspect ratio */
+    uint8_t color_space;                /* 0=unspecified, 1=Rec470M, 2=Rec470BG */
+    uint8_t pixel_format;               /* 0=4:2:0, 2=4:2:2, 3=4:4:4 */
     uint32_t quality_hint;
     uint32_t keyframe_granule_shift;
 
     /* Setup header fields */
-    uint8_t loop_filter_limits[64];           /* per-QI loop filter limit */
+    uint8_t loop_filter_limits[64]; /* per-QI loop filter limit */
     /* Quantization matrices: [inter/intra][plane][qi][coeff] */
-    uint16_t qmat[2][3][64][64];              /* simplified: base matrices */
+    uint16_t qmat[2][3][64][64]; /* simplified: base matrices */
     int32_t qmat_count;
 
     /* Decode state */
@@ -56,13 +56,13 @@ typedef struct {
     int32_t block_cols, block_rows;           /* 8x8 block grid */
 
     /* Reference frames (YCbCr 4:2:0 planes) */
-    uint8_t *ref_y, *ref_cb, *ref_cr;        /* last decoded reference */
-    uint8_t *gold_y, *gold_cb, *gold_cr;     /* golden frame reference */
-    int32_t y_stride, c_stride;              /* plane strides */
-    int32_t y_height, c_height;              /* plane heights */
+    uint8_t *ref_y, *ref_cb, *ref_cr;    /* last decoded reference */
+    uint8_t *gold_y, *gold_cb, *gold_cr; /* golden frame reference */
+    int32_t y_stride, c_stride;          /* plane strides */
+    int32_t y_height, c_height;          /* plane heights */
 
     /* Current decode output */
-    uint8_t *cur_y, *cur_cb, *cur_cr;        /* current frame being decoded */
+    uint8_t *cur_y, *cur_cb, *cur_cr; /* current frame being decoded */
 
     /* Internal/private decoder state. */
     void *priv;
@@ -87,9 +87,12 @@ int theora_decode_header(theora_decoder_t *dec, const uint8_t *data, size_t len)
 /// @param out_cb Output Cb plane pointer (set on success).
 /// @param out_cr Output Cr plane pointer (set on success).
 /// @return 0 on success, -1 on error.
-int theora_decode_frame(theora_decoder_t *dec, const uint8_t *data, size_t len,
-                         const uint8_t **out_y, const uint8_t **out_cb,
-                         const uint8_t **out_cr);
+int theora_decode_frame(theora_decoder_t *dec,
+                        const uint8_t *data,
+                        size_t len,
+                        const uint8_t **out_y,
+                        const uint8_t **out_cb,
+                        const uint8_t **out_cr);
 
 /// @brief Check if a packet is a Theora header (starts with 0x80-0x82 + "theora").
 int theora_is_header_packet(const uint8_t *data, size_t len);

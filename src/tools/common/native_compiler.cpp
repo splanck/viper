@@ -45,8 +45,10 @@ std::string generateTempIlPath() {
 }
 
 /// @brief Compile to native.
-int compileToNative(const std::string &ilPath, const std::string &outputPath,
-                    TargetArch arch, const std::string &assetBlobPath,
+int compileToNative(const std::string &ilPath,
+                    const std::string &outputPath,
+                    TargetArch arch,
+                    const std::string &assetBlobPath,
                     const std::string &assetObjPath) {
     if (arch == TargetArch::ARM64) {
         // The frontend already emitted the final IL. Do not re-run an IL

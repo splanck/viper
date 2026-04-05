@@ -75,4 +75,6 @@ TEST(SceneManager, UnknownSceneNoOp) {
     EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("menu")));
 }
 
-int main() { return viper_test::run_all_tests(); }
+int main() {
+    return viper_test::run_all_tests();
+}

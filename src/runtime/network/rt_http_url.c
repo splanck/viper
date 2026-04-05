@@ -34,8 +34,81 @@
 #include <string.h>
 
 // Forward declarations (defined in rt_io.c).
-extern void rt_trap(const char *msg);
 extern void rt_trap_net(const char *msg, int err_code);
+
+typedef struct rt_url rt_url_t;
+static void free_url(rt_url_t *url);
+
+static void rt_url_trap_invalid_operation(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
+}
+
+static void rt_url_trap_runtime(const char *msg) {
+    rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, 0, msg);
+}
+
+static rt_url_t *rt_url_require_obj(void *obj, const char *context) {
+    if (!obj)
+        rt_url_trap_invalid_operation(context);
+    return (rt_url_t *)obj;
+}
+
+static char *rt_url_alloc_or_trap(size_t size, const char *context) {
+    char *buffer = (char *)malloc(size);
+    if (!buffer)
+        rt_url_trap_runtime(context);
+    return buffer;
+}
+
+static char *rt_url_dup_slice_or_trap_cleanup(rt_url_t *url,
+                                              const char *begin,
+                                              size_t len,
+                                              const char *context) {
+    char *copy = (char *)malloc(len + 1);
+    if (!copy) {
+        if (url)
+            free_url(url);
+        rt_url_trap_runtime(context);
+    }
+    memcpy(copy, begin, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static char *rt_url_strdup_or_trap_cleanup(rt_url_t *url, const char *str, const char *context) {
+    if (!str)
+        return NULL;
+    return rt_url_dup_slice_or_trap_cleanup(url, str, strlen(str), context);
+}
+
+static char *rt_url_dup_string_arg(rt_string value, const char *context) {
+    const char *str = value ? rt_string_cstr(value) : NULL;
+    return str ? rt_url_dup_slice_or_trap_cleanup(NULL, str, strlen(str), context) : NULL;
+}
+
+static rt_string rt_url_string_from_bytes_or_trap(const char *bytes,
+                                                  size_t len,
+                                                  const char *context) {
+    rt_string str = rt_string_from_bytes(bytes, len);
+    if (!str)
+        rt_url_trap_runtime(context);
+    return str;
+}
+
+static int rt_url_scheme_is_valid(const char *scheme, size_t len) {
+    if (!scheme || len == 0)
+        return 0;
+    if (!((scheme[0] >= 'a' && scheme[0] <= 'z') || (scheme[0] >= 'A' && scheme[0] <= 'Z')))
+        return 0;
+    for (size_t i = 0; i < len; ++i) {
+        char c = scheme[i];
+        int valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                    c == '+' || c == '-' || c == '.';
+        if (!valid)
+            return 0;
+    }
+    return 1;
+}
 
 //=============================================================================
 // URL Parsing and Construction Implementation
@@ -160,13 +233,6 @@ static char *percent_decode(const char *str) {
     return result;
 }
 
-/// @brief Duplicate a string safely (handles NULL).
-static char *safe_strdup(const char *str) {
-    return str ? strdup(str) : NULL;
-}
-
-static void free_url(rt_url_t *url);
-
 /// @brief Internal URL parsing.
 /// @return 0 on success, -1 on error.
 static int parse_url_full(const char *url_str, rt_url_t *result) {
@@ -182,11 +248,10 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
     bool has_authority = false;
     if (scheme_end) {
         size_t scheme_len = scheme_end - p;
-        result->scheme = (char *)malloc(scheme_len + 1);
-        if (!result->scheme)
+        if (!rt_url_scheme_is_valid(p, scheme_len))
             return -1;
-        memcpy(result->scheme, p, scheme_len);
-        result->scheme[scheme_len] = '\0';
+        result->scheme = rt_url_dup_slice_or_trap_cleanup(
+            result, p, scheme_len, "URL.Parse: scheme allocation failed");
 
         // Convert scheme to lowercase
         for (char *s = result->scheme; *s; s++) {
@@ -232,26 +297,17 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
             if (colon) {
                 // user:pass
                 size_t user_len = colon - p;
-                result->user = (char *)malloc(user_len + 1);
-                if (result->user) {
-                    memcpy(result->user, p, user_len);
-                    result->user[user_len] = '\0';
-                }
+                result->user = rt_url_dup_slice_or_trap_cleanup(
+                    result, p, user_len, "URL.Parse: user allocation failed");
 
                 size_t pass_len = at_sign - colon - 1;
-                result->pass = (char *)malloc(pass_len + 1);
-                if (result->pass) {
-                    memcpy(result->pass, colon + 1, pass_len);
-                    result->pass[pass_len] = '\0';
-                }
+                result->pass = rt_url_dup_slice_or_trap_cleanup(
+                    result, colon + 1, pass_len, "URL.Parse: password allocation failed");
             } else {
                 // Just user
                 size_t user_len = at_sign - p;
-                result->user = (char *)malloc(user_len + 1);
-                if (result->user) {
-                    memcpy(result->user, p, user_len);
-                    result->user[user_len] = '\0';
-                }
+                result->user = rt_url_dup_slice_or_trap_cleanup(
+                    result, p, user_len, "URL.Parse: user allocation failed");
             }
             host_start = at_sign + 1;
         }
@@ -264,11 +320,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
             const char *bracket_end = strchr(host_start, ']');
             if (bracket_end && bracket_end < auth_end) {
                 size_t host_len = bracket_end - host_start + 1;
-                result->host = (char *)malloc(host_len + 1);
-                if (result->host) {
-                    memcpy(result->host, host_start, host_len);
-                    result->host[host_len] = '\0';
-                }
+                result->host = rt_url_dup_slice_or_trap_cleanup(
+                    result, host_start, host_len, "URL.Parse: host allocation failed");
                 if (bracket_end + 1 < auth_end && *(bracket_end + 1) == ':')
                     port_colon = bracket_end + 1;
             }
@@ -283,11 +336,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
 
             const char *host_end = port_colon ? port_colon : auth_end;
             size_t host_len = host_end - host_start;
-            result->host = (char *)malloc(host_len + 1);
-            if (result->host) {
-                memcpy(result->host, host_start, host_len);
-                result->host[host_len] = '\0';
-            }
+            result->host = rt_url_dup_slice_or_trap_cleanup(
+                result, host_start, host_len, "URL.Parse: host allocation failed");
         }
 
         // Parse port
@@ -299,7 +349,16 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
                 return -1;
             }
             for (; s < auth_end && *s >= '0' && *s <= '9'; s++) {
+                int digit = *s - '0';
+                if (result->port > (INT64_MAX - digit) / 10) {
+                    free_url(result);
+                    return -1;
+                }
                 result->port = result->port * 10 + (*s - '0');
+            }
+            if (result->port > 65535) {
+                free_url(result);
+                return -1;
             }
             if (s != auth_end) {
                 free_url(result);
@@ -326,11 +385,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
 
     if (path_end > path_start) {
         size_t path_len = path_end - path_start;
-        result->path = (char *)malloc(path_len + 1);
-        if (result->path) {
-            memcpy(result->path, path_start, path_len);
-            result->path[path_len] = '\0';
-        }
+        result->path = rt_url_dup_slice_or_trap_cleanup(
+            result, path_start, path_len, "URL.Parse: path allocation failed");
     }
 
     p = path_end;
@@ -343,11 +399,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
             query_end++;
 
         size_t query_len = query_end - p;
-        result->query = (char *)malloc(query_len + 1);
-        if (result->query) {
-            memcpy(result->query, p, query_len);
-            result->query[query_len] = '\0';
-        }
+        result->query = rt_url_dup_slice_or_trap_cleanup(
+            result, p, query_len, "URL.Parse: query allocation failed");
 
         p = query_end;
     }
@@ -356,11 +409,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
     if (*p == '#') {
         p++;
         size_t frag_len = strlen(p);
-        result->fragment = (char *)malloc(frag_len + 1);
-        if (result->fragment) {
-            memcpy(result->fragment, p, frag_len);
-            result->fragment[frag_len] = '\0';
-        }
+        result->fragment = rt_url_dup_slice_or_trap_cleanup(
+            result, p, frag_len, "URL.Parse: fragment allocation failed");
     }
 
     return 0;
@@ -385,14 +435,26 @@ static void free_url(rt_url_t *url) {
     memset(url, 0, sizeof(*url));
 }
 
+static void rt_url_replace_field(char **slot, rt_string value, const char *context, int lowercase) {
+    char *dup = rt_url_dup_string_arg(value, context);
+    free(*slot);
+    *slot = dup;
+    if (lowercase && *slot) {
+        for (char *p = *slot; *p; ++p) {
+            if (*p >= 'A' && *p <= 'Z')
+                *p = (char)(*p + ('a' - 'A'));
+        }
+    }
+}
+
 static char *normalize_path(const char *path) {
     if (!path || *path == '\0')
-        return strdup("/");
+        return rt_url_strdup_or_trap_cleanup(NULL, "/", "URL.NormalizePath: allocation failed");
 
     size_t input_len = strlen(path);
     char **segments = (char **)calloc(input_len + 1, sizeof(char *));
     if (!segments)
-        return NULL;
+        rt_url_trap_runtime("URL.NormalizePath: segment allocation failed");
 
     int absolute = path[0] == '/';
     int segment_count = 0;
@@ -459,6 +521,7 @@ fail:
     for (int i = 0; i < segment_count; i++)
         free(segments[i]);
     free(segments);
+    rt_url_trap_runtime("URL.NormalizePath: allocation failed");
     return NULL;
 }
 
@@ -470,13 +533,13 @@ static void rt_url_finalize(void *obj) {
 }
 
 void *rt_url_parse(rt_string url_str) {
-    const char *str = rt_string_cstr(url_str);
+    const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str)
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
 
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!url)
-        rt_trap("URL: Memory allocation failed");
+        rt_url_trap_runtime("URL.Parse: memory allocation failed");
 
     memset(url, 0, sizeof(*url));
     rt_obj_set_finalizer(url, rt_url_finalize);
@@ -491,7 +554,7 @@ void *rt_url_parse(rt_string url_str) {
 void *rt_url_new(void) {
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!url)
-        rt_trap("URL: Memory allocation failed");
+        rt_url_trap_runtime("URL.New: memory allocation failed");
 
     memset(url, 0, sizeof(*url));
     rt_obj_set_finalizer(url, rt_url_finalize);
@@ -499,75 +562,39 @@ void *rt_url_new(void) {
 }
 
 rt_string rt_url_scheme(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Scheme: null receiver");
     if (!url->scheme)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->scheme, strlen(url->scheme));
+    return rt_url_string_from_bytes_or_trap(
+        url->scheme, strlen(url->scheme), "URL.Scheme: string allocation failed");
 }
 
 void rt_url_set_scheme(void *obj, rt_string scheme) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(scheme);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->scheme)
-        free(url->scheme);
-    url->scheme = dup;
-
-    // Convert to lowercase
-    if (url->scheme) {
-        for (char *p = url->scheme; *p; p++) {
-            if (*p >= 'A' && *p <= 'Z')
-                *p = *p + ('a' - 'A');
-        }
-    }
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Scheme: null receiver");
+    rt_url_replace_field(&url->scheme, scheme, "URL.set_Scheme: allocation failed", 1);
 }
 
 rt_string rt_url_host(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Host: null receiver");
     if (!url->host)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->host, strlen(url->host));
+    return rt_url_string_from_bytes_or_trap(
+        url->host, strlen(url->host), "URL.Host: string allocation failed");
 }
 
 void rt_url_set_host(void *obj, rt_string host) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(host);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->host)
-        free(url->host);
-    url->host = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Host: null receiver");
+    rt_url_replace_field(&url->host, host, "URL.set_Host: allocation failed", 0);
 }
 
 int64_t rt_url_port(void *obj) {
-    if (!obj)
-        return 0;
-
-    return ((rt_url_t *)obj)->port;
+    return rt_url_require_obj(obj, "URL.Port: null receiver")->port;
 }
 
 void rt_url_set_port(void *obj, int64_t port) {
-    if (!obj)
-        return;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Port: null receiver");
 
     // Clamp to valid port range (0 = unset, 1-65535 = valid).
     if (port < 0)
@@ -575,144 +602,81 @@ void rt_url_set_port(void *obj, int64_t port) {
     else if (port > 65535)
         port = 65535;
 
-    ((rt_url_t *)obj)->port = port;
+    url->port = port;
 }
 
 rt_string rt_url_path(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Path: null receiver");
     if (!url->path)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->path, strlen(url->path));
+    return rt_url_string_from_bytes_or_trap(
+        url->path, strlen(url->path), "URL.Path: string allocation failed");
 }
 
 void rt_url_set_path(void *obj, rt_string path) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(path);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->path)
-        free(url->path);
-    url->path = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Path: null receiver");
+    rt_url_replace_field(&url->path, path, "URL.set_Path: allocation failed", 0);
 }
 
 rt_string rt_url_query(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Query: null receiver");
     if (!url->query)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->query, strlen(url->query));
+    return rt_url_string_from_bytes_or_trap(
+        url->query, strlen(url->query), "URL.Query: string allocation failed");
 }
 
 void rt_url_set_query(void *obj, rt_string query) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(query);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->query)
-        free(url->query);
-    url->query = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Query: null receiver");
+    rt_url_replace_field(&url->query, query, "URL.set_Query: allocation failed", 0);
 }
 
 rt_string rt_url_fragment(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Fragment: null receiver");
     if (!url->fragment)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->fragment, strlen(url->fragment));
+    return rt_url_string_from_bytes_or_trap(
+        url->fragment, strlen(url->fragment), "URL.Fragment: string allocation failed");
 }
 
 void rt_url_set_fragment(void *obj, rt_string fragment) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(fragment);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->fragment)
-        free(url->fragment);
-    url->fragment = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Fragment: null receiver");
+    rt_url_replace_field(&url->fragment, fragment, "URL.set_Fragment: allocation failed", 0);
 }
 
 rt_string rt_url_user(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.User: null receiver");
     if (!url->user)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->user, strlen(url->user));
+    return rt_url_string_from_bytes_or_trap(
+        url->user, strlen(url->user), "URL.User: string allocation failed");
 }
 
 void rt_url_set_user(void *obj, rt_string user) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(user);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->user)
-        free(url->user);
-    url->user = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_User: null receiver");
+    rt_url_replace_field(&url->user, user, "URL.set_User: allocation failed", 0);
 }
 
 rt_string rt_url_pass(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Pass: null receiver");
     if (!url->pass)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    return rt_string_from_bytes(url->pass, strlen(url->pass));
+    return rt_url_string_from_bytes_or_trap(
+        url->pass, strlen(url->pass), "URL.Pass: string allocation failed");
 }
 
 void rt_url_set_pass(void *obj, rt_string pass) {
-    if (!obj)
-        return;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *str = rt_string_cstr(pass);
-    char *dup = str ? strdup(str) : NULL;
-    if (str && !dup)
-        return; // OOM: preserve existing value.
-
-    if (url->pass)
-        free(url->pass);
-    url->pass = dup;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.set_Pass: null receiver");
+    rt_url_replace_field(&url->pass, pass, "URL.set_Pass: allocation failed", 0);
 }
 
 rt_string rt_url_authority(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Authority: null receiver");
 
     // Calculate size: user:pass@host:port
     size_t size = 0;
@@ -728,11 +692,9 @@ rt_string rt_url_authority(void *obj) {
         size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
 
     if (size == 0)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    char *result = (char *)malloc(size + 1);
-    if (!result)
-        return rt_string_from_bytes("", 0);
+    char *result = rt_url_alloc_or_trap(size + 1, "URL.Authority: allocation failed");
 
     char *p = result;
     char *end = result + size + 1;
@@ -747,27 +709,23 @@ rt_string rt_url_authority(void *obj) {
     if (url->port > 0)
         p += snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
 
-    rt_string str = rt_string_from_bytes(result, p - result);
+    rt_string str = rt_url_string_from_bytes_or_trap(
+        result, (size_t)(p - result), "URL.Authority: string allocation failed");
     free(result);
     return str;
 }
 
 rt_string rt_url_host_port(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.HostPort: null receiver");
     if (!url->host)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     // Check if port is default for scheme
     int64_t default_port = default_port_for_scheme(url->scheme);
     bool show_port = url->port > 0 && url->port != default_port;
 
     size_t size = strlen(url->host) + (show_port ? 22 : 0);
-    char *result = (char *)malloc(size + 1);
-    if (!result)
-        return rt_string_from_bytes("", 0);
+    char *result = rt_url_alloc_or_trap(size + 1, "URL.HostPort: allocation failed");
 
     if (show_port)
         snprintf(result, size + 1, "%s:%lld", url->host, (long long)url->port);
@@ -776,16 +734,14 @@ rt_string rt_url_host_port(void *obj) {
         memcpy(result, url->host, hlen + 1);
     }
 
-    rt_string str = rt_string_from_bytes(result, strlen(result));
+    rt_string str = rt_url_string_from_bytes_or_trap(
+        result, strlen(result), "URL.HostPort: string allocation failed");
     free(result);
     return str;
 }
 
 rt_string rt_url_full(void *obj) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Full: null receiver");
 
     // Calculate total size
     size_t size = 0;
@@ -809,11 +765,9 @@ rt_string rt_url_full(void *obj) {
         size += 1 + strlen(url->fragment); // #fragment
 
     if (size == 0)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    char *result = (char *)malloc(size + 1);
-    if (!result)
-        return rt_string_from_bytes("", 0);
+    char *result = rt_url_alloc_or_trap(size + 1, "URL.Full: allocation failed");
 
     char *p = result;
     char *end = result + size + 1;
@@ -839,39 +793,40 @@ rt_string rt_url_full(void *obj) {
     if (url->fragment && url->fragment[0])
         p += snprintf(p, (size_t)(end - p), "#%s", url->fragment);
 
-    rt_string str = rt_string_from_bytes(result, p - result);
+    rt_string str = rt_url_string_from_bytes_or_trap(
+        result, (size_t)(p - result), "URL.Full: string allocation failed");
     free(result);
     return str;
 }
 
 void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
-    if (!obj)
-        return obj;
-
-    rt_url_t *url = (rt_url_t *)obj;
-    const char *name_str = rt_string_cstr(name);
+    rt_url_t *url = rt_url_require_obj(obj, "URL.SetQueryParam: null receiver");
+    const char *name_str = name ? rt_string_cstr(name) : NULL;
 
     if (!name_str)
-        return obj;
+        rt_url_trap_invalid_operation("URL.SetQueryParam: null query name");
 
     // Parse existing query into map
     rt_string tmp_query =
-        rt_string_from_bytes(url->query ? url->query : "", url->query ? strlen(url->query) : 0);
+        rt_url_string_from_bytes_or_trap(url->query ? url->query : "",
+                                         url->query ? strlen(url->query) : 0,
+                                         "URL.SetQueryParam: string allocation failed");
     void *map = rt_url_decode_query(tmp_query);
     rt_string_unref(tmp_query);
 
     // Set the new param
-    void *boxed = rt_box_str(value);
-    rt_map_set(map, name, boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    rt_map_set_str(map, name, value ? value : rt_str_empty());
 
     // Rebuild query string
     rt_string new_query = rt_url_encode_query(map);
 
     if (url->query)
         free(url->query);
-    url->query = strdup(rt_string_cstr(new_query));
+    const char *new_query_str = rt_string_cstr(new_query);
+    url->query = (new_query_str && *new_query_str)
+                     ? rt_url_strdup_or_trap_cleanup(
+                           NULL, new_query_str, "URL.SetQueryParam: allocation failed")
+                     : NULL;
     rt_string_unref(new_query);
 
     // Release temporary map
@@ -881,24 +836,19 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
 }
 
 rt_string rt_url_get_query_param(void *obj, rt_string name) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.GetQueryParam: null receiver");
     if (!url->query)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
-    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    rt_string tmp_query = rt_url_string_from_bytes_or_trap(
+        url->query, strlen(url->query), "URL.GetQueryParam: string allocation failed");
     void *map = rt_url_decode_query(tmp_query);
     rt_string_unref(tmp_query);
 
-    void *boxed = rt_map_get(map, name);
-
-    rt_string result;
-    if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
-        result = rt_string_from_bytes("", 0);
-    else
-        result = rt_unbox_str(boxed);
+    void *stored = rt_map_get(map, name);
+    rt_string result = stored ? (rt_string)stored : rt_str_empty();
+    if (stored)
+        rt_string_ref(result);
 
     if (map && rt_obj_release_check0(map))
         rt_obj_free(map);
@@ -907,14 +857,12 @@ rt_string rt_url_get_query_param(void *obj, rt_string name) {
 }
 
 int8_t rt_url_has_query_param(void *obj, rt_string name) {
-    if (!obj)
-        return 0;
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.HasQueryParam: null receiver");
     if (!url->query)
         return 0;
 
-    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    rt_string tmp_query = rt_url_string_from_bytes_or_trap(
+        url->query, strlen(url->query), "URL.HasQueryParam: string allocation failed");
     void *map = rt_url_decode_query(tmp_query);
     rt_string_unref(tmp_query);
 
@@ -927,14 +875,12 @@ int8_t rt_url_has_query_param(void *obj, rt_string name) {
 }
 
 void *rt_url_del_query_param(void *obj, rt_string name) {
-    if (!obj)
-        return obj;
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.DelQueryParam: null receiver");
     if (!url->query)
         return obj;
 
-    rt_string tmp_query = rt_string_from_bytes(url->query, strlen(url->query));
+    rt_string tmp_query = rt_url_string_from_bytes_or_trap(
+        url->query, strlen(url->query), "URL.DelQueryParam: string allocation failed");
     void *map = rt_url_decode_query(tmp_query);
     rt_string_unref(tmp_query);
 
@@ -946,7 +892,10 @@ void *rt_url_del_query_param(void *obj, rt_string name) {
         free(url->query);
 
     const char *query_str = rt_string_cstr(new_query);
-    url->query = query_str && *query_str ? strdup(query_str) : NULL;
+    url->query =
+        (query_str && *query_str)
+            ? rt_url_strdup_or_trap_cleanup(NULL, query_str, "URL.DelQueryParam: allocation failed")
+            : NULL;
     rt_string_unref(new_query);
 
     if (map && rt_obj_release_check0(map))
@@ -956,25 +905,20 @@ void *rt_url_del_query_param(void *obj, rt_string name) {
 }
 
 void *rt_url_query_map(void *obj) {
-    if (!obj)
-        return rt_map_new();
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.QueryMap: null receiver");
     if (!url->query)
         return rt_map_new();
 
-    rt_string query = rt_string_from_bytes(url->query, strlen(url->query));
+    rt_string query = rt_url_string_from_bytes_or_trap(
+        url->query, strlen(url->query), "URL.QueryMap: string allocation failed");
     void *map = rt_url_decode_query(query);
     rt_string_unref(query);
     return map;
 }
 
 void *rt_url_resolve(void *obj, rt_string relative) {
-    if (!obj)
-        rt_trap("URL: NULL base URL");
-
-    rt_url_t *base = (rt_url_t *)obj;
-    const char *rel_str = rt_string_cstr(relative);
+    rt_url_t *base = rt_url_require_obj(obj, "URL.Resolve: null receiver");
+    const char *rel_str = relative ? rt_string_cstr(relative) : NULL;
 
     if (!rel_str || *rel_str == '\0')
         return rt_url_clone(obj);
@@ -988,43 +932,62 @@ void *rt_url_resolve(void *obj, rt_string relative) {
     // Create new URL
     rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!result)
-        rt_trap("URL: Memory allocation failed");
+        rt_url_trap_runtime("URL.Resolve: memory allocation failed");
     memset(result, 0, sizeof(*result));
     rt_obj_set_finalizer(result, rt_url_finalize);
 
     // RFC 3986 resolution algorithm
     if (rel.scheme) {
         // Relative has scheme - use as-is
-        result->scheme = safe_strdup(rel.scheme);
-        result->user = safe_strdup(rel.user);
-        result->pass = safe_strdup(rel.pass);
-        result->host = safe_strdup(rel.host);
+        result->scheme = rt_url_strdup_or_trap_cleanup(
+            result, rel.scheme, "URL.Resolve: scheme allocation failed");
+        result->user =
+            rt_url_strdup_or_trap_cleanup(result, rel.user, "URL.Resolve: user allocation failed");
+        result->pass = rt_url_strdup_or_trap_cleanup(
+            result, rel.pass, "URL.Resolve: password allocation failed");
+        result->host =
+            rt_url_strdup_or_trap_cleanup(result, rel.host, "URL.Resolve: host allocation failed");
         result->port = rel.port;
-        result->path = safe_strdup(rel.path);
-        result->query = safe_strdup(rel.query);
+        result->path =
+            rt_url_strdup_or_trap_cleanup(result, rel.path, "URL.Resolve: path allocation failed");
+        result->query = rt_url_strdup_or_trap_cleanup(
+            result, rel.query, "URL.Resolve: query allocation failed");
     } else {
         if (rel.host) {
             // Relative has authority
-            result->scheme = safe_strdup(base->scheme);
-            result->user = safe_strdup(rel.user);
-            result->pass = safe_strdup(rel.pass);
-            result->host = safe_strdup(rel.host);
+            result->scheme = rt_url_strdup_or_trap_cleanup(
+                result, base->scheme, "URL.Resolve: scheme allocation failed");
+            result->user = rt_url_strdup_or_trap_cleanup(
+                result, rel.user, "URL.Resolve: user allocation failed");
+            result->pass = rt_url_strdup_or_trap_cleanup(
+                result, rel.pass, "URL.Resolve: password allocation failed");
+            result->host = rt_url_strdup_or_trap_cleanup(
+                result, rel.host, "URL.Resolve: host allocation failed");
             result->port = rel.port;
-            result->path = safe_strdup(rel.path);
-            result->query = safe_strdup(rel.query);
+            result->path = rt_url_strdup_or_trap_cleanup(
+                result, rel.path, "URL.Resolve: path allocation failed");
+            result->query = rt_url_strdup_or_trap_cleanup(
+                result, rel.query, "URL.Resolve: query allocation failed");
         } else {
-            result->scheme = safe_strdup(base->scheme);
-            result->user = safe_strdup(base->user);
-            result->pass = safe_strdup(base->pass);
-            result->host = safe_strdup(base->host);
+            result->scheme = rt_url_strdup_or_trap_cleanup(
+                result, base->scheme, "URL.Resolve: scheme allocation failed");
+            result->user = rt_url_strdup_or_trap_cleanup(
+                result, base->user, "URL.Resolve: user allocation failed");
+            result->pass = rt_url_strdup_or_trap_cleanup(
+                result, base->pass, "URL.Resolve: password allocation failed");
+            result->host = rt_url_strdup_or_trap_cleanup(
+                result, base->host, "URL.Resolve: host allocation failed");
             result->port = base->port;
 
             if (!rel.path || *rel.path == '\0') {
-                result->path = safe_strdup(base->path);
+                result->path = rt_url_strdup_or_trap_cleanup(
+                    result, base->path, "URL.Resolve: path allocation failed");
                 if (rel.query)
-                    result->query = safe_strdup(rel.query);
+                    result->query = rt_url_strdup_or_trap_cleanup(
+                        result, rel.query, "URL.Resolve: query allocation failed");
                 else
-                    result->query = safe_strdup(base->query);
+                    result->query = rt_url_strdup_or_trap_cleanup(
+                        result, base->query, "URL.Resolve: query allocation failed");
             } else {
                 if (rel.path[0] == '/') {
                     result->path = normalize_path(rel.path);
@@ -1033,39 +996,39 @@ void *rt_url_resolve(void *obj, rt_string relative) {
                     if (!base->host || !base->path || *base->path == '\0') {
                         // No base authority or empty base path
                         size_t len = strlen(rel.path) + 2;
-                        result->path = (char *)malloc(len);
-                        if (result->path)
-                            snprintf(result->path, len, "/%s", rel.path);
+                        result->path =
+                            rt_url_alloc_or_trap(len, "URL.Resolve: path allocation failed");
+                        snprintf(result->path, len, "/%s", rel.path);
                     } else {
                         // Remove last segment of base path
                         const char *last_slash = strrchr(base->path, '/');
                         if (last_slash) {
                             size_t base_len = last_slash - base->path + 1;
                             size_t len = base_len + strlen(rel.path) + 1;
-                            result->path = (char *)malloc(len);
-                            if (result->path) {
-                                memcpy(result->path, base->path, base_len);
-                                size_t rel_len = strlen(rel.path);
-                                memcpy(result->path + base_len, rel.path, rel_len + 1);
-                            }
+                            result->path =
+                                rt_url_alloc_or_trap(len, "URL.Resolve: path allocation failed");
+                            memcpy(result->path, base->path, base_len);
+                            size_t rel_len = strlen(rel.path);
+                            memcpy(result->path + base_len, rel.path, rel_len + 1);
                         } else {
-                            result->path = safe_strdup(rel.path);
+                            result->path = rt_url_strdup_or_trap_cleanup(
+                                result, rel.path, "URL.Resolve: path allocation failed");
                         }
                     }
                 }
                 if (result->path) {
                     char *normalized = normalize_path(result->path);
-                    if (normalized) {
-                        free(result->path);
-                        result->path = normalized;
-                    }
+                    free(result->path);
+                    result->path = normalized;
                 }
-                result->query = safe_strdup(rel.query);
+                result->query = rt_url_strdup_or_trap_cleanup(
+                    result, rel.query, "URL.Resolve: query allocation failed");
             }
         }
     }
 
-    result->fragment = safe_strdup(rel.fragment);
+    result->fragment = rt_url_strdup_or_trap_cleanup(
+        result, rel.fragment, "URL.Resolve: fragment allocation failed");
 
     // Clean up relative URL
     free_url(&rel);
@@ -1074,65 +1037,69 @@ void *rt_url_resolve(void *obj, rt_string relative) {
 }
 
 void *rt_url_clone(void *obj) {
-    if (!obj)
-        return rt_url_new();
-
-    rt_url_t *url = (rt_url_t *)obj;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Clone: null receiver");
     rt_url_t *clone = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!clone)
-        rt_trap("URL: Memory allocation failed");
+        rt_url_trap_runtime("URL.Clone: memory allocation failed");
     memset(clone, 0, sizeof(*clone));
     rt_obj_set_finalizer(clone, rt_url_finalize);
 
-    clone->scheme = safe_strdup(url->scheme);
-    clone->user = safe_strdup(url->user);
-    clone->pass = safe_strdup(url->pass);
-    clone->host = safe_strdup(url->host);
+    clone->scheme =
+        rt_url_strdup_or_trap_cleanup(clone, url->scheme, "URL.Clone: scheme allocation failed");
+    clone->user =
+        rt_url_strdup_or_trap_cleanup(clone, url->user, "URL.Clone: user allocation failed");
+    clone->pass =
+        rt_url_strdup_or_trap_cleanup(clone, url->pass, "URL.Clone: password allocation failed");
+    clone->host =
+        rt_url_strdup_or_trap_cleanup(clone, url->host, "URL.Clone: host allocation failed");
     clone->port = url->port;
-    clone->path = safe_strdup(url->path);
-    clone->query = safe_strdup(url->query);
-    clone->fragment = safe_strdup(url->fragment);
+    clone->path =
+        rt_url_strdup_or_trap_cleanup(clone, url->path, "URL.Clone: path allocation failed");
+    clone->query =
+        rt_url_strdup_or_trap_cleanup(clone, url->query, "URL.Clone: query allocation failed");
+    clone->fragment = rt_url_strdup_or_trap_cleanup(
+        clone, url->fragment, "URL.Clone: fragment allocation failed");
 
     return clone;
 }
 
 rt_string rt_url_encode(rt_string text) {
-    const char *str = rt_string_cstr(text);
+    const char *str = text ? rt_string_cstr(text) : "";
     char *encoded = percent_encode(str, true);
     if (!encoded)
-        return rt_string_from_bytes("", 0);
+        rt_url_trap_runtime("URL.Encode: allocation failed");
 
-    rt_string result = rt_string_from_bytes(encoded, strlen(encoded));
+    rt_string result = rt_url_string_from_bytes_or_trap(
+        encoded, strlen(encoded), "URL.Encode: string allocation failed");
     free(encoded);
     return result;
 }
 
 rt_string rt_url_decode(rt_string text) {
-    const char *str = rt_string_cstr(text);
+    const char *str = text ? rt_string_cstr(text) : "";
     char *decoded = percent_decode(str);
     if (!decoded)
-        return rt_string_from_bytes("", 0);
+        rt_url_trap_runtime("URL.Decode: allocation failed");
 
-    rt_string result = rt_string_from_bytes(decoded, strlen(decoded));
+    rt_string result = rt_url_string_from_bytes_or_trap(
+        decoded, strlen(decoded), "URL.Decode: string allocation failed");
     free(decoded);
     return result;
 }
 
 rt_string rt_url_encode_query(void *map) {
     if (!map)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     void *keys = rt_map_keys(map);
     int64_t len = rt_seq_len(keys);
 
     if (len == 0)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     // Build query string
     size_t cap = 256;
-    char *result = (char *)malloc(cap);
-    if (!result)
-        return rt_string_from_bytes("", 0);
+    char *result = rt_url_alloc_or_trap(cap, "URL.EncodeQuery: allocation failed");
 
     size_t pos = 0;
     for (int64_t i = 0; i < len; i++) {
@@ -1151,12 +1118,15 @@ rt_string rt_url_encode_query(void *map) {
         const char *value_str = value_str_handle ? rt_string_cstr(value_str_handle) : "";
 
         char *enc_key = percent_encode(key_str, true);
-        char *enc_value = value_str ? percent_encode(value_str, true) : strdup("");
+        char *enc_value = value_str ? percent_encode(value_str, true) : NULL;
 
         if (!enc_key || !enc_value) {
+            if (value_str_handle)
+                rt_string_unref(value_str_handle);
             free(enc_key);
             free(enc_value);
-            continue;
+            free(result);
+            rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
         }
 
         size_t needed = strlen(enc_key) + 1 + strlen(enc_value) + 2; // key=value&
@@ -1164,9 +1134,12 @@ rt_string rt_url_encode_query(void *map) {
             cap = (pos + needed) * 2;
             char *new_result = (char *)realloc(result, cap);
             if (!new_result) {
+                if (value_str_handle)
+                    rt_string_unref(value_str_handle);
                 free(enc_key);
                 free(enc_value);
-                break;
+                free(result);
+                rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
             }
             result = new_result;
         }
@@ -1182,14 +1155,15 @@ rt_string rt_url_encode_query(void *map) {
     }
 
     result[pos] = '\0';
-    rt_string str = rt_string_from_bytes(result, pos);
+    rt_string str =
+        rt_url_string_from_bytes_or_trap(result, pos, "URL.EncodeQuery: string allocation failed");
     free(result);
     return str;
 }
 
 void *rt_url_decode_query(rt_string query) {
     void *map = rt_map_new();
-    const char *str = rt_string_cstr(query);
+    const char *str = query ? rt_string_cstr(query) : NULL;
 
     if (!str || *str == '\0')
         return map;
@@ -1204,24 +1178,19 @@ void *rt_url_decode_query(rt_string query) {
             // Key without value
             const char *end = amp ? amp : p + strlen(p);
             if (end > p) {
-                char *key = (char *)malloc(end - p + 1);
-                if (key) {
-                    memcpy(key, p, end - p);
-                    key[end - p] = '\0';
-                    char *dec_key = percent_decode(key);
-                    if (dec_key) {
-                        rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
-                        rt_string empty = rt_string_from_bytes("", 0);
-                        void *boxed = rt_box_str(empty);
-                        rt_map_set(map, key_str, boxed);
-                        if (boxed && rt_obj_release_check0(boxed))
-                            rt_obj_free(boxed);
-                        rt_string_unref(key_str);
-                        rt_string_unref(empty);
-                        free(dec_key);
-                    }
+                char *key = rt_url_dup_slice_or_trap_cleanup(
+                    NULL, p, (size_t)(end - p), "URL.DecodeQuery: key allocation failed");
+                char *dec_key = percent_decode(key);
+                if (!dec_key) {
                     free(key);
+                    rt_url_trap_runtime("URL.DecodeQuery: key decode allocation failed");
                 }
+                rt_string key_str = rt_url_string_from_bytes_or_trap(
+                    dec_key, strlen(dec_key), "URL.DecodeQuery: key string allocation failed");
+                rt_map_set_str(map, key_str, rt_str_empty());
+                rt_string_unref(key_str);
+                free(dec_key);
+                free(key);
             }
             p = amp ? amp + 1 : p + strlen(p);
         } else {
@@ -1230,33 +1199,31 @@ void *rt_url_decode_query(rt_string query) {
             const char *val_start = eq + 1;
             const char *val_end = amp ? amp : val_start + strlen(val_start);
 
-            char *key = (char *)malloc(key_len + 1);
-            char *val = (char *)malloc(val_end - val_start + 1);
-
-            if (key && val) {
-                memcpy(key, p, key_len);
-                key[key_len] = '\0';
-                memcpy(val, val_start, val_end - val_start);
-                val[val_end - val_start] = '\0';
-
-                char *dec_key = percent_decode(key);
-                char *dec_val = percent_decode(val);
-
-                if (dec_key && dec_val) {
-                    rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
-                    rt_string val_str = rt_string_from_bytes(dec_val, strlen(dec_val));
-                    void *boxed = rt_box_str(val_str);
-                    rt_map_set(map, key_str, boxed);
-                    if (boxed && rt_obj_release_check0(boxed))
-                        rt_obj_free(boxed);
-                    rt_string_unref(key_str);
-                    rt_string_unref(val_str);
-                }
-
+            char *key = rt_url_dup_slice_or_trap_cleanup(
+                NULL, p, key_len, "URL.DecodeQuery: key allocation failed");
+            char *val =
+                rt_url_dup_slice_or_trap_cleanup(NULL,
+                                                 val_start,
+                                                 (size_t)(val_end - val_start),
+                                                 "URL.DecodeQuery: value allocation failed");
+            char *dec_key = percent_decode(key);
+            char *dec_val = percent_decode(val);
+            if (!dec_key || !dec_val) {
+                free(key);
+                free(val);
                 free(dec_key);
                 free(dec_val);
+                rt_url_trap_runtime("URL.DecodeQuery: decode allocation failed");
             }
-
+            rt_string key_str = rt_url_string_from_bytes_or_trap(
+                dec_key, strlen(dec_key), "URL.DecodeQuery: key string allocation failed");
+            rt_string val_str = rt_url_string_from_bytes_or_trap(
+                dec_val, strlen(dec_val), "URL.DecodeQuery: value string allocation failed");
+            rt_map_set_str(map, key_str, val_str);
+            rt_string_unref(key_str);
+            rt_string_unref(val_str);
+            free(dec_key);
+            free(dec_val);
             free(key);
             free(val);
             p = amp ? amp + 1 : val_end;
@@ -1267,7 +1234,7 @@ void *rt_url_decode_query(rt_string query) {
 }
 
 int8_t rt_url_is_valid(rt_string url_str) {
-    const char *str = rt_string_cstr(url_str);
+    const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str || *str == '\0')
         return 0;
 
