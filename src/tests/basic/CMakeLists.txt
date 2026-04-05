@@ -855,7 +855,7 @@ function(viper_add_basic_strings_test)
     endif ()
 
     viper_add_ctest(basic_strings ${CMAKE_SOURCE_DIR}/scripts/test_strings.sh)
-    set_tests_properties(basic_strings PROPERTIES LABELS BasicStrings)
+    viper_set_test_labels(basic_strings basic requires_posix_shell)
 endfunction()
 
 function(viper_add_basic_semantics_golden_tests)

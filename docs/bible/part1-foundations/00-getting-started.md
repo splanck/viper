@@ -324,7 +324,7 @@ These commands:
 
 Now, download Viper using Git:
 ```bash
-git clone https://github.com/example/viper.git
+git clone https://github.com/splanck/viper.git
 ```
 
 **What is Git?** Git is a version control system — it tracks changes to code over time and lets multiple people collaborate on the same project. The `git clone` command downloads a copy of a project from the internet. Almost all open-source software is distributed this way.
@@ -436,10 +436,12 @@ zia --version
 
 **What you should see:**
 ```text
-Viper 0.1.3
+zia v0.2.4-snapshot
+Zia Compiler
+IL version: 0.2.0
 ```
 
-(The version number might be different.)
+(The exact version number will vary depending on when you built Viper.)
 
 **If you see "command not found":**
 

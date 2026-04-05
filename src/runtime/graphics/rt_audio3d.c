@@ -44,15 +44,25 @@ static double listener_right[3] = {1, 0, 0};
 static struct {
     int64_t voice_id;
     double max_distance;
+    int64_t base_volume;
 } s_voice_dist[MAX_3D_VOICES];
 
 static int32_t s_voice_dist_count = 0;
 
-static void track_voice_distance(int64_t voice, double max_dist) {
+static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return value;
+}
+
+static void track_voice_params(int64_t voice, double max_dist, int64_t base_volume) {
     /* Update existing entry */
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
         if (s_voice_dist[i].voice_id == voice) {
             s_voice_dist[i].max_distance = max_dist;
+            s_voice_dist[i].base_volume = base_volume;
             return;
         }
     }
@@ -60,11 +70,13 @@ static void track_voice_distance(int64_t voice, double max_dist) {
     if (s_voice_dist_count < MAX_3D_VOICES) {
         s_voice_dist[s_voice_dist_count].voice_id = voice;
         s_voice_dist[s_voice_dist_count].max_distance = max_dist;
+        s_voice_dist[s_voice_dist_count].base_volume = base_volume;
         s_voice_dist_count++;
     } else {
         /* Overwrite slot 0 (oldest) */
         s_voice_dist[0].voice_id = voice;
         s_voice_dist[0].max_distance = max_dist;
+        s_voice_dist[0].base_volume = base_volume;
     }
 }
 
@@ -74,6 +86,14 @@ static double lookup_voice_distance(int64_t voice) {
             return s_voice_dist[i].max_distance;
     }
     return 50.0; /* default fallback */
+}
+
+static int64_t lookup_voice_base_volume(int64_t voice) {
+    for (int32_t i = 0; i < s_voice_dist_count; i++) {
+        if (s_voice_dist[i].voice_id == voice)
+            return s_voice_dist[i].base_volume;
+    }
+    return 100;
 }
 
 /// @brief Set the 3D audio listener position and orientation.
@@ -117,13 +137,13 @@ static void compute_3d_params(
     double atten = (max_dist > 0.0) ? 1.0 - (dist / max_dist) : 1.0;
     if (atten < 0.0)
         atten = 0.0;
-    *out_vol = (int64_t)(base_vol * atten);
+    *out_vol = clamp_i64((int64_t)(base_vol * atten), 0, 100);
 
     /* Pan from dot(direction_to_source, listener_right) */
     if (dist > 1e-8) {
         double ndx = dx / dist, ndz = dz / dist;
         double dot_right = ndx * listener_right[0] + ndz * listener_right[2];
-        *out_pan = (int64_t)(dot_right * 100.0);
+        *out_pan = clamp_i64((int64_t)(dot_right * 100.0), -100, 100);
     } else {
         *out_pan = 0;
     }
@@ -143,11 +163,12 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     if (!sound || !position)
         return 0;
 
+    volume = clamp_i64(volume, 0, 100);
     int64_t vol, pan;
     compute_3d_params(position, max_distance, volume, &vol, &pan);
     int64_t voice = rt_sound_play_ex(sound, vol, pan);
     if (voice > 0)
-        track_voice_distance(voice, max_distance);
+        track_voice_params(voice, max_distance, volume);
     return voice;
 }
 
@@ -163,8 +184,9 @@ void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
         return;
     if (max_distance <= 0.0)
         max_distance = lookup_voice_distance(voice); /* per-voice fallback */
+    int64_t base_volume = lookup_voice_base_volume(voice);
     int64_t vol, pan;
-    compute_3d_params(position, max_distance, 100, &vol, &pan);
+    compute_3d_params(position, max_distance, base_volume, &vol, &pan);
     rt_voice_set_volume(voice, vol);
     rt_voice_set_pan(voice, pan);
 }

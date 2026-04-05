@@ -44,6 +44,7 @@ struct rt_ach_entry {
 struct rt_achievement_impl {
     int64_t unlock_mask;
     int64_t total_defined;
+    int64_t capacity;
     struct rt_ach_entry entries[MAX_ACH];
     int64_t stats[MAX_STATS];
 
@@ -54,12 +55,22 @@ struct rt_achievement_impl {
     int64_t slide_offset;    // Slide-in animation offset
 };
 
+static int64_t achievement_capacity(int64_t requested) {
+    if (requested < 1 || requested > MAX_ACH)
+        return MAX_ACH;
+    return requested;
+}
+
+static uint64_t achievement_mask_for_capacity(const struct rt_achievement_impl *ach) {
+    if (!ach || ach->capacity >= MAX_ACH)
+        return UINT64_MAX;
+    return ((uint64_t)1 << ach->capacity) - 1u;
+}
+
 /// @brief Create a new achievement tracker (supports up to 64 achievements via bitmask).
 /// @details Tracks unlock state as a 64-bit mask, supports per-achievement stats,
 ///          and provides slide-in notification display when achievements unlock.
 rt_achievement rt_achievement_new(int64_t max_achievements) {
-    (void)max_achievements; // Capacity is fixed at 64
-
     struct rt_achievement_impl *ach = (struct rt_achievement_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_achievement_impl));
     if (!ach)
@@ -67,6 +78,7 @@ rt_achievement rt_achievement_new(int64_t max_achievements) {
 
     ach->unlock_mask = 0;
     ach->total_defined = 0;
+    ach->capacity = achievement_capacity(max_achievements);
     memset(ach->entries, 0, sizeof(ach->entries));
     memset(ach->stats, 0, sizeof(ach->stats));
     ach->notify_id = -1;
@@ -93,7 +105,7 @@ void rt_achievement_destroy(rt_achievement ach) {
 
 /// @brief Define an achievement by ID with a display name and description.
 void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const char *description) {
-    if (!ach || id < 0 || id >= MAX_ACH)
+    if (!ach || id < 0 || id >= ach->capacity)
         return;
     if (ach->entries[id].name)
         free(ach->entries[id].name);
@@ -110,7 +122,7 @@ void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const 
 
 /// @brief Unlock an achievement and trigger the slide-in notification. Returns 1 if newly unlocked.
 int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
-    if (!ach || id < 0 || id >= MAX_ACH)
+    if (!ach || id < 0 || id >= ach->capacity || !ach->entries[id].defined)
         return 0;
 
     int64_t bit = (int64_t)1 << id;
@@ -129,7 +141,7 @@ int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
 
 /// @brief Check whether an achievement has been unlocked.
 int8_t rt_achievement_is_unlocked(rt_achievement ach, int64_t id) {
-    if (!ach || id < 0 || id >= MAX_ACH)
+    if (!ach || id < 0 || id >= ach->capacity)
         return 0;
     return (ach->unlock_mask & ((int64_t)1 << id)) ? 1 : 0;
 }
@@ -141,8 +153,15 @@ int64_t rt_achievement_get_mask(rt_achievement ach) {
 
 /// @brief Restore the unlock bitmask from a saved value (for loading save games).
 void rt_achievement_set_mask(rt_achievement ach, int64_t mask) {
-    if (ach)
-        ach->unlock_mask = mask;
+    if (!ach)
+        return;
+    ach->unlock_mask = (int64_t)(((uint64_t)mask) & achievement_mask_for_capacity(ach));
+    if (ach->notify_id < 0 || ach->notify_id >= ach->capacity ||
+        !rt_achievement_is_unlocked(ach, ach->notify_id)) {
+        ach->notify_id = -1;
+        ach->notify_timer = 0;
+        ach->slide_offset = 0;
+    }
 }
 
 /// @brief Count how many achievements have been unlocked (popcount of the bitmask).
@@ -150,7 +169,7 @@ int64_t rt_achievement_unlocked_count(rt_achievement ach) {
     if (!ach)
         return 0;
     // Popcount
-    int64_t mask = ach->unlock_mask;
+    uint64_t mask = ((uint64_t)ach->unlock_mask) & achievement_mask_for_capacity(ach);
     int64_t count = 0;
     while (mask) {
         count += mask & 1;
@@ -211,7 +230,7 @@ void rt_achievement_draw(rt_achievement ach, void *canvas) {
         return;
 
     int64_t id = ach->notify_id;
-    if (id >= MAX_ACH || !ach->entries[id].defined)
+    if (id >= ach->capacity || !ach->entries[id].defined)
         return;
 
     int64_t cw = rt_canvas_width(canvas);

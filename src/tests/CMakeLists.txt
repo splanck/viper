@@ -24,6 +24,19 @@
 #   perf        — Performance benchmarks (excluded from default runs)
 #   slow        — Long-running tests (excluded from default runs)
 #   tui         — Terminal UI / REPL tests
+#   arm64       — ARM64-only native/backend coverage
+#   native_link — Native link/assemble execution paths
+#   comprehensive — Large end-to-end feature sweeps
+#   syntax_only — Syntax-check-only native codegen coverage
+#   assemble_link — Native assemble+link coverage
+#   native_run  — Native compile+run coverage
+#   requires_display — Needs a display server / real windowing
+#   requires_local_bind — Needs local loopback bind/listen support
+#   requires_ipv6 — Needs IPv6 loopback support
+#   requires_audio_disabled — Only meaningful in no-audio builds
+#   requires_graphics_disabled — Only meaningful in no-graphics builds
+#   requires_posix_shell — Uses POSIX shell/scripts
+#   windows_broken — Known broken on Windows until fixed
 #
 # Common commands:
 #   ctest --test-dir build                     # Run all tests

@@ -153,8 +153,20 @@ static void test_yaml_parse_format() {
 // XML round-trip
 //=============================================================================
 
-// NOTE: test_xml_parse_format removed -- pre-existing bug in rt_xml.c format_element
-// frees child nodes during text_only check then reuses them in second loop.
+static void test_xml_parse_format() {
+    rt_string input = make_str("<root><name>Alice</name><age>30</age></root>");
+    void *parsed = rt_serialize_parse(input, RT_FORMAT_XML);
+    ASSERT(parsed != NULL, "XML parsed");
+
+    if (parsed) {
+        rt_string output = rt_serialize_format(parsed, RT_FORMAT_XML);
+        ASSERT(output != NULL, "XML formatted");
+        if (output) {
+            ASSERT(rt_serialize_is_valid(output, RT_FORMAT_XML) == 1, "formatted XML validates");
+            ASSERT(strstr(rt_string_cstr(output), "<root>") != NULL, "formatted XML contains root");
+        }
+    }
+}
 
 static void test_xml_validate() {
     ASSERT(rt_serialize_is_valid(make_str("<a/>"), RT_FORMAT_XML) == 1, "valid XML");
@@ -253,7 +265,8 @@ int main() {
     // YAML
     test_yaml_parse_format();
 
-    // XML (parse/format removed due to pre-existing formatter bug)
+    // XML
+    test_xml_parse_format();
     test_xml_validate();
 
     // Detection

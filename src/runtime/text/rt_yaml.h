@@ -4,14 +4,14 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_yaml.h
-// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml, supporting scalars, sequences,
-// mappings, and multi-document streams.
+// Purpose: YAML 1.2 subset parser and formatter for Viper.Data.Yaml,
+// supporting scalars, sequences, mappings, and multi-document streams.
 //
 // Key invariants:
 //   - Supports YAML 1.2 subset: scalars (string/int/float/bool/null), sequences, mappings.
-//   - rt_yaml_parse returns NULL on invalid YAML syntax.
+//   - rt_yaml_parse returns NULL on invalid YAML syntax and records an error.
 //   - Multi-document streams separated by '---' return a Seq of documents.
-//   - Formatting uses block style by default; flow style is available for compact output.
+//   - Formatting uses block style by default.
 //
 // Ownership/Lifetime:
 //   - Returned values are newly allocated; caller must release.
@@ -36,7 +36,7 @@ extern "C" {
 /// @brief Parse YAML string into a Viper value.
 /// @param text YAML text to parse.
 /// @return Parsed value: Map (mapping), Seq (sequence), String, or boxed number/bool/null.
-/// @note Traps on invalid YAML with descriptive error message.
+/// @note Returns NULL on invalid YAML; call rt_yaml_error() for details.
 void *rt_yaml_parse(rt_string text);
 
 /// @brief Get the last parse error message.

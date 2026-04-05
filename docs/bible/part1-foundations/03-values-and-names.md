@@ -906,11 +906,11 @@ final DAYS_IN_WEEK = 7;
 final TAX_RATE = 0.08;
 ```
 
-If you try to change a `final` variable later, Viper will give you an error:
+The intent is that `final` values should never be reassigned. Treating them as truly constant makes your code clearer and less error-prone:
 
 ```rust
 final PI = 3.14159;
-PI = 3.0;  // Error! Cannot reassign a constant
+// PI = 3.0;  // Don't do this — PI is meant to be constant
 ```
 
 **Why use constants?**

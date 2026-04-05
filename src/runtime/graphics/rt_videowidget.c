@@ -31,6 +31,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern const char *rt_string_cstr(rt_string str);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
@@ -106,6 +108,19 @@ static void videowidget_finalizer(void *obj) {
     /* player, panel, image_widget, slider are GC-managed */
 }
 
+static void release_gc_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static double clamp_volume(double vol) {
+    if (vol < 0.0)
+        return 0.0;
+    if (vol > 1.0)
+        return 1.0;
+    return vol;
+}
+
 /// @brief Convert Viper Pixels (uint32 0xRRGGBBAA) to byte-order RGBA for vg_image.
 static void pixels_to_rgba_bytes(const uint32_t *src, uint8_t *dst, int32_t width, int32_t height) {
     int32_t count = width * height;
@@ -129,13 +144,17 @@ void *rt_videowidget_new(void *parent, void *path) {
 
     int32_t vw = (int32_t)rt_videoplayer_get_width(player);
     int32_t vh = (int32_t)rt_videoplayer_get_height(player);
-    if (vw <= 0 || vh <= 0)
+    if (vw <= 0 || vh <= 0) {
+        release_gc_object(player);
         return NULL;
+    }
 
     /* Create widget */
     rt_videowidget *w = (rt_videowidget *)rt_obj_new_i64(0, (int64_t)sizeof(rt_videowidget));
-    if (!w)
+    if (!w) {
+        release_gc_object(player);
         return NULL;
+    }
     memset(w, 0, sizeof(*w));
     w->player = player;
     w->video_width = vw;
@@ -146,22 +165,27 @@ void *rt_videowidget_new(void *parent, void *path) {
     w->slider_last_value = 0.0;
 
     w->root_widget = rt_vbox_new();
-    if (!w->root_widget)
-        return w;
-    rt_widget_add_child(parent, w->root_widget);
+    if (!w->root_widget) {
+        release_gc_object(player);
+        release_gc_object(w);
+        return NULL;
+    }
     rt_container_set_spacing(w->root_widget, 8.0);
 
     /* Create image widget for video display */
     w->image_widget = rt_image_new(w->root_widget);
-    if (w->image_widget) {
-        rt_image_set_scale_mode(w->image_widget, 1); /* VG_IMAGE_SCALE_FIT */
-        rt_widget_set_size(w->image_widget, vw, vh);
-        rt_widget_set_flex(w->image_widget, 1.0);
+    if (!w->image_widget) {
+        release_gc_object(player);
+        release_gc_object(w->root_widget);
+        release_gc_object(w);
+        return NULL;
     }
+    rt_image_set_scale_mode(w->image_widget, 1); /* VG_IMAGE_SCALE_FIT */
+    rt_widget_set_size(w->image_widget, vw, vh);
+    rt_widget_set_flex(w->image_widget, 1.0);
 
     w->controls_widget = rt_hbox_new();
     if (w->controls_widget) {
-        rt_widget_add_child(w->root_widget, w->controls_widget);
         rt_container_set_spacing(w->controls_widget, 8.0);
         w->play_button =
             rt_button_new(w->controls_widget, rt_string_from_bytes("Play", strlen("Play")));
@@ -179,8 +203,17 @@ void *rt_videowidget_new(void *parent, void *path) {
     /* Allocate RGBA conversion buffer */
     w->rgba_buf_size = vw * vh * 4;
     w->rgba_buf = (uint8_t *)malloc((size_t)w->rgba_buf_size);
+    if (!w->rgba_buf) {
+        release_gc_object(player);
+        release_gc_object(w->root_widget);
+        release_gc_object(w);
+        return NULL;
+    }
 
     rt_obj_set_finalizer(w, videowidget_finalizer);
+    rt_widget_add_child(parent, w->root_widget);
+    if (w->controls_widget)
+        rt_widget_add_child(w->root_widget, w->controls_widget);
 
     /* Display first frame */
     rt_videowidget_update(w, 0.0);
@@ -284,6 +317,7 @@ void rt_videowidget_set_volume(void *obj, double vol) {
     if (!obj)
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
+    vol = clamp_volume(vol);
     w->volume = vol;
     rt_videoplayer_set_volume(w->player, vol);
 }

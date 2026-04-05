@@ -80,30 +80,27 @@ typedef struct {
     void *cached_material; /* reused across frames (GFX-052) */
 } rt_particles3d;
 
-/* Per-instance PRNG state pointer (set before emit/update) */
-static rt_particles3d *s_current_ps = NULL;
-
 /*==========================================================================
  * xorshift32 PRNG (per-instance, deterministic)
  *=========================================================================*/
 
-static uint32_t xorshift32(void) {
-    uint32_t x = s_current_ps->prng_state;
+static uint32_t xorshift32(rt_particles3d *ps) {
+    uint32_t x = ps->prng_state;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
-    s_current_ps->prng_state = x;
+    ps->prng_state = x;
     return x;
 }
 
 /// @brief Random float in [0, 1).
-static float randf(void) {
-    return (float)(xorshift32() & 0x00FFFFFF) / (float)0x01000000;
+static float randf(rt_particles3d *ps) {
+    return (float)(xorshift32(ps) & 0x00FFFFFF) / (float)0x01000000;
 }
 
 /// @brief Random float in [lo, hi].
-static float rand_range(double lo, double hi) {
-    return (float)(lo + randf() * (hi - lo));
+static float rand_range(rt_particles3d *ps, double lo, double hi) {
+    return (float)(lo + randf(ps) * (hi - lo));
 }
 
 /*==========================================================================
@@ -118,7 +115,7 @@ static void unpack_color(int64_t packed, float *rgb) {
 
 /// @brief Generate a random direction within a cone of half-angle `spread`
 ///        around the given direction vector.
-static void random_cone_dir(const double *dir, double spread, float *out) {
+static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread, float *out) {
     if (spread <= 0.0) {
         out[0] = (float)dir[0];
         out[1] = (float)dir[1];
@@ -127,8 +124,8 @@ static void random_cone_dir(const double *dir, double spread, float *out) {
     }
 
     /* Random angle within cone */
-    float theta = randf() * (float)spread;
-    float phi = randf() * (float)(2.0 * M_PI);
+    float theta = randf(ps) * (float)spread;
+    float phi = randf(ps) * (float)(2.0 * M_PI);
 
     /* Build a coordinate frame around dir */
     float d[3] = {(float)dir[0], (float)dir[1], (float)dir[2]};
@@ -405,29 +402,29 @@ static void spawn_particle(rt_particles3d *ps) {
 
     if (ps->emitter_shape == 1) /* sphere */
     {
-        float r = randf() * (float)ps->emitter_size[0];
-        float theta = randf() * (float)(2.0 * M_PI);
-        float phi = acosf(1.0f - 2.0f * randf());
+        float r = randf(ps) * (float)ps->emitter_size[0];
+        float theta = randf(ps) * (float)(2.0 * M_PI);
+        float phi = acosf(1.0f - 2.0f * randf(ps));
         p->pos[0] += r * sinf(phi) * cosf(theta);
         p->pos[1] += r * cosf(phi);
         p->pos[2] += r * sinf(phi) * sinf(theta);
     } else if (ps->emitter_shape == 2) /* box */
     {
-        p->pos[0] += (randf() - 0.5f) * 2.0f * (float)ps->emitter_size[0];
-        p->pos[1] += (randf() - 0.5f) * 2.0f * (float)ps->emitter_size[1];
-        p->pos[2] += (randf() - 0.5f) * 2.0f * (float)ps->emitter_size[2];
+        p->pos[0] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[0];
+        p->pos[1] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[1];
+        p->pos[2] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[2];
     }
 
     /* Velocity */
     float dir[3];
-    random_cone_dir(ps->emit_dir, ps->emit_spread, dir);
-    float speed = rand_range(ps->speed_min, ps->speed_max);
+    random_cone_dir(ps, ps->emit_dir, ps->emit_spread, dir);
+    float speed = rand_range(ps, ps->speed_min, ps->speed_max);
     p->vel[0] = dir[0] * speed;
     p->vel[1] = dir[1] * speed;
     p->vel[2] = dir[2] * speed;
 
     /* Life */
-    p->max_life = rand_range(ps->life_min, ps->life_max);
+    p->max_life = rand_range(ps, ps->life_min, ps->life_max);
     if (p->max_life < 0.01f)
         p->max_life = 0.01f;
     p->life = p->max_life;
@@ -456,7 +453,6 @@ void rt_particles3d_update(void *o, double delta_time) {
     if (!o || delta_time <= 0.0)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
-    s_current_ps = ps;
     float dt = (float)delta_time;
 
     /* Update alive particles */

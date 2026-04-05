@@ -31,6 +31,7 @@
 #include "rt_yaml.h"
 
 #include "rt_box.h"
+#include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -141,18 +142,26 @@ static void parser_skip_comment(yaml_parser *p) {
         parser_skip_to_eol(p);
 }
 
-static void parser_skip_whitespace_and_comments(yaml_parser *p) {
+static void parser_skip_blank_lines_and_comments(yaml_parser *p) {
     while (!parser_eof(p)) {
-        char c = parser_peek(p);
-        if (c == ' ' || c == '\t') {
-            parser_advance(p);
-        } else if (c == '#') {
-            parser_skip_to_eol(p);
-        } else if (c == '\n') {
-            parser_advance(p);
-        } else {
-            break;
+        size_t pos = p->pos;
+        while (pos < p->len && p->input[pos] == ' ')
+            pos++;
+
+        if (pos < p->len && p->input[pos] == '#') {
+            while (!parser_eof(p) && parser_peek(p) != '\n')
+                parser_advance(p);
+            if (parser_peek(p) == '\n')
+                parser_advance(p);
+            continue;
         }
+
+        if (parser_peek(p) == '\n') {
+            parser_advance(p);
+            continue;
+        }
+
+        break;
     }
 }
 
@@ -164,6 +173,62 @@ static int get_indent(yaml_parser *p) {
         pos++;
     }
     return indent;
+}
+
+static bool parser_at_line_marker(yaml_parser *p, const char *marker) {
+    size_t pos = p->pos;
+    size_t marker_len = strlen(marker);
+
+    while (pos < p->len && p->input[pos] == ' ')
+        pos++;
+    if (pos + marker_len > p->len)
+        return false;
+    if (strncmp(p->input + pos, marker, marker_len) != 0)
+        return false;
+
+    char next = (pos + marker_len < p->len) ? p->input[pos + marker_len] : '\0';
+    return next == '\0' || next == '\n' || next == ' ' || next == '\t' || next == '#';
+}
+
+static bool parser_consume_line_marker(yaml_parser *p, const char *marker) {
+    if (!parser_at_line_marker(p, marker))
+        return false;
+
+    while (parser_peek(p) == ' ')
+        parser_advance(p);
+    for (const char *m = marker; *m; ++m)
+        parser_advance(p);
+    while (!parser_eof(p) && parser_peek(p) != '\n')
+        parser_advance(p);
+    if (parser_peek(p) == '\n')
+        parser_advance(p);
+    return true;
+}
+
+static void yaml_release(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static bool yaml_is_boxed(void *obj) {
+    if (!obj)
+        return false;
+    if (rt_string_is_handle(obj))
+        return false;
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)obj - sizeof(rt_heap_hdr_t));
+    return hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX;
+}
+
+static bool yaml_is_sequence(void *obj) {
+    if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
+        return false;
+    return rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
+}
+
+static bool yaml_is_mapping(void *obj) {
+    if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
+        return false;
+    return rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
 }
 
 //=============================================================================
@@ -316,8 +381,12 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
         buf[len++] = c;
     }
 
-    if (parser_peek(p) == quote)
-        parser_advance(p); // Skip closing quote
+    if (parser_peek(p) != quote) {
+        free(buf);
+        set_error("unterminated quoted string", p->line);
+        return NULL;
+    }
+    parser_advance(p); // Skip closing quote
 
     buf[len] = '\0';
     rt_string result = rt_string_from_bytes(buf, (int64_t)len);
@@ -335,7 +404,7 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
     /* S-18: Guard against deeply nested documents */
     if (p->depth >= YAML_MAX_DEPTH) {
         set_error("sequence nesting depth limit exceeded", p->line);
-        return rt_seq_new();
+        return NULL;
     }
     p->depth++;
 
@@ -344,9 +413,10 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
         p->depth--;
         return NULL;
     }
+    rt_seq_set_owns_elements(seq, 1);
 
     while (!parser_eof(p)) {
-        parser_skip_whitespace_and_comments(p);
+        parser_skip_blank_lines_and_comments(p);
         if (parser_eof(p))
             break;
 
@@ -358,24 +428,36 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
         while (parser_peek(p) == ' ')
             parser_advance(p);
 
-        if (parser_peek(p) != '-')
-            break;
+        if (parser_peek(p) != '-') {
+            set_error("expected sequence item", p->line);
+            yaml_release(seq);
+            p->depth--;
+            return NULL;
+        }
 
         parser_advance(p); // Skip '-'
 
         // Check for nested content
         if (parser_peek(p) == ' ' || parser_peek(p) == '\n') {
-            if (parser_peek(p) == ' ')
+            void *item = NULL;
+            if (parser_peek(p) == ' ') {
                 parser_advance(p); // Skip space after '-'
-
-            void *item = parse_value(p, indent + 1);
-            if (item) {
-                rt_seq_push(seq, item);
-                if (rt_obj_release_check0(item))
-                    rt_obj_free(item);
+                item = parse_value(p, 0);
+            } else {
+                item = parse_value(p, indent + 1);
             }
+            if (!item && yaml_last_error[0] != '\0') {
+                yaml_release(seq);
+                p->depth--;
+                return NULL;
+            }
+            rt_seq_push(seq, item);
+            yaml_release(item);
         } else {
-            break;
+            set_error("expected sequence value", p->line);
+            yaml_release(seq);
+            p->depth--;
+            return NULL;
         }
     }
 
@@ -387,7 +469,7 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
     /* S-18: Guard against deeply nested documents */
     if (p->depth >= YAML_MAX_DEPTH) {
         set_error("mapping nesting depth limit exceeded", p->line);
-        return rt_map_new();
+        return NULL;
     }
     p->depth++;
 
@@ -398,7 +480,7 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
     }
 
     while (!parser_eof(p)) {
-        parser_skip_whitespace_and_comments(p);
+        parser_skip_blank_lines_and_comments(p);
         if (parser_eof(p))
             break;
 
@@ -419,8 +501,12 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
         while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '\n')
             parser_advance(p);
 
-        if (parser_peek(p) != ':')
-            break;
+        if (parser_peek(p) != ':') {
+            set_error("expected ':' after mapping key", p->line);
+            yaml_release(map);
+            p->depth--;
+            return NULL;
+        }
 
         size_t key_len = p->pos - key_start;
         // Trim trailing spaces from key
@@ -445,14 +531,16 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
             value = parse_value(p, indent);
         }
 
-        if (value) {
-            rt_map_set(map, key, value);
-            if (rt_obj_release_check0(value))
-                rt_obj_free(value);
+        if (!value && yaml_last_error[0] != '\0') {
+            yaml_release((void *)key);
+            yaml_release(map);
+            p->depth--;
+            return NULL;
         }
+        rt_map_set(map, key, value);
+        yaml_release(value);
 
-        if (rt_obj_release_check0((void *)key))
-            rt_obj_free((void *)key);
+        yaml_release((void *)key);
     }
 
     p->depth--;
@@ -460,27 +548,48 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
 }
 
 static void *parse_value(yaml_parser *p, int base_indent) {
-    parser_skip_whitespace_and_comments(p);
+    parser_skip_blank_lines_and_comments(p);
 
     if (parser_eof(p))
         return NULL; // YAML null
 
     int indent = get_indent(p);
+    if (indent < base_indent)
+        return NULL;
 
-    // Skip to content
+    size_t content_pos = p->pos;
+    while (content_pos < p->len && p->input[content_pos] == ' ')
+        content_pos++;
+    char c = (content_pos < p->len) ? p->input[content_pos] : '\0';
+
+    // Sequence
+    if (c == '-' &&
+        (content_pos + 1 >= p->len || p->input[content_pos + 1] == ' ' ||
+         p->input[content_pos + 1] == '\n')) {
+        return parse_block_sequence(p, indent);
+    }
+
+    // Check if it's a mapping (look for ':')
+    {
+        size_t scan = content_pos;
+        while (scan < p->len && p->input[scan] != '\n' && p->input[scan] != '#') {
+            if (p->input[scan] == ':' &&
+                (scan + 1 >= p->len || p->input[scan + 1] == ' ' || p->input[scan + 1] == '\n')) {
+                return parse_block_mapping(p, indent);
+            }
+            scan++;
+        }
+    }
+
+    // Skip indentation now that block constructs were handled.
     while (parser_peek(p) == ' ')
         parser_advance(p);
 
-    char c = parser_peek(p);
+    c = parser_peek(p);
 
     // Quoted string
     if (c == '"' || c == '\'') {
         return (void *)parse_quoted_string(p, c);
-    }
-
-    // Sequence
-    if (c == '-' && (parser_peek_at(p, 1) == ' ' || parser_peek_at(p, 1) == '\n')) {
-        return parse_block_sequence(p, indent);
     }
 
     // Literal block scalar
@@ -541,18 +650,6 @@ static void *parse_value(yaml_parser *p, int base_indent) {
         return (void *)result;
     }
 
-    // Check if it's a mapping (look for ':')
-    {
-        size_t scan = p->pos;
-        while (scan < p->len && p->input[scan] != '\n' && p->input[scan] != '#') {
-            if (p->input[scan] == ':' &&
-                (scan + 1 >= p->len || p->input[scan + 1] == ' ' || p->input[scan + 1] == '\n')) {
-                return parse_block_mapping(p, indent);
-            }
-            scan++;
-        }
-    }
-
     // Plain scalar
     size_t start = p->pos;
     while (!parser_eof(p) && parser_peek(p) != '\n' && parser_peek(p) != '#') {
@@ -585,8 +682,91 @@ void *rt_yaml_parse(rt_string text) {
 
     yaml_parser p;
     parser_init(&p, cstr, (size_t)len);
+    parser_skip_blank_lines_and_comments(&p);
+    if (parser_eof(&p))
+        return NULL;
 
-    return parse_value(&p, 0);
+    const bool explicit_documents = parser_at_line_marker(&p, "---");
+    void *documents = NULL;
+
+    if (explicit_documents) {
+        documents = rt_seq_new();
+        if (!documents)
+            return NULL;
+        rt_seq_set_owns_elements(documents, 1);
+    }
+
+    void *first_document = NULL;
+    int64_t document_count = 0;
+
+    while (!parser_eof(&p)) {
+        parser_skip_blank_lines_and_comments(&p);
+        if (parser_eof(&p))
+            break;
+
+        if (parser_consume_line_marker(&p, "...")) {
+            parser_skip_blank_lines_and_comments(&p);
+            continue;
+        }
+
+        if (explicit_documents) {
+            if (!parser_consume_line_marker(&p, "---")) {
+                set_error("expected document separator '---'", p.line);
+                yaml_release(documents);
+                return NULL;
+            }
+            parser_skip_blank_lines_and_comments(&p);
+            if (parser_eof(&p))
+                break;
+        }
+
+        void *document = parse_value(&p, 0);
+        if (!document && yaml_last_error[0] != '\0') {
+            yaml_release(first_document);
+            yaml_release(documents);
+            return NULL;
+        }
+
+        if (explicit_documents) {
+            rt_seq_push(documents, document);
+            yaml_release(document);
+        } else {
+            first_document = document;
+        }
+        document_count++;
+
+        parser_skip_blank_lines_and_comments(&p);
+        if (parser_eof(&p))
+            break;
+
+        if (parser_consume_line_marker(&p, "...")) {
+            parser_skip_blank_lines_and_comments(&p);
+            if (parser_eof(&p))
+                break;
+        }
+
+        if (explicit_documents) {
+            if (!parser_at_line_marker(&p, "---")) {
+                set_error("unexpected trailing content after YAML document", p.line);
+                yaml_release(documents);
+                return NULL;
+            }
+            continue;
+        }
+
+        set_error("unexpected trailing content after YAML value", p.line);
+        yaml_release(first_document);
+        return NULL;
+    }
+
+    if (document_count == 0) {
+        yaml_release(documents);
+        return NULL;
+    }
+
+    if (explicit_documents)
+        return documents;
+    return first_document;
 }
 
 /// @brief Get the last YAML parse error message (empty if no error).
@@ -741,54 +921,52 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
         return;
     }
 
-    // Check for boxed values using standard rt_box_type
-    int64_t type_tag = rt_box_type(obj);
-    if (type_tag == RT_BOX_I1) // Boolean
-    {
-        buf_append(buf, cap, len, rt_unbox_i1(obj) ? "true" : "false");
-        return;
-    }
-    if (type_tag == RT_BOX_I64) // Integer
-    {
-        char num[32];
-        snprintf(num, sizeof(num), "%lld", (long long)rt_unbox_i64(obj));
-        buf_append(buf, cap, len, num);
-        return;
-    }
-    if (type_tag == RT_BOX_F64) // Float
-    {
-        double val = rt_unbox_f64(obj);
-        if (isinf(val)) {
-            buf_append(buf, cap, len, val > 0 ? ".inf" : "-.inf");
-        } else if (isnan(val)) {
-            buf_append(buf, cap, len, ".nan");
-        } else {
-            char num[64];
-            snprintf(num, sizeof(num), "%g", val);
-            buf_append(buf, cap, len, num);
+    // Check for boxed values.
+    if (yaml_is_boxed(obj)) {
+        int64_t type_tag = rt_box_type(obj);
+        if (type_tag == RT_BOX_I1) {
+            buf_append(buf, cap, len, rt_unbox_i1(obj) ? "true" : "false");
+            return;
         }
-        return;
-    }
-    if (type_tag == RT_BOX_STR) // Boxed string
-    {
-        rt_string s = rt_unbox_str(obj);
-        const char *str = rt_string_cstr(s);
-        format_string(str, buf, cap, len);
-        if (rt_obj_release_check0((void *)s))
-            rt_obj_free((void *)s);
-        return;
+        if (type_tag == RT_BOX_I64) {
+            char num[32];
+            snprintf(num, sizeof(num), "%lld", (long long)rt_unbox_i64(obj));
+            buf_append(buf, cap, len, num);
+            return;
+        }
+        if (type_tag == RT_BOX_F64) {
+            double val = rt_unbox_f64(obj);
+            if (isinf(val)) {
+                buf_append(buf, cap, len, val > 0 ? ".inf" : "-.inf");
+            } else if (isnan(val)) {
+                buf_append(buf, cap, len, ".nan");
+            } else {
+                char num[64];
+                snprintf(num, sizeof(num), "%g", val);
+                buf_append(buf, cap, len, num);
+            }
+            return;
+        }
+        if (type_tag == RT_BOX_STR) {
+            rt_string s = rt_unbox_str(obj);
+            const char *str = rt_string_cstr(s);
+            format_string(str, buf, cap, len);
+            if (rt_obj_release_check0((void *)s))
+                rt_obj_free((void *)s);
+            return;
+        }
     }
 
     // Check for string
-    const char *str = rt_string_cstr((rt_string)obj);
-    if (str) {
+    if (rt_string_is_handle(obj)) {
+        const char *str = rt_string_cstr((rt_string)obj);
         format_string(str, buf, cap, len);
         return;
     }
 
     // Check for sequence
-    int64_t seq_len = rt_seq_len(obj);
-    if (seq_len >= 0) {
+    if (yaml_is_sequence(obj)) {
+        int64_t seq_len = rt_seq_len(obj);
         if (seq_len == 0) {
             buf_append(buf, cap, len, "[]");
             return;
@@ -803,20 +981,17 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 
             void *item = rt_seq_get(obj, i);
             format_value(item, indent, level + 1, buf, cap, len);
-            if (item && rt_obj_release_check0(item))
-                rt_obj_free(item);
         }
         return;
     }
 
     // Check for map
-    void *keys = rt_map_keys(obj);
-    if (keys) {
+    if (yaml_is_mapping(obj)) {
+        void *keys = rt_map_keys(obj);
         int64_t nkeys = rt_seq_len(keys);
         if (nkeys == 0) {
             buf_append(buf, cap, len, "{}");
-            if (rt_obj_release_check0(keys))
-                rt_obj_free(keys);
+            yaml_release(keys);
             return;
         }
 
@@ -838,24 +1013,16 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
             void *val = rt_map_get(obj, (rt_string)key);
 
             // Check if value needs newline (sequences and maps are complex)
-            int64_t val_type = rt_box_type(val);
-            bool complex_value =
-                (val_type < 0 && rt_seq_len(val) > 0) || (rt_map_keys(val) != NULL);
+            bool complex_value = yaml_is_sequence(val) || yaml_is_mapping(val);
 
             if (complex_value) {
                 format_value(val, indent, level + 1, buf, cap, len);
             } else {
                 format_value(val, indent, level, buf, cap, len);
             }
-
-            if (val && rt_obj_release_check0(val))
-                rt_obj_free(val);
-            if (key && rt_obj_release_check0(key))
-                rt_obj_free(key);
         }
 
-        if (rt_obj_release_check0(keys))
-            rt_obj_free(keys);
+        yaml_release(keys);
         return;
     }
 
@@ -899,32 +1066,29 @@ rt_string rt_yaml_type_of(void *obj) {
     if (!obj)
         return rt_string_from_bytes("null", 4);
 
-    // Check for boxed values
-    int64_t type_tag = rt_box_type(obj);
-    if (type_tag == RT_BOX_I1)
-        return rt_string_from_bytes("bool", 4);
-    if (type_tag == RT_BOX_I64)
-        return rt_string_from_bytes("int", 3);
-    if (type_tag == RT_BOX_F64)
-        return rt_string_from_bytes("float", 5);
-    if (type_tag == RT_BOX_STR)
-        return rt_string_from_bytes("string", 6);
-
     // String check (non-boxed)
-    const char *str = rt_string_cstr((rt_string)obj);
-    if (str)
+    if (rt_string_is_handle(obj))
         return rt_string_from_bytes("string", 6);
 
     // Sequence check
-    if (rt_seq_len(obj) >= 0)
+    if (yaml_is_sequence(obj))
         return rt_string_from_bytes("sequence", 8);
 
     // Map check
-    void *keys = rt_map_keys(obj);
-    if (keys) {
-        if (rt_obj_release_check0(keys))
-            rt_obj_free(keys);
+    if (yaml_is_mapping(obj))
         return rt_string_from_bytes("mapping", 7);
+
+    // Boxed values
+    if (yaml_is_boxed(obj)) {
+        int64_t type_tag = rt_box_type(obj);
+        if (type_tag == RT_BOX_I1)
+            return rt_string_from_bytes("bool", 4);
+        if (type_tag == RT_BOX_I64)
+            return rt_string_from_bytes("int", 3);
+        if (type_tag == RT_BOX_F64)
+            return rt_string_from_bytes("float", 5);
+        if (type_tag == RT_BOX_STR)
+            return rt_string_from_bytes("string", 6);
     }
 
     return rt_string_from_bytes("unknown", 7);

@@ -270,7 +270,7 @@ func start() {
 
 You'll get an error like:
 ```text
-hello.zia:1:1: error: expected 'module' declaration
+hello.zia:1:1: error[V2000]: expected module, got func
 ```
 
 Every Zia file must start by declaring what module it belongs to. There's no way around this — it's a fundamental requirement of the language.
@@ -299,7 +299,7 @@ func start() {
 
 You'll get:
 ```text
-hello.zia:4:5: error: undefined identifier 'Say'
+hello.zia:4:5: error[V3000]: Undefined identifier: Say
 ```
 
 The compiler doesn't know what `Say` means because we didn't tell it where to find the function.
@@ -344,7 +344,7 @@ func begin() {
 
 Running this produces:
 ```text
-hello.zia: error: no entry point found (missing 'start' function)
+Function not found
 ```
 
 The program compiles, but the computer doesn't know what to run. It's like having a recipe book with no table of contents — you don't know where to start reading.
@@ -375,7 +375,7 @@ This is the line that actually makes something happen. Let's examine each piece:
 
 Error:
 ```text
-hello.zia:5:1: error: expected ';' before '}'
+hello.zia:5:1: error[V2000]: expected ;, got }
 ```
 
 The compiler reached the closing brace and realized the previous statement was never properly terminated.
@@ -383,15 +383,15 @@ The compiler reached the closing brace and realized the previous statement was n
 **What if you misspell `Say`?**
 
 ```rust
-    Viper.Terminal.say("Hello, World!");  // lowercase 's'
+    Viper.Terminal.Sya("Hello, World!");  // typo: 'Sya' instead of 'Say'
 ```
 
 Error:
 ```text
-hello.zia:4:5: error: 'say' is not a member of 'Viper.Terminal'
+hello.zia:4:23: error[V3000]: Runtime class 'Viper.Terminal' has no method 'Sya'
 ```
 
-Zia is case-sensitive. `Say` and `say` are completely different names. Most of the standard library uses `PascalCase` for function names (capital letter at the start of each word).
+The compiler can't find a function with that name. Function names must be spelled exactly right. Most of the standard library uses `PascalCase` for function names (capital letter at the start of each word).
 
 **What if you forget the quotes around the text?**
 
@@ -401,11 +401,11 @@ Zia is case-sensitive. `Say` and `say` are completely different names. Most of t
 
 Error:
 ```text
-hello.zia:4:27: error: expected expression
-hello.zia:4:28: error: unexpected token '!'
+hello.zia:4:24: error[V3000]: Undefined identifier: Hello
+hello.zia:4:31: error[V3000]: Undefined identifier: World
 ```
 
-Without quotes, the compiler tries to interpret `Hello` as a variable and gets confused by the comma, space, and exclamation mark.
+Without quotes, the compiler tries to interpret `Hello` and `World` as variable names, which don't exist.
 
 ### Line 5: `}`
 
@@ -427,7 +427,7 @@ func start() {
 
 Error:
 ```text
-hello.zia:5:1: error: unexpected end of file, expected '}'
+hello.zia:5:1: error[V2000]: expected }, got eof
 ```
 
 The compiler reached the end of the file still expecting to find the closing brace. Braces must always be balanced — every `{` needs a matching `}`.
@@ -528,17 +528,17 @@ Viper.Terminal.Say("Hello, World!")  // Missing semicolon
 
 **How to fix it:** Make sure you have `func start() { ... }` and that you spelled `start` correctly.
 
-### "'xxx' is not a member of 'Viper.Terminal'"
+### "Runtime class 'Viper.Terminal' has no method 'xxx'"
 
 **What it means:** You tried to use a function that doesn't exist in the Terminal module.
 
 **What the code probably looks like:**
 ```rust
-Viper.Terminal.say("Hello");  // Should be Say, not say
-Viper.Terminal.Print("Hello");  // Print exists, but it doesn't add a newline
+Viper.Terminal.Sya("Hello");  // Typo: 'Sya' instead of 'Say'
+Viper.Terminal.Display("Hello");  // No such function
 ```
 
-**How to fix it:** Check the spelling and capitalization. `Say`, `Print`, and other standard library functions use PascalCase.
+**How to fix it:** Check the spelling. Standard library functions use PascalCase (capital letter at the start of each word).
 
 ### The general approach to errors
 
@@ -676,16 +676,14 @@ func start() {
 
 Run it:
 ```text
-hello.zia:4:31: error: unterminated string literal
-    Viper.Terminal.Say("Hello, World!);
-                              ^
+hello.zia:4:24: error[V1000]: newline in string literal
 ```
 
 The error message tells us:
 - **hello.zia** — the file with the problem
 - **4** — line 4
-- **31** — column 31 (the position on that line)
-- **unterminated string literal** — we started a string but never ended it
+- **24** — column 24 (the position on that line)
+- **newline in string literal** — we started a string but it hit the end of the line without a closing quote
 - The caret (`^`) shows exactly where the compiler got confused
 
 The compiler is surprisingly helpful once you learn to read its messages.
@@ -702,9 +700,7 @@ func start() {
 
 Run it:
 ```text
-hello.zia:5:1: error: expected ';' before '}'
-}
-^
+hello.zia:5:1: error[V2000]: expected ;, got }
 ```
 
 Notice the error points to line 5 (the closing brace), not line 4 (where the semicolon is missing). The compiler didn't realize something was wrong until it hit the `}` and thought "wait, I was expecting a semicolon, not a brace."
@@ -723,12 +719,10 @@ func start() {
 
 Run it:
 ```text
-hello.zia:4:5: error: 'Sya' is not a member of 'Viper.Terminal'
-    Viper.Terminal.Sya("Hello, World!");
-                   ^~~
+hello.zia:4:23: error[V3000]: Runtime class 'Viper.Terminal' has no method 'Sya'
 ```
 
-The compiler knows `Terminal` exists but doesn't recognize `Sya`. This kind of error often comes from typos. The squiggles (`^~~`) highlight the problematic part.
+The compiler knows `Terminal` exists but doesn't recognize `Sya`. This kind of error often comes from typos.
 
 ---
 
@@ -761,8 +755,8 @@ Here are the key concepts from this chapter:
 - Missing closing quote
 - Missing semicolon
 - Missing closing brace
-- Misspelled `Say` as `say`
-- Misspelled `start` as `Start`
+- Misspelled `Say` as `Sya` (a typo)
+- Misspelled `start` as `Start` (wrong capitalization)
 
 **Exercise 2.6** (Challenge): Using only what you've learned so far, display this exact output:
 

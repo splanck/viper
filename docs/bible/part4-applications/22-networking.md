@@ -286,14 +286,18 @@ bind Viper.Network;
 bind Viper.Terminal;
 
 func start() {
-    // Fetch a web page
-    var response = Http.Get("https://api.example.com/data");
+    // Simple fetch — returns the body as a string
+    var body = Http.Get("https://api.example.com/data");
+    Terminal.Say(body);
 
-    if response.ok {
+    // For more control, use HttpReq/HttpRes:
+    var req = HttpReq.New("GET", "https://api.example.com/data");
+    var res = HttpReq.Send(req);
+    if res.Status == 200 {
         Terminal.Say("Got response:");
-        Terminal.Say(response.body);
+        Terminal.Say(HttpRes.Body(res));
     } else {
-        Terminal.Say("Error: " + response.statusCode);
+        Terminal.Say("Error: " + res.Status);
     }
 }
 ```

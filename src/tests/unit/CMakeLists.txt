@@ -7,6 +7,41 @@ set(VIPER_UNIT_SUPPORT_LIBS ${VIPER_UNIT_SUPPORT_LIBS} PARENT_SCOPE)
 set(VIPER_RUNTIME_TEST_LIBS viper_runtime)
 set(VIPER_RUNTIME_TEST_LIBS ${VIPER_RUNTIME_TEST_LIBS} PARENT_SCOPE)
 
+function(viper_add_isolated_runtime_test target)
+    add_executable(${target} ${ARGN})
+    target_include_directories(${target} PRIVATE
+            ${VIPER_TESTS_DIR}
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_BINARY_DIR}/generated
+            ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/lib/graphics/include
+            ${CMAKE_SOURCE_DIR}/src/lib/gui/include
+            ${CMAKE_SOURCE_DIR}/src/runtime
+            ${CMAKE_SOURCE_DIR}/src/runtime/core
+            ${CMAKE_SOURCE_DIR}/src/runtime/arrays
+            ${CMAKE_SOURCE_DIR}/src/runtime/oop
+            ${CMAKE_SOURCE_DIR}/src/runtime/collections
+            ${CMAKE_SOURCE_DIR}/src/runtime/game
+            ${CMAKE_SOURCE_DIR}/src/runtime/text
+            ${CMAKE_SOURCE_DIR}/src/runtime/io
+            ${CMAKE_SOURCE_DIR}/src/runtime/system
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics
+            ${CMAKE_SOURCE_DIR}/src/runtime/audio
+            ${CMAKE_SOURCE_DIR}/src/runtime/threads
+            ${CMAKE_SOURCE_DIR}/src/runtime/network)
+    target_link_libraries(${target} PRIVATE viper_common_opts)
+    if (NOT WIN32)
+        target_compile_definitions(${target} PRIVATE _POSIX_C_SOURCE=200809L)
+        if (NOT APPLE)
+            target_compile_definitions(${target} PRIVATE _DEFAULT_SOURCE)
+        endif ()
+    endif ()
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(${target} PRIVATE m)
+    endif ()
+    viper_add_ctest(${target} $<TARGET_FILE:${target}>)
+endfunction()
+
 function(viper_add_unit_support_tests)
     if (TARGET test_support)
         return()
@@ -866,22 +901,27 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_canvas_window ${VIPER_TESTS_DIR}/runtime/RTCanvasWindowTests.cpp)
     target_link_libraries(test_rt_canvas_window PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_canvas_window test_rt_canvas_window)
+    viper_add_test_labels(test_rt_canvas_window requires_display)
 
     viper_add_test(test_rt_network ${VIPER_TESTS_DIR}/runtime/RTNetworkTests.cpp)
     target_link_libraries(test_rt_network PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network test_rt_network)
+    viper_add_test_labels(test_rt_network requires_local_bind)
 
     viper_add_test(test_rt_network_timeout ${VIPER_TESTS_DIR}/runtime/RTNetworkTimeoutTests.cpp)
     target_link_libraries(test_rt_network_timeout PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_timeout test_rt_network_timeout)
+    viper_add_test_labels(test_rt_network_timeout requires_local_bind)
 
     viper_add_test(test_rt_network_harden ${VIPER_TESTS_DIR}/runtime/RTNetworkHardenTests.cpp)
     target_link_libraries(test_rt_network_harden PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_harden test_rt_network_harden)
+    viper_add_test_labels(test_rt_network_harden requires_local_bind)
 
     viper_add_test(test_rt_websocket ${VIPER_TESTS_DIR}/runtime/RTWebSocketTests.cpp)
     target_link_libraries(test_rt_websocket PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_websocket test_rt_websocket)
+    viper_add_test_labels(test_rt_websocket requires_local_bind)
 
     viper_add_test(test_rt_tls_cert ${VIPER_TESTS_DIR}/runtime/RTTlsCertTests.cpp)
     target_link_libraries(test_rt_tls_cert PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -890,10 +930,12 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_restclient ${VIPER_TESTS_DIR}/runtime/RTRestClientTests.cpp)
     target_link_libraries(test_rt_restclient PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_restclient test_rt_restclient)
+    viper_add_test_labels(test_rt_restclient requires_local_bind)
 
     viper_add_test(test_rt_network_highlevel ${VIPER_TESTS_DIR}/runtime/RTHighLevelNetworkTests.cpp)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
+    viper_add_test_labels(test_rt_network_highlevel requires_local_bind)
 
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -922,10 +964,12 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_canvas_unavailable ${VIPER_TESTS_DIR}/runtime/RTCanvasUnavailableTests.cpp)
     target_link_libraries(test_rt_canvas_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_canvas_unavailable test_rt_canvas_unavailable)
+    viper_add_test_labels(test_rt_canvas_unavailable requires_graphics_disabled)
 
     viper_add_test(test_rt_graphics_surface_link ${VIPER_TESTS_DIR}/runtime/RTGraphicsSurfaceLinkTests.cpp)
     target_link_libraries(test_rt_graphics_surface_link PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_graphics_surface_link test_rt_graphics_surface_link)
+    viper_add_test_labels(test_rt_graphics_surface_link requires_graphics_disabled)
 
     viper_add_test(test_rt_audio_unavailable ${VIPER_TESTS_DIR}/runtime/RTAudioUnavailableTests.cpp)
     target_link_libraries(test_rt_audio_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -933,6 +977,31 @@ function(viper_add_runtime_tests)
         target_compile_definitions(test_rt_audio_unavailable PRIVATE VIPER_ENABLE_AUDIO=1)
     endif ()
     viper_add_ctest(test_rt_audio_unavailable test_rt_audio_unavailable)
+    viper_add_test_labels(test_rt_audio_unavailable requires_audio_disabled)
+
+    viper_add_isolated_runtime_test(test_rt_achievement_contract
+            ${VIPER_TESTS_DIR}/runtime/RTAchievementTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_achievement.c)
+
+    viper_add_isolated_runtime_test(test_rt_audio3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTAudio3DTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_audio3d.c)
+    target_compile_definitions(test_rt_audio3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+
+    viper_add_isolated_runtime_test(test_rt_videowidget_contract
+            ${VIPER_TESTS_DIR}/runtime/RTVideoWidgetContractTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_videowidget.c)
+    target_compile_definitions(test_rt_videowidget_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+
+    viper_add_isolated_runtime_test(test_rt_particles3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTParticles3DContractTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_particles3d.c)
+    target_compile_definitions(test_rt_particles3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+
+    viper_add_isolated_runtime_test(test_rt_water3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTWater3DContractTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_water3d.c)
+    target_compile_definitions(test_rt_water3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
     viper_add_test(test_rt_file_exhaustion ${VIPER_TESTS_DIR}/runtime/RTFileExhaustionTests.cpp)
     target_link_libraries(test_rt_file_exhaustion PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1018,6 +1087,7 @@ function(viper_add_runtime_tests)
         target_link_libraries(test_rt_gui_runtime PRIVATE vipergfx vipergui)
     endif ()
     viper_add_ctest(test_rt_gui_runtime test_rt_gui_runtime)
+    viper_add_test_labels(test_rt_gui_runtime requires_display)
 
     viper_add_test(test_rt_canvas_ext ${VIPER_TESTS_DIR}/runtime/RTCanvasExtTests.cpp)
     target_link_libraries(test_rt_canvas_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1149,6 +1219,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_serialize ${VIPER_TESTS_DIR}/runtime/RTSerializeTests.cpp)
     target_link_libraries(test_rt_serialize PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_serialize test_rt_serialize)
+
+    viper_add_test(test_rt_yaml ${VIPER_TESTS_DIR}/runtime/RTYamlTests.cpp)
+    target_link_libraries(test_rt_yaml PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_yaml test_rt_yaml)
 
     viper_add_test(test_rt_gc ${VIPER_TESTS_DIR}/runtime/RTGCTests.cpp)
     target_link_libraries(test_rt_gc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
