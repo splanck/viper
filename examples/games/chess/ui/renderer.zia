@@ -2,6 +2,7 @@ module renderer;
 
 bind Viper.Graphics;
 bind Viper.Fmt;
+bind Viper.Time;
 bind "../core/config";
 bind "../core/board";
 bind "./pieces";
@@ -412,8 +413,14 @@ class BoardRenderer {
     // =========================================================================
 
     expose func drawThinkingIndicator() {
+        var phase = (Viper.Time.GetTickCount() / 250) % 4;
+        var dots = "";
+        if phase >= 1 { dots = "."; }
+        if phase >= 2 { dots = ".."; }
+        if phase >= 3 { dots = "..."; }
+
         canvas.Box(BOARD_X + 200, BOARD_Y + 290, 240, 50, 0x0A0A1E);
         canvas.Frame(BOARD_X + 200, BOARD_Y + 290, 240, 50, COL_UI_DIM);
-        canvas.Text(BOARD_X + 230, BOARD_Y + 308, "AI is thinking...", COL_UI_DIM);
+        canvas.Text(BOARD_X + 226, BOARD_Y + 308, "AI is thinking" + dots, COL_UI_TEXT);
     }
 }

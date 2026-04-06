@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-06
 ---
 
 # Zia — Reference
@@ -512,6 +512,31 @@ var set = {1, 2, 3};               // Set[Integer]
 `{}` is the empty map literal. To create an empty set, use an explicit type or
 constructor such as `new Set[Integer]()`.
 
+### Generic Collection Operations
+
+```viper
+var nums: List[Integer] = [];
+nums.add(10);
+nums.set(0, 20);
+var first = nums.get(0);
+var n = nums.count();
+
+var ages: Map[String, Integer] = new Map[String, Integer]();
+ages.set("Alice", 30);
+var aliceAge = ages.get("Alice");
+var hasAlice = ages.has("Alice");
+var ageCount = ages.count();
+
+var tags: Set[String] = new Set[String]();
+tags.add("urgent");
+var hasUrgent = tags.has("urgent");
+var tagCount = tags.count();
+```
+
+These are language-level generic collections. The object-style runtime classes
+under `Viper.Collections.*` use their own constructor and method surface (for
+example `Map.New()`, `List.New()`, `Set.New()`).
+
 ### Range Expressions
 
 ```viper
@@ -542,8 +567,8 @@ The `is` operator checks whether a value's runtime type matches a target type, i
 
 ```viper
 class Animal { }
-class Dog : Animal { }
-class Cat : Animal { }
+class Dog extends Animal { }
+class Cat extends Animal { }
 
 func check(a: Animal) {
     if a is Dog {
@@ -841,8 +866,8 @@ The last parameter of a function may be variadic, accepting zero or more argumen
 ```viper
 func sum(nums: ...Integer) -> Integer {
     var total = 0;
-    for i in 0..nums.Length {
-        total = total + nums.Get(i);
+    for i in 0..nums.count() {
+        total = total + nums.get(i);
     }
     return total;
 }
@@ -874,8 +899,11 @@ Create compile-time type aliases with `type`:
 type Name = String;
 type Score = Integer;
 
+bind Viper.Terminal;
+
 func display(name: Name, score: Score) {
-    Terminal.PrintLine(name + ": " + score.ToString());
+    Say(name);
+    SayInt(score);
 }
 ```
 
@@ -1000,8 +1028,8 @@ class Temperature {
 
 - The `get` body returns the computed value.
 - The `set` body receives a parameter whose name is declared in parentheses.
-- Either `get` or `set` may be omitted for read-only or write-only properties.
-- Reading a write-only property is an error.
+- A property may omit `set` to be read-only.
+- A setter-only property is not currently supported; the frontend still requires a getter.
 - Writing a read-only property is an error.
 - Use `expose property` when the property should be accessible outside the declaring type.
 - Properties are accessed like fields: `temp.fahrenheit` calls the getter, `temp.fahrenheit = 212.0` calls the setter.
@@ -1506,17 +1534,19 @@ Ceil(x);                 // Ceiling
 Viper.Math.Random.NextInt(max);   // Random integer [0, max)
 ```
 
-#### Collections
+#### Generic Collections
 
 ```viper
-// List operations
+// Language-level generic collections
+var list: List[Integer] = [];
 list.add(value);                    // Add element
 list.get(index);                    // Get element
 list.set(index, value);             // Set element
-list.Length;                        // Get count
-list.remove(index);                 // Remove element
+list.count();                       // Get count
+list.remove(value);                 // Remove first matching element
+list.insert(index, value);          // Insert at position
 
-// Map operations (keys are String)
+var map: Map[String, Integer] = new Map[String, Integer]();
 map.set("key", value);              // Set or replace value
 map.put("key", value);              // Alias for set
 map.get("key");                     // Get value (null if missing)
@@ -1528,10 +1558,18 @@ map.remove("key");                  // Remove entry
 map.clear();                        // Remove all entries
 map.keys();                         // Sequence of keys
 map.values();                       // Sequence of values
-map.Length;                         // Entry count
+map.count();                        // Entry count
+
+var set: Set[String] = new Set[String]();
+set.add("item");
+set.has("item");
+set.count();
 ```
 
-For complete runtime documentation, see **[Runtime Library Reference](viperlib/README.md)**.
+These language-level collections are distinct from the object-style runtime
+classes in `Viper.Collections.*`. For runtime collection classes such as
+`Viper.Collections.List`, `Viper.Collections.Map`, `Viper.Collections.Set`,
+`Queue`, and `Seq`, see **[Runtime Library Reference](viperlib/README.md)**.
 
 ---
 

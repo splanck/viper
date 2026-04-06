@@ -452,6 +452,40 @@ bool lowerInstruction(const il::core::Instr &ins,
                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
             return true;
         }
+        case Opcode::AddrOf: {
+            if (!ins.result || ins.operands.empty())
+                return true;
+
+            if (ins.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
+                const std::string &sym = ins.operands[0].str;
+                const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+                ctx.tempVReg[*ins.result] = dst;
+                ctx.tempRegClass[*ins.result] = RegClass::GPR;
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::AdrPage,
+                    {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                                {MOperand::vregOp(RegClass::GPR, dst),
+                                                 MOperand::vregOp(RegClass::GPR, dst),
+                                                 MOperand::labelOp(sym)}});
+                return true;
+            }
+
+            if (ins.operands[0].kind == il::core::Value::Kind::Temp) {
+                const int offset = ctx.fb.localOffset(ins.operands[0].id);
+                if (offset != 0) {
+                    const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+                    ctx.tempVReg[*ins.result] = dst;
+                    ctx.tempRegClass[*ins.result] = RegClass::GPR;
+                    bbOut().instrs.push_back(MInstr{
+                        MOpcode::AddFpImm,
+                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(offset)}});
+                    return true;
+                }
+            }
+
+            return true;
+        }
         case Opcode::Store:
             lowerStore(ins, bbIn, ctx, bbOut());
             return true;

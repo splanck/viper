@@ -400,7 +400,6 @@ class Board {
     // -----------------------------------------------------------------------
     expose func copy() -> Board {
         var b = new Board();
-        b.init();
         b.sq = [];
         for i in 0..64 {
             b.sq.add(self.sq.get(i));

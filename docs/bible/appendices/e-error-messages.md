@@ -516,16 +516,11 @@ bind Viper.Terminal;
 
 var num = Convert.ToInt64("hello");  // Error: "hello" is not a number
 
-// Solution 1: Validate before parsing
+// Solution: Use try-catch for values that may be invalid
 var input = "hello";
-if input.isNumeric() {
-    var num = Convert.ToInt64(input);
-}
-
-// Solution 2: Use try-catch
 try {
     var num = Convert.ToInt64(input);
-} catch e: ParseError {
+} catch(e: ParseError) {
     Say("Please enter a valid number");
 }
 ```
@@ -707,7 +702,7 @@ var result = calculate(5, 3);
 var data = Json.Parse(text);  // Error: Json not defined
 
 // Solution: Import the module
-bind Viper.Json;
+bind Json = Viper.Text.Json;
 var data = Json.Parse(text);
 ```
 
@@ -1554,7 +1549,7 @@ if IO.File.Exists("data.txt") {
 // Solution 2: Use try-catch
 try {
     var content = IO.File.ReadAllText("data.txt");
-} catch e: FileNotFound {
+} catch(e: FileNotFound) {
     Say("File not found, creating default...");
     IO.File.WriteAllText("data.txt", "default content");
 }
@@ -1562,8 +1557,8 @@ try {
 // Solution 3: Provide path at runtime
 Terminal.Print("Enter filename: ");
 var filename = Terminal.ReadLine();
-if IO.File.Exists(filename) {
-    var content = IO.File.ReadAllText(filename);
+if filename != null and IO.File.Exists(filename!) {
+    var content = IO.File.ReadAllText(filename!);
 }
 ```
 
@@ -1589,13 +1584,13 @@ Error: FileError at main.zia:10:5
 ```rust
 // Problem: Writing to protected location
 bind File = Viper.IO.File;
-bind Viper.OS;
+bind Viper.Machine as Machine;
 
 File.WriteAllText("/etc/config.txt", data);  // Permission denied
 
 // Solution: Write to allowed location
 File.WriteAllText("./config.txt", data);  // Local directory
-File.WriteAllText(homeDir() + "/config.txt", data);  // User's home
+File.WriteAllText(Machine.Home + "/config.txt", data);  // User's home
 ```
 
 **Prevention:**
@@ -1617,27 +1612,23 @@ Error: FileError at main.zia:15:5
 **Fix examples:**
 
 ```rust
-// Problem: File exists in exclusive mode
+// Problem: You want to create a file only when it does not already exist
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Viper.Time;
+bind Convert = Viper.Core.Convert;
 
-createNew("output.txt", data);  // Error if exists
-
-// Solution 1: Use overwrite mode
-File.WriteAllText("output.txt", data);  // Overwrites if exists
-
-// Solution 2: Check and decide
+// Solution 1: Check and decide
 if File.Exists("output.txt") {
     Print("File exists. Overwrite? (y/n): ");
-    if InputLine() == "y" {
+    if (ReadLine() ?? "") == "y" {
         File.WriteAllText("output.txt", data);
     }
 } else {
     File.WriteAllText("output.txt", data);
 }
 
-// Solution 3: Generate unique name
+// Solution 2: Generate unique name
 // Generate unique name using a tick counter
 var filename = "output_" + Convert.ToString_Int(Time.Clock.Ticks()) + ".txt";
 File.WriteAllText(filename, data);
@@ -1658,16 +1649,16 @@ Error: ParseError at main.zia:8:25
 
 ```rust
 // Problem: Invalid JSON
-bind Viper.Json;
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
-var data = parse("{invalid json}");  // Parse error
+var data = Json.Parse("{invalid json}");  // Parse error
 
 // Solution: Validate and handle errors
 try {
-    var data = parse(content);
+    var data = Json.Parse(content);
     processData(data);
-} catch e: ParseError {
+} catch(e: ParseError) {
     Say("Invalid file format: " + e.message);
     // Use default or prompt user
 }
@@ -2019,13 +2010,13 @@ bind Viper.Terminal;
 
 try {
     var config = loadConfig();
-} catch e: FileNotFound {
+} catch(e: FileNotFound) {
     Say("Config file missing, using defaults");
     config = defaultConfig;
-} catch e: ParseError {
+} catch(e: ParseError) {
     Say("Config file corrupted: " + e.message);
     throw e;  // Re-throw - can't recover from this
-} catch e {
+} catch(e) {
     Say("Unexpected error: " + e.message);
     log(e);
 }
@@ -2037,14 +2028,14 @@ try {
 // WRONG: Silent failure
 try {
     riskyOperation();
-} catch e {
+} catch(e) {
     // Empty catch - errors disappear!
 }
 
 // RIGHT: At least log errors
 try {
     riskyOperation();
-} catch e {
+} catch(e) {
     log("Operation failed: " + e.message);
     // Handle appropriately
 }

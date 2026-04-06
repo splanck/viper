@@ -1599,7 +1599,7 @@ test "exception message includes negative number" {
     var caught = false;
     try {
         calc.Add("-1,2,-3");
-    } catch e {
+    } catch(e) {
         caught = true;
         assertContains(e.message, "-1");
         assertContains(e.message, "-3");

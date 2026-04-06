@@ -38,6 +38,23 @@ extern "C" {
 ///         Returns an empty string when no completions are available.
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
+/// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
+/// @param source Zia source text (full file contents).
+/// @return One diagnostic per line encoded as severity\tline\tcol\tcode\tmessage.
+rt_string rt_zia_check(rt_string source);
+
+/// @brief Return hover information for the identifier at the given source location.
+/// @param source Zia source text (full file contents).
+/// @param line   1-based line number of the cursor.
+/// @param col    0-based column number of the cursor.
+/// @return Human-readable hover text, or an empty string when nothing is found.
+rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return serialized document symbols for the supplied source.
+/// @param source Zia source text (full file contents).
+/// @return Tab-delimited symbol rows, or an empty string when no symbols are found.
+rt_string rt_zia_symbols(rt_string source);
+
 /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
 void rt_zia_completion_clear_cache(void);
 

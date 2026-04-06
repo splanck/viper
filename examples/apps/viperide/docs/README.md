@@ -6,6 +6,8 @@ A full-featured IDE for Zia and Viper BASIC, built entirely in Zia using the `Vi
 
 - **Code Editor** with syntax highlighting, line numbers, undo/redo, and minimap
 - **IntelliSense** code completion via the Zia CompletionEngine
+- **Live Diagnostics** — errors and warnings appear as you type (debounced 500ms)
+- **Hover Tooltips** — type and signature info on mouse dwell over identifiers
 - **File Explorer** with recursive tree view and context menus
 - **Tabbed Editing** with modified indicators and close buttons
 - **Find/Replace** bar with match count and navigation
@@ -42,6 +44,8 @@ viperide/
         editor_engine.zia     CodeEditor widget wrapper
         editor_tabs.zia       TabBar synchronization
         completion.zia        IntelliSense popup controller
+        diagnostics.zia       Live error checking (errors-as-you-type)
+        hover.zia             Hover tooltips (type info on mouse dwell)
 
     build/
         build_system.zia      Compile, run, parse diagnostics

@@ -150,6 +150,41 @@ func start() {    emitValue(42);
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Native guard statements should narrow Optional[T] on the fallthrough path.
+TEST(ZiaGuardClause, GuardStatementNarrowsOptionalPrimitive) {
+    const std::string src = R"(
+module Test;
+
+func emitValue(x: Integer?) {
+    guard x != null else {
+        return;
+    }
+
+    var narrowed: Integer = x;
+    Viper.Terminal.SayInt(x);
+    Viper.Terminal.SayInt(narrowed);
+}
+
+func start() {    emitValue(42);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "guard_stmt_integer.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for GuardStatementNarrowsOptionalPrimitive:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main(int argc, char **argv) {

@@ -1,0 +1,25 @@
+module main;
+
+bind Viper.Sound;
+
+func main() {
+    var ok = Audio.Init();
+    if ok == 0 { return; }
+
+    var bank = SoundBank.New();
+    var basePath = "examples/games/sidescroller/";
+    bank.Register("jump", basePath + "sounds/jump.wav");
+    bank.Register("shoot", basePath + "sounds/shoot.wav");
+    bank.Register("coin", basePath + "sounds/coin.wav");
+    bank.Register("hurt", basePath + "sounds/hurt.wav");
+    bank.Register("enemy_death", basePath + "sounds/enemy_death.wav");
+    bank.Register("powerup", basePath + "sounds/powerup.wav");
+    bank.Register("checkpoint", basePath + "sounds/checkpoint.wav");
+    bank.Register("level_complete", basePath + "sounds/level_complete.wav");
+    bank.Register("menu_select", basePath + "sounds/menu_select.wav");
+    bank.Register("menu_move", basePath + "sounds/menu_move.wav");
+    bank.Register("death", basePath + "sounds/death.wav");
+    bank.Register("stomp", basePath + "sounds/stomp.wav");
+
+    bank.RegisterSound("music_menu", Synth.Tone(340, 40, 1));
+}

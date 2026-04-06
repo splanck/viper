@@ -29,7 +29,8 @@ using il::core::Opcode;
 std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
-    if (ctx.fn.retType.kind == il::core::Type::Kind::I1)
+    if (ctx.fn.retType.kind == il::core::Type::Kind::I1 ||
+        ctx.fn.retType.kind == il::core::Type::Kind::Str)
         return std::nullopt;
 
     const auto &bb = ctx.fn.blocks.front();

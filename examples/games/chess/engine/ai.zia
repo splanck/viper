@@ -41,7 +41,6 @@ class ChessAI {
     expose func init() {
         moveGen   = new MoveGen();
         evaluator = new Evaluator();
-        evaluator.init();
         maxDepth = DIFF_HARD;   // default; override with setDepth()
         ttSize   = 4096;
 

@@ -11,7 +11,8 @@
 //   - ret %paramN: Return a parameter directly
 //   - ret const i64: Return an integer constant
 //   - ret const f64: Return a float constant
-//   - ret (const_str/addr_of): Return a symbol address
+//   - ret const_str: Return a runtime string handle for a pooled literal
+//   - ret addr_of: Return a symbol address
 //
 // Invariants:
 //   - Single-block functions with no side effects
@@ -69,10 +70,12 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
     }
 
     // =========================================================================
-    // ret (const_str/addr_of) fast-path
+    // ret const_str / ret addr_of fast-path
     // =========================================================================
-    // Pattern: Return a symbol address via adrp/add sequence.
-    // Emits: adrp x0, sym@PAGE; add x0, x0, sym@PAGEOFF; ret
+    // Pattern:
+    //   - const_str: materialize the pooled literal address, then call
+    //     rt_const_cstr to produce an rt_string handle in x0
+    //   - addr_of: materialize and return the raw symbol address
     if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2) {
         const auto &retI = bb.instructions.back();
         if (retI.op == Opcode::Ret && !retI.operands.empty()) {
@@ -85,9 +88,9 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
                     });
                 if (prodIt != bb.instructions.end()) {
                     const auto &prod = *prodIt;
-                    if ((prod.op == Opcode::ConstStr || prod.op == Opcode::AddrOf) &&
-                        !prod.operands.empty() &&
-                        prod.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
+                    if (!prod.operands.empty() &&
+                        prod.operands[0].kind == il::core::Value::Kind::GlobalAddr &&
+                        (prod.op == Opcode::ConstStr || prod.op == Opcode::AddrOf)) {
                         const std::string &sym = prod.operands[0].str;
                         bbMir.instrs.push_back(
                             MInstr{MOpcode::AdrPage,
@@ -96,6 +99,10 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(PhysReg::X0),
                                                        MOperand::labelOp(sym)}});
+                        if (prod.op == Opcode::ConstStr) {
+                            bbMir.instrs.push_back(
+                                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+                        }
                         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                         ctx.fb.finalize();
                         return ctx.mf;

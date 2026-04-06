@@ -1611,6 +1611,11 @@ void Sema::checkUnusedVariables(const Scope &scope) {
         if (name == "_")
             continue;
 
+        // Instance methods permit implicit field/member access without writing
+        // `self.`, so warning on the synthetic receiver parameter is noise.
+        if (sym.kind == Symbol::Kind::Parameter && name == "self")
+            continue;
+
         // Skip extern/runtime symbols
         if (sym.isExtern)
             continue;

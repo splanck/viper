@@ -35,6 +35,17 @@ CompilerResult compileWithPolicy(const std::string &source, WarningPolicy policy
     return compile(input, opts, sm);
 }
 
+CompilerResult compileFileWithPolicy(const fs::path &path,
+                                     const std::string &source,
+                                     WarningPolicy policy = {}) {
+    SourceManager sm;
+    const std::string pathStr = path.string();
+    CompilerInput input{.source = source, .path = pathStr};
+    CompilerOptions opts{};
+    opts.warningPolicy = policy;
+    return compile(input, opts, sm);
+}
+
 /// @brief Check if any diagnostic has the given code.
 bool hasWarningCode(const CompilerResult &r, const char *code) {
     for (const auto &d : r.diagnostics.diagnostics()) {
@@ -95,6 +106,24 @@ func start() {    var _ = 5;
     EXPECT_FALSE(hasWarningCode(r, "W001"));
 }
 
+TEST(ZiaWarnings, W001_ImplicitSelf_NoWarning) {
+    auto r = compileWithPolicy(R"(
+module T;
+class Counter {
+    expose Integer count;
+    expose func increment() {
+        count = count + 1;
+    }
+}
+func start() {
+    var c = new Counter();
+    c.increment();
+}
+)");
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_FALSE(hasWarningCode(r, "W001"));
+}
+
 //=============================================================================
 // W002: Unreachable Code
 //=============================================================================
@@ -108,6 +137,20 @@ func foo() -> Integer {    return 1;
     var x = 2;
 }
 func start() { })",
+                               policy);
+    EXPECT_TRUE(hasWarningCode(r, "W002"));
+}
+
+TEST(ZiaWarnings, W002_UnreachableAfterThrow) {
+    WarningPolicy policy;
+    policy.enableAll = true; // W002 is -Wall only
+    auto r = compileWithPolicy(R"(
+module T;
+func foo() {
+    throw 1;
+    var x = 2;
+}
+func start() { foo(); })",
                                policy);
     EXPECT_TRUE(hasWarningCode(r, "W002"));
 }
@@ -268,6 +311,63 @@ func start() {    var flag = true;
 }
 
 //=============================================================================
+// W012: Duplicate Import
+//=============================================================================
+
+TEST(ZiaWarnings, W012_DuplicateImportSameFileWarns) {
+    WarningPolicy policy;
+    policy.enableAll = true;
+
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_warning_tests" / "dup_same_file";
+    const fs::path libPath = tempRoot / "lib.zia";
+    const fs::path mainPath = tempRoot / "main.zia";
+
+    writeFile(libPath, "module Lib;\nexpose func greet() {}\n");
+    const std::string source = R"(
+module Main;
+bind "./lib";
+bind "./lib";
+
+func start() { greet(); }
+)";
+
+    auto r = compileFileWithPolicy(mainPath, source, policy);
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_TRUE(hasWarningCode(r, "W012"));
+}
+
+TEST(ZiaWarnings, W012_DuplicateImportDifferentFilesDoesNotWarn) {
+    WarningPolicy policy;
+    policy.enableAll = true;
+
+    const fs::path tempRoot =
+        fs::temp_directory_path() / "zia_warning_tests" / "dup_different_files";
+    const fs::path commonPath = tempRoot / "common.zia";
+    const fs::path aPath = tempRoot / "a.zia";
+    const fs::path bPath = tempRoot / "b.zia";
+    const fs::path mainPath = tempRoot / "main.zia";
+
+    writeFile(commonPath, "module Common;\nexpose func helper() {}\n");
+    writeFile(aPath, "module A;\nbind \"./common\";\nexpose func fromA() { helper(); }\n");
+    writeFile(bPath, "module B;\nbind \"./common\";\nexpose func fromB() { helper(); }\n");
+
+    const std::string source = R"(
+module Main;
+bind "./a";
+bind "./b";
+
+func start() {
+    fromA();
+    fromB();
+}
+)";
+
+    auto r = compileFileWithPolicy(mainPath, source, policy);
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_FALSE(hasWarningCode(r, "W012"));
+}
+
+//=============================================================================
 // W013: Empty Body
 //=============================================================================
 
@@ -314,6 +414,40 @@ bind Viper.Terminal as IO;func start() {    var x: Integer;
 )");
     EXPECT_TRUE(r.succeeded());
     EXPECT_TRUE(hasWarningCode(r, "W015"));
+}
+
+//=============================================================================
+// W016: Optional Access Without Check
+//=============================================================================
+
+TEST(ZiaWarnings, W016_ShortCircuitAndNullCheckSuppressesWarning) {
+    auto r = compileWithPolicy(R"(
+module T;
+class Doc {
+    expose Boolean isNew;
+}
+func start(doc: Doc?) {
+    if doc != null and doc.isNew == false {
+    }
+}
+)");
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_FALSE(hasWarningCode(r, "W016"));
+}
+
+TEST(ZiaWarnings, W016_ShortCircuitOrNullCheckSuppressesWarning) {
+    auto r = compileWithPolicy(R"(
+module T;
+class Doc {
+    expose Boolean isNew;
+}
+func start(doc: Doc?) {
+    if doc == null or doc.isNew == false {
+    }
+}
+)");
+    EXPECT_TRUE(r.succeeded());
+    EXPECT_FALSE(hasWarningCode(r, "W016"));
 }
 
 //=============================================================================

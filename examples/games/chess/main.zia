@@ -7,6 +7,5 @@ bind "./ui/game";
 
 func start() {
     var g = new ChessGame();
-    g.init();
     g.run();
 }

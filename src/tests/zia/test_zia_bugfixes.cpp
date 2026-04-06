@@ -224,6 +224,47 @@ func start() {    var xs = List.New();
     EXPECT_GE(countCallsTo(*mainFn, "Viper.Terminal.SetColor"), static_cast<size_t>(1));
 }
 
+/// @brief Compatibility aliases for visibility and immutability should compile end-to-end.
+TEST(ZiaBugFixes, CompatibilityAliasesCompile) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+export func exported() {}
+
+public class Greeter {
+    expose func hi() {
+        Viper.Terminal.Say("hi");
+    }
+}
+
+func start() {
+    let x = 1;
+    exported();
+    var g = new Greeter();
+    g.hi();
+    Viper.Terminal.SayInt(x);
+}
+)";
+    CompilerInput input{.source = source, .path = "compat_aliases.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(findFunction(result.module, "exported") != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "exported"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Greeter.hi"), static_cast<size_t>(1));
+}
+
 /// @brief Test Byte arguments widen to Integer parameters during lowering.
 TEST(ZiaBugFixes, ByteArgumentsWidenForCalls) {
     SourceManager sm;

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_const_str_addr.cpp
-// Purpose: Verify AArch64 materializes addresses for const_str/globals and emits rodata.
+// Purpose: Verify AArch64 distinguishes const_str from addr_of when returning globals.
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
@@ -62,10 +62,37 @@ TEST(Arm64CLI, ConstStr_AddressMaterialization) {
     // Expect rodata section with pooled label and ascii contents
     EXPECT_NE(asmText.find(".section"), std::string::npos);
     EXPECT_NE(asmText.find(".asciz \"hi\""), std::string::npos);
-    // Expect adrp/add page materialization in function
+    // Returning const_str must produce a runtime string handle, not a raw address.
     EXPECT_NE(asmText.find("adrp x"), std::string::npos);
     EXPECT_NE(asmText.find("@PAGE"), std::string::npos);
     EXPECT_NE(asmText.find("@PAGEOFF"), std::string::npos);
+    EXPECT_NE(asmText.find("rt_const_cstr"), std::string::npos);
+}
+
+TEST(Arm64CLI, AddrOf_ReturnDoesNotCallConstStrHelper) {
+    const std::string in = "arm64_cli_addr_of.il";
+    const std::string out = "arm64_cli_addr_of.s";
+    const std::string il = "il 0.1\n"
+                           "global const str @counter = \"hello\"\n"
+                           "func @get_counter_addr() -> ptr {\n"
+                           "entry:\n"
+                           "  %p = addr_of @counter\n"
+                           "  ret %p\n"
+                           "}\n";
+
+    const std::string inP = outPath(in);
+    const std::string outP = outPath(out);
+    writeFile(inP, il);
+
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
+    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 0);
+
+    const std::string asmText = readFile(outP);
+    EXPECT_NE(asmText.find("adrp x"), std::string::npos);
+    EXPECT_NE(asmText.find("@PAGE"), std::string::npos);
+    EXPECT_NE(asmText.find("@PAGEOFF"), std::string::npos);
+    EXPECT_EQ(asmText.find("rt_const_cstr"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

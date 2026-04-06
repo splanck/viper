@@ -216,7 +216,7 @@ func renderBishop(white: Boolean) -> Pixels {
     px.DrawDisc(CX, CY - 29, 2, fill);
 
     // Diagonal slash — the bishop's characteristic mark
-    px.DrawThickLine(CX - 6, CY - 14, CX + 6, CY - 22, out, 2);
+    px.DrawThickLine(CX - 6, CY - 14, CX + 6, CY - 22, 2, out);
 
     // Horizontal sash
     px.DrawLine(CX - 8, CY + 6, CX + 8, CY + 6, acc);

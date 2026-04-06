@@ -27,7 +27,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
+#include <atomic>
 #include <cstring>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -163,6 +168,96 @@ inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<siz
             span = endOff;
     }
     return span;
+}
+
+/// Write a binary file by creating a fresh temporary inode in the destination
+/// directory and renaming it into place. This avoids in-place executable
+/// mutation, which can leave macOS launch services and code-sign validation
+/// observing stale vnode state for native binaries.
+inline bool writeBinaryFileAtomically(const std::string &path,
+                                      const std::vector<uint8_t> &data,
+                                      bool makeExecutable,
+                                      std::ostream &err) {
+    namespace fs = std::filesystem;
+
+    auto writeDirect = [&](const fs::path &target) -> bool {
+        std::ofstream out(target, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            err << "error: cannot open '" << target.string() << "' for writing\n";
+            return false;
+        }
+        out.write(reinterpret_cast<const char *>(data.data()),
+                  static_cast<std::streamsize>(data.size()));
+        if (!out) {
+            err << "error: write failed to '" << target.string() << "'\n";
+            return false;
+        }
+        out.close();
+        if (!out) {
+            err << "error: write failed to '" << target.string() << "'\n";
+            return false;
+        }
+
+#if !defined(_WIN32)
+        if (makeExecutable) {
+            std::error_code permEc;
+            fs::permissions(target,
+                            fs::perms::owner_exec | fs::perms::owner_read |
+                                fs::perms::owner_write | fs::perms::group_read |
+                                fs::perms::group_exec | fs::perms::others_read |
+                                fs::perms::others_exec,
+                            permEc);
+        }
+#else
+        (void)makeExecutable;
+#endif
+        return true;
+    };
+
+    const fs::path finalPath(path);
+    fs::path dir = finalPath.parent_path();
+    if (dir.empty())
+        dir = ".";
+
+    static std::atomic<uint64_t> nonce{0};
+    for (uint32_t attempt = 0; attempt < 32; ++attempt) {
+        const uint64_t seed = static_cast<uint64_t>(
+                                  std::chrono::steady_clock::now().time_since_epoch().count()) ^
+                              nonce.fetch_add(1, std::memory_order_relaxed);
+        const fs::path tempPath =
+            dir / (finalPath.filename().string() + ".tmp." + std::to_string(seed + attempt));
+
+        std::error_code existsEc;
+        if (fs::exists(tempPath, existsEc))
+            continue;
+
+        if (!writeDirect(tempPath)) {
+            std::error_code cleanupEc;
+            fs::remove(tempPath, cleanupEc);
+            return false;
+        }
+
+        std::error_code renameEc;
+        fs::rename(tempPath, finalPath, renameEc);
+        if (!renameEc)
+            return true;
+
+        // Windows rename doesn't replace existing files; POSIX/macOS does.
+        std::error_code removeEc;
+        fs::remove(finalPath, removeEc);
+        renameEc.clear();
+        fs::rename(tempPath, finalPath, renameEc);
+        if (!renameEc)
+            return true;
+
+        std::error_code cleanupEc;
+        fs::remove(tempPath, cleanupEc);
+        err << "error: cannot replace '" << path << "': " << renameEc.message() << "\n";
+        return false;
+    }
+
+    err << "error: cannot allocate temporary output path for '" << path << "'\n";
+    return false;
 }
 
 } // namespace viper::codegen::linker

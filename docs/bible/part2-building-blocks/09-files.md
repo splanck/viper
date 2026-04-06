@@ -163,31 +163,31 @@ If your program is running from `/home/alice/myprogram/`, then:
 The `Path` module helps work with paths safely:
 
 ```rust
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
 
 var path = "/home/alice/documents/report.txt";
 
-fileName(path);     // "report.txt"
-extension(path);    // ".txt"
-directory(path);    // "/home/alice/documents"
-baseName(path);     // "report" (name without extension)
+Path.Name(path);     // "report.txt"
+Path.Ext(path);      // ".txt"
+Path.Dir(path);      // "/home/alice/documents"
+Path.Stem(path);     // "report" (name without extension)
 
 // Building paths safely
 var dir = "/home/alice";
 var file = "documents/report.txt";
-var full = join(dir, file);  // "/home/alice/documents/report.txt"
+var full = Path.Join(dir, file);  // "/home/alice/documents/report.txt"
 ```
 
-Always use `Path.join` instead of string concatenation:
+Always use `Path.Join` instead of string concatenation:
 
 ```rust
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
 
 // Bad: might produce "/home/alice//documents" or wrong separators
 var path = directory + "/" + filename;
 
 // Good: handles edge cases correctly
-var path = join(directory, filename);
+var path = Path.Join(directory, filename);
 ```
 
 ### Cross-Platform Considerations
@@ -206,11 +206,12 @@ If you're writing software that might run on different operating systems, keep t
 To get standard locations portably:
 
 ```rust
-bind Viper.Environment;
+bind Viper.Machine as Machine;
+bind Viper.IO.Dir as Dir;
 
-var home = homeDir();           // User's home directory
-var temp = tempDir();           // Temporary file directory
-var cwd = currentDir();         // Current working directory
+var home = Machine.Home;        // User's home directory
+var temp = Machine.Temp;        // Temporary file directory
+var cwd = Dir.Current();        // Current working directory
 ```
 
 ---
@@ -346,17 +347,15 @@ Say(content);
 
 **When to avoid:** Large files. If you load a 4 GB file, your program needs 4+ GB of RAM just for that string. Your computer might slow down or crash.
 
-### Reading Lines into an Array
+### Reading Lines into a Sequence
 
-Often you want to process a file line by line. `readLines` returns an array of strings:
+Often you want to process a file line by line. `ReadAllLines` returns a typed sequence of strings:
 
 ```rust
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
 var lines = File.ReadAllLines("data.txt");
-
-Say("File has " + lines.Length + " lines");
 
 for line in lines {
     Say("Line: " + line);
@@ -579,7 +578,7 @@ File.WriteAllBytes("header.bin", data);
 
 // Reading binary data
 var bytes = File.ReadAllBytes("image.png");
-Say("File size: " + bytes.Length + " bytes");
+Say("File size: " + File.Size("image.png") + " bytes");
 
 // Check for PNG signature
 if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
@@ -631,7 +630,7 @@ bind Viper.Terminal;
 try {
     var content = File.ReadAllText("data.txt");
     // Process content...
-} catch e: FileNotFound {
+} catch(e: FileNotFound) {
     Say("File not found, using defaults");
 }
 ```
@@ -649,57 +648,55 @@ Files are organized in directories. Viper provides tools to work with them.
 ### Checking and Creating Directories
 
 ```rust
-bind Viper.IO.Dir;
+bind Viper.IO.Dir as Dir;
 bind Viper.Terminal;
 
 // Check if directory exists
-if exists("saves") {
+if Dir.Exists("saves") {
     Say("Saves directory found");
 }
 
 // Create a directory
-create("output");
+Dir.Make("output");
 
 // Create nested directories (creates parent directories as needed)
-createAll("output/data/processed");
+Dir.MakeAll("output/data/processed");
 ```
 
 ### Listing Directory Contents
 
 ```rust
-bind Viper.IO.Dir;
+bind Viper.IO.Dir as Dir;
 bind Viper.Terminal;
 
 // List all files in a directory
-var files = listFiles("data");
+var files = Dir.FilesSeq("data");
 for file in files {
     Say(file);
 }
 
 // List subdirectories
-var dirs = listDirs("projects");
+var dirs = Dir.DirsSeq("projects");
 for dir in dirs {
     Say("Directory: " + dir);
 }
 
 // List everything (files and directories)
-var all = list("documents");
+var all = Dir.ListSeq("documents");
 ```
 
 ### Practical Example: Finding All Text Files
 
 ```rust
-bind Viper.IO.Dir;
-bind Viper.IO.Path;
+bind Viper.IO.Dir as Dir;
+bind Viper.IO.Path as Path;
 bind Viper.Terminal;
 
 func findTextFiles(directory: String) {
-    var entries = list(directory);
+    for entry in Dir.ListSeq(directory) {
+        var path = Path.Join(directory, entry);
 
-    for entry in entries {
-        var path = join(directory, entry);
-
-        if exists(path) {
+        if Dir.Exists(path) {
             // It's a directory, recurse into it
             findTextFiles(path);
         } else if entry.EndsWith(".txt") {
@@ -775,16 +772,16 @@ bind Viper.Terminal;
 func loadConfig() -> String {
     try {
         return File.ReadAllText("config.txt");
-    } catch e: FileNotFound {
+    } catch(e: FileNotFound) {
         Say("Config file not found, creating default...");
         var defaultConfig = "theme=light\nvolume=50";
         File.WriteAllText("config.txt", defaultConfig);
         return defaultConfig;
-    } catch e: PermissionDenied {
-        Say("Cannot read config file: permission denied");
+    } catch(e: IOError) {
+        Say("Cannot read config file");
         Say("Using built-in defaults");
         return "theme=light\nvolume=50";
-    } catch e {
+    } catch(e) {
         Say("Unexpected error reading config: " + e.message);
         return "theme=light\nvolume=50";
     }
@@ -802,15 +799,15 @@ bind Viper.Terminal;
 func openUserFile(path: String) -> String {
     try {
         return File.ReadAllText(path);
-    } catch e: FileNotFound {
+    } catch(e: FileNotFound) {
         Say("Sorry, the file '" + path + "' doesn't exist.");
         Say("Please check the filename and try again.");
         return "";
-    } catch e: PermissionDenied {
-        Say("Sorry, you don't have permission to open this file.");
-        Say("Try running the program as administrator, or choose a different file.");
+    } catch(e: IOError) {
+        Say("Sorry, the file could not be opened.");
+        Say("Check the path and your permissions, then try again.");
         return "";
-    } catch e {
+    } catch(e) {
         Say("Sorry, couldn't open the file.");
         Say("Technical details: " + e.message);
         return "";
@@ -854,7 +851,7 @@ func safeWrite(filename: String, content: String) {
     }
 
     // Step 3: Rename temp file to real name
-    rename(tempFile, filename);
+    File.Move(tempFile, filename);
 }
 ```
 
@@ -874,7 +871,7 @@ func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
     if File.Exists(filename) {
         var backupName = filename + ".backup";
-        copy(filename, backupName);
+        File.Copy(filename, backupName);
     }
 
     // Now write the new content
@@ -940,6 +937,7 @@ module Config;
 
 bind File = Viper.IO.File;
 bind Convert = Viper.Core.Convert;
+bind Viper.String as Str;
 bind Viper.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
@@ -962,11 +960,11 @@ func loadConfig() -> Map[String, String] {
             continue;
         }
 
-        var parts = line.Split("=");
-        if parts.Length == 2 {
-            var key = parts.Get(0).Trim();
-            var value = parts.Get(1).Trim();
-            config[key] = value;
+        var separator = line.IndexOf("=");
+        if separator >= 0 {
+            var key = line.Substring(0, separator).Trim();
+            var value = line.Substring(separator + 1, line.Length - separator - 1).Trim();
+            config.set(key, value);
         }
     }
 
@@ -975,15 +973,15 @@ func loadConfig() -> Map[String, String] {
 
 func saveConfig(config: Map[String, String]) {
     var lines: List[String] = [];
-    lines.Push("# Application settings");
-    lines.Push("# Edit with care!");
-    lines.Push("");
+    lines.add("# Application settings");
+    lines.add("# Edit with care!");
+    lines.add("");
 
-    for key in config.Keys() {
-        lines.Push(key + "=" + config[key]);
+    for key in config.keys() {
+        lines.add(key + "=" + config.get(key));
     }
 
-    var content = lines.Join("\n");
+    var content = Str.Join("\n", lines);
     File.WriteAllText(CONFIG_FILE, content);
 }
 
@@ -992,14 +990,14 @@ func start() {
     var config = loadConfig();
 
     // Get setting with default
-    var theme = config.GetOrDefault("theme", "light");
-    var volume = Convert.ToInt64(config.GetOrDefault("volume", "50"));
+    var theme = config.getOr("theme", "light");
+    var volume = Convert.ToInt64(config.getOr("volume", "50"));
 
     Say("Theme: " + theme);
     Say("Volume: " + volume);
 
     // Change a setting
-    config["theme"] = "dark";
+    config.set("theme", "dark");
     saveConfig(config);
 }
 ```
@@ -1052,7 +1050,7 @@ func processData() {
     try {
         // ... do work ...
         Logger.info("Processed 1000 records");
-    } catch e {
+    } catch(e) {
         Logger.error("Processing failed: " + e.message);
     }
 }
@@ -1075,11 +1073,12 @@ Games need to persist player progress:
 ```rust
 module GameSave;
 
-bind Viper.IO.Dir;
-bind Viper.IO.Path;
+bind Viper.IO.Dir as Dir;
+bind Viper.IO.Path as Path;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
+bind Viper.String as Str;
 
 final SAVE_DIR = "saves";
 
@@ -1095,26 +1094,26 @@ struct SaveData {
 
 func save(data: SaveData, slot: Integer) {
     // Ensure save directory exists
-    if !exists(SAVE_DIR) {
-        create(SAVE_DIR);
+    if !Dir.Exists(SAVE_DIR) {
+        Dir.Make(SAVE_DIR);
     }
 
-    var filename = join(SAVE_DIR, "save_" + slot + ".dat");
+    var filename = Path.Join(SAVE_DIR, "save_" + slot + ".dat");
 
     var lines: List[String] = [];
-    lines.Push("name=" + data.playerName);
-    lines.Push("level=" + data.level);
-    lines.Push("score=" + data.score);
-    lines.Push("health=" + data.health);
-    lines.Push("inventory=" + data.inventory.Join(","));
-    lines.Push("position=" + data.posX + "," + data.posY);
+    lines.add("name=" + data.playerName);
+    lines.add("level=" + data.level);
+    lines.add("score=" + data.score);
+    lines.add("health=" + data.health);
+    lines.add("inventory=" + Str.Join(",", data.inventory));
+    lines.add("position=" + data.posX + "," + data.posY);
 
-    File.WriteAllText(filename, lines.Join("\n"));
+    File.WriteAllText(filename, Str.Join("\n", lines));
     Say("Game saved to slot " + slot);
 }
 
 func load(slot: Integer) -> SaveData? {
-    var filename = join(SAVE_DIR, "save_" + slot + ".dat");
+    var filename = Path.Join(SAVE_DIR, "save_" + slot + ".dat");
 
     if !File.Exists(filename) {
         Say("No save found in slot " + slot);
@@ -1125,21 +1124,28 @@ func load(slot: Integer) -> SaveData? {
     var data = SaveData();
 
     for line in lines {
-        var parts = line.Split("=");
-        if parts.Length != 2 { continue; }
+        var separator = line.IndexOf("=");
+        if separator < 0 { continue; }
 
-        var key = parts.Get(0);
-        var value = parts.Get(1);
+        var key = line.Substring(0, separator);
+        var value = line.Substring(separator + 1, line.Length - separator - 1);
 
         if key == "name" { data.playerName = value; }
         else if key == "level" { data.level = Convert.ToInt64(value); }
         else if key == "score" { data.score = Convert.ToInt64(value); }
         else if key == "health" { data.health = Convert.ToInt64(value); }
-        else if key == "inventory" { data.inventory = value.Split(","); }
+        else if key == "inventory" {
+            data.inventory = [];
+            for item in Viper.String.Split(value, ",") {
+                data.inventory.add(item);
+            }
+        }
         else if key == "position" {
-            var coords = value.Split(",");
-            data.posX = Convert.ToDouble(coords[0]);
-            data.posY = Convert.ToDouble(coords[1]);
+            var comma = value.IndexOf(",");
+            if comma >= 0 {
+                data.posX = Convert.ToDouble(value.Substring(0, comma));
+                data.posY = Convert.ToDouble(value.Substring(comma + 1, value.Length - comma - 1));
+            }
         }
     }
 
@@ -1150,15 +1156,14 @@ func load(slot: Integer) -> SaveData? {
 func listSaves() -> List[Integer] {
     var saves: List[Integer] = [];
 
-    if !exists(SAVE_DIR) {
+    if !Dir.Exists(SAVE_DIR) {
         return saves;
     }
 
-    var files = listFiles(SAVE_DIR);
-    for file in files {
+    for file in Dir.FilesSeq(SAVE_DIR) {
         if file.StartsWith("save_") && file.EndsWith(".dat") {
             var numStr = file.Substring(5, file.Length - 9);
-            saves.Push(Convert.ToInt64(numStr));
+            saves.add(Convert.ToInt64(numStr));
         }
     }
 
@@ -1172,13 +1177,14 @@ Exporting data for spreadsheets or other programs:
 
 ```rust
 bind File = Viper.IO.File;
+bind Viper.String as Str;
 bind Viper.Terminal;
 
 func exportToCSV(filename: String, headers: List[String], rows: List[List[String]]) {
     var lines: List[String] = [];
 
     // Header row
-    lines.Push(headers.Join(","));
+    lines.add(Str.Join(",", headers));
 
     // Data rows
     for row in rows {
@@ -1188,13 +1194,13 @@ func exportToCSV(filename: String, headers: List[String], rows: List[List[String
             if value.Contains(",") || value.Contains("\"") {
                 value = "\"" + value.Replace("\"", "\"\"") + "\"";
             }
-            escapedRow.Push(value);
+            escapedRow.add(value);
         }
-        lines.Push(escapedRow.Join(","));
+        lines.add(Str.Join(",", escapedRow));
     }
 
-    File.WriteAllText(filename, lines.Join("\n"));
-    Say("Exported " + rows.Length + " rows to " + filename);
+    File.WriteAllText(filename, Str.Join("\n", lines));
+    Say("Exported " + rows.count() + " rows to " + filename);
 }
 
 // Usage
@@ -1214,6 +1220,7 @@ Reading data from CSV files:
 
 ```rust
 bind File = Viper.IO.File;
+bind Viper.String as Str;
 bind Viper.Terminal;
 
 func importFromCSV(filename: String) -> List[List[String]] {
@@ -1224,8 +1231,11 @@ func importFromCSV(filename: String) -> List[List[String]] {
         if line.Trim().Length == 0 { continue; }
 
         // Simple split (doesn't handle quoted commas)
-        var values = line.Split(",");
-        rows.Push(values);
+        var values: List[String] = [];
+        for value in Viper.String.Split(line, ",") {
+            values.add(value);
+        }
+        rows.add(values);
     }
 
     return rows;
@@ -1235,8 +1245,8 @@ func importFromCSV(filename: String) -> List[List[String]] {
 var data = importFromCSV("people.csv");
 var headers = data[0];
 
-Say("Columns: " + headers.Join(", "));
-Say("Data rows: " + (data.Length - 1));
+Say("Columns: " + Str.Join(", ", headers));
+Say("Data rows: " + (data.count() - 1));
 ```
 
 ---
@@ -1249,6 +1259,8 @@ Let's build a full application that demonstrates proper file handling:
 module NoteKeeper;
 
 bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
+bind Viper.String as Str;
 bind Viper.Terminal;
 
 final NOTES_FILE = "notes.txt";
@@ -1266,11 +1278,11 @@ func loadNotes() -> List[String] {
         var notes: List[String] = [];
         for line in lines {
             if line.Trim().Length > 0 {
-                notes.Push(line);
+                notes.add(line);
             }
         }
         return notes;
-    } catch e {
+    } catch(e) {
         Say("Warning: Could not load notes: " + e.message);
 
         // Try backup
@@ -1278,7 +1290,7 @@ func loadNotes() -> List[String] {
             Say("Attempting to load from backup...");
             try {
                 return File.ReadAllLines(BACKUP_FILE);
-            } catch e2 {
+            } catch(e2) {
                 Say("Backup also failed.");
             }
         }
@@ -1292,8 +1304,8 @@ func saveNotes(notes: List[String]) -> Boolean {
     // Create backup of existing file
     if File.Exists(NOTES_FILE) {
         try {
-            copy(NOTES_FILE, BACKUP_FILE);
-        } catch e {
+            File.Copy(NOTES_FILE, BACKUP_FILE);
+        } catch(e) {
             Say("Warning: Could not create backup");
         }
     }
@@ -1301,17 +1313,17 @@ func saveNotes(notes: List[String]) -> Boolean {
     // Write to temporary file first
     var tempFile = NOTES_FILE + ".tmp";
     try {
-        var content = notes.Join("\n");
+        var content = Str.Join("\n", notes);
         File.WriteAllText(tempFile, content);
 
         // Delete old file and rename temp to real
         if File.Exists(NOTES_FILE) {
             File.Delete(NOTES_FILE);
         }
-        rename(tempFile, NOTES_FILE);
+        File.Move(tempFile, NOTES_FILE);
 
         return true;
-    } catch e {
+    } catch(e) {
         Say("Error saving notes: " + e.message);
 
         // Clean up temp file if it exists
@@ -1325,7 +1337,7 @@ func saveNotes(notes: List[String]) -> Boolean {
 
 // Display all notes
 func displayNotes(notes: List[String]) {
-    if notes.Length == 0 {
+    if notes.count() == 0 {
         Say("No notes yet.");
         Say("Use 'add' to create your first note!");
         return;
@@ -1333,8 +1345,8 @@ func displayNotes(notes: List[String]) {
 
     Say("");
     Say("=== Your Notes ===");
-    for i in 0..notes.Length {
-        Say((i + 1) + ". " + notes[i]);
+    for i in 0..notes.count() {
+        Say((i + 1) + ". " + notes.get(i));
     }
     Say("==================");
 }
@@ -1362,8 +1374,8 @@ func start() {
     Say("Type 'help' for commands");
     Say("");
 
-    if notes.Length > 0 {
-        Say("Loaded " + notes.Length + " existing notes.");
+    if notes.count() > 0 {
+        Say("Loaded " + notes.count() + " existing notes.");
     }
 
     while true {
@@ -1387,14 +1399,14 @@ func start() {
             if note.Length == 0 {
                 Say("Note cannot be empty.");
             } else {
-                notes.Push(note);
+                notes.add(note);
                 if saveNotes(notes) {
                     Say("Note added!");
                 }
             }
 
         } else if command == "delete" {
-            if notes.Length == 0 {
+            if notes.count() == 0 {
                 Say("No notes to delete.");
             } else {
                 displayNotes(notes);
@@ -1405,22 +1417,22 @@ func start() {
                     var num = Convert.ToInt64(input);
                     if num == 0 {
                         Say("Cancelled.");
-                    } else if num >= 1 && num <= notes.Length {
-                        var deleted = notes[num - 1];
-                        notes.RemoveAt(num - 1);
+                    } else if num >= 1 && num <= notes.count() {
+                        var deleted = notes.get(num - 1);
+                        notes.removeAt(num - 1);
                         if saveNotes(notes) {
                             Say("Deleted: " + deleted);
                         }
                     } else {
-                        Say("Invalid number. Enter 1-" + notes.Length);
+                        Say("Invalid number. Enter 1-" + notes.count());
                     }
-                } catch e {
+                } catch(e) {
                     Say("Please enter a number.");
                 }
             }
 
         } else if command == "edit" {
-            if notes.Length == 0 {
+            if notes.count() == 0 {
                 Say("No notes to edit.");
             } else {
                 displayNotes(notes);
@@ -1431,32 +1443,32 @@ func start() {
                     var num = Convert.ToInt64(input);
                     if num == 0 {
                         Say("Cancelled.");
-                    } else if num >= 1 && num <= notes.Length {
-                        Say("Current: " + notes[num - 1]);
+                    } else if num >= 1 && num <= notes.count() {
+                        Say("Current: " + notes.get(num - 1));
                         Print("New text: ");
                         var newNote = InputLine().Trim();
 
                         if newNote.Length == 0 {
                             Say("Note cannot be empty. Use 'delete' to remove.");
                         } else {
-                            notes[num - 1] = newNote;
+                            notes.set(num - 1, newNote);
                             if saveNotes(notes) {
                                 Say("Note updated!");
                             }
                         }
                     } else {
-                        Say("Invalid number. Enter 1-" + notes.Length);
+                        Say("Invalid number. Enter 1-" + notes.count());
                     }
-                } catch e {
+                } catch(e) {
                     Say("Please enter a number.");
                 }
             }
 
         } else if command == "clear" {
-            if notes.Length == 0 {
+            if notes.count() == 0 {
                 Say("Already empty.");
             } else {
-                Print("Delete ALL " + notes.Length + " notes? (yes/no): ");
+                Print("Delete ALL " + notes.count() + " notes? (yes/no): ");
                 var confirm = InputLine().Trim().ToLower();
 
                 if confirm == "yes" {
@@ -1566,7 +1578,7 @@ if File.Exists("maybe.txt") {
 // Or: use try-catch
 try {
     var content = File.ReadAllText("maybe.txt");
-} catch e: FileNotFound {
+} catch(e: FileNotFound) {
     Say("File not found");
 }
 ```
@@ -1585,8 +1597,8 @@ File.Append("log.txt", "Entry 2\n");  // Both entries preserved
 
 **Hardcoding paths:**
 ```rust
-bind Viper.Environment;
-bind Viper.IO.Path;
+bind Viper.Machine as Machine;
+bind Viper.IO.Path as Path;
 
 // Bad: only works on your machine
 var file = "C:\\Users\\Alice\\Documents\\data.txt";
@@ -1595,8 +1607,8 @@ var file = "C:\\Users\\Alice\\Documents\\data.txt";
 var file = "data/scores.txt";
 
 // Or build paths dynamically
-var home = homeDir();
-var file = join(home, "Documents", "data.txt");
+var home = Machine.Home;
+var file = Path.Join(home, "Documents/data.txt");
 ```
 
 **Not closing files:**
@@ -1632,7 +1644,7 @@ writer.Flush();  // Force to disk
 
 **Not handling paths cross-platform:**
 ```rust
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
 
 // Bad: backslash doesn't work on Mac/Linux
 var path = "data\\files\\scores.txt";
@@ -1641,7 +1653,7 @@ var path = "data\\files\\scores.txt";
 var path = "data/files/scores.txt";
 
 // Best: use Path.join
-var path = join("data", "files", "scores.txt");
+var path = Path.Join("data/files", "scores.txt");
 ```
 
 ---

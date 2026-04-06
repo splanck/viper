@@ -72,7 +72,7 @@ bind Viper.Terminal;
 
 Say("Hello!");              // Print with newline
 Print("No newline here");   // Print without newline
-var input = InputLine();     // Read a line of text
+var input = ReadLine();     // Read a line of text, or null on EOF
 var char = GetKey();        // Read a single keypress
 ```
 
@@ -80,7 +80,7 @@ var char = GetKey();        // Read a single keypress
 
 - **`Say()`**: Most output. Each message on its own line.
 - **`Print()`**: When you want to build up a line piece by piece, or when prompting for input on the same line.
-- **`InputLine()`**: Getting text input from users.
+- **`ReadLine()`**: Getting text input when EOF should be handled explicitly.
 - **`GetKey()`**: Games, menus, or "press any key" prompts.
 
 ### Terminal Control
@@ -112,10 +112,11 @@ func showMenu() -> Integer {
     Say("2. Load Game");
     Say("3. Options");
     Say("4. Quit");
-    Print("Choose (1-4): ");
-
-    var choice = InputLine().Trim();
-    return Convert.ToInt64(choice);
+    var choice = Ask("Choose (1-4): ");
+    if choice == null {
+        return 4;
+    }
+    return Convert.ToInt64(choice!.Trim());
 }
 ```
 
@@ -247,15 +248,16 @@ Random.Dice(2);        // 1 or 2 — simulates a coin flip
 
 ```rust
 bind Viper.Math.Random as Random;
-bind Viper.Collections;
+bind Viper.Terminal;
 
-var deck = new List[Integer]();
+var deck: List[Integer] = [];
 var i = 1;
 while i <= 10 {
-    deck.Push(i);
+    deck.add(i);
     i = i + 1;
 }
 Random.Shuffle(deck);  // Shuffle in place
+SayInt(deck.count());
 ```
 
 ### Reproducible Randomness
@@ -276,9 +278,10 @@ This is crucial for debugging. If a bug only appears sometimes, set a seed to re
 ```rust
 bind Viper.Math.Random as Random;
 bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
 var die = Random.Dice(6);
-Say("You rolled: " + die);
+Say("You rolled: " + Fmt.Int(die));
 ```
 
 **Coin flip:**
@@ -461,10 +464,10 @@ You can access those arguments:
 bind Viper.Environment;
 bind Viper.Terminal;
 
-var count = GetArgumentCount();
+var count = Viper.Environment.GetArgumentCount();
 
 for i in 0..count {
-    Say("Argument: " + GetArgument(i));
+    Say("Argument: " + Viper.Environment.GetArgument(i));
 }
 // Output:
 // Argument: input.txt
@@ -493,9 +496,9 @@ if Env.HasVariable("DEBUG") {
 
 ```rust
 bind Env = Viper.Environment;
-bind Viper.Machine;
+bind Viper.Machine as Machine;
 
-var osName = GetOS();         // "windows", "macos", or "linux"
+var osName = Machine.OS;         // "windows", "macos", or "linux"
 var home = Env.GetVariable("HOME");  // User's home directory
 ```
 
@@ -503,18 +506,18 @@ var home = Env.GetVariable("HOME");  // User's home directory
 
 ```rust
 bind Env = Viper.Environment;
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
+bind Viper.Machine as Machine;
 
 func getConfigPath() -> String {
-    var osName = Env.GetVariable("OS");
-    var home = Env.GetVariable("HOME");
+    var home = Machine.Home;
 
-    if osName == "windows" {
-        return join(home, "AppData", "Local", "MyApp", "config.json");
-    } else if osName == "macos" {
-        return join(home, "Library", "Application Support", "MyApp", "config.json");
+    if Machine.OS == "windows" {
+        return Path.Join(Path.Join(Path.Join(home, "AppData"), "Local"), "MyApp/config.json");
+    } else if Machine.OS == "macos" {
+        return Path.Join(Path.Join(Path.Join(home, "Library"), "Application Support"), "MyApp/config.json");
     } else {
-        return join(home, ".config", "myapp", "config.json");
+        return Path.Join(Path.Join(home, ".config"), "myapp/config.json");
     }
 }
 ```
@@ -573,8 +576,8 @@ func printScoreboard(players: List[Player]) {
     Say("--------------------------");
 
     var i = 0;
-    while i < players.Length {
-        var p = players[i];
+    while i < players.count() {
+        var p = players.get(i);
         Say(p.name + "  " + Fmt.Int(p.score));
         i = i + 1;
     }
@@ -646,142 +649,140 @@ func isValidUsername(username: String) -> Boolean {
 
 ---
 
-## Viper.Collections: Data Structures
+## Collections in Zia and Viper.Collections
 
-Arrays are great, but sometimes you need more specialized data structures.
+Zia has two collection layers that work together:
 
-### List: Dynamic Array
+- **Language-level generic collections** like `List[T]`, `Map[String, T]`, and `Set[T]`. These are the most natural choice in everyday Zia code.
+- **Runtime collection classes** under `Viper.Collections`, such as `Queue`, `Stack`, `Heap`, `OrderedMap`, and `BitSet`. These cover specialized data structures or boxed, dynamically typed storage.
 
-Unlike fixed arrays, lists grow automatically:
+Use the language-level generic collections first. Reach for `Viper.Collections.*` when you need a specialized runtime container.
+
+### Generic List
 
 ```rust
-bind Viper.Collections;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-var list = new List[String]();
+var list: List[String] = [];
 
-list.Push("first");
-list.Push("second");
-list.Push("third");
+list.add("first");
+list.add("second");
+list.add("third");
 
-Say(list.Get(0));             // "first"
-Say(Fmt.Int(list.Length));       // 3
+Say(list.get(0));          // "first"
+Say(Fmt.Int(list.count()));   // 3
 
-list.RemoveAt(0);             // Remove first element
-list.Insert(1, "inserted");   // Insert at position 1
-list.Clear();                 // Remove all elements
+list.removeAt(0);          // Remove first element
+list.insert(1, "inserted");
+list.clear();
 ```
 
-**When to use:** When you don't know how many elements you'll have, or when you need to add/remove frequently.
-
-### Map: Key-Value Pairs
-
-Maps store associations between keys and values:
+### Generic Map
 
 ```rust
-bind Viper.Collections;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-var scores = new Map[String, Integer]();
+var scores: Map[String, Integer] = {};
 
-scores.SetInt("Alice", 950);
-scores.SetInt("Bob", 875);
-scores.SetInt("Charlie", 1200);
+scores.set("Alice", 950);
+scores.set("Bob", 875);
+scores.set("Charlie", 1200);
 
-Say(Fmt.Int(scores.GetInt("Alice")));  // 950
-Say(Fmt.Int(scores.Length));              // 3
+Say(Fmt.Int(scores.get("Alice")));    // 950
+Say(Fmt.Int(scores.count()));         // 3
 
-if scores.Has("David") {
+if scores.has("David") {
     Say("David is in the game");
 } else {
     Say("David hasn't played yet");
 }
 
-// Iterate over all entries
-var keys = scores.Keys();
+var keys = scores.keys();
 var i = 0;
-while i < keys.Length {
-    var key = keys.Get(i);
-    Say(key + ": " + Fmt.Int(scores.GetInt(key)));
+while i < keys.count() {
+    var key = keys.get(i);
+    Say(key + ": " + Fmt.Int(scores.get(key)));
     i = i + 1;
 }
 
-scores.Remove("Bob");
+scores.remove("Bob");
 ```
 
-**When to use:** When you need to look things up by name, ID, or any other key. Faster than searching an array.
-
-### Set: Unique Values
-
-Sets store unique string values with no duplicates. Use `Viper.Collections.Bag` for string sets:
+### Generic Set
 
 ```rust
 bind Viper.Collections;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-var tags = new Bag();
+var tags: Set[String] = Set.New();
 
-tags.Add("important");
-tags.Add("urgent");
-tags.Add("important");  // Ignored - already exists
+tags.add("important");
+tags.add("urgent");
+tags.add("important");  // Ignored - already present
 
-Say(Fmt.Int(tags.Length));       // 2
-Say(Fmt.Bool(tags.Has("urgent")));  // true
+Say(Fmt.Int(tags.count()));          // 2
+Say(Fmt.Bool(tags.has("urgent")));   // true
 
-tags.Remove("urgent");
+tags.remove("urgent");
 ```
 
-**When to use:** When you need to track unique items, check membership quickly, or remove duplicates.
+Non-empty set literals like `{"a", "b"}` are supported. The empty literal `{}` is reserved for maps, so an empty `Set[T]` still needs `Set.New()`.
+
+### Specialized Runtime Collections
+
+Some containers are runtime classes rather than language literals. These live under `Viper.Collections`:
+
+```rust
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
+
+var queue = Queue.New();
+queue.Push(Box.Str("first"));
+queue.Push(Box.Str("second"));
+Say(Box.ToStr(queue.Pop()));   // "first"
+
+var stack = Stack.New();
+stack.Push(Box.I64(10));
+stack.Push(Box.I64(20));
+SayInt(Box.ToI64(stack.Pop()));  // 20
+```
+
+Use these when you need FIFO/LIFO behavior, heaps, ordered maps, frozen collections, bit sets, or other specialized runtime containers.
 
 ### Practical Example: Word Frequency Counter
 
 ```rust
-bind Viper.Collections;
-bind Convert = Viper.Core.Convert;
+bind Viper.String as Str;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
 
-func countWords(text: String) -> Map {
-    var frequency = new Map[String, Integer]();
-    var words = text.ToLower().Split(" ");
+func countWords(text: String) -> Map[String, Integer] {
+    var frequency: Map[String, Integer] = {};
 
-    var i = 0;
-    while i < words.Length {
-        var word = words.Get(i).Trim();
-        if word.Length > 0 {
-            if frequency.Has(word) {
-                var count = frequency.GetInt(word);
-                frequency.SetInt(word, count + 1);
+    for word in Str.Split(text.ToLower(), " ") {
+        var cleaned = word.Trim();
+        if cleaned.Length > 0 {
+            if frequency.has(cleaned) {
+                frequency.set(cleaned, frequency.get(cleaned) + 1);
             } else {
-                frequency.SetInt(word, 1);
+                frequency.set(cleaned, 1);
             }
         }
-        i = i + 1;
     }
 
     return frequency;
 }
 
-// Usage:
 var text = "the quick brown fox jumps over the lazy dog the fox";
 var counts = countWords(text);
 
-var keys = counts.Keys();
-var i = 0;
-while i < keys.Length {
-    var word = keys.Get(i);
-    Say(word + ": " + Fmt.Int(counts.GetInt(word)));
-    i = i + 1;
+for word, count in counts {
+    Say(word + ": " + Fmt.Int(count));
 }
-// Output:
-// the: 3
-// quick: 1
-// brown: 1
-// fox: 2
-// ...
 ```
 
 ---
@@ -811,7 +812,7 @@ bind Viper.Terminal;
 
 try {
     var num = Convert.ToInt64("not a number");
-} catch e {
+} catch(e) {
     Say("Invalid input - please enter a number");
 }
 ```
@@ -829,7 +830,7 @@ func getNumber(prompt: String) -> Integer {
 
         try {
             return Convert.ToInt64(input);
-        } catch e {
+        } catch(e) {
             Say("Please enter a valid number.");
         }
     }
@@ -872,19 +873,19 @@ File.Delete("temp.txt");
 ### Directory Operations
 
 ```rust
-bind Viper.IO.Dir;
+bind Viper.IO.Dir as Dir;
 
-create("output");
-createAll("output/reports/2024");  // Creates all intermediate dirs
+Dir.Make("output");
+Dir.MakeAll("output/reports/2024");  // Creates intermediate directories
 
-var files = listFiles("data");
-var dirs = listDirs("data");
+var files = Dir.FilesSeq("data");
+var dirs = Dir.DirsSeq("data");
 
-if exists("backup") {
+if Dir.Exists("backup") {
     // Directory exists
 }
 
-delete("temp");
+Dir.Remove("temp");
 ```
 
 ### Path Manipulation
@@ -892,25 +893,18 @@ delete("temp");
 The **critical** module for working with file paths:
 
 ```rust
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
 
 // Join paths safely (handles OS-specific separators)
-var path = join("users", "alice", "documents", "file.txt");
+var path = Path.Join(Path.Join("users/alice", "documents"), "file.txt");
 // On Windows: users\alice\documents\file.txt
 // On macOS/Linux: users/alice/documents/file.txt
 
 // Extract components
-fileName("/path/to/file.txt");      // "file.txt"
-extension("/path/to/file.txt");     // ".txt"
-directory("/path/to/file.txt");     // "/path/to"
-baseName("/path/to/file.txt");      // "file" (no extension)
-
-// Normalize paths
-normalize("a/b/../c");              // "a/c"
-
-// Check if absolute
-isAbsolute("/usr/bin");             // true
-isAbsolute("relative/path");        // false
+Path.Name("/path/to/file.txt");     // "file.txt"
+Path.Ext("/path/to/file.txt");      // ".txt"
+Path.Dir("/path/to/file.txt");      // "/path/to"
+Path.Stem("/path/to/file.txt");     // "file"
 ```
 
 ### Why Path.Join() Matters
@@ -918,13 +912,13 @@ isAbsolute("relative/path");        // false
 Never concatenate paths with `+`:
 
 ```rust
-bind Viper.IO.Path;
+bind Viper.IO.Path as Path;
 
 // BAD - breaks on different operating systems
 var path = dir + "/" + filename;
 
 // GOOD - works everywhere
-var path = join(dir, filename);
+var path = Path.Join(dir, filename);
 ```
 
 Windows uses backslashes (`\`), Unix uses forward slashes (`/`). `Path.Join()` handles this automatically.
@@ -1009,7 +1003,7 @@ func checkPassword(input: String, salt: String, storedHash: String) -> Boolean {
 }
 
 // Registration:
-var salt = New();  // Random salt for this user
+var salt = Uuid.New();  // Random salt for this user
 var hash = hashPassword(userPassword, salt);
 // Store both hash and salt in database
 
@@ -1034,7 +1028,7 @@ bind Viper.Time;
 bind Viper.Math as Math;
 bind Viper.Fmt as Fmt;
 bind Viper.Math.Random as Random;
-bind Viper.Collections;
+bind Viper.Machine as Machine;
 bind Viper.Crypto.Hash as Hash;
 
 func start() {
@@ -1043,7 +1037,7 @@ func start() {
 
     // Environment
     Say("System Information:");
-    Say("  Home: " + Env.GetVariable("HOME"));
+    Say("  Home: " + Machine.Home);
     Say("");
 
     // Time
@@ -1071,17 +1065,17 @@ func start() {
     Say("");
 
     // Collections
-    var scores = new Map[String, Integer]();
-    scores.SetInt("Alice", 950);
-    scores.SetInt("Bob", 875);
-    scores.SetInt("Charlie", 1200);
+    var scores: Map[String, Integer] = {};
+    scores.set("Alice", 950);
+    scores.set("Bob", 875);
+    scores.set("Charlie", 1200);
 
     Say("Leaderboard:");
-    var keys = scores.Keys();
+    var keys = scores.keys();
     var j = 0;
-    while j < keys.Length {
-        var name = keys.Get(j);
-        Say("  " + name + ": " + Fmt.Int(scores.GetInt(name)) + " points");
+    while j < keys.count() {
+        var name = keys.get(j);
+        Say("  " + name + ": " + Fmt.Int(scores.get(name)) + " points");
         j = j + 1;
     }
     Say("");
@@ -1192,8 +1186,10 @@ The official Viper documentation covers every module. Keep it bookmarked. Append
 
 Standard libraries follow conventions:
 - `something.Length` or `something.Size()` for size
-- `something.Contains()` or `something.Has()` for membership
-- `Fmt.Int(n)` or `Fmt.Num(x)` for number-to-string conversion
+- `collection.count()` for generic Zia collections, `Length` for runtime containers
+- `has(...)` or `Has(...)` for membership, depending on whether you're using a generic collection or a runtime class
+- `Fmt.Int(n)` or `Fmt.NumFixed(x, digits)` for number-to-string conversion
+- `Path.Join(a, b)` for file-system-safe path construction
 
 If a function exists, it probably has the name you'd expect.
 
@@ -1282,8 +1278,8 @@ func getInt(prompt: String) -> Integer {
     while true {
         Print(prompt);
         try {
-            return Convert.ToInt64(InputLine().Trim());
-        } catch e {
+            return Convert.ToInt64((ReadLine() ?? "").Trim());
+        } catch(e) {
             Say("Invalid input. Please enter a number.");
         }
     }
@@ -1319,7 +1315,7 @@ func readFileSafe(path: String) -> String {
 
     try {
         return File.ReadAllText(path);
-    } catch e {
+    } catch(e) {
         Say("Error reading " + path + ": " + e.message);
         return "";
     }
@@ -1349,8 +1345,8 @@ timed("Sort", func() {
 ### Pattern: Build a Path
 
 ```rust
-bind Viper.IO.Path;
-bind Env = Viper.Environment;
+bind Viper.IO.Path as Path;
+bind Viper.Machine as Machine;
 bind Viper.Time;
 bind Viper.Fmt as Fmt;
 
@@ -1359,12 +1355,8 @@ var dateStr = Fmt.IntPad(Time.DateTime.Year(dt), 4, "0") + "-" +
               Fmt.IntPad(Time.DateTime.Month(dt), 2, "0") + "-" +
               Fmt.IntPad(Time.DateTime.Day(dt), 2, "0");
 
-var logFile = join(
-    Env.GetVariable("HOME"),
-    ".myapp",
-    "logs",
-    dateStr + ".log"
-);
+var logDir = Path.Join(Path.Join(Machine.Home, ".myapp"), "logs");
+var logFile = Path.Join(logDir, dateStr + ".log");
 ```
 
 ---
@@ -1375,13 +1367,13 @@ The Viper standard library provides:
 
 | Category | Modules | Key Functions |
 |----------|---------|---------------|
-| I/O | Terminal, IO.File, IO.Dir, IO.Path | Say, InputLine, File.ReadAllText, join |
+| I/O | Terminal, IO.File, IO.Dir, IO.Path | Say, ReadLine, File.ReadAllText, Path.Join |
 | Numbers | Math, Math.Random, Convert | Math.Sqrt, Math.Sin, Random.Range, Convert.ToInt64 |
 | Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
-| Data | Collections | List.Push, Map.SetInt, Bag.Add |
-| System | Environment | GetArgument, Env.GetVariable, GetOS |
-| Security | Crypto.Hash, Codec, Guid | Hash.SHA256, Hash.MD5, New |
+| Data | Generic collections, Viper.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
+| System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.OS |
+| Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.MD5, Uuid.New |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.
 
@@ -1397,7 +1389,7 @@ Think of the standard library as your tool belt. You don't build a hammer every 
 
 **Exercise 13.3**: Create a simple stopwatch: prompt to start, wait for user input, then display elapsed time in seconds and milliseconds.
 
-**Exercise 13.4**: Use `Viper.Collections.Map` to build a word frequency counter. Given a sentence, count how many times each word appears.
+**Exercise 13.4**: Use a `Map[String, Integer]` to build a word frequency counter. Given a sentence, count how many times each word appears.
 
 **Exercise 13.5**: Write a program that takes a filename as a command-line argument and prints its SHA256 hash. If the file doesn't exist, print a helpful error message.
 

@@ -159,6 +159,58 @@ func start() {
     EXPECT_TRUE(hasSay);
 }
 
+TEST(ZiaBinds, LegacyAliasFirstFileBindWorks) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "bind_alias_first_file";
+
+    writeFile(dir,
+              "utils.zia",
+              R"(
+module Utils;
+
+expose func greet() {
+    Viper.Terminal.Say("hi");
+}
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind U = "./utils";
+
+func start() {
+    U.greet();
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for LegacyAliasFirstFileBindWorks:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasMain = false;
+    bool hasGreet = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main")
+            hasMain = true;
+        if (fn.name == "greet")
+            hasGreet = true;
+    }
+    EXPECT_TRUE(hasMain);
+    EXPECT_TRUE(hasGreet);
+}
+
 TEST(ZiaBinds, CircularBindAllowed) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));

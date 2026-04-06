@@ -7,10 +7,12 @@
 //
 // File: codegen/common/linker/MachOCodeSign.hpp
 // Purpose: Ad-hoc code signature generation for Mach-O arm64 executables.
-//          Builds a CS_LINKER_SIGNED SuperBlob with SHA-256 page hashes.
+//          Builds an Apple-compatible embedded signature SuperBlob with
+//          SHA-256 page hashes.
 // Key invariants:
-//   - CS_LINKER_SIGNED flag required for macOS AMFI acceptance
-//   - SHA-256 hash computed per 4KB page
+//   - Matches Apple's ad-hoc arm64 layout: CodeDirectory + Requirements +
+//     empty BlobWrapper
+//   - SHA-256 hash computed per target page size
 //   - CodeDirectory version 0x20400 (execSegBase/Limit/Flags)
 // Ownership/Lifetime:
 //   - Stateless builder — returns owned blob
@@ -27,21 +29,27 @@
 
 namespace viper::codegen::linker {
 
-/// Build a linker-signed ad-hoc code signature (SuperBlob) for a Mach-O executable.
+/// Return the exact embedded signature size for a Mach-O executable.
+size_t estimateCodeSignatureSize(size_t codeLimit,
+                                 const std::string &identifier,
+                                 size_t pageSize);
+
+/// Build an ad-hoc code signature (SuperBlob) for a Mach-O executable.
 /// Returns the complete code signature blob to append to __LINKEDIT.
 ///
 /// The signature includes:
 ///   - SuperBlob (CSMAGIC_EMBEDDED_SIGNATURE) containing:
-///     - CodeDirectory (CSMAGIC_CODEDIRECTORY v0x20400) with CS_LINKER_SIGNED flag
+///     - CodeDirectory (CSMAGIC_CODEDIRECTORY v0x20400) with CS_ADHOC flag
 ///     - Empty Requirements blob (CSMAGIC_REQUIREMENTS)
-///   - SHA-256 hash of each 4KB page up to codeLimit
-///
-/// The CS_LINKER_SIGNED flag is critical: macOS AMFI rejects ad-hoc binaries
-/// without it. Only linkers are supposed to set this flag (codesign doesn't).
+///     - Empty BlobWrapper (0xFADE0B01) in signature slot 0x10000
+///   - Requirements hash in special slot -2
+///   - Zero hash in special slot -1 (no Info.plist)
+///   - SHA-256 hash of each page up to codeLimit
 std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
                                         size_t codeLimit,
                                         const std::string &identifier,
                                         uint64_t textSegFileOff,
-                                        uint64_t textSegFileSize);
+                                        uint64_t textSegFileSize,
+                                        size_t pageSize);
 
 } // namespace viper::codegen::linker

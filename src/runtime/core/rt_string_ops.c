@@ -57,7 +57,9 @@
 #include <string.h>
 
 #if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+#include <execinfo.h>
 #include <sched.h>
+#include <unistd.h>
 #endif
 
 static const size_t kImmortalRefcnt = SIZE_MAX - 1;
@@ -257,6 +259,16 @@ size_t rt_string_len_bytes(rt_string s) {
     if (!s)
         return 0;
     if (!rt_string_is_handle((void *)s)) {
+        const char *debug_bt = getenv("VIPER_DEBUG_INVALID_STRING");
+        if (debug_bt && debug_bt[0] != '\0') {
+            fprintf(stderr, "rt_string_len_bytes: invalid handle %p\n", (void *)s);
+#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+            void *frames[32];
+            int frame_count = backtrace(frames, 32);
+            if (frame_count > 0)
+                backtrace_symbols_fd(frames, frame_count, STDERR_FILENO);
+#endif
+        }
         rt_trap("rt_string_len_bytes: invalid string handle");
         return 0;
     }

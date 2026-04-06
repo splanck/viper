@@ -1,0 +1,82 @@
+module search_commands;
+
+bind "../ui/app_shell";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../commands/file_commands";
+bind "../core/document_manager";
+bind "../editor/editor_tabs";
+
+bind Viper.GUI;
+bind IO = Viper.IO;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+bind Glob = Viper.IO.Glob;
+
+// ============================================================================
+// Project-wide search (Ctrl+Shift+F)
+// ============================================================================
+
+func handleProjectSearch(shell: app_shell.AppShell,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs) {
+    if projMgr.project == null or projMgr.project.isOpen == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return;
+    }
+
+    var query = GUI.MessageBox.Prompt("Search in Project", "Search for:");
+    if query == "" { return; }
+
+    // Find all .zia and .bas files recursively
+    var root = projMgr.project.rootPath;
+    var ziaFiles = Glob.Files(root, "**/*.zia");
+    var basFiles = Glob.Files(root, "**/*.bas");
+
+    var resultCount = 0;
+    shell.outputListBox.Clear();
+
+    // Search .zia files
+    resultCount = resultCount + searchFiles(shell, ziaFiles, query);
+
+    // Search .bas files
+    resultCount = resultCount + searchFiles(shell, basFiles, query);
+
+    if resultCount > 0 {
+        shell.outputListBox.SetVisible(1);
+        shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
+    } else {
+        shell.outputListBox.SetVisible(0);
+        GUI.Toast.Info("No matches found for '" + query + "'");
+    }
+}
+
+func searchFiles(shell: app_shell.AppShell, files: Ptr, query: String) -> Integer {
+    var count = 0;
+    var fileIdx = 0;
+    while fileIdx < Seq.get_Length(files) {
+        var filePath = Obj.ToString(Seq.Get(files, fileIdx));
+        fileIdx = fileIdx + 1;
+
+        if IO.File.Exists(filePath) == false { continue; }
+        var content = IO.File.ReadAllText(filePath);
+
+        // Search each line for the query
+        var contentLines = Str.Split(content, "\n");
+        var lineNum = 0;
+        while lineNum < Seq.get_Length(contentLines) {
+            var line = Obj.ToString(Seq.Get(contentLines, lineNum));
+            lineNum = lineNum + 1;
+            if Str.IndexOf(line, query) != 0 {
+                var resultText = filePath + ":" + lineNum + ": " + Str.Trim(line);
+                var item = shell.outputListBox.AddItem(resultText);
+                GUI.ListBox.ItemSetData(item, filePath + ":" + lineNum);
+                count = count + 1;
+            }
+        }
+    }
+    return count;
+}

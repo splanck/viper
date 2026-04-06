@@ -125,7 +125,7 @@ DIM next AS OBJECT = Viper.Game.Grid2D.New(50, 50, 0)
 ' Initialize with random cells
 FOR y = 0 TO 49
     FOR x = 0 TO 49
-        IF Viper.Random.Chance(0.3) THEN
+        IF Viper.Math.Random.Chance(0.3) THEN
             grid.Set(x, y, 1)
         END IF
     NEXT

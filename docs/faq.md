@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-06
 ---
 
 # Viper FAQ
@@ -52,8 +52,8 @@ viper run myprogram.bas
 You can also run an entire project directory:
 
 ```bash
-viper run demos/zia/frogger/
-viper run demos/basic/vtris/
+viper run examples/games/frogger/
+viper run examples/apps/vipersql/
 ```
 
 The standalone tools `vbasic`, `zia`, and `ilrun` are also available:
@@ -71,9 +71,11 @@ ilrun program.il
 - `/demos/zia/pacman/` - Pac-Man game in Zia
 - `/demos/basic/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/demos/basic/chess/` - Chess game in BASIC
-- `/examples/basic/` - BASIC example programs
-- `/src/tests/golden/zia/` - Zia test programs showing specific language features
-- `/src/tests/golden/basic/` - BASIC test programs showing specific language features
+- `/examples/games/` - Larger Zia game examples
+- `/examples/apps/` - Zia application examples such as `vipersql/` and `viperide/`
+- `/examples/apiaudit/` - Focused runtime API examples in both Zia and BASIC
+- `/src/tests/zia/` - Frontend tests covering specific Zia language features
+- `/src/tests/basic/` - Frontend tests covering specific BASIC language features
 
 ### 7. What platforms does Viper support?
 
@@ -151,7 +153,7 @@ func useOther() {
 }
 ```
 
-See `/demos/zia/frogger/` for a complete multi-module game example.
+See `/examples/games/frogger/` for a complete multi-module Zia game example.
 
 ---
 

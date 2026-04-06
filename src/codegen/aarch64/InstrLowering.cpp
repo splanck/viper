@@ -246,6 +246,13 @@ uint16_t captureCallResult(const il::core::Instr &ins,
     return dst;
 }
 
+void retainStringVReg(MBasicBlock &out, uint16_t strVReg) {
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, strVReg)}});
+    out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -703,6 +710,8 @@ bool materializeValueToVReg(const il::core::Value &v,
                         out.instrs.push_back(
                             MInstr{MOpcode::LdrRegFpImm,
                                    {MOperand::vregOp(outCls, outVReg), MOperand::immOp(off)}});
+                        if (prod.type.kind == il::core::Type::Kind::Str)
+                            retainStringVReg(out, outVReg);
                         if (prod.type.kind == il::core::Type::Kind::I1)
                             outVReg = emitMaskedI1Value(out, outVReg, nextVRegId);
                         return true;
@@ -1545,6 +1554,8 @@ bool lowerLoad(const il::core::Instr &ins,
             out.instrs.push_back(
                 MInstr{MOpcode::LdrRegFpImm,
                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(off)}});
+            if (ins.type.kind == il::core::Type::Kind::Str)
+                retainStringVReg(out, dst);
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             ctx.tempVReg[*ins.result] = isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
         }
@@ -1565,6 +1576,8 @@ bool lowerLoad(const il::core::Instr &ins,
                                             {MOperand::vregOp(RegClass::GPR, dst),
                                              MOperand::vregOp(RegClass::GPR, vbase),
                                              MOperand::immOp(0)}});
+                if (ins.type.kind == il::core::Type::Kind::Str)
+                    retainStringVReg(out, dst);
                 ctx.tempRegClass[*ins.result] = RegClass::GPR;
                 ctx.tempVReg[*ins.result] =
                     isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
@@ -1734,21 +1747,47 @@ bool lowerRet(const il::core::Instr &ins,
                 });
             if (it != bb.instructions.end()) {
                 const auto &prod = *it;
-                if ((prod.op == Opcode::ConstStr || prod.op == Opcode::AddrOf) &&
-                    !prod.operands.empty() &&
+                if (!prod.operands.empty() &&
                     prod.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
-                    v = allocateNextVReg(ctx.nextVRegId);
-                    cls = RegClass::GPR;
                     const std::string &sym = prod.operands[0].str;
-                    out.instrs.push_back(
-                        MInstr{MOpcode::AdrPage,
-                               {MOperand::vregOp(RegClass::GPR, v), MOperand::labelOp(sym)}});
-                    out.instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                                {MOperand::vregOp(RegClass::GPR, v),
-                                                 MOperand::vregOp(RegClass::GPR, v),
-                                                 MOperand::labelOp(sym)}});
-                    ctx.tempVReg[rid] = v;
-                    ok = true;
+                    if (prod.op == Opcode::ConstStr) {
+                        const uint16_t litPtrV = allocateNextVReg(ctx.nextVRegId);
+                        out.instrs.push_back(MInstr{
+                            MOpcode::AdrPage,
+                            {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
+                        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                                    {MOperand::vregOp(RegClass::GPR, litPtrV),
+                                                     MOperand::vregOp(RegClass::GPR, litPtrV),
+                                                     MOperand::labelOp(sym)}});
+                        out.instrs.push_back(
+                            MInstr{MOpcode::MovRR,
+                                   {MOperand::regOp(PhysReg::X0),
+                                    MOperand::vregOp(RegClass::GPR, litPtrV)}});
+                        out.instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+
+                        v = allocateNextVReg(ctx.nextVRegId);
+                        cls = RegClass::GPR;
+                        out.instrs.push_back(
+                            MInstr{MOpcode::MovRR,
+                                   {MOperand::vregOp(RegClass::GPR, v),
+                                    MOperand::regOp(PhysReg::X0)}});
+                        ctx.tempVReg[rid] = v;
+                        ok = true;
+                    } else if (prod.op == Opcode::AddrOf) {
+                        v = allocateNextVReg(ctx.nextVRegId);
+                        cls = RegClass::GPR;
+                        out.instrs.push_back(
+                            MInstr{MOpcode::AdrPage,
+                                   {MOperand::vregOp(RegClass::GPR, v),
+                                    MOperand::labelOp(sym)}});
+                        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                                    {MOperand::vregOp(RegClass::GPR, v),
+                                                     MOperand::vregOp(RegClass::GPR, v),
+                                                     MOperand::labelOp(sym)}});
+                        ctx.tempVReg[rid] = v;
+                        ok = true;
+                    }
                 }
             }
         }

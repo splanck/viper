@@ -226,9 +226,45 @@ TEST(Arm64StringStore, ExplicitOverwriteKeepsSingleRefcountSequence) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
-    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 2u);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
+}
+
+TEST(Arm64StringStore, LoadReturnedStringRetained) {
+    const std::string in = outPath("arm64_str_load_retained.il");
+    const std::string out = outPath("arm64_str_load_retained.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @get(%slot:ptr) -> str {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %v: str = load str, %slot\n"
+                           "  ret %v\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find(blSym("rt_str_retain_maybe")), std::string::npos);
+}
+
+TEST(Arm64StringStore, LoadedStringRetainedBeforeConsumingConcat) {
+    const std::string in = outPath("arm64_str_load_concat.il");
+    const std::string out = outPath("arm64_str_load_concat.s");
+    const std::string il = "il 0.2.0\n"
+                           "extern @rt_str_concat(str, str) -> str\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @dup(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %v: str = load str, %slot\n"
+                           "  %r: str = call @rt_str_concat(%v, %v)\n"
+                           "  call @rt_str_release_maybe(%r)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 2u);
 }
 
 int main(int argc, char **argv) {

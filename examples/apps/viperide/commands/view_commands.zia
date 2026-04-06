@@ -88,14 +88,21 @@ func handleToggleMinimap(shell: app_shell.AppShell,
 
 func handleSettings(appSettings: settings.SettingsManager) {
     var settingsInfo = "Current Settings\n\n";
-    settingsInfo = settingsInfo + "Font Size:  " + appSettings.fontSize + "pt\n";
-    settingsInfo = settingsInfo + "Theme:      " + appSettings.theme + "\n";
+    settingsInfo = settingsInfo + "Font Size:     " + appSettings.fontSize + "pt\n";
+    settingsInfo = settingsInfo + "Theme:         " + appSettings.theme + "\n";
+    settingsInfo = settingsInfo + "Tab Width:     " + appSettings.tabWidth + "\n";
+    settingsInfo = settingsInfo + "Code Folding:  " + appSettings.codeFolding + "\n";
+    settingsInfo = settingsInfo + "Auto-Check:    " + appSettings.autoCheckOnSave + "\n";
     settingsInfo = settingsInfo + "\nKeyboard shortcuts:\n";
-    settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-   Zoom In / Out\n";
-    settingsInfo = settingsInfo + "  Ctrl+0              Reset Font Size\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+T        Toggle Theme\n";
-    settingsInfo = settingsInfo + "  F11                 Toggle Fullscreen\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+M        Toggle Minimap";
+    settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-     Zoom In / Out\n";
+    settingsInfo = settingsInfo + "  Ctrl+0                Reset Font Size\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+T          Toggle Theme\n";
+    settingsInfo = settingsInfo + "  F11                   Toggle Fullscreen\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+M          Toggle Minimap\n";
+    settingsInfo = settingsInfo + "  F12                   Go To Definition\n";
+    settingsInfo = settingsInfo + "  F8 / Shift+F8         Next / Prev Error\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+F          Search in Project\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+O          Symbol Outline";
     GUI.MessageBox.Info("Settings", settingsInfo);
 }
 

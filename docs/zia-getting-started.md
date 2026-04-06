@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-06
 ---
 
 # Zia — Getting Started
@@ -220,7 +220,7 @@ mixed-language project:
 
 ```viper
 expose func calculateScore(x: Integer, y: Integer) -> Integer {
-    return x * y + 10
+    return x * y + 10;
 }
 ```
 
@@ -230,11 +230,13 @@ Use `foreign func` to declare a function defined in another module (e.g., a
 BASIC library). Foreign declarations have no body:
 
 ```viper
-foreign func Factorial(n: Integer) -> Integer
+bind Viper.Terminal;
+
+foreign func Factorial(n: Integer) -> Integer;
 
 func start() {
-    var result = Factorial(10)
-    Say(ToString(result))
+    var result = Factorial(10);
+    SayInt(result);
 }
 ```
 
@@ -292,8 +294,7 @@ bind Viper.Terminal;
 
 func start() {
     // Create a new class instance
-    var player = new Player();
-    player.init("Alice");
+    var player = new Player("Alice");
 
     // Call methods
     player.addScore(100);
@@ -339,7 +340,9 @@ struct Point {
 
 ## 7. Generic Collections
 
-Zia supports generic collections from the runtime library.
+Zia has language-level generic collections such as `List[T]`, `Map[String, T]`,
+and `Set[T]`. These are distinct from the object-style runtime classes under
+`Viper.Collections.*`.
 
 ### Lists
 
@@ -347,7 +350,7 @@ Zia supports generic collections from the runtime library.
 bind Viper.Terminal;
 
 // Create a list of integers
-var numbers: List[Integer] = new List[Integer]();
+var numbers: List[Integer] = [];
 numbers.add(10);
 numbers.add(20);
 numbers.add(30);
@@ -357,9 +360,23 @@ var first = numbers.get(0);  // 10
 
 // Iterate
 var i = 0;
-while i < numbers.size() {
+while i < numbers.count() {
     SayInt(numbers.get(i));
     i = i + 1;
+}
+```
+
+### Maps
+
+```viper
+bind Viper.Terminal;
+
+var scores: Map[String, Integer] = new Map[String, Integer]();
+scores.set("Alice", 95);
+scores.set("Bob", 87);
+
+if scores.has("Alice") {
+    SayInt(scores.get("Alice"));
 }
 ```
 
@@ -367,16 +384,18 @@ while i < numbers.size() {
 
 ```viper
 // List of class instances
-var players: List[Player] = new List[Player]();
+var players: List[Player] = [];
 
-var p1 = new Player();
-p1.init("Alice");
+var p1 = new Player("Alice");
 players.add(p1);
 
-var p2 = new Player();
-p2.init("Bob");
+var p2 = new Player("Bob");
 players.add(p2);
 ```
+
+When you need the object-based runtime collection classes instead, bind
+`Viper.Collections` and use constructors such as `List.New()`, `Map.New()`, or
+`Set.New()`.
 
 ---
 

@@ -220,7 +220,7 @@ Here's how it works:
 3. If any statement throws an error, execution *immediately* jumps to the `catch` block
 4. After either path, the program continues with the code after try-catch
 
-The `e` variable in `catch e` gives you access to information about the error — its type, message, and where it occurred.
+The `e` variable in `catch(e)` gives you access to information about the error — its type, message, and where it occurred.
 
 ### What Gets Tried, What Gets Caught
 
@@ -1022,13 +1022,13 @@ func readDataFile(filename: String) -> List[Integer] {
 
         try {
             var num = Convert.ToInt64(trimmed);
-            numbers.Push(num);
+            numbers.add(num);
         } catch {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
         }
     }
 
-    if numbers.Length == 0 {
+    if numbers.count() == 0 {
         throw Error("No valid numbers found in " + filename);
     }
 
@@ -1036,8 +1036,8 @@ func readDataFile(filename: String) -> List[Integer] {
 }
 
 func calculateStats(numbers: List[Integer]) -> Stats {
-    if numbers.Length == 0 {
-        throw Error("Cannot calculate stats on empty array");
+    if numbers.count() == 0 {
+        throw Error("Cannot calculate stats on an empty list");
     }
 
     var sum: Integer = 0;
@@ -1050,10 +1050,10 @@ func calculateStats(numbers: List[Integer]) -> Stats {
         if n > max { max = n; }
     }
 
-    var average = sum / numbers.Length;
+    var average = sum / numbers.count();
 
     return Stats.new(
-        count: numbers.Length,
+        count: numbers.count(),
         sum: sum,
         min: min,
         max: max,
@@ -1066,7 +1066,7 @@ func processFile(filename: String) {
 
     try {
         var numbers = readDataFile(filename);
-        log("Loaded " + numbers.Length + " numbers");
+        log("Loaded " + numbers.count() + " numbers");
 
         var stats = calculateStats(numbers);
 

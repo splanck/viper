@@ -196,6 +196,12 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_parser_errors PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_parser_errors test_zia_parser_errors)
 
+    # Documentation drift checks for canonical Zia docs and runtime guides
+    viper_add_test(test_zia_docs_consistency ${_VIPER_ZIA_DIR}/test_zia_docs_consistency.cpp)
+    target_link_libraries(test_zia_docs_consistency PRIVATE ${VIPER_ZIA_LIBS})
+    target_compile_definitions(test_zia_docs_consistency PRIVATE VIPER_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    viper_add_ctest(test_zia_docs_consistency test_zia_docs_consistency)
+
     # Compound assignment operator tests (+=, -=, *=, /=, %=)
     viper_add_test(test_zia_compound_assign ${_VIPER_ZIA_DIR}/test_zia_compound_assign.cpp)
     target_link_libraries(test_zia_compound_assign PRIVATE ${VIPER_ZIA_LIBS})

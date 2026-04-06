@@ -207,6 +207,40 @@ func start() {    try {
     EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::EhEntry));
 }
 
+/// @brief Typed catch should compose with finally without verifier failures.
+TEST(ZiaTryCatch, TypedCatchFinally) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    try {
+        throw 1;
+    } catch(e: DomainError) {
+        Viper.Terminal.Say("caught");
+    } finally {
+        Viper.Terminal.Say("done");
+    }
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_typed_catch_finally.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::EhPush));
+    EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::EhEntry));
+    EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::ResumeLabel));
+}
+
 } // anonymous namespace
 
 int main() {

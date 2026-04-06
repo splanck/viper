@@ -151,6 +151,29 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
     pushScope(stmt->loc);
     bool afterTerminator = false;
     int guardNarrowings = 0;
+    auto persistOptionalNullCheckNarrowing = [&](Expr *condition,
+                                                 bool conditionHoldsAfterStmt) {
+        std::string nullCheckVar;
+        bool isNotNull = false;
+        if (!tryExtractNullCheck(condition, nullCheckVar, isNotNull))
+            return;
+
+        TypeRef varType = lookupVarType(nullCheckVar);
+        if (!varType || varType->kind != TypeKindSem::Optional)
+            return;
+
+        // If the condition holds after the statement, `x != null` narrows to T.
+        // If the condition does not hold after the statement, `x == null` having
+        // exited implies `x != null` on the fallthrough path.
+        bool isNonNullAfterStmt = conditionHoldsAfterStmt ? isNotNull : !isNotNull;
+        if (!isNonNullAfterStmt || !varType->innerType())
+            return;
+
+        pushNarrowingScope();
+        narrowType(nullCheckVar, varType->innerType());
+        guardNarrowings++;
+    };
+
     for (auto &s : stmt->statements) {
         // W002: Unreachable code after return/break/continue
         if (afterTerminator) {
@@ -163,7 +186,7 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
         analyzeStmt(s.get());
 
         if (s->kind == StmtKind::Return || s->kind == StmtKind::Break ||
-            s->kind == StmtKind::Continue) {
+            s->kind == StmtKind::Continue || s->kind == StmtKind::Throw) {
             afterTerminator = true;
         }
 
@@ -171,21 +194,14 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
         if (s->kind == StmtKind::If) {
             auto *ifStmt = static_cast<IfStmt *>(s.get());
             if (!ifStmt->elseBranch && stmtTerminates(ifStmt->thenBranch.get())) {
-                std::string nullCheckVar;
-                bool isNotNull = false;
-                if (tryExtractNullCheck(ifStmt->condition.get(), nullCheckVar, isNotNull)) {
-                    // if (x == null) return; → x is non-null after
-                    // if (x != null) return; → x is null after (less useful, but correct)
-                    TypeRef varType = lookupVarType(nullCheckVar);
-                    if (varType && varType->kind == TypeKindSem::Optional) {
-                        TypeRef narrowed = isNotNull ? nullptr : varType->innerType();
-                        if (!isNotNull && narrowed) {
-                            pushNarrowingScope();
-                            narrowType(nullCheckVar, narrowed);
-                            guardNarrowings++;
-                        }
-                    }
-                }
+                persistOptionalNullCheckNarrowing(ifStmt->condition.get(),
+                                                  /*conditionHoldsAfterStmt=*/false);
+            }
+        } else if (s->kind == StmtKind::Guard) {
+            auto *guardStmt = static_cast<GuardStmt *>(s.get());
+            if (stmtTerminates(guardStmt->elseBlock.get())) {
+                persistOptionalNullCheckNarrowing(guardStmt->condition.get(),
+                                                  /*conditionHoldsAfterStmt=*/true);
             }
         }
     }

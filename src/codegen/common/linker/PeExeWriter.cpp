@@ -715,18 +715,7 @@ bool writePeExe(const std::string &path,
         padTo(file, alignUp(file.size(), fileAlignment));
     }
 
-    std::ofstream f(path, std::ios::binary);
-    if (!f) {
-        err << "error: cannot open '" << path << "' for writing\n";
-        return false;
-    }
-    f.write(reinterpret_cast<const char *>(file.data()), static_cast<std::streamsize>(file.size()));
-    if (!f) {
-        err << "error: write failed to '" << path << "'\n";
-        return false;
-    }
-
-    return true;
+    return writeBinaryFileAtomically(path, file, true, err);
 }
 
 } // namespace viper::codegen::linker

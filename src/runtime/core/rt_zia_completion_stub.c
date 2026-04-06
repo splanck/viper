@@ -16,14 +16,15 @@
 // Key invariants:
 //   - Stubs use __attribute__((weak)) on Clang/GCC (macOS, Linux); on MSVC
 //     the define expands to nothing (MSVC builds always link fe_zia).
-//   - rt_zia_complete stub returns rt_str_empty() — a valid, empty rt_string.
+//   - rt_zia_complete/check/hover/symbols stubs return rt_str_empty() — a
+//     valid, empty rt_string.
 //   - rt_zia_completion_clear_cache stub is a no-op.
 //   - If fe_zia is linked, none of these functions are called; the overriding
 //     strong symbols in rt_zia_completion.cpp take precedence.
 //
 // Ownership/Lifetime:
-//   - rt_zia_complete returns a newly allocated empty string; the caller owns
-//     the reference and must call rt_string_unref when done.
+//   - The string-returning stubs return a newly allocated empty string; the
+//     caller owns the reference and must call rt_string_unref when done.
 //   - No heap allocation is performed by rt_zia_completion_clear_cache.
 //
 // Links: src/frontends/zia/rt_zia_completion.cpp (strong-symbol overrides),
@@ -47,6 +48,26 @@ RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     (void)source;
     (void)line;
     (void)col;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: returns an empty diagnostic payload.
+RT_WEAK rt_string rt_zia_check(rt_string source) {
+    (void)source;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: returns an empty hover payload.
+RT_WEAK rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: returns an empty symbol payload.
+RT_WEAK rt_string rt_zia_symbols(rt_string source) {
+    (void)source;
     return rt_str_empty();
 }
 

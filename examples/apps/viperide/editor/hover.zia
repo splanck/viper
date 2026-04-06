@@ -1,0 +1,97 @@
+module hover;
+
+bind "../editor/editor_engine";
+
+bind ZiaCompletion = Viper.Zia.Completion;
+bind Viper.GUI;
+bind Str = Viper.String;
+
+// ============================================================================
+// HoverController — shows type/signature tooltips on mouse hover.
+//
+// When the mouse dwells over an identifier for >300ms, calls
+// Viper.Zia.Completion.Hover(source, line, col) and displays the result
+// in a FloatingPanel tooltip near the cursor.
+// ============================================================================
+
+final HOVER_DELAY_MS = 300;    // ms to dwell before showing tooltip
+
+class HoverController {
+    expose GUI.FloatingPanel tooltip;
+    expose GUI.Label tooltipLabel;
+
+    expose Boolean isVisible;
+    expose Integer hoverStartMs;
+    expose Number lastMouseX;
+    expose Number lastMouseY;
+    expose Boolean waiting;
+
+    expose func init() {
+        isVisible = false;
+        hoverStartMs = 0;
+        lastMouseX = -1.0;
+        lastMouseY = -1.0;
+        waiting = false;
+    }
+
+    expose func setup(appRoot: GUI.App) {
+        tooltip = GUI.FloatingPanel.New(appRoot);
+        tooltip.SetSize(400.0, 30.0);
+        tooltip.SetVisible(0);
+
+        tooltipLabel = GUI.Label.New(null, "");
+        tooltip.AddChild(tooltipLabel);
+    }
+
+    // Call once per frame from the main loop.
+    expose func update(engine: editor_engine.EditorEngine) {
+        if engine == null or engine.editor == null { return; }
+
+        var mx = Viper.Input.Mouse.X();
+        var my = Viper.Input.Mouse.Y();
+
+        // Mouse moved — reset dwell timer
+        if mx != lastMouseX or my != lastMouseY {
+            hideTooltip();
+            lastMouseX = mx;
+            lastMouseY = my;
+            hoverStartMs = Viper.Time.GetTickCount();
+            waiting = true;
+            return;
+        }
+
+        // Not waiting for a hover
+        if waiting == false { return; }
+
+        // Already showing
+        if isVisible { return; }
+
+        // Check if dwell time reached
+        var now = Viper.Time.GetTickCount();
+        if now - hoverStartMs < HOVER_DELAY_MS { return; }
+
+        // Dwell time reached — query hover info
+        waiting = false;
+
+        var source = engine.GetText();
+        var curLine = engine.editor.CursorLine + 1;  // 1-based
+        var curCol  = engine.editor.CursorCol;        // 0-based
+
+        var info = ZiaCompletion.Hover(source, curLine, curCol);
+        if info == "" { return; }
+
+        // Show tooltip
+        tooltipLabel.SetText(info);
+        tooltip.SetPosition(mx + 10.0, my - 25.0);
+        tooltip.SetVisible(1);
+        isVisible = true;
+    }
+
+    expose func hideTooltip() {
+        if isVisible {
+            tooltip.SetVisible(0);
+            isVisible = false;
+        }
+        waiting = false;
+    }
+}

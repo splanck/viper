@@ -1,0 +1,137 @@
+module diagnostics;
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+bind "../build/diagnostic";
+
+bind ZiaCompletion = Viper.Zia.Completion;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+bind Convert = Viper.Core.Convert;
+bind Viper.GUI;
+
+// ============================================================================
+// LiveDiagnostics — real-time error checking as-you-type.
+//
+// Calls Viper.Zia.Completion.Check(source) on a debounce timer after edits.
+// Parses the serialized diagnostics and updates:
+//   - Editor highlight spans (red underlines for errors, yellow for warnings)
+//   - Minimap markers
+//   - Diagnostics panel (listbox)
+//   - Status bar error count
+//
+// Check format: severity\tline\tcol\tcode\tmessage\n per diagnostic
+//   severity: 0=error, 1=warning, 2=note
+// ============================================================================
+
+final DEBOUNCE_MS = 500;       // ms to wait after last edit before checking
+final ERROR_COLOR = 16711680;  // red
+final WARN_COLOR  = 16776960;  // yellow
+
+class LiveDiagnostics {
+    expose Boolean enabled;
+    expose Integer lastEditMs;       // tick of last detected edit
+    expose Boolean pending;          // true if a check is scheduled
+    expose String  lastCheckedSource; // avoid rechecking unchanged source
+
+    expose func init() {
+        enabled = true;
+        lastEditMs = 0;
+        pending = false;
+        lastCheckedSource = "";
+    }
+
+    // Call once per frame from the main loop.
+    // Returns the number of errors found (0 if no check was performed).
+    // Also updates editor highlight spans for inline error underlines.
+    expose func update(engine: editor_engine.EditorEngine,
+                       shell: app_shell.AppShell) -> Integer {
+        if enabled == false { return 0; }
+        if engine == null or engine.editor == null { return 0; }
+
+        var source = engine.GetText();
+        if source == lastCheckedSource { return 0; }
+
+        // Detect edit: source changed since last check
+        var now = Viper.Time.GetTickCount();
+        if pending == false {
+            pending = true;
+            lastEditMs = now;
+            return 0;
+        }
+
+        // Wait for debounce period
+        if now - lastEditMs < DEBOUNCE_MS {
+            return 0;
+        }
+
+        // Run check
+        pending = false;
+        lastCheckedSource = source;
+
+        var raw = ZiaCompletion.Check(source);
+        if raw == "" {
+            // Clean — clear all markers and highlights
+            shell.diagListBox.Clear();
+            shell.diagListBox.SetVisible(0);
+            shell.minimap.ClearMarkers();
+            engine.editor.ClearHighlights();
+            return 0;
+        }
+
+        // Parse diagnostics
+        var errorCount = 0;
+        shell.diagListBox.Clear();
+        shell.minimap.ClearMarkers();
+        engine.editor.ClearHighlights();
+
+        var lines = Str.Split(raw, "\n");
+        var i = 0;
+        while i < Seq.get_Length(lines) {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            i = i + 1;
+            if Str.Length(line) == 0 { continue; }
+
+            var parts = Str.Split(line, "\t");
+            if Seq.get_Length(parts) < 5 { continue; }
+
+            var sev     = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0)));
+            var diagLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1)));
+            var code    = Obj.ToString(Seq.Get(parts, 3));
+            var msg     = Obj.ToString(Seq.Get(parts, 4));
+
+            var sevLabel = "error";
+            var markerColor = ERROR_COLOR;
+            if sev == 1 {
+                sevLabel = "warning";
+                markerColor = WARN_COLOR;
+            }
+
+            if sev == 0 { errorCount = errorCount + 1; }
+
+            var diagText = diagLine + ":" + sevLabel + "[" + code + "]: " + msg;
+            var item = shell.diagListBox.AddItem(diagText);
+            GUI.ListBox.ItemSetData(item, "" + diagLine);
+            shell.minimap.AddMarker(diagLine, 1, markerColor);
+
+            // Add inline highlight span (underline the error location)
+            var diagCol = Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
+            engine.editor.AddHighlight(diagLine - 1, diagCol, diagCol + 10, markerColor);
+        }
+
+        if errorCount > 0 or Seq.get_Length(lines) > 1 {
+            shell.diagListBox.SetVisible(1);
+        } else {
+            shell.diagListBox.SetVisible(0);
+        }
+
+        return errorCount;
+    }
+
+    // Force an immediate recheck (e.g., after save or reload).
+    expose func invalidate() {
+        lastCheckedSource = "";
+        pending = false;
+    }
+}

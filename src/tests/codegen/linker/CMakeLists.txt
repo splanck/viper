@@ -12,6 +12,7 @@ set(_linker_tests
         symbol_resolver
         reloc_edge_cases
         elf_exe_writer
+        macho_codesign
         linker_integration
         native_linker
         icf

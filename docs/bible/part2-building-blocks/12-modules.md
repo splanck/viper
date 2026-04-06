@@ -342,9 +342,11 @@ Things that should usually be private:
 
 ```rust
 module EmailValidator;
+bind Viper.String as Str;
+bind Viper.Collections.Seq as Seq;
 
 // Public: This is what the module is for
-export func isValid(email: String) -> Boolean {
+expose func isValid(email: String) -> Boolean {
     if email.Length == 0 {
         return false;
     }
@@ -359,15 +361,15 @@ export func isValid(email: String) -> Boolean {
 
 // Private helpers: Users don't need these
 func containsAt(email: String) -> Boolean {
-    return email.Contains("@");
+    return Str.Has(email, "@");
 }
 
 func hasValidDomain(email: String) -> Boolean {
-    var parts = email.Split("@");
-    if parts.Length != 2 {
+    var parts = Str.Split(email, "@");
+    if Seq.get_Length(parts) != 2 {
         return false;
     }
-    return parts.Get(1).Contains(".");
+    return Str.Has(Seq.GetStr(parts, 1), ".");
 }
 ```
 
@@ -470,9 +472,9 @@ Viper comes with a rich standard library organized into namespaces:
 bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
 bind Viper.IO;         // File operations
 bind Viper.Math;       // Mathematical functions
+bind Viper.Math.Random as Random;  // Random numbers
 bind Viper.Fmt;        // Formatting
 bind Viper.Time;       // Date and time
-bind Viper.Random;     // Random numbers
 bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 ```
 
@@ -480,15 +482,15 @@ When you bind a Viper namespace, its functions become available without the full
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 
 func start() {
     Say("Guess a number!");           // No Viper.Terminal. prefix needed
-    var secret = NextInt(100) + 1;    // No Viper.Random. prefix needed
+    var secret = Random.NextInt(100) + 1;    // No Viper.Math.Random prefix needed
 }
 ```
 
-Without `bind`, you'd write `Viper.Terminal.Say("...")` and `Viper.Random.NextInt(100)`. Both work, but `bind` makes code cleaner.
+Without `bind`, you'd write `Viper.Terminal.Say("...")` and `Viper.Math.Random.NextInt(100)`. Both work, but `bind` makes code cleaner.
 
 You can also bind with aliases or selectively import specific items:
 
@@ -544,7 +546,7 @@ There's one pattern you must avoid: circular dependencies. This happens when A b
 module Player;
 bind Enemy;  // Player needs to know about enemies
 
-export func attackNearestEnemy() {
+expose func attackNearestEnemy() {
     var nearest = Enemy.findNearest(position);
     // ...
 }
@@ -553,7 +555,7 @@ export func attackNearestEnemy() {
 module Enemy;
 bind Player;  // Enemy needs to know about player
 
-export func chasePlayer() {
+expose func chasePlayer() {
     var target = Player.getPosition();  // Needs player position
     // ...
 }
@@ -579,7 +581,7 @@ There are several strategies:
 // position.zia — Shared types
 module Position;
 
-export struct Vec2 {
+expose struct Vec2 {
     x: Number;
     y: Number;
 }
@@ -590,7 +592,7 @@ bind Position;
 
 var position: Position.Vec2;
 
-export func getPosition() -> Position.Vec2 {
+expose func getPosition() -> Position.Vec2 {
     return position;
 }
 
@@ -599,7 +601,7 @@ module Enemy;
 bind Position;
 bind Player;  // Now only enemy binds player, not vice versa
 
-export func chasePlayer() {
+expose func chasePlayer() {
     var target = Player.getPosition();
     // ...
 }
@@ -613,7 +615,7 @@ By extracting `Vec2` into its own module, we removed one direction of the depend
 // target.zia
 module Target;
 
-export interface ITarget {
+expose interface ITarget {
     func getPosition() -> Vec2;
 }
 
@@ -621,7 +623,7 @@ export interface ITarget {
 module Enemy;
 bind Target;
 
-export func chase(target: Target.ITarget) {
+expose func chase(target: Target.ITarget) {
     var pos = target.getPosition();
     // ...
 }
@@ -665,7 +667,7 @@ bind Config;
 // Lower dependency: receives what it needs
 module Report;
 
-export func generate(data: List[Record], format: Formatter) -> String {
+expose func generate(data: List[Record], format: Formatter) -> String {
     // No database binding — data is passed in
     // No email binding — report is returned, caller sends it
     // ...
@@ -698,9 +700,9 @@ Think of your module as having two parts:
 module Cache;
 
 // Interface (stable promise)
-export func get(key: String) -> String?;
-export func set(key: String, value: String);
-export func clear();
+expose func get(key: String) -> String?;
+expose func set(key: String, value: String);
+expose func clear();
 
 // Implementation (hidden, can change)
 var data: Map[String, CacheEntry];  // Could change to use Redis
@@ -722,44 +724,44 @@ Let's refactor our game demo into proper modules:
 ```rust
 module Vec2;
 
-export struct Vec2 {
+expose struct Vec2 {
     x: Number;
     y: Number;
 }
 
-export func create(x: Number, y: Number) -> Vec2 {
+expose func create(x: Number, y: Number) -> Vec2 {
     return Vec2 { x: x, y: y };
 }
 
-export func add(a: Vec2, b: Vec2) -> Vec2 {
+expose func add(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2 { x: a.x + b.x, y: a.y + b.y };
 }
 
-export func subtract(a: Vec2, b: Vec2) -> Vec2 {
+expose func subtract(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2 { x: a.x - b.x, y: a.y - b.y };
 }
 
-export func scale(v: Vec2, factor: Number) -> Vec2 {
+expose func scale(v: Vec2, factor: Number) -> Vec2 {
     return Vec2 { x: v.x * factor, y: v.y * factor };
 }
 
-export func distance(a: Vec2, b: Vec2) -> Number {
+expose func distance(a: Vec2, b: Vec2) -> Number {
     bind Viper.Math as Math;
     var dx = b.x - a.x;
     var dy = b.y - a.y;
     return Math.Sqrt(dx * dx + dy * dy);
 }
 
-export func zero() -> Vec2 {
+expose func zero() -> Vec2 {
     return Vec2 { x: 0.0, y: 0.0 };
 }
 
-export func magnitude(v: Vec2) -> Number {
+expose func magnitude(v: Vec2) -> Number {
     bind Viper.Math as Math;
     return Math.Sqrt(v.x * v.x + v.y * v.y);
 }
 
-export func normalize(v: Vec2) -> Vec2 {
+expose func normalize(v: Vec2) -> Vec2 {
     var mag = magnitude(v);
     if mag == 0.0 {
         return zero();
@@ -774,7 +776,7 @@ module Player;
 
 bind Vec2;
 
-export struct Player {
+expose struct Player {
     name: String;
     position: Vec2.Vec2;
     health: Integer;
@@ -782,7 +784,7 @@ export struct Player {
     score: Integer;
 }
 
-export func create(name: String) -> Player {
+expose func create(name: String) -> Player {
     return Player {
         name: name,
         position: Vec2.zero(),
@@ -792,11 +794,11 @@ export func create(name: String) -> Player {
     };
 }
 
-export func isAlive(player: Player) -> Boolean {
+expose func isAlive(player: Player) -> Boolean {
     return player.health > 0;
 }
 
-export func move(player: Player, direction: Vec2.Vec2) -> Player {
+expose func move(player: Player, direction: Vec2.Vec2) -> Player {
     return Player {
         name: player.name,
         position: Vec2.add(player.position, direction),
@@ -806,7 +808,7 @@ export func move(player: Player, direction: Vec2.Vec2) -> Player {
     };
 }
 
-export func takeDamage(player: Player, amount: Integer) -> Player {
+expose func takeDamage(player: Player, amount: Integer) -> Player {
     var newHealth = player.health - amount;
     if newHealth < 0 {
         newHealth = 0;
@@ -820,7 +822,7 @@ export func takeDamage(player: Player, amount: Integer) -> Player {
     };
 }
 
-export func heal(player: Player, amount: Integer) -> Player {
+expose func heal(player: Player, amount: Integer) -> Player {
     var newHealth = player.health + amount;
     if newHealth > player.maxHealth {
         newHealth = player.maxHealth;
@@ -834,7 +836,7 @@ export func heal(player: Player, amount: Integer) -> Player {
     };
 }
 
-export func addScore(player: Player, points: Integer) -> Player {
+expose func addScore(player: Player, points: Integer) -> Player {
     return Player {
         name: player.name,
         position: player.position,
@@ -851,13 +853,13 @@ module Enemy;
 
 bind Vec2;
 
-export struct Enemy {
+expose struct Enemy {
     position: Vec2.Vec2;
     damage: Integer;
     speed: Number;
 }
 
-export func create(x: Number, y: Number, damage: Integer) -> Enemy {
+expose func create(x: Number, y: Number, damage: Integer) -> Enemy {
     return Enemy {
         position: Vec2.create(x, y),
         damage: damage,
@@ -865,7 +867,7 @@ export func create(x: Number, y: Number, damage: Integer) -> Enemy {
     };
 }
 
-export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
+expose func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
     var direction = Vec2.subtract(target, enemy.position);
     var normalized = Vec2.normalize(direction);
     var movement = Vec2.scale(normalized, enemy.speed);
@@ -1081,7 +1083,7 @@ var userService = UserService.create(mockDatabase);
 
 // The UserService doesn't know (or care) that it's using a mock
 userService.createUser("alice");
-assert mockDatabase.Contains("alice");
+assert mockDatabase.hasUser("alice");
 ```
 
 **Focused tests.** Each module has a clear responsibility, so tests are focused. `Player` tests check player behavior. `Enemy` tests check enemy behavior. You know where to look for tests and what they cover.
@@ -1098,7 +1100,7 @@ Sometimes you want to test internal functions that aren't exported. There are se
 
 ```rust
 // Exported for testing, not for normal use
-export func test_containsAt(email: String) -> Boolean {
+expose func test_containsAt(email: String) -> Boolean {
     return containsAt(email);
 }
 ```
@@ -1108,11 +1110,13 @@ export func test_containsAt(email: String) -> Boolean {
 ```rust
 module EmailValidator;
 
+bind Viper.String as Str;
+
 func containsAt(email: String) -> Boolean {
-    return email.Contains("@");
+    return Str.Has(email, "@");
 }
 
-export func isValid(email: String) -> Boolean {
+expose func isValid(email: String) -> Boolean {
     // Uses containsAt internally
 }
 
@@ -1131,7 +1135,7 @@ test "containsAt detects @" {
 ```rust
 // Defining
 module MyModule;
-export func hello() { ... }
+expose func hello() { ... }
 
 // Binding
 bind MyModule;
@@ -1163,12 +1167,12 @@ CALL Hello()
 // Bad: Everything is public
 module User;
 
-export var users: List[User] = [];  // Internal data exposed
-export var nextId: Integer = 1;     // Implementation detail exposed
+expose var users: List[User] = [];  // Internal data exposed
+expose var nextId: Integer = 1;     // Implementation detail exposed
 
-export func createUser(name: String) -> User { ... }
-export func validateName(name: String) -> Boolean { ... }  // Internal helper exposed
-export func generateId() -> Integer { ... }  // Internal helper exposed
+expose func createUser(name: String) -> User { ... }
+expose func validateName(name: String) -> Boolean { ... }  // Internal helper exposed
+expose func generateId() -> Integer { ... }  // Internal helper exposed
 ```
 
 ```rust
@@ -1178,9 +1182,9 @@ module User;
 var users: List[User] = [];  // Private
 var nextId: Integer = 1;     // Private
 
-export func createUser(name: String) -> User { ... }
-export func findUser(id: Integer) -> User? { ... }
-export func deleteUser(id: Integer) -> Boolean { ... }
+expose func createUser(name: String) -> User { ... }
+expose func findUser(id: Integer) -> User? { ... }
+expose func deleteUser(id: Integer) -> Boolean { ... }
 ```
 
 ### God Modules
@@ -1189,12 +1193,12 @@ export func deleteUser(id: Integer) -> Boolean { ... }
 // Bad: One module that does everything
 module App;
 
-export func handleLogin() { ... }
-export func handleLogout() { ... }
-export func renderDashboard() { ... }
-export func sendEmail() { ... }
-export func processPayment() { ... }
-export func generateReport() { ... }
+expose func handleLogin() { ... }
+expose func handleLogout() { ... }
+expose func renderDashboard() { ... }
+expose func sendEmail() { ... }
+expose func processPayment() { ... }
+expose func generateReport() { ... }
 // ... 200 more functions
 ```
 
@@ -1213,8 +1217,8 @@ bind Order;     // Customer needs Order
 ```rust
 // Good: Extract shared concept
 // types.zia
-export struct OrderSummary { ... }
-export struct CustomerInfo { ... }
+expose struct OrderSummary { ... }
+expose struct CustomerInfo { ... }
 
 // order.zia
 bind types;
@@ -1254,21 +1258,21 @@ FileUtils.Write("out.txt", s);
 // Bad: Module is too granular
 // add.zia
 module Add;
-export func add(a: Integer, b: Integer) -> Integer { return a + b; }
+expose func add(a: Integer, b: Integer) -> Integer { return a + b; }
 
 // subtract.zia
 module Subtract;
-export func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
+expose func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
 ```
 
 ```rust
 // Good: Module has coherent purpose
 // math.zia
 module Math;
-export func add(a: Integer, b: Integer) -> Integer { return a + b; }
-export func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
-export func multiply(a: Integer, b: Integer) -> Integer { return a * b; }
-export func divide(a: Integer, b: Integer) -> Integer { return a / b; }
+expose func add(a: Integer, b: Integer) -> Integer { return a + b; }
+expose func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
+expose func multiply(a: Integer, b: Integer) -> Integer { return a * b; }
+expose func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 ```
 
 ---
@@ -1297,15 +1301,15 @@ export func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 
 ## Exercises
 
-**Exercise 12.1**: Create a `StringUtils` module with functions `repeat(s, n)` (repeat string n times) and `reverse(s)` (reverse a string). Export only these functions, keeping any helpers private. Use it from another file.
+**Exercise 12.1**: Create a `StringUtils` module with functions `repeat(s, n)` (repeat string n times) and `reverse(s)` (reverse a string). Expose only these functions, keeping any helpers private. Use it from another file.
 
 **Exercise 12.2**: Split the calculator from Chapter 10 into modules: one for parsing input, one for calculations, one for display. Make sure the dependencies flow in one direction (display binds calculations, calculations binds parsing, but not the reverse).
 
-**Exercise 12.3**: Create a `Constants` module with mathematical and physical constants (PI, E, SPEED_OF_LIGHT, GRAVITY, etc.). Mark them all as `final` and export them.
+**Exercise 12.3**: Create a `Constants` module with mathematical and physical constants (PI, E, SPEED_OF_LIGHT, GRAVITY, etc.). Mark them all as `final` and expose them.
 
-**Exercise 12.4**: Create a `Stack` module that provides a stack data structure with `push`, `pop`, `peek`, and `isEmpty` functions. Keep the internal array private. Users should only interact through the exported functions.
+**Exercise 12.4**: Create a `Stack` module that provides a stack data structure with `push`, `pop`, `peek`, and `isEmpty` functions. Keep the internal array private. Users should only interact through the exposed functions.
 
-**Exercise 12.5**: Create a simple logging module with functions `info(msg)`, `warn(msg)`, `error(msg)` that format messages differently. Include a private helper function for timestamp generation. Add a private variable for log level that can be changed via an exported `setLevel` function.
+**Exercise 12.5**: Create a simple logging module with functions `info(msg)`, `warn(msg)`, `error(msg)` that format messages differently. Include a private helper function for timestamp generation. Add a private variable for log level that can be changed via an exposed `setLevel` function.
 
 **Exercise 12.6** (Challenge): Create a multi-module address book with separate modules for:
 - `Contact` (contact data structure and operations)

@@ -247,14 +247,14 @@ func displayMenu() {
 #### SetColor
 
 ```rust
-func SetColor(foreground: Integer, background: Integer) -> void
+func SetColor(fg: Integer, bg: Integer) -> void
 ```
 
 Sets the foreground and background text color for subsequent output using integer color codes.
 
 **Parameters:**
-- `foreground` - Foreground color code (integer)
-- `background` - Background color code (integer)
+- `fg` - Foreground color code (integer)
+- `bg` - Background color code (integer)
 
 **Example:**
 ```rust
@@ -271,14 +271,14 @@ Terminal.Say("Colored text");
 #### SetPosition
 
 ```rust
-func SetPosition(x: Integer, y: Integer) -> void
+func SetPosition(row: Integer, col: Integer) -> void
 ```
 
-Positions the cursor at the specified column and row.
+Positions the cursor at the specified row and column.
 
 **Parameters:**
-- `x` - Column number
-- `y` - Row number
+- `row` - 1-based row number
+- `col` - 1-based column number
 
 **Example:**
 ```rust
@@ -1503,236 +1503,263 @@ var elapsed = Time.DateTime.Diff(Time.DateTime.Now(), start);
 
 ## Viper.Collections
 
-Data structures beyond basic arrays for organizing and managing data. Bind as `bind Viper.Collections;` and use the `Collections.*` prefix.
+Data structures beyond arrays. In Zia, there are two surfaces:
 
-> **Note on API style:** The Collections runtime API is function-based, not object-oriented. Rather than `map.Get(key)`, use `Collections.Map.Get(map, key)`. The function signatures shown below describe the conceptual interface; prefix all calls with `Collections.Map.*`, `Collections.List.*`, `Collections.Set.*`, etc.
+- **Generic Zia collections** such as `List[T]`, `Map[K, V]`, and `Set[T]`
+- **Runtime collection classes** such as `Queue`, `Stack`, `Heap`, `OrderedMap`, and `BitSet`
 
-> **See also:** [Chapter 6: Collections](../part1-foundations/06-collections.md) for array fundamentals.
+Bind with `bind Viper.Collections;`.
+
+> **Important:** Older docs sometimes described `Viper.Collections` as a function-style API. In current Zia, you normally use collection methods directly on the value: `scores.set("alice", 1)`, `items.add(x)`, `queue.Push(Box.Str("x"))`, and so on.
+
+> **See also:** [Chapter 6: Collections](../part1-foundations/06-collections.md) for array fundamentals and [Chapter 13](../part2-building-blocks/13-stdlib.md) for a narrative overview.
 
 ---
 
-### Map
+### Generic Map
 
-A key-value store with fast lookup. Also known as a dictionary or hash map.
+Use a generic `Map[K, V]` for typed key-value storage in ordinary Zia code.
 
 ```rust
-var map = new Map[String, Integer]();
+var scores: Map[String, Integer] = {};
 ```
 
-#### Methods
+#### Common Methods
 
 ```rust
-map.Set(key, value)     // Add or update a key-value pair
-map.Get(key)            // -> value? (nil if not found)
-map.Has(key)            // -> Boolean
-map.Delete(key)         // Remove a key
-map.Clear()             // Remove all entries
-map.Length                 // -> Integer (number of entries)
-map.Keys()              // -> List[KeyType]
-map.Values()            // -> List[ValueType]
+scores.set(key, value)          // Add or update a key-value pair
+scores.get(key)                 // -> value
+scores.getOr(key, defaultValue) // -> value or default without inserting
+scores.has(key)                 // -> Boolean
+scores.setIfMissing(key, value) // -> Boolean (true if inserted)
+scores.remove(key)              // -> Boolean
+scores.clear()                  // Remove all entries
+scores.count()                  // -> Integer
+scores.keys()                   // -> List[String]
+scores.values()                 // -> List[V]
 ```
 
 **Example:**
 ```rust
-// Word frequency counter
-func countWords(text: String) -> Map[String, Integer] {
-    var counts = new Map[String, Integer]();
+bind Viper.String as Str;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-    for word in text.Split(" ") {
-        // Note: String.ToLower does not exist in the runtime.
-        // Use the word directly or implement case normalization manually.
-        if counts.Has(word) {
-            counts.Set(word, counts.Get(word) + 1);
-        } else {
-            counts.Set(word, 1);
+func countWords(text: String) -> Map[String, Integer] {
+    var counts: Map[String, Integer] = {};
+
+    for word in Str.Split(text.ToLower(), " ") {
+        var cleaned = word.Trim();
+        if cleaned.Length > 0 {
+            if counts.has(cleaned) {
+                counts.set(cleaned, counts.get(cleaned) + 1);
+            } else {
+                counts.set(cleaned, 1);
+            }
         }
     }
 
     return counts;
 }
 
-var text = "the quick brown fox jumps over the lazy dog";
-var freq = countWords(text);
-
-for word, count in freq {
-    Terminal.Say(word + ": " + count);
+for word, count in countWords("the quick brown fox the fox") {
+    Terminal.Say(word + ": " + Fmt.Int(count));
 }
 ```
 
-**When to use:** Use Map when you need to associate values with keys and look them up quickly. Perfect for caches, configurations, counters, and indexing.
+**When to use:** Configuration, caches, counters, indexes, lookup tables.
 
 ---
 
-### Set
+### Generic Set
 
-An unordered collection of unique values.
+Use `Set[T]` for unique membership. Non-empty set literals are supported, but the empty literal `{}` is reserved for maps, so empty sets still need `Set.New()`.
 
 ```rust
-var set = new Set[String]();
+bind Viper.Collections;
+
+var visitors: Set[String] = Set.New();
 ```
 
-#### Methods
+#### Common Methods
 
 ```rust
-set.Add(item)           // Add an item
-set.Has(item)           // -> Boolean
-set.remove(item)        // Remove an item
-set.Clear()             // Remove all items
-set.Length                 // -> Integer
-
-// Set operations
-set.Union(other)        // -> Set (items in either set)
-set.Intersect(other)    // -> Set (items in both sets)
-set.Diff(other)         // -> Set (items in this set but not other)
+visitors.add(item)      // -> Boolean (true if inserted)
+visitors.has(item)      // -> Boolean
+visitors.remove(item)   // -> Boolean
+visitors.clear()        // Remove all items
+visitors.count()        // -> Integer
 ```
 
 **Example:**
 ```rust
-// Find unique visitors
-var visitors = new Set[String]();
+bind Viper.Collections;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-visitors.Add("alice");
-visitors.Add("bob");
-visitors.Add("alice");  // Duplicate ignored
+var visitors: Set[String] = Set.New();
+visitors.add("alice");
+visitors.add("bob");
+visitors.add("alice");   // Duplicate ignored
 
-Terminal.Say("Unique visitors: " + visitors.Length);  // 2
-
-// Set operations
-var admins = new Set[String]();
-admins.Add("alice");
-admins.Add("charlie");
-
-var adminVisitors = visitors.Intersect(admins);  // {"alice"}
-var nonAdminVisitors = visitors.Diff(admins); // {"bob"}
+Terminal.Say("Unique visitors: " + Fmt.Int(visitors.count()));
 ```
 
-**When to use:** Use Set when you only care about unique membership, not values or counts.
+**When to use:** Deduplication, membership checks, tracking seen items.
+
+---
+
+### Generic List
+
+Use `List[T]` for a growable typed sequence.
+
+```rust
+var items: List[String] = [];
+```
+
+#### Common Methods
+
+```rust
+items.add(value)
+items.get(index)
+items.set(index, value)
+items.insert(index, value)
+items.removeAt(index)
+items.find(value)       // -> Integer or -1
+items.has(value)        // -> Boolean
+items.clear()
+items.count()           // -> Integer
+```
+
+**When to use:** Dynamic ordered storage, buffers, work lists, and general collection building.
 
 ---
 
 ### Queue
 
-First-in, first-out (FIFO) collection.
+`Queue` is a runtime class for FIFO behavior. Because it stores boxed runtime objects, typical Zia code uses `Viper.Core.Box` helpers when pushing or reading values.
 
 ```rust
-var queue = new Queue[String]();
+bind Viper.Collections;
+bind Viper.Core;
+
+var queue = Queue.New();
 ```
 
-#### Methods
+#### Common Methods
 
 ```rust
-queue.Push(item)        // Add to back
-queue.Pop()             // -> item? (remove from front, nil if empty)
-queue.Peek()            // -> item? (see front without removing)
-queue.IsEmpty()         // -> Boolean
-queue.Length               // -> Integer
+queue.Push(value)      // Add to back
+queue.Pop()            // Remove and return front item
+queue.TryPop()         // -> item or null
+queue.Peek()           // Return front item without removing
+queue.Has(value)       // -> Boolean
+queue.Clear()
+queue.Length           // -> Integer
+queue.IsEmpty          // -> Boolean
 ```
 
 **Example:**
 ```rust
-// Task queue
-var tasks = new Queue[String]();
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
 
-tasks.Push("Send email");
-tasks.Push("Update database");
-tasks.Push("Generate report");
+var tasks = Queue.New();
+tasks.Push(Box.Str("Send email"));
+tasks.Push(Box.Str("Update database"));
 
-while !tasks.IsEmpty() {
-    var task = tasks.Pop();
-    Terminal.Say("Processing: " + task);
-    // Process task...
+while !tasks.IsEmpty {
+    Terminal.Say(Box.ToStr(tasks.Pop()));
 }
 ```
 
-**When to use:** Use Queue for task queues, BFS algorithms, or any situation where items should be processed in arrival order.
+**When to use:** Task queues, breadth-first search, ordered message handling.
 
 ---
 
 ### Stack
 
-Last-in, first-out (LIFO) collection.
+`Stack` is a runtime class for LIFO behavior.
 
 ```rust
-var stack = new Stack[String]();
+bind Viper.Collections;
+bind Viper.Core;
+
+var stack = Stack.New();
 ```
 
-#### Methods
+#### Common Methods
 
 ```rust
-stack.Push(item)        // Add to top
-stack.Pop()             // -> item? (remove from top, nil if empty)
-stack.Peek()            // -> item? (see top without removing)
-stack.IsEmpty()         // -> Boolean
-stack.Length               // -> Integer
+stack.Push(value)
+stack.Pop()
+stack.Peek()
+stack.Clear()
+stack.Length      // -> Integer
+stack.IsEmpty     // -> Boolean
 ```
 
 **Example:**
 ```rust
-// Undo system
-var undoStack = new Stack[String]();
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
 
-func doAction(action: String) {
-    undoStack.Push(action);
-    Terminal.Say("Did: " + action);
-}
+var undoStack = Stack.New();
+undoStack.Push(Box.Str("Type 'Hello'"));
+undoStack.Push(Box.Str("Type ' World'"));
 
-func undo() {
-    if !undoStack.IsEmpty() {
-        var action = undoStack.Pop();
-        Terminal.Say("Undoing: " + action);
-    } else {
-        Terminal.Say("Nothing to undo");
-    }
-}
-
-doAction("Type 'Hello'");
-doAction("Type ' World'");
-undo();  // Undoing: Type ' World'
+Terminal.Say(Box.ToStr(undoStack.Pop()));   // Type ' World'
 ```
 
-**When to use:** Use Stack for undo/redo, DFS algorithms, parsing expressions, or tracking nested operations.
+**When to use:** Undo/redo, DFS, nested work, parser stacks.
 
 ---
 
 ### Heap
 
-A priority-ordered collection where items are removed by priority, not arrival order. Namespace: `Viper.Collections.Heap`.
+`Heap` is a runtime priority queue. By default it is a min-heap. Use `Heap.NewMax(true)` for max-heap behavior.
 
 ```rust
-var heap = new Heap[String]();
+bind Viper.Collections;
+bind Viper.Core;
+
+var heap = Heap.New();
 ```
 
-#### Methods
+#### Common Methods
 
 ```rust
-heap.Push(priority, item)  // Add item with an Integer priority (lower number = higher priority)
-heap.Pop()                 // -> item? (remove highest-priority item, nil if empty)
-heap.Peek()                // -> item? (see highest-priority item without removing)
-heap.IsEmpty()             // -> Boolean
-heap.Length                   // -> Integer
+heap.Push(priority, value)
+heap.Pop()
+heap.TryPop()
+heap.Peek()
+heap.TryPeek()
+heap.Clear()
+heap.Length      // -> Integer
+heap.IsEmpty     // -> Boolean
+heap.IsMax       // -> Boolean
+heap.ToSeq()     // -> Seq in priority order
 ```
-
-**Note:** `Push` requires a priority integer as the **first** parameter, followed by the item.
 
 **Example:**
 ```rust
-var taskHeap = new Heap[String]();
+bind Viper.Collections;
+bind Viper.Core;
+bind Viper.Terminal;
 
-taskHeap.Push(10, "Low priority task");
-taskHeap.Push(1, "Critical bug fix");    // priority=1, item="Critical bug fix"
-taskHeap.Push(5, "Medium task");
+var taskHeap = Heap.New();
+taskHeap.Push(10, Box.Str("Low priority task"));
+taskHeap.Push(1, Box.Str("Critical bug fix"));
+taskHeap.Push(5, Box.Str("Medium task"));
 
-while !taskHeap.IsEmpty() {
-    var task = taskHeap.Pop();
-    Terminal.Say("Processing: " + task);
+while !taskHeap.IsEmpty {
+    Terminal.Say(Box.ToStr(taskHeap.Pop()));
 }
-// Output:
-// Processing: Critical bug fix
-// Processing: Medium task
-// Processing: Low priority task
 ```
 
-**When to use:** Use Heap for task scheduling, Dijkstra's algorithm, event simulation, or any situation where priority matters.
+**When to use:** Scheduling, priority work queues, graph algorithms, event simulation.
 
 ---
 

@@ -76,7 +76,30 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
         }
     } else {
         leftType = analyzeExpr(expr->left.get());
-        rightType = analyzeExpr(expr->right.get());
+        if (expr->op == BinaryOp::And || expr->op == BinaryOp::Or) {
+            std::string nullCheckVar;
+            bool isNotNull = false;
+            bool appliedNarrowing = false;
+
+            if (tryExtractNullCheck(expr->left.get(), nullCheckVar, isNotNull)) {
+                TypeRef varType = lookupVarType(nullCheckVar);
+                if (varType && varType->kind == TypeKindSem::Optional && varType->innerType()) {
+                    bool rhsSeesNonNull =
+                        (expr->op == BinaryOp::And) ? isNotNull : !isNotNull;
+                    if (rhsSeesNonNull) {
+                        pushNarrowingScope();
+                        narrowType(nullCheckVar, varType->innerType());
+                        appliedNarrowing = true;
+                    }
+                }
+            }
+
+            rightType = analyzeExpr(expr->right.get());
+            if (appliedNarrowing)
+                popNarrowingScope();
+        } else {
+            rightType = analyzeExpr(expr->right.get());
+        }
     }
 
     switch (expr->op) {

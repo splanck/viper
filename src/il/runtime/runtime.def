@@ -2161,6 +2161,9 @@ RT_FUNC(CodeEditorSetCursorSelection,   rt_codeeditor_set_cursor_selection,    "
 
 RT_FUNC(ZiaComplete,                 rt_zia_complete,                   "Viper.Zia.Completion.Complete",  "str(str,i64,i64)")
 RT_FUNC(ZiaCompletionClearCache,     rt_zia_completion_clear_cache,     "Viper.Zia.Completion.ClearCache","void()")
+RT_FUNC(ZiaCheck,                    rt_zia_check,                      "Viper.Zia.Completion.Check",     "str(str)")
+RT_FUNC(ZiaHover,                    rt_zia_hover,                      "Viper.Zia.Completion.Hover",     "str(str,i64,i64)")
+RT_FUNC(ZiaSymbols,                  rt_zia_symbols,                    "Viper.Zia.Completion.Symbols",   "str(str)")
 
 //=============================================================================
 // GUI - FLOATING PANEL (Overlay popup for IntelliSense)

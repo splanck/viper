@@ -9,6 +9,9 @@ bind "core/settings";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
 bind "editor/completion";
+bind "editor/diagnostics";
+bind "editor/hover";
+bind "editor/symbols";
 bind "services/file_utils";
 bind "build/build_system";
 bind "build/diagnostic";
@@ -16,6 +19,7 @@ bind "commands/file_commands";
 bind "commands/edit_commands";
 bind "commands/view_commands";
 bind "commands/build_commands";
+bind "commands/search_commands";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
@@ -56,6 +60,17 @@ func main() {
     var completer = new completion.CompletionController();
     completer.Setup(engine.editor, shell.app);
 
+    // Real-time diagnostics (errors-as-you-type)
+    var liveDiag = new diagnostics.LiveDiagnostics();
+
+    // Hover tooltips (type info on mouse dwell)
+    var hoverCtrl = new hover.HoverController();
+    hoverCtrl.setup(shell.app);
+
+    // Symbol outline panel (below diagnostics, toggled via View menu)
+    var symbolOutline = new symbols.SymbolOutline();
+    symbolOutline.setup(shell.editorArea);
+
     shell.minimap = GUI.Minimap.New(shell.editorRow);
     shell.minimap.SetWidth(100);
     shell.minimap.BindEditor(engine.editor);
@@ -78,6 +93,11 @@ func main() {
     Shortcuts.Register("run",       "Ctrl+F5",      "Run without Build");
     Shortcuts.Register("find",      "Ctrl+F",       "Find / Replace");
     Shortcuts.Register("goto",      "Ctrl+G",       "Go To Line");
+    Shortcuts.Register("gotodef",   "F12",          "Go To Definition");
+    Shortcuts.Register("nexterror", "F8",           "Next Error");
+    Shortcuts.Register("preverror", "Shift+F8",     "Previous Error");
+    Shortcuts.Register("searchproject", "Ctrl+Shift+F", "Search in Project");
+    Shortcuts.Register("symboloutline", "Ctrl+Shift+O", "Toggle Symbol Outline");
     Shortcuts.Register("palette",   "Ctrl+Shift+P", "Command Palette");
     Shortcuts.Register("zoomin",      "Ctrl+=",       "Zoom In");
     Shortcuts.Register("zoomout",     "Ctrl+-",       "Zoom Out");
@@ -118,6 +138,11 @@ func main() {
     // Edit operations in command palette
     shell.commandPalette.AddCommandWithShortcut("undo",      "Undo",              "Undo last action",                "Ctrl+Z");
     shell.commandPalette.AddCommandWithShortcut("redo",      "Redo",              "Redo last undone action",         "Ctrl+Y");
+    shell.commandPalette.AddCommandWithShortcut("gotodef",   "Go To Definition",  "Jump to symbol definition",       "F12");
+    shell.commandPalette.AddCommandWithShortcut("nexterror", "Next Error",        "Jump to next diagnostic",         "F8");
+    shell.commandPalette.AddCommandWithShortcut("preverror", "Previous Error",    "Jump to previous diagnostic",     "Shift+F8");
+    shell.commandPalette.AddCommandWithShortcut("searchproject", "Search in Project", "Find text across all project files", "Ctrl+Shift+F");
+    shell.commandPalette.AddCommandWithShortcut("symboloutline", "Symbol Outline",   "Toggle document symbol list",     "Ctrl+Shift+O");
 
     // ========================================================================
     // Create welcome document
@@ -171,9 +196,13 @@ func main() {
         shell.Poll();
 
         // ====================================================================
-        // Code Completion
+        // Code Completion + IDE Intelligence
         // ====================================================================
         completer.Update();
+        liveDiag.update(engine, shell);
+        hoverCtrl.update(engine);
+        symbolOutline.update(engine);
+        symbolOutline.handleClicks(engine);
         if completer.isVisible {
             if Shortcuts.WasTriggered("completion_accept") != 0 {
                 completer.AcceptSelected();
@@ -189,14 +218,34 @@ func main() {
             completer.TriggerCompletion();
         }
 
-        // Dot trigger: detect when '.' is typed
+        // Dot trigger + paren trigger: detect when '.' or '(' is typed
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
         if curCursorLine == prevCursorLine and curCursorCol == prevCursorCol + 1 {
             if curCursorCol >= 2 {
-                var dotLineText = engine.editor.GetLine(curCursorLine - 1);
-                if Str.MidLen(dotLineText, curCursorCol - 1, 1) == "." {
+                var trigLineText = engine.editor.GetLine(curCursorLine - 1);
+                var lastChar = Str.MidLen(trigLineText, curCursorCol - 1, 1);
+                if lastChar == "." {
                     completer.TriggerCompletion();
+                }
+                // Paren trigger: show signature help via hover on the function name
+                if lastChar == "(" {
+                    var source = engine.GetText();
+                    var sigInfo = Viper.Zia.Completion.Hover(source, curCursorLine, curCursorCol - 2);
+                    if sigInfo != "" {
+                        hoverCtrl.hideTooltip();
+                        // Reuse hover tooltip to show signature
+                        hoverCtrl.tooltipLabel.SetText(sigInfo);
+                        var px = engine.editor.GetCursorPixelX();
+                        var py = engine.editor.GetCursorPixelY();
+                        hoverCtrl.tooltip.SetPosition(px, py - 25);
+                        hoverCtrl.tooltip.SetVisible(1);
+                        hoverCtrl.isVisible = true;
+                    }
+                }
+                // Close paren: dismiss signature help
+                if lastChar == ")" {
+                    hoverCtrl.hideTooltip();
                 }
             }
         }
@@ -317,6 +366,15 @@ func main() {
         if shell.miSelectAll.WasClicked() != 0                          { edit_commands.handleSelectAll(engine); }
         if triggered("find", shell.miFind, null, cpSelected)            { edit_commands.handleFind(shell); }
         if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
+        if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, engine); }
+
+        // Error navigation (F8 / Shift+F8)
+        if triggeredNoMenu("nexterror", cpSelected) {
+            navigateDiagnostic(shell, engine, 1);
+        }
+        if triggeredNoMenu("preverror", cpSelected) {
+            navigateDiagnostic(shell, engine, -1);
+        }
 
         // FindBar per-frame updates
         if shell.findBar.IsVisible() != 0 {
@@ -342,6 +400,8 @@ func main() {
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
         if triggered("settings", shell.miPreferences, null, cpSelected)        { view_commands.handleSettings(appSettings); }
         if shell.miAbout.WasClicked() != 0                                     { view_commands.handleAbout(); }
+        if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearch(shell, projMgr, docMgr, engine, tabs); }
+        if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
         // Build commands
         if triggered("build", shell.miBuild, null, cpSelected)    { build_commands.handleBuild(shell, docMgr, engine, buildSys); }
@@ -470,4 +530,32 @@ func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> 
     if menuItem != null and menuItem.WasClicked() != 0 { return true; }
     if cpSelected == name { return true; }
     return false;
+}
+
+// Navigate to next/previous diagnostic in the diagnostics panel.
+// direction: 1 = next, -1 = previous
+var currentDiagIdx = -1;
+
+func navigateDiagnostic(shell: app_shell.AppShell,
+                        engine: editor_engine.EditorEngine,
+                        direction: Integer) {
+    var count = shell.diagListBox.Count;
+    if count == 0 {
+        GUI.Toast.Info("No diagnostics");
+        return;
+    }
+
+    currentDiagIdx = currentDiagIdx + direction;
+    if currentDiagIdx >= count { currentDiagIdx = 0; }
+    if currentDiagIdx < 0 { currentDiagIdx = count - 1; }
+
+    shell.diagListBox.SelectIndex(currentDiagIdx);
+    var selItem = shell.diagListBox.Selected;
+    if selItem != null {
+        var lineStr = GUI.ListBox.ItemGetData(selItem);
+        var lineNum = Convert.ToInt(lineStr);
+        if lineNum > 0 {
+            engine.GoToLine(lineNum);
+        }
+    }
 }

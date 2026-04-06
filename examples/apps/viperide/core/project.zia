@@ -1,27 +1,44 @@
 module project;
 
-bind Viper.IO.Path as Path;
-bind Viper.String as Str;// ============================================================================
+bind Path = Viper.IO.Path;
+bind Str = Viper.String;
+bind IO = Viper.IO;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+
+// ============================================================================
 // Project — represents an open workspace/folder
 // ============================================================================
-// The Project entity stores the root path and project metadata.
-// It is managed by ProjectManager which handles file tree operations.
+// Stores the root path and project metadata from viper.project (if present).
+// Managed by ProjectManager which handles file tree operations.
 // ============================================================================
 
 class Project {
     // Absolute path to project root directory
     expose String rootPath;
 
-    // Display name (folder name)
+    // Display name (folder name or from viper.project)
     expose String name;
 
     // Whether a project is currently open
     expose Boolean isOpen;
 
+    // Metadata from viper.project (if found)
+    expose String  entryFile;       // entry point file
+    expose String  lang;            // "zia" or "basic"
+    expose String  version;         // project version
+    expose String  packageName;     // display name from package-name
+    expose Boolean hasProjectFile;  // true if viper.project was found
+
     expose func init() {
         rootPath = "";
         name = "";
         isOpen = false;
+        entryFile = "main.zia";
+        lang = "zia";
+        version = "";
+        packageName = "";
+        hasProjectFile = false;
     }
 
     // Open a project from a folder path.
@@ -29,12 +46,17 @@ class Project {
         rootPath = path;
         // Extract folder name from path
         name = Path.Name(path);
-        // If path ends in separator, Name returns empty, so try one level up
         if name == "" {
             var trimmed = Str.Left(path, Str.Length(path) - 1);
             name = Path.Name(trimmed);
         }
         isOpen = true;
+
+        // Try to parse viper.project
+        var projFile = Path.Join(path, "viper.project");
+        if IO.File.Exists(projFile) {
+            parseProjectFile(projFile);
+        }
     }
 
     // Close the project.
@@ -42,5 +64,47 @@ class Project {
         rootPath = "";
         name = "";
         isOpen = false;
+        entryFile = "main.zia";
+        lang = "zia";
+        version = "";
+        packageName = "";
+        hasProjectFile = false;
+    }
+
+    // Parse a viper.project file for project metadata.
+    hide func parseProjectFile(path: String) {
+        var content = IO.File.ReadAllText(path);
+        var lines = Str.Split(content, "\n");
+        var i = 0;
+        while i < Seq.get_Length(lines) {
+            var line = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
+            i = i + 1;
+
+            // Skip empty lines and comments
+            if Str.Length(line) == 0 { continue; }
+            if Str.Left(line, 1) == "#" { continue; }
+
+            // Parse "key value" format (space-separated, first word is key)
+            var spaceIdx = Str.IndexOf(line, " ");
+            if spaceIdx == 0 { continue; }
+
+            var key = Str.Left(line, spaceIdx - 1);
+            var value = Str.Trim(Str.Mid(line, spaceIdx + 1));
+
+            // Strip quotes from value
+            if Str.Left(value, 1) == "\"" and Str.Right(value, 1) == "\"" {
+                value = Str.MidLen(value, 2, Str.Length(value) - 2);
+            }
+
+            if key == "project"       { name = value; }
+            if key == "entry"         { entryFile = value; }
+            if key == "lang"          { lang = value; }
+            if key == "version"       { version = value; }
+            if key == "package-name"  { packageName = value; }
+        }
+        hasProjectFile = true;
+        if packageName != "" {
+            name = packageName;
+        }
     }
 }

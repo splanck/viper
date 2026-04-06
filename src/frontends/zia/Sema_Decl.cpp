@@ -38,14 +38,18 @@ void Sema::analyzeBind(BindDecl &decl) {
         return;
     }
 
-    // W012: Duplicate import
-    if (binds_.count(decl.path)) {
+    std::string bindTargetKey =
+        decl.resolvedFileId != 0 ? std::to_string(decl.resolvedFileId) : decl.path;
+    std::string bindKey = std::to_string(decl.loc.file_id) + ":" + bindTargetKey;
+
+    // W012: Duplicate import within the same importing file.
+    if (binds_.count(bindKey)) {
         warn(
             WarningCode::W012_DuplicateImport, decl.loc, "Duplicate import of '" + decl.path + "'");
     }
 
     // Handle file binds (existing logic)
-    binds_.insert(decl.path);
+    binds_.insert(bindKey);
 
     std::string moduleName = fileBindModuleName(decl);
 

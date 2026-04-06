@@ -23,7 +23,7 @@
 //   - MH_PIE: ASLR — kernel randomizes load address on each execution
 //   - MH_TWOLEVEL: two-level namespace — per-symbol dylib ordinals
 //   - __PAGEZERO: null-pointer dereference guard (4GB unmapped region)
-//   - CS_LINKER_SIGNED: ad-hoc code signature (arm64) — required by AMFI
+//   - Embedded ad-hoc code signature (arm64) in Apple-compatible SuperBlob form
 //   - W^X: __TEXT is R+X, __DATA is R+W — no segment is both writable
 //     and executable
 //   - Non-lazy binding: GOT entries resolved by dyld before main() runs
@@ -348,10 +348,7 @@ bool writeMachOExe(const std::string &path,
     size_t codeSignSize = 0;
     if (needsCodeSign) {
         codeSignOff = alignUp(linkeditFileOff + linkeditDataSize, 16);
-        const uint32_t nSlots = static_cast<uint32_t>((codeSignOff + 4095) / 4096);
-        const size_t identLen = codeSignIdent.size() + 1;
-        const uint32_t cdSize = 88 + static_cast<uint32_t>(identLen) + nSlots * 32;
-        codeSignSize = 28 + cdSize + 12; // SuperBlob(28) + CodeDirectory + Requirements(12)
+        codeSignSize = estimateCodeSignatureSize(codeSignOff, codeSignIdent, pageSize);
     }
 
     const size_t linkeditTotalSize =
@@ -720,7 +717,8 @@ bool writeMachOExe(const std::string &path,
 
         // Build linker-signed ad-hoc code signature with CS_LINKER_SIGNED flag.
         auto sig =
-            buildCodeSignature(file, codeSignOff, codeSignIdent, textSegFileOff, textSegFileSize);
+            buildCodeSignature(
+                file, codeSignOff, codeSignIdent, textSegFileOff, textSegFileSize, pageSize);
         file.insert(file.end(), sig.begin(), sig.end());
     }
 
@@ -730,33 +728,10 @@ bool writeMachOExe(const std::string &path,
         writePad(file, finalPad);
 
     // =======================================================================
-    // Phase 6: Write to disk + make executable.
+    // Phase 6: Write to disk via atomic replace to avoid stale executable vnode
+    // state on macOS after rebuilding a signed binary at the same path.
     // =======================================================================
-    std::ofstream f_out(path, std::ios::binary);
-    if (!f_out) {
-        err << "error: cannot open '" << path << "' for writing\n";
-        return false;
-    }
-    f_out.write(reinterpret_cast<const char *>(file.data()),
-                static_cast<std::streamsize>(file.size()));
-    if (!f_out) {
-        err << "error: write failed to '" << path << "'\n";
-        return false;
-    }
-    f_out.close();
-
-#if !defined(_WIN32)
-    std::error_code ec;
-    std::filesystem::permissions(
-        path,
-        std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
-            std::filesystem::perms::owner_write | std::filesystem::perms::group_read |
-            std::filesystem::perms::group_exec | std::filesystem::perms::others_read |
-            std::filesystem::perms::others_exec,
-        ec);
-#endif
-
-    return true;
+    return writeBinaryFileAtomically(path, file, true, err);
 }
 
 } // namespace viper::codegen::linker

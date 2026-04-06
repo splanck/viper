@@ -1,0 +1,99 @@
+module symbols;
+
+bind "../editor/editor_engine";
+bind "../ui/app_shell";
+
+bind ZiaCompletion = Viper.Zia.Completion;
+bind Viper.GUI;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
+bind Convert = Viper.Core.Convert;
+
+// ============================================================================
+// SymbolOutline — document symbol navigator.
+//
+// Queries Viper.Zia.Completion.Symbols(source) and populates a ListBox
+// with all top-level symbols. Clicking a symbol navigates to its line.
+//
+// Call update() each frame; it only re-queries when the source changes.
+// ============================================================================
+
+class SymbolOutline {
+    expose GUI.ListBox symbolList;
+    expose String lastSource;
+    expose Boolean visible;
+
+    expose func init() {
+        lastSource = "";
+        visible = false;
+    }
+
+    expose func setup(parent: GUI.VBox) {
+        symbolList = GUI.ListBox.New(parent);
+        symbolList.SetSize(0, 200);
+        symbolList.SetVisible(0);
+    }
+
+    expose func toggle() {
+        visible = visible == false;
+        if visible {
+            symbolList.SetVisible(1);
+            lastSource = "";  // force refresh
+        } else {
+            symbolList.SetVisible(0);
+        }
+    }
+
+    // Call once per frame. Re-queries symbols when source changes.
+    expose func update(engine: editor_engine.EditorEngine) {
+        if visible == false { return; }
+        if engine == null or engine.editor == null { return; }
+
+        var source = engine.GetText();
+        if source == lastSource { return; }
+        lastSource = source;
+
+        symbolList.Clear();
+
+        var raw = ZiaCompletion.Symbols(source);
+        if raw == "" { return; }
+
+        var lines = Str.Split(raw, "\n");
+        var i = 0;
+        while i < Seq.get_Length(lines) {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            i = i + 1;
+            if Str.Length(line) == 0 { continue; }
+
+            var parts = Str.Split(line, "\t");
+            if Seq.get_Length(parts) < 4 { continue; }
+
+            var name = Obj.ToString(Seq.Get(parts, 0));
+            var kind = Obj.ToString(Seq.Get(parts, 1));
+            var symLine = Obj.ToString(Seq.Get(parts, 3));
+
+            // Skip runtime symbols (line 0 = not from this file)
+            if symLine == "0" { continue; }
+
+            var displayText = kind + "  " + name;
+            var item = symbolList.AddItem(displayText);
+            GUI.ListBox.ItemSetData(item, symLine);
+        }
+    }
+
+    // Handle click-to-navigate. Call from main loop.
+    expose func handleClicks(engine: editor_engine.EditorEngine) {
+        if visible == false { return; }
+        if symbolList.WasSelectionChanged() != 0 {
+            var selItem = symbolList.Selected;
+            if selItem != null {
+                var lineStr = GUI.ListBox.ItemGetData(selItem);
+                var lineNum = Convert.ToInt(lineStr);
+                if lineNum > 0 {
+                    engine.GoToLine(lineNum);
+                }
+            }
+        }
+    }
+}

@@ -97,13 +97,33 @@ class CompletionController {
 
             // Split by tabs: [label, insertText, kind, detail]
             var parts = Str.Split(lineStr, "\t");
+            var nParts = Seq.get_Length(parts);
             var label = Obj.ToString(Seq.Get(parts, 0));
             var ins = label;
-            if Seq.get_Length(parts) >= 2 {
+            if nParts >= 2 {
                 ins = Obj.ToString(Seq.Get(parts, 1));
             }
 
-            listbox.AddItem(label);
+            // Build display text: [K] label — detail
+            var kindTag = "";
+            if nParts >= 3 {
+                var kindInt = Viper.Core.Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
+                kindTag = kindLabel(kindInt);
+            }
+            var detail = "";
+            if nParts >= 4 {
+                detail = Obj.ToString(Seq.Get(parts, 3));
+            }
+
+            var displayText = label;
+            if kindTag != "" {
+                displayText = kindTag + " " + label;
+            }
+            if detail != "" {
+                displayText = displayText + "  — " + detail;
+            }
+
+            listbox.AddItem(displayText);
             insertTexts.Push(ins);
             itemCount = itemCount + 1;
         }
@@ -196,4 +216,25 @@ class CompletionController {
 
         return false;
     }
+}
+
+// Map CompletionKind integer to a short tag for display.
+// Kind values: Keyword=0 Snippet=1 Variable=2 Parameter=3 Field=4
+// Method=5 Function=6 Entity=7 Value=8 Interface=9 Module=10
+// RuntimeClass=11 Property=12
+func kindLabel(k: Integer) -> String {
+    if k == 0  { return "[K]"; }   // Keyword
+    if k == 1  { return "[S]"; }   // Snippet
+    if k == 2  { return "[V]"; }   // Variable
+    if k == 3  { return "[P]"; }   // Parameter
+    if k == 4  { return "[F]"; }   // Field
+    if k == 5  { return "[M]"; }   // Method
+    if k == 6  { return "[fn]"; }  // Function
+    if k == 7  { return "[C]"; }   // Class/Entity
+    if k == 8  { return "[S]"; }   // Struct/Value
+    if k == 9  { return "[I]"; }   // Interface
+    if k == 10 { return "[mod]"; } // Module
+    if k == 11 { return "[RT]"; }  // Runtime class
+    if k == 12 { return "[P]"; }   // Property
+    return "";
 }

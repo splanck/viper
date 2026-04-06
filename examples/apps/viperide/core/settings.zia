@@ -21,6 +21,9 @@ class SettingsManager {
     expose Integer fontSize;
     expose String  theme;
     expose Boolean minimapVisible;
+    expose Boolean autoCheckOnSave;
+    expose Boolean codeFolding;
+    expose Integer tabWidth;
     expose String  settingsDir;
     expose String  settingsPath;
 
@@ -28,6 +31,9 @@ class SettingsManager {
         fontSize       = DEFAULT_FONT_SIZE;
         theme          = "dark";
         minimapVisible = true;
+        autoCheckOnSave = true;
+        codeFolding    = true;
+        tabWidth       = 4;
         settingsDir    = "";
         settingsPath   = "";
     }
@@ -72,6 +78,22 @@ class SettingsManager {
         if mmStr != "" {
             minimapVisible = mmStr == "1";
         }
+
+        var acStr = Ini.Get(ini, "settings", "autoCheck");
+        if acStr != "" {
+            autoCheckOnSave = acStr == "1";
+        }
+
+        var cfStr = Ini.Get(ini, "settings", "codeFolding");
+        if cfStr != "" {
+            codeFolding = cfStr == "1";
+        }
+
+        var twStr = Ini.Get(ini, "settings", "tabWidth");
+        if twStr != "" {
+            var tw = Convert.ToInt(twStr);
+            if tw >= 2 and tw <= 8 { tabWidth = tw; }
+        }
     }
 
     // Persist settings to disk. Creates ~/.viperide/ if it does not exist.
@@ -89,6 +111,17 @@ class SettingsManager {
         } else {
             Ini.Set(ini, "settings", "minimap", "0");
         }
+        if autoCheckOnSave {
+            Ini.Set(ini, "settings", "autoCheck", "1");
+        } else {
+            Ini.Set(ini, "settings", "autoCheck", "0");
+        }
+        if codeFolding {
+            Ini.Set(ini, "settings", "codeFolding", "1");
+        } else {
+            Ini.Set(ini, "settings", "codeFolding", "0");
+        }
+        Ini.Set(ini, "settings", "tabWidth", "" + tabWidth);
         var content = Ini.Format(ini);
         IO.File.WriteAllText(settingsPath, content);
     }

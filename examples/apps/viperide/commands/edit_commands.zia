@@ -5,6 +5,10 @@ bind "../editor/editor_engine";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
+bind ZiaCompletion = Viper.Zia.Completion;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
 
 // ============================================================================
 // Edit commands — Undo, Redo, Cut, Copy, Paste, SelectAll, Find, GoTo
@@ -65,4 +69,54 @@ func handleGoToLine(shell: app_shell.AppShell,
             shell.SetStatusLeft("Jumped to line " + lineNum);
         }
     }
+}
+
+func handleGoToDefinition(shell: app_shell.AppShell,
+                          engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+
+    var source = engine.GetText();
+    var curLine = engine.editor.CursorLine + 1;
+    var curCol  = engine.editor.CursorCol;
+
+    // Get symbol list and find the identifier at cursor via hover
+    var hoverInfo = ZiaCompletion.Hover(source, curLine, curCol);
+    if hoverInfo == "" {
+        GUI.Toast.Warning("No symbol found at cursor");
+        return;
+    }
+
+    // Extract the symbol name from hover (format: "kind name: type")
+    var spaceIdx = Str.IndexOf(hoverInfo, " ");
+    if spaceIdx == 0 { return; }
+    var rest = Str.Mid(hoverInfo, spaceIdx + 1);
+    var colonIdx = Str.IndexOf(rest, ":");
+    var symbolName = rest;
+    if colonIdx > 0 {
+        symbolName = Str.Left(rest, colonIdx - 1);
+    }
+
+    // Look up the symbol in the symbols list to get its definition line
+    var syms = ZiaCompletion.Symbols(source);
+    var symLines = Str.Split(syms, "\n");
+    var i = 0;
+    while i < Seq.get_Length(symLines) {
+        var symLine = Obj.ToString(Seq.Get(symLines, i));
+        i = i + 1;
+        if Str.Length(symLine) == 0 { continue; }
+
+        var parts = Str.Split(symLine, "\t");
+        if Seq.get_Length(parts) < 4 { continue; }
+        var name = Obj.ToString(Seq.Get(parts, 0));
+        if name == symbolName {
+            var defLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 3)));
+            if defLine > 0 {
+                engine.GoToLine(defLine);
+                shell.SetStatusLeft("Definition of '" + symbolName + "' at line " + defLine);
+                return;
+            }
+        }
+    }
+
+    GUI.Toast.Info("Definition not found for '" + symbolName + "'");
 }

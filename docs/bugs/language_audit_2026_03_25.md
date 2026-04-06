@@ -2,7 +2,8 @@
 
 This file was revalidated against the local compiler/runtime build in
 `build/src/tools/viper/viper` and against the current parser, sema, and lowerer
-sources on 2026-03-25.
+sources on 2026-03-25, then spot-revalidated again on 2026-04-06 after the
+latest frontend/runtime hardening pass.
 
 The earlier version of this audit mixed real defects, stale findings, and a few
 feature requests. This revision keeps only validated claims, marks invalid ones,
@@ -13,7 +14,8 @@ and adds concrete recommendations.
 ## Confirmed Zia Bugs
 
 ### ZIA-BUG-001: Guard clause narrowing fails for optional primitives at lowering
-**Severity:** P1 — Breaks documented narrowing behavior
+**Severity:** P1
+**Status:** FIXED (revalidated 2026-04-06)
 
 ```zia
 func check(x: Integer?) {
@@ -23,19 +25,15 @@ func check(x: Integer?) {
 }
 ```
 
-**Validated behavior**
-- Reproduced with the local compiler.
-- Narrowing works for optional class references in common cases.
-- Narrowing does not carry through correctly for optional primitives like `Integer?`.
+**Resolved behavior**
+- Optional primitive narrowing now survives both guard-clause forms:
+  - `if (x == null) { return; }`
+  - `guard x != null else { return; }`
+- The fallthrough path correctly treats `Optional[T]` as `T` for reads and assignments.
 
-**Likely root cause**
-- Sema records the narrowed type, but IL lowering still treats the guarded value as
-  pointer-shaped optional storage instead of the primitive inner type.
-
-**Recommendation**
-- Fix lowering to consult the narrowed type for guarded locals before mapping IL type.
-- Add compile+run regression tests for `Integer?`, `Number?`, and `Boolean?` after
-  `guard x != null else { return; }`.
+**Regression coverage**
+- `test_zia_guard_clause_narrowing`
+- `test_zia_optional_narrowing`
 
 ### ZIA-BUG-002: All enum variant values evaluate to 0 at runtime
 **Severity:** P0
@@ -64,7 +62,8 @@ match c {
     `Color.Red => { return "red"; }`.
 
 ### ZIA-BUG-004: Typed catch parses, but lowering produces invalid EH IL
-**Severity:** P1 — Feature appears supported but fails verification
+**Severity:** P1
+**Status:** FIXED (revalidated 2026-04-06)
 
 ```zia
 try {
@@ -74,28 +73,14 @@ try {
 }
 ```
 
-**Validated behavior**
+**Resolved behavior**
 - `catch(e)` works.
-- `catch(e: RuntimeError)` parses.
-- Typed catch currently fails during verification with EH dominance errors.
+- `catch(e: RuntimeError)` works.
+- Typed catch composes with `finally` without verifier failures.
 
-**Important correction**
-- The old audit claim that "error variable binding does not work" was too broad.
-- Named catch binding with parentheses is implemented.
-- The real defect is typed-catch lowering, not anonymous-vs-named catch in general.
-
-**Likely root cause**
-- The typed-catch control-flow shape in `Lowerer_Stmt_EH.cpp` creates handler-style
-  blocks that violate current EH verifier dominance constraints.
-
-**Recommendation**
-- Rework typed-catch lowering so all protected blocks are dominated by the `eh.push`
-  site and handler transitions satisfy verifier constraints.
-- Add regression coverage for:
-  - `catch(e)`
-  - `catch(e: Error)`
-  - `catch(e: RuntimeError)`
-  - typed catch with `finally`
+**Regression coverage**
+- `test_zia_try_catch`
+- `zia_lang_31_typed_catch_list_shorthand`
 
 ### ZIA-BUG-005: Child class `init` requires explicit `override`
 **Severity:** P3 — Confirmed behavior, mostly a DX issue
@@ -122,7 +107,8 @@ class B extends A {
 - If behavior stays unchanged, add a targeted note to the inheritance docs.
 
 ### ZIA-BUG-006: Entity properties found but treated as private
-**Severity:** P1 — Documented feature is non-functional on user entities
+**Severity:** P1
+**Status:** FIXED (revalidated 2026-04-06)
 
 ```zia
 class Counter {
@@ -141,20 +127,13 @@ func start() {
 }
 ```
 
-**Validated behavior (updated 2026-03-25)**
-- Property declarations parse.
-- Getter/setter methods are synthesized.
-- Properties ARE found during member resolution (changed from earlier: no longer "no member").
-- BUT: properties are treated as private regardless of visibility.
+**Resolved behavior**
+- Exposed properties are accessible through normal member syntax.
+- Getter/setter methods are synthesized and used by lowering.
+- Setter-only properties are supported; reads still fail with a write-only diagnostic.
 
-**Likely root cause**
-- Property registration during sema sets visibility to private by default. The `property`
-  keyword doesn't inherit or set an `expose` visibility flag.
-
-**Recommendation**
-- Allow `expose property count: Integer { ... }` or infer visibility from the class's
-  default visibility context.
-- Add compile+run tests for both get and set on user-defined entities.
+**Regression coverage**
+- `test_zia_properties_static`
 
 ### ZIA-BUG-007: Tuple destructuring in `var` declarations does not parse
 **Severity:** P2 — Syntax advertised elsewhere but not implemented
@@ -350,20 +329,15 @@ var p = new Person(30);  // ERROR: no init overload matching
 
 ### `docs/zia-reference.md`
 
-Current doc drift:
-- The try/catch section still says named binding is unsupported, but `catch(e)` works.
-- The grammar still shows `tryStmt ::= "try" block ["catch" block] ["finally" block]`,
-  which does not match the parser's current `catch(e)` / `catch(e: Type)` support.
-- The tuple-destructuring limitation note is accurate.
-- The enum runtime bug note is accurate.
-- The OR-pattern and enum-variant-pattern documentation is present.
+Current doc drift on 2026-03-25:
+- The try/catch section said named binding was unsupported, but `catch(e)` worked.
+- The grammar still showed `tryStmt ::= "try" block ["catch" block] ["finally" block]`,
+  which did not match parser support for `catch(e)` / `catch(e: Type)`.
 
-**Recommendation**
-- Update the try/catch section to say:
-  - `catch(e)` works
-  - typed catch syntax parses but is currently broken at lowering
-  - `catch e` without parentheses is not supported
-- Update the grammar to match the actual parser.
+**Update (2026-04-06)**
+- The canonical reference now reflects the current parser and typed-catch behavior.
+- Remaining documented limitations are the real ones: tuple destructuring in `var`
+  declarations and match-arm `return` shorthand are still unsupported.
 
 ### `docs/basic-reference.md`
 
@@ -384,7 +358,10 @@ Current doc drift:
 ## Status Summary (verified 2026-03-25)
 
 ### FIXED
+- ✅ `ZIA-BUG-001` — guard-statement optional narrowing now works for primitives
 - ✅ `ZIA-BUG-002` — enum values now correct (auto-increment works)
+- ✅ `ZIA-BUG-004` — typed catch lowering and `finally` composition now verify
+- ✅ `ZIA-BUG-006` — exposed properties are no longer treated as private
 - ✅ `ZIA-BUG-008` — `String.ToUpper()` returns correct type
 - ✅ `ZIA-BUG-010` — async/await produces correct output
 - ✅ `ZIA-BUG-011` — deinit binding propagation (fix landed)
@@ -392,10 +369,7 @@ Current doc drift:
 - ✅ `ZIA-BUG-017` — superseded by ZIA-BUG-010 fix
 
 ### OPEN — Priority Fix Order
-1. `ZIA-BUG-001` optional primitive narrowing in lowering (P1)
-2. `ZIA-BUG-006` class property access — private visibility (P1)
-3. `ZIA-BUG-004` typed catch EH lowering (P1)
-4. `ZIA-BUG-005` child init requires override (P3, design decision)
-5. `ZIA-BUG-003` match arm bare return syntax (P2)
-6. `ZIA-BUG-007` tuple destructuring in var (P2)
-7. `BAS-BUG-002` BASIC `FOR EACH` off-by-one (P2)
+1. `ZIA-BUG-003` match arm bare return syntax (P2)
+2. `ZIA-BUG-007` tuple destructuring in var (P2)
+3. `ZIA-BUG-005` child init requires override (P3, design decision)
+4. `BAS-BUG-002` BASIC `FOR EACH` off-by-one (P2)

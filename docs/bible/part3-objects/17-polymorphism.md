@@ -219,10 +219,10 @@ The answer: **Dog's version**. The actual object type determines the method call
 This is called *dynamic dispatch* or *late binding*. The decision is made at runtime because the compiler can't always know what type an object will be. Consider:
 
 ```rust
-bind Viper.Random;
+bind Viper.Math.Random as Random;
 
 func makeRandomAnimal() -> Animal {
-    var r = Int(0, 3);
+    var r = Random.Range(0, 2);
     if r == 0 {
         return Dog();
     } else if r == 1 {

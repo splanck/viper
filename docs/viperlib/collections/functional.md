@@ -45,7 +45,7 @@ push/pop, insert/remove, and slicing operations.
 | `Find(value)`          | `Integer(Object)`       | Returns the index of a value, or -1 if not found                                      |
 | `Has(value)`           | `Boolean(Object)`       | Returns true if the sequence contains the value                                       |
 | `Reverse()`            | `Void()`                | Reverses the elements in place                                                        |
-| `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Random.Seed` is set)        |
+| `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Math.Random.Seed` is set)   |
 | `Slice(start, end)`    | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive)        |
 | `Clone()`              | `Seq()`                 | Returns a shallow copy of the sequence                                                |
 | `Sort()`               | `Void()`                | Sorts elements in ascending order (stable merge sort)                                 |
@@ -154,7 +154,7 @@ other.Push(item5)
 seq.PushAll(other)
 
 ' Deterministic shuffle (Random.Seed influences Shuffle)
-Viper.Random.Seed(1)
+Viper.Math.Random.Seed(1)
 seq.Shuffle()
 
 ' Clear all

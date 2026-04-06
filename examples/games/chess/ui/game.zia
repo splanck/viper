@@ -5,6 +5,8 @@ bind Viper.Input;
 bind Viper.Time;
 bind Viper.Fmt;
 bind Viper.Terminal;
+bind Thread = Viper.Threads.Thread;
+bind Monitor = Viper.Threads.Monitor;
 bind "../core/config";
 bind "../core/board";
 bind "../core/moves";
@@ -12,6 +14,68 @@ bind "../core/eval";
 bind "./renderer";
 bind "./pieces";
 bind "../engine/ai";
+
+// Background AI search state. Chess only runs one game instance at a time, so
+// a single module-level worker slot is enough and keeps the UI thread isolated
+// from the search board copy.
+var aiWorkerLock: List[Integer] = [];
+var aiWorkerThread: Thread? = null;
+var aiWorkerBoard: Board? = null;
+var aiWorkerDepth: Integer = DIFF_HARD;
+var aiWorkerHasResult: Boolean = false;
+var aiMoveFrom: Integer = -1;
+var aiMoveTo: Integer = -1;
+var aiMoveCaptured: Integer = 0;
+var aiMoveEnPassant: Boolean = false;
+var aiMoveCastleKing: Boolean = false;
+var aiMoveCastleQueen: Boolean = false;
+var aiMovePromotion: Boolean = false;
+var aiMovePromotePiece: Integer = 0;
+
+func nullMove() -> Move {
+    return new Move(-1, -1, 0, false, false, false, false, 0);
+}
+
+func clearAIWorkerResult() {
+    aiMoveFrom = -1;
+    aiMoveTo = -1;
+    aiMoveCaptured = 0;
+    aiMoveEnPassant = false;
+    aiMoveCastleKing = false;
+    aiMoveCastleQueen = false;
+    aiMovePromotion = false;
+    aiMovePromotePiece = 0;
+}
+
+func storeAIWorkerResult(m: Move) {
+    aiMoveFrom = m.from;
+    aiMoveTo = m.to;
+    aiMoveCaptured = m.captured;
+    aiMoveEnPassant = m.enPassant;
+    aiMoveCastleKing = m.castleKing;
+    aiMoveCastleQueen = m.castleQueen;
+    aiMovePromotion = m.promotion;
+    aiMovePromotePiece = m.promotePiece;
+}
+
+func loadAIWorkerResult() -> Move {
+    return new Move(aiMoveFrom, aiMoveTo, aiMoveCaptured,
+                    aiMoveEnPassant, aiMoveCastleKing, aiMoveCastleQueen,
+                    aiMovePromotion, aiMovePromotePiece);
+}
+
+func aiSearchWorker() {
+    if aiWorkerBoard == null { return; }
+
+    var ai = new ChessAI();
+    ai.setDepth(aiWorkerDepth);
+    var best = ai.findBestMove(aiWorkerBoard!);
+
+    Monitor.Enter(aiWorkerLock);
+    storeAIWorkerResult(best);
+    aiWorkerHasResult = true;
+    Monitor.Exit(aiWorkerLock);
+}
 
 // ============================================================================
 // ChessGame — main game entity.
@@ -35,7 +99,6 @@ class ChessGame {
     hide Canvas        canvas;
     hide Board         board;
     hide MoveGen       moveGen;
-    hide ChessAI       chessAI;
     hide BoardRenderer renderer;
 
     // --- Game configuration ---
@@ -80,7 +143,6 @@ class ChessGame {
 
     // --- AI ---
     hide Integer aiThinkStartMs;
-    hide Boolean pendingAIMove;
 
     // --- Undo stacks (parallel arrays, one entry per applied move) ---
     hide List[Move]     undoMoveStack;
@@ -100,7 +162,6 @@ class ChessGame {
         canvas   = Canvas.New("Viper Chess", WIN_W, WIN_H);
         board    = new Board();
         moveGen  = new MoveGen();
-        chessAI  = new ChessAI();
         renderer = new BoardRenderer();
 
         renderer.setCanvas(canvas);
@@ -142,7 +203,6 @@ class ChessGame {
         gameOverWinner = "";
 
         aiThinkStartMs = 0;
-        pendingAIMove  = false;
 
         undoMoveStack         = [];
         undoInfoStack         = [];
@@ -153,6 +213,7 @@ class ChessGame {
         ctrlZWasDown      = false;
 
         setupActions();
+        cleanupAIWorker();
 
         cachedLegalMoves_ = [];
         legalMovesValid_  = false;
@@ -183,13 +244,15 @@ class ChessGame {
             handleInput();
             updateClocks();
 
-            render();
-
             if gameState == STATE_AI_THINK {
-                runAITurn();
+                pollAITurn();
             }
+
+            render();
             Viper.Time.SleepMs(8);   // ~120 FPS cap
         }
+
+        cleanupAIWorker();
     }
 
     // =========================================================================
@@ -394,7 +457,6 @@ class ChessGame {
             undoLastMove();
         }
 
-        pendingAIMove = false;
     }
 
     hide func undoLastMove() {
@@ -527,9 +589,7 @@ class ChessGame {
         // Schedule AI move if it is now the AI's turn
         if gameState == STATE_PLAYING {
             if isAITurn() {
-                gameState      = STATE_AI_THINK;
-                aiThinkStartMs = Viper.Time.GetTickCount();
-                pendingAIMove  = true;
+                startAITurn();
             }
         }
     }
@@ -544,19 +604,58 @@ class ChessGame {
         return false;
     }
 
-    hide func runAITurn() {
-        if !pendingAIMove { return; }
-        pendingAIMove = false;
+    hide func startAITurn() {
+        cleanupAIWorker();
 
-        var m = chessAI.findBestMove(board);
+        aiWorkerBoard = board.copy();
+        aiWorkerDepth = aiDepth;
+
+        Monitor.Enter(aiWorkerLock);
+        clearAIWorkerResult();
+        aiWorkerHasResult = false;
+        Monitor.Exit(aiWorkerLock);
+
+        aiWorkerThread = Thread.StartSafe(&aiSearchWorker, 0);
+        gameState      = STATE_AI_THINK;
+        aiThinkStartMs = Viper.Time.GetTickCount();
+    }
+
+    hide func pollAITurn() {
+        if aiWorkerThread == null { return; }
+        if aiWorkerThread!.SafeIsAlive() { return; }
+
+        aiWorkerThread!.SafeJoin();
+        var thread = aiWorkerThread!;
+        aiWorkerThread = null;
+        aiWorkerBoard  = null;
+
+        gameState = STATE_PLAYING;
+
+        if thread.HasError {
+            Say("Chess AI worker error: " + thread.Error);
+            var legalFallback = getLegalMoves();
+            if legalFallback.length() == 0 {
+                checkGameOver();
+                return;
+            }
+            applyMove(legalFallback.get(0));
+            return;
+        }
+
+        var m = nullMove();
+        Monitor.Enter(aiWorkerLock);
+        if aiWorkerHasResult {
+            m = loadAIWorkerResult();
+        }
+        clearAIWorkerResult();
+        aiWorkerHasResult = false;
+        Monitor.Exit(aiWorkerLock);
 
         // Sentinel: from < 0 means no legal moves — let checkGameOver handle it
         if m.from < 0 {
             checkGameOver();
             return;
         }
-
-        gameState = STATE_PLAYING;
 
         // For CvC: enforce a minimum delay between AI moves so the game is watchable
         if gameMode == MODE_CVC {
@@ -567,6 +666,18 @@ class ChessGame {
         }
 
         applyMove(m);
+    }
+
+    hide func cleanupAIWorker() {
+        if aiWorkerThread != null {
+            aiWorkerThread!.SafeJoin();
+            aiWorkerThread = null;
+        }
+        aiWorkerBoard = null;
+        Monitor.Enter(aiWorkerLock);
+        clearAIWorkerResult();
+        aiWorkerHasResult = false;
+        Monitor.Exit(aiWorkerLock);
     }
 
     // =========================================================================
@@ -626,11 +737,11 @@ class ChessGame {
     // =========================================================================
 
     hide func startNewGame() {
+        cleanupAIWorker();
+
         // new Board() automatically calls init() → setupStartPosition()
         board = new Board();
         invalidateLegalMoves();
-
-        chessAI.setDepth(aiDepth);
 
         selectedSq       = -1;
         dragFrom         = -1;
@@ -649,8 +760,6 @@ class ChessGame {
         blackTimeSec = 0;
         lastTickMs   = Viper.Time.GetTickCount();
 
-        pendingAIMove = false;
-
         undoMoveStack         = [];
         undoInfoStack         = [];
         undoPrevFromStack     = [];
@@ -661,9 +770,7 @@ class ChessGame {
 
         // In PvC with AI as white, trigger AI immediately
         if isAITurn() {
-            gameState      = STATE_AI_THINK;
-            aiThinkStartMs = Viper.Time.GetTickCount();
-            pendingAIMove  = true;
+            startAITurn();
         }
     }
 

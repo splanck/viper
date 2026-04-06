@@ -2651,6 +2651,15 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index);
 /// @return Serialised completion items, or an empty string on failure.
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
+/// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
+rt_string rt_zia_check(rt_string source);
+
+/// @brief Return hover information for the identifier at the given source position.
+rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return serialized document symbols for the supplied source.
+rt_string rt_zia_symbols(rt_string source);
+
 /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
 void rt_zia_completion_clear_cache(void);
 
