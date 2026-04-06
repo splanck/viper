@@ -67,12 +67,10 @@ TEST(ZiaDefaults, SingleDefaultOmitted) {
     const std::string source = R"(
 module Test;
 
-func greet(name: String, greeting: String = "Hello") -> String {
-    return greeting;
+func greet(name: String, greeting: String = "Hello") -> String {    return greeting;
 }
 
-func start() {
-    var result = greet("World");
+func start() {    var result = greet("World");
 }
 )";
 
@@ -93,12 +91,10 @@ TEST(ZiaDefaults, AllArgsProvided) {
     const std::string source = R"(
 module Test;
 
-func greet(name: String, greeting: String = "Hello") -> String {
-    return greeting;
+func greet(name: String, greeting: String = "Hello") -> String {    return greeting;
 }
 
-func start() {
-    var result = greet("World", "Hi");
+func start() {    var result = greet("World", "Hi");
 }
 )";
 
@@ -119,12 +115,10 @@ TEST(ZiaDefaults, MultipleDefaults) {
     const std::string source = R"(
 module Test;
 
-func configure(name: String, width: Integer = 800, height: Integer = 600) -> Integer {
-    return width;
+func configure(name: String, width: Integer = 800, height: Integer = 600) -> Integer {    return width;
 }
 
-func start() {
-    var a = configure("window");
+func start() {    var a = configure("window");
     var b = configure("window", 1024);
     var c = configure("window", 1024, 768);
 }
@@ -144,12 +138,10 @@ TEST(ZiaDefaults, TooFewWithoutDefault) {
     const std::string source = R"(
 module Test;
 
-func add(a: Integer, b: Integer) -> Integer {
-    return a;
+func add(a: Integer, b: Integer) -> Integer {    return a;
 }
 
-func start() {
-    var result = add(1);
+func start() {    var result = add(1);
 }
 )";
 
@@ -167,12 +159,10 @@ TEST(ZiaDefaults, IntegerDefault) {
     const std::string source = R"(
 module Test;
 
-func repeat(count: Integer = 3) -> Integer {
-    return count;
+func repeat(count: Integer = 3) -> Integer {    return count;
 }
 
-func start() {
-    var a = repeat();
+func start() {    var a = repeat();
     var b = repeat(5);
 }
 )";

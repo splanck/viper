@@ -4,8 +4,7 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 
-func start() {
-    var nums: List[Integer] = [1, 2, 3];
+func start() {    var nums: List[Integer] = [1, 2, 3];
     nums.add(4);
     assertEqInt(nums.count(), 4, "list.count");
 

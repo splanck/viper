@@ -83,13 +83,11 @@ TEST(ZiaAsync, AsyncFunctionLowersToWorkerAndWrapper) {
     const std::string src = R"(module Test;
 
 /// @brief Fetch data.
-async func fetchData(name: String, retries: Integer) -> String {
-    return name;
+async func fetchData(name: String, retries: Integer) -> String {    return name;
 }
 
 /// @brief Start.
-func start() {
-    var future = fetchData("viper", 2);
+func start() {    var future = fetchData("viper", 2);
 }
 )";
 
@@ -104,13 +102,11 @@ TEST(ZiaAsync, AwaitUsesFutureGetAndUnboxesKnownPayload) {
     const std::string src = R"(module Test;
 
 /// @brief Fetch data.
-async func fetchData() -> String {
-    return "ready";
+async func fetchData() -> String {    return "ready";
 }
 
 /// @brief Start.
-func start() {
-    var value: String = await fetchData();
+func start() {    var value: String = await fetchData();
 }
 )";
 
@@ -123,8 +119,7 @@ TEST(ZiaAsync, AwaitRejectsNonFutureOperands) {
     const std::string src = R"(module Test;
 
 /// @brief Start.
-func start() {
-    var value = await "not a future";
+func start() {    var value = await "not a future";
 }
 )";
 
@@ -137,13 +132,11 @@ TEST(ZiaAsync, AsyncWorkerInvokesBodyThroughGeneratedFunction) {
     const std::string src = R"(module Test;
 
 /// @brief Add one.
-async func addOne(value: Integer) -> Integer {
-    return value + 1;
+async func addOne(value: Integer) -> Integer {    return value + 1;
 }
 
 /// @brief Start.
-func start() {
-    var future = addOne(41);
+func start() {    var future = addOne(41);
 }
 )";
 

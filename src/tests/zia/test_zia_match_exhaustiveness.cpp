@@ -31,16 +31,14 @@ TEST(ZiaMatchExhaustiveness, WildcardIsExhaustive) {
     const std::string src = R"(
 module Test;
 
-func classify(x: Integer) -> String {
-    return match x {
+func classify(x: Integer) -> String {    return match x {
         1 => "one",
         2 => "two",
         _ => "other"
     };
 }
 
-func start() {
-    Viper.Terminal.Say(classify(3));
+func start() {    Viper.Terminal.Say(classify(3));
 }
 )";
 
@@ -65,15 +63,13 @@ TEST(ZiaMatchExhaustiveness, NonExhaustiveStringWarning) {
     const std::string src = R"(
 module Test;
 
-func classify(x: String) -> Integer {
-    return match x {
+func classify(x: String) -> Integer {    return match x {
         "hello" => 1,
         "world" => 2
     };
 }
 
-func start() {
-    Viper.Terminal.SayInt(classify("hi"));
+func start() {    Viper.Terminal.SayInt(classify("hi"));
 }
 )";
 
@@ -97,15 +93,13 @@ TEST(ZiaMatchExhaustiveness, BooleanFullCoverage) {
     const std::string src = R"(
 module Test;
 
-func describe(b: Boolean) -> String {
-    return match b {
+func describe(b: Boolean) -> String {    return match b {
         true => "yes",
         false => "no"
     };
 }
 
-func start() {
-    Viper.Terminal.Say(describe(true));
+func start() {    Viper.Terminal.Say(describe(true));
 }
 )";
 

@@ -14,13 +14,11 @@ struct Point {
     expose Integer x;
     expose Integer y;
 
-    expose func init(px: Integer, py: Integer) {
-        x = px;
+    expose func init(px: Integer, py: Integer) {        x = px;
         y = py;
     }
 
-    expose func magnitude() -> Integer {
-        // Approximate magnitude using |x| + |y| (Manhattan distance from origin)
+    expose func magnitude() -> Integer {        // Approximate magnitude using |x| + |y| (Manhattan distance from origin)
         var absX = x;
         var absY = y;
         if (absX < 0) { absX = -absX; }
@@ -28,16 +26,13 @@ struct Point {
         return absX + absY;
     }
 
-    expose func add(other: Point) -> Point {
-        return new Point(x + other.x, y + other.y);
+    expose func add(other: Point) -> Point {        return new Point(x + other.x, y + other.y);
     }
 
-    expose func scale(factor: Integer) -> Point {
-        return new Point(x * factor, y * factor);
+    expose func scale(factor: Integer) -> Point {        return new Point(x * factor, y * factor);
     }
 
-    expose func toString() -> String {
-        return "(" + toString(x) + ", " + toString(y) + ")";
+    expose func toString() -> String {        return "(" + toString(x) + ", " + toString(y) + ")";
     }
 }
 
@@ -45,25 +40,20 @@ struct Rectangle {
     expose Integer width;
     expose Integer height;
 
-    expose func init(w: Integer, h: Integer) {
-        width = w;
+    expose func init(w: Integer, h: Integer) {        width = w;
         height = h;
     }
 
-    expose func area() -> Integer {
-        return width * height;
+    expose func area() -> Integer {        return width * height;
     }
 
-    expose func perimeter() -> Integer {
-        return 2 * (width + height);
+    expose func perimeter() -> Integer {        return 2 * (width + height);
     }
 
-    expose func isSquare() -> Boolean {
-        return width == height;
+    expose func isSquare() -> Boolean {        return width == height;
     }
 
-    expose func scaled(factor: Integer) -> Rectangle {
-        return new Rectangle(width * factor, height * factor);
+    expose func scaled(factor: Integer) -> Rectangle {        return new Rectangle(width * factor, height * factor);
     }
 }
 
@@ -72,22 +62,18 @@ struct Color {
     expose Integer g;
     expose Integer b;
 
-    expose func init(red: Integer, green: Integer, blue: Integer) {
-        r = red;
+    expose func init(red: Integer, green: Integer, blue: Integer) {        r = red;
         g = green;
         b = blue;
     }
 
-    expose func brightness() -> Integer {
-        return (r + g + b) / 3;
+    expose func brightness() -> Integer {        return (r + g + b) / 3;
     }
 
-    expose func invert() -> Color {
-        return new Color(255 - r, 255 - g, 255 - b);
+    expose func invert() -> Color {        return new Color(255 - r, 255 - g, 255 - b);
     }
 
-    expose func toHex() -> String {
-        // Simplified hex representation
+    expose func toHex() -> String {        // Simplified hex representation
         return "rgb(" + toString(r) + "," + toString(g) + "," + toString(b) + ")";
     }
 }
@@ -100,8 +86,7 @@ class PointRef {
     expose Integer x;
     expose Integer y;
 
-    expose func init(px: Integer, py: Integer) {
-        x = px;
+    expose func init(px: Integer, py: Integer) {        x = px;
         y = py;
     }
 }
@@ -110,20 +95,17 @@ class PointRef {
 // Functions using value types
 //=============================================================================
 
-func distance(p1: Point, p2: Point) -> Integer {
-    var dx = p2.x - p1.x;
+func distance(p1: Point, p2: Point) -> Integer {    var dx = p2.x - p1.x;
     var dy = p2.y - p1.y;
     if (dx < 0) { dx = -dx; }
     if (dy < 0) { dy = -dy; }
     return dx + dy;
 }
 
-func midpoint(p1: Point, p2: Point) -> Point {
-    return new Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+func midpoint(p1: Point, p2: Point) -> Point {    return new Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Basic value type creation
     //=========================================================================
     var p1 = new Point(3, 4);

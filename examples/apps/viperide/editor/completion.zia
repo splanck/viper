@@ -87,42 +87,27 @@ class CompletionController {
         itemCount   = 0;
 
         // Parse serialised result: each line is   label\tinsertText\tkind\tdetail
-        // Manual forward-scan instead of Str.Split + Seq.get_Length (unreliable).
-        // Str.IndexOf and Str.MidLen are 1-based.
-        var pos      = 1;
-        var totalLen = Str.Length(result);
-        while pos <= totalLen {
-            var nlPos   = Str.IndexOf(Str.Mid(result, pos), "\n");
-            var lineStr = "";
-            if nlPos > 0 {
-                lineStr = Str.MidLen(result, pos, nlPos - 1);
-                pos     = pos + nlPos;
-            } else {
-                lineStr = Str.Mid(result, pos);
-                pos     = totalLen + 1;
+        var lines = Str.Split(result, "\n");
+        var lineIdx = 0;
+        while lineIdx < Seq.get_Length(lines) {
+            var lineStr = Obj.ToString(Seq.Get(lines, lineIdx));
+            lineIdx = lineIdx + 1;
+
+            if Str.Length(lineStr) == 0 {
+                continue;
             }
 
-            if Str.Length(lineStr) > 0 {
-                // Extract label (before first tab) and insertText (after first tab)
-                var tabPos = Str.IndexOf(lineStr, "\t");
-                var label  = lineStr;
-                var ins    = lineStr;
-
-                if tabPos > 0 {
-                    label    = Str.Left(lineStr, tabPos - 1);
-                    var rest = Str.Mid(lineStr, tabPos + 1);
-                    var tab2 = Str.IndexOf(rest, "\t");
-                    if tab2 > 0 {
-                        ins = Str.Left(rest, tab2 - 1);
-                    } else {
-                        ins = rest;
-                    }
-                }
-
-                listbox.AddItem(label);
-                insertTexts.Push(ins);
-                itemCount = itemCount + 1;
+            // Split by tabs: [label, insertText, kind, detail]
+            var parts = Str.Split(lineStr, "\t");
+            var label = Obj.ToString(Seq.Get(parts, 0));
+            var ins = label;
+            if Seq.get_Length(parts) >= 2 {
+                ins = Obj.ToString(Seq.Get(parts, 1));
             }
+
+            listbox.AddItem(label);
+            insertTexts.Push(ins);
+            itemCount = itemCount + 1;
         }
 
         if itemCount == 0 {

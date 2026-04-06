@@ -11,8 +11,7 @@ bind "./_support";
 //=============================================================================
 
 interface Describable {
-    func describe() -> String;
-}
+    func describe() -> String;}
 
 //=============================================================================
 // Entities implementing interfaces
@@ -22,13 +21,11 @@ class Person implements Describable {
     expose String name;
     expose Integer age;
 
-    expose func init(n: String, a: Integer) {
-        name = n;
+    expose func init(n: String, a: Integer) {        name = n;
         age = a;
     }
 
-    expose func describe() -> String {
-        return name + " is " + toString(age) + " years old";
+    expose func describe() -> String {        return name + " is " + toString(age) + " years old";
     }
 }
 
@@ -36,13 +33,11 @@ class Product implements Describable {
     expose String title;
     expose Integer price;
 
-    expose func init(t: String, p: Integer) {
-        title = t;
+    expose func init(t: String, p: Integer) {        title = t;
         price = p;
     }
 
-    expose func describe() -> String {
-        return title + ": $" + toString(price);
+    expose func describe() -> String {        return title + ": $" + toString(price);
     }
 }
 
@@ -51,41 +46,33 @@ class Product implements Describable {
 //=============================================================================
 
 interface Shape {
-    func area() -> Integer;
-    func name() -> String;
-}
+    func area() -> Integer;    func name() -> String;}
 
 class Rectangle implements Shape {
     expose Integer width;
     expose Integer height;
 
-    expose func init(w: Integer, h: Integer) {
-        width = w;
+    expose func init(w: Integer, h: Integer) {        width = w;
         height = h;
     }
 
-    expose func area() -> Integer {
-        return width * height;
+    expose func area() -> Integer {        return width * height;
     }
 
-    expose func name() -> String {
-        return "Rectangle";
+    expose func name() -> String {        return "Rectangle";
     }
 }
 
 class Square implements Shape {
     expose Integer side;
 
-    expose func init(s: Integer) {
-        side = s;
+    expose func init(s: Integer) {        side = s;
     }
 
-    expose func area() -> Integer {
-        return side * side;
+    expose func area() -> Integer {        return side * side;
     }
 
-    expose func name() -> String {
-        return "Square";
+    expose func name() -> String {        return "Square";
     }
 }
 
@@ -93,20 +80,16 @@ class Square implements Shape {
 // Functions accepting interfaces
 //=============================================================================
 
-func printDescription(d: Describable) -> String {
-    return d.describe();
+func printDescription(d: Describable) -> String {    return d.describe();
 }
 
-func getArea(s: Shape) -> Integer {
-    return s.area();
+func getArea(s: Shape) -> Integer {    return s.area();
 }
 
-func getName(s: Shape) -> String {
-    return s.name();
+func getName(s: Shape) -> String {    return s.name();
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Basic interface implementation - Person
     //=========================================================================
     var person = new Person("Alice", 30);

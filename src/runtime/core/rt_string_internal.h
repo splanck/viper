@@ -49,6 +49,19 @@ rt_string rt_string_alloc(size_t len, size_t cap);
 /// @return An immutable empty string (never freed).
 rt_string rt_empty_string(void);
 
+/// @brief Register a live runtime string handle for safe ownership checks.
+/// @param s Runtime string handle.
+void rt_string_register_handle(rt_string s);
+
+/// @brief Remove a string handle from the live-handle registry before free.
+/// @param s Runtime string handle.
+void rt_string_unregister_handle(rt_string s);
+
+/// @brief Release registry storage used for live string-handle validation.
+/// @details Called during process shutdown after runtime-owned strings have
+///          been released.
+void rt_string_registry_shutdown(void);
+
 /// @brief Convert a character (codepoint) position to a byte offset in a UTF-8 string.
 /// @param data The string bytes.
 /// @param byte_len Total byte length.

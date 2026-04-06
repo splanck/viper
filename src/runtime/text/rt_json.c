@@ -827,8 +827,8 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
     // class_id field. Seq objects have RT_SEQ_CLASS_ID (2), Map objects have
     // RT_MAP_CLASS_ID (3), and boxed primitives have class_id 0.
 
-    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    if (hdr && hdr->magic == RT_MAGIC) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (rt_heap_try_get_header(obj, &hdr)) {
         // Check collection types by class_id first
         if (hdr->class_id == RT_SEQ_CLASS_ID) {
             format_array(sb, obj, indent, level);
@@ -1336,8 +1336,8 @@ rt_string rt_json_type_of(void *obj) {
         return rt_string_from_bytes("string", 6);
 
     // Use class_id to distinguish between collections and boxes
-    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    if (hdr && hdr->magic == RT_MAGIC) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (rt_heap_try_get_header(obj, &hdr)) {
         if (hdr->class_id == RT_SEQ_CLASS_ID)
             return rt_string_from_bytes("array", 5);
 

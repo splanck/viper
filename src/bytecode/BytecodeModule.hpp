@@ -25,6 +25,7 @@
 #pragma once
 
 #include "bytecode/Bytecode.hpp"
+#include "il/core/Type.hpp"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -104,6 +105,7 @@ struct BytecodeFunction {
     bool hasReturn;      ///< True if the function returns a value; false for void.
 
     std::vector<uint32_t> code; ///< Bytecode instruction stream (32-bit words).
+    std::vector<uint8_t> localIsString; ///< 1 when the corresponding local slot stores Str.
 
     /// @brief Exception handler ranges active in this function.
     std::vector<ExceptionRange> exceptionRanges;

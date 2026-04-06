@@ -78,6 +78,38 @@ std::string toLowerStr(const std::string &name) {
     return lower;
 }
 
+void appendClassFieldDecls(Sema &sema,
+                           const std::string &typeName,
+                           std::vector<const FieldDecl *> &out) {
+    ClassDecl *decl = sema.findClassDecl(typeName);
+    if (!decl)
+        return;
+    if (!decl->baseClass.empty())
+        appendClassFieldDecls(sema, decl->baseClass, out);
+    for (const auto &member : decl->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (!field->isStatic)
+            out.push_back(field);
+    }
+}
+
+std::vector<const FieldDecl *> collectStructFieldDecls(Sema &sema, const std::string &typeName) {
+    std::vector<const FieldDecl *> out;
+    StructDecl *decl = sema.findStructDecl(typeName);
+    if (!decl)
+        return out;
+    for (const auto &member : decl->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (!field->isStatic)
+            out.push_back(field);
+    }
+    return out;
+}
+
 /// @brief Static dispatch table mapping lowercase method names to CollectionMethod enum.
 const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable() {
     static const std::unordered_map<std::string, CollectionMethod> table = {
@@ -481,32 +513,11 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     }
 
     std::vector<Value> args;
-    args.reserve(expr->args.size() + 1);
+    args.reserve(paramTypes.size() + 1);
     args.push_back(selfValue);
-
-    for (size_t i = 0; i < expr->args.size(); ++i) {
-        auto &arg = expr->args[i];
-        auto result = lowerExpr(arg.value.get());
-        Value argValue = result.value;
-
-        // Use cached param type from methodType instead of resolving from AST
-        if (i < paramTypes.size()) {
-            TypeRef paramType = paramTypes[i];
-            TypeRef argType = sema_.typeOf(arg.value.get());
-            if (paramType && paramType->kind == TypeKindSem::Optional) {
-                TypeRef innerType = paramType->innerType();
-                if (argType && argType->kind == TypeKindSem::Optional) {
-                    argValue = result.value;
-                } else if (argType && argType->kind == TypeKindSem::Unit) {
-                    argValue = Value::null();
-                } else if (innerType) {
-                    argValue = emitOptionalWrap(result.value, innerType);
-                }
-            }
-        }
-
-        args.push_back(argValue);
-    }
+    std::vector<Value> boundArgs =
+        lowerResolvedCallArgs(expr, paramTypes, method ? &method->params : nullptr);
+    args.insert(args.end(), boundArgs.begin(), boundArgs.end());
 
     Type ilReturnType = mapType(returnType);
 
@@ -520,7 +531,7 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
         return {Value::constInt(0), Type(Type::Kind::Void)};
     } else {
         Value result = emitCallRet(ilReturnType, methodName, args);
-        return {result, ilReturnType};
+        return materializeCallResult(result, returnType, ilReturnType);
     }
 }
 
@@ -536,13 +547,6 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
 
     const StructTypeInfo &info = *infoPtr;
 
-    // Lower arguments
-    std::vector<Value> argValues;
-    for (auto &arg : expr->args) {
-        auto result = lowerExpr(arg.value.get());
-        argValues.push_back(result.value);
-    }
-
     // Allocate stack space for the value
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
@@ -554,23 +558,77 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
-    // BUG-010 fix: Check if the struct type has an explicit init method
+    MethodDecl *resolvedInit = sema_.resolvedTypeCallInitDecl(expr);
+    std::string initOwner = sema_.resolvedTypeCallInitOwnerType(expr);
     auto initIt = info.methodMap.find("init");
-    if (initIt != info.methodMap.end()) {
+    if (resolvedInit || initIt != info.methodMap.end()) {
         // Call the explicit init method (like class types do)
-        std::string initName = sema_.loweredMethodName(typeName, initIt->second);
+        MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
+        if (initOwner.empty())
+            initOwner = typeName;
+        std::string initName = sema_.loweredMethodName(initOwner, initDecl);
         if (initName.empty())
-            initName = typeName + ".init";
+            initName = initOwner + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
+        TypeRef initType = sema_.getMethodType(initOwner, initDecl);
+        std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+        std::vector<Value> argValues =
+            lowerResolvedCallArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
         for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
     } else {
-        // No init method - store arguments directly into fields (original behavior)
-        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i) {
+        auto loweredSources = lowerSourceArgs(expr->args);
+        const auto *binding = sema_.callArgBinding(expr);
+        std::vector<const FieldDecl *> fieldDecls = collectStructFieldDecls(sema_, typeName);
+
+        // No init method - store arguments directly into fields.
+        for (size_t i = 0; i < info.fields.size(); ++i) {
             const FieldLayout &field = info.fields[i];
+            Value fieldValue;
+            int sourceIndex = binding && i < binding->fixedParamSources.size()
+                                  ? binding->fixedParamSources[i]
+                                  : (i < loweredSources.size() ? static_cast<int>(i) : -1);
+
+            if (sourceIndex >= 0) {
+                size_t idx = static_cast<size_t>(sourceIndex);
+                TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
+                auto coerced =
+                    coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                fieldValue = coerced.value;
+            } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
+                auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
+                TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
+                auto coerced =
+                    coerceValueToType(initValue.value, initValue.type, initType, field.type);
+                fieldValue = coerced.value;
+            } else {
+                Type ilFieldType = mapType(field.type);
+                switch (ilFieldType.kind) {
+                    case Type::Kind::I1:
+                        fieldValue = Value::constBool(false);
+                        break;
+                    case Type::Kind::I64:
+                    case Type::Kind::I16:
+                    case Type::Kind::I32:
+                        fieldValue = Value::constInt(0);
+                        break;
+                    case Type::Kind::F64:
+                        fieldValue = Value::constFloat(0.0);
+                        break;
+                    case Type::Kind::Str:
+                        fieldValue = emitEmptyString();
+                        break;
+                    case Type::Kind::Ptr:
+                        fieldValue = Value::null();
+                        break;
+                    default:
+                        fieldValue = Value::constInt(0);
+                        break;
+                }
+            }
 
             // GEP to get field address
             unsigned gepId = nextTempId();
@@ -587,7 +645,7 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
             il::core::Instr storeInstr;
             storeInstr.op = Opcode::Store;
             storeInstr.type = mapType(field.type);
-            storeInstr.operands = {fieldAddr, argValues[i]};
+            storeInstr.operands = {fieldAddr, fieldValue};
             storeInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(storeInstr);
         }
@@ -608,13 +666,6 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
 
     const ClassTypeInfo &info = *infoPtr;
 
-    // Lower arguments
-    std::vector<Value> argValues;
-    for (auto &arg : expr->args) {
-        auto result = lowerExpr(arg.value.get());
-        argValues.push_back(result.value);
-    }
-
     // Allocate heap memory for the class using rt_obj_new_i64
     Value ptr = emitCallRet(Type(Type::Kind::Ptr),
                             "rt_obj_new_i64",
@@ -622,27 +673,54 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
                              Value::constInt(static_cast<int64_t>(info.totalSize))});
 
     // Check if the class has an explicit init method
+    MethodDecl *resolvedInit = sema_.resolvedTypeCallInitDecl(expr);
+    std::string initOwner = sema_.resolvedTypeCallInitOwnerType(expr);
     auto initIt = info.methodMap.find("init");
-    if (initIt != info.methodMap.end()) {
+    if (resolvedInit || initIt != info.methodMap.end()) {
         // Call the explicit init method
-        std::string initName = sema_.loweredMethodName(typeName, initIt->second);
+        MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
+        if (initOwner.empty())
+            initOwner = typeName;
+        std::string initName = sema_.loweredMethodName(initOwner, initDecl);
         if (initName.empty())
-            initName = typeName + ".init";
+            initName = initOwner + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
+        TypeRef initType = sema_.getMethodType(initOwner, initDecl);
+        std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+        std::vector<Value> argValues =
+            lowerResolvedCallArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
         for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
     } else {
+        auto loweredSources = lowerSourceArgs(expr->args);
+        const auto *binding = sema_.callArgBinding(expr);
+        std::vector<const FieldDecl *> fieldDecls;
+        appendClassFieldDecls(sema_, typeName, fieldDecls);
+
         // No explicit init - do inline field initialization
         for (size_t i = 0; i < info.fields.size(); ++i) {
             const auto &field = info.fields[i];
             Type ilFieldType = mapType(field.type);
             Value fieldValue;
 
-            if (i < argValues.size()) {
-                fieldValue = argValues[i];
+            int sourceIndex = binding && i < binding->fixedParamSources.size()
+                                  ? binding->fixedParamSources[i]
+                                  : (i < loweredSources.size() ? static_cast<int>(i) : -1);
+            if (sourceIndex >= 0) {
+                size_t idx = static_cast<size_t>(sourceIndex);
+                TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
+                auto coerced =
+                    coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                fieldValue = coerced.value;
+            } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
+                auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
+                TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
+                auto coerced =
+                    coerceValueToType(initValue.value, initValue.type, initType, field.type);
+                fieldValue = coerced.value;
             } else {
                 switch (ilFieldType.kind) {
                     case Type::Kind::I1:
@@ -657,7 +735,7 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
                         fieldValue = Value::constFloat(0.0);
                         break;
                     case Type::Kind::Str:
-                        fieldValue = emitConstStr("");
+                        fieldValue = emitEmptyString();
                         break;
                     case Type::Kind::Ptr:
                         fieldValue = Value::null();

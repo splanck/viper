@@ -5,8 +5,7 @@ bind "./_support";
 // EXPECT_OUT: RESULT: ok
 // EXPECT_ARGS: gamma delta
 
-func start() {
-    var argc = Viper.Environment.GetArgumentCount();
+func start() {    var argc = Viper.Environment.GetArgumentCount();
     assertTrue(argc >= 1, "argc");
     if (argc >= 3) {
         assertEqStr(Viper.Environment.GetArgument(1), "gamma", "arg1");

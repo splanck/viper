@@ -9,8 +9,7 @@ bind "./_support";
 //=============================================================================
 // Test 1: [Type] shorthand — [Integer] desugars to List[Integer]
 //=============================================================================
-func testListShorthand() {
-    var nums: [Integer] = [1, 2, 3, 4, 5];
+func testListShorthand() {    var nums: [Integer] = [1, 2, 3, 4, 5];
     assertEqInt(nums.count(), 5, "shorthand_count");
     assertEqInt(nums.get(0), 1, "shorthand_get_0");
     assertEqInt(nums.get(4), 5, "shorthand_get_4");
@@ -25,8 +24,7 @@ func testListShorthand() {
 //=============================================================================
 // Test 2: Basic try/catch (untyped — existing behavior)
 //=============================================================================
-func testBasicTryCatch() {
-    var caught = false;
+func testBasicTryCatch() {    var caught = false;
     try {
         var x = 1 / 0;
     } catch(e) {
@@ -38,8 +36,7 @@ func testBasicTryCatch() {
 //=============================================================================
 // Test 3: Typed catch — DivideByZero
 //=============================================================================
-func testTypedCatchDivByZero() {
-    var caught = false;
+func testTypedCatchDivByZero() {    var caught = false;
     try {
         var x = 1 / 0;
     } catch(e: DivideByZero) {
@@ -51,8 +48,7 @@ func testTypedCatchDivByZero() {
 //=============================================================================
 // Test 4: Typed catch — wrong type does NOT catch
 //=============================================================================
-func testTypedCatchMismatch() {
-    // Division by zero should NOT be caught by a Bounds handler.
+func testTypedCatchMismatch() {    // Division by zero should NOT be caught by a Bounds handler.
     // The error should propagate to the outer catch-all.
     var caughtInner = false;
     var caughtOuter = false;
@@ -72,8 +68,7 @@ func testTypedCatchMismatch() {
 //=============================================================================
 // Test 5: Typed catch — catch-all "Error" type
 //=============================================================================
-func testTypedCatchAll() {
-    var caught = false;
+func testTypedCatchAll() {    var caught = false;
     try {
         var x = 1 / 0;
     } catch(e: Error) {
@@ -85,8 +80,7 @@ func testTypedCatchAll() {
 //=============================================================================
 // Test 6: Typed catch with finally
 //=============================================================================
-func testTypedCatchFinally() {
-    var caught = false;
+func testTypedCatchFinally() {    var caught = false;
     var finalized = false;
     try {
         var x = 1 / 0;
@@ -99,8 +93,7 @@ func testTypedCatchFinally() {
     assertTrue(finalized, "typed_catch_finally_ran");
 }
 
-func start() {
-    testListShorthand();
+func start() {    testListShorthand();
     testBasicTryCatch();
     testTypedCatchDivByZero();
     testTypedCatchMismatch();

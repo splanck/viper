@@ -27,8 +27,7 @@ TEST(ZiaControlFlow, IfStatement) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x = 1;
+func start() {    var x = 1;
     if (x > 0) {
         Viper.Terminal.Say("yes");
     } else {
@@ -66,8 +65,7 @@ TEST(ZiaControlFlow, WhileLoop) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer i = 0;
+func start() {    var i: Integer = 0;
     while (i < 10) {
         i = i + 1;
     }
@@ -102,8 +100,7 @@ TEST(ZiaControlFlow, ForInLoop) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer sum = 0;
+func start() {    var sum: Integer = 0;
     for (i in 0..5) {
         sum = sum + i;
     }
@@ -150,14 +147,13 @@ TEST(ZiaControlFlow, ForInCollections) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    List[Integer] numbers = [1, 2, 3];
-    Integer sum = 0;
+func start() {    var numbers: List[Integer] = [1, 2, 3];
+    var sum: Integer = 0;
     for (n in numbers) {
         sum = sum + n;
     }
 
-    Map[String, Integer] ages = new Map[String, Integer]();
+    var ages: Map[String, Integer] = new Map[String, Integer]();
     ages.set("Alice", 30);
     ages.set("Bob", 25);
     for ((name, age) in ages) {
@@ -208,19 +204,16 @@ module Test;
 class Player {
     expose Integer state;
 
-    expose func moveUp() {
-        guard state != 0 else { return; }
+    expose func moveUp() {        guard state != 0 else { return; }
         state = state + 1;
     }
 
-    expose func moveDown() {
-        guard (state != 0) else { return; }
+    expose func moveDown() {        guard (state != 0) else { return; }
         state = state - 1;
     }
 }
 
-func start() {
-    Player p = new Player();
+func start() {    var p: Player = new Player();
     p.state = 1;
     p.moveUp();
     p.moveDown();

@@ -10,20 +10,16 @@ bind "./_support";
 // Helper functions for type testing
 //=============================================================================
 
-func intToNumber(i: Integer) -> Number {
-    return i;  // Implicit widening
+func intToNumber(i: Integer) -> Number {    return i;  // Implicit widening
 }
 
-func addNumbers(a: Number, b: Number) -> Number {
-    return a + b;
+func addNumbers(a: Number, b: Number) -> Number {    return a + b;
 }
 
-func compareInts(a: Integer, b: Integer) -> Boolean {
-    return a == b;
+func compareInts(a: Integer, b: Integer) -> Boolean {    return a == b;
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Integer to Number implicit widening
     //=========================================================================
     var i = 42;

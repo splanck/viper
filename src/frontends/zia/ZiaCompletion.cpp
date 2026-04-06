@@ -176,6 +176,8 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
                                                            int line,
                                                            int col) const {
     Context ctx;
+    ctx.line = line;
+    ctx.col = col;
 
     // Find the start of the requested line (1-based).
     size_t lineStart = 0;
@@ -254,7 +256,11 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
 // Type resolution for dotted expressions
 // ---------------------------------------------------------------------------
 
-TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &expr) const {
+TypeRef CompletionEngine::resolveExprType(const Sema &sema,
+                                          const std::string &expr,
+                                          uint32_t fileId,
+                                          int line,
+                                          int col) const {
     if (expr.empty())
         return nullptr;
 
@@ -276,16 +282,22 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
     if (parts.empty())
         return nullptr;
 
-    // Look up the first part in global symbols.
+    // Look up the first part in the most relevant visible scope at the cursor,
+    // then fall back to global symbols.
     TypeRef current;
-    auto globals = sema.getGlobalSymbols();
-    for (const auto &sym : globals) {
-        if (sym.name == parts[0]) {
-            current = sym.type;
-            // For Type symbols, the symbol's *type* is a metatype — the actual
-            // instance type is what we need for member access.  Use as-is;
-            // getMembersOf handles Entity/Value/Ptr kinds.
-            break;
+    if (const ScopedSymbol *scoped =
+            sema.findSymbolAtPosition(parts[0], fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col))) {
+        current = scoped->symbol.type;
+    } else {
+        auto globals = sema.getGlobalSymbols();
+        for (const auto &sym : globals) {
+            if (sym.name == parts[0]) {
+                current = sym.type;
+                // For Type symbols, the symbol's *type* is a metatype — the actual
+                // instance type is what we need for member access.  Use as-is;
+                // getMembersOf handles Entity/Value/Ptr kinds.
+                break;
+            }
         }
     }
 
@@ -311,7 +323,7 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
 
     // Walk remaining parts.
     for (size_t i = 1; i < parts.size(); ++i) {
-        // When current is a Module type (from a namespace alias like "bind GUI = Viper.GUI"),
+        // When current is a Module type (from a namespace alias like "bind Viper.GUI as GUI"),
         // getMembersOf returns nothing useful.  Instead, reconstruct the full class qname by
         // appending the remaining parts to the module's namespace name.
         if (current->kind == TypeKindSem::Module && !current->name.empty()) {
@@ -459,7 +471,11 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     }
 
     // ── Step 4: resolve via expression type (for user-defined class fields) ─
-    TypeRef type = resolveExprType(sema, ctx.triggerExpr);
+    TypeRef type = resolveExprType(sema,
+                                   ctx.triggerExpr,
+                                   cache_.result ? cache_.result->fileId : 0,
+                                   ctx.line,
+                                   ctx.col);
     if (!type)
         return items;
 

@@ -30,8 +30,7 @@ TEST(ZiaListRemoveAt, RemoveAtMethod) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[String] items = new List[String]();
+func start() {    var items: List[String] = new List[String]();
     items.add("a");
     items.add("b");
     items.add("c");
@@ -74,8 +73,7 @@ TEST(ZiaListRemoveAt, RemoveTypeMismatchError) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[String] items = new List[String]();
+func start() {    var items: List[String] = new List[String]();
     items.add("a");
     items.add("b");
     items.add("c");
@@ -106,12 +104,11 @@ TEST(ZiaListRemoveAt, RemoveMatchingTypeWorks) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[Integer] items = new List[Integer]();
+func start() {    var items: List[Integer] = new List[Integer]();
     items.add(10);
     items.add(20);
     items.add(30);
-    Boolean removed = items.remove(20);
+    var removed: Boolean = items.remove(20);
 }
 )";
 

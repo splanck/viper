@@ -43,8 +43,7 @@ TEST(ZiaStaticCalls, ResultOkI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var r = Viper.Result.OkI64(42);
+func start() {    var r = Viper.Result.OkI64(42);
     var v = Viper.Result.UnwrapI64(r);
 }
 )"));
@@ -56,8 +55,7 @@ TEST(ZiaStaticCalls, ResultWithBind) {
 module Test;
 bind Viper.Terminal;
 /// @brief Start.
-func start() {
-    var r = Viper.Result.OkStr("hello");
+func start() {    var r = Viper.Result.OkStr("hello");
     Say(Viper.Result.UnwrapStr(r));
 }
 )"));
@@ -70,8 +68,7 @@ module Test;
 bind Viper.Terminal;
 bind Viper.Text;
 /// @brief Start.
-func start() {
-    Say(Uuid.New());
+func start() {    Say(Uuid.New());
 }
 )"));
 }
@@ -83,8 +80,7 @@ module Test;
 bind Viper.Terminal;
 bind Viper.Crypto;
 /// @brief Start.
-func start() {
-    var hash = Password.Hash("secret");
+func start() {    var hash = Password.Hash("secret");
     Say(hash);
 }
 )"));
@@ -95,8 +91,7 @@ TEST(ZiaStaticCalls, OptionSomeI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var opt = Viper.Option.SomeI64(99);
+func start() {    var opt = Viper.Option.SomeI64(99);
     var v = Viper.Option.UnwrapI64(opt);
 }
 )"));
@@ -108,8 +103,7 @@ TEST(ZiaStaticCalls, EasingLinear) {
 module Test;
 bind Viper.Math;
 /// @brief Start.
-func start() {
-    var v = Easing.Linear(0.5);
+func start() {    var v = Easing.Linear(0.5);
 }
 )"));
 }
@@ -119,8 +113,7 @@ TEST(ZiaStaticCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var lazy = Viper.Lazy.OfI64(42);
+func start() {    var lazy = Viper.Lazy.OfI64(42);
     var v = Viper.Lazy.GetI64(lazy);
 }
 )"));
@@ -130,8 +123,7 @@ TEST(ZiaStaticCalls, RuntimeBuilderApis) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var box = Viper.GUI.MessageBox.NewInfo("Title", "Body");
+func start() {    var box = Viper.GUI.MessageBox.NewInfo("Title", "Body");
     box.AddButton("OK", 1);
     box.SetDefaultButton(1);
     var choice = box.Show();
@@ -154,8 +146,7 @@ TEST(ZiaStaticCalls, RuntimeCollectionConverters) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var seq = Viper.Collections.Seq.New();
+func start() {    var seq = Viper.Collections.Seq.New();
     var list = Viper.Collections.List.FromSeq(seq);
     var set = Viper.Collections.Set.FromSeq(seq);
     var bag = Viper.Collections.Bag.FromSeq(seq);
@@ -175,8 +166,7 @@ TEST(ZiaStaticCalls, SpriteAnimatorSurface) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var anim = Viper.Graphics.SpriteAnimator.New();
+func start() {    var anim = Viper.Graphics.SpriteAnimator.New();
     var added = anim.AddClip("idle", 0, 0, 16, 16);
     var playing = anim.Play("idle");
     var current = anim.Current;
@@ -191,13 +181,11 @@ TEST(ZiaStaticCalls, RuntimeObjectCallbackMethod) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 
-func keepList(x: Viper.Collections.List): Viper.Collections.List {
-    return x;
+func keepList(x: Viper.Collections.List) -> Viper.Collections.List {    return x;
 }
 
 /// @brief Start.
-func start() {
-    var list = Viper.Collections.List.New();
+func start() {    var list = Viper.Collections.List.New();
     var opt = Viper.Option.Some(list);
     var mapped = opt.Map(keepList);
     var out = Viper.Option.Unwrap(mapped);

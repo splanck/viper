@@ -66,8 +66,7 @@ TEST(ZiaTryCatch, BasicTryCatch) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    try {
+func start() {    try {
         var x = 1;
     } catch(e) {
         var y = 2;
@@ -105,8 +104,7 @@ TEST(ZiaTryCatch, TryFinally) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    try {
+func start() {    try {
         var x = 1;
     } finally {
         var cleanup = 0;
@@ -141,8 +139,7 @@ TEST(ZiaTryCatch, TryCatchFinally) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    try {
+func start() {    try {
         var x = 1;
     } catch(e) {
         var y = 2;
@@ -171,8 +168,7 @@ TEST(ZiaTryCatch, ThrowStatement) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    throw 42;
+func start() {    throw 42;
 }
 )";
 
@@ -192,8 +188,7 @@ TEST(ZiaTryCatch, CatchWithoutVariable) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    try {
+func start() {    try {
         var x = 1;
     } catch {
         var y = 2;

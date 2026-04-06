@@ -39,6 +39,9 @@
 #include <string_view>
 #include <vector>
 
+extern "C" void rt_string_register_handle(rt_string s);
+extern "C" void rt_string_unregister_handle(rt_string s);
+
 int main() {
     using il::core::Opcode;
     using il::core::Type;
@@ -89,7 +92,9 @@ int main() {
     ptrArg.ptr = const_cast<char *>(helloLiteral);
     result = callBridge("rt_const_cstr", {ptrArg}, Type::Kind::Str, {Type::Kind::Ptr});
     assert(result.str != nullptr);
-    assert(result.str->data == helloLiteral);
+    assert(rt_string_is_handle(result.str));
+    assert(std::strcmp(rt_string_cstr(result.str), helloLiteral) == 0);
+    assert(rt_str_len(result.str) == 5);
     rt_string hello = result.str;
 
     Slot strArg{};
@@ -249,23 +254,28 @@ int main() {
         assert(!il::vm::detail::lengthWithinLimit(overflowLength, kLimit32));
 
         rt_string_impl simulated{};
+        simulated.magic = RT_STRING_MAGIC;
         simulated.data = const_cast<char *>("overflow");
         simulated.heap = nullptr;
         simulated.literal_len = static_cast<size_t>(overflowLength);
         simulated.literal_refs = 1;
+        rt_string_register_handle(reinterpret_cast<rt_string>(&simulated));
 
         il::vm::StringRef simulatedView =
             il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
         assert(!il::vm::detail::lengthWithinLimit(overflowLength, il::vm::kMaxBridgeStringBytes));
         assert(simulatedView.empty());
+        rt_string_unregister_handle(reinterpret_cast<rt_string>(&simulated));
     }
 
     {
         rt_string_impl bogus{};
+        bogus.magic = RT_STRING_MAGIC;
         bogus.data = const_cast<char *>("corrupt");
         bogus.heap = nullptr;
         bogus.literal_len = static_cast<size_t>(-1);
         bogus.literal_refs = 1;
+        rt_string_register_handle(reinterpret_cast<rt_string>(&bogus));
 
         il::core::Module module;
         il::core::Function func;
@@ -352,6 +362,7 @@ int main() {
         const int64_t expectedTrap =
             static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DomainError));
         assert(vmResult.i64 == expectedTrap);
+        rt_string_unregister_handle(reinterpret_cast<rt_string>(&bogus));
     }
 
     {

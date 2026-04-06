@@ -85,16 +85,13 @@ TEST(ZiaIfaceDispatch, EmitsItableInit) {
 module Test;
 
 interface IShape {
-    func area(): Number;
-}
+    func area() -> Number;}
 
 class Circle implements IShape {
     expose Number radius;
-    expose func area(): Number { return 3.14 * self.radius * self.radius; }
-}
+    expose func area() -> Number { return 3.14 * self.radius * self.radius; }}
 
-func start() {
-    var c = new Circle();
+func start() {    var c = new Circle();
 }
 )";
     CompilerInput input{.source = source, .path = "iface.zia"};
@@ -124,19 +121,15 @@ TEST(ZiaIfaceDispatch, ItableLookupAndCallIndirect) {
 module Test;
 
 interface IGreeter {
-    func greet(): String;
-}
+    func greet() -> String;}
 
 class HelloGreeter implements IGreeter {
-    expose func greet(): String { return "Hello"; }
+    expose func greet() -> String { return "Hello"; }}
+
+func greetWith(g: IGreeter) -> String {    return g.greet();
 }
 
-func greetWith(g: IGreeter): String {
-    return g.greet();
-}
-
-func start() {
-    var h = new HelloGreeter();
+func start() {    var h = new HelloGreeter();
     var msg = greetWith(h);
 }
 )";
@@ -161,23 +154,18 @@ TEST(ZiaIfaceDispatch, MultipleImplementors) {
 module Test;
 
 interface IAnimal {
-    func speak(): String;
-}
+    func speak() -> String;}
 
 class Dog implements IAnimal {
-    expose func speak(): String { return "Woof"; }
-}
+    expose func speak() -> String { return "Woof"; }}
 
 class Cat implements IAnimal {
-    expose func speak(): String { return "Meow"; }
+    expose func speak() -> String { return "Meow"; }}
+
+func animalSpeak(a: IAnimal) -> String {    return a.speak();
 }
 
-func animalSpeak(a: IAnimal): String {
-    return a.speak();
-}
-
-func start() {
-    var d = new Dog();
+func start() {    var d = new Dog();
     var c = new Cat();
     var s1 = animalSpeak(d);
     var s2 = animalSpeak(c);
@@ -205,27 +193,20 @@ TEST(ZiaIfaceDispatch, MultipleSlots) {
 module Test;
 
 interface IShape {
-    func area(): Number;
-    func perimeter(): Number;
-}
+    func area() -> Number;    func perimeter() -> Number;}
 
 class Rect implements IShape {
     expose Number w;
     expose Number h;
-    expose func area(): Number { return self.w * self.h; }
-    expose func perimeter(): Number { return 2.0 * (self.w + self.h); }
+    expose func area() -> Number { return self.w * self.h; }    expose func perimeter() -> Number { return 2.0 * (self.w + self.h); }}
+
+func computeArea(s: IShape) -> Number {    return s.area();
 }
 
-func computeArea(s: IShape): Number {
-    return s.area();
+func computePerimeter(s: IShape) -> Number {    return s.perimeter();
 }
 
-func computePerimeter(s: IShape): Number {
-    return s.perimeter();
-}
-
-func start() {
-    var r = new Rect();
+func start() {    var r = new Rect();
     var a = computeArea(r);
     var p = computePerimeter(r);
 }
@@ -252,8 +233,7 @@ class Foo {
     expose Integer x;
 }
 
-func start() {
-    var f = new Foo();
+func start() {    var f = new Foo();
 }
 )";
     CompilerInput input{.source = source, .path = "iface.zia"};

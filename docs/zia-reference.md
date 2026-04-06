@@ -461,7 +461,7 @@ var r = createRect(x: 10, y: 20, w: 100, h: 50);
 ### Object Creation
 
 ```viper
-new ClassName()         // Create class instance
+new ClassName(args)     // Create a class or struct value
 ```
 
 ### Struct Type Initialization (Struct Literals)
@@ -515,10 +515,12 @@ value as Type           // Type cast
 ### Lambda Expressions
 
 ```viper
-(x) => x + 1                    // Single parameter
-(a, b) => a + b                 // Multiple parameters
-(x: Integer) => x * 2           // Typed parameter
+(x: Integer) => x + 1             // Single parameter
+(a: Integer, b: Integer) => a + b // Multiple parameters
+() => 42                          // No parameters
 ```
+
+Lambda parameters must include explicit type annotations.
 
 ### `is` Type Check
 
@@ -934,9 +936,11 @@ class Derived extends Base {
 ### Creating Instances
 
 ```viper
-var obj = new ClassName();
-obj.init(args);
+var obj = new ClassName(args);
 ```
+
+`new Type(args)` calls `init(...)` when the type defines one. For structs and
+classes without `init`, arguments are matched in field declaration order.
 
 ### Self Reference
 

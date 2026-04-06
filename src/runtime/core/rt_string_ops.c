@@ -56,7 +56,181 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+#include <sched.h>
+#endif
+
 static const size_t kImmortalRefcnt = SIZE_MAX - 1;
+
+#define RT_STRING_REG_EMPTY NULL
+#define RT_STRING_REG_TOMBSTONE ((rt_string)(uintptr_t)1)
+
+typedef struct {
+    rt_string *slots;
+    size_t count;
+    size_t tombstones;
+    size_t capacity;
+    int lock;
+} rt_string_registry_t;
+
+static rt_string_registry_t g_string_registry_;
+
+static uint64_t rt_string_ptr_hash_(const void *p) {
+    uint64_t v = (uint64_t)(uintptr_t)p;
+    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
+    return v ^ (v >> 31);
+}
+
+static void rt_string_registry_lock_(void) {
+    if (__atomic_test_and_set(&g_string_registry_.lock, __ATOMIC_ACQUIRE)) {
+        do {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(&g_string_registry_.lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+static void rt_string_registry_unlock_(void) {
+    __atomic_clear(&g_string_registry_.lock, __ATOMIC_RELEASE);
+}
+
+static int rt_string_registry_slot_is_live_(rt_string slot) {
+    return slot != RT_STRING_REG_EMPTY && slot != RT_STRING_REG_TOMBSTONE;
+}
+
+static int rt_string_registry_grow_locked_(size_t min_capacity) {
+    size_t new_capacity = g_string_registry_.capacity ? g_string_registry_.capacity * 2 : 256;
+    while (new_capacity < min_capacity) {
+        if (new_capacity > SIZE_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+
+    rt_string *new_slots = (rt_string *)calloc(new_capacity, sizeof(rt_string));
+    if (!new_slots)
+        return 0;
+
+    if (g_string_registry_.slots) {
+        const size_t mask = new_capacity - 1;
+        for (size_t i = 0; i < g_string_registry_.capacity; ++i) {
+            rt_string slot = g_string_registry_.slots[i];
+            if (!rt_string_registry_slot_is_live_(slot))
+                continue;
+            size_t idx = (size_t)(rt_string_ptr_hash_(slot) & mask);
+            while (new_slots[idx] != RT_STRING_REG_EMPTY)
+                idx = (idx + 1) & mask;
+            new_slots[idx] = slot;
+        }
+        free(g_string_registry_.slots);
+    }
+
+    g_string_registry_.slots = new_slots;
+    g_string_registry_.capacity = new_capacity;
+    g_string_registry_.tombstones = 0;
+    return 1;
+}
+
+static int rt_string_registry_ensure_capacity_locked_(void) {
+    if (g_string_registry_.capacity == 0)
+        return rt_string_registry_grow_locked_(256);
+    if ((g_string_registry_.count + g_string_registry_.tombstones + 1) * 8 >=
+        g_string_registry_.capacity * 5)
+        return rt_string_registry_grow_locked_(g_string_registry_.capacity * 2);
+    return 1;
+}
+
+static int rt_string_registry_insert_locked_(rt_string s) {
+    if (!s)
+        return 1;
+    if (!rt_string_registry_ensure_capacity_locked_())
+        return 0;
+
+    const size_t mask = g_string_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_string_ptr_hash_(s) & mask);
+    size_t first_tombstone = SIZE_MAX;
+    while (1) {
+        rt_string slot = g_string_registry_.slots[idx];
+        if (slot == s)
+            return 1;
+        if (slot == RT_STRING_REG_EMPTY) {
+            size_t target = first_tombstone != SIZE_MAX ? first_tombstone : idx;
+            if (first_tombstone != SIZE_MAX)
+                g_string_registry_.tombstones--;
+            g_string_registry_.slots[target] = s;
+            g_string_registry_.count++;
+            return 1;
+        }
+        if (slot == RT_STRING_REG_TOMBSTONE && first_tombstone == SIZE_MAX)
+            first_tombstone = idx;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static void rt_string_registry_remove_locked_(rt_string s) {
+    if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
+        return;
+    const size_t mask = g_string_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_string_ptr_hash_(s) & mask);
+    while (1) {
+        rt_string slot = g_string_registry_.slots[idx];
+        if (slot == s) {
+            g_string_registry_.slots[idx] = RT_STRING_REG_TOMBSTONE;
+            g_string_registry_.count--;
+            g_string_registry_.tombstones++;
+            return;
+        }
+        if (slot == RT_STRING_REG_EMPTY)
+            return;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static int rt_string_registry_contains_locked_(const rt_string s) {
+    if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
+        return 0;
+    const size_t mask = g_string_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_string_ptr_hash_(s) & mask);
+    while (1) {
+        rt_string slot = g_string_registry_.slots[idx];
+        if (slot == s)
+            return 1;
+        if (slot == RT_STRING_REG_EMPTY)
+            return 0;
+        idx = (idx + 1) & mask;
+    }
+}
+
+void rt_string_register_handle(rt_string s) {
+    if (!s)
+        return;
+    rt_string_registry_lock_();
+    int ok = rt_string_registry_insert_locked_(s);
+    rt_string_registry_unlock_();
+    if (!ok)
+        rt_trap("rt_string_register_handle: registry alloc");
+}
+
+void rt_string_unregister_handle(rt_string s) {
+    if (!s)
+        return;
+    rt_string_registry_lock_();
+    rt_string_registry_remove_locked_(s);
+    rt_string_registry_unlock_();
+}
+
+void rt_string_registry_shutdown(void) {
+    rt_string_registry_lock_();
+    free(g_string_registry_.slots);
+    g_string_registry_.slots = NULL;
+    g_string_registry_.count = 0;
+    g_string_registry_.tombstones = 0;
+    g_string_registry_.capacity = 0;
+    rt_string_registry_unlock_();
+}
 
 /// @brief Retrieve the heap header associated with a runtime string.
 /// @details Returns `NULL` for literal strings and embedded (SSO) strings that
@@ -82,6 +256,10 @@ static rt_heap_hdr_t *rt_string_header(rt_string s) {
 size_t rt_string_len_bytes(rt_string s) {
     if (!s)
         return 0;
+    if (!rt_string_is_handle((void *)s)) {
+        rt_trap("rt_string_len_bytes: invalid string handle");
+        return 0;
+    }
     // Literal strings (heap == NULL) and embedded strings (heap == RT_SSO_SENTINEL)
     // both store length in literal_len
     if (!s->heap || s->heap == RT_SSO_SENTINEL)
@@ -148,6 +326,7 @@ static rt_string rt_string_alloc_embedded(size_t len) {
     s->literal_len = len;
     s->literal_refs = 1; // Reference count for embedded strings
     s->data[len] = '\0';
+    rt_string_register_handle(s);
     return s;
 }
 
@@ -173,6 +352,7 @@ static rt_string rt_string_wrap(char *payload) {
     s->heap = hdr;
     s->literal_len = 0;
     s->literal_refs = 0;
+    rt_string_register_handle(s);
     return s;
 }
 
@@ -242,6 +422,7 @@ rt_string rt_empty_string(void) {
     candidate->heap = hdr;
     candidate->literal_len = 0;
     candidate->literal_refs = 0;
+    rt_string_register_handle(candidate);
 
     rt_string expected = NULL;
 #if RT_COMPILER_MSVC
@@ -256,8 +437,10 @@ rt_string rt_empty_string(void) {
 #endif
     {
         // Lost the race; discard our candidate and use the published singleton.
+        rt_string_unregister_handle(candidate);
         free(candidate);
-        free((void *)hdr);
+        __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELAXED);
+        rt_heap_release(payload);
         return expected;
     }
     return candidate;
@@ -289,10 +472,15 @@ rt_string rt_str_from_lit(const char *bytes, size_t len) {
     return rt_string_from_bytes(bytes, len);
 }
 
-int8_t rt_string_is_handle(void *p) {
+int8_t rt_string_is_handle(const void *p) {
     if (!p)
         return 0;
-    const rt_string s = (const rt_string)p;
+    rt_string_registry_lock_();
+    int found = rt_string_registry_contains_locked_((rt_string)(uintptr_t)p);
+    rt_string_registry_unlock_();
+    if (!found)
+        return 0;
+    const rt_string s = (const rt_string)(uintptr_t)p;
     return s->magic == RT_STRING_MAGIC ? 1 : 0;
 }
 
@@ -350,6 +538,7 @@ void rt_string_unref(rt_string s) {
         if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            rt_string_unregister_handle(s);
             free(s);
         }
 #else
@@ -361,6 +550,7 @@ void rt_string_unref(rt_string s) {
         if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            rt_string_unregister_handle(s);
             free(s);
         }
 #endif
@@ -369,8 +559,10 @@ void rt_string_unref(rt_string s) {
     if (rt_string_is_immortal_hdr(hdr))
         return;
     size_t next = rt_heap_release(s->data);
-    if (next == 0)
+    if (next == 0) {
+        rt_string_unregister_handle(s);
         free(s);
+    }
 }
 
 /// @brief Convenience wrapper that releases a possibly-null string handle.

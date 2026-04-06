@@ -26,12 +26,11 @@ TEST(ZiaCollections, MapCollection) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Map[String, Integer] ages = new Map[String, Integer]();
+func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
     ages.set("Alice", 30);
     ages.set("Bob", 25);
-    Integer aliceAge = ages.get("Alice");
-    Integer count = ages.count();
+    var aliceAge: Integer = ages.get("Alice");
+    var count: Integer = ages.count();
     Viper.Terminal.SayInt(aliceAge);
     Viper.Terminal.SayInt(count);
 }
@@ -81,11 +80,10 @@ TEST(ZiaCollections, MapIndexAccess) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Map[String, String] names = new Map[String, String]();
+func start() {    var names: Map[String, String] = new Map[String, String]();
     names["one"] = "One";
     names["two"] = "Two";
-    String name = names["one"];
+    var name: String = names["one"];
     Viper.Terminal.Say(name);
 }
 )";
@@ -130,11 +128,10 @@ TEST(ZiaCollections, MapHelpers) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Map[String, Integer] ages = new Map[String, Integer]();
-    Integer initial = ages.getOr("Alice", 0);
-    Boolean inserted = ages.setIfMissing("Alice", 42);
-    Boolean hasAlice = ages.has("Alice");
+func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
+    var initial: Integer = ages.getOr("Alice", 0);
+    var inserted: Boolean = ages.setIfMissing("Alice", 42);
+    var hasAlice: Boolean = ages.has("Alice");
     Viper.Terminal.SayInt(initial);
     Viper.Terminal.SayInt(inserted ? 1 : 0);
     Viper.Terminal.SayInt(hasAlice ? 1 : 0);
@@ -185,8 +182,7 @@ TEST(ZiaCollections, MapKeyTypeEnforced) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Map[Integer, String] names = new Map[Integer, String]();
+func start() {    var names: Map[Integer, String] = new Map[Integer, String]();
     names[1] = "One";
 }
 )";
@@ -210,10 +206,9 @@ TEST(ZiaCollections, EmptyListTypeInference) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    List[Integer] numbers = [];
+func start() {    var numbers: List[Integer] = [];
     numbers.add(42);
-    Integer first = numbers.get(0);
+    var first: Integer = numbers.get(0);
     Viper.Terminal.SayInt(first);
 }
 )";
@@ -244,12 +239,11 @@ class Frog {
     expose Integer x;
 }
 
-func start() {
-    List[Frog] frogs = [];
+func start() {    var frogs: List[Frog] = [];
     var f = new Frog();
     f.x = 5;
     frogs.add(f);
-    Integer count = frogs.count();
+    var count: Integer = frogs.count();
     Viper.Terminal.SayInt(count);
 }
 )";

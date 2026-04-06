@@ -90,8 +90,8 @@ static void appendAutoSemicolon(std::string &src, const std::string &input) {
 
 ZiaReplAdapter::ZiaReplAdapter() {
     bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Fmt = Viper.Fmt");
-    bindStatements_.push_back("bind Obj = Viper.Core.Object");
+    bindStatements_.push_back("bind Viper.Fmt as Fmt");
+    bindStatements_.push_back("bind Viper.Core.Object as Obj");
 }
 
 std::string_view ZiaReplAdapter::languageName() const {
@@ -106,8 +106,8 @@ void ZiaReplAdapter::reset() {
     globalVarDecls_.clear();
 
     bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Fmt = Viper.Fmt");
-    bindStatements_.push_back("bind Obj = Viper.Core.Object");
+    bindStatements_.push_back("bind Viper.Fmt as Fmt");
+    bindStatements_.push_back("bind Viper.Core.Object as Obj");
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ bool ZiaReplAdapter::isTypeDef(const std::string &input) const {
 
 bool ZiaReplAdapter::isVarDecl(const std::string &input) const {
     size_t start = skipWhitespace(input);
-    return startsWithKeyword(input, start, "var") || startsWithKeyword(input, start, "let");
+    return startsWithKeyword(input, start, "var");
 }
 
 bool ZiaReplAdapter::isAssignment(const std::string &input) const {
@@ -195,7 +195,6 @@ bool ZiaReplAdapter::isLikelyExpression(const std::string &input) const {
 
     // Statement keywords — these are never expressions
     static const char *stmtKeywords[] = {"var",
-                                         "let",
                                          "func",
                                          "class",
                                          "struct",
@@ -265,8 +264,6 @@ std::string ZiaReplAdapter::extractTypeName(const std::string &input) const {
 
 std::pair<std::string, std::string> ZiaReplAdapter::extractVarInfo(const std::string &input) const {
     size_t pos = input.find("var ");
-    if (pos == std::string::npos)
-        pos = input.find("let ");
     if (pos == std::string::npos)
         return {"", ""};
 

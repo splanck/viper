@@ -132,6 +132,19 @@ size_t rt_heap_release_deferred(void *payload);
 /// @pre refcnt == 0 (prior rt_heap_release_deferred or external setting).
 void rt_heap_free_zero_ref(void *payload);
 
+/// @brief Safely test whether a pointer is a currently live runtime heap payload.
+/// @param payload Candidate payload pointer.
+/// @return 1 when the pointer belongs to a live runtime heap allocation, 0 otherwise.
+int8_t rt_heap_is_payload(void *payload);
+
+/// @brief Safely recover a heap header from a candidate payload pointer.
+/// @details Unlike @ref rt_heap_hdr, this helper validates that @p payload is a
+///          live runtime allocation before exposing the header pointer.
+/// @param payload Candidate payload pointer.
+/// @param out_hdr Receives the header on success; set to NULL on failure.
+/// @return 1 when @p payload is valid, 0 otherwise.
+int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr);
+
 /// @brief Retrieve the header from a payload pointer.
 /// @details Computes the header address by subtracting sizeof(rt_heap_hdr_t)
 ///          from the payload pointer. Used to access metadata (len, cap,
@@ -139,6 +152,17 @@ void rt_heap_free_zero_ref(void *payload);
 /// @param payload Payload pointer as returned by allocation APIs.
 /// @return Pointer to the associated rt_heap_hdr_t.
 rt_heap_hdr_t *rt_heap_hdr(void *payload);
+
+/// @brief Resize a heap payload while preserving runtime metadata.
+/// @details Reallocates the underlying block, zero-fills any newly exposed
+///          elements, updates len/cap/alloc_size, and keeps the runtime's
+///          allocation registry in sync when the payload moves.
+/// @param payload Existing heap payload pointer.
+/// @param elem_size Element size in bytes for the payload.
+/// @param new_len New logical length.
+/// @param new_cap New capacity in elements.
+/// @return Resized payload pointer, or NULL on allocation failure / invalid input.
+void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t new_cap);
 
 /// @brief Retrieve the payload address from a header pointer.
 /// @details Returns a pointer immediately after the header structure.

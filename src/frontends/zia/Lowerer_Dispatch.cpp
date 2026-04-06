@@ -32,17 +32,21 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
                                             Value selfValue,
                                             CallExpr *expr) {
     TypeRef methodType = sema_.getMethodType(ownerType, method);
+    std::vector<TypeRef> paramTypes;
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
                              : types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function)
+        paramTypes = methodType->paramTypes();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args
     std::vector<Value> args;
-    args.reserve(expr->args.size() + 1);
+    args.reserve(paramTypes.size() + 1);
     args.push_back(selfValue);
-    for (auto &arg : expr->args)
-        args.push_back(lowerExpr(arg.value.get()).value);
+    std::vector<Value> boundArgs =
+        lowerResolvedCallArgs(expr, paramTypes, method ? &method->params : nullptr);
+    args.insert(args.end(), boundArgs.begin(), boundArgs.end());
 
     // Build dispatch table
     std::vector<DispatchEntry> dispatchTable;
@@ -82,7 +86,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
             return {Value::constInt(0), Type(Type::Kind::Void)};
         } else {
             Value result = emitCallRet(ilReturnType, target, args);
-            return {result, ilReturnType};
+            return materializeCallResult(result, returnType, ilReturnType);
         }
     }
 
@@ -148,7 +152,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
     setBlock(endBlock);
     if (ilReturnType.kind == Type::Kind::Void)
         return {Value::constInt(0), Type(Type::Kind::Void)};
-    return {emitLoad(resultSlot, ilReturnType), ilReturnType};
+    return materializeCallResult(emitLoad(resultSlot, ilReturnType), returnType, ilReturnType);
 }
 
 //=============================================================================
@@ -162,17 +166,21 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
                                               Value selfValue,
                                               CallExpr *expr) {
     TypeRef methodType = sema_.getMethodType(ownerType, method);
+    std::vector<TypeRef> paramTypes;
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
                              : types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function)
+        paramTypes = methodType->paramTypes();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args
     std::vector<Value> args;
-    args.reserve(expr->args.size() + 1);
+    args.reserve(paramTypes.size() + 1);
     args.push_back(selfValue);
-    for (auto &arg : expr->args)
-        args.push_back(lowerExpr(arg.value.get()).value);
+    std::vector<Value> boundArgs =
+        lowerResolvedCallArgs(expr, paramTypes, method ? &method->params : nullptr);
+    args.insert(args.end(), boundArgs.begin(), boundArgs.end());
 
     // Look up the method's slot index in the interface
     size_t slotIdx = ifaceInfo.findSlot(slotKey);
@@ -201,7 +209,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
         return {Value::constInt(0), Type(Type::Kind::Void)};
     }
     Value result = emitCallIndirectRet(ilReturnType, fnPtr, args);
-    return {result, ilReturnType};
+    return materializeCallResult(result, returnType, ilReturnType);
 }
 
 } // namespace il::frontends::zia

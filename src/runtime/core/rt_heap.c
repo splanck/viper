@@ -39,6 +39,7 @@
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_pool.h"
+#include "rt_string_internal.h"
 #include "rt_string_intern.h"
 
 #include <assert.h>
@@ -47,6 +48,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+#include <sched.h>
+#endif
 
 //=============================================================================
 // Global shutdown handler
@@ -68,6 +73,8 @@ __attribute__((weak)) void rt_audio_shutdown(void) {}
 /* Legacy context shutdown is defined in rt_context.c. */
 extern void rt_legacy_context_shutdown(void);
 
+static void rt_heap_registry_shutdown_(void);
+
 /// @brief Global shutdown handler called at process exit via atexit().
 /// @details Releases runtime global state in dependency order:
 ///          1. GC finalizer sweep (flush files, close sockets, release GPU/audio handles)
@@ -81,8 +88,190 @@ static void rt_global_shutdown(void) {
     rt_audio_shutdown();
     rt_legacy_context_shutdown();
     rt_string_intern_drain();
+    rt_string_registry_shutdown();
     rt_gc_shutdown();
+    rt_heap_registry_shutdown_();
     rt_pool_shutdown();
+}
+
+//=============================================================================
+// Live Payload Registry
+//=============================================================================
+
+#define RT_HEAP_REG_EMPTY NULL
+#define RT_HEAP_REG_TOMBSTONE ((void *)(uintptr_t)1)
+
+typedef struct {
+    void **slots;
+    size_t count;
+    size_t tombstones;
+    size_t capacity;
+    int lock;
+} rt_heap_registry_t;
+
+static rt_heap_registry_t g_heap_registry_;
+
+static uint64_t rt_heap_ptr_hash_(const void *p) {
+    uint64_t v = (uint64_t)(uintptr_t)p;
+    v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
+    return v ^ (v >> 31);
+}
+
+static void rt_heap_registry_lock_(void) {
+    if (__atomic_test_and_set(&g_heap_registry_.lock, __ATOMIC_ACQUIRE)) {
+        do {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(&g_heap_registry_.lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+static void rt_heap_registry_unlock_(void) {
+    __atomic_clear(&g_heap_registry_.lock, __ATOMIC_RELEASE);
+}
+
+static int rt_heap_registry_slot_is_live_(void *slot) {
+    return slot != RT_HEAP_REG_EMPTY && slot != RT_HEAP_REG_TOMBSTONE;
+}
+
+static int rt_heap_registry_grow_locked_(size_t min_capacity) {
+    size_t new_capacity = g_heap_registry_.capacity ? g_heap_registry_.capacity * 2 : 256;
+    while (new_capacity < min_capacity) {
+        if (new_capacity > SIZE_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+
+    void **new_slots = (void **)calloc(new_capacity, sizeof(void *));
+    if (!new_slots)
+        return 0;
+
+    if (g_heap_registry_.slots) {
+        const size_t mask = new_capacity - 1;
+        for (size_t i = 0; i < g_heap_registry_.capacity; ++i) {
+            void *slot = g_heap_registry_.slots[i];
+            if (!rt_heap_registry_slot_is_live_(slot))
+                continue;
+            size_t idx = (size_t)(rt_heap_ptr_hash_(slot) & mask);
+            while (new_slots[idx] != RT_HEAP_REG_EMPTY)
+                idx = (idx + 1) & mask;
+            new_slots[idx] = slot;
+        }
+        free(g_heap_registry_.slots);
+    }
+
+    g_heap_registry_.slots = new_slots;
+    g_heap_registry_.capacity = new_capacity;
+    g_heap_registry_.tombstones = 0;
+    return 1;
+}
+
+static int rt_heap_registry_ensure_capacity_locked_(void) {
+    if (g_heap_registry_.capacity == 0)
+        return rt_heap_registry_grow_locked_(256);
+    if ((g_heap_registry_.count + g_heap_registry_.tombstones + 1) * 8 >=
+        g_heap_registry_.capacity * 5)
+        return rt_heap_registry_grow_locked_(g_heap_registry_.capacity * 2);
+    return 1;
+}
+
+static int rt_heap_registry_insert_existing_locked_(void *payload) {
+    if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
+        return 0;
+    const size_t mask = g_heap_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_heap_ptr_hash_(payload) & mask);
+    size_t first_tombstone = SIZE_MAX;
+    while (1) {
+        void *slot = g_heap_registry_.slots[idx];
+        if (slot == payload)
+            return 1;
+        if (slot == RT_HEAP_REG_EMPTY) {
+            size_t target = first_tombstone != SIZE_MAX ? first_tombstone : idx;
+            if (first_tombstone != SIZE_MAX)
+                g_heap_registry_.tombstones--;
+            g_heap_registry_.slots[target] = payload;
+            g_heap_registry_.count++;
+            return 1;
+        }
+        if (slot == RT_HEAP_REG_TOMBSTONE && first_tombstone == SIZE_MAX)
+            first_tombstone = idx;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static int rt_heap_registry_insert_locked_(void *payload) {
+    if (!payload)
+        return 1;
+    if (!rt_heap_registry_ensure_capacity_locked_())
+        return 0;
+    return rt_heap_registry_insert_existing_locked_(payload);
+}
+
+static int rt_heap_registry_contains_locked_(void *payload) {
+    if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
+        return 0;
+    const size_t mask = g_heap_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_heap_ptr_hash_(payload) & mask);
+    while (1) {
+        void *slot = g_heap_registry_.slots[idx];
+        if (slot == payload)
+            return 1;
+        if (slot == RT_HEAP_REG_EMPTY)
+            return 0;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static void rt_heap_registry_remove_locked_(void *payload) {
+    if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
+        return;
+    const size_t mask = g_heap_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_heap_ptr_hash_(payload) & mask);
+    while (1) {
+        void *slot = g_heap_registry_.slots[idx];
+        if (slot == payload) {
+            g_heap_registry_.slots[idx] = RT_HEAP_REG_TOMBSTONE;
+            g_heap_registry_.count--;
+            g_heap_registry_.tombstones++;
+            return;
+        }
+        if (slot == RT_HEAP_REG_EMPTY)
+            return;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static int rt_heap_registry_move_locked_(void *old_payload, void *new_payload) {
+    if (old_payload == new_payload)
+        return 1;
+    if (!g_heap_registry_.slots || g_heap_registry_.capacity == 0)
+        return 0;
+    const size_t mask = g_heap_registry_.capacity - 1;
+    size_t idx = (size_t)(rt_heap_ptr_hash_(old_payload) & mask);
+    while (1) {
+        void *slot = g_heap_registry_.slots[idx];
+        if (slot == old_payload) {
+            g_heap_registry_.slots[idx] = RT_HEAP_REG_TOMBSTONE;
+            g_heap_registry_.tombstones++;
+            g_heap_registry_.count--;
+            return rt_heap_registry_insert_existing_locked_(new_payload);
+        }
+        if (slot == RT_HEAP_REG_EMPTY)
+            return 0;
+        idx = (idx + 1) & mask;
+    }
+}
+
+static void rt_heap_registry_shutdown_(void) {
+    free(g_heap_registry_.slots);
+    g_heap_registry_.slots = NULL;
+    g_heap_registry_.count = 0;
+    g_heap_registry_.tombstones = 0;
+    g_heap_registry_.capacity = 0;
 }
 
 /// @brief Recover a heap header from a payload pointer.
@@ -129,6 +318,34 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
 // In release builds, skip validation for performance
 #define RT_HEAP_VALIDATE(hdr) ((void)0)
 #endif
+
+int8_t rt_heap_is_payload(void *payload) {
+    if (!payload)
+        return 0;
+    rt_heap_registry_lock_();
+    int found = rt_heap_registry_contains_locked_(payload);
+    rt_heap_registry_unlock_();
+    return found ? 1 : 0;
+}
+
+int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
+    if (out_hdr)
+        *out_hdr = NULL;
+    if (!payload)
+        return 0;
+    rt_heap_registry_lock_();
+    int found = rt_heap_registry_contains_locked_(payload);
+    rt_heap_registry_unlock_();
+    if (!found)
+        return 0;
+
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
+    if (hdr->magic != RT_MAGIC)
+        return 0;
+    if (out_hdr)
+        *out_hdr = hdr;
+    return 1;
+}
 
 /// @brief Allocate a reference-counted heap block.
 /// @details Reserves memory for the header plus payload, zero-initialises the
@@ -205,10 +422,22 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
         }
     }
 
+    void *payload = rt_heap_data(hdr);
+    rt_heap_registry_lock_();
+    int tracked = rt_heap_registry_insert_locked_(payload);
+    rt_heap_registry_unlock_();
+    if (!tracked) {
+        if (from_pool)
+            rt_pool_free(hdr, total_bytes);
+        else
+            free(hdr);
+        return NULL;
+    }
+
     /* Notify the GC of a new allocation (for auto-trigger). */
     rt_gc_notify_alloc();
 
-    return rt_heap_data(hdr);
+    return payload;
 }
 
 /// @brief Increment the reference count for a payload.
@@ -273,6 +502,10 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
         int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
         size_t alloc_size = hdr->alloc_size;
 
+        rt_heap_registry_lock_();
+        rt_heap_registry_remove_locked_(payload);
+        rt_heap_registry_unlock_();
+
         memset(hdr, 0, sizeof(*hdr));
 
         if (from_pool) {
@@ -330,6 +563,10 @@ void rt_heap_free_zero_ref(void *payload) {
     int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
     size_t alloc_size = hdr->alloc_size;
 
+    rt_heap_registry_lock_();
+    rt_heap_registry_remove_locked_(payload);
+    rt_heap_registry_unlock_();
+
     memset(hdr, 0, sizeof(*hdr));
 
     if (from_pool) {
@@ -346,6 +583,55 @@ void rt_heap_free_zero_ref(void *payload) {
 /// @return Mutable header pointer, or `NULL` when @p payload is `NULL`.
 rt_heap_hdr_t *rt_heap_hdr(void *payload) {
     return payload_to_hdr(payload);
+}
+
+void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t new_cap) {
+    if (!payload)
+        return NULL;
+
+    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    if (!hdr)
+        return NULL;
+    RT_HEAP_VALIDATE(hdr);
+
+    if ((hdr->flags & RT_HEAP_FLAG_POOLED) != 0)
+        return NULL;
+    if (elem_size == 0 && new_cap > 0)
+        return NULL;
+
+    size_t cap = new_cap;
+    if (cap < new_len)
+        cap = new_len;
+
+    size_t payload_bytes = 0;
+    if (cap > 0) {
+        if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / elem_size)
+            return NULL;
+        payload_bytes = cap * elem_size;
+    }
+    size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
+    size_t old_len = hdr->len;
+
+    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
+    if (!resized)
+        return NULL;
+
+    void *new_payload = rt_heap_data(resized);
+    if (new_len > old_len && elem_size > 0) {
+        memset((uint8_t *)new_payload + old_len * elem_size, 0, (new_len - old_len) * elem_size);
+    }
+
+    resized->len = new_len;
+    resized->cap = cap;
+    resized->alloc_size = total_bytes;
+
+    rt_heap_registry_lock_();
+    int moved = rt_heap_registry_move_locked_(payload, new_payload);
+    rt_heap_registry_unlock_();
+    if (!moved)
+        return NULL;
+
+    return new_payload;
 }
 
 /// @brief Convert a header pointer back to its payload address.

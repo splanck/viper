@@ -238,13 +238,13 @@ TEST(ReplBinds, DefaultBinds) {
     auto binds = adapter.listBinds();
     EXPECT_EQ(binds.size(), 3u);
     EXPECT_EQ(binds[0], "bind Viper.Terminal");
-    EXPECT_EQ(binds[1], "bind Fmt = Viper.Fmt");
-    EXPECT_EQ(binds[2], "bind Obj = Viper.Core.Object");
+    EXPECT_EQ(binds[1], "bind Viper.Fmt as Fmt");
+    EXPECT_EQ(binds[2], "bind Viper.Core.Object as Obj");
 }
 
 TEST(ReplBinds, AddBind) {
     ZiaReplAdapter adapter;
-    auto r = adapter.eval("bind Math = Viper.Math");
+    auto r = adapter.eval("bind Viper.Math as Math");
     EXPECT_TRUE(r.success);
 
     auto binds = adapter.listBinds();

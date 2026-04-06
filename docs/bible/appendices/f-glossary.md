@@ -36,7 +36,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **==** (double equals): Equality comparison operator. Checks if two values are the same. Example: `5 == 5` is `true`. Not to be confused with `=`. See also *Comparison operator*, *=*.
 
-**=>**: Arrow syntax used in lambda expressions. Example: `(x) => x * 2` defines a function that doubles its input. See also *Lambda*.
+**=>**: Arrow syntax used in lambda expressions. Example: `(x: Integer) => x * 2` defines a function that doubles its input. See also *Lambda*.
 
 **[ ]** (square brackets): Used to access array elements by index, or to define array types. Example: `numbers[0]` accesses the first element; `[Integer]` is an array of integers. See also *Array*, *Index*.
 
@@ -56,7 +56,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Allocate**: To reserve memory for storing data. When you create a variable or object, the system allocates space in memory to hold it. See also *Memory*, *Heap*, *Stack*.
 
-**Anonymous function**: A function without a name. Created inline where needed. Also called a lambda. Example: `(x) => x * 2`. See also *Lambda*, *Closure*.
+**Anonymous function**: A function without a name. Created inline where needed. Also called a lambda. Example: `(x: Integer) => x * 2`. See also *Lambda*, *Closure*.
 
 **API** (Application Programming Interface) (AY-pee-eye): A set of functions, methods, and protocols that define how software components communicate. Like a waiter in a restaurant - you don't need to know how the kitchen works, you just tell the waiter what you want. See also *Interface*, *Library*.
 
@@ -398,7 +398,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## L
 
-**Lambda** (LAM-duh): An anonymous (unnamed) function, often used inline. Short and concise, created on the fly. Example: `(x) => x * 2` is a lambda that doubles its input. From lambda calculus, a mathematical system. See [Appendix A](a-zia-reference.md). See also *Anonymous function*, *Closure*.
+**Lambda** (LAM-duh): An anonymous (unnamed) function, often used inline. Short and concise, created on the fly. Example: `(x: Integer) => x * 2` is a lambda that doubles its input. From lambda calculus, a mathematical system. See [Appendix A](a-zia-reference.md). See also *Anonymous function*, *Closure*.
 
 **Length**: The number of elements in a collection or characters in a string. `"Hello".length` is 5. `[1, 2, 3].length` is 3. See also *Array*, *String*.
 

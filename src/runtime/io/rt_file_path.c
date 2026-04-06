@@ -145,7 +145,7 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
 int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
     if (out_path)
         *out_path = NULL;
-    if (!path || !path->data)
+    if (!path || !rt_string_is_handle(path) || !path->data)
         return 0;
     if (out_path)
         *out_path = path->data;
@@ -165,7 +165,7 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
 size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
     if (data_out)
         *data_out = NULL;
-    if (!s || !s->data)
+    if (!s || !rt_string_is_handle(s) || !s->data)
         return 0;
     if (data_out)
         *data_out = (const uint8_t *)s->data;

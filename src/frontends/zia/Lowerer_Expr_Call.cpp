@@ -80,6 +80,96 @@ std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
 } // namespace
 
 //=============================================================================
+// Bound Argument Lowering Helpers
+//=============================================================================
+
+std::vector<LowerResult> Lowerer::lowerSourceArgs(const std::vector<CallArg> &args) {
+    std::vector<LowerResult> lowered;
+    lowered.reserve(args.size());
+    for (const auto &arg : args)
+        lowered.push_back(lowerExpr(arg.value.get()));
+    return lowered;
+}
+
+std::vector<Lowerer::Value> Lowerer::lowerResolvedArgs(const std::vector<CallArg> &args,
+                                                       const std::vector<TypeRef> &paramTypes,
+                                                       const std::vector<Param> *params,
+                                                       const Sema::CallArgBinding *binding) {
+    auto lowered = lowerSourceArgs(args);
+
+    if (!binding) {
+        std::vector<Value> fallback;
+        fallback.reserve(args.size());
+        for (size_t i = 0; i < args.size(); ++i) {
+            TypeRef argType = sema_.typeOf(args[i].value.get());
+            TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
+            auto coerced = coerceValueToType(lowered[i].value, lowered[i].type, argType, paramType);
+            fallback.push_back(coerced.value);
+        }
+        return fallback;
+    }
+
+    const bool hasVariadic = params && !params->empty() && params->back().isVariadic;
+    const size_t fixedCount = hasVariadic ? paramTypes.size() - 1 : paramTypes.size();
+
+    std::vector<Value> finalArgs;
+    finalArgs.reserve(paramTypes.size());
+
+    for (size_t i = 0; i < fixedCount; ++i) {
+        int sourceIndex =
+            i < binding->fixedParamSources.size() ? binding->fixedParamSources[i] : -1;
+        if (sourceIndex >= 0) {
+            size_t idx = static_cast<size_t>(sourceIndex);
+            TypeRef argType = sema_.typeOf(args[idx].value.get());
+            auto coerced =
+                coerceValueToType(lowered[idx].value, lowered[idx].type, argType, paramTypes[i]);
+            finalArgs.push_back(coerced.value);
+            continue;
+        }
+
+        if (params && i < params->size() && (*params)[i].defaultValue) {
+            auto defaultResult = lowerExpr((*params)[i].defaultValue.get());
+            TypeRef defaultType = sema_.typeOf((*params)[i].defaultValue.get());
+            auto coerced = coerceValueToType(
+                defaultResult.value, defaultResult.type, defaultType, paramTypes[i]);
+            finalArgs.push_back(coerced.value);
+        }
+    }
+
+    if (hasVariadic && !paramTypes.empty()) {
+        Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
+        TypeRef listType = paramTypes.back();
+        TypeRef elemType = listType ? listType->elementType() : nullptr;
+        Type elemIlType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+
+        for (int sourceIndex : binding->variadicSources) {
+            size_t idx = static_cast<size_t>(sourceIndex);
+            TypeRef argType = sema_.typeOf(args[idx].value.get());
+            auto coerced =
+                coerceValueToType(lowered[idx].value, lowered[idx].type, argType, elemType);
+            Value boxed = emitBoxValue(coerced.value, elemIlType, elemType ? elemType : argType);
+            emitCall(kListAdd, {list, boxed});
+        }
+
+        finalArgs.push_back(list);
+    }
+
+    return finalArgs;
+}
+
+std::vector<Lowerer::Value> Lowerer::lowerResolvedCallArgs(CallExpr *expr,
+                                                           const std::vector<TypeRef> &paramTypes,
+                                                           const std::vector<Param> *params) {
+    return lowerResolvedArgs(expr->args, paramTypes, params, sema_.callArgBinding(expr));
+}
+
+std::vector<Lowerer::Value> Lowerer::lowerResolvedNewArgs(NewExpr *expr,
+                                                          const std::vector<TypeRef> &paramTypes,
+                                                          const std::vector<Param> *params) {
+    return lowerResolvedArgs(expr->args, paramTypes, params, sema_.newArgBinding(expr));
+}
+
+//=============================================================================
 // Built-in Function Call Helper
 //=============================================================================
 
@@ -230,79 +320,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         std::vector<TypeRef> paramTypes;
         if (calleeType)
             paramTypes = calleeType->paramTypes();
-
-        std::vector<Value> args;
-        args.reserve(expr->args.size());
-        for (size_t i = 0; i < expr->args.size(); ++i) {
-            auto result = lowerExpr(expr->args[i].value.get());
-            Value argValue = result.value;
-            if (i < paramTypes.size()) {
-                TypeRef paramType = paramTypes[i];
-                TypeRef argType = sema_.typeOf(expr->args[i].value.get());
-                if (paramType && paramType->kind == TypeKindSem::Optional) {
-                    TypeRef innerType = paramType->innerType();
-                    if (argType && argType->kind == TypeKindSem::Unit)
-                        argValue = Value::null();
-                    else if (argType && argType->kind != TypeKindSem::Optional && innerType)
-                        argValue = emitOptionalWrap(result.value, innerType);
-                } else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
-                           argType->kind == TypeKindSem::Integer) {
-                    unsigned convId = nextTempId();
-                    il::core::Instr convInstr;
-                    convInstr.result = convId;
-                    convInstr.op = Opcode::Sitofp;
-                    convInstr.type = Type(Type::Kind::F64);
-                    convInstr.operands = {argValue};
-                    convInstr.loc = curLoc_;
-                    blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                    argValue = Value::temp(convId);
-                }
-            }
-            args.push_back(argValue);
-        }
-
-        // Pack variadic arguments into a List if the callee has a variadic param.
-        // This must happen before padDefaultArgs which fills missing fixed params.
-        {
-            // Try multiple lookup strategies (name may differ between sema and lowerer)
-            FunctionDecl *varFuncDecl = sema_.resolvedFunctionDecl(expr);
-            if (!varFuncDecl)
-                varFuncDecl = sema_.getFunctionDecl(resolvedFunction);
-            if (!varFuncDecl && expr->callee->kind == ExprKind::Ident) {
-                auto *ident = static_cast<IdentExpr *>(expr->callee.get());
-                varFuncDecl = sema_.getFunctionDecl(ident->name);
-            }
-            // Also check lowered name variants
-            if (!varFuncDecl) {
-                // Try without module prefix
-                auto dotPos = resolvedFunction.rfind('.');
-                if (dotPos != std::string::npos)
-                    varFuncDecl = sema_.getFunctionDecl(resolvedFunction.substr(dotPos + 1));
-            }
-            if (varFuncDecl && !varFuncDecl->params.empty() &&
-                varFuncDecl->params.back().isVariadic) {
-                size_t fixedCount = varFuncDecl->params.size() - 1;
-
-                // Create a new List and pack the excess arguments
-                Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
-                for (size_t vi = fixedCount; vi < args.size(); ++vi) {
-                    TypeRef argType = (vi < expr->args.size())
-                                          ? sema_.typeOf(expr->args[vi].value.get())
-                                          : nullptr;
-                    Type ilArgType = Type(Type::Kind::I64); // default
-                    if (vi < paramTypes.size())
-                        ilArgType = mapType(paramTypes[vi]);
-                    else if (argType)
-                        ilArgType = mapType(argType);
-                    Value boxed = emitBoxValue(args[vi], ilArgType, argType);
-                    emitCall(kListAdd, {list, boxed});
-                }
-
-                // Replace the variadic args with the single List
-                args.erase(args.begin() + static_cast<ptrdiff_t>(fixedCount), args.end());
-                args.push_back(list);
-            }
-        }
+        FunctionDecl *funcDecl = sema_.resolvedFunctionDecl(expr);
+        std::vector<Value> args =
+            lowerResolvedCallArgs(expr, paramTypes, funcDecl ? &funcDecl->params : nullptr);
 
         if (resolvedFunction == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
@@ -310,8 +330,6 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             Value releaseCount = emitManagedReleaseRet(args[0], isString);
             return {releaseCount, Type(Type::Kind::I64)};
         }
-
-        padDefaultArgs(resolvedFunction, args, expr);
         if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(resolvedFunction, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
@@ -721,22 +739,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         }
     }
 
-    // Check for built-in functions and struct type construction
+    // Check for built-in functions
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
-        // Check built-in functions
         auto builtinResult = lowerBuiltinCall(ident->name, expr);
         if (builtinResult)
             return *builtinResult;
-
-        // Check struct type construction
-        auto valueTypeResult = lowerStructTypeConstruction(ident->name, expr);
-        if (valueTypeResult)
-            return *valueTypeResult;
-
-        // Check class type construction (Entity(args) without 'new' keyword)
-        auto entityTypeResult = lowerClassTypeConstruction(ident->name, expr);
-        if (entityTypeResult)
-            return *entityTypeResult;
     }
 
     // Handle direct or indirect function calls
@@ -877,7 +884,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 return {Value::constInt(0), Type(Type::Kind::Void)};
             } else {
                 Value result = emitCallIndirectRet(ilReturnType, actualFuncPtr, closureArgs);
-                return {result, ilReturnType};
+                return materializeCallResult(result, returnType, ilReturnType);
             }
         } else {
             if (ilReturnType.kind == Type::Kind::Void) {
@@ -885,7 +892,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 return {Value::constInt(0), Type(Type::Kind::Void)};
             } else {
                 Value result = emitCallIndirectRet(ilReturnType, funcPtr, args);
-                return {result, ilReturnType};
+                return materializeCallResult(result, returnType, ilReturnType);
             }
         }
     } else {
@@ -922,7 +929,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             return {Value::constInt(0), Type(Type::Kind::Void)};
         } else {
             Value result = emitCallRet(ilReturnType, calleeName, args);
-            return {result, ilReturnType};
+            return materializeCallResult(result, returnType, ilReturnType);
         }
     }
 }
@@ -1011,7 +1018,11 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
             return {Value::constInt(0), Type(Type::Kind::Void)};
         } else {
             Value result = emitCallRet(ilReturnType, mangledName, args);
-            return {result, ilReturnType};
+            TypeRef returnType = nullptr;
+            if (genericDecl && genericDecl->returnType) {
+                returnType = sema_.resolveType(genericDecl->returnType.get());
+            }
+            return materializeCallResult(result, returnType, ilReturnType);
         }
     }
 
@@ -1020,19 +1031,13 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
     Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
 
     // Lower arguments
-    std::vector<Value> args;
     const auto &paramTypes = funcType->paramTypes();
-    for (size_t i = 0; i < expr->args.size(); ++i) {
-        auto result = lowerExpr(expr->args[i].value.get());
-        TypeRef argType = sema_.typeOf(expr->args[i].value.get());
-        TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
-        auto coerced = coerceValueToType(result.value, result.type, argType, paramType);
-        args.push_back(coerced.value);
-    }
-
-    // Queue the instantiated generic function for later lowering
     std::string baseName = mangledName.substr(0, mangledName.find('$'));
     FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
+    std::vector<Value> args =
+        lowerResolvedCallArgs(expr, paramTypes, genericDecl ? &genericDecl->params : nullptr);
+
+    // Queue the instantiated generic function for later lowering
     if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end()) {
         // Mark as defined now to avoid re-queuing, but queue for actual lowering
         definedFunctions_.insert(mangledName);
@@ -1045,7 +1050,7 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
         return {Value::constInt(0), Type(Type::Kind::Void)};
     } else {
         Value result = emitCallRet(ilReturnType, mangledName, args);
-        return {result, ilReturnType};
+        return materializeCallResult(result, returnType, ilReturnType);
     }
 }
 

@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "bytecode/BytecodeVM.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
 #include <cassert>
@@ -237,57 +238,160 @@ L_NOP:
 
 L_DUP:
     *sp = *(sp - 1);
+    setSlotOwnsString(sp, false);
+    if (slotOwnsString(sp - 1) && sp->ptr) {
+        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
+        setSlotOwnsString(sp, true);
+    }
     sp++;
     DISPATCH();
 
 L_DUP2:
     sp[0] = sp[-2];
     sp[1] = sp[-1];
+    setSlotOwnsString(sp, false);
+    setSlotOwnsString(sp + 1, false);
+    if (slotOwnsString(sp - 2) && sp[0].ptr) {
+        rt_str_retain_maybe(static_cast<rt_string>(sp[0].ptr));
+        setSlotOwnsString(sp, true);
+    }
+    if (slotOwnsString(sp - 1) && sp[1].ptr) {
+        rt_str_retain_maybe(static_cast<rt_string>(sp[1].ptr));
+        setSlotOwnsString(sp + 1, true);
+    }
     sp += 2;
     DISPATCH();
 
 L_POP:
+    releaseOwnedString(sp - 1);
     sp--;
     DISPATCH();
 
 L_POP2:
+    releaseOwnedString(sp - 1);
+    releaseOwnedString(sp - 2);
     sp -= 2;
     DISPATCH();
 
 L_SWAP: {
     BCSlot tmp = sp[-1];
+    const bool tmpOwns = slotOwnsString(sp - 1);
     sp[-1] = sp[-2];
     sp[-2] = tmp;
+    const bool lowerOwns = slotOwnsString(sp - 2);
+    setSlotOwnsString(sp - 1, lowerOwns);
+    setSlotOwnsString(sp - 2, tmpOwns);
     DISPATCH();
 }
 
 L_ROT3: {
     BCSlot tmp = sp[-1];
+    const bool tmpOwns = slotOwnsString(sp - 1);
     sp[-1] = sp[-2];
     sp[-2] = sp[-3];
     sp[-3] = tmp;
+    const bool secondOwns = slotOwnsString(sp - 2);
+    const bool firstOwns = slotOwnsString(sp - 3);
+    setSlotOwnsString(sp - 1, secondOwns);
+    setSlotOwnsString(sp - 2, firstOwns);
+    setSlotOwnsString(sp - 3, tmpOwns);
     DISPATCH();
 }
 
     // Local Variable Operations
 L_LOAD_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
-    *sp++ = locals[slot];
+    *sp = locals[slot];
+    if (localIsString(*fp_, slot) && sp->ptr) {
+        if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocal(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
+        setSlotOwnsString(sp, true);
+    } else {
+        setSlotOwnsString(sp, false);
+    }
+    sp++;
     DISPATCH();
 }
 
 L_STORE_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
-    locals[slot] = *--sp;
+    --sp;
+    BCSlot *src = sp;
+    BCSlot *dst = locals + slot;
+    const bool srcOwns = slotOwnsString(src);
+    const BCSlot value = *src;
+    if (localIsString(*fp_, slot)) {
+        releaseOwnedString(dst);
+        *dst = value;
+        if (value.ptr) {
+            if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocal(threaded)")) {
+                setSlotOwnsString(src, false);
+                setSlotOwnsString(dst, false);
+                SYNC_STATE();
+                return;
+            }
+            if (!srcOwns)
+                rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
+            setSlotOwnsString(dst, true);
+        } else {
+            setSlotOwnsString(dst, false);
+        }
+    } else {
+        *dst = value;
+        setSlotOwnsString(dst, false);
+    }
+    setSlotOwnsString(src, false);
     DISPATCH();
 }
 
 L_LOAD_LOCAL_W:
-    *sp++ = locals[decodeArg16(instr)];
+    *sp = locals[decodeArg16(instr)];
+    if (localIsString(*fp_, decodeArg16(instr)) && sp->ptr) {
+        if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocalW(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
+        setSlotOwnsString(sp, true);
+    } else {
+        setSlotOwnsString(sp, false);
+    }
+    sp++;
     DISPATCH();
 
 L_STORE_LOCAL_W:
-    locals[decodeArg16(instr)] = *--sp;
+    --sp;
+    {
+        uint16_t slot = decodeArg16(instr);
+        BCSlot *src = sp;
+        BCSlot *dst = locals + slot;
+        const bool srcOwns = slotOwnsString(src);
+        const BCSlot value = *src;
+        if (localIsString(*fp_, slot)) {
+            releaseOwnedString(dst);
+            *dst = value;
+            if (value.ptr) {
+                if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocalW(threaded)")) {
+                    setSlotOwnsString(src, false);
+                    setSlotOwnsString(dst, false);
+                    SYNC_STATE();
+                    return;
+                }
+                if (!srcOwns)
+                    rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
+                setSlotOwnsString(dst, true);
+            } else {
+                setSlotOwnsString(dst, false);
+            }
+        } else {
+            *dst = value;
+            setSlotOwnsString(dst, false);
+        }
+        setSlotOwnsString(src, false);
+    }
     DISPATCH();
 
 L_INC_LOCAL:
@@ -301,11 +405,13 @@ L_DEC_LOCAL:
     // Constant Loading
 L_LOAD_I8:
     sp->i64 = decodeArgI8_0(instr);
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
 L_LOAD_I16:
     sp->i64 = decodeArgI16(instr);
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
@@ -313,17 +419,20 @@ L_LOAD_I32: {
     // Extended format: the 32-bit value is stored in the next code word.
     int32_t val = static_cast<int32_t>(code[pc++]);
     sp->i64 = val;
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 }
 
 L_LOAD_I64:
     sp->i64 = module_->i64Pool[decodeArg16(instr)];
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
 L_LOAD_F64:
     sp->f64 = module_->f64Pool[decodeArg16(instr)];
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
@@ -332,22 +441,35 @@ L_LOAD_STR: {
     // Use the cached rt_string object (not raw C string!)
     // The runtime expects rt_string (pointer to rt_string_impl struct)
     sp->ptr = (idx < stringCache_.size()) ? stringCache_[idx] : nullptr;
+    if (sp->ptr) {
+        if (!validateStringHandle(sp->ptr, "BytecodeVM::LOAD_STR(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
+        setSlotOwnsString(sp, true);
+    } else {
+        setSlotOwnsString(sp, false);
+    }
     sp++;
     DISPATCH();
 }
 
 L_LOAD_NULL:
     sp->ptr = nullptr;
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
 L_LOAD_ZERO:
     sp->i64 = 0;
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
 L_LOAD_ONE:
     sp->i64 = 1;
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
@@ -355,8 +477,10 @@ L_LOAD_GLOBAL: {
     uint16_t gIdx = decodeArg16(instr);
     if (gIdx < globals_.size()) {
         *sp = globals_[gIdx];
+        setSlotOwnsString(sp, false);
     } else {
         sp->i64 = 0;
+        setSlotOwnsString(sp, false);
     }
     sp++;
     DISPATCH();
@@ -368,6 +492,7 @@ L_STORE_GLOBAL: {
     if (gIdx < globals_.size()) {
         globals_[gIdx] = *sp;
     }
+    setSlotOwnsString(sp, false);
     DISPATCH();
 }
 
@@ -851,8 +976,10 @@ L_ALLOCA: {
     }
 
     void *ptr = allocaBuffer_.data() + allocaTop_;
+    std::memset(ptr, 0, static_cast<size_t>(size));
     allocaTop_ += static_cast<size_t>(size);
     sp->ptr = ptr;
+    setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 }
@@ -977,6 +1104,7 @@ L_LOAD_PTR_MEM: {
     void *val;
     std::memcpy(&val, addr, sizeof(val));
     sp[-1].ptr = val;
+    setSlotOwnsString(sp - 1, false);
     DISPATCH();
 }
 
@@ -1019,22 +1147,49 @@ L_STORE_PTR_MEM: {
     void *val = (--sp)->ptr;
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
+    setSlotOwnsString(sp, false);
+    setSlotOwnsString(sp + 1, false);
     DISPATCH();
 }
 
 L_LOAD_STR_MEM: {
-    // String handles are pointer-sized; semantically identical to LOAD_PTR_MEM.
-    void *val;
+    rt_string val = nullptr;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].ptr = val;
+    if (val) {
+        if (!validateStringHandle(val, "BytecodeVM::LOAD_STR_MEM(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(val);
+        setSlotOwnsString(sp - 1, true);
+    } else {
+        setSlotOwnsString(sp - 1, false);
+    }
     DISPATCH();
 }
 
 L_STORE_STR_MEM: {
-    // String handles are pointer-sized; semantically identical to STORE_PTR_MEM.
-    void *val = (--sp)->ptr;
+    BCSlot *valueSlot = --sp;
+    rt_string incoming = static_cast<rt_string>(valueSlot->ptr);
+    const bool incomingOwns = slotOwnsString(valueSlot);
     void *ptr = (--sp)->ptr;
-    std::memcpy(ptr, &val, sizeof(val));
+    rt_string current = nullptr;
+    std::memcpy(&current, ptr, sizeof(current));
+    if (current && !validateStringHandle(current, "BytecodeVM::STORE_STR_MEM(current, threaded)")) {
+        SYNC_STATE();
+        return;
+    }
+    rt_str_release_maybe(current);
+    if (incoming && !validateStringHandle(incoming, "BytecodeVM::STORE_STR_MEM(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
+    if (incoming && !incomingOwns)
+        rt_str_retain_maybe(incoming);
+    std::memcpy(ptr, &incoming, sizeof(incoming));
+    setSlotOwnsString(valueSlot, false);
+    setSlotOwnsString(sp, false);
     DISPATCH();
 }
 
@@ -1125,8 +1280,21 @@ L_CALL_NATIVE: {
     BCSlot result{};
 
     if (runtimeBridgeEnabled_) {
+        auto preservedArgs =
+            cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+        struct RuntimeArgGuard {
+            const BytecodeVM *vm;
+            std::string_view name;
+            std::vector<BCSlot> &args;
+
+            ~RuntimeArgGuard() {
+                vm->releaseRuntimeStringArgs(name, args);
+            }
+        } argGuard{this, ref.name, preservedArgs};
+
         // Use RuntimeBridge for native function calls
-        il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(args);
+        BCSlot *callArgs = preservedArgs.empty() ? args : preservedArgs.data();
+        il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(callArgs);
         std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
 
         il::vm::RuntimeCallContext ctx;
@@ -1144,9 +1312,18 @@ L_CALL_NATIVE: {
         it->second(args, argCount, &result);
     }
 
+    dismissConsumedStringArgs(ref.name, args, argCount);
+    releaseCallArgs(args, argCount);
+
     sp -= argCount;
     if (ref.hasReturn) {
         *sp++ = result;
+        const auto *sig = il::runtime::findRuntimeSignature(ref.name);
+        if (sig && sig->retType.kind == il::core::Type::Kind::Str && result.ptr) {
+            setSlotOwnsString(sp - 1, true);
+        } else {
+            setSlotOwnsString(sp - 1, false);
+        }
     }
     DISPATCH();
 }
@@ -1177,6 +1354,9 @@ L_CALL_INDIRECT: {
         // This is needed because call() expects args at the top of stack
         for (int i = 0; i < argCount; ++i) {
             callee[i] = args[i];
+            setSlotOwnsString(callee + i, slotOwnsString(args + i));
+            if (callee + i != args + i)
+                setSlotOwnsString(args + i, false);
         }
         sp = callee + argCount; // Adjust stack pointer
 
@@ -1201,16 +1381,21 @@ L_CALL_INDIRECT: {
 }
 
 L_RETURN: {
-    BCSlot result = *--sp;
+    BCSlot *resultSlot = --sp;
+    BCSlot result = *resultSlot;
+    const bool resultOwnsString = slotOwnsString(resultSlot);
+    setSlotOwnsString(resultSlot, false);
     SYNC_STATE();
     sp_ = sp;
     if (!popFrame()) {
         *sp_++ = result;
+        setSlotOwnsString(sp_ - 1, resultOwnsString);
         state_ = VMState::Halted;
         return;
     }
     RELOAD_STATE();
     *sp++ = result;
+    setSlotOwnsString(sp - 1, resultOwnsString);
     DISPATCH();
 }
 

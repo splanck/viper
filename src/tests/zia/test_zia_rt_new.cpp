@@ -42,8 +42,7 @@ TEST(ZiaRtNew, FrozenSetNew) {
 module TestFS;
 bind Viper.Collections;
 /// @brief Start.
-func start() {
-    var s = new Seq();
+func start() {    var s = new Seq();
     var x = new FrozenSet(s);
 }
 )"));
@@ -55,8 +54,7 @@ TEST(ZiaRtNew, FrozenMapNew) {
 module TestFM;
 bind Viper.Collections;
 /// @brief Start.
-func start() {
-    var keys = new Seq();
+func start() {    var keys = new Seq();
     var vals = new Seq();
     var x = new FrozenMap(keys, vals);
 }
@@ -69,8 +67,7 @@ TEST(ZiaRtNew, VersionNew) {
 module TestVer;
 bind Viper.Text;
 /// @brief Start.
-func start() {
-    var v = new Version("1.0.0");
+func start() {    var v = new Version("1.0.0");
 }
 )"));
 }
@@ -81,8 +78,7 @@ TEST(ZiaRtNew, CompiledPatternNew) {
 module TestCP;
 bind Viper.Text;
 /// @brief Start.
-func start() {
-    var p = new CompiledPattern("hello.*");
+func start() {    var p = new CompiledPattern("hello.*");
 }
 )"));
 }
@@ -93,8 +89,7 @@ TEST(ZiaRtNew, ScannerNew) {
 module TestScanner;
 bind Viper.Text;
 /// @brief Start.
-func start() {
-    var s = new Scanner("hello world");
+func start() {    var s = new Scanner("hello world");
 }
 )"));
 }
@@ -105,8 +100,7 @@ TEST(ZiaRtNew, DateOnlyNew) {
 module TestDate;
 bind Viper.Time;
 /// @brief Start.
-func start() {
-    var d = new DateOnly();
+func start() {    var d = new DateOnly();
 }
 )"));
 }
@@ -117,8 +111,7 @@ TEST(ZiaRtNew, BinFileNew) {
 module TestBF;
 bind Viper.IO;
 /// @brief Start.
-func start() {
-    var f = new BinFile("/tmp/test.dat", "rw");
+func start() {    var f = new BinFile("/tmp/test.dat", "rw");
 }
 )"));
 }
@@ -129,8 +122,7 @@ TEST(ZiaRtNew, LineReaderNew) {
 module TestLR;
 bind Viper.IO;
 /// @brief Start.
-func start() {
-    var r = new LineReader("/tmp/test.txt");
+func start() {    var r = new LineReader("/tmp/test.txt");
 }
 )"));
 }
@@ -141,8 +133,7 @@ TEST(ZiaRtNew, LineWriterNew) {
 module TestLW;
 bind Viper.IO;
 /// @brief Start.
-func start() {
-    var w = new LineWriter("/tmp/test_out.txt");
+func start() {    var w = new LineWriter("/tmp/test_out.txt");
 }
 )"));
 }

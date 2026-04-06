@@ -7,17 +7,14 @@ bind "./_support";
 // Test: Lambda expressions and closures
 
 // Higher-order function that takes a lambda
-func applyTwice(f: (Integer) -> Integer, x: Integer) -> Integer {
-    return f(f(x));
+func applyTwice(f: (Integer) -> Integer, x: Integer) -> Integer {    return f(f(x));
 }
 
 // Higher-order function that returns a value computed by lambda
-func compute(a: Integer, b: Integer, op: (Integer, Integer) -> Integer) -> Integer {
-    return op(a, b);
+func compute(a: Integer, b: Integer, op: (Integer, Integer) -> Integer) -> Integer {    return op(a, b);
 }
 
-func start() {
-    // Test 1: Simple lambda with single parameter
+func start() {    // Test 1: Simple lambda with single parameter
     var addOne = (x: Integer) => x + 1;
     assertEqInt(addOne(5), 6, "simple_lambda");
 

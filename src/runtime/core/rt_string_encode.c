@@ -36,6 +36,7 @@
 #include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_string.h"
+#include "rt_string_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -70,6 +71,8 @@ rt_string rt_str_chr(int64_t code) {
 int64_t rt_str_asc(rt_string s) {
     if (!s)
         rt_trap("rt_str_asc: null");
+    if (!rt_string_is_handle((void *)s))
+        rt_trap("rt_str_asc: invalid string handle");
     size_t len = (size_t)rt_str_len(s);
     if (len == 0 || !s->data)
         return 0;
@@ -88,6 +91,10 @@ const char *rt_string_cstr(rt_string s) {
         rt_trap("rt_string_cstr: null string");
         return "";
     }
+    if (!rt_string_is_handle((void *)s)) {
+        rt_trap("rt_string_cstr: invalid string handle");
+        return "";
+    }
     if (!s->data) {
         rt_trap("rt_string_cstr: null data");
         return "";
@@ -96,26 +103,16 @@ const char *rt_string_cstr(rt_string s) {
 }
 
 /// @brief Wrap a literal C string in a runtime string handle.
-/// @details Allocates a minimal @ref rt_string structure that references the
-///          caller-supplied character array without copying.  The wrapper marks
-///          the storage as literal so the runtime avoids attempting to free it
-///          during retain/release transitions.
-/// @param c Null-terminated string owned by the caller.
-/// @return Runtime string handle borrowing @p c, or @c NULL when @p c is null.
+/// @details Copies the supplied bytes into runtime-owned storage so callers may
+///          pass string literals, stack buffers, or transient heap memory
+///          safely. Empty strings reuse the shared empty-string singleton.
+/// @param c Null-terminated string to copy.
+/// @return Runtime-owned string handle, or @c NULL when @p c is null.
 rt_string rt_const_cstr(const char *c) {
     if (!c)
         return NULL;
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    if (!s) {
-        rt_trap("rt_const_cstr: alloc");
-        return NULL;
-    }
-    s->magic = RT_STRING_MAGIC;
-    s->data = (char *)(uintptr_t)c;
-    s->heap = NULL;
-    s->literal_len = strlen(c);
-    // BUG-VL-003 fix: Make literal strings immortal so they're never freed
-    // This prevents use-after-free when string literals are used in loops
-    s->literal_refs = SIZE_MAX;
-    return s;
+    size_t len = strlen(c);
+    if (len == 0)
+        return rt_str_empty();
+    return rt_string_from_bytes(c, len);
 }

@@ -145,6 +145,9 @@ examples/bin/
 *.fbx
 *.zip
 
+# --- Scratch / exploratory ---
+scratch/
+
 # --- Root-level scratch/analysis files ---
 viper_issues*.txt
 viper_runtime_*.md

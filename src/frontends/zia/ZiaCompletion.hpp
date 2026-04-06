@@ -162,6 +162,9 @@ class CompletionEngine {
         std::string prefix;
         /// Column at which prefix begins (insertion point for replacement)
         int replaceStart{0};
+        /// 1-based line and 0-based column of the completion request.
+        int line{1};
+        int col{0};
     };
 
     /// @brief Extract completion context from source at (line, col).
@@ -209,11 +212,17 @@ class CompletionEngine {
     //=========================================================================
 
     /// @brief Resolve the Zia TypeRef for a dotted expression string.
-    /// @details Walks the expression step-by-step via global symbols and member
-    /// types.  For example "shell.app" first resolves `shell` from globals,
-    /// then looks up field `app` on the resulting type.
+    /// @details Walks the expression step-by-step via the visible symbol at the
+    /// completion cursor, falling back to global symbols when no local match is
+    /// available. For example "shell.app" first resolves `shell` from the
+    /// innermost visible scope or globals, then looks up field `app` on the
+    /// resulting type.
     /// @return TypeRef (may be unknown if resolution fails).
-    TypeRef resolveExprType(const Sema &sema, const std::string &expr) const;
+    TypeRef resolveExprType(const Sema &sema,
+                            const std::string &expr,
+                            uint32_t fileId,
+                            int line,
+                            int col) const;
 
     /// @}
     //=========================================================================

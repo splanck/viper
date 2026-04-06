@@ -713,6 +713,8 @@ set(ZIA_LANG_TESTS
         36_class_properties
         37_string_instance_methods
         38_deinit_bindings
+        39_named_arguments
+        40_variadic_functions
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

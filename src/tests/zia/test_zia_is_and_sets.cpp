@@ -72,8 +72,7 @@ class Dog extends Animal {
     expose String breed;
 }
 
-func start() {
-    var dog = new Dog();
+func start() {    var dog = new Dog();
     var result: Boolean = dog is Dog;
     Viper.Terminal.SayInt(result ? 1 : 0);
 }
@@ -114,8 +113,7 @@ class Dog extends Animal {
     expose Integer age;
 }
 
-func start() {
-    var dog = new Dog();
+func start() {    var dog = new Dog();
     var isAnimal: Boolean = dog is Animal;
     Viper.Terminal.SayInt(isAnimal ? 1 : 0);
 }
@@ -147,8 +145,7 @@ TEST(ZiaSetLiteral, BasicSetLiteral) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var s = {1, 2, 3};
+func start() {    var s = {1, 2, 3};
 }
 )";
     CompilerInput input{.source = source, .path = "set_basic.zia"};
@@ -180,8 +177,7 @@ TEST(ZiaSetLiteral, EmptySetLiteral) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var s = {42};
+func start() {    var s = {42};
 }
 )";
     CompilerInput input{.source = source, .path = "set_single.zia"};
@@ -207,8 +203,7 @@ TEST(ZiaSetLiteral, StringSetLiteral) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var s = {"hello", "world"};
+func start() {    var s = {"hello", "world"};
 }
 )";
     CompilerInput input{.source = source, .path = "set_strings.zia"};

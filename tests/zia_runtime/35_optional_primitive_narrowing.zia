@@ -2,8 +2,7 @@ module RuntimeTest35;
 
 bind Viper.Terminal;
 
-func requireValue(x: Integer?) -> Integer {
-    if (x == null) {
+func requireValue(x: Integer?) -> Integer {    if (x == null) {
         return -1;
     }
 
@@ -12,8 +11,7 @@ func requireValue(x: Integer?) -> Integer {
     return y;
 }
 
-func start() {
-    var direct = requireValue(42);
+func start() {    var direct = requireValue(42);
     if (direct != 42) {
         Viper.Terminal.Say("FAIL: guard_narrowing");
         return;

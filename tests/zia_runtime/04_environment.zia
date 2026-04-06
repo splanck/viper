@@ -8,8 +8,7 @@ bind "./_support";
 // COVER: Viper.Environment.GetArgument
 // COVER: Viper.Environment.GetCommandLine
 
-func start() {
-    var count = Viper.Environment.GetArgumentCount();
+func start() {    var count = Viper.Environment.GetArgumentCount();
     assertTrue(count >= 1, "argc");
     if (count >= 3) {
         assertEqStr(Viper.Environment.GetArgument(1), "alpha", "arg1");

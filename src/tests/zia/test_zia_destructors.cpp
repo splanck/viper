@@ -89,8 +89,7 @@ class Connection {
     }
 }
 
-func start() {
-    var c = new Connection();
+func start() {    var c = new Connection();
 }
 )";
 
@@ -130,8 +129,7 @@ class Logger {
     }
 }
 
-func start() {
-    var l = new Logger();
+func start() {    var l = new Logger();
 }
 )";
 
@@ -156,8 +154,7 @@ class Point {
     expose Integer y;
 }
 
-func start() {
-    var p = new Point();
+func start() {    var p = new Point();
 }
 )";
 
@@ -184,8 +181,7 @@ class Resource {
     }
 }
 
-func start() {
-    var r = new Resource();
+func start() {    var r = new Resource();
 }
 )";
 
@@ -214,8 +210,7 @@ module Test;
 class Handle {
     expose Integer id;
 
-    func getId() -> Integer {
-        return self.id;
+    func getId() -> Integer {        return self.id;
     }
 
     deinit {
@@ -223,8 +218,7 @@ class Handle {
     }
 }
 
-func start() {
-    var h = new Handle();
+func start() {    var h = new Handle();
 }
 )";
 
@@ -250,8 +244,7 @@ class Resource {
     deinit { }
 }
 
-func start() {
-    var r = new Resource();
+func start() {    var r = new Resource();
     Release(r);
 }
 )";

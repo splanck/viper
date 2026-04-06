@@ -32,6 +32,7 @@
 
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_string_internal.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -497,10 +498,12 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
         }
         memcpy(payload, buffer, len + 1);
 
+        s->magic = RT_STRING_MAGIC;
         s->data = payload;
         s->heap = rt_heap_hdr(payload);
         s->literal_len = 0;
         s->literal_refs = 0;
+        rt_string_register_handle(s);
     }
 
     *out_line = s;

@@ -20,7 +20,7 @@
 ///                            delegates to getRuntimeMembers() for Ptr types
 /// - `getRuntimeMembers(cls)` — methods + properties from the RuntimeRegistry
 /// - `getTypeNames()`       — names of all class/struct/interface declarations
-/// - `getBoundModuleNames()` — short aliases from `bind Alias = Namespace;`
+/// - `getBoundModuleNames()` — short aliases from `bind Namespace as Alias;`
 /// - `getModuleExports(mod)` — exported symbols of a bound file module
 ///
 /// @see Sema.hpp for declarations and documentation.

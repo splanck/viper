@@ -34,22 +34,19 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
-func greet(p: Person?) {
-    if (p == null) {
+func greet(p: Person?) {    if (p == null) {
         return;
     }
     // After guard clause, p should be narrowed to Person
-    String name = p.name;
+    var name: String = p.name;
     Viper.Terminal.Say(name);
 }
 
-func start() {
-    greet(new Person("Alice"));
+func start() {    greet(new Person("Alice"));
 }
 )";
 
@@ -77,21 +74,18 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
 class Item {
     expose String label;
 
-    expose func init(l: String) {
-        label = l;
+    expose func init(l: String) {        label = l;
     }
 }
 
-func process(p: Person?, item: Item?) {
-    if (p == null) {
+func process(p: Person?, item: Item?) {    if (p == null) {
         return;
     }
     if (item == null) {
@@ -102,8 +96,7 @@ func process(p: Person?, item: Item?) {
     Viper.Terminal.Say(item.label);
 }
 
-func start() {
-    process(new Person("Bob"), new Item("sword"));
+func start() {    process(new Person("Bob"), new Item("sword"));
 }
 )";
 
@@ -128,18 +121,16 @@ TEST(ZiaGuardClause, PrimitiveOptionalGuardNarrowsForLowering) {
     const std::string src = R"(
 module Test;
 
-func emitValue(x: Integer?) {
-    if (x == null) {
+func emitValue(x: Integer?) {    if (x == null) {
         return;
     }
 
-    Integer narrowed = x;
+    var narrowed: Integer = x;
     Viper.Terminal.SayInt(x);
     Viper.Terminal.SayInt(narrowed);
 }
 
-func start() {
-    emitValue(42);
+func start() {    emitValue(42);
 }
 )";
 

@@ -211,12 +211,7 @@ static void yaml_release(void *obj) {
 }
 
 static bool yaml_is_boxed(void *obj) {
-    if (!obj)
-        return false;
-    if (rt_string_is_handle(obj))
-        return false;
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)obj - sizeof(rt_heap_hdr_t));
-    return hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX;
+    return obj && !rt_string_is_handle(obj) && rt_box_type(obj) >= 0;
 }
 
 static bool yaml_is_sequence(void *obj) {

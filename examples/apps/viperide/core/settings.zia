@@ -1,6 +1,6 @@
 module settings;
 
-bind Seq = Viper.Collections.Seq;
+bind Ini = Viper.Text.Ini;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
@@ -11,10 +11,11 @@ bind Viper.GUI;
 // ============================================================================
 // SettingsManager — persistent IDE settings stored in ~/.viperide/settings.ini
 // ============================================================================
-// Format: one key=value pair per line.
-// If the file cannot be found, defaults are used.
+// Uses Viper.Text.Ini for robust parsing and formatting.
 // Call Load() once at startup and Save() whenever settings change.
 // ============================================================================
+
+final DEFAULT_FONT_SIZE = 14;
 
 class SettingsManager {
     expose Integer fontSize;
@@ -24,7 +25,7 @@ class SettingsManager {
     expose String  settingsPath;
 
     expose func init() {
-        fontSize       = 14;
+        fontSize       = DEFAULT_FONT_SIZE;
         theme          = "dark";
         minimapVisible = true;
         settingsDir    = "";
@@ -49,33 +50,27 @@ class SettingsManager {
         if IO.File.Exists(settingsPath) == false {
             return;
         }
-        var lines = IO.File.ReadAllLines(settingsPath);
-        var n = Seq.get_Length(lines);
-        var i = 0;
-        while i < n {
-            var line = Seq.Get(lines, i);
-            var parts = Str.Split(line, "=");
-            if Seq.get_Length(parts) >= 2 {
-                var key = "" + Seq.Get(parts, 0);
-                var val = "" + Seq.Get(parts, 1);
-                if key == "fontSize" {
-                    var sz = Convert.ToInt(val);
-                    if sz >= 6 {
-                        fontSize = sz;
-                    }
-                }
-                if key == "theme" {
-                    if val == "light" {
-                        theme = "light";
-                    } else {
-                        theme = "dark";
-                    }
-                }
-                if key == "minimap" {
-                    minimapVisible = val == "1";
-                }
+        var content = IO.File.ReadAllText(settingsPath);
+        var ini = Ini.Parse(content);
+
+        var sizeStr = Ini.Get(ini, "settings", "fontSize");
+        if sizeStr != "" {
+            var sz = Convert.ToInt(sizeStr);
+            if sz >= 6 {
+                fontSize = sz;
             }
-            i = i + 1;
+        }
+
+        var themeStr = Ini.Get(ini, "settings", "theme");
+        if themeStr == "light" {
+            theme = "light";
+        } else if themeStr == "dark" {
+            theme = "dark";
+        }
+
+        var mmStr = Ini.Get(ini, "settings", "minimap");
+        if mmStr != "" {
+            minimapVisible = mmStr == "1";
         }
     }
 
@@ -85,22 +80,20 @@ class SettingsManager {
             SetupPath();
         }
         Dir.MakeAll(settingsDir);
-        var minimapVal = "0";
+
+        var ini = Ini.Parse("");
+        Ini.Set(ini, "settings", "fontSize", "" + fontSize);
+        Ini.Set(ini, "settings", "theme", theme);
         if minimapVisible {
-            minimapVal = "1";
+            Ini.Set(ini, "settings", "minimap", "1");
+        } else {
+            Ini.Set(ini, "settings", "minimap", "0");
         }
-        var content = "fontSize=" + fontSize + "\n";
-        var themeOut = "dark";
-        if theme == "light" {
-            themeOut = "light";
-        }
-        content = content + "theme=" + themeOut + "\n";
-        content = content + "minimap=" + minimapVal + "\n";
+        var content = Ini.Format(ini);
         IO.File.WriteAllText(settingsPath, content);
     }
 
-    // Apply the loaded theme setting. Font size must be applied by the caller
-    // using appSettings.fontSize directly (typed call avoids Object dispatch).
+    // Apply the loaded theme setting.
     expose func ApplyTheme() {
         if theme == "light" {
             GUI.Theme.SetLight();

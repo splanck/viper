@@ -1,0 +1,34 @@
+module RuntimeTest40;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func sum(nums: ...Integer) -> Integer {
+    var total = 0;
+    for n in nums {
+        total += n;
+    }
+    return total;
+}
+
+func sumList(nums: List[Integer]) -> Integer {
+    var total = 0;
+    for n in nums {
+        total += n;
+    }
+    return total;
+}
+
+func sumWithBase(base: Integer, nums: ...Integer) -> Integer {
+    return base + sumList(nums);
+}
+
+func start() {
+    assertEqInt(sum(), 0, "variadic_empty");
+    assertEqInt(sum(1, 2, 3, 4), 10, "variadic_many");
+    assertEqInt(sum(9), 9, "variadic_single");
+    assertEqInt(sumWithBase(10, 2, 3, 5), 20, "variadic_fixed_plus_rest");
+
+    report();
+}

@@ -12,6 +12,7 @@
 #include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -20,6 +21,10 @@ using namespace il::build;
 using namespace viper::bytecode;
 
 using il::core::BasicBlock;
+
+struct rt_string_impl;
+using rt_string = rt_string_impl *;
+extern "C" const char *rt_string_cstr(rt_string s);
 
 /// Create a simple addition function for testing
 /// func @add(i64 %a, i64 %b) -> i64
@@ -285,6 +290,115 @@ static Module createWideNativeIndexModule() {
     return m;
 }
 
+/// Create a function that exercises bytecode string ownership for memory slots.
+static Module createStringFieldLifetimeModule() {
+    Module m;
+    IRBuilder b(m);
+
+    auto &fn = b.startFunction("field_lifetime", Type(Type::Kind::I1), {});
+    auto &entry = b.addBlock(fn, "entry");
+    b.setInsertPoint(entry);
+
+    Instr slot;
+    slot.result = b.reserveTempId();
+    slot.op = Opcode::Alloca;
+    slot.type = Type(Type::Kind::Ptr);
+    slot.operands.push_back(Value::constInt(8));
+    slot.loc = {1, 1, 1};
+    entry.instructions.push_back(slot);
+
+    Instr empty;
+    empty.result = b.reserveTempId();
+    empty.op = Opcode::ConstStr;
+    empty.type = Type(Type::Kind::Str);
+    empty.operands.push_back(Value::constStr(""));
+    empty.loc = {1, 1, 1};
+    entry.instructions.push_back(empty);
+
+    Instr storeInitial;
+    storeInitial.op = Opcode::Store;
+    storeInitial.type = Type(Type::Kind::Str);
+    storeInitial.operands.push_back(Value::temp(*slot.result));
+    storeInitial.operands.push_back(Value::temp(*empty.result));
+    storeInitial.loc = {1, 1, 1};
+    entry.instructions.push_back(storeInitial);
+
+    Instr buddy;
+    buddy.result = b.reserveTempId();
+    buddy.op = Opcode::ConstStr;
+    buddy.type = Type(Type::Kind::Str);
+    buddy.operands.push_back(Value::constStr("Buddy"));
+    buddy.loc = {1, 1, 1};
+    entry.instructions.push_back(buddy);
+
+    Instr oldValue;
+    oldValue.result = b.reserveTempId();
+    oldValue.op = Opcode::Load;
+    oldValue.type = Type(Type::Kind::Str);
+    oldValue.operands.push_back(Value::temp(*slot.result));
+    oldValue.loc = {1, 1, 1};
+    entry.instructions.push_back(oldValue);
+
+    Instr retainBuddy;
+    retainBuddy.op = Opcode::Call;
+    retainBuddy.type = Type(Type::Kind::Void);
+    retainBuddy.callee = "rt_str_retain_maybe";
+    retainBuddy.operands.push_back(Value::temp(*buddy.result));
+    retainBuddy.loc = {1, 1, 1};
+    entry.instructions.push_back(retainBuddy);
+
+    Instr storeBuddy;
+    storeBuddy.op = Opcode::Store;
+    storeBuddy.type = Type(Type::Kind::Str);
+    storeBuddy.operands.push_back(Value::temp(*slot.result));
+    storeBuddy.operands.push_back(Value::temp(*buddy.result));
+    storeBuddy.loc = {1, 1, 1};
+    entry.instructions.push_back(storeBuddy);
+
+    Instr releaseOld;
+    releaseOld.op = Opcode::Call;
+    releaseOld.type = Type(Type::Kind::Void);
+    releaseOld.callee = "rt_str_release_maybe";
+    releaseOld.operands.push_back(Value::temp(*oldValue.result));
+    releaseOld.loc = {1, 1, 1};
+    entry.instructions.push_back(releaseOld);
+
+    Instr current;
+    current.result = b.reserveTempId();
+    current.op = Opcode::Load;
+    current.type = Type(Type::Kind::Str);
+    current.operands.push_back(Value::temp(*slot.result));
+    current.loc = {1, 1, 1};
+    entry.instructions.push_back(current);
+
+    Instr expected;
+    expected.result = b.reserveTempId();
+    expected.op = Opcode::ConstStr;
+    expected.type = Type(Type::Kind::Str);
+    expected.operands.push_back(Value::constStr("Buddy"));
+    expected.loc = {1, 1, 1};
+    entry.instructions.push_back(expected);
+
+    Instr eq;
+    eq.result = b.reserveTempId();
+    eq.op = Opcode::Call;
+    eq.type = Type(Type::Kind::I1);
+    eq.callee = "Viper.String.Equals";
+    eq.operands.push_back(Value::temp(*current.result));
+    eq.operands.push_back(Value::temp(*expected.result));
+    eq.loc = {1, 1, 1};
+    entry.instructions.push_back(eq);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*eq.result));
+    ret.loc = {1, 1, 1};
+    entry.instructions.push_back(ret);
+
+    return m;
+}
+
 /// Test basic bytecode encoding/decoding
 static void test_bytecode_encoding() {
     std::cout << "  test_bytecode_encoding: ";
@@ -509,6 +623,212 @@ static void test_native_calls() {
 
     result = vm.exec("call_square", {BCSlot::fromInt(-7)});
     assert(result.i64 == 49); // (-7)^2 = 49
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that runtime bridge string calls do not consume aliased bytecode locals.
+static void test_runtime_bridge_string_aliasing() {
+    std::cout << "  test_runtime_bridge_string_aliasing: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    uint32_t baseIdx = bcModule.addString("Whiskers");
+    uint32_t infixIdx = bcModule.addString(" says ");
+    uint32_t bangIdx = bcModule.addString("!");
+    uint32_t concatIdx = bcModule.addNativeFunc("Viper.String.Concat", 2, true);
+    assert(concatIdx == 0);
+
+    BytecodeFunction func;
+    func.name = "concat_alias";
+    func.numParams = 0;
+    func.numLocals = 3;
+    func.maxStack = 2;
+    func.localIsString = {1, 1, 1};
+
+    // local0 = "Whiskers"
+    func.code.push_back(encodeOp16(BCOpcode::LOAD_STR, static_cast<uint16_t>(baseIdx)));
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    // local1 = local0 + " says "
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    func.code.push_back(encodeOp16(BCOpcode::LOAD_STR, static_cast<uint16_t>(infixIdx)));
+    func.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, static_cast<uint16_t>(concatIdx)));
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+    // local2 = local0 + "!"
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    func.code.push_back(encodeOp16(BCOpcode::LOAD_STR, static_cast<uint16_t>(bangIdx)));
+    func.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, static_cast<uint16_t>(concatIdx)));
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 2));
+    // return local2
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["concat_alias"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("concat_alias", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.ptr != nullptr);
+        assert(std::strcmp(rt_string_cstr(static_cast<rt_string>(result.ptr)), "Whiskers!") == 0);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that bytecode memory loads/stores preserve string ownership correctly.
+static void test_string_memory_lifetime() {
+    std::cout << "  test_string_memory_lifetime: ";
+
+    Module ilModule = createStringFieldLifetimeModule();
+    BytecodeCompiler compiler;
+    BytecodeModule bcModule = compiler.compile(ilModule);
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("field_lifetime", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that native string-release helpers consume the argument exactly once.
+static void test_string_release_call_lifetime() {
+    std::cout << "  test_string_release_call_lifetime: ";
+
+    Module m;
+    IRBuilder b(m);
+
+    b.addExtern("Viper.String.Concat",
+                Type(Type::Kind::Str),
+                {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+    b.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
+    b.addExtern("Viper.String.Equals",
+                Type(Type::Kind::I1),
+                {Type(Type::Kind::Str), Type(Type::Kind::Str)});
+
+    auto &fn = b.startFunction("release_roundtrip", Type(Type::Kind::I1), {});
+    auto &entry = b.addBlock(fn, "entry");
+    b.setInsertPoint(entry);
+
+    Instr slot;
+    slot.result = b.reserveTempId();
+    slot.op = Opcode::Alloca;
+    slot.type = Type(Type::Kind::Ptr);
+    slot.operands.push_back(Value::constInt(8));
+    slot.loc = {1, 1, 1};
+    entry.instructions.push_back(slot);
+
+    Instr left;
+    left.result = b.reserveTempId();
+    left.op = Opcode::ConstStr;
+    left.type = Type(Type::Kind::Str);
+    left.operands.push_back(Value::constStr("Ow"));
+    left.loc = {1, 1, 1};
+    entry.instructions.push_back(left);
+
+    Instr right;
+    right.result = b.reserveTempId();
+    right.op = Opcode::ConstStr;
+    right.type = Type(Type::Kind::Str);
+    right.operands.push_back(Value::constStr("ned"));
+    right.loc = {1, 1, 1};
+    entry.instructions.push_back(right);
+
+    Instr joined;
+    joined.result = b.reserveTempId();
+    joined.op = Opcode::Call;
+    joined.type = Type(Type::Kind::Str);
+    joined.callee = "Viper.String.Concat";
+    joined.operands.push_back(Value::temp(*left.result));
+    joined.operands.push_back(Value::temp(*right.result));
+    joined.loc = {1, 1, 1};
+    entry.instructions.push_back(joined);
+
+    Instr storeJoined;
+    storeJoined.op = Opcode::Store;
+    storeJoined.type = Type(Type::Kind::Str);
+    storeJoined.operands.push_back(Value::temp(*slot.result));
+    storeJoined.operands.push_back(Value::temp(*joined.result));
+    storeJoined.loc = {1, 1, 1};
+    entry.instructions.push_back(storeJoined);
+
+    Instr loaded;
+    loaded.result = b.reserveTempId();
+    loaded.op = Opcode::Load;
+    loaded.type = Type(Type::Kind::Str);
+    loaded.operands.push_back(Value::temp(*slot.result));
+    loaded.loc = {1, 1, 1};
+    entry.instructions.push_back(loaded);
+
+    Instr releaseLoaded;
+    releaseLoaded.op = Opcode::Call;
+    releaseLoaded.type = Type(Type::Kind::Void);
+    releaseLoaded.callee = "rt_str_release_maybe";
+    releaseLoaded.operands.push_back(Value::temp(*loaded.result));
+    releaseLoaded.loc = {1, 1, 1};
+    entry.instructions.push_back(releaseLoaded);
+
+    Instr reloaded;
+    reloaded.result = b.reserveTempId();
+    reloaded.op = Opcode::Load;
+    reloaded.type = Type(Type::Kind::Str);
+    reloaded.operands.push_back(Value::temp(*slot.result));
+    reloaded.loc = {1, 1, 1};
+    entry.instructions.push_back(reloaded);
+
+    Instr expected;
+    expected.result = b.reserveTempId();
+    expected.op = Opcode::ConstStr;
+    expected.type = Type(Type::Kind::Str);
+    expected.operands.push_back(Value::constStr("Owned"));
+    expected.loc = {1, 1, 1};
+    entry.instructions.push_back(expected);
+
+    Instr eq;
+    eq.result = b.reserveTempId();
+    eq.op = Opcode::Call;
+    eq.type = Type(Type::Kind::I1);
+    eq.callee = "Viper.String.Equals";
+    eq.operands.push_back(Value::temp(*reloaded.result));
+    eq.operands.push_back(Value::temp(*expected.result));
+    eq.loc = {1, 1, 1};
+    entry.instructions.push_back(eq);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*eq.result));
+    ret.loc = {1, 1, 1};
+    entry.instructions.push_back(ret);
+
+    BytecodeCompiler compiler;
+    BytecodeModule bcModule = compiler.compile(m);
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("release_roundtrip", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
 
     std::cout << "PASSED\n";
 }
@@ -872,6 +1192,9 @@ int main() {
     test_fib_benchmark();
     test_dispatch_benchmark();
     test_native_calls();
+    test_runtime_bridge_string_aliasing();
+    test_string_memory_lifetime();
+    test_string_release_call_lifetime();
     test_native_multi_args();
     test_native_wide_index();
     test_exception_handling();

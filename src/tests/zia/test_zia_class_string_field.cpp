@@ -90,8 +90,7 @@ class Wrapper {
     expose String name;
 }
 
-func start() {
-    var w = new Wrapper();
+func start() {    var w = new Wrapper();
     w.name = "hello";
     var s = w.name;
     Viper.Terminal.Say(s);
@@ -117,15 +116,13 @@ class Result {
     expose String message;
 }
 
-func makeResult() -> Result {
-    var r = new Result();
+func makeResult() -> Result {    var r = new Result();
     r.success = false;
     r.message = "Something went wrong";
     return r;
 }
 
-func start() {
-    var r = makeResult();
+func start() {    var r = makeResult();
     if r.success == false {
         var msg = "Error: " + r.message;
         Viper.Terminal.Say(msg);
@@ -150,8 +147,7 @@ struct Pair {
     expose String val;
 }
 
-func start() {
-    var p = new Pair();
+func start() {    var p = new Pair();
     p.key = "name";
     p.val = "Alice";
     Viper.Terminal.Say(p.key);
@@ -180,8 +176,7 @@ class Outer {
     expose Inner inner;
 }
 
-func start() {
-    var o = new Outer();
+func start() {    var o = new Outer();
     o.inner = new Inner();
     o.inner.text = "nested";
     var s = o.inner.text;
@@ -207,8 +202,7 @@ class Counter {
     expose Boolean active;
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
     c.count = 42;
     c.active = true;
     Viper.Terminal.SayInt(c.count);

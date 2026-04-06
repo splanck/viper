@@ -30,6 +30,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -316,6 +317,9 @@ class BytecodeVM {
     /// @brief Value stack holding locals and operand stack entries for all frames.
     std::vector<BCSlot> valueStack_;
 
+    /// @brief Per-slot ownership flags for managed string values in @ref valueStack_.
+    std::vector<uint8_t> valueStackStringOwned_;
+
     /// @brief Call stack of active function frames.
     std::vector<BCFrame> callStack_;
 
@@ -358,6 +362,68 @@ class BytecodeVM {
 
     /// @brief Initialize the string cache with rt_string objects for all strings in the pool.
     void initStringCache();
+
+    /// @brief Compute the backing-array index for a stack/local slot.
+    [[nodiscard]] size_t slotIndex(const BCSlot *slot) const;
+
+    /// @brief Check whether a stack/local slot currently owns a string reference.
+    [[nodiscard]] bool slotOwnsString(const BCSlot *slot) const;
+
+    /// @brief Update the ownership flag for a stack/local slot.
+    void setSlotOwnsString(const BCSlot *slot, bool owns);
+
+    /// @brief Return whether a bytecode local stores runtime string handles.
+    [[nodiscard]] bool localIsString(const BCFrame &frame, uint32_t idx) const;
+
+    /// @brief Validate that a pointer is a live runtime string handle.
+    [[nodiscard]] bool validateStringHandle(const void *ptr, const char *site);
+
+    /// @brief Release an owned string slot and clear its ownership flag.
+    void releaseOwnedString(BCSlot *slot);
+
+    /// @brief Push a local value onto the operand stack, retaining strings.
+    void pushLocal(uint32_t idx);
+
+    /// @brief Pop the operand stack into a local slot with string ownership transfer.
+    void storeLocal(uint32_t idx);
+
+    /// @brief Release owned string arguments about to be popped after a native call.
+    void releaseCallArgs(BCSlot *args, uint8_t argCount);
+
+    /// @brief Clear ownership for string arguments consumed directly by a callee.
+    /// @details Some runtime helpers, such as `rt_str_release_maybe`, take
+    ///          ownership of their incoming string handles. Those slots must be
+    ///          detached before @ref releaseCallArgs runs to avoid a second
+    ///          release on the same handle.
+    void dismissConsumedStringArgs(std::string_view name, BCSlot *args, uint8_t argCount);
+
+    /// @brief Release string-owning locals in a frame before unwinding it.
+    void releaseFrameLocals(const BCFrame &frame);
+
+    /// @brief Clone runtime-call arguments for helpers that consume strings.
+    /// @details The bytecode VM stores raw slot aliases in locals and on the
+    ///          operand stack. Helpers such as `Viper.String.Concat` release
+    ///          their input strings, so the bridge must receive retained copies
+    ///          rather than the VM's original aliases.
+    /// @param name Runtime helper name.
+    /// @param args Argument slots currently on the operand stack.
+    /// @param argCount Number of arguments in @p args.
+    /// @return Retained argument copy for consuming helpers; otherwise an empty
+    ///         vector.
+    std::vector<BCSlot> cloneRuntimeStringArgs(std::string_view name,
+                                               const BCSlot *args,
+                                               size_t argCount) const;
+
+    /// @brief Release any retained string arguments created for a runtime call.
+    /// @param name Runtime helper name.
+    /// @param args Retained argument copy returned by @ref cloneRuntimeStringArgs.
+    void releaseRuntimeStringArgs(std::string_view name, std::vector<BCSlot> &args) const;
+
+    /// @brief Return whether a runtime helper consumes retained clones of string args.
+    [[nodiscard]] static bool runtimeCallConsumesClonedStringArgs(std::string_view name);
+
+    /// @brief Return whether a runtime helper consumes the original string arguments.
+    [[nodiscard]] static bool runtimeCallConsumesOwnedStringArgs(std::string_view name);
 
     /// @brief Main interpreter loop using switch-based dispatch.
     void run();

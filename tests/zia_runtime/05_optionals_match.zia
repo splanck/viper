@@ -7,13 +7,11 @@ bind "./_support";
 class Box {
     expose Integer value;
 
-    expose func init(v: Integer) {
-        value = v;
+    expose func init(v: Integer) {        value = v;
     }
 }
 
-func classify(v: Integer) -> String {
-    var out = "";
+func classify(v: Integer) -> String {    var out = "";
     match v {
         0 => { out = "zero"; }
         1 => { out = "one"; }
@@ -22,8 +20,7 @@ func classify(v: Integer) -> String {
     return out;
 }
 
-func start() {
-    var a: Integer? = null;
+func start() {    var a: Integer? = null;
     assertEqInt(a ?? 7, 7, "coalesce");
 
     var b: Integer? = 5;

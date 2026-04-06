@@ -2,8 +2,7 @@ module RuntimeTest37;
 
 bind Viper.Terminal;
 
-func start() {
-    var trimmed = "  hello  ".Trim();
+func start() {    var trimmed = "  hello  ".Trim();
     if (trimmed != "hello") {
         Viper.Terminal.Say("FAIL: trim");
         return;

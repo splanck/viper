@@ -26,13 +26,11 @@ TEST(ZiaNamespaces, BasicNamespaceDeclaration) {
 module Test;
 
 namespace MyLib {
-    func helper() -> Integer {
-        return 42;
+    func helper() -> Integer {        return 42;
     }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -69,14 +67,12 @@ module Test;
 
 namespace Outer {
     namespace Inner {
-        func nested() -> Integer {
-            return 100;
+        func nested() -> Integer {            return 100;
         }
     }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -113,13 +109,11 @@ TEST(ZiaNamespaces, DottedNamespaceName) {
 module Test;
 
 namespace MyLib.Internal {
-    func secret() -> String {
-        return "hidden";
+    func secret() -> String {        return "hidden";
     }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -159,18 +153,15 @@ namespace MyLib {
     class Parser {
         Integer value;
 
-        func init() {
-            value = 0;
+        func init() {            value = 0;
         }
 
-        func getValue() -> Integer {
-            return value;
+        func getValue() -> Integer {            return value;
         }
     }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -210,8 +201,7 @@ namespace Config {
     final VERSION = 42;
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -242,8 +232,7 @@ namespace Geometry {
     }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -269,12 +258,10 @@ module Test;
 
 namespace IO {
     interface Readable {
-        func read() -> String;
-    }
+        func read() -> String;    }
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -299,17 +286,14 @@ TEST(ZiaNamespaces, CallNamespacedFunction) {
 module Test;
 
 namespace Math {
-    func add(a: Integer, b: Integer) -> Integer {
-        return a + b;
+    func add(a: Integer, b: Integer) -> Integer {        return a + b;
     }
 
-    func multiply(a: Integer, b: Integer) -> Integer {
-        return a * b;
+    func multiply(a: Integer, b: Integer) -> Integer {        return a * b;
     }
 }
 
-func start() {
-    var sum = Math.add(3, 4);
+func start() {    var sum = Math.add(3, 4);
     var product = Math.multiply(5, 6);
 }
 )";
@@ -352,14 +336,12 @@ module Test;
 
 namespace Outer {
     namespace Inner {
-        func getValue() -> Integer {
-            return 42;
+        func getValue() -> Integer {            return 42;
         }
     }
 }
 
-func start() {
-    var x = Outer.Inner.getValue();
+func start() {    var x = Outer.Inner.getValue();
 }
 )";
     CompilerInput input{.source = source, .path = "test.zia"};

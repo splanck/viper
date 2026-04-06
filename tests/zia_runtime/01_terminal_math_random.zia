@@ -42,8 +42,7 @@ bind "./_support";
 // COVER: Viper.Time.SleepMs
 // COVER: Viper.Time.Clock.Sleep
 
-func start() {
-    Viper.Terminal.BeginBatch();
+func start() {    Viper.Terminal.BeginBatch();
     Viper.Terminal.Clear();
     Viper.Terminal.SetColor(7, 0);
     Viper.Terminal.SetPosition(1, 1);

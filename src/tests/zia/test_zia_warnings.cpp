@@ -67,8 +67,7 @@ void writeFile(const fs::path &path, const std::string &contents) {
 TEST(ZiaWarnings, W001_UnusedVariable) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 5;
+func start() {    var x = 5;
 }
 )");
     EXPECT_TRUE(r.succeeded()); // Warning doesn't fail compilation
@@ -78,9 +77,7 @@ func start() {
 TEST(ZiaWarnings, W001_UsedVariable_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
-bind IO = Viper.Terminal;
-func start() {
-    var x = 5;
+bind Viper.Terminal as IO;func start() {    var x = 5;
     IO.Say(x);
 }
 )");
@@ -91,8 +88,7 @@ func start() {
 TEST(ZiaWarnings, W001_DiscardVariable_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var _ = 5;
+func start() {    var _ = 5;
 }
 )");
     EXPECT_TRUE(r.succeeded());
@@ -108,12 +104,10 @@ TEST(ZiaWarnings, W002_UnreachableAfterReturn) {
     policy.enableAll = true; // W002 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func foo(): Integer {
-    return 1;
+func foo() -> Integer {    return 1;
     var x = 2;
 }
-func start() { }
-)",
+func start() { })",
                                policy);
     EXPECT_TRUE(hasWarningCode(r, "W002"));
 }
@@ -127,8 +121,7 @@ TEST(ZiaWarnings, W003_ImplicitNarrowing) {
     policy.enableAll = true; // W003 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x: Integer = 3.14;
+func start() {    var x: Integer = 3.14;
 }
 )",
                                policy);
@@ -144,8 +137,7 @@ TEST(ZiaWarnings, W004_VariableShadowing) {
     policy.enableAll = true; // W004 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 1;
+func start() {    var x = 1;
     if (true) {
         var x = 2;
     }
@@ -162,8 +154,7 @@ func start() {
 TEST(ZiaWarnings, W005_FloatEquality) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var a = 0.1;
+func start() {    var a = 0.1;
     var b = 0.2;
     var c = (a + b) == 0.3;
 }
@@ -181,8 +172,7 @@ TEST(ZiaWarnings, W006_EmptyWhileBody) {
     policy.enableAll = true; // W006 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    while (false) { }
+func start() {    while (false) { }
 }
 )",
                                policy);
@@ -200,8 +190,7 @@ TEST(ZiaWarnings, W007_AssignmentInCondition) {
     // the assigned type (Integer), not Boolean. We just check the warning exists.
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 0;
+func start() {    var x = 0;
     if (x = 1) { }
 }
 )",
@@ -216,22 +205,18 @@ func start() {
 TEST(ZiaWarnings, W008_MissingReturn) {
     auto r = compileWithPolicy(R"(
 module T;
-func foo(): Integer {
-    var x = 5;
+func foo() -> Integer {    var x = 5;
 }
-func start() { }
-)");
+func start() { })");
     EXPECT_TRUE(hasWarningCode(r, "W008"));
 }
 
 TEST(ZiaWarnings, W008_HasReturn_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
-func foo(): Integer {
-    return 5;
+func foo() -> Integer {    return 5;
 }
-func start() { }
-)");
+func start() { })");
     EXPECT_TRUE(r.succeeded());
     EXPECT_FALSE(hasWarningCode(r, "W008"));
 }
@@ -243,8 +228,7 @@ func start() { }
 TEST(ZiaWarnings, W009_SelfAssignment) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 5;
+func start() {    var x = 5;
     x = x;
 }
 )");
@@ -259,8 +243,7 @@ func start() {
 TEST(ZiaWarnings, W010_DivisionByZero) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 10 / 0;
+func start() {    var x = 10 / 0;
 }
 )");
     EXPECT_TRUE(r.succeeded());
@@ -276,8 +259,7 @@ TEST(ZiaWarnings, W011_RedundantBoolComparison) {
     policy.enableAll = true; // W011 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var flag = true;
+func start() {    var flag = true;
     var b = (flag == true);
 }
 )",
@@ -294,8 +276,7 @@ TEST(ZiaWarnings, W013_EmptyIfBody) {
     policy.enableAll = true; // W013 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    if (true) { }
+func start() {    if (true) { }
 }
 )",
                                policy);
@@ -311,11 +292,9 @@ TEST(ZiaWarnings, W014_UnusedResult) {
     policy.enableAll = true; // W014 is -Wall only
     auto r = compileWithPolicy(R"(
 module T;
-func compute(): Integer {
-    return 42;
+func compute() -> Integer {    return 42;
 }
-func start() {
-    compute();
+func start() {    compute();
 }
 )",
                                policy);
@@ -329,9 +308,7 @@ func start() {
 TEST(ZiaWarnings, W015_UninitializedVariable) {
     auto r = compileWithPolicy(R"(
 module T;
-bind IO = Viper.Terminal;
-func start() {
-    var x: Integer;
+bind Viper.Terminal as IO;func start() {    var x: Integer;
     IO.Say(x);
 }
 )");
@@ -348,8 +325,7 @@ TEST(ZiaWarnings, WerrorMakesWarningAnError) {
     policy.warningsAsErrors = true;
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 10 / 0;
+func start() {    var x = 10 / 0;
 }
 )",
                                policy);
@@ -364,8 +340,7 @@ TEST(ZiaWarnings, WnoDisablesSpecificWarning) {
     policy.disabled.insert(WarningCode::W010_DivisionByZero);
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 10 / 0;
+func start() {    var x = 10 / 0;
 }
 )",
                                policy);
@@ -376,8 +351,7 @@ func start() {
 TEST(ZiaWarnings, SuppressPragmaDisablesWarning) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    // @suppress(W010)
+func start() {    // @suppress(W010)
     var x = 10 / 0;
 }
 )");
@@ -388,8 +362,7 @@ func start() {
 TEST(ZiaWarnings, SuppressPragmaByName) {
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    // @suppress(division-by-zero)
+func start() {    // @suppress(division-by-zero)
     var x = 10 / 0;
 }
 )");
@@ -401,12 +374,10 @@ TEST(ZiaWarnings, WallEnablesAllWarnings) {
     // Without -Wall, W002 (unreachable) is not enabled
     auto r1 = compileWithPolicy(R"(
 module T;
-func foo(): Integer {
-    return 1;
+func foo() -> Integer {    return 1;
     var x = 2;
 }
-func start() { }
-)");
+func start() { })");
     EXPECT_FALSE(hasWarningCode(r1, "W002"));
 
     // With -Wall, W002 is enabled
@@ -414,12 +385,10 @@ func start() { }
     policy.enableAll = true;
     auto r2 = compileWithPolicy(R"(
 module T;
-func foo(): Integer {
-    return 1;
+func foo() -> Integer {    return 1;
     var x = 2;
 }
-func start() { }
-)",
+func start() { })",
                                 policy);
     EXPECT_TRUE(hasWarningCode(r2, "W002"));
 }
@@ -428,8 +397,7 @@ TEST(ZiaWarnings, DefaultPolicyEnablesConservativeSet) {
     // W010 (division by zero) should be enabled by default
     auto r = compileWithPolicy(R"(
 module T;
-func start() {
-    var x = 10 / 0;
+func start() {    var x = 10 / 0;
 }
 )");
     EXPECT_TRUE(hasWarningCode(r, "W010"));
@@ -454,8 +422,7 @@ TEST(ZiaWarnings, ParseAndAnalyze_HonorsInlineSuppressions) {
     policy.enableAll = true;
 
     const std::string source = R"(module Test;
-func demo() -> Integer {
-    return 1;
+func demo() -> Integer {    return 1;
     // @suppress(W002)
     var dead = 2;
 })";
@@ -483,8 +450,7 @@ TEST(ZiaWarnings, ImportedFileSuppressionsAreHonored) {
 
     writeFile(tempRoot / "lib.zia",
               R"(module Lib;
-func helper() {
-    // @suppress(W001)
+func helper() {    // @suppress(W001)
     var ignored = 1;
 })");
 
@@ -510,8 +476,7 @@ TEST(ZiaWarnings, W017_XorConfusion) {
     policy.enableAll = true;
     auto r = compileWithPolicy(R"(
 module Test;
-func start() {
-    var x = 2 ^ 3;
+func start() {    var x = 2 ^ 3;
 }
 )",
                                policy);
@@ -529,8 +494,7 @@ TEST(ZiaWarnings, W018_BitwiseAndConfusion) {
     policy.enableAll = true;
     auto r = compileWithPolicy(R"(
 module Test;
-func start() {
-    var x = 5 & 3;
+func start() {    var x = 5 & 3;
 }
 )",
                                policy);

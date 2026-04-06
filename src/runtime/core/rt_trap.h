@@ -4,17 +4,19 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/core/rt_trap.h
-// Purpose: Runtime trap handlers for unrecoverable error conditions in IL programs, providing
-// immediate-termination functions for division by zero, bounds violations, and assertion failures.
+// Purpose: Runtime trap entry points for unrecoverable IL/runtime faults,
+// routing diagnostics through the active VM/runtime trap handler with
+// structured trap metadata.
 //
 // Key invariants:
-//   - Trap functions never return to their caller (noreturn).
-//   - Each trap prints a descriptive diagnostic message to stderr before calling exit(1).
+//   - Trap helpers dispatch through the active trap hook rather than hardwiring
+//     stderr/exit behaviour.
+//   - Tests may override vm_trap()/trap dispatch to observe failures without
+//     terminating the process.
 //   - rt_diag_assert accepts an int8_t condition; non-zero means the assertion passed.
 //   - The ABI of these functions is stable; codegen backends depend on their signatures.
 //
 // Ownership/Lifetime:
-//   - No heap allocation or cleanup is performed beyond printing the diagnostic.
 //   - These functions are designed for terminal error conditions only.
 //
 // Links: src/runtime/core/rt_trap.c (implementation), src/runtime/core/rt_string.h

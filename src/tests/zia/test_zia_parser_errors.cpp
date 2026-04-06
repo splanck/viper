@@ -51,8 +51,7 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) 
 TEST(ZiaParserErrors, MissingSemicolon) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = 5
+func start() {    var x = 5
     var y = 10
 }
 )");
@@ -63,8 +62,7 @@ func start() {
 TEST(ZiaParserErrors, MissingClosingBrace) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = 5
+func start() {    var x = 5
 )");
     EXPECT_FALSE(result.succeeded());
 }
@@ -72,8 +70,7 @@ func start() {
 TEST(ZiaParserErrors, MissingClosingParen) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = (1 + 2
+func start() {    var x = (1 + 2
 }
 )");
     EXPECT_FALSE(result.succeeded());
@@ -94,8 +91,7 @@ func start()
 TEST(ZiaParserErrors, DoubleOperator) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = 1 ++ 2
+func start() {    var x = 1 ++ 2
 }
 )");
     EXPECT_FALSE(result.succeeded());
@@ -104,8 +100,7 @@ func start() {
 TEST(ZiaParserErrors, TrailingOperator) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = 1 +
+func start() {    var x = 1 +
 }
 )");
     EXPECT_FALSE(result.succeeded());
@@ -114,8 +109,7 @@ func start() {
 TEST(ZiaParserErrors, EmptyParens) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = ()
+func start() {    var x = ()
 }
 )");
     // Empty parens could be valid (unit/void) or error depending on grammar
@@ -124,8 +118,7 @@ func start() {
 TEST(ZiaParserErrors, InvalidAssignmentTarget) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    5 = 10
+func start() {    5 = 10
 }
 )");
     EXPECT_FALSE(result.succeeded());
@@ -137,8 +130,7 @@ func start() {
 
 TEST(ZiaParserErrors, MissingModuleDecl) {
     auto result = compileSource(R"(
-func start() {
-}
+func start() {}
 )");
     EXPECT_FALSE(result.succeeded());
 }
@@ -147,8 +139,7 @@ TEST(ZiaParserErrors, DuplicateModuleDecl) {
     auto result = compileSource(R"(
 module Test;
 module Other;
-func start() {
-}
+func start() {}
 )");
     EXPECT_FALSE(result.succeeded());
 }
@@ -160,8 +151,7 @@ func start() {
 TEST(ZiaParserErrors, InvalidTypeAnnotation) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x: 123 = 5
+func start() {    var x: 123 = 5
 }
 )");
     EXPECT_FALSE(result.succeeded());
@@ -174,8 +164,7 @@ func start() {
 TEST(ZiaParserErrors, IfWithoutCondition) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    if {
+func start() {    if {
         var x = 1
     }
 }
@@ -186,8 +175,7 @@ func start() {
 TEST(ZiaParserErrors, WhileWithoutCondition) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    while {
+func start() {    while {
         var x = 1
     }
 }
@@ -198,8 +186,7 @@ func start() {
 TEST(ZiaParserErrors, ForInWithoutIterable) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    for x in {
+func start() {    for x in {
     }
 }
 )");
@@ -227,21 +214,110 @@ TEST(ZiaParserErrors, UnterminatedStringInterpolation) {
 TEST(ZiaParserErrors, DuplicateParamNames) {
     auto result = compileSource(R"(
 module Test;
-func add(x: Integer, x: Integer) -> Integer {
-    return x + x
+func add(x: Integer, x: Integer) -> Integer {    return x + x
 }
-func start() {}
-)");
+func start() {})");
     EXPECT_FALSE(result.succeeded());
 }
 
 TEST(ZiaParserErrors, MissingReturnType) {
     auto result = compileSource(R"(
 module Test;
-func add(x: Integer) -> {
-    return x
+func add(x: Integer) -> {    return x
 }
+func start() {})");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsJavaStyleParameters) {
+    auto result = compileSource(R"(
+module Test;
+func add(Integer a, Integer b) -> Integer { return a + b; }
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "expected ':' after parameter name"));
+}
+
+TEST(ZiaParserErrors, RejectsColonReturnTypeSyntax) {
+    auto result = compileSource(R"(
+module Test;
+func add(x: Integer): Integer { return x; }
+)");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsTypedVariableDeclarationWithoutVar) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    Integer x = 5;
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsBindAliasAssignmentSyntax) {
+    auto result = compileSource(R"(
+module Test;
+bind Math = Viper.Math;
 func start() {}
+)");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsTupleDestructuringVarDecl) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var (x, y) = (1, 2);
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsBareTypeCallConstruction) {
+    auto result = compileSource(R"(
+module Test;
+class Box {
+    expose func init(value: Integer) {}
+}
+func start() {
+    var box = Box(42);
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, RejectsUntypedSingleParameterLambda) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var inc = (x) => x + 1;
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(
+        hasDiagContaining(result.diagnostics, "lambda parameters require explicit type annotations"));
+}
+
+TEST(ZiaParserErrors, RejectsUntypedMultiParameterLambda) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var add = (a, b) => a + b;
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(
+        hasDiagContaining(result.diagnostics, "lambda parameters require explicit type annotations"));
+}
+
+TEST(ZiaParserErrors, RejectsFuncStyleLambdaSyntax) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var work = func(x: Integer) -> Integer { return x + 1; };
+}
 )");
     EXPECT_FALSE(result.succeeded());
 }
@@ -253,8 +329,7 @@ func start() {}
 TEST(ZiaParserErrors, MatchWithoutSubject) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    match {
+func start() {    match {
         case 1 => print("one")
     }
 }
@@ -265,8 +340,7 @@ func start() {
 TEST(ZiaParserErrors, MatchCaseWithoutArrow) {
     auto result = compileSource(R"(
 module Test;
-func start() {
-    var x = 1
+func start() {    var x = 1
     match x {
         case 1 print("one")
     }
@@ -285,8 +359,7 @@ module Test;
 class {
     var x: Integer
 }
-func start() {}
-)");
+func start() {})");
     EXPECT_FALSE(result.succeeded());
 }
 
@@ -295,8 +368,7 @@ TEST(ZiaParserErrors, EntityMissingBrace) {
 module Test;
 class Foo
     var x: Integer
-func start() {}
-)");
+func start() {})");
     EXPECT_FALSE(result.succeeded());
 }
 

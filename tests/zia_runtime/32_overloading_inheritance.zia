@@ -4,61 +4,48 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 
-func greet() -> String {
-    return "hi";
+func greet() -> String {    return "hi";
 }
 
-func greet(n: Integer) -> String {
-    return "hi " + toString(n);
+func greet(n: Integer) -> String {    return "hi " + toString(n);
 }
 
 class Animal {
-    expose func speak() -> String {
-        return "animal";
+    expose func speak() -> String {        return "animal";
     }
 
-    expose func speak(times: Integer) -> String {
-        return "animal " + toString(times);
+    expose func speak(times: Integer) -> String {        return "animal " + toString(times);
     }
 }
 
 class Dog extends Animal {
-    override expose func speak() -> String {
-        return "dog";
+    override expose func speak() -> String {        return "dog";
     }
 
-    expose func speak(name: String) -> String {
-        return "dog " + name;
+    expose func speak(name: String) -> String {        return "dog " + name;
     }
 }
 
 class Husky extends Dog {
-    override expose func speak() -> String {
-        return "husky";
+    override expose func speak() -> String {        return "husky";
     }
 
-    expose func speak(temp: Number) -> String {
-        return "cold " + toString(temp);
+    expose func speak(temp: Number) -> String {        return "cold " + toString(temp);
     }
 }
 
 interface Formatter {
-    func fmt() -> String;
-    func fmt(n: Integer) -> String;
-}
+    func fmt() -> String;    func fmt(n: Integer) -> String;}
 
 class Message implements Formatter {
-    expose func fmt() -> String {
-        return "msg";
+    expose func fmt() -> String {        return "msg";
     }
 
-    expose func fmt(n: Integer) -> String {
-        return "msg " + toString(n);
+    expose func fmt(n: Integer) -> String {        return "msg " + toString(n);
     }
 }
 
-func start() {
-    assertEqStr(greet(), "hi", "fn_overload_0");
+func start() {    assertEqStr(greet(), "hi", "fn_overload_0");
     assertEqStr(greet(7), "hi 7", "fn_overload_1");
 
     var dog = new Dog();

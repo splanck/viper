@@ -128,7 +128,7 @@ TEST(ZiaSema, GenericListInteger) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    List[Integer] numbers = [];
+    var numbers: List[Integer] = [];
     numbers.add(10);
     numbers.add(20);
     numbers.add(30);
@@ -147,7 +147,7 @@ TEST(ZiaSema, GenericListString) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    List[String] names = [];
+    var names: List[String] = [];
     names.add("Alice");
     names.add("Bob");
     Viper.Terminal.SayInt(names.count());
@@ -174,10 +174,10 @@ class Item {
 }
 
 func start() {
-    Item? maybeItem = null;
-    Item fallback = new Item();
+    var maybeItem: Item? = null;
+    var fallback: Item = new Item();
     fallback.value = 99;
-    Item result = maybeItem ?? fallback;
+    var result: Item = maybeItem ?? fallback;
     Viper.Terminal.SayInt(result.value);
 }
 )",
@@ -197,7 +197,7 @@ TEST(ZiaSema, TypeMismatchStringToInteger) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    Integer x = "not a number";
+    var x: Integer = "not a number";
 }
 )",
                                 sm);
@@ -210,7 +210,7 @@ TEST(ZiaSema, TypeMismatchBooleanToString) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    String s = true;
+    var s: String = true;
 }
 )",
                                 sm);
@@ -223,7 +223,7 @@ TEST(ZiaSema, TypeMismatchIntegerToBoolean) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    Boolean b = 42;
+    var b: Boolean = 42;
 }
 )",
                                 sm);
@@ -276,7 +276,7 @@ module Test;
 class Calculator {
     expose Integer accumulator;
 
-    expose func add(Integer n) {
+    expose func add(n: Integer) {
         accumulator = accumulator + n;
     }
 
@@ -290,7 +290,7 @@ func start() {
     calc.accumulator = 0;
     calc.add(10);
     calc.add(20);
-    Integer total = calc.getResult();
+    var total: Integer = calc.getResult();
     Viper.Terminal.SayInt(total);
 }
 )",
@@ -311,17 +311,17 @@ TEST(ZiaSema, InterfaceImplementation) {
 module Test;
 
 interface IGreeter {
-    func greet(): String;
+    func greet() -> String;
 }
 
 class FormalGreeter implements IGreeter {
-    expose func greet(): String {
+    expose func greet() -> String {
         return "Good day.";
     }
 }
 
 class CasualGreeter implements IGreeter {
-    expose func greet(): String {
+    expose func greet() -> String {
         return "Hey!";
     }
 }
@@ -349,9 +349,9 @@ TEST(ZiaSema, NumericCoercion) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    Number x = 42;
-    Number y = 3.14;
-    Number z = x + y;
+    var x: Number = 42;
+    var y: Number = 3.14;
+    var z: Number = x + y;
     Viper.Terminal.SayNum(z);
 }
 )",
@@ -443,11 +443,11 @@ TEST(ZiaSema, FunctionReturnTypeValid) {
     auto result = compileSource(R"(
 module Test;
 
-func double(Integer n) -> Integer {
+func double(n: Integer) -> Integer {
     return n * 2;
 }
 
-func isPositive(Integer n) -> Boolean {
+func isPositive(n: Integer) -> Boolean {
     return n > 0;
 }
 
@@ -477,7 +477,7 @@ TEST(ZiaSema, MultipleReturnPaths) {
     auto result = compileSource(R"(
 module Test;
 
-func classify(Integer n) -> String {
+func classify(n: Integer) -> String {
     if n > 0 {
         return "positive";
     } else if n < 0 {
@@ -509,7 +509,7 @@ TEST(ZiaSema, RecursiveFunctionTypeCheck) {
     auto result = compileSource(R"(
 module Test;
 
-func factorial(Integer n) -> Integer {
+func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;
     }
@@ -539,7 +539,7 @@ module Test;
 class TodoList {
     expose List[String] items;
 
-    expose func addItem(String item) {
+    expose func addItem(item: String) {
         items.add(item);
     }
 

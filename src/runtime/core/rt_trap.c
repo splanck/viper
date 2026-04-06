@@ -7,28 +7,21 @@
 //
 // File: src/runtime/core/rt_trap.c
 // Purpose: Fatal runtime trap helpers for the Viper runtime C ABI. Provides
-//   rt_trap() (generic fatal error with formatted message) and rt_trap_div0()
-//   (division-by-zero sentinel), both of which print a deterministic diagnostic
-//   to stderr and terminate the process with exit code 1. Centralising trap
-//   logic here keeps error messages and exit codes consistent across the VM,
-//   native code, and runtime C shim paths.
+//   narrow convenience wrappers such as rt_trap_div0() and assertion helpers
+//   that ultimately route through the structured runtime trap dispatcher.
+//   Centralising trap logic here keeps trap kinds, error codes, and messages
+//   consistent across the VM, native code, and runtime C shim paths.
 //
 // Key invariants:
-//   - rt_trap(msg) is a no-return function: it always terminates the process.
-//     It must NOT be used for recoverable errors; use it only for invariant
-//     violations, capacity overflows, and other unrecoverable conditions.
-//   - rt_trap_div0() is called by the VM and native codegen when a checked
-//     integer or float division by zero is detected. It prints:
-//       "trap: division by zero\n" to stderr and exits with code 1.
-//   - The message format mirrors the VM's trap output so that test harnesses
-//     can grep for "trap:" without caring whether the error came from the
-//     interpreter or native code.
-//   - In unit tests, vm_trap(msg) can be overridden with a weak symbol so
-//     that EXPECT_TRAP() macros can catch traps via setjmp/longjmp without
-//     killing the test process.
+//   - rt_trap(msg) is reserved for unrecoverable conditions such as invariant
+//     violations and checked arithmetic faults.
+//   - rt_trap_div0() and rt_trap_ovf() preserve the VM-visible trap kind/code
+//     expected by diagnostics and trap-recovering tests.
+//   - In unit tests, vm_trap()/runtime trap hooks can be overridden so traps
+//     are observed without killing the test process.
 //
 // Ownership/Lifetime:
-//   - No heap allocation. All functions are stateless helpers.
+//   - Helpers may allocate small stack buffers for formatted diagnostics only.
 //
 // Links: src/runtime/core/rt_trap.h (public API),
 //        src/runtime/core/rt_internal.h (rt_trap macro shim)

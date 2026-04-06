@@ -17,20 +17,16 @@ var moduleName: String = "TestModule";
 // Module-level functions
 //=============================================================================
 
-func incrementCounter() {
-    moduleCounter = moduleCounter + 1;
+func incrementCounter() {    moduleCounter = moduleCounter + 1;
 }
 
-func getCounter() -> Integer {
-    return moduleCounter;
+func getCounter() -> Integer {    return moduleCounter;
 }
 
-func resetCounter() {
-    moduleCounter = 0;
+func resetCounter() {    moduleCounter = 0;
 }
 
-func getModuleName() -> String {
-    return moduleName;
+func getModuleName() -> String {    return moduleName;
 }
 
 //=============================================================================
@@ -40,13 +36,11 @@ func getModuleName() -> String {
 class ModuleEntity {
     expose Integer id;
 
-    expose func init(i: Integer) {
-        id = i;
+    expose func init(i: Integer) {        id = i;
         incrementCounter(); // Uses module function
     }
 
-    expose func getInfo() -> String {
-        return moduleName + ":" + toString(id);
+    expose func getInfo() -> String {        return moduleName + ":" + toString(id);
     }
 }
 
@@ -55,34 +49,28 @@ class ModuleEntity {
 //=============================================================================
 
 class Math {
-    expose func add(a: Integer, b: Integer) -> Integer {
-        return a + b;
+    expose func add(a: Integer, b: Integer) -> Integer {        return a + b;
     }
 
-    expose func sub(a: Integer, b: Integer) -> Integer {
-        return a - b;
+    expose func sub(a: Integer, b: Integer) -> Integer {        return a - b;
     }
 
-    expose func mul(a: Integer, b: Integer) -> Integer {
-        return a * b;
+    expose func mul(a: Integer, b: Integer) -> Integer {        return a * b;
     }
 
-    expose func max(a: Integer, b: Integer) -> Integer {
-        if (a > b) {
+    expose func max(a: Integer, b: Integer) -> Integer {        if (a > b) {
             return a;
         }
         return b;
     }
 
-    expose func min(a: Integer, b: Integer) -> Integer {
-        if (a < b) {
+    expose func min(a: Integer, b: Integer) -> Integer {        if (a < b) {
             return a;
         }
         return b;
     }
 
-    expose func abs(x: Integer) -> Integer {
-        if (x < 0) {
+    expose func abs(x: Integer) -> Integer {        if (x < 0) {
             return -x;
         }
         return x;
@@ -90,8 +78,7 @@ class Math {
 }
 
 class StringUtils {
-    expose func repeat(s: String, n: Integer) -> String {
-        var result = "";
+    expose func repeat(s: String, n: Integer) -> String {        var result = "";
         var i = 0;
         while (i < n) {
             result = result + s;
@@ -100,12 +87,10 @@ class StringUtils {
         return result;
     }
 
-    expose func isEmpty(s: String) -> Boolean {
-        return s == "";
+    expose func isEmpty(s: String) -> Boolean {        return s == "";
     }
 
-    expose func padLeft(s: String, width: Integer, padChar: String) -> String {
-        var result = s;
+    expose func padLeft(s: String, width: Integer, padChar: String) -> String {        var result = s;
         while (result.length() < width) {
             result = padChar + result;
         }
@@ -113,8 +98,7 @@ class StringUtils {
     }
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Module-level variable access
     //=========================================================================
     assertEqInt(moduleCounter, 0, "initial_counter");

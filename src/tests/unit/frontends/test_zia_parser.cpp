@@ -125,7 +125,7 @@ TEST(ZiaParser, ArithmeticPrecedence) {
 module Test;
 
 func start() {
-    Integer x = 1 + 2 * 3;
+    var x: Integer = 1 + 2 * 3;
     Viper.Terminal.SayInt(x);
 }
 )");
@@ -160,7 +160,7 @@ TEST(ZiaParser, ParenthesizedPrecedence) {
 module Test;
 
 func start() {
-    Integer x = (1 + 2) * 3;
+    var x: Integer = (1 + 2) * 3;
     Viper.Terminal.SayInt(x);
 }
 )");
@@ -177,7 +177,7 @@ TEST(ZiaParser, DivModPrecedence) {
 module Test;
 
 func start() {
-    Integer x = 10 - 6 / 2 + 7 % 3;
+    var x: Integer = 10 - 6 / 2 + 7 % 3;
     Viper.Terminal.SayInt(x);
 }
 )");
@@ -213,7 +213,7 @@ class Builder {
 func start() {
     var b = new Builder();
     b.value = "";
-    String result = b.append("hello").append(" ").append("world").build();
+    var result: String = b.append("hello").append(" ").append("world").build();
     Viper.Terminal.Say(result);
 }
 )");
@@ -245,7 +245,7 @@ func showValue(n: Node?) {
 }
 
 func start() {
-    Node? n = new Node();
+    var n: Node? = new Node();
     n.value = 42;
     showValue(n);
     showValue(null);
@@ -268,8 +268,8 @@ class Item {
 }
 
 func start() {
-    Item? a = null;
-    Item b = a ?? new Item();
+    var a: Item? = null;
+    var b: Item = a ?? new Item();
     b.id = 99;
     Viper.Terminal.SayInt(b.id);
 }
@@ -291,8 +291,8 @@ TEST(ZiaParser, MatchExpressionAsValue) {
 module Test;
 
 func start() {
-    Integer x = 2;
-    Integer result = match (x) {
+    var x: Integer = 2;
+    var result: Integer = match (x) {
         1 => 10
         2 => 20
         3 => 30
@@ -326,7 +326,7 @@ TEST(ZiaParser, MatchStatementWithBlocks) {
 module Test;
 
 func start() {
-    Integer code = 3;
+    var code: Integer = 3;
     match (code) {
         1 => { Viper.Terminal.Say("one"); }
         2 => { Viper.Terminal.Say("two"); }
@@ -456,7 +456,7 @@ TEST(ZiaParser, WhileLoopWithBreak) {
 module Test;
 
 func start() {
-    Integer i = 0;
+    var i: Integer = 0;
     while (true) {
         if (i >= 5) {
             break;
@@ -533,10 +533,10 @@ TEST(ZiaParser, MapLiteral) {
 module Test;
 
 func start() {
-    Map[String, Integer] m = new Map[String, Integer]();
+    var m: Map[String, Integer] = new Map[String, Integer]();
     m.set("a", 1);
     m.set("b", 2);
-    Integer val = m.get("a");
+    var val: Integer = m.get("a");
     Viper.Terminal.SayInt(val);
 }
 )");
@@ -669,14 +669,14 @@ TEST(ZiaParser, AllArithmeticOperators) {
 module Test;
 
 func start() {
-    Integer a = 10;
-    Integer b = 3;
+    var a: Integer = 10;
+    var b: Integer = 3;
 
-    Integer sum = a + b;
-    Integer diff = a - b;
-    Integer prod = a * b;
-    Integer quot = a / b;
-    Integer rem = a % b;
+    var sum: Integer = a + b;
+    var diff: Integer = a - b;
+    var prod: Integer = a * b;
+    var quot: Integer = a / b;
+    var rem: Integer = a % b;
 
     Viper.Terminal.SayInt(sum);
     Viper.Terminal.SayInt(diff);
@@ -702,8 +702,8 @@ TEST(ZiaParser, UnaryOperators) {
 module Test;
 
 func start() {
-    Integer x = -42;
-    Boolean b = !true;
+    var x: Integer = -42;
+    var b: Boolean = !true;
     Viper.Terminal.SayInt(x);
     Viper.Terminal.SayBool(b);
 }
@@ -794,7 +794,7 @@ func compute(a: Integer, b: Integer, c: Integer) -> Integer {
 }
 
 func start() {
-    Integer result = compute(2, 3, 4);
+    var result: Integer = compute(2, 3, 4);
     Viper.Terminal.SayInt(result);
 }
 )");
@@ -828,7 +828,7 @@ func negate(x: Integer) -> Integer {
 }
 
 func start() {
-    Integer result = negate(addOne(double(5)));
+    var result: Integer = negate(addOne(double(5)));
     Viper.Terminal.SayInt(result);
 }
 )");
@@ -876,7 +876,7 @@ TEST(ZiaParser, DeeplyNestedParens) {
 module Test;
 
 func start() {
-    Integer x = ((((((1 + 2))))));
+    var x: Integer = ((((((1 + 2))))));
     Viper.Terminal.SayInt(x);
 }
 )");
@@ -893,12 +893,12 @@ TEST(ZiaParser, MultipleStatements) {
 module Test;
 
 func start() {
-    Integer a = 1;
-    Integer b = 2;
-    Integer c = 3;
-    Integer d = a + b;
-    Integer e = c * d;
-    Integer f = e - a;
+    var a: Integer = 1;
+    var b: Integer = 2;
+    var c: Integer = 3;
+    var d: Integer = a + b;
+    var e: Integer = c * d;
+    var f: Integer = e - a;
     Viper.Terminal.SayInt(f);
 }
 )");

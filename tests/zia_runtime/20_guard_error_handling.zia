@@ -12,32 +12,27 @@ class Result {
     expose Integer value;
     expose String error;
 
-    expose func init(isOk: Boolean, val: Integer, err: String) {
-        ok = isOk;
+    expose func init(isOk: Boolean, val: Integer, err: String) {        ok = isOk;
         value = val;
         error = err;
     }
 }
 
-func success(val: Integer) -> Result {
-    return new Result(true, val, "");
+func success(val: Integer) -> Result {    return new Result(true, val, "");
 }
 
-func failure(msg: String) -> Result {
-    return new Result(false, 0, msg);
+func failure(msg: String) -> Result {    return new Result(false, 0, msg);
 }
 
 // Function using guard for validation
-func divideGuard(a: Integer, b: Integer) -> Result {
-    guard (b != 0) else {
+func divideGuard(a: Integer, b: Integer) -> Result {    guard (b != 0) else {
         return failure("division by zero");
     }
     return success(a / b);
 }
 
 // Function with multiple guards
-func processValue(x: Integer) -> Result {
-    guard (x >= 0) else {
+func processValue(x: Integer) -> Result {    guard (x >= 0) else {
         return failure("value must be non-negative");
     }
     guard (x <= 100) else {
@@ -47,8 +42,7 @@ func processValue(x: Integer) -> Result {
 }
 
 // Guard with complex condition
-func validateRange(min: Integer, max: Integer, value: Integer) -> Result {
-    guard (min <= max) else {
+func validateRange(min: Integer, max: Integer, value: Integer) -> Result {    guard (min <= max) else {
         return failure("invalid range: min > max");
     }
     guard (value >= min && value <= max) else {
@@ -58,8 +52,7 @@ func validateRange(min: Integer, max: Integer, value: Integer) -> Result {
 }
 
 // Using optionals for nullable values
-func findPositive(a: Integer, b: Integer, c: Integer) -> Integer? {
-    if (a > 0) {
+func findPositive(a: Integer, b: Integer, c: Integer) -> Integer? {    if (a > 0) {
         return a;
     }
     if (b > 0) {
@@ -75,26 +68,21 @@ func findPositive(a: Integer, b: Integer, c: Integer) -> Integer? {
 class Container {
     expose Integer? storedValue;
 
-    expose func init() {
-        storedValue = null;
+    expose func init() {        storedValue = null;
     }
 
-    expose func store(v: Integer) {
-        storedValue = v;
+    expose func store(v: Integer) {        storedValue = v;
     }
 
-    expose func retrieve() -> Integer {
-        return storedValue ?? -1;
+    expose func retrieve() -> Integer {        return storedValue ?? -1;
     }
 
-    expose func hasValue() -> Boolean {
-        return storedValue != null;
+    expose func hasValue() -> Boolean {        return storedValue != null;
     }
 }
 
 // Chain of operations that can fail
-func pipeline(input: Integer) -> Result {
-    var r1 = processValue(input);
+func pipeline(input: Integer) -> Result {    var r1 = processValue(input);
     guard (r1.ok) else {
         return r1;
     }
@@ -107,8 +95,7 @@ func pipeline(input: Integer) -> Result {
     return success(r2.value + 10);
 }
 
-func start() {
-    // Test 1: Basic guard - success case
+func start() {    // Test 1: Basic guard - success case
     var r1 = divideGuard(10, 2);
     assertTrue(r1.ok, "guard_success_ok");
     assertEqInt(r1.value, 5, "guard_success_value");

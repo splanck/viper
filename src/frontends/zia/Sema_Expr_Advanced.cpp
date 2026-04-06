@@ -841,26 +841,79 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
         error(expr->loc, "'new' can only be used with struct, class, or collection types");
     }
 
-    std::vector<TypeRef> argTypes;
-    argTypes.reserve(expr->args.size());
-
     // Analyze constructor arguments
     for (auto &arg : expr->args) {
-        argTypes.push_back(analyzeExpr(arg.value.get()));
+        analyzeExpr(arg.value.get());
     }
 
-    // For class types, validate that arguments match an explicit init overload on the class.
-    if (type->kind == TypeKindSem::Class) {
-        MethodDecl *initDecl = resolveMethodOverload(
-            type->name, "init", argTypes, expr->loc, nullptr, /*includeInherited=*/true);
-
-        if (initDecl) {
-            resolvedInitDecls_[expr] = initDecl;
-        } else if (!expr->args.empty()) {
-            error(expr->loc,
-                  "Entity '" + type->name +
-                      "' has no init overload matching the provided arguments");
+    if (type->kind != TypeKindSem::Struct && type->kind != TypeKindSem::Class) {
+        for (const auto &arg : expr->args) {
+            if (arg.name) {
+                error(arg.value ? arg.value->loc : expr->loc,
+                      "Named arguments are not supported for this constructor");
+                return types::unknown();
+            }
         }
+        return type;
+    }
+
+    auto hasOwnInit = [&](const std::string &typeName, bool isClass) {
+        if (isClass) {
+            auto classIt = classDecls_.find(typeName);
+            if (classIt == classDecls_.end())
+                return false;
+            for (const auto &member : classIt->second->members) {
+                if (member->kind == DeclKind::Method &&
+                    static_cast<MethodDecl *>(member.get())->name == "init") {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        auto structIt = structDecls_.find(typeName);
+        if (structIt == structDecls_.end())
+            return false;
+        for (const auto &member : structIt->second->members) {
+            if (member->kind == DeclKind::Method &&
+                static_cast<MethodDecl *>(member.get())->name == "init") {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const bool hasInit = type->kind == TypeKindSem::Class ? hasOwnInit(type->name, true)
+                                                          : hasOwnInit(type->name, false);
+
+    if (hasInit) {
+        std::string resolvedOwner;
+        CallArgBinding binding;
+        MethodDecl *initDecl = resolveMethodArgOverload(type->name,
+                                                        "init",
+                                                        expr->args,
+                                                        expr->loc,
+                                                        &resolvedOwner,
+                                                        false,
+                                                        &binding);
+
+        if (!initDecl) {
+            error(expr->loc,
+                  "Type '" + type->name +
+                      "' has no init overload matching the provided arguments");
+            return types::unknown();
+        }
+
+        resolvedInitDecls_[expr] = initDecl;
+        resolvedInitOwnerTypes_[expr] = resolvedOwner;
+        newArgBindings_[expr] = binding;
+    } else {
+        CallArgBinding binding;
+        auto fieldSpecs = type->kind == TypeKindSem::Class ? makeClassFieldSpecs(type->name)
+                                                           : makeStructFieldSpecs(type->name);
+        if (!bindCallArgs(expr->args, fieldSpecs, expr->loc, type->name, binding, nullptr, true))
+            return types::unknown();
+        newArgBindings_[expr] = binding;
     }
 
     return type;
@@ -877,7 +930,21 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr) {
 
     std::vector<TypeRef> paramTypes;
     for (const auto &param : expr->params) {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+        if (!param.type) {
+            error(expr->loc, "lambda parameters require explicit type annotations");
+            paramTypes.push_back(types::unknown());
+
+            Symbol sym;
+            sym.kind = Symbol::Kind::Parameter;
+            sym.name = param.name;
+            sym.type = types::unknown();
+            sym.isFinal = true;
+            defineSymbol(param.name, sym, expr->loc);
+            markInitialized(param.name);
+            continue;
+        }
+
+        TypeRef paramType = resolveTypeNode(param.type.get());
         paramTypes.push_back(paramType);
 
         Symbol sym;

@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_addr_of.cpp
-// Purpose: Verify VM addr_of instruction returns pointer to global string.
-// Key invariants: Returned pointer's data matches global initializer.
+// Purpose: Verify VM addr_of instruction returns a valid runtime string handle for globals.
+// Key invariants: Returned handle stays runtime-managed and preserves global contents.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/il-guide.md#reference
 //
@@ -18,6 +18,7 @@
 #include "rt_internal.h"
 #include "vm/VM.hpp"
 #include <cassert>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -41,6 +42,8 @@ int main() {
     il::vm::VM vm(m);
     int64_t rv = vm.run();
     rt_string s = reinterpret_cast<rt_string>(static_cast<uintptr_t>(rv));
-    assert(s->data == m.globals.front().init.c_str());
+    assert(rt_string_is_handle(s));
+    assert(std::strcmp(rt_string_cstr(s), m.globals.front().init.c_str()) == 0);
+    assert(rt_str_len(s) == static_cast<int64_t>(m.globals.front().init.size()));
     return 0;
 }

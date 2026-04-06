@@ -86,6 +86,7 @@ void *rt_option_some(void *value) {
     o->variant = OPTION_SOME;
     o->value_type = VALUE_PTR;
     o->value.ptr = value;
+    rt_obj_retain_maybe(value);
     rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }
@@ -95,7 +96,7 @@ void *rt_option_some_str(rt_string value) {
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_STR;
-    o->value.str = value;
+    o->value.str = value ? rt_string_ref(value) : NULL;
     rt_obj_set_finalizer(o, option_finalizer);
     return o;
 }

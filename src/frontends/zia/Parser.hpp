@@ -328,7 +328,7 @@ class Parser {
     /// - Parenthesized expressions
     /// - List literals: `[a, b, c]`
     /// - Map/set literals: `{a: 1, b: 2}` or `{a, b, c}`
-    /// - Lambda expressions: `(x) => x + 1`
+    /// - Lambda expressions: `(x: Integer) => x + 1`
     /// - If/match expressions
     ExprPtr parsePrimary();
 
@@ -480,24 +480,14 @@ class Parser {
     /// Creates a new scope for local variables.
     StmtPtr parseBlock();
 
-    /// @brief Parse a variable declaration: var x = 1; or final x = 1; (legacy)
+    /// @brief Parse a variable declaration: var x = 1; or final x = 1;
     /// @return The parsed VarStmt.
     ///
-    /// @details Handles legacy syntax:
+    /// @details Handles:
     /// - Mutable: `var x = 1;`
     /// - Immutable: `final x = 1;`
     /// - With type: `var x: Integer = 1;`
-    /// @deprecated Use parseJavaStyleVarDecl() for new code.
     StmtPtr parseVarDecl();
-
-    /// @brief Parse a Java-style variable declaration: Type name = expr;
-    /// @return The parsed VarStmt.
-    ///
-    /// @details Handles Java-style declarations:
-    /// - Simple: `Integer x = 1;`
-    /// - Generic: `List[String] items = ...;`
-    /// - Uninitialized: `Integer x;`
-    StmtPtr parseJavaStyleVarDecl();
 
     /// @brief Parse an if statement: if (cond) { } else { }
     /// @return The parsed IfStmt.
@@ -618,18 +608,9 @@ class Parser {
     /// @brief Parse a type alias: type Name = TargetType;
     DeclPtr parseTypeAlias();
 
-    /// @brief Parse a global variable declaration: var x = 1; (legacy)
+    /// @brief Parse a global variable declaration: var x = 1;
     /// @return The parsed GlobalVarDecl.
-    /// @deprecated Use parseJavaStyleGlobalVarDecl() for new code.
     DeclPtr parseGlobalVarDecl();
-
-    /// @brief Parse a Java-style global variable declaration: Type name = expr;
-    /// @return The parsed GlobalVarDecl.
-    ///
-    /// @details Handles Java-style declarations:
-    /// - Simple: `Integer x = 1;`
-    /// - Uninitialized: `Integer x;`
-    DeclPtr parseJavaStyleGlobalVarDecl();
 
     /// @brief Parse a bind declaration: bind Viper.Terminal as Term;
     /// @return The parsed BindDecl.

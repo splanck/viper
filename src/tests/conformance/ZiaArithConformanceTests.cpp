@@ -68,7 +68,7 @@ TEST(ZiaArithConformance, IntAddChecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 10 + 20;
+    var a: Integer = 10 + 20;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -87,7 +87,7 @@ TEST(ZiaArithConformance, IntDivChecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 20 / 4;
+    var a: Integer = 20 / 4;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -106,7 +106,7 @@ TEST(ZiaArithConformance, IntModChecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 17 % 5;
+    var a: Integer = 17 % 5;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -129,7 +129,7 @@ TEST(ZiaArithConformance, IntAddUnchecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 10 + 20;
+    var a: Integer = 10 + 20;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -149,7 +149,7 @@ TEST(ZiaArithConformance, IntDivUnchecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 20 / 4;
+    var a: Integer = 20 / 4;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -168,7 +168,7 @@ TEST(ZiaArithConformance, IntModUnchecked) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer a = 17 % 5;
+    var a: Integer = 17 % 5;
     Viper.Terminal.SayInt(a);
 }
 )";
@@ -191,7 +191,7 @@ TEST(ZiaArithConformance, MixedIntPlusNumber) {
     const std::string source = R"(
 module Test;
 func start() {
-    Number x = 42 + 3.14;
+    var x: Number = 42 + 3.14;
     Viper.Terminal.SayNum(x);
 }
 )";
@@ -210,7 +210,7 @@ TEST(ZiaArithConformance, FloatDiv) {
     const std::string source = R"(
 module Test;
 func start() {
-    Number x = 10.0 / 4.0;
+    var x: Number = 10.0 / 4.0;
     Viper.Terminal.SayNum(x);
 }
 )";
@@ -228,7 +228,7 @@ TEST(ZiaArithConformance, FloatMul) {
     const std::string source = R"(
 module Test;
 func start() {
-    Number x = 2.5 * 4.0;
+    var x: Number = 2.5 * 4.0;
     Viper.Terminal.SayNum(x);
 }
 )";
@@ -245,12 +245,12 @@ TEST(ZiaArithConformance, NumberReturnFromIntFunc) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
-bind Math = Viper.Math;
+bind Viper.Math as Math;
 func f() -> Integer {
     return Math.Floor(3.14);
 }
 func start() {
-    Integer x = f();
+    var x: Integer = f();
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -271,7 +271,7 @@ TEST(ZiaArithConformance, IntCompare) {
     const std::string source = R"(
 module Test;
 func start() {
-    Boolean b = 3 < 5;
+    var b: Boolean = 3 < 5;
     if b { Viper.Terminal.Say("yes"); }
 }
 )";
@@ -289,7 +289,7 @@ TEST(ZiaArithConformance, FloatCompare) {
     const std::string source = R"(
 module Test;
 func start() {
-    Boolean b = 3.0 < 5.0;
+    var b: Boolean = 3.0 < 5.0;
     if b { Viper.Terminal.Say("yes"); }
 }
 )";
@@ -307,7 +307,7 @@ TEST(ZiaArithConformance, BitwiseAnd) {
     const std::string source = R"(
 module Test;
 func start() {
-    Integer x = 0xFF & 0x0F;
+    var x: Integer = 0xFF & 0x0F;
     Viper.Terminal.SayInt(x);
 }
 )";

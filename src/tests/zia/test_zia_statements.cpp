@@ -30,8 +30,7 @@ TEST(ZiaStatements, VarInference) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x = 42;
+func start() {    var x = 42;
     var y = 3;
     var z = "hello";
     var b = true;
@@ -56,8 +55,7 @@ TEST(ZiaStatements, VarExplicitType) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 42;
+func start() {    var x: Integer = 42;
     var y: Integer = 3;
     var z: String = "hello";
     var b: Boolean = true;
@@ -82,8 +80,7 @@ TEST(ZiaStatements, FinalVariable) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    final PI = 314159;
+func start() {    final PI = 314159;
     final NAME = "Viper";
     final COUNT = 100;
 
@@ -110,8 +107,7 @@ TEST(ZiaStatements, IfBasic) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 5;
+func start() {    var x: Integer = 5;
 
     if x > 0 {
         Viper.Terminal.Say("positive");
@@ -132,8 +128,7 @@ TEST(ZiaStatements, IfElse) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = -3;
+func start() {    var x: Integer = -3;
 
     if x >= 0 {
         Viper.Terminal.Say("non-negative");
@@ -156,8 +151,7 @@ TEST(ZiaStatements, IfNested) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 15;
+func start() {    var x: Integer = 15;
 
     if x > 0 {
         if x < 10 {
@@ -192,8 +186,7 @@ TEST(ZiaStatements, WhileBasic) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var i = 0;
+func start() {    var i = 0;
     while i < 5 {
         Viper.Terminal.SayInt(i);
         i = i + 1;
@@ -214,8 +207,7 @@ TEST(ZiaStatements, WhileBreak) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var i = 0;
+func start() {    var i = 0;
     while true {
         if i >= 5 {
             break;
@@ -240,8 +232,7 @@ TEST(ZiaStatements, WhileContinue) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var i = 0;
+func start() {    var i = 0;
     while i < 10 {
         i = i + 1;
         if i % 2 == 0 {
@@ -269,8 +260,7 @@ TEST(ZiaStatements, ForInList) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var numbers = [1, 2, 3, 4, 5];
+func start() {    var numbers = [1, 2, 3, 4, 5];
     for n in numbers {
         Viper.Terminal.SayInt(n);
     }
@@ -290,8 +280,7 @@ TEST(ZiaStatements, ForInRange) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    for i in 0..5 {
+func start() {    for i in 0..5 {
         Viper.Terminal.SayInt(i);
     }
 }
@@ -310,8 +299,7 @@ TEST(ZiaStatements, ForCStyle) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    for (var i = 0; i < 5; i = i + 1) {
+func start() {    for (var i = 0; i < 5; i = i + 1) {
         Viper.Terminal.SayInt(i);
     }
 }
@@ -330,8 +318,7 @@ TEST(ZiaStatements, ForBreak) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+func start() {    var numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     for n in numbers {
         if n > 5 {
             break;
@@ -358,16 +345,14 @@ TEST(ZiaStatements, Guard) {
     const std::string source = R"(
 module Test;
 
-func process(Integer? value) {
-    guard value != null else {
+func process(value: Integer?) {    guard value != null else {
         Viper.Terminal.Say("value is null");
         return;
     }
     Viper.Terminal.SayInt(value ?? 0);
 }
 
-func start() {
-    process(42);
+func start() {    process(42);
     process(null);
 }
 )";
@@ -385,8 +370,7 @@ TEST(ZiaStatements, GuardInLoop) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var values = [1, 2, 0, 4, 0, 6];
+func start() {    var values = [1, 2, 0, 4, 0, 6];
     for v in values {
         guard v != 0 else {
             continue;
@@ -413,8 +397,7 @@ TEST(ZiaStatements, BlockScoping) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x = 10;
+func start() {    var x = 10;
     {
         var x = 20;  // Shadows outer x
         Viper.Terminal.SayInt(x);  // 20
@@ -440,12 +423,10 @@ TEST(ZiaStatements, ReturnValue) {
     const std::string source = R"(
 module Test;
 
-func double(Integer x) -> Integer {
-    return x * 2;
+func double(x: Integer) -> Integer {    return x * 2;
 }
 
-func start() {
-    Viper.Terminal.SayInt(double(21));
+func start() {    Viper.Terminal.SayInt(double(21));
 }
 )";
     CompilerInput input{.source = source, .path = "returnval.zia"};
@@ -462,16 +443,14 @@ TEST(ZiaStatements, ReturnVoid) {
     const std::string source = R"(
 module Test;
 
-func earlyExit(Integer x) {
-    if x < 0 {
+func earlyExit(x: Integer) {    if x < 0 {
         Viper.Terminal.Say("negative");
         return;
     }
     Viper.Terminal.Say("non-negative");
 }
 
-func start() {
-    earlyExit(-5);
+func start() {    earlyExit(-5);
     earlyExit(5);
 }
 )";
@@ -493,8 +472,7 @@ TEST(ZiaStatements, NestedLoops) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    for i in 0..3 {
+func start() {    for i in 0..3 {
         for j in 0..3 {
             if i == j {
                 continue;
@@ -518,8 +496,7 @@ TEST(ZiaStatements, ComplexConditions) {
     const std::string source = R"(
 module Test;
 
-func classify(Integer n) -> String {
-    if n < 0 {
+func classify(n: Integer) -> String {    if n < 0 {
         return "negative";
     }
     if n == 0 {
@@ -534,8 +511,7 @@ func classify(Integer n) -> String {
     return "large";
 }
 
-func start() {
-    Viper.Terminal.Say(classify(-5));
+func start() {    Viper.Terminal.Say(classify(-5));
     Viper.Terminal.Say(classify(0));
     Viper.Terminal.Say(classify(7));
     Viper.Terminal.Say(classify(42));
@@ -556,8 +532,7 @@ TEST(ZiaStatements, MatchAsVariableName) {
     const std::string source = R"(
 module Test;
 
-func test(Integer val) -> Integer {
-    if val >= 0 {
+func test(val: Integer) -> Integer {    if val >= 0 {
         var match = 0;
         if val == 1 {
             match = 10;
@@ -574,8 +549,7 @@ func test(Integer val) -> Integer {
     return 0;
 }
 
-func start() {
-    Viper.Terminal.Say(Viper.Fmt.Int(test(1)));
+func start() {    Viper.Terminal.Say(Viper.Fmt.Int(test(1)));
     Viper.Terminal.Say(Viper.Fmt.Int(test(2)));
     Viper.Terminal.Say(Viper.Fmt.Int(test(3)));
 }

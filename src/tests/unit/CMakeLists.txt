@@ -786,6 +786,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_bigint PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_bigint test_rt_bigint)
 
+    viper_add_test(test_rt_bigint_contracts ${VIPER_TESTS_DIR}/runtime/RTBigIntContractTests.cpp)
+    target_link_libraries(test_rt_bigint_contracts PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bigint_contracts test_rt_bigint_contracts)
+
     viper_add_test(test_rt_xml ${VIPER_TESTS_DIR}/runtime/RTXmlTests.cpp)
     target_link_libraries(test_rt_xml PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_xml test_rt_xml)
@@ -833,6 +837,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_option ${VIPER_TESTS_DIR}/runtime/RTOptionTests.cpp)
     target_link_libraries(test_rt_option PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_option test_rt_option)
+
+    viper_add_test(test_rt_core_ownership ${VIPER_TESTS_DIR}/runtime/RTCoreOwnershipTests.cpp)
+    target_link_libraries(test_rt_core_ownership PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_core_ownership test_rt_core_ownership)
 
     viper_add_test(test_rt_deque ${VIPER_TESTS_DIR}/runtime/RTDequeTests.cpp)
     target_link_libraries(test_rt_deque PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1424,6 +1432,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_modvar ${VIPER_TESTS_DIR}/runtime/RTModvarTests.cpp)
     target_link_libraries(test_rt_modvar PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_modvar test_rt_modvar)
+
+    viper_add_test(test_rt_modvar_contracts ${VIPER_TESTS_DIR}/runtime/RTModvarContractTests.cpp)
+    target_link_libraries(test_rt_modvar_contracts PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_modvar_contracts test_rt_modvar_contracts)
 
     viper_add_test(test_rt_bytes ${VIPER_TESTS_DIR}/runtime/RTBytesTests.cpp)
     target_link_libraries(test_rt_bytes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

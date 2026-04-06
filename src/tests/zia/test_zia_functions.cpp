@@ -30,12 +30,10 @@ TEST(ZiaFunctions, VoidNoParams) {
     const std::string source = R"(
 module Test;
 
-func sayHello() {
-    Viper.Terminal.Say("Hello!");
+func sayHello() {    Viper.Terminal.Say("Hello!");
 }
 
-func start() {
-    sayHello();
+func start() {    sayHello();
 }
 )";
     CompilerInput input{.source = source, .path = "voidnoparam.zia"};
@@ -52,16 +50,13 @@ TEST(ZiaFunctions, WithParameters) {
     const std::string source = R"(
 module Test;
 
-func greet(String name) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+func greet(name: String) {    Viper.Terminal.Say("Hello, " + name + "!");
 }
 
-func addNumbers(Integer a, Integer b) {
-    Viper.Terminal.SayInt(a + b);
+func addNumbers(a: Integer, b: Integer) {    Viper.Terminal.SayInt(a + b);
 }
 
-func start() {
-    greet("World");
+func start() {    greet("World");
     addNumbers(5, 3);
 }
 )";
@@ -79,22 +74,18 @@ TEST(ZiaFunctions, ReturnValueArrow) {
     const std::string source = R"(
 module Test;
 
-func add(Integer a, Integer b) -> Integer {
-    return a + b;
+func add(a: Integer, b: Integer) -> Integer {    return a + b;
 }
 
-func multiply(Integer a, Integer b) -> Integer {
-    return a * b;
+func multiply(a: Integer, b: Integer) -> Integer {    return a * b;
 }
 
-func isEven(Integer n) -> Boolean {
-    return n % 2 == 0;
+func isEven(n: Integer) -> Boolean {    return n % 2 == 0;
 }
 
-func start() {
-    Integer sum = add(10, 20);
-    Integer product = multiply(5, 6);
-    Boolean even = isEven(4);
+func start() {    var sum: Integer = add(10, 20);
+    var product: Integer = multiply(5, 6);
+    var even: Boolean = isEven(4);
 
     Viper.Terminal.SayInt(sum);
     Viper.Terminal.SayInt(product);
@@ -109,23 +100,20 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test function with return value (colon syntax).
-TEST(ZiaFunctions, ReturnValueColon) {
+/// @brief Test canonical arrow return syntax with typed locals.
+TEST(ZiaFunctions, ReturnValueCanonicalArrow) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-func add(Integer a, Integer b): Integer {
-    return a + b;
+func add(a: Integer, b: Integer) -> Integer {    return a + b;
 }
 
-func multiply(Integer a, Integer b): Integer {
-    return a * b;
+func multiply(a: Integer, b: Integer) -> Integer {    return a * b;
 }
 
-func start() {
-    Integer sum = add(10, 20);
-    Integer product = multiply(5, 6);
+func start() {    var sum: Integer = add(10, 20);
+    var product: Integer = multiply(5, 6);
 
     Viper.Terminal.SayInt(sum);
     Viper.Terminal.SayInt(product);
@@ -149,12 +137,10 @@ TEST(ZiaFunctions, SwiftStyleParams) {
     const std::string source = R"(
 module Test;
 
-func process(value: Integer, factor: Integer) -> Integer {
-    return value * factor;
+func process(value: Integer, factor: Integer) -> Integer {    return value * factor;
 }
 
-func start() {
-    Integer result = process(10, 2);
+func start() {    var result: Integer = process(10, 2);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -166,22 +152,43 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Test Java-style parameters (Type name).
-TEST(ZiaFunctions, JavaStyleParams) {
+/// @brief Test named arguments, including reordered argument binding.
+TEST(ZiaFunctions, NamedArgumentsReorder) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
-func process(Integer value, Integer factor) -> Integer {
-    return value * factor;
+func formatPair(first: Integer, second: Integer) -> Integer {    return first * 10 + second;
 }
 
-func start() {
-    Integer result = process(10, 2);
+func start() {    var result: Integer = formatPair(second: 2, first: 4);
     Viper.Terminal.SayInt(result);
 }
 )";
-    CompilerInput input{.source = source, .path = "javaparams.zia"};
+    CompilerInput input{.source = source, .path = "namedargs.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test single-expression function declarations.
+TEST(ZiaFunctions, SingleExpressionFunctions) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func double(value: Integer) -> Integer = value * 2;
+func square(value: Integer) -> Integer = value * value;
+
+func start() {
+    var a: Integer = double(5);
+    var b: Integer = square(6);
+    Viper.Terminal.SayInt(a + b);
+}
+)";
+    CompilerInput input{.source = source, .path = "singleexpr.zia"};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
@@ -199,15 +206,13 @@ TEST(ZiaFunctions, Recursion) {
     const std::string source = R"(
 module Test;
 
-func factorial(Integer n) -> Integer {
-    if n <= 1 {
+func factorial(n: Integer) -> Integer {    if n <= 1 {
         return 1;
     }
     return n * factorial(n - 1);
 }
 
-func start() {
-    Viper.Terminal.SayInt(factorial(5));
+func start() {    Viper.Terminal.SayInt(factorial(5));
 }
 )";
     CompilerInput input{.source = source, .path = "recursion.zia"};
@@ -224,22 +229,19 @@ TEST(ZiaFunctions, MutualRecursion) {
     const std::string source = R"(
 module Test;
 
-func isEven(Integer n) -> Boolean {
-    if n == 0 {
+func isEven(n: Integer) -> Boolean {    if n == 0 {
         return true;
     }
     return isOdd(n - 1);
 }
 
-func isOdd(Integer n) -> Boolean {
-    if n == 0 {
+func isOdd(n: Integer) -> Boolean {    if n == 0 {
         return false;
     }
     return isEven(n - 1);
 }
 
-func start() {
-    Viper.Terminal.SayBool(isEven(4));
+func start() {    Viper.Terminal.SayBool(isEven(4));
     Viper.Terminal.SayBool(isOdd(5));
 }
 )";
@@ -261,8 +263,7 @@ TEST(ZiaFunctions, EarlyReturn) {
     const std::string source = R"(
 module Test;
 
-func findIndex(List[Integer] items, Integer target) -> Integer {
-    var i = 0;
+func findIndex(items: List[Integer], target: Integer) -> Integer {    var i = 0;
     for item in items {
         if item == target {
             return i;
@@ -272,9 +273,8 @@ func findIndex(List[Integer] items, Integer target) -> Integer {
     return -1;
 }
 
-func start() {
-    var list = [10, 20, 30, 40, 50];
-    Integer idx = findIndex(list, 30);
+func start() {    var list = [10, 20, 30, 40, 50];
+    var idx: Integer = findIndex(list, 30);
     Viper.Terminal.SayInt(idx);
 }
 )";
@@ -292,8 +292,7 @@ TEST(ZiaFunctions, ConditionalReturn) {
     const std::string source = R"(
 module Test;
 
-func sign(Integer n) -> Integer {
-    if n > 0 {
+func sign(n: Integer) -> Integer {    if n > 0 {
         return 1;
     } else {
         if n < 0 {
@@ -304,8 +303,7 @@ func sign(Integer n) -> Integer {
     }
 }
 
-func start() {
-    Viper.Terminal.SayInt(sign(42));
+func start() {    Viper.Terminal.SayInt(sign(42));
     Viper.Terminal.SayInt(sign(-17));
     Viper.Terminal.SayInt(sign(0));
 }
@@ -328,17 +326,15 @@ TEST(ZiaFunctions, ListParameter) {
     const std::string source = R"(
 module Test;
 
-func sum(List[Integer] numbers) -> Integer {
-    var total = 0;
+func sum(numbers: List[Integer]) -> Integer {    var total = 0;
     for n in numbers {
         total = total + n;
     }
     return total;
 }
 
-func start() {
-    var nums = [1, 2, 3, 4, 5];
-    Integer result = sum(nums);
+func start() {    var nums = [1, 2, 3, 4, 5];
+    var result: Integer = sum(nums);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -356,8 +352,7 @@ TEST(ZiaFunctions, ListReturn) {
     const std::string source = R"(
 module Test;
 
-func range(Integer start, Integer end) -> List[Integer] {
-    var result: List[Integer] = [];
+func range(start: Integer, end: Integer) -> List[Integer] {    var result: List[Integer] = [];
     var i = start;
     while i < end {
         result.add(i);
@@ -366,8 +361,7 @@ func range(Integer start, Integer end) -> List[Integer] {
     return result;
 }
 
-func start() {
-    var nums = range(1, 6);
+func start() {    var nums = range(1, 6);
     Viper.Terminal.SayInt(nums.count());
 }
 )";
@@ -389,8 +383,7 @@ TEST(ZiaFunctions, OptionalReturn) {
     const std::string source = R"(
 module Test;
 
-func findFirst(List[Integer] items, Integer target) -> Integer? {
-    for item in items {
+func findFirst(items: List[Integer], target: Integer) -> Integer? {    for item in items {
         if item == target {
             return item;
         }
@@ -398,10 +391,9 @@ func findFirst(List[Integer] items, Integer target) -> Integer? {
     return null;
 }
 
-func start() {
-    var list = [1, 2, 3, 4, 5];
-    Integer? found = findFirst(list, 3);
-    Integer? notFound = findFirst(list, 10);
+func start() {    var list = [1, 2, 3, 4, 5];
+    var found: Integer? = findFirst(list, 3);
+    var notFound: Integer? = findFirst(list, 10);
 
     if found != null {
         Viper.Terminal.Say("found");
@@ -425,16 +417,14 @@ TEST(ZiaFunctions, OptionalParameter) {
     const std::string source = R"(
 module Test;
 
-func printValue(Integer? value) {
-    if value != null {
+func printValue(value: Integer?) {    if value != null {
         Viper.Terminal.SayInt(value ?? 0);
     } else {
         Viper.Terminal.Say("no value");
     }
 }
 
-func start() {
-    printValue(42);
+func start() {    printValue(42);
     printValue(null);
 }
 )";
@@ -456,17 +446,14 @@ TEST(ZiaFunctions, CallbackPattern) {
     const std::string source = R"(
 module Test;
 
-func double(Integer value) -> Integer {
-    return value * 2;
+func double(value: Integer) -> Integer {    return value * 2;
 }
 
-func square(Integer value) -> Integer {
-    return value * value;
+func square(value: Integer) -> Integer {    return value * value;
 }
 
-func start() {
-    Integer doubled = double(5);
-    Integer squared = square(4);
+func start() {    var doubled: Integer = double(5);
+    var squared: Integer = square(4);
 
     Viper.Terminal.SayInt(doubled);
     Viper.Terminal.SayInt(squared);

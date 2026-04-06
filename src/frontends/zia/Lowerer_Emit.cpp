@@ -318,6 +318,10 @@ Lowerer::Value Lowerer::emitConstStr(const std::string &globalName) {
     return builder_->emitConstStr(globalName, curLoc_);
 }
 
+Lowerer::Value Lowerer::emitEmptyString() {
+    return emitConstStr(getStringGlobal(""));
+}
+
 unsigned Lowerer::nextTempId() {
     return builder_->reserveTempId();
 }
@@ -595,6 +599,14 @@ Lowerer::Value Lowerer::emitStructTypeAlloc(const StructTypeInfo &info) {
     }
 
     return destPtr;
+}
+
+LowerResult Lowerer::materializeCallResult(Value result, TypeRef semanticType, Type ilType) {
+    if (semanticType && semanticType->kind == TypeKindSem::Struct &&
+        ilType.kind == Type::Kind::Ptr) {
+        return emitUnboxValue(result, ilType, semanticType);
+    }
+    return {result, ilType};
 }
 
 //=============================================================================

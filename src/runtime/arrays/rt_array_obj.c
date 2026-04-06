@@ -166,20 +166,9 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
     if (new_cap > 0 && new_cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *))
         return NULL;
 
-    size_t payload_bytes = new_cap * sizeof(void *);
-    size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
-    if (!resized && total_bytes != 0)
+    void **payload = (void **)rt_heap_realloc(arr, sizeof(void *), len, new_cap);
+    if (!payload)
         return NULL;
-
-    void **payload = (void **)rt_heap_data(resized);
-    if (len > old_len) {
-        size_t grow = len - old_len;
-        memset(payload + old_len, 0, grow * sizeof(void *));
-    }
-    resized->cap = new_cap;
-    resized->len = len;
 
     return payload;
 }

@@ -804,6 +804,10 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
             return;
         }
 
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Struct) {
+            returnValue = emitBoxValue(returnValue, mapType(currentReturnType_), currentReturnType_);
+        }
+
         // The return value is transferred to the caller — don't release it.
         // But release any intermediate temps from evaluating the return expr.
         consumeDeferred(returnValue);

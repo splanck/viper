@@ -11,8 +11,10 @@
 // Key invariants:
 //   - All arithmetic operations produce normalized results with no leading zero limbs.
 //   - Division by zero traps; callers must guard divisor before calling rt_bigint_div.
-//   - Conversion rt_bigint_to_i64 truncates silently when the value exceeds int64 range.
-//   - String parsing accepts decimal or 0x-prefixed hexadecimal; returns NULL on invalid input.
+//   - Conversion rt_bigint_to_i64 saturates to INT64_MIN/INT64_MAX when the
+//     value exceeds int64 range.
+//   - String parsing accepts decimal plus 0x/0o/0b-prefixed forms and returns
+//     NULL on invalid input.
 //
 // Ownership/Lifetime:
 //   - Returned BigInt objects are newly heap-allocated with refcount 1.
@@ -41,7 +43,7 @@ extern "C" {
 void *rt_bigint_from_i64(int64_t val);
 
 /// @brief Create a BigInt from a string.
-/// @param str String representation (decimal, or hex with 0x prefix).
+/// @param str String representation (decimal, or 0x/0o/0b-prefixed).
 /// @return New BigInt object, or NULL if invalid string.
 void *rt_bigint_from_str(rt_string str);
 
@@ -64,7 +66,7 @@ void *rt_bigint_one(void);
 
 /// @brief Convert BigInt to 64-bit integer.
 /// @param a BigInt to convert.
-/// @return Integer value (truncated if too large).
+/// @return Integer value saturated to INT64_MIN/INT64_MAX when out of range.
 int64_t rt_bigint_to_i64(void *a);
 
 /// @brief Convert BigInt to decimal string.

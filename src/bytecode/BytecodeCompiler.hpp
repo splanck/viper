@@ -74,6 +74,12 @@ class BytecodeCompiler {
     /// @brief Next available local slot index for the current function.
     uint32_t nextLocal_;
 
+    /// @brief Per-local string classification for the current function.
+    /// @details Indexed by bytecode local slot. A value of 1 means the slot
+    ///          stores a managed runtime string handle and therefore needs
+    ///          retain/release semantics in the bytecode VM.
+    std::vector<uint8_t> localIsString_;
+
     /// @brief Mapping from block labels to their bytecode offsets.
     /// @details Populated during block emission and consumed during branch fixup.
     std::unordered_map<std::string, uint32_t> blockOffsets_;

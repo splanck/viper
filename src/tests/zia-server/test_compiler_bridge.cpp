@@ -282,14 +282,14 @@ TEST(CompilerBridge, HoverOnInvalidSource) {
 
 TEST(CompilerBridge, HoverOnModuleAlias) {
     CompilerBridge bridge;
-    // Line 2: "bind IO = Viper.Terminal;" — cursor on 'IO' at col 6
+    // Line 2: "bind Viper.Terminal as IO;" — cursor on 'IO' at col 24
     std::string source = "module Test;\n"
-                         "bind IO = Viper.Terminal;\n"
+                         "bind Viper.Terminal as IO;\n"
                          "\n"
                          "func start() {\n"
                          "    IO.Say(\"hello\");\n"
                          "}\n";
-    auto result = bridge.hover(source, 2, 6, "test.zia");
+    auto result = bridge.hover(source, 2, 24, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("IO") != std::string::npos);
     EXPECT_TRUE(result.find("Viper.Terminal") != std::string::npos);
@@ -300,7 +300,7 @@ TEST(CompilerBridge, HoverOnRuntimeMethod) {
     CompilerBridge bridge;
     // Line 5: "    IO.Say("hi");" — dotPrefix="IO", identifier="Say"
     std::string source = "module Test;\n"              // 1
-                         "bind IO = Viper.Terminal;\n" // 2
+                         "bind Viper.Terminal as IO;\n" // 2
                          "\n"                          // 3
                          "func start() {\n"            // 4
                          "    IO.Say(\"hi\");\n"       // 5
@@ -369,7 +369,7 @@ struct Point {
     var y: Integer;
 }
 func start() {
-    var p = Point(1, 2);
+    var p = new Point(1, 2);
 }
 )",
                                "test.zia");

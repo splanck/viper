@@ -589,7 +589,7 @@ enum class TokenKind {
 
     /// @brief Lambda arrow `=>`.
     /// @details Separates lambda parameters from body.
-    /// Syntax: `(x) => x + 1`
+    /// Syntax: `(x: Integer) => x + 1`
     FatArrow,
 
     /// @brief Optional/try operator `?`.

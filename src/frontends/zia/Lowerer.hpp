@@ -834,6 +834,25 @@ class Lowerer {
                                   TypeRef sourceType,
                                   TypeRef targetType);
 
+    /// @brief Lower explicit source arguments in source order.
+    std::vector<LowerResult> lowerSourceArgs(const std::vector<CallArg> &args);
+
+    /// @brief Build final call arguments from a resolved argument binding.
+    std::vector<Value> lowerResolvedArgs(const std::vector<CallArg> &args,
+                                         const std::vector<TypeRef> &paramTypes,
+                                         const std::vector<Param> *params,
+                                         const Sema::CallArgBinding *binding);
+
+    /// @brief Build final call arguments for a resolved call expression.
+    std::vector<Value> lowerResolvedCallArgs(CallExpr *expr,
+                                             const std::vector<TypeRef> &paramTypes,
+                                             const std::vector<Param> *params);
+
+    /// @brief Build final call arguments for a resolved new-expression.
+    std::vector<Value> lowerResolvedNewArgs(NewExpr *expr,
+                                            const std::vector<TypeRef> &paramTypes,
+                                            const std::vector<Param> *params);
+
     /// @brief Pad missing arguments with default parameter values.
     /// @details Looks up the function declaration and lowers default expressions
     ///          for any trailing parameters that have default values and are missing.
@@ -905,6 +924,9 @@ class Lowerer {
     /// @return Pointer value to the string.
     Value emitConstStr(const std::string &globalName);
 
+    /// @brief Emit the canonical empty-string constant.
+    Value emitEmptyString();
+
     /// @brief Get the next unique temporary ID.
     /// @return A unique temporary name counter.
     unsigned nextTempId();
@@ -949,6 +971,11 @@ class Lowerer {
     /// @param info The struct type info.
     /// @return Pointer to the allocated (zero-initialized) space.
     Value emitStructTypeAlloc(const StructTypeInfo &info);
+
+    /// @brief Materialize a call result into caller-owned storage when needed.
+    /// @details Struct-typed calls return boxed value payloads across function
+    ///          boundaries and are immediately copied back to stack storage here.
+    LowerResult materializeCallResult(Value result, TypeRef semanticType, Type ilType);
 
     /// @brief Lower a method call.
     /// @param method The method declaration.

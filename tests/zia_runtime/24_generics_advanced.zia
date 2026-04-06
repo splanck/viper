@@ -13,21 +13,17 @@ bind "./_support";
 class Box[T] {
     expose T value;
 
-    expose func init(v: T) {
-        value = v;
+    expose func init(v: T) {        value = v;
     }
 
-    expose func get() -> T {
-        return value;
+    expose func get() -> T {        return value;
     }
 
-    expose func set(v: T) {
-        value = v;
+    expose func set(v: T) {        value = v;
     }
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Generic Box with Integer
     //=========================================================================
     var intBox = new Box[Integer](42);

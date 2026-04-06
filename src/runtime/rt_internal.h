@@ -162,23 +162,19 @@ static inline int rt_hex_digit_value(char c) {
 /// @endcode
 #define RT_ARR_DEFINE_GROW_IN_PLACE_FN(fn_name, elem_type, payload_bytes_fn)                       \
     static int fn_name(rt_heap_hdr_t **hdr_inout, elem_type **payload_inout, size_t new_len) {     \
-        rt_heap_hdr_t *hdr = *hdr_inout;                                                           \
-        size_t old_len = hdr ? hdr->len : 0;                                                       \
         size_t new_cap = new_len;                                                                  \
         size_t payload_bytes = payload_bytes_fn(new_cap);                                          \
         if (new_cap > 0 && payload_bytes == 0)                                                     \
             return -1;                                                                             \
-        size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;                                \
-        rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);                       \
+        elem_type *payload = (elem_type *)rt_heap_realloc(*payload_inout,                          \
+                                                          sizeof(elem_type),                       \
+                                                          new_len,                                 \
+                                                          new_cap);                                \
+        if (!payload)                                                                              \
+            return -1;                                                                             \
+        rt_heap_hdr_t *resized = rt_heap_hdr((void *)payload);                                     \
         if (!resized)                                                                              \
             return -1;                                                                             \
-        elem_type *payload = (elem_type *)rt_heap_data(resized);                                   \
-        if (new_len > old_len) {                                                                   \
-            size_t grow = new_len - old_len;                                                       \
-            memset(payload + old_len, 0, grow * sizeof(elem_type));                                \
-        }                                                                                          \
-        resized->cap = new_cap;                                                                    \
-        resized->len = new_len;                                                                    \
         *hdr_inout = resized;                                                                      \
         *payload_inout = payload;                                                                  \
         return 0;                                                                                  \

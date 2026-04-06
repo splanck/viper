@@ -64,8 +64,8 @@ std::unique_ptr<ModuleDecl> Parser::parseModule() {
 }
 
 /// @brief Parse a bind declaration for file or namespace imports.
-/// @details Supports string literal paths, dotted namespace paths, alias assignment
-///          (Alias = Path), selective imports ({ Item1, Item2 }), and alias imports (as T).
+/// @details Supports string literal paths, dotted namespace paths, selective imports
+///          ({ Item1, Item2 }), and alias imports (as T).
 /// @return The parsed BindDecl.
 BindDecl Parser::parseBindDecl() {
     Token bindTok = advance(); // consume 'bind'
@@ -83,41 +83,6 @@ BindDecl Parser::parseBindDecl() {
     // Otherwise parse dotted identifier path: Viper.Terminal or module_name
     else if (check(TokenKind::Identifier)) {
         Token firstTok = advance();
-
-        // Check for alias assignment syntax: bind Alias = Viper.Path;
-        if (match(TokenKind::Equal)) {
-            std::string alias = firstTok.text;
-
-            if (!check(TokenKind::Identifier)) {
-                error("expected namespace path after '='");
-                return BindDecl(loc, "");
-            }
-
-            Token pathTok = advance();
-            path = pathTok.text;
-
-            while (match(TokenKind::Dot)) {
-                if (!check(TokenKind::Identifier)) {
-                    error("expected identifier in bind path");
-                    return BindDecl(loc, path);
-                }
-                path += ".";
-                Token segmentTok = advance();
-                path += segmentTok.text;
-            }
-
-            if (path.rfind("Viper.", 0) == 0)
-                isNamespaceBind = true;
-
-            BindDecl decl(loc, path);
-            decl.isNamespaceBind = isNamespaceBind;
-            decl.alias = alias;
-
-            if (!expect(TokenKind::Semicolon, ";"))
-                return decl;
-
-            return decl;
-        }
 
         // Standard dotted path: bind Viper.Terminal; or bind Viper.Terminal as T;
         path = firstTok.text;
@@ -190,8 +155,7 @@ BindDecl Parser::parseBindDecl() {
 }
 
 /// @brief Dispatch to the appropriate declaration parser based on the current keyword.
-/// @details Handles func, struct, class, interface, namespace, var/final, and
-///          Java-style global variable declarations.
+/// @details Handles func, struct, class, interface, namespace, and var/final declarations.
 /// @return The parsed declaration, or nullptr on error.
 DeclPtr Parser::parseDeclaration() {
     // Module-level export modifier: `expose func ...` sets Export linkage.
@@ -269,15 +233,6 @@ DeclPtr Parser::parseDeclaration() {
     if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
         return parseGlobalVarDecl();
     }
-    // Java-style: Integer x = 5; List[Integer] items = []; Entity? e = null;
-    if (check(TokenKind::Identifier)) {
-        Speculation speculative(*this);
-        if (DeclPtr decl = parseJavaStyleGlobalVarDecl()) {
-            speculative.commit();
-            return decl;
-        }
-    }
-
     error("expected declaration");
     return nullptr;
 }
@@ -311,8 +266,8 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
-    // Return type (supports both -> Type and : Type syntax)
-    if (match(TokenKind::Arrow) || match(TokenKind::Colon)) {
+    // Return type
+    if (match(TokenKind::Arrow)) {
         func->returnType = parseType();
         if (!func->returnType)
             return nullptr;
@@ -349,8 +304,8 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
 }
 
 /// @brief Parse a comma-separated list of function or method parameters.
-/// @details Supports both Swift-style (name: Type) and Java-style (Type name) parameters,
-///          optional types (Type?), generic types (List[T]), and default values.
+/// @details Supports `name: Type` parameters, including optional types (`Type?`),
+///          generics (`List[T]`), variadics, and default values.
 /// @return The parsed parameter list, or empty vector on error.
 std::vector<Param> Parser::parseParameters() {
     std::vector<Param> params;
@@ -372,58 +327,16 @@ std::vector<Param> Parser::parseParameters() {
         std::string first = firstTok.text;
         SourceLoc firstLoc = firstTok.loc;
 
-        if (check(TokenKind::Colon)) {
-            // Swift style: name: Type  or  name: ...Type (variadic)
-            advance(); // consume :
-            param.name = first;
-            param.loc = firstLoc;
-            param.isVariadic = match(TokenKind::Ellipsis);
-            param.type = parseType();
-            if (!param.type)
-                return {};
-        } else if (checkIdentifierLike()) {
-            // Java style: Type name (name can be contextual keyword like 'value')
-            Token nameTok = advance();
-            param.name = nameTok.text;
-            param.loc = nameTok.loc;
-            param.type = std::make_unique<NamedType>(firstLoc, first);
-        } else if (match(TokenKind::LBracket)) {
-            // Generic type Java style: List[T] name
-            std::vector<TypePtr> typeArgs;
-            do {
-                TypePtr arg = parseType();
-                if (!arg)
-                    return {};
-                typeArgs.push_back(std::move(arg));
-            } while (match(TokenKind::Comma));
-
-            if (!expect(TokenKind::RBracket, "]"))
-                return {};
-
-            // Now parse the parameter name (can be contextual keyword like 'value')
-            if (!checkIdentifierLike()) {
-                error("expected parameter name after type");
-                return {};
-            }
-            Token nameTok = advance();
-            param.name = nameTok.text;
-            param.loc = nameTok.loc;
-            param.type = std::make_unique<GenericType>(firstLoc, first, std::move(typeArgs));
-        } else if (match(TokenKind::Question)) {
-            // Optional type Java style: Type? name
-            if (!checkIdentifierLike()) {
-                error("expected parameter name after type");
-                return {};
-            }
-            Token nameTok = advance();
-            param.name = nameTok.text;
-            param.loc = nameTok.loc;
-            auto baseType = std::make_unique<NamedType>(firstLoc, first);
-            param.type = std::make_unique<OptionalType>(firstLoc, std::move(baseType));
-        } else {
-            error("expected ':' or parameter name");
+        if (!match(TokenKind::Colon)) {
+            error("expected ':' after parameter name");
             return {};
         }
+        param.name = first;
+        param.loc = firstLoc;
+        param.isVariadic = match(TokenKind::Ellipsis);
+        param.type = parseType();
+        if (!param.type)
+            return {};
 
         // Default value
         if (match(TokenKind::Equal)) {
@@ -854,42 +767,6 @@ DeclPtr Parser::parseGlobalVarDecl() {
     return decl;
 }
 
-/// @brief Parse a Java-style global variable declaration (Type name = expr;).
-/// @details Used speculatively when the current token is an uppercase identifier.
-/// @return The parsed GlobalVarDecl, or nullptr if not a valid Java-style declaration.
-DeclPtr Parser::parseJavaStyleGlobalVarDecl() {
-    SourceLoc loc = peek().loc;
-
-    // Parse the type (e.g., Integer, List, etc.)
-    TypePtr type = parseType();
-    if (!type)
-        return nullptr;
-
-    // Now we expect a variable name
-    if (!check(TokenKind::Identifier)) {
-        error("expected variable name after type");
-        return nullptr;
-    }
-    Token nameTok = advance();
-    std::string name = nameTok.text;
-
-    auto decl = std::make_unique<GlobalVarDecl>(loc, std::move(name));
-    decl->type = std::move(type);
-    decl->isFinal = false; // Java-style declarations are mutable by default
-
-    // Optional initializer: Integer x = 42
-    if (match(TokenKind::Equal)) {
-        decl->initializer = parseExpression();
-        if (!decl->initializer)
-            return nullptr;
-    }
-
-    if (!expect(TokenKind::Semicolon, ";"))
-        return nullptr;
-
-    return decl;
-}
-
 /// @brief Parse a field declaration inside a struct or class body (Type name [= init];).
 /// @return The parsed FieldDecl, or nullptr on error.
 DeclPtr Parser::parseFieldDecl() {
@@ -949,8 +826,8 @@ DeclPtr Parser::parseMethodDecl() {
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
-    // Return type (supports both -> Type and : Type syntax)
-    if (match(TokenKind::Arrow) || match(TokenKind::Colon)) {
+    // Return type
+    if (match(TokenKind::Arrow)) {
         method->returnType = parseType();
     }
 

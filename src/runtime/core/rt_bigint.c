@@ -67,6 +67,7 @@ typedef struct {
 //=============================================================================
 
 static void bigint_finalizer(void *obj);
+static void bigint_release_owned(bigint_t *bi);
 
 /// @brief Allocate a GC-managed BigInt with the given digit capacity.
 /// @details Creates the BigInt as a runtime object via rt_obj_new_i64 so the
@@ -85,8 +86,11 @@ static bigint_t *bigint_alloc(int64_t capacity) {
     bigint_t *bi = (bigint_t *)obj;
     bi->cap = capacity > 0 ? capacity : 4;
     bi->digits = calloc((size_t)bi->cap, sizeof(uint32_t));
-    if (!bi->digits)
+    if (!bi->digits) {
         rt_trap("bigint: memory allocation failed");
+        bigint_release_owned(bi);
+        return NULL;
+    }
     bi->len = 0;
     bi->sign = 0;
 
@@ -111,33 +115,45 @@ static void bigint_finalizer(void *obj) {
     }
 }
 
+static void bigint_release_owned(bigint_t *bi) {
+    if (bi && rt_obj_release_check0(bi))
+        rt_obj_free(bi);
+}
+
 /// @brief Grow the digit array if current capacity is insufficient.
 /// @details Doubles the existing capacity (or uses @p cap, whichever is larger)
 ///          to amortize growth cost over many operations. The new region is
 ///          zero-filled so arithmetic routines can safely read beyond the current
-///          len without encountering uninitialized data. Silently returns without
-///          growing if the requested capacity would overflow size_t — callers
-///          must check len after operations that depend on growth succeeding.
+///          len without encountering uninitialized data. Traps on overflow or
+///          allocation failure and returns 0 so trap-recovering tests/embedders
+///          do not continue with an undersized digit buffer.
 /// @param bi BigInt whose digit array may need expansion.
 /// @param cap Minimum number of digit slots required.
-static void bigint_ensure_capacity(bigint_t *bi, int64_t cap) {
+static int bigint_ensure_capacity(bigint_t *bi, int64_t cap) {
     if (cap <= bi->cap)
-        return;
+        return 1;
 
-    if (bi->cap > INT64_MAX / 2)
-        return; // Capacity overflow — cannot grow
+    if (bi->cap > INT64_MAX / 2) {
+        rt_trap("bigint: capacity overflow");
+        return 0;
+    }
     int64_t new_cap = bi->cap * 2;
     if (new_cap < cap)
         new_cap = cap;
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(uint32_t))
-        return; // Allocation size overflow
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(uint32_t)) {
+        rt_trap("bigint: allocation size overflow");
+        return 0;
+    }
 
     uint32_t *new_digits = realloc(bi->digits, (size_t)new_cap * sizeof(uint32_t));
-    if (!new_digits)
-        return;
+    if (!new_digits) {
+        rt_trap("bigint: memory allocation failed");
+        return 0;
+    }
     memset(new_digits + bi->cap, 0, (size_t)(new_cap - bi->cap) * sizeof(uint32_t));
     bi->digits = new_digits;
     bi->cap = new_cap;
+    return 1;
 }
 
 /// @brief Strip trailing zero digits and normalize the sign (-0 → +0).
@@ -275,6 +291,7 @@ void *rt_bigint_from_str(rt_string str) {
 
     result->len = 0;
     result->sign = 0;
+    int saw_digit = 0;
 
     while (i < slen) {
         char c = s[i];
@@ -296,6 +313,7 @@ void *rt_bigint_from_str(rt_string str) {
 
         if (digit >= base)
             break;
+        saw_digit = 1;
 
         // result = result * base + digit
         uint64_t carry = (uint64_t)digit;
@@ -306,13 +324,23 @@ void *rt_bigint_from_str(rt_string str) {
         }
 
         while (carry > 0) {
-            bigint_ensure_capacity(result, result->len + 1);
+            if (!bigint_ensure_capacity(result, result->len + 1)) {
+                bigint_release_owned(result);
+                return NULL;
+            }
             result->digits[result->len] = (uint32_t)(carry & 0xFFFFFFFF);
             result->len++;
             carry >>= 32;
         }
 
         i++;
+    }
+
+    while (i < slen && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n'))
+        i++;
+    if (!saw_digit || i != slen) {
+        bigint_release_owned(result);
+        return NULL;
     }
 
     result->sign = (result->len > 0) ? sign : 0;
@@ -360,7 +388,10 @@ void *rt_bigint_from_bytes(void *bytes) {
                 word |= ((uint32_t)(~b & 0xFF)) << (j * 8);
             }
             uint64_t sum = (uint64_t)word + carry;
-            bigint_ensure_capacity(bi, d + 1);
+            if (!bigint_ensure_capacity(bi, d + 1)) {
+                bigint_release_owned(bi);
+                return NULL;
+            }
             bi->digits[d] = (uint32_t)sum;
             carry = sum >> 32;
             d++;
@@ -376,7 +407,10 @@ void *rt_bigint_from_bytes(void *bytes) {
                 uint8_t b = (uint8_t)rt_bytes_get(bytes, i - j);
                 word |= ((uint32_t)b) << (j * 8);
             }
-            bigint_ensure_capacity(bi, d + 1);
+            if (!bigint_ensure_capacity(bi, d + 1)) {
+                bigint_release_owned(bi);
+                return NULL;
+            }
             bi->digits[d] = word;
             d++;
             if (bi->len < d)
@@ -403,12 +437,13 @@ void *rt_bigint_one(void) {
 // Conversion
 //=============================================================================
 
-/// @brief Convert BigInt to int64, truncating if the value exceeds 64-bit range.
+/// @brief Convert BigInt to int64, saturating if the value exceeds 64-bit range.
 /// @details Extracts the lower 64 bits of the magnitude and applies the sign.
-///          Values larger than INT64_MAX are silently truncated — callers should
-///          use rt_bigint_fits_i64 first if truncation is not acceptable.
+///          Values larger than INT64_MAX clamp to INT64_MAX, while values below
+///          INT64_MIN clamp to INT64_MIN. Callers can use rt_bigint_fits_i64
+///          to detect lossy narrowing ahead of time.
 /// @param a BigInt to convert.
-/// @return int64_t representation (truncated if too large).
+/// @return int64_t representation, saturated when out of range.
 int64_t rt_bigint_to_i64(void *a) {
     if (!a)
         return 0;
@@ -424,7 +459,7 @@ int64_t rt_bigint_to_i64(void *a) {
     }
 
     if (bi->len > 2 || val > (uint64_t)INT64_MAX + (bi->sign ? 1ULL : 0ULL)) {
-        // Overflow - truncate
+        // Overflow - saturate
         if (bi->sign)
             return INT64_MIN;
         return INT64_MAX;
@@ -453,8 +488,10 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     if (!a)
         return rt_string_from_bytes("0", 1);
 
-    if (base < 2 || base > 36)
-        base = 10;
+    if (base < 2 || base > 36) {
+        rt_trap("BigInt.ToString: base must be between 2 and 36");
+        return NULL;
+    }
 
     bigint_t *bi = (bigint_t *)a;
 
@@ -464,13 +501,16 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     // Work with a copy
     bigint_t *tmp = bigint_clone(bi);
     if (!tmp)
-        return rt_str_empty();
+        return NULL;
 
     // Estimate size: safe upper bound covering all bases (base 2 = 32 bits/limb)
     int64_t max_chars = bi->len * 33 + 4;
     char *buf = malloc((size_t)max_chars);
-    if (!buf)
+    if (!buf) {
         rt_trap("bigint: memory allocation failed");
+        bigint_release_owned(tmp);
+        return NULL;
+    }
     int64_t pos = max_chars - 1;
     buf[pos--] = '\0';
 
@@ -493,8 +533,7 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     rt_string result = rt_string_from_bytes(buf + pos + 1, max_chars - pos - 2);
     free(buf);
 
-    if (rt_obj_release_check0(tmp))
-        rt_obj_free(tmp);
+    bigint_release_owned(tmp);
 
     return result;
 }
@@ -581,8 +620,8 @@ void *rt_bigint_to_bytes(void *a) {
 
 /// @brief Check whether the BigInt value fits in a signed 64-bit integer.
 /// @details Compares the magnitude against INT64_MAX (for non-negative) or
-///          INT64_MIN (for negative). Used by callers to guard against silent
-///          truncation before calling rt_bigint_to_i64.
+///          INT64_MIN (for negative). Used by callers to guard against lossy
+///          narrowing before calling rt_bigint_to_i64.
 /// @param a BigInt to test.
 /// @return 1 if the value is representable as int64, 0 otherwise.
 int8_t rt_bigint_fits_i64(void *a) {
@@ -629,7 +668,10 @@ static bigint_t *bigint_add_mag(bigint_t *a, bigint_t *b) {
 
     uint64_t carry = 0;
     for (int64_t i = 0; i < max_len || carry; i++) {
-        bigint_ensure_capacity(result, i + 1);
+        if (!bigint_ensure_capacity(result, i + 1)) {
+            bigint_release_owned(result);
+            return NULL;
+        }
         uint64_t sum = carry;
         if (i < a->len)
             sum += a->digits[i];
@@ -664,7 +706,10 @@ static bigint_t *bigint_sub_mag(bigint_t *a, bigint_t *b) {
             borrow = 0;
         }
 
-        bigint_ensure_capacity(result, i + 1);
+        if (!bigint_ensure_capacity(result, i + 1)) {
+            bigint_release_owned(result);
+            return NULL;
+        }
         result->digits[i] = (uint32_t)diff;
         if (result->len <= i)
             result->len = i + 1;
@@ -838,7 +883,8 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
         if (remainder)
             *remainder = rt_bigint_zero();
         bigint_t *q = (bigint_t *)rt_bigint_one();
-        q->sign = (bi_a->sign != bi_b->sign) ? 1 : 0;
+        if (q)
+            q->sign = (bi_a->sign != bi_b->sign) ? 1 : 0;
         return q;
     }
 
@@ -862,6 +908,10 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
 
         if (remainder) {
             bigint_t *r = (bigint_t *)rt_bigint_from_i64((int64_t)rem);
+            if (!r) {
+                bigint_release_owned(quot);
+                return NULL;
+            }
             r->sign = bi_a->sign;
             bigint_normalize(r);
             *remainder = r;
@@ -878,14 +928,8 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
     bigint_t *quot = bigint_alloc(m + 1);
     bigint_t *rem = bigint_clone(bi_a);
     if (!quot || !rem) {
-        if (quot) {
-            if (rt_obj_release_check0(quot))
-                rt_obj_free(quot);
-        }
-        if (rem) {
-            if (rt_obj_release_check0(rem))
-                rt_obj_free(rem);
-        }
+        bigint_release_owned(quot);
+        bigint_release_owned(rem);
         return NULL;
     }
 
@@ -899,7 +943,11 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
 
     // Left shift both numbers
     if (shift > 0) {
-        bigint_ensure_capacity(rem, rem->len + 1);
+        if (!bigint_ensure_capacity(rem, rem->len + 1)) {
+            bigint_release_owned(rem);
+            bigint_release_owned(quot);
+            return NULL;
+        }
         uint32_t carry = 0;
         for (int64_t i = 0; i < rem->len; i++) {
             uint64_t val = ((uint64_t)rem->digits[i] << shift) | carry;
@@ -913,6 +961,11 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
 
         // Create shifted divisor
         bigint_t *d = bigint_clone(bi_b);
+        if (!d) {
+            bigint_release_owned(rem);
+            bigint_release_owned(quot);
+            return NULL;
+        }
         carry = 0;
         for (int64_t i = 0; i < d->len; i++) {
             uint64_t val = ((uint64_t)d->digits[i] << shift) | carry;
@@ -920,7 +973,12 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
             carry = (uint32_t)(val >> 32);
         }
         if (carry) {
-            bigint_ensure_capacity(d, d->len + 1);
+            if (!bigint_ensure_capacity(d, d->len + 1)) {
+                bigint_release_owned(d);
+                bigint_release_owned(rem);
+                bigint_release_owned(quot);
+                return NULL;
+            }
             d->digits[d->len] = carry;
             d->len++;
         }
@@ -978,7 +1036,12 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
                 }
             }
 
-            bigint_ensure_capacity(quot, j + 1);
+            if (!bigint_ensure_capacity(quot, j + 1)) {
+                bigint_release_owned(d);
+                bigint_release_owned(rem);
+                bigint_release_owned(quot);
+                return NULL;
+            }
             quot->digits[j] = (uint32_t)qhat;
             if (quot->len <= j)
                 quot->len = j + 1;
@@ -994,8 +1057,7 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
             }
         }
 
-        if (rt_obj_release_check0(d))
-            rt_obj_free(d);
+        bigint_release_owned(d);
     } else {
         // No shift needed - simplified division
         for (int64_t j = m; j >= 0; j--) {
@@ -1047,7 +1109,11 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
                 }
             }
 
-            bigint_ensure_capacity(quot, j + 1);
+            if (!bigint_ensure_capacity(quot, j + 1)) {
+                bigint_release_owned(rem);
+                bigint_release_owned(quot);
+                return NULL;
+            }
             quot->digits[j] = (uint32_t)qhat;
             if (quot->len <= j)
                 quot->len = j + 1;
@@ -1061,8 +1127,8 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
 
     if (remainder)
         *remainder = rem;
-    else if (rt_obj_release_check0(rem))
-        rt_obj_free(rem);
+    else
+        bigint_release_owned(rem);
 
     return quot;
 }
@@ -1076,10 +1142,7 @@ void *rt_bigint_div(void *a, void *b) {
 void *rt_bigint_mod(void *a, void *b) {
     void *rem = NULL;
     void *quot = rt_bigint_divmod(a, b, &rem);
-    if (quot) {
-        if (rt_obj_release_check0(quot))
-            rt_obj_free(quot);
-    }
+    bigint_release_owned((bigint_t *)quot);
     return rem;
 }
 
@@ -1299,13 +1362,16 @@ void *rt_bigint_not(void *a) {
     // For arbitrary precision, NOT doesn't have fixed meaning
     // Return -(a + 1) as two's complement would
     void *one = rt_bigint_one();
+    if (!one)
+        return NULL;
     void *sum = rt_bigint_add(a, one);
+    if (!sum) {
+        bigint_release_owned((bigint_t *)one);
+        return NULL;
+    }
     void *result = rt_bigint_neg(sum);
-
-    if (rt_obj_release_check0(one))
-        rt_obj_free(one);
-    if (rt_obj_release_check0(sum))
-        rt_obj_free(sum);
+    bigint_release_owned((bigint_t *)one);
+    bigint_release_owned((bigint_t *)sum);
 
     return result;
 }
@@ -1415,25 +1481,35 @@ void *rt_bigint_pow(void *a, int64_t n) {
     // Binary exponentiation
     void *result = rt_bigint_one();
     void *base = bigint_clone(bi);
+    if (!result || !base) {
+        bigint_release_owned((bigint_t *)result);
+        bigint_release_owned((bigint_t *)base);
+        return NULL;
+    }
 
     while (n > 0) {
         if (n & 1) {
             void *tmp = rt_bigint_mul(result, base);
-            if (rt_obj_release_check0(result))
-                rt_obj_free(result);
+            bigint_release_owned((bigint_t *)result);
+            if (!tmp) {
+                bigint_release_owned((bigint_t *)base);
+                return NULL;
+            }
             result = tmp;
         }
         n >>= 1;
         if (n > 0) {
             void *tmp = rt_bigint_mul(base, base);
-            if (rt_obj_release_check0(base))
-                rt_obj_free(base);
+            bigint_release_owned((bigint_t *)base);
+            if (!tmp) {
+                bigint_release_owned((bigint_t *)result);
+                return NULL;
+            }
             base = tmp;
         }
     }
 
-    if (rt_obj_release_check0(base))
-        rt_obj_free(base);
+    bigint_release_owned((bigint_t *)base);
     return result;
 }
 
@@ -1467,45 +1543,69 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m) {
 
     void *r0 = rt_bigint_one();
     void *r1 = rt_bigint_mod(a, m);
+    if (!r0 || !r1) {
+        bigint_release_owned((bigint_t *)r0);
+        bigint_release_owned((bigint_t *)r1);
+        return NULL;
+    }
 
     for (int64_t i = nbits - 1; i >= 0; i--) {
         int8_t bit = rt_bigint_test_bit(n, i);
 
         void *cross = rt_bigint_mul(r0, r1);
+        if (!cross) {
+            bigint_release_owned((bigint_t *)r0);
+            bigint_release_owned((bigint_t *)r1);
+            return NULL;
+        }
         void *cross_m = rt_bigint_mod(cross, m);
-        if (rt_obj_release_check0(cross))
-            rt_obj_free(cross);
+        bigint_release_owned((bigint_t *)cross);
 
         void *sq0 = rt_bigint_mul(r0, r0);
+        if (!sq0) {
+            bigint_release_owned((bigint_t *)cross_m);
+            bigint_release_owned((bigint_t *)r0);
+            bigint_release_owned((bigint_t *)r1);
+            return NULL;
+        }
         void *sq0_m = rt_bigint_mod(sq0, m);
-        if (rt_obj_release_check0(sq0))
-            rt_obj_free(sq0);
+        bigint_release_owned((bigint_t *)sq0);
 
         void *sq1 = rt_bigint_mul(r1, r1);
+        if (!sq1) {
+            bigint_release_owned((bigint_t *)cross_m);
+            bigint_release_owned((bigint_t *)sq0_m);
+            bigint_release_owned((bigint_t *)r0);
+            bigint_release_owned((bigint_t *)r1);
+            return NULL;
+        }
         void *sq1_m = rt_bigint_mod(sq1, m);
-        if (rt_obj_release_check0(sq1))
-            rt_obj_free(sq1);
+        bigint_release_owned((bigint_t *)sq1);
 
-        if (rt_obj_release_check0(r0))
-            rt_obj_free(r0);
-        if (rt_obj_release_check0(r1))
-            rt_obj_free(r1);
+        if (!cross_m || !sq0_m || !sq1_m) {
+            bigint_release_owned((bigint_t *)cross_m);
+            bigint_release_owned((bigint_t *)sq0_m);
+            bigint_release_owned((bigint_t *)sq1_m);
+            bigint_release_owned((bigint_t *)r0);
+            bigint_release_owned((bigint_t *)r1);
+            return NULL;
+        }
+
+        bigint_release_owned((bigint_t *)r0);
+        bigint_release_owned((bigint_t *)r1);
 
         if (bit) {
             r0 = cross_m;
             r1 = sq1_m;
-            if (rt_obj_release_check0(sq0_m))
-                rt_obj_free(sq0_m);
+            bigint_release_owned((bigint_t *)sq0_m);
         } else {
             r1 = cross_m;
             r0 = sq0_m;
-            if (rt_obj_release_check0(sq1_m))
-                rt_obj_free(sq1_m);
+            bigint_release_owned((bigint_t *)sq1_m);
         }
     }
 
-    if (rt_obj_release_check0(r1))
-        rt_obj_free(r1);
+    bigint_release_owned((bigint_t *)r1);
 
     return r0;
 }
@@ -1526,18 +1626,25 @@ void *rt_bigint_gcd(void *a, void *b) {
 
     void *x = rt_bigint_abs(a);
     void *y = rt_bigint_abs(b);
+    if (!x || !y) {
+        bigint_release_owned((bigint_t *)x);
+        bigint_release_owned((bigint_t *)y);
+        return NULL;
+    }
 
     // Binary GCD algorithm
     while (!rt_bigint_is_zero(y)) {
         void *rem = rt_bigint_mod(x, y);
-        if (rt_obj_release_check0(x))
-            rt_obj_free(x);
+        bigint_release_owned((bigint_t *)x);
+        if (!rem) {
+            bigint_release_owned((bigint_t *)y);
+            return NULL;
+        }
         x = y;
         y = rem;
     }
 
-    if (rt_obj_release_check0(y))
-        rt_obj_free(y);
+    bigint_release_owned((bigint_t *)y);
     return x;
 }
 
@@ -1554,22 +1661,28 @@ void *rt_bigint_lcm(void *a, void *b) {
         return rt_bigint_zero();
 
     void *gcd = rt_bigint_gcd(a, b);
+    if (!gcd)
+        return NULL;
     if (rt_bigint_is_zero(gcd)) {
-        if (rt_obj_release_check0(gcd))
-            rt_obj_free(gcd);
+        bigint_release_owned((bigint_t *)gcd);
         return rt_bigint_zero();
     }
 
     void *prod = rt_bigint_mul(a, b);
+    if (!prod) {
+        bigint_release_owned((bigint_t *)gcd);
+        return NULL;
+    }
     void *abs_prod = rt_bigint_abs(prod);
-    if (rt_obj_release_check0(prod))
-        rt_obj_free(prod);
+    bigint_release_owned((bigint_t *)prod);
+    if (!abs_prod) {
+        bigint_release_owned((bigint_t *)gcd);
+        return NULL;
+    }
 
     void *result = rt_bigint_div(abs_prod, gcd);
-    if (rt_obj_release_check0(abs_prod))
-        rt_obj_free(abs_prod);
-    if (rt_obj_release_check0(gcd))
-        rt_obj_free(gcd);
+    bigint_release_owned((bigint_t *)abs_prod);
+    bigint_release_owned((bigint_t *)gcd);
 
     return result;
 }
@@ -1642,7 +1755,10 @@ void *rt_bigint_set_bit(void *a, int64_t n) {
         result->sign = bi->sign;
     }
 
-    bigint_ensure_capacity(result, word + 1);
+    if (!bigint_ensure_capacity(result, word + 1)) {
+        bigint_release_owned(result);
+        return NULL;
+    }
     if (result->len <= word) {
         memset(
             result->digits + result->len, 0, (size_t)(word + 1 - result->len) * sizeof(uint32_t));
@@ -1699,26 +1815,37 @@ void *rt_bigint_sqrt(void *a) {
 
     // Newton's method
     int64_t bits = rt_bigint_bit_length(a);
-    void *x = rt_bigint_shl(rt_bigint_one(), (bits + 1) / 2);
+    void *one = rt_bigint_one();
+    void *x = rt_bigint_shl(one, (bits + 1) / 2);
+    bigint_release_owned((bigint_t *)one);
+    if (!x)
+        return NULL;
 
     while (1) {
         void *q = rt_bigint_div(a, x);
+        if (!q) {
+            bigint_release_owned((bigint_t *)x);
+            return NULL;
+        }
         void *sum = rt_bigint_add(x, q);
+        bigint_release_owned((bigint_t *)q);
+        if (!sum) {
+            bigint_release_owned((bigint_t *)x);
+            return NULL;
+        }
         void *next = rt_bigint_shr(sum, 1);
-
-        if (rt_obj_release_check0(q))
-            rt_obj_free(q);
-        if (rt_obj_release_check0(sum))
-            rt_obj_free(sum);
+        bigint_release_owned((bigint_t *)sum);
+        if (!next) {
+            bigint_release_owned((bigint_t *)x);
+            return NULL;
+        }
 
         if (rt_bigint_cmp(next, x) >= 0) {
-            if (rt_obj_release_check0(next))
-                rt_obj_free(next);
+            bigint_release_owned((bigint_t *)next);
             break;
         }
 
-        if (rt_obj_release_check0(x))
-            rt_obj_free(x);
+        bigint_release_owned((bigint_t *)x);
         x = next;
     }
 

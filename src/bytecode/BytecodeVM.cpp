@@ -3,6 +3,7 @@
 
 #include "bytecode/BytecodeVM.hpp"
 #include "il/core/Module.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt_async.h"
 #include "rt_future.h"
@@ -21,10 +22,24 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 namespace viper {
 namespace bytecode {
+
+namespace {
+
+const il::runtime::RuntimeSignature *lookupRuntimeSignature(std::string_view name) {
+    return il::runtime::findRuntimeSignature(name);
+}
+
+bool runtimeParamIsString(const il::runtime::RuntimeSignature *sig, size_t index) {
+    return sig && index < sig->paramTypes.size() &&
+           sig->paramTypes[index].kind == il::core::Type::Kind::Str;
+}
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Thread-local active BytecodeVM tracking
@@ -63,6 +78,7 @@ BytecodeVM::BytecodeVM()
       allocaTop_(0), singleStep_(false) {
     // Pre-allocate reasonable stack size
     valueStack_.resize(kMaxStackSize * kMaxCallDepth);
+    valueStackStringOwned_.assign(valueStack_.size(), 0);
     callStack_.reserve(kMaxCallDepth);
 
     // Pre-allocate alloca buffer and reserve maximum capacity upfront.
@@ -112,6 +128,69 @@ void BytecodeVM::initStringCache() {
     }
 }
 
+bool BytecodeVM::runtimeCallConsumesClonedStringArgs(std::string_view name) {
+    // Keep this list aligned with rtgen's needsConsumingStringHandler().
+    return name == "rt_str_concat" || name == "Viper.String.Concat" ||
+           name == "Viper.String.ConcatSelf";
+}
+
+bool BytecodeVM::runtimeCallConsumesOwnedStringArgs(std::string_view name) {
+    return name == "rt_str_release_maybe";
+}
+
+std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(std::string_view name,
+                                                       const BCSlot *args,
+                                                       size_t argCount) const {
+    if (!args || argCount == 0)
+        return {};
+    if (!runtimeCallConsumesClonedStringArgs(name))
+        return {};
+
+    const auto *sig = lookupRuntimeSignature(name);
+    if (!sig)
+        return {};
+
+    std::vector<BCSlot> cloned(args, args + argCount);
+    for (size_t i = 0; i < argCount; ++i) {
+        if (runtimeParamIsString(sig, i))
+            rt_str_retain_maybe(static_cast<rt_string>(cloned[i].ptr));
+    }
+    return cloned;
+}
+
+void BytecodeVM::releaseRuntimeStringArgs(std::string_view name, std::vector<BCSlot> &args) const {
+    if (args.empty())
+        return;
+    if (!runtimeCallConsumesClonedStringArgs(name))
+        return;
+
+    const auto *sig = lookupRuntimeSignature(name);
+    if (!sig)
+        return;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (runtimeParamIsString(sig, i))
+            rt_str_release_maybe(static_cast<rt_string>(args[i].ptr));
+    }
+}
+
+void BytecodeVM::dismissConsumedStringArgs(std::string_view name,
+                                           BCSlot *args,
+                                           uint8_t argCount) {
+    if (!args || argCount == 0)
+        return;
+    if (!runtimeCallConsumesOwnedStringArgs(name))
+        return;
+
+    const auto *sig = lookupRuntimeSignature(name);
+    if (!sig)
+        return;
+
+    for (uint8_t i = 0; i < argCount; ++i) {
+        if (runtimeParamIsString(sig, i))
+            setSlotOwnsString(args + i, false);
+    }
+}
+
 void BytecodeVM::registerNativeHandler(const std::string &name, NativeHandler handler) {
     nativeHandlers_[name] = std::move(handler);
 }
@@ -125,6 +204,7 @@ void BytecodeVM::load(const BytecodeModule *module) {
     ehStack_.clear();
     sp_ = valueStack_.data();
     fp_ = nullptr;
+    std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
 
     // Initialize global variable storage
     globals_.clear();
@@ -142,6 +222,108 @@ void BytecodeVM::load(const BytecodeModule *module) {
 
     // Initialize string cache with proper rt_string objects
     initStringCache();
+}
+
+size_t BytecodeVM::slotIndex(const BCSlot *slot) const {
+    assert(slot >= valueStack_.data());
+    assert(slot < valueStack_.data() + valueStack_.size());
+    return static_cast<size_t>(slot - valueStack_.data());
+}
+
+bool BytecodeVM::slotOwnsString(const BCSlot *slot) const {
+    return valueStackStringOwned_[slotIndex(slot)] != 0;
+}
+
+void BytecodeVM::setSlotOwnsString(const BCSlot *slot, bool owns) {
+    valueStackStringOwned_[slotIndex(slot)] = owns ? 1 : 0;
+}
+
+bool BytecodeVM::localIsString(const BCFrame &frame, uint32_t idx) const {
+    return idx < frame.func->localIsString.size() && frame.func->localIsString[idx] != 0;
+}
+
+bool BytecodeVM::validateStringHandle(const void *ptr, const char *site) {
+    if (!ptr || rt_string_is_handle(ptr))
+        return true;
+
+    const char *functionName = (fp_ && fp_->func) ? fp_->func->name.c_str() : "<none>";
+    const uint32_t pc = fp_ ? fp_->pc : 0;
+    trap(TrapKind::RuntimeError,
+         (std::string(site) + ": invalid runtime string handle in " + functionName + " @pc=" +
+          std::to_string(pc))
+             .c_str());
+    return false;
+}
+
+void BytecodeVM::releaseOwnedString(BCSlot *slot) {
+    if (!slotOwnsString(slot))
+        return;
+    if (!validateStringHandle(slot->ptr, "BytecodeVM::releaseOwnedString")) {
+        slot->ptr = nullptr;
+        setSlotOwnsString(slot, false);
+        return;
+    }
+    rt_str_release_maybe(static_cast<rt_string>(slot->ptr));
+    slot->ptr = nullptr;
+    setSlotOwnsString(slot, false);
+}
+
+void BytecodeVM::pushLocal(uint32_t idx) {
+    BCSlot *dst = sp_++;
+    *dst = fp_->locals[idx];
+    if (localIsString(*fp_, idx) && dst->ptr) {
+        if (!validateStringHandle(dst->ptr, "BytecodeVM::pushLocal")) {
+            sp_--;
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(dst->ptr));
+        setSlotOwnsString(dst, true);
+    } else {
+        setSlotOwnsString(dst, false);
+    }
+}
+
+void BytecodeVM::storeLocal(uint32_t idx) {
+    BCSlot *src = --sp_;
+    BCSlot *dst = fp_->locals + idx;
+    const bool srcOwns = slotOwnsString(src);
+    const BCSlot value = *src;
+
+    if (localIsString(*fp_, idx)) {
+        releaseOwnedString(dst);
+        *dst = value;
+        if (value.ptr) {
+            if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocal")) {
+                setSlotOwnsString(src, false);
+                setSlotOwnsString(dst, false);
+                return;
+            }
+            if (!srcOwns)
+                rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
+            setSlotOwnsString(dst, true);
+        } else {
+            setSlotOwnsString(dst, false);
+        }
+    } else {
+        *dst = value;
+        setSlotOwnsString(dst, false);
+    }
+
+    setSlotOwnsString(src, false);
+}
+
+void BytecodeVM::releaseCallArgs(BCSlot *args, uint8_t argCount) {
+    for (uint8_t i = 0; i < argCount; ++i)
+        releaseOwnedString(args + i);
+}
+
+void BytecodeVM::releaseFrameLocals(const BCFrame &frame) {
+    for (uint32_t i = 0; i < frame.func->numLocals; ++i) {
+        if (localIsString(frame, i))
+            releaseOwnedString(frame.locals + i);
+        else
+            setSlotOwnsString(frame.locals + i, false);
+    }
 }
 
 BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &args) {
@@ -176,10 +358,12 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
     callStack_.clear();
     sp_ = valueStack_.data();
     allocaTop_ = 0; // Reset alloca stack
+    std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
 
     // Push arguments onto stack as initial locals
     for (const auto &arg : args) {
         *sp_++ = arg;
+        setSlotOwnsString(sp_ - 1, false);
     }
 
     // Call the function
@@ -234,35 +418,63 @@ void BytecodeVM::run() {
 
             case BCOpcode::DUP:
                 *sp_ = *(sp_ - 1);
+                setSlotOwnsString(sp_, false);
+                if (slotOwnsString(sp_ - 1) && sp_->ptr) {
+                    rt_str_retain_maybe(static_cast<rt_string>(sp_->ptr));
+                    setSlotOwnsString(sp_, true);
+                }
                 sp_++;
                 break;
 
             case BCOpcode::DUP2:
                 sp_[0] = sp_[-2];
                 sp_[1] = sp_[-1];
+                setSlotOwnsString(sp_, false);
+                setSlotOwnsString(sp_ + 1, false);
+                if (slotOwnsString(sp_ - 2) && sp_[0].ptr) {
+                    rt_str_retain_maybe(static_cast<rt_string>(sp_[0].ptr));
+                    setSlotOwnsString(sp_, true);
+                }
+                if (slotOwnsString(sp_ - 1) && sp_[1].ptr) {
+                    rt_str_retain_maybe(static_cast<rt_string>(sp_[1].ptr));
+                    setSlotOwnsString(sp_ + 1, true);
+                }
                 sp_ += 2;
                 break;
 
             case BCOpcode::POP:
+                releaseOwnedString(sp_ - 1);
                 sp_--;
                 break;
 
             case BCOpcode::POP2:
+                releaseOwnedString(sp_ - 1);
+                releaseOwnedString(sp_ - 2);
                 sp_ -= 2;
                 break;
 
             case BCOpcode::SWAP: {
                 BCSlot tmp = sp_[-1];
+                const bool tmpOwns = slotOwnsString(sp_ - 1);
                 sp_[-1] = sp_[-2];
                 sp_[-2] = tmp;
+                const bool lowerOwns = slotOwnsString(sp_ - 2);
+                setSlotOwnsString(sp_ - 1, lowerOwns);
+                setSlotOwnsString(sp_ - 2, tmpOwns);
                 break;
             }
 
             case BCOpcode::ROT3: {
                 BCSlot tmp = sp_[-1];
+                const bool tmpOwns = slotOwnsString(sp_ - 1);
                 sp_[-1] = sp_[-2];
                 sp_[-2] = sp_[-3];
                 sp_[-3] = tmp;
+                const bool secondOwns = slotOwnsString(sp_ - 2);
+                const bool firstOwns = slotOwnsString(sp_ - 3);
+                setSlotOwnsString(sp_ - 1, secondOwns);
+                setSlotOwnsString(sp_ - 2, firstOwns);
+                setSlotOwnsString(sp_ - 3, tmpOwns);
                 break;
             }
 
@@ -271,25 +483,25 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::LOAD_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
-                *sp_++ = fp_->locals[idx];
+                pushLocal(idx);
                 break;
             }
 
             case BCOpcode::STORE_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
-                fp_->locals[idx] = *--sp_;
+                storeLocal(idx);
                 break;
             }
 
             case BCOpcode::LOAD_LOCAL_W: {
                 uint16_t idx = decodeArg16(instr);
-                *sp_++ = fp_->locals[idx];
+                pushLocal(idx);
                 break;
             }
 
             case BCOpcode::STORE_LOCAL_W: {
                 uint16_t idx = decodeArg16(instr);
-                fp_->locals[idx] = *--sp_;
+                storeLocal(idx);
                 break;
             }
 
@@ -311,6 +523,7 @@ void BytecodeVM::run() {
             case BCOpcode::LOAD_I8: {
                 int8_t val = decodeArgI8_0(instr);
                 sp_->i64 = val;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
             }
@@ -318,6 +531,7 @@ void BytecodeVM::run() {
             case BCOpcode::LOAD_I16: {
                 int16_t val = decodeArgI16(instr);
                 sp_->i64 = val;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
             }
@@ -325,6 +539,7 @@ void BytecodeVM::run() {
             case BCOpcode::LOAD_I64: {
                 uint16_t idx = decodeArg16(instr);
                 sp_->i64 = module_->i64Pool[idx];
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
             }
@@ -332,22 +547,26 @@ void BytecodeVM::run() {
             case BCOpcode::LOAD_F64: {
                 uint16_t idx = decodeArg16(instr);
                 sp_->f64 = module_->f64Pool[idx];
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
             }
 
             case BCOpcode::LOAD_NULL:
                 sp_->ptr = nullptr;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
 
             case BCOpcode::LOAD_ZERO:
                 sp_->i64 = 0;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
 
             case BCOpcode::LOAD_ONE:
                 sp_->i64 = 1;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
 
@@ -909,14 +1128,19 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::RETURN: {
-                BCSlot result = *--sp_;
+                BCSlot *resultSlot = --sp_;
+                BCSlot result = *resultSlot;
+                const bool resultOwnsString = slotOwnsString(resultSlot);
+                setSlotOwnsString(resultSlot, false);
                 if (!popFrame()) {
                     // Return from main function
                     *sp_++ = result;
+                    setSlotOwnsString(sp_ - 1, resultOwnsString);
                     state_ = VMState::Halted;
                     return;
                 }
                 *sp_++ = result;
+                setSlotOwnsString(sp_ - 1, resultOwnsString);
                 break;
             }
 
@@ -945,9 +1169,22 @@ void BytecodeVM::run() {
                 BCSlot result{};
 
                 if (runtimeBridgeEnabled_) {
+                    auto preservedArgs =
+                        cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+                    struct RuntimeArgGuard {
+                        const BytecodeVM *vm;
+                        std::string_view name;
+                        std::vector<BCSlot> &args;
+
+                        ~RuntimeArgGuard() {
+                            vm->releaseRuntimeStringArgs(name, args);
+                        }
+                    } argGuard{this, ref.name, preservedArgs};
+
                     // Use RuntimeBridge for native function calls
                     // Convert BCSlot* to il::vm::Slot* (same layout)
-                    il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(args);
+                    BCSlot *callArgs = preservedArgs.empty() ? args : preservedArgs.data();
+                    il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(callArgs);
                     std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
 
                     il::vm::RuntimeCallContext ctx;
@@ -966,12 +1203,23 @@ void BytecodeVM::run() {
                     it->second(args, argCount, &result);
                 }
 
+                dismissConsumedStringArgs(ref.name, args, argCount);
+                releaseCallArgs(args, argCount);
+
                 // Pop arguments
                 sp_ -= argCount;
 
                 // Push result if function returns a value
                 if (ref.hasReturn) {
                     *sp_++ = result;
+                    if (lookupRuntimeSignature(ref.name) &&
+                        lookupRuntimeSignature(ref.name)->retType.kind ==
+                            il::core::Type::Kind::Str &&
+                        result.ptr) {
+                        setSlotOwnsString(sp_ - 1, true);
+                    } else {
+                        setSlotOwnsString(sp_ - 1, false);
+                    }
                 }
                 break;
             }
@@ -1000,6 +1248,9 @@ void BytecodeVM::run() {
                     // Shift arguments down to overwrite the callee slot
                     for (int i = 0; i < argCount; ++i) {
                         callee[i] = args[i];
+                        setSlotOwnsString(callee + i, slotOwnsString(args + i));
+                        if (callee + i != args + i)
+                            setSlotOwnsString(args + i, false);
                     }
                     sp_ = callee + argCount; // Adjust stack pointer
 
@@ -1040,8 +1291,10 @@ void BytecodeVM::run() {
 
                 // Return pointer to allocated memory
                 void *ptr = allocaBuffer_.data() + allocaTop_;
+                std::memset(ptr, 0, static_cast<size_t>(size));
                 allocaTop_ += static_cast<size_t>(size);
                 sp_->ptr = ptr;
+                setSlotOwnsString(sp_, false);
                 sp_++;
                 break;
             }
@@ -1104,6 +1357,22 @@ void BytecodeVM::run() {
                 void *val;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
+                setSlotOwnsString(sp_ - 1, false);
+                break;
+            }
+
+            case BCOpcode::LOAD_STR_MEM: {
+                rt_string val = nullptr;
+                std::memcpy(&val, sp_[-1].ptr, sizeof(val));
+                sp_[-1].ptr = val;
+                if (val) {
+                    if (!validateStringHandle(val, "BytecodeVM::LOAD_STR_MEM"))
+                        break;
+                    rt_str_retain_maybe(val);
+                    setSlotOwnsString(sp_ - 1, true);
+                } else {
+                    setSlotOwnsString(sp_ - 1, false);
+                }
                 break;
             }
 
@@ -1139,6 +1408,28 @@ void BytecodeVM::run() {
                 void *val = (--sp_)->ptr;
                 void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
+                setSlotOwnsString(sp_, false);
+                setSlotOwnsString(sp_ + 1, false);
+                break;
+            }
+
+            case BCOpcode::STORE_STR_MEM: {
+                BCSlot *valueSlot = --sp_;
+                rt_string incoming = static_cast<rt_string>(valueSlot->ptr);
+                const bool incomingOwns = slotOwnsString(valueSlot);
+                void *ptr = (--sp_)->ptr;
+                rt_string current = nullptr;
+                std::memcpy(&current, ptr, sizeof(current));
+                if (current && !validateStringHandle(current, "BytecodeVM::STORE_STR_MEM(current)"))
+                    break;
+                rt_str_release_maybe(current);
+                if (incoming && !validateStringHandle(incoming, "BytecodeVM::STORE_STR_MEM"))
+                    break;
+                if (incoming && !incomingOwns)
+                    rt_str_retain_maybe(incoming);
+                std::memcpy(ptr, &incoming, sizeof(incoming));
+                setSlotOwnsString(valueSlot, false);
+                setSlotOwnsString(sp_, false);
                 break;
             }
 
@@ -1149,8 +1440,10 @@ void BytecodeVM::run() {
                 uint16_t idx = decodeArg16(instr);
                 if (idx < globals_.size()) {
                     *sp_++ = globals_[idx];
+                    setSlotOwnsString(sp_ - 1, false);
                 } else {
                     sp_->i64 = 0;
+                    setSlotOwnsString(sp_, false);
                     sp_++;
                 }
                 break;
@@ -1162,6 +1455,7 @@ void BytecodeVM::run() {
                 if (idx < globals_.size()) {
                     globals_[idx] = val;
                 }
+                setSlotOwnsString(sp_, false);
                 break;
             }
 
@@ -1173,16 +1467,29 @@ void BytecodeVM::run() {
                 // Use the cached rt_string object (not raw C string!)
                 // The runtime expects rt_string (pointer to rt_string_impl struct)
                 sp_->ptr = (idx < stringCache_.size()) ? stringCache_[idx] : nullptr;
+                if (sp_->ptr) {
+                    if (!validateStringHandle(sp_->ptr, "BytecodeVM::LOAD_STR"))
+                        break;
+                    rt_str_retain_maybe(static_cast<rt_string>(sp_->ptr));
+                    setSlotOwnsString(sp_, true);
+                } else {
+                    setSlotOwnsString(sp_, false);
+                }
                 sp_++;
                 break;
             }
 
             case BCOpcode::STR_RETAIN:
-                // For now, no-op (strings in constant pool don't need refcounting)
+                if (sp_[-1].ptr) {
+                    if (!validateStringHandle(sp_[-1].ptr, "BytecodeVM::STR_RETAIN"))
+                        break;
+                    rt_str_retain_maybe(static_cast<rt_string>(sp_[-1].ptr));
+                    setSlotOwnsString(sp_ - 1, true);
+                }
                 break;
 
             case BCOpcode::STR_RELEASE:
-                // For now, no-op (strings in constant pool don't need refcounting)
+                releaseOwnedString(sp_ - 1);
                 sp_--;
                 break;
 
@@ -1322,8 +1629,26 @@ void BytecodeVM::call(const BytecodeFunction *func) {
     frame.callSitePc = callSitePc;
     frame.allocaBase = allocaTop_; // Save alloca position for cleanup on return
 
+    // Ensure parameter locals own any incoming string handles.
+    for (uint32_t i = 0; i < func->numParams; ++i) {
+        BCSlot *slot = localsStart + i;
+        if (localIsString(frame, i) && slot->ptr) {
+            if (!validateStringHandle(slot->ptr, "BytecodeVM::call(param)")) {
+                setSlotOwnsString(slot, false);
+                continue;
+            }
+            if (!slotOwnsString(slot))
+                rt_str_retain_maybe(static_cast<rt_string>(slot->ptr));
+            setSlotOwnsString(slot, true);
+        } else {
+            setSlotOwnsString(slot, false);
+        }
+    }
+
     // Zero non-parameter locals
     std::fill(localsStart + func->numParams, localsStart + func->numLocals, BCSlot{});
+    for (uint32_t i = func->numParams; i < func->numLocals; ++i)
+        setSlotOwnsString(localsStart + i, false);
 
     // Update stack pointer past locals
     sp_ = frame.stackBase;
@@ -1338,6 +1663,8 @@ void BytecodeVM::call(const BytecodeFunction *func) {
 /// Restores the previous frame's state including stack pointer and alloca
 /// position. Any stack-allocated memory from the popped frame is released.
 bool BytecodeVM::popFrame() {
+    releaseFrameLocals(callStack_.back());
+
     // Restore alloca stack to the base of the popped frame
     // This releases all alloca'd memory from this function call
     allocaTop_ = callStack_.back().allocaBase;

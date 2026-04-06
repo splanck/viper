@@ -37,6 +37,7 @@
 #include "rt_internal.h"
 #include "rt_string.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /// Internal structure for boxed values
@@ -53,6 +54,56 @@ typedef struct rt_box {
 /// Allocate a new boxed value
 static void *alloc_box(void) {
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_BOX, 1, sizeof(rt_box_t), sizeof(rt_box_t));
+}
+
+static rt_box_t *box_maybe(void *box) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!box || !rt_heap_try_get_header(box, &hdr))
+        return NULL;
+    if (!hdr || hdr->elem_kind != RT_ELEM_BOX)
+        return NULL;
+    return (rt_box_t *)box;
+}
+
+static rt_box_t *box_require(void *box, const char *fn_name, int64_t expected_tag) {
+    if (!box) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "%s: null pointer", fn_name);
+        rt_trap(buf);
+        return NULL;
+    }
+
+    rt_box_t *b = box_maybe(box);
+    if (!b) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "%s: invalid boxed value", fn_name);
+        rt_trap(buf);
+        return NULL;
+    }
+
+    if (expected_tag >= 0 && b->tag != expected_tag) {
+        char buf[96];
+        const char *type_name = "unknown";
+        switch (expected_tag) {
+            case RT_BOX_I64:
+                type_name = "i64";
+                break;
+            case RT_BOX_F64:
+                type_name = "f64";
+                break;
+            case RT_BOX_I1:
+                type_name = "i1";
+                break;
+            case RT_BOX_STR:
+                type_name = "str";
+                break;
+        }
+        snprintf(buf, sizeof(buf), "%s: type mismatch (expected %s)", fn_name, type_name);
+        rt_trap(buf);
+        return NULL;
+    }
+
+    return b;
 }
 
 void *rt_box_i64(int64_t val) {
@@ -106,54 +157,30 @@ void *rt_box_str(rt_string val) {
 }
 
 int64_t rt_unbox_i64(void *box) {
-    if (!box) {
-        rt_trap("rt_unbox_i64: null pointer");
+    rt_box_t *b = box_require(box, "rt_unbox_i64", RT_BOX_I64);
+    if (!b)
         return 0;
-    }
-    rt_box_t *b = (rt_box_t *)box;
-    if (b->tag != RT_BOX_I64) {
-        rt_trap("rt_unbox_i64: type mismatch (expected i64)");
-        return 0;
-    }
     return b->data.i64_val;
 }
 
 double rt_unbox_f64(void *box) {
-    if (!box) {
-        rt_trap("rt_unbox_f64: null pointer");
+    rt_box_t *b = box_require(box, "rt_unbox_f64", RT_BOX_F64);
+    if (!b)
         return 0.0;
-    }
-    rt_box_t *b = (rt_box_t *)box;
-    if (b->tag != RT_BOX_F64) {
-        rt_trap("rt_unbox_f64: type mismatch (expected f64)");
-        return 0.0;
-    }
     return b->data.f64_val;
 }
 
 int64_t rt_unbox_i1(void *box) {
-    if (!box) {
-        rt_trap("rt_unbox_i1: null pointer");
+    rt_box_t *b = box_require(box, "rt_unbox_i1", RT_BOX_I1);
+    if (!b)
         return 0;
-    }
-    rt_box_t *b = (rt_box_t *)box;
-    if (b->tag != RT_BOX_I1) {
-        rt_trap("rt_unbox_i1: type mismatch (expected i1)");
-        return 0;
-    }
     return b->data.i64_val;
 }
 
 rt_string rt_unbox_str(void *box) {
-    if (!box) {
-        rt_trap("rt_unbox_str: null pointer");
+    rt_box_t *b = box_require(box, "rt_unbox_str", RT_BOX_STR);
+    if (!b)
         return NULL;
-    }
-    rt_box_t *b = (rt_box_t *)box;
-    if (b->tag != RT_BOX_STR) {
-        rt_trap("rt_unbox_str: type mismatch (expected str)");
-        return NULL;
-    }
     rt_string s = b->data.str_val;
     // Retain before returning - use rt_string_ref for proper handling
     if (s) {
@@ -163,25 +190,25 @@ rt_string rt_unbox_str(void *box) {
 }
 
 int64_t rt_box_type(void *box) {
-    if (!box)
+    rt_box_t *b = box_maybe(box);
+    if (!b)
         return -1;
-    rt_box_t *b = (rt_box_t *)box;
     return b->tag;
 }
 
 int64_t rt_box_eq_i64(void *box, int64_t val) {
-    if (!box)
+    rt_box_t *b = box_maybe(box);
+    if (!b)
         return 0;
-    rt_box_t *b = (rt_box_t *)box;
     if (b->tag != RT_BOX_I64)
         return 0;
     return b->data.i64_val == val ? 1 : 0;
 }
 
 int64_t rt_box_eq_f64(void *box, double val) {
-    if (!box)
+    rt_box_t *b = box_maybe(box);
+    if (!b)
         return 0;
-    rt_box_t *b = (rt_box_t *)box;
     if (b->tag != RT_BOX_F64)
         return 0;
     // IEEE 754: NaN != NaN, so Box(NaN).Eq(NaN) returns 0. This is intentional.
@@ -189,9 +216,9 @@ int64_t rt_box_eq_f64(void *box, double val) {
 }
 
 int64_t rt_box_eq_str(void *box, rt_string val) {
-    if (!box)
+    rt_box_t *b = box_maybe(box);
+    if (!b)
         return 0;
-    rt_box_t *b = (rt_box_t *)box;
     if (b->tag != RT_BOX_STR)
         return 0;
     return rt_str_eq(b->data.str_val, val);
@@ -212,12 +239,7 @@ void *rt_box_value_type(int64_t size) {
 /// @brief Check if a heap-allocated element is a boxed value.
 /// Safe for non-heap pointers: checks magic before accessing header fields.
 static int is_boxed(void *elem) {
-    if (!elem)
-        return 0;
-    // Manually compute header location without asserting magic.
-    // This is safe because we check magic before accessing any other fields.
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)elem - sizeof(rt_heap_hdr_t));
-    return hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX;
+    return box_maybe(elem) != NULL;
 }
 
 size_t rt_box_hash(void *elem) {

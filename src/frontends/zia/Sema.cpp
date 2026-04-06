@@ -75,9 +75,8 @@ std::string joinTypeKeys(const std::vector<TypeRef> &types) {
 size_t requiredParamCount(const std::vector<Param> &params) {
     size_t required = 0;
     for (const auto &param : params) {
-        if (param.defaultValue)
-            break;
-        ++required;
+        if (!param.defaultValue && !param.isVariadic)
+            ++required;
     }
     return required;
 }
@@ -440,6 +439,355 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
     if (resolvedOwnerType)
         *resolvedOwnerType = bestOwner;
     return best;
+}
+
+std::vector<Sema::CallParamSpec> Sema::makeParamSpecs(const std::vector<Param> &params,
+                                                      const std::vector<TypeRef> &paramTypes) const {
+    std::vector<CallParamSpec> specs;
+    specs.reserve(params.size());
+    for (size_t i = 0; i < params.size(); ++i) {
+        CallParamSpec spec;
+        spec.name = params[i].name;
+        spec.type = i < paramTypes.size() ? paramTypes[i] : nullptr;
+        spec.hasDefault = params[i].defaultValue != nullptr;
+        spec.isVariadic = params[i].isVariadic;
+        specs.push_back(std::move(spec));
+    }
+    return specs;
+}
+
+void Sema::appendClassFieldSpecs(const std::string &typeName, std::vector<CallParamSpec> &out) const {
+    auto classIt = classDecls_.find(typeName);
+    if (classIt == classDecls_.end())
+        return;
+
+    ClassDecl *decl = classIt->second;
+    if (!decl->baseClass.empty())
+        appendClassFieldSpecs(decl->baseClass, out);
+
+    for (const auto &member : decl->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (field->isStatic)
+            continue;
+
+        CallParamSpec spec;
+        spec.name = field->name;
+        spec.type = getFieldType(typeName, field->name);
+        if (!spec.type && field->type)
+            spec.type = resolveType(field->type.get());
+        spec.hasDefault = true;
+        out.push_back(std::move(spec));
+    }
+}
+
+std::vector<Sema::CallParamSpec> Sema::makeClassFieldSpecs(const std::string &typeName) const {
+    std::vector<CallParamSpec> specs;
+    appendClassFieldSpecs(typeName, specs);
+    return specs;
+}
+
+std::vector<Sema::CallParamSpec> Sema::makeStructFieldSpecs(const std::string &typeName) const {
+    std::vector<CallParamSpec> specs;
+    auto structIt = structDecls_.find(typeName);
+    if (structIt == structDecls_.end())
+        return specs;
+
+    for (const auto &member : structIt->second->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (field->isStatic)
+            continue;
+
+        CallParamSpec spec;
+        spec.name = field->name;
+        spec.type = getFieldType(typeName, field->name);
+        if (!spec.type && field->type)
+            spec.type = resolveType(field->type.get());
+        spec.hasDefault = true;
+        specs.push_back(std::move(spec));
+    }
+    return specs;
+}
+
+bool Sema::bindCallArgs(const std::vector<CallArg> &args,
+                        const std::vector<CallParamSpec> &params,
+                        SourceLoc loc,
+                        const std::string &calleeName,
+                        CallArgBinding &binding,
+                        int *score,
+                        bool reportErrors) const {
+    binding.fixedParamSources.assign(params.size(), -1);
+    binding.variadicSources.clear();
+    if (score)
+        *score = 0;
+
+    const bool hasVariadic = !params.empty() && params.back().isVariadic;
+    const size_t fixedCount = hasVariadic ? params.size() - 1 : params.size();
+
+    auto fail = [&](const std::string &message, SourceLoc errLoc) {
+        if (reportErrors)
+            const_cast<Sema *>(this)->error(errLoc, message);
+        return false;
+    };
+
+    bool sawNamed = false;
+    size_t nextPositional = 0;
+
+    for (size_t argIndex = 0; argIndex < args.size(); ++argIndex) {
+        const auto &arg = args[argIndex];
+        if (arg.name) {
+            sawNamed = true;
+            int targetIndex = -1;
+            for (size_t i = 0; i < fixedCount; ++i) {
+                if (params[i].name == *arg.name) {
+                    targetIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+
+            if (targetIndex < 0) {
+                if (hasVariadic && params.back().name == *arg.name) {
+                    return fail("Named binding for variadic parameter '" + *arg.name +
+                                    "' is not supported in call to '" + calleeName + "'",
+                                arg.value ? arg.value->loc : loc);
+                }
+                return fail("Unknown argument '" + *arg.name + "' in call to '" + calleeName +
+                                "'",
+                            arg.value ? arg.value->loc : loc);
+            }
+
+            if (binding.fixedParamSources[static_cast<size_t>(targetIndex)] >= 0) {
+                return fail("Argument '" + *arg.name + "' is provided more than once in call to '" +
+                                calleeName + "'",
+                            arg.value ? arg.value->loc : loc);
+            }
+
+            binding.fixedParamSources[static_cast<size_t>(targetIndex)] = static_cast<int>(argIndex);
+        } else {
+            if (sawNamed) {
+                return fail("Positional arguments cannot follow named arguments in call to '" +
+                                calleeName + "'",
+                            arg.value ? arg.value->loc : loc);
+            }
+
+            while (nextPositional < fixedCount &&
+                   binding.fixedParamSources[nextPositional] >= 0) {
+                ++nextPositional;
+            }
+
+            if (nextPositional < fixedCount) {
+                binding.fixedParamSources[nextPositional] = static_cast<int>(argIndex);
+                ++nextPositional;
+            } else if (hasVariadic) {
+                binding.variadicSources.push_back(static_cast<int>(argIndex));
+            } else {
+                return fail("Too many arguments to '" + calleeName + "'", arg.value ? arg.value->loc
+                                                                                     : loc);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < fixedCount; ++i) {
+        if (binding.fixedParamSources[i] < 0 && !params[i].hasDefault) {
+            return fail("Missing required argument '" + params[i].name + "' in call to '" +
+                            calleeName + "'",
+                        loc);
+        }
+    }
+
+    int totalScore = 0;
+    for (size_t i = 0; i < fixedCount; ++i) {
+        int sourceIndex = binding.fixedParamSources[i];
+        if (sourceIndex < 0) {
+            totalScore += 3;
+            continue;
+        }
+
+        TypeRef paramType = params[i].type;
+        TypeRef argType = exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
+                              ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
+                              : nullptr;
+        int cost = conversionCost(paramType, argType);
+        if (cost >= 1000) {
+            if (reportErrors) {
+                const_cast<Sema *>(this)->errorTypeMismatch(
+                    args[static_cast<size_t>(sourceIndex)].value->loc, paramType, argType);
+            }
+            return false;
+        }
+        totalScore += cost;
+    }
+
+    if (hasVariadic) {
+        TypeRef listType = params.back().type;
+        TypeRef elemType = listType ? listType->elementType() : nullptr;
+        for (int sourceIndex : binding.variadicSources) {
+            TypeRef argType = exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
+                                  ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
+                                  : nullptr;
+            int cost = conversionCost(elemType, argType);
+            if (cost >= 1000) {
+                if (reportErrors) {
+                    const_cast<Sema *>(this)->errorTypeMismatch(
+                        args[static_cast<size_t>(sourceIndex)].value->loc, elemType, argType);
+                }
+                return false;
+            }
+            totalScore += cost;
+        }
+    }
+
+    if (score)
+        *score = totalScore;
+    return true;
+}
+
+FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
+                                               const std::vector<CallArg> &args,
+                                               SourceLoc loc,
+                                               std::string *loweredName,
+                                               CallArgBinding *bindingOut) {
+    auto it = functionOverloads_.find(name);
+    if (it == functionOverloads_.end())
+        return nullptr;
+
+    FunctionDecl *best = nullptr;
+    CallArgBinding bestBinding;
+    int bestScore = std::numeric_limits<int>::max();
+    bool ambiguous = false;
+    std::vector<std::string> candidateSigs;
+
+    for (auto *decl : it->second) {
+        TypeRef funcType = getFunctionType(decl);
+        if (!funcType || funcType->kind != TypeKindSem::Function)
+            continue;
+
+        CallArgBinding binding;
+        int score = 0;
+        auto specs = makeParamSpecs(decl->params, funcType->paramTypes());
+        if (!bindCallArgs(args, specs, loc, name, binding, &score, false))
+            continue;
+
+        std::string lowered = loweredFunctionNames_[decl];
+        candidateSigs.push_back(lowered);
+        if (score < bestScore) {
+            best = decl;
+            bestBinding = binding;
+            bestScore = score;
+            ambiguous = false;
+        } else if (score == bestScore) {
+            ambiguous = true;
+        }
+    }
+
+    if (!best)
+        return nullptr;
+    if (ambiguous) {
+        error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
+        return nullptr;
+    }
+    if (loweredName)
+        *loweredName = loweredFunctionNames_[best];
+    if (bindingOut)
+        *bindingOut = bestBinding;
+    return best;
+}
+
+MethodDecl *Sema::resolveMethodArgOverload(const std::string &ownerType,
+                                           const std::string &methodName,
+                                           const std::vector<CallArg> &args,
+                                           SourceLoc loc,
+                                           std::string *resolvedOwnerType,
+                                           bool includeInherited,
+                                           CallArgBinding *bindingOut) {
+    MethodDecl *best = nullptr;
+    CallArgBinding bestBinding;
+    std::string bestOwner;
+    int bestScore = std::numeric_limits<int>::max();
+    bool ambiguous = false;
+    std::vector<std::string> candidates;
+    std::unordered_set<std::string> seenSignatures;
+
+    auto considerOwner = [&](const std::string &candidateOwner) {
+        auto it = methodOverloads_.find(candidateOwner + "." + methodName);
+        if (it == methodOverloads_.end())
+            return;
+
+        for (auto *decl : it->second) {
+            std::string sigKey = methodSignatureKey(candidateOwner, decl);
+            if (sigKey.empty())
+                sigKey = methodSignatureKey(*decl);
+            if (!seenSignatures.insert(sigKey).second)
+                continue;
+
+            TypeRef methodType = getMethodType(candidateOwner, decl);
+            if (!methodType || methodType->kind != TypeKindSem::Function)
+                continue;
+
+            CallArgBinding binding;
+            int score = 0;
+            auto specs = makeParamSpecs(decl->params, methodType->paramTypes());
+            if (!bindCallArgs(args, specs, loc, candidateOwner + "." + methodName, binding, &score, false))
+                continue;
+
+            std::string lowered = loweredMethodName(candidateOwner, decl);
+            candidates.push_back(lowered.empty() ? (candidateOwner + "." + decl->name) : lowered);
+            if (score < bestScore) {
+                best = decl;
+                bestBinding = binding;
+                bestOwner = candidateOwner;
+                bestScore = score;
+                ambiguous = false;
+            } else if (score == bestScore) {
+                ambiguous = true;
+            }
+        }
+    };
+
+    considerOwner(ownerType);
+    if (includeInherited) {
+        auto classIt = lookupClassDeclForType(ownerType);
+        while (classIt && !classIt->baseClass.empty()) {
+            considerOwner(classIt->baseClass);
+            classIt = lookupClassDeclForType(classIt->baseClass);
+        }
+    }
+
+    if (!best)
+        return nullptr;
+    if (ambiguous) {
+        error(loc,
+              "Ambiguous call to method '" + methodName +
+                  "': " + formatOverloadCandidates(candidates));
+        return nullptr;
+    }
+    if (resolvedOwnerType)
+        *resolvedOwnerType = bestOwner;
+    if (bindingOut)
+        *bindingOut = bestBinding;
+    return best;
+}
+
+FunctionDecl *Sema::resolveFunctionCallOverload(const std::string &name,
+                                                CallExpr *expr,
+                                                SourceLoc loc,
+                                                std::string *loweredName,
+                                                CallArgBinding *bindingOut) {
+    return resolveFunctionArgOverload(name, expr->args, loc, loweredName, bindingOut);
+}
+
+MethodDecl *Sema::resolveMethodCallOverload(const std::string &ownerType,
+                                            const std::string &methodName,
+                                            CallExpr *expr,
+                                            SourceLoc loc,
+                                            std::string *resolvedOwnerType,
+                                            bool includeInherited,
+                                            CallArgBinding *bindingOut) {
+    return resolveMethodArgOverload(
+        ownerType, methodName, expr->args, loc, resolvedOwnerType, includeInherited, bindingOut);
 }
 
 MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,

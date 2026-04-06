@@ -35,8 +35,7 @@ TEST(ZiaExpressions, Arithmetic) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 1 + 2 * 3;
+func start() {    var x: Integer = 1 + 2 * 3;
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -75,8 +74,7 @@ module Test;
 final GAME_WIDTH = 70;
 final PLAYER_START = 35;
 
-func start() {
-    // Constants should resolve to their actual values, not 0
+func start() {    // Constants should resolve to their actual values, not 0
     Viper.Terminal.SayInt(GAME_WIDTH);
     Viper.Terminal.SayInt(PLAYER_START);
 }
@@ -118,12 +116,11 @@ TEST(ZiaExpressions, BooleanAndOrWithComparisons) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 5;
+func start() {    var x: Integer = 5;
     // These expressions use AND/OR with comparison results (I1 type)
     // Short-circuit evaluation: && and || use control flow, not bitwise And/Or
-    Boolean a = x > 0 && x < 10;
-    Boolean b = x < 0 || x > 3;
+    var a: Boolean = x > 0 && x < 10;
+    var b: Boolean = x < 0 || x > 3;
     if (a && b) {
         Viper.Terminal.SayInt(1);
     }
@@ -167,9 +164,8 @@ TEST(ZiaExpressions, TernaryExpression) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean flag = true;
-    Integer value = flag ? 10 : 20;
+func start() {    var flag: Boolean = true;
+    var value: Integer = flag ? 10 : 20;
     Viper.Terminal.SayInt(value);
 }
 )";
@@ -207,17 +203,14 @@ TEST(ZiaExpressions, StringComparisonWithEmptyString) {
     const std::string source = R"(
 module Test;
 
-func checkEmpty(String s) -> Boolean {
-    return s == "";
+func checkEmpty(s: String) -> Boolean {    return s == "";
 }
 
-func checkNotEmpty(String s) -> Boolean {
-    return s != "";
+func checkNotEmpty(s: String) -> Boolean {    return s != "";
 }
 
-func start() {
-    Boolean empty = checkEmpty("");
-    Boolean notEmpty = checkNotEmpty("hello");
+func start() {    var empty: Boolean = checkEmpty("");
+    var notEmpty: Boolean = checkNotEmpty("hello");
 }
 )";
     CompilerInput input{.source = source, .path = "emptystr.zia"};
@@ -261,12 +254,10 @@ module Test;
 
 final KEY_QUIT = "q";
 
-func checkKey(String key) -> Boolean {
-    return key == KEY_QUIT;
+func checkKey(key: String) -> Boolean {    return key == KEY_QUIT;
 }
 
-func start() {
-    Boolean result = checkKey("q");
+func start() {    var result: Boolean = checkKey("q");
 }
 )";
     CompilerInput input{.source = source, .path = "strconst.zia"};
@@ -305,9 +296,8 @@ TEST(ZiaExpressions, LevelDataObjectTypeComparisonUsesStringEquality) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var level = Viper.Game.LevelData.Load("test.json");
-    Boolean enemy = level.ObjectType(0) == "enemy";
+func start() {    var level = Viper.Game.LevelData.Load("test.json");
+    var enemy: Boolean = level.ObjectType(0) == "enemy";
 }
 )";
     CompilerInput input{.source = source, .path = "leveldata_compare.zia"};

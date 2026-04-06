@@ -33,6 +33,9 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+extern "C" void rt_string_register_handle(rt_string s);
+extern "C" void rt_string_unregister_handle(rt_string s);
+
 int main() {
     rt_string empty = rt_const_cstr("");
     assert(rt_str_len(empty) == 0);
@@ -102,8 +105,9 @@ int main() {
         rt_string right_owned = rt_const_cstr("right");
         auto *left_impl = (rt_string_impl *)left_owned;
         auto *right_impl = (rt_string_impl *)right_owned;
-        assert(left_impl->heap == nullptr);
-        assert(right_impl->heap == nullptr);
+        // Short strings may be literal (heap==NULL) or embedded (heap==RT_SSO_SENTINEL)
+        assert(left_impl->heap == nullptr || left_impl->heap == RT_SSO_SENTINEL);
+        assert(right_impl->heap == nullptr || right_impl->heap == RT_SSO_SENTINEL);
         size_t left_before = left_impl->literal_refs;
         size_t right_before = right_impl->literal_refs;
         rt_string joined = rt_str_concat(rt_string_ref(left_owned), rt_string_ref(right_owned));
@@ -117,7 +121,7 @@ int main() {
     {
         rt_string base = rt_const_cstr("dup");
         auto *base_impl = (rt_string_impl *)base;
-        assert(base_impl->heap == nullptr);
+        assert(base_impl->heap == nullptr || base_impl->heap == RT_SSO_SENTINEL);
         size_t before = base_impl->literal_refs;
         rt_string doubled = rt_str_concat(rt_string_ref(base), rt_string_ref(base));
         assert(base_impl->literal_refs == before);
@@ -154,6 +158,10 @@ int main() {
         rt_string_impl huge_literal = {
             RT_STRING_MAGIC, nullptr, nullptr, std::numeric_limits<size_t>::max(), 0};
         rt_string_impl small_literal = {RT_STRING_MAGIC, nullptr, nullptr, 16, 0};
+        huge_literal.data = const_cast<char *>("x");
+        small_literal.data = const_cast<char *>("small");
+        rt_string_register_handle(&huge_literal);
+        rt_string_register_handle(&small_literal);
         g_last_trap = nullptr;
         g_trap_expected = true;
         if (setjmp(g_trap_jmp) == 0) {
@@ -165,6 +173,8 @@ int main() {
         }
         g_trap_expected = false;
         g_last_trap = nullptr;
+        rt_string_unregister_handle(&small_literal);
+        rt_string_unregister_handle(&huge_literal);
     }
 
     return 0;

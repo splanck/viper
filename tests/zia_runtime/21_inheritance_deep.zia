@@ -13,62 +13,50 @@ bind "./_support";
 class Animal {
     hide String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 
-    expose func getName() -> String {
-        return name;
+    expose func getName() -> String {        return name;
     }
 
-    expose func speak() -> String {
-        return "...";
+    expose func speak() -> String {        return "...";
     }
 
-    expose func move() -> String {
-        return "moving";
+    expose func move() -> String {        return "moving";
     }
 }
 
 class Dog extends Animal {
     hide String breed;
 
-    expose func setup(n: String, b: String) {
-        name = n;
+    expose func setup(n: String, b: String) {        name = n;
         breed = b;
     }
 
-    override expose func speak() -> String {
-        return "Woof!";
+    override expose func speak() -> String {        return "Woof!";
     }
 
-    override expose func move() -> String {
-        return "running";
+    override expose func move() -> String {        return "running";
     }
 
-    expose func getBreed() -> String {
-        return breed;
+    expose func getBreed() -> String {        return breed;
     }
 }
 
 class Cat extends Animal {
     hide Boolean indoor;
 
-    expose func setup(n: String, i: Boolean) {
-        name = n;
+    expose func setup(n: String, i: Boolean) {        name = n;
         indoor = i;
     }
 
-    override expose func speak() -> String {
-        return "Meow!";
+    override expose func speak() -> String {        return "Meow!";
     }
 
-    override expose func move() -> String {
-        return "prowling";
+    override expose func move() -> String {        return "prowling";
     }
 
-    expose func isIndoor() -> Boolean {
-        return indoor;
+    expose func isIndoor() -> Boolean {        return indoor;
     }
 }
 
@@ -77,42 +65,34 @@ class Cat extends Animal {
 //=============================================================================
 
 class Shape {
-    expose func area() -> Integer {
-        return 0;
+    expose func area() -> Integer {        return 0;
     }
 
-    expose func perimeter() -> Integer {
-        return 0;
+    expose func perimeter() -> Integer {        return 0;
     }
 
-    expose func name() -> String {
-        return "Shape";
+    expose func name() -> String {        return "Shape";
     }
 }
 
 class Circle extends Shape {
     hide Integer radius;
 
-    expose func setup(r: Integer) {
-        radius = r;
+    expose func setup(r: Integer) {        radius = r;
     }
 
-    override expose func area() -> Integer {
-        // Approximate: 3 * r * r
+    override expose func area() -> Integer {        // Approximate: 3 * r * r
         return 3 * radius * radius;
     }
 
-    override expose func perimeter() -> Integer {
-        // Approximate: 6 * r
+    override expose func perimeter() -> Integer {        // Approximate: 6 * r
         return 6 * radius;
     }
 
-    override expose func name() -> String {
-        return "Circle";
+    override expose func name() -> String {        return "Circle";
     }
 
-    expose func getRadius() -> Integer {
-        return radius;
+    expose func getRadius() -> Integer {        return radius;
     }
 }
 
@@ -120,29 +100,23 @@ class Rectangle extends Shape {
     hide Integer width;
     hide Integer height;
 
-    expose func setup(w: Integer, h: Integer) {
-        width = w;
+    expose func setup(w: Integer, h: Integer) {        width = w;
         height = h;
     }
 
-    override expose func area() -> Integer {
-        return width * height;
+    override expose func area() -> Integer {        return width * height;
     }
 
-    override expose func perimeter() -> Integer {
-        return 2 * (width + height);
+    override expose func perimeter() -> Integer {        return 2 * (width + height);
     }
 
-    override expose func name() -> String {
-        return "Rectangle";
+    override expose func name() -> String {        return "Rectangle";
     }
 
-    expose func getWidth() -> Integer {
-        return width;
+    expose func getWidth() -> Integer {        return width;
     }
 
-    expose func getHeight() -> Integer {
-        return height;
+    expose func getHeight() -> Integer {        return height;
     }
 }
 
@@ -154,16 +128,14 @@ class Rectangle extends Shape {
 class Grandparent {
     expose String familyName;
 
-    expose func init(fn: String) {
-        familyName = fn;
+    expose func init(fn: String) {        familyName = fn;
     }
 }
 
 class Parent extends Grandparent {
     expose Integer generation;
 
-    expose func setup(fn: String, gen: Integer) {
-        familyName = fn;
+    expose func setup(fn: String, gen: Integer) {        familyName = fn;
         generation = gen;
     }
 }
@@ -171,14 +143,12 @@ class Parent extends Grandparent {
 class Child extends Parent {
     expose String nickname;
 
-    expose func setup(fn: String, gen: Integer, nick: String) {
-        familyName = fn;  // grandparent field
+    expose func setup(fn: String, gen: Integer, nick: String) {        familyName = fn;  // grandparent field
         generation = gen; // parent field
         nickname = nick;  // own field
     }
 
-    expose func describe() -> String {
-        return nickname + " of " + familyName + " (gen " + toString(generation) + ")";
+    expose func describe() -> String {        return nickname + " of " + familyName + " (gen " + toString(generation) + ")";
     }
 }
 
@@ -186,16 +156,13 @@ class Child extends Parent {
 // Helper functions for polymorphism testing
 //=============================================================================
 
-func describeAnimal(a: Animal) -> String {
-    return a.getName() + " says " + a.speak();
+func describeAnimal(a: Animal) -> String {    return a.getName() + " says " + a.speak();
 }
 
-func getShapeArea(s: Shape) -> Integer {
-    return s.area();
+func getShapeArea(s: Shape) -> Integer {    return s.area();
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Direct instantiation and method calls
     //=========================================================================
     var animal = new Animal("Generic");

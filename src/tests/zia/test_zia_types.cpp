@@ -31,8 +31,7 @@ struct Point {
     Integer y;
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "value.zia"};
     CompilerOptions opts{};
@@ -60,20 +59,17 @@ class Person {
     expose Integer age;
     expose Integer score;
 
-    expose func init(a: Integer, s: Integer) {
-        age = a;
+    expose func init(a: Integer, s: Integer) {        age = a;
         score = s;
     }
 
-    expose func getAge() -> Integer {
-        return age;
+    expose func getAge() -> Integer {        return age;
     }
 }
 
-func start() {
-    Person p = new Person(30, 100);
-    Integer age = p.age;
-    Integer method_age = p.getAge();
+func start() {    var p: Person = new Person(30, 100);
+    var age: Integer = p.age;
+    var method_age: Integer = p.getAge();
     Viper.Terminal.SayInt(age);
     Viper.Terminal.SayInt(method_age);
 }
@@ -118,12 +114,10 @@ class Frog {
     expose Integer x;
 }
 
-func useFrog(Frog f) {
-    Viper.Terminal.SayInt(f.x);
+func useFrog(f: Frog) {    Viper.Terminal.SayInt(f.x);
 }
 
-func start() {
-    var f = new Frog();
+func start() {    var f = new Frog();
     f.x = 42;
     useFrog(f);
 }
@@ -164,18 +158,15 @@ module Test;
 class Board {
     List[Integer] items;
 
-    expose func init() {
-        items = [];
+    expose func init() {        items = [];
         items.add(0);
     }
 
-    expose func doSet(Integer idx, Integer value) {
-        items.set(idx, value);
+    expose func doSet(idx: Integer, value: Integer) {        items.set(idx, value);
     }
 }
 
-func start() {
-    Board b = new Board();
+func start() {    var b: Board = new Board();
     b.init();
     b.doSet(0, 42);
 }
@@ -201,22 +192,19 @@ class Game {
     expose Boolean paused;
     expose Integer level;
 
-    expose func init() {
-        score = 0;
+    expose func init() {        score = 0;
         running = true;
         paused = false;
         level = 1;
     }
 
-    expose func isRunning() -> Boolean {
-        return running;
+    expose func isRunning() -> Boolean {        return running;
     }
 }
 
-func start() {
-    Game g = new Game();
+func start() {    var g: Game = new Game();
     g.init();
-    Boolean r = g.isRunning();
+    var r: Boolean = g.isRunning();
 }
 )";
     CompilerInput input{.source = source, .path = "boolfields.zia"};

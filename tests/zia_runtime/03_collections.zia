@@ -20,8 +20,7 @@ bind "./_support";
 // COVER: Viper.Collections.Map.Clear
 // COVER: Viper.Collections.Map.Length
 
-func start() {
-    var nums = [1, 2, 3];
+func start() {    var nums = [1, 2, 3];
     nums.add(4);
     nums.set(1, 20);
     var sum = nums[0] + nums[1] + nums[2] + nums[3];

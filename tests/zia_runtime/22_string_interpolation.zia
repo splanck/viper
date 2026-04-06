@@ -10,30 +10,24 @@ class Person {
     expose String name;
     expose Integer age;
 
-    expose func init(n: String, a: Integer) {
-        name = n;
+    expose func init(n: String, a: Integer) {        name = n;
         age = a;
     }
 
-    expose func greet() -> String {
-        return "Hi, I'm ${name}";
+    expose func greet() -> String {        return "Hi, I'm ${name}";
     }
 
-    expose func describe() -> String {
-        return "${name} is ${age} years old";
+    expose func describe() -> String {        return "${name} is ${age} years old";
     }
 }
 
-func double(x: Integer) -> Integer {
-    return x * 2;
+func double(x: Integer) -> Integer {    return x * 2;
 }
 
-func formatPoint(x: Integer, y: Integer) -> String {
-    return "(${x}, ${y})";
+func formatPoint(x: Integer, y: Integer) -> String {    return "(${x}, ${y})";
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Simple variable interpolation
     //=========================================================================
     var x = 42;

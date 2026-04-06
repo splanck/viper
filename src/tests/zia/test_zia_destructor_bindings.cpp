@@ -50,8 +50,7 @@ class Resource {
 }
 
 /// @brief Start.
-func start() {
-    {
+func start() {    {
         var r = new Resource();
     }
 }

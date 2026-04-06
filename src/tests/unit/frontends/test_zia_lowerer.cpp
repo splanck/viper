@@ -155,7 +155,7 @@ class Counter {
 func start() {
     var c = new Counter();
     c.increment();
-    Integer n = c.getCount();
+    var n: Integer = c.getCount();
     Viper.Terminal.SayInt(n);
 }
 )";
@@ -275,12 +275,12 @@ TEST(ZiaLowerer, ArithmeticExpressions) {
 module Test;
 
 func start() {
-    Integer a = 10;
-    Integer b = 3;
-    Integer sum = a + b;
-    Integer diff = a - b;
-    Integer prod = a * b;
-    Integer quot = a / b;
+    var a: Integer = 10;
+    var b: Integer = 3;
+    var sum: Integer = a + b;
+    var diff: Integer = a - b;
+    var prod: Integer = a * b;
+    var quot: Integer = a / b;
     Viper.Terminal.SayInt(sum);
     Viper.Terminal.SayInt(diff);
     Viper.Terminal.SayInt(prod);
@@ -317,8 +317,8 @@ TEST(ZiaLowerer, BooleanExpressions) {
 module Test;
 
 func start() {
-    Boolean a = true;
-    Boolean b = false;
+    var a: Boolean = true;
+    var b: Boolean = false;
     if (a and b) {
         Viper.Terminal.Say("both");
     }
@@ -350,7 +350,7 @@ TEST(ZiaLowerer, IfElseControlFlow) {
 module Test;
 
 func start() {
-    Integer x = 5;
+    var x: Integer = 5;
     if (x > 3) {
         Viper.Terminal.Say("big");
     } else {
@@ -388,7 +388,7 @@ TEST(ZiaLowerer, WhileLoopBackEdge) {
 module Test;
 
 func start() {
-    Integer i = 0;
+    var i: Integer = 0;
     while (i < 10) {
         i = i + 1;
     }
@@ -424,7 +424,7 @@ TEST(ZiaLowerer, ForLoopLowering) {
 module Test;
 
 func start() {
-    Integer total = 0;
+    var total: Integer = 0;
     for i in 1..5 {
         total = total + i;
     }
@@ -463,7 +463,7 @@ func addNumbers(a: Integer, b: Integer) -> Integer {
 }
 
 func start() {
-    Integer result = addNumbers(3, 7);
+    var result: Integer = addNumbers(3, 7);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -498,7 +498,7 @@ func double(x: Integer) -> Integer {
 }
 
 func start() {
-    Integer r = double(21);
+    var r: Integer = double(21);
     Viper.Terminal.SayInt(r);
 }
 )";
@@ -548,13 +548,13 @@ func start() {
     var a = new Animal();
     a.name = "Dog";
     a.age = 5;
-    String desc = a.describe();
+    var desc: String = a.describe();
     Viper.Terminal.Say(desc);
 
-    Integer f = factorial(6);
+    var f: Integer = factorial(6);
     Viper.Terminal.SayInt(f);
 
-    Integer i = 0;
+    var i: Integer = 0;
     while (i < 3) {
         Viper.Terminal.SayInt(i);
         i = i + 1;
@@ -583,7 +583,7 @@ TEST(ZiaLowerer, StringConstantLowering) {
 module Test;
 
 func start() {
-    String greeting = "Hello, World!";
+    var greeting: String = "Hello, World!";
     Viper.Terminal.Say(greeting);
 }
 )";
@@ -610,8 +610,8 @@ TEST(ZiaLowerer, ComparisonOperators) {
 module Test;
 
 func start() {
-    Integer x = 5;
-    Integer y = 10;
+    var x: Integer = 5;
+    var y: Integer = 10;
     if (x == y) {
         Viper.Terminal.Say("equal");
     }
@@ -655,7 +655,7 @@ TEST(ZiaLowerer, NestedControlFlow) {
 module Test;
 
 func start() {
-    Integer x = 5;
+    var x: Integer = 5;
     if (x > 0) {
         if (x < 10) {
             Viper.Terminal.Say("single digit positive");
@@ -697,7 +697,7 @@ func compute(a: Integer, b: Integer, c: Integer) -> Integer {
 }
 
 func start() {
-    Integer r = compute(2, 3, 4);
+    var r: Integer = compute(2, 3, 4);
     Viper.Terminal.SayInt(r);
 }
 )";

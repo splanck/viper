@@ -34,14 +34,12 @@ module Test;
 class MyNode {
     expose String myLabel;
 
-    func init(l: String) {
-        myLabel = l;
+    func init(l: String) {        myLabel = l;
     }
 }
 
-func start() {
-    MyNode n = MyNode("test");
-    String s = n.myLabel;
+func start() {    var n: MyNode = new MyNode("test");
+    var s: String = n.myLabel;
 }
 )";
 
@@ -70,14 +68,12 @@ class Container {
     expose String val;
     expose Container? other;
 
-    func init(v: String) {
-        val = v;
+    func init(v: String) {        val = v;
     }
 }
 
-func start() {
-    Container c = Container("hello");
-    Container? maybeOther = c.other;
+func start() {    var c: Container = new Container("hello");
+    var maybeOther: Container? = c.other;
 }
 )";
 
@@ -107,13 +103,11 @@ class Data {
     expose String text;
     expose Data? link;
 
-    func init(t: String) {
-        text = t;
+    func init(t: String) {        text = t;
     }
 }
 
-func getLinkedText(d: Data) -> String {
-    if d.link == null {
+func getLinkedText(d: Data) -> String {    if d.link == null {
         return "";
     }
     // After null check, d.link should be usable as Data (not Data?)
@@ -122,9 +116,8 @@ func getLinkedText(d: Data) -> String {
     return linked.text;
 }
 
-func start() {
-    Data x = Data("test");
-    String r = getLinkedText(x);
+func start() {    var x: Data = new Data("test");
+    var r: String = getLinkedText(x);
 }
 )";
 

@@ -68,7 +68,7 @@ void rt_str_retain_maybe(rt_string s);
 /// @details Used by generic object helpers to distinguish string handles from
 ///          heap-managed objects without forcing callers to inspect internals.
 /// @param p Pointer to test; may be NULL.
-int8_t rt_string_is_handle(void *p);
+int8_t rt_string_is_handle(const void *p);
 
 /// @brief Return a shared empty string singleton (zero-length, non-NULL).
 rt_string rt_str_empty(void);
@@ -274,9 +274,10 @@ rt_string rt_str(double v);
 /// @return Pointer to the string's internal UTF-8 buffer.
 const char *rt_string_cstr(rt_string s);
 
-/// @brief Wrap constant C string @p str without copying.
-/// @param str Null-terminated literal pointer.
-/// @return Non-owning runtime string view.
+/// @brief Copy a null-terminated C string into a runtime string.
+/// @details Safe for literals, stack buffers, and transient heap memory.
+/// @param str Null-terminated source pointer.
+/// @return Runtime-owned string handle.
 rt_string rt_const_cstr(const char *str);
 
 //===----------------------------------------------------------------------===//

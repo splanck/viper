@@ -74,18 +74,18 @@ This document is a comprehensive feature parity audit between the two Viper fron
 |---------|-----|-------|-------|
 | Function declaration | **Full** (`func`) | **Full** (`FUNCTION/END FUNCTION`) | |
 | Void procedure | **Full** (returns `Void`) | **Full** (`SUB/END SUB`) | |
-| Return type annotation | **Full** (`-> Type` or `: Type`) | **Full** (`AS Type`) | |
-| Named arguments | **Parsed** | None | Zia parses but unclear if fully used |
+| Return type annotation | **Full** (`-> Type`) | **Full** (`AS Type`) | |
+| Named arguments | **Full** (`name: value`) | None | Reordering and defaulted trailing parameters are supported |
 | Default parameters | **Full** | None | Zia pads missing args with lowered default expressions |
 | ByRef parameters | None | **Full** (`BYREF`) | BASIC only |
 | ByVal parameters | Implicit (all by-value) | **Full** (`BYVAL`, default) | |
 | Array parameters | None | **Full** (`arr()` syntax) | BASIC only |
-| Variadic parameters | None | None | Neither |
+| Variadic parameters | **Full** (`func sum(nums: ...Integer)`) | None | Zia packs extra args into `List[T]` |
 | Function overloading | None | None | Neither |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
 | Constrained generics | **Full** (`[T: Interface]`) | None | Zia only |
 | Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce function pointers |
-| Lambda / closure | **Full** (`(x) => x + 1`) | None | **Major gap** — Zia only |
+| Lambda / closure | **Full** (`(x: Integer) => x + 1`) | None | **Major gap** — Zia only |
 
 ### 1.4 Classes & OOP
 
@@ -170,7 +170,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Lambda expressions | **Full** (`(x) => x + 1`) | None | |
+| Lambda expressions | **Full** (`(x: Integer) => x + 1`) | None | |
 | Closures (captures) | **Full** (value + reference capture) | None | |
 | Higher-order functions | **Full** | None | BASIC has ADDRESSOF but no closures |
 
@@ -183,7 +183,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | File imports | **Full** (`bind "./file"`) | **Full** (`ADDFILE "file.bas"`) | BASIC is textual inclusion |
 | Namespace imports | **Full** (`bind Viper.Terminal`) | **Full** (`USING Viper.Terminal`) | |
 | Selective imports | **Full** (`bind Viper.X { A, B }`) | None | Zia only |
-| Alias imports | **Full** (`bind X = Viper.Y`) | **Full** (`USING Viper.Y AS X`) | |
+| Alias imports | **Full** (`bind Viper.Y as X`) | **Full** (`USING Viper.Y AS X`) | |
 | Import depth limits | **Full** (50 depth, 100 files) | None | Zia only |
 
 ### 1.10 Operators

@@ -29,20 +29,18 @@ module Test;
 class Person {
     expose Integer age;
 
-    expose func init(a: Integer) {
-        age = a;
+    expose func init(a: Integer) {        age = a;
     }
 }
 
-func start() {
-    Person? p1 = new Person(30);
-    Person? p2 = null;
+func start() {    var p1: Person? = new Person(30);
+    var p2: Person? = null;
 
-    Person result1 = p1 ?? new Person(99);
-    Person result2 = p2 ?? new Person(88);
+    var result1: Person = p1 ?? new Person(99);
+    var result2: Person = p2 ?? new Person(88);
 
-    Integer age1 = result1.age;
-    Integer age2 = result2.age;
+    var age1: Integer = result1.age;
+    var age2: Integer = result2.age;
 
     Viper.Terminal.SayInt(age1);
     Viper.Terminal.SayInt(age2);
@@ -86,30 +84,26 @@ module Test;
 class Person {
     expose Integer age;
 
-    expose func init(a: Integer) {
-        age = a;
+    expose func init(a: Integer) {        age = a;
     }
 }
 
-func maybeAge(Boolean flag) -> Integer? {
-    if (flag) {
+func maybeAge(flag: Boolean) -> Integer? {    if (flag) {
         return 7;
     }
     return null;
 }
 
-func maybePerson(Boolean flag) -> Person? {
-    if (flag) {
+func maybePerson(flag: Boolean) -> Person? {    if (flag) {
         return new Person(42);
     }
     return null;
 }
 
-func start() {
-    Person? p = maybePerson(true);
-    Integer? age = p?.age;
-    Integer resolved = age ?? 0;
-    Integer? wrapped = maybeAge(true);
+func start() {    var p: Person? = maybePerson(true);
+    var age: Integer? = p?.age;
+    var resolved: Integer = age ?? 0;
+    var wrapped: Integer? = maybeAge(true);
     Viper.Terminal.SayInt(resolved);
     Viper.Terminal.SayInt(wrapped ?? 0);
 }

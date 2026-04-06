@@ -26,8 +26,7 @@ TEST(ZiaMatch, MatchStatement) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 5;
+func start() {    var x: Integer = 5;
     match (x) {
         1 => { Viper.Terminal.Say("one"); }
         _ => { Viper.Terminal.Say("other"); }
@@ -67,9 +66,8 @@ TEST(ZiaMatch, MatchExpression) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 2;
-    Integer result = match (x) {
+func start() {    var x: Integer = 2;
+    var result: Integer = match (x) {
         1 => 10,
         2 => 20,
         _ => 0
@@ -111,19 +109,17 @@ TEST(ZiaMatch, MatchExpressionWithBooleanSubject) {
     const std::string source = R"(
 module Test;
 
-func clamp(Integer value, Integer minVal, Integer maxVal) -> Integer {
-    return match (true) {
+func clamp(value: Integer, minVal: Integer, maxVal: Integer) -> Integer {    return match (true) {
         value < minVal => minVal,
         value > maxVal => maxVal,
         _ => value
     };
 }
 
-func start() {
-    Integer a = clamp(5, 0, 10);
-    Integer negative = 0 - 5;
-    Integer b = clamp(negative, 0, 10);
-    Integer c = clamp(15, 0, 10);
+func start() {    var a: Integer = clamp(5, 0, 10);
+    var negative: Integer = 0 - 5;
+    var b: Integer = clamp(negative, 0, 10);
+    var c: Integer = clamp(15, 0, 10);
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
     Viper.Terminal.SayInt(c);
@@ -186,28 +182,27 @@ struct Point {
     expose Integer y;
 }
 
-func start() {
-    Point p = new Point(1, 7);
-    (Integer, Integer) t = (1, 2);
-    Integer? maybe = 5;
+func start() {    var p: Point = new Point(1, 7);
+    var t: (Integer, Integer) = (1, 2);
+    var maybe: Integer? = 5;
 
-    Integer fromPoint = match (p) {
+    var fromPoint: Integer = match (p) {
         Point(1, y) => y,
         _ => 0
     };
 
-    Integer fromTuple = match (t) {
+    var fromTuple: Integer = match (t) {
         (1, y) => y,
         _ => 0
     };
 
-    Integer? fromOpt = match (maybe) {
+    var fromOpt: Integer? = match (maybe) {
         Some(v) if v > 0 => v,
         None => null,
         _ => null
     };
 
-    Integer sum = fromPoint + fromTuple + (fromOpt ?? 0);
+    var sum: Integer = fromPoint + fromTuple + (fromOpt ?? 0);
     Viper.Terminal.SayInt(sum);
 }
 )";

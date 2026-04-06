@@ -52,8 +52,7 @@ TEST(ZiaLambda, LambdaWithBlockBody) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var greet = () => {
+func start() {    var greet = () => {
         Viper.Terminal.Say("Hello");
     };
 }
@@ -89,8 +88,7 @@ TEST(ZiaLambda, BlockBodyLambdaCapturesAndAlignsEnvironment) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var b: Byte = 1;
+func start() {    var b: Byte = 1;
     var i: Integer = 2;
     var ready: Boolean = true;
     var f = () => {
@@ -116,6 +114,27 @@ func start() {
     }
     ASSERT_TRUE(mainFn != nullptr);
     EXPECT_TRUE(hasCallWithConstIntArg(*mainFn, "rt_alloc", 24));
+    ASSERT_TRUE(findLambdaFunction(result.module) != nullptr);
+}
+
+/// @brief Test typed multi-parameter lambdas.
+TEST(ZiaLambda, MultiParameterTypedLambda) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var add = (a: Integer, b: Integer) => a + b;
+    var value = add(10, 32);
+    Viper.Terminal.SayInt(value);
+}
+)";
+    CompilerInput input{.source = source, .path = "lambda_multi_typed.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
     ASSERT_TRUE(findLambdaFunction(result.module) != nullptr);
 }
 

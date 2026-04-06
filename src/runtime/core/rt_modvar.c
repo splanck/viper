@@ -7,17 +7,20 @@
 //
 // File: src/runtime/core/rt_modvar.c
 // Purpose: Provides runtime-managed storage for module-level BASIC variables.
-//          Each VM instance holds an independent linear table keyed by variable
+//          Each VM instance holds an independent indexed table keyed by variable
 //          name and kind tag, enabling multiple VMs to maintain isolated global
 //          variable namespaces without shared state.
 //
 // Key invariants:
 //   - Variables are keyed by (name, kind) pairs; the same name with different
 //     kind tags (I64, F64, I1, PTR, STR) is stored as a separate entry.
-//   - The backing table doubles in capacity when full (initial capacity 16).
+//   - The backing entry table and hash index both grow geometrically.
 //   - Storage for each variable is zero-initialized at creation time.
 //   - Table entries are never removed; once created, a variable persists for
 //     the lifetime of the RtContext.
+//   - Repeated lookups for the same (name, kind) pair return the same address,
+//     and mismatched storage sizes trap instead of silently reusing the wrong
+//     slot.
 //   - All operations require an active RtContext; passing NULL traps.
 //
 // Ownership/Lifetime:
@@ -40,7 +43,83 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { MV_I64, MV_F64, MV_I1, MV_PTR, MV_STR } mv_kind_t;
+typedef enum {
+    MV_I64 = RT_MODVAR_KIND_I64,
+    MV_F64 = RT_MODVAR_KIND_F64,
+    MV_I1 = RT_MODVAR_KIND_I1,
+    MV_PTR = RT_MODVAR_KIND_PTR,
+    MV_STR = RT_MODVAR_KIND_STR,
+    MV_BLOCK = RT_MODVAR_KIND_BLOCK
+} mv_kind_t;
+
+static uint64_t mv_hash_key(const char *key, mv_kind_t kind) {
+    uint64_t hash = 1469598103934665603ULL ^ (uint64_t)kind;
+    for (const unsigned char *p = (const unsigned char *)key; *p; ++p) {
+        hash ^= (uint64_t)*p;
+        hash *= 1099511628211ULL;
+    }
+    return hash ? hash : 1;
+}
+
+static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
+    if (ctx->modvar_index_capacity != 0 && (entry_count + 1) * 10 < ctx->modvar_index_capacity * 7)
+        return;
+
+    size_t new_cap = ctx->modvar_index_capacity ? ctx->modvar_index_capacity * 2 : 32;
+    while ((entry_count + 1) * 10 >= new_cap * 7) {
+        if (new_cap > SIZE_MAX / 2)
+            rt_trap("rt_modvar: index capacity overflow");
+        new_cap *= 2;
+    }
+
+    size_t *new_slots = (size_t *)calloc(new_cap, sizeof(size_t));
+    if (!new_slots)
+        rt_trap("rt_modvar: index alloc failed");
+
+    size_t mask = new_cap - 1;
+    for (size_t i = 0; i < ctx->modvar_count; ++i) {
+        RtModvarEntry *entry = &ctx->modvar_entries[i];
+        size_t pos = (size_t)(entry->hash & mask);
+        while (new_slots[pos] != 0)
+            pos = (pos + 1) & mask;
+        new_slots[pos] = i + 1;
+    }
+
+    free(ctx->modvar_index_slots);
+    ctx->modvar_index_slots = new_slots;
+    ctx->modvar_index_capacity = new_cap;
+}
+
+static RtModvarEntry *mv_lookup(RtContext *ctx,
+                                const char *key,
+                                uint64_t hash,
+                                mv_kind_t kind,
+                                size_t size) {
+    if (!ctx->modvar_index_slots || ctx->modvar_index_capacity == 0)
+        return NULL;
+
+    size_t mask = ctx->modvar_index_capacity - 1;
+    size_t pos = (size_t)(hash & mask);
+    while (ctx->modvar_index_slots[pos] != 0) {
+        RtModvarEntry *entry = &ctx->modvar_entries[ctx->modvar_index_slots[pos] - 1];
+        if (entry->hash == hash && entry->kind == (int)kind && strcmp(entry->name, key) == 0) {
+            if (entry->size != size)
+                rt_trap("rt_modvar: storage size mismatch");
+            return entry;
+        }
+        pos = (pos + 1) & mask;
+    }
+    return NULL;
+}
+
+static void mv_insert_index(RtContext *ctx, size_t entry_index) {
+    RtModvarEntry *entry = &ctx->modvar_entries[entry_index];
+    size_t mask = ctx->modvar_index_capacity - 1;
+    size_t pos = (size_t)(entry->hash & mask);
+    while (ctx->modvar_index_slots[pos] != 0)
+        pos = (pos + 1) & mask;
+    ctx->modvar_index_slots[pos] = entry_index + 1;
+}
 
 /// @brief Allocate zero-initialized storage for a module variable.
 ///
@@ -59,10 +138,10 @@ static void *mv_alloc(size_t size) {
 
 /// @brief Find or create a module variable entry in the current VM context.
 ///
-/// @details Performs a linear probe over the per-VM modvar table using the
-///          exact @p key and @p kind. When not found, grows the table (doubling
-///          capacity) and appends a new entry with a freshly allocated, zeroed
-///          storage block sized for the requested type.
+/// @details Performs an indexed lookup over the per-VM modvar table using the
+///          exact @p key and @p kind. When not found, grows the entry table and
+///          hash index, then appends a new entry with a freshly allocated,
+///          zeroed storage block sized for the requested type.
 /// @param ctx  Active runtime context (thread-local binding).
 /// @param key  Canonical variable name.
 /// @param kind Kind tag used to distinguish same-named variables of different types.
@@ -73,14 +152,11 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
                                         mv_kind_t kind,
                                         size_t size) {
     assert(ctx && "mv_find_or_create called without active RtContext");
+    uint64_t hash = mv_hash_key(key, kind);
+    RtModvarEntry *existing = mv_lookup(ctx, key, hash, kind, size);
+    if (existing)
+        return existing;
 
-    // linear search
-    for (size_t i = 0; i < ctx->modvar_count; ++i) {
-        RtModvarEntry *e = &ctx->modvar_entries[i];
-        if (e->kind == (int)kind && strcmp(e->name, key) == 0)
-            return e;
-    }
-    // grow table
     if (ctx->modvar_count == ctx->modvar_capacity) {
         size_t oldCap = ctx->modvar_capacity;
         if (oldCap > (SIZE_MAX / 2))
@@ -98,7 +174,9 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
         ctx->modvar_entries = np;
         ctx->modvar_capacity = newCap;
     }
-    // insert new
+
+    mv_ensure_index_capacity(ctx, ctx->modvar_count + 1);
+
     RtModvarEntry *e = &ctx->modvar_entries[ctx->modvar_count++];
     size_t nlen = strlen(key);
     e->name = (char *)rt_alloc((int64_t)(nlen + 1));
@@ -107,7 +185,9 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
     memcpy(e->name, key, nlen + 1);
     e->kind = kind;
     e->size = size;
+    e->hash = hash;
     e->addr = mv_alloc(size);
+    mv_insert_index(ctx, ctx->modvar_count - 1);
     return e;
 }
 
@@ -128,6 +208,8 @@ static void *mv_addr(rt_string name, mv_kind_t kind, size_t size) {
     const char *c = rt_string_cstr(name);
     if (!c)
         rt_trap("rt_modvar: null name");
+    if (size == 0)
+        rt_trap("rt_modvar: zero-sized storage");
     RtModvarEntry *e = mv_find_or_create(ctx, c, kind, size);
     return e->addr;
 }
@@ -160,6 +242,7 @@ void *rt_modvar_addr_str(rt_string name) {
 /// @brief Address of a module variable block with arbitrary size.
 /// @details Used for arrays and records that need more than 8 bytes.
 void *rt_modvar_addr_block(rt_string name, int64_t size) {
-    // Use MV_PTR kind for block storage - the size is what matters
-    return mv_addr(name, MV_PTR, (size_t)size);
+    if (size < 0)
+        rt_trap("rt_modvar: negative block size");
+    return mv_addr(name, MV_BLOCK, (size_t)size);
 }

@@ -30,9 +30,8 @@ TEST(ZiaOperators, Addition) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 10 + 20;
-    Integer b = -5 + 5;
+func start() {    var a: Integer = 10 + 20;
+    var b: Integer = -5 + 5;
     var c = 1.5 + 2.5;
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -52,9 +51,8 @@ TEST(ZiaOperators, Subtraction) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 30 - 10;
-    Integer b = 5 - 10;
+func start() {    var a: Integer = 30 - 10;
+    var b: Integer = 5 - 10;
     var c = 5.0 - 2.5;
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -74,9 +72,8 @@ TEST(ZiaOperators, Multiplication) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 6 * 7;
-    Integer b = -3 * 4;
+func start() {    var a: Integer = 6 * 7;
+    var b: Integer = -3 * 4;
     var c = 2.5 * 4.0;
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -96,9 +93,8 @@ TEST(ZiaOperators, Division) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 20 / 4;
-    Integer b = 17 / 5;
+func start() {    var a: Integer = 20 / 4;
+    var b: Integer = 17 / 5;
     var c = 10.0 / 4.0;
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -118,10 +114,9 @@ TEST(ZiaOperators, Modulo) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 17 % 5;
-    Integer b = 10 % 3;
-    Integer c = 8 % 4;
+func start() {    var a: Integer = 17 % 5;
+    var b: Integer = 10 % 3;
+    var c: Integer = 8 % 4;
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
     Viper.Terminal.SayInt(c);
@@ -141,10 +136,9 @@ TEST(ZiaOperators, UnaryNegation) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = 5;
-    Integer b = -a;
-    Integer c = -(-10);
+func start() {    var a: Integer = 5;
+    var b: Integer = -a;
+    var c: Integer = -(-10);
     var d = -3.14;
     Viper.Terminal.SayInt(b);
     Viper.Terminal.SayInt(c);
@@ -164,15 +158,14 @@ TEST(ZiaOperators, Precedence) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    // Multiplication before addition
-    Integer a = 2 + 3 * 4;  // 14, not 20
+func start() {    // Multiplication before addition
+    var a: Integer = 2 + 3 * 4;  // 14, not 20
 
     // Parentheses override precedence
-    Integer b = (2 + 3) * 4;  // 20
+    var b: Integer = (2 + 3) * 4;  // 20
 
     // Mixed operations
-    Integer c = 10 - 2 * 3 + 4;  // 10 - 6 + 4 = 8
+    var c: Integer = 10 - 2 * 3 + 4;  // 10 - 6 + 4 = 8
 
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -197,11 +190,10 @@ TEST(ZiaOperators, Equality) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = 5 == 5;
-    Boolean b = 5 == 6;
-    Boolean c = 5 != 6;
-    Boolean d = 5 != 5;
+func start() {    var a: Boolean = 5 == 5;
+    var b: Boolean = 5 == 6;
+    var c: Boolean = 5 != 6;
+    var d: Boolean = 5 != 5;
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
     Viper.Terminal.SayBool(c);
@@ -222,13 +214,12 @@ TEST(ZiaOperators, Relational) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = 5 < 10;
-    Boolean b = 10 < 5;
-    Boolean c = 5 <= 5;
-    Boolean d = 5 > 3;
-    Boolean e = 3 > 5;
-    Boolean f = 5 >= 5;
+func start() {    var a: Boolean = 5 < 10;
+    var b: Boolean = 10 < 5;
+    var c: Boolean = 5 <= 5;
+    var d: Boolean = 5 > 3;
+    var e: Boolean = 3 > 5;
+    var f: Boolean = 5 >= 5;
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
     Viper.Terminal.SayBool(c);
@@ -251,11 +242,10 @@ TEST(ZiaOperators, StringComparison) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = "hello" == "hello";
-    Boolean b = "hello" == "world";
-    Boolean c = "hello" != "world";
-    Boolean d = "" == "";
+func start() {    var a: Boolean = "hello" == "hello";
+    var b: Boolean = "hello" == "world";
+    var c: Boolean = "hello" != "world";
+    var d: Boolean = "" == "";
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
     Viper.Terminal.SayBool(c);
@@ -280,15 +270,14 @@ TEST(ZiaOperators, LogicalAnd) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = true && true;
-    Boolean b = true && false;
-    Boolean c = false && true;
-    Boolean d = false && false;
+func start() {    var a: Boolean = true && true;
+    var b: Boolean = true && false;
+    var c: Boolean = false && true;
+    var d: Boolean = false && false;
 
     // Word form
-    Boolean e = true and true;
-    Boolean f = true and false;
+    var e: Boolean = true and true;
+    var f: Boolean = true and false;
 
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
@@ -312,15 +301,14 @@ TEST(ZiaOperators, LogicalOr) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = true || true;
-    Boolean b = true || false;
-    Boolean c = false || true;
-    Boolean d = false || false;
+func start() {    var a: Boolean = true || true;
+    var b: Boolean = true || false;
+    var c: Boolean = false || true;
+    var d: Boolean = false || false;
 
     // Word form
-    Boolean e = true or false;
-    Boolean f = false or false;
+    var e: Boolean = true or false;
+    var f: Boolean = false or false;
 
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
@@ -344,14 +332,13 @@ TEST(ZiaOperators, LogicalNot) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = !true;
-    Boolean b = !false;
-    Boolean c = !!true;
+func start() {    var a: Boolean = !true;
+    var b: Boolean = !false;
+    var c: Boolean = !!true;
 
     // Word form
-    Boolean d = not true;
-    Boolean e = not false;
+    var d: Boolean = not true;
+    var e: Boolean = not false;
 
     Viper.Terminal.SayBool(a);
     Viper.Terminal.SayBool(b);
@@ -376,17 +363,15 @@ module Test;
 
 var counter: Integer = 0;
 
-func increment() -> Boolean {
-    counter = counter + 1;
+func increment() -> Boolean {    counter = counter + 1;
     return true;
 }
 
-func start() {
-    // With &&, second operand not evaluated if first is false
-    Boolean a = false && increment();
+func start() {    // With &&, second operand not evaluated if first is false
+    var a: Boolean = false && increment();
 
     // With ||, second operand not evaluated if first is true
-    Boolean b = true || increment();
+    var b: Boolean = true || increment();
 
     Viper.Terminal.SayInt(counter);  // Should be 0
 }
@@ -409,11 +394,10 @@ TEST(ZiaOperators, Ternary) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer a = true ? 1 : 2;
-    Integer b = false ? 1 : 2;
-    Integer x = 5;
-    Integer c = x > 0 ? x : -x;  // abs
+func start() {    var a: Integer = true ? 1 : 2;
+    var b: Integer = false ? 1 : 2;
+    var x: Integer = 5;
+    var c: Integer = x > 0 ? x : -x;  // abs
 
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
@@ -434,9 +418,8 @@ TEST(ZiaOperators, NestedTernary) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 5;
-    String result = x < 0 ? "negative" : (x == 0 ? "zero" : "positive");
+func start() {    var x: Integer = 5;
+    var result: String = x < 0 ? "negative" : (x == 0 ? "zero" : "positive");
     Viper.Terminal.Say(result);
 }
 )";
@@ -458,8 +441,7 @@ TEST(ZiaOperators, Assignment) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x = 10;
+func start() {    var x = 10;
     x = 20;
     x = x + 5;
     Viper.Terminal.SayInt(x);
@@ -479,8 +461,7 @@ TEST(ZiaOperators, ChainedAssignment) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var a = 1;
+func start() {    var a = 1;
     var b = 2;
     var c = 3;
 
@@ -510,12 +491,11 @@ TEST(ZiaOperators, NullCoalescing) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    String? a = null;
-    String? b = "hello";
+func start() {    var a: String? = null;
+    var b: String? = "hello";
 
-    String c = a ?? "default";
-    String d = b ?? "default";
+    var c: String = a ?? "default";
+    var d: String = b ?? "default";
 
     Viper.Terminal.Say(c);
     Viper.Terminal.Say(d);
@@ -539,9 +519,8 @@ class Person {
     expose String name;
 }
 
-func start() {
-    Person? person = null;
-    String? name = person?.name;
+func start() {    var person: Person? = null;
+    var name: String? = person?.name;
 
     if name == null {
         Viper.Terminal.Say("no name");

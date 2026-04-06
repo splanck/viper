@@ -35,8 +35,7 @@ struct Point {
     expose Integer y;
 }
 
-func start() {
-    var p: Point;
+func start() {    var p: Point;
     p.x = 10;
     p.y = 20;
     Viper.Terminal.SayInt(p.x);
@@ -61,20 +60,17 @@ struct Vector2D {
     expose Integer x;
     expose Integer y;
 
-    expose func lengthSquared() -> Integer {
-        return x * x + y * y;
+    expose func lengthSquared() -> Integer {        return x * x + y * y;
     }
 
-    expose func add(Vector2D other) -> Vector2D {
-        var result: Vector2D;
+    expose func add(other: Vector2D) -> Vector2D {        var result: Vector2D;
         result.x = x + other.x;
         result.y = y + other.y;
         return result;
     }
 }
 
-func start() {
-    var v1: Vector2D;
+func start() {    var v1: Vector2D;
     v1.x = 3;
     v1.y = 4;
     Viper.Terminal.SayInt(v1.lengthSquared());
@@ -100,8 +96,7 @@ struct Config {
     expose Boolean fullscreen = false;
 }
 
-func start() {
-    var config: Config;
+func start() {    var config: Config;
     Viper.Terminal.SayInt(config.width);
     Viper.Terminal.SayInt(config.height);
     Viper.Terminal.SayBool(config.fullscreen);
@@ -130,8 +125,7 @@ struct Point {
     expose Integer y;
 }
 
-func start() {
-    var p1: Point;
+func start() {    var p1: Point;
     p1.x = 10;
     p1.y = 20;
 
@@ -162,13 +156,11 @@ struct Point {
     expose Integer y;
 }
 
-func printPoint(Point p) {
-    Viper.Terminal.SayInt(p.x);
+func printPoint(p: Point) {    Viper.Terminal.SayInt(p.x);
     Viper.Terminal.SayInt(p.y);
 }
 
-func start() {
-    var p: Point;
+func start() {    var p: Point;
     p.x = 5;
     p.y = 10;
     printPoint(p);
@@ -193,15 +185,13 @@ struct Point {
     expose Integer y;
 }
 
-func createPoint(Integer x, Integer y) -> Point {
-    var p: Point;
+func createPoint(x: Integer, y: Integer) -> Point {    var p: Point;
     p.x = x;
     p.y = y;
     return p;
 }
 
-func start() {
-    var p = createPoint(15, 25);
+func start() {    var p = createPoint(15, 25);
     Viper.Terminal.SayInt(p.x);
     Viper.Terminal.SayInt(p.y);
 }
@@ -233,17 +223,14 @@ struct Rectangle {
     expose Point topLeft;
     expose Point bottomRight;
 
-    expose func width() -> Integer {
-        return bottomRight.x - topLeft.x;
+    expose func width() -> Integer {        return bottomRight.x - topLeft.x;
     }
 
-    expose func height() -> Integer {
-        return bottomRight.y - topLeft.y;
+    expose func height() -> Integer {        return bottomRight.y - topLeft.y;
     }
 }
 
-func start() {
-    var rect: Rectangle;
+func start() {    var rect: Rectangle;
     rect.topLeft.x = 0;
     rect.topLeft.y = 0;
     rect.bottomRight.x = 100;
@@ -275,13 +262,11 @@ struct Polygon {
     expose List[Integer] xCoords;
     expose List[Integer] yCoords;
 
-    expose func vertexCount() -> Integer {
-        return xCoords.count();
+    expose func vertexCount() -> Integer {        return xCoords.count();
     }
 }
 
-func start() {
-    var poly: Polygon;
+func start() {    var poly: Polygon;
     poly.xCoords = [];
     poly.yCoords = [];
     poly.xCoords.add(0);
@@ -322,14 +307,12 @@ class Player {
     expose Position pos;
     expose Integer health;
 
-    expose func moveTo(Integer x, Integer y) {
-        pos.x = x;
+    expose func moveTo(x: Integer, y: Integer) {        pos.x = x;
         pos.y = y;
     }
 }
 
-func start() {
-    var player = new Player();
+func start() {    var player = new Player();
     player.name = "Hero";
     player.pos.x = 0;
     player.pos.y = 0;
@@ -376,12 +359,10 @@ struct Move {
 }
 
 class MoveGen {
-    hide func makeMove(Integer f, Integer t, Integer k, Boolean sp) -> Move {
-        return new Move(f, t, k, sp);
+    hide func makeMove(f: Integer, t: Integer, k: Integer, sp: Boolean) -> Move {        return new Move(f, t, k, sp);
     }
 
-    expose func generate() -> List[Move] {
-        var moves = [];
+    expose func generate() -> List[Move] {        var moves = [];
         moves.add(self.makeMove(0, 16, 1, false));
         moves.add(self.makeMove(1, 17, 2, true));
         moves.add(self.makeMove(2, 18, 1, false));
@@ -389,8 +370,7 @@ class MoveGen {
     }
 }
 
-func start() {
-    var gen = new MoveGen();
+func start() {    var gen = new MoveGen();
     var list = gen.generate();
     Viper.Terminal.SayInt(list.count());
     var m0 = list.get(0);

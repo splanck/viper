@@ -8,14 +8,12 @@ class Node {
     expose Integer value;
     expose Node? next;
 
-    expose func init(v: Integer, n: Node?) {
-        value = v;
+    expose func init(v: Integer, n: Node?) {        value = v;
         next = n;
     }
 }
 
-func start() {
-    var none: Node? = null;
+func start() {    var none: Node? = null;
     var v = none?.next?.value ?? 7;
     assertEqInt(v, 7, "opt_chain_null");
 

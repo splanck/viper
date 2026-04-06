@@ -19,8 +19,8 @@ namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 
 /// @brief Parse a statement, dispatching to the appropriate parser based on the leading token.
-/// @details Handles blocks, var/final declarations, Java-style declarations, if, while, for,
-///          return, guard, match, break, continue, print/println, and expression statements.
+/// @details Handles blocks, var/final declarations, if, while, for, return, guard, match,
+///          break, continue, print/println, and expression statements.
 /// @return The parsed statement, or nullptr on error.
 StmtPtr Parser::parseStatement() {
     if (++stmtDepth_ > kMaxStmtDepth) {
@@ -44,17 +44,6 @@ StmtPtr Parser::parseStatement() {
         result = parseVarDecl();
         --stmtDepth_;
         return result;
-    }
-
-    // Java-style variable declaration: Type name = expr;
-    // Try parsing it speculatively (no heuristics); if it fails, fall back to expression parsing.
-    if (check(TokenKind::Identifier) || check(TokenKind::LParen)) {
-        Speculation speculative(*this);
-        if (StmtPtr decl = parseJavaStyleVarDecl()) {
-            speculative.commit();
-            --stmtDepth_;
-            return decl;
-        }
     }
 
     // If statement
@@ -235,40 +224,6 @@ StmtPtr Parser::parseVarDecl() {
 
     return std::make_unique<VarStmt>(
         loc, std::move(name), std::move(type), std::move(init), isFinal);
-}
-
-/// @brief Parse a Java-style local variable declaration (Type name = expr;).
-/// @details Used speculatively; returns nullptr if the token sequence does not match.
-/// @return The parsed VarStmt, or nullptr if not a valid Java-style declaration.
-StmtPtr Parser::parseJavaStyleVarDecl() {
-    SourceLoc loc = peek().loc;
-
-    // Parse the type (e.g., Integer, List[String], etc.)
-    TypePtr type = parseType();
-    if (!type)
-        return nullptr;
-
-    // Now we expect a variable name
-    if (!checkIdentifierLike()) {
-        error("expected variable name after type");
-        return nullptr;
-    }
-    Token nameTok = advance();
-    std::string name = nameTok.text;
-
-    // Optional initializer (= expr)
-    ExprPtr init;
-    if (match(TokenKind::Equal)) {
-        init = parseExpression();
-        if (!init)
-            return nullptr;
-    }
-
-    if (!expect(TokenKind::Semicolon, ";"))
-        return nullptr;
-
-    // Java-style declarations are mutable by default (isFinal = false)
-    return std::make_unique<VarStmt>(loc, std::move(name), std::move(type), std::move(init), false);
 }
 
 /// @brief Parse an if statement with optional else clause (if cond { body } else { body }).

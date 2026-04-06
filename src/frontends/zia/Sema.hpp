@@ -163,6 +163,15 @@ struct MethodInstanceKeyHash {
 /// @invariant Expression type map is populated after analyze().
 class Sema {
   public:
+    /// @brief Bound argument layout for a resolved call site.
+    /// @details `fixedParamSources[i]` is the source-argument index used for
+    /// parameter `i`, or -1 when the parameter is satisfied by a default.
+    /// Variadic source arguments remain in source order.
+    struct CallArgBinding {
+        std::vector<int> fixedParamSources;
+        std::vector<int> variadicSources;
+    };
+
     /// @brief Create a semantic analyzer with the given diagnostic engine.
     /// @param diag Diagnostic engine for error reporting.
     ///
@@ -370,6 +379,36 @@ class Sema {
         return it != resolvedInitDecls_.end() ? it->second : nullptr;
     }
 
+    /// @brief Get the owner type of a resolved init overload for a new-expression.
+    std::string resolvedInitOwnerType(const NewExpr *expr) const {
+        auto it = resolvedInitOwnerTypes_.find(expr);
+        return it != resolvedInitOwnerTypes_.end() ? it->second : "";
+    }
+
+    /// @brief Get the resolved init overload for a constructor-style type call.
+    MethodDecl *resolvedTypeCallInitDecl(const CallExpr *expr) const {
+        auto it = resolvedTypeCallInitDecls_.find(expr);
+        return it != resolvedTypeCallInitDecls_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Get the owner type of a resolved constructor-style init overload.
+    std::string resolvedTypeCallInitOwnerType(const CallExpr *expr) const {
+        auto it = resolvedTypeCallInitOwnerTypes_.find(expr);
+        return it != resolvedTypeCallInitOwnerTypes_.end() ? it->second : "";
+    }
+
+    /// @brief Get the bound argument layout for a resolved call expression.
+    const CallArgBinding *callArgBinding(const CallExpr *expr) const {
+        auto it = callArgBindings_.find(expr);
+        return it != callArgBindings_.end() ? &it->second : nullptr;
+    }
+
+    /// @brief Get the bound argument layout for a resolved new-expression.
+    const CallArgBinding *newArgBinding(const NewExpr *expr) const {
+        auto it = newArgBindings_.find(expr);
+        return it != newArgBindings_.end() ? &it->second : nullptr;
+    }
+
     /// @brief Look up the return type of a function by name.
     /// @param name The function name (e.g., "Viper.Random.NextInt" or "MyLib.helper").
     /// @return The return type, or nullptr if not found.
@@ -459,6 +498,16 @@ class Sema {
     TypeRef getFunctionType(const FunctionDecl *decl) const {
         auto it = functionDeclTypes_.find(decl);
         return it != functionDeclTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Look up a registered class declaration by semantic type name.
+    ClassDecl *findClassDecl(const std::string &typeName) const {
+        return lookupClassDeclForType(typeName);
+    }
+
+    /// @brief Look up a registered struct declaration by semantic type name.
+    StructDecl *findStructDecl(const std::string &typeName) const {
+        return lookupStructDeclForType(typeName);
     }
 
     /// @brief Get the original generic declaration for an instantiated type.
@@ -702,6 +751,22 @@ class Sema {
                                       SourceLoc loc,
                                       std::string *resolvedOwnerType = nullptr,
                                       bool includeInherited = true);
+
+    /// @brief Resolve a function overload using full call-site argument binding.
+    FunctionDecl *resolveFunctionCallOverload(const std::string &name,
+                                              CallExpr *expr,
+                                              SourceLoc loc,
+                                              std::string *loweredName = nullptr,
+                                              CallArgBinding *bindingOut = nullptr);
+
+    /// @brief Resolve a method overload using full call-site argument binding.
+    MethodDecl *resolveMethodCallOverload(const std::string &ownerType,
+                                          const std::string &methodName,
+                                          CallExpr *expr,
+                                          SourceLoc loc,
+                                          std::string *resolvedOwnerType = nullptr,
+                                          bool includeInherited = true,
+                                          CallArgBinding *bindingOut = nullptr);
 
     /// @brief Find an inherited exact-signature method for override validation.
     MethodDecl *findInheritedExactMethod(const std::string &ownerType,
@@ -1201,7 +1266,7 @@ class Sema {
     std::vector<std::string> getTypeNames() const;
 
     /// @brief Get all bound module aliases visible in this module.
-    /// @return Short names (aliases) from `bind Alias = Namespace;` declarations.
+    /// @return Short names (aliases) from `bind Namespace as Alias;` declarations.
     ///         These are the prefixes users can type before `.` to access members.
     std::vector<std::string> getBoundModuleNames() const;
 
@@ -1211,7 +1276,7 @@ class Sema {
     std::vector<Symbol> getModuleExports(const std::string &moduleName) const;
 
     /// @brief Resolve a bound alias to its full namespace path.
-    /// @param alias Short alias name (e.g., "Math" from `bind Math = Viper.Math;`).
+    /// @param alias Short alias name (e.g., "Math" from `bind Viper.Math as Math;`).
     /// @return Full namespace string (e.g., "Viper.Math"), or empty if not found.
     std::string resolveModuleAlias(const std::string &alias) const;
 
@@ -1490,6 +1555,21 @@ class Sema {
     /// @brief Resolved init declarations for new-expressions.
     std::unordered_map<const NewExpr *, MethodDecl *> resolvedInitDecls_;
 
+    /// @brief Resolved owner type for init overloads selected on new-expressions.
+    std::unordered_map<const NewExpr *, std::string> resolvedInitOwnerTypes_;
+
+    /// @brief Resolved init declarations for constructor-style type calls.
+    std::unordered_map<const CallExpr *, MethodDecl *> resolvedTypeCallInitDecls_;
+
+    /// @brief Resolved owner type for constructor-style init overloads.
+    std::unordered_map<const CallExpr *, std::string> resolvedTypeCallInitOwnerTypes_;
+
+    /// @brief Bound argument layouts for resolved call expressions.
+    std::unordered_map<const CallExpr *, CallArgBinding> callArgBindings_;
+
+    /// @brief Bound argument layouts for resolved new-expressions.
+    std::unordered_map<const NewExpr *, CallArgBinding> newArgBindings_;
+
     /// @brief Map from field expressions to their resolved getter names.
     std::unordered_map<const FieldExpr *, std::string> resolvedFieldGetters_;
 
@@ -1560,6 +1640,40 @@ class Sema {
     /// @details Key: Function name, Value: AST declaration pointer.
     /// Used by validateCallArgs to exempt missing args with defaults.
     std::map<std::string, FunctionDecl *> functionDecls_;
+
+    struct CallParamSpec {
+        std::string name;
+        TypeRef type;
+        bool hasDefault = false;
+        bool isVariadic = false;
+    };
+
+    bool bindCallArgs(const std::vector<CallArg> &args,
+                      const std::vector<CallParamSpec> &params,
+                      SourceLoc loc,
+                      const std::string &calleeName,
+                      CallArgBinding &binding,
+                      int *score = nullptr,
+                      bool reportErrors = false) const;
+
+    FunctionDecl *resolveFunctionArgOverload(const std::string &name,
+                                             const std::vector<CallArg> &args,
+                                             SourceLoc loc,
+                                             std::string *loweredName,
+                                             CallArgBinding *bindingOut);
+    MethodDecl *resolveMethodArgOverload(const std::string &ownerType,
+                                         const std::string &methodName,
+                                         const std::vector<CallArg> &args,
+                                         SourceLoc loc,
+                                         std::string *resolvedOwnerType,
+                                         bool includeInherited,
+                                         CallArgBinding *bindingOut);
+
+    std::vector<CallParamSpec> makeParamSpecs(const std::vector<Param> &params,
+                                              const std::vector<TypeRef> &paramTypes) const;
+    std::vector<CallParamSpec> makeStructFieldSpecs(const std::string &typeName) const;
+    std::vector<CallParamSpec> makeClassFieldSpecs(const std::string &typeName) const;
+    void appendClassFieldSpecs(const std::string &typeName, std::vector<CallParamSpec> &out) const;
 
     /// @}
 };

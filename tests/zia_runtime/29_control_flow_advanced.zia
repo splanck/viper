@@ -10,12 +10,10 @@ bind "./_support";
 // Helper functions
 //=============================================================================
 
-func isEven(n: Integer) -> Boolean {
-    return n % 2 == 0;
+func isEven(n: Integer) -> Boolean {    return n % 2 == 0;
 }
 
-func isPrime(n: Integer) -> Boolean {
-    if (n < 2) {
+func isPrime(n: Integer) -> Boolean {    if (n < 2) {
         return false;
     }
     if (n == 2) {
@@ -34,8 +32,7 @@ func isPrime(n: Integer) -> Boolean {
     return true;
 }
 
-func fib(n: Integer) -> Integer {
-    if (n <= 1) {
+func fib(n: Integer) -> Integer {    if (n <= 1) {
         return n;
     }
     var a = 0;
@@ -50,15 +47,13 @@ func fib(n: Integer) -> Integer {
     return b;
 }
 
-func processPositive(n: Integer) -> Integer {
-    guard n > 0 else {
+func processPositive(n: Integer) -> Integer {    guard n > 0 else {
         return -1;
     }
     return n * 2;
 }
 
-func validateInput(s: String, n: Integer) -> Boolean {
-    guard s != "" else {
+func validateInput(s: String, n: Integer) -> Boolean {    guard s != "" else {
         return false;
     }
     guard n >= 0 else {
@@ -70,8 +65,7 @@ func validateInput(s: String, n: Integer) -> Boolean {
     return true;
 }
 
-func findFirst(list: List[Integer], target: Integer) -> Integer {
-    var idx = 0;
+func findFirst(list: List[Integer], target: Integer) -> Integer {    var idx = 0;
     while (idx < list.count()) {
         if (list.get(idx) == target) {
             return idx;
@@ -81,8 +75,7 @@ func findFirst(list: List[Integer], target: Integer) -> Integer {
     return -1;
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Deeply nested if-else
     //=========================================================================
     var x = 15;

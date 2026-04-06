@@ -24,7 +24,7 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Runtime Stub Audit & Fixes** — Comprehensive audit of all C/C++ runtime stubs. Fixed `rt_exc_is_exception()` type safety, OOP destructor chaining (derived→base), OOP refcount imbalance (NEW temporary leak), TLS RSA-PSS SHA-384/SHA-512 hashing, bytecode VM missing opcodes, POSIX process isolation timeout, and enabled Windows threading tests.
 - **Native PE/COFF Linker Pipeline** — Full Windows native linking without clang. COFF archive (.lib) reader, symbol resolver, section merger, dead-strip pass, ICF, relocation applier with `IMAGE_REL_AMD64` support, and PE executable writer with proper `.idata` import tables. Combined with the v0.2.3 assembler, `viper build` now produces native Windows executables end-to-end with zero external tool dependencies.
 - **Native Exception Handling Lowering** — New `NativeEHLowering` pass (683 LOC) rewrites structured IL EH markers (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext`/`TrapErr`) into ordinary calls and branches before backend lowering, enabling cross-platform native exception handling on x86_64 and AArch64.
-- **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`func(params) -> RetType { body }`), and polymorphic `is` expressions that check the full subclass hierarchy.
+- **Zia Language Features** — Seven new features: variadic parameters (`func sum(nums: ...Integer)`), type aliases (`type Name = TargetType;`), shift operators (`<<`, `>>`), compound bitwise assignments (`<<=`, `>>=`, `&=`, `|=`, `^=`), single-expression functions (`func f(x: T) -> R = expr;`), lambda expressions (`(x: T) => expr`), and polymorphic `is` expressions that check the full subclass hierarchy.
 - **Metal Backend: Feature-Complete** — All 14 backend plans implemented, bringing Metal from 47% to 94% feature parity with the software renderer. GPU skinning, morph targets, shadow mapping, terrain splatting, post-processing, and instanced rendering.
 - **D3D11 Backend: 20 Features Implemented** — All 20 D3D11 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Diffuse textures, normal/specular/emissive maps, spot lights, fog, wireframe/cull, render-to-texture, GPU skinning, morph targets (with normal deltas), shadow mapping, instanced rendering, terrain splatting, post-processing (bloom, FXAA, tonemap, DOF, motion blur, SSAO), cubemap skybox, and environment reflections. Windows CI validation job added.
 - **Software Renderer Upgrades** — Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color support, shadow mapping, and material shader hooks (Toon/Fresnel/Emissive shading models).
@@ -45,16 +45,17 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
 - **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database (renamed from sqldb, 10 new SQL features, deep runtime API migration replacing hand-rolled utilities with Map/StringBuilder/Json/Csv, -351 net LOC), 8 Graphics3D API demos.
-- **Documentation** — 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed, comprehensive 3D API docs overhaul, game engine docs.
+- **Zia `final` Enforcement** — The Zia semantic analyzer now rejects reassignment of `final` variables, for-in loop variables, and match pattern bindings at compile time. Lowerer safety net prevents SSA value corruption if enforcement is bypassed.
+- **Documentation** — Comprehensive review of all 185 markdown files: 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed, all error messages updated to match actual compiler output (V1000/V2000/V3000 codes), codemap sections consolidated (9 "Additional/Extended" sections merged into parents), game engine guide reorganized with categorized ToC, Bible appendix terminology updated (entity→class, value→struct).
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 86 | +86 |
-| Source files | 2,671 | 2,805 | +134 |
-| Production SLOC | ~348K | ~424K | +76K |
-| Test count | 1,351 | 1,393 | +42 |
+| Commits | — | 90 | +90 |
+| Source files | 2,671 | 2,818 | +147 |
+| Production SLOC | ~348K | ~428K | +80K |
+| Test count | 1,351 | 1,406 | +55 |
 
 ---
 
@@ -266,7 +267,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Shift operators** — `<<` (left shift) and `>>` (arithmetic right shift) with correct precedence between additive and comparison. New `parseShift()` precedence level, lowered to `Shl`/`AShr` IL opcodes.
 - **Compound bitwise assignments** — `<<=`, `>>=`, `&=`, `|=`, `^=` follow the existing compound assignment desugaring pattern (read-op-store).
 - **Single-expression functions** — `func f(x: Integer) -> Integer = x * 2;` desugars to a `ReturnStmt` wrapping the body expression. Works for both top-level functions and class methods.
-- **Lambda expressions** — `func(params) -> RetType { body }` parsed in expression position when `func` is followed by `(`. Supports typed parameters and optional return type annotation.
+- **Lambda expressions** — Parenthesized lambdas use `=>` with typed parameters, for example `(x: Integer) => x * 2`. Zero-argument lambdas use `() => expr`.
 - **Polymorphic `is` expressions** — `obj is Base` now returns true when `obj`'s runtime type is `Base` or any subclass of `Base`. `collectDescendants()` walks the class hierarchy, emitting an OR chain of `ICmpEq` comparisons (single comparison optimized for the no-subclass case).
 
 ---
@@ -280,6 +281,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **`List[Boolean]` unboxing** — Added `Trunc1` after `kUnboxI1` in `emitUnbox()` to narrow the i64 result back to i1.
 - **`catch(e)` binding** — New `rt_throw_msg_set`/`rt_throw_msg_get` TLS runtime functions and `ErrGetMsg` IL opcode. `throw` stores the message, `catch` reads it as a String binding.
 - **`String.Contains()` method** — Added `Contains` method alias to the String class mapping to the existing `StrHas` implementation.
+- **`final` variable enforcement** — Semantic analyzer now emits `error[V3000]: Cannot reassign final variable 'x'` when code attempts to reassign a `final` local variable, for-in loop variable, or match pattern binding. Covers all 10 compound assignment operators (`+=`, `-=`, etc.) via parser desugaring. Lowerer safety net prevents SSA value corruption as a defense-in-depth measure.
 
 **BASIC frontend:**
 - **Constant folding for builtins** — `FoldBuiltins.cpp` evaluates `ABS`, `INT`, `SGN`, `SQR`, `LOG`, `EXP`, `SIN`, `COS`, `TAN`, `ATN`, `ASC`, `CHR$`, `LEN`, `LEFT$`, `RIGHT$`, `MID$`, `STR$`, `VAL`, `STRING$`, `SPACE$`, `LCASE$`, `UCASE$`, and `LTRIM$`/`RTRIM$`/`TRIM$` at compile time when arguments are constant. Eliminates runtime calls for constant expressions.
@@ -810,3 +812,5 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - Mach-O linker: symbol resolution failed when object files used different underscore conventions — `findWithMachoFallback` only searched plain and prefixed names, not stripped names
 - Mach-O linker: ObjC class symbols (`OBJC_CLASS_$_CAMetalLayer`, etc.) with varying leading underscore counts failed framework rule matching — `normalizeMacFrameworkSymbol` now strips ObjC prefixes for correct matching
 - Metal 3D backend: nil returns from `MTLCreateSystemDefaultDevice`, `vgfx_get_native_view`, and `newCommandQueue` silently returned NULL without diagnostics — added `NSLog` trace messages
+- Zia `final` keyword: reassignment of `final` variables, for-in loop variables, and match pattern bindings silently succeeded — now produces a compile-time error
+- Documentation: error messages in Bible chapters showed stale format (`error:` prefix) instead of actual compiler output (`error[V3000]:` codes); networking examples used non-existent structured response API instead of actual `Http.Get`/`HttpReq`/`HttpRes`; Bible appendix still used old `entity`/`value` terminology instead of `class`/`struct`

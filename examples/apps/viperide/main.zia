@@ -1,6 +1,6 @@
 module viperide;
 
-bind "app_shell";
+bind "ui/app_shell";
 bind "core/document";
 bind "core/document_manager";
 bind "core/project";
@@ -11,6 +11,7 @@ bind "editor/editor_tabs";
 bind "editor/completion";
 bind "services/file_utils";
 bind "build/build_system";
+bind "build/diagnostic";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
@@ -29,8 +30,12 @@ bind Str = Viper.String;
 // ============================================================================
 
 // Window dimensions
-var WIN_WIDTH = 1280;
-var WIN_HEIGHT = 800;
+final WIN_WIDTH = 1280;
+final WIN_HEIGHT = 800;
+final WINDOW_SIZE_PERCENT = 80;
+final DEFAULT_FONT_SIZE = 14;
+final ERROR_MARKER_COLOR = 16711680;     // red (0xFF0000)
+final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
 
 func main() {
     // ========================================================================
@@ -47,7 +52,7 @@ func main() {
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
 
     // Resize window to 80% of the monitor and center it
-    shell.CenterAndSize(80);
+    shell.CenterAndSize(WINDOW_SIZE_PERCENT);
 
     // Setup editor inside editorRow (the HBox for editor + minimap side by side)
     engine.Setup(shell.editorRow);
@@ -167,7 +172,6 @@ func main() {
     // ========================================================================
     // Main event loop
     // ========================================================================
-    var loopCount = 0;
     var cpSelected = "";   // command palette selection for this frame
     var ctxDir = "";       // directory targeted by the last tree right-click
     var minimapVisible = appSettings.minimapVisible;   // tracks minimap panel visibility
@@ -177,7 +181,6 @@ func main() {
     var prevCursorCol  = 1;
 
     while shell != null and shell.ShouldClose() == false {
-        loopCount = loopCount + 1;
         shell.Poll();
 
         // ====================================================================
@@ -251,7 +254,25 @@ func main() {
             }
         }
         if shell.ctxOpen.WasClicked() != 0 {
-            // Same action as a tree left-click — handled below via projMgr
+            var ctxNode = shell.sidebarTree.GetSelected();
+            if ctxNode != null {
+                var ctxPath = GUI.TreeView.Node.GetData(ctxNode);
+                var ctxLabel = GUI.TreeView.Node.GetText(ctxNode);
+                if Str.Left(ctxLabel, 4) == "    " {
+                    SaveEditorState(docMgr, engine);
+                    var prevCount = docMgr.GetCount();
+                    var ctxOpenDoc = docMgr.OpenFile(ctxPath);
+                    if docMgr.GetCount() > prevCount {
+                        tabs.AddTab(ctxOpenDoc.fileName, 1);
+                    }
+                    tabs.SetActive(docMgr.activeIndex);
+                    engine.LoadDocument(ctxOpenDoc);
+                    shell.breadcrumb.SetPath(ctxOpenDoc.filePath, "/");
+                    shell.SetStatusLeft("Opened: " + ctxOpenDoc.fileName);
+                    shell.SetStatusRight(DocStatusLabel(ctxOpenDoc));
+                    pendingReload = false;
+                }
+            }
         }
         if shell.ctxReveal.WasClicked() != 0 {
             var revealDoc = docMgr.GetActive();
@@ -737,11 +758,11 @@ func main() {
             doZoomReset = cpSelected == "zoomreset";
         }
         if doZoomReset {
-            appSettings.fontSize = 14;
-            shell.app.SetFontSize(14.0);
-            engine.editor.SetFontSize(14.0);
+            appSettings.fontSize = DEFAULT_FONT_SIZE;
+            shell.app.SetFontSize(DEFAULT_FONT_SIZE);
+            engine.editor.SetFontSize(DEFAULT_FONT_SIZE);
             appSettings.Save();
-            shell.SetStatusLeft("Font size reset to 14");
+            shell.SetStatusLeft("Font size reset to " + DEFAULT_FONT_SIZE);
         }
 
         // ====================================================================
@@ -908,6 +929,9 @@ func main() {
 
         // ====================================================================
         // Handle Run without Build (menu, Ctrl+F5, or CommandPalette)
+        // Note: Zia compiles and runs in one step, so this is equivalent
+        // to Build and Run. The distinction exists for future native-binary
+        // workflows where compilation produces a separate executable.
         // ====================================================================
         var doRunOnly = shell.miRun.WasClicked() != 0;
         if doRunOnly == false {
@@ -1070,11 +1094,15 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
         var i = 0;
         while i < diagCount {
             var diag = buildSys.diagnostics.get(i);
+            if diag == null {
+                i = i + 1;
+                continue;
+            }
             var sevLabel = "error";
-            var markerColor = 16711680;   // red
+            var markerColor = ERROR_MARKER_COLOR;
             if diag.severity == 1 {
                 sevLabel = "warning";
-                markerColor = 16776960;   // yellow
+                markerColor = WARNING_MARKER_COLOR;
             }
             var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
             var item = shell.diagListBox.AddItem(diagText);

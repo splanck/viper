@@ -26,8 +26,7 @@ TEST(ZiaBasic, EmptyStartFunction) {
     const std::string source = R"(
 module Test;
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -60,8 +59,7 @@ TEST(ZiaBasic, ProducesEntryBlock) {
     const std::string source = R"(
 module Test;
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -86,8 +84,7 @@ TEST(ZiaBasic, HelloWorld) {
     const std::string source = R"(
 module Hello;
 
-func start() {
-    Viper.Terminal.Say("Hello, World!");
+func start() {    Viper.Terminal.Say("Hello, World!");
 }
 )";
     CompilerInput input{.source = source, .path = "hello.zia"};
@@ -122,8 +119,7 @@ TEST(ZiaBasic, VariableDeclaration) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 42;
+func start() {    var x: Integer = 42;
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -158,12 +154,10 @@ TEST(ZiaBasic, FunctionCall) {
     const std::string source = R"(
 module Test;
 
-func greet() {
-    Viper.Terminal.Say("Hello");
+func greet() {    Viper.Terminal.Say("Hello");
 }
 
-func start() {
-    greet();
+func start() {    greet();
 }
 )";
     CompilerInput input{.source = source, .path = "call.zia"};
@@ -192,14 +186,13 @@ TEST(ZiaBasic, TerminalFunctionsRecognized) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Viper.Terminal.Clear();
+func start() {    Viper.Terminal.Clear();
     Viper.Terminal.SetPosition(1, 1);
     Viper.Terminal.SetColor(1, 0);
     Viper.Terminal.Print("Hello");
     Viper.Terminal.SetCursorVisible(0);
     Viper.Terminal.SetCursorVisible(1);
-    String key = Viper.Terminal.GetKeyTimeout(1);
+    var key: String = Viper.Terminal.GetKeyTimeout(1);
     if (key != "") {
         key = Viper.Terminal.GetKey();
     }

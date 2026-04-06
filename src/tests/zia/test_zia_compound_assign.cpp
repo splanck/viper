@@ -48,8 +48,7 @@ TEST(ZiaCompoundAssign, PlusEqual) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x += 5;
     Viper.Terminal.SayInt(x);
 }
@@ -80,8 +79,7 @@ TEST(ZiaCompoundAssign, MinusEqual) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x -= 3;
     Viper.Terminal.SayInt(x);
 }
@@ -111,8 +109,7 @@ TEST(ZiaCompoundAssign, StarEqual) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x *= 2;
     Viper.Terminal.SayInt(x);
 }
@@ -142,8 +139,7 @@ TEST(ZiaCompoundAssign, SlashEqual) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x /= 2;
     Viper.Terminal.SayInt(x);
 }
@@ -170,8 +166,7 @@ TEST(ZiaCompoundAssign, PercentEqual) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x %= 3;
     Viper.Terminal.SayInt(x);
 }
@@ -201,13 +196,11 @@ module Test;
 class Counter {
     expose Integer count;
 
-    expose func increment() {
-        self.count += 1;
+    expose func increment() {        self.count += 1;
     }
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
     c.count = 0;
     c.increment();
     Viper.Terminal.SayInt(c.count);
@@ -235,8 +228,7 @@ TEST(ZiaCompoundAssign, MultipleCompoundOps) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 10;
+func start() {    var x: Integer = 10;
     x += 5;
     x -= 2;
     x *= 3;
@@ -265,8 +257,7 @@ TEST(ZiaCompoundAssign, FloatCompoundAssign) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Number = 1.5;
+func start() {    var x: Number = 1.5;
     x += 2.5;
     x *= 3.0;
     Viper.Terminal.SayNum(x);

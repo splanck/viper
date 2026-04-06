@@ -33,17 +33,15 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
-func start() {
-    Person? maybePerson = new Person("Alice");
+func start() {    var maybePerson: Person? = new Person("Alice");
 
     if (maybePerson != null) {
         // Inside this branch, maybePerson should be narrowed to Person
-        String name = maybePerson.name;
+        var name: String = maybePerson.name;
         Viper.Terminal.Say(name);
     }
 }
@@ -73,19 +71,17 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
-func start() {
-    Person? maybePerson = new Person("Bob");
+func start() {    var maybePerson: Person? = new Person("Bob");
 
     if (maybePerson == null) {
         Viper.Terminal.Say("No person");
     } else {
         // Inside else branch, maybePerson should be narrowed to Person
-        String name = maybePerson.name;
+        var name: String = maybePerson.name;
         Viper.Terminal.Say(name);
     }
 }
@@ -115,17 +111,15 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
-func start() {
-    Person? maybePerson = new Person("Charlie");
+func start() {    var maybePerson: Person? = new Person("Charlie");
 
     if (null != maybePerson) {
         // Inside this branch, maybePerson should be narrowed to Person
-        String name = maybePerson.name;
+        var name: String = maybePerson.name;
         Viper.Terminal.Say(name);
     }
 }
@@ -155,21 +149,18 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 
-    expose func greet() -> String {
-        return "Hello, " + self.name;
+    expose func greet() -> String {        return "Hello, " + self.name;
     }
 }
 
-func start() {
-    Person? maybePerson = new Person("Eve");
+func start() {    var maybePerson: Person? = new Person("Eve");
 
     if (maybePerson != null) {
         // Inside this branch, can call methods on the narrowed type
-        String greeting = maybePerson.greet();
+        var greeting: String = maybePerson.greet();
         Viper.Terminal.Say(greeting);
     }
 }
@@ -203,14 +194,12 @@ module Test;
 class Person {
     expose String name;
 
-    expose func init(n: String) {
-        name = n;
+    expose func init(n: String) {        name = n;
     }
 }
 
-func start() {
-    Person? maybePerson = new Person("Alice");
-    Person person = maybePerson!;
+func start() {    var maybePerson: Person? = new Person("Alice");
+    var person: Person = maybePerson!;
     Viper.Terminal.Say(person.name);
 }
 )";
@@ -239,17 +228,14 @@ module Test;
 class Item {
     expose String label;
 
-    expose func init(l: String) {
-        label = l;
+    expose func init(l: String) {        label = l;
     }
 }
 
-func useItem(item: Item) {
-    Viper.Terminal.Say(item.label);
+func useItem(item: Item) {    Viper.Terminal.Say(item.label);
 }
 
-func start() {
-    Item? maybeItem = new Item("sword");
+func start() {    var maybeItem: Item? = new Item("sword");
     useItem(maybeItem!);
 }
 )";
@@ -275,8 +261,7 @@ TEST(ZiaForceUnwrap, ForceUnwrapNonOptionalError) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    Integer x = 42;
+func start() {    var x: Integer = 42;
     var y = x!;
 }
 )";
@@ -298,14 +283,12 @@ module Test;
 class Node {
     expose String value;
 
-    expose func init(v: String) {
-        value = v;
+    expose func init(v: String) {        value = v;
     }
 }
 
-func start() {
-    Node? maybeNode = new Node("hello");
-    String val = maybeNode!.value;
+func start() {    var maybeNode: Node? = new Node("hello");
+    var val: String = maybeNode!.value;
     Viper.Terminal.Say(val);
 }
 )";

@@ -66,8 +66,7 @@ module Test;
 
 var counter: Integer;
 
-func start() {
-    counter = 10;
+func start() {    counter = 10;
     Viper.Terminal.SayInt(counter);
     counter = counter + 1;
     Viper.Terminal.SayInt(counter);
@@ -91,8 +90,7 @@ module Test;
 var running: Boolean;
 var score: Integer;
 
-func start() {
-    running = true;
+func start() {    running = true;
     score = 0;
     if running {
         score = 100;
@@ -117,8 +115,7 @@ module Test;
 var seed: Integer = 1;
 var counter: Integer = seed + 2;
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "bug38_expr_init.zia"};
     CompilerOptions opts{};
@@ -144,15 +141,13 @@ module Test;
 class Player {
     expose Integer score;
 
-    expose func addScore(Integer points) {
-        score = score + points;
+    expose func addScore(points: Integer) {        score = score + points;
     }
 }
 
 var player: Player;
 
-func start() {
-    player = new Player();
+func start() {    player = new Player();
     player.score = 10;
     player.addScore(5);
     Viper.Terminal.SayInt(player.score);
@@ -174,8 +169,7 @@ module Test;
 
 bind Viper.Environment;
 
-func start() {
-    var argc = Viper.Environment.GetArgumentCount();
+func start() {    var argc = Viper.Environment.GetArgumentCount();
     Viper.Terminal.SayInt(argc);
 }
 )";
@@ -196,12 +190,10 @@ TEST(ZiaBugFixes, ByteArgumentsWidenForCalls) {
     const std::string source = R"(
 module Test;
 
-func sink(value: Integer) {
-    Viper.Terminal.SayInt(value);
+func sink(value: Integer) {    Viper.Terminal.SayInt(value);
 }
 
-func start() {
-    var x: Byte = 7;
+func start() {    var x: Byte = 7;
     sink(x);
 }
 )";
@@ -226,9 +218,8 @@ TEST(ZiaBugFixes, Bug42_AndKeyword) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = true;
-    Boolean b = false;
+func start() {    var a: Boolean = true;
+    var b: Boolean = false;
     if a and b {
         Viper.Terminal.Say("both");
     } else {
@@ -250,9 +241,8 @@ TEST(ZiaBugFixes, Bug42_OrKeyword) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean a = true;
-    Boolean b = false;
+func start() {    var a: Boolean = true;
+    var b: Boolean = false;
     if a or b {
         Viper.Terminal.Say("at least one");
     }
@@ -272,8 +262,7 @@ TEST(ZiaBugFixes, Bug42_NotKeyword) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Boolean finished = false;
+func start() {    var finished: Boolean = false;
     if not finished {
         Viper.Terminal.Say("still running");
     }
@@ -293,9 +282,8 @@ TEST(ZiaBugFixes, Bug42_CombinedBooleanKeywords) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Integer x = 5;
-    Integer y = 10;
+func start() {    var x: Integer = 5;
+    var y: Integer = 10;
 
     // Complex boolean expression using word-form operators
     if x > 0 and y > 0 or x < 0 and y < 0 {
@@ -326,12 +314,10 @@ TEST(ZiaBugFixes, Bug43_ColonReturnTypeFunction) {
     const std::string source = R"(
 module Test;
 
-func getNumber(): Integer {
-    return 42;
+func getNumber() -> Integer {    return 42;
 }
 
-func start() {
-    Viper.Terminal.SayInt(getNumber());
+func start() {    Viper.Terminal.SayInt(getNumber());
 }
 )";
     CompilerInput input{.source = source, .path = "bug43a.zia"};
@@ -351,17 +337,14 @@ module Test;
 class Calculator {
     expose Integer value;
 
-    expose func getValue(): Integer {
-        return value;
+    expose func getValue() -> Integer {        return value;
     }
 
-    expose func double(): Integer {
-        return value * 2;
+    expose func double() -> Integer {        return value * 2;
     }
 }
 
-func start() {
-    var calc = new Calculator();
+func start() {    var calc = new Calculator();
     calc.value = 21;
     Viper.Terminal.SayInt(calc.double());
 }
@@ -386,8 +369,7 @@ TEST(ZiaBugFixes, Bug44_QualifiedTypeNames) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    // Test basic qualified API access (this uses qualified names)
+func start() {    // Test basic qualified API access (this uses qualified names)
     Viper.Terminal.Say("qualified names work");
 
     // Test using parameterized generic type
@@ -417,20 +399,16 @@ module Test;
 
 class Inner {
     expose Integer x;
-    expose func init() { x = 0; }
-    expose func getX() -> Integer { return x; }
-}
+    expose func init() { x = 0; }    expose func getX() -> Integer { return x; }}
 
 class Outer {
     expose Inner inner;
-    expose func init() {
-        inner = new Inner();
+    expose func init() {        inner = new Inner();
         inner.init();
     }
 }
 
-func start() {
-    var outer = new Outer();
+func start() {    var outer = new Outer();
     outer.init();
     outer.inner.nonExistentMethod();
 }
@@ -453,23 +431,18 @@ module Test;
 
 class Inner {
     expose Integer x;
-    expose func init() { x = 42; }
-    expose func getX() -> Integer { return x; }
-}
+    expose func init() { x = 42; }    expose func getX() -> Integer { return x; }}
 
 class Outer {
     expose Inner inner;
-    expose func init() {
-        inner = new Inner();
+    expose func init() {        inner = new Inner();
         inner.init();
     }
-    expose func getInnerX() -> Integer {
-        return inner.getX();
+    expose func getInnerX() -> Integer {        return inner.getX();
     }
 }
 
-func start() {
-    var outer = new Outer();
+func start() {    var outer = new Outer();
     outer.init();
     var val = outer.inner.getX();
     Viper.Terminal.SayInt(val);
@@ -493,8 +466,7 @@ TEST(ZiaBugFixes, BugFE005_ManyLocalsComplexControlFlow) {
     const std::string source = R"(
 module Test;
 
-func complexFunc() -> Integer {
-    var a = 0;
+func complexFunc() -> Integer {    var a = 0;
     var b = 1;
     var c = 2;
     var d = 3;
@@ -534,8 +506,7 @@ func complexFunc() -> Integer {
     return a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q;
 }
 
-func start() {
-    var result = complexFunc();
+func start() {    var result = complexFunc();
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -557,8 +528,7 @@ TEST(ZiaBugFixes, BugFE006_ListParamMethodCalls) {
     const std::string source = R"(
 module Test;
 
-func categorize(items: List[Integer], evens: List[Integer], odds: List[Integer]) {
-    var i = 0;
+func categorize(items: List[Integer], evens: List[Integer], odds: List[Integer]) {    var i = 0;
     var total = items.count();
     while i < total {
         var val = items.get(i);
@@ -571,8 +541,7 @@ func categorize(items: List[Integer], evens: List[Integer], odds: List[Integer])
     }
 }
 
-func start() {
-    var items: List[Integer] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+func start() {    var items: List[Integer] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     var evens: List[Integer] = [];
     var odds: List[Integer] = [];
     categorize(items, evens, odds);
@@ -601,22 +570,18 @@ module Test;
 
 class User {
     expose Container container;
-    expose func init() {
-        container = new Container();
+    expose func init() {        container = new Container();
         container.init();
     }
-    expose func addItem(val: Integer) {
-        container.items.add(val);
+    expose func addItem(val: Integer) {        container.items.add(val);
     }
 }
 
 class Container {
     expose List[Integer] items;
-    expose func init() { items = []; }
-}
+    expose func init() { items = []; }}
 
-func start() {
-    var u = new User();
+func start() {    var u = new User();
     u.init();
     u.addItem(42);
 }
@@ -638,22 +603,18 @@ module Test;
 
 class Container {
     expose List[Integer] items;
-    expose func init() { items = []; }
-}
+    expose func init() { items = []; }}
 
 class User {
     expose Container container;
-    expose func init() {
-        container = new Container();
+    expose func init() {        container = new Container();
         container.init();
     }
-    expose func addItem(val: Integer) {
-        container.items.add(val);
+    expose func addItem(val: Integer) {        container.items.add(val);
     }
 }
 
-func start() {
-    var u = new User();
+func start() {    var u = new User();
     u.init();
     u.addItem(42);
 }
@@ -674,29 +635,24 @@ module Test;
 
 class Manager {
     expose DataStore store;
-    expose func init() {
-        store = new DataStore();
+    expose func init() {        store = new DataStore();
         store.init();
     }
-    expose func addValue(v: Integer) {
-        store.values.add(v);
+    expose func addValue(v: Integer) {        store.values.add(v);
     }
-    expose func addName(n: String) {
-        store.names.add(n);
+    expose func addName(n: String) {        store.names.add(n);
     }
 }
 
 class DataStore {
     expose List[Integer] values;
     expose List[String] names;
-    expose func init() {
-        values = [];
+    expose func init() {        values = [];
         names = [];
     }
 }
 
-func start() {
-    var m = new Manager();
+func start() {    var m = new Manager();
     m.init();
     m.addValue(10);
     m.addName("hello");
@@ -718,19 +674,16 @@ module Test;
 
 class Outer {
     expose Middle mid;
-    expose func init() {
-        mid = new Middle();
+    expose func init() {        mid = new Middle();
         mid.init();
     }
-    expose func getInnerVal() -> Integer {
-        return mid.inner.value;
+    expose func getInnerVal() -> Integer {        return mid.inner.value;
     }
 }
 
 class Middle {
     expose Inner inner;
-    expose func init() {
-        inner = new Inner();
+    expose func init() {        inner = new Inner();
         inner.value = 99;
     }
 }
@@ -739,8 +692,7 @@ class Inner {
     expose Integer value;
 }
 
-func start() {
-    var o = new Outer();
+func start() {    var o = new Outer();
     o.init();
     Viper.Terminal.SayInt(o.getInnerVal());
 }
@@ -767,15 +719,13 @@ module Test;
 
 class Config {
     expose Integer val;
-    expose func init() {
-        val = DEFAULT_SIZE;
+    expose func init() {        val = DEFAULT_SIZE;
     }
 }
 
 final DEFAULT_SIZE = 42;
 
-func start() {
-    var c = new Config();
+func start() {    var c = new Config();
     c.init();
     Viper.Terminal.SayInt(c.val);
 }
@@ -815,8 +765,7 @@ TEST(ZiaBugFixes, MultipleFinalConstantsForwardReference) {
 module Test;
 
 class MathHelper {
-    expose func getSum() -> Integer {
-        return VAL_A + VAL_B + VAL_C;
+    expose func getSum() -> Integer {        return VAL_A + VAL_B + VAL_C;
     }
 }
 
@@ -824,8 +773,7 @@ final VAL_A = 10;
 final VAL_B = 20;
 final VAL_C = 30;
 
-func start() {
-    var h = new MathHelper();
+func start() {    var h = new MathHelper();
     Viper.Terminal.SayInt(h.getSum());
 }
 )";
@@ -852,8 +800,7 @@ module Test;
 
 bind Viper.Collections;
 
-func start() {
-    var data: Bytes = Bytes.FromStr("hello world");
+func start() {    var data: Bytes = Bytes.FromStr("hello world");
     // Chained call: data.Slice(0,5) returns Bytes, then .ToStr() on it
     var result = data.Slice(0, 5).ToStr();
     Viper.Terminal.Say(result);
@@ -875,8 +822,7 @@ module Test;
 
 bind Viper.Collections;
 
-func start() {
-    var data: Bytes = Bytes.FromStr("hello world!");
+func start() {    var data: Bytes = Bytes.FromStr("hello world!");
     // Double chain: Slice then Slice again
     var sub = data.Slice(0, 11).Slice(6, 11);
     Viper.Terminal.Say(sub.ToStr());
@@ -899,8 +845,7 @@ module Test;
 
 bind Viper.Sound;
 
-func start() {
-    var bank = SoundBank.New();
+func start() {    var bank = SoundBank.New();
     var voice = bank.Get("music_menu").PlayLoop(45, 0);
     Viper.Terminal.SayInt(voice);
 }
@@ -932,8 +877,7 @@ TEST(ZiaBugFixes, BugFE009_ListBooleanGetInCondition) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var flags: List[Boolean] = [true, false, true];
+func start() {    var flags: List[Boolean] = [true, false, true];
     if flags.get(0) {
         Viper.Terminal.Say("first is true");
     }
@@ -956,8 +900,7 @@ TEST(ZiaBugFixes, BugFE009_ListBooleanGetInLogicalExpr) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var flags: List[Boolean] = [true, true, false];
+func start() {    var flags: List[Boolean] = [true, true, false];
     var a = flags.get(0);
     var b = flags.get(1);
     if a && b {
@@ -994,12 +937,10 @@ module Test;
 
 bind Viper.Collections;
 
-func makeData() -> Bytes {
-    return Bytes.FromStr("test");
+func makeData() -> Bytes {    return Bytes.FromStr("test");
 }
 
-func start() {
-    var data = makeData();
+func start() {    var data = makeData();
     // data is typed as Ptr via the return type inference.
     // Bytes methods like Slice/ToStr should resolve via fallback.
     var s = data.Slice(0, 4).ToStr();
@@ -1043,8 +984,7 @@ module Test;
 final SENTINEL = 0 - 2147483647;
 final MASK = 255 & 15;
 
-func start() {
-    var s: Integer = SENTINEL;
+func start() {    var s: Integer = SENTINEL;
     var m: Integer = MASK;
     Viper.Terminal.SayInt(s);
     Viper.Terminal.SayInt(m);
@@ -1101,8 +1041,7 @@ final SENTINEL = 0 - 2147483647;
 module Main;
 bind "consts.zia";
 
-func start() {
-    var x: Integer = SENTINEL;
+func start() {    var x: Integer = SENTINEL;
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -1146,8 +1085,7 @@ TEST(ZiaBugFixes, ZIA007_TerminalIntConversion) {
 module Test;
 bind Viper.Terminal;
 
-func start() {
-    Say("x=" + Int(42));
+func start() {    Say("x=" + Int(42));
     Say("neg=" + Int(-7));
 }
 )";
@@ -1166,8 +1104,7 @@ TEST(ZiaBugFixes, ZIA007_TerminalIntInConcatenation) {
 module Test;
 bind Viper.Terminal;
 
-func start() {
-    var n = 100;
+func start() {    var n = 100;
     Say("Result: " + Int(n) + " done");
 }
 )";
@@ -1190,8 +1127,7 @@ TEST(ZiaBugFixes, ZIA006_EmptyListTypeAnnotation) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var items: List[Integer] = [];
+func start() {    var items: List[Integer] = [];
     items.add(10);
     items.add(20);
     var sum = items.get(0) + items.get(1);
@@ -1213,8 +1149,7 @@ TEST(ZiaBugFixes, ZIA006_EmptyStringListAnnotation) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var names: List[String] = [];
+func start() {    var names: List[String] = [];
     names.add("alice");
     names.add("bob");
     Viper.Terminal.SayInt(names.length());
@@ -1238,8 +1173,7 @@ TEST(ZiaBugFixes, ZIA003_NegativeRangeForLoop) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var sum = 0;
+func start() {    var sum = 0;
     for x in -1..2 {
         sum = sum + x;
     }
@@ -1260,8 +1194,7 @@ TEST(ZiaBugFixes, ZIA003_NestedNegativeRanges) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var count = 0;
+func start() {    var count = 0;
     for dr in -1..2 {
         for df in -1..2 {
             count = count + 1;
@@ -1289,8 +1222,7 @@ TEST(ZiaBugFixes, ZIA004_IfExpression) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x = 10;
+func start() {    var x = 10;
     var label = if x > 5 { "big" } else { "small" };
     Viper.Terminal.Say(label);
     var white = true;
@@ -1314,8 +1246,7 @@ TEST(ZiaBugFixes, ZIA004_IfExpressionNested) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var a = 3;
+func start() {    var a = 3;
     var b = 7;
     var max = if a > b { a } else { b };
     var sign = if max > 0 { 1 } else { if max < 0 { -1 } else { 0 } };
@@ -1345,11 +1276,9 @@ module Test;
 struct Point {
     expose Integer x;
     expose Integer y;
-    expose func init(px: Integer, py: Integer) { x = px; y = py; }
-}
+    expose func init(px: Integer, py: Integer) { x = px; y = py; }}
 
-func start() {
-    var p = Point { x = 3, y = 4 };
+func start() {    var p = Point { x = 3, y = 4 };
     var q = Point { x = p.x + 1, y = p.y };
     Viper.Terminal.SayInt(p.x);
     Viper.Terminal.SayInt(p.y);
@@ -1374,11 +1303,9 @@ struct Color {
     expose Integer r;
     expose Integer g;
     expose Integer b;
-    expose func init(rv: Integer, gv: Integer, bv: Integer) { r = rv; g = gv; b = bv; }
-}
+    expose func init(rv: Integer, gv: Integer, bv: Integer) { r = rv; g = gv; b = bv; }}
 
-func start() {
-    var red = Color { r = 255, g = 0, b = 0 };
+func start() {    var red = Color { r = 255, g = 0, b = 0 };
     var green = Color { r = 0, g = 255, b = 0 };
     Viper.Terminal.SayInt(red.r);
     Viper.Terminal.SayInt(green.g);
@@ -1405,13 +1332,9 @@ module Test;
 
 class Board {
     expose Integer[64] squares;
-    expose func init() {}
-    expose func get(i: Integer) -> Integer { return squares[i]; }
-    expose func set(i: Integer, v: Integer) { squares[i] = v; }
-}
+    expose func init() {}    expose func get(i: Integer) -> Integer { return squares[i]; }    expose func set(i: Integer, v: Integer) { squares[i] = v; }}
 
-func start() {
-    var b = new Board();
+func start() {    var b = new Board();
     b.init();
     b.set(0, 42);
     b.set(63, 7);
@@ -1435,13 +1358,9 @@ module Test;
 
 class Vec {
     expose Float[4] data;
-    expose func init() {}
-    expose func set(i: Integer, v: Float) { data[i] = v; }
-    expose func get(i: Integer) -> Float { return data[i]; }
-}
+    expose func init() {}    expose func set(i: Integer, v: Float) { data[i] = v; }    expose func get(i: Integer) -> Float { return data[i]; }}
 
-func start() {
-    var v = new Vec();
+func start() {    var v = new Vec();
     v.init();
     v.set(0, 1.0);
     v.set(1, 2.0);
@@ -1466,12 +1385,10 @@ TEST(ZiaBugFixes, SeqReturnType_StrSplit_Compiles) {
     const std::string source = R"(
 module Test;
 
-bind Seq = Viper.Collections.Seq;
-
+bind Viper.Collections.Seq as Seq;
 // Viper.String.Split should now return Seq[String] (not untyped obj), allowing
 // Seq.get_Length / Seq.Get access and for-in iteration.
-func start() {
-    var parts = Viper.String.Split("a,b,c", ",");
+func start() {    var parts = Viper.String.Split("a,b,c", ",");
     var n = Seq.get_Length(parts);
     var i = 0;
     while i < n {
@@ -1495,8 +1412,7 @@ TEST(ZiaBugFixes, SeqForIn_StrSplit_Compiles) {
 module Test;
 
 // for-in over Viper.String.Split works now that it returns Seq[String].
-func start() {
-    for part in Viper.String.Split("hello world foo", " ") {
+func start() {    for part in Viper.String.Split("hello world foo", " ") {
         Viper.Terminal.Say(part);
     }
 }
@@ -1521,8 +1437,7 @@ TEST(ZiaBugFixes, SeqUntypedObj_MethodCallError) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    var x: Integer = 1;
+func start() {    var x: Integer = 1;
     var y = x;
 }
 )";
@@ -1539,9 +1454,7 @@ TEST(ZiaBugFixes, DuplicateTopLevelDefinitionsAreRejected) {
     const std::string source = R"(
 module Test;
 
-func greet() {}
-func greet() {}
-)";
+func greet() {}func greet() {})";
     CompilerInput input{.source = source, .path = "duplicate_defs.zia"};
     CompilerOptions opts{};
 
@@ -1571,13 +1484,12 @@ class Animal {
 class Dog extends Animal {
 }
 
-func start() {
-    List[Animal] animals = Viper.Collections.List.New();
+func start() {    var animals: List[Animal] = Viper.Collections.List.New();
     var dog = new Dog();
     dog.age = 7;
     animals.Add(dog);
-    Animal first = animals[0];
-    Integer count = animals.Length;
+    var first: Animal = animals[0];
+    var count: Integer = animals.Length;
     Viper.Terminal.SayInt(first.age);
     Viper.Terminal.SayInt(count);
 }
@@ -1605,18 +1517,15 @@ module Test;
 class Palette {
     hide List values;
 
-    expose func init() {
-        values = new List();
+    expose func init() {        values = new List();
         values.Push(42);
     }
 
-    expose func getFirst() -> Integer {
-        return values.Get(0);
+    expose func getFirst() -> Integer {        return values.Get(0);
     }
 }
 
-func start() {
-    var palette = new Palette();
+func start() {    var palette = new Palette();
     Viper.Terminal.SayInt(palette.getFirst());
 }
 )";
@@ -1638,11 +1547,10 @@ TEST(ZiaBugFixes, RuntimeMapConstructorPreservesCollectionSurface) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Map[String, Integer] scores = Viper.Collections.Map.New();
+func start() {    var scores: Map[String, Integer] = Viper.Collections.Map.New();
     scores["Ada"] = 42;
-    Integer ada = scores["Ada"];
-    Integer count = scores.Length;
+    var ada: Integer = scores["Ada"];
+    var count: Integer = scores.Length;
     Viper.Terminal.SayInt(ada);
     Viper.Terminal.SayInt(count);
 }
@@ -1667,11 +1575,10 @@ TEST(ZiaBugFixes, RuntimeSetConstructorPreservesCollectionSurface) {
     const std::string source = R"(
 module Test;
 
-func start() {
-    Set[String] names = Viper.Collections.Set.New();
-    Boolean inserted = names.add("Ada");
-    Boolean hasAda = names.contains("Ada");
-    Integer count = names.Length;
+func start() {    var names: Set[String] = Viper.Collections.Set.New();
+    var inserted: Boolean = names.add("Ada");
+    var hasAda: Boolean = names.contains("Ada");
+    var count: Integer = names.Length;
     Viper.Terminal.SayInt(inserted ? 1 : 0);
     Viper.Terminal.SayInt(hasAda ? 1 : 0);
     Viper.Terminal.SayInt(count);

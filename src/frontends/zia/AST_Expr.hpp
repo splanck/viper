@@ -197,7 +197,7 @@ enum class ExprKind {
     /// @see StructLiteralExpr
     StructLiteral,
 
-    /// @brief Anonymous function: `(x) => x + 1`.
+    /// @brief Anonymous function: `(x: Integer) => x + 1`.
     /// @see LambdaExpr
     Lambda,
 
@@ -802,13 +802,13 @@ struct NewExpr : Expr {
 };
 
 /// @brief Lambda parameter specification.
-/// @details Represents one parameter of a lambda expression, with optional
-/// type annotation. If the type is omitted, it's inferred from context.
+/// @details Represents one parameter of a lambda expression.
+/// Lambda parameters always carry an explicit type annotation.
 struct LambdaParam {
     /// @brief Parameter name.
     std::string name;
 
-    /// @brief Parameter type (nullptr if inferred).
+    /// @brief Parameter type.
     TypePtr type;
 };
 
@@ -819,14 +819,13 @@ struct CapturedVar {
     std::string name;
 };
 
-/// @brief Anonymous function expression: `(x) => x + 1`.
+/// @brief Anonymous function expression: `(x: Integer) => x + 1`.
 /// @details Creates a callable lambda that captures its environment.
-/// Lambdas can have typed or untyped parameters and optional return type.
+/// Lambdas use typed parameters and optional return type inference.
 ///
 /// ## Examples
-/// - `(x) => x + 1` - Single parameter, type inferred
-/// - `(x: Integer) => x * 2` - Typed parameter
-/// - `(a, b) => a + b` - Multiple parameters
+/// - `(x: Integer) => x * 2` - Single parameter
+/// - `(a: Integer, b: Integer) => a + b` - Multiple parameters
 /// - `() => 42` - No parameters
 struct LambdaExpr : Expr {
     /// @brief Lambda parameters.

@@ -302,6 +302,8 @@ void rt_context_init(RtContext *ctx) {
     ctx->modvar_entries = NULL;
     ctx->modvar_count = 0;
     ctx->modvar_capacity = 0;
+    ctx->modvar_index_slots = NULL;
+    ctx->modvar_index_capacity = 0;
 
     // Initialize file state
     ctx->file_state.entries = NULL;
@@ -361,7 +363,7 @@ void rt_context_cleanup(RtContext *ctx) {
 
     for (size_t i = 0; i < ctx->modvar_count; ++i) {
         RtModvarEntry *e = &ctx->modvar_entries[i];
-        if (e->kind == 4 && e->addr) {
+        if (e->kind == RT_MODVAR_KIND_STR && e->addr) {
             rt_string *slot = (rt_string *)e->addr;
             if (slot && *slot) {
                 rt_string_unref(*slot);
@@ -379,6 +381,9 @@ void rt_context_cleanup(RtContext *ctx) {
     ctx->modvar_entries = NULL;
     ctx->modvar_count = 0;
     ctx->modvar_capacity = 0;
+    free(ctx->modvar_index_slots);
+    ctx->modvar_index_slots = NULL;
+    ctx->modvar_index_capacity = 0;
 
     rt_type_registry_cleanup(ctx);
 }

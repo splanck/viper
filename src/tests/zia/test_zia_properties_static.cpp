@@ -91,8 +91,7 @@ class Circle {
     }
 }
 
-func start() {
-    var c = new Circle();
+func start() {    var c = new Circle();
 }
 )";
 
@@ -134,8 +133,7 @@ class Temperature {
     }
 }
 
-func start() {
-    var t = new Temperature();
+func start() {    var t = new Temperature();
 }
 )";
 
@@ -166,8 +164,7 @@ module Test;
 class Counter {
     hide Integer _count;
 
-    expose func init() {
-        _count = 0;
+    expose func init() {        _count = 0;
     }
 
     expose property count: Integer {
@@ -180,8 +177,7 @@ class Counter {
     }
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
     c.count = 42;
     Viper.Terminal.SayInt(c.count);
 }
@@ -218,13 +214,11 @@ module Test;
 class Counter {
     expose Integer value;
 
-    static func create() -> Integer {
-        return 42;
+    static func create() -> Integer {        return 42;
     }
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
 }
 )";
 
@@ -261,8 +255,7 @@ class Config {
     static Integer count = 0;
 }
 
-func start() {
-    var c = new Config();
+func start() {    var c = new Config();
 }
 )";
 
@@ -289,13 +282,11 @@ module Test;
 class Box {
     expose Integer width;
 
-    func getWidth() -> Integer {
-        return self.width;
+    func getWidth() -> Integer {        return self.width;
     }
 }
 
-func start() {
-    var b = new Box();
+func start() {    var b = new Box();
 }
 )";
 

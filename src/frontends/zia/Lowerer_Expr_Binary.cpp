@@ -248,7 +248,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
                 return right;
             }
 
-            // Regular variable assignment
+            // Regular variable assignment.
+            // Safety net: if a local already exists here (SSA-only, no slot),
+            // it's a final variable being reassigned — Sema should have caught
+            // this. Skip the overwrite to avoid silently corrupting the value.
+            if (lookupLocal(ident->name) != nullptr) {
+                return right;
+            }
             defineLocal(ident->name, assignValue);
             if (targetType)
                 localTypes_[ident->name] = targetType;

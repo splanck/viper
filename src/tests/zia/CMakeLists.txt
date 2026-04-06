@@ -201,6 +201,11 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_compound_assign PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_compound_assign test_zia_compound_assign)
 
+    # `final` keyword enforcement tests
+    viper_add_test(test_zia_final_enforcement ${_VIPER_ZIA_DIR}/test_zia_final_enforcement.cpp)
+    target_link_libraries(test_zia_final_enforcement PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_final_enforcement test_zia_final_enforcement)
+
     # `is` type check + set literal lowering tests
     viper_add_test(test_zia_is_and_sets ${_VIPER_ZIA_DIR}/test_zia_is_and_sets.cpp)
     target_link_libraries(test_zia_is_and_sets PRIVATE ${VIPER_ZIA_LIBS})

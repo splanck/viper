@@ -339,14 +339,11 @@ void *rt_toml_get(void *root, rt_string key_path) {
         return NULL;
 
     // Auto-parse: if root is a raw TOML string, parse it first
-    /* S-15: use memcpy to avoid type-punning UB */
-    uint64_t magic;
-    memcpy(&magic, root, sizeof(magic));
-    if (magic == RT_STRING_MAGIC) {
+    if (rt_string_is_handle(root)) {
         root = rt_toml_parse((rt_string)root);
         if (!root)
             return NULL;
-    } else if (magic == RT_BOX_STR) {
+    } else if (rt_box_type(root) == RT_BOX_STR) {
         // Boxed string (from Zia str→ptr conversion) — unbox and parse
         rt_string s = rt_unbox_str(root);
         if (s) {
@@ -386,15 +383,10 @@ rt_string rt_toml_get_str(void *root, rt_string key_path) {
     if (!val)
         return rt_string_from_bytes("", 0);
     // Check if value is a raw string
-    /* S-15: use memcpy to avoid type-punning UB */
-    uint64_t m;
-    memcpy(&m, val, sizeof(m));
-    if (m == RT_STRING_MAGIC)
+    if (rt_string_is_handle(val))
         return (rt_string)val;
     // Try as boxed string
-    int64_t tag;
-    memcpy(&tag, val, sizeof(tag));
-    if (tag == RT_BOX_STR)
+    if (rt_box_type(val) == RT_BOX_STR)
         return rt_unbox_str(val);
     return rt_string_from_bytes("", 0);
 }

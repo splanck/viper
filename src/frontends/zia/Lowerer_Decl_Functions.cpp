@@ -247,7 +247,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
                     defaultValue = Value::constFloat(0.0);
                     break;
                 case Type::Kind::Str:
-                    defaultValue = emitConstStr("");
+                    defaultValue = emitEmptyString();
                     break;
                 case Type::Kind::Ptr:
                     defaultValue = Value::null();
@@ -546,7 +546,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
                     defaultValue = Value::constFloat(0.0);
                     break;
                 case Type::Kind::Str:
-                    defaultValue = emitConstStr("");
+                    defaultValue = emitEmptyString();
                     break;
                 case Type::Kind::Ptr:
                     defaultValue = Value::null();

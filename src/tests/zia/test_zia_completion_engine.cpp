@@ -110,9 +110,9 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults) {
 // ---------------------------------------------------------------------------
 
 TEST(CompletionEngine, MemberAccess_EntityMembers) {
-    // Source with class Box. We position the cursor in "Box.wi" (prefix="wi",
-    // triggerExpr="Box"). "Box" is in global scope as a Type symbol so
-    // resolveExprType() can find it and return the class type for getMembersOf().
+    // Source with a Box instance. We position the cursor in "box.wi" so
+    // resolveExprType() sees the actual instance type and member filtering
+    // matches the canonical object access path.
     const std::string src = R"(
 module Test;
 
@@ -125,13 +125,13 @@ class Box {
 }
 
 func main() {
-    var r = Box.wi
+    var box = new Box();
+    var r = box.width;
 }
 )";
     CompletionEngine engine;
-    // Line 13: "    var r = Box.wi", col=18 — after "wi".
-    // prefix="wi", trigger=MemberAccess, triggerExpr="Box".
-    auto items = engine.complete(src, 13, 18, "<test>", 0);
+    // Line 14: "    var r = box.width;", col=18 — after "wi".
+    auto items = engine.complete(src, 14, 18, "<test>", 0);
 
     // Box has field "width" which matches prefix "wi".
     EXPECT_TRUE(hasLabel(items, "width"));
@@ -147,15 +147,13 @@ TEST(CompletionEngine, AfterNew_ReturnsTypeNames) {
 module Test;
 
 class Dog {
-    expose func init() {}
-}
+    expose func init() {}}
 
 struct Diamond {
     expose Integer x;
 }
 
-func main() {
-    var x = new D
+func main() {    var x = new D
 }
 )";
     CompletionEngine engine;
@@ -245,8 +243,7 @@ TEST(CompletionEngine, Cache_KeyIncludesFilePath) {
     const std::string mainSource = R"(module Test;
 bind "./dep";
 
-func start() {}
-)";
+func start() {})";
 
     CompletionEngine engine;
     auto itemsA = engine.complete(mainSource, 4, 0, (dirA / "main.zia").string(), 0);
@@ -273,15 +270,13 @@ TEST(CompletionEngine, MaxResults_LimitsOutput) {
 // ---------------------------------------------------------------------------
 
 TEST(CompletionEngine, BoundAlias_MathMembers) {
-    // Source with "bind Math = Viper.Math" and "Math.Sq" as an expression.
+    // Source with "bind Viper.Math as Math" and "Math.Sq" as an expression.
     // Cursor after "Sq" → prefix="Sq", trigger=MemberAccess, triggerExpr="Math".
     const std::string source = R"(
 module Test;
 
-bind Math = Viper.Math;
-
-func compute() -> Number {
-    var r = Math.Sq
+bind Viper.Math as Math;
+func compute() -> Number {    var r = Math.Sq
     return r;
 }
 )";

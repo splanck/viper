@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - argv[0] is the program name; argument indices start at 0 (matching C
-//     convention); out-of-range indices return an empty string rather than trap.
+//     convention); out-of-range indices trap rather than fabricating values.
 //   - The RtContext stores argc/argv; rt_args_init must be called before any
 //     argument query function.
 //   - Environment variable names are case-sensitive on Unix and case-insensitive

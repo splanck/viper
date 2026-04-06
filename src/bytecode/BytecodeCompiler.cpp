@@ -66,6 +66,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     // Build SSA to locals mapping
     buildSSAToLocalsMap(fn);
     bcFunc.numLocals = nextLocal_;
+    bcFunc.localIsString = localIsString_;
 
     // Linearize blocks
     auto blocks = linearizeBlocks(fn);
@@ -89,10 +90,20 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
 /// @brief Build SSA To Locals Map.
 void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
     nextLocal_ = 0;
+    localIsString_.clear();
+
+    auto markLocalType = [this](uint32_t local, const il::core::Type &type) {
+        if (local >= localIsString_.size())
+            localIsString_.resize(local + 1, 0);
+        if (type.kind == il::core::Type::Kind::Str)
+            localIsString_[local] = 1;
+    };
 
     // Map parameters first (preserve order)
     for (const auto &param : fn.params) {
-        ssaToLocal_[param.id] = nextLocal_++;
+        const uint32_t local = nextLocal_++;
+        ssaToLocal_[param.id] = local;
+        markLocalType(local, param.type);
     }
 
     // Map block parameters and track them by block label
@@ -107,10 +118,16 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
                 // Entry block parameters correspond to function parameters
                 // They should share the same local slots
                 if (isEntryBlock && i < fn.params.size()) {
-                    ssaToLocal_[param.id] = static_cast<uint32_t>(i);
+                    const uint32_t local = static_cast<uint32_t>(i);
+                    ssaToLocal_[param.id] = local;
+                    markLocalType(local, param.type);
                 } else {
-                    ssaToLocal_[param.id] = nextLocal_++;
+                    const uint32_t local = nextLocal_++;
+                    ssaToLocal_[param.id] = local;
+                    markLocalType(local, param.type);
                 }
+            } else {
+                markLocalType(ssaToLocal_.at(param.id), param.type);
             }
         }
         blockParamIds_[block.label] = std::move(paramIds);
@@ -122,11 +139,18 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
         for (const auto &instr : block.instructions) {
             if (instr.result) {
                 if (ssaToLocal_.find(*instr.result) == ssaToLocal_.end()) {
-                    ssaToLocal_[*instr.result] = nextLocal_++;
+                    const uint32_t local = nextLocal_++;
+                    ssaToLocal_[*instr.result] = local;
+                    markLocalType(local, instr.type);
+                } else {
+                    markLocalType(ssaToLocal_.at(*instr.result), instr.type);
                 }
             }
         }
     }
+
+    if (localIsString_.size() < nextLocal_)
+        localIsString_.resize(nextLocal_, 0);
 }
 
 /// @brief Linearize Blocks.
@@ -1057,8 +1081,10 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
                     emit(BCOpcode::LOAD_F64_MEM);
                     break;
                 case il::core::Type::Kind::Ptr:
-                case il::core::Type::Kind::Str:
                     emit(BCOpcode::LOAD_PTR_MEM);
+                    break;
+                case il::core::Type::Kind::Str:
+                    emit(BCOpcode::LOAD_STR_MEM);
                     break;
                 default:
                     emit(BCOpcode::LOAD_I64_MEM);
@@ -1088,8 +1114,10 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
                     emit(BCOpcode::STORE_F64_MEM);
                     break;
                 case il::core::Type::Kind::Ptr:
-                case il::core::Type::Kind::Str:
                     emit(BCOpcode::STORE_PTR_MEM);
+                    break;
+                case il::core::Type::Kind::Str:
+                    emit(BCOpcode::STORE_STR_MEM);
                     break;
                 default:
                     emit(BCOpcode::STORE_I64_MEM);

@@ -19,8 +19,7 @@ enum Offset {
     Forward = 1,
 }
 
-func start() {
-    assertTrue(Fruit.Apple != Fruit.Banana, "fruit_distinct_apple_banana");
+func start() {    assertTrue(Fruit.Apple != Fruit.Banana, "fruit_distinct_apple_banana");
     assertTrue(Fruit.Banana != Fruit.Cherry, "fruit_distinct_banana_cherry");
     assertTrue(Fruit.Apple != Fruit.Cherry, "fruit_distinct_apple_cherry");
 
@@ -83,6 +82,5 @@ func start() {
     report();
 }
 
-func getStatus() -> Integer {
-    return HttpStatus.NotFound;
+func getStatus() -> Integer {    return HttpStatus.NotFound;
 }

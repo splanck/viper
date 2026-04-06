@@ -32,12 +32,11 @@ TEST(ZiaListMethods, RemoveMethod) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[Integer] items = new List[Integer]();
+func start() {    var items: List[Integer] = new List[Integer]();
     items.add(10);
     items.add(20);
     items.add(30);
-    Boolean removed = items.remove(20);
+    var removed: Boolean = items.remove(20);
 }
 )";
 
@@ -76,8 +75,7 @@ TEST(ZiaListMethods, InsertMethod) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[Integer] items = new List[Integer]();
+func start() {    var items: List[Integer] = new List[Integer]();
     items.add(10);
     items.add(30);
     items.insert(1, 20);
@@ -119,12 +117,11 @@ TEST(ZiaListMethods, FindMethod) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[Integer] items = new List[Integer]();
+func start() {    var items: List[Integer] = new List[Integer]();
     items.add(10);
     items.add(20);
     items.add(30);
-    Integer idx = items.find(20);
+    var idx: Integer = items.find(20);
 }
 )";
 
@@ -163,11 +160,10 @@ TEST(ZiaListMethods, IndexOfMethod) {
     const std::string src = R"(
 module Test;
 
-func start() {
-    List[Integer] items = new List[Integer]();
+func start() {    var items: List[Integer] = new List[Integer]();
     items.add(10);
     items.add(20);
-    Integer idx = items.indexOf(10);
+    var idx: Integer = items.indexOf(10);
 }
 )";
 
@@ -196,25 +192,22 @@ module Test;
 class Item {
     expose String name;
 
-    func init(n: String) {
-        name = n;
+    func init(n: String) {        name = n;
     }
 
-    func getName() -> String {
-        return name;
+    func getName() -> String {        return name;
     }
 }
 
-func start() {
-    List[Item] items = new List[Item]();
-    Item item1 = Item("first");
-    Item item2 = Item("second");
+func start() {    var items: List[Item] = new List[Item]();
+    var item1: Item = new Item("first");
+    var item2: Item = new Item("second");
     items.add(item1);
     items.add(item2);
 
     // Access property through get() - this was causing Bug #022
-    Item retrieved = items.get(0);
-    String itemName = retrieved.name;
+    var retrieved: Item = items.get(0);
+    var itemName: String = retrieved.name;
 }
 )";
 

@@ -31,9 +31,8 @@ class Person {
     expose Integer publicAge;
 }
 
-func start() {
-    Person p = new Person(30, 25);
-    Integer age = p.secretAge;
+func start() {    var p: Person = new Person(30, 25);
+    var age: Integer = p.secretAge;
 }
 )";
     CompilerInput input{.source = source, .path = "visibility.zia"};
@@ -63,14 +62,12 @@ module Test;
 class Person {
     expose Integer age;
 
-    expose func init(a: Integer) {
-        age = a;
+    expose func init(a: Integer) {        age = a;
     }
 }
 
-func start() {
-    Person p = new Person(30);
-    Integer age = p.age;
+func start() {    var p: Person = new Person(30);
+    var age: Integer = p.age;
     Viper.Terminal.SayInt(age);
 }
 )";

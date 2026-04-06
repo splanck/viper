@@ -35,8 +35,7 @@ TEST(ZiaStringInstanceMethods, ResolvesAndLowersRuntimeStringCalls) {
 module Test;
 
 /// @brief Start.
-func start() {
-    var trimmed = "  hello  ".Trim();
+func start() {    var trimmed = "  hello  ".Trim();
     var upper = trimmed.ToUpper();
     var lower = upper.ToLower();
     var left = "  hi".TrimStart();

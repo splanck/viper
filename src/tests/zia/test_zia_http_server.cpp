@@ -48,12 +48,10 @@ TEST(ZiaHttpServerBinding, EmitsBindHandlerForLiteralRouteTag) {
     const std::string source = R"(
 module Test;
 
-func handlePing(req: Viper.Network.ServerReq, res: Viper.Network.ServerRes) {
-    res.Send("pong");
+func handlePing(req: Viper.Network.ServerReq, res: Viper.Network.ServerRes) {    res.Send("pong");
 }
 
-func start() {
-    var server = new Viper.Network.HttpServer(8080);
+func start() {    var server = new Viper.Network.HttpServer(8080);
     server.Get("/ping", "handlePing");
 }
 )";

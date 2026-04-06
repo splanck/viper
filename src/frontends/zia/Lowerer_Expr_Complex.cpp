@@ -26,6 +26,42 @@ namespace il::frontends::zia {
 
 using namespace runtime;
 
+namespace {
+
+void appendClassFieldDecls(Sema &sema,
+                           const std::string &typeName,
+                           std::vector<const FieldDecl *> &out) {
+    ClassDecl *decl = sema.findClassDecl(typeName);
+    if (!decl)
+        return;
+    if (!decl->baseClass.empty())
+        appendClassFieldDecls(sema, decl->baseClass, out);
+    for (const auto &member : decl->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (!field->isStatic)
+            out.push_back(field);
+    }
+}
+
+std::vector<const FieldDecl *> collectStructFieldDecls(Sema &sema, const std::string &typeName) {
+    std::vector<const FieldDecl *> out;
+    StructDecl *decl = sema.findStructDecl(typeName);
+    if (!decl)
+        return out;
+    for (const auto &member : decl->members) {
+        if (member->kind != DeclKind::Field)
+            continue;
+        auto *field = static_cast<FieldDecl *>(member.get());
+        if (!field->isStatic)
+            out.push_back(field);
+    }
+    return out;
+}
+
+} // namespace
+
 //=============================================================================
 // Field Expression Lowering
 //=============================================================================
@@ -353,13 +389,6 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
     if (valueInfo) {
         const StructTypeInfo &valInfo = *valueInfo;
 
-        // Lower arguments
-        std::vector<Value> argValues;
-        for (auto &arg : expr->args) {
-            auto result = lowerExpr(arg.value.get());
-            argValues.push_back(result.value);
-        }
-
         // Allocate stack space for the value
         unsigned allocaId = nextTempId();
         il::core::Instr allocaInstr;
@@ -372,20 +401,77 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         Value ptr = Value::temp(allocaId);
 
         // Check if the struct type has an explicit init method
+        MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);
+        std::string initOwner = sema_.resolvedInitOwnerType(expr);
         auto initIt = valInfo.methodMap.find("init");
-        if (initIt != valInfo.methodMap.end()) {
+        if (resolvedInit || initIt != valInfo.methodMap.end()) {
             // Call the explicit init method
-            std::string initName = typeName + ".init";
+            MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
+            if (initOwner.empty())
+                initOwner = typeName;
+            std::string initName = sema_.loweredMethodName(initOwner, initDecl);
+            if (initName.empty())
+                initName = initOwner + ".init";
             std::vector<Value> initArgs;
             initArgs.push_back(ptr); // self is first argument
+            TypeRef initType = sema_.getMethodType(initOwner, initDecl);
+            std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+            std::vector<Value> argValues =
+                lowerResolvedNewArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
             for (const auto &argVal : argValues) {
                 initArgs.push_back(argVal);
             }
             emitCall(initName, initArgs);
         } else {
+            auto loweredSources = lowerSourceArgs(expr->args);
+            const auto *binding = sema_.newArgBinding(expr);
+            std::vector<const FieldDecl *> fieldDecls = collectStructFieldDecls(sema_, typeName);
+
             // No init method - store arguments directly into fields
-            for (size_t i = 0; i < argValues.size() && i < valInfo.fields.size(); ++i) {
+            for (size_t i = 0; i < valInfo.fields.size(); ++i) {
                 const FieldLayout &field = valInfo.fields[i];
+                Value fieldValue;
+                int sourceIndex = binding && i < binding->fixedParamSources.size()
+                                      ? binding->fixedParamSources[i]
+                                      : (i < loweredSources.size() ? static_cast<int>(i) : -1);
+
+                if (sourceIndex >= 0) {
+                    size_t idx = static_cast<size_t>(sourceIndex);
+                    TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
+                    auto coerced =
+                        coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                    fieldValue = coerced.value;
+                } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
+                    auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
+                    TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
+                    auto coerced =
+                        coerceValueToType(initValue.value, initValue.type, initType, field.type);
+                    fieldValue = coerced.value;
+                } else {
+                    Type ilFieldType = mapType(field.type);
+                    switch (ilFieldType.kind) {
+                        case Type::Kind::I1:
+                            fieldValue = Value::constBool(false);
+                            break;
+                        case Type::Kind::I64:
+                        case Type::Kind::I16:
+                        case Type::Kind::I32:
+                            fieldValue = Value::constInt(0);
+                            break;
+                        case Type::Kind::F64:
+                            fieldValue = Value::constFloat(0.0);
+                            break;
+                        case Type::Kind::Str:
+                            fieldValue = emitEmptyString();
+                            break;
+                        case Type::Kind::Ptr:
+                            fieldValue = Value::null();
+                            break;
+                        default:
+                            fieldValue = Value::constInt(0);
+                            break;
+                    }
+                }
 
                 // GEP to get field address
                 unsigned gepId = nextTempId();
@@ -402,7 +488,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
                 il::core::Instr storeInstr;
                 storeInstr.op = Opcode::Store;
                 storeInstr.type = mapType(field.type);
-                storeInstr.operands = {fieldAddr, argValues[i]};
+                storeInstr.operands = {fieldAddr, fieldValue};
                 storeInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(storeInstr);
             }
@@ -420,13 +506,6 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 
     const ClassTypeInfo &entityInfo = *infoPtr;
 
-    // Lower arguments
-    std::vector<Value> argValues;
-    for (auto &arg : expr->args) {
-        auto result = lowerExpr(arg.value.get());
-        argValues.push_back(result.value);
-    }
-
     // Allocate heap memory for the class using rt_obj_new_i64
     // This properly initializes the heap header with magic, refcount, etc.
     // so that entities can be added to lists and other reference-counted collections
@@ -437,19 +516,31 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 
     // Check if the class has an explicit init method
     MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);
+    std::string initOwner = sema_.resolvedInitOwnerType(expr);
     auto initIt = entityInfo.methodMap.find("init");
     if (resolvedInit || initIt != entityInfo.methodMap.end()) {
         MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
-        std::string initName = sema_.loweredMethodName(typeName, initDecl);
+        if (initOwner.empty())
+            initOwner = typeName;
+        std::string initName = sema_.loweredMethodName(initOwner, initDecl);
         if (initName.empty())
-            initName = typeName + ".init";
+            initName = initOwner + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
+        TypeRef initType = sema_.getMethodType(initOwner, initDecl);
+        std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+        std::vector<Value> argValues =
+            lowerResolvedNewArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
         for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
     } else {
+        auto loweredSources = lowerSourceArgs(expr->args);
+        const auto *binding = sema_.newArgBinding(expr);
+        std::vector<const FieldDecl *> fieldDecls;
+        appendClassFieldDecls(sema_, typeName, fieldDecls);
+
         // No explicit init - do inline field initialization
         // Constructor args map directly to fields in declaration order
         for (size_t i = 0; i < entityInfo.fields.size(); ++i) {
@@ -457,9 +548,21 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
             Type ilFieldType = mapType(field.type);
             Value fieldValue;
 
-            if (i < argValues.size()) {
-                // Use constructor argument
-                fieldValue = argValues[i];
+            int sourceIndex = binding && i < binding->fixedParamSources.size()
+                                  ? binding->fixedParamSources[i]
+                                  : (i < loweredSources.size() ? static_cast<int>(i) : -1);
+            if (sourceIndex >= 0) {
+                size_t idx = static_cast<size_t>(sourceIndex);
+                TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
+                auto coerced =
+                    coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                fieldValue = coerced.value;
+            } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
+                auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
+                TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
+                auto coerced =
+                    coerceValueToType(initValue.value, initValue.type, initType, field.type);
+                fieldValue = coerced.value;
             } else {
                 // Use default value
                 switch (ilFieldType.kind) {
@@ -475,7 +578,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
                         fieldValue = Value::constFloat(0.0);
                         break;
                     case Type::Kind::Str:
-                        fieldValue = emitConstStr("");
+                        fieldValue = emitEmptyString();
                         break;
                     case Type::Kind::Ptr:
                         fieldValue = Value::null();

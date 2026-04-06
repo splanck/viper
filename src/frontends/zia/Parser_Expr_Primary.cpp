@@ -82,62 +82,6 @@ ExprPtr Parser::parsePrimary() {
         return std::make_unique<SuperExprNode>(loc);
     }
 
-    // Lambda expression: func(params) -> ReturnType { body }
-    // Distinguished from function declaration by context: parsePrimary is only
-    // called in expression position, never at declaration level.
-    if (check(TokenKind::KwFunc) && peek(1).kind == TokenKind::LParen) {
-        advance(); // consume 'func'
-        advance(); // consume '('
-
-        // Parse lambda parameters
-        std::vector<LambdaParam> params;
-        if (!check(TokenKind::RParen)) {
-            do {
-                LambdaParam p;
-                if (!check(TokenKind::Identifier)) {
-                    error("expected parameter name");
-                    return nullptr;
-                }
-                p.name = advance().text;
-                if (match(TokenKind::Colon)) {
-                    p.type = parseType();
-                }
-                params.push_back(std::move(p));
-            } while (match(TokenKind::Comma));
-        }
-        if (!expect(TokenKind::RParen, ")"))
-            return nullptr;
-
-        // Optional return type
-        TypePtr returnType;
-        if (match(TokenKind::Arrow)) {
-            returnType = parseType();
-        }
-
-        // Parse block body
-        if (!check(TokenKind::LBrace)) {
-            error("expected '{' for lambda body");
-            return nullptr;
-        }
-        SourceLoc blockLoc = peek().loc;
-        advance(); // consume '{'
-        std::vector<StmtPtr> statements;
-        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-            StmtPtr stmt = parseStatement();
-            if (!stmt) {
-                resyncAfterError();
-                continue;
-            }
-            statements.push_back(std::move(stmt));
-        }
-        if (!expect(TokenKind::RBrace, "}"))
-            return nullptr;
-
-        auto body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
-        return std::make_unique<LambdaExpr>(
-            loc, std::move(params), std::move(returnType), std::move(body));
-    }
-
     // New expression
     if (match(TokenKind::KwNew)) {
         TypePtr type = parseType();
@@ -279,109 +223,56 @@ ExprPtr Parser::parsePrimary() {
             return std::make_unique<UnitLiteralExpr>(loc);
         }
 
-        // Try to detect lambda parameter patterns:
-        // - (Type name, ...) => expr     -- Java-style typed params
-        // - (name: Type, ...) => expr    -- Swift-style typed params
-        // - (name, ...) => expr          -- untyped params
-        //
-        // Heuristics:
-        // 1. If we see Identifier followed by Identifier (and current is uppercase), likely Type
-        // name
-        // 2. If we see Identifier followed by :, likely name: Type
-        // 3. Otherwise, could be expression or untyped lambda param
-
-        const Token &next = peek(1);
-        bool looksLikeLambda = false;
-
-        if (check(TokenKind::Identifier)) {
-            // Check for Java-style: (Type name) where Type starts with uppercase
-            if (next.kind == TokenKind::Identifier && !peek().text.empty() &&
-                std::isupper(static_cast<unsigned char>(peek().text[0]))) {
-                looksLikeLambda = true;
-            }
-            // Check for Swift-style: (name: Type)
-            else if (next.kind == TokenKind::Colon) {
-                looksLikeLambda = true;
-            }
-            // Check for generic type: (List[T] name)
-            else if (next.kind == TokenKind::LBracket && !peek().text.empty() &&
-                     std::isupper(static_cast<unsigned char>(peek().text[0]))) {
-                looksLikeLambda = true;
-            }
-        }
-
-        if (looksLikeLambda) {
-            // Try to parse as lambda parameters
+        bool matchedUntypedLambda = false;
+        std::vector<LambdaParam> matchedTypedLambdaParams;
+        bool matchedTypedLambda = false;
+        {
+            Speculation speculative(*this);
             std::vector<LambdaParam> params;
+            bool validLambda = true;
+            bool missingTypeAnnotation = false;
 
             do {
-                LambdaParam param;
-
                 if (!checkIdentifierLike()) {
-                    error("expected parameter in lambda");
-                    return nullptr;
+                    validLambda = false;
+                    break;
                 }
 
-                // Check which style: Java (Type name) or Swift (name: Type)
-                Token firstTok = advance();
-                std::string first = firstTok.text;
-                SourceLoc firstLoc = firstTok.loc;
+                Token nameTok = advance();
+                LambdaParam param;
+                param.name = nameTok.text;
 
-                if (check(TokenKind::Colon)) {
-                    // Swift style: name: Type
-                    advance(); // consume :
-                    param.name = first;
+                if (match(TokenKind::Colon)) {
                     param.type = parseType();
-                    if (!param.type)
-                        return nullptr;
-                } else if (checkIdentifierLike()) {
-                    // Java style: Type name (name can be contextual keyword like 'value')
-                    param.name = peek().text;
-                    advance();
-                    // Reconstruct the type from first token
-                    param.type = std::make_unique<NamedType>(firstLoc, first);
-                } else if (check(TokenKind::LBracket)) {
-                    // Generic type: List[T] name
-                    // We need to parse the type arguments
-                    advance(); // consume [
-                    std::vector<TypePtr> typeArgs;
-                    do {
-                        TypePtr arg = parseType();
-                        if (!arg)
-                            return nullptr;
-                        typeArgs.push_back(std::move(arg));
-                    } while (match(TokenKind::Comma));
-
-                    if (!expect(TokenKind::RBracket, "]"))
-                        return nullptr;
-
-                    // Now we should have the parameter name (can be contextual keyword)
-                    if (!checkIdentifierLike()) {
-                        error("expected parameter name after type");
-                        return nullptr;
+                    if (!param.type) {
+                        validLambda = false;
+                        break;
                     }
-                    param.name = peek().text;
-                    advance();
-                    param.type =
-                        std::make_unique<GenericType>(firstLoc, first, std::move(typeArgs));
                 } else {
-                    // Untyped parameter or not a lambda - but we're already committed
-                    // Treat as untyped parameter
-                    param.name = first;
-                    param.type = nullptr;
+                    missingTypeAnnotation = true;
                 }
 
                 params.push_back(std::move(param));
-
             } while (match(TokenKind::Comma));
 
-            if (!expect(TokenKind::RParen, ")"))
-                return nullptr;
+            if (validLambda && match(TokenKind::RParen) && match(TokenKind::FatArrow)) {
+                speculative.commit();
+                if (missingTypeAnnotation) {
+                    matchedUntypedLambda = true;
+                } else {
+                    matchedTypedLambdaParams = std::move(params);
+                    matchedTypedLambda = true;
+                }
+            }
+        }
 
-            if (!expect(TokenKind::FatArrow, "=>"))
-                return nullptr;
+        if (matchedUntypedLambda) {
+            error("lambda parameters require explicit type annotations");
+            return nullptr;
+        }
 
-            return parseLambdaBody(loc, std::move(params));
+        if (matchedTypedLambda) {
+            return parseLambdaBody(loc, std::move(matchedTypedLambdaParams));
         }
 
         // Parse first expression - could be parenthesized expression or tuple
@@ -407,27 +298,22 @@ ExprPtr Parser::parsePrimary() {
             if (!expect(TokenKind::RParen, ")"))
                 return nullptr;
 
+            if (check(TokenKind::FatArrow)) {
+                advance();
+                error("lambda parameters require explicit type annotations");
+                return nullptr;
+            }
+
             return std::make_unique<TupleExpr>(loc, std::move(elements));
         }
 
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
 
-        // Check if this is a single-param lambda: (x) => expr
-        if (match(TokenKind::FatArrow)) {
-            // Convert the expression to a lambda parameter
-            if (first->kind == ExprKind::Ident) {
-                auto *ident = static_cast<IdentExpr *>(first.get());
-                std::vector<LambdaParam> params;
-                LambdaParam param;
-                param.name = ident->name;
-                param.type = nullptr;
-                params.push_back(std::move(param));
-                return parseLambdaBody(loc, std::move(params));
-            } else {
-                error("expected identifier for lambda parameter");
-                return nullptr;
-            }
+        if (check(TokenKind::FatArrow)) {
+            advance();
+            error("lambda parameters require explicit type annotations");
+            return nullptr;
         }
 
         return first;

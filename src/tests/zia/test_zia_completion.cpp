@@ -55,8 +55,7 @@ TEST(ZiaCompletion, ParseAndAnalyze_SuccessfulSource) {
     const std::string source = R"(
 module Test;
 
-func greet() {
-    Viper.Terminal.Say("hi");
+func greet() {    Viper.Terminal.Say("hi");
 }
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -111,8 +110,7 @@ TEST(ZiaCompletion, GetGlobalSymbols_IncludesTopLevelFunction) {
     const std::string source = R"(
 module Test;
 
-func add(a: Integer, b: Integer) -> Integer {
-    return a + b;
+func add(a: Integer, b: Integer) -> Integer {    return a + b;
 }
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -132,8 +130,7 @@ module Test;
 
 class Dog {
     expose String name;
-    expose func init() { name = "Buddy"; }
-}
+    expose func init() { name = "Buddy"; }}
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -156,8 +153,7 @@ TEST(ZiaCompletion, GetTypeNames_ReturnsEntityNames) {
 module Test;
 
 class Cat {
-    expose func init() {}
-}
+    expose func init() {}}
 
 struct Point {
     expose Integer x;
@@ -187,8 +183,7 @@ module Test;
 class Box {
     expose Integer width;
     expose Integer height;
-    expose func Area() -> Integer {
-        return width * height;
+    expose func Area() -> Integer {        return width * height;
     }
 }
 )";
@@ -260,10 +255,8 @@ TEST(ZiaCompletion, GetBoundModuleNames_WithBindAlias) {
     const std::string source = R"(
 module Test;
 
-bind Math = Viper.Math;
-
-func compute() -> Number {
-    return Math.Sqrt(4.0);
+bind Viper.Math as Math;
+func compute() -> Number {    return Math.Sqrt(4.0);
 }
 )";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -295,7 +288,7 @@ func start() {
     auto ar = parseAndAnalyze(input, opts, sm);
     ASSERT_TRUE(ar->sema != nullptr);
 
-    const ScopedSymbol *sym = ar->sema->findSymbolAtPosition("x", ar->fileId, 9, 32);
+    const ScopedSymbol *sym = ar->sema->findSymbolAtPosition("x", ar->fileId, 9, 27);
     ASSERT_TRUE(sym != nullptr);
     EXPECT_EQ(sym->loc.line, 4u);
 }

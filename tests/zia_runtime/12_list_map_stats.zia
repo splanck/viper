@@ -4,8 +4,7 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 
-func start() {
-    var nums = [1, 2, 3, 4, 5, 6];
+func start() {    var nums = [1, 2, 3, 4, 5, 6];
     var total = 0;
     for (var i = 0; i < nums.count(); i = i + 1) {
         total = total + nums[i];

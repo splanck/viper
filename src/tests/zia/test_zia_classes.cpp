@@ -35,8 +35,7 @@ class Point {
     expose Integer y;
 }
 
-func start() {
-    var p = new Point();
+func start() {    var p = new Point();
     p.x = 10;
     p.y = 20;
     Viper.Terminal.SayInt(p.x);
@@ -60,21 +59,17 @@ module Test;
 class Counter {
     expose Integer count;
 
-    expose func increment() {
-        count = count + 1;
+    expose func increment() {        count = count + 1;
     }
 
-    expose func decrement() {
-        count = count - 1;
+    expose func decrement() {        count = count - 1;
     }
 
-    expose func getCount() -> Integer {
-        return count;
+    expose func getCount() -> Integer {        return count;
     }
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
     c.count = 0;
     c.increment();
     c.increment();
@@ -100,23 +95,19 @@ module Test;
 class Calculator {
     expose Integer result;
 
-    expose func add(Integer a, Integer b) -> Integer {
-        return a + b;
+    expose func add(a: Integer, b: Integer) -> Integer {        return a + b;
     }
 
-    expose func multiply(Integer a, Integer b) -> Integer {
-        return a * b;
+    expose func multiply(a: Integer, b: Integer) -> Integer {        return a * b;
     }
 
-    expose func setResult(Integer value) {
-        result = value;
+    expose func setResult(value: Integer) {        result = value;
     }
 }
 
-func start() {
-    var calc = new Calculator();
-    Integer sum = calc.add(5, 3);
-    Integer product = calc.multiply(4, 7);
+func start() {    var calc = new Calculator();
+    var sum: Integer = calc.add(5, 3);
+    var product: Integer = calc.multiply(4, 7);
     calc.setResult(sum + product);
     Viper.Terminal.SayInt(calc.result);
 }
@@ -143,17 +134,14 @@ class SecureData {
     expose Integer secretValue;
     expose Integer publicValue;
 
-    expose func getDoubled() -> Integer {
-        return secretValue * 2;
+    expose func getDoubled() -> Integer {        return secretValue * 2;
     }
 
-    expose func setSecret(Integer value) {
-        secretValue = value;
+    expose func setSecret(value: Integer) {        secretValue = value;
     }
 }
 
-func start() {
-    var data = new SecureData();
+func start() {    var data = new SecureData();
     data.publicValue = 10;
     data.setSecret(21);
     Viper.Terminal.SayInt(data.getDoubled());
@@ -181,17 +169,14 @@ class Node {
     expose Integer value;
     expose Node? next;
 
-    expose func setNext(Node n) {
-        self.next = n;
+    expose func setNext(n: Node) {        self.next = n;
     }
 
-    expose func getValue() -> Integer {
-        return self.value;
+    expose func getValue() -> Integer {        return self.value;
     }
 }
 
-func start() {
-    var n1 = new Node();
+func start() {    var n1 = new Node();
     var n2 = new Node();
     n1.value = 1;
     n2.value = 2;
@@ -220,8 +205,7 @@ module Test;
 class Animal {
     expose String name;
 
-    expose func speak() -> String {
-        return "...";
+    expose func speak() -> String {        return "...";
     }
 }
 
@@ -229,13 +213,11 @@ class Dog {
     expose Animal animal;
     expose Integer age;
 
-    expose func bark() -> String {
-        return "Woof!";
+    expose func bark() -> String {        return "Woof!";
     }
 }
 
-func start() {
-    var dog = new Dog();
+func start() {    var dog = new Dog();
     dog.animal = new Animal();
     dog.animal.name = "Buddy";
     dog.age = 3;
@@ -270,8 +252,7 @@ class Player {
     expose List[String] inventory;
 }
 
-func start() {
-    var p = new Player();
+func start() {    var p = new Player();
     p.name = "Hero";
     p.score = 1000;
     p.health = 100;
@@ -313,12 +294,10 @@ class Item {
 class Inventory {
     expose List[Item] items;
 
-    expose func addItem(Item item) {
-        items.add(item);
+    expose func addItem(item: Item) {        items.add(item);
     }
 
-    expose func totalValue() -> Integer {
-        var total = 0;
+    expose func totalValue() -> Integer {        var total = 0;
         for item in items {
             total = total + item.value;
         }
@@ -326,8 +305,7 @@ class Inventory {
     }
 }
 
-func start() {
-    var inv = new Inventory();
+func start() {    var inv = new Inventory();
     inv.items = [];
 
     var sword = new Item();
@@ -369,8 +347,7 @@ class Config {
     expose Boolean fullscreen = false;
 }
 
-func start() {
-    var config = new Config();
+func start() {    var config = new Config();
     Viper.Terminal.SayInt(config.width);
     Viper.Terminal.SayInt(config.height);
     Viper.Terminal.Say(config.title);
@@ -396,17 +373,14 @@ TEST(ZiaEntities, ArrowReturnType) {
 module Test;
 
 class Math {
-    expose func add(Integer a, Integer b) -> Integer {
-        return a + b;
+    expose func add(a: Integer, b: Integer) -> Integer {        return a + b;
     }
 
-    expose func isPositive(Integer n) -> Boolean {
-        return n > 0;
+    expose func isPositive(n: Integer) -> Boolean {        return n > 0;
     }
 }
 
-func start() {
-    var m = new Math();
+func start() {    var m = new Math();
     Viper.Terminal.SayInt(m.add(3, 4));
     Viper.Terminal.SayBool(m.isPositive(5));
 }
@@ -426,17 +400,14 @@ TEST(ZiaEntities, ColonReturnType) {
 module Test;
 
 class Math {
-    expose func add(Integer a, Integer b): Integer {
-        return a + b;
+    expose func add(a: Integer, b: Integer) -> Integer {        return a + b;
     }
 
-    expose func isPositive(Integer n): Boolean {
-        return n > 0;
+    expose func isPositive(n: Integer) -> Boolean {        return n > 0;
     }
 }
 
-func start() {
-    var m = new Math();
+func start() {    var m = new Math();
     Viper.Terminal.SayInt(m.add(3, 4));
     Viper.Terminal.SayBool(m.isPositive(5));
 }
@@ -465,30 +436,25 @@ module Test;
 class Animal {
     hide Integer age;
 
-    expose func init(a: Integer) {
-        age = a;
+    expose func init(a: Integer) {        age = a;
     }
 
-    expose func getAge() -> Integer {
-        return age;
+    expose func getAge() -> Integer {        return age;
     }
 }
 
 class Dog extends Animal {
     hide String name;
 
-    expose func setup(a: Integer, n: String) {
-        age = a;
+    expose func setup(a: Integer, n: String) {        age = a;
         name = n;
     }
 
-    expose func getName() -> String {
-        return name;
+    expose func getName() -> String {        return name;
     }
 }
 
-func start() {
-    var animals = Viper.Collections.List.New();
+func start() {    var animals = Viper.Collections.List.New();
     var d1 = new Dog(0);
     d1.setup(5, "Rex");
     animals.Add(d1);
@@ -530,38 +496,31 @@ module Test;
 class Animal {
     hide Integer age;
 
-    expose func init(a: Integer) {
-        age = a;
+    expose func init(a: Integer) {        age = a;
     }
 
-    expose func getAge() -> Integer {
-        return age;
+    expose func getAge() -> Integer {        return age;
     }
 
-    expose func speak() -> String {
-        return "...";
+    expose func speak() -> String {        return "...";
     }
 }
 
 class Dog extends Animal {
     hide String name;
 
-    expose func setup(a: Integer, n: String) {
-        age = a;
+    expose func setup(a: Integer, n: String) {        age = a;
         name = n;
     }
 
-    override expose func speak() -> String {
-        return "Woof!";
+    override expose func speak() -> String {        return "Woof!";
     }
 
-    expose func getName() -> String {
-        return name;
+    expose func getName() -> String {        return name;
     }
 }
 
-func start() {
-    var dog = new Dog();
+func start() {    var dog = new Dog();
     dog.setup(5, "Rex");
     Viper.Terminal.SayInt(dog.getAge());
     Viper.Terminal.Say(dog.getName());
@@ -580,51 +539,40 @@ TEST(ZiaEntities, CrossInheritanceOverloadFamiliesCompile) {
     const std::string source = R"(
 module Test;
 
-func greet() -> String {
-    return "hi";
+func greet() -> String {    return "hi";
 }
 
-func greet(n: Integer) -> String {
-    return "hi " + toString(n);
+func greet(n: Integer) -> String {    return "hi " + toString(n);
 }
 
 class Animal {
-    expose func speak() -> String {
-        return "animal";
+    expose func speak() -> String {        return "animal";
     }
 
-    expose func speak(times: Integer) -> String {
-        return "animal " + toString(times);
+    expose func speak(times: Integer) -> String {        return "animal " + toString(times);
     }
 }
 
 class Dog extends Animal {
-    override expose func speak() -> String {
-        return "dog";
+    override expose func speak() -> String {        return "dog";
     }
 
-    expose func speak(name: String) -> String {
-        return "dog " + name;
+    expose func speak(name: String) -> String {        return "dog " + name;
     }
 }
 
 interface Formatter {
-    func fmt() -> String;
-    func fmt(n: Integer) -> String;
-}
+    func fmt() -> String;    func fmt(n: Integer) -> String;}
 
 class Message implements Formatter {
-    expose func fmt() -> String {
-        return "m";
+    expose func fmt() -> String {        return "m";
     }
 
-    expose func fmt(n: Integer) -> String {
-        return "m " + toString(n);
+    expose func fmt(n: Integer) -> String {        return "m " + toString(n);
     }
 }
 
-func start() {
-    var dog = new Dog();
+func start() {    var dog = new Dog();
     var animal: Animal = dog;
     var formatter: Formatter = new Message();
 
@@ -664,8 +612,7 @@ class Derived extends Base {
     expose String name;
 }
 
-func start() {
-    var d = new Derived();
+func start() {    var d = new Derived();
     d.value = 42;
     d.name = "test";
 

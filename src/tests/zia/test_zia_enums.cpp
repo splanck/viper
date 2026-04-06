@@ -63,8 +63,7 @@ enum Color {
     Blue,
 }
 
-func start() {
-    var c: Color = Color.Red;
+func start() {    var c: Color = Color.Red;
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -94,8 +93,7 @@ enum HttpStatus {
     ServerError = 500,
 }
 
-func start() {
-    var s: HttpStatus = HttpStatus.NotFound;
+func start() {    var s: HttpStatus = HttpStatus.NotFound;
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -118,8 +116,7 @@ enum Priority {
     Critical,
 }
 
-func start() {
-    var p: Priority = Priority.High;
+func start() {    var p: Priority = Priority.High;
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -144,8 +141,7 @@ enum Direction {
     West,
 }
 
-func start() {
-    var d: Direction = Direction.East;
+func start() {    var d: Direction = Direction.East;
     if d == Direction.East {
         Viper.Terminal.SayInt(1);
     }
@@ -169,8 +165,7 @@ enum State {
     Done,
 }
 
-func start() {
-    var s: State = State.Running;
+func start() {    var s: State = State.Running;
     if s != State.Done {
         Viper.Terminal.SayInt(1);
     }
@@ -196,8 +191,7 @@ enum Color {
     Blue,
 }
 
-func start() {
-    var c: Color = Color.Yellow;
+func start() {    var c: Color = Color.Yellow;
 }
 )";
     CompilerInput input{.source = source, .path = "enum_unknown.zia"};
@@ -218,8 +212,7 @@ enum Color {
     Red,
 }
 
-func start() {
-}
+func start() {}
 )";
     CompilerInput input{.source = source, .path = "enum_dup.zia"};
     CompilerOptions opts{};
@@ -241,15 +234,13 @@ enum Color {
     Blue,
 }
 
-func describeColor(c: Color) -> Integer {
-    if c == Color.Red {
+func describeColor(c: Color) -> Integer {    if c == Color.Red {
         return 1;
     }
     return 0;
 }
 
-func start() {
-    var result = describeColor(Color.Red);
+func start() {    var result = describeColor(Color.Red);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -282,12 +273,10 @@ enum Direction {
     West,
 }
 
-func defaultDirection() -> Direction {
-    return Direction.North;
+func defaultDirection() -> Direction {    return Direction.North;
 }
 
-func start() {
-    var d = defaultDirection();
+func start() {    var d = defaultDirection();
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -311,8 +300,7 @@ enum Offset {
     Forward = 1,
 }
 
-func start() {
-    var o: Offset = Offset.Backward;
+func start() {    var o: Offset = Offset.Backward;
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -335,8 +323,7 @@ expose enum Visibility {
     Visible,
 }
 
-func start() {
-    var v: Visibility = Visibility.Visible;
+func start() {    var v: Visibility = Visibility.Visible;
     Viper.Terminal.SayInt(0);
 }
 )";
@@ -366,8 +353,7 @@ enum Size {
     Large,
 }
 
-func start() {
-    var c: Color = Color.Green;
+func start() {    var c: Color = Color.Green;
     var s: Size = Size.Large;
     Viper.Terminal.SayInt(0);
 }
@@ -392,16 +378,14 @@ enum Color {
     Blue,
 }
 
-func colorValue(c: Color) -> Integer {
-    return match c {
+func colorValue(c: Color) -> Integer {    return match c {
         Color.Red => 1,
         Color.Green => 2,
         Color.Blue => 3,
     };
 }
 
-func start() {
-    var result = colorValue(Color.Red);
+func start() {    var result = colorValue(Color.Red);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -432,15 +416,13 @@ enum Direction {
     West,
 }
 
-func isNorth(d: Direction) -> Integer {
-    return match d {
+func isNorth(d: Direction) -> Integer {    return match d {
         Direction.North => 1,
         _ => 0,
     };
 }
 
-func start() {
-    var result = isNorth(Direction.North);
+func start() {    var result = isNorth(Direction.North);
     Viper.Terminal.SayInt(result);
 }
 )";
@@ -462,15 +444,13 @@ enum Color {
     Blue,
 }
 
-func colorValue(c: Color) -> Integer {
-    return match c {
+func colorValue(c: Color) -> Integer {    return match c {
         Color.Red => 1,
         Color.Green => 2,
     };
 }
 
-func start() {
-    Viper.Terminal.SayInt(0);
+func start() {    Viper.Terminal.SayInt(0);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_match_nonexh.zia"};
@@ -491,8 +471,7 @@ enum State {
     Done,
 }
 
-func start() {
-    var s: State = State.Running;
+func start() {    var s: State = State.Running;
     match s {
         State.Idle => Viper.Terminal.SayInt(0);
         State.Running => Viper.Terminal.SayInt(1);
@@ -528,8 +507,7 @@ enum Fruit {
     Cherry,
 }
 
-func start() {
-    Viper.Terminal.SayInt(Fruit.Banana);
+func start() {    Viper.Terminal.SayInt(Fruit.Banana);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_lower_autoinc.zia"};
@@ -552,8 +530,7 @@ enum HttpStatus {
     NotFound = 404,
 }
 
-func start() {
-    Viper.Terminal.SayInt(HttpStatus.NotFound);
+func start() {    Viper.Terminal.SayInt(HttpStatus.NotFound);
 }
 )";
     CompilerInput input{.source = source, .path = "enum_lower_explicit.zia"};

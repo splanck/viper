@@ -9,7 +9,8 @@
 // Purpose: Cross-platform directory operations for the Viper.IO.Dir class.
 //          Provides Exists, Make, MakeAll, Remove, RemoveAll, Files, Dirs,
 //          GetCurrent, SetCurrent, and related utilities that work on Windows
-//          (FindFirstFile/FindNextFile, _mkdir) and Unix (opendir/readdir, mkdir).
+//          (wide Win32 APIs with extended-length paths) and Unix
+//          (opendir/readdir, mkdir).
 //
 // Key invariants:
 //   - Most operations trap on invalid paths, permission errors, or I/O failures.
@@ -48,15 +49,9 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <io.h>
+#include <wchar.h>
 #include <windows.h>
 #define PATH_SEP '\\'
-// MED-4: On Windows, MAX_PATH is 260 characters.  Windows 10 v1607+ supports
-// longer paths when the "LongPathsEnabled" registry key is set, but the ANSI
-// FindFirstFileA / FindNextFileA APIs used below are still limited to MAX_PATH.
-// To support paths longer than 260 characters, these functions would need to
-// be rewritten to use the wide-char (W) variants with the "\\?\" extended-path
-// prefix.  Until then, directory operations silently truncate or fail for paths
-// exceeding MAX_PATH.
 #ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
 #endif
@@ -92,6 +87,190 @@ static void rt_dir_trap_io(const char *msg) {
 static void rt_dir_trap_not_found(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_FILE_NOT_FOUND, Err_FileNotFound, -1, msg);
 }
+
+#ifdef _WIN32
+static int rt_dir_win_is_sep(wchar_t ch) {
+    return ch == L'\\' || ch == L'/';
+}
+
+static int rt_dir_win_has_extended_prefix(const wchar_t *path) {
+    return path && (wcsncmp(path, L"\\\\?\\", 4) == 0 || wcsncmp(path, L"\\\\.\\", 4) == 0);
+}
+
+static wchar_t *rt_dir_win_utf8_to_wide(const char *utf8) {
+    if (!utf8)
+        return NULL;
+
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        needed = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        return NULL;
+
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide)
+        return NULL;
+
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, needed) <= 0) {
+        free(wide);
+        return NULL;
+    }
+    return wide;
+}
+
+static rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
+    if (!wide)
+        return rt_str_empty();
+
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        return rt_str_empty();
+
+    char *utf8 = (char *)malloc((size_t)needed);
+    if (!utf8)
+        return rt_str_empty();
+
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+        free(utf8);
+        return rt_str_empty();
+    }
+
+    rt_string s = rt_string_from_bytes(utf8, strlen(utf8));
+    free(utf8);
+    return s ? s : rt_str_empty();
+}
+
+static wchar_t *rt_dir_win_absolute_path(const wchar_t *wide) {
+    DWORD needed = GetFullPathNameW(wide, 0, NULL, NULL);
+    if (needed == 0)
+        return NULL;
+
+    wchar_t *full = (wchar_t *)malloc(((size_t)needed + 1) * sizeof(wchar_t));
+    if (!full)
+        return NULL;
+
+    DWORD got = GetFullPathNameW(wide, needed + 1, full, NULL);
+    if (got == 0 || got > needed) {
+        free(full);
+        return NULL;
+    }
+    return full;
+}
+
+static wchar_t *rt_dir_win_prepare_path(const char *utf8) {
+    wchar_t *wide = rt_dir_win_utf8_to_wide(utf8);
+    if (!wide)
+        return NULL;
+    if (rt_dir_win_has_extended_prefix(wide))
+        return wide;
+
+    wchar_t *full = rt_dir_win_absolute_path(wide);
+    free(wide);
+    if (!full)
+        return NULL;
+
+    size_t full_len = wcslen(full);
+    wchar_t *prefixed = NULL;
+    if (wcsncmp(full, L"\\\\", 2) == 0) {
+        static const wchar_t kUncPrefix[] = L"\\\\?\\UNC\\";
+        size_t prefix_len = wcslen(kUncPrefix);
+        prefixed = (wchar_t *)malloc((prefix_len + full_len - 1) * sizeof(wchar_t));
+        if (prefixed) {
+            wcscpy(prefixed, kUncPrefix);
+            wcscpy(prefixed + prefix_len, full + 2);
+        }
+    } else {
+        static const wchar_t kPathPrefix[] = L"\\\\?\\";
+        size_t prefix_len = wcslen(kPathPrefix);
+        prefixed = (wchar_t *)malloc((prefix_len + full_len + 1) * sizeof(wchar_t));
+        if (prefixed) {
+            wcscpy(prefixed, kPathPrefix);
+            wcscpy(prefixed + prefix_len, full);
+        }
+    }
+
+    free(full);
+    return prefixed;
+}
+
+static wchar_t *rt_dir_win_join(const wchar_t *base, const wchar_t *child) {
+    size_t base_len = wcslen(base);
+    size_t child_len = wcslen(child);
+    int needs_sep = base_len > 0 && !rt_dir_win_is_sep(base[base_len - 1]);
+    wchar_t *joined =
+        (wchar_t *)malloc((base_len + (needs_sep ? 1 : 0) + child_len + 1) * sizeof(wchar_t));
+    if (!joined)
+        return NULL;
+
+    wcscpy(joined, base);
+    if (needs_sep) {
+        joined[base_len] = L'\\';
+        joined[base_len + 1] = L'\0';
+    }
+    wcscpy(joined + wcslen(joined), child);
+    return joined;
+}
+
+static wchar_t *rt_dir_win_make_pattern(const char *utf8) {
+    wchar_t *base = rt_dir_win_prepare_path(utf8);
+    if (!base)
+        return NULL;
+    wchar_t *pattern = rt_dir_win_join(base, L"*");
+    free(base);
+    return pattern;
+}
+
+static int64_t rt_dir_win_exists_dir(const char *utf8) {
+    wchar_t *path = rt_dir_win_prepare_path(utf8);
+    if (!path)
+        return 0;
+    DWORD attrs = GetFileAttributesW(path);
+    free(path);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+}
+
+static int rt_dir_win_create_dir(const char *utf8) {
+    wchar_t *path = rt_dir_win_prepare_path(utf8);
+    if (!path)
+        return 0;
+    BOOL ok = CreateDirectoryW(path, NULL);
+    if (!ok && GetLastError() == ERROR_ALREADY_EXISTS)
+        ok = rt_dir_win_exists_dir(utf8) ? TRUE : FALSE;
+    free(path);
+    return ok ? 1 : 0;
+}
+
+static int rt_dir_win_remove_dir(const char *utf8) {
+    wchar_t *path = rt_dir_win_prepare_path(utf8);
+    if (!path)
+        return 0;
+    BOOL ok = RemoveDirectoryW(path);
+    free(path);
+    return ok ? 1 : 0;
+}
+
+static int rt_dir_win_move_dir(const char *src, const char *dst) {
+    wchar_t *wsrc = rt_dir_win_prepare_path(src);
+    wchar_t *wdst = rt_dir_win_prepare_path(dst);
+    if (!wsrc || !wdst) {
+        free(wsrc);
+        free(wdst);
+        return 0;
+    }
+    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_WRITE_THROUGH);
+    free(wsrc);
+    free(wdst);
+    return ok ? 1 : 0;
+}
+
+static int rt_dir_win_is_dot_name(const wchar_t *name) {
+    return wcscmp(name, L".") == 0 || wcscmp(name, L"..") == 0;
+}
+
+static void rt_dir_win_delete_file_w(const wchar_t *path) {
+    (void)DeleteFileW(path);
+}
+#endif
 
 /// @brief Check if a directory exists at the specified path.
 ///
@@ -136,16 +315,17 @@ int64_t rt_dir_exists(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
 
+#ifdef _WIN32
+    return rt_dir_win_exists_dir(cpath);
+#else
     struct stat st;
     if (stat(cpath, &st) != 0)
         return 0;
-
-#ifdef _WIN32
-    return (st.st_mode & _S_IFDIR) != 0;
-#elif defined(__viperdos__)
+#if defined(__viperdos__)
     return S_ISDIR(st.st_mode);
 #else
     return S_ISDIR(st.st_mode);
+#endif
 #endif
 }
 
@@ -200,7 +380,7 @@ void rt_dir_make(rt_string path) {
     }
 
 #ifdef _WIN32
-    if (_mkdir(cpath) != 0 && errno != EEXIST) {
+    if (!rt_dir_win_create_dir(cpath)) {
         rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #elif defined(__viperdos__)
@@ -293,56 +473,64 @@ void rt_dir_make_all(rt_string path) {
             *p = '\0';
 
             // Check if this level exists
+#ifdef _WIN32
+            if (!rt_dir_win_exists_dir(tmp)) {
+                if (!rt_dir_win_create_dir(tmp)) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
+                    return;
+                }
+            }
+#elif defined(__viperdos__)
             struct stat st;
             if (stat(tmp, &st) != 0) {
-#ifdef _WIN32
-                if (_mkdir(tmp) != 0 && errno != EEXIST) {
-                    free(tmp);
-                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
-                    return;
-                }
-#elif defined(__viperdos__)
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
-#else
-                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-                    free(tmp);
-                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
-                    return;
-                }
-#endif
             }
+#else
+            struct stat st;
+            if (stat(tmp, &st) != 0) {
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
+                    return;
+                }
+            }
+#endif
 
             *p = sep;
         }
     }
 
     // Create the final directory
+#ifdef _WIN32
+    if (!rt_dir_win_exists_dir(tmp) && !rt_dir_win_create_dir(tmp)) {
+        free(tmp);
+        rt_dir_trap_io("Dir.MakeAll: failed to create directory");
+        return;
+    }
+#elif defined(__viperdos__)
     struct stat st;
     if (stat(tmp, &st) != 0) {
-#ifdef _WIN32
-        if (_mkdir(tmp) != 0 && errno != EEXIST) {
-            free(tmp);
-            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
-            return;
-        }
-#elif defined(__viperdos__)
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
             rt_dir_trap_io("Dir.MakeAll: failed to create directory");
             return;
         }
-#else
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-            free(tmp);
-            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
-            return;
-        }
-#endif
     }
+#else
+    struct stat st;
+    if (stat(tmp, &st) != 0) {
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+            free(tmp);
+            rt_dir_trap_io("Dir.MakeAll: failed to create directory");
+            return;
+        }
+    }
+#endif
 
     free(tmp);
 }
@@ -395,7 +583,7 @@ void rt_dir_remove(rt_string path) {
     }
 
 #ifdef _WIN32
-    if (_rmdir(cpath) != 0) {
+    if (!rt_dir_win_remove_dir(cpath)) {
         rt_dir_trap_io("Dir.Remove: failed to remove directory");
     }
 #elif defined(__viperdos__)
@@ -490,39 +678,52 @@ void rt_dir_remove_all(rt_string path) {
     }
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pattern[PATH_MAX];
-    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
+    wchar_t *dir_path = rt_dir_win_prepare_path(cpath);
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!dir_path || !pattern) {
+        free(dir_path);
+        free(pattern);
+        rt_dir_trap_io("Dir.RemoveAll: failed to enumerate directory");
+        return;
+    }
 
-    HANDLE h = FindFirstFileA(pattern, &fd);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) {
         // Directory might be empty or not exist
-        _rmdir(cpath);
+        (void)RemoveDirectoryW(dir_path);
+        free(pattern);
+        free(dir_path);
         return;
     }
 
     do {
-        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+        if (rt_dir_win_is_dot_name(fd.cFileName))
             continue;
 
-        char full_path[PATH_MAX];
-        snprintf(full_path, PATH_MAX, "%s\\%s", cpath, fd.cFileName);
+        wchar_t *full_path = rt_dir_win_join(dir_path, fd.cFileName);
+        if (!full_path)
+            continue;
 
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-                (void)RemoveDirectoryA(full_path);
+                (void)RemoveDirectoryW(full_path);
             } else {
-                rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
+                rt_string sub = rt_dir_win_wide_to_string(full_path);
                 rt_dir_remove_all(sub);
                 rt_string_unref(sub);
             }
         } else {
-            delete_file(full_path);
+            rt_dir_win_delete_file_w(full_path);
         }
-    } while (FindNextFileA(h, &fd));
+
+        free(full_path);
+    } while (FindNextFileW(h, &fd));
 
     FindClose(h);
-    _rmdir(cpath);
+    (void)RemoveDirectoryW(dir_path);
+    free(pattern);
+    free(dir_path);
 #elif defined(__viperdos__)
     // ViperDOS: Use POSIX directory APIs from libc (same as Unix).
     // Falls through to the shared Unix implementation.
@@ -624,22 +825,26 @@ void *rt_dir_list(rt_string path) {
         return result;
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pattern[PATH_MAX];
-    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
-
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE)
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!pattern)
         return result;
 
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        free(pattern);
+        return result;
+    }
+
     do {
-        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
-            rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
+        if (!rt_dir_win_is_dot_name(fd.cFileName)) {
+            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
         }
-    } while (FindNextFileA(h, &fd));
+    } while (FindNextFileW(h, &fd));
 
     FindClose(h);
+    free(pattern);
 #else
     // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
@@ -728,44 +933,50 @@ void *rt_dir_entries_seq(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         rt_dir_trap_domain("Viper.IO.Dir.Entries: invalid directory path");
 
+#ifdef _WIN32
+    if (!rt_dir_win_exists_dir(cpath))
+        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
+#else
     struct stat st;
     if (stat(cpath, &st) != 0)
         rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
-
-#ifdef _WIN32
-    if ((st.st_mode & _S_IFDIR) == 0)
-        rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
-#elif defined(__viperdos__)
+#if defined(__viperdos__)
     if (!S_ISDIR(st.st_mode))
         rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 #else
     if (!S_ISDIR(st.st_mode))
         rt_dir_trap_not_found("Viper.IO.Dir.Entries: directory not found");
 #endif
+#endif
 
     void *result = rt_seq_new();
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pattern[PATH_MAX];
-    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!pattern)
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
 
-    HANDLE h = FindFirstFileA(pattern, &fd);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
-        if (err == ERROR_FILE_NOT_FOUND)
+        if (err == ERROR_FILE_NOT_FOUND) {
+            free(pattern);
             return result;
+        }
+        free(pattern);
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
     }
 
     do {
-        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
-            rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
+        if (!rt_dir_win_is_dot_name(fd.cFileName)) {
+            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
         }
-    } while (FindNextFileA(h, &fd));
+    } while (FindNextFileW(h, &fd));
 
     FindClose(h);
+    free(pattern);
 #else
     // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
@@ -843,22 +1054,26 @@ void *rt_dir_files(rt_string path) {
         return result;
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pattern[PATH_MAX];
-    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
-
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE)
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!pattern)
         return result;
+
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        free(pattern);
+        return result;
+    }
 
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
+            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
         }
-    } while (FindNextFileA(h, &fd));
+    } while (FindNextFileW(h, &fd));
 
     FindClose(h);
+    free(pattern);
 #else
     // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
@@ -965,23 +1180,26 @@ void *rt_dir_dirs(rt_string path) {
         return result;
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pattern[PATH_MAX];
-    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
-
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE)
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!pattern)
         return result;
 
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        free(pattern);
+        return result;
+    }
+
     do {
-        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && strcmp(fd.cFileName, ".") != 0 &&
-            strcmp(fd.cFileName, "..") != 0) {
-            rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !rt_dir_win_is_dot_name(fd.cFileName)) {
+            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
         }
-    } while (FindNextFileA(h, &fd));
+    } while (FindNextFileW(h, &fd));
 
     FindClose(h);
+    free(pattern);
 #else
     // Unix and ViperDOS: use POSIX directory APIs.
     DIR *dir = opendir(cpath);
@@ -1065,27 +1283,43 @@ void *rt_dir_dirs_seq(rt_string path) {
 /// @note O(1) time complexity.
 /// @note Traps if the current directory cannot be determined.
 /// @note Returns newly allocated string (caller manages memory).
-/// @note Maximum path length is PATH_MAX (typically 4096 on Unix, 260 on Windows).
+/// @note Windows uses wide Win32 APIs and supports extended-length paths.
 ///
 /// @see rt_dir_set_current For changing the working directory
 /// @see rt_path_absolute For converting relative paths to absolute
 rt_string rt_dir_current(void) {
-    char buffer[PATH_MAX];
-
 #ifdef _WIN32
-    if (_getcwd(buffer, PATH_MAX) == NULL) {
+    DWORD needed = GetCurrentDirectoryW(0, NULL);
+    if (needed == 0) {
         rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
+
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide) {
+        rt_dir_trap_runtime("Dir.Current: out of memory");
+        return rt_str_empty();
+    }
+
+    DWORD got = GetCurrentDirectoryW(needed, wide);
+    if (got == 0 || got >= needed) {
+        free(wide);
+        rt_dir_trap_io("Dir.Current: failed to get current directory");
+        return rt_str_empty();
+    }
+
+    rt_string result = rt_dir_win_wide_to_string(wide);
+    free(wide);
+    return result;
 #else
+    char buffer[PATH_MAX];
     // Unix and ViperDOS: use POSIX getcwd.
     if (getcwd(buffer, PATH_MAX) == NULL) {
         rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
-#endif
-
     return rt_string_from_bytes(buffer, strlen(buffer));
+#endif
 }
 
 /// @brief Change the current working directory.
@@ -1142,9 +1376,17 @@ void rt_dir_set_current(rt_string path) {
     }
 
 #ifdef _WIN32
-    if (_chdir(cpath) != 0) {
+    wchar_t *wide = rt_dir_win_prepare_path(cpath);
+    if (!wide) {
         rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
+        return;
     }
+    if (!SetCurrentDirectoryW(wide)) {
+        free(wide);
+        rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
+        return;
+    }
+    free(wide);
 #elif defined(__viperdos__)
     if (chdir(cpath) != 0) {
         rt_dir_trap_io("Dir.SetCurrent: failed to change directory");
@@ -1210,7 +1452,8 @@ void rt_dir_set_current(rt_string path) {
 ///
 /// @note O(1) time complexity for same-filesystem moves.
 /// @note Traps on failure.
-/// @note Uses rename() system call internally.
+/// @note Uses the platform rename/move primitive internally (`MoveFileExW` on Windows,
+///       `rename()` on Unix).
 /// @note Not atomic across different filesystems.
 ///
 /// @see rt_dir_make For creating directories
@@ -1230,7 +1473,13 @@ void rt_dir_move(rt_string src, rt_string dst) {
         return;
     }
 
+#ifdef _WIN32
+    if (!rt_dir_win_move_dir(csrc, cdst)) {
+        rt_dir_trap_io("Dir.Move: failed to move directory");
+    }
+#else
     if (rename(csrc, cdst) != 0) {
         rt_dir_trap_io("Dir.Move: failed to move directory");
     }
+#endif
 }

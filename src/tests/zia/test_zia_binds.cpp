@@ -44,8 +44,7 @@ TEST(ZiaBinds, BindStringLiteralWithExtension) {
                                        R"(
 module Lib;
 
-func greet() {
-    Viper.Terminal.Say("hi");
+func greet() {    Viper.Terminal.Say("hi");
 }
 )");
 
@@ -53,8 +52,7 @@ func greet() {
 module Main;
 bind "lib.zia";
 
-func start() {
-    greet();
+func start() {    greet();
 }
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
@@ -97,8 +95,7 @@ TEST(ZiaBinds, MissingBindReportsAtBindSite) {
 module Main;
 bind "missing.zia";
 
-func start() {
-}
+func start() {}
 )";
     const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
     const std::string mainPathStr = mainPath.string();
@@ -130,11 +127,9 @@ TEST(ZiaBinds, CircularBindAllowed) {
 module A;
 bind "b.zia";
 
-func a() {
-}
+func a() {}
 
-func start() {
-    a();
+func start() {    a();
     b();
 }
 )";
@@ -145,8 +140,7 @@ func start() {
 module B;
 bind "a.zia";
 
-func b() {
-}
+func b() {}
 )";
     writeFile(dir, "b.zia", bSource);
 
@@ -176,17 +170,14 @@ bind "b.zia";
 
 class Foo {
     expose Integer x;
-    expose func init(Integer val) { x = val; }
-}
+    expose func init(val: Integer) { x = val; }}
 
-func useFoo() -> Integer {
-    Foo f = new Foo(10);
+func useFoo() -> Integer {    var f: Foo = new Foo(10);
     return f.x;
 }
 
-func start() {
-    Integer a = useFoo();
-    Integer b = useBar();
+func start() {    var a: Integer = useFoo();
+    var b: Integer = useBar();
     Viper.Terminal.SayInt(a);
     Viper.Terminal.SayInt(b);
 }
@@ -201,11 +192,9 @@ bind "a.zia";
 
 class Bar {
     expose Integer y;
-    expose func init(Integer val) { y = val; }
-}
+    expose func init(val: Integer) { y = val; }}
 
-func useBar() -> Integer {
-    Bar b = new Bar(20);
+func useBar() -> Integer {    var b: Bar = new Bar(20);
     return b.y;
 }
 )";
@@ -258,8 +247,7 @@ TEST(ZiaBinds, CircularBindSelfImport) {
 module A;
 bind "./a";
 
-func start() {
-    Viper.Terminal.Say("self");
+func start() {    Viper.Terminal.Say("self");
 }
 )";
     const fs::path aPath = writeFile(dir, "a.zia", aSource);
@@ -304,12 +292,10 @@ module Inner;
 class Inner {
     expose Integer myValue;
 
-    expose func init(Integer v) {
-        myValue = v;
+    expose func init(v: Integer) {        myValue = v;
     }
 
-    expose func getValue() -> Integer {
-        return myValue;
+    expose func getValue() -> Integer {        return myValue;
     }
 }
 )");
@@ -323,8 +309,7 @@ bind "./inner";
 class Outer {
     expose Inner inner;
 
-    expose func test() -> Integer {
-        return inner.getValue();
+    expose func test() -> Integer {        return inner.getValue();
     }
 }
 )");
@@ -336,10 +321,9 @@ module Main;
 bind "./inner";
 bind "./outer";
 
-func start() {
-    Outer o = new Outer();
+func start() {    var o: Outer = new Outer();
     o.inner = new Inner(42);
-    Integer result = o.test();
+    var result: Integer = o.test();
     Viper.Terminal.SayInt(result);
 }
 )";

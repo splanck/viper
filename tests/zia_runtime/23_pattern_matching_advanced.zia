@@ -10,8 +10,7 @@ class Point {
     expose Integer x;
     expose Integer y;
 
-    expose func init(px: Integer, py: Integer) {
-        x = px;
+    expose func init(px: Integer, py: Integer) {        x = px;
         y = py;
     }
 }
@@ -19,14 +18,12 @@ class Point {
 class Box {
     expose Integer value;
 
-    expose func init(v: Integer) {
-        value = v;
+    expose func init(v: Integer) {        value = v;
     }
 }
 
 // Function using match with binding
-func classifyNumber(n: Integer) -> String {
-    var result = "";
+func classifyNumber(n: Integer) -> String {    var result = "";
     match n {
         0 => { result = "zero"; }
         1 => { result = "one"; }
@@ -37,8 +34,7 @@ func classifyNumber(n: Integer) -> String {
 }
 
 // Function using match on ranges/conditions via nested if
-func classifyAge(age: Integer) -> String {
-    var result = "";
+func classifyAge(age: Integer) -> String {    var result = "";
     match age {
         0 => { result = "newborn"; }
         n => {
@@ -61,8 +57,7 @@ func classifyAge(age: Integer) -> String {
 }
 
 // Match with binding and computation
-func transformValue(v: Integer) -> Integer {
-    var result = 0;
+func transformValue(v: Integer) -> Integer {    var result = 0;
     match v {
         0 => { result = 100; }
         1 => { result = 200; }
@@ -72,8 +67,7 @@ func transformValue(v: Integer) -> Integer {
 }
 
 // Match on optional type
-func describeOptional(opt: Integer?) -> String {
-    var result = "";
+func describeOptional(opt: Integer?) -> String {    var result = "";
     match opt {
         null => { result = "empty"; }
         _ => { result = "value:" + toString(opt ?? 0); }
@@ -82,8 +76,7 @@ func describeOptional(opt: Integer?) -> String {
 }
 
 // Match with wildcard
-func mapToCategory(code: Integer) -> String {
-    var result = "";
+func mapToCategory(code: Integer) -> String {    var result = "";
     match code {
         100 => { result = "info"; }
         200 => { result = "success"; }
@@ -95,8 +88,7 @@ func mapToCategory(code: Integer) -> String {
 }
 
 // Nested match
-func processCode(major: Integer, minor: Integer) -> String {
-    var result = "";
+func processCode(major: Integer, minor: Integer) -> String {    var result = "";
     match major {
         1 => {
             match minor {
@@ -117,8 +109,7 @@ func processCode(major: Integer, minor: Integer) -> String {
 }
 
 // Match controlling loop
-func findFirst(list: List[Integer], target: Integer) -> Integer {
-    var result = -1;
+func findFirst(list: List[Integer], target: Integer) -> Integer {    var result = -1;
     var i = 0;
     while (i < list.count()) {
         var current = list.get(i);
@@ -136,8 +127,7 @@ func findFirst(list: List[Integer], target: Integer) -> Integer {
 }
 
 // Multiple bindings in sequence
-func sumFirstThree(list: List[Integer]) -> Integer {
-    var sum = 0;
+func sumFirstThree(list: List[Integer]) -> Integer {    var sum = 0;
     if (list.count() >= 1) {
         var v0 = list.get(0);
         match v0 {
@@ -159,8 +149,7 @@ func sumFirstThree(list: List[Integer]) -> Integer {
     return sum;
 }
 
-func start() {
-    //=========================================================================
+func start() {    //=========================================================================
     // Test 1: Basic match with literal patterns
     //=========================================================================
     assertEqStr(classifyNumber(0), "zero", "match_literal_0");

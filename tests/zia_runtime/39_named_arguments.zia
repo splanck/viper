@@ -1,0 +1,41 @@
+module RuntimeTest39;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func formatPoint(x: Integer, y: Integer, scale: Integer = 1) -> Integer {
+    return (x * 100 + y) * scale;
+}
+
+struct Size {
+    Integer width;
+    Integer height;
+}
+
+class Counter {
+    Integer base;
+
+    expose func init(base: Integer) {
+        self.base = base;
+    }
+
+    expose func apply(delta: Integer, factor: Integer = 1) -> Integer {
+        return (self.base + delta) * factor;
+    }
+}
+
+func start() {
+    assertEqInt(formatPoint(y: 7, x: 4), 407, "named_function_reorder");
+    assertEqInt(formatPoint(4, y: 7, scale: 2), 814, "named_function_mixed_default");
+
+    var size = new Size(height: 9, width: 3);
+    assertEqInt(size.width, 3, "named_struct_width");
+    assertEqInt(size.height, 9, "named_struct_height");
+
+    var counter = new Counter(base: 10);
+    assertEqInt(counter.apply(factor: 3, delta: 2), 36, "named_method_reorder");
+    assertEqInt(counter.apply(5, factor: 2), 30, "named_method_mixed");
+
+    report();
+}

@@ -95,7 +95,9 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
 int64_t rt_obj_class_id(void *p) {
     if (!p)
         return 0;
-    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr))
+        return 0;
     return hdr ? hdr->class_id : 0;
 }
 
@@ -110,7 +112,9 @@ int64_t rt_obj_class_id(void *p) {
 void rt_obj_resurrect(void *p) {
     if (!p)
         return;
-    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr))
+        return;
     if (!hdr)
         return;
     // Direct atomic store bypasses rt_heap_retain's assert(old > 0):
@@ -145,7 +149,9 @@ void rt_obj_resurrect(void *p) {
 void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn) {
     if (!p)
         return;
-    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr))
+        return;
     if (!hdr)
         return;
     if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
@@ -167,6 +173,8 @@ void rt_obj_retain_maybe(void *p) {
         rt_str_retain_maybe((rt_string)p);
         return;
     }
+    if (!rt_heap_is_payload(p))
+        return;
     rt_heap_retain(p);
 }
 
@@ -183,6 +191,8 @@ int32_t rt_obj_release_check0(void *p) {
         rt_str_release_maybe((rt_string)p);
         return 0;
     }
+    if (!rt_heap_is_payload(p))
+        return 0;
     return (int32_t)(rt_heap_release_deferred(p) == 0);
 }
 
@@ -200,7 +210,9 @@ void rt_obj_free(void *p) {
         rt_str_release_maybe((rt_string)p);
         return;
     }
-    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr))
+        return;
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
         __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer) {
         rt_heap_finalizer_t fin = hdr->finalizer;

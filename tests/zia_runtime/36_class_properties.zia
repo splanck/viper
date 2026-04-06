@@ -5,8 +5,7 @@ bind Viper.Terminal;
 class Counter {
     hide Integer _count;
 
-    expose func init() {
-        _count = 0;
+    expose func init() {        _count = 0;
     }
 
     expose property count: Integer {
@@ -19,8 +18,7 @@ class Counter {
     }
 }
 
-func start() {
-    var c = new Counter();
+func start() {    var c = new Counter();
     c.count = 42;
     if (c.count != 42) {
         Viper.Terminal.Say("FAIL: property_setter");

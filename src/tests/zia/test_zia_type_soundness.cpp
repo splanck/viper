@@ -61,8 +61,7 @@ TEST(ZiaTypeSoundness, AssignStringToInteger) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x = "hello";
+func start() {    var x: Integer = "hello";
 }
 )",
                                 sm);
@@ -74,8 +73,7 @@ TEST(ZiaTypeSoundness, AssignBooleanToString) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    String s = true;
+func start() {    var s: String = true;
 }
 )",
                                 sm);
@@ -87,8 +85,7 @@ TEST(ZiaTypeSoundness, AssignIntegerToBoolean) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Boolean b = 42;
+func start() {    var b: Boolean = 42;
 }
 )",
                                 sm);
@@ -100,8 +97,7 @@ TEST(ZiaTypeSoundness, AssignNumberToInteger) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x = 3.14;
+func start() {    var x: Integer = 3.14;
 }
 )",
                                 sm);
@@ -113,8 +109,7 @@ TEST(ZiaTypeSoundness, AssignWrongListType) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    List[String] s = [1, 2, 3];
+func start() {    var s: List[String] = [1, 2, 3];
 }
 )",
                                 sm);
@@ -128,8 +123,7 @@ module Test;
 class Cat { expose Integer lives; }
 class Dog { expose Integer age; }
 /// @brief Start.
-func start() {
-    Cat c = new Dog();
+func start() {    var c: Cat = new Dog();
 }
 )",
                                 sm);
@@ -143,8 +137,7 @@ module Test;
 struct Point { Integer x; Integer y; }
 class Dog { expose Integer age; }
 /// @brief Start.
-func start() {
-    Point p = new Dog();
+func start() {    var p: Point = new Dog();
 }
 )",
                                 sm);
@@ -160,12 +153,10 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeStringForInt) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Add.
-func add(Integer a, Integer b) -> Integer {
-    return a + b;
+func add(a: Integer, b: Integer) -> Integer {    return a + b;
 }
 /// @brief Start.
-func start() {
-    Integer x = add("hello", 5);
+func start() {    var x: Integer = add("hello", 5);
 }
 )",
                                 sm);
@@ -180,12 +171,10 @@ TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity) {
 module Test;
 class Dog { expose Integer age; }
 /// @brief Pet dog.
-func petDog(Dog d) {
-    Viper.Terminal.SayInt(d.age);
+func petDog(d: Dog) {    Viper.Terminal.SayInt(d.age);
 }
 /// @brief Start.
-func start() {
-    petDog(42);
+func start() {    petDog(42);
 }
 )",
                                 sm);
@@ -198,12 +187,10 @@ TEST(ZiaTypeSoundness, GAP_TooManyArguments) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Greet.
-func greet(String name) {
-    Viper.Terminal.Say(name);
+func greet(name: String) {    Viper.Terminal.Say(name);
 }
 /// @brief Start.
-func start() {
-    greet("Alice", "Bob");
+func start() {    greet("Alice", "Bob");
 }
 )",
                                 sm);
@@ -216,12 +203,10 @@ TEST(ZiaTypeSoundness, GAP_TooFewArguments) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Add.
-func add(Integer a, Integer b) -> Integer {
-    return a + b;
+func add(a: Integer, b: Integer) -> Integer {    return a + b;
 }
 /// @brief Start.
-func start() {
-    Integer x = add(1);
+func start() {    var x: Integer = add(1);
 }
 )",
                                 sm);
@@ -235,13 +220,11 @@ TEST(ZiaTypeSoundness, GAP_MethodWrongArgType) {
 module Test;
 class Counter {
     expose Integer count;
-    expose func addAmount(Integer amount) {
-        count = count + amount;
+    expose func addAmount(amount: Integer) {        count = count + amount;
     }
 }
 /// @brief Start.
-func start() {
-    Counter c = new Counter();
+func start() {    var c: Counter = new Counter();
     c.addAmount("ten");
 }
 )",
@@ -260,9 +243,8 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnEntity) {
 module Test;
 class Dog { expose Integer age; }
 /// @brief Start.
-func start() {
-    Dog d = new Dog();
-    Integer c = d.color;
+func start() {    var d: Dog = new Dog();
+    var c: Integer = d.color;
 }
 )",
                                 sm);
@@ -277,12 +259,10 @@ TEST(ZiaTypeSoundness, PrivateFieldAccess) {
 module Test;
 class Secret {
     Integer hidden;
-    expose func getHidden() -> Integer { return hidden; }
-}
+    expose func getHidden() -> Integer { return hidden; }}
 /// @brief Start.
-func start() {
-    Secret s = new Secret();
-    Integer x = s.hidden;
+func start() {    var s: Secret = new Secret();
+    var x: Integer = s.hidden;
 }
 )",
                                 sm);
@@ -295,9 +275,8 @@ TEST(ZiaTypeSoundness, FieldOnPrimitive) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x = 42;
-    Integer y = x.value;
+func start() {    var x: Integer = 42;
+    var y: Integer = x.value;
 }
 )",
                                 sm);
@@ -312,9 +291,8 @@ TEST(ZiaTypeSoundness, NonExistentFieldOnValue) {
 module Test;
 struct Point { Integer x; Integer y; }
 /// @brief Start.
-func start() {
-    Point p = Point(1, 2);
-    Integer z = p.z;
+func start() {    var p: Point = new Point(1, 2);
+    var z: Integer = p.z;
 }
 )",
                                 sm);
@@ -332,9 +310,8 @@ TEST(ZiaTypeSoundness, GAP_UninitializedVariable) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x;
-    Integer y = x + 1;
+func start() {    var x: Integer;
+    var y: Integer = x + 1;
     Viper.Terminal.SayInt(y);
 }
 )",
@@ -350,13 +327,12 @@ TEST(ZiaTypeSoundness, GAP_ConditionalInit) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x;
-    Boolean cond = true;
+func start() {    var x: Integer;
+    var cond: Boolean = true;
     if cond {
         x = 10;
     }
-    Integer y = x + 1;
+    var y: Integer = x + 1;
     Viper.Terminal.SayInt(y);
 }
 )",
@@ -372,8 +348,7 @@ TEST(ZiaTypeSoundness, UndefinedVariable) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer y = x + 1;
+func start() {    var y: Integer = x + 1;
 }
 )",
                                 sm);
@@ -387,8 +362,7 @@ TEST(ZiaTypeSoundness, UseVariableWithoutTypeOrInit) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    var x;
+func start() {    var x;
 }
 )",
                                 sm);
@@ -406,8 +380,7 @@ TEST(ZiaTypeSoundness, AssignIntegerToEntity) {
 module Test;
 class Foo { expose Integer val; }
 /// @brief Start.
-func start() {
-    Foo f = 42;
+func start() {    var f: Foo = 42;
 }
 )",
                                 sm);
@@ -421,9 +394,8 @@ TEST(ZiaTypeSoundness, GAP_UncheckedAsCastIntToEntity) {
 module Test;
 class Foo { expose Integer val; }
 /// @brief Start.
-func start() {
-    Integer n = 12345;
-    Foo f = n as Foo;
+func start() {    var n: Integer = 12345;
+    var f: Foo = n as Foo;
 }
 )",
                                 sm);
@@ -438,9 +410,8 @@ TEST(ZiaTypeSoundness, GAP_AsCastEntityToInteger) {
 module Test;
 class Foo { expose Integer val; }
 /// @brief Start.
-func start() {
-    Foo f = new Foo();
-    Integer n = f as Integer;
+func start() {    var f: Foo = new Foo();
+    var n: Integer = f as Integer;
 }
 )",
                                 sm);
@@ -453,8 +424,7 @@ TEST(ZiaTypeSoundness, AssignNullToNonOptional) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x = null;
+func start() {    var x: Integer = null;
 }
 )",
                                 sm);
@@ -471,9 +441,8 @@ TEST(ZiaTypeSoundness, NumberVariableToByte) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Number n = 300.5;
-    Byte b = n;
+func start() {    var n: Number = 300.5;
+    var b: Byte = n;
 }
 )",
                                 sm);
@@ -486,8 +455,7 @@ TEST(ZiaTypeSoundness, LargeIntLiteralToByte) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Byte b = 300;
+func start() {    var b: Byte = 300;
 }
 )",
                                 sm);
@@ -500,9 +468,8 @@ TEST(ZiaTypeSoundness, IntegerVariableToByte) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer big = 1000;
-    Byte b = big;
+func start() {    var big: Integer = 1000;
+    var b: Byte = big;
 }
 )",
                                 sm);
@@ -515,8 +482,7 @@ TEST(ZiaTypeSoundness, IntegerAsCondition) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer x = 42;
+func start() {    var x: Integer = 42;
     if x {
         Viper.Terminal.Say("truthy");
     }
@@ -533,13 +499,11 @@ TEST(ZiaTypeSoundness, NumberReturnFromIntegerFunc) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Half.
-func half(Integer n) -> Integer {
-    Number result = n / 2.0;
+func half(n: Integer) -> Integer {    var result: Number = n / 2.0;
     return result;
 }
 /// @brief Start.
-func start() {
-    Integer x = half(10);
+func start() {    var x: Integer = half(10);
 }
 )",
                                 sm);
@@ -561,9 +525,8 @@ class Dog {
     expose Integer age;
 }
 /// @brief Start.
-func start() {
-    Dog? d = null;
-    Integer a = d.age;
+func start() {    var d: Dog? = null;
+    var a: Integer = d.age;
 }
 )",
                                 sm);
@@ -579,12 +542,10 @@ TEST(ZiaTypeSoundness, GAP_NullOptionalMethodCall) {
 module Test;
 class Dog {
     expose Integer age;
-    expose func bark() -> String { return "Woof"; }
-}
+    expose func bark() -> String { return "Woof"; }}
 /// @brief Start.
-func start() {
-    Dog? d = null;
-    String s = d.bark();
+func start() {    var d: Dog? = null;
+    var s: String = d.bark();
 }
 )",
                                 sm);
@@ -598,12 +559,10 @@ TEST(ZiaTypeSoundness, ReturnNullFromNonOptionalFunc) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Get value.
-func getValue() -> Integer {
-    return null;
+func getValue() -> Integer {    return null;
 }
 /// @brief Start.
-func start() {
-    Integer x = getValue();
+func start() {    var x: Integer = getValue();
 }
 )",
                                 sm);
@@ -616,13 +575,11 @@ TEST(ZiaTypeSoundness, GAP_PassOptionalToNonOptionalParam) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Double.
-func double(Integer n) -> Integer {
-    return n + n;
+func double(n: Integer) -> Integer {    return n + n;
 }
 /// @brief Start.
-func start() {
-    Integer? x = null;
-    Integer y = double(x);
+func start() {    var x: Integer? = null;
+    var y: Integer = double(x);
 }
 )",
                                 sm);
@@ -636,8 +593,7 @@ TEST(ZiaTypeSoundness, OptionalAcceptsInnerType) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer? x = 42;
+func start() {    var x: Integer? = 42;
     Viper.Terminal.SayInt(x);
 }
 )",
@@ -655,10 +611,9 @@ TEST(ZiaTypeSoundness, LogicalAndWithIntegers) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Integer a = 1;
-    Integer b = 2;
-    Boolean c = a && b;
+func start() {    var a: Integer = 1;
+    var b: Integer = 2;
+    var c: Boolean = a && b;
 }
 )",
                                 sm);
@@ -672,10 +627,9 @@ TEST(ZiaTypeSoundness, BitwiseOrWithFloats) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Number a = 1.5;
-    Number b = 2.5;
-    Integer c = a | b;
+func start() {    var a: Number = 1.5;
+    var b: Number = 2.5;
+    var c: Integer = a | b;
 }
 )",
                                 sm);
@@ -689,9 +643,8 @@ TEST(ZiaTypeSoundness, NegateString) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    String s = "hello";
-    Integer n = -s;
+func start() {    var s: String = "hello";
+    var n: Integer = -s;
 }
 )",
                                 sm);
@@ -709,8 +662,7 @@ TEST(ZiaTypeSoundness, IntegerToNumberWidening) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Number x = 42;
+func start() {    var x: Number = 42;
 }
 )",
                                 sm);
@@ -723,8 +675,7 @@ TEST(ZiaTypeSoundness, ByteLiteralInRange) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    Byte b = 200;
+func start() {    var b: Byte = 200;
 }
 )",
                                 sm);
@@ -737,8 +688,7 @@ TEST(ZiaTypeSoundness, EmptyListInference) {
     auto result = compileSource(R"(
 module Test;
 /// @brief Start.
-func start() {
-    List[Integer] x = [];
+func start() {    var x: List[Integer] = [];
 }
 )",
                                 sm);

@@ -38,7 +38,17 @@ typedef struct RtModvarEntry {
     int kind;    ///< Storage kind (I64, F64, I1, PTR, STR).
     void *addr;  ///< Allocated storage block.
     size_t size; ///< Size in bytes.
+    uint64_t hash; ///< Cached hash of (name, kind) for indexed lookup.
 } RtModvarEntry;
+
+enum {
+    RT_MODVAR_KIND_I64 = 0,
+    RT_MODVAR_KIND_F64 = 1,
+    RT_MODVAR_KIND_I1 = 2,
+    RT_MODVAR_KIND_PTR = 3,
+    RT_MODVAR_KIND_STR = 4,
+    RT_MODVAR_KIND_BLOCK = 5,
+};
 
 // Forward declarations for opaque per-module state stored in context
 struct RtFileChannelEntry;
@@ -78,6 +88,8 @@ typedef struct RtContext {
     RtModvarEntry *modvar_entries;
     size_t modvar_count;
     size_t modvar_capacity;
+    size_t *modvar_index_slots;
+    size_t modvar_index_capacity;
 
     // File channel table (rt_file.c)
     RtFileState file_state;

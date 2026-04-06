@@ -182,13 +182,12 @@ static void collect_wildcard(void *current, const char *remaining, void *results
 static void *auto_parse_root(void *root) {
     if (!root)
         return NULL;
-    uint64_t magic = *(uint64_t *)root;
-    if (magic == RT_STRING_MAGIC) {
+    if (rt_string_is_handle(root)) {
         // root is a raw string — try to parse it as JSON
         void *parsed = rt_json_parse((rt_string)root);
         return parsed;
     }
-    if (magic == RT_BOX_STR) {
+    if (rt_box_type(root) == RT_BOX_STR) {
         // root is a boxed string — unbox and parse
         rt_string s = rt_unbox_str(root);
         if (s) {

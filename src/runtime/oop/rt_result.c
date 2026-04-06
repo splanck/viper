@@ -84,6 +84,7 @@ void *rt_result_ok(void *value) {
     r->variant = RESULT_OK;
     r->value_type = VALUE_PTR;
     r->value.ptr = value;
+    rt_obj_retain_maybe(value);
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
@@ -92,7 +93,7 @@ void *rt_result_ok_str(rt_string value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_STR;
-    r->value.str = value;
+    r->value.str = value ? rt_string_ref(value) : NULL;
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
@@ -120,6 +121,7 @@ void *rt_result_err(void *error) {
     r->variant = RESULT_ERR;
     r->value_type = VALUE_PTR;
     r->value.ptr = error;
+    rt_obj_retain_maybe(error);
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
@@ -128,7 +130,7 @@ void *rt_result_err_str(rt_string message) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
     r->value_type = VALUE_STR;
-    r->value.str = message;
+    r->value.str = message ? rt_string_ref(message) : NULL;
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }

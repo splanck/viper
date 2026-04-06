@@ -41,8 +41,7 @@ TEST(ZiaBindFns, BoxFunctions) {
 module TestBox;
 bind Viper.Core.Box;
 /// @brief Start.
-func start() {
-    var b = I64(42);
+func start() {    var b = I64(42);
     var v = ToI64(b);
 }
 )"));
@@ -54,8 +53,7 @@ TEST(ZiaBindFns, ParseFunctions) {
 module TestParse;
 bind Viper.Core.Parse;
 /// @brief Start.
-func start() {
-    var x = IntOr("42", 0);
+func start() {    var x = IntOr("42", 0);
     var y = NumOr("3.14", 0.0);
 }
 )"));
@@ -67,8 +65,7 @@ TEST(ZiaBindFns, RandomFunctions) {
 module TestRandom;
 bind Viper.Math.Random;
 /// @brief Start.
-func start() {
-    var r = Range(1, 100);
+func start() {    var r = Range(1, 100);
 }
 )"));
 }
@@ -79,8 +76,7 @@ TEST(ZiaBindFns, StringFunctions) {
 module TestString;
 bind Viper.String;
 /// @brief Start.
-func start() {
-    var a = Capitalize("hello");
+func start() {    var a = Capitalize("hello");
     var b = Title("hello world");
     var c = Slug("Hello World!");
     var d = LastIndexOf("hello world hello", "hello");
