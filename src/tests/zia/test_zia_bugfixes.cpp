@@ -184,6 +184,46 @@ func start() {    var argc = Viper.Environment.GetArgumentCount();
     EXPECT_GE(countCallsTo(*mainFn, "Viper.Environment.GetArgumentCount"), static_cast<size_t>(1));
 }
 
+/// @brief Runtime APIs should accept named arguments using their surfaced parameter names.
+TEST(ZiaBugFixes, RuntimeNamedArgumentsUseSurfaceParameterNames) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Collections;
+
+func start() {    var xs = List.New();
+    xs.Add(value: 1);
+    var first = xs.Get(index: 0);
+    var part = "abcd".Substring(start: 1, len: 2);
+    Viper.Terminal.SetPosition(row: 1, col: 2);
+    Viper.Terminal.SetColor(fg: 7, bg: 0);
+    Viper.Terminal.Say(part);
+    Viper.Terminal.SayInt(first);
+}
+)";
+    CompilerInput input{.source = source, .path = "runtime_named_args.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListGet), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.String.Substring"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Terminal.SetPosition"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Terminal.SetColor"), static_cast<size_t>(1));
+}
+
 /// @brief Test Byte arguments widen to Integer parameters during lowering.
 TEST(ZiaBugFixes, ByteArgumentsWidenForCalls) {
     SourceManager sm;
@@ -1045,6 +1085,7 @@ func start() {    var x: Integer = SENTINEL;
     Viper.Terminal.SayInt(x);
 }
 )";
+
     const fs::path mainPath = writeFileFE011(dir, "main.zia", mainSource);
     const std::string mainPathStr = mainPath.string();
     SourceManager sm;
@@ -1069,6 +1110,104 @@ func start() {    var x: Integer = SENTINEL;
         // Cross-module non-literal final must fold to -2147483647, not 0
         EXPECT_TRUE(foundSentinel);
     }
+}
+
+TEST(ZiaBugFixes, RuntimeTerminalTextCallsAcceptPrimitivesAndObjects) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Dog {}
+
+func start() {
+    Viper.Terminal.Say(42);
+    Viper.Terminal.Print(true);
+    Viper.Terminal.Say(new Dog());
+}
+)";
+    CompilerInput input{.source = source, .path = "terminal_text_calls.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+
+    const auto *mainFn = findFunction(result.module, "main");
+    EXPECT_TRUE(mainFn != nullptr);
+    if (!mainFn)
+        return;
+
+    EXPECT_TRUE(countCallsTo(*mainFn, kTerminalSayInt) >= 1);
+    EXPECT_TRUE(countCallsTo(*mainFn, kTerminalPrintBool) >= 1);
+    EXPECT_TRUE(countCallsTo(*mainFn, kObjectToString) >= 1);
+    EXPECT_TRUE(countCallsTo(*mainFn, kTerminalSay) >= 1);
+}
+
+TEST(ZiaBugFixes, NonTerminalRuntimeCallsDoNotStringifyArguments) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var abs = Viper.Math.Abs(-3.5);
+    var ch = Viper.String.Chr(66);
+    Viper.Terminal.Say(ch);
+    Viper.Terminal.SayNum(abs);
+}
+)";
+    CompilerInput input{.source = source, .path = "non_terminal_runtime_calls.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+
+    const auto *mainFn = findFunction(result.module, "main");
+    EXPECT_TRUE(mainFn != nullptr);
+    if (!mainFn)
+        return;
+
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Math.Abs"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.String.Chr"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, kStringFromInt), static_cast<size_t>(0));
+    EXPECT_EQ(countCallsTo(*mainFn, kStringFromNum), static_cast<size_t>(0));
+}
+
+/// @brief Cross-module finals may reference other exported finals and use full
+/// arithmetic folding, including integer division.
+TEST(ZiaBugFixes, CrossModuleFinalConstantReferenceAndDivision) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_final_ref_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "cross_module_ref_div";
+
+    (void)writeFileFE011(dir,
+                         "config.zia",
+                         R"(
+module Config;
+
+final PIECE_SZ = 70;
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "config.zia";
+
+final SP = PIECE_SZ;
+final CX = PIECE_SZ / 2;
+
+func start() {
+    var sp: Integer = SP;
+    var cx: Integer = CX;
+    Viper.Terminal.SayInt(sp);
+    Viper.Terminal.SayInt(cx);
+}
+)";
+    const fs::path mainPath = writeFileFE011(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1567,6 +1706,44 @@ func start() {    var scores: Map[String, Integer] = Viper.Collections.Map.New()
     EXPECT_GE(countCallsTo(*mainFn, kMapSet), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kMapGet), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kMapCount), static_cast<size_t>(1));
+}
+
+/// @brief Assignment into typed Map fields should preserve the runtime Map surface.
+TEST(ZiaBugFixes, RuntimeMapConstructorPreservesFieldAssignmentSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Collections;
+
+class Session {
+    expose Map vars;
+
+    expose func init() {
+        vars = Map.New();
+        Map.SetStr(vars, "mode", "strict");
+    }
+
+    expose func mode() -> String {
+        return Map.GetStr(vars, "mode");
+    }
+}
+
+func start() {
+    var session = new Session();
+    session.init();
+    Viper.Terminal.Say(session.mode());
+}
+)";
+    CompilerInput input{.source = source, .path = "runtime_map_field_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *initFn = findFunction(result.module, "Session.init");
+    ASSERT_TRUE(initFn != nullptr);
+    EXPECT_GE(countCallsTo(*initFn, kMapNew), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*initFn, "Viper.Collections.Map.SetStr"), static_cast<size_t>(1));
 }
 
 /// @brief Test that runtime Set.New preserves semantic Set methods and properties.

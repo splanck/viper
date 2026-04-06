@@ -1,0 +1,298 @@
+module pieces;
+
+bind Viper.Graphics;
+bind "../core/config";
+
+// ============================================================================
+// PieceSprites — pre-rendered piece images for high-quality rendering.
+//
+// Each piece is drawn once into a Pixels buffer at startup using the richer
+// Pixels.Draw* APIs (Bezier curves, thick lines, triangles, anti-aliased
+// ellipses). The sprites are then stamped onto the canvas each frame via
+// Canvas.BlitAlpha, which respects the alpha channel for smooth edges.
+//
+// Call initSprites() once at startup, then getPiece(type, isWhite) to
+// retrieve the cached Pixels buffer for any piece.
+// ============================================================================
+
+// 12 pre-rendered sprites: 6 piece types × 2 colors
+var whitePawn:   Pixels;
+var whiteRook:   Pixels;
+var whiteKnight: Pixels;
+var whiteBishop: Pixels;
+var whiteQueen:  Pixels;
+var whiteKing:   Pixels;
+var blackPawn:   Pixels;
+var blackRook:   Pixels;
+var blackKnight: Pixels;
+var blackBishop: Pixels;
+var blackQueen:  Pixels;
+var blackKing:   Pixels;
+
+final SP = PIECE_SZ;           // sprite size (70×70)
+final CX = PIECE_SZ / 2;      // center X
+final CY = PIECE_SZ / 2;      // center Y
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+func initSprites() {
+    whitePawn   = renderPawn(true);
+    whiteRook   = renderRook(true);
+    whiteKnight = renderKnight(true);
+    whiteBishop = renderBishop(true);
+    whiteQueen  = renderQueen(true);
+    whiteKing   = renderKing(true);
+    blackPawn   = renderPawn(false);
+    blackRook   = renderRook(false);
+    blackKnight = renderKnight(false);
+    blackBishop = renderBishop(false);
+    blackQueen  = renderQueen(false);
+    blackKing   = renderKing(false);
+}
+
+func getPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
+    if isWhite {
+        if pieceType == PAWN   { return whitePawn; }
+        if pieceType == ROOK   { return whiteRook; }
+        if pieceType == KNIGHT { return whiteKnight; }
+        if pieceType == BISHOP { return whiteBishop; }
+        if pieceType == QUEEN  { return whiteQueen; }
+        if pieceType == KING   { return whiteKing; }
+    } else {
+        if pieceType == PAWN   { return blackPawn; }
+        if pieceType == ROOK   { return blackRook; }
+        if pieceType == KNIGHT { return blackKnight; }
+        if pieceType == BISHOP { return blackBishop; }
+        if pieceType == QUEEN  { return blackQueen; }
+        if pieceType == KING   { return blackKing; }
+    }
+    return null;
+}
+
+// ============================================================================
+// Color helpers
+// ============================================================================
+
+func fillColor(white: Boolean) -> Integer {
+    if white { return 0xFAF0E6; }   // linen white
+    return 0x2C2C2C;                 // dark charcoal
+}
+
+func outlineColor(white: Boolean) -> Integer {
+    if white { return 0x222222; }    // near black
+    return 0xCCCCCC;                 // light grey
+}
+
+func accentColor(white: Boolean) -> Integer {
+    if white { return 0xD0C8B8; }    // shadow for white pieces
+    return 0x505050;                  // highlight for dark pieces
+}
+
+// ============================================================================
+// Piece rendering — each returns a new Pixels buffer (SP × SP)
+//
+// Technique: draw outline layer first (larger shapes in outline color),
+// then fill layer on top (slightly smaller in fill color). The layering
+// creates a clean border effect. Detail marks (eyes, cross bars, slashes)
+// use accent color or outline for visibility.
+//
+// All coordinates relative to center (CX, CY) of the sprite buffer.
+// ============================================================================
+
+func renderPawn(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base — wide ellipse
+    px.DrawEllipse(CX, CY + 22, 20, 8, out);
+    px.DrawEllipse(CX, CY + 22, 17, 6, fill);
+
+    // Body — connecting trapezoid via overlapping shapes
+    px.DrawBox(CX - 8, CY + 6, 16, 18, fill);
+    px.DrawEllipse(CX, CY + 8, 12, 10, out);
+    px.DrawEllipse(CX, CY + 8, 10, 8, fill);
+
+    // Head — round
+    px.DrawDisc(CX, CY - 6, 14, out);
+    px.DrawDisc(CX, CY - 6, 12, fill);
+
+    // Subtle shadow line on body
+    px.DrawLine(CX - 6, CY + 16, CX + 6, CY + 16, acc);
+
+    return px;
+}
+
+func renderRook(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base
+    px.DrawEllipse(CX, CY + 22, 21, 8, out);
+    px.DrawEllipse(CX, CY + 22, 18, 6, fill);
+
+    // Body column
+    px.DrawBox(CX - 12, CY - 4, 24, 28, out);
+    px.DrawBox(CX - 10, CY - 2, 20, 24, fill);
+
+    // Top platform
+    px.DrawBox(CX - 15, CY - 14, 30, 12, out);
+    px.DrawBox(CX - 13, CY - 12, 26, 10, fill);
+
+    // Three crenellations (the castle battlements)
+    px.DrawBox(CX - 14, CY - 26, 8, 14, out);
+    px.DrawBox(CX - 13, CY - 25, 6, 12, fill);
+    px.DrawBox(CX - 3,  CY - 26, 6, 14, out);
+    px.DrawBox(CX - 2,  CY - 25, 4, 12, fill);
+    px.DrawBox(CX + 6,  CY - 26, 8, 14, out);
+    px.DrawBox(CX + 7,  CY - 25, 6, 12, fill);
+
+    // Horizontal accent line across body
+    px.DrawLine(CX - 9, CY + 8, CX + 9, CY + 8, acc);
+
+    return px;
+}
+
+func renderKnight(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base
+    px.DrawEllipse(CX, CY + 22, 20, 8, out);
+    px.DrawEllipse(CX, CY + 22, 17, 6, fill);
+
+    // Neck — angled block (left-of-center)
+    px.DrawBox(CX - 10, CY, 16, 24, out);
+    px.DrawBox(CX - 9, CY + 1, 14, 22, fill);
+
+    // Head — large disc offset right for profile look
+    px.DrawDisc(CX + 4, CY - 8, 16, out);
+    px.DrawDisc(CX + 4, CY - 8, 14, fill);
+
+    // Muzzle — extends to the right
+    px.DrawEllipse(CX + 14, CY - 2, 8, 6, out);
+    px.DrawEllipse(CX + 14, CY - 2, 6, 4, fill);
+
+    // Ear — pointed triangle at top
+    px.DrawTriangle(CX + 4, CY - 28, CX - 2, CY - 16, CX + 10, CY - 16, out);
+    px.DrawTriangle(CX + 4, CY - 26, CX, CY - 17, CX + 8, CY - 17, fill);
+
+    // Eye — contrasting dot
+    px.DrawDisc(CX + 10, CY - 10, 3, out);
+
+    // Nostril mark
+    px.DrawDisc(CX + 19, CY - 2, 2, acc);
+
+    return px;
+}
+
+func renderBishop(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base
+    px.DrawEllipse(CX, CY + 22, 20, 8, out);
+    px.DrawEllipse(CX, CY + 22, 17, 6, fill);
+
+    // Tapered body — tall narrow ellipse
+    px.DrawEllipse(CX, CY + 3, 12, 22, out);
+    px.DrawEllipse(CX, CY + 3, 10, 20, fill);
+
+    // Ball at top
+    px.DrawDisc(CX, CY - 18, 10, out);
+    px.DrawDisc(CX, CY - 18, 8, fill);
+
+    // Pointed tip
+    px.DrawDisc(CX, CY - 29, 4, out);
+    px.DrawDisc(CX, CY - 29, 2, fill);
+
+    // Diagonal slash — the bishop's characteristic mark
+    px.DrawThickLine(CX - 6, CY - 14, CX + 6, CY - 22, out, 2);
+
+    // Horizontal sash
+    px.DrawLine(CX - 8, CY + 6, CX + 8, CY + 6, acc);
+
+    return px;
+}
+
+func renderQueen(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base — slightly wider than other pieces
+    px.DrawEllipse(CX, CY + 22, 22, 9, out);
+    px.DrawEllipse(CX, CY + 22, 19, 7, fill);
+
+    // Body — tall wide ellipse
+    px.DrawEllipse(CX, CY, 14, 24, out);
+    px.DrawEllipse(CX, CY, 12, 22, fill);
+
+    // Crown — 5 points radiating outward
+    // Center point
+    px.DrawDisc(CX, CY - 26, 6, out);
+    px.DrawDisc(CX, CY - 26, 4, fill);
+
+    // Inner pair — angled outward
+    px.DrawDisc(CX - 11, CY - 22, 6, out);
+    px.DrawDisc(CX - 11, CY - 22, 4, fill);
+    px.DrawDisc(CX + 11, CY - 22, 6, out);
+    px.DrawDisc(CX + 11, CY - 22, 4, fill);
+
+    // Outer pair — further out and lower
+    px.DrawDisc(CX - 20, CY - 15, 6, out);
+    px.DrawDisc(CX - 20, CY - 15, 4, fill);
+    px.DrawDisc(CX + 20, CY - 15, 6, out);
+    px.DrawDisc(CX + 20, CY - 15, 4, fill);
+
+    // Crown connecting arcs (V shapes between points)
+    px.DrawLine(CX - 20, CY - 15, CX - 6, CY - 10, acc);
+    px.DrawLine(CX - 6, CY - 10, CX - 11, CY - 22, acc);
+    px.DrawLine(CX - 11, CY - 22, CX, CY - 12, acc);
+    px.DrawLine(CX, CY - 12, CX + 11, CY - 22, acc);
+    px.DrawLine(CX + 11, CY - 22, CX + 6, CY - 10, acc);
+    px.DrawLine(CX + 6, CY - 10, CX + 20, CY - 15, acc);
+
+    return px;
+}
+
+func renderKing(white: Boolean) -> Pixels {
+    var px = Pixels.New(SP, SP);
+    var fill = fillColor(white);
+    var out = outlineColor(white);
+    var acc = accentColor(white);
+
+    // Base — wide
+    px.DrawEllipse(CX, CY + 22, 22, 9, out);
+    px.DrawEllipse(CX, CY + 22, 19, 7, fill);
+
+    // Body — tall wide ellipse
+    px.DrawEllipse(CX, CY, 14, 24, out);
+    px.DrawEllipse(CX, CY, 12, 22, fill);
+
+    // Cross — horizontal bar
+    px.DrawBox(CX - 14, CY - 24, 28, 8, out);
+    px.DrawBox(CX - 12, CY - 23, 24, 6, fill);
+
+    // Cross — vertical bar
+    px.DrawBox(CX - 4, CY - 34, 8, 22, out);
+    px.DrawBox(CX - 3, CY - 33, 6, 20, fill);
+
+    // Horizontal sash across body
+    px.DrawLine(CX - 10, CY + 6, CX + 10, CY + 6, acc);
+
+    // Small jewel at cross intersection
+    px.DrawDisc(CX, CY - 20, 3, acc);
+
+    return px;
+}

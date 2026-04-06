@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/common/StringUtils.hpp"
+#include "frontends/zia/RuntimeAdapter.hpp"
+#include "frontends/zia/RuntimeNames.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -184,6 +186,34 @@ static bool extractDottedName(Expr *expr, std::string &out) {
     return false;
 }
 
+bool isTerminalTextRuntime(std::string_view calleeName) {
+    return calleeName == runtime::kTerminalSay || calleeName == runtime::kTerminalPrint;
+}
+
+bool canAutoStringifyForTerminal(TypeRef type) {
+    if (!type)
+        return false;
+    switch (type->kind) {
+        case TypeKindSem::String:
+        case TypeKindSem::Integer:
+        case TypeKindSem::Number:
+        case TypeKindSem::Boolean:
+        case TypeKindSem::Byte:
+        case TypeKindSem::Enum:
+        case TypeKindSem::List:
+        case TypeKindSem::Map:
+        case TypeKindSem::Set:
+        case TypeKindSem::Struct:
+        case TypeKindSem::Class:
+        case TypeKindSem::Interface:
+        case TypeKindSem::Error:
+        case TypeKindSem::Ptr:
+            return true;
+        default:
+            return false;
+    }
+}
+
 } // anonymous namespace
 
 //=============================================================================
@@ -303,6 +333,138 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         for (auto &arg : expr->args)
             argTypes.push_back(analyzeExpr(arg.value.get()));
         return argTypes;
+    };
+
+    auto bindExternCall =
+        [&](const std::string &calleeName, Symbol *sym, size_t skipLeadingParams = 0) -> bool {
+        if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function)
+            return true;
+
+        CallArgBinding binding;
+        auto specs = makeExternParamSpecs(*sym, skipLeadingParams);
+        if (!bindCallArgs(
+                expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
+            return false;
+        }
+        callArgBindings_[expr] = binding;
+        return true;
+    };
+
+    auto bindTerminalTextCall = [&](const std::string &calleeName, Symbol *sym, TypeRef &outType)
+        -> bool {
+        if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function ||
+            !isTerminalTextRuntime(calleeName) || expr->args.size() != 1) {
+            return false;
+        }
+
+        TypeRef argType = exprTypes_.count(expr->args[0].value.get())
+                              ? exprTypes_.at(expr->args[0].value.get())
+                              : nullptr;
+        if (!canAutoStringifyForTerminal(argType))
+            return false;
+
+        runtimeCallees_[expr] = calleeName;
+        exprTypes_[expr->callee.get()] = sym->type;
+        callArgBindings_.erase(expr);
+        outType = normalizeRuntimeSurfaceType(sym->type->returnType());
+        return true;
+    };
+
+    auto refineRuntimeReturnType = [&](const std::string &calleeName, TypeRef fallback) -> TypeRef {
+        fallback = normalizeRuntimeSurfaceType(fallback);
+
+        const auto &registry = il::runtime::RuntimeRegistry::instance();
+        if (auto sig = registry.findFunction(calleeName); sig && sig->isValid()) {
+            TypeRef refined = normalizeRuntimeSurfaceType(toZiaReturnType(*sig));
+            auto isOpaquePtr = [](TypeRef type) {
+                return type && type->kind == TypeKindSem::Ptr && type->name.empty();
+            };
+            auto isTypedSeq = [](TypeRef type) {
+                return type && type->kind == TypeKindSem::Ptr &&
+                       type->name == "Viper.Collections.Seq" && !type->typeArgs.empty();
+            };
+            auto isConcreteRuntimeClass = [](TypeRef type) {
+                return type && type->kind == TypeKindSem::Ptr && !type->name.empty() &&
+                       type->name != "Viper.Collections.Seq";
+            };
+
+            if (!fallback || fallback->kind == TypeKindSem::Unknown ||
+                (refined && refined->kind != TypeKindSem::Unknown &&
+                 (isTypedSeq(refined) || (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
+                  (!isOpaquePtr(refined) && isOpaquePtr(fallback))))) {
+                fallback = refined;
+            }
+        }
+
+        auto argTypeAt = [&](size_t index) -> TypeRef {
+            if (index >= expr->args.size())
+                return nullptr;
+            auto it = exprTypes_.find(expr->args[index].value.get());
+            if (it == exprTypes_.end())
+                return nullptr;
+            TypeRef ty = it->second;
+            if (ty && ty->kind == TypeKindSem::Optional && ty->innerType())
+                ty = ty->innerType();
+            return ty;
+        };
+
+        TypeRef firstArg = argTypeAt(0);
+        auto asSeq = [&](TypeRef elemType) -> TypeRef {
+            return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
+        };
+
+        if (calleeName == "Viper.Collections.Seq.Get") {
+            return firstArg && firstArg->elementType()
+                       ? normalizeRuntimeSurfaceType(firstArg->elementType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.List.Get" ||
+            calleeName == "Viper.Collections.Queue.Peek" ||
+            calleeName == "Viper.Collections.Stack.Peek" ||
+            calleeName == "Viper.Collections.Deque.Get" ||
+            calleeName == "Viper.Collections.Deque.First" ||
+            calleeName == "Viper.Collections.Deque.Last") {
+            return firstArg && firstArg->kind == TypeKindSem::List && firstArg->elementType()
+                       ? normalizeRuntimeSurfaceType(firstArg->elementType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.Map.Get" ||
+            calleeName == "Viper.Collections.Map.GetOr") {
+            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->valueType()
+                       ? normalizeRuntimeSurfaceType(firstArg->valueType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.Map.Keys") {
+            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->keyType()
+                       ? asSeq(firstArg->keyType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.Map.Values") {
+            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->valueType()
+                       ? asSeq(firstArg->valueType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.Set.Items") {
+            return firstArg && firstArg->kind == TypeKindSem::Set && firstArg->elementType()
+                       ? asSeq(firstArg->elementType())
+                       : fallback;
+        }
+
+        if (calleeName == "Viper.Collections.List.Items" ||
+            calleeName == "Viper.Collections.Queue.Items" ||
+            calleeName == "Viper.Collections.Stack.Items" ||
+            calleeName == "Viper.Collections.Deque.Items") {
+            return firstArg && firstArg->kind == TypeKindSem::List && firstArg->elementType()
+                       ? asSeq(firstArg->elementType())
+                       : fallback;
+        }
+
+        return fallback;
     };
 
     // Handle generic function calls: identity[Integer](100)
@@ -475,7 +637,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         if (importIt != importedSymbols_.end()) {
             // Resolve to the full qualified name
             const std::string &fullName = importIt->second;
-            Symbol *sym = lookupSymbol(fullName);
+            Symbol *sym = lookupAccessibleSymbol(fullName, expr->loc, true);
             if (sym && sym->kind == Symbol::Kind::Function && sym->isExtern) {
                 // Store the resolved callee for the lowerer
                 runtimeCallees_[expr] = fullName;
@@ -484,19 +646,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // Analyze arguments
                 for (auto &arg : expr->args) {
                     analyzeExpr(arg.value.get());
-                    if (arg.name) {
-                        error(arg.value ? arg.value->loc : expr->loc,
-                              "Named arguments are not supported for runtime functions");
-                        return types::unknown();
-                    }
                 }
+
+                TypeRef terminalTextResult = nullptr;
+                if (bindTerminalTextCall(fullName, sym, terminalTextResult))
+                    return terminalTextResult;
+
+                if (!bindExternCall(fullName, sym))
+                    return types::unknown();
 
                 // Skip validation for extern/runtime functions — their signatures
                 // include implicit self parameters that don't appear in call syntax.
 
                 // Return the function's return type
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                    return refineRuntimeReturnType(fullName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -552,6 +716,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
     if (extractDottedName(expr->callee.get(), dottedName)) {
+        bool viaQualifiedModule = dottedName.find('.') != std::string::npos;
+
         // Check if the first part is a module alias or imported symbol that needs expansion
         // e.g., "T.Say" where T is an alias for "Viper.Terminal" becomes "Viper.Terminal.Say"
         // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes
@@ -561,75 +727,108 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             std::string firstPart = dottedName.substr(0, dotPos);
             std::string rest = dottedName.substr(dotPos + 1);
 
-            // Check if firstPart is a module alias (bound namespace with alias)
-            auto aliasIt = aliasToNamespace_.find(firstPart);
-            if (aliasIt != aliasToNamespace_.end()) {
-                // Expand the alias: T.Say -> Viper.Terminal.Say
-                dottedName = aliasIt->second + "." + rest;
-            }
-
-            // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
-            auto importIt = importedSymbols_.find(firstPart);
-            if (importIt != importedSymbols_.end()) {
-                // Expand: Canvas.New -> Viper.Graphics.Canvas.New
-                dottedName = importIt->second + "." + rest;
-            }
-        }
-
-        analyzeArgTypes();
-
-        std::string loweredName;
-        CallArgBinding binding;
-        if (FunctionDecl *func =
-                resolveFunctionCallOverload(dottedName, expr, expr->loc, &loweredName, &binding)) {
-            TypeRef funcType = functionDeclTypes_[func];
-            resolvedFunctionCallees_[expr] = loweredName;
-            resolvedFunctionDecls_[expr] = func;
-            callArgBindings_[expr] = binding;
-            exprTypes_[expr->callee.get()] = funcType;
-            return funcType && funcType->kind == TypeKindSem::Function
-                       ? normalizeRuntimeSurfaceType(funcType->returnType())
-                       : types::unknown();
-        }
-
-        // Check if it's a known function (runtime or user-defined with qualified name)
-        Symbol *sym = lookupSymbol(dottedName);
-        if (sym && sym->kind == Symbol::Kind::Function) {
-            // Bug #024 fix: Store the callee's type so the lowerer can access it
-            // The lowerer uses sema_.typeOf(expr->callee.get()) to determine return type
-            TypeRef funcType = sym->type;
-            exprTypes_[expr->callee.get()] = funcType;
-
-            // Analyze arguments
-            for (auto &arg : expr->args) {
-                analyzeExpr(arg.value.get());
-            }
-
-            // Only validate user-defined functions — runtime externs have
-            // implicit self params that don't appear in Zia call syntax.
-            if (!sym->isExtern) {
-                validateCallArgs(expr, funcType, dottedName);
-            } else {
-                for (const auto &arg : expr->args) {
-                    if (arg.name) {
-                        error(arg.value ? arg.value->loc : expr->loc,
-                              "Named arguments are not supported for runtime functions");
-                        return types::unknown();
+            if (Symbol *rootSym = currentScope_->lookup(firstPart);
+                rootSym && rootSym->kind != Symbol::Kind::Module &&
+                rootSym->kind != Symbol::Kind::Type) {
+                dottedName.clear();
+            } else if (auto moduleIt = moduleExports_.find(firstPart);
+                       moduleIt != moduleExports_.end()) {
+                auto exportDot = rest.find('.');
+                std::string exportName =
+                    exportDot == std::string::npos ? rest : rest.substr(0, exportDot);
+                auto exportIt = moduleIt->second.find(exportName);
+                if (exportIt != moduleIt->second.end()) {
+                    const Symbol &exportSym = exportIt->second;
+                    std::string suffix =
+                        exportDot == std::string::npos ? "" : rest.substr(exportDot + 1);
+                    if (suffix.empty()) {
+                        if (exportSym.kind == Symbol::Kind::Function) {
+                            dottedName = exportSym.name;
+                        } else if (exportSym.kind == Symbol::Kind::Module && exportSym.type) {
+                            dottedName = exportSym.type->name;
+                        }
+                    } else if (exportSym.kind == Symbol::Kind::Module && exportSym.type) {
+                        dottedName = exportSym.type->name + "." + suffix;
                     }
+                    viaQualifiedModule = true;
                 }
             }
 
-            // For extern functions (runtime library), store the resolved call info
-            // so the lowerer knows to emit an extern call
-            if (sym->isExtern) {
-                runtimeCallees_[expr] = dottedName;
-            }
-            // Bug #023 fix: Return the function's return type, not the function type itself
-            if (funcType && funcType->kind == TypeKindSem::Function) {
-                return normalizeRuntimeSurfaceType(funcType->returnType());
+            // Check if firstPart is a module alias (bound namespace with alias)
+            if (!dottedName.empty()) {
+                auto aliasIt = aliasToNamespace_.find(firstPart);
+                if (aliasIt != aliasToNamespace_.end()) {
+                    // Expand the alias: T.Say -> Viper.Terminal.Say
+                    dottedName = aliasIt->second + "." + rest;
+                    viaQualifiedModule = true;
+                }
             }
 
-            return normalizeRuntimeSurfaceType(funcType);
+            // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
+            if (!dottedName.empty()) {
+                auto importIt = importedSymbols_.find(firstPart);
+                if (importIt != importedSymbols_.end()) {
+                    // Expand: Canvas.New -> Viper.Graphics.Canvas.New
+                    dottedName = importIt->second + "." + rest;
+                    viaQualifiedModule = true;
+                }
+            }
+        }
+
+        if (!dottedName.empty()) {
+            analyzeArgTypes();
+
+            std::string loweredName;
+            CallArgBinding binding;
+            if (FunctionDecl *func = resolveFunctionCallOverload(
+                    dottedName, expr, expr->loc, &loweredName, &binding, viaQualifiedModule)) {
+                TypeRef funcType = functionDeclTypes_[func];
+                resolvedFunctionCallees_[expr] = loweredName;
+                resolvedFunctionDecls_[expr] = func;
+                callArgBindings_[expr] = binding;
+                exprTypes_[expr->callee.get()] = funcType;
+                return funcType && funcType->kind == TypeKindSem::Function
+                           ? normalizeRuntimeSurfaceType(funcType->returnType())
+                           : types::unknown();
+            }
+
+            // Check if it's a known function (runtime or user-defined with qualified name)
+            Symbol *sym = lookupAccessibleSymbol(dottedName, expr->loc, viaQualifiedModule);
+            if (sym && sym->kind == Symbol::Kind::Function) {
+                // Bug #024 fix: Store the callee's type so the lowerer can access it
+                // The lowerer uses sema_.typeOf(expr->callee.get()) to determine return type
+                TypeRef funcType = sym->type;
+                exprTypes_[expr->callee.get()] = funcType;
+
+                // Analyze arguments
+                for (auto &arg : expr->args) {
+                    analyzeExpr(arg.value.get());
+                }
+
+                // Only validate user-defined functions — runtime externs have
+                // implicit self params that don't appear in Zia call syntax.
+                if (!sym->isExtern) {
+                    validateCallArgs(expr, funcType, dottedName);
+                } else {
+                    TypeRef terminalTextResult = nullptr;
+                    if (bindTerminalTextCall(dottedName, sym, terminalTextResult))
+                        return terminalTextResult;
+                    if (!bindExternCall(dottedName, sym))
+                        return types::unknown();
+                }
+
+                // For extern functions (runtime library), store the resolved call info
+                // so the lowerer knows to emit an extern call
+                if (sym->isExtern) {
+                    runtimeCallees_[expr] = dottedName;
+                }
+                // Bug #023 fix: Return the function's return type, not the function type itself
+                if (funcType && funcType->kind == TypeKindSem::Function) {
+                    return refineRuntimeReturnType(dottedName, funcType->returnType());
+                }
+
+                return normalizeRuntimeSurfaceType(funcType);
+            }
         }
     }
 
@@ -787,11 +986,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             Symbol *sym = lookupSymbol(fullMethodName);
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
+                if (!bindExternCall(fullMethodName, sym, 1))
+                    return types::unknown();
                 if (sym->isExtern) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
-                if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                if (sym->type && sym->type->kind == TypeKindSem::Function) {
+                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
         }
@@ -819,45 +1021,15 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-
-                if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    const auto paramTys = sym->type->paramTypes();
-                    const size_t expectedArgs = paramTys.size();
-                    const size_t actualArgs = expr->args.size();
-
-                    if (actualArgs > expectedArgs) {
-                        error(expr->loc,
-                              "Too many arguments to '" + fieldExpr->field + "': expected " +
-                                  std::to_string(expectedArgs) + ", got " +
-                                  std::to_string(actualArgs));
-                    } else if (actualArgs < expectedArgs) {
-                        error(expr->loc,
-                              "Too few arguments to '" + fieldExpr->field + "': expected " +
-                                  std::to_string(expectedArgs) + ", got " +
-                                  std::to_string(actualArgs));
-                    }
-
-                    const size_t checkCount = std::min(actualArgs, expectedArgs);
-                    for (size_t i = 0; i < checkCount; ++i) {
-                        TypeRef argType = exprTypes_.count(expr->args[i].value.get())
-                                              ? exprTypes_[expr->args[i].value.get()]
-                                              : nullptr;
-                        TypeRef paramType = paramTys[i];
-
-                        if (!argType || !paramType || argType->kind == TypeKindSem::Unknown ||
-                            paramType->kind == TypeKindSem::Unknown)
-                            continue;
-
-                        if (!paramType->isAssignableFrom(*argType))
-                            errorTypeMismatch(expr->args[i].value->loc, paramType, argType);
-                    }
-                }
+                if (!bindExternCall(fullMethodName, sym, 1))
+                    return types::unknown();
 
                 if (sym->isExtern)
                     runtimeCallees_[expr] = fullMethodName;
 
-                if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                if (sym->type && sym->type->kind == TypeKindSem::Function) {
+                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
         }
@@ -911,12 +1083,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // Analyze arguments
                 for (auto &arg : expr->args) {
                     analyzeExpr(arg.value.get());
-                    if (arg.name) {
-                        error(arg.value ? arg.value->loc : expr->loc,
-                              "Named arguments are not supported for runtime methods");
-                        return types::unknown();
-                    }
                 }
+
+                if (!bindExternCall(fullMethodName, sym, 1))
+                    return types::unknown();
 
                 // Skip validation for runtime class methods — their signatures
                 // include implicit self parameters.
@@ -928,8 +1098,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // Return the function's return type, not the function type itself.
                 // This is critical for chained method calls (e.g., bytes.Slice(x,y).ToStr())
                 // where the caller needs the return type to resolve the next method.
-                if (sym->type && sym->type->kind == TypeKindSem::Function)
-                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                if (sym->type && sym->type->kind == TypeKindSem::Function) {
+                    return refineRuntimeReturnType(fullMethodName, sym->type->returnType());
+                }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
 

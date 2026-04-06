@@ -531,13 +531,15 @@ struct ViperType {
         return nullptr;
     }
 
-    /// @brief Get the element type for List[T], Set[T], or FixedArray T[N].
+    /// @brief Get the element type for List[T], Set[T], typed Seq[T], or FixedArray T[N].
     /// @return The element type T, or nullptr if not a collection.
-    /// @details For `List[Integer]` or `Integer[64]`, returns the Integer type.
+    /// @details For `List[Integer]`, `Seq[String]`, or `Integer[64]`, returns the element type.
     TypeRef elementType() const {
         if ((kind == TypeKindSem::List || kind == TypeKindSem::Set ||
              kind == TypeKindSem::FixedArray) &&
             !typeArgs.empty())
+            return typeArgs[0];
+        if (kind == TypeKindSem::Ptr && name == "Viper.Collections.Seq" && !typeArgs.empty())
             return typeArgs[0];
         return nullptr;
     }

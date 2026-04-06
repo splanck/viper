@@ -547,8 +547,9 @@ class Sema {
 
     /// @brief Resolve a simple type name to a semantic type.
     /// @param name The type name (e.g., "Integer", "MyClass").
+    /// @param useLoc Source location of the type use for bind/export visibility checks.
     /// @return The semantic type, or unknown if not found.
-    TypeRef resolveNamedType(const std::string &name) const;
+    TypeRef resolveNamedType(const std::string &name, SourceLoc useLoc = {}) const;
 
   private:
     //=========================================================================
@@ -572,6 +573,34 @@ class Sema {
     /// - Alias import: creates module symbol for qualified access
     /// - Selective import: imports only specified symbols
     void analyzeNamespaceBind(BindDecl &decl);
+
+    /// @brief Rebuild exported symbol maps for all bound file modules.
+    void buildBoundFileExports(const std::vector<BindDecl> &binds, const std::vector<DeclPtr> &decls);
+
+    /// @brief Collect exported top-level symbols for a specific source file.
+    void collectExportedSymbolsForFile(uint32_t fileId,
+                                       const std::vector<DeclPtr> &decls,
+                                       std::unordered_map<std::string, Symbol> &out) const;
+
+    /// @brief Derive the visible module name for a file bind.
+    std::string fileBindModuleName(const BindDecl &decl) const;
+
+    /// @brief Check whether a symbol may be referenced from the given location.
+    bool canAccessSymbol(const Symbol &sym,
+                         SourceLoc useLoc,
+                         const std::string &name,
+                         bool viaQualifiedModule) const;
+
+    /// @brief Emit an access-control diagnostic for an inaccessible symbol.
+    void reportInaccessibleSymbol(SourceLoc useLoc,
+                                  const std::string &name,
+                                  const Symbol &sym,
+                                  bool viaQualifiedModule);
+
+    /// @brief Look up a symbol and enforce file-bind/export visibility.
+    Symbol *lookupAccessibleSymbol(const std::string &name,
+                                   SourceLoc useLoc,
+                                   bool viaQualifiedModule = false);
 
     /// @brief Check if a namespace path refers to a valid runtime namespace.
     /// @param ns The namespace path (e.g., "Viper.Terminal").
@@ -742,7 +771,8 @@ class Sema {
     FunctionDecl *resolveFunctionOverload(const std::string &name,
                                           const std::vector<TypeRef> &argTypes,
                                           SourceLoc loc,
-                                          std::string *loweredName = nullptr);
+                                          std::string *loweredName = nullptr,
+                                          bool viaQualifiedModule = false);
 
     /// @brief Resolve a method overload for a call site.
     MethodDecl *resolveMethodOverload(const std::string &ownerType,
@@ -757,7 +787,8 @@ class Sema {
                                               CallExpr *expr,
                                               SourceLoc loc,
                                               std::string *loweredName = nullptr,
-                                              CallArgBinding *bindingOut = nullptr);
+                                              CallArgBinding *bindingOut = nullptr,
+                                              bool viaQualifiedModule = false);
 
     /// @brief Resolve a method overload using full call-site argument binding.
     MethodDecl *resolveMethodCallOverload(const std::string &ownerType,
@@ -793,7 +824,8 @@ class Sema {
     /// When paramTypes are provided, the symbol's type is a function type.
     void defineExternFunction(const std::string &name,
                               TypeRef returnType,
-                              const std::vector<TypeRef> &paramTypes = {});
+                              const std::vector<TypeRef> &paramTypes = {},
+                              const std::vector<std::string> &paramNames = {});
 
     /// @}
     //=========================================================================
@@ -1057,6 +1089,13 @@ class Sema {
     /// @param name The symbol name.
     /// @return Pointer to the symbol, or nullptr if not found.
     Symbol *lookupSymbol(const std::string &name);
+
+    /// @brief Recover a variable's declared Optional[T] surface type when flow
+    ///        narrowing currently exposes only T.
+    /// @details Optional-sensitive operators like `?.`, `!`, and `match` on
+    ///          `null` should preserve the declared optional surface even when
+    ///          a local flow fact says the current value is non-null.
+    TypeRef declaredOptionalSurfaceType(Expr *expr, TypeRef analyzedType);
 
     /// @brief Collect captured variables from a lambda body.
     /// @param expr The expression to scan for free variables.
@@ -1599,6 +1638,17 @@ class Sema {
     /// the symbols defined in colors.zia. Used for qualified access.
     std::unordered_map<std::string, std::unordered_map<std::string, Symbol>> moduleExports_;
 
+    /// @brief Bound file-module aliases/names mapped to their defining file id.
+    std::unordered_map<std::string, uint32_t> boundFileModuleIds_;
+
+    /// @brief Import-all permissions keyed by importer file id, then imported file id.
+    std::unordered_map<uint32_t, std::unordered_set<uint32_t>> unqualifiedFileImportAll_;
+
+    /// @brief Selective import permissions keyed by importer file id, imported file id, item name.
+    std::unordered_map<uint32_t,
+                       std::unordered_map<uint32_t, std::unordered_set<std::string>>>
+        unqualifiedFileImportItems_;
+
     /// @brief Active type parameter substitutions for current generic context.
     /// @details Maps type parameter names (e.g., "T") to concrete types.
     /// Stack allows nested generic contexts (e.g., generic method in generic type).
@@ -1654,13 +1704,15 @@ class Sema {
                       const std::string &calleeName,
                       CallArgBinding &binding,
                       int *score = nullptr,
-                      bool reportErrors = false) const;
+                      bool reportErrors = false,
+                      bool allowRuntimeObjectCoercion = false) const;
 
     FunctionDecl *resolveFunctionArgOverload(const std::string &name,
                                              const std::vector<CallArg> &args,
                                              SourceLoc loc,
                                              std::string *loweredName,
-                                             CallArgBinding *bindingOut);
+                                             CallArgBinding *bindingOut,
+                                             bool viaQualifiedModule = false);
     MethodDecl *resolveMethodArgOverload(const std::string &ownerType,
                                          const std::string &methodName,
                                          const std::vector<CallArg> &args,
@@ -1671,6 +1723,8 @@ class Sema {
 
     std::vector<CallParamSpec> makeParamSpecs(const std::vector<Param> &params,
                                               const std::vector<TypeRef> &paramTypes) const;
+    std::vector<CallParamSpec> makeExternParamSpecs(const Symbol &sym,
+                                                    size_t skipLeadingParams = 0) const;
     std::vector<CallParamSpec> makeStructFieldSpecs(const std::string &typeName) const;
     std::vector<CallParamSpec> makeClassFieldSpecs(const std::string &typeName) const;
     void appendClassFieldSpecs(const std::string &typeName, std::vector<CallParamSpec> &out) const;

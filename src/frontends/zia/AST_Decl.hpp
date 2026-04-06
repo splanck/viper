@@ -143,6 +143,12 @@ struct Decl {
     /// @brief Source location of this declaration.
     SourceLoc loc;
 
+    /// @brief True when this declaration is exported from its defining file.
+    /// @details Exported declarations may be imported and referenced from
+    /// other Zia source files via `bind`. Non-exported declarations remain
+    /// file-private even though imported files are analyzed in the same unit.
+    bool isExported = true;
+
     /// @brief Construct a declaration with kind and location.
     /// @param k The specific declaration kind.
     /// @param l Source location.
@@ -339,7 +345,7 @@ struct PropertyDecl : Decl {
     /// @brief Property type.
     TypePtr type;
 
-    /// @brief Getter body (required).
+    /// @brief Getter body (nullptr if write-only).
     StmtPtr getterBody;
 
     /// @brief Setter body (nullptr if read-only).
@@ -562,9 +568,20 @@ struct BindDecl : Decl {
     bool isNamespaceBind = false;
 
     /// @brief Specific items to import (empty = import all).
-    /// @details Only used for namespace binds. Supports selective import:
+    /// @details Supports selective imports for both file binds and namespace binds:
     /// `bind Viper.Terminal { Say, ReadLine };`
+    /// `bind "./math" { square, PI };`
     std::vector<std::string> specificItems;
+
+    /// @brief Resolved imported-file id for file binds, or 0 when unresolved.
+    /// @details Populated by ImportResolver after the bound file is parsed.
+    uint32_t resolvedFileId = 0;
+
+    /// @brief Declared module name of the imported file, if known.
+    /// @details For file binds this preserves the imported file's `module Foo;`
+    /// name so qualified access uses the actual module identity rather than the
+    /// source filename. Alias binds still override this name at use sites.
+    std::string resolvedModuleName;
 
     /// @brief Construct a bind declaration.
     /// @param l Source location.

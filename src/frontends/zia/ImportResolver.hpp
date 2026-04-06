@@ -51,6 +51,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace il::frontends::zia {
@@ -181,6 +182,17 @@ class ImportResolver {
     ///          The first entry is the root module, the last is the most recently
     ///          entered import.
     std::vector<std::string> importStack_;
+
+    /// @brief Normalized file path to SourceManager file id.
+    /// @details Tracks file ids even for already-processed and in-progress
+    /// modules so later binds can preserve the imported file's identity.
+    std::unordered_map<std::string, uint32_t> fileIdsByPath_;
+
+    /// @brief Normalized file path to declared module name.
+    /// @details Keeps file binds aligned with the imported file's `module`
+    /// declaration instead of the source filename, which avoids collisions such
+    /// as `brush.zia` and `tools/brush.zia` with different module names.
+    std::unordered_map<std::string, std::string> moduleNamesByPath_;
 };
 
 } // namespace il::frontends::zia

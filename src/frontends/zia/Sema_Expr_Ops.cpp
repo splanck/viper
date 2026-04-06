@@ -21,8 +21,63 @@ namespace il::frontends::zia {
 /// @details Handles arithmetic, comparison, logical, bitwise, and assignment operators.
 ///          Performs type checking and widening for numeric operations.
 TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
-    TypeRef leftType = analyzeExpr(expr->left.get());
-    TypeRef rightType = analyzeExpr(expr->right.get());
+    TypeRef leftType = nullptr;
+    TypeRef rightType = nullptr;
+
+    if (expr->op == BinaryOp::Assign) {
+        rightType = analyzeExpr(expr->right.get());
+
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+            TypeRef baseType = analyzeExpr(fieldExpr->base.get());
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+                baseType = baseType->innerType();
+
+            auto recordWriteOnlyTargetType = [&](TypeRef targetType) {
+                leftType = targetType ? targetType : types::unknown();
+                exprTypes_[fieldExpr] = leftType;
+            };
+
+            bool handledWriteOnlyProperty = false;
+            if (baseType && (baseType->kind == TypeKindSem::Class ||
+                             baseType->kind == TypeKindSem::Struct)) {
+                if (const PropertyDecl *prop = findPropertyDecl(baseType->name, fieldExpr->field)) {
+                    handledWriteOnlyProperty = !prop->getterBody && prop->setterBody;
+                    if (handledWriteOnlyProperty) {
+                        recordWriteOnlyTargetType(prop->type ? resolveTypeNode(prop->type.get())
+                                                             : types::unknown());
+                    }
+                }
+            }
+
+            if (!handledWriteOnlyProperty && baseType && baseType->kind == TypeKindSem::Ptr &&
+                !baseType->name.empty()) {
+                std::string setterName = baseType->name + ".set_" + fieldExpr->field;
+                if (Symbol *setter = lookupSymbol(setterName);
+                    setter && setter->kind == Symbol::Kind::Function && setter->type &&
+                    setter->type->kind == TypeKindSem::Function) {
+                    auto params = setter->type->paramTypes();
+                    TypeRef setterValueType = nullptr;
+                    if (params.size() >= 2 && params[1]) {
+                        setterValueType = params[1];
+                    } else if (params.size() == 1 && params[0]) {
+                        setterValueType = params[0];
+                    }
+                    if (setterValueType) {
+                        handledWriteOnlyProperty = true;
+                        recordWriteOnlyTargetType(setterValueType);
+                    }
+                }
+            }
+
+            if (!handledWriteOnlyProperty)
+                leftType = analyzeExpr(expr->left.get());
+        } else {
+            leftType = analyzeExpr(expr->left.get());
+        }
+    } else {
+        leftType = analyzeExpr(expr->left.get());
+        rightType = analyzeExpr(expr->right.get());
+    }
 
     switch (expr->op) {
         case BinaryOp::Add:
@@ -221,6 +276,17 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 if (!narrowedTypes_.empty()) {
                     for (auto &scope : narrowedTypes_)
                         scope.erase(ident->name);
+                }
+
+                // Re-establish narrowing when assigning a definite non-null value to
+                // an Optional[T] variable.
+                Symbol *sym = currentScope_->lookup(ident->name);
+                if (sym && sym->type && sym->type->kind == TypeKindSem::Optional && rightType &&
+                    rightType->kind != TypeKindSem::Optional) {
+                    if (TypeRef inner = sym->type->innerType();
+                        inner && inner->isAssignableFrom(*rightType)) {
+                        narrowType(ident->name, inner);
+                    }
                 }
             }
             // Assignment expression returns the assigned value

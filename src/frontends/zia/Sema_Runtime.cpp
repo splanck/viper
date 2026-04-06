@@ -131,6 +131,21 @@ void Sema::initRuntimeFunctions() {
     // Access the singleton RuntimeRegistry which contains all parsed signatures
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     const auto &catalog = registry.rawCatalog();
+    auto registerOrRefineExtern = [&](const std::string &name,
+                                      TypeRef returnType,
+                                      const std::vector<TypeRef> &fallbackParamTypes) {
+        if (name.empty())
+            return;
+
+        if (Symbol *existing = currentScope_->lookupLocal(name);
+            existing && existing->isExtern && existing->kind == Symbol::Kind::Function &&
+            existing->type && existing->type->kind == TypeKindSem::Function) {
+            defineExternFunction(name, returnType, existing->type->paramTypes(), existing->paramNames);
+            return;
+        }
+
+        defineExternFunction(name, returnType, fallbackParamTypes);
+    };
 
     //==========================================================================
     // Phase 1: Register runtime class types
@@ -180,8 +195,9 @@ void Sema::initRuntimeFunctions() {
                 returnType = types::optional(returnType);
             std::vector<TypeRef> paramTypes = toZiaParamTypes(sig);
 
-            // Register the extern function with full type information
-            defineExternFunction(m.target ? m.target : "", returnType, paramTypes);
+            // Preserve ABI-shaped explicit receiver signatures from Phase 2 while
+            // refining the return type for method-style semantic analysis.
+            registerOrRefineExtern(m.target ? m.target : "", returnType, paramTypes);
         }
 
         //----------------------------------------------------------------------
@@ -194,13 +210,13 @@ void Sema::initRuntimeFunctions() {
             // Register getter: no parameters, returns property type
             // Example: Viper.String.get_Length() -> Integer
             if (p.getter) {
-                defineExternFunction(p.getter, propType, {});
+                registerOrRefineExtern(p.getter, propType, {});
             }
 
             // Register setter: takes property type, returns void
             // Example: Viper.GUI.Widget.set_Visible(Boolean) -> void
             if (p.setter) {
-                defineExternFunction(p.setter, types::voidType(), {propType});
+                registerOrRefineExtern(p.setter, types::voidType(), {propType});
             }
         }
     }

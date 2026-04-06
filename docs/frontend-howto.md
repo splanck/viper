@@ -642,13 +642,15 @@ target_compile_features(fe_yourfrontend PUBLIC cxx_std_20)
 operations. It provides a unified interface:
 
 ```bash
-viper front basic source.bas    # Compile BASIC
-viper front c source.c           # Compile C (future)
-viper front yourfrontend test.src  # Your frontend!
+viper run source.bas                  # Unified built-in frontend path
+viper build source.bas -o source.il   # Emit IL through the unified driver
+viper front yourfrontend -run test.src  # Low-level entry point while bringing up a new frontend
 ```
 
-Registering your frontend makes it accessible via `viper front yourfrontend`, which is essential for testing and
-integration with the test suite.
+Registering your frontend makes it accessible via `viper front yourfrontend`,
+which is the simplest low-level path for compiler bring-up and test integration.
+If you want first-class `viper run` / `viper build` support for your new source
+type, extend target detection after the frontend command works.
 
 **File:** `src/tools/viper/CMakeLists.txt` (add to existing file)
 
@@ -669,8 +671,9 @@ target_link_libraries(viper PRIVATE
 
 **File:** `src/tools/viper/main.cpp` (add to command dispatch)
 
-**What this does:** Adds a command dispatch path for your frontend. When the user runs `viper front yourfrontend <args>`,
-this code routes control to your `cmdFrontYourFrontend()` function.
+**What this does:** Adds a low-level command dispatch path for your frontend.
+When the user runs `viper front yourfrontend <args>`, this code routes control to
+your `cmdFrontYourFrontend()` function.
 
 ```cpp
 // Forward declare your command handler
@@ -703,8 +706,8 @@ program_options). This keeps dependencies minimal and build times fast.
 
 ### Command Handler Template
 
-**What this does:** Implements the entry point for your frontend when invoked via `viper front yourfrontend`. This is the
-glue code that:
+**What this does:** Implements the low-level entry point for your frontend when
+invoked via `viper front yourfrontend`. This is the glue code that:
 
 1. Parses command-line options
 2. Loads source files

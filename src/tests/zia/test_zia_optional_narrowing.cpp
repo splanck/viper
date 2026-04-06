@@ -15,6 +15,7 @@
 #include "frontends/zia/Compiler.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -182,6 +183,120 @@ func start() {    var maybePerson: Person? = new Person("Eve");
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief A non-null initializer should narrow Optional[T] to T until reassignment.
+TEST(ZiaOptionalNarrowing, InitializerNarrowsOptionalToInnerType) {
+    const std::string src = R"(
+module Test;
+
+func start() {
+    var x: Integer? = 42;
+    Viper.Terminal.SayInt(x);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for InitializerNarrowsOptionalToInnerType:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Reassigning null must clear initializer-based narrowing.
+TEST(ZiaOptionalNarrowing, NullAssignmentClearsInitializerNarrowing) {
+    const std::string src = R"(
+module Test;
+
+func start() {
+    var x: Integer? = 42;
+    x = null;
+    Viper.Terminal.SayInt(x);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+}
+
+/// @brief Optional chaining should still use the declared Optional[T] surface type.
+TEST(ZiaOptionalNarrowing, InitializerNarrowingPreservesOptionalChainingSurface) {
+    const std::string src = R"(
+module Test;
+
+class Node {
+    expose Integer value;
+
+    expose func init(v: Integer) {        value = v;
+    }
+}
+
+func start() {
+    var node: Node? = new Node(5);
+    var value = node?.value ?? 0;
+    Viper.Terminal.SayInt(value);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for InitializerNarrowingPreservesOptionalChainingSurface:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Matching on null should still work after initializer-based narrowing.
+TEST(ZiaOptionalNarrowing, InitializerNarrowingPreservesOptionalMatchSurface) {
+    const std::string src = R"(
+module Test;
+
+func start() {
+    var x: Integer? = 42;
+    var matched = 0;
+    match x {
+        null => { matched = -1; }
+        _ => { matched = 1; }
+    }
+    Viper.Terminal.SayInt(matched);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for InitializerNarrowingPreservesOptionalMatchSurface:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 //=============================================================================
 // Force-Unwrap Operator Tests
 //=============================================================================
@@ -254,6 +369,75 @@ func start() {    var maybeItem: Item? = new Item("sword");
     }
 
     EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Initializer-based narrowing should not block force-unwrap on Optional[T].
+TEST(ZiaForceUnwrap, ForceUnwrapInitializerNarrowedPrimitiveOptional) {
+    const std::string src = R"(
+module Test;
+
+func start() {
+    var x: Integer? = 42;
+    var y: Integer = x!;
+    Viper.Terminal.SayInt(y);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for ForceUnwrapInitializerNarrowedPrimitiveOptional:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief String-like optionals must lower to verifier-clean IL for `!`, `?.`, and `??`.
+TEST(ZiaForceUnwrap, StringOptionalLoweringPassesVerifier) {
+    const std::string src = R"(
+module Test;
+
+class Person {
+    expose String name;
+
+    expose func init(n: String) {        name = n;
+    }
+}
+
+func start() {
+    var maybeText: String? = "hello";
+    var text = maybeText!;
+    Viper.Terminal.Say(text);
+
+    var maybePerson: Person? = new Person("Ada");
+    var name = maybePerson?.name ?? "n/a";
+    Viper.Terminal.Say(name);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "test.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for StringOptionalLoweringPassesVerifier:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    auto verified = il::verify::Verifier::verify(result.module);
+    EXPECT_TRUE(verified.hasValue());
 }
 
 /// @brief Test that force-unwrap on non-optional produces an error.

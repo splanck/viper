@@ -283,13 +283,19 @@ Differential testing against the VM keeps codegen honest once implemented.
 
 The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 
+- `run <target> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
+- `build <target> [-o output] [--bounds-checks] [--no-runtime-namespaces]`
 - `-run <file.il> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
+- `front zia -emit-il|-run <file.zia>`
 - `front basic -emit-il <file.bas> [--bounds-checks]`
 - `front basic -run <file.bas> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `il-opt <in.il> -o <out.il> --passes p1,p2`
 
-Handlers live in `src/tools/viper/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/viper/main.cpp`
-merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
+Handlers live in `src/tools/viper/cmd_run.cpp`, `cmd_run_il.cpp`,
+`cmd_front_zia.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`;
+`src/tools/viper/main.cpp` merely dispatches to these subcommands.
+Additional tools (verifier, disassembler, wrapper frontends) reuse the same IL
+libraries.
 
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors. The REPL (
 `viper repl`) provides interactive evaluation backed by the VM.
@@ -314,9 +320,12 @@ See `docs/viperlib/io/assets.md` for the full API reference.
 - `ilrun` — Convenience wrapper for IL execution (`ilrun program.il`)
 - `vbasic` — Convenience wrapper for BASIC (`vbasic script.bas --emit-il|-o`)
 - `viper` — Unified driver
+    - `run <target>` — Build and run a Zia or BASIC target
+    - `build <target>` — Emit IL or build a native executable
     - `-run <file.il>` — Execute IL on the VM
     - `codegen arm64 <in.il> -S <out.s> [-run-native]` — AArch64 assembly generation / native run
     - `codegen x64 -S <in.il> [-o exe] [-run-native]` — x86-64 native path
+    - `front zia -emit-il|-run <file.zia>` — Legacy direct Zia frontend path
     - `front basic -emit-il|-run <file.bas>` — BASIC compile/run
     - `il-opt <in.il> -o <out.il> [--passes ...]` — Optimizer
 - `zia` — Zia compiler (`zia script.zia` to run, `zia script.zia --emit-il` to emit IL)

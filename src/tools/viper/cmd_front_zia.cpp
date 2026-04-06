@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the `ilc front zia` subcommand.
+// Implements the `viper front zia` subcommand.
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief CLI implementation for the `ilc front zia` subcommand.
+/// @brief CLI implementation for the `viper front zia` subcommand.
 /// @details Handles argument parsing, compilation to IL, verification, and
 ///          optional execution using the VM for the Zia frontend.
 
@@ -55,7 +55,7 @@ struct FrontZiaConfig {
 ///          precise message such as "unknown flag: X" or
 ///          "specify exactly one of -emit-il or -run, followed by source file".
 /// @param argc Number of arguments in @p argv.
-/// @param argv Argument vector for the subcommand (excluding `ilc` itself).
+/// @param argv Argument vector for the subcommand (excluding `viper front zia`).
 /// @return Expected configuration on success; diagnostic on failure.
 il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
     FrontZiaConfig config{};
@@ -204,7 +204,7 @@ int runFrontZia(const FrontZiaConfig &config,
 
 } // namespace
 
-/// @brief Entry point for the `ilc front zia` subcommand.
+/// @brief Entry point for the `viper front zia` subcommand.
 /// @details Parses command-line flags, loads the source file, and delegates to
 ///          @ref runFrontZia for compilation and execution.
 /// @param argc Number of arguments in @p argv.

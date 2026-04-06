@@ -103,7 +103,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         if (typeIt != typeRegistry_.end()) {
             // Try to find a getter function: {ClassName}.get_{PropertyName}
             std::string getterName = dottedBase + ".get_" + expr->field;
-            Symbol *sym = lookupSymbol(getterName);
+            Symbol *sym = lookupAccessibleSymbol(getterName, expr->loc, true);
             if (sym && sym->kind == Symbol::Kind::Function) {
                 // Store the resolved getter for the lowerer
                 resolvedFieldGetters_[expr] = getterName;
@@ -117,7 +117,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
             // Try direct function lookup (e.g., Viper.Result.Ok, Viper.Text.Uuid.New)
             std::string funcName = dottedBase + "." + expr->field;
-            sym = lookupSymbol(funcName);
+            sym = lookupAccessibleSymbol(funcName, expr->loc, true);
             if (sym && sym->kind == Symbol::Kind::Function) {
                 return sym->type;
             }
@@ -160,12 +160,31 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
     // Handle module-qualified access (e.g., colors.initColors or Canvas.New)
     if (baseType && baseType->kind == TypeKindSem::Module) {
+        if (auto moduleIt = moduleExports_.find(baseType->name); moduleIt != moduleExports_.end()) {
+            auto exportIt = moduleIt->second.find(expr->field);
+            if (exportIt != moduleIt->second.end()) {
+                const Symbol &sym = exportIt->second;
+                if (sym.kind == Symbol::Kind::Function && hasOverloadedFunctionName(sym.name)) {
+                    error(expr->loc,
+                          "Member '" + expr->field +
+                              "' is overloaded and must be called with arguments to resolve it");
+                    return types::unknown();
+                }
+                return sym.type;
+            }
+        }
+
         // Build the full qualified name (e.g., Viper.Graphics.Canvas.New)
         std::string fullName = baseType->name + "." + expr->field;
 
         // First try to look up the qualified name directly
-        Symbol *sym = lookupSymbol(fullName);
+        Symbol *sym = lookupAccessibleSymbol(fullName, expr->loc, true);
         if (sym) {
+            if (sym->kind == Symbol::Kind::Function && sym->isExtern && sym->type &&
+                sym->type->kind == TypeKindSem::Function && sym->type->paramTypes().empty()) {
+                resolvedFieldGetters_[expr] = fullName;
+                return normalizeRuntimeSurfaceType(sym->type->returnType());
+            }
             return sym->type;
         }
 
@@ -177,7 +196,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         }
 
         // For local modules, also try unqualified name (for backwards compatibility)
-        sym = lookupSymbol(expr->field);
+        sym = lookupAccessibleSymbol(expr->field, expr->loc, true);
         if (sym) {
             return sym->type;
         }
@@ -200,7 +219,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         // "Viper.Graphics.Color.get_RED" in the symbol table.
         {
             std::string getterName = baseType->name + ".get_" + expr->field;
-            Symbol *getter = lookupSymbol(getterName);
+            Symbol *getter = lookupAccessibleSymbol(getterName, expr->loc, true);
             if (getter && getter->kind == Symbol::Kind::Function) {
                 // Record the getter so the lowerer emits a call (same as Path A)
                 resolvedFieldGetters_[expr] = getterName;
@@ -281,6 +300,12 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                           baseType->name + "'");
                 return types::unknown();
             }
+            if (!prop->getterBody) {
+                error(expr->loc,
+                      "Property '" + expr->field + "' of type '" + baseType->name +
+                          "' is write-only");
+                return types::unknown();
+            }
 
             resolvedFieldGetters_[expr] = baseType->name + ".get_" + prop->name;
             return prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
@@ -337,11 +362,17 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         const auto &registry = il::runtime::RuntimeRegistry::instance();
         std::string getterName = baseType->name + ".get_" + expr->field;
         if (auto prop = registry.findProperty(baseType->name, expr->field);
-            prop && prop->getter && *prop->getter) {
+            prop) {
+            if (!prop->getter || !*prop->getter) {
+                error(expr->loc,
+                      "Property '" + expr->field + "' of type '" + baseType->name +
+                          "' is write-only");
+                return types::unknown();
+            }
             getterName = prop->getter;
         }
 
-        Symbol *sym = lookupSymbol(getterName);
+        Symbol *sym = lookupAccessibleSymbol(getterName, expr->loc, true);
         if (sym && sym->kind == Symbol::Kind::Function) {
             resolvedFieldGetters_[expr] = getterName;
             // Return the function's return type (the property type)
@@ -362,6 +393,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
 TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr) {
     TypeRef operandType = analyzeExpr(expr->operand.get());
+    operandType = declaredOptionalSurfaceType(expr->operand.get(), operandType);
+    exprTypes_[expr->operand.get()] = operandType;
 
     if (!operandType || operandType->kind != TypeKindSem::Optional) {
         // Reference types (Entity, Ptr, String) are nullable at the IL level, so
@@ -392,6 +425,8 @@ TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr) {
 
 TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
     TypeRef baseType = analyzeExpr(expr->base.get());
+    baseType = declaredOptionalSurfaceType(expr->base.get(), baseType);
+    exprTypes_[expr->base.get()] = baseType;
 
     if (!baseType || baseType->kind != TypeKindSem::Optional) {
         error(expr->loc, "Optional chaining requires an optional base value");
@@ -726,6 +761,8 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
 
 TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
     TypeRef scrutineeType = analyzeExpr(expr->scrutinee.get());
+    scrutineeType = declaredOptionalSurfaceType(expr->scrutinee.get(), scrutineeType);
+    exprTypes_[expr->scrutinee.get()] = scrutineeType;
 
     MatchCoverage coverage;
     TypeRef resultType = nullptr;
@@ -847,6 +884,37 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
     }
 
     if (type->kind != TypeKindSem::Struct && type->kind != TypeKindSem::Class) {
+        Symbol *ctorSym = nullptr;
+        if (type && !type->name.empty()) {
+            std::string ctorName = type->name + ".New";
+            ctorSym = lookupSymbol(ctorName);
+            if ((!ctorSym || ctorSym->kind != Symbol::Kind::Function) &&
+                il::runtime::findRuntimeClassByQName(type->name)) {
+                if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name);
+                    rtClass && rtClass->ctor) {
+                    ctorSym = lookupSymbol(rtClass->ctor);
+                }
+            }
+        }
+
+        if (ctorSym && ctorSym->kind == Symbol::Kind::Function && ctorSym->isExtern) {
+            CallArgBinding binding;
+            auto specs = makeExternParamSpecs(*ctorSym);
+            if (!bindCallArgs(
+                    expr->args,
+                    specs,
+                    expr->loc,
+                    type->name + ".New",
+                    binding,
+                    nullptr,
+                    true,
+                    true)) {
+                return types::unknown();
+            }
+            newArgBindings_[expr] = binding;
+            return type;
+        }
+
         for (const auto &arg : expr->args) {
             if (arg.name) {
                 error(arg.value ? arg.value->loc : expr->loc,

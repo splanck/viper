@@ -515,7 +515,7 @@ class Lowerer {
     /// @brief Try to evaluate an initializer expression to a compile-time constant.
     /// @param init The expression to fold.
     /// @return The folded constant value, or nullopt if not foldable.
-    static std::optional<il::core::Value> tryFoldNumericConstant(Expr *init);
+    std::optional<il::core::Value> tryFoldNumericConstant(Expr *init);
 
     /// @brief Emit vtable global for an class type.
     /// @param info The class type info with vtable entries.
@@ -836,6 +836,10 @@ class Lowerer {
 
     /// @brief Lower explicit source arguments in source order.
     std::vector<LowerResult> lowerSourceArgs(const std::vector<CallArg> &args);
+
+    /// @brief Return source-argument indexes in the semantically resolved order.
+    std::vector<int> orderedArgSources(const std::vector<CallArg> &args,
+                                       const Sema::CallArgBinding *binding) const;
 
     /// @brief Build final call arguments from a resolved argument binding.
     std::vector<Value> lowerResolvedArgs(const std::vector<CallArg> &args,

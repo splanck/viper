@@ -30,6 +30,10 @@ bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) 
     processedFiles_.clear();
     inProgressFiles_.clear();
     importStack_.clear();
+    fileIdsByPath_.clear();
+    moduleNamesByPath_.clear();
+    fileIdsByPath_[normalizePath(modulePath)] = module.loc.file_id;
+    moduleNamesByPath_[normalizePath(modulePath)] = module.name;
     return processModule(module, modulePath, il::support::SourceLoc{}, 0);
 }
 
@@ -71,6 +75,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     std::string source = buffer.str();
 
     uint32_t fileId = sm_.addFile(path);
+    fileIdsByPath_[normalizePath(path)] = fileId;
     if (warningSuppressions_)
         warningSuppressions_->scan(fileId, source);
     Lexer lexer(source, fileId, diag_);
@@ -79,6 +84,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     auto module = parser.parseModule();
     if (!module || parser.hasError())
         return nullptr;
+    moduleNamesByPath_[normalizePath(path)] = module->name;
     return module;
 }
 
@@ -157,6 +163,20 @@ bool ImportResolver::processModule(ModuleDecl &module,
         return key;
     };
 
+    auto makeFileBindKey = [](const BindDecl &bind, const std::string &normalizedPath) {
+        std::string key = normalizedPath;
+        key.push_back('\n');
+        key += std::to_string(bind.loc.file_id);
+        key.push_back('\n');
+        key += bind.alias;
+        key.push_back('\n');
+        for (const auto &item : bind.specificItems) {
+            key += item;
+            key.push_back('\n');
+        }
+        return key;
+    };
+
     for (const auto &existingBind : module.binds) {
         if (existingBind.isNamespaceBind) {
             seenNamespaceBinds.insert(makeNamespaceBindKey(existingBind));
@@ -164,14 +184,14 @@ bool ImportResolver::processModule(ModuleDecl &module,
         }
 
         std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
-        seenFileBinds.insert(normalizePath(existingResolved));
+        seenFileBinds.insert(makeFileBindKey(existingBind, normalizePath(existingResolved)));
     }
 
     // Important: Use index-based iteration because we may add transitive binds
     // to module.binds during processing. Range-based for would cause iterator
     // invalidation when the vector grows.
     for (size_t i = 0; i < module.binds.size(); ++i) {
-        const auto &bind = module.binds[i];
+        auto &bind = module.binds[i];
 
         // Skip namespace binds (e.g., "bind Viper.Terminal;") - they are handled
         // by semantic analysis, not file resolution.
@@ -181,20 +201,38 @@ bool ImportResolver::processModule(ModuleDecl &module,
         std::string bindFilePath = resolveImportPath(bind.path, modulePath);
         std::string normalizedBindPath = normalizePath(bindFilePath);
 
-        if (processedFiles_.count(normalizedBindPath) != 0)
+        if (processedFiles_.count(normalizedBindPath) != 0) {
+            if (auto idIt = fileIdsByPath_.find(normalizedBindPath); idIt != fileIdsByPath_.end()) {
+                bind.resolvedFileId = idIt->second;
+            }
+            if (auto nameIt = moduleNamesByPath_.find(normalizedBindPath);
+                nameIt != moduleNamesByPath_.end()) {
+                bind.resolvedModuleName = nameIt->second;
+            }
             continue;
+        }
 
         if (inProgressFiles_.count(normalizedBindPath) != 0) {
             // Circular bind — skip this import. The target file is currently
             // being processed by an outer call and its declarations will be
             // available in the final merged AST. The BindDecl remains in the
             // AST so Sema will still create the Module symbol for qualified access.
+            if (auto idIt = fileIdsByPath_.find(normalizedBindPath); idIt != fileIdsByPath_.end()) {
+                bind.resolvedFileId = idIt->second;
+            }
+            if (auto nameIt = moduleNamesByPath_.find(normalizedBindPath);
+                nameIt != moduleNamesByPath_.end()) {
+                bind.resolvedModuleName = nameIt->second;
+            }
             continue;
         }
 
         auto boundModule = parseFile(bindFilePath, bind.loc);
         if (!boundModule)
             return false;
+
+        bind.resolvedFileId = boundModule->loc.file_id;
+        bind.resolvedModuleName = boundModule->name;
 
         if (!processModule(*boundModule, bindFilePath, bind.loc, depth + 1))
             return false;
@@ -221,12 +259,15 @@ bool ImportResolver::processModule(ModuleDecl &module,
             std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
             std::string transitiveNormalizedPath = normalizePath(resolvedPath);
 
-            if (seenFileBinds.insert(transitiveNormalizedPath).second) {
+            if (seenFileBinds.insert(makeFileBindKey(transitiveBind, transitiveNormalizedPath))
+                    .second) {
                 // Store the absolute path so it resolves correctly from any context
                 BindDecl absoluteBind(transitiveBind.loc, transitiveNormalizedPath);
                 absoluteBind.alias = transitiveBind.alias;
                 absoluteBind.isNamespaceBind = transitiveBind.isNamespaceBind;
                 absoluteBind.specificItems = transitiveBind.specificItems;
+                absoluteBind.resolvedFileId = transitiveBind.resolvedFileId;
+                absoluteBind.resolvedModuleName = transitiveBind.resolvedModuleName;
                 module.binds.push_back(absoluteBind);
             }
         }

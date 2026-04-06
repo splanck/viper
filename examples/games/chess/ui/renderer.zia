@@ -2,8 +2,9 @@ module renderer;
 
 bind Viper.Graphics;
 bind Viper.Fmt;
-bind "./config";
-bind "./board";
+bind "../core/config";
+bind "../core/board";
+bind "./pieces";
 
 // ============================================================================
 // BoardRenderer — handles all visual output for the chess game.
@@ -20,13 +21,7 @@ bind "./board";
 class BoardRenderer {
     hide Canvas canvas;
 
-    // Cached piece colors, set by setPieceColors()
-    hide Integer pieceFill;
-    hide Integer pieceOutline;
-
     expose func init() {
-        pieceFill    = 0xFAFAFA;
-        pieceOutline = 0x1A1A1A;
     }
 
     // Set the canvas target. Must be called before any drawing methods.
@@ -155,7 +150,7 @@ class BoardRenderer {
             if sq == dragFrom { continue; }
             var piece = b.get(sq);
             if piece == 0 { continue; }
-            drawPiece(b.pieceType(piece), b.isWhitePiece(piece),
+            blitPiece(b.pieceType(piece), b.isWhitePiece(piece),
                       squareCenterX(sq), squareCenterY(sq));
         }
     }
@@ -163,164 +158,15 @@ class BoardRenderer {
     // Draw a single piece at arbitrary pixel coordinates (for drag animation)
     expose func drawDragPiece(pieceType: Integer, white: Boolean, x: Integer, y: Integer) {
         if pieceType == 0 { return; }
-        drawPiece(pieceType, white, x, y);
+        blitPiece(pieceType, white, x, y);
     }
 
-    // =========================================================================
-    // Piece drawing — all shapes drawn relative to piece center (cx, cy).
-    //
-    // Technique: draw outline shape (slightly larger) first in outline color,
-    // then fill shape (slightly smaller) on top in fill color.
-    //
-    // All pieces share base + body + distinctive top element.
-    // =========================================================================
-
-    hide func setPieceColors(white: Boolean) {
-        if white {
-            pieceFill    = 0xF8F8F8;  // near-white fill
-            pieceOutline = 0x1E1E1E;  // near-black outline
-        } else {
-            pieceFill    = 0x282828;  // near-black fill
-            pieceOutline = 0xE0E0E0;  // light grey outline
-        }
-    }
-
-    hide func drawPiece(type_: Integer, white: Boolean, cx: Integer, cy: Integer) {
-        if type_ == PAWN   { drawPawn(white, cx, cy); }
-        if type_ == ROOK   { drawRook(white, cx, cy); }
-        if type_ == KNIGHT { drawKnight(white, cx, cy); }
-        if type_ == BISHOP { drawBishop(white, cx, cy); }
-        if type_ == QUEEN  { drawQueen(white, cx, cy); }
-        if type_ == KING   { drawKing(white, cx, cy); }
-    }
-
-    // -------------------------------------------------------------------------
-    // PAWN: base ellipse + round body + round head
-    // -------------------------------------------------------------------------
-    hide func drawPawn(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
-        // Neck (small connecting rectangle)
-        canvas.Box(cx - 4, cy + 10, 8, 14, pieceFill);
-        // Body
-        canvas.Disc(cx, cy + 10, 10, pieceOutline);
-        canvas.Disc(cx, cy + 10, 8, pieceFill);
-        // Head
-        canvas.Disc(cx, cy - 4, 13, pieceOutline);
-        canvas.Disc(cx, cy - 4, 11, pieceFill);
-    }
-
-    // -------------------------------------------------------------------------
-    // ROOK: base + rectangular body + battlement top
-    // -------------------------------------------------------------------------
-    hide func drawRook(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
-        // Body column
-        canvas.Box(cx - 11, cy - 4, 22, 30, pieceOutline);
-        canvas.Box(cx - 9, cy - 2, 18, 26, pieceFill);
-        // Top platform
-        canvas.Box(cx - 13, cy - 14, 26, 12, pieceOutline);
-        canvas.Box(cx - 11, cy - 12, 22, 10, pieceFill);
-        // Three crenellations
-        canvas.Box(cx - 13, cy - 24, 7, 12, pieceOutline);
-        canvas.Box(cx - 12, cy - 23, 5, 10, pieceFill);
-        canvas.Box(cx - 3,  cy - 24, 6, 12, pieceOutline);
-        canvas.Box(cx - 2,  cy - 23, 4, 10, pieceFill);
-        canvas.Box(cx + 6,  cy - 24, 7, 12, pieceOutline);
-        canvas.Box(cx + 7,  cy - 23, 5, 10, pieceFill);
-    }
-
-    // -------------------------------------------------------------------------
-    // KNIGHT: base + neck block + horse-head disc + ear + eye dot
-    // -------------------------------------------------------------------------
-    hide func drawKnight(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
-        // Neck block (left-of-center)
-        canvas.Box(cx - 9, cy + 2, 14, 24, pieceOutline);
-        canvas.Box(cx - 8, cy + 3, 12, 22, pieceFill);
-        // Horse head (disc offset to the right for profile look)
-        canvas.Disc(cx + 5, cy - 6, 15, pieceOutline);
-        canvas.Disc(cx + 5, cy - 6, 13, pieceFill);
-        // Ear (small box at top-right)
-        canvas.Box(cx + 9,  cy - 22, 7, 14, pieceOutline);
-        canvas.Box(cx + 10, cy - 21, 5, 12, pieceFill);
-        // Eye dot (contrasting color for recognizability)
-        canvas.Disc(cx + 11, cy - 8, 3, pieceOutline);
-    }
-
-    // -------------------------------------------------------------------------
-    // BISHOP: base + tall tapered body + ball + tip
-    // -------------------------------------------------------------------------
-    hide func drawBishop(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 20, 8, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 17, 6, pieceFill);
-        // Tapered body (tall narrow ellipse)
-        canvas.Ellipse(cx, cy + 5, 11, 22, pieceOutline);
-        canvas.Ellipse(cx, cy + 5, 9, 20, pieceFill);
-        // Ball at top
-        canvas.Disc(cx, cy - 17, 9, pieceOutline);
-        canvas.Disc(cx, cy - 17, 7, pieceFill);
-        // Pointed tip
-        canvas.Disc(cx, cy - 27, 4, pieceOutline);
-        canvas.Disc(cx, cy - 27, 2, pieceFill);
-        // Diagonal slash (bishop's characteristic mark)
-        canvas.Line(cx - 5, cy - 14, cx + 5, cy - 20, pieceOutline);
-    }
-
-    // -------------------------------------------------------------------------
-    // QUEEN: base + wide body + crown of 5 balls
-    // -------------------------------------------------------------------------
-    hide func drawQueen(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 21, 9, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 18, 7, pieceFill);
-        // Body
-        canvas.Ellipse(cx, cy + 2, 13, 24, pieceOutline);
-        canvas.Ellipse(cx, cy + 2, 11, 22, pieceFill);
-        // Crown — 5 balls: center + 2 pairs at ±10 and ±18 offset
-        // Center ball
-        canvas.Disc(cx,      cy - 24, 6, pieceOutline);
-        canvas.Disc(cx,      cy - 24, 4, pieceFill);
-        // Inner pair
-        canvas.Disc(cx - 10, cy - 21, 6, pieceOutline);
-        canvas.Disc(cx - 10, cy - 21, 4, pieceFill);
-        canvas.Disc(cx + 10, cy - 21, 6, pieceOutline);
-        canvas.Disc(cx + 10, cy - 21, 4, pieceFill);
-        // Outer pair
-        canvas.Disc(cx - 19, cy - 14, 6, pieceOutline);
-        canvas.Disc(cx - 19, cy - 14, 4, pieceFill);
-        canvas.Disc(cx + 19, cy - 14, 6, pieceOutline);
-        canvas.Disc(cx + 19, cy - 14, 4, pieceFill);
-    }
-
-    // -------------------------------------------------------------------------
-    // KING: base + wide body + bold cross
-    // -------------------------------------------------------------------------
-    hide func drawKing(white: Boolean, cx: Integer, cy: Integer) {
-        setPieceColors(white);
-        // Base
-        canvas.Ellipse(cx, cy + 24, 21, 9, pieceOutline);
-        canvas.Ellipse(cx, cy + 24, 18, 7, pieceFill);
-        // Body
-        canvas.Ellipse(cx, cy + 2, 13, 24, pieceOutline);
-        canvas.Ellipse(cx, cy + 2, 11, 22, pieceFill);
-        // Cross horizontal bar
-        canvas.Box(cx - 13, cy - 22, 26, 7, pieceOutline);
-        canvas.Box(cx - 11, cy - 21, 22, 5, pieceFill);
-        // Cross vertical bar
-        canvas.Box(cx - 4, cy - 32, 8, 20, pieceOutline);
-        canvas.Box(cx - 3, cy - 31, 6, 18, pieceFill);
+    // Stamp a pre-rendered piece sprite centered at (cx, cy)
+    hide func blitPiece(type_: Integer, white: Boolean, cx: Integer, cy: Integer) {
+        var sprite = pieces.getPiece(type_, white);
+        if sprite == null { return; }
+        // BlitAlpha expects top-left corner; sprite is PIECE_SZ × PIECE_SZ
+        canvas.BlitAlpha(cx - PIECE_SZ / 2, cy - PIECE_SZ / 2, sprite);
     }
 
     // =========================================================================
@@ -475,13 +321,13 @@ class BoardRenderer {
         canvas.Frame(200, 250, 240, 110, COL_UI_ACCENT);
         canvas.Text(232, 260, "Promote pawn to:", COL_UI_TEXT);
 
-        var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
+        var promoTypes = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
             var bx = 208 + i * 56;
             var by = 280;
             canvas.RoundBox(bx, by, 50, 60, 4, COL_UI_PANEL);
             canvas.Frame(bx, by, 50, 60, COL_UI_DIM);
-            drawPiece(pieces.get(i), white, bx + 25, by + 32);
+            blitPiece(promoTypes.get(i), white, bx + 25, by + 32);
         }
     }
 

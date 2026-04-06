@@ -158,6 +158,8 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
+    TypeRef resultType = sema_.typeOf(expr);
+    Type resultIlType = mapType(resultType);
     TypeRef innerType = baseType->innerType();
     TypeRef fieldType = types::unknown();
 
@@ -185,7 +187,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
 
     il::core::Instr storePtrInstr;
     storePtrInstr.op = Opcode::Store;
-    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.type = base.type;
     storePtrInstr.operands = {ptrSlot, base.value};
     storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
@@ -211,7 +213,8 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     setBlock(isNullIdx);
     il::core::Instr storeNull;
     storeNull.op = Opcode::Store;
-    storeNull.type = Type(Type::Kind::Ptr);
+    storeNull.type =
+        resultIlType.kind == Type::Kind::Str ? Type(Type::Kind::Ptr) : resultIlType;
     storeNull.operands = {resultSlot, Value::null()};
     storeNull.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeNull);
@@ -270,7 +273,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
 
     il::core::Instr storeVal;
     storeVal.op = Opcode::Store;
-    storeVal.type = Type(Type::Kind::Ptr);
+    storeVal.type = resultIlType;
     storeVal.operands = {resultSlot, optionalValue};
     storeVal.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeVal);
@@ -282,16 +285,15 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     il::core::Instr loadInstr;
     loadInstr.result = loadId;
     loadInstr.op = Opcode::Load;
-    loadInstr.type = Type(Type::Kind::Ptr);
+    loadInstr.type = resultIlType;
     loadInstr.operands = {resultSlot};
     loadInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(loadInstr);
     Value resultValue = Value::temp(loadId);
-    TypeRef resultType = sema_.typeOf(expr);
     if (needsRelease(resultType))
         deferRelease(resultValue, isStringType(resultType));
 
-    return {resultValue, Type(Type::Kind::Ptr)};
+    return {resultValue, resultIlType};
 }
 
 //=============================================================================
@@ -322,7 +324,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
 
     il::core::Instr storePtrInstr;
     storePtrInstr.op = Opcode::Store;
-    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.type = operand.type;
     storePtrInstr.operands = {ptrSlot, operand.value};
     storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
@@ -395,7 +397,7 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
 
     il::core::Instr storePtrInstr;
     storePtrInstr.op = Opcode::Store;
-    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.type = operand.type;
     storePtrInstr.operands = {ptrSlot, operand.value};
     storePtrInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);

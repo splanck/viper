@@ -25,6 +25,7 @@
 #include "support/source_location.hpp"
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace il::frontends::zia {
 
@@ -79,6 +80,11 @@ struct Symbol {
     /// The lowerer uses this to emit extern calls instead of direct calls.
     bool isExtern{false};
 
+    /// @brief True if this symbol is exported from its defining source file.
+    /// @details Used to enforce file-private vs imported visibility for
+    /// top-level declarations referenced across Zia source files.
+    bool isExported{false};
+
     /// @brief Whether this symbol has been referenced (read) in the source.
     /// @details Used by W001 (unused-variable) to detect variables that are
     /// declared but never read. Set to true by Sema::analyzeIdent() on lookup.
@@ -87,6 +93,11 @@ struct Symbol {
     /// @brief Pointer to the AST declaration node.
     /// @details May be nullptr for built-in symbols or extern functions.
     Decl *decl{nullptr};
+
+    /// @brief Surface parameter names for callable symbols when available.
+    /// @details Runtime externs populate this from runtime headers so Zia can
+    /// support named arguments consistently across user code and runtime APIs.
+    std::vector<std::string> paramNames;
 
     /// @brief Source location of the definition when available.
     SourceLoc loc{};

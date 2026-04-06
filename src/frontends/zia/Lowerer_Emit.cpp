@@ -255,7 +255,10 @@ Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType) {
     switch (sourceType->kind) {
         case TypeKindSem::String:
             return val;
+        case TypeKindSem::Byte:
+            return emitCallRet(Type(Type::Kind::Str), kStringFromInt, {widenByteToInteger(val)});
         case TypeKindSem::Integer:
+        case TypeKindSem::Enum:
             return emitCallRet(Type(Type::Kind::Str), kStringFromInt, {val});
         case TypeKindSem::Number:
             return emitCallRet(Type(Type::Kind::Str), kStringFromNum, {val});

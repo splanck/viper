@@ -362,11 +362,13 @@ same source line, `viper` reports the breakpoint once per line until control tra
 
 ```sh
 # Path normalization: break at the first PRINT in math_basics.bas
-viper front basic -run ./examples/basic/../basic/math_basics.bas \
-  --break ./examples/basic/../basic/math_basics.bas:4 --trace=src
+viper build ./examples/basic/../basic/math_basics.bas -o /tmp/math_basics.il
+viper -run /tmp/math_basics.il \
+  --break-src ./examples/basic/../basic/math_basics.bas:4 --trace=src
 
 # Basename fallback with the explicit flag
-viper front basic -run examples/basic/sine_cosine.bas \
+viper build examples/basic/sine_cosine.bas -o /tmp/sine_cosine.il
+viper -run /tmp/sine_cosine.il \
   --break-src sine_cosine.bas:5 --trace=src
 ```
 
@@ -377,7 +379,7 @@ These built-in functions interact with the terminal and require manual testing t
 #### Non-blocking read (INKEY$)
 
 ```sh
-viper front basic -run examples/inkey_smoke.bas
+vbasic examples/inkey_smoke.bas
 ```
 
 Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without
@@ -389,7 +391,7 @@ Create a temporary test file and run:
 
 ```sh
 echo 'COLOR 7,0: PRINT "Press a key": k$ = GETKEY$(): PRINT "Got:"; ASC(k$)' > /tmp/getkey.bas
-viper front basic -run /tmp/getkey.bas
+vbasic /tmp/getkey.bas
 ```
 
 Expected: Program waits for one keystroke, then prints the ASCII code and exits.
@@ -422,4 +424,3 @@ the function, the program may have been lowered incorrectly.
 ## Migrations
 
 No active migrations are in flight. Follow release notes and ADRs for future migration plans.
-

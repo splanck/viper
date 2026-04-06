@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -100,6 +101,7 @@ struct DescriptorFields {
 
 struct RuntimePrototype {
     CSignature signature;
+    std::vector<std::string> paramNames;
     std::string headerPath;
 };
 
@@ -287,6 +289,37 @@ static std::string stripParamName(std::string_view sv) {
         return param;
 
     return trim(param.substr(0, i));
+}
+
+static std::string extractParamName(std::string_view sv) {
+    std::string param = trim(sv);
+    if (param.empty() || param == "void")
+        return {};
+
+    if (size_t fnPtr = param.find("(*"); fnPtr != std::string::npos) {
+        size_t start = fnPtr + 2;
+        while (start < param.size() && std::isspace(static_cast<unsigned char>(param[start])))
+            ++start;
+        size_t end = start;
+        while (end < param.size() &&
+               (std::isalnum(static_cast<unsigned char>(param[end])) || param[end] == '_')) {
+            ++end;
+        }
+        return end > start ? param.substr(start, end - start) : std::string();
+    }
+
+    size_t end = param.size();
+    while (end > 0 && std::isspace(static_cast<unsigned char>(param[end - 1])))
+        --end;
+
+    size_t start = end;
+    while (start > 0 &&
+           (std::isalnum(static_cast<unsigned char>(param[start - 1])) || param[start - 1] == '_'))
+        --start;
+
+    if (start == end)
+        return {};
+    return param.substr(start, end - start);
 }
 
 // Extract content between parentheses: "FOO(a, b, c)" -> "a, b, c"
@@ -813,7 +846,8 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
     if (!fs::exists(runtimeDir))
         return result;
 
-    std::regex proto(R"(([\w\s\*]+?)\s+(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
+    // Accept both `void *rt_name(...)` and `void * rt_name(...)` styles.
+    std::regex proto(R"(([\w\s\*]+?)\s*(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
 
     for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
         if (!entry.is_regular_file())
@@ -850,6 +884,7 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
                     retType = trim(retType.substr(kwStr.size()));
             }
 
+            RuntimePrototype proto;
             CSignature sig;
             sig.returnType = retType;
             std::vector<std::string> args = splitTopLevel(argsStr, ',');
@@ -858,9 +893,9 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
                 if (type.empty() || type == "void")
                     continue;
                 sig.argTypes.push_back(type);
+                proto.paramNames.push_back(extractParamName(arg));
             }
 
-            RuntimePrototype proto;
             proto.signature = std::move(sig);
             proto.headerPath = relativePathString(path, repoRoot);
             result.emplace(funcName, std::move(proto));
@@ -1556,7 +1591,42 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
     return "types::ptr()";
 }
 
-static void generateZiaExterns(const ParseState &state, const fs::path &outDir) {
+static void emitZiaParamNames(std::ostream &out, const std::vector<std::string> &paramNames) {
+    out << ", {";
+    for (size_t i = 0; i < paramNames.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        out << "\"" << paramNames[i] << "\"";
+    }
+    out << "}";
+}
+
+static std::vector<std::string> ziaExternParamNamesFor(const RuntimeFunc &func,
+                                                       const RuntimePrototype *proto) {
+    if (!proto)
+        return {};
+
+    ParsedSignature sig = parseSignature(func.signature);
+    const size_t surfaceCount = sig.argTypes.size();
+    if (surfaceCount == 0)
+        return {};
+
+    std::vector<std::string> names;
+    if (proto->paramNames.size() >= surfaceCount) {
+        names.assign(proto->paramNames.end() - static_cast<std::ptrdiff_t>(surfaceCount),
+                     proto->paramNames.end());
+    } else {
+        names = proto->paramNames;
+    }
+
+    while (names.size() < surfaceCount)
+        names.push_back({});
+    return names;
+}
+
+static void generateZiaExterns(const ParseState &state,
+                               const fs::path &outDir,
+                               const fs::path &inputPath) {
     // Populate known class names for type inference
     knownClassNames.clear();
     for (const auto &cls : state.classes)
@@ -1574,6 +1644,12 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir) 
 
     out << "// This file is included by Sema_Runtime.cpp to register all runtime functions.\n";
     out << "// Usage: #include \"il/runtime/ZiaRuntimeExterns.inc\"\n\n";
+
+    const fs::path runtimeDir = inputPath.parent_path();
+    const fs::path srcRoot = runtimeDir.parent_path().parent_path();
+    const fs::path repoRoot = srcRoot.parent_path();
+    const fs::path runtimeHeaders = srcRoot / "runtime";
+    auto headerDecls = loadRuntimeHeaderDeclarations(runtimeHeaders, repoRoot);
 
     // First emit type registry entries for runtime classes
     out << "// " << std::string(75, '=') << "\n";
@@ -1617,6 +1693,11 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir) 
                 }
                 out << "}";
             }
+            if (auto declIt = headerDecls.find(func->c_symbol); declIt != headerDecls.end()) {
+                auto paramNames = ziaExternParamNamesFor(*func, &declIt->second);
+                if (!paramNames.empty())
+                    emitZiaParamNames(out, paramNames);
+            }
             out << ");\n";
         }
         out << "\n";
@@ -1643,6 +1724,11 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir) 
                         out << ilParamTypeToZiaType(sig.argTypes[i]);
                     }
                     out << "}";
+                }
+                if (auto declIt = headerDecls.find(target.c_symbol); declIt != headerDecls.end()) {
+                    auto paramNames = ziaExternParamNamesFor(target, &declIt->second);
+                    if (!paramNames.empty())
+                        emitZiaParamNames(out, paramNames);
                 }
                 out << ");\n";
             }
@@ -2038,7 +2124,7 @@ int main(int argc, char **argv) {
     generateNameMap(state, outputDir);
     generateClasses(state, outputDir);
     generateSignatures(state, outputDir, inputPath);
-    generateZiaExterns(state, outputDir);
+    generateZiaExterns(state, outputDir, inputPath);
     generateFrontendNames(state, outputDir);
 
     std::cout << "rtgen: Done\n";

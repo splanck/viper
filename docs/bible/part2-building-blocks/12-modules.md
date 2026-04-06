@@ -268,7 +268,8 @@ bind UI.Collision as UICollision;  // Different collision system
 
 Not everything in a module should be visible to outsiders. Some functions are internal helpers. Some variables are implementation details. Exposing them would let other code depend on things you might want to change.
 
-Use `export` to mark what's public:
+Use `expose` to mark what's public. `export` and `public` are accepted aliases,
+but `expose` is the canonical spelling used elsewhere in the reference:
 
 ```rust
 // file: counter.zia
@@ -276,15 +277,15 @@ module Counter;
 
 var count = 0;  // Private: only this module can see it
 
-export func increment() {
+expose func increment() {
     count += 1;
 }
 
-export func decrement() {
+expose func decrement() {
     count -= 1;
 }
 
-export func get() -> Integer {
+expose func get() -> Integer {
     return count;
 }
 
@@ -293,7 +294,8 @@ func reset() {  // Private: internal use only
 }
 ```
 
-The `count` variable and `reset` function are internal implementation details. Other modules can only use the exported functions.
+The `count` variable and `reset` function are internal implementation details.
+Other modules can only use the exposed functions.
 
 ```rust
 // file: main.zia
@@ -303,7 +305,7 @@ bind Viper.Terminal;
 func start() {
     Counter.increment();
     Counter.increment();
-    Say(Counter.Get());  // 2
+    Say(Counter.get());  // 2
 
     // Counter.count = 100;  // Error: count is private
     // Counter.reset();      // Error: reset is private
@@ -326,7 +328,7 @@ This principle is called *encapsulation*: hiding internal details and exposing o
 
 ### What Should Be Public?
 
-Here's a guideline: **export the minimum necessary for your module to be useful.**
+Here's a guideline: **expose the minimum necessary for your module to be useful.**
 
 Ask yourself: "If I were using this module, what would I need?" Usually, that's:
 - Functions that perform the module's core purpose
@@ -1278,8 +1280,9 @@ export func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 - `bind ModuleName;` brings in another module
 - `bind ModuleName { item };` binds specific items
 - `bind ModuleName as Alias;` binds with renaming
-- `export` marks functions and value types as public
-- Items without `export` are private (internal only)
+- `expose` marks functions and types as public
+- `export` and `public` are accepted aliases for `expose`
+- Items without a visibility modifier are private (internal only)
 - Modules create namespaces, preventing name collisions
 - The standard library is organized into modules
 - Dependencies flow one direction — avoid circular bindings

@@ -272,7 +272,7 @@ TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/) {
 /// @details Looks up the identifier in the symbol table and imported symbols.
 ///          For imported runtime classes, returns a module-like type.
 TypeRef Sema::analyzeIdent(IdentExpr *expr) {
-    Symbol *sym = lookupSymbol(expr->name);
+    Symbol *sym = lookupAccessibleSymbol(expr->name, expr->loc);
     if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(expr->name)) {
         error(expr->loc,
               "Function '" + expr->name +
@@ -288,19 +288,21 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr) {
                       "overload");
             return types::unknown();
         }
+        if (moduleExports_.find(expr->name) != moduleExports_.end())
+            return types::module(expr->name);
         // Check if this is an imported symbol from a bound namespace
         auto importIt = importedSymbols_.find(expr->name);
         if (importIt != importedSymbols_.end()) {
             const std::string &fullName = importIt->second;
             if (fullName.rfind("Viper.", 0) == 0) {
-                // Check if it's a zero-arg getter function (e.g., Viper.Math.get_Pi)
-                // If so, treat it as an auto-evaluated property
                 Symbol *fnSym = lookupSymbol(fullName);
                 if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern) {
-                    autoEvalGetters_[expr] = fullName;
-                    if (fnSym->type && fnSym->type->kind == TypeKindSem::Function)
+                    if (fnSym->type && fnSym->type->kind == TypeKindSem::Function &&
+                        fnSym->type->paramTypes().empty()) {
+                        autoEvalGetters_[expr] = fullName;
                         return normalizeRuntimeSurfaceType(fnSym->type->returnType());
-                    return normalizeRuntimeSurfaceType(fnSym->type);
+                    }
+                    return fnSym->type;
                 }
                 // For imported runtime classes, return a module-like type so that
                 // field access (e.g., Canvas.New) can be resolved

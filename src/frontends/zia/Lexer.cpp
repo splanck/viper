@@ -291,7 +291,7 @@ struct KeywordEntry {
 };
 
 // Sorted for binary search.
-constexpr std::array<KeywordEntry, 49> kKeywordTable = {{
+constexpr std::array<KeywordEntry, 52> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"async", TokenKind::KwAsync},
@@ -304,6 +304,7 @@ constexpr std::array<KeywordEntry, 49> kKeywordTable = {{
     {"deinit", TokenKind::KwDeinit},
     {"else", TokenKind::KwElse},
     {"enum", TokenKind::KwEnum},
+    {"export", TokenKind::KwExpose},
     {"expose", TokenKind::KwExpose},
     {"extends", TokenKind::KwExtends},
     {"false", TokenKind::KwFalse},
@@ -328,7 +329,9 @@ constexpr std::array<KeywordEntry, 49> kKeywordTable = {{
     {"null", TokenKind::KwNull},
     {"or", TokenKind::KwOr},
     {"override", TokenKind::KwOverride},
+    {"private", TokenKind::KwHide},
     {"property", TokenKind::KwProperty},
+    {"public", TokenKind::KwExpose},
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
     {"static", TokenKind::KwStatic},

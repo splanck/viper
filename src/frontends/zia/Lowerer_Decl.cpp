@@ -25,6 +25,7 @@
 #include "frontends/zia/ZiaLocationScope.hpp"
 
 #include "il/core/Linkage.hpp"
+#include <functional>
 
 namespace il::frontends::zia {
 
@@ -78,11 +79,9 @@ std::string Lowerer::qualifyName(const std::string &name) const {
 //=============================================================================
 
 /// @brief Try to evaluate an initializer expression to a compile-time constant.
-/// @details Handles integer/float/bool literals, unary negation and bitwise NOT,
-///          and binary arithmetic on integer or float literals. String literals
-///          require the string-intern table and are handled at call sites.
-///          Returns nullopt for any expression that cannot be evaluated at
-///          compile time (e.g., function calls, identifier references).
+/// @details Handles literals, constant references, enum variants, unary operators,
+///          and pure arithmetic/logical expressions. Returns nullopt for any
+///          expression that cannot be evaluated at compile time.
 /// @note Fixes BUG-FE-011: non-literal final constant initializers (such as
 ///       `final X = 0 - 2147483647`) were previously silently dropped, causing
 ///       all references to resolve to constInt(0).
@@ -90,70 +89,192 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init) {
     if (!init)
         return std::nullopt;
 
-    if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
-        return Value::constInt(intLit->value);
-    if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
-        return Value::constFloat(numLit->value);
-    if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
-        return Value::constBool(boolLit->value);
+    auto lookupConstant = [&](const std::string &name) -> std::optional<Value> {
+        if (auto it = globalConstants_.find(name); it != globalConstants_.end())
+            return it->second;
 
-    if (auto *unary = dynamic_cast<UnaryExpr *>(init)) {
-        auto inner = tryFoldNumericConstant(unary->operand.get());
-        if (inner) {
-            if (unary->op == UnaryOp::Neg) {
-                if (inner->kind == Value::Kind::ConstInt)
-                    return Value::constInt(-inner->i64);
-                if (inner->kind == Value::Kind::ConstFloat)
-                    return Value::constFloat(-inner->f64);
-            }
-            if (unary->op == UnaryOp::BitNot && inner->kind == Value::Kind::ConstInt)
-                return Value::constInt(~inner->i64);
+        std::string qualified = qualifyName(name);
+        if (qualified != name) {
+            if (auto it = globalConstants_.find(qualified); it != globalConstants_.end())
+                return it->second;
         }
-    }
+        return std::nullopt;
+    };
 
-    if (auto *binary = dynamic_cast<BinaryExpr *>(init)) {
-        auto lv = tryFoldNumericConstant(binary->left.get());
-        auto rv = tryFoldNumericConstant(binary->right.get());
+    std::function<std::optional<Value>(Expr *)> fold = [&](Expr *expr) -> std::optional<Value> {
+        if (!expr)
+            return std::nullopt;
 
-        // Integer x integer
-        if (lv && rv && lv->kind == Value::Kind::ConstInt && rv->kind == Value::Kind::ConstInt) {
-            long long l = lv->i64, r = rv->i64;
-            switch (binary->op) {
-                case BinaryOp::Add:
-                    return Value::constInt(l + r);
-                case BinaryOp::Sub:
-                    return Value::constInt(l - r);
-                case BinaryOp::Mul:
-                    return Value::constInt(l * r);
-                case BinaryOp::BitAnd:
-                    return Value::constInt(l & r);
-                case BinaryOp::BitOr:
-                    return Value::constInt(l | r);
-                case BinaryOp::BitXor:
-                    return Value::constInt(l ^ r);
+        if (auto *intLit = dynamic_cast<IntLiteralExpr *>(expr))
+            return Value::constInt(intLit->value);
+        if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(expr))
+            return Value::constFloat(numLit->value);
+        if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(expr))
+            return Value::constBool(boolLit->value);
+        if (auto *strLit = dynamic_cast<StringLiteralExpr *>(expr))
+            return Value::constStr(stringTable_.intern(strLit->value));
+        if (auto *ident = dynamic_cast<IdentExpr *>(expr))
+            return lookupConstant(ident->name);
+
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr)) {
+            std::function<std::optional<std::string>(Expr *)> buildQualifiedName =
+                [&](Expr *node) -> std::optional<std::string> {
+                if (auto *ident = dynamic_cast<IdentExpr *>(node))
+                    return ident->name;
+                if (auto *field = dynamic_cast<FieldExpr *>(node)) {
+                    auto base = buildQualifiedName(field->base.get());
+                    if (base)
+                        return *base + "." + field->field;
+                }
+                return std::nullopt;
+            };
+
+            if (auto qualified = buildQualifiedName(fieldExpr)) {
+                if (auto enumIt = enumVariantValues_.find(*qualified);
+                    enumIt != enumVariantValues_.end()) {
+                    return Value::constInt(enumIt->second);
+                }
+                if (auto constIt = globalConstants_.find(*qualified);
+                    constIt != globalConstants_.end()) {
+                    return constIt->second;
+                }
+            }
+
+            return lookupConstant(fieldExpr->field);
+        }
+
+        if (auto *unary = dynamic_cast<UnaryExpr *>(expr)) {
+            auto inner = fold(unary->operand.get());
+            if (!inner)
+                return std::nullopt;
+
+            switch (unary->op) {
+                case UnaryOp::Neg:
+                    if (inner->kind == Value::Kind::ConstInt)
+                        return Value::constInt(-inner->i64);
+                    if (inner->kind == Value::Kind::ConstFloat)
+                        return Value::constFloat(-inner->f64);
+                    break;
+                case UnaryOp::Not:
+                    if (inner->kind == Value::Kind::ConstInt && inner->isBool)
+                        return Value::constBool(inner->i64 == 0);
+                    break;
+                case UnaryOp::BitNot:
+                    if (inner->kind == Value::Kind::ConstInt && !inner->isBool)
+                        return Value::constInt(~inner->i64);
+                    break;
                 default:
                     break;
             }
+            return std::nullopt;
         }
 
-        // Float x float
-        if (lv && rv && lv->kind == Value::Kind::ConstFloat &&
-            rv->kind == Value::Kind::ConstFloat) {
-            double l = lv->f64, r = rv->f64;
-            switch (binary->op) {
-                case BinaryOp::Add:
-                    return Value::constFloat(l + r);
-                case BinaryOp::Sub:
-                    return Value::constFloat(l - r);
-                case BinaryOp::Mul:
-                    return Value::constFloat(l * r);
-                default:
-                    break;
+        if (auto *binary = dynamic_cast<BinaryExpr *>(expr)) {
+            auto lhs = fold(binary->left.get());
+            auto rhs = fold(binary->right.get());
+            if (!lhs || !rhs)
+                return std::nullopt;
+
+            const bool lhsInt = lhs->kind == Value::Kind::ConstInt && !lhs->isBool;
+            const bool rhsInt = rhs->kind == Value::Kind::ConstInt && !rhs->isBool;
+            const bool lhsBool = lhs->kind == Value::Kind::ConstInt && lhs->isBool;
+            const bool rhsBool = rhs->kind == Value::Kind::ConstInt && rhs->isBool;
+            const bool lhsFloat = lhs->kind == Value::Kind::ConstFloat;
+            const bool rhsFloat = rhs->kind == Value::Kind::ConstFloat;
+
+            if (lhsInt && rhsInt) {
+                const int64_t l = lhs->i64;
+                const int64_t r = rhs->i64;
+                switch (binary->op) {
+                    case BinaryOp::Add:
+                        return Value::constInt(l + r);
+                    case BinaryOp::Sub:
+                        return Value::constInt(l - r);
+                    case BinaryOp::Mul:
+                        return Value::constInt(l * r);
+                    case BinaryOp::Div:
+                        return r == 0 ? std::nullopt : std::optional<Value>(Value::constInt(l / r));
+                    case BinaryOp::Mod:
+                        return r == 0 ? std::nullopt : std::optional<Value>(Value::constInt(l % r));
+                    case BinaryOp::Eq:
+                        return Value::constBool(l == r);
+                    case BinaryOp::Ne:
+                        return Value::constBool(l != r);
+                    case BinaryOp::Lt:
+                        return Value::constBool(l < r);
+                    case BinaryOp::Le:
+                        return Value::constBool(l <= r);
+                    case BinaryOp::Gt:
+                        return Value::constBool(l > r);
+                    case BinaryOp::Ge:
+                        return Value::constBool(l >= r);
+                    case BinaryOp::BitAnd:
+                        return Value::constInt(l & r);
+                    case BinaryOp::BitOr:
+                        return Value::constInt(l | r);
+                    case BinaryOp::BitXor:
+                        return Value::constInt(l ^ r);
+                    case BinaryOp::Shl:
+                        return Value::constInt(l << r);
+                    case BinaryOp::Shr:
+                        return Value::constInt(l >> r);
+                    default:
+                        break;
+                }
+            }
+
+            if ((lhsInt || lhsFloat) && (rhsInt || rhsFloat)) {
+                const double l = lhsFloat ? lhs->f64 : static_cast<double>(lhs->i64);
+                const double r = rhsFloat ? rhs->f64 : static_cast<double>(rhs->i64);
+                switch (binary->op) {
+                    case BinaryOp::Add:
+                        return Value::constFloat(l + r);
+                    case BinaryOp::Sub:
+                        return Value::constFloat(l - r);
+                    case BinaryOp::Mul:
+                        return Value::constFloat(l * r);
+                    case BinaryOp::Div:
+                        return r == 0.0 ? std::nullopt
+                                        : std::optional<Value>(Value::constFloat(l / r));
+                    case BinaryOp::Eq:
+                        return Value::constBool(l == r);
+                    case BinaryOp::Ne:
+                        return Value::constBool(l != r);
+                    case BinaryOp::Lt:
+                        return Value::constBool(l < r);
+                    case BinaryOp::Le:
+                        return Value::constBool(l <= r);
+                    case BinaryOp::Gt:
+                        return Value::constBool(l > r);
+                    case BinaryOp::Ge:
+                        return Value::constBool(l >= r);
+                    default:
+                        break;
+                }
+            }
+
+            if (lhsBool && rhsBool) {
+                const bool l = lhs->i64 != 0;
+                const bool r = rhs->i64 != 0;
+                switch (binary->op) {
+                    case BinaryOp::And:
+                        return Value::constBool(l && r);
+                    case BinaryOp::Or:
+                        return Value::constBool(l || r);
+                    case BinaryOp::Eq:
+                        return Value::constBool(l == r);
+                    case BinaryOp::Ne:
+                        return Value::constBool(l != r);
+                    default:
+                        break;
+                }
             }
         }
-    }
 
-    return std::nullopt;
+        return std::nullopt;
+    };
+
+    return fold(init);
 }
 
 //=============================================================================
@@ -180,67 +301,66 @@ void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
 }
 
 void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
-    for (auto &decl : declarations) {
-        if (decl->kind == DeclKind::GlobalVar) {
-            auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
-            if (gvar->isFinal && gvar->initializer) {
-                std::string qualifiedName = qualifyName(gvar->name);
-                // Skip if already registered
-                if (globalConstants_.find(qualifiedName) != globalConstants_.end())
+    struct PendingFinal {
+        GlobalVarDecl *decl;
+        std::string qualifiedName;
+    };
+
+    std::vector<PendingFinal> pending;
+    std::function<void(std::vector<DeclPtr> &)> collectPending =
+        [&](std::vector<DeclPtr> &decls) {
+            for (auto &decl : decls) {
+                if (decl->kind == DeclKind::GlobalVar) {
+                    auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+                    if (gvar->isFinal && gvar->initializer) {
+                        pending.push_back({gvar, qualifyName(gvar->name)});
+                    }
+                    continue;
+                }
+
+                if (decl->kind != DeclKind::Namespace)
                     continue;
 
-                Expr *init = gvar->initializer.get();
+                auto *ns = static_cast<NamespaceDecl *>(decl.get());
+                std::string savedPrefix = namespacePrefix_;
+                if (namespacePrefix_.empty())
+                    namespacePrefix_ = ns->name;
+                else
+                    namespacePrefix_ = namespacePrefix_ + "." + ns->name;
 
-                if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
-                    globalConstants_[qualifiedName] = Value::constInt(intLit->value);
-                else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
-                    globalConstants_[qualifiedName] = Value::constFloat(numLit->value);
-                else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
-                    globalConstants_[qualifiedName] = Value::constBool(boolLit->value);
-                else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init)) {
-                    std::string label = stringTable_.intern(strLit->value);
-                    globalConstants_[qualifiedName] = Value::constStr(label);
-                }
-                // Fold constant-expression initializers (e.g. `0 - 2147483647`,
-                // `-1`, `2 * 1024`) that are not direct literals (BUG-FE-011).
-                else if (auto folded = tryFoldNumericConstant(init))
-                    globalConstants_[qualifiedName] = *folded;
-                // Enum variant access (e.g., PlayerState.Idle) — resolve to I64 constant.
-                // Uses enumVariantValues_ populated by registerAllEnumValues().
-                else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(init)) {
-                    if (auto *base = dynamic_cast<IdentExpr *>(fieldExpr->base.get())) {
-                        std::string key = base->name + "." + fieldExpr->field;
-                        auto it = enumVariantValues_.find(key);
-                        if (it != enumVariantValues_.end()) {
-                            globalConstants_[qualifiedName] = il::core::Value::constInt(it->second);
-                            continue;
-                        }
-                    }
-                    // Fall through to error if not resolved
-                } else {
-                    // BUG-FE-012: Emit diagnostic for non-constant final initializers
-                    // instead of silently dropping them (which causes 0-value fallback).
-                    diag_.report({il::support::Severity::Error,
-                                  "'final' requires a compile-time constant initializer "
-                                  "(literal, arithmetic expression, or string). "
-                                  "Use a 'var' field initialized in init() for "
-                                  "runtime-computed values.",
-                                  gvar->loc,
-                                  "V3202"});
-                }
+                collectPending(ns->declarations);
+                namespacePrefix_ = savedPrefix;
             }
-        } else if (decl->kind == DeclKind::Namespace) {
-            auto *ns = static_cast<NamespaceDecl *>(decl.get());
-            std::string savedPrefix = namespacePrefix_;
-            if (namespacePrefix_.empty())
-                namespacePrefix_ = ns->name;
-            else
-                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
+        };
 
-            registerAllFinalConstants(ns->declarations);
+    collectPending(declarations);
 
-            namespacePrefix_ = savedPrefix;
+    bool madeProgress = true;
+    while (madeProgress) {
+        madeProgress = false;
+
+        for (const auto &entry : pending) {
+            if (globalConstants_.find(entry.qualifiedName) != globalConstants_.end())
+                continue;
+
+            if (auto folded = tryFoldNumericConstant(entry.decl->initializer.get())) {
+                globalConstants_[entry.qualifiedName] = *folded;
+                madeProgress = true;
+            }
         }
+    }
+
+    for (const auto &entry : pending) {
+        if (globalConstants_.find(entry.qualifiedName) != globalConstants_.end())
+            continue;
+
+        diag_.report({il::support::Severity::Error,
+                      "'final' requires a compile-time constant initializer "
+                      "(literal, arithmetic expression, or string). "
+                      "Use a 'var' field initialized in init() for "
+                      "runtime-computed values.",
+                      entry.decl->loc,
+                      "V3202"});
     }
 }
 

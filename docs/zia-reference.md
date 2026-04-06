@@ -127,6 +127,8 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 "Hello, World!"           // Basic string
 "Line 1\nLine 2"          // With escape sequences
 "Value: ${expression}"    // String interpolation
+"""multi
+line"""                  // Triple-quoted string literal
 ```
 
 **Escape sequences:**
@@ -143,6 +145,10 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 | `\xNN` | Hex byte (two hex digits) |
 | `\uXXXX` | Unicode code point (four hex digits, UTF-8 encoded) |
 | `\$` | Dollar sign (in interpolated strings) |
+
+Triple-quoted strings may span multiple lines and still honor the same escape
+sequences. They do not use `${...}` interpolation; contents are treated as a
+plain string literal.
 
 #### Boolean Literals
 
@@ -190,6 +196,7 @@ Parameterized types with type arguments:
 List[Integer]           // List of integers
 List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
+[Integer]               // Shorthand for List[Integer]
 ```
 
 Map keys are restricted to `String`.
@@ -450,12 +457,16 @@ var part = "abcdef".Substring(1, 3);   // "bcd"
 
 #### Named Arguments
 
-Arguments can be passed by name using `name: value` syntax:
+Arguments can be passed by name using `name: value` syntax. This works for
+user-defined functions, methods, constructors, and runtime APIs that expose
+surface parameter names:
 
 ```viper
 func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -> Rect { ... }
 
 var r = createRect(x: 10, y: 20, w: 100, h: 50);
+var part = "abcdef".Substring(start: 1, len: 3);
+SetPosition(row: 10, col: 20);
 ```
 
 ### Object Creation
@@ -497,6 +508,9 @@ var list = [1, 2, 3];              // List[Integer]
 var map = {"key": 42, "other": 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
 ```
+
+`{}` is the empty map literal. To create an empty set, use an explicit type or
+constructor such as `new Set[Integer]()`.
 
 ### Range Expressions
 
@@ -637,9 +651,22 @@ for key in map {
     // key is String
 }
 
-// Map iteration with tuple destructuring
-for (key, value) in map {
+// Map iteration with tuple binding
+for key, value in map {
     // key is String, value is map value type
+}
+
+// List / Set iteration with tuple binding
+for index, item in list {
+    // index is Integer, item is element type
+}
+for index, item in set {
+    // index is Integer, item is element type
+}
+
+// Parenthesized tuple form
+for ((key, value) in map) {
+    // same as: for key, value in map { ... }
 }
 
 // Range iteration
@@ -726,11 +753,10 @@ try {
 - The `try` block is always required.
 - The `catch` block handles exceptions. Named error binding uses parentheses: `catch(e) { ... }`.
   Anonymous catch `catch { ... }` is also supported.
+- Typed catch is supported for runtime error kinds such as `DivideByZero`,
+  `Bounds`, `RuntimeError`, and the catch-all alias `Error`.
 - Both `catch` and `finally` are optional, but at least one must be present.
 - `finally` runs regardless of whether an exception was thrown.
-
-> **Known limitation:** Typed catch syntax (`catch(e: RuntimeError)`) parses but
-> currently fails during IL verification. Use untyped `catch(e)` as a workaround.
 
 ### Throw Statement
 
@@ -975,6 +1001,8 @@ class Temperature {
 - The `get` body returns the computed value.
 - The `set` body receives a parameter whose name is declared in parentheses.
 - Either `get` or `set` may be omitted for read-only or write-only properties.
+- Reading a write-only property is an error.
+- Writing a read-only property is an error.
 - Use `expose property` when the property should be accessible outside the declaring type.
 - Properties are accessed like fields: `temp.fahrenheit` calls the getter, `temp.fahrenheit = 212.0` calls the setter.
 
@@ -1252,12 +1280,14 @@ bind "path/to/module";          // Relative or simple path
 bind "./sibling";               // Same directory
 bind "../parent/module";        // Parent directory
 bind "./utils" as U;            // With alias
+bind U = "./utils";             // Legacy alias-first form
 
 // Namespace binds - import Viper runtime namespaces
 bind Viper.Terminal;            // Import all symbols
 bind Viper.Graphics;            // Now Canvas, Sprite, etc. available
 bind Viper.Math as M;           // With alias: M.Sqrt(), M.Sin()
 bind Viper.Terminal { Say };    // Import specific symbols only
+bind Math = Viper.Math;         // Legacy alias-first form
 ```
 
 **File Path Resolution:**
@@ -1435,7 +1465,7 @@ Clear();             // Clear screen
 SetAltScreen(e);     // Enable/disable alternate screen buffer
 SetColor(fg, bg);    // Set foreground/background color (0-15)
 SetCursorVisible(v); // Show/hide cursor
-SetPosition(r, c);   // Move cursor to row/col (1-based)
+SetPosition(row, col);   // Move cursor to row/col (1-based)
 
 // Buffered output
 BeginBatch();        // Start batch output
@@ -1544,19 +1574,24 @@ final       finally     for         func        guard
 hide        if          implements  in          interface
 is          match       module      namespace   new
 not         null        or          override    property
-return      self        static      struct      super
+public      return      self        static      struct      super
 throw       true        try         type        var
-while
+while       export      let
 ```
 
 `async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
 
+Compatibility aliases:
+
+- `export` and `public` are accepted aliases for `expose`
+- `let` is an accepted alias for `final`
+
 ### Reserved for Future Use
 
-The following keywords are recognized by the lexer but have no current semantics:
+The following keyword is recognized by the lexer but has no current semantics:
 
 ```text
-let         weak
+weak
 ```
 
 ### Type Names
@@ -1575,6 +1610,7 @@ Number      Ptr         Set         String
 ```text
 module      ::= "module" IDENT ";" bind* decl*
 bind        ::= "bind" STRING ["as" IDENT] ";"
+              | "bind" IDENT "=" (STRING | qualifiedName) ";"
               | "bind" qualifiedName ["as" IDENT] ["{" identList "}"] ";"
 ```
 
@@ -1591,7 +1627,7 @@ enumVariant ::= IDENT ["=" ["-"] INTEGER]
 funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (block | "=" expr ";")
 genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
 param       ::= IDENT ":" ["..."] type ["=" expr]
-varDecl     ::= ("var" | "final") IDENT [":" type] ["=" expr] ";"
+varDecl     ::= ("var" | "final" | "let") IDENT [":" type] ["=" expr] ";"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
 qualifiedName ::= IDENT ("." IDENT)*
 member      ::= ["expose" | "hide"] ["static" | "override"] (fieldDecl | funcDecl | propertyDecl | deinitDecl)
@@ -1609,7 +1645,9 @@ block       ::= "{" stmt* "}"
 ifStmt      ::= "if" expr block ["else" (ifStmt | block)]
 whileStmt   ::= "while" expr block
 forStmt     ::= "for" "(" [varStmt | exprStmt] expr ";" expr ")" block
-forInStmt   ::= "for" IDENT "in" expr block
+forInStmt   ::= "for" forBinding "in" expr block
+              | "for" "(" forBinding "in" expr ")" block
+forBinding  ::= IDENT [":" type] ["," IDENT [":" type]]
 returnStmt  ::= "return" [expr] ";"
 breakStmt   ::= "break" ";"
 continueStmt ::= "continue" ";"
@@ -1625,13 +1663,14 @@ exprStmt    ::= expr ";"
 
 ```text
 expr        ::= assignment
-assignment  ::= ternary [("=" | "+=" | "-=" | "*=" | "/=" | "%=") assignment]
+assignment  ::= ternary [("=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "|=" | "^=") assignment]
 ternary     ::= logicalOr ["?" expr ":" ternary]
 logicalOr   ::= logicalAnd ("||" logicalAnd)*
 logicalAnd  ::= equality ("&&" equality)*
 equality    ::= comparison (("==" | "!=") comparison)*
 comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
-additive    ::= multiplicative (("+" | "-") multiplicative)*
+additive    ::= shift (("+" | "-") shift)*
+shift       ::= multiplicative (("<<" | ">>") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
 unary       ::= ("-" | "!" | "~" | "&") unary | postfix
 postfix     ::= primary (call | index | field | optionalChain | "!" | "?" | "as" type | "is" type)*
@@ -1644,7 +1683,8 @@ primary     ::= literal | IDENT | "(" expr ")" | "(" expr "," exprList ")"
 ### Types
 
 ```text
-type        ::= IDENT ["[" typeList "]"] ["?"]
+type        ::= "[" type "]" ["?"]
+              | IDENT ["[" typeList "]"] ["?"]
               | IDENT "[" INTEGER "]"
               | "(" typeList ")" ["->" type]
 ```

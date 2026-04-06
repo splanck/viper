@@ -39,8 +39,8 @@ StmtPtr Parser::parseStatement() {
         return result;
     }
 
-    // var/final variable declaration: var x = 5; final y: Integer = 10;
-    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
+    // var/final/let variable declaration: var x = 5; final y: Integer = 10; let z = 3;
+    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
         result = parseVarDecl();
         --stmtDepth_;
         return result;
@@ -187,12 +187,12 @@ StmtPtr Parser::parseBlock() {
     return std::make_unique<BlockStmt>(loc, std::move(statements));
 }
 
-/// @brief Parse a local variable declaration (var x: Type = expr; or final x = expr;).
+/// @brief Parse a local variable declaration (var x: Type = expr; or final/let x = expr;).
 /// @return The parsed VarStmt, or nullptr on error.
 StmtPtr Parser::parseVarDecl() {
-    Token kwTok = advance(); // consume var/final
+    Token kwTok = advance(); // consume var/final/let
     SourceLoc loc = kwTok.loc;
-    bool isFinal = kwTok.kind == TokenKind::KwFinal;
+    bool isFinal = kwTok.kind == TokenKind::KwFinal || kwTok.kind == TokenKind::KwLet;
 
     if (!checkIdentifierLike()) {
         error("expected variable name");

@@ -66,39 +66,6 @@ struct UndoInfo {
 //   abs(piece) gives piece type (PAWN=1..KING=6)
 // ============================================================================
 class Board {
-    expose Integer squares0;   expose Integer squares1;
-    expose Integer squares2;   expose Integer squares3;
-    expose Integer squares4;   expose Integer squares5;
-    expose Integer squares6;   expose Integer squares7;
-    expose Integer squares8;   expose Integer squares9;
-    expose Integer squares10;  expose Integer squares11;
-    expose Integer squares12;  expose Integer squares13;
-    expose Integer squares14;  expose Integer squares15;
-    expose Integer squares16;  expose Integer squares17;
-    expose Integer squares18;  expose Integer squares19;
-    expose Integer squares20;  expose Integer squares21;
-    expose Integer squares22;  expose Integer squares23;
-    expose Integer squares24;  expose Integer squares25;
-    expose Integer squares26;  expose Integer squares27;
-    expose Integer squares28;  expose Integer squares29;
-    expose Integer squares30;  expose Integer squares31;
-    expose Integer squares32;  expose Integer squares33;
-    expose Integer squares34;  expose Integer squares35;
-    expose Integer squares36;  expose Integer squares37;
-    expose Integer squares38;  expose Integer squares39;
-    expose Integer squares40;  expose Integer squares41;
-    expose Integer squares42;  expose Integer squares43;
-    expose Integer squares44;  expose Integer squares45;
-    expose Integer squares46;  expose Integer squares47;
-    expose Integer squares48;  expose Integer squares49;
-    expose Integer squares50;  expose Integer squares51;
-    expose Integer squares52;  expose Integer squares53;
-    expose Integer squares54;  expose Integer squares55;
-    expose Integer squares56;  expose Integer squares57;
-    expose Integer squares58;  expose Integer squares59;
-    expose Integer squares60;  expose Integer squares61;
-    expose Integer squares62;  expose Integer squares63;
-
     expose Boolean whiteToMove;
     expose Integer enPassantFile;   // -1 = no en passant, 0-7 = file
     expose Boolean castleWK;        // White kingside castling right

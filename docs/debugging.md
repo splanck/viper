@@ -66,13 +66,21 @@ Shows the original source file, line, and column for each executed instruction. 
 
 - Both trace modes write to stderr, so program output on stdout remains clean.
 - Tracing is **all-or-nothing** per mode; there is no per-function or per-file filter.
-- In `viper front basic` and `viper front zia`, trace and debug modes disable IL optimization to preserve the instruction-to-source mapping.
+- In `viper run` and the legacy `viper front zia` / `viper front basic` entry points, source-driven trace runs disable IL optimization to preserve the instruction-to-source mapping.
 
 ---
 
 ## 2. Breakpoints
 
 Breakpoints pause execution at a specific point and return control to the debug controller.
+
+Source breakpoints are resolved by the IL runner. Build the source target to IL
+first, then debug the resulting module:
+
+```sh
+viper build program.zia -o /tmp/program.il
+viper -run /tmp/program.il --break-src program.zia:42
+```
 
 ### Source-Line Breakpoints
 
@@ -335,7 +343,7 @@ These flush immediately for crash safety.
 
 ## 8. Pipeline Dump Flags
 
-The compiler supports dump flags for inspecting intermediate results at every stage of the pipeline. All dumps go to **stderr** so they don't interfere with program output or `-emit-il`. These work with `viper run`, `viper front zia`, and `viper front basic`.
+The compiler supports dump flags for inspecting intermediate results at every stage of the pipeline. All dumps go to **stderr** so they don't interfere with program output or `-emit-il`. These work with `viper run` and the legacy `viper front zia` / `viper front basic` commands.
 
 ### Token Stream
 
@@ -509,7 +517,9 @@ IL modules can be serialized in two modes:
 - **Pretty mode** — Human-readable with indentation and comments
 - **Canonical mode** — Deterministic output suitable for golden tests
 
-Use `-emit-il` to output the final IL module to stdout, or `--dump-il` / `--dump-il-opt` to print to stderr at specific pipeline stages:
+Use `zia --emit-il`, `vbasic --emit-il`, or the legacy `viper front ... -emit-il`
+commands to output the final IL module to stdout. Use `--dump-il` /
+`--dump-il-opt` to print specific pipeline stages to stderr:
 
 ```sh
 viper front zia -emit-il program.zia          # Final IL to stdout

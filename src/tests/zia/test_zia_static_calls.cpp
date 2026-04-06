@@ -193,6 +193,45 @@ func start() {    var list = Viper.Collections.List.New();
 )"));
 }
 
+TEST(ZiaStaticCalls, ExplicitReceiverRuntimeMethodsAndProperties) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+bind Viper.String as Str;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Network;
+
+func worker(arg: Ptr) {}
+
+/// @brief Start.
+func start() {
+    var parts = Str.Split("a,b", ",");
+    var n = Seq.get_Length(parts);
+    var first = Seq.Get(parts, 0);
+    var tcp = Viper.Network.Tcp.Connect("127.0.0.1", 1);
+    var host = Viper.Network.Tcp.get_Host(tcp);
+    Viper.Network.Tcp.Close(tcp);
+    var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
+    var pool = Viper.Threads.Pool.New(1);
+    var submitted = Viper.Threads.Pool.Submit(pool, &worker, 0);
+}
+)"));
+}
+
+TEST(ZiaStaticCalls, ZeroArgRuntimeStaticMembersAsFields) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+
+/// @brief Start.
+func start() {
+    var x = Viper.Input.Mouse.X;
+    var y = Viper.Input.Mouse.Y;
+    var left = Viper.Input.Mouse.Left;
+    Viper.Input.Mouse.Hide();
+    Viper.Input.Mouse.Show();
+}
+)"));
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

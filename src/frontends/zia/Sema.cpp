@@ -81,11 +81,57 @@ size_t requiredParamCount(const std::vector<Param> &params) {
     return required;
 }
 
-int conversionCost(TypeRef paramType, TypeRef argType) {
+bool canRuntimeObjectCoerce(TypeRef argType) {
+    if (!argType)
+        return false;
+
+    switch (argType->kind) {
+        case TypeKindSem::Void:
+        case TypeKindSem::Optional:
+        case TypeKindSem::Function:
+        case TypeKindSem::Tuple:
+        case TypeKindSem::FixedArray:
+        case TypeKindSem::Unknown:
+        case TypeKindSem::Never:
+        case TypeKindSem::TypeParam:
+        case TypeKindSem::Module:
+            return false;
+        default:
+            return true;
+    }
+}
+
+bool isFunctionPointerArg(const CallArg &arg) {
+    if (!arg.value)
+        return false;
+
+    if (auto *unary = dynamic_cast<const UnaryExpr *>(arg.value.get())) {
+        return unary->op == UnaryOp::AddressOf;
+    }
+
+    return arg.value->kind == ExprKind::Ident || arg.value->kind == ExprKind::Field;
+}
+
+bool allowsFunctionPointerParam(std::string_view name) {
+    std::string lower;
+    lower.reserve(name.size());
+    for (char ch : name)
+        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+
+    return lower == "fn" || lower == "func" || lower == "entry" || lower == "callback" ||
+           lower == "handler" || lower.find("callback") != std::string::npos ||
+           lower.find("handler") != std::string::npos || lower.find("entry") != std::string::npos;
+}
+
+int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCoercion) {
     if (!paramType || !argType)
         return 1000;
     if (paramType->equals(*argType))
         return 0;
+    if (allowRuntimeObjectCoercion && paramType->kind == TypeKindSem::Ptr &&
+        canRuntimeObjectCoerce(argType)) {
+        return 2;
+    }
     if (paramType->kind == TypeKindSem::Optional) {
         if (argType->kind == TypeKindSem::Unit)
             return 1;
@@ -148,6 +194,7 @@ Symbol *Scope::lookupLocal(const std::string &name) {
 Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
     scopes_.push_back(std::make_unique<Scope>(nullptr, nextScopeId_, 0));
     currentScope_ = scopes_.back().get();
+    narrowedTypes_.push_back({});
     scopeSnapshots_[nextScopeId_] = ScopeSnapshot{nextScopeId_, 0, 0, {}, {}};
     nextScopeId_++;
     types::clearInterfaceImplementations();
@@ -309,17 +356,32 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
 FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
                                             const std::vector<TypeRef> &argTypes,
                                             SourceLoc loc,
-                                            std::string *loweredName) {
+                                            std::string *loweredName,
+                                            bool viaQualifiedModule) {
     auto it = functionOverloads_.find(name);
     if (it == functionOverloads_.end())
         return nullptr;
 
     FunctionDecl *best = nullptr;
+    FunctionDecl *firstInaccessible = nullptr;
     int bestScore = std::numeric_limits<int>::max();
     bool ambiguous = false;
     std::vector<std::string> candidateSigs;
 
     for (auto *decl : it->second) {
+        Symbol accessSym;
+        accessSym.kind = Symbol::Kind::Function;
+        accessSym.name = name;
+        accessSym.type = functionDeclTypes_[decl];
+        accessSym.decl = decl;
+        accessSym.loc = decl->loc;
+        accessSym.isExported = decl->isExported;
+        if (!canAccessSymbol(accessSym, loc, name, viaQualifiedModule)) {
+            if (!firstInaccessible)
+                firstInaccessible = decl;
+            continue;
+        }
+
         TypeRef funcType = functionDeclTypes_[decl];
         const auto &params = decl->params;
         const size_t required = requiredParamCount(params);
@@ -330,7 +392,7 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
         int score = 0;
         bool viable = true;
         for (size_t i = 0; i < argTypes.size(); ++i) {
-            int cost = conversionCost(funcType->paramTypes()[i], argTypes[i]);
+            int cost = conversionCost(funcType->paramTypes()[i], argTypes[i], false);
             if (cost >= 1000) {
                 viable = false;
                 break;
@@ -351,8 +413,19 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
         }
     }
 
-    if (!best)
+    if (!best) {
+        if (firstInaccessible) {
+            Symbol accessSym;
+            accessSym.kind = Symbol::Kind::Function;
+            accessSym.name = name;
+            accessSym.type = functionDeclTypes_[firstInaccessible];
+            accessSym.decl = firstInaccessible;
+            accessSym.loc = firstInaccessible->loc;
+            accessSym.isExported = firstInaccessible->isExported;
+            reportInaccessibleSymbol(loc, name, accessSym, viaQualifiedModule);
+        }
         return nullptr;
+    }
     if (ambiguous) {
         error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
         return nullptr;
@@ -396,7 +469,7 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
             int score = 0;
             bool viable = true;
             for (size_t i = 0; i < argTypes.size(); ++i) {
-                int cost = conversionCost(methodType->paramTypes()[i], argTypes[i]);
+                int cost = conversionCost(methodType->paramTypes()[i], argTypes[i], false);
                 if (cost >= 1000) {
                     viable = false;
                     break;
@@ -453,6 +526,37 @@ std::vector<Sema::CallParamSpec> Sema::makeParamSpecs(
         spec.isVariadic = params[i].isVariadic;
         specs.push_back(std::move(spec));
     }
+    return specs;
+}
+
+std::vector<Sema::CallParamSpec> Sema::makeExternParamSpecs(const Symbol &sym,
+                                                            size_t skipLeadingParams) const {
+    std::vector<CallParamSpec> specs;
+    if (!sym.type || sym.type->kind != TypeKindSem::Function)
+        return specs;
+
+    const auto paramTypes = sym.type->paramTypes();
+    if (skipLeadingParams >= paramTypes.size())
+        return specs;
+
+    const size_t paramCount = paramTypes.size() - skipLeadingParams;
+    specs.reserve(paramCount);
+
+    size_t nameOffset = 0;
+    if (sym.paramNames.size() > paramTypes.size())
+        nameOffset = sym.paramNames.size() - paramTypes.size();
+
+    for (size_t i = skipLeadingParams; i < paramTypes.size(); ++i) {
+        CallParamSpec spec;
+        if (nameOffset + i < sym.paramNames.size() && !sym.paramNames[nameOffset + i].empty()) {
+            spec.name = sym.paramNames[nameOffset + i];
+        } else {
+            spec.name = "arg" + std::to_string((i - skipLeadingParams) + 1);
+        }
+        spec.type = paramTypes[i];
+        specs.push_back(std::move(spec));
+    }
+
     return specs;
 }
 
@@ -519,7 +623,8 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                         const std::string &calleeName,
                         CallArgBinding &binding,
                         int *score,
-                        bool reportErrors) const {
+                        bool reportErrors,
+                        bool allowRuntimeObjectCoercion) const {
     binding.fixedParamSources.assign(params.size(), -1);
     binding.variadicSources.clear();
     if (score)
@@ -610,7 +715,14 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         TypeRef argType = exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
                               ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
                               : nullptr;
-        int cost = conversionCost(paramType, argType);
+        int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
+        if (cost >= 1000 && allowRuntimeObjectCoercion && paramType &&
+            paramType->kind == TypeKindSem::Ptr && argType &&
+            argType->kind == TypeKindSem::Function &&
+            allowsFunctionPointerParam(params[i].name) &&
+            isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+            cost = 2;
+        }
         if (cost >= 1000) {
             if (reportErrors) {
                 const_cast<Sema *>(this)->errorTypeMismatch(
@@ -629,7 +741,14 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                 exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
                     ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
                     : nullptr;
-            int cost = conversionCost(elemType, argType);
+            int cost = conversionCost(elemType, argType, allowRuntimeObjectCoercion);
+            if (cost >= 1000 && allowRuntimeObjectCoercion && elemType &&
+                elemType->kind == TypeKindSem::Ptr && argType &&
+                argType->kind == TypeKindSem::Function &&
+                allowsFunctionPointerParam(params.back().name) &&
+                isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+                cost = 2;
+            }
             if (cost >= 1000) {
                 if (reportErrors) {
                     const_cast<Sema *>(this)->errorTypeMismatch(
@@ -650,18 +769,33 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
                                                const std::vector<CallArg> &args,
                                                SourceLoc loc,
                                                std::string *loweredName,
-                                               CallArgBinding *bindingOut) {
+                                               CallArgBinding *bindingOut,
+                                               bool viaQualifiedModule) {
     auto it = functionOverloads_.find(name);
     if (it == functionOverloads_.end())
         return nullptr;
 
     FunctionDecl *best = nullptr;
+    FunctionDecl *firstInaccessible = nullptr;
     CallArgBinding bestBinding;
     int bestScore = std::numeric_limits<int>::max();
     bool ambiguous = false;
     std::vector<std::string> candidateSigs;
 
     for (auto *decl : it->second) {
+        Symbol accessSym;
+        accessSym.kind = Symbol::Kind::Function;
+        accessSym.name = name;
+        accessSym.type = functionDeclTypes_[decl];
+        accessSym.decl = decl;
+        accessSym.loc = decl->loc;
+        accessSym.isExported = decl->isExported;
+        if (!canAccessSymbol(accessSym, loc, name, viaQualifiedModule)) {
+            if (!firstInaccessible)
+                firstInaccessible = decl;
+            continue;
+        }
+
         TypeRef funcType = getFunctionType(decl);
         if (!funcType || funcType->kind != TypeKindSem::Function)
             continue;
@@ -684,8 +818,19 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
         }
     }
 
-    if (!best)
+    if (!best) {
+        if (firstInaccessible) {
+            Symbol accessSym;
+            accessSym.kind = Symbol::Kind::Function;
+            accessSym.name = name;
+            accessSym.type = functionDeclTypes_[firstInaccessible];
+            accessSym.decl = firstInaccessible;
+            accessSym.loc = firstInaccessible->loc;
+            accessSym.isExported = firstInaccessible->isExported;
+            reportInaccessibleSymbol(loc, name, accessSym, viaQualifiedModule);
+        }
         return nullptr;
+    }
     if (ambiguous) {
         error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
         return nullptr;
@@ -777,8 +922,10 @@ FunctionDecl *Sema::resolveFunctionCallOverload(const std::string &name,
                                                 CallExpr *expr,
                                                 SourceLoc loc,
                                                 std::string *loweredName,
-                                                CallArgBinding *bindingOut) {
-    return resolveFunctionArgOverload(name, expr->args, loc, loweredName, bindingOut);
+                                                CallArgBinding *bindingOut,
+                                                bool viaQualifiedModule) {
+    return resolveFunctionArgOverload(
+        name, expr->args, loc, loweredName, bindingOut, viaQualifiedModule);
 }
 
 MethodDecl *Sema::resolveMethodCallOverload(const std::string &ownerType,
@@ -901,6 +1048,7 @@ bool Sema::analyze(ModuleDecl &module) {
                     sym.name = func->name;
                     sym.type = placeholderType;
                     sym.decl = func;
+                    sym.isExported = func->isExported;
                     if (!currentScope_->lookupLocal(func->name))
                         defineSymbol(func->name, sym);
                 } else {
@@ -911,6 +1059,7 @@ bool Sema::analyze(ModuleDecl &module) {
                     sym.name = func->name;
                     sym.type = funcType;
                     sym.decl = func;
+                    sym.isExported = func->isExported;
                     Symbol *existing = currentScope_->lookupLocal(func->name);
                     if (!existing) {
                         defineSymbol(func->name, sym);
@@ -943,6 +1092,7 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.name = value->name;
                 sym.type = valueType;
                 sym.decl = value;
+                sym.isExported = value->isExported;
                 if (defineSymbol(value->name, sym)) {
                     structDecls_[value->name] = value;
                     typeRegistry_[value->name] = valueType;
@@ -970,6 +1120,7 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.name = cls->name;
                 sym.type = classT;
                 sym.decl = cls;
+                sym.isExported = cls->isExported;
                 if (defineSymbol(cls->name, sym)) {
                     classDecls_[cls->name] = cls;
                     typeRegistry_[cls->name] = classT;
@@ -985,6 +1136,7 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.name = iface->name;
                 sym.type = ifaceType;
                 sym.decl = iface;
+                sym.isExported = iface->isExported;
                 if (defineSymbol(iface->name, sym)) {
                     interfaceDecls_[iface->name] = iface;
                     typeRegistry_[iface->name] = ifaceType;
@@ -1000,6 +1152,7 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.name = enumDecl->name;
                 sym.type = enumT;
                 sym.decl = enumDecl;
+                sym.isExported = enumDecl->isExported;
                 if (defineSymbol(enumDecl->name, sym))
                     typeRegistry_[enumDecl->name] = enumT;
                 break;
@@ -1023,6 +1176,7 @@ bool Sema::analyze(ModuleDecl &module) {
                 sym.type = varType;
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
+                sym.isExported = gvar->isExported;
                 if (defineSymbol(gvar->name, sym)) {
                     // Global variables are always considered initialized
                     // (either explicitly or default-initialized)
@@ -1039,6 +1193,13 @@ bool Sema::analyze(ModuleDecl &module) {
                 auto *alias = static_cast<TypeAliasDecl *>(decl.get());
                 TypeRef resolved = resolveTypeNode(alias->targetType.get());
                 if (resolved) {
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Type;
+                    sym.name = alias->name;
+                    sym.type = resolved;
+                    sym.decl = alias;
+                    sym.isExported = alias->isExported;
+                    defineSymbol(alias->name, sym);
                     typeAliases_[alias->name] = resolved;
                 } else {
                     error(alias->loc, "Cannot resolve type alias target for '" + alias->name + "'");
@@ -1060,6 +1221,10 @@ bool Sema::analyze(ModuleDecl &module) {
     // Pre-pass: eagerly resolve types of final constants from literal initializers
     // This allows forward references to final constants in class/function bodies
     registerFinalConstantTypes(module.declarations);
+
+    // File-module export maps snapshot top-level symbol types. Build them only
+    // after final constants have had their literal types registered.
+    buildBoundFileExports(module.binds, module.declarations);
 
     // Second pass: register all method/field signatures (before analyzing bodies)
     // This ensures cross-module method calls can be resolved regardless of declaration order
@@ -1102,6 +1267,7 @@ void Sema::pushScope(SourceLoc startLoc) {
     const uint32_t parentId = currentScope_ ? currentScope_->id() : 0;
     scopes_.push_back(std::make_unique<Scope>(currentScope_, scopeId, depth));
     currentScope_ = scopes_.back().get();
+    narrowedTypes_.push_back({});
     scopeSnapshots_[scopeId] = ScopeSnapshot{scopeId, parentId, depth, startLoc, {}};
 }
 
@@ -1118,6 +1284,8 @@ void Sema::popScope(SourceLoc endLoc) {
     if (snapIt != scopeSnapshots_.end() && endLoc.isValid())
         snapIt->second.endLoc = endLoc;
 
+    if (!narrowedTypes_.empty())
+        narrowedTypes_.pop_back();
     currentScope_ = currentScope_->parent();
     scopes_.pop_back();
     assert(currentScope_ == scopes_.back().get() && "scope stack corrupted");
@@ -1208,6 +1376,86 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
 /// @return Pointer to the symbol if found, nullptr otherwise.
 Symbol *Sema::lookupSymbol(const std::string &name) {
     return currentScope_->lookup(name);
+}
+
+TypeRef Sema::declaredOptionalSurfaceType(Expr *expr, TypeRef analyzedType) {
+    if (analyzedType && analyzedType->kind == TypeKindSem::Optional)
+        return analyzedType;
+
+    auto *ident = dynamic_cast<IdentExpr *>(expr);
+    if (!ident)
+        return analyzedType;
+
+    Symbol *sym = lookupSymbol(ident->name);
+    if (!sym)
+        return analyzedType;
+
+    if (sym->kind != Symbol::Kind::Variable && sym->kind != Symbol::Kind::Parameter)
+        return analyzedType;
+
+    if (sym->type && sym->type->kind == TypeKindSem::Optional)
+        return sym->type;
+
+    return analyzedType;
+}
+
+bool Sema::canAccessSymbol(const Symbol &sym,
+                           SourceLoc useLoc,
+                           const std::string &name,
+                           bool viaQualifiedModule) const {
+    (void)name;
+    (void)viaQualifiedModule;
+
+    if (sym.isExtern || !useLoc.isValid() || !sym.loc.isValid())
+        return true;
+
+    if (useLoc.file_id == 0 || sym.loc.file_id == 0 || useLoc.file_id == sym.loc.file_id)
+        return true;
+
+    if (!sym.decl)
+        return true;
+
+    switch (sym.decl->kind) {
+        case DeclKind::Function:
+        case DeclKind::Struct:
+        case DeclKind::Class:
+        case DeclKind::Interface:
+        case DeclKind::GlobalVar:
+        case DeclKind::Namespace:
+        case DeclKind::Enum:
+        case DeclKind::TypeAlias:
+            break;
+        default:
+            return true;
+    }
+
+    if (!sym.isExported)
+        return false;
+    return true;
+}
+
+void Sema::reportInaccessibleSymbol(SourceLoc useLoc,
+                                    const std::string &name,
+                                    const Symbol &sym,
+                                    bool viaQualifiedModule) {
+    (void)viaQualifiedModule;
+    if (!sym.isExported) {
+        error(useLoc,
+              "Cannot access private top-level declaration '" + name + "' from another file");
+        return;
+    }
+}
+
+Symbol *Sema::lookupAccessibleSymbol(const std::string &name,
+                                     SourceLoc useLoc,
+                                     bool viaQualifiedModule) {
+    Symbol *sym = lookupSymbol(name);
+    if (!sym)
+        return nullptr;
+    if (canAccessSymbol(*sym, useLoc, name, viaQualifiedModule))
+        return sym;
+    reportInaccessibleSymbol(useLoc, name, *sym, viaQualifiedModule);
+    return nullptr;
 }
 
 /// @brief Look up the type of a variable, respecting flow-sensitive type narrowing.
@@ -1670,6 +1918,7 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.name = qualifiedName;
                 sym.type = funcType;
                 sym.decl = func;
+                sym.isExported = func->isExported;
                 Symbol *existing = currentScope_->lookupLocal(qualifiedName);
                 if (!existing) {
                     defineSymbol(qualifiedName, sym);
@@ -1689,6 +1938,7 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.name = qualifiedName;
                 sym.type = valueType;
                 sym.decl = value;
+                sym.isExported = value->isExported;
                 if (defineSymbol(qualifiedName, sym)) {
                     structDecls_[qualifiedName] = value;
                     typeRegistry_[qualifiedName] = valueType;
@@ -1705,6 +1955,7 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.name = qualifiedName;
                 sym.type = classT;
                 sym.decl = cls;
+                sym.isExported = cls->isExported;
                 if (defineSymbol(qualifiedName, sym)) {
                     classDecls_[qualifiedName] = cls;
                     typeRegistry_[qualifiedName] = classT;
@@ -1721,9 +1972,27 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.name = qualifiedName;
                 sym.type = ifaceType;
                 sym.decl = iface;
+                sym.isExported = iface->isExported;
                 if (defineSymbol(qualifiedName, sym)) {
                     interfaceDecls_[qualifiedName] = iface;
                     typeRegistry_[qualifiedName] = ifaceType;
+                }
+                break;
+            }
+            case DeclKind::Enum: {
+                auto *enumDecl = static_cast<EnumDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(enumDecl->name);
+                auto enumType = types::enumType(qualifiedName);
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = qualifiedName;
+                sym.type = enumType;
+                sym.decl = enumDecl;
+                sym.isExported = enumDecl->isExported;
+                if (defineSymbol(qualifiedName, sym)) {
+                    enumDecls_[qualifiedName] = enumDecl;
+                    typeRegistry_[qualifiedName] = enumType;
                 }
                 break;
             }
@@ -1743,7 +2012,28 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 sym.type = varType;
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
+                sym.isExported = gvar->isExported;
                 defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::TypeAlias: {
+                auto *alias = static_cast<TypeAliasDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(alias->name);
+                TypeRef resolved = resolveTypeNode(alias->targetType.get());
+
+                if (resolved) {
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Type;
+                    sym.name = qualifiedName;
+                    sym.type = resolved;
+                    sym.decl = alias;
+                    sym.isExported = alias->isExported;
+                    defineSymbol(qualifiedName, sym);
+                    typeAliases_[qualifiedName] = resolved;
+                } else {
+                    error(alias->loc,
+                          "Cannot resolve type alias target for '" + qualifiedName + "'");
+                }
                 break;
             }
             case DeclKind::Namespace: {

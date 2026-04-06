@@ -151,6 +151,65 @@ ExprPtr Parser::parsePrimary() {
         return std::make_unique<IdentExpr>(loc, std::move(name));
     }
 
+    // Explicit collection literals: `set { ... }` / `map { ... }`
+    // This provides an unambiguous empty-set form without reserving new keywords.
+    if (check(TokenKind::Identifier) && peek().text == "set" && check(TokenKind::LBrace, 1)) {
+        SourceLoc setLoc = peek().loc;
+        advance(); // consume 'set'
+        advance(); // consume '{'
+
+        std::vector<ExprPtr> elements;
+        if (!check(TokenKind::RBrace)) {
+            while (true) {
+                ExprPtr elem = parseExpression();
+                if (!elem)
+                    return nullptr;
+                if (check(TokenKind::Colon)) {
+                    error("explicit set literal cannot contain key/value pairs");
+                    return nullptr;
+                }
+                elements.push_back(std::move(elem));
+                if (!match(TokenKind::Comma))
+                    break;
+                if (check(TokenKind::RBrace))
+                    break;
+            }
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+        return std::make_unique<SetLiteralExpr>(setLoc, std::move(elements));
+    }
+
+    if (check(TokenKind::Identifier) && peek().text == "map" && check(TokenKind::LBrace, 1)) {
+        SourceLoc mapLoc = peek().loc;
+        advance(); // consume 'map'
+        advance(); // consume '{'
+
+        std::vector<MapEntry> entries;
+        if (!check(TokenKind::RBrace)) {
+            while (true) {
+                ExprPtr key = parseExpression();
+                if (!key)
+                    return nullptr;
+                if (!expect(TokenKind::Colon, ":"))
+                    return nullptr;
+                ExprPtr value = parseExpression();
+                if (!value)
+                    return nullptr;
+                entries.push_back({std::move(key), std::move(value)});
+                if (!match(TokenKind::Comma))
+                    break;
+                if (check(TokenKind::RBrace))
+                    break;
+            }
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+        return std::make_unique<MapLiteralExpr>(mapLoc, std::move(entries));
+    }
+
     // Identifier or struct-literal: `TypeName { field = expr, ... }`
     // Struct literals are only attempted when explicitly enabled (initializer/return context)
     // to avoid ambiguity with for/if/while block bodies.

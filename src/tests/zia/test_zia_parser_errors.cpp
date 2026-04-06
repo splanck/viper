@@ -256,13 +256,14 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, RejectsBindAliasAssignmentSyntax) {
+TEST(ZiaParserErrors, RejectsBindDoubleAliasSyntax) {
     auto result = compileSource(R"(
 module Test;
-bind Math = Viper.Math;
+bind Math = Viper.Math as M;
 func start() {}
 )");
     EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "bind alias already specified before '='"));
 }
 
 TEST(ZiaParserErrors, RejectsTupleDestructuringVarDecl) {

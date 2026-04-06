@@ -222,10 +222,11 @@ int dumpRuntimeClasses() {
 ///
 /// @details Step-by-step summary:
 ///          1. Emit the tool banner with version information.
-///          2. Print usage lines for the `-run`, `front basic`, and `il-opt`
-///             subcommands, mirroring the behaviour of their handlers.
-///          3. Provide IL and BASIC specific notes, including intrinsic listings
-///             supplied by the BASIC front end.
+///          2. Print usage lines for the `-run`, `front zia`, `front basic`,
+///             and `il-opt` subcommands, mirroring the behaviour of their
+///             handlers.
+///          3. Provide IL and BASIC specific notes, including intrinsic
+///             listings supplied by the BASIC front end.
 void usage() {
     std::cerr
         << "viper v" << VIPER_VERSION_STR << "\n"
@@ -255,10 +256,13 @@ void usage() {
         << "       viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time] [--dump-trap]\n"
+        << "       viper front zia -emit-il <file.zia> [--bounds-checks] [--no-runtime-namespaces]\n"
+        << "       viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>] "
+           "[--max-steps N] [--bounds-checks] [--dump-trap] [--debug-vm] [--no-runtime-namespaces]\n"
         << "       viper front basic -emit-il <file.bas> [--bounds-checks] "
            "[--no-runtime-namespaces]\n"
         << "       viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
-           "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
+           "[--max-steps N] [--bounds-checks] [--dump-trap] [--debug-vm] [--no-runtime-namespaces]\n"
         << "       viper codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
         << "                         [--native-asm|--system-asm] [--native-link|--system-link]\n"
         << "       viper codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
@@ -301,9 +305,9 @@ int run_codegen_x64(int argc, char **argv) {
 /// @param argv Array of argument strings.
 /// @return Exit status of the selected subcommand or `1` on error.
 /// @details The first argument determines which handler processes the request:
-///          `cmdRunIL` executes `.il` programs, `cmdILOpt` performs optimization
-///          passes, and `cmdFrontBasic` drives the BASIC front end. Step-by-step
-///          summary:
+///          `cmdRunIL` executes `.il` programs, `cmdILOpt` performs
+///          optimization passes, and `cmdFrontZia` / `cmdFrontBasic` drive the
+///          legacy frontend entry points. Step-by-step summary:
 ///          1. Verify that at least one subcommand argument is provided.
 ///          2. Handle `--version` by delegating to @ref printVersion.
 ///          3. Dispatch to the matching handler with the remaining arguments.

@@ -195,16 +195,19 @@ enum class TokenKind {
     /// @brief Immutability modifier for variables.
     /// @details Indicates that a variable cannot be reassigned after initialization.
     /// Syntax: `final x = 42;`
+    /// Alias for statements/globals: `let x = 42;`
     KwFinal,
 
     /// @brief Visibility modifier for public access.
     /// @details Makes a member accessible outside its defining type.
     /// Syntax: `expose func publicMethod() { ... }`
+    /// Aliases: `export`, `public`
     KwExpose,
 
     /// @brief Visibility modifier for private access.
     /// @details Restricts a member to its defining type only.
     /// Syntax: `hide var privateField: Integer;`
+    /// Alias: `private`
     KwHide,
 
     /// @brief Foreign function import declaration.

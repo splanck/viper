@@ -118,6 +118,47 @@ func start() {}
     EXPECT_TRUE(foundError);
 }
 
+TEST(ZiaBinds, LegacyAliasFirstNamespaceBindWorks) {
+    const std::string source = R"(
+module Main;
+bind IO = Viper.Terminal;
+
+func start() {
+    IO.Say("hi");
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = source, .path = "bind_alias_first_runtime.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for LegacyAliasFirstNamespaceBindWorks:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasMain = false;
+    bool hasSay = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name != "main")
+            continue;
+        hasMain = true;
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Terminal.Say")
+                    hasSay = true;
+            }
+        }
+    }
+    EXPECT_TRUE(hasMain);
+    EXPECT_TRUE(hasSay);
+}
+
 TEST(ZiaBinds, CircularBindAllowed) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
@@ -149,11 +190,29 @@ func b() {}
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    // Circular binds currently produce duplicate definition errors.
-    // This test documents the current behavior — circular binds are not
-    // supported. The compiler correctly detects the cycle but does not yet
-    // deduplicate definitions from re-imported modules.
-    EXPECT_FALSE(result.succeeded());
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for CircularBindAllowed:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasMain = false;
+    bool hasA = false;
+    bool hasB = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main")
+            hasMain = true;
+        if (fn.name == "a")
+            hasA = true;
+        if (fn.name == "b")
+            hasB = true;
+    }
+    EXPECT_TRUE(hasMain);
+    EXPECT_TRUE(hasA);
+    EXPECT_TRUE(hasB);
 
     (void)aPath;
 }

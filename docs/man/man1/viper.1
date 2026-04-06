@@ -1,51 +1,114 @@
 .TH viper 1 "Viper" "viper" "User Commands"
 .SH NAME
-viper \- Viper IL compiler, runner, optimizer, and codegen driver
+viper \- Viper project driver, IL tool, and native build frontend
 .SH SYNOPSIS
+.B viper
+\fBrun\fR [\fItarget\fR] [\fIoptions\fR] [\fB--\fR \fIprogram-args...\fR]
+.br
+.B viper
+\fBbuild\fR [\fItarget\fR] [\fB-o\fR \fIoutput\fR] [\fIoptions\fR]
+.br
+.B viper
+\fBinit\fR \fIproject-name\fR [\fB--lang\fR zia|basic]
+.br
+.B viper
+\fBrepl\fR [zia|basic]
+.br
+.B viper
+\fBpackage\fR [\fItarget\fR] [\fB--target\fR macos|linux|windows|tarball]
+[\fB--arch\fR arm64|x64] [\fB-o\fR \fIoutput\fR]
+.br
 .B viper
 \fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
 .br
-.B viper front basic
-\fB-emit-il\fR \fIFILE.bas\fR [--bounds-checks] [--no-runtime-namespaces]
+.B viper
+\fBfront zia\fR \fB-emit-il\fR \fIFILE.zia\fR [\fB--bounds-checks\fR] [\fB--no-runtime-namespaces\fR]
 .br
-.B viper front basic
-\fB-run\fR \fIFILE.bas\fR [\fIrun-options\fR] [--no-runtime-namespaces]
+.B viper
+\fBfront zia\fR \fB-run\fR \fIFILE.zia\fR [\fIrun-options\fR] [\fB--debug-vm\fR] [\fB--no-runtime-namespaces\fR]
 .br
-.B viper codegen x64
-\fB-S\fR \fIin.il\fR [\fB-o\fR \fIexe\fR] [\fB--run-native\fR]
+.B viper
+\fBfront basic\fR \fB-emit-il\fR \fIFILE.bas\fR [\fB--bounds-checks\fR] [\fB--no-runtime-namespaces\fR]
 .br
-.B viper codegen arm64
-\fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB-run-native\fR]
+.B viper
+\fBfront basic\fR \fB-run\fR \fIFILE.bas\fR [\fIrun-options\fR] [\fB--debug-vm\fR] [\fB--no-runtime-namespaces\fR]
 .br
-.B viper il-opt
-\fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--pipeline\fR O0|O1|O2] [\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
+.B viper
+\fBcodegen\fR x64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR]
+.br
+.B viper
+\fBcodegen\fR arm64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR]
+.br
+.B viper
+\fBil-opt\fR \fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--pipeline\fR O0|O1|O2]
+[\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
 .br
 .B viper
 \fB--version\fR
 .SH DESCRIPTION
-The \fBviper\fR tool is the Swiss army knife for Viper IL: it can run IL modules, drive the BASIC frontend, perform IL optimizations, and emit native code for supported targets.
+\fBviper\fR is the main user-facing driver for Zia, BASIC, textual IL, and native
+build/package workflows.
 .PP
-When used with \fB-run\fR, \fBviper\fR executes a textual IL module that defines a \fCfunc @main()\fR entry point.
+\fItarget\fR may be a \fC.zia\fR file, \fC.bas\fR file, directory, or
+\fCviper.project\fR path. If omitted, the current directory is used.
 .PP
-The \fBil-opt\fR subcommand now drives the canonical IL pipelines registered by the optimizer (\fBO0\fR/\fBO1\fR/\fBO2\fR). With no explicit \fB--passes\fR the tool defaults to \fBO1\fR; use \fB--pipeline\fR to pick a different pipeline or \fB--passes\fR to run a custom, comma-separated list. Flags such as \fB-print-before\fR, \fB-print-after\fR, and \fB-verify-each\fR still apply to either mode.
+\fBbuild\fR detects the frontend from the target. With no \fB-o\fR it emits IL to
+stdout. With \fB-o output.il\fR it writes textual IL. With any other output name
+it builds a native executable.
 .PP
-The \fBfront basic\fR subcommand compiles BASIC source to IL or runs it directly via the interpreter, optionally enabling bounds checks and controlling runtime namespace emission.
-.PP
-The \fBcodegen\fR subcommands invoke target backends (x64, arm64) to emit assembly or build/run native executables when toolchains are available.
-.SH RUN OPTIONS
-These options apply to \fBviper -run\fR and \fBviper front basic -run\fR:
+\fBrun\fR builds and runs a Zia or BASIC target. Legacy IL, Zia, and BASIC entry
+points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
+.SH BUILD AND RUN OPTIONS
+These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
+to legacy run modes where noted.
 .TP
 \fB--trace\fR[=\fIil\fR|\fIsrc\fR]
-Enable execution tracing at IL or source level.
+Enable execution tracing.
 .TP
 \fB--stdin-from\fR \fIFILE\fR
-Redirect program stdin from file.
+Redirect stdin from \fIFILE\fR.
 .TP
 \fB--max-steps\fR \fIN\fR
-Limit total instructions executed; 0 disables the limit.
+Limit executed instructions; 0 disables the limit.
 .TP
 \fB--bounds-checks\fR
-Enable runtime array bounds checks.
+Enable runtime bounds checks.
+.TP
+\fB--dump-trap\fR
+Show detailed trap diagnostics.
+.TP
+\fB--debug-vm\fR
+Enable VM debug mode.
+.TP
+\fB-O0\fR, \fB-O1\fR, \fB-O2\fR
+Select optimization level.
+.TP
+\fB--arch\fR arm64|x64
+Override the native build architecture.
+.TP
+\fB--no-runtime-namespaces\fR
+Disable runtime namespace emission in generated IL.
+.SH DIAGNOSTIC OPTIONS
+.TP
+\fB--dump-tokens\fR
+Dump frontend tokens.
+.TP
+\fB--dump-ast\fR
+Dump the parsed AST.
+.TP
+\fB--dump-sema-ast\fR
+Dump the post-semantics AST.
+.TP
+\fB--dump-il\fR
+Dump generated IL before execution or codegen.
+.TP
+\fB--dump-il-opt\fR
+Dump optimized IL.
+.TP
+\fB--dump-il-passes\fR
+Dump IL after individual optimization passes.
+.SH LEGACY IL RUN OPTIONS
+These options apply to \fBviper -run\fR and legacy BASIC run mode:
 .TP
 \fB--break\fR \fILABEL\fR|\fIFILE:LINE\fR
 Set a breakpoint by IL label or source location.
@@ -61,27 +124,32 @@ Show per-opcode execution counts.
 .TP
 \fB--time\fR
 Show wall-clock runtime.
-.TP
-\fB--dump-trap\fR
-Show detailed trap diagnostics.
-.SH FRONT BASIC OPTIONS
-.TP
-\fB--no-runtime-namespaces\fR
-Disable runtime namespace emission in IL.
 .SH CODEGEN OPTIONS
-See SYNOPSIS for per-target switches. \fB--run-native\fR builds and runs the produced binary when toolchains are configured.
+See SYNOPSIS for target-specific forms. \fB--run-native\fR builds and runs the
+produced executable when toolchains are configured.
 .SH EXAMPLES
 .TP
-Run an IL module with tracing and a breakpoint
+Run a Zia project from the current directory
 .nf
-viper -run prog.il --trace --break main:12
+viper run
 .fi
 .TP
-Compile BASIC to IL and save to a file
+Build a Zia source file to native output
 .nf
-viper front basic -emit-il prog.bas -o prog.il
+viper build hello.zia -o hello
+.fi
+.TP
+Emit IL for a BASIC file
+.nf
+viper build prog.bas -o prog.il
+.fi
+.TP
+Start a Zia REPL
+.nf
+viper repl zia
 .fi
 .SH EXIT STATUS
-Returns 0 on success; non-zero on argument, I/O, parse, verification, or runtime errors.
+Returns 0 on success; non-zero on argument, I/O, parse, verification, build, or
+runtime errors.
 .SH SEE ALSO
-\fBilrun\fR(1), \fBil-verify\fR(1), \fBvbasic\fR(1), \fBzia\fR(1)
+\fBzia\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1), \fBil-verify\fR(1)

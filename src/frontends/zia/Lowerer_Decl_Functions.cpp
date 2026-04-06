@@ -852,7 +852,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
     }
 
     // --- Synthesize getter: get_PropertyName(self: Ptr) -> Type ---
-    {
+    if (decl.getterBody) {
         std::string getterName = typeName + ".get_" + decl.name;
 
         std::vector<il::core::Param> params;

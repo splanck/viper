@@ -201,6 +201,77 @@ func start() {    var c = new Counter();
     EXPECT_TRUE(hasCallee(result.module, "main", "Counter.set_count"));
 }
 
+/// @brief Setter-only properties must remain valid assignment targets.
+TEST(ZiaProperties, WriteOnlyPropertyAssignmentUsesSetter) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Sink {
+    hide Integer _value;
+
+    expose property value: Integer {
+        set(v) {
+            _value = v;
+        }
+    }
+}
+
+func start() {    var s = new Sink();
+    s.value = 42;
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_prop_write_only.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "Sink.set_value"));
+    EXPECT_TRUE(hasCallee(result.module, "main", "Sink.set_value"));
+    EXPECT_FALSE(hasFunction(result.module, "Sink.get_value"));
+}
+
+/// @brief Reading a setter-only property should still fail with a write-only diagnostic.
+TEST(ZiaProperties, WriteOnlyPropertyReadFails) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Sink {
+    expose property value: Integer {
+        set(v) { }
+    }
+}
+
+func start() {    var s = new Sink();
+    var x = s.value;
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_prop_write_only_read.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+
+    bool sawWriteOnly = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("write-only") != std::string::npos) {
+            sawWriteOnly = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(sawWriteOnly);
+}
+
 // ============================================================================
 // Static member tests
 // ============================================================================

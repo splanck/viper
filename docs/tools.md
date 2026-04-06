@@ -99,13 +99,13 @@ The unified compiler driver provides advanced functionality.
 The CLI is organized around primary entry points:
 
 - `viper init <name> [--lang zia|basic]` — Scaffold a new project
-- `viper run <file|dir>` — Run a program or project
-- `viper build <file> [-o out.il]` — Compile to IL
+- `viper run <file|dir>` — Build and run a source file or project
+- `viper build <file|dir> [-o out]` — Emit IL or build a native binary
 - `viper -run <file.il>` — Execute an IL module
-- `viper front zia -emit-il <file.zia>` — Lower Zia to IL
-- `viper front zia -run <file.zia>` — Compile and execute Zia
-- `viper front basic -emit-il <file.bas>` — Lower BASIC to IL
-- `viper front basic -run <file.bas>` — Compile and execute BASIC
+- `viper front zia -emit-il <file.zia>` — Legacy low-level Zia frontend entry point
+- `viper front zia -run <file.zia>` — Legacy low-level Zia frontend execution path
+- `viper front basic -emit-il <file.bas>` — Legacy low-level BASIC frontend entry point
+- `viper front basic -run <file.bas>` — Legacy low-level BASIC frontend execution path
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
@@ -160,16 +160,18 @@ viper -run <file.il> [flags]
 
 ### viper front
 
-Compile programs from any supported frontend (zia, basic).
+Low-level frontend entry points retained for direct compiler testing and
+compatibility. Prefer `zia`, `vbasic`, or `viper run` / `viper build` for normal
+workflows.
 
 ```bash
 # Zia
-viper front zia -emit-il <file.zia> [--bounds-checks]
-viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>]
+viper front zia -emit-il <file.zia> [--bounds-checks] [--no-runtime-namespaces]
+viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>] [--max-steps N]
 
 # BASIC
-viper front basic -emit-il <file.bas> [--bounds-checks]
-viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>]
+viper front basic -emit-il <file.bas> [--bounds-checks] [--no-runtime-namespaces]
+viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N]
 ```
 
 ### viper il-opt

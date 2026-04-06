@@ -5,12 +5,13 @@ bind Viper.Input;
 bind Viper.Time;
 bind Viper.Fmt;
 bind Viper.Terminal;
-bind "./config";
-bind "./board";
-bind "./moves";
+bind "../core/config";
+bind "../core/board";
+bind "../core/moves";
+bind "../core/eval";
 bind "./renderer";
-bind "./eval";
-bind "./ai";
+bind "./pieces";
+bind "../engine/ai";
 
 // ============================================================================
 // ChessGame — main game entity.
@@ -103,6 +104,9 @@ class ChessGame {
         renderer = new BoardRenderer();
 
         renderer.setCanvas(canvas);
+
+        // Pre-render piece sprites for high-quality rendering
+        pieces.initSprites();
 
         gameState     = STATE_MENU;
         gameMode      = MODE_PVC;

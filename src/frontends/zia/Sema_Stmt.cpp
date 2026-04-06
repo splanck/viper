@@ -253,6 +253,15 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
     // Track definite initialization
     if (stmt->initializer) {
         markInitialized(stmt->name);
+
+        // A non-null initializer narrows Optional[T] to T until a later assignment
+        // clears or replaces that flow fact.
+        if (varType && varType->kind == TypeKindSem::Optional && initType &&
+            initType->kind != TypeKindSem::Optional) {
+            if (TypeRef inner = varType->innerType(); inner && inner->isAssignableFrom(*initType)) {
+                narrowType(stmt->name, inner);
+            }
+        }
     }
 }
 
@@ -521,6 +530,8 @@ void Sema::analyzeGuardStmt(GuardStmt *stmt) {
 
 void Sema::analyzeMatchStmt(MatchStmt *stmt) {
     TypeRef scrutineeType = analyzeExpr(stmt->scrutinee.get());
+    scrutineeType = declaredOptionalSurfaceType(stmt->scrutinee.get(), scrutineeType);
+    exprTypes_[stmt->scrutinee.get()] = scrutineeType;
 
     MatchCoverage coverage;
     for (auto &arm : stmt->arms) {

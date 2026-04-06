@@ -1,9 +1,9 @@
 module ai;
 
-bind "./config";
-bind "./board";
-bind "./moves";
-bind "./eval";
+bind "../core/config";
+bind "../core/board";
+bind "../core/moves";
+bind "../core/eval";
 
 // ============================================================================
 // ChessAI — iterative-deepening minimax with alpha-beta pruning.
@@ -352,8 +352,7 @@ class ChessAI {
     }
 
     // -------------------------------------------------------------------------
-    // Utility: absolute value (Zia has no built-in abs for Integer)
-    // -------------------------------------------------------------------------
+    // Utility: integer absolute value (runtime only provides f64 Math.Abs)
     hide func absInt(x: Integer) -> Integer {
         if x < 0 { return -x; }
         return x;

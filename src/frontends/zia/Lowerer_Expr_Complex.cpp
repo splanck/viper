@@ -20,6 +20,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia {
@@ -370,11 +371,43 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         if (ctorName.empty())
             ctorName = type->name + ".New";
 
-        // Lower arguments
+        const auto *binding = sema_.newArgBinding(expr);
+        std::vector<int> orderedSources = orderedArgSources(expr->args, binding);
+        const auto *rtDesc = il::runtime::findRuntimeDescriptor(ctorName);
+        const std::vector<il::core::Type> *expectedParamTypes =
+            rtDesc ? &rtDesc->signature.paramTypes : nullptr;
+
+        // Lower arguments in the semantically resolved order.
         std::vector<Value> argValues;
-        for (auto &arg : expr->args) {
-            auto result = lowerExpr(arg.value.get());
-            argValues.push_back(result.value);
+        argValues.reserve(orderedSources.size());
+        for (size_t i = 0; i < orderedSources.size(); ++i) {
+            size_t sourceIndex = static_cast<size_t>(orderedSources[i]);
+            auto result = lowerExpr(expr->args[sourceIndex].value.get());
+            Value argValue = result.value;
+
+            if (result.type.kind == Type::Kind::I32)
+                argValue = widenByteToInteger(argValue);
+
+            if (expectedParamTypes && i < expectedParamTypes->size()) {
+                Type expectedType = (*expectedParamTypes)[i];
+                if (expectedType.kind == Type::Kind::Ptr && result.type.kind != Type::Kind::Ptr &&
+                    result.type.kind != Type::Kind::Void) {
+                    argValue = emitBox(argValue, result.type);
+                } else if (expectedType.kind == Type::Kind::F64 &&
+                           result.type.kind == Type::Kind::I64) {
+                    unsigned convId = nextTempId();
+                    il::core::Instr convInstr;
+                    convInstr.result = convId;
+                    convInstr.op = Opcode::Sitofp;
+                    convInstr.type = Type(Type::Kind::F64);
+                    convInstr.operands = {argValue};
+                    convInstr.loc = curLoc_;
+                    blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                    argValue = Value::temp(convId);
+                }
+            }
+
+            argValues.push_back(argValue);
         }
 
         // Call the runtime constructor

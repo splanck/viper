@@ -261,8 +261,9 @@ For development, use VM mode. For performance testing, use native compilation.
 The VM supports source-level debugging:
 
 ```bash
-# Set breakpoint and run
-./build/src/tools/viper/viper front basic -run program.bas -break program.bas:42
+# Build to IL, then set a source breakpoint in the IL runner
+viper build program.zia -o /tmp/program.il
+viper -run /tmp/program.il --break-src program.zia:42
 
 # Use debugger commands
 # (watch variables, step through code, inspect state)
@@ -361,4 +362,3 @@ clang-format -i <files>
 ```
 
 ---
-

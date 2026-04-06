@@ -28,7 +28,7 @@ namespace il::frontends::zia {
 // Type Resolution
 //=============================================================================
 
-TypeRef Sema::resolveNamedType(const std::string &name) const {
+TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const {
     // Built-in types (accept both PascalCase and lowercase variants)
     if (name == "Integer" || name == "integer" || name == "Int" || name == "int")
         return types::integer();
@@ -57,6 +57,11 @@ TypeRef Sema::resolveNamedType(const std::string &name) const {
         return types::set(types::unknown());
     if (name == "Map")
         return types::map(types::string(), types::unknown());
+
+    if (Symbol *sym = const_cast<Sema *>(this)->lookupAccessibleSymbol(name, useLoc);
+        sym && sym->kind == Symbol::Kind::Type) {
+        return sym->type;
+    }
 
     // Look up in registry
     auto it = typeRegistry_.find(name);
@@ -94,13 +99,35 @@ TypeRef Sema::resolveNamedType(const std::string &name) const {
         }
     }
 
-    // Handle cross-module type references (e.g., "token.Token")
-    // The ImportResolver merges imported declarations, so we just need
-    // to strip the module prefix and look up the base type name.
+    // Handle qualified type references (e.g., "token.Token", "Mod.Ns.Type")
     auto dotPos = name.find('.');
     if (dotPos != std::string::npos) {
         std::string prefix = name.substr(0, dotPos);
         std::string suffix = name.substr(dotPos + 1);
+
+        auto moduleIt = moduleExports_.find(prefix);
+        if (moduleIt != moduleExports_.end()) {
+            std::string firstItem = suffix;
+            std::string remaining;
+            auto itemDot = suffix.find('.');
+            if (itemDot != std::string::npos) {
+                firstItem = suffix.substr(0, itemDot);
+                remaining = suffix.substr(itemDot + 1);
+            }
+
+            auto exportIt = moduleIt->second.find(firstItem);
+            if (exportIt != moduleIt->second.end()) {
+                const Symbol &exportSym = exportIt->second;
+                if (!remaining.empty() && exportSym.kind == Symbol::Kind::Module && exportSym.type)
+                    return resolveNamedType(exportSym.type->name + "." + remaining, useLoc);
+                if (remaining.empty() && exportSym.kind == Symbol::Kind::Type)
+                    return exportSym.type;
+                if (remaining.empty() && exportSym.kind == Symbol::Kind::Module)
+                    return exportSym.type;
+                return nullptr;
+            }
+            return nullptr;
+        }
 
         // Check if prefix is a namespace alias (e.g., GUI -> Viper.GUI)
         auto prefixIt = importedSymbols_.find(prefix);
@@ -113,7 +140,12 @@ TypeRef Sema::resolveNamedType(const std::string &name) const {
                 return types::runtimeClass(fullName);
         }
 
-        // Look up the unqualified type name in the registry
+        // Look up the fully-qualified type name directly (used for namespaces).
+        it = typeRegistry_.find(name);
+        if (it != typeRegistry_.end())
+            return it->second;
+
+        // Backwards-compatible fallback: strip the module prefix and look up the base name.
         it = typeRegistry_.find(suffix);
         if (it != typeRegistry_.end())
             return it->second;
@@ -148,7 +180,7 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             if (TypeRef substituted = lookupTypeParam(named->name))
                 return substituted;
 
-            TypeRef resolved = resolveNamedType(named->name);
+            TypeRef resolved = resolveNamedType(named->name, node->loc);
             if (!resolved) {
                 error(node->loc, "Unknown type: " + named->name);
                 return types::unknown();
@@ -189,7 +221,7 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             }
 
             // Fallback: resolve as named type with type arguments
-            TypeRef baseType = resolveNamedType(generic->name);
+            TypeRef baseType = resolveNamedType(generic->name, node->loc);
             if (!baseType) {
                 error(node->loc, "Unknown type: " + generic->name);
                 return types::unknown();
@@ -241,13 +273,20 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
 
 void Sema::defineExternFunction(const std::string &name,
                                 TypeRef returnType,
-                                const std::vector<TypeRef> &paramTypes) {
+                                const std::vector<TypeRef> &paramTypes,
+                                const std::vector<std::string> &paramNames) {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
     sym.type = types::function(paramTypes, returnType);
     sym.isExtern = true;
     sym.decl = nullptr; // No AST declaration for extern functions
+    if (!paramNames.empty()) {
+        sym.paramNames = paramNames;
+    } else if (Symbol *existing = currentScope_->lookupLocal(name);
+               existing && existing->isExtern && existing->kind == Symbol::Kind::Function) {
+        sym.paramNames = existing->paramNames;
+    }
     defineSymbol(name, std::move(sym));
 }
 

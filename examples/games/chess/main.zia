@@ -1,6 +1,6 @@
 module main;
 
-bind "./game";
+bind "./ui/game";
 
 // Entry point for the Viper Chess game.
 // Creates the ChessGame entity and starts the game loop.

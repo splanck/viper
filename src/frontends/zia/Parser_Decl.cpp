@@ -72,65 +72,71 @@ BindDecl Parser::parseBindDecl() {
     SourceLoc loc = bindTok.loc;
 
     std::string path;
+    std::string alias;
     bool isNamespaceBind = false;
 
-    // Check for string literal (file path bind)
-    if (check(TokenKind::StringLiteral)) {
-        Token pathTok = advance();
-        path = pathTok.stringValue;
-        isNamespaceBind = false;
-    }
-    // Otherwise parse dotted identifier path: Viper.Terminal or module_name
-    else if (check(TokenKind::Identifier)) {
-        Token firstTok = advance();
+    auto parseBindTarget = [&](std::string &outPath, bool &outIsNamespaceBind) -> bool {
+        if (check(TokenKind::StringLiteral)) {
+            Token pathTok = advance();
+            outPath = pathTok.stringValue;
+            outIsNamespaceBind = false;
+            return true;
+        }
 
-        // Standard dotted path: bind Viper.Terminal; or bind Viper.Terminal as T;
-        path = firstTok.text;
+        if (!check(TokenKind::Identifier))
+            return false;
+
+        Token firstTok = advance();
+        outPath = firstTok.text;
 
         while (match(TokenKind::Dot)) {
             if (!check(TokenKind::Identifier)) {
                 error("expected identifier in bind path");
-                return BindDecl(loc, path);
+                return false;
             }
-            path += ".";
+            outPath += ".";
             Token segmentTok = advance();
-            path += segmentTok.text;
+            outPath += segmentTok.text;
         }
 
-        // Detect if this is a namespace bind (starts with "Viper.")
-        // File binds use string literals, namespace binds use dotted identifiers
-        if (path.rfind("Viper.", 0) == 0) {
-            isNamespaceBind = true;
+        outIsNamespaceBind = outPath.rfind("Viper.", 0) == 0;
+        return true;
+    };
+
+    // Legacy alias-first form: bind Alias = Viper.IO;
+    if (check(TokenKind::Identifier) && check(TokenKind::Equal, 1)) {
+        Token aliasTok = advance();
+        alias = aliasTok.text;
+        advance(); // consume '='
+        if (!parseBindTarget(path, isNamespaceBind)) {
+            error("expected bind target after '='");
+            return BindDecl(loc, "");
         }
-    } else {
+    } else if (!parseBindTarget(path, isNamespaceBind)) {
         error("expected bind path (string or identifier)");
         return BindDecl(loc, "");
     }
 
     BindDecl decl(loc, path);
     decl.isNamespaceBind = isNamespaceBind;
+    decl.alias = std::move(alias);
 
     // Parse optional selective import: { item1, item2, ... }
-    // Only valid for namespace binds
     if (check(TokenKind::LBrace)) {
-        if (!isNamespaceBind) {
-            error("selective imports { ... } only allowed for namespace binds");
-        } else {
-            advance(); // consume '{'
-            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-                if (!check(TokenKind::Identifier)) {
-                    error("expected identifier in selective import list");
-                    break;
-                }
-                Token itemTok = advance();
-                decl.specificItems.push_back(itemTok.text);
-
-                if (!match(TokenKind::Comma))
-                    break;
+        advance(); // consume '{'
+        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
+            if (!check(TokenKind::Identifier)) {
+                error("expected identifier in selective import list");
+                break;
             }
-            if (!expect(TokenKind::RBrace, "}"))
-                return decl;
+            Token itemTok = advance();
+            decl.specificItems.push_back(itemTok.text);
+
+            if (!match(TokenKind::Comma))
+                break;
         }
+        if (!expect(TokenKind::RBrace, "}"))
+            return decl;
     }
 
     // Parse optional alias: as AliasName
@@ -138,6 +144,10 @@ BindDecl Parser::parseBindDecl() {
     if (match(TokenKind::KwAs)) {
         if (!decl.specificItems.empty()) {
             error("cannot use alias 'as' with selective imports { ... }");
+            return decl;
+        }
+        if (!decl.alias.empty()) {
+            error("bind alias already specified before '='");
             return decl;
         }
         if (!check(TokenKind::Identifier)) {
@@ -158,26 +168,44 @@ BindDecl Parser::parseBindDecl() {
 /// @details Handles func, struct, class, interface, namespace, and var/final declarations.
 /// @return The parsed declaration, or nullptr on error.
 DeclPtr Parser::parseDeclaration() {
-    // Module-level export modifier: `expose func ...` sets Export linkage.
-    if (check(TokenKind::KwExpose)) {
-        advance(); // consume 'expose'
-        if (check(TokenKind::KwFunc)) {
-            auto decl = parseFunctionDecl();
-            if (decl) {
-                auto *fn = static_cast<FunctionDecl *>(decl.get());
-                fn->visibility = Visibility::Public;
+    // Module-level visibility/export modifier.
+    if (check(TokenKind::KwExpose) || check(TokenKind::KwHide)) {
+        bool isExported = match(TokenKind::KwExpose);
+        if (!isExported)
+            advance(); // consume 'hide'
+
+        auto applyTopLevelVisibility = [&](DeclPtr decl) -> DeclPtr {
+            if (!decl)
+                return nullptr;
+            decl->isExported = isExported;
+            if (decl->kind == DeclKind::Function) {
+                static_cast<FunctionDecl *>(decl.get())->visibility =
+                    isExported ? Visibility::Public : Visibility::Private;
+            } else if (decl->kind == DeclKind::Enum) {
+                static_cast<EnumDecl *>(decl.get())->visibility =
+                    isExported ? Visibility::Public : Visibility::Private;
             }
             return decl;
-        }
-        if (check(TokenKind::KwEnum)) {
-            auto decl = parseEnumDecl();
-            if (decl) {
-                auto *en = static_cast<EnumDecl *>(decl.get());
-                en->visibility = Visibility::Public;
-            }
-            return decl;
-        }
-        error("expected 'func' or 'enum' after 'expose'");
+        };
+
+        if (check(TokenKind::KwFunc))
+            return applyTopLevelVisibility(parseFunctionDecl());
+        if (check(TokenKind::KwEnum))
+            return applyTopLevelVisibility(parseEnumDecl());
+        if (check(TokenKind::KwStruct))
+            return applyTopLevelVisibility(parseStructDecl());
+        if (check(TokenKind::KwClass))
+            return applyTopLevelVisibility(parseClassDecl());
+        if (check(TokenKind::KwInterface))
+            return applyTopLevelVisibility(parseInterfaceDecl());
+        if (check(TokenKind::KwNamespace))
+            return applyTopLevelVisibility(parseNamespaceDecl());
+        if (check(TokenKind::KwType))
+            return applyTopLevelVisibility(parseTypeAlias());
+        if (check(TokenKind::KwVar) || check(TokenKind::KwFinal) || check(TokenKind::KwLet))
+            return applyTopLevelVisibility(parseGlobalVarDecl());
+
+        error("expected declaration after visibility modifier");
         return nullptr;
     }
     // Foreign function import: `foreign func name(...) -> Type` (no body).
@@ -230,7 +258,7 @@ DeclPtr Parser::parseDeclaration() {
         return parseTypeAlias();
     }
     // Module-level variable declarations (global variables)
-    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
+    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
         return parseGlobalVarDecl();
     }
     error("expected declaration");
@@ -491,14 +519,14 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
             // parseBlock() expects and consumes '{' itself
             dtor->body = parseBlock();
             members.push_back(std::move(dtor));
-        } else if (check(TokenKind::KwFinal)) {
+        } else if (check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
             // BUG-FE-012: 'final' is not allowed inside class/struct bodies.
             // Finals are compile-time constants and must be declared at module scope.
             // Provide a clear error instead of the generic "expected field..." message.
-            error("'final' declarations are not allowed inside class bodies. "
-                  "Move 'final' to module scope, or use a field initialized in init()");
+            error("'final'/'let' declarations are not allowed inside class bodies. "
+                  "Move the constant to module scope, or use a field initialized in init()");
             // Skip past the final declaration to recover
-            advance(); // consume 'final'
+            advance(); // consume 'final' or 'let'
             if (check(TokenKind::Identifier))
                 advance(); // consume name
             if (match(TokenKind::Equal)) {
@@ -730,12 +758,12 @@ DeclPtr Parser::parseNamespaceDecl() {
     return ns;
 }
 
-/// @brief Parse a global variable declaration using var/final syntax.
+/// @brief Parse a global variable declaration using var/final/let syntax.
 /// @return The parsed GlobalVarDecl, or nullptr on error.
 DeclPtr Parser::parseGlobalVarDecl() {
-    Token kwTok = advance(); // consume 'var' or 'final'
+    Token kwTok = advance(); // consume 'var', 'final', or 'let'
     SourceLoc loc = kwTok.loc;
-    bool isFinal = kwTok.kind == TokenKind::KwFinal;
+    bool isFinal = kwTok.kind == TokenKind::KwFinal || kwTok.kind == TokenKind::KwLet;
 
     if (!check(TokenKind::Identifier)) {
         error("expected variable name");
@@ -767,23 +795,36 @@ DeclPtr Parser::parseGlobalVarDecl() {
     return decl;
 }
 
-/// @brief Parse a field declaration inside a struct or class body (Type name [= init];).
+/// @brief Parse a field declaration inside a struct or class body.
+/// @details Supports both `Type name;` and `name: Type;`.
 /// @return The parsed FieldDecl, or nullptr on error.
 DeclPtr Parser::parseFieldDecl() {
     SourceLoc loc = peek().loc;
 
-    // Parse the type (handles generic types like List[Vehicle], optional types, etc.)
-    TypePtr type = parseType();
-    if (!type)
-        return nullptr;
+    TypePtr type;
+    std::string fieldName;
 
-    // Field name
-    if (!checkIdentifierLike()) {
-        error("expected field name");
-        return nullptr;
+    // Familiar field form: name: Type
+    if (checkIdentifierLike() && check(TokenKind::Colon, 1)) {
+        Token nameTok = advance();
+        fieldName = nameTok.text;
+        advance(); // consume ':'
+        type = parseType();
+        if (!type)
+            return nullptr;
+    } else {
+        // Original field form: Type name
+        type = parseType();
+        if (!type)
+            return nullptr;
+
+        if (!checkIdentifierLike()) {
+            error("expected field name");
+            return nullptr;
+        }
+        Token nameTok = advance();
+        fieldName = nameTok.text;
     }
-    Token nameTok = advance();
-    std::string fieldName = nameTok.text;
 
     auto field = std::make_unique<FieldDecl>(loc, std::move(fieldName));
     field->type = std::move(type);
@@ -910,8 +951,8 @@ DeclPtr Parser::parsePropertyDecl() {
     if (!expect(TokenKind::RBrace, "}"))
         return nullptr;
 
-    if (!prop->getterBody) {
-        error("property must have a getter");
+    if (!prop->getterBody && !prop->setterBody) {
+        error("property must declare at least one accessor");
         return nullptr;
     }
 

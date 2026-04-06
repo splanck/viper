@@ -47,38 +47,111 @@ void Sema::analyzeBind(BindDecl &decl) {
     // Handle file binds (existing logic)
     binds_.insert(decl.path);
 
-    // Extract module name from bind path
-    // For "./colors" or "../utils/colors", extract "colors"
-    // For "colors", use "colors"
-    std::string moduleName;
-    if (!decl.alias.empty()) {
-        // Use alias if provided: bind "./colors" as c;
-        moduleName = decl.alias;
-    } else {
-        // Extract filename without extension from path
-        std::string path = decl.path;
-        // Remove directory components (handle both / and \ separators)
-        auto lastSlash = path.find_last_of("/\\");
-        if (lastSlash != std::string::npos) {
-            path = path.substr(lastSlash + 1);
-        }
-        // Remove .zia extension if present
-        auto extPos = path.rfind(".zia");
-        if (extPos != std::string::npos) {
-            path = path.substr(0, extPos);
-        }
-        moduleName = path;
-    }
+    std::string moduleName = fileBindModuleName(decl);
 
-    // Register the module name as a Module symbol for qualified access
-    if (!moduleName.empty()) {
-        Symbol sym;
-        sym.kind = Symbol::Kind::Module;
-        sym.name = moduleName;
-        sym.type = types::module(moduleName);
-        sym.isFinal = true;
-        defineSymbol(moduleName, sym);
+    // File binds are resolved through moduleExports_ during semantic analysis
+    // instead of occupying ordinary symbol-table slots. That avoids collisions
+    // between a bound module name and an exported declaration from that file
+    // (for example `module Inner; class Inner { ... }`).
+}
+
+void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
+                                 const std::vector<DeclPtr> &decls) {
+    moduleExports_.clear();
+
+    for (const auto &bind : binds) {
+        if (bind.isNamespaceBind || bind.resolvedFileId == 0)
+            continue;
+
+        std::unordered_map<std::string, Symbol> exports;
+        collectExportedSymbolsForFile(bind.resolvedFileId, decls, exports);
+        moduleExports_[fileBindModuleName(bind)] = std::move(exports);
     }
+}
+
+void Sema::collectExportedSymbolsForFile(uint32_t fileId,
+                                         const std::vector<DeclPtr> &decls,
+                                         std::unordered_map<std::string, Symbol> &out) const {
+    auto addLookupSymbol = [&](const std::string &exportName, const std::string &lookupName) {
+        Symbol *sym = const_cast<Sema *>(this)->currentScope_->lookup(lookupName);
+        if (!sym || !sym->isExported || sym->isExtern)
+            return;
+        out[exportName] = *sym;
+    };
+
+    for (const auto &decl : decls) {
+        if (!decl || decl->loc.file_id != fileId || !decl->isExported)
+            continue;
+
+        switch (decl->kind) {
+            case DeclKind::Function:
+                addLookupSymbol(static_cast<FunctionDecl *>(decl.get())->name,
+                                static_cast<FunctionDecl *>(decl.get())->name);
+                break;
+            case DeclKind::Struct:
+                addLookupSymbol(static_cast<StructDecl *>(decl.get())->name,
+                                static_cast<StructDecl *>(decl.get())->name);
+                break;
+            case DeclKind::Class:
+                addLookupSymbol(static_cast<ClassDecl *>(decl.get())->name,
+                                static_cast<ClassDecl *>(decl.get())->name);
+                break;
+            case DeclKind::Interface:
+                addLookupSymbol(static_cast<InterfaceDecl *>(decl.get())->name,
+                                static_cast<InterfaceDecl *>(decl.get())->name);
+                break;
+            case DeclKind::Enum:
+                addLookupSymbol(static_cast<EnumDecl *>(decl.get())->name,
+                                static_cast<EnumDecl *>(decl.get())->name);
+                break;
+            case DeclKind::GlobalVar:
+                addLookupSymbol(static_cast<GlobalVarDecl *>(decl.get())->name,
+                                static_cast<GlobalVarDecl *>(decl.get())->name);
+                break;
+            case DeclKind::TypeAlias:
+                addLookupSymbol(static_cast<TypeAliasDecl *>(decl.get())->name,
+                                static_cast<TypeAliasDecl *>(decl.get())->name);
+                break;
+            case DeclKind::Namespace: {
+                const auto *ns = static_cast<NamespaceDecl *>(decl.get());
+                std::string exportName = ns->name;
+                auto dot = exportName.find('.');
+                if (dot != std::string::npos)
+                    exportName = exportName.substr(0, dot);
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Module;
+                sym.name = exportName;
+                sym.type = types::module(ns->name);
+                sym.isFinal = true;
+                sym.isExported = true;
+                sym.decl = decl.get();
+                sym.loc = decl->loc;
+                out[exportName] = sym;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+std::string Sema::fileBindModuleName(const BindDecl &decl) const {
+    if (!decl.alias.empty())
+        return decl.alias;
+    if (!decl.resolvedModuleName.empty())
+        return decl.resolvedModuleName;
+
+    std::string path = decl.path;
+    auto lastSlash = path.find_last_of("/\\");
+    if (lastSlash != std::string::npos)
+        path = path.substr(lastSlash + 1);
+
+    auto extPos = path.rfind(".zia");
+    if (extPos != std::string::npos)
+        path = path.substr(0, extPos);
+
+    return path;
 }
 
 /// @brief Analyze a bind declaration that imports a runtime namespace.
@@ -446,11 +519,14 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
 
                 TypeRef propType =
                     prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
-                std::string getterKey = decl.name + ".get_" + prop->name;
-                TypeRef getterType = types::function({}, propType);
-                methodTypes_[getterKey] = getterType;
                 memberVisibility_[decl.name + "." + prop->name] = prop->visibility;
-                memberVisibility_[getterKey] = prop->visibility;
+
+                if (prop->getterBody) {
+                    std::string getterKey = decl.name + ".get_" + prop->name;
+                    TypeRef getterType = types::function({}, propType);
+                    methodTypes_[getterKey] = getterType;
+                    memberVisibility_[getterKey] = prop->visibility;
+                }
 
                 if (prop->setterBody) {
                     std::string setterKey = decl.name + ".set_" + prop->name;

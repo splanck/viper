@@ -268,7 +268,8 @@ try {
 }
 ```
 
-If *any* of these three operations fails, the catch block runs. Since Zia uses a single generic `catch` clause (there are no typed catch blocks), you can inspect the error message to understand what went wrong:
+If *any* of these three operations fails, the catch block runs. A plain
+`catch` handles every runtime error:
 
 ```rust
 bind File = Viper.IO.File;
@@ -285,7 +286,32 @@ try {
 }
 ```
 
-Because there is only one catch clause, if you need to respond differently to different failure modes, consider structuring your code so that each risky operation is in its own try-catch:
+When you need different handling for different failure modes, Zia also supports
+typed catches for runtime error kinds such as `DivideByZero`, `Bounds`,
+`RuntimeError`, and the catch-all alias `Error`:
+
+```rust
+bind File = Viper.IO.File;
+bind Convert = Viper.Core.Convert;
+bind Viper.Terminal;
+
+try {
+    var content = File.ReadAllText(filename);
+    var value = Convert.ToInt64(content);
+    var result = 1000 / value;
+    Say("Result: " + result);
+} catch(e: DivideByZero) {
+    Say("The file contained zero.");
+} catch(e: IOError) {
+    Say("Could not read the file.");
+} catch {
+    Say("Something else went wrong.");
+}
+```
+
+If you want fine-grained recovery without multiple typed catches, structuring
+your code so that each risky operation is in its own try-catch is still a good
+approach:
 
 ```rust
 bind File = Viper.IO.File;

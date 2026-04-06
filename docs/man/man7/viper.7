@@ -1,33 +1,45 @@
 .TH viper 7 "Viper" "Project overview" "Miscellanea"
 .SH NAME
-viper \- Overview of the Viper IL toolchain and runtime
+viper \- overview of the Viper toolchain, frontends, and runtime
 .SH DESCRIPTION
-Viper is a modular IL and runtime system with:
+Viper is a modular language and runtime stack built around Viper IL.
 .IP \(bu 2
-An interpreter (VM) with pluggable dispatch strategies.
+Frontends include Zia and Viper BASIC.
 .IP \(bu 2
-Frontends, including a BASIC dialect that lowers to IL.
+The VM executes textual IL and frontend-generated programs.
 .IP \(bu 2
-Backends for native code emission on supported targets.
+Native backends emit executables for supported targets.
+.IP \(bu 2
+The runtime library exposes the \fBViper.*\fR namespace used by both frontends.
 .PP
-Common user-facing tools:
+The main workflow is through \fBviper\fR(1): build or run a \fC.zia\fR file,
+\fC.bas\fR file, project directory, or \fCviper.project\fR.
+.SH COMMON TOOLS
 .TP
 \fBviper\fR(1)
-Multi-tool driver (run IL, compile BASIC, optimize IL, codegen).
+Project driver for Zia, BASIC, IL, native builds, REPL, and packaging.
 .TP
-\fBilrun\fR(1)
-Simple IL runner.
+\fBzia\fR(1)
+Single-file Zia driver.
 .TP
 \fBvbasic\fR(1)
-BASIC interpreter / IL emitter.
+Single-file BASIC driver.
+.TP
+\fBilrun\fR(1)
+Simple textual IL runner.
 .TP
 \fBil-verify\fR(1)
 IL verifier.
 .TP
 \fBbasic-ast-dump\fR(1), \fBbasic-lex-dump\fR(1)
-Developer utilities for parsing/lexing BASIC.
+Developer utilities for BASIC parsing and lexing.
 .SH FILES
-Textual IL files typically end with \fC.il\fR. BASIC sources use \fC.bas\fR.
+Textual IL files typically end with \fC.il\fR.
+.PP
+Zia source files typically end with \fC.zia\fR.
+.PP
+BASIC source files typically end with \fC.bas\fR.
+.PP
+Project roots may contain a \fCviper.project\fR file.
 .SH SEE ALSO
-\fBviper\fR(1), \fBilrun\fR(1), \fBvbasic\fR(1), \fBil-verify\fR(1)
-
+\fBviper\fR(1), \fBzia\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1), \fBil-verify\fR(1)

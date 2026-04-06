@@ -34,6 +34,51 @@ bool isHttpServerRouteRuntime(std::string_view callee) {
            callee == "Viper.Network.HttpServer.Put" || callee == "Viper.Network.HttpServer.Delete";
 }
 
+bool isTerminalTextRuntime(std::string_view callee) {
+    return callee == kTerminalSay || callee == kTerminalPrint;
+}
+
+TypeRef unwrapSurfaceType(TypeRef type) {
+    while (type && type->kind == TypeKindSem::Optional && type->innerType())
+        type = type->innerType();
+    return type;
+}
+
+std::string specializedRuntimeReturnCallee(std::string_view callee, TypeRef surfaceType) {
+    surfaceType = unwrapSurfaceType(surfaceType);
+    if (!surfaceType)
+        return {};
+
+    if (callee == "Viper.Collections.Seq.Get" && surfaceType->kind == TypeKindSem::String)
+        return kSeqGetStr;
+
+    if (callee == "Viper.Collections.Map.Get") {
+        switch (surfaceType->kind) {
+            case TypeKindSem::String:
+                return "Viper.Collections.Map.GetStr";
+            case TypeKindSem::Integer:
+                return "Viper.Collections.Map.GetInt";
+            case TypeKindSem::Number:
+                return "Viper.Collections.Map.GetFloat";
+            default:
+                break;
+        }
+    }
+
+    if (callee == "Viper.Collections.Map.GetOr") {
+        switch (surfaceType->kind) {
+            case TypeKindSem::Integer:
+                return "Viper.Collections.Map.GetIntOr";
+            case TypeKindSem::Number:
+                return "Viper.Collections.Map.GetFloatOr";
+            default:
+                break;
+        }
+    }
+
+    return {};
+}
+
 bool isHttpHandlerPtrType(TypeRef type) {
     return type && type->kind == TypeKindSem::Ptr;
 }
@@ -89,6 +134,26 @@ std::vector<LowerResult> Lowerer::lowerSourceArgs(const std::vector<CallArg> &ar
     for (const auto &arg : args)
         lowered.push_back(lowerExpr(arg.value.get()));
     return lowered;
+}
+
+std::vector<int> Lowerer::orderedArgSources(const std::vector<CallArg> &args,
+                                            const Sema::CallArgBinding *binding) const {
+    std::vector<int> order;
+    if (!binding || binding->fixedParamSources.empty()) {
+        order.reserve(args.size());
+        for (size_t i = 0; i < args.size(); ++i)
+            order.push_back(static_cast<int>(i));
+        return order;
+    }
+
+    order.reserve(binding->fixedParamSources.size() + binding->variadicSources.size());
+    for (int sourceIndex : binding->fixedParamSources) {
+        if (sourceIndex >= 0)
+            order.push_back(sourceIndex);
+    }
+    for (int sourceIndex : binding->variadicSources)
+        order.push_back(sourceIndex);
+    return order;
 }
 
 std::vector<Lowerer::Value> Lowerer::lowerResolvedArgs(const std::vector<CallArg> &args,
@@ -238,6 +303,34 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
 //=============================================================================
 
 LowerResult Lowerer::lowerCall(CallExpr *expr) {
+    auto emitRuntimeCallResult = [&](const std::string &calleeName,
+                                     TypeRef surfaceType,
+                                     Type ilSurfaceType,
+                                     const std::vector<Value> &callArgs) -> LowerResult {
+        std::string effectiveCallee = calleeName;
+        Type callReturnType = ilSurfaceType;
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(effectiveCallee))
+            callReturnType = desc->signature.retType;
+
+        if (std::string specialized = specializedRuntimeReturnCallee(calleeName, surfaceType);
+            !specialized.empty()) {
+            effectiveCallee = specialized;
+            if (const auto *specializedDesc = il::runtime::findRuntimeDescriptor(effectiveCallee))
+                callReturnType = specializedDesc->signature.retType;
+            else
+                callReturnType = ilSurfaceType;
+        }
+
+        Value rawResult = emitCallRet(callReturnType, effectiveCallee, callArgs);
+        if (callReturnType.kind == ilSurfaceType.kind)
+            return {rawResult, ilSurfaceType};
+
+        if (callReturnType.kind == Type::Kind::Ptr && ilSurfaceType.kind != Type::Kind::Ptr)
+            return emitUnboxValue(rawResult, ilSurfaceType, surfaceType);
+
+        return {rawResult, ilSurfaceType};
+    };
+
     // Check for generic function call: identity[Integer](42)
     std::string genericCallee = sema_.genericFunctionCallee(expr);
     if (!genericCallee.empty()) {
@@ -316,6 +409,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         TypeRef calleeType = sema_.typeOf(expr->callee.get());
         TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
         Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
+        TypeRef surfaceReturnType = sema_.typeOf(expr);
+        Type surfaceIlReturnType =
+            surfaceReturnType ? mapType(surfaceReturnType) : ilReturnType;
 
         std::vector<TypeRef> paramTypes;
         if (calleeType)
@@ -330,10 +426,23 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             Value releaseCount = emitManagedReleaseRet(args[0], isString);
             return {releaseCount, Type(Type::Kind::I64)};
         }
-        if (ilReturnType.kind == Type::Kind::Void) {
+
+        Symbol *externSym = sema_.findExternFunction(resolvedFunction);
+        const bool isRuntimeExtern =
+            externSym && externSym->kind == Symbol::Kind::Function && externSym->isExtern;
+
+        if (surfaceIlReturnType.kind == Type::Kind::Void) {
             emitCall(resolvedFunction, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
         }
+
+        if (isRuntimeExtern) {
+            return emitRuntimeCallResult(resolvedFunction,
+                                         surfaceReturnType ? surfaceReturnType : returnType,
+                                         surfaceIlReturnType,
+                                         args);
+        }
+
         Value result = emitCallRet(ilReturnType, resolvedFunction, args);
         return {result, ilReturnType};
     }
@@ -531,16 +640,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 // to match the function signature. The sema type may differ (e.g.,
                 // String? maps to Ptr, but the extern returns str). We'll use the
                 // extern type for the call and the sema type for the result.
-                Type callReturnType = ilReturnType;
-                if (rtDesc)
-                    callReturnType = rtDesc->signature.retType;
-
                 if (ilReturnType.kind == Type::Kind::Void) {
                     emitCall(funcName, args);
                     return {Value::constInt(0), Type(Type::Kind::Void)};
                 } else {
-                    Value result = emitCallRet(callReturnType, funcName, args);
-                    return {result, ilReturnType};
+                    return emitRuntimeCallResult(funcName, exprType, ilReturnType, args);
                 }
             }
 
@@ -613,22 +717,30 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         // This allows Say(42), Say(3.14), Say(true) to work without requiring
         // explicit string conversion. The typed runtime functions (SayInt, SayNum,
         // SayBool, PrintInt, PrintNum, PrintBool) already exist — we just redirect.
-        if (expr->args.size() == 1) {
+        if (isTerminalTextRuntime(runtimeCallee) && expr->args.size() == 1) {
             auto *argExpr = expr->args[0].value.get();
             TypeRef argType = sema_.typeOf(argExpr);
 
             if (argType && argType->kind != TypeKindSem::String) {
                 std::string typedCallee;
+                auto arg = lowerExpr(argExpr);
+                Value argVal = arg.value;
+
+                if (arg.type.kind == Type::Kind::I32) {
+                    argVal = widenByteToInteger(argVal);
+                }
 
                 if (runtimeCallee == kTerminalSay) {
-                    if (argType->kind == TypeKindSem::Integer)
+                    if (argType->kind == TypeKindSem::Integer || argType->kind == TypeKindSem::Byte ||
+                        argType->kind == TypeKindSem::Enum)
                         typedCallee = kTerminalSayInt;
                     else if (argType->kind == TypeKindSem::Number)
                         typedCallee = kTerminalSayNum;
                     else if (argType->kind == TypeKindSem::Boolean)
                         typedCallee = kTerminalSayBool;
                 } else if (runtimeCallee == kTerminalPrint) {
-                    if (argType->kind == TypeKindSem::Integer)
+                    if (argType->kind == TypeKindSem::Integer || argType->kind == TypeKindSem::Byte ||
+                        argType->kind == TypeKindSem::Enum)
                         typedCallee = kTerminalPrintInt;
                     else if (argType->kind == TypeKindSem::Number)
                         typedCallee = kTerminalPrintNum;
@@ -637,13 +749,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 }
 
                 if (!typedCallee.empty()) {
-                    auto arg = lowerExpr(argExpr);
-                    Value argVal = arg.value;
-                    if (arg.type.kind == Type::Kind::I32)
-                        argVal = widenByteToInteger(argVal);
                     emitCall(typedCallee, {argVal});
                     return {Value::constInt(0), Type(Type::Kind::Void)};
                 }
+
+                emitCall(runtimeCallee, {emitToString(argVal, argType)});
+                return {Value::constInt(0), Type(Type::Kind::Void)};
             }
         }
 
@@ -667,10 +778,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             expectedParamTypes = &rtDesc->signature.paramTypes;
         }
 
-        args.reserve(args.size() + expr->args.size());
+        const auto *binding = sema_.callArgBinding(expr);
+        std::vector<int> orderedSources = orderedArgSources(expr->args, binding);
+
+        args.reserve(args.size() + orderedSources.size());
         size_t paramOffset = args.size(); // Account for implicit self parameter if present
-        for (size_t i = 0; i < expr->args.size(); ++i) {
-            auto result = lowerExpr(expr->args[i].value.get());
+        for (size_t i = 0; i < orderedSources.size(); ++i) {
+            size_t sourceIndex = static_cast<size_t>(orderedSources[i]);
+            auto result = lowerExpr(expr->args[sourceIndex].value.get());
             Value argValue = result.value;
             if (result.type.kind == Type::Kind::I32) {
                 argValue = widenByteToInteger(argValue);
@@ -702,8 +817,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             args.push_back(argValue);
         }
 
-        if (isHttpServerRouteRuntime(runtimeCallee) && expr->args.size() == 2 && args.size() >= 3) {
-            if (auto *tagExpr = dynamic_cast<StringLiteralExpr *>(expr->args[1].value.get())) {
+        if (isHttpServerRouteRuntime(runtimeCallee) && orderedSources.size() == 2 &&
+            args.size() >= 3) {
+            size_t tagSourceIndex = static_cast<size_t>(orderedSources[1]);
+            if (auto *tagExpr = dynamic_cast<StringLiteralExpr *>(expr->args[tagSourceIndex].value.get())) {
                 std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);
                 if (!handlerTarget.empty()) {
                     emitCall("Viper.Network.HttpServer.BindHandler",
@@ -712,7 +829,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             }
         }
 
-        TypeRef exprType = sema_.functionReturnType(runtimeCallee);
+        TypeRef exprType = sema_.typeOf(expr);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
         if (runtimeCallee == kHeapRelease && args.size() == 1) {
@@ -725,17 +842,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         // Use the extern's declared return type for the call instruction so it
         // matches the function signature. The sema type may differ for optional
         // returns (e.g., String? maps to Ptr, but the extern returns str).
-        Type callReturnType = ilReturnType;
-        if (rtDesc)
-            callReturnType = rtDesc->signature.retType;
-
         // Handle void return types correctly - don't try to store void results
         if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(runtimeCallee, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
         } else {
-            Value result = emitCallRet(callReturnType, runtimeCallee, args);
-            return {result, ilReturnType};
+            return emitRuntimeCallResult(runtimeCallee, exprType, ilReturnType, args);
         }
     }
 
