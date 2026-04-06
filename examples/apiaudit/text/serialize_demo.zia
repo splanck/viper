@@ -7,8 +7,7 @@
 
 module SerializeDemo;
 bind Viper.Terminal;
-bind Ser = Viper.Data.Serialize;
-
+bind Viper.Data.Serialize as Ser;
 func start() {
     Say("=== API Audit: Viper.Data.Serialize ===");
 

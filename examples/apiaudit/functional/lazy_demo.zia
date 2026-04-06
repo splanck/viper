@@ -1,9 +1,8 @@
 // API Audit: Viper.Lazy (Zia)
 module LazyDemo;
 bind Viper.Terminal;
-bind Lazy = Viper.Lazy;
-bind Box = Viper.Core.Box;
-
+bind Viper.Lazy as Lazy;
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Lazy ===");
 

@@ -8,13 +8,12 @@
 
 module json;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind Json = Viper.Text.Json;
-bind JP = Viper.Text.JsonPath;
-bind SB = Viper.Text.StringBuilder;
-bind Seq = Viper.Collections.Seq;
-
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Text.Json as Json;
+bind Viper.Text.JsonPath as JP;
+bind Viper.Text.StringBuilder as SB;
+bind Viper.Collections.Seq as Seq;
 bind "../engine/types";
 
 //=============================================================================

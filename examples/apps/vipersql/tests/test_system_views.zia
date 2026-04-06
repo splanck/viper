@@ -3,9 +3,8 @@
 
 module test_system_views;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "../engine/executor";
 bind "../engine/types";
 bind "../engine/server";

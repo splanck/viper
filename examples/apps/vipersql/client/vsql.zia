@@ -21,14 +21,13 @@
 
 module vsql;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind Env = Viper.Environment;
-bind Parse = Viper.Core.Parse;
-bind File = Viper.IO.File;
-bind DateTime = Viper.Time.DateTime;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Environment as Env;
+bind Viper.Core.Parse as Parse;
+bind Viper.IO.File as File;
+bind Viper.Time.DateTime as DateTime;
 bind "./pg_client";
 
 //=============================================================================

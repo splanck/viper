@@ -1,8 +1,7 @@
 // API Audit: Viper.Game.ButtonGroup (Zia)
 module ButtonGroupDemo;
 bind Viper.Terminal;
-bind BG = Viper.Game.ButtonGroup;
-
+bind Viper.Game.ButtonGroup as BG;
 func start() {
     Say("=== API Audit: Viper.Game.ButtonGroup ===");
 

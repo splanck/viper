@@ -1,9 +1,8 @@
 // Debug scale test — track progress
 module test_scale_debug;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "../engine/executor";
 bind "../engine/types";
 

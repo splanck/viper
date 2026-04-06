@@ -14,13 +14,13 @@ bind "build/build_system";
 bind "build/diagnostic";
 
 bind Viper.GUI;
-bind IO = Viper.IO;
-bind Path = Viper.IO.Path;
-bind Dir = Viper.IO.Dir;
-bind Input = Viper.Input;
-bind Exec = Viper.Exec;
-bind Convert = Viper.Core.Convert;
-bind Str = Viper.String;
+bind Viper.IO as IO;
+bind Viper.IO.Path as Path;
+bind Viper.IO.Dir as Dir;
+bind Viper.Input as Input;
+bind Viper.Exec as Exec;
+bind Viper.Core.Convert as Convert;
+bind Viper.String as Str;
 
 // ============================================================================
 // ViperIDE — main entry point
@@ -33,7 +33,6 @@ bind Str = Viper.String;
 final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 80;
-final DEFAULT_FONT_SIZE = 14;
 final ERROR_MARKER_COLOR = 16711680;     // red (0xFF0000)
 final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
 

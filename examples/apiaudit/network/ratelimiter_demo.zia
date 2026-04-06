@@ -1,7 +1,6 @@
 module RateLimiterDemo;
 bind Viper.Terminal;
-bind RateLimiter = Viper.Network.RateLimiter;
-
+bind Viper.Network.RateLimiter as RateLimiter;
 func start() {
     Say("=== API Audit: Viper.Network.RateLimiter ===");
 

@@ -7,8 +7,7 @@
 
 module BoxDemo;
 bind Viper.Terminal;
-bind Box = Viper.Core.Box;
-
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Core.Box ===");
 

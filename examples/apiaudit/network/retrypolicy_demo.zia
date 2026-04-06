@@ -1,7 +1,6 @@
 module RetryPolicyDemo;
 bind Viper.Terminal;
-bind RetryPolicy = Viper.Network.RetryPolicy;
-
+bind Viper.Network.RetryPolicy as RetryPolicy;
 func start() {
     Say("=== API Audit: Viper.Network.RetryPolicy ===");
 

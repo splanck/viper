@@ -11,11 +11,10 @@
 
 module engine;
 
-bind IO = Viper.IO;
-bind String = Viper.String;
-bind Terminal = Viper.Terminal;
-bind Threads = Viper.Threads;
-
+bind Viper.IO as IO;
+bind Viper.String as String;
+bind Viper.Terminal as Terminal;
+bind Viper.Threads as Threads;
 bind "./page";
 bind "./serializer";
 bind "./pager";

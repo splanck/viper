@@ -3,10 +3,9 @@
 
 module test_phase59_grouping_sets;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/types";

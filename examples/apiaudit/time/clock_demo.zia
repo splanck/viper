@@ -6,8 +6,7 @@
 
 module ClockDemo;
 bind Viper.Terminal;
-bind Clk = Viper.Time.Clock;
-
+bind Viper.Time.Clock as Clk;
 func start() {
     Say("=== API Audit: Viper.Time.Clock ===");
 

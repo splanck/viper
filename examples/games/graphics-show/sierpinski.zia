@@ -12,13 +12,14 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Time;
 
-var PI: Number;
+var SIERPINSKI_PI: Number;
 
-func initConstants() {
-    PI = 3.14159265358979;
+func sierpinskiInitConstants() {
+    SIERPINSKI_PI = 3.14159265358979;
 }
 
 // Sierpinski triangle using chaos game
@@ -71,8 +72,8 @@ class SierpinskiTriangle {
             currentY = (currentY + vy) / 2.0;
 
             // Store point
-            var px = Floor(currentX);
-            var py = Floor(currentY);
+            var px = Convert.NumToInt(Floor(currentX));
+            var py = Convert.NumToInt(Floor(currentY));
             points.add(px * 10000 + py);
 
             i = i + 1;
@@ -250,7 +251,7 @@ class FractalTree {
         var startY = height - 50;
         var trunkLength = 120;
 
-        generateBranch(startX, startY, -PI / 2.0, trunkLength, 0);
+        generateBranch(startX, startY, -SIERPINSKI_PI / 2.0, trunkLength, 0);
     }
 
     expose func generateBranch(x: Number, y: Number, dir: Number, len: Number, depth: Integer) {
@@ -266,8 +267,8 @@ class FractalTree {
         var endY = y + Sin(dir) * len;
 
         // Store as list of line segments
-        var startPacked = Floor(x) * 10000 + Floor(y);
-        var endPacked = Floor(endX) * 10000 + Floor(endY);
+        var startPacked = Convert.NumToInt(Floor(x)) * 10000 + Convert.NumToInt(Floor(y));
+        var endPacked = Convert.NumToInt(Floor(endX)) * 10000 + Convert.NumToInt(Floor(endY));
         branches.add(startPacked);
         branches.add(endPacked);
         branches.add(depth);
@@ -324,7 +325,7 @@ class FractalTree {
         var startX = width / 2;
         var startY = height - 50;
         var trunkLength = 120;
-        generateBranch(startX, startY, -PI / 2.0, trunkLength, 0);
+        generateBranch(startX, startY, -SIERPINSKI_PI / 2.0, trunkLength, 0);
     }
 
     expose func update() {
@@ -342,14 +343,11 @@ class FractalDemo {
     expose func init(width: Integer, height: Integer) {
         mode = 0;
 
-        sierpinski = new SierpinskiTriangle();
-        sierpinski.init(width, height);
+        sierpinski = new SierpinskiTriangle(width, height);
 
-        mandelbrot = new MandelbrotRenderer();
-        mandelbrot.init(width / 2, height / 2);  // Lower res for speed
+        mandelbrot = new MandelbrotRenderer(width / 2, height / 2);  // Lower res for speed
 
-        tree = new FractalTree();
-        tree.init(width, height);
+        tree = new FractalTree(width, height);
     }
 
     expose func update() {
@@ -405,15 +403,14 @@ class FractalDemo {
 }
 
 // Run the fractal demo
-func run(canvas: Canvas) {
+func sierpinskiRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
-    initConstants();
+    sierpinskiInitConstants();
 
-    var demo = new FractalDemo();
-    demo.init(width, height);
+    var demo = new FractalDemo(width, height);
 
     var running = true;
     var modeTimer = 0;

@@ -6,9 +6,8 @@
 
 module GCDemo;
 bind Viper.Terminal;
-bind GC = Viper.Memory.GC;
-bind Box = Viper.Core.Box;
-
+bind Viper.Memory.GC as GC;
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Memory.GC ===");
 

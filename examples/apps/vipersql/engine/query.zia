@@ -14,8 +14,8 @@
 
 module query;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
 bind Viper.Math;
 bind Viper.Collections;
 
@@ -50,7 +50,8 @@ class QueryHandler {
     //=========================================================================
 
     // Evaluate an aggregate function over a list of row indices
-    expose func evalAggregate(expr: Expr, matchingRows: List[Integer], table: Table) -> SqlValue {
+    expose func evalAggregate(expr: Expr, inputRows: List[Integer], table: Table) -> SqlValue {
+        var matchingRows = inputRows;
         // Apply FILTER clause if present — restrict rows before aggregation
         var filteredRows = matchingRows;
         if expr.filterExpr != null {
@@ -2971,7 +2972,8 @@ class QueryHandler {
     }
 
     // Evaluate aggregate function over collected partition rows
-    hide func evalPartitionAggregate(expr: Expr, rows: List[Row], table: Table) -> SqlValue {
+    hide func evalPartitionAggregate(expr: Expr, inputRows: List[Row], table: Table) -> SqlValue {
+        var rows = inputRows;
         // Apply FILTER clause if present
         var filteredPRows = rows;
         if expr.filterExpr != null {

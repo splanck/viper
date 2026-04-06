@@ -71,7 +71,7 @@ func start() {
     Say("--- ToSeq ---");
     it.Next();  // consume a
     it.Next();  // consume b
-    var rest = it.ToSeq();
+    var rest: Seq = it.ToSeq();
     SayInt(rest.Length);            // 3 (c, d, e)
     Say(Box.ToStr(rest.Get(0))); // c
     Say(Box.ToStr(rest.Get(1))); // d

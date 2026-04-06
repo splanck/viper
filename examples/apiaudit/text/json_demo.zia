@@ -1,7 +1,6 @@
 module JsonDemo;
 bind Viper.Terminal;
-bind Json = Viper.Text.Json;
-
+bind Viper.Text.Json as Json;
 func start() {
     Say("=== Viper.Text.Json API Audit ===");
 

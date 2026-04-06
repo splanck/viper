@@ -6,8 +6,7 @@
 
 module PathDemo;
 bind Viper.Terminal;
-bind Path = Viper.IO.Path;
-
+bind Viper.IO.Path as Path;
 func start() {
     Say("=== API Audit: Viper.IO.Path ===");
 

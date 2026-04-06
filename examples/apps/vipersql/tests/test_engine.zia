@@ -2,10 +2,9 @@
 // Part of ViperSQL
 module test_engine;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
 bind "../storage/page";
 bind "../storage/serializer";
 bind "../storage/pager";

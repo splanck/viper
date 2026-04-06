@@ -162,7 +162,8 @@ class CameraController {
 }
 
 func lerp(a: Float, b: Float, t: Float) -> Float {
-    if (t < 0.0) { t = 0.0; }
-    if (t > 1.0) { t = 1.0; }
-    return a + (b - a) * t;
+    var clampedT = t;
+    if (clampedT < 0.0) { clampedT = 0.0; }
+    if (clampedT > 1.0) { clampedT = 1.0; }
+    return a + (b - a) * clampedT;
 }

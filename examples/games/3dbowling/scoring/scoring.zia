@@ -48,10 +48,11 @@ class ScoreKeeper {
     // Record a roll result. Returns true if the frame is complete.
     expose func recordRoll(pinsDown: Integer) -> Boolean {
         if (gameComplete) { return true; }
-        if (pinsDown < 0) { pinsDown = 0; }
-        if (pinsDown > pinsStanding) { pinsDown = pinsStanding; }
+        var clampedPinsDown = pinsDown;
+        if (clampedPinsDown < 0) { clampedPinsDown = 0; }
+        if (clampedPinsDown > pinsStanding) { clampedPinsDown = pinsStanding; }
 
-        rolls.add(pinsDown);
+        rolls.add(clampedPinsDown);
         rollCount = rollCount + 1;
         var frameIdx: Integer = currentFrame - 1;
         var frameComplete: Boolean = false;
@@ -59,32 +60,32 @@ class ScoreKeeper {
         if (currentFrame < 10) {
             // ─── Frames 1-9 ───
             if (currentRollInFrame == 1) {
-                if (pinsDown == 10) {
+                if (clampedPinsDown == 10) {
                     // Strike
                     frameRoll1.set(frameIdx, "X");
                     frameRoll2.set(frameIdx, "");
                     consecutiveStrikes = consecutiveStrikes + 1;
                     frameComplete = true;
                 } else {
-                    if (pinsDown == 0) {
+                    if (clampedPinsDown == 0) {
                         frameRoll1.set(frameIdx, "-");
                     } else {
-                        frameRoll1.set(frameIdx, toString(pinsDown));
+                        frameRoll1.set(frameIdx, toString(clampedPinsDown));
                     }
-                    pinsStanding = 10 - pinsDown;
+                    pinsStanding = 10 - clampedPinsDown;
                     currentRollInFrame = 2;
                     consecutiveStrikes = 0;
                 }
             } else {
                 // Second roll
-                var total: Integer = rolls.get(rollCount - 2) + pinsDown;
+                var total: Integer = rolls.get(rollCount - 2) + clampedPinsDown;
                 if (total == 10) {
                     // Spare
                     frameRoll2.set(frameIdx, "/");
-                } else if (pinsDown == 0) {
+                } else if (clampedPinsDown == 0) {
                     frameRoll2.set(frameIdx, "-");
                 } else {
-                    frameRoll2.set(frameIdx, toString(pinsDown));
+                    frameRoll2.set(frameIdx, toString(clampedPinsDown));
                 }
                 consecutiveStrikes = 0;
                 frameComplete = true;
@@ -101,17 +102,17 @@ class ScoreKeeper {
         } else {
             // ─── 10th Frame (special rules) ───
             if (currentRollInFrame == 1) {
-                if (pinsDown == 10) {
+                if (clampedPinsDown == 10) {
                     frameRoll1.set(frameIdx, "X");
                     consecutiveStrikes = consecutiveStrikes + 1;
                     pinsStanding = 10; // Reset for bonus roll
                 } else {
-                    if (pinsDown == 0) {
+                    if (clampedPinsDown == 0) {
                         frameRoll1.set(frameIdx, "-");
                     } else {
-                        frameRoll1.set(frameIdx, toString(pinsDown));
+                        frameRoll1.set(frameIdx, toString(clampedPinsDown));
                     }
-                    pinsStanding = 10 - pinsDown;
+                    pinsStanding = 10 - clampedPinsDown;
                     consecutiveStrikes = 0;
                 }
                 currentRollInFrame = 2;
@@ -122,23 +123,23 @@ class ScoreKeeper {
 
                 if (firstWasStrike) {
                     // After a strike, full rack reset
-                    if (pinsDown == 10) {
+                    if (clampedPinsDown == 10) {
                         frameRoll2.set(frameIdx, "X");
                         consecutiveStrikes = consecutiveStrikes + 1;
                         pinsStanding = 10; // Reset again for 3rd roll
                     } else {
-                        if (pinsDown == 0) {
+                        if (clampedPinsDown == 0) {
                             frameRoll2.set(frameIdx, "-");
                         } else {
-                            frameRoll2.set(frameIdx, toString(pinsDown));
+                            frameRoll2.set(frameIdx, toString(clampedPinsDown));
                         }
-                        pinsStanding = 10 - pinsDown;
+                        pinsStanding = 10 - clampedPinsDown;
                         consecutiveStrikes = 0;
                     }
                     currentRollInFrame = 3;
                 } else {
                     // After non-strike first roll
-                    var total: Integer = firstRollPins + pinsDown;
+                    var total: Integer = firstRollPins + clampedPinsDown;
                     if (total == 10) {
                         // Spare
                         frameRoll2.set(frameIdx, "/");
@@ -146,10 +147,10 @@ class ScoreKeeper {
                         currentRollInFrame = 3;
                     } else {
                         // Open frame in 10th — no bonus roll
-                        if (pinsDown == 0) {
+                        if (clampedPinsDown == 0) {
                             frameRoll2.set(frameIdx, "-");
                         } else {
-                            frameRoll2.set(frameIdx, toString(pinsDown));
+                            frameRoll2.set(frameIdx, toString(clampedPinsDown));
                         }
                         consecutiveStrikes = 0;
                         frameComplete = true;
@@ -160,15 +161,15 @@ class ScoreKeeper {
             } else {
                 // 3rd roll (bonus)
                 // Check if we're on a fresh rack or remaining pins
-                if (pinsDown == pinsStanding && pinsDown == 10) {
+                if (clampedPinsDown == pinsStanding && clampedPinsDown == 10) {
                     frameRoll3.set(frameIdx, "X");
                     consecutiveStrikes = consecutiveStrikes + 1;
-                } else if (pinsDown == pinsStanding) {
+                } else if (clampedPinsDown == pinsStanding) {
                     frameRoll3.set(frameIdx, "/");
-                } else if (pinsDown == 0) {
+                } else if (clampedPinsDown == 0) {
                     frameRoll3.set(frameIdx, "-");
                 } else {
-                    frameRoll3.set(frameIdx, toString(pinsDown));
+                    frameRoll3.set(frameIdx, toString(clampedPinsDown));
                 }
                 frameComplete = true;
                 gameComplete = true;

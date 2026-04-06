@@ -12,13 +12,14 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Time;
 
-var PI: Number;
+var FIREWORKS_PI: Number;
 
-func initConstants() {
-    PI = 3.14159265358979;
+func fireworksInitConstants() {
+    FIREWORKS_PI = 3.14159265358979;
 }
 
 // Sparkle particle from explosion
@@ -63,16 +64,16 @@ class Sparkle {
             return;
         }
 
-        var fade = life / maxLife;
+        var fade = (life * 1.0) / maxLife;
         var drawColor = colors.fadeColor(color, fade);
 
-        var px = Floor(x);
-        var py = Floor(y);
+        var px = Convert.NumToInt(Floor(x));
+        var py = Convert.NumToInt(Floor(y));
 
         if trail {
             // Draw with trail
-            var oldX = Floor(x - vx * 2);
-            var oldY = Floor(y - vy * 2);
+            var oldX = Convert.NumToInt(Floor(x - vx * 2));
+            var oldY = Convert.NumToInt(Floor(y - vy * 2));
             canvas.Line(oldX, oldY, px, py, colors.fadeColor(drawColor, 0.5));
         }
 
@@ -99,7 +100,7 @@ class Rocket {
 
     expose func init(startX: Number, screenHeight: Integer) {
         x = startX;
-        y = screenHeight;
+        y = screenHeight * 1.0;
         vx = (Next() - 0.5) * 2.0;
         vy = -10.0 - Next() * 5.0;
         color = colors.rainbowPhase(NextInt(360));
@@ -114,7 +115,7 @@ class Rocket {
         }
 
         // Store trail
-        var trailPos = Floor(x) * 10000 + Floor(y);
+        var trailPos = Convert.NumToInt(Floor(x)) * 10000 + Convert.NumToInt(Floor(y));
         trail.add(trailPos);
         if trail.count() > 15 {
             trail.removeAt(0);
@@ -155,8 +156,8 @@ class Rocket {
         }
 
         // Draw rocket
-        var px = Floor(x);
-        var py = Floor(y);
+        var px = Convert.NumToInt(Floor(x));
+        var py = Convert.NumToInt(Floor(y));
         canvas.Disc(px, py, 2, color);
         canvas.Disc(px, py, 1, colors.WHITE);
     }
@@ -191,10 +192,9 @@ class Explosion {
     expose func createCircle(x: Number, y: Number, color: Integer, count: Integer) {
         var i = 0;
         while i < count {
-            var angle = Next() * 2.0 * PI;
+            var angle = Next() * 2.0 * FIREWORKS_PI;
             var speed = 2.0 + Next() * 6.0;
-            var sparkle = new Sparkle();
-            sparkle.init(x, y, angle, speed, color);
+            var sparkle = new Sparkle(x, y, angle, speed, color);
             sparkles.add(sparkle);
             i = i + 1;
         }
@@ -204,15 +204,14 @@ class Explosion {
         var points = 5 + NextInt(3);
         var i = 0;
         while i < points {
-            var baseAngle = (i * 2.0 * PI) / points;
+            var baseAngle = (i * 2.0 * FIREWORKS_PI) / points;
 
             // Create spray at each point
             var j = 0;
             while j < 15 {
                 var angle = baseAngle + (Next() - 0.5) * 0.3;
                 var speed = 4.0 + Next() * 4.0;
-                var sparkle = new Sparkle();
-                sparkle.init(x, y, angle, speed, color);
+                var sparkle = new Sparkle(x, y, angle, speed, color);
                 sparkles.add(sparkle);
                 j = j + 1;
             }
@@ -224,10 +223,9 @@ class Explosion {
         // Inner ring
         var i = 0;
         while i < 40 {
-            var angle = (i * 2.0 * PI) / 40.0;
+            var angle = (i * 2.0 * FIREWORKS_PI) / 40.0;
             var speed = 3.0 + Next() * 0.5;
-            var sparkle = new Sparkle();
-            sparkle.init(x, y, angle, speed, color);
+            var sparkle = new Sparkle(x, y, angle, speed, color);
             sparkles.add(sparkle);
             i = i + 1;
         }
@@ -236,10 +234,9 @@ class Explosion {
         var outerColor = colors.rainbowPhase((NextInt(360) + 180) - ((NextInt(360) + 180) / 360) * 360);
         i = 0;
         while i < 50 {
-            var angle = (i * 2.0 * PI) / 50.0;
+            var angle = (i * 2.0 * FIREWORKS_PI) / 50.0;
             var speed = 5.5 + Next() * 0.5;
-            var sparkle = new Sparkle();
-            sparkle.init(x, y, angle, speed, outerColor);
+            var sparkle = new Sparkle(x, y, angle, speed, outerColor);
             sparkles.add(sparkle);
             i = i + 1;
         }
@@ -248,10 +245,9 @@ class Explosion {
     expose func createWillow(x: Number, y: Number, color: Integer) {
         var i = 0;
         while i < 100 {
-            var angle = Next() * 2.0 * PI;
+            var angle = Next() * 2.0 * FIREWORKS_PI;
             var speed = 1.0 + Next() * 3.0;
-            var sparkle = new Sparkle();
-            sparkle.init(x, y, angle, speed, color);
+            var sparkle = new Sparkle(x, y, angle, speed, color);
             sparkle.maxLife = 80 + NextInt(40);  // Longer life
             sparkle.life = sparkle.maxLife;
             sparkle.trail = true;
@@ -316,8 +312,7 @@ class FireworksShow {
     }
 
     expose func launch(x: Number) {
-        var rocket = new Rocket();
-        rocket.init(x, screenHeight);
+        var rocket = new Rocket(x, screenHeight);
         rockets.add(rocket);
     }
 
@@ -353,8 +348,7 @@ class FireworksShow {
         while i >= 0 {
             var r = rockets.get(i);
             if r.shouldExplode() {
-                var exp = new Explosion();
-                exp.init(r.x, r.y, r.color);
+                var exp = new Explosion(r.x, r.y, r.color);
                 explosions.add(exp);
                 rockets.removeAt(i);
             }
@@ -404,15 +398,14 @@ class FireworksShow {
 }
 
 // Run the fireworks demo
-func run(canvas: Canvas) {
+func fireworksRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
-    initConstants();
+    fireworksInitConstants();
 
-    var show = new FireworksShow();
-    show.init(width, height);
+    var show = new FireworksShow(width, height);
 
     var running = true;
     var spaceHeld = false;

@@ -12,20 +12,21 @@ bind "./colors";
 
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Time;
 
 // Precomputed sine table (256 entries, values 0-255)
 var sinTable: List[Integer];
-var PI: Number;
+var PLASMA_PI: Number;
 
 func initSinTable() {
-    PI = 3.14159265358979;
+    PLASMA_PI = 3.14159265358979;
     sinTable = [];
 
     var i = 0;
     while i < 256 {
-        var angle = (i * 2.0 * PI) / 256.0;
+        var angle = (i * 2.0 * PLASMA_PI) / 256.0;
         var s = Sin(angle);
         var value = Floor((s + 1.0) * 127.5);
         sinTable.add(value);
@@ -77,9 +78,9 @@ class PlasmaRenderer {
             var phase = i;
 
             // Use sine waves for smooth color transitions
-            r = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0));
-            g = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0 + PI * 2.0 / 3.0));
-            b = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0 + PI * 4.0 / 3.0));
+            r = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PLASMA_PI) / 256.0));
+            g = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PLASMA_PI) / 256.0 + PLASMA_PI * 2.0 / 3.0));
+            b = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PLASMA_PI) / 256.0 + PLASMA_PI * 4.0 / 3.0));
 
             var color = RGB(r, g, b);
             palette.add(color);
@@ -131,8 +132,8 @@ class PlasmaRenderer {
 
             // Blue-green ocean colors
             r = 0;
-            g = Floor(64.0 + 64.0 * Sin((i * 2.0 * PI) / 128.0));
-            b = Floor(128.0 + 127.0 * Sin((i * 2.0 * PI) / 256.0));
+            g = Floor(64.0 + 64.0 * Sin((i * 2.0 * PLASMA_PI) / 128.0));
+            b = Floor(128.0 + 127.0 * Sin((i * 2.0 * PLASMA_PI) / 256.0));
 
             var color = RGB(r, g, b);
             palette.add(color);
@@ -154,7 +155,7 @@ class PlasmaRenderer {
                     var v1 = fastSin(x + time);
                     var v2 = fastSin(y + time / 2);
                     var v3 = fastSin((x + y + time) / 2);
-                    var v4 = fastSin(Floor(Sqrt(x * x + y * y) + time));
+                    var v4 = fastSin(Convert.NumToInt(Floor(Sqrt(x * x + y * y) + time)));
                     value = (v1 + v2 + v3 + v4) / 4;
                 } else if mode == 1 {
                     // Circular ripples
@@ -163,7 +164,7 @@ class PlasmaRenderer {
                     var dx = x - cx;
                     var dy = y - cy;
                     var dist = Sqrt(dx * dx + dy * dy);
-                    value = fastSin(Floor(dist * 2.0 - time * 3));
+                    value = fastSin(Convert.NumToInt(Floor(dist * 2.0 - time * 3)));
                 } else if mode == 2 {
                     // Diamond pattern
                     var dx = x - width / 2;
@@ -186,8 +187,8 @@ class PlasmaRenderer {
                     var d1 = Sqrt(dx1 * dx1 + dy1 * dy1);
                     var d2 = Sqrt(dx2 * dx2 + dy2 * dy2);
 
-                    var v1 = fastSin(Floor(d1 - time * 2));
-                    var v2 = fastSin(Floor(d2 + time * 2));
+                    var v1 = fastSin(Convert.NumToInt(Floor(d1 - time * 2)));
+                    var v2 = fastSin(Convert.NumToInt(Floor(d2 + time * 2)));
                     value = (v1 + v2) / 2;
                 }
 
@@ -228,7 +229,7 @@ class PlasmaRenderer {
 }
 
 // Run the plasma demo
-func run(canvas: Canvas) {
+func plasmaRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -237,8 +238,7 @@ func run(canvas: Canvas) {
 
     // Create plasma renderer at lower resolution for performance
     var scale = 2;
-    var plasma = new PlasmaRenderer();
-    plasma.init(width / scale, height / scale);
+    var plasma = new PlasmaRenderer(width / scale, height / scale);
 
     var running = true;
     var paletteTimer = 0;

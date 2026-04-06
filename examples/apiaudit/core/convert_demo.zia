@@ -7,9 +7,8 @@
 
 module ConvertDemo;
 bind Viper.Terminal;
-bind Conv = Viper.Core.Convert;
-bind Parse = Viper.Core.Parse;
-
+bind Viper.Core.Convert as Conv;
+bind Viper.Core.Parse as Parse;
 func start() {
     Say("=== API Audit: Viper.Core.Convert + Parse ===");
 

@@ -3,8 +3,7 @@
 
 module buffer;
 
-bind Threads = Viper.Threads;
-
+bind Viper.Threads as Threads;
 bind "./page";
 bind "./pager";
 bind "./serializer";

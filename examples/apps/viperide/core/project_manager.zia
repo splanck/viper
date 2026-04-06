@@ -1,12 +1,10 @@
 module project_manager;
 
 bind "project";
-bind GUI = Viper.GUI;
-bind Path = Viper.IO.Path;
-bind Dir = Viper.IO.Dir;
-bind Str = Viper.String;
-
-// ============================================================================
+bind Viper.GUI as GUI;
+bind Viper.IO.Path as Path;
+bind Viper.IO.Dir as Dir;
+bind Viper.String as Str;// ============================================================================
 // ProjectManager — manages the file tree and project state
 // ============================================================================
 // Handles opening folders, populating the TreeView, and tracking selection.

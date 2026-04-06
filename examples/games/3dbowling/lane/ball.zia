@@ -4,7 +4,7 @@ module ball;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
-bind Convert = Viper.Core.Convert;
+bind Viper.Core.Convert as Convert;
 bind "../config";
 
 class Ball {
@@ -114,10 +114,11 @@ class Ball {
 
     expose func doThrow(aimX: Float, power: Float) {
         var throwSpeed = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
-        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
-        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+        var clampedAimX = aimX;
+        if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
+        if (clampedAimX > config.AIM_MAX) { clampedAimX = config.AIM_MAX; }
 
-        var aimPct = aimX / config.AIM_MAX;
+        var aimPct = clampedAimX / config.AIM_MAX;
         if (aimPct < -1.0) { aimPct = -1.0; }
         if (aimPct > 1.0) { aimPct = 1.0; }
 
@@ -298,9 +299,10 @@ class Ball {
     }
 
     expose func setAimPosition(aimX: Float) {
-        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
-        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
-        var aimPct = aimX / config.AIM_MAX;
+        var clampedAimX = aimX;
+        if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
+        if (clampedAimX > config.AIM_MAX) { clampedAimX = config.AIM_MAX; }
+        var aimPct = clampedAimX / config.AIM_MAX;
         var releaseClamp = config.LANE_WIDTH / 2.0 - config.BALL_RADIUS * 1.85;
         if (releaseClamp < 0.16) { releaseClamp = 0.16; }
         var releaseX = aimPct * releaseClamp * config.BALL_RELEASE_X_SCALE;

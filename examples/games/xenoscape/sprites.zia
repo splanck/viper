@@ -2776,7 +2776,7 @@ class SpriteFactory {
     // =========================================================================
 
     // Generate a poison cloud particle sprite
-    expose func buildPoisonCloudSprite(size: Integer): Pixels {
+    expose func buildPoisonCloudSprite(size: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         var cy = size / 2;
@@ -2792,7 +2792,7 @@ class SpriteFactory {
     }
 
     // Generate an ice crystal particle sprite
-    expose func buildIceCrystalSprite(size: Integer): Pixels {
+    expose func buildIceCrystalSprite(size: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         var cy = size / 2;
@@ -2807,7 +2807,7 @@ class SpriteFactory {
     }
 
     // Generate a lava droplet sprite
-    expose func buildLavaDropSprite(size: Integer): Pixels {
+    expose func buildLavaDropSprite(size: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         // Teardrop shape
@@ -2820,7 +2820,7 @@ class SpriteFactory {
     }
 
     // Generate a corruption wisp sprite
-    expose func buildCorruptionWispSprite(size: Integer): Pixels {
+    expose func buildCorruptionWispSprite(size: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         var cy = size / 2;
@@ -2839,7 +2839,7 @@ class SpriteFactory {
     }
 
     // Generate a shield bubble sprite
-    expose func buildShieldBubbleSprite(size: Integer): Pixels {
+    expose func buildShieldBubbleSprite(size: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         var cy = size / 2;
@@ -2855,7 +2855,7 @@ class SpriteFactory {
     }
 
     // Generate an explosion ring sprite
-    expose func buildExplosionRingSprite(size: Integer, frame: Integer): Pixels {
+    expose func buildExplosionRingSprite(size: Integer, frame: Integer) -> Pixels {
         var pix = Pixels.New(size, size);
         var cx = size / 2;
         var cy = size / 2;
@@ -2874,7 +2874,7 @@ class SpriteFactory {
     }
 
     // Generate a dash afterimage sprite (translucent copy of player)
-    expose func buildDashAfterimageSprite(playerSpr: Pixels): Pixels {
+    expose func buildDashAfterimageSprite(playerSpr: Pixels) -> Pixels {
         var w = playerSpr.get_Width();
         var h = playerSpr.get_Height();
         var pix = Pixels.Clone(playerSpr);

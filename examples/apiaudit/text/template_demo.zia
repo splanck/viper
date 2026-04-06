@@ -1,11 +1,10 @@
 module TemplateDemo;
 bind Viper.Terminal;
-bind Tpl = Viper.Text.Template;
-bind Map = Viper.Collections.Map;
-bind Seq = Viper.Collections.Seq;
-bind Box = Viper.Core.Box;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.Template as Tpl;
+bind Viper.Collections.Map as Map;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Box as Box;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.Template API Audit ===");
 

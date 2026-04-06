@@ -33,7 +33,7 @@ final ABILITY_COUNT = 6;
 // =============================================================================
 // Ability names and descriptions (for UI)
 // =============================================================================
-func abilityName(flag: Integer): String {
+func abilityName(flag: Integer) -> String {
     if flag == ABILITY_WALL_JUMP   { return "Wall Jump"; }
     if flag == ABILITY_DOUBLE_JUMP { return "Double Jump"; }
     if flag == ABILITY_DASH        { return "Dash"; }
@@ -43,7 +43,7 @@ func abilityName(flag: Integer): String {
     return "Unknown";
 }
 
-func abilityDescription(flag: Integer): String {
+func abilityDescription(flag: Integer) -> String {
     if flag == ABILITY_WALL_JUMP   { return "Jump off walls to reach higher areas."; }
     if flag == ABILITY_DOUBLE_JUMP { return "Jump again in mid-air."; }
     if flag == ABILITY_DASH        { return "Quick burst of speed. Invincible during dash."; }
@@ -120,7 +120,7 @@ class AbilityManager {
     }
 
     // Check if player has a specific ability.
-    expose func has(flag: Integer): Boolean {
+    expose func has(flag: Integer) -> Boolean {
         return (acquired / flag) % 2 == 1;
     }
 
@@ -134,13 +134,13 @@ class AbilityManager {
     }
 
     // Check if a gate can be passed.
-    expose func canPassGate(gateFlag: Integer): Boolean {
+    expose func canPassGate(gateFlag: Integer) -> Boolean {
         if gateFlag == GATE_NONE { return true; }
         return has(gateFlag);
     }
 
     // Get the full bitmask (for save system).
-    expose func getMask(): Integer {
+    expose func getMask() -> Integer {
         return acquired;
     }
 
@@ -161,7 +161,7 @@ class AbilityManager {
         if facingRight { dashDirX = 1; } else { dashDirX = -1; }
     }
 
-    expose func updateDash(): Integer {
+    expose func updateDash() -> Integer {
         if dashCooldown > 0 { dashCooldown = dashCooldown - 1; }
         if not isDashing { return 0; }
         dashTimer = dashTimer - 1;
@@ -173,7 +173,7 @@ class AbilityManager {
         return dashDirX * 2000; // Very fast horizontal burst
     }
 
-    expose func getDashing(): Boolean { return isDashing; }
+    expose func getDashing() -> Boolean { return isDashing; }
 
     // ─── Charge Shot ───────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ class AbilityManager {
         else { if chargeTimer >= 20 { chargeLevel = 1; } } // Partial at ~320ms
     }
 
-    expose func releaseCharge(): Integer {
+    expose func releaseCharge() -> Integer {
         if not isCharging { return 0; }
         isCharging = false;
         var level = chargeLevel;
@@ -200,7 +200,7 @@ class AbilityManager {
         return level; // 0=no charge, 1=partial (2x damage), 2=full (3x + break walls)
     }
 
-    expose func getChargeLevel(): Integer { return chargeLevel; }
+    expose func getChargeLevel() -> Integer { return chargeLevel; }
 
     // ─── Ground Pound ──────────────────────────────────────────────
 
@@ -210,8 +210,8 @@ class AbilityManager {
         poundSpeed = 2500; // Very fast downward (x100)
     }
 
-    expose func getPounding(): Boolean { return isPounding; }
-    expose func getPoundSpeed(): Integer { return poundSpeed; }
+    expose func getPounding() -> Boolean { return isPounding; }
+    expose func getPoundSpeed() -> Integer { return poundSpeed; }
 
     expose func endPound() {
         isPounding = false;

@@ -1,10 +1,10 @@
 // Minimal PG wire protocol network test - single thread
 module test_pg_net_minimal;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind Network = Viper.Network;
-bind Threads = Viper.Threads;
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.Network as Network;
+bind Viper.Threads as Threads;
 bind Viper.Collections;
 
 bind "../server/pg_wire";

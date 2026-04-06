@@ -1,9 +1,7 @@
 module file_utils;
 
-bind File = Viper.IO.File;
-bind Path = Viper.IO.Path;
-
-// ============================================================================
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;// ============================================================================
 // File I/O utility functions for ViperIDE
 // ============================================================================
 

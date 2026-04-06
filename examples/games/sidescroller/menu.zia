@@ -627,7 +627,7 @@ class MenuSystem {
     }
 
     // Biome name lookup for HUD
-    expose func getBiomeName(levelNum: Integer): String {
+    expose func getBiomeName(levelNum: Integer) -> String {
         if levelNum == 1 { return "Crash Site"; }
         if levelNum == 2 { return "Fungal Caverns"; }
         if levelNum == 3 { return "Crystal Depths"; }

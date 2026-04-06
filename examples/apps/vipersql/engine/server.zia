@@ -11,11 +11,10 @@
 
 module server;
 
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-bind Threads = Viper.Threads;
-bind CryptoHash = Viper.Crypto.Hash;
-
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
+bind Viper.Threads as Threads;
+bind Viper.Crypto.Hash as CryptoHash;
 bind "./database";
 bind "./table";
 bind "./index";

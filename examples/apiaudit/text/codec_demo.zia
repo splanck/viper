@@ -1,7 +1,6 @@
 module CodecDemo;
 bind Viper.Terminal;
-bind Codec = Viper.Text.Codec;
-
+bind Viper.Text.Codec as Codec;
 func start() {
     Say("=== Viper.Text.Codec API Audit ===");
 

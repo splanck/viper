@@ -17,11 +17,10 @@
 
 module join;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
 bind Viper.Math;
-bind Pattern = Viper.Text.Pattern;
-
+bind Viper.Text.Pattern as Pattern;
 bind "./types";
 bind "./schema";
 bind "./table";

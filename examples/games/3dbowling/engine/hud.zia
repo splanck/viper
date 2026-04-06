@@ -2,7 +2,7 @@
 module hud;
 
 bind Viper.Graphics3D;
-bind Convert = Viper.Core.Convert;
+bind Viper.Core.Convert as Convert;
 bind "../config";
 bind "../scoring/scoring";
 

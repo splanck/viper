@@ -10,11 +10,10 @@
 
 module persistence;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-bind SB = Viper.Text.StringBuilder;
-
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
+bind Viper.Text.StringBuilder as SB;
 bind "../engine/types";
 bind "../engine/schema";
 bind "../engine/table";

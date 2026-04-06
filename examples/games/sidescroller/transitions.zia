@@ -46,15 +46,15 @@ class TransitionManager {
         targetLevel = 0;
     }
 
-    expose func isActive(): Boolean {
+    expose func isActive() -> Boolean {
         return currentTransition != TRANS_NONE;
     }
 
-    expose func getTransition(): Integer {
+    expose func getTransition() -> Integer {
         return currentTransition;
     }
 
-    expose func getTargetLevel(): Integer {
+    expose func getTargetLevel() -> Integer {
         return targetLevel;
     }
 
@@ -114,7 +114,7 @@ class TransitionManager {
     }
 
     // Update transition timer. Returns true when transition is complete.
-    expose func update(dt: Integer): Boolean {
+    expose func update(dt: Integer) -> Boolean {
         if currentTransition == TRANS_NONE { return false; }
         transTimer = transTimer + dt;
         if transTimer >= transDuration {

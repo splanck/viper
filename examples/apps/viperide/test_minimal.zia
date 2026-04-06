@@ -1,8 +1,7 @@
 module test_minimal;
 
-bind GUI = Viper.GUI;
-bind Terminal = Viper.Terminal;
-
+bind Viper.GUI as GUI;
+bind Viper.Terminal as Terminal;
 class Shell {
     expose GUI.App app;
     expose GUI.VBox mainVBox;

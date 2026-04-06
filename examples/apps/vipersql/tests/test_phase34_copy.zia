@@ -3,11 +3,10 @@
 
 module test_phase34_copy;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/types";

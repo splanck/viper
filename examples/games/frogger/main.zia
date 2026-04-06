@@ -341,23 +341,21 @@ func initGame() {
 
     // Create game state
     game = new GameState();
-    game.init();
 
     // Create frog
-    frog = new Frog();
-    frog.init(START_ROW, 35);
+    frog = new Frog(START_ROW, 35);
 
     // Create vehicles using typed List
     vehicles = [];
-    var v1 = new Vehicle(); v1.init(12, 5, 1, 1, 4, "=");
-    var v2 = new Vehicle(); v2.init(12, 35, 1, 1, 4, "=");
-    var v3 = new Vehicle(); v3.init(13, 15, 1, 0-1, 6, "#");
-    var v4 = new Vehicle(); v4.init(13, 50, 1, 0-1, 6, "#");
-    var v5 = new Vehicle(); v5.init(14, 10, 2, 1, 4, "=");
-    var v6 = new Vehicle(); v6.init(14, 45, 2, 1, 4, "=");
-    var v7 = new Vehicle(); v7.init(15, 20, 1, 0-1, 6, "#");
-    var v8 = new Vehicle(); v8.init(16, 8, 2, 1, 4, "=");
-    var v9 = new Vehicle(); v9.init(16, 40, 2, 1, 4, "=");
+    var v1 = new Vehicle(12, 5, 1, 1, 4, "=");
+    var v2 = new Vehicle(12, 35, 1, 1, 4, "=");
+    var v3 = new Vehicle(13, 15, 1, 0-1, 6, "#");
+    var v4 = new Vehicle(13, 50, 1, 0-1, 6, "#");
+    var v5 = new Vehicle(14, 10, 2, 1, 4, "=");
+    var v6 = new Vehicle(14, 45, 2, 1, 4, "=");
+    var v7 = new Vehicle(15, 20, 1, 0-1, 6, "#");
+    var v8 = new Vehicle(16, 8, 2, 1, 4, "=");
+    var v9 = new Vehicle(16, 40, 2, 1, 4, "=");
     vehicles.add(v1);
     vehicles.add(v2);
     vehicles.add(v3);
@@ -370,16 +368,16 @@ func initGame() {
 
     // Create platforms using typed List
     platforms = [];
-    var p1 = new Platform(); p1.init(4, 5, 1, 1, 10, "=");
-    var p2 = new Platform(); p2.init(4, 40, 1, 1, 10, "=");
-    var p3 = new Platform(); p3.init(5, 15, 1, 0-1, 5, "O");
-    var p4 = new Platform(); p4.init(5, 45, 1, 0-1, 5, "O");
-    var p5 = new Platform(); p5.init(6, 10, 1, 1, 8, "=");
-    var p6 = new Platform(); p6.init(6, 45, 1, 1, 8, "=");
-    var p7 = new Platform(); p7.init(7, 20, 1, 0-1, 4, "O");
-    var p8 = new Platform(); p8.init(7, 55, 1, 0-1, 4, "O");
-    var p9 = new Platform(); p9.init(8, 12, 2, 1, 7, "=");
-    var p10 = new Platform(); p10.init(8, 48, 2, 1, 7, "=");
+    var p1 = new Platform(4, 5, 1, 1, 10, "=");
+    var p2 = new Platform(4, 40, 1, 1, 10, "=");
+    var p3 = new Platform(5, 15, 1, 0-1, 5, "O");
+    var p4 = new Platform(5, 45, 1, 0-1, 5, "O");
+    var p5 = new Platform(6, 10, 1, 1, 8, "=");
+    var p6 = new Platform(6, 45, 1, 1, 8, "=");
+    var p7 = new Platform(7, 20, 1, 0-1, 4, "O");
+    var p8 = new Platform(7, 55, 1, 0-1, 4, "O");
+    var p9 = new Platform(8, 12, 2, 1, 7, "=");
+    var p10 = new Platform(8, 48, 2, 1, 7, "=");
     platforms.add(p1);
     platforms.add(p2);
     platforms.add(p3);
@@ -393,11 +391,11 @@ func initGame() {
 
     // Create homes using typed List
     homes = [];
-    var h1 = new Home(); h1.init(8);
-    var h2 = new Home(); h2.init(20);
-    var h3 = new Home(); h3.init(32);
-    var h4 = new Home(); h4.init(44);
-    var h5 = new Home(); h5.init(56);
+    var h1 = new Home(8);
+    var h2 = new Home(20);
+    var h3 = new Home(32);
+    var h4 = new Home(44);
+    var h5 = new Home(56);
     homes.add(h1);
     homes.add(h2);
     homes.add(h3);

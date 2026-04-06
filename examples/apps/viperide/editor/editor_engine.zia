@@ -1,9 +1,7 @@
 module editor_engine;
 
 bind "../core/document";
-bind GUI = Viper.GUI;
-
-// ============================================================================
+bind Viper.GUI as GUI;// ============================================================================
 // EditorEngine — wraps the GUI.CodeEditor widget with IDE-level features
 // ============================================================================
 

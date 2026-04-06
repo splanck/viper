@@ -44,18 +44,18 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database (renamed from sqldb, 10 new SQL features, deep runtime API migration replacing hand-rolled utilities with Map/StringBuilder/Json/Csv, -351 net LOC), 8 Graphics3D API demos.
+- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database (renamed from sqldb, 10 new SQL features, runtime API migration, -351 net LOC), ViperIDE restructured (settings rewritten with Viper.Text.Ini, completion parsing simplified with Str.Split, Diagnostic class extracted, ui/ directory, docs/README.md), 8 Graphics3D API demos.
 - **Zia `final` Enforcement** — The Zia semantic analyzer now rejects reassignment of `final` variables, for-in loop variables, and match pattern bindings at compile time. Lowerer safety net prevents SSA value corruption if enforcement is bypassed.
-- **Documentation** — Comprehensive review of all 185 markdown files: 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed, all error messages updated to match actual compiler output (V1000/V2000/V3000 codes), codemap sections consolidated (9 "Additional/Extended" sections merged into parents), game engine guide reorganized with categorized ToC, Bible appendix terminology updated (entity→class, value→struct).
+- **Documentation** — Comprehensive review of all 185 markdown files: 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed. Bible chapters audited with every code example tested against the compiler (error messages updated to V1000/V2000/V3000 format, networking examples corrected to use real Http.Get/HttpReq/HttpRes API, git clone URL and version output fixed). Codemap sections consolidated (9 "Additional/Extended" sections merged into parents), game engine guide reorganized with categorized ToC, Bible appendix terminology updated (entity→class, value→struct).
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 90 | +90 |
+| Commits | — | 91 | +91 |
 | Source files | 2,671 | 2,818 | +147 |
 | Production SLOC | ~348K | ~428K | +80K |
-| Test count | 1,351 | 1,406 | +55 |
+| Test count | 1,351 | 1,408 | +57 |
 
 ---
 

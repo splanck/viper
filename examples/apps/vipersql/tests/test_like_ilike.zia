@@ -6,9 +6,8 @@
 
 module test_like_ilike;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "../engine/executor";
 bind "../engine/types";
 bind "./test_common";

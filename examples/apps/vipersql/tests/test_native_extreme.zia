@@ -6,11 +6,10 @@
 
 module test_native_extreme;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind String = Viper.String;
-bind IO = Viper.IO;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
+bind Viper.IO as IO;
 bind "../engine/executor";
 bind "./test_common";
 

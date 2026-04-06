@@ -1,10 +1,9 @@
 module StreamDemo;
 bind Viper.Terminal;
-bind Stream = Viper.IO.Stream;
-bind File = Viper.IO.File;
-bind Bytes = Viper.Collections.Bytes;
-bind TempFile = Viper.IO.TempFile;
-
+bind Viper.IO.Stream as Stream;
+bind Viper.IO.File as File;
+bind Viper.Collections.Bytes as Bytes;
+bind Viper.IO.TempFile as TempFile;
 func start() {
     Say("=== API Audit: Viper.IO.Stream ===");
 

@@ -7,9 +7,8 @@
 
 module DateRangeDemo;
 bind Viper.Terminal;
-bind DR = Viper.Time.DateRange;
-bind DT = Viper.Time.DateTime;
-
+bind Viper.Time.DateRange as DR;
+bind Viper.Time.DateTime as DT;
 func start() {
     Say("=== API Audit: Viper.Time.DateRange ===");
 

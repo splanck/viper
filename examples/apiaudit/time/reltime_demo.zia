@@ -6,10 +6,9 @@
 
 module RelTimeDemo;
 bind Viper.Terminal;
-bind RT = Viper.Time.RelativeTime;
-bind DT = Viper.Time.DateTime;
-bind Dur = Viper.Time.Duration;
-
+bind Viper.Time.RelativeTime as RT;
+bind Viper.Time.DateTime as DT;
+bind Viper.Time.Duration as Dur;
 func start() {
     Say("=== API Audit: Viper.Time.RelativeTime ===");
 

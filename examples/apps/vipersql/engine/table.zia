@@ -9,8 +9,7 @@
 
 module table;
 
-bind Fmt = Viper.Fmt;
-
+bind Viper.Fmt as Fmt;
 bind "./types";
 bind "./schema";
 

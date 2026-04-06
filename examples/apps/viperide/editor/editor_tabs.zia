@@ -1,9 +1,7 @@
 module editor_tabs;
 
 bind "../core/document";
-bind GUI = Viper.GUI;
-
-// ============================================================================
+bind Viper.GUI as GUI;// ============================================================================
 // EditorTabs — manages the tab bar and document-to-tab synchronization
 // ============================================================================
 // Uses TabBar.GetTabAt(index) to look up tabs by index rather than

@@ -39,7 +39,7 @@ final AI_SPECIAL    = 9;  // Type-specific special behavior (charge, burrow, etc
 
 // Check if a point is within a rectangular range of another point.
 func inRange(ax: Integer, ay: Integer, bx: Integer, by: Integer,
-             range: Integer): Boolean {
+             range: Integer) -> Boolean  {
     var dx = ax - bx;
     var dy = ay - by;
     if dx < 0 { dx = 0 - dx; }
@@ -48,21 +48,21 @@ func inRange(ax: Integer, ay: Integer, bx: Integer, by: Integer,
 }
 
 // Get the horizontal distance between two points.
-func distX(ax: Integer, bx: Integer): Integer {
+func distX(ax: Integer, bx: Integer) -> Integer {
     var d = ax - bx;
     if d < 0 { return 0 - d; }
     return d;
 }
 
 // Get the vertical distance between two points.
-func distY(ay: Integer, by: Integer): Integer {
+func distY(ay: Integer, by: Integer) -> Integer {
     var d = ay - by;
     if d < 0 { return 0 - d; }
     return d;
 }
 
 // Squared distance (avoids sqrt for range checks).
-func distSq(ax: Integer, ay: Integer, bx: Integer, by: Integer): Integer {
+func distSq(ax: Integer, ay: Integer, bx: Integer, by: Integer) -> Integer {
     var dx = ax - bx;
     var dy = ay - by;
     return dx * dx + dy * dy;
@@ -74,7 +74,7 @@ func distSq(ax: Integer, ay: Integer, bx: Integer, by: Integer): Integer {
 func hasLineOfSight(ex: Integer, ey: Integer,
                     px: Integer, py: Integer,
                     tileGrid: List[List[Integer]],
-                    gridW: Integer, gridH: Integer): Boolean {
+                    gridW: Integer, gridH: Integer) -> Boolean  {
     // Only check horizontal LOS (same Y ± 1 tile tolerance)
     var tileDy = distY(ey / TILE_SIZE, py / TILE_SIZE);
     if tileDy > 1 { return false; } // Too much vertical separation
@@ -102,13 +102,13 @@ func hasLineOfSight(ex: Integer, ey: Integer,
 }
 
 // Check if a tile ID is solid (blocks movement/LOS).
-func isSolid(tileId: Integer): Boolean {
+func isSolid(tileId: Integer) -> Boolean {
     // Tile IDs 1-20 are solid ground types (from config.zia)
     return tileId >= 1 and tileId <= 20;
 }
 
 // Calculate facing direction toward a target (-1 = left, 1 = right).
-func facingToward(ex: Integer, tx: Integer): Integer {
+func facingToward(ex: Integer, tx: Integer) -> Integer {
     if tx > ex { return 1; }
     return -1;
 }
@@ -120,7 +120,7 @@ func facingToward(ex: Integer, tx: Integer): Integer {
 // Move the enemy back and forth between min and max X bounds.
 // Returns new VX (in x100 units).
 func patrol(ex: Integer, vx: Integer, speed: Integer,
-            minX: Integer, maxX: Integer, facing: Integer): Integer {
+            minX: Integer, maxX: Integer, facing: Integer) -> Integer  {
     // Reverse at patrol bounds
     if ex <= minX and facing < 0 { return speed; }
     if ex >= maxX and facing > 0 { return 0 - speed; }
@@ -131,7 +131,7 @@ func patrol(ex: Integer, vx: Integer, speed: Integer,
 // Returns true if stepping forward would go off an edge.
 func atLedge(ex: Integer, ey: Integer, facing: Integer,
              tileGrid: List[List[Integer]],
-             gridW: Integer, gridH: Integer): Boolean {
+             gridW: Integer, gridH: Integer) -> Boolean  {
     var checkX = (ex + facing * TILE_SIZE) / TILE_SIZE;
     var checkY = (ey + TILE_SIZE) / TILE_SIZE; // One tile below feet
     if checkX < 0 or checkX >= gridW { return true; }
@@ -146,7 +146,7 @@ func atLedge(ex: Integer, ey: Integer, facing: Integer,
 
 // Move toward the player at chase speed.
 // Returns new VX (in x100 units).
-func chaseHorizontal(ex: Integer, px: Integer, speed: Integer): Integer {
+func chaseHorizontal(ex: Integer, px: Integer, speed: Integer) -> Integer {
     if px > ex { return speed; }
     if px < ex { return 0 - speed; }
     return 0;
@@ -155,7 +155,7 @@ func chaseHorizontal(ex: Integer, px: Integer, speed: Integer): Integer {
 // Aggro check: should this enemy start chasing?
 func shouldAggro(ex: Integer, ey: Integer,
                  px: Integer, py: Integer,
-                 aggroRange: Integer): Boolean {
+                 aggroRange: Integer) -> Boolean  {
     return distSq(ex, ey, px, py) < aggroRange * aggroRange;
 }
 
@@ -163,7 +163,7 @@ func shouldAggro(ex: Integer, ey: Integer,
 // Uses a larger range than aggro for hysteresis (prevents flickering).
 func shouldDeaggro(ex: Integer, ey: Integer,
                    px: Integer, py: Integer,
-                   deaggroRange: Integer): Boolean {
+                   deaggroRange: Integer) -> Boolean  {
     return distSq(ex, ey, px, py) > deaggroRange * deaggroRange;
 }
 
@@ -174,7 +174,7 @@ func shouldDeaggro(ex: Integer, ey: Integer,
 // Check if enemy is in attack range of the player.
 func inAttackRange(ex: Integer, ey: Integer,
                    px: Integer, py: Integer,
-                   attackRange: Integer): Boolean {
+                   attackRange: Integer) -> Boolean  {
     return distSq(ex, ey, px, py) < attackRange * attackRange;
 }
 
@@ -182,7 +182,7 @@ func inAttackRange(ex: Integer, ey: Integer,
 // Returns [vx, vy] as x100 units.
 func aimAt(ex: Integer, ey: Integer,
            px: Integer, py: Integer,
-           speed: Integer): List[Integer] {
+           speed: Integer) -> List[Integer]  {
     var dx = px - ex;
     var dy = py - ey;
     // Normalize using integer approximation
@@ -209,7 +209,7 @@ func updateState(currentState: Integer, stateTimer: Integer,
                  ex: Integer, ey: Integer,
                  px: Integer, py: Integer,
                  aggroRange: Integer, deaggroRange: Integer,
-                 attackRange: Integer): Integer {
+                 attackRange: Integer) -> Integer  {
     // Death check first
     if hp <= 0 {
         if currentState != AI_DYING and currentState != AI_DEAD {

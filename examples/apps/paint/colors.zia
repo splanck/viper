@@ -117,15 +117,19 @@ class ColorManager {
 
     // Set foreground from RGB components
     expose func setRGB(r: Integer, g: Integer, b: Integer) {
-        // Clamp values
-        if r < 0 { r = 0; }
-        if r > 255 { r = 255; }
-        if g < 0 { g = 0; }
-        if g > 255 { g = 255; }
-        if b < 0 { b = 0; }
-        if b > 255 { b = 255; }
+        var rr = r;
+        var gg = g;
+        var bb = b;
 
-        foreground = Color.RGB(r, g, b);
+        // Clamp values
+        if rr < 0 { rr = 0; }
+        if rr > 255 { rr = 255; }
+        if gg < 0 { gg = 0; }
+        if gg > 255 { gg = 255; }
+        if bb < 0 { bb = 0; }
+        if bb > 255 { bb = 255; }
+
+        foreground = Color.RGB(rr, gg, bb);
         addRecent(foreground);
     }
 }

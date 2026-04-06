@@ -8,8 +8,7 @@
 
 module EnvironmentDemo;
 bind Viper.Terminal;
-bind Env = Viper.Environment;
-
+bind Viper.Environment as Env;
 func start() {
     Say("=== API Audit: Viper.Environment ===");
 

@@ -5,7 +5,7 @@
 module TreeMapDemo;
 
 bind Viper.Collections;
-bind Seq = Viper.Collections.Seq;
+bind Viper.Collections.Seq as Seq;
 bind Viper.Core;
 bind Viper.Terminal;
 bind Viper.Fmt;

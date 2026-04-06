@@ -1,7 +1,6 @@
 module VersionDemo;
 bind Viper.Terminal;
-bind Ver = Viper.Text.Version;
-
+bind Viper.Text.Version as Ver;
 func start() {
     Say("=== Viper.Text.Version API Audit ===");
 

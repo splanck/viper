@@ -1,7 +1,6 @@
 module NumFormatDemo;
 bind Viper.Terminal;
-bind NF = Viper.Text.NumberFormat;
-
+bind Viper.Text.NumberFormat as NF;
 func start() {
     Say("=== Viper.Text.NumberFormat API Audit ===");
 

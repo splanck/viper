@@ -1,9 +1,8 @@
 module PatternDemo;
 bind Viper.Terminal;
-bind Pat = Viper.Text.Pattern;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.Pattern as Pat;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.Pattern API Audit ===");
 

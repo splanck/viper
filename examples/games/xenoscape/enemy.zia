@@ -909,7 +909,9 @@ class EnemyManager {
                 if not skip {
                     var spr = getEnemySprite(t, frame, sprites);
                     if dir < 0 {
-                        canvas.BlitFlipAlpha(sx, sy, spr);
+                        var flipped = spr.Clone();
+                        flipped.FlipH();
+                        canvas.BlitAlpha(sx, sy, flipped);
                     } else {
                         canvas.BlitAlpha(sx, sy, spr);
                     }

@@ -29,7 +29,7 @@ bind "./palette";
 // =============================================================================
 
 // LCG state — deterministic per-pixel seeding
-func hashSeed(x: Integer, y: Integer): Integer {
+func hashSeed(x: Integer, y: Integer) -> Integer {
     var s = x * 374761393 + y * 668265263;
     s = (s * s * s) / 1000;  // bit mixing approximation
     if s < 0 { s = 0 - s; }
@@ -37,7 +37,7 @@ func hashSeed(x: Integer, y: Integer): Integer {
 }
 
 // Returns a pseudo-random value 0..range-1 seeded by (x, y, salt)
-func noise2d(x: Integer, y: Integer, salt: Integer, range: Integer): Integer {
+func noise2d(x: Integer, y: Integer, salt: Integer, range: Integer) -> Integer {
     var s = hashSeed(x + salt * 17, y + salt * 31);
     s = s + salt * 7919;
     if s < 0 { s = 0 - s; }
@@ -53,7 +53,7 @@ func noise2d(x: Integer, y: Integer, salt: Integer, range: Integer): Integer {
 //   3  11  1  9
 //  15  7  13  5
 
-func bayerThreshold(x: Integer, y: Integer): Integer {
+func bayerThreshold(x: Integer, y: Integer) -> Integer {
     var bx = x % 4;
     var by = y % 4;
     // Flatten the 4x4 matrix into a lookup
@@ -240,7 +240,7 @@ class TextureFactory {
     }
 
     // Generate a rock/stone surface texture.
-    expose func genRock(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genRock(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: noise fill with moderate variance
         noiseFill(pix, 0, 0, w, h, baseColor, 12);
@@ -256,7 +256,7 @@ class TextureFactory {
     }
 
     // Generate a mossy/organic surface.
-    expose func genMoss(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genMoss(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: organic noise
         noiseFill(pix, 0, 0, w, h, baseColor, 18);
@@ -291,7 +291,7 @@ class TextureFactory {
     }
 
     // Generate a metal surface with brushed texture and rivets.
-    expose func genMetal(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genMetal(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: low noise for smooth metal
         noiseFill(pix, 0, 0, w, h, baseColor, 6);
@@ -326,7 +326,7 @@ class TextureFactory {
     }
 
     // Generate an ice surface with translucent layers and frost.
-    expose func genIce(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genIce(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: very low variance for clean ice
         noiseFill(pix, 0, 0, w, h, baseColor, 8);
@@ -349,7 +349,7 @@ class TextureFactory {
 
     // Generate a lava/magma surface with molten veins.
     expose func genLava(w: Integer, h: Integer, baseColor: Integer,
-                        frame: Integer): Pixels {
+                        frame: Integer) -> Pixels  {
         var pix = Pixels.New(w, h);
         // Base: dark crust
         noiseFill(pix, 0, 0, w, h, Color.Darken(baseColor, 40), 10);
@@ -375,7 +375,7 @@ class TextureFactory {
     }
 
     // Generate a crystal surface with faceted geometry.
-    expose func genCrystal(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genCrystal(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: clean color
         Pixels.Fill(pix, baseColor);
@@ -411,7 +411,7 @@ class TextureFactory {
     }
 
     // Generate a wood surface with grain lines.
-    expose func genWood(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genWood(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 10);
         // Horizontal grain lines
@@ -442,7 +442,7 @@ class TextureFactory {
     }
 
     // Generate a corrupted/organic bone surface.
-    expose func genBone(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genBone(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 15);
         // Porous holes
@@ -461,7 +461,7 @@ class TextureFactory {
     }
 
     // Generate a rusted metal surface with heavy oxidation.
-    expose func genRustedMetal(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genRustedMetal(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 8);
         // Rust patches (orange-brown splotches)
@@ -494,7 +494,7 @@ class TextureFactory {
     }
 
     // Generate a vine-covered surface.
-    expose func genVineSurface(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genVineSurface(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 12);
         // Vine tendrils (curving lines)
@@ -532,7 +532,7 @@ class TextureFactory {
     }
 
     // Generate a sand surface with wind ripples.
-    expose func genSand(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genSand(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 8);
         // Wind ripples (slightly curved horizontal lines)
@@ -555,7 +555,7 @@ class TextureFactory {
     }
 
     // Generate a corrupted surface with dark veins and purple glow.
-    expose func genCorrupted(w: Integer, h: Integer, baseColor: Integer): Pixels {
+    expose func genCorrupted(w: Integer, h: Integer, baseColor: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 15);
         // Dark corruption veins
@@ -584,7 +584,7 @@ class TextureFactory {
 
     // Generate a brick surface with mortar lines.
     expose func genBrickwork(w: Integer, h: Integer,
-                              brickColor: Integer, mortarColor: Integer): Pixels {
+                              brickColor: Integer, mortarColor: Integer) -> Pixels  {
         var pix = Pixels.New(w, h);
         Pixels.Fill(pix, mortarColor);
         var brickW = w / 4;
@@ -625,7 +625,7 @@ class TextureFactory {
     }
 
     // Generate a starfield texture for space backgrounds.
-    expose func genStarfield(w: Integer, h: Integer, density: Integer): Pixels {
+    expose func genStarfield(w: Integer, h: Integer, density: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         Pixels.Fill(pix, Color.RGB(2, 2, 8));
         var i = 0;
@@ -646,7 +646,7 @@ class TextureFactory {
     }
 
     // Generate a nebula cloud texture.
-    expose func genNebula(w: Integer, h: Integer, color1: Integer, color2: Integer): Pixels {
+    expose func genNebula(w: Integer, h: Integer, color1: Integer, color2: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         var y = 0;
         while y < h {
@@ -667,7 +667,7 @@ class TextureFactory {
 
     // Generate a poison/acid pool surface.
     expose func genPoison(w: Integer, h: Integer, baseColor: Integer,
-                          frame: Integer): Pixels {
+                          frame: Integer) -> Pixels  {
         var pix = Pixels.New(w, h);
         noiseFill(pix, 0, 0, w, h, baseColor, 15);
         // Bubbles

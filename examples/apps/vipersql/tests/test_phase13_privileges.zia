@@ -6,10 +6,9 @@
 
 module test_phase13_privileges;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind String = Viper.String;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/server";

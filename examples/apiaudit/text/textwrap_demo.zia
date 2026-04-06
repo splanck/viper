@@ -1,9 +1,8 @@
 module TextWrapDemo;
 bind Viper.Terminal;
-bind TW = Viper.Text.TextWrapper;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.TextWrapper as TW;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.TextWrapper API Audit ===");
 

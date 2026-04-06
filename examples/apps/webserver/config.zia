@@ -2,8 +2,8 @@
 // Parses configuration from file or uses defaults
 module config;
 
-bind Viper.IO;
-bind Viper.String;
+bind Viper.IO as IO;
+bind Viper.String as String;
 
 // ============================================================================
 // CONFIGURATION VALUES (set by config_load or defaults)

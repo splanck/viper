@@ -12,6 +12,7 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Fmt;
 bind Viper.Time;
@@ -33,7 +34,7 @@ class Ball {
         vy = (Next() - 0.5) * 8.0;
         radius = r;
         color = c;
-        mass = r * r;
+        mass = (r * r) * 1.0;
     }
 
     expose func update(gravity: Number, screenWidth: Integer, screenHeight: Integer) {
@@ -42,26 +43,26 @@ class Ball {
         y = y + vy;
 
         if x - radius < 0 {
-            x = radius;
+            x = radius * 1.0;
             vx = vx * -0.9;
         }
         if x + radius > screenWidth {
-            x = screenWidth - radius;
+            x = (screenWidth - radius) * 1.0;
             vx = vx * -0.9;
         }
         if y - radius < 0 {
-            y = radius;
+            y = radius * 1.0;
             vy = vy * -0.9;
         }
         if y + radius > screenHeight {
-            y = screenHeight - radius;
+            y = (screenHeight - radius) * 1.0;
             vy = vy * -0.9;
         }
     }
 
     expose func draw(canvas: Canvas) {
-        var px = Floor(x);
-        var py = Floor(y);
+        var px = Convert.NumToInt(Floor(x));
+        var py = Convert.NumToInt(Floor(y));
 
         canvas.Disc(px, py, radius, color);
 
@@ -144,8 +145,7 @@ class BallManager {
         var radius = 15 + NextInt(25);
         var color = colors.rainbowPhase(NextInt(360));
 
-        var ball = new Ball();
-        ball.init(px, py, radius, color);
+        var ball = new Ball(px, py, radius, color);
         balls.add(ball);
     }
 
@@ -202,14 +202,13 @@ class BallManager {
 }
 
 // Run the bouncing demo
-func run(canvas: Canvas) {
+func bouncingRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
 
     var manager = new BallManager();
-    manager.init();
     manager.addRandomBalls(8, width, height);
 
     var running = true;

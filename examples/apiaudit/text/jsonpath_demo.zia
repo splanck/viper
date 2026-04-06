@@ -1,9 +1,8 @@
 module JsonPathDemo;
 bind Viper.Terminal;
-bind Json = Viper.Text.Json;
-bind JP = Viper.Text.JsonPath;
-bind Seq = Viper.Collections.Seq;
-
+bind Viper.Text.Json as Json;
+bind Viper.Text.JsonPath as JP;
+bind Viper.Collections.Seq as Seq;
 func start() {
     Say("=== Viper.Text.JsonPath API Audit ===");
 

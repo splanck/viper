@@ -1,9 +1,7 @@
 module project;
 
-bind Path = Viper.IO.Path;
-bind Str = Viper.String;
-
-// ============================================================================
+bind Viper.IO.Path as Path;
+bind Viper.String as Str;// ============================================================================
 // Project — represents an open workspace/folder
 // ============================================================================
 // The Project entity stores the root path and project metadata.

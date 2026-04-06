@@ -9,8 +9,7 @@
 
 module DurationDemo;
 bind Viper.Terminal;
-bind Dur = Viper.Time.Duration;
-
+bind Viper.Time.Duration as Dur;
 func start() {
     Say("=== API Audit: Viper.Time.Duration ===");
 

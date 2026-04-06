@@ -7,8 +7,7 @@
 
 module ExecDemo;
 bind Viper.Terminal;
-bind Exec = Viper.Exec;
-
+bind Viper.Exec as Exec;
 func start() {
     Say("=== API Audit: Viper.Exec ===");
 

@@ -2,10 +2,10 @@
 // Connects to a telnet server and provides interactive session
 module main;
 
-bind Viper.Terminal;
-bind Viper.Network;
-bind Viper.String;
-bind Viper.Time;
+bind Viper.Terminal as Terminal;
+bind Viper.Network as Network;
+bind Viper.String as String;
+bind Viper.Time as Time;
 
 // ============================================================================
 // CONFIGURATION

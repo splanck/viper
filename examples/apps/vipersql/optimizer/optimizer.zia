@@ -14,8 +14,7 @@
 
 module optimizer;
 
-bind Fmt = Viper.Fmt;
-
+bind Viper.Fmt as Fmt;
 bind "../engine/types";
 bind "../engine/schema";
 bind "../engine/table";

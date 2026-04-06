@@ -1,8 +1,7 @@
 // API Audit: Viper.Game.SpriteAnimation (Zia)
 module SpriteAnimDemo;
 bind Viper.Terminal;
-bind SA = Viper.Game.SpriteAnimation;
-
+bind Viper.Game.SpriteAnimation as SA;
 func start() {
     Say("=== API Audit: Viper.Game.SpriteAnimation ===");
 

@@ -6,8 +6,7 @@
 
 module CompressDemo;
 bind Viper.Terminal;
-bind Compress = Viper.IO.Compress;
-
+bind Viper.IO.Compress as Compress;
 func start() {
     Say("=== API Audit: Viper.IO.Compress ===");
 

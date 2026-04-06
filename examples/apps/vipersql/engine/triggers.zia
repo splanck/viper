@@ -17,9 +17,8 @@
 
 module triggers;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
 bind "./types";
 bind "./schema";
 bind "../parser/stmt";

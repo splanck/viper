@@ -3,9 +3,8 @@
 
 module test_storage;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "../storage/page";
 bind "../storage/serializer";
 bind "../storage/pager";

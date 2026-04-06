@@ -10,9 +10,8 @@
 
 module test_string_value_integrity;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "./test_common";
 bind "../engine/executor";
 bind "../engine/types";

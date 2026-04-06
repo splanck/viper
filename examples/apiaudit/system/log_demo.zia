@@ -7,8 +7,7 @@
 
 module LogDemo;
 bind Viper.Terminal;
-bind Log = Viper.Log;
-
+bind Viper.Log as Log;
 func start() {
     Say("=== API Audit: Viper.Log ===");
 

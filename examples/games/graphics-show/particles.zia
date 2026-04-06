@@ -12,6 +12,7 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Fmt;
 bind Viper.Time;
@@ -63,7 +64,7 @@ class Particle {
     }
 
     expose func getColor() -> Integer {
-        var fade = life / maxLife;
+        var fade = (life * 1.0) / maxLife;
         if fade < 0.0 {
             fade = 0.0;
         }
@@ -76,8 +77,8 @@ class Particle {
         }
 
         var drawColor = getColor();
-        var px = Floor(x);
-        var py = Floor(y);
+        var px = Convert.NumToInt(Floor(x));
+        var py = Convert.NumToInt(Floor(y));
 
         var currentSize = (size * life) / maxLife;
         if currentSize < 1 {
@@ -122,8 +123,7 @@ class Emitter {
         var i = 0;
         while i < rate {
             if system.particles.count() < system.maxParticles {
-                var p = new Particle();
-                p.init(x, y, color);
+                var p = new Particle(x, y, color);
 
                 var emitAngle = angle + (Next() - 0.5) * spread;
                 var emitSpeed = speed * (0.8 + Next() * 0.4);
@@ -159,7 +159,7 @@ class ParticleSystem {
             p.update();
 
             if p.y > screenHeight {
-                p.y = screenHeight;
+                p.y = screenHeight * 1.0;
                 p.vy = p.vy * -0.6;
             }
 
@@ -199,28 +199,24 @@ class ParticleSystem {
 }
 
 // Run the particle demo
-func run(canvas: Canvas) {
+func particlesRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
 
-    var system = new ParticleSystem();
-    system.init(2000);
+    var system = new ParticleSystem(2000);
 
-    var emitter1 = new Emitter();
-    emitter1.init(width / 4, height - 50, colors.ORANGE);
+    var emitter1 = new Emitter(width / 4, height - 50, colors.ORANGE);
     emitter1.rate = 8;
     emitter1.speed = 8.0;
 
-    var emitter2 = new Emitter();
-    emitter2.init(width / 2, height - 50, colors.CYAN);
+    var emitter2 = new Emitter(width / 2, height - 50, colors.CYAN);
     emitter2.rate = 6;
     emitter2.speed = 10.0;
     emitter2.spread = 0.3;
 
-    var emitter3 = new Emitter();
-    emitter3.init((width * 3) / 4, height - 50, colors.MAGENTA);
+    var emitter3 = new Emitter((width * 3) / 4, height - 50, colors.MAGENTA);
     emitter3.rate = 8;
     emitter3.speed = 8.0;
 
@@ -274,9 +270,9 @@ func run(canvas: Canvas) {
         system.draw(canvas);
 
         if showEmitters {
-            canvas.Ring(Floor(emitter1.x), Floor(emitter1.y), 10, colors.ORANGE);
-            canvas.Ring(Floor(emitter2.x), Floor(emitter2.y), 10, colors.CYAN);
-            canvas.Ring(Floor(emitter3.x), Floor(emitter3.y), 10, colors.MAGENTA);
+            canvas.Ring(Convert.NumToInt(Floor(emitter1.x)), Convert.NumToInt(Floor(emitter1.y)), 10, colors.ORANGE);
+            canvas.Ring(Convert.NumToInt(Floor(emitter2.x)), Convert.NumToInt(Floor(emitter2.y)), 10, colors.CYAN);
+            canvas.Ring(Convert.NumToInt(Floor(emitter3.x)), Convert.NumToInt(Floor(emitter3.y)), 10, colors.MAGENTA);
         }
 
         canvas.TextBg(10, 10, "PARTICLE SYSTEM", colors.WHITE, colors.BLACK);

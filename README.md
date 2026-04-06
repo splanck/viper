@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-420K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-428K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -76,7 +76,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[Zia](docs/zia-reference.md)** | Modern, statically typed language with classes, generics, enums, lambdas, modules, and pattern matching |
 | **[BASIC](docs/basic-reference.md)** | Educational frontend for rapid prototyping |
 | **[Viper IL](docs/il-guide.md)** | Typed, SSA-based intermediate representation |
-| **[Optimizer](docs/il-passes.md)** | 38-pass pipeline: GVN, LICM, SCCP, loop opts, inlining, and more |
+| **[Optimizer](docs/il-passes.md)** | 20-pass pipeline: GVN, LICM, SCCP, loop opts, inlining, and more |
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
@@ -99,15 +99,15 @@ Viper is in **early development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
-| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, lambdas, variadic params, type aliases, pattern matching with exhaustiveness, try/catch, modules |
+| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, lambdas, variadic params, type aliases, `final` enforcement, pattern matching with exhaustiveness, try/catch, modules |
 | [BASIC Frontend](docs/basic-reference.md) | Core language + OOP; enums, select-case, namespaces |
 | [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
-| [Optimizer](docs/il-passes.md) | 38 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
+| [Optimizer](docs/il-passes.md) | 20 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
 | [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling |
-| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, post-RA scheduler |
+| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables) |
-| [Runtime](docs/viperlib/README.md) | 300 classes across 22 modules; 1,391 tests |
+| [Runtime](docs/viperlib/README.md) | 300 classes across 22 modules; 1,408 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 34 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11 feature-complete, OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
@@ -149,7 +149,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
                   ▼
 ┌─────────────────────────────────────────┐
 │         Viper IL  (Typed SSA)           │
-│      Verifier · Optimizer (38 passes)   │
+│      Verifier · Optimizer (20 passes)   │
 └─────────┬───────────────┬───────────────┘
           ▼               ▼
 ┌──────────────┐   ┌──────────────────────┐

@@ -2,11 +2,11 @@
 // Provides logging with levels, timestamps, and request tracking
 module logger;
 
-bind Viper.Terminal;
-bind Viper.Time;
-bind Viper.Threads;
-bind Viper.Collections;
-bind Viper.Fmt;
+bind Viper.Terminal as Terminal;
+bind Viper.Time as Time;
+bind Viper.Threads as Threads;
+bind Viper.Collections as Collections;
+bind Viper.Fmt as Fmt;
 
 // ============================================================================
 // LOG LEVELS

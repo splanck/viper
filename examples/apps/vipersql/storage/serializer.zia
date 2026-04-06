@@ -3,8 +3,7 @@
 
 module serializer;
 
-bind String = Viper.String;
-
+bind Viper.String as String;
 bind "../engine/types";
 bind "../engine/table";
 bind "./page";

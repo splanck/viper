@@ -1,7 +1,6 @@
 module GuidDemo;
 bind Viper.Terminal;
-bind Uuid = Viper.Text.Uuid;
-
+bind Viper.Text.Uuid as Uuid;
 func start() {
     Say("=== Viper.Text.Uuid API Audit ===");
 

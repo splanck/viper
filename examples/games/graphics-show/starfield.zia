@@ -12,6 +12,7 @@ bind "./colors";
 bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Time;
 
@@ -91,8 +92,7 @@ class Starfield {
         stars = [];
         var i = 0;
         while i < numStars {
-            var star = new Star();
-            star.init(maxDepth);
+            var star = new Star(maxDepth);
             star.z = (i * maxDepth) / numStars;
             stars.add(star);
             i = i + 1;
@@ -132,8 +132,8 @@ class Starfield {
                 if warpMode {
                     var oldZ = star.z + speed * 3.0 * star.speed;
                     if oldZ < maxDepth {
-                        var oldSx = centerX + Floor((star.x * fov) / oldZ);
-                        var oldSy = centerY + Floor((star.y * fov) / oldZ);
+                        var oldSx = centerX + Convert.NumToInt(Floor((star.x * fov) / oldZ));
+                        var oldSy = centerY + Convert.NumToInt(Floor((star.y * fov) / oldZ));
                         canvas.Line(oldSx, oldSy, sx, sy, drawColor);
                     }
                 }
@@ -159,14 +159,13 @@ class Starfield {
 }
 
 // Run the starfield demo
-func run(canvas: Canvas) {
+func starfieldRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
 
-    var field = new Starfield();
-    field.init(500);
+    var field = new Starfield(500);
 
     var running = true;
     var frameCount = 0;

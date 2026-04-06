@@ -7,8 +7,7 @@
 
 module StopwatchDemo;
 bind Viper.Terminal;
-bind SW = Viper.Time.Stopwatch;
-
+bind Viper.Time.Stopwatch as SW;
 func start() {
     Say("=== API Audit: Viper.Time.Stopwatch ===");
 

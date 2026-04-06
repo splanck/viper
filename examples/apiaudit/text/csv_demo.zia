@@ -1,9 +1,8 @@
 module CsvDemo;
 bind Viper.Terminal;
-bind Csv = Viper.Text.Csv;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.Csv as Csv;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.Csv API Audit ===");
 

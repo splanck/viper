@@ -1,7 +1,6 @@
 module StringBuilderDemo;
 bind Viper.Terminal;
-bind SB = Viper.Text.StringBuilder;
-
+bind Viper.Text.StringBuilder as SB;
 func start() {
     Say("=== Viper.Text.StringBuilder API Audit ===");
 

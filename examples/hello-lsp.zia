@@ -4,15 +4,17 @@ module HelloLSP;
 // Errors should appear as red squiggly underlines.
 
 struct Point {
-    var x: Integer;
-    var y: Integer;
+    expose Integer x;
+    expose Integer y;
 }
 
 func start() {
     var greeting = "Hello from the Zia Language Server!";
     Viper.Terminal.Say(greeting);
 
-    var p = Point(10, 20);
+    var p: Point = new Point();
+    p.x = 10;
+    p.y = 20;
     Viper.Terminal.SayInt(p.x);
     Viper.Terminal.SayInt(p.y);
 }

@@ -8,8 +8,7 @@
 
 module DiagnosticsDemo;
 bind Viper.Terminal;
-bind Diag = Viper.Core.Diagnostics;
-
+bind Viper.Core.Diagnostics as Diag;
 func start() {
     Say("=== API Audit: Viper.Core.Diagnostics ===");
 

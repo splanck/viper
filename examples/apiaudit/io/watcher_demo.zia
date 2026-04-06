@@ -8,11 +8,10 @@
 
 module WatcherDemo;
 bind Viper.Terminal;
-bind W = Viper.IO.Watcher;
-bind TempFile = Viper.IO.TempFile;
-bind File = Viper.IO.File;
-bind Path = Viper.IO.Path;
-
+bind Viper.IO.Watcher as W;
+bind Viper.IO.TempFile as TempFile;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
 func start() {
     Say("=== API Audit: Viper.IO.Watcher ===");
 

@@ -1,7 +1,6 @@
 module PluralizeDemo;
 bind Viper.Terminal;
-bind PL = Viper.Text.Pluralize;
-
+bind Viper.Text.Pluralize as PL;
 func start() {
     Say("=== Viper.Text.Pluralize API Audit ===");
 

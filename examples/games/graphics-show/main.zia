@@ -7,15 +7,15 @@ module main;
 // framework. Select demos from the menu or run them individually.
 // ============================================================================
 
-bind "./colors";
-bind "./starfield";
-bind "./matrix";
-bind "./plasma";
-bind "./particles";
-bind "./bouncing";
-bind "./snake";
-bind "./fireworks";
-bind "./sierpinski";
+bind "./colors" as colors;
+bind "./starfield" as starfield;
+bind "./matrix" as matrix;
+bind "./plasma" as plasma;
+bind "./particles" as particles;
+bind "./bouncing" as bouncing;
+bind "./snake" as snake;
+bind "./fireworks" as fireworks;
+bind "./sierpinski" as sierpinski;
 
 bind Viper.Math.Random;
 bind Viper.Graphics;
@@ -23,6 +23,7 @@ bind Viper.Graphics.Canvas;
 bind Viper.Graphics.Color;
 bind Viper.Input;
 bind Viper.Math;
+bind Viper.Core.Convert as Convert;
 bind Viper.String;
 bind Viper.Time;
 
@@ -109,7 +110,7 @@ class MenuStar {
 
     expose func draw(canvas: Canvas) {
         var color = RGB(brightness, brightness, brightness);
-        canvas.Plot(Floor(x), Floor(y), color);
+        canvas.Plot(Convert.NumToInt(Floor(x)), Convert.NumToInt(Floor(y)), color);
     }
 }
 
@@ -142,16 +143,14 @@ class Menu {
         stars = [];
         var i = 0;
         while i < 100 {
-            var star = new MenuStar();
-            star.init(screenWidth, screenHeight);
+            var star = new MenuStar(screenWidth, screenHeight);
             stars.add(star);
             i = i + 1;
         }
     }
 
     expose func addItem(name: String, desc: String) {
-        var item = new MenuItem();
-        item.init(name, desc, items.count());
+        var item = new MenuItem(name, desc, items.count());
         items.add(item);
     }
 
@@ -210,8 +209,7 @@ class Menu {
             var charColor = colors.rainbowPhase(hue);
 
             // Get single character
-            var ch = Mid(title, charIdx + 1);
-            ch = Left(ch, 1);
+            var ch = MidLen(title, charIdx + 1, 1);
             if Length(ch) > 0 {
                 canvas.Text(titleX + charIdx * 12, titleY, ch, charColor);
             }
@@ -271,21 +269,21 @@ class Menu {
 // Run a specific demo
 func runDemo(demoIndex: Integer, canvas: Canvas) {
     if demoIndex == 0 {
-        starfield.run(canvas);
+        starfield.starfieldRun(canvas);
     } else if demoIndex == 1 {
-        matrix.run(canvas);
+        matrix.matrixRun(canvas);
     } else if demoIndex == 2 {
-        plasma.run(canvas);
+        plasma.plasmaRun(canvas);
     } else if demoIndex == 3 {
-        particles.run(canvas);
+        particles.particlesRun(canvas);
     } else if demoIndex == 4 {
-        bouncing.run(canvas);
+        bouncing.bouncingRun(canvas);
     } else if demoIndex == 5 {
-        snake.run(canvas);
+        snake.snakeRun(canvas);
     } else if demoIndex == 6 {
-        fireworks.run(canvas);
+        fireworks.fireworksRun(canvas);
     } else if demoIndex == 7 {
-        sierpinski.run(canvas);
+        sierpinski.sierpinskiRun(canvas);
     }
 }
 
@@ -303,8 +301,7 @@ func start() {
     setupActions();
 
     // Create menu
-    var menu = new Menu();
-    menu.init(width, height);
+    var menu = new Menu(width, height);
 
     var running = true;
 

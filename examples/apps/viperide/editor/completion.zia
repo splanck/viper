@@ -1,12 +1,10 @@
 module completion;
 
-bind GUI = Viper.GUI;
-bind Str = Viper.String;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-bind ZiaCompletion = Viper.Zia.Completion;
-
-// ============================================================================
+bind Viper.GUI as GUI;
+bind Viper.String as Str;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
+bind Viper.Zia.Completion as ZiaCompletion;// ============================================================================
 // CompletionController — IntelliSense-style code completion for ViperIDE
 // ============================================================================
 // Triggered by Ctrl+Space (explicit) or '.' typed (member access).

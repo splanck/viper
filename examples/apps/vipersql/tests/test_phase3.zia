@@ -2,11 +2,10 @@
 // Part of ViperSQL
 module test_phase3;
 
-bind Terminal = Viper.Terminal;
-bind IO = Viper.IO;
-bind Fmt = Viper.Fmt;
-bind String = Viper.String;
-
+bind Viper.Terminal as Terminal;
+bind Viper.IO as IO;
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
 bind "../engine/executor";
 bind "./test_common";
 

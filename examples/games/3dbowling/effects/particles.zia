@@ -3,9 +3,9 @@ module particles;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
+bind Viper.Graphics.Color as Color;
 bind Viper.Math;
-bind Convert = Viper.Core.Convert;
+bind Viper.Core.Convert as Convert;
 bind "../config";
 
 class ParticleManager {

@@ -6,8 +6,7 @@
 
 module YamlDemo;
 bind Viper.Terminal;
-bind Yaml = Viper.Data.Yaml;
-
+bind Viper.Data.Yaml as Yaml;
 func start() {
     Say("=== API Audit: Viper.Data.Yaml ===");
 

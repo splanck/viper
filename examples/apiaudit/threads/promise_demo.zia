@@ -8,10 +8,10 @@
 
 module PromiseDemo;
 bind Viper.Threads.Promise as Promise;
+bind Viper.Threads.Future as Future;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
-bind Box = Viper.Core.Box;
-
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Threads.Promise / Future ===");
 
@@ -26,7 +26,7 @@ func start() {
 
     // --- Promise.GetFuture ---
     Say("--- GetFuture ---");
-    var f = p.GetFuture();
+    var f: Future = p.GetFuture();
     Say("Got future from promise");
 
     // --- Future.IsDone (before set) ---
@@ -73,7 +73,7 @@ func start() {
     // --- Promise with error ---
     Say("--- Promise with error ---");
     var p2 = Promise.New();
-    var f2 = p2.GetFuture();
+    var f2: Future = p2.GetFuture();
     p2.SetError("something went wrong");
     Say("Set error on promise");
 

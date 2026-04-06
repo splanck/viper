@@ -165,22 +165,23 @@ class ChessAI {
         var bestScore = -INF - 1;
         var bestMove  = ordered.get(0);
         var ttBound   = TT_ALPHA;
+        var alphaBound = alpha;
 
         for i in 0..ordered.length() {
             var m    = ordered.get(i);
             var undo = b.makeMove(m);
-            var score = -negamax(b, depth - 1, ply + 1, -beta, -alpha);
+            var score = -negamax(b, depth - 1, ply + 1, -beta, -alphaBound);
             b.unmakeMove(m, undo);
 
             if score > bestScore {
                 bestScore = score;
                 bestMove  = m;
             }
-            if score > alpha {
-                alpha    = score;
+            if score > alphaBound {
+                alphaBound = score;
                 ttBound  = TT_EXACT;
             }
-            if alpha >= beta {
+            if alphaBound >= beta {
                 // Beta cutoff — store killer move
                 storeKiller(m, ply);
                 storeTable(hash, beta, depth, TT_BETA);
@@ -198,12 +199,13 @@ class ChessAI {
     // -------------------------------------------------------------------------
     hide func quiescence(b: Board, ply: Integer, alpha: Integer, beta: Integer) -> Integer {
         nodesSearched = nodesSearched + 1;
+        var alphaBound = alpha;
 
         // Stand-pat evaluation (lower bound — can choose not to capture)
         var standPat = staticEval(b);
 
         if standPat >= beta { return beta; }
-        if standPat > alpha { alpha = standPat; }
+        if standPat > alphaBound { alphaBound = standPat; }
 
         // Generate and search captures only
         var captures = captureMovesOnly(b);
@@ -212,14 +214,14 @@ class ChessAI {
         for i in 0..ordered.length() {
             var m    = ordered.get(i);
             var undo = b.makeMove(m);
-            var score = -quiescence(b, ply + 1, -beta, -alpha);
+            var score = -quiescence(b, ply + 1, -beta, -alphaBound);
             b.unmakeMove(m, undo);
 
             if score >= beta { return beta; }
-            if score > alpha { alpha = score; }
+            if score > alphaBound { alphaBound = score; }
         }
 
-        return alpha;
+        return alphaBound;
     }
 
     // -------------------------------------------------------------------------

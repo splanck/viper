@@ -71,7 +71,7 @@ func start() {
     h2.Push(3, Box.Str("c"));
     h2.Push(2, Box.Str("b"));
     h2.Push(4, Box.Str("d"));
-    var seq = h2.ToSeq();
+    var seq: Seq = h2.ToSeq();
     SayInt(seq.Length);            // 5
     // ToSeq returns elements in priority order
     Say(Box.ToStr(seq.Get(0))); // a (priority 1)

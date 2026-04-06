@@ -6,9 +6,8 @@
 
 module GlobDemo;
 bind Viper.Terminal;
-bind Glob = Viper.IO.Glob;
-bind Dir = Viper.IO.Dir;
-
+bind Viper.IO.Glob as Glob;
+bind Viper.IO.Dir as Dir;
 func start() {
     Say("=== API Audit: Viper.IO.Glob ===");
 

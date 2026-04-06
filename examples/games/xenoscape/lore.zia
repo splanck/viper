@@ -120,7 +120,7 @@ class LoreSystem {
         tw.Say(loreTexts.get(index), 30); // 30ms per character
     }
 
-    expose func isDisplayActive(): Boolean { return displayActive; }
+    expose func isDisplayActive() -> Boolean { return displayActive; }
 
     expose func update(dt: Integer) {
         if not displayActive { return; }
@@ -174,7 +174,7 @@ class LoreSystem {
     }
 
     // Get collection stats for HUD
-    expose func getCollectedCount(): Integer {
+    expose func getCollectedCount() -> Integer {
         var count = 0;
         var i = 0;
         while i < loreTitles.length() {
@@ -184,11 +184,11 @@ class LoreSystem {
         return count;
     }
 
-    expose func getTotalCount(): Integer {
+    expose func getTotalCount() -> Integer {
         return loreTitles.length();
     }
 
-    expose func getCollectedMask(): Integer { return collectedMask; }
+    expose func getCollectedMask() -> Integer { return collectedMask; }
     expose func setCollectedMask(mask: Integer) { collectedMask = mask; }
 
     // =========================================================================

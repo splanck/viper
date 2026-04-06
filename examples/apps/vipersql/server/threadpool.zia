@@ -8,11 +8,10 @@
 
 module threadpool;
 
-bind Terminal = Viper.Terminal;
-bind Threads = Viper.Threads;
-bind Fmt = Viper.Fmt;
-bind Pool = Viper.Threads.Pool;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Threads as Threads;
+bind Viper.Fmt as Fmt;
+bind Viper.Threads.Pool as Pool;
 bind "./connection";
 
 //=============================================================================
@@ -29,10 +28,11 @@ var poolSize: Integer;
 
 // Initialize the thread pool with the given number of worker threads.
 func sql_pool_init(size: Integer) {
-    if size < 1 { size = 1; }
-    if size > 100 { size = 100; }
-    poolSize = size;
-    pool = Pool.New(size);
+    var requestedSize = size;
+    if requestedSize < 1 { requestedSize = 1; }
+    if requestedSize > 100 { requestedSize = 100; }
+    poolSize = requestedSize;
+    pool = Pool.New(requestedSize);
     poolRunning = true;
     Terminal.Say("Thread pool initialized: " + Fmt.Int(poolSize) + " workers");
 }

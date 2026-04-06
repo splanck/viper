@@ -1,7 +1,6 @@
 module RestClientDemo;
 bind Viper.Terminal;
-bind RestClient = Viper.Network.RestClient;
-
+bind Viper.Network.RestClient as RestClient;
 func start() {
     Say("=== API Audit: Viper.Network.RestClient ===");
 

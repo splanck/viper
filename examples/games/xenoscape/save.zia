@@ -72,32 +72,32 @@ class SaveManager {
         store.Save();
     }
 
-    expose func isSlotUsed(slot: Integer): Boolean {
+    expose func isSlotUsed(slot: Integer) -> Boolean {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return false; }
         return slotUsed.get(slot) == 1;
     }
 
-    expose func getSlotLevel(slot: Integer): Integer {
+    expose func getSlotLevel(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotLevel.get(slot);
     }
 
-    expose func getSlotAbilities(slot: Integer): Integer {
+    expose func getSlotAbilities(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 1; }
         return slotAbilities.get(slot);
     }
 
-    expose func getSlotMaxHp(slot: Integer): Integer {
+    expose func getSlotMaxHp(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 5; }
         return slotMaxHp.get(slot);
     }
 
-    expose func getSlotGems(slot: Integer): Integer {
+    expose func getSlotGems(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotGems.get(slot);
     }
 
-    expose func getSlotTime(slot: Integer): Integer {
+    expose func getSlotTime(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotTime.get(slot);
     }
@@ -115,7 +115,7 @@ class SaveManager {
         store.Save();
     }
 
-    expose func getSlotSummary(slot: Integer): String {
+    expose func getSlotSummary(slot: Integer) -> String {
         if not isSlotUsed(slot) { return "Empty"; }
         var lv = slotLevel.get(slot) + 1;
         var tm = slotTime.get(slot);

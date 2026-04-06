@@ -2,8 +2,8 @@
 // Provides a pool of worker threads to handle concurrent connections
 module threadpool;
 
-bind Viper.Threads;
-bind Viper.Collections;
+bind Viper.Threads as Threads;
+bind Viper.Collections as Collections;
 
 // ============================================================================
 // CONFIGURATION
@@ -27,42 +27,40 @@ var pool_running: Integer;
 // Number of active workers
 var pool_workerCount: Integer;
 
-// Handler function pointer for processing connections
-var pool_handler: Ptr;
-
 // ============================================================================
 // WORKER THREAD
 // ============================================================================
 
 func pool_workerLoop(arg: Ptr) {
     while pool_running == 1 {
-        var conn: Ptr;
+        var conn: Ptr = null;
 
         // Acquire the queue lock
         Threads.Monitor.Enter(pool_queue);
 
         // Wait while queue is empty and we're still running
-        while Collections.List.get_Count(pool_queue) == 0 && pool_running == 1 {
+        while pool_queue.count() == 0 && pool_running == 1 {
             Threads.Monitor.Wait(pool_queue);
         }
 
         // If we're shutting down and queue is empty, exit
-        if pool_running == 0 && Collections.List.get_Count(pool_queue) == 0 {
+        if pool_running == 0 && pool_queue.count() == 0 {
             Threads.Monitor.Exit(pool_queue);
             return;
         }
 
         // Pop a connection from the front of the queue
-        if Collections.List.get_Count(pool_queue) > 0 {
-            conn = Collections.List.get_Item(pool_queue, 0);
-            Collections.List.RemoveAt(pool_queue, 0);
+        if pool_queue.count() > 0 {
+            conn = pool_queue.get(0);
+            pool_queue.removeAt(0);
         }
 
         Threads.Monitor.Exit(pool_queue);
 
-        // Handle the connection outside the lock
-        // Call the stored handler function with the connection
-        pool_handleConnection(conn);
+        // Handle the connection outside the lock.
+        if conn != null {
+            pool_handleConnection(conn);
+        }
     }
 }
 
@@ -78,11 +76,9 @@ func pool_handleConnection(conn: Ptr) {
 // PUBLIC API
 // ============================================================================
 
-// Initialize the thread pool with the given number of workers
-// handler: function pointer to call for each connection (use &funcName)
+// Initialize the thread pool with the given number of workers.
 // numWorkers: number of worker threads (0 = use default)
-func pool_init(handler: Ptr, numWorkers: Integer) {
-    pool_handler = handler;
+func pool_init(numWorkers: Integer) {
     pool_running = 1;
 
     if numWorkers <= 0 {
@@ -92,16 +88,16 @@ func pool_init(handler: Ptr, numWorkers: Integer) {
     }
 
     // Create the connection queue
-    pool_queue = Collections.List.New();
+    pool_queue = new List[Ptr]();
 
     // Create worker list
-    pool_workers = Collections.List.New();
+    pool_workers = new List[Ptr]();
 
     // Spawn worker threads
     var i = 0;
     while i < pool_workerCount {
         var worker = Threads.Thread.Start(&pool_workerLoop, 0);
-        Collections.List.Push(pool_workers, worker);
+        pool_workers.add(worker);
         i = i + 1;
     }
 }
@@ -109,7 +105,7 @@ func pool_init(handler: Ptr, numWorkers: Integer) {
 // Submit a connection to be handled by the pool
 func pool_submit(conn: Ptr) {
     Threads.Monitor.Enter(pool_queue);
-    Collections.List.Push(pool_queue, conn);
+    pool_queue.add(conn);
     // Signal one waiting worker
     Threads.Monitor.Pause(pool_queue);
     Threads.Monitor.Exit(pool_queue);
@@ -127,7 +123,7 @@ func pool_shutdown() {
     // Join all worker threads
     var i = 0;
     while i < pool_workerCount {
-        var worker = Collections.List.get_Item(pool_workers, i);
+        var worker = pool_workers.get(i);
         Threads.Thread.Join(worker);
         i = i + 1;
     }

@@ -1,9 +1,7 @@
 module app_shell;
 
-bind GUI = Viper.GUI;
-bind Seq = Viper.Collections.Seq;
-
-// ============================================================================
+bind Viper.GUI as GUI;
+bind Viper.Collections.Seq as Seq;// ============================================================================
 // AppShell — top-level UI layout for ViperIDE
 // ============================================================================
 // Professional IDE layout: MenuBar → Toolbar → SplitPane(sidebar|editor) → StatusBar

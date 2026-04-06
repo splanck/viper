@@ -16,10 +16,9 @@
 
 module test_common;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
 bind "../engine/result";
 bind "../engine/types";
 

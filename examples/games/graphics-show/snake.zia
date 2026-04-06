@@ -87,8 +87,7 @@ class Snake {
 
         var i = 0;
         while i < 3 {
-            var seg = new Segment();
-            seg.init(startX - i, startY);
+            var seg = new Segment(startX - i, startY);
             segments.add(seg);
             i = i + 1;
         }
@@ -142,8 +141,7 @@ class Snake {
             i = i + 1;
         }
 
-        var newHead = new Segment();
-        newHead.init(newX, newY);
+        var newHead = new Segment(newX, newY);
         segments.insert(0, newHead);
 
         if growing > 0 {
@@ -224,11 +222,9 @@ class SnakeGame {
         moveTimer = 0;
         moveDelay = 8;
 
-        snake = new Snake();
-        snake.init(gridWidth / 2, gridHeight / 2);
+        snake = new Snake(gridWidth / 2, gridHeight / 2);
 
-        food = new Food();
-        food.init(gridWidth, gridHeight);
+        food = new Food(gridWidth, gridHeight);
     }
 
     expose func restart() {
@@ -240,8 +236,7 @@ class SnakeGame {
         gameOver = false;
         moveDelay = 8;
 
-        snake = new Snake();
-        snake.init(gridWidth / 2, gridHeight / 2);
+        snake = new Snake(gridWidth / 2, gridHeight / 2);
         food.spawn(gridWidth, gridHeight);
     }
 
@@ -302,15 +297,14 @@ class SnakeGame {
 }
 
 // Run the snake game
-func run(canvas: Canvas) {
+func snakeRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
     initDirections();
 
-    var game = new SnakeGame();
-    game.init(width, height);
+    var game = new SnakeGame(width, height);
 
     var running = true;
 

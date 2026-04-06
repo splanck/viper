@@ -6,13 +6,12 @@
 
 module test_extended_query;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind Network = Viper.Network;
-bind Threads = Viper.Threads;
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.Network as Network;
+bind Viper.Threads as Threads;
 bind Viper.Collections;
-bind String = Viper.String;
-
+bind Viper.String as String;
 bind "../engine/server";
 bind "../server/connection";
 bind "../server/pg_wire";

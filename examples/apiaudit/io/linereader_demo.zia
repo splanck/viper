@@ -6,11 +6,10 @@
 
 module LineReaderDemo;
 bind Viper.Terminal;
-bind LR = Viper.IO.LineReader;
-bind File = Viper.IO.File;
-bind Path = Viper.IO.Path;
-bind TempFile = Viper.IO.TempFile;
-
+bind Viper.IO.LineReader as LR;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
 func start() {
     Say("=== API Audit: Viper.IO.LineReader ===");
 

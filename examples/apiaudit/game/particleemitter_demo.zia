@@ -1,8 +1,7 @@
 // API Audit: Viper.Game.ParticleEmitter (Zia)
 module ParticleEmitterDemo;
 bind Viper.Terminal;
-bind PE = Viper.Game.ParticleEmitter;
-
+bind Viper.Game.ParticleEmitter as PE;
 func start() {
     Say("=== API Audit: Viper.Game.ParticleEmitter ===");
 

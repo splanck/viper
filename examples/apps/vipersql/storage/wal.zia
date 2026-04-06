@@ -26,11 +26,10 @@
 
 module wal;
 
-bind IO = Viper.IO;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind Threads = Viper.Threads;
-
+bind Viper.IO as IO;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Threads as Threads;
 bind "./page";
 bind "./serializer";
 

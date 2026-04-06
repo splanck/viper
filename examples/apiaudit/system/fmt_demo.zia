@@ -7,8 +7,7 @@
 
 module FmtDemo;
 bind Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Fmt as Fmt;
 func start() {
     Say("=== API Audit: Viper.Fmt ===");
 

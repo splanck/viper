@@ -3,9 +3,8 @@
 // So we cannot use Box.ToI64 on Range elements. We test what we can.
 module LazySeqDemo;
 bind Viper.Terminal;
-bind LS = Viper.LazySeq;
-bind Box = Viper.Core.Box;
-
+bind Viper.LazySeq as LS;
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.LazySeq ===");
 

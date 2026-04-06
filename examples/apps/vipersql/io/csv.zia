@@ -8,13 +8,12 @@
 
 module csv;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-bind SB = Viper.Text.StringBuilder;
-bind Csv = Viper.Text.Csv;
-bind Seq = Viper.Collections.Seq;
-
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
+bind Viper.Text.StringBuilder as SB;
+bind Viper.Text.Csv as Csv;
+bind Viper.Collections.Seq as Seq;
 bind "../engine/types";
 bind "../engine/schema";
 bind "../engine/table";

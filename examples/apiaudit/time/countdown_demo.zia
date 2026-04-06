@@ -7,8 +7,7 @@
 
 module CountdownDemo;
 bind Viper.Terminal;
-bind CD = Viper.Time.Countdown;
-
+bind Viper.Time.Countdown as CD;
 func start() {
     Say("=== API Audit: Viper.Time.Countdown ===");
 

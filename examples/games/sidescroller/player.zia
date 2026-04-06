@@ -427,7 +427,7 @@ class Player {
         else if chargeTimer >= 320 { chargeLevel = 1; }  // Partial charge
     }
 
-    expose func releaseCharge(): Integer {
+    expose func releaseCharge() -> Integer {
         if not isCharging { return 0; }
         isCharging = false;
         var level = chargeLevel;
@@ -471,7 +471,7 @@ class Player {
         ctrl.VY = 0;
     }
 
-    expose func updateFreeze(dt: Integer): Boolean {
+    expose func updateFreeze(dt: Integer) -> Boolean {
         if freezeTimer <= 0 { return false; }
         freezeTimer = freezeTimer - dt;
         vx = 0; // Can't move while frozen
@@ -479,5 +479,5 @@ class Player {
         return true;
     }
 
-    expose func isFrozen(): Boolean { return freezeTimer > 0; }
+    expose func isFrozen() -> Boolean { return freezeTimer > 0; }
 }

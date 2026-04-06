@@ -7,10 +7,9 @@
 
 module TempFileDemo;
 bind Viper.Terminal;
-bind TF = Viper.IO.TempFile;
-bind File = Viper.IO.File;
-bind Dir = Viper.IO.Dir;
-
+bind Viper.IO.TempFile as TF;
+bind Viper.IO.File as File;
+bind Viper.IO.Dir as Dir;
 func start() {
     Say("=== API Audit: Viper.IO.TempFile ===");
 

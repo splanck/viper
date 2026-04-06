@@ -1,7 +1,6 @@
 module OptionDemo;
 bind Viper.Terminal;
-bind Option = Viper.Option;
-
+bind Viper.Option as Option;
 func start() {
     Say("=== API Audit: Viper.Option ===");
 

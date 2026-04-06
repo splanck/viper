@@ -1,9 +1,8 @@
 module MarkdownDemo;
 bind Viper.Terminal;
-bind MD = Viper.Text.Markdown;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.Markdown as MD;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.Markdown API Audit ===");
 

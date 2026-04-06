@@ -1,7 +1,6 @@
 module ResultDemo;
 bind Viper.Terminal;
-bind Result = Viper.Result;
-
+bind Viper.Result as Result;
 func start() {
     Say("=== API Audit: Viper.Result ===");
 

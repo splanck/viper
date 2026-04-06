@@ -1,7 +1,6 @@
 module JsonStreamDemo;
 bind Viper.Terminal;
-bind JS = Viper.Text.JsonStream;
-
+bind Viper.Text.JsonStream as JS;
 func start() {
     Say("=== Viper.Text.JsonStream API Audit ===");
 

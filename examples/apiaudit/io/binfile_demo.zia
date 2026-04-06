@@ -6,12 +6,11 @@
 
 module BinFileDemo;
 bind Viper.Terminal;
-bind BinFile = Viper.IO.BinFile;
-bind Path = Viper.IO.Path;
-bind File = Viper.IO.File;
-bind TempFile = Viper.IO.TempFile;
-bind Bytes = Viper.Collections.Bytes;
-
+bind Viper.IO.BinFile as BinFile;
+bind Viper.IO.Path as Path;
+bind Viper.IO.File as File;
+bind Viper.IO.TempFile as TempFile;
+bind Viper.Collections.Bytes as Bytes;
 func start() {
     Say("=== API Audit: Viper.IO.BinFile ===");
 

@@ -6,12 +6,12 @@ bind "./logger";
 bind "./threadpool";
 bind "./router";
 
-bind Viper.Terminal;
-bind Viper.String;
-bind Viper.Network;
-bind Viper.IO;
-bind Viper.Time;
-bind Viper.Fmt;
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Network as Network;
+bind Viper.IO as IO;
+bind Viper.Time as Time;
+bind Viper.Fmt as Fmt;
 
 // ============================================================================
 // CONFIGURATION
@@ -97,9 +97,8 @@ func registerRoutes() {
 // HTTP REQUEST PARSING
 // ============================================================================
 
-// Parse HTTP request line to extract method, path, and version
-// Returns true if parsing succeeded
-func parseRequestLine(line: String, method: String, path: String, version: String) -> Boolean {
+// Parse HTTP request line and validate its structure.
+func parseRequestLine(line: String) -> Boolean {
     // Find first space (after method)
     var len = String.Length(line);
     var i = 0;
@@ -123,14 +122,14 @@ func parseRequestLine(line: String, method: String, path: String, version: Strin
         return false;
     }
 
-    // Extract parts
-    method = String.Substring(line, 0, firstSpace);
+    // Extract parts so malformed segments are rejected consistently.
+    var method = String.Substring(line, 0, firstSpace);
     var pathLen = secondSpace - firstSpace - 1;
-    path = String.Substring(line, firstSpace + 1, pathLen);
+    var path = String.Substring(line, firstSpace + 1, pathLen);
     var versionLen = len - secondSpace - 1;
-    version = String.Substring(line, secondSpace + 1, versionLen);
+    var version = String.Substring(line, secondSpace + 1, versionLen);
 
-    return true;
+    return method != "" && path != "" && version != "";
 }
 
 // ============================================================================
@@ -633,7 +632,7 @@ func main() {
     log_info("Routes registered: " + Fmt.Int(router_getCount()) + " API endpoints");
 
     // Initialize thread pool with configured worker count
-    pool_init(&handleClient, cfg_workers);
+    pool_init(cfg_workers);
     log_info("Thread pool initialized");
 
     // Create server on configured port

@@ -1,8 +1,7 @@
 module StringDemo;
 bind Viper.Terminal;
 bind Viper.String;
-bind Seq = Viper.Collections.Seq;
-
+bind Viper.Collections.Seq as Seq;
 func start() {
     Say("=== Viper.String API Audit ===");
 

@@ -3,12 +3,10 @@
 
 module sql_client;
 
-bind Network = Viper.Network;
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-
-//=============================================================================
+bind Viper.Network as Network;
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;//=============================================================================
 // CLIENT CONSTANTS
 //=============================================================================
 

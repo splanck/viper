@@ -3,10 +3,9 @@
 
 module pager;
 
-bind IO = Viper.IO;
-bind String = Viper.String;
-bind Collections = Viper.Collections;
-
+bind Viper.IO as IO;
+bind Viper.String as String;
+bind Viper.Collections as Collections;
 bind "./page";
 bind "./serializer";
 

@@ -9,8 +9,7 @@
 
 module XmlDemo;
 bind Viper.Terminal;
-bind Xml = Viper.Data.Xml;
-
+bind Viper.Data.Xml as Xml;
 func start() {
     Say("=== API Audit: Viper.Data.Xml ===");
 

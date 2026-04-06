@@ -9,9 +9,8 @@
 
 module result;
 
-bind Fmt = Viper.Fmt;
-bind SB = Viper.Text.StringBuilder;
-
+bind Viper.Fmt as Fmt;
+bind Viper.Text.StringBuilder as SB;
 bind "./schema";
 
 //=============================================================================

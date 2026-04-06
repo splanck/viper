@@ -8,13 +8,12 @@
 module ArchiveDemo;
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
-bind Archive = Viper.IO.Archive;
-bind File = Viper.IO.File;
-bind Path = Viper.IO.Path;
-bind TempFile = Viper.IO.TempFile;
-bind Seq = Viper.Collections.Seq;
-bind Box = Viper.Core.Box;
-
+bind Viper.IO.Archive as Archive;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.IO.Archive ===");
 

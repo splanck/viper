@@ -1,9 +1,8 @@
 module IniDemo;
 bind Viper.Terminal;
-bind Ini = Viper.Text.Ini;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-
+bind Viper.Text.Ini as Ini;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
 func start() {
     Say("=== Viper.Text.Ini API Audit ===");
 

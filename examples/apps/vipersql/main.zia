@@ -10,9 +10,8 @@
 
 module main;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
 bind "./engine/executor";
 
 //=============================================================================

@@ -8,11 +8,10 @@
 
 module test_pager_io;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind IO = Viper.IO;
-bind Collections = Viper.Collections;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.IO as IO;
+bind Viper.Collections as Collections;
 bind "./test_common";
 bind "../storage/page";
 bind "../storage/serializer";

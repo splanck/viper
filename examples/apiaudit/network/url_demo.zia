@@ -9,8 +9,7 @@
 
 module UrlDemo;
 bind Viper.Terminal;
-bind Url = Viper.Network.Url;
-
+bind Viper.Network.Url as Url;
 func start() {
     Say("=== API Audit: Viper.Network.Url ===");
 

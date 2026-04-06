@@ -3,10 +3,9 @@
 
 module test_optimizer;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-bind String = Viper.String;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
 bind "../optimizer/optimizer";
 bind "../engine/types";
 bind "../engine/executor";

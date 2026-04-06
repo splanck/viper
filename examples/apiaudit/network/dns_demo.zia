@@ -1,7 +1,6 @@
 module DnsDemo;
 bind Viper.Terminal;
-bind Dns = Viper.Network.Dns;
-
+bind Viper.Network.Dns as Dns;
 func start() {
     Say("=== API Audit: Viper.Network.Dns ===");
 

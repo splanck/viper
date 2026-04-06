@@ -6,9 +6,8 @@
 
 module ObjectDemo;
 bind Viper.Terminal;
-bind Obj = Viper.Core.Object;
-bind Box = Viper.Core.Box;
-
+bind Viper.Core.Object as Obj;
+bind Viper.Core.Box as Box;
 func start() {
     Say("=== API Audit: Viper.Core.Object ===");
 

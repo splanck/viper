@@ -1,9 +1,8 @@
 // API Audit: Viper.Game.Physics2D (Zia)
 module Physics2DDemo;
 bind Viper.Terminal;
-bind World = Viper.Game.Physics2D.World;
-bind Body = Viper.Game.Physics2D.Body;
-
+bind Viper.Game.Physics2D.World as World;
+bind Viper.Game.Physics2D.Body as Body;
 func start() {
     Say("=== API Audit: Viper.Game.Physics2D ===");
 

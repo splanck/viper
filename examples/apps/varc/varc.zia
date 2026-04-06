@@ -4,13 +4,13 @@
 
 module VarcTest;
 
-bind Viper.Terminal;
-bind Viper.String;
-bind Viper.Convert;
-bind Viper.Collections;
-bind Viper.IO;
-bind Viper.Crypto;
-bind Viper.Environment;
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Core.Convert as Convert;
+bind Viper.Collections as Collections;
+bind Viper.IO as IO;
+bind Viper.Crypto as Crypto;
+bind Viper.Environment as Environment;
 
 // Magic bytes for .varc format: "VARC" + version byte
 var MAGIC_0: Integer = 86;   // 'V'
@@ -40,7 +40,7 @@ var ENT_HEADER_SIZE: Integer = 14;
 // --- Helper Functions ---
 
 func intToStr(n: Integer) -> String {
-    return String.FromInt(n);
+    return Convert.ToString_Int(n);
 }
 
 func strToInt(s: String) -> Integer {
@@ -148,8 +148,8 @@ func restoreFileData(data: Ptr, isCompressed: Boolean, isEncrypted: Boolean, pas
 // Create an archive from a list of file paths
 // compress: if true, use DEFLATE compression
 // password: if not empty, use AES encryption
-func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, password: String) -> Boolean {
-    var fileCount = Collections.List.get_Count(filePaths);
+func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boolean, password: String) -> Boolean {
+    var fileCount = filePaths.count();
 
     if (fileCount == 0) {
         Terminal.Say("No files to archive");
@@ -175,21 +175,21 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
     }
 
     // First pass: process all file data and calculate total size
-    var allStored = Collections.List.New();   // compressed/encrypted data
-    var allOriginal = Collections.List.New(); // original file data for checksum
+    var allStored: List[Ptr] = [];
+    var allOriginal: List[Ptr] = [];
 
     var totalSize = HDR_SIZE;
     var i = 0;
     while (i < fileCount) {
-        var filePath = Collections.List.get_Item(filePaths, i);
+        var filePath = filePaths.get(i);
         var fileData = IO.File.ReadAllBytes(filePath);
 
         // Process data: compress then encrypt if requested
         // Use a helper function to avoid type reassignment issues
         var storedData = processFileData(fileData, compress, password);
 
-        Collections.List.Push(allStored, storedData);
-        Collections.List.Push(allOriginal, fileData);
+        allStored.add(storedData);
+        allOriginal.add(fileData);
 
         var storedLen = Collections.Bytes.get_Length(storedData);
         var pathLen = String.Length(filePath);
@@ -215,9 +215,9 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
     var offset = HDR_SIZE;
     i = 0;
     while (i < fileCount) {
-        var filePath = Collections.List.get_Item(filePaths, i);
-        var storedData = Collections.List.get_Item(allStored, i);
-        var originalData = Collections.List.get_Item(allOriginal, i);
+        var filePath = filePaths.get(i);
+        var storedData = allStored.get(i);
+        var originalData = allOriginal.get(i);
 
         var storedLen = Collections.Bytes.get_Length(storedData);
         var origLen = Collections.Bytes.get_Length(originalData);
@@ -254,7 +254,7 @@ func createArchiveEx(archivePath: String, filePaths: Ptr, compress: Boolean, pas
 }
 
 // Simple wrapper without compression/encryption
-func createArchive(archivePath: String, filePaths: Ptr) -> Boolean {
+func createArchive(archivePath: String, filePaths: List[String]) -> Boolean {
     return createArchiveEx(archivePath, filePaths, false, "");
 }
 
@@ -374,7 +374,6 @@ func testArchiveEx(archivePath: String, password: String) -> Boolean {
     while (i < entryCount) {
         var pathLen = readU16(archive, offset + ENT_PATH_LEN);
         var storedLen = readU32(archive, offset + ENT_DATA_LEN);
-        var origLen = readU32(archive, offset + ENT_ORIG_LEN);
         var storedCs = readU32(archive, offset + ENT_CHECKSUM);
 
         // Read path
@@ -545,7 +544,7 @@ func cmdCreate(startIdx: Integer, argCount: Integer) -> Integer {
     var compress = false;
     var password = "";
     var archivePath = "";
-    var files = Collections.List.New();
+    var files: List[String] = [];
 
     var i = startIdx;
     while (i < argCount) {
@@ -569,7 +568,7 @@ func cmdCreate(startIdx: Integer, argCount: Integer) -> Integer {
             i = i + 1;
         } else {
             // Add to file list
-            Collections.List.Push(files, arg);
+            files.add(arg);
             i = i + 1;
         }
     }
@@ -579,16 +578,16 @@ func cmdCreate(startIdx: Integer, argCount: Integer) -> Integer {
         return 1;
     }
 
-    if (Collections.List.get_Count(files) == 0) {
+    if (files.count() == 0) {
         Terminal.Say("Error: No files to archive");
         return 1;
     }
 
     // Validate all files exist
-    var fileCount = Collections.List.get_Count(files);
+    var fileCount = files.count();
     var j = 0;
     while (j < fileCount) {
-        var filePath = Collections.List.get_Item(files, j);
+        var filePath = files.get(j);
         if (!IO.File.Exists(filePath)) {
             Terminal.Say("Error: File not found: " + filePath);
             return 1;
@@ -740,9 +739,9 @@ func cmdSelfTest() -> Integer {
     Terminal.Say("Created test files");
     Terminal.Say("");
 
-    var files = Collections.List.New();
-    Collections.List.Push(files, file1);
-    Collections.List.Push(files, file2);
+    var files: List[String] = [];
+    files.add(file1);
+    files.add(file2);
 
     // Test 1: Create uncompressed archive
     Terminal.Say("--- Test 1: Create Uncompressed Archive ---");

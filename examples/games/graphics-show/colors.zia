@@ -9,6 +9,7 @@ module colors;
 
 bind Viper.Graphics;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 
 // Predefined color constants
@@ -114,9 +115,9 @@ func blendColors(color1: Integer, color2: Integer, factor: Number) -> Integer {
     var g2 = getGreen(color2);
     var b2 = getBlue(color2);
 
-    var r = Floor(r1 + (r2 - r1) * factor);
-    var g = Floor(g1 + (g2 - g1) * factor);
-    var b = Floor(b1 + (b2 - b1) * factor);
+    var r = Convert.NumToInt(Floor(r1 + (r2 - r1) * factor));
+    var g = Convert.NumToInt(Floor(g1 + (g2 - g1) * factor));
+    var b = Convert.NumToInt(Floor(b1 + (b2 - b1) * factor));
 
     return RGB(r, g, b);
 }

@@ -2,7 +2,7 @@
 // Provides URL routing and query string parsing for dynamic content
 module router;
 
-bind Viper.String;
+bind Viper.String as String;
 
 // ============================================================================
 // ROUTE IDs

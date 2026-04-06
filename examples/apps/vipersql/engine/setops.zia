@@ -9,10 +9,9 @@
 
 module setops;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind CryptoHash = Viper.Crypto.Hash;
-
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Crypto.Hash as CryptoHash;
 bind "./types";
 bind "./result";
 

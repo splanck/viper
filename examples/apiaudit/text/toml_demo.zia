@@ -6,8 +6,7 @@
 
 module TomlDemo;
 bind Viper.Terminal;
-bind Toml = Viper.Text.Toml;
-
+bind Viper.Text.Toml as Toml;
 func start() {
     Say("=== API Audit: Viper.Text.Toml ===");
 

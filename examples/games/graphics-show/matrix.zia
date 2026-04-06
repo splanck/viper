@@ -12,6 +12,7 @@ bind Viper.Math.Random;
 bind Viper.Graphics;
 bind Viper.Graphics.Canvas;
 bind Viper.Graphics.Color;
+bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Time;
 
@@ -72,7 +73,6 @@ class MatrixColumn {
         var i = 0;
         while i < height {
             var mc = new MatrixChar();
-            mc.init();
             chars.add(mc);
             i = i + 1;
         }
@@ -109,7 +109,7 @@ class MatrixColumn {
                 mc.randomize();
             } else if distFromHead <= length {
                 var fade = 1.0 - (distFromHead / (length + 1));
-                mc.brightness = Floor(200.0 * fade);
+                mc.brightness = Convert.NumToInt(Floor(200.0 * fade));
             } else {
                 mc.brightness = mc.brightness - 30;
                 if mc.brightness < 0 {
@@ -167,8 +167,7 @@ class MatrixRain {
         columns = [];
         var i = 0;
         while i < numColumns {
-            var col = new MatrixColumn();
-            col.init(charsPerColumn);
+            var col = new MatrixColumn(charsPerColumn);
             col.headY = 0 - NextInt(charsPerColumn * 2);
             columns.add(col);
             i = i + 1;
@@ -196,15 +195,14 @@ class MatrixRain {
 }
 
 // Run the matrix demo
-func run(canvas: Canvas) {
+func matrixRun(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
     colors.initColors();
     initChars();
 
-    var rain = new MatrixRain();
-    rain.init(width, height);
+    var rain = new MatrixRain(width, height);
 
     var running = true;
     var showTitle = true;

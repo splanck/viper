@@ -8,9 +8,8 @@
 
 module MemStreamDemo;
 bind Viper.Terminal;
-bind MS = Viper.IO.MemStream;
-bind Bytes = Viper.Collections.Bytes;
-
+bind Viper.IO.MemStream as MS;
+bind Viper.Collections.Bytes as Bytes;
 func start() {
     Say("=== API Audit: Viper.IO.MemStream ===");
 

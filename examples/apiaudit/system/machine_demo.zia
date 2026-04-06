@@ -7,8 +7,7 @@
 
 module MachineDemo;
 bind Viper.Terminal;
-bind Machine = Viper.Machine;
-
+bind Viper.Machine as Machine;
 func start() {
     Say("=== API Audit: Viper.Machine ===");
 

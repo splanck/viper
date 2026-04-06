@@ -10,11 +10,9 @@
 
 module types;
 
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind DateTime = Viper.Time.DateTime;
-
-//=============================================================================
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Time.DateTime as DateTime;//=============================================================================
 // SQL TYPE CONSTANTS
 //=============================================================================
 

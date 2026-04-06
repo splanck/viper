@@ -7,11 +7,10 @@
 
 module DirDemo;
 bind Viper.Terminal;
-bind Dir = Viper.IO.Dir;
-bind File = Viper.IO.File;
-bind Path = Viper.IO.Path;
-bind TempFile = Viper.IO.TempFile;
-
+bind Viper.IO.Dir as Dir;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
 func start() {
     Say("=== API Audit: Viper.IO.Dir ===");
 

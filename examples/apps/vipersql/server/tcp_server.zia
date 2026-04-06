@@ -19,11 +19,10 @@
 
 module tcp_server;
 
-bind Terminal = Viper.Terminal;
-bind Network = Viper.Network;
-bind Fmt = Viper.Fmt;
-bind Threads = Viper.Threads;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Network as Network;
+bind Viper.Fmt as Fmt;
+bind Viper.Threads as Threads;
 bind "../engine/server";
 bind "./threadpool";
 bind "./connection";

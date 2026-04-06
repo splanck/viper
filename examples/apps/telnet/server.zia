@@ -2,12 +2,12 @@
 // Provides file system navigation and basic commands
 module main;
 
-bind Viper.Terminal;
-bind Viper.Network;
-bind Viper.String;
-bind Viper.IO;
-bind Viper.Time;
-bind Viper.Fmt;
+bind Viper.Terminal as Terminal;
+bind Viper.Network as Network;
+bind Viper.String as String;
+bind Viper.IO as IO;
+bind Viper.Time as Time;
+bind Viper.Fmt as Fmt;
 
 // ============================================================================
 // CONFIGURATION
@@ -49,7 +49,7 @@ func executeCommand(command: String) -> String {
         return result;
     }
 
-    String cmdName = parts.get(0);
+    var cmdName = parts.get(0);
 
     // Handle commands using separate if statements to avoid else-if chain bug
     if cmdName == "help" {
@@ -60,7 +60,7 @@ func executeCommand(command: String) -> String {
     }
     if cmdName == "cd" {
         if parts.count() > 1 {
-            String arg = parts.get(1);
+            var arg = parts.get(1);
             result = cdCommand(arg);
         } else {
             result = "Usage: cd <directory>\n";
@@ -68,7 +68,7 @@ func executeCommand(command: String) -> String {
     }
     if cmdName == "ls" {
         if parts.count() > 1 {
-            String arg = parts.get(1);
+            var arg = parts.get(1);
             result = lsCommand(arg);
         } else {
             result = lsCommand(currentDir);
@@ -76,7 +76,7 @@ func executeCommand(command: String) -> String {
     }
     if cmdName == "cat" {
         if parts.count() > 1 {
-            String arg = parts.get(1);
+            var arg = parts.get(1);
             result = catCommand(arg);
         } else {
             result = "Usage: cat <filename>\n";

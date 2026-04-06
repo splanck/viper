@@ -9,9 +9,8 @@
 
 module session;
 
-bind Fmt = Viper.Fmt;
-bind String = Viper.String;
-
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
 bind "./executor";
 bind "./server";
 bind "./result";

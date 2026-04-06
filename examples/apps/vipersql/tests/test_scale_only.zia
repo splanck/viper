@@ -1,9 +1,8 @@
 // Minimal scale test — just create 50 tables and count them
 module test_scale_only;
 
-bind Terminal = Viper.Terminal;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
 bind "../engine/executor";
 bind "../engine/types";
 

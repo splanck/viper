@@ -5,10 +5,9 @@
 // Run: /tmp/test_stress4_native
 module test_stress4_native;
 
-bind Terminal = Viper.Terminal;
-bind IO = Viper.IO;
-bind Fmt = Viper.Fmt;
-
+bind Viper.Terminal as Terminal;
+bind Viper.IO as IO;
+bind Viper.Fmt as Fmt;
 bind "../engine/executor";
 bind "./test_common";
 

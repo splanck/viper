@@ -3,10 +3,9 @@
 
 module txn;
 
-bind Fmt = Viper.Fmt;
-bind Threads = Viper.Threads;
-bind Time = Viper.Time;
-
+bind Viper.Fmt as Fmt;
+bind Viper.Threads as Threads;
+bind Viper.Time as Time;
 bind "./page";
 bind "./wal";
 bind "./serializer";

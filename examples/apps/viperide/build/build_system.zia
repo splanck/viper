@@ -1,15 +1,13 @@
 module build_system;
 
 bind "diagnostic";
-bind Str = Viper.String;
-bind Exec = Viper.Exec;
-bind Convert = Viper.Core.Convert;
-bind CP = Viper.Text.CompiledPattern;
-bind Seq = Viper.Collections.Seq;
-bind Obj = Viper.Core.Object;
-bind Sw = Viper.Time.Stopwatch;
-
-// ============================================================================
+bind Viper.String as Str;
+bind Viper.Exec as Exec;
+bind Viper.Core.Convert as Convert;
+bind Viper.Text.CompiledPattern as CP;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
+bind Viper.Time.Stopwatch as Sw;// ============================================================================
 // BuildSystem — compile and run Zia/BASIC programs from the IDE
 // ============================================================================
 // Handles compilation, error parsing, and running programs.

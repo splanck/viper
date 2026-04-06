@@ -17,14 +17,13 @@
 
 module vipersql;
 
-bind Terminal = Viper.Terminal;
-bind String = Viper.String;
-bind Fmt = Viper.Fmt;
-bind Network = Viper.Network;
-bind Threads = Viper.Threads;
-bind Parse = Viper.Core.Parse;
-bind Env = Viper.Environment;
-
+bind Viper.Terminal as Terminal;
+bind Viper.String as String;
+bind Viper.Fmt as Fmt;
+bind Viper.Network as Network;
+bind Viper.Threads as Threads;
+bind Viper.Core.Parse as Parse;
+bind Viper.Environment as Env;
 bind "./engine/server";
 bind "./server/connection";
 bind "./server/threadpool";

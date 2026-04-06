@@ -1,8 +1,7 @@
 module DiffDemo;
 bind Viper.Terminal;
-bind Diff = Viper.Text.Diff;
-bind Json = Viper.Text.Json;
-
+bind Viper.Text.Diff as Diff;
+bind Viper.Text.Json as Json;
 func start() {
     Say("=== Viper.Text.Diff API Audit ===");
 

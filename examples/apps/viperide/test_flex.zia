@@ -1,7 +1,6 @@
 module test_flex;
 
-bind GUI = Viper.GUI;
-
+bind Viper.GUI as GUI;
 class TestShell {
     expose GUI.App app;
     expose GUI.VBox mainVBox;
