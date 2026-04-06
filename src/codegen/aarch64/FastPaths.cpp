@@ -31,12 +31,14 @@ namespace viper::codegen::aarch64 {
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       const TargetInfo &ti,
                                       FrameBuilder &fb,
-                                      MFunction &mf) {
+                                      MFunction &mf,
+                                      const std::unordered_map<std::string, std::size_t>
+                                          *stringLiteralByteLengths) {
     if (fn.blocks.empty())
         return std::nullopt;
 
     // Create fast-path context for all handlers
-    fastpaths::FastPathContext ctx(fn, ti, fb, mf);
+    fastpaths::FastPathContext ctx(fn, ti, fb, mf, stringLiteralByteLengths);
 
     // =========================================================================
     // Try fast-paths in order of specificity

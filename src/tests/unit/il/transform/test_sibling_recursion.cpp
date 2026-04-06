@@ -288,6 +288,179 @@ Module buildSingleRecursionModule() {
     return module;
 }
 
+/// Build a frontend-lowered fib-like module that uses a stack slot instead of
+/// a loop-carried block parameter for the recursive state.
+Module buildLoweredFibLikeModule() {
+    Module module;
+
+    Function fn;
+    fn.name = "fib";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"n", Type(Type::Kind::I64), 0});
+
+    unsigned nextId = 1;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.params.push_back(Param{"n", Type(Type::Kind::I64), 0});
+
+    const unsigned slotId = nextId++;
+    {
+        Instr alloca;
+        alloca.result = slotId;
+        alloca.op = Opcode::Alloca;
+        alloca.type = Type(Type::Kind::Ptr);
+        alloca.operands.push_back(Value::constInt(8));
+        entry.instructions.push_back(std::move(alloca));
+    }
+    {
+        Instr store;
+        store.op = Opcode::Store;
+        store.type = Type(Type::Kind::I64);
+        store.operands.push_back(Value::temp(slotId));
+        store.operands.push_back(Value::temp(0));
+        entry.instructions.push_back(std::move(store));
+    }
+    const unsigned loadCmpId = nextId++;
+    {
+        Instr load;
+        load.result = loadCmpId;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.operands.push_back(Value::temp(slotId));
+        entry.instructions.push_back(std::move(load));
+    }
+    const unsigned cmpId = nextId++;
+    {
+        Instr cmp;
+        cmp.result = cmpId;
+        cmp.op = Opcode::SCmpLE;
+        cmp.type = Type(Type::Kind::I1);
+        cmp.operands.push_back(Value::temp(loadCmpId));
+        cmp.operands.push_back(Value::constInt(1));
+        entry.instructions.push_back(std::move(cmp));
+    }
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands.push_back(Value::temp(cmpId));
+        cbr.labels.push_back("base");
+        cbr.labels.push_back("recurse");
+        cbr.brArgs.push_back({});
+        cbr.brArgs.push_back({});
+        entry.instructions.push_back(std::move(cbr));
+    }
+    entry.terminated = true;
+
+    BasicBlock base;
+    base.label = "base";
+    const unsigned loadBaseId = nextId++;
+    {
+        Instr load;
+        load.result = loadBaseId;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.operands.push_back(Value::temp(slotId));
+        base.instructions.push_back(std::move(load));
+    }
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(loadBaseId));
+        base.instructions.push_back(std::move(ret));
+    }
+    base.terminated = true;
+
+    BasicBlock recurse;
+    recurse.label = "recurse";
+
+    const unsigned load1Id = nextId++;
+    {
+        Instr load;
+        load.result = load1Id;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.operands.push_back(Value::temp(slotId));
+        recurse.instructions.push_back(std::move(load));
+    }
+    const unsigned nm1Id = nextId++;
+    {
+        Instr sub;
+        sub.result = nm1Id;
+        sub.op = Opcode::ISubOvf;
+        sub.type = Type(Type::Kind::I64);
+        sub.operands.push_back(Value::temp(load1Id));
+        sub.operands.push_back(Value::constInt(1));
+        recurse.instructions.push_back(std::move(sub));
+    }
+    const unsigned r1Id = nextId++;
+    {
+        Instr call;
+        call.result = r1Id;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::I64);
+        call.callee = "fib";
+        call.operands.push_back(Value::temp(nm1Id));
+        recurse.instructions.push_back(std::move(call));
+    }
+    const unsigned load2Id = nextId++;
+    {
+        Instr load;
+        load.result = load2Id;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.operands.push_back(Value::temp(slotId));
+        recurse.instructions.push_back(std::move(load));
+    }
+    const unsigned nm2Id = nextId++;
+    {
+        Instr sub;
+        sub.result = nm2Id;
+        sub.op = Opcode::ISubOvf;
+        sub.type = Type(Type::Kind::I64);
+        sub.operands.push_back(Value::temp(load2Id));
+        sub.operands.push_back(Value::constInt(2));
+        recurse.instructions.push_back(std::move(sub));
+    }
+    const unsigned r2Id = nextId++;
+    {
+        Instr call;
+        call.result = r2Id;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::I64);
+        call.callee = "fib";
+        call.operands.push_back(Value::temp(nm2Id));
+        recurse.instructions.push_back(std::move(call));
+    }
+    const unsigned sumId = nextId++;
+    {
+        Instr add;
+        add.result = sumId;
+        add.op = Opcode::IAddOvf;
+        add.type = Type(Type::Kind::I64);
+        add.operands.push_back(Value::temp(r1Id));
+        add.operands.push_back(Value::temp(r2Id));
+        recurse.instructions.push_back(std::move(add));
+    }
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(sumId));
+        recurse.instructions.push_back(std::move(ret));
+    }
+    recurse.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(base));
+    fn.blocks.push_back(std::move(recurse));
+    fn.valueNames.resize(nextId);
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 /// Count self-recursive calls in a function.
 size_t countSelfCalls(const Function &fn) {
     size_t count = 0;
@@ -390,6 +563,30 @@ TEST(SiblingRecursion, ProducesValidIL) {
     ASSERT_TRUE(result.hasValue());
 }
 
+TEST(SiblingRecursion, SkipsFrontendLoweredFibShape) {
+    Module module = buildLoweredFibLikeModule();
+    auto &fn = module.functions[0];
+
+    const size_t blocksBefore = fn.blocks.size();
+    const size_t callsBefore = countSelfCalls(fn);
+
+    SiblingRecursion pass;
+    AnalysisRegistry registry;
+    AnalysisManager analysis(module, registry);
+    pass.run(fn, analysis);
+
+    EXPECT_EQ(fn.blocks.size(), blocksBefore);
+    EXPECT_EQ(countSelfCalls(fn), callsBefore);
+
+    auto result = il::verify::Verifier::verify(module);
+    if (!result) {
+        std::ostringstream oss;
+        il::support::printDiag(result.error(), oss);
+        std::cerr << "Verifier failed: " << oss.str() << "\n";
+    }
+    ASSERT_TRUE(result.hasValue());
+}
+
 /// Integration test: the O2 pipeline includes sibling-recursion and produces valid IL.
 TEST(SiblingRecursion, O2PipelineIntegration) {
     Module module = buildFibModule();
@@ -401,6 +598,17 @@ TEST(SiblingRecursion, O2PipelineIntegration) {
     // After O2, fib should have only 1 self-recursive call.
     ASSERT_FALSE(module.functions.empty());
     EXPECT_EQ(countSelfCalls(module.functions[0]), 1U);
+}
+
+TEST(SiblingRecursion, O2PipelineSkipsFrontendLoweredFibShape) {
+    Module module = buildLoweredFibLikeModule();
+
+    PassManager pm;
+    pm.setVerifyBetweenPasses(true);
+    ASSERT_TRUE(pm.runPipeline(module, "O2"));
+
+    ASSERT_FALSE(module.functions.empty());
+    EXPECT_EQ(countSelfCalls(module.functions[0]), 2U);
 }
 
 /// @brief Main.

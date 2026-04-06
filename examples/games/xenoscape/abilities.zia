@@ -16,10 +16,18 @@ bind Viper.Graphics;
 bind "./config";
 bind "./palette";
 
-// Ability flags are defined in config.zia (ABILITY_WALL_JUMP, ABILITY_DASH, etc.)
+// =============================================================================
+// Ability flags (bitmask)
+// =============================================================================
+final ABILITY_NONE        = 0;
+final ABILITY_WALL_JUMP   = 1;    // Acquired in Level 1 (tutorial)
+final ABILITY_DOUBLE_JUMP = 2;    // Acquired from Spore Mother (Level 2 boss)
+final ABILITY_DASH        = 4;    // Acquired from Crystal Wyrm (Level 3 boss)
+final ABILITY_CHARGE_SHOT = 8;    // Found in Level 5 secret area
+final ABILITY_GROUND_POUND = 16;  // Acquired from Magma Core (Level 6 boss)
+final ABILITY_GRAPPLE     = 32;   // Found in Level 7 secret area
 
-// Additional ability constants used only here
-final ABILITY_NONE = 0;
+// Total abilities count (for HUD display)
 final ABILITY_COUNT = 6;
 
 // =============================================================================
@@ -45,7 +53,18 @@ func abilityDescription(flag: Integer) -> String {
     return "";
 }
 
-// Gate requirements are defined in config.zia (GATE_NONE, GATE_DOUBLE_JUMP, etc.)
+// =============================================================================
+// Gate requirements per level transition
+// =============================================================================
+// Each gate specifies what ability is needed to pass.
+// Gates are placed at level transitions and secret entrances.
+
+final GATE_NONE = 0;           // No ability needed
+final GATE_DOUBLE_JUMP = 2;   // Need double jump (wide gaps)
+final GATE_DASH = 4;           // Need dash (narrow timed passages)
+final GATE_CHARGE_SHOT = 8;   // Need charge shot (destructible walls)
+final GATE_GROUND_POUND = 16; // Need ground pound (breakable floors)
+final GATE_GRAPPLE = 32;      // Need grapple (anchor point swings)
 
 // =============================================================================
 // Ability Manager Entity

@@ -253,7 +253,63 @@ void retainStringVReg(MBasicBlock &out, uint16_t strVReg) {
     out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
 }
 
+std::optional<std::size_t> lookupStringLiteralByteLen(
+    const std::string &sym,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths) {
+    if (!stringLiteralByteLengths)
+        return std::nullopt;
+    const auto it = stringLiteralByteLengths->find(sym);
+    if (it == stringLiteralByteLengths->end())
+        return std::nullopt;
+    return it->second;
+}
+
 } // namespace
+
+void emitConstStrGlobalToX0(const std::string &sym,
+                            const std::unordered_map<std::string, std::size_t>
+                                *stringLiteralByteLengths,
+                            MBasicBlock &out,
+                            uint16_t &nextVRegId) {
+    const uint16_t litPtrV = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(
+        MInstr{MOpcode::AdrPage,
+               {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
+    out.instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                {MOperand::vregOp(RegClass::GPR, litPtrV),
+                                 MOperand::vregOp(RegClass::GPR, litPtrV),
+                                 MOperand::labelOp(sym)}});
+    out.instrs.push_back(MInstr{
+        MOpcode::MovRR,
+        {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, litPtrV)}});
+
+    if (const auto len = lookupStringLiteralByteLen(sym, stringLiteralByteLengths)) {
+        const uint16_t lenV = allocateNextVReg(nextVRegId);
+        out.instrs.push_back(MInstr{
+            MOpcode::MovRI,
+            {MOperand::vregOp(RegClass::GPR, lenV), MOperand::immOp(static_cast<long long>(*len))}});
+        out.instrs.push_back(MInstr{
+            MOpcode::MovRR,
+            {MOperand::regOp(PhysReg::X1), MOperand::vregOp(RegClass::GPR, lenV)}});
+        out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_from_lit")}});
+        return;
+    }
+
+    out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+}
+
+uint16_t emitConstStrGlobalToVReg(
+    const std::string &sym,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths,
+    MBasicBlock &out,
+    uint16_t &nextVRegId) {
+    emitConstStrGlobalToX0(sym, stringLiteralByteLengths, out, nextVRegId);
+    const uint16_t dst = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+    return dst;
+}
 
 //===----------------------------------------------------------------------===//
 // Value Materialization
@@ -268,7 +324,9 @@ bool materializeValueToVReg(const il::core::Value &v,
                             std::unordered_map<unsigned, RegClass> &tempRegClass,
                             uint16_t &nextVRegId,
                             uint16_t &outVReg,
-                            RegClass &outCls) {
+                            RegClass &outCls,
+                            const std::unordered_map<std::string, std::size_t>
+                                *stringLiteralByteLengths) {
     using Opcode = il::core::Opcode;
 
     if (v.kind == il::core::Value::Kind::ConstInt) {
@@ -533,29 +591,10 @@ bool materializeValueToVReg(const il::core::Value &v,
             case Opcode::ConstStr:
                 if (!prod.operands.empty() &&
                     prod.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
-                    // Materialize address of pooled literal label into a temp GPR
-                    const uint16_t litPtrV = allocateNextVReg(nextVRegId);
                     const std::string &sym = prod.operands[0].str;
-                    out.instrs.push_back(
-                        MInstr{MOpcode::AdrPage,
-                               {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
-                    out.instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                                {MOperand::vregOp(RegClass::GPR, litPtrV),
-                                                 MOperand::vregOp(RegClass::GPR, litPtrV),
-                                                 MOperand::labelOp(sym)}});
-
-                    // Call rt_const_cstr(litPtr) to obtain an rt_string handle in x0
-                    out.instrs.push_back(MInstr{
-                        MOpcode::MovRR,
-                        {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, litPtrV)}});
-                    out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
-
-                    // Move x0 (rt_string) into a fresh vreg as the const_str result
-                    outVReg = allocateNextVReg(nextVRegId);
+                    outVReg =
+                        emitConstStrGlobalToVReg(sym, stringLiteralByteLengths, out, nextVRegId);
                     outCls = RegClass::GPR;
-                    out.instrs.push_back(MInstr{
-                        MOpcode::MovRR,
-                        {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::regOp(PhysReg::X0)}});
                     // Cache for reuse
                     tempVReg[v.id] = outVReg;
                     return true;
@@ -1751,21 +1790,8 @@ bool lowerRet(const il::core::Instr &ins,
                     prod.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
                     const std::string &sym = prod.operands[0].str;
                     if (prod.op == Opcode::ConstStr) {
-                        const uint16_t litPtrV = allocateNextVReg(ctx.nextVRegId);
-                        out.instrs.push_back(MInstr{
-                            MOpcode::AdrPage,
-                            {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
-                        out.instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                                    {MOperand::vregOp(RegClass::GPR, litPtrV),
-                                                     MOperand::vregOp(RegClass::GPR, litPtrV),
-                                                     MOperand::labelOp(sym)}});
-                        out.instrs.push_back(
-                            MInstr{MOpcode::MovRR,
-                                   {MOperand::regOp(PhysReg::X0),
-                                    MOperand::vregOp(RegClass::GPR, litPtrV)}});
-                        out.instrs.push_back(
-                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
-
+                        emitConstStrGlobalToX0(
+                            sym, ctx.stringLiteralByteLengths, out, ctx.nextVRegId);
                         v = allocateNextVReg(ctx.nextVRegId);
                         cls = RegClass::GPR;
                         out.instrs.push_back(

@@ -627,10 +627,16 @@ CLOSE #1
 
 - Arithmetic: `+ - * / \` (integer division), `MOD`
 - Comparison: `= <> < <= > >=`
-- Booleans: `NOT`, `AND`, `OR`, **`ANDALSO`**, **`ORELSE`** (short‑circuit)
+- Logical words: `NOT`, `AND`, `OR`
+- Short-circuit booleans: **`ANDALSO`**, **`ORELSE`**
 - String concatenation: `+`
 
 **Precedence (high → low)**: unary (`NOT`), `* / \ MOD`, `+ -`, comparisons, `ANDALSO/ORELSE`, `AND/OR`.
+
+`NOT`, `AND`, and `OR` are eager BASIC logical-word operators:
+- On boolean values, they behave like ordinary boolean logic.
+- On integer values, `NOT` is bitwise complement and `AND`/`OR` are bitwise operations.
+- `ANDALSO` and `ORELSE` are the boolean-only short-circuit forms.
 
 ## Built-in functions
 

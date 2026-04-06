@@ -29,6 +29,7 @@ bind "./lore";
 bind "./transitions";
 bind "./lighting";
 bind "./texture";
+bind "./ai";
 bind "./achievements";
 
 class Game {
@@ -154,7 +155,7 @@ class Game {
         renderObj = new Renderer(pal);
         phys = new PhysicsHelper();
         sfx = new SoundManager();
-        sfx.setup("examples/games/sidescroller/");
+        sfx.setup("examples/games/xenoscape/");
         debugOverlay = Debug.New();
 
         // Setup input actions via presets + custom bindings
@@ -192,9 +193,9 @@ class Game {
         Action.LoadPreset("menu_navigation");
 
         // Custom additions beyond what presets provide
-        Action.BindKey("shoot", KEY_Z);                    // Z key for shoot
-        Action.BindPadButton("shoot", PAD_IDX, PAD_BTN_RB);     // RB for shoot
-        Action.BindPadButton("back", PAD_IDX, PAD_BTN_START);   // Start for back/pause
+        Action.BindKey(ACT_SHOOT, KEY_Z);               // Z key for shoot
+        Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_RB);   // RB for shoot
+        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START); // Start for back/pause
 
         // Debug overlay toggle (F3)
         Action.Define("debug");
@@ -322,7 +323,7 @@ class Game {
 
     hide func updatePlaying() {
         // Pause check
-        if Action.Pressed("back") {
+        if Action.Pressed(ACT_BACK) {
             sm.Switch("paused");
             menus.resetSelection();
             renderObj.renderPlaying(canvas, camera, level, player, enemies,
@@ -356,8 +357,8 @@ class Game {
         camera.follow(player.centerX(), player.centerY());
         camera.updateBg(dt);
 
-        // Update enemies — Behavior.Update + Raycast.HasLineOfSight handle AI
-        enemies.updateAll(level.tilemap, player.pixelX(), player.pixelY(), dt);
+        // Update enemies (with particle trails for enemy bullets)
+        enemies.updateAll(level, player.pixelX(), player.pixelY(), dt, particles);
 
         // Update bullets (with particle trails)
         bullets.updateAll(level, dt, particles);
@@ -913,9 +914,9 @@ class Game {
 
     hide func loadLevel(num: Integer) {
         currentLevel = num;
-        // achSys.onLevelReached(num);  // DEBUG
+        achSys.onLevelReached(num);
         level.loadLevel(num);
-        // level.enrichEnemies(num);  // DEBUG
+        level.enrichEnemies(num); // Add new enemy types
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
         player.spawn(level.playerStartX, level.playerStartY);

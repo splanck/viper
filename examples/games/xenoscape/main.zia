@@ -1,11 +1,9 @@
-// XENOSCAPE — Metroidvania sidescroller rewrite using all 10 engine features
-// Original: 17,005 lines across 26 files. This rewrite: ~4,700 lines across 23 files.
+// main.zia — Entry point for the Xenoscape game
 module main;
 
 bind "./game";
 
 func start() {
     var g = new Game();
-    g.init();
     g.run();
 }

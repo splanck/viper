@@ -73,8 +73,8 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
     // ret const_str / ret addr_of fast-path
     // =========================================================================
     // Pattern:
-    //   - const_str: materialize the pooled literal address, then call
-    //     rt_const_cstr to produce an rt_string handle in x0
+    //   - const_str: materialize the pooled literal address, then call the
+    //     length-aware literal helper when the byte length is known
     //   - addr_of: materialize and return the raw symbol address
     if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2) {
         const auto &retI = bb.instructions.back();
@@ -100,8 +100,24 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
                                                        MOperand::regOp(PhysReg::X0),
                                                        MOperand::labelOp(sym)}});
                         if (prod.op == Opcode::ConstStr) {
-                            bbMir.instrs.push_back(
-                                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+                            if (ctx.stringLiteralByteLengths) {
+                                const auto it = ctx.stringLiteralByteLengths->find(sym);
+                                if (it != ctx.stringLiteralByteLengths->end()) {
+                                    bbMir.instrs.push_back(
+                                        MInstr{MOpcode::MovRI,
+                                               {MOperand::regOp(PhysReg::X1),
+                                                MOperand::immOp(
+                                                    static_cast<long long>(it->second))}});
+                                    bbMir.instrs.push_back(
+                                        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_from_lit")}});
+                                } else {
+                                    bbMir.instrs.push_back(
+                                        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+                                }
+                            } else {
+                                bbMir.instrs.push_back(
+                                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+                            }
                         }
                         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                         ctx.fb.finalize();

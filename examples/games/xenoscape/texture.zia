@@ -349,7 +349,7 @@ class TextureFactory {
 
     // Generate a lava/magma surface with molten veins.
     expose func genLava(w: Integer, h: Integer, baseColor: Integer,
-                        frame: Integer) -> Pixels  {
+                        frame: Integer) -> Pixels {
         var pix = Pixels.New(w, h);
         // Base: dark crust
         noiseFill(pix, 0, 0, w, h, Color.Darken(baseColor, 40), 10);

@@ -422,7 +422,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::ConstStr: {
-            // Lower const_str to produce a string handle via rt_const_cstr.
+            // Lower const_str to produce a runtime string handle from a pooled literal.
             // This must be lowered proactively (not demand-lowered) when the result
             // is a cross-block temp that will be spilled.
             if (!ins.result || ins.operands.empty())
@@ -430,26 +430,10 @@ bool lowerInstruction(const il::core::Instr &ins,
             if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
                 return true;
             const std::string &sym = ins.operands[0].str;
-            // Materialize address of pooled literal label
-            const uint16_t litPtrV = allocateNextVReg(ctx.nextVRegId);
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::AdrPage,
-                       {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
-            bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
-                                            {MOperand::vregOp(RegClass::GPR, litPtrV),
-                                             MOperand::vregOp(RegClass::GPR, litPtrV),
-                                             MOperand::labelOp(sym)}});
-            // Call rt_const_cstr(litPtr) to obtain an rt_string handle in x0
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRR,
-                       {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, litPtrV)}});
-            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
-            // Move x0 (rt_string) into a fresh vreg as the const_str result
-            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+            const uint16_t dst =
+                emitConstStrGlobalToVReg(sym, ctx.stringLiteralByteLengths, bbOut(), ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRR,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
             return true;
         }
         case Opcode::AddrOf: {

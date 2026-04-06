@@ -124,8 +124,8 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr) {
     }
 
     if (expr.op == BinaryExpr::Op::LogicalAnd) {
-        // Classic BASIC AND: bitwise AND on integers
-        // Operands already i64 (from BoolExpr or numeric expressions)
+        // Eager BASIC AND operates on logical-word i64 values. Boolean inputs
+        // are coerced to -1/0 and integer inputs are preserved as-is.
         if (lhs.type.kind != IlKind::I64)
             lhs = {lowerer.coerceToI64(std::move(lhs), expr.loc).value, IlType(IlKind::I64)};
         Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
@@ -137,7 +137,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr) {
     }
 
     if (expr.op == BinaryExpr::Op::LogicalOr) {
-        // Classic BASIC OR: bitwise OR on integers
+        // Eager BASIC OR operates on logical-word i64 values.
         if (lhs.type.kind != IlKind::I64)
             lhs = {lowerer.coerceToI64(std::move(lhs), expr.loc).value, IlType(IlKind::I64)};
         Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-428K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-430K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -107,11 +107,11 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables) |
-| [Runtime](docs/viperlib/README.md) | 300 classes across 22 modules; 1,408 tests |
+| [Runtime](docs/viperlib/README.md) | 300 classes across 22 modules; 1,410 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 34 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11 feature-complete, OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
-| [IDE / Language Servers](docs/zia-server.md) | ViperIDE demo; LSP + MCP protocol servers for both languages |
+| [IDE / Language Servers](docs/zia-server.md) | ViperIDE with live diagnostics, hover, go-to-definition, project search; LSP + MCP servers |
 | [Packaging](docs/tools.md) | `viper package` → .app, .deb, .exe, .tar.gz |
 
 Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
@@ -122,12 +122,12 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 | Demo | Description |
 |------|-------------|
-| [ViperIDE](examples/apps/viperide/) | IDE with tabs, IntelliSense, project tree, integrated build |
+| [ViperIDE](examples/apps/viperide/) | IDE with live diagnostics, hover tooltips, go-to-definition, IntelliSense, project search, symbol outline |
 | [ViperSQL](examples/apps/vipersql/) | SQL database with MVCC, WAL, B-tree indexes, PG wire protocol, vsql interactive client |
 | [Paint](examples/apps/paint/) | Drawing app with 8 tools, shapes, color palette |
-| [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, drag-and-drop GUI |
+| [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, pre-rendered piece sprites, drag-and-drop GUI |
 | [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
-| [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller: 10 levels, 30+ enemies, bosses, abilities, saves, JSON level loading (13K LOC) |
+| [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller: 10 levels, 25+ enemies, bosses, abilities, saves, JSON level loading (17K LOC) |
 | [3D Bowling](examples/games/3dbowling/) | 3D bowling with Physics3D pin collision, ball spin/hook, 4-mode camera, 10-frame scoring (3K LOC) |
 | [Dungeon of Viper](examples/games/dungeon/) | 3D first-person dungeon crawler using the Graphics3D engine |
 

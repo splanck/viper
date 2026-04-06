@@ -176,8 +176,7 @@ int main() {
 
     {
         auto result = analyzeSnippet(makeSnippet("1 AND 2"));
-        assert(result.errors == 1);
-        assert(result.output.find("error[E1002]") != std::string::npos);
+        assert(result.errors == 0);
     }
 
     {

@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.2.0
 
 func @add_triple(i64 %a, i64 %b, i64 %c) -> i64 {
 entry(%a0: i64, %b0: i64, %c0: i64):

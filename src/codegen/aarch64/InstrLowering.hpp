@@ -23,6 +23,8 @@
 #include "MachineIR.hpp"
 #include "il/core/Instr.hpp"
 
+#include <string>
+
 namespace viper::codegen::aarch64 {
 
 //===----------------------------------------------------------------------===//
@@ -50,7 +52,9 @@ bool materializeValueToVReg(const il::core::Value &v,
                             std::unordered_map<unsigned, RegClass> &tempRegClass,
                             uint16_t &nextVRegId,
                             uint16_t &outVReg,
-                            RegClass &outCls);
+                            RegClass &outCls,
+                            const std::unordered_map<std::string, std::size_t>
+                                *stringLiteralByteLengths = nullptr);
 
 /// @brief Convenience wrapper that materialises an IL value using a LoweringContext.
 /// @param v       The IL value to materialise.
@@ -75,8 +79,23 @@ inline bool materializeValueToVReg(const il::core::Value &v,
                                   ctx.tempRegClass,
                                   ctx.nextVRegId,
                                   outVReg,
-                                  outCls);
+                                  outCls,
+                                  ctx.stringLiteralByteLengths);
 }
+
+/// @brief Materialize an IL string global into a runtime string handle in x0.
+void emitConstStrGlobalToX0(const std::string &sym,
+                            const std::unordered_map<std::string, std::size_t>
+                                *stringLiteralByteLengths,
+                            MBasicBlock &out,
+                            uint16_t &nextVRegId);
+
+/// @brief Materialize an IL string global into a runtime string handle vreg.
+uint16_t emitConstStrGlobalToVReg(
+    const std::string &sym,
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths,
+    MBasicBlock &out,
+    uint16_t &nextVRegId);
 
 //===----------------------------------------------------------------------===//
 // Call Lowering

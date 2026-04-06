@@ -66,7 +66,7 @@ TEST(Arm64CLI, ConstStr_AddressMaterialization) {
     EXPECT_NE(asmText.find("adrp x"), std::string::npos);
     EXPECT_NE(asmText.find("@PAGE"), std::string::npos);
     EXPECT_NE(asmText.find("@PAGEOFF"), std::string::npos);
-    EXPECT_NE(asmText.find("rt_const_cstr"), std::string::npos);
+    EXPECT_NE(asmText.find("rt_str_from_lit"), std::string::npos);
 }
 
 TEST(Arm64CLI, AddrOf_ReturnDoesNotCallConstStrHelper) {

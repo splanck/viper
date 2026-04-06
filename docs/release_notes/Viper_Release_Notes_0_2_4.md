@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, IL optimizer, documentation, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, IL optimizer, IDE intelligence, documentation, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -44,18 +44,19 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
-- **Demos** — XENOSCAPE sidescroller rewrite (13K LOC), 3D bowling game (3.1K LOC), ViperSQL database (renamed from sqldb, 10 new SQL features, runtime API migration, -351 net LOC), ViperIDE restructured (settings rewritten with Viper.Text.Ini, completion parsing simplified with Str.Split, Diagnostic class extracted, ui/ directory, docs/README.md), 8 Graphics3D API demos.
+- **Zia Completion Runtime APIs** — Three new runtime bindings expose the Zia compiler's analysis pipeline directly to Zia programs: `Viper.Zia.Completion.Check(source)` returns serialized diagnostics, `.Hover(source, line, col)` returns type/signature info at a cursor position, `.Symbols(source)` returns all top-level symbols. Implemented via `parseAndAnalyze()` for error-tolerant partial compilation.
 - **Zia `final` Enforcement** — The Zia semantic analyzer now rejects reassignment of `final` variables, for-in loop variables, and match pattern bindings at compile time. Lowerer safety net prevents SSA value corruption if enforcement is bypassed.
-- **Documentation** — Comprehensive review of all 185 markdown files: 700+ runtime functions documented with Doxygen, 39 stale files deleted, 70+ factual errors fixed. Bible chapters audited with every code example tested against the compiler (error messages updated to V1000/V2000/V3000 format, networking examples corrected to use real Http.Get/HttpReq/HttpRes API, git clone URL and version output fixed). Codemap sections consolidated (9 "Additional/Extended" sections merged into parents), game engine guide reorganized with categorized ToC, Bible appendix terminology updated (entity→class, value→struct).
+- **Demos** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL database (10 new SQL features, runtime API migration), ViperIDE upgraded to professional IDE (live diagnostics, hover tooltips, go-to-definition, project search, symbol outline, 21 files across 7 directories), Chess restructured with pre-rendered piece sprites (Pixels.Draw* + Canvas.BlitAlpha, core/engine/ui directories), 8 Graphics3D API demos.
+- **Documentation** — Comprehensive review of all 185 markdown files with every Bible code example tested against the compiler; 700+ runtime Doxygen comments, 70+ factual errors fixed, codemap sections consolidated, game engine guide reorganized.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 91 | +91 |
-| Source files | 2,671 | 2,818 | +147 |
-| Production SLOC | ~348K | ~428K | +80K |
-| Test count | 1,351 | 1,408 | +57 |
+| Commits | — | 86 | +86 |
+| Source files | 2,671 | 2,833 | +162 |
+| Production SLOC | ~348K | ~430K | +82K |
+| Test count | 1,351 | 1,410 | +59 |
 
 ---
 
@@ -282,6 +283,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **`catch(e)` binding** — New `rt_throw_msg_set`/`rt_throw_msg_get` TLS runtime functions and `ErrGetMsg` IL opcode. `throw` stores the message, `catch` reads it as a String binding.
 - **`String.Contains()` method** — Added `Contains` method alias to the String class mapping to the existing `StrHas` implementation.
 - **`final` variable enforcement** — Semantic analyzer now emits `error[V3000]: Cannot reassign final variable 'x'` when code attempts to reassign a `final` local variable, for-in loop variable, or match pattern binding. Covers all 10 compound assignment operators (`+=`, `-=`, etc.) via parser desugaring. Lowerer safety net prevents SSA value corruption as a defense-in-depth measure.
+- **Completion runtime APIs** — Three new `RT_FUNC` bindings expose the compiler's analysis pipeline to Zia programs: `Viper.Zia.Completion.Check(source)` runs error-tolerant semantic analysis and returns serialized diagnostics (severity, line, col, code, message); `.Hover(source, line, col)` resolves the identifier at the cursor via `findSymbolAtPosition()` and returns kind + type; `.Symbols(source)` enumerates all top-level symbols with kind, type, and line number. All three use `parseAndAnalyze()` for error-tolerant partial compilation.
 
 **BASIC frontend:**
 - **Constant folding for builtins** — `FoldBuiltins.cpp` evaluates `ABS`, `INT`, `SGN`, `SQR`, `LOG`, `EXP`, `SIN`, `COS`, `TAN`, `ATN`, `ASC`, `CHR$`, `LEN`, `LEFT$`, `RIGHT$`, `MID$`, `STR$`, `VAL`, `STRING$`, `SPACE$`, `LCASE$`, `UCASE$`, and `LTRIM$`/`RTRIM$`/`TRIM$` at compile time when arguments are constant. Eliminates runtime calls for constant expressions.

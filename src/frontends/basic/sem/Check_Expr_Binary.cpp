@@ -67,6 +67,10 @@ constexpr bool isBooleanType(Type type) noexcept {
     return nr::isBoolean(type);
 }
 
+constexpr bool isLogicalWordType(Type type) noexcept {
+    return type == Type::Int || type == Type::Bool || type == Type::Unknown;
+}
+
 constexpr bool isStringType(Type type) noexcept {
     return nr::isString(type);
 }
@@ -96,6 +100,14 @@ Type integerResult(Type lhs, Type rhs) noexcept {
 
 Type booleanResult(Type lhs, Type rhs) noexcept {
     return nr::comparisonResultType(lhs, rhs);
+}
+
+Type eagerLogicalResult(Type lhs, Type rhs) noexcept {
+    if (lhs == Type::Unknown || rhs == Type::Unknown)
+        return Type::Unknown;
+    if (lhs == Type::Bool && rhs == Type::Bool)
+        return Type::Bool;
+    return Type::Int;
 }
 
 /// @brief Check whether the RHS of a binary expression is a literal zero value.
@@ -253,6 +265,21 @@ void validateLogicalOperands(sem::ExprCheckContext &context,
                           formatLogicalOperandMessage(expr.op, lhs, rhs));
 }
 
+void validateEagerLogicalOperands(sem::ExprCheckContext &context,
+                                  const BinaryExpr &expr,
+                                  Type lhs,
+                                  Type rhs,
+                                  std::string_view diagId) {
+    if (isLogicalWordType(lhs) && isLogicalWordType(rhs))
+        return;
+
+    std::ostringstream oss;
+    oss << "Logical operator " << logicalOpName(expr.op)
+        << " requires INTEGER or BOOLEAN operands, got "
+        << semanticTypeName(lhs) << " and " << semanticTypeName(rhs) << '.';
+    sem::emitTypeMismatch(context.diagnostics(), std::string(diagId), expr.loc, 1, oss.str());
+}
+
 /// @brief Calculate the common numeric type used for implicit promotions.
 /// @details Delegates to the shared numeric rules implementation.
 SemanticAnalyzer::Type commonNumericType(Type lhs, Type rhs) noexcept {
@@ -309,12 +336,12 @@ const ExprRule &exprRule(BinaryExpr::Op op) {
          &booleanResult,
          SemanticAnalyzer::DiagNonBooleanLogicalOperand},
         {BinaryExpr::Op::LogicalAnd,
-         &validateLogicalOperands,
-         &booleanResult,
+         &validateEagerLogicalOperands,
+         &eagerLogicalResult,
          SemanticAnalyzer::DiagNonBooleanLogicalOperand},
         {BinaryExpr::Op::LogicalOr,
-         &validateLogicalOperands,
-         &booleanResult,
+         &validateEagerLogicalOperands,
+         &eagerLogicalResult,
          SemanticAnalyzer::DiagNonBooleanLogicalOperand},
     }};
 
@@ -334,8 +361,7 @@ const ExprRule &exprRule(BinaryExpr::Op op) {
     static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Ge)].result == &booleanResult,
                   "Greater-equal comparison must return BOOL");
 
-    // Logical operators demand boolean inputs/outputs; ensure the result stays
-    // pinned to the boolean helper to match operand validation rules.
+    // Short-circuit logical operators demand boolean inputs/outputs.
     static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAndShort)].result ==
                       &booleanResult,
                   "Short-circuit AND must return BOOL");
@@ -343,11 +369,11 @@ const ExprRule &exprRule(BinaryExpr::Op op) {
                       &booleanResult,
                   "Short-circuit OR must return BOOL");
     static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAnd)].result ==
-                      &booleanResult,
-                  "Logical AND must return BOOL");
+                      &eagerLogicalResult,
+                  "Eager AND must use logical-word result typing");
     static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOr)].result ==
-                      &booleanResult,
-                  "Logical OR must return BOOL");
+                      &eagerLogicalResult,
+                  "Eager OR must use logical-word result typing");
 
     return rules.at(static_cast<std::size_t>(op));
 }

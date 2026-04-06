@@ -476,6 +476,86 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     if (backEdges.empty())
         return 0;
 
+    struct PhiLoad {
+        std::size_t instrIdx;
+        int64_t fpOffset;
+        MOperand dstReg;
+    };
+
+    struct PhiStore {
+        std::size_t instrIdx;
+        int64_t fpOffset;
+        MOperand srcReg;
+    };
+
+    auto appendPhiLoads = [](const MInstr &mi,
+                             std::size_t instrIdx,
+                             std::vector<PhiLoad> &out) -> bool {
+        auto pushLoad = [&](const MOperand &dst, int64_t offset) {
+            out.push_back({instrIdx, offset, dst});
+        };
+
+        switch (mi.opc) {
+            case MOpcode::LdrRegFpImm:
+            case MOpcode::LdrFprFpImm:
+                if (mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                    mi.ops[1].kind == MOperand::Kind::Imm) {
+                    pushLoad(mi.ops[0], mi.ops[1].imm);
+                    return true;
+                }
+                return false;
+
+            case MOpcode::LdpRegFpImm:
+            case MOpcode::LdpFprFpImm:
+                if (mi.ops.size() >= 3 && isPhysReg(mi.ops[0]) && isPhysReg(mi.ops[1]) &&
+                    mi.ops[2].kind == MOperand::Kind::Imm) {
+                    pushLoad(mi.ops[0], mi.ops[2].imm);
+                    pushLoad(mi.ops[1], mi.ops[2].imm + 8);
+                    return true;
+                }
+                return false;
+
+            default:
+                return false;
+        }
+    };
+
+    auto appendPhiStores = [](const MInstr &mi,
+                              std::size_t instrIdx,
+                              std::vector<PhiStore> &out,
+                              const std::unordered_set<int64_t> &phiOffsets) -> bool {
+        auto pushStore = [&](const MOperand &src, int64_t offset) {
+            if (phiOffsets.count(offset))
+                out.push_back({instrIdx, offset, src});
+        };
+
+        switch (mi.opc) {
+            case MOpcode::StrRegFpImm:
+            case MOpcode::StrFprFpImm:
+            case MOpcode::PhiStoreGPR:
+            case MOpcode::PhiStoreFPR:
+                if (mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
+                    mi.ops[1].kind == MOperand::Kind::Imm) {
+                    pushStore(mi.ops[0], mi.ops[1].imm);
+                    return true;
+                }
+                return false;
+
+            case MOpcode::StpRegFpImm:
+            case MOpcode::StpFprFpImm:
+                if (mi.ops.size() >= 3 && isPhysReg(mi.ops[0]) && isPhysReg(mi.ops[1]) &&
+                    mi.ops[2].kind == MOperand::Kind::Imm) {
+                    pushStore(mi.ops[0], mi.ops[2].imm);
+                    pushStore(mi.ops[1], mi.ops[2].imm + 8);
+                    return true;
+                }
+                return false;
+
+            default:
+                return false;
+        }
+    };
+
     std::size_t eliminated = 0;
 
     // Process each back-edge. We process at most one per pass to avoid
@@ -485,22 +565,11 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         auto &latch = fn.blocks[edge.latchIdx];
 
         // Step 1: Identify phi loads at the start of the header.
-        // These are LdrRegFpImm instructions at the very beginning.
-        struct PhiLoad {
-            std::size_t instrIdx;
-            int64_t fpOffset;
-            MOperand dstReg; // Physical register loaded into.
-        };
-
         std::vector<PhiLoad> phiLoads;
 
         for (std::size_t i = 0; i < header.instrs.size(); ++i) {
-            const auto &mi = header.instrs[i];
-            if (mi.opc != MOpcode::LdrRegFpImm)
-                break; // Phi loads must be at the very start.
-            if (mi.ops.size() < 2 || !isPhysReg(mi.ops[0]) || mi.ops[1].kind != MOperand::Kind::Imm)
+            if (!appendPhiLoads(header.instrs[i], i, phiLoads))
                 break;
-            phiLoads.push_back({i, mi.ops[1].imm, mi.ops[0]});
         }
 
         // Require at least 2 consecutive phi loads. Single-variable loops
@@ -510,15 +579,9 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             continue;
 
         // Step 2: Find matching phi stores in the latch block.
-        // These are StrRegFpImm instructions that store to the same offsets
+        // These are FP-relative stores that write to the same offsets
         // as the header's phi loads. They may not be strictly at the end
         // (other instructions like cmp can be interspersed).
-        struct PhiStore {
-            std::size_t instrIdx;
-            int64_t fpOffset;
-            MOperand srcReg; // Physical register stored from.
-        };
-
         // Collect phi load offsets for matching.
         std::unordered_set<int64_t> phiLoadOffsets;
         for (const auto &pl : phiLoads)
@@ -527,11 +590,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // Scan the entire latch block for stores to phi slot offsets.
         std::vector<PhiStore> phiStores;
         for (std::size_t i = 0; i < latch.instrs.size(); ++i) {
-            const auto &mi = latch.instrs[i];
-            if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
-                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm)) {
-                phiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
-            }
+            (void)appendPhiStores(latch.instrs[i], i, phiStores, phiLoadOffsets);
         }
 
         if (phiStores.empty())
@@ -573,34 +632,19 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
 
             // Collect ALL unique FP store offsets in the latch block.
             std::unordered_set<int64_t> allStoreOffsets;
-            for (const auto &mi : latch.instrs) {
-                if ((mi.opc == MOpcode::StrRegFpImm || mi.opc == MOpcode::PhiStoreGPR) &&
-                    mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm) {
-                    allStoreOffsets.insert(mi.ops[1].imm);
-                }
+            std::vector<PhiStore> allStores;
+            for (std::size_t i = 0; i < latch.instrs.size(); ++i) {
+                appendPhiStores(latch.instrs[i], i, allStores, phiLoadOffsets);
             }
+            for (const auto &store : allStores)
+                allStoreOffsets.insert(store.fpOffset);
 
             // Check that EVERY phi-slot store is matched by a phi load.
             // Offsets that are stored but not loaded indicate loop-carried
             // values transferred via register moves, not stack loads.
             bool hasUnmatchedStores = false;
             for (int64_t off : allStoreOffsets) {
-                // Skip stores to offsets that are NOT phi slots (e.g., exit-path values).
-                // Only flag stores that correspond to a phi slot used at block entry.
-                // We detect phi slots by checking if the offset was stored FROM the entry
-                // block as well. But since we can't easily check that, use a simpler
-                // heuristic: only flag offsets that are loaded at the header start
-                // (within the first few instructions, not just the phi loads).
-                // Actually, just check: is this offset loaded ANYWHERE in the header block?
-                bool loadedInHeader = false;
-                for (const auto &hmi : header.instrs) {
-                    if (hmi.opc == MOpcode::LdrRegFpImm && hmi.ops.size() >= 2 &&
-                        hmi.ops[1].kind == MOperand::Kind::Imm && hmi.ops[1].imm == off) {
-                        loadedInHeader = true;
-                        break;
-                    }
-                }
-                if (loadedInHeader && !matchedOffsets.count(off)) {
+                if (!matchedOffsets.count(off)) {
                     hasUnmatchedStores = true;
                     break;
                 }
@@ -621,21 +665,16 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             if (bi == edge.headerIdx)
                 continue; // Skip header (its loads are the ones we're eliminating).
             for (const auto &mi : fn.blocks[bi].instrs) {
-                if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
-                    mi.ops[1].kind == MOperand::Kind::Imm && phiOffsets.count(mi.ops[1].imm)) {
-                    safeToEliminate = false;
-                    break;
-                }
-                // Also check LDP loads.
-                if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
-                    mi.ops[2].kind == MOperand::Kind::Imm) {
-                    int64_t off1 = mi.ops[2].imm;
-                    int64_t off2 = off1 + 8;
-                    if (phiOffsets.count(off1) || phiOffsets.count(off2)) {
+                std::vector<PhiLoad> loads;
+                appendPhiLoads(mi, 0, loads);
+                for (const auto &load : loads) {
+                    if (phiOffsets.count(load.fpOffset)) {
                         safeToEliminate = false;
                         break;
                     }
                 }
+                if (!safeToEliminate)
+                    break;
             }
             if (!safeToEliminate)
                 break;
@@ -665,11 +704,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // body block for stores to phi slot offsets.
         std::vector<PhiStore> bodyPhiStores;
         for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i) {
-            const auto &mi = bodyBlock.instrs[i];
-            if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
-                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm)) {
-                bodyPhiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
-            }
+            (void)appendPhiStores(bodyBlock.instrs[i], i, bodyPhiStores, phiLoadOffsets);
         }
 
         // Re-match pairs using body stores.
@@ -681,7 +716,10 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                 if (load.fpOffset == store.fpOffset) {
                     storeIndicesToRemove.insert(store.instrIdx);
                     if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
-                        movs.push_back(MInstr{MOpcode::MovRR, {load.dstReg, store.srcReg}});
+                        const MOpcode movOpc = (load.dstReg.reg.cls == RegClass::FPR)
+                                                   ? MOpcode::FMovRR
+                                                   : MOpcode::MovRR;
+                        movs.push_back(MInstr{movOpc, {load.dstReg, store.srcReg}});
                     }
                     ++eliminated;
                     break;
@@ -701,13 +739,21 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             bodyBlock.instrs = std::move(newInstrs);
         }
 
-        // Redirect back-edge branch targets from header to body (self-loop fix).
-        for (auto &mi : bodyBlock.instrs) {
-            for (auto &op : mi.ops) {
-                if (op.kind == MOperand::Kind::Label && op.label == headerName)
-                    op.label = bodyName;
+        auto redirectBackedgeTarget = [&](MBasicBlock &bb) {
+            for (auto &mi : bb.instrs) {
+                for (auto &op : mi.ops) {
+                    if (op.kind == MOperand::Kind::Label && op.label == headerName)
+                        op.label = bodyName;
+                }
             }
-        }
+        };
+
+        // Redirect back-edge branch targets from the split body and the original
+        // latch block. Multi-block loops branch back from the latch; self-loops
+        // branch back from the new body block itself.
+        redirectBackedgeTarget(bodyBlock);
+        if (edge.latchIdx != edge.headerIdx)
+            redirectBackedgeTarget(latch);
 
         // Insert movs before the last terminator in the body block.
         if (!movs.empty()) {

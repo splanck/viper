@@ -48,8 +48,8 @@ AST::ExprPtr fold_logical_not(const AST::Expr &operand) {
     if (auto numeric = numeric_from_expr(operand)) {
         if (numeric->isFloat)
             return nullptr;
-        auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
-        out->value = numeric->i == 0;
+        auto out = std::make_unique<::il::frontends::basic::IntExpr>();
+        out->value = ~numeric->i;
         return out;
     }
     return nullptr;
@@ -130,39 +130,46 @@ AST::ExprPtr fold_boolean_binary(const AST::Expr &lhs,
 std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
                                            const Constant &lhs,
                                            const Constant &rhs) {
-    if ((lhs.kind != LiteralKind::Int && lhs.kind != LiteralKind::Float) ||
-        (rhs.kind != LiteralKind::Int && rhs.kind != LiteralKind::Float))
+    auto toLogicalWord = [](const Constant &constant, long long &out) {
+        switch (constant.kind) {
+            case LiteralKind::Int:
+                out = constant.numeric.i;
+                return true;
+            case LiteralKind::Bool:
+                out = constant.boolValue ? -1LL : 0LL;
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    long long left = 0;
+    long long right = 0;
+    if (!toLogicalWord(lhs, left) || !toLogicalWord(rhs, right))
         return std::nullopt;
 
-    NumericValue left = promote_numeric(lhs.numeric, rhs.numeric);
-    NumericValue right = promote_numeric(rhs.numeric, lhs.numeric);
-    if (left.isFloat || right.isFloat)
-        return std::nullopt;
-
-    bool result = false;
+    long long result = 0;
     switch (op) {
         case AST::BinaryExpr::Op::LogicalAnd:
-        case AST::BinaryExpr::Op::LogicalAndShort:
-            result = (left.i != 0) && (right.i != 0);
+            result = left & right;
             break;
         case AST::BinaryExpr::Op::LogicalOr:
-        case AST::BinaryExpr::Op::LogicalOrShort:
-            result = (left.i != 0) || (right.i != 0);
+            result = left | right;
             break;
         default:
             return std::nullopt;
     }
 #ifdef VIPER_CONSTFOLD_ASSERTS
-    if (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort ||
-        op == AST::BinaryExpr::Op::LogicalOr || op == AST::BinaryExpr::Op::LogicalOrShort) {
-        bool swapped =
-            (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort)
-                ? (right.i != 0 && left.i != 0)
-                : (right.i != 0 || left.i != 0);
+    if (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalOr) {
+        long long swapped =
+            (op == AST::BinaryExpr::Op::LogicalAnd) ? (right & left) : (right | left);
         assert(result == swapped);
     }
 #endif
-    return make_bool_constant(result);
+    Constant constant;
+    constant.kind = LiteralKind::Int;
+    constant.numeric = NumericValue{false, static_cast<double>(result), result};
+    return constant;
 }
 
 } // namespace il::frontends::basic::constfold

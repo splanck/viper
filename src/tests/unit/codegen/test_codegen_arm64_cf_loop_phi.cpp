@@ -38,7 +38,7 @@ TEST(Arm64CLI, CF_Loop_Phi) {
     const std::string in = outPath("arm64_cf_loop.il");
     const std::string out = outPath("arm64_cf_loop.s");
     // Sum 1..10 using loop-carried phi
-    const std::string il = "il 0.1\n"
+    const std::string il = "il 0.2.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"
@@ -53,17 +53,52 @@ TEST(Arm64CLI, CF_Loop_Phi) {
                            "  ret %res\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-O2", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect register moves implementing phi and branches; no edge labels.
-    // Block parameters now use spill slots for correctness across block boundaries.
+    // Loop phi cleanup should split the header into a one-time reload block and
+    // redirect the backedge to the hot body block so iterations stay in registers.
     EXPECT_EQ(asmText.find(".edge.t."), std::string::npos);
     EXPECT_EQ(asmText.find(".edge.f."), std::string::npos);
-    // Phi values passed via spill slots - stores and loads expected
-    EXPECT_NE(asmText.find(" str x"), std::string::npos);
-    EXPECT_NE(asmText.find(" ldr x"), std::string::npos);
-    EXPECT_NE(asmText.find(" mov x"), std::string::npos);
+    EXPECT_NE(asmText.find("Lbody_body:"), std::string::npos);
+    EXPECT_NE(asmText.find("b.lt Lbody_body"), std::string::npos);
+    EXPECT_EQ(asmText.find("b.lt Lbody\n"), std::string::npos);
+}
+
+TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
+    const std::string in = outPath("arm64_cf_loop_pair.il");
+    const std::string out = outPath("arm64_cf_loop_pair.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%sum:i64, %i:i64):\n"
+                           "  %done = scmp_ge %i, 10\n"
+                           "  cbr %done, exit(%sum), body(%sum, %i)\n"
+                           "body(%sum0:i64, %i0:i64):\n"
+                           "  %t1 = iadd.ovf %i0, 1\n"
+                           "  %t2 = imul.ovf %t1, 2\n"
+                           "  %t3 = iadd.ovf %i0, 3\n"
+                           "  %t4 = iadd.ovf %t2, %t3\n"
+                           "  %t5 = imul.ovf %t4, 5\n"
+                           "  %t6 = isub.ovf %t5, %i0\n"
+                           "  %t7 = iadd.ovf %t6, 7\n"
+                           "  %t8 = imul.ovf %t7, 3\n"
+                           "  %t9 = isub.ovf %t8, 11\n"
+                           "  %new_sum = iadd.ovf %sum0, %t9\n"
+                           "  %next_i = iadd.ovf %i0, 1\n"
+                           "  br loop(%new_sum, %next_i)\n"
+                           "exit(%result:i64):\n"
+                           "  ret %result\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-O2", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("Lbody:\n  ldp x"), std::string::npos);
+    EXPECT_NE(asmText.find("Lbody_body:"), std::string::npos);
+    EXPECT_NE(asmText.find("b.lt Lbody_body"), std::string::npos);
+    EXPECT_EQ(asmText.find("b.lt Lbody\n"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

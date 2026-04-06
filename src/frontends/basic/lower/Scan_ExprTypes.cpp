@@ -362,9 +362,10 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner> {
             return ExprType::Str;
         if (expr.op == Op::Eq || expr.op == Op::Ne)
             return ExprType::Bool;
-        if (expr.op == Op::LogicalAndShort || expr.op == Op::LogicalOrShort ||
-            expr.op == Op::LogicalAnd || expr.op == Op::LogicalOr)
+        if (expr.op == Op::LogicalAndShort || expr.op == Op::LogicalOrShort)
             return ExprType::Bool;
+        if (expr.op == Op::LogicalAnd || expr.op == Op::LogicalOr)
+            return ExprType::I64;
         if (lhs == ExprType::F64 || rhs == ExprType::F64)
             return ExprType::F64;
         return ExprType::I64;

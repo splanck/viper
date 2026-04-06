@@ -22,24 +22,14 @@ All examples are in [`examples/games/`](../../../examples/games/). Each game is 
 
 #### XENOSCAPE
 
-**Genre:** Metroidvania sidescroller | **Language:** Zia | **LOC:** 13,176 across 23 files
+**Genre:** Metroidvania sidescroller | **Language:** Zia | **LOC:** 17,005 across 26 files
 
-The flagship game demo. A complete Metroidvania rewrite (from the 17K-line Sidescroller original) using all 10 engine abstractions. Features 25+ enemy types, 10 JSON-based levels, parallax scrolling, particle effects, lighting, abilities (dash, charge, ground pound), world map, save system, and achievement tracking.
+The flagship game demo showcasing the full Viper game engine. Features 25+ enemy types, 10 JSON-based levels, parallax scrolling, particle effects, lighting, abilities (dash, charge, ground pound), world map, save system, achievement tracking, and 11 WAV sound files.
 
 **Engine features demonstrated:**
 Canvas, Entity, Behavior, AnimStateMachine, PlatformerController, Camera (smooth follow + parallax), Tilemap, SpriteBatch, SoundBank + Synth, ScreenFX (shake, fade, transitions), ParticleEmitter, Lighting2D, StateMachine, SceneManager, LevelData, Config, GameUI, Dialogue, Timer, ObjectPool, AchievementTracker, DebugOverlay
 
 **Source:** [`examples/games/xenoscape/`](../../../examples/games/xenoscape/)
-
----
-
-#### Sidescroller (Original)
-
-**Genre:** Platformer | **Language:** Zia | **LOC:** 17,005 across 26 files
-
-The original large-scale game that XENOSCAPE was rewritten from. Same architecture and features. Includes 11 WAV sound files for audio.
-
-**Source:** [`examples/games/sidescroller/`](../../../examples/games/sidescroller/)
 
 ---
 

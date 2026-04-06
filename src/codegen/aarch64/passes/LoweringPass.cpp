@@ -48,8 +48,14 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     // Build the rodata pool from all string globals in the module.
     module.rodataPool.buildFromModule(ilMod);
     const auto &n2l = module.rodataPool.nameToLabel();
+    std::unordered_map<std::string, std::size_t> stringLiteralByteLengths;
+    stringLiteralByteLengths.reserve(ilMod.globals.size());
+    for (const auto &g : ilMod.globals) {
+        if (g.type.kind == il::core::Type::Kind::Str)
+            stringLiteralByteLengths.emplace(g.name, g.init.size());
+    }
 
-    LowerILToMIR lowerer{ti};
+    LowerILToMIR lowerer{ti, &stringLiteralByteLengths};
     const bool uniquify = (ilMod.functions.size() > 1);
 
     try {

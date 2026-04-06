@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <ostream>
 #include <unordered_map>
 
@@ -36,7 +37,10 @@ namespace viper::codegen::aarch64 {
 ///            this object.
 class LowerILToMIR {
   public:
-    explicit LowerILToMIR(const TargetInfo &ti) noexcept : ti_(&ti) {}
+    explicit LowerILToMIR(
+        const TargetInfo &ti,
+        const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr) noexcept
+        : ti_(&ti), stringLiteralByteLengths_(stringLiteralByteLengths) {}
 
     /// @brief Lower an IL function to MIR.
     /// @param fn The IL function to lower.
@@ -45,6 +49,7 @@ class LowerILToMIR {
 
   private:
     const TargetInfo *ti_{};
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths_{};
 };
 
 } // namespace viper::codegen::aarch64

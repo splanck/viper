@@ -1,0 +1,10 @@
+module bench;
+
+func start() {
+    var sum: Integer = 0;
+    for i in 0..500000 {
+        var result: String = "Hello" + " " + "World" + "!";
+        sum = sum + result.Length;
+    }
+    Viper.Environment.EndProgram(sum);
+}

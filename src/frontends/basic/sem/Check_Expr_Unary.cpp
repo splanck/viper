@@ -55,8 +55,9 @@ constexpr bool isNumericType(Type type) noexcept {
 /// (if present) to recover its semantic type, then applies operator-specific
 /// rules:
 ///
-/// * `NOT` accepts boolean or unknown operands; non-boolean operands emit
-///   diagnostic B2001 describing the mismatch before returning @c Bool.
+/// * `NOT` accepts boolean and integer operands. Boolean operands produce a
+///   boolean result; integer operands produce an integer logical-word result.
+///   Non-matching operands emit diagnostic B2001.
 /// * Arithmetic negation and prefix plus require numeric operands.  When the
 ///   operand type is known and non-numeric, the analyzer emits B2001 and halts
 ///   further checking for that expression.
@@ -82,7 +83,7 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
             if (operandType != Type::Unknown && operandType != Type::Bool &&
                 operandType != Type::Int) {
                 std::ostringstream oss;
-                oss << "NOT requires a BOOLEAN operand, got "
+                oss << "NOT requires an INTEGER or BOOLEAN operand, got "
                     << semantic_analyzer_detail::semanticTypeName(operandType) << '.';
                 emitTypeMismatch(context.diagnostics(),
                                  std::string(SemanticAnalyzer::DiagNonBooleanNotOperand),
@@ -90,8 +91,11 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
                                  3,
                                  oss.str());
             }
-            // NOT always returns BOOLEAN
-            return Type::Bool;
+            if (operandType == Type::Bool)
+                return Type::Bool;
+            if (operandType == Type::Int)
+                return Type::Int;
+            return operandType;
 
         case UnaryExpr::Op::Plus:
         case UnaryExpr::Op::Negate:

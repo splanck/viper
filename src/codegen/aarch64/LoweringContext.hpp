@@ -25,6 +25,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -101,6 +102,9 @@ struct LoweringContext {
 
     /// @brief Set of temp IDs whose values are live across block boundaries.
     std::unordered_set<unsigned> &crossBlockTemps;
+
+    /// @brief Optional map from IL global string names to their byte lengths.
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr;
 
     /// @brief Counter used to generate unique trap label names.
     unsigned &trapLabelCounter;

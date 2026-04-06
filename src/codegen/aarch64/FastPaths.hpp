@@ -22,7 +22,9 @@
 #include "TargetAArch64.hpp"
 #include "il/core/Function.hpp"
 
+#include <cstddef>
 #include <optional>
+#include <unordered_map>
 
 namespace viper::codegen::aarch64 {
 
@@ -31,6 +33,8 @@ namespace viper::codegen::aarch64 {
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       const TargetInfo &ti,
                                       FrameBuilder &fb,
-                                      MFunction &mf);
+                                      MFunction &mf,
+                                      const std::unordered_map<std::string, std::size_t>
+                                          *stringLiteralByteLengths = nullptr);
 
 } // namespace viper::codegen::aarch64

@@ -82,7 +82,7 @@ ZIA_DEMOS=(
     "pacman-zia:${GAMES_DIR}/pacman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
-    "sidescroller:${GAMES_DIR}/sidescroller"
+    "xenoscape:${GAMES_DIR}/xenoscape"
 )
 
 build_demo() {

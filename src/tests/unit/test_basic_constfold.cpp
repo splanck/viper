@@ -173,8 +173,8 @@ int main() {
         auto prog = p.parseProgram();
         foldConstants(*prog);
         auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
-        auto *be = dynamic_cast<BoolExpr *>(let->expr.get());
-        assert(be && be->value == true);
+        auto *ie = dynamic_cast<IntExpr *>(let->expr.get());
+        assert(ie && ie->value == 1);
     }
 
     // numeric modulus
@@ -339,6 +339,31 @@ int main() {
         auto *letD = dynamic_cast<LetStmt *>(prog->main[3].get());
         auto *boolD = dynamic_cast<BoolExpr *>(letD->expr.get());
         assert(boolD && boolD->value == true);
+    }
+
+    // eager NOT/AND/OR follow BASIC logical-word semantics for integer literals
+    {
+        std::string src = "10 LET A = NOT 7\n"
+                          "20 LET B = 7 AND 3\n"
+                          "30 LET C = 4 OR 1\n"
+                          "40 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("logical_word.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+
+        auto *letA = dynamic_cast<LetStmt *>(prog->main[0].get());
+        auto *intA = dynamic_cast<IntExpr *>(letA->expr.get());
+        assert(intA && intA->value == ~7LL);
+
+        auto *letB = dynamic_cast<LetStmt *>(prog->main[1].get());
+        auto *intB = dynamic_cast<IntExpr *>(letB->expr.get());
+        assert(intB && intB->value == 3LL);
+
+        auto *letC = dynamic_cast<LetStmt *>(prog->main[2].get());
+        auto *intC = dynamic_cast<IntExpr *>(letC->expr.get());
+        assert(intC && intC->value == 5LL);
     }
 
     // Dispatch materialises boolean comparisons as BoolExpr nodes

@@ -1,7 +1,8 @@
-il 0.1.2
+il 0.2.0
 
 extern @Viper.String.Concat(str, str) -> str
 extern @Viper.String.get_Length(str) -> i64
+extern @rt_str_release_maybe(str) -> void
 
 global const str @.hello = "Hello"
 global const str @.world = "World"
@@ -28,6 +29,7 @@ body(%sum0: i64, %i0: i64):
   %t3 = call @Viper.String.Concat(%t2, %s4)
 
   %len = call @Viper.String.get_Length(%t3)
+  call @rt_str_release_maybe(%t3)
   %new_sum = iadd.ovf %sum0, %len
   %next_i = iadd.ovf %i0, 1
   br loop(%new_sum, %next_i)

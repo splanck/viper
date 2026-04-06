@@ -148,8 +148,7 @@ Viper ships with 15 example games demonstrating the engine at every scale:
 
 | Game | LOC | Genre | Key Engine Features |
 |------|-----|-------|---------------------|
-| [XENOSCAPE](../../examples/games/xenoscape/) | 13,176 | Metroidvania | Entity, AnimState, Camera, Tilemap, Particles, ScreenFX, Audio, SceneManager, Save |
-| [Sidescroller](../../examples/games/sidescroller/) | 17,005 | Platformer | Full engine showcase (original XENOSCAPE architecture) |
+| [XENOSCAPE](../../examples/games/xenoscape/) | 17,005 | Metroidvania | Entity, AnimState, Camera, Tilemap, Particles, ScreenFX, Audio, SceneManager, Save |
 | [Graphics Show](../../examples/games/graphics-show/) | 8,000+ | Demo collection | Canvas primitives, particles, physics, fractals (10 sub-demos) |
 | [Chess](../../examples/games/chess/) | 2,937 | Board game | Canvas rendering, AI evaluation, StateMachine |
 | [Centipede](../../examples/games/centipede/) | 2,553 | Arcade shooter | Grid2D, Timer, ScreenFX, ParticleEmitter, ObjectPool |

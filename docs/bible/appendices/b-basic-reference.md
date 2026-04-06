@@ -259,6 +259,9 @@ PRINT a \ b      ' Integer division: 3 (truncates toward zero)
 PRINT a MOD b    ' Modulo (remainder): 1
 PRINT a ^ b      ' Exponentiation: 1000 (10 to the power of 3)
 PRINT -a         ' Negation: -10
+PRINT NOT a      ' Bitwise complement: -11
+PRINT a AND b    ' Bitwise AND: 2
+PRINT a OR b     ' Bitwise OR: 11
 ```
 
 ### Practical Examples
@@ -367,9 +370,9 @@ PRINT "Your score: " & STR(score) & " points"
 | 5 | `+`, `-` | Addition, subtraction |
 | 6 | `&` | String concatenation |
 | 7 | `=`, `<>`, `<`, `<=`, `>`, `>=` | Comparison |
-| 8 | `NOT` | Logical NOT |
-| 9 | `AND` | Logical AND |
-| 10 | `OR`, `XOR` | Logical OR, XOR |
+| 8 | `NOT` | Eager logical-word NOT / bitwise complement |
+| 9 | `AND` | Eager logical-word AND / bitwise AND |
+| 10 | `OR`, `XOR` | Eager logical-word OR / XOR |
 
 ```basic
 ' Precedence examples
@@ -383,6 +386,10 @@ result = 2 ^ 3 ^ 2        ' 512 (right-to-left for exponents)
 DIM x AS BOOLEAN
 x = TRUE OR FALSE AND FALSE   ' TRUE (AND evaluated first)
 x = (TRUE OR FALSE) AND FALSE ' FALSE (parentheses override)
+
+' Integer logical-word operations
+DIM mask AS INTEGER
+mask = 10 AND 3               ' 2
 ```
 
 **Zia equivalent:**

@@ -39,7 +39,7 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 | Project | Description | Highlights |
 |---------|-------------|------------|
 | [Chess](games/chess/) | Chess with AI opponent | Iterative deepening, alpha-beta, quiescence search, transposition table, drag-and-drop GUI |
-| [Sidescroller](games/sidescroller/) | Platform game engine | Physics, camera, HUD, multiple enemy types, pickups, particles, menus |
+| [XENOSCAPE](games/xenoscape/) | Metroidvania sidescroller | 25+ enemies, 10 levels, parallax, particles, lighting, abilities, saves (17K LOC) |
 | [Pac-Man](games/pacman/) | Pac-Man with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |
 | [Centipede](games/centipede/) | Arcade centipede game | Multiple enemy types, particle effects, Canvas graphics |
 | [Frogger](games/frogger/) | Frogger clone | Single-file implementation, ANSI terminal |

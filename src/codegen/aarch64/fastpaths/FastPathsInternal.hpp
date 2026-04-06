@@ -63,6 +63,7 @@ struct FastPathContext {
     FrameBuilder &fb;
     MFunction &mf;
     const std::array<PhysReg, kMaxGPRArgs> &argOrder;
+    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths;
 
     /// @brief Construct a fast-path context from the function being lowered.
     /// @param fn The IL function to lower.
@@ -72,8 +73,14 @@ struct FastPathContext {
     FastPathContext(const il::core::Function &fn,
                     const TargetInfo &ti,
                     FrameBuilder &fb,
-                    MFunction &mf)
-        : fn(fn), ti(ti), fb(fb), mf(mf), argOrder(ti.intArgOrder) {}
+                    MFunction &mf,
+                    const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths)
+        : fn(fn),
+          ti(ti),
+          fb(fb),
+          mf(mf),
+          argOrder(ti.intArgOrder),
+          stringLiteralByteLengths(stringLiteralByteLengths) {}
 
     /// @brief Get the MIR output block at the given index.
     MBasicBlock &bbOut(std::size_t idx) {

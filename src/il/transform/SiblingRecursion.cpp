@@ -95,18 +95,32 @@ struct SiblingPattern {
 ///
 /// Detection criteria:
 ///   1. Function has exactly one i64 parameter (single-arg recursion).
-///   2. Some block has exactly 2 self-recursive calls.
-///   3. Both call results are combined with an associative add (IAddOvf/Add).
-///   4. The combined result is immediately returned.
-///   5. Instructions between calls don't use the first call's result.
-///   6. A predecessor block has a signed comparison + CBr to the recurse block.
+///   2. The recursive block already carries that recursive state as a block
+///      parameter in SSA form. This pass does not rewrite frontend-lowered
+///      stack-slot recursion into loop-carried block parameters.
+///   3. Some block has exactly 2 self-recursive calls.
+///   4. Both call results are combined with an associative add (IAddOvf/Add).
+///   5. The combined result is immediately returned.
+///   6. Instructions between calls don't use the first call's result.
+///   7. A predecessor block has a signed comparison + CBr to the recurse block.
 std::optional<SiblingPattern> matchPattern(const Function &fn) {
     // For now, require single-argument functions.
     if (fn.params.size() != 1)
         return std::nullopt;
+    if (fn.params[0].type.kind != Type::Kind::I64)
+        return std::nullopt;
 
     for (size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         const auto &bb = fn.blocks[bi];
+
+        // The transformation mutates predecessor edges to thread both the
+        // recursive argument and the accumulator through block parameters. If
+        // the block does not already carry the recursive argument in SSA form,
+        // the pass cannot safely rewrite stack-slot based frontend lowering.
+        if (bb.params.size() != fn.params.size())
+            continue;
+        if (bb.params[0].type.kind != Type::Kind::I64)
+            continue;
 
         // Find self-recursive calls.
         std::vector<size_t> selfCallIndices;

@@ -1,8 +1,5 @@
-// enemy.zia — All 30 enemy types via Entity + Behavior + Raycast
-// Engine APIs: Entity (#3) for physics, Behavior (#6) for composable AI,
-//              Raycast.HasLineOfSight (#5) for AI vision checks.
-// Simple enemies (slime, bat) need just 5-8 lines of Behavior config.
-// Complex enemies add custom state logic on top of Behavior.Update.
+// enemy.zia — Enemy types: slime (walker), bat (flyer), turret (shooter), boss
+// Uses ObjectPool for slot management with parallel arrays for per-enemy data
 module enemy;
 
 bind Viper.Graphics;
@@ -10,314 +7,83 @@ bind Viper.Math;
 bind Viper.Game;
 bind "./config";
 bind "./level";
+bind "./physics";
 bind "./sprites";
 bind "./particles";
 
-// =========================================================================
-// Enemy dimensions and HP lookup tables
-// =========================================================================
-func widthForType(t: Integer) -> Integer {
-    if t == EnemyType.Slime { return SLIME_W; }
-    if t == EnemyType.Bat { return BAT_W; }
-    if t == EnemyType.Turret { return TURRET_W; }
-    if t == EnemyType.Boss { return BOSS_W; }
-    if t == EnemyType.Sporewalker { return SPOREWALKER_W; }
-    if t == EnemyType.Glowmoth { return GLOWMOTH_W; }
-    if t == EnemyType.FungalTurret { return 48; }
-    if t == EnemyType.Mycelium { return 40; }
-    if t == EnemyType.SporeMother { return 96; }
-    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_W; }
-    if t == EnemyType.ShardBat { return 48; }
-    if t == EnemyType.ResonanceOrb { return 40; }
-    if t == EnemyType.MirrorSlime { return MIRROR_SLIME_W; }
-    if t == EnemyType.CrystalWyrm { return 80; }
-    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_W; }
-    if t == EnemyType.EmberWasp { return 28; }
-    if t == EnemyType.ForgeSentinel { return 56; }
-    if t == EnemyType.PistonTrap { return 32; }
-    if t == EnemyType.MagmaCore { return 112; }
-    if t == EnemyType.IceWraith { return 40; }
-    if t == EnemyType.FrostBeetle { return 48; }
-    if t == EnemyType.StalactiteBat { return 24; }
-    if t == EnemyType.VineWhip { return 24; }
-    if t == EnemyType.MossGolem { return 64; }
-    if t == EnemyType.RuinGuardian { return 56; }
-    if t == EnemyType.ShadowClone { return 40; }
-    if t == EnemyType.Corruption { return 32; }
-    if t == EnemyType.Architect { return 96; }
-    if t == EnemyType.PatrolDrone { return 36; }
-    if t == EnemyType.BombCarrier { return 36; }
-    return 40;
-}
-
-func heightForType(t: Integer) -> Integer {
-    if t == EnemyType.Slime { return SLIME_H; }
-    if t == EnemyType.Bat { return BAT_H; }
-    if t == EnemyType.Turret { return TURRET_H; }
-    if t == EnemyType.Boss { return BOSS_H; }
-    if t == EnemyType.Sporewalker { return SPOREWALKER_H; }
-    if t == EnemyType.Glowmoth { return GLOWMOTH_H; }
-    if t == EnemyType.FungalTurret { return 56; }
-    if t == EnemyType.Mycelium { return 24; }
-    if t == EnemyType.SporeMother { return 96; }
-    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_H; }
-    if t == EnemyType.ShardBat { return 36; }
-    if t == EnemyType.ResonanceOrb { return 40; }
-    if t == EnemyType.MirrorSlime { return MIRROR_SLIME_H; }
-    if t == EnemyType.CrystalWyrm { return 80; }
-    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_H; }
-    if t == EnemyType.EmberWasp { return 24; }
-    if t == EnemyType.ForgeSentinel { return 64; }
-    if t == EnemyType.PistonTrap { return 64; }
-    if t == EnemyType.MagmaCore { return 112; }
-    if t == EnemyType.IceWraith { return 48; }
-    if t == EnemyType.FrostBeetle { return 40; }
-    if t == EnemyType.StalactiteBat { return 48; }
-    if t == EnemyType.VineWhip { return 64; }
-    if t == EnemyType.MossGolem { return 72; }
-    if t == EnemyType.RuinGuardian { return 72; }
-    if t == EnemyType.ShadowClone { return 58; }
-    if t == EnemyType.Corruption { return 80; }
-    if t == EnemyType.Architect { return 112; }
-    if t == EnemyType.PatrolDrone { return 32; }
-    if t == EnemyType.BombCarrier { return 36; }
-    return 40;
-}
-
-func hpForType(t: Integer) -> Integer {
-    if t == EnemyType.Slime { return SLIME_HP; }
-    if t == EnemyType.Bat { return BAT_HP; }
-    if t == EnemyType.Turret { return TURRET_HP; }
-    if t == EnemyType.Boss { return BOSS_HP; }
-    if t == EnemyType.Sporewalker { return SPOREWALKER_HP; }
-    if t == EnemyType.Glowmoth { return GLOWMOTH_HP; }
-    if t == EnemyType.FungalTurret { return 4; }
-    if t == EnemyType.Mycelium { return 3; }
-    if t == EnemyType.SporeMother { return SPORE_MOTHER_HP; }
-    if t == EnemyType.CrystalGolem { return CRYSTAL_GOLEM_HP; }
-    if t == EnemyType.ShardBat { return 2; }
-    if t == EnemyType.ResonanceOrb { return 3; }
-    if t == EnemyType.MirrorSlime { return 2; }
-    if t == EnemyType.CrystalWyrm { return CRYSTAL_WYRM_HP; }
-    if t == EnemyType.MagmaSlug { return MAGMA_SLUG_HP; }
-    if t == EnemyType.EmberWasp { return 1; }
-    if t == EnemyType.ForgeSentinel { return 6; }
-    if t == EnemyType.PistonTrap { return 9999; }
-    if t == EnemyType.MagmaCore { return MAGMA_CORE_HP; }
-    if t == EnemyType.IceWraith { return 3; }
-    if t == EnemyType.FrostBeetle { return 4; }
-    if t == EnemyType.StalactiteBat { return 1; }
-    if t == EnemyType.VineWhip { return 2; }
-    if t == EnemyType.MossGolem { return 8; }
-    if t == EnemyType.RuinGuardian { return 6; }
-    if t == EnemyType.ShadowClone { return 1; }
-    if t == EnemyType.Corruption { return 4; }
-    if t == EnemyType.Architect { return ARCHITECT_HP; }
-    if t == EnemyType.PatrolDrone { return 2; }
-    if t == EnemyType.BombCarrier { return 1; }
-    return 1;
-}
-
-// =========================================================================
-// Engine API #6: Behavior — composable AI for each enemy type
-// Each enemy gets its own Behavior instance with the right components.
-// Simple enemies only need Behavior.Update(); complex ones add custom logic.
-// =========================================================================
-func createBehavior(t: Integer) -> Behavior {
-    var b = Behavior.New();
-
-    // ─── Ground patrol enemies ─────────────────────────────────
-    if t == EnemyType.Slime or t == EnemyType.Sporewalker
-       or t == EnemyType.MirrorSlime or t == EnemyType.MagmaSlug {
-        var speed = SLIME_SPEED;
-        if t == EnemyType.Sporewalker { speed = SPOREWALKER_SPEED; }
-        if t == EnemyType.MirrorSlime { speed = MIRROR_SLIME_SPEED; }
-        if t == EnemyType.MagmaSlug { speed = MAGMA_SLUG_SPEED; }
-        b.AddPatrol(speed);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddEdgeReverse();
-        b.AddWallReverse();
-        if t == EnemyType.MagmaSlug { b.AddAnimLoop(2, 300); }
-        else { b.AddAnimLoop(4, SLIME_ANIM_MS); }
-    }
-
-    // ─── Flying/chase enemies ──────────────────────────────────
-    if t == EnemyType.Bat or t == EnemyType.Glowmoth
-       or t == EnemyType.ShardBat or t == EnemyType.EmberWasp {
-        var speed = BAT_SPEED;
-        var range = 400;
-        if t == EnemyType.Glowmoth { speed = GLOWMOTH_SPEED; range = 300; }
-        if t == EnemyType.ShardBat { speed = SHARD_BAT_SPEED; range = 500; }
-        if t == EnemyType.EmberWasp { speed = EMBER_WASP_SPEED; range = 350; }
-        b.AddSineFloat(40, 120);
-        b.AddChase(speed, range);
-        if t == EnemyType.ShardBat { b.AddShoot(1600); }
-        b.AddAnimLoop(3, BAT_ANIM_MS);
-    }
-
-    // ─── Turrets (static shooters) ─────────────────────────────
-    if t == EnemyType.Turret {
-        b.AddShoot(1440);
-        b.AddAnimLoop(2, 480);
-    }
-    if t == EnemyType.FungalTurret {
-        b.AddShoot(2000);
-        b.AddAnimLoop(2, 600);
-    }
-
-    // ─── Patrol drone (flying + shooting) ──────────────────────
-    if t == EnemyType.PatrolDrone {
-        b.AddSineFloat(30, 100);
-        b.AddPatrol(PATROL_DRONE_SPEED);
-        b.AddShoot(1200);
-        b.AddAnimLoop(2, 150);
-    }
-
-    // ─── Crystal Golem (slow chase, gravity) ───────────────────
-    if t == EnemyType.CrystalGolem {
-        b.AddChase(CRYSTAL_GOLEM_SPEED, 500);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(2, 400);
-    }
-
-    // ─── Forge Sentinel (patrol, gravity, wall reverse) ────────
-    if t == EnemyType.ForgeSentinel {
-        b.AddPatrol(FORGE_SENTINEL_SPEED);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(2, 300);
-    }
-
-    // ─── Frost Beetle (patrol, gravity) ────────────────────────
-    if t == EnemyType.FrostBeetle {
-        b.AddPatrol(FROST_BEETLE_SPEED);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddEdgeReverse();
-        b.AddWallReverse();
-        b.AddAnimLoop(2, 250);
-    }
-
-    // ─── Moss Golem (slow chase, gravity) ──────────────────────
-    if t == EnemyType.MossGolem {
-        b.AddChase(MOSS_GOLEM_SPEED, 400);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(2, 400);
-    }
-
-    // ─── Ruin Guardian (slow patrol, gravity) ──────────────────
-    if t == EnemyType.RuinGuardian {
-        b.AddPatrol(RUIN_GUARDIAN_SPEED);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(4, 300);
-    }
-
-    // ─── Ghosts (free movement, no collision) ──────────────────
-    if t == EnemyType.IceWraith or t == EnemyType.ShadowClone {
-        var speed = ICE_WRAITH_SPEED;
-        if t == EnemyType.ShadowClone { speed = 100; }
-        b.AddChase(speed, 600);
-        b.AddAnimLoop(3, 200);
-    }
-
-    // ─── Bomb Carrier (chase on ground) ────────────────────────
-    if t == EnemyType.BombCarrier {
-        b.AddChase(BOMB_CARRIER_SPEED, 9999);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(2, 400);
-    }
-
-    // ─── Environmental (static/special) ────────────────────────
-    if t == EnemyType.PistonTrap {
-        b.AddShoot(1600);
-    }
-    if t == EnemyType.Mycelium or t == EnemyType.StalactiteBat {
-        b.AddAnimLoop(2, 300);
-    }
-    if t == EnemyType.VineWhip {
-        b.AddAnimLoop(4, 300);
-    }
-    if t == EnemyType.Corruption {
-        b.AddAnimLoop(4, 400);
-    }
-    if t == EnemyType.ResonanceOrb {
-        b.AddSineFloat(20, 80);
-        b.AddAnimLoop(2, 1200);
-    }
-
-    // ─── Bosses (basic physics, custom logic handles phases) ───
-    if t == EnemyType.Boss or t == EnemyType.Architect {
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddWallReverse();
-        b.AddAnimLoop(4, 300);
-    }
-    if t == EnemyType.SporeMother {
-        b.AddPatrol(60);
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddEdgeReverse();
-        b.AddAnimLoop(3, 400);
-    }
-    if t == EnemyType.CrystalWyrm {
-        b.AddGravity(GRAVITY, MAX_FALL);
-        b.AddAnimLoop(3, 300);
-    }
-    if t == EnemyType.MagmaCore {
-        b.AddAnimLoop(3, 400);
-    }
-
-    return b;
-}
-
-// =========================================================================
-// Enemy Manager
-// =========================================================================
 class EnemyManager {
+    // ObjectPool manages active/inactive slots; parallel arrays hold per-enemy data
     hide ObjectPool pool;
-    // Engine API #3: Entity per enemy for position/velocity/collision
-    hide List[Entity] entities;
-    // Engine API #6: Behavior per enemy for composable AI
-    hide List[Behavior] behaviors;
-    // Parallel arrays for state that Entity/Behavior don't cover
-    hide List[Integer] etype;      // enemy type ID
-    hide List[Integer] estate;     // 0=active, 1=hurt, 2=dead, 3+=custom
-    hide List[Integer] etimer;     // custom AI timer
-    hide List[Integer] etimer2;    // secondary timer
+    // Quadtree for spatial collision queries (O(log n) instead of O(n) linear scan)
+    hide Quadtree qtree;
+    hide List[Integer] etype;
+    hide List[Integer] ex;       // position x100
+    hide List[Integer] ey;       // position x100
+    hide List[Integer] evx;      // velocity x100
+    hide List[Integer] evy;
+    hide List[Integer] ehp;
+    hide List[Integer] estate;   // 0=active, 1=hurt, 2=dead
+    hide List[Integer] edir;     // facing: -1 or 1
+    hide List[Integer] eframe;   // animation frame
+    hide List[Integer] etimer;   // generic timer (AI, animation, cooldown)
+    hide List[Integer] etimer2;  // secondary timer (shoot cooldown, etc.)
+
+    // Physics helper
+    hide PhysicsHelper phys;
+
+    // (MoveResult struct replaces old out-parameter Lists)
 
     // Boss state
-    expose Integer bossIndex;
-    expose Integer bossPhase;
+    expose Integer bossIndex;    // index into pool, or -1
+    expose Integer bossPhase;    // 0, 1, 2
     expose Integer bossMaxHp;
 
     // Enemy bullets (turret/boss projectiles)
-    hide List[Integer] ebx;
-    hide List[Integer] eby;
-    hide List[Integer] ebvx;
+    hide List[Integer] ebx;      // bullet x (pixels)
+    hide List[Integer] eby;      // bullet y (pixels)
+    hide List[Integer] ebvx;     // bullet vx (pixels/frame)
     hide List[Integer] ebvy;
     hide List[Integer] ebactive;
-    hide Integer ebTrailTimer;
+    hide Integer ebCount;
+    hide Integer ebTrailTimer;  // ms accumulator for enemy bullet trails
 
     expose func init() {
         pool = ObjectPool.New(MAX_ENEMIES);
-        entities = [];
-        behaviors = [];
-        etype = []; estate = []; etimer = []; etimer2 = [];
+        // Quadtree covers max possible level (150 tiles * 64px = 9600px, 17 * 64 = 1088px)
+        qtree = Quadtree.New(0, 0, 9600, 1088);
+        etype = [];
+        ex = [];
+        ey = [];
+        evx = [];
+        evy = [];
+        ehp = [];
+        estate = [];
+        edir = [];
+        eframe = [];
+        etimer = [];
+        etimer2 = [];
 
-        // Pre-fill lists to pool capacity
-        var dummyEnt = Entity.New(0, 0, 1, 1);
-        var dummyBhv = Behavior.New();
+        // Pre-fill parallel arrays to pool capacity (indexed by handle)
         for i in 0..MAX_ENEMIES {
-            entities.add(dummyEnt);
-            behaviors.add(dummyBhv);
-            etype.add(0); estate.add(0); etimer.add(0); etimer2.add(0);
+            etype.add(0); ex.add(0); ey.add(0);
+            evx.add(0); evy.add(0); ehp.add(0);
+            estate.add(0); edir.add(1); eframe.add(0);
+            etimer.add(0); etimer2.add(0);
         }
+
+        phys = new PhysicsHelper();
+        // (MoveResult struct replaces old out-parameter Lists)
 
         bossIndex = -1;
         bossPhase = 0;
         bossMaxHp = BOSS_HP;
-        ebx = []; eby = []; ebvx = []; ebvy = []; ebactive = [];
+
+        ebx = [];
+        eby = [];
+        ebvx = [];
+        ebvy = [];
+        ebactive = [];
+        ebCount = 0;
         ebTrailTimer = 0;
     }
 
@@ -325,679 +91,1781 @@ class EnemyManager {
         pool.Clear();
         bossIndex = -1;
         bossPhase = 0;
-        ebx = []; eby = []; ebvx = []; ebvy = []; ebactive = [];
+        bossMaxHp = BOSS_HP;
+        ebCount = 0;
+        ebx = [];
+        eby = [];
+        ebvx = [];
+        ebvy = [];
+        ebactive = [];
         ebTrailTimer = 0;
     }
 
-    // ─── Spawn ─────────────────────────────────────────────────
     expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
         var handle = pool.Acquire();
         if handle < 0 { return; }
 
-        // Engine API #3: Entity.New with type-specific dimensions
-        var ent = Entity.New(wx * 100, wy * 100, widthForType(t), heightForType(t));
-        ent.set_HP(hpForType(t));
-        ent.set_Dir(1);
-        ent.set_Active(true);
-        entities.set(handle, ent);
-
-        // Engine API #6: Behavior preset for this enemy type
-        behaviors.set(handle, createBehavior(t));
-
         etype.set(handle, t);
-        estate.set(handle, 0);
+        ex.set(handle, wx * 100);
+        ey.set(handle, wy * 100);
+        evx.set(handle, 0);
+        evy.set(handle, 0);
+        edir.set(handle, 1);
+        eframe.set(handle, 0);
         etimer.set(handle, 0);
         etimer2.set(handle, 0);
+        estate.set(handle, 0);
 
-        // Track boss
-        if isBossType(t) {
-            bossIndex = handle;
-            bossPhase = 0;
-            bossMaxHp = hpForType(t);
-        }
+        // Initialize HP and speed per type
+        if t == ENEMY_SLIME { ehp.set(handle, SLIME_HP); evx.set(handle, SLIME_SPEED); }
+        else if t == ENEMY_BAT { ehp.set(handle, BAT_HP); }
+        else if t == ENEMY_TURRET { ehp.set(handle, TURRET_HP); }
+        else if t == ENEMY_BOSS { ehp.set(handle, BOSS_HP); bossIndex = handle; bossPhase = 0; }
+        else if t == ENEMY_SPOREWALKER { ehp.set(handle, SPOREWALKER_HP); evx.set(handle, SPOREWALKER_SPEED); }
+        else if t == ENEMY_GLOWMOTH { ehp.set(handle, GLOWMOTH_HP); }
+        else if t == ENEMY_FUNGAL_TURRET { ehp.set(handle, FUNGAL_TURRET_HP); }
+        else if t == ENEMY_MYCELIUM { ehp.set(handle, MYCELIUM_HP); }
+        else if t == ENEMY_SPORE_MOTHER { ehp.set(handle, SPORE_MOTHER_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = SPORE_MOTHER_HP; }
+        else if t == ENEMY_CRYSTAL_GOLEM { ehp.set(handle, CRYSTAL_GOLEM_HP); }
+        else if t == ENEMY_SHARD_BAT { ehp.set(handle, SHARD_BAT_HP); }
+        else if t == ENEMY_RESONANCE_ORB { ehp.set(handle, RESONANCE_ORB_HP); }
+        else if t == ENEMY_MIRROR_SLIME { ehp.set(handle, MIRROR_SLIME_HP); evx.set(handle, MIRROR_SLIME_SPEED); }
+        else if t == ENEMY_CRYSTAL_WYRM { ehp.set(handle, CRYSTAL_WYRM_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = CRYSTAL_WYRM_HP; }
+        else if t == ENEMY_MAGMA_SLUG { ehp.set(handle, MAGMA_SLUG_HP); evx.set(handle, MAGMA_SLUG_SPEED); }
+        else if t == ENEMY_EMBER_WASP { ehp.set(handle, EMBER_WASP_HP); }
+        else if t == ENEMY_FORGE_SENTINEL { ehp.set(handle, FORGE_SENTINEL_HP); evx.set(handle, FORGE_SENTINEL_SPEED); }
+        else if t == ENEMY_PISTON_TRAP { ehp.set(handle, 9999); } // Indestructible
+        else if t == ENEMY_MAGMA_CORE { ehp.set(handle, MAGMA_CORE_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = MAGMA_CORE_HP; }
+        else if t == ENEMY_ICE_WRAITH { ehp.set(handle, ICE_WRAITH_HP); }
+        else if t == ENEMY_FROST_BEETLE { ehp.set(handle, FROST_BEETLE_HP); evx.set(handle, FROST_BEETLE_SPEED); }
+        else if t == ENEMY_STALACTITE_BAT { ehp.set(handle, STALACTITE_BAT_HP); }
+        else if t == ENEMY_VINE_WHIP { ehp.set(handle, VINE_WHIP_HP); }
+        else if t == ENEMY_MOSS_GOLEM { ehp.set(handle, MOSS_GOLEM_HP); }
+        else if t == ENEMY_RUIN_GUARDIAN { ehp.set(handle, RUIN_GUARDIAN_HP); }
+        else if t == ENEMY_SHADOW_CLONE { ehp.set(handle, SHADOW_CLONE_HP); }
+        else if t == ENEMY_CORRUPTION { ehp.set(handle, CORRUPTION_HP); }
+        else if t == ENEMY_ARCHITECT { ehp.set(handle, ARCHITECT_HP); bossIndex = handle; bossPhase = 0; bossMaxHp = ARCHITECT_HP; }
+        else if t == ENEMY_PATROL_DRONE { ehp.set(handle, PATROL_DRONE_HP); }
+        else if t == ENEMY_BOMB_CARRIER { ehp.set(handle, BOMB_CARRIER_HP); evx.set(handle, BOMB_CARRIER_SPEED); }
+        else { ehp.set(handle, 1); } // Fallback
     }
 
     expose func spawnFromLevel(level: Level) {
         var i = 0;
         while i < level.enemyTypes.length() {
-            spawnEnemy(level.enemyTypes.get(i), level.enemyX.get(i), level.enemyY.get(i));
+            spawnEnemy(level.enemyTypes.get(i),
+                       level.enemyX.get(i),
+                       level.enemyY.get(i));
             i = i + 1;
         }
+
         if level.hasBoss {
             spawnEnemy(level.bossType, level.bossX, level.bossY);
         }
     }
 
-    // ─── Update ────────────────────────────────────────────────
-    expose func updateAll(tilemap: Tilemap, playerX: Integer, playerY: Integer, dt: Integer) {
+    expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer, dt: Integer, particles: ParticleSystem) {
         var i = pool.FirstActive();
         while i >= 0 {
-            var next = pool.NextActive(i);
+            var nextHandle = pool.NextActive(i);
             var t = etype.get(i);
-            var ent: Entity = entities.get(i);
-            var bhv: Behavior = behaviors.get(i);
 
-            // Skip dead enemies
-            if estate.get(i) == 2 { i = next; }
-            else {
-                // Hurt recovery
+                // Handle hurt timer (ms-based)
                 if estate.get(i) == 1 {
-                    etimer.set(i, etimer.get(i) - dt);
-                    if etimer.get(i) <= 0 { estate.set(i, 0); }
-                }
-
-                // Engine API #6: Behavior.Update handles patrol, chase, gravity,
-                // collision, edge/wall reverse, animation — all in one call
-                bhv.Update(ent, tilemap, playerX, playerY, dt);
-
-                // Engine API #5: Raycast.HasLineOfSight for shooting enemies
-                if bhv.get_ShootReady() {
-                    var ex = ent.get_X() / 100;
-                    var ey = ent.get_Y() / 100;
-                    if Raycast.HasLineOfSight(tilemap, ex, ey, playerX, playerY) {
-                        fireEnemyBullet(ex, ey, playerX, playerY);
+                    var tm = etimer.get(i) - dt;
+                    if tm < 0 { tm = 0; }
+                    etimer.set(i, tm);
+                    if tm <= 0 {
+                        estate.set(i, 0);
                     }
                 }
 
-                // Custom logic for complex enemy types
-                if t == EnemyType.ForgeSentinel { updateForgeSentinel(i, playerX, playerY, dt); }
-                else if t == EnemyType.FrostBeetle { updateFrostBeetle(i, playerX, playerY, dt); }
-                else if t == EnemyType.RuinGuardian { updateRuinGuardian(i, playerX, playerY, dt); }
-                else if t == EnemyType.Mycelium { updateCeilingDrop(i, playerX, playerY, dt); }
-                else if t == EnemyType.StalactiteBat { updateCeilingDrop(i, playerX, playerY, dt); }
-                else if t == EnemyType.Corruption { updateCorruption(i, playerX, playerY, dt); }
-                else if t == EnemyType.VineWhip { updateVineWhip(i, dt); }
-                else if t == EnemyType.ResonanceOrb { updateResonanceOrb(i, dt); }
-                else if t == EnemyType.MossGolem { updateMossGolem(i, dt); }
-                else if t == EnemyType.BombCarrier { updateBombCarrier(i, playerX, playerY, dt); }
-                // Boss custom logic
-                else if t == EnemyType.Boss { updateGenericBoss(i, playerX, playerY, dt); }
-                else if t == EnemyType.SporeMother { updateSporeMother(i, playerX, playerY, dt); }
-                else if t == EnemyType.CrystalWyrm { updateCrystalWyrm(i, playerX, playerY, dt); }
-                else if t == EnemyType.MagmaCore { updateMagmaCore(i, playerX, playerY, dt); }
-                else if t == EnemyType.Architect { updateArchitect(i, playerX, playerY, dt); }
+                if t == ENEMY_SLIME { updateSlime(i, level, dt); }
+                if t == ENEMY_BAT { updateBat(i, playerPx, playerPy, dt); }
+                if t == ENEMY_TURRET { updateTurret(i, playerPx, playerPy, dt); }
+                if t == ENEMY_BOSS { updateBoss(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_SPOREWALKER { updateSporewalker(i, level, dt); }
+                if t == ENEMY_GLOWMOTH { updateGlowmoth(i, playerPx, playerPy, dt); }
+                if t == ENEMY_FUNGAL_TURRET { updateFungalTurret(i, playerPx, playerPy, dt); }
+                if t == ENEMY_MYCELIUM { updateMycelium(i, playerPx, playerPy, dt); }
+                if t == ENEMY_SPORE_MOTHER { updateSporeMother(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_CRYSTAL_GOLEM { updateCrystalGolem(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_SHARD_BAT { updateShardBat(i, playerPx, playerPy, dt); }
+                if t == ENEMY_RESONANCE_ORB { updateResonanceOrb(i, playerPx, playerPy, dt); }
+                if t == ENEMY_MIRROR_SLIME { updateMirrorSlime(i, level, dt); }
+                if t == ENEMY_CRYSTAL_WYRM { updateCrystalWyrm(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_MAGMA_SLUG { updateMagmaSlug(i, level, dt); }
+                if t == ENEMY_EMBER_WASP { updateEmberWasp(i, playerPx, playerPy, dt); }
+                if t == ENEMY_FORGE_SENTINEL { updateForgeSentinel(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_MAGMA_CORE { updateMagmaCoreBoss(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_ICE_WRAITH { updateIceWraith(i, playerPx, playerPy, dt); }
+                if t == ENEMY_FROST_BEETLE { updateFrostBeetle(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_STALACTITE_BAT { updateStalactiteBat(i, playerPx, playerPy, dt); }
+                if t == ENEMY_VINE_WHIP { updateVineWhip(i, dt); }
+                if t == ENEMY_MOSS_GOLEM { updateMossGolem(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_RUIN_GUARDIAN { updateRuinGuardian(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_SHADOW_CLONE { updateShadowClone(i, playerPx, playerPy, dt); }
+                if t == ENEMY_CORRUPTION { updateCorruption(i, playerPx, playerPy, dt); }
+                if t == ENEMY_ARCHITECT { updateArchitect(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_PATROL_DRONE { updatePatrolDrone(i, playerPx, playerPy, dt); }
+                if t == ENEMY_BOMB_CARRIER { updateBombCarrier(i, level, playerPx, playerPy, dt); }
 
-                i = next;
-            }
+            i = nextHandle;
         }
 
-        // Update enemy bullets
-        updateEnemyBullets(tilemap, dt);
+        // Rebuild Quadtree with updated positions for spatial queries.
+        // Quadtree uses center-based coordinates: Insert(id, cx, cy, w, h).
+        qtree.Clear();
+        var qi = pool.FirstActive();
+        while qi >= 0 {
+            var qn = pool.NextActive(qi);
+            var epx = ex.get(qi) / 100;
+            var epy = ey.get(qi) / 100;
+            var ew = getEnemyW(etype.get(qi));
+            var eh = getEnemyH(etype.get(qi));
+            qtree.Insert(qi, epx + ew / 2, epy + eh / 2, ew, eh);
+            qi = qn;
+        }
+
+        // Update enemy bullets (with particle trails)
+        updateEnemyBullets(level, dt, particles);
     }
 
-    // ─── Complex enemy updates ─────────────────────────────────
+    // =========================================================================
+    // Entity physics helper — replaces 13-line gravity+collide+response pattern
+    // Creates a temporary Entity, runs physics, writes results back to arrays.
+    // =========================================================================
 
-    // Forge Sentinel: patrol → detect → charge → stagger
-    hide func updateForgeSentinel(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var st = estate.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-
-        if st == 0 and dx < 450 {
-            // Detect player — start charge
-            estate.set(i, 3); // charging state
-            ent.set_VX(ent.get_Dir() * FORGE_SENTINEL_CHARGE);
-        }
-        if st == 3 {
-            // Charging — check wall hit for stagger
-            if ent.get_HitLeft() or ent.get_HitRight() {
-                estate.set(i, 4); // staggered
-                etimer.set(i, 800);
-                ent.set_VX(0);
-            }
-        }
-        if st == 4 {
-            // Staggered — wait then resume patrol
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 {
-                estate.set(i, 0);
-            }
-        }
+    hide func applyPhysics(i: Integer, w: Integer, h: Integer,
+                           level: Level, dt: Integer) -> Entity {
+        var ent = Entity.New(ex.get(i), ey.get(i), w, h);
+        ent.set_VX(evx.get(i));
+        ent.set_VY(evy.get(i));
+        ent.set_Dir(edir.get(i));
+        ent.UpdatePhysics(level.tilemap, GRAVITY, MAX_FALL, dt);
+        ex.set(i, ent.get_X());
+        ey.set(i, ent.get_Y());
+        evx.set(i, ent.get_VX());
+        evy.set(i, ent.get_VY());
+        return ent;
     }
 
-    // Frost Beetle: patrol → detect → roll toward player
-    hide func updateFrostBeetle(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var st = estate.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-
-        if st == 0 and dx < 350 {
-            estate.set(i, 3); // rolling
-            etimer.set(i, 2000);
-            if px > ex { ent.set_VX(FROST_BEETLE_ROLL); }
-            else { ent.set_VX(0 - FROST_BEETLE_ROLL); }
+    // Animation helper — 4-frame loop (ms-based)
+    hide func updateAnim(i: Integer, frameCount: Integer, ms: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= ms {
+            tm = 0;
+            var f = eframe.get(i) + 1;
+            if f >= frameCount { f = 0; }
+            eframe.set(i, f);
         }
-        if st == 3 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 or ent.get_HitLeft() or ent.get_HitRight() {
-                estate.set(i, 0);
-                ent.set_VX(ent.get_Dir() * FROST_BEETLE_SPEED);
-            }
-        }
+        etimer.set(i, tm);
     }
 
-    // Ruin Guardian: patrol → windup → pound → recover
-    hide func updateRuinGuardian(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var st = estate.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-
-        if st == 0 and dx < 100 {
-            estate.set(i, 3); // windup
-            etimer.set(i, 600);
-            ent.set_VX(0);
-        }
-        if st == 3 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 {
-                estate.set(i, 4); // pound
-                etimer.set(i, 200);
-            }
-        }
-        if st == 4 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 {
-                estate.set(i, 5); // recover
-                etimer.set(i, 2400);
-            }
-        }
-        if st == 5 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 { estate.set(i, 0); }
-        }
-    }
-
-    // Ceiling drop: Mycelium and Stalactite Bat
-    hide func updateCeilingDrop(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var st = estate.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-
-        if st == 0 and dx < 80 and py > ent.get_Y() / 100 {
-            estate.set(i, 3); // dropping
-            ent.set_VY(400);
-            etimer.set(i, 1500);
-        }
-        if st == 3 {
-            ent.set_VY(400);
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 or ent.get_OnGround() {
-                estate.set(i, 4); // respawn wait
-                etimer.set(i, 3000);
-                ent.set_Active(false);
-            }
-        }
-        if st == 4 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 {
-                estate.set(i, 0);
-                ent.set_Active(true);
-                ent.set_VY(0);
+    // Edge-reverse helper — reverse at platform edges
+    hide func checkEdgeReverse(i: Integer, w: Integer, h: Integer,
+                               speed: Integer, level: Level, ent: Entity) {
+        if ent.get_OnGround() {
+            if ent.AtEdge(level.tilemap) {
+                var d = edir.get(i);
+                evx.set(i, 0 - evx.get(i));
+                edir.set(i, 0 - d);
             }
         }
     }
 
-    // Corruption: ground rising tendril
-    hide func updateCorruption(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var st = estate.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-
-        if st == 0 and dx < 64 {
-            estate.set(i, 3); // rising
-            etimer.set(i, 400);
+    // Wall-reverse helper — reverse on wall hit
+    hide func checkWallReverse(i: Integer, speed: Integer, ent: Entity) {
+        if ent.get_HitLeft() {
+            evx.set(i, speed);
+            edir.set(i, 1);
         }
-        if st == 3 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 { estate.set(i, 4); etimer.set(i, 1600); }
-        }
-        if st == 4 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 { estate.set(i, 5); etimer.set(i, 600); }
-        }
-        if st == 5 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 { estate.set(i, 0); }
+        if ent.get_HitRight() {
+            evx.set(i, 0 - speed);
+            edir.set(i, -1);
         }
     }
 
-    // Vine Whip: sweep cycle
+    // =========================================================================
+    // Slime AI — patrol on ground, reverse at edges/walls
+    // =========================================================================
+
+    hide func updateSlime(i: Integer, level: Level, dt: Integer) {
+        // Animation (skip when hurt)
+        if estate.get(i) != 1 {
+            updateAnim(i, 4, SLIME_ANIM_MS, dt);
+        }
+
+        // Physics: gravity + move + collide (replaces 30+ lines)
+        var ent = applyPhysics(i, SLIME_W, SLIME_H, level, dt);
+
+        // Reverse on wall hit + platform edges
+        checkWallReverse(i, SLIME_SPEED, ent);
+        checkEdgeReverse(i, SLIME_W, SLIME_H, SLIME_SPEED, level, ent);
+    }
+
+    // =========================================================================
+    // Bat AI — sine wave patrol, chase player when nearby
+    // =========================================================================
+
+    hide func updateBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Animation — wing flap (ms-based)
+        var tm = etimer.get(i) + dt;
+        if tm >= BAT_ANIM_MS {
+            tm = 0;
+            var f = eframe.get(i) + 1;
+            if f >= 3 { f = 0; }
+            eframe.set(i, f);
+        }
+        etimer.set(i, tm);
+
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+
+        // Distance to player
+        var dx = playerPx - cx;
+        var dy = playerPy - cy;
+
+        // Approximate distance (Manhattan-ish)
+        var adx = dx;
+        if adx < 0 { adx = 0 - adx; }
+        var ady = dy;
+        if ady < 0 { ady = 0 - ady; }
+        var dist = adx + ady;
+
+        if dist < BAT_DETECT_RANGE * 2 {
+            // Chase player
+            var moveX = 0;
+            var moveY = 0;
+            if dx > 0 { moveX = BAT_SPEED; }
+            if dx < 0 { moveX = 0 - BAT_SPEED; }
+            if dy > 0 { moveY = BAT_SPEED / 2; }
+            if dy < 0 { moveY = 0 - BAT_SPEED / 2; }
+
+            evx.set(i, moveX);
+            evy.set(i, moveY);
+
+            if dx > 0 { edir.set(i, 1); }
+            if dx < 0 { edir.set(i, -1); }
+        } else {
+            // Idle hover — sine wave using ms timer
+            var wave = etimer2.get(i) + dt;
+            etimer2.set(i, wave);
+            // Simple up/down oscillation (period = BAT_HOVER_MS)
+            if wave % BAT_HOVER_MS < BAT_HOVER_MS / 2 {
+                evy.set(i, -60);
+            } else {
+                evy.set(i, 60);
+            }
+            evx.set(i, 0);
+        }
+
+        // Apply velocity directly scaled by dt (bats don't collide with tiles)
+        var newX = ex.get(i) + evx.get(i) * dt / DT_BASE;
+        var newY = ey.get(i) + evy.get(i) * dt / DT_BASE;
+        ex.set(i, newX);
+        ey.set(i, newY);
+    }
+
+    // =========================================================================
+    // Turret AI — static, shoots at player periodically when in range
+    // =========================================================================
+
+    hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Skip fire logic during hurt state (etimer is shared with hurt handler)
+        if estate.get(i) == 1 { return; }
+
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+
+        var dx = playerPx - cx;
+        var dy = playerPy - cy;
+        var adx = dx;
+        if adx < 0 { adx = 0 - adx; }
+        var ady = dy;
+        if ady < 0 { ady = 0 - ady; }
+
+        // Face player
+        if dx > 0 { edir.set(i, 1); }
+        if dx < 0 { edir.set(i, -1); }
+
+        // Shoot timer (ms-based accumulator)
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+
+        if adx < TURRET_RANGE {
+            if ady < TURRET_RANGE / 2 {
+                if tm >= TURRET_FIRE_RATE_MS {
+                    etimer.set(i, 0);
+                    // Fire bullet
+                    var bdir = edir.get(i);
+                    var bx2 = cx + TURRET_W / 2;
+                    var by2 = cy + TURRET_H / 2 - 3;
+                    spawnEnemyBullet(bx2, by2, bdir * 4, 0);
+                }
+            }
+        }
+
+        // Animate warning light (ms-based)
+        var tm2 = etimer2.get(i) + dt;
+        if tm2 >= TURRET_LIGHT_MS { tm2 = 0; }
+        etimer2.set(i, tm2);
+    }
+
+    // =========================================================================
+    // Boss AI — 3 phases with different attack patterns
+    // =========================================================================
+
+    hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Skip AI logic during hurt state (etimer is shared with hurt handler)
+        if estate.get(i) == 1 {
+            // Still apply gravity during hurt so boss doesn't float
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
+            evy.set(i, curVy);
+            var dispY = curVy * dt / DT_BASE;
+            var newY = ey.get(i) + dispY;
+            ey.set(i, newY);
+            return;
+        }
+
+        var hp = ehp.get(i);
+
+        // Determine phase based on HP
+        if hp > BOSS_HP * 2 / 3 {
+            bossPhase = 0;
+        } else {
+            if hp > BOSS_HP / 3 {
+                bossPhase = 1;
+            } else {
+                bossPhase = 2;
+            }
+        }
+
+        var cx = ex.get(i) / 100;
+        var cy = ey.get(i) / 100;
+        var dx = playerPx - cx;
+
+        // Face player
+        if dx > 0 { edir.set(i, 1); }
+        if dx < 0 { edir.set(i, -1); }
+
+        // Animation frame: phase normally, wind-up (frame 3) right before shooting
+        var shootWindup = false;
+        var tm0 = etimer.get(i);
+        if bossPhase == 0 {
+            if tm0 + dt >= BOSS_SHOOT0_MS - 160 { shootWindup = true; }
+        } else if bossPhase == 1 {
+            if tm0 + dt >= BOSS_SHOOT1_MS - 160 { shootWindup = true; }
+        } else if bossPhase == 2 {
+            if tm0 + dt >= BOSS_SHOOT2_MS - 160 { shootWindup = true; }
+        }
+        if shootWindup {
+            eframe.set(i, 3);
+        } else {
+            eframe.set(i, bossPhase);
+        }
+
+        // Apply gravity (scaled by dt)
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+
+        // Movement AI based on phase (ms-based shoot/jump timers)
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+
+        if bossPhase == 0 {
+            // Phase 0: Slow patrol, shoot periodically
+            var d = edir.get(i);
+            evx.set(i, d * BOSS_SPEED / 2);
+
+            if tm >= BOSS_SHOOT0_MS {
+                etimer.set(i, 0);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 8, 0);
+            }
+        }
+
+        if bossPhase == 1 {
+            // Phase 1: Faster, shoots more, jumps occasionally
+            var d = edir.get(i);
+            evx.set(i, d * BOSS_SPEED);
+
+            if tm >= BOSS_SHOOT1_MS {
+                etimer.set(i, tm - BOSS_SHOOT1_MS);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 9, 0);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 8, -3);
+            }
+
+            // Jump uses secondary timer
+            var jt = etimer2.get(i) + dt;
+            if jt >= BOSS_JUMP1_MS {
+                jt = 0;
+                curVy = -900;
+            }
+            etimer2.set(i, jt);
+        }
+
+        if bossPhase == 2 {
+            // Phase 2: Aggressive — charge at player, rapid fire
+            var adx = dx;
+            if adx < 0 { adx = 0 - adx; }
+
+            if adx > 150 {
+                // Charge
+                if dx > 0 {
+                    evx.set(i, BOSS_SPEED * 3 / 2);
+                } else {
+                    evx.set(i, 0 - BOSS_SPEED * 3 / 2);
+                }
+            } else {
+                evx.set(i, 0);
+            }
+
+            if tm >= BOSS_SHOOT2_MS {
+                etimer.set(i, tm - BOSS_SHOOT2_MS);
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 10, 0);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 9, -5);
+                spawnEnemyBullet(cx + BOSS_W / 2, cy + 45, d * 9, 3);
+            }
+
+            var jt = etimer2.get(i) + dt;
+            if jt >= BOSS_JUMP2_MS {
+                jt = 0;
+                curVy = -1050;
+            }
+            etimer2.set(i, jt);
+        }
+
+        evy.set(i, curVy);
+
+        // Compute scaled displacement
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+
+        // Move with collision
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, BOSS_W, BOSS_H, level);
+
+        ex.set(i, result.x);
+        ey.set(i, result.y);
+        // Zero persistent velocity on collision
+        if result.hitLeft { evx.set(i, 0); }
+        if result.hitRight { evx.set(i, 0); }
+        if result.hitFloor { evy.set(i, 0); }
+        if result.hitCeiling { evy.set(i, 0); }
+
+        // Reverse on wall
+        var hitLeft = result.hitLeft;
+        var hitRight = result.hitRight;
+        if hitLeft { edir.set(i, 1); }
+        if hitRight { edir.set(i, -1); }
+    }
+
+    // =========================================================================
+    // Sporewalker — slow ground patrol, poison cloud on death
+    // =========================================================================
+    hide func updateSporewalker(i: Integer, level: Level, dt: Integer) {
+        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
+        var ent = applyPhysics(i, SPOREWALKER_W, SPOREWALKER_H, level, dt);
+        checkWallReverse(i, SPOREWALKER_SPEED, ent);
+        checkEdgeReverse(i, SPOREWALKER_W, SPOREWALKER_H, SPOREWALKER_SPEED, level, ent);
+    }
+
+    // =========================================================================
+    // Glowmoth — erratic flying, dives at player when close
+    // =========================================================================
+    hide func updateGlowmoth(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= BAT_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
+        etimer.set(i, tm);
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var ady = dy; if ady < 0 { ady = 0 - ady; }
+        var dist = adx + ady;
+        if dist < GLOWMOTH_DETECT * 2 {
+            // Dive toward player
+            var moveX = 0; var moveY = 0;
+            if dx > 0 { moveX = GLOWMOTH_DIVE_SPEED; }
+            if dx < 0 { moveX = 0 - GLOWMOTH_DIVE_SPEED; }
+            if dy > 0 { moveY = GLOWMOTH_DIVE_SPEED; }
+            if dy < 0 { moveY = 0 - GLOWMOTH_SPEED; }
+            evx.set(i, moveX); evy.set(i, moveY);
+            if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        } else {
+            // Erratic hover with random direction changes
+            var wave = etimer2.get(i) + dt;
+            etimer2.set(i, wave);
+            var phase = wave % 1600;
+            if phase < 400 { evy.set(i, -80); evx.set(i, GLOWMOTH_SPEED); }
+            else if phase < 800 { evy.set(i, 80); evx.set(i, GLOWMOTH_SPEED); }
+            else if phase < 1200 { evy.set(i, -80); evx.set(i, 0 - GLOWMOTH_SPEED); }
+            else { evy.set(i, 80); evx.set(i, 0 - GLOWMOTH_SPEED); }
+        }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+    }
+
+    // =========================================================================
+    // Fungal Turret — arcing spore shots, vulnerable when cap opens
+    // =========================================================================
+    hide func updateFungalTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        if estate.get(i) == 1 { return; }
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+        if adx < FUNGAL_TURRET_RANGE {
+            if tm >= FUNGAL_TURRET_FIRE_MS {
+                etimer.set(i, 0);
+                eframe.set(i, 1); // Cap open frame
+                var bdir = edir.get(i);
+                spawnEnemyBullet(cx + FUNGAL_TURRET_W / 2, cy, bdir * 3, -6); // Arcing shot
+            } else {
+                if tm > FUNGAL_TURRET_FIRE_MS - 300 { eframe.set(i, 1); }
+                else { eframe.set(i, 0); }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Mycelium Crawler — ceiling mount, drops + horizontal dash
+    // =========================================================================
+    hide func updateMycelium(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=ceiling, 1=dropping, 2=dashing
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        if state == 0 {
+            // Hanging from ceiling — check if player below
+            var dx = playerPx - cx; if dx < 0 { dx = 0 - dx; }
+            if dx < 80 and playerPy > cy {
+                etimer2.set(i, 1); // Start drop
+                evy.set(i, 0);
+            }
+        }
+        if state == 1 {
+            // Dropping with gravity
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
+            evy.set(i, curVy);
+            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            // TODO: check floor collision to transition to dash
+            var tm = etimer.get(i) + dt;
+            etimer.set(i, tm);
+            if tm > 800 { // Transition to dash after 800ms
+                etimer2.set(i, 2);
+                etimer.set(i, 0);
+                if playerPx > cx { evx.set(i, MYCELIUM_SPEED); edir.set(i, 1); }
+                else { evx.set(i, 0 - MYCELIUM_SPEED); edir.set(i, -1); }
+            }
+        }
+        if state == 2 {
+            // Horizontal dash
+            ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+            var tm = etimer.get(i) + dt;
+            etimer.set(i, tm);
+            if tm > 1200 { // Dash for 1.2 seconds then deactivate
+                pool.Release(i); estate.set(i, 2);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Crystal Golem — slow, frontal shield, must hit from behind
+    // =========================================================================
+    hide func updateCrystalGolem(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        // Slow walk toward player
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        if adx < 500 and adx > 80 {
+            evx.set(i, edir.get(i) * CRYSTAL_GOLEM_SPEED);
+        } else {
+            evx.set(i, 0);
+        }
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, CRYSTAL_GOLEM_W, CRYSTAL_GOLEM_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        // Animation: slow stomp cycle
+        var tm = etimer.get(i) + dt;
+        if tm >= 400 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
+    }
+
+    // =========================================================================
+    // Shard Bat — bat variant that fires crystal shards on dive
+    // =========================================================================
+    hide func updateShardBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= BAT_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
+        etimer.set(i, tm);
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var ady = dy; if ady < 0 { ady = 0 - ady; }
+        var dist = adx + ady;
+        if dist < BAT_DETECT_RANGE * 2 {
+            var moveX = 0; var moveY = 0;
+            if dx > 0 { moveX = SHARD_BAT_SPEED; } if dx < 0 { moveX = 0 - SHARD_BAT_SPEED; }
+            if dy > 0 { moveY = SHARD_BAT_SPEED / 2; } if dy < 0 { moveY = 0 - SHARD_BAT_SPEED / 2; }
+            evx.set(i, moveX); evy.set(i, moveY);
+            if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+            // Fire shards periodically while chasing
+            var st = etimer2.get(i) + dt;
+            if st >= 1600 {
+                st = 0;
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + SHARD_BAT_W / 2, cy + SHARD_BAT_H / 2, d * 6, 2);
+            }
+            etimer2.set(i, st);
+        } else {
+            var wave = etimer2.get(i) + dt; etimer2.set(i, wave);
+            if wave % BAT_HOVER_MS < BAT_HOVER_MS / 2 { evy.set(i, -60); } else { evy.set(i, 60); }
+            evx.set(i, 0);
+        }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+    }
+
+    // =========================================================================
+    // Resonance Orb — expanding push ring, vulnerable only when open
+    // =========================================================================
+    hide func updateResonanceOrb(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+        // Cycle: closed (invulnerable) → open (pulsing, vulnerable) → closed
+        var phase = tm % RESONANCE_PULSE_MS;
+        if phase < RESONANCE_PULSE_MS * 3 / 4 {
+            eframe.set(i, 0); // Closed — invulnerable
+        } else {
+            eframe.set(i, 1); // Open — vulnerable, pulsing
+        }
+        // Gentle hover
+        var wave = tm % 1200;
+        if wave < 600 { evy.set(i, -30); } else { evy.set(i, 30); }
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+    }
+
+    // =========================================================================
+    // Mirror Slime — reflects player bullets, must stomp
+    // =========================================================================
+    hide func updateMirrorSlime(i: Integer, level: Level, dt: Integer) {
+        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
+        var ent = applyPhysics(i, MIRROR_SLIME_W, MIRROR_SLIME_H, level, dt);
+        checkWallReverse(i, MIRROR_SLIME_SPEED, ent);
+        checkEdgeReverse(i, MIRROR_SLIME_W, MIRROR_SLIME_H, MIRROR_SLIME_SPEED, level, ent);
+    }
+
+    // =========================================================================
+    // Magma Slug — slow patrol, leaves lava trail
+    // =========================================================================
+    hide func updateMagmaSlug(i: Integer, level: Level, dt: Integer) {
+        if estate.get(i) != 1 { updateAnim(i, 2, 300, dt); }
+        var ent = applyPhysics(i, MAGMA_SLUG_W, MAGMA_SLUG_H, level, dt);
+        checkWallReverse(i, MAGMA_SLUG_SPEED, ent);
+        checkEdgeReverse(i, MAGMA_SLUG_W, MAGMA_SLUG_H, MAGMA_SLUG_SPEED, level, ent);
+    }
+
+    // =========================================================================
+    // Ember Wasp — fast, aggressive, swarm behavior
+    // =========================================================================
+    hide func updateEmberWasp(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= 100 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var ady = dy; if ady < 0 { ady = 0 - ady; }
+        // Always aggressive — charge toward player
+        if adx + ady < EMBER_WASP_DETECT * 2 {
+            if dx > 0 { evx.set(i, EMBER_WASP_SPEED); } else { evx.set(i, 0 - EMBER_WASP_SPEED); }
+            if dy > 0 { evy.set(i, EMBER_WASP_SPEED / 2); } else { evy.set(i, 0 - EMBER_WASP_SPEED / 2); }
+            if dx > 0 { edir.set(i, 1); } else { edir.set(i, -1); }
+        } else {
+            // Random zigzag patrol
+            var wave = etimer2.get(i) + dt; etimer2.set(i, wave);
+            if wave % 800 < 200 { evx.set(i, EMBER_WASP_SPEED); evy.set(i, -100); }
+            else if wave % 800 < 400 { evx.set(i, 0 - EMBER_WASP_SPEED); evy.set(i, 100); }
+            else if wave % 800 < 600 { evx.set(i, EMBER_WASP_SPEED); evy.set(i, 100); }
+            else { evx.set(i, 0 - EMBER_WASP_SPEED); evy.set(i, -100); }
+        }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+    }
+
+    // =========================================================================
+    // Forge Sentinel — charge at player, stagger on wall hit
+    // =========================================================================
+    hide func updateForgeSentinel(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=patrol, 1=charging, 2=staggered
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx; var adx = dx; if adx < 0 { adx = 0 - adx; }
+
+        if state == 2 {
+            // Staggered — can't move
+            evx.set(i, 0);
+            var tm = etimer.get(i) + dt;
+            etimer.set(i, tm);
+            if tm >= FORGE_SENTINEL_STAGGER_MS {
+                etimer2.set(i, 0); etimer.set(i, 0);
+            }
+            eframe.set(i, 2); // Stagger frame
+        } else if state == 1 {
+            // Charging toward player
+            eframe.set(i, 1);
+        } else {
+            // Patrol / detect
+            if adx < FORGE_SENTINEL_DETECT {
+                etimer2.set(i, 1); // Start charge
+                if dx > 0 { evx.set(i, FORGE_SENTINEL_CHARGE); edir.set(i, 1); }
+                else { evx.set(i, 0 - FORGE_SENTINEL_CHARGE); edir.set(i, -1); }
+            } else {
+                // Slow patrol
+                evx.set(i, edir.get(i) * FORGE_SENTINEL_SPEED);
+                var tm = etimer.get(i) + dt;
+                if tm >= 300 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+                etimer.set(i, tm);
+            }
+        }
+
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, FORGE_SENTINEL_W, FORGE_SENTINEL_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+
+        // Wall hit during charge → stagger
+        var hitWall = result.hitLeft or result.hitRight;
+        if hitWall and state == 1 {
+            etimer2.set(i, 2); // Stagger state
+            etimer.set(i, 0);
+            evx.set(i, 0);
+        }
+        if hitWall and state == 0 {
+            edir.set(i, 0 - edir.get(i));
+            evx.set(i, edir.get(i) * FORGE_SENTINEL_SPEED);
+        }
+    }
+
+    // =========================================================================
+    // Frost Beetle — patrol, curl and roll toward player
+    // =========================================================================
+    hide func updateFrostBeetle(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=patrol, 1=rolling
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx; var adx = dx; if adx < 0 { adx = 0 - adx; }
+
+        if state == 0 {
+            // Patrol
+            if adx < FROST_BEETLE_DETECT {
+                etimer2.set(i, 1); // Start roll
+                if dx > 0 { evx.set(i, FROST_BEETLE_ROLL_SPEED); edir.set(i, 1); }
+                else { evx.set(i, 0 - FROST_BEETLE_ROLL_SPEED); edir.set(i, -1); }
+                eframe.set(i, 2); // Roll frame
+            } else {
+                evx.set(i, edir.get(i) * FROST_BEETLE_SPEED);
+                var tm = etimer.get(i) + dt;
+                if tm >= 250 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+                etimer.set(i, tm);
+            }
+        } else {
+            // Rolling — animate fast
+            var tm = etimer.get(i) + dt;
+            if tm >= 80 { tm = 0; eframe.set(i, 2 + (eframe.get(i) + 1) % 2); }
+            etimer.set(i, tm);
+            // Stop rolling after wall hit or timeout
+            if tm > 2000 { etimer2.set(i, 0); etimer.set(i, 0); }
+        }
+
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, FROST_BEETLE_W, FROST_BEETLE_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        var hitWall = result.hitLeft or result.hitRight;
+        if hitWall {
+            if state == 1 { etimer2.set(i, 0); etimer.set(i, 0); } // Stop roll
+            edir.set(i, 0 - edir.get(i));
+            evx.set(i, edir.get(i) * FROST_BEETLE_SPEED);
+        }
+    }
+
+    // =========================================================================
+    // Ice Wraith — phases through walls, freeze attack
+    // =========================================================================
+    hide func updateIceWraith(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= 200 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
+        etimer.set(i, tm);
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var ady = dy; if ady < 0 { ady = 0 - ady; }
+        // Drift toward player (no tile collision — phases through walls)
+        if adx + ady < 600 {
+            if dx > 0 { evx.set(i, ICE_WRAITH_SPEED); } else { evx.set(i, 0 - ICE_WRAITH_SPEED); }
+            if dy > 0 { evy.set(i, ICE_WRAITH_SPEED / 2); } else { evy.set(i, 0 - ICE_WRAITH_SPEED / 2); }
+            if dx > 0 { edir.set(i, 1); } else { edir.set(i, -1); }
+        } else {
+            // Idle drift
+            var wave = etimer2.get(i) + dt; etimer2.set(i, wave);
+            if wave % 2000 < 1000 { evy.set(i, -40); } else { evy.set(i, 40); }
+            evx.set(i, 0);
+        }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+    }
+
+    // =========================================================================
+    // Stalactite Bat — hangs from ceiling, drops on player below
+    // =========================================================================
+    hide func updateStalactiteBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=hanging, 1=dropping, 2=respawn wait
+        var cx = ex.get(i) / 100;
+        if state == 0 {
+            // Check if player is directly below
+            var dx = playerPx - cx; if dx < 0 { dx = 0 - dx; }
+            if dx < 48 and playerPy > ey.get(i) / 100 {
+                etimer2.set(i, 1);
+                evy.set(i, STALACTITE_BAT_DROP_SPEED);
+            }
+        }
+        if state == 1 {
+            // Dropping fast
+            ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+            var tm = etimer.get(i) + dt;
+            etimer.set(i, tm);
+            if tm > 1500 { // Despawn after 1.5s
+                etimer2.set(i, 2); etimer.set(i, 0);
+            }
+        }
+        if state == 2 {
+            // Waiting to respawn
+            var tm = etimer.get(i) + dt;
+            etimer.set(i, tm);
+            if tm > 3000 { // Respawn after 3s
+                etimer2.set(i, 0); etimer.set(i, 0);
+                // Reset Y to original position (stored in initial spawn)
+            }
+        }
+    }
+
+    // =========================================================================
+    // Vine Whip — sweeps horizontally from wall, root weak point
+    // =========================================================================
     hide func updateVineWhip(i: Integer, dt: Integer) {
-        etimer.set(i, etimer.get(i) + dt);
-        if etimer.get(i) >= 1200 { etimer.set(i, 0); }
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+        // Animation cycle: retracted → extending → sweeping → retracting
+        var phase = tm % VINE_SWEEP_MS;
+        if phase < VINE_SWEEP_MS / 4 { eframe.set(i, 0); } // retracted
+        else if phase < VINE_SWEEP_MS / 2 { eframe.set(i, 1); } // extending
+        else if phase < VINE_SWEEP_MS * 3 / 4 { eframe.set(i, 2); } // sweeping (dangerous)
+        else { eframe.set(i, 3); } // retracting
     }
 
-    // Resonance Orb: pulse invulnerability cycle
-    hide func updateResonanceOrb(i: Integer, dt: Integer) {
-        etimer.set(i, etimer.get(i) + dt);
-        if etimer.get(i) >= 2400 { etimer.set(i, 0); }
-        // Invulnerable 75% of cycle, vulnerable 25%
-        if etimer.get(i) < 1800 {
-            estate.set(i, 6); // invulnerable
-        } else {
-            estate.set(i, 0); // vulnerable
+    // =========================================================================
+    // Moss Golem — slow, regenerates HP
+    // =========================================================================
+    hide func updateMossGolem(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
+        if adx < 400 { evx.set(i, edir.get(i) * MOSS_GOLEM_SPEED); }
+        else { evx.set(i, 0); }
+        // HP regeneration
+        var regen = etimer2.get(i) + dt;
+        if regen >= MOSS_GOLEM_REGEN_MS {
+            regen = 0;
+            var hp = ehp.get(i);
+            if hp < MOSS_GOLEM_HP { ehp.set(i, hp + 1); }
         }
+        etimer2.set(i, regen);
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, MOSS_GOLEM_W, MOSS_GOLEM_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        var hitWall = result.hitLeft or result.hitRight;
+        if hitWall { edir.set(i, 0 - edir.get(i)); }
+        var tm = etimer.get(i) + dt;
+        if tm >= 400 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
     }
 
-    // Moss Golem: regenerates HP
-    hide func updateMossGolem(i: Integer, dt: Integer) {
-        etimer.set(i, etimer.get(i) + dt);
-        if etimer.get(i) >= 960 {
-            etimer.set(i, 0);
-            var ent: Entity = entities.get(i);
-            var hp = ent.get_HP();
-            if hp < 8 { ent.set_HP(hp + 1); }
-        }
-    }
+    // =========================================================================
+    // Ruin Guardian — ground pound shockwave, attack tells
+    // =========================================================================
+    hide func updateRuinGuardian(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=idle, 1=windup, 2=pound, 3=recover
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        var adx = dx; if adx < 0 { adx = 0 - adx; }
 
-    // Bomb Carrier: blinks faster near player, explodes on contact/death
-    hide func updateBombCarrier(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var ex = ent.get_X() / 100;
-        var dx = px - ex;
-        if dx < 0 { dx = 0 - dx; }
-        // Blink rate based on proximity
-        if dx < 100 { etimer2.set(i, 100); }
-        else if dx < 200 { etimer2.set(i, 200); }
-        else { etimer2.set(i, 400); }
-    }
-
-    // ─── Boss updates ──────────────────────────────────────────
-
-    hide func getBossPhase(currentHp: Integer, maxHp: Integer) -> Integer {
-        if currentHp > maxHp * 2 / 3 { return 0; }
-        if currentHp > maxHp / 3 { return 1; }
-        return 2;
-    }
-
-    hide func updateGenericBoss(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        bossPhase = getBossPhase(ent.get_HP(), BOSS_HP);
-        etimer.set(i, etimer.get(i) + dt);
-        var interval = 2400 - bossPhase * 600;
-        if etimer.get(i) >= interval {
-            etimer.set(i, 0);
-            fireEnemyBullet(ent.get_X()/100, ent.get_Y()/100, px, py);
-        }
-        // Chase player
-        if px > ent.get_X()/100 { ent.set_VX(BOSS_SPEED); }
-        else { ent.set_VX(0 - BOSS_SPEED); }
-    }
-
-    hide func updateSporeMother(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        bossPhase = getBossPhase(ent.get_HP(), SPORE_MOTHER_HP);
-        etimer.set(i, etimer.get(i) + dt);
-
-        if bossPhase == 0 {
-            // Slow patrol, spawn sporewalkers
-            if etimer.get(i) >= 3000 {
-                etimer.set(i, 0);
-                spawnEnemy(EnemyType.Sporewalker, ent.get_X()/100 + 32, ent.get_Y()/100);
+        if state == 0 {
+            // Walk toward player
+            if adx < 400 and adx > 100 {
+                evx.set(i, edir.get(i) * RUIN_GUARDIAN_SPEED);
+            } else if adx <= 100 {
+                // Close enough — start pound windup
+                etimer2.set(i, 1); etimer.set(i, 0); evx.set(i, 0);
+            } else {
+                evx.set(i, 0);
             }
-        } else if bossPhase == 1 {
-            // Rain spores downward
-            if etimer.get(i) >= 1500 {
-                etimer.set(i, 0);
-                var bx = ent.get_X() / 100;
-                var by = ent.get_Y() / 100 + 48;
-                fireEnemyBulletDir(bx - 30, by, -1, 3);
-                fireEnemyBulletDir(bx, by, 0, 3);
-                fireEnemyBulletDir(bx + 30, by, 1, 3);
-            }
-        } else {
-            // Exposed core, 2x speed
-            ent.set_VX(ent.get_Dir() * 120);
+            eframe.set(i, 0);
+        }
+        if state == 1 {
+            evx.set(i, 0); eframe.set(i, 1); // Windup pose
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            if tm >= 600 { etimer2.set(i, 2); etimer.set(i, 0); }
+        }
+        if state == 2 {
+            eframe.set(i, 2); // Pound frame
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            if tm >= 200 { etimer2.set(i, 3); etimer.set(i, 0); }
+        }
+        if state == 3 {
+            eframe.set(i, 0);
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            if tm >= RUIN_GUARDIAN_POUND_MS { etimer2.set(i, 0); etimer.set(i, 0); }
+        }
+
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, RUIN_GUARDIAN_W, RUIN_GUARDIAN_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+    }
+
+    // =========================================================================
+    // Shadow Clone — mirrors player movement with 2s delay
+    // =========================================================================
+    hide func updateShadowClone(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        // Simple: drift toward where player was 2 seconds ago
+        // We approximate by slowly moving toward current player position
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var dy = playerPy - cy;
+        var speed = 100; // Slow chase (x100)
+        if dx > 0 { evx.set(i, speed); } else if dx < 0 { evx.set(i, 0 - speed); } else { evx.set(i, 0); }
+        if dy > 0 { evy.set(i, speed); } else if dy < 0 { evy.set(i, 0 - speed); } else { evy.set(i, 0); }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+        // Flicker animation
+        var tm = etimer.get(i) + dt;
+        if tm >= 300 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
+    }
+
+    // =========================================================================
+    // Corruption Tendril — rises from ground, grab attack
+    // =========================================================================
+    hide func updateCorruption(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var state = etimer2.get(i); // 0=hidden, 1=rising, 2=grabbing, 3=retracting
+        var cx = ex.get(i) / 100;
+        if state == 0 {
+            var dx = playerPx - cx; if dx < 0 { dx = 0 - dx; }
+            if dx < 64 { etimer2.set(i, 1); etimer.set(i, 0); }
+            eframe.set(i, 0);
+        }
+        if state == 1 {
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            eframe.set(i, 1); // Rising
+            if tm >= 400 { etimer2.set(i, 2); etimer.set(i, 0); }
+        }
+        if state == 2 {
+            eframe.set(i, 2); // Fully extended (dangerous)
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            if tm >= CORRUPTION_GRAB_MS { etimer2.set(i, 3); etimer.set(i, 0); }
+        }
+        if state == 3 {
+            eframe.set(i, 3); // Retracting
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            if tm >= 600 { etimer2.set(i, 0); etimer.set(i, 0); }
         }
     }
 
-    hide func updateCrystalWyrm(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        bossPhase = getBossPhase(ent.get_HP(), CRYSTAL_WYRM_HP);
-        var st = estate.get(i);
+    // =========================================================================
+    // Patrol Drone — follows set path, fires when player in LOS
+    // =========================================================================
+    hide func updatePatrolDrone(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var tm = etimer.get(i) + dt;
+        if tm >= 150 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
+        // Hover patrol (sine wave vertical, constant horizontal)
+        var wave = etimer2.get(i) + dt; etimer2.set(i, wave);
+        if wave % 2400 < 1200 { evx.set(i, PATROL_DRONE_SPEED); edir.set(i, 1); }
+        else { evx.set(i, 0 - PATROL_DRONE_SPEED); edir.set(i, -1); }
+        if wave % 1200 < 600 { evy.set(i, -40); } else { evy.set(i, 40); }
+        ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+        ey.set(i, ey.get(i) + evy.get(i) * dt / DT_BASE);
+        // Fire at player when in range
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx; var adx = dx; if adx < 0 { adx = 0 - adx; }
+        var dy = playerPy - cy; var ady = dy; if ady < 0 { ady = 0 - ady; }
+        if adx < PATROL_DRONE_RANGE and ady < 100 {
+            var shoot = wave % PATROL_DRONE_FIRE_MS;
+            if shoot < dt {
+                var bdir = edir.get(i);
+                spawnEnemyBullet(cx + PATROL_DRONE_W / 2, cy + PATROL_DRONE_H / 2, bdir * 5, 0);
+            }
+        }
+    }
 
-        // Surface chase → burrow → emerge with shards
-        if st == 0 {
+    // =========================================================================
+    // Bomb Carrier — walks toward player, explodes on contact or death
+    // =========================================================================
+    hide func updateBombCarrier(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        // Walk toward player
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { evx.set(i, BOMB_CARRIER_SPEED); edir.set(i, 1); }
+        else { evx.set(i, 0 - BOMB_CARRIER_SPEED); edir.set(i, -1); }
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, BOMB_CARRIER_W, BOMB_CARRIER_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        // Blinking animation (faster as closer to player)
+        var tm = etimer.get(i) + dt;
+        var adx2 = dx; if adx2 < 0 { adx2 = 0 - adx2; }
+        var blinkRate = 400;
+        if adx2 < 200 { blinkRate = 100; }
+        else if adx2 < 400 { blinkRate = 200; }
+        if tm >= blinkRate { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
+        etimer.set(i, tm);
+    }
+
+    // =========================================================================
+    // Spore Mother — Mini-boss: 3 phases (spawn, rain, core)
+    // =========================================================================
+    hide func updateSporeMother(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        if estate.get(i) == 1 {
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
+            evy.set(i, curVy);
+            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            return;
+        }
+        var hp = ehp.get(i);
+        var phase = 0;
+        if hp > SPORE_MOTHER_HP * 2 / 3 { phase = 0; }
+        else if hp > SPORE_MOTHER_HP / 3 { phase = 1; }
+        else { phase = 2; }
+        bossPhase = phase;
+        eframe.set(i, phase);
+
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+
+        // Slow movement
+        evx.set(i, edir.get(i) * SPORE_MOTHER_SPEED);
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+
+        var tm = etimer.get(i) + dt; etimer.set(i, tm);
+        if phase == 0 {
+            if tm >= 3000 { etimer.set(i, 0);
+                // Spawn sporewalker
+                spawnEnemyBullet(cx + 48, cy + 80, edir.get(i) * 2, 0);
+            }
+        }
+        if phase == 1 {
+            if tm >= 1500 { etimer.set(i, 0);
+                // Rain spores
+                spawnEnemyBullet(cx + 20, cy, 0, 4);
+                spawnEnemyBullet(cx + 48, cy, -1, 4);
+                spawnEnemyBullet(cx + 76, cy, 1, 4);
+            }
+        }
+        // Phase 2: core exposed — just moves faster
+        if phase == 2 {
+            evx.set(i, edir.get(i) * SPORE_MOTHER_SPEED * 2);
+        }
+
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, SPORE_MOTHER_W, SPORE_MOTHER_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        var hitLeft = result.hitLeft;
+        var hitRight = result.hitRight;
+        if hitLeft { edir.set(i, 1); } if hitRight { edir.set(i, -1); }
+    }
+
+    // =========================================================================
+    // Crystal Wyrm — Mini-boss: burrow/emerge cycle
+    // =========================================================================
+    hide func updateCrystalWyrm(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        if estate.get(i) == 1 {
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            evy.set(i, curVy);
+            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            return;
+        }
+        var hp = ehp.get(i);
+        var phase = 0;
+        if hp > CRYSTAL_WYRM_HP * 2 / 3 { phase = 0; }
+        else if hp > CRYSTAL_WYRM_HP / 3 { phase = 1; }
+        else { phase = 2; }
+        bossPhase = phase;
+
+        var state = etimer2.get(i); // 0=surface, 1=burrowing, 2=emerging
+        var cx = ex.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+
+        if state == 0 {
             // Surface — chase player
-            if px > ent.get_X()/100 { ent.set_VX(250); }
-            else { ent.set_VX(-250); }
-            etimer.set(i, etimer.get(i) + dt);
-            var surfaceTime = 4000 - bossPhase * 1000;
-            if etimer.get(i) >= surfaceTime {
-                estate.set(i, 7); // burrow
-                etimer.set(i, 1200);
-                ent.set_Active(false);
+            evx.set(i, edir.get(i) * CRYSTAL_WYRM_SPEED);
+            eframe.set(i, 0);
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            var burrowInterval = 4000;
+            if phase == 1 { burrowInterval = 3000; }
+            if phase == 2 { burrowInterval = 2000; }
+            if tm >= burrowInterval {
+                etimer2.set(i, 1); etimer.set(i, 0);
+                eframe.set(i, 1); // Burrow animation
             }
         }
-        if st == 7 {
-            // Burrowed — teleport toward player
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 {
-                ent.set_X(px * 100);
-                ent.set_Active(true);
-                estate.set(i, 8); // emerge
-                etimer.set(i, 800);
-                // Fire crystal shards
-                fireEnemyBulletDir(px - 30, ent.get_Y()/100, -5, -3);
-                fireEnemyBulletDir(px, ent.get_Y()/100, 0, -6);
-                fireEnemyBulletDir(px + 30, ent.get_Y()/100, 5, -3);
+        if state == 1 {
+            // Burrowing — move underground toward player quickly
+            evx.set(i, 0); evy.set(i, 0);
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            eframe.set(i, 1);
+            if tm >= 1200 {
+                // Emerge at player X position
+                ex.set(i, playerPx * 100);
+                etimer2.set(i, 2); etimer.set(i, 0);
             }
         }
-        if st == 8 {
-            etimer.set(i, etimer.get(i) - dt);
-            if etimer.get(i) <= 0 { estate.set(i, 0); etimer.set(i, 0); }
+        if state == 2 {
+            // Emerging — brief vulnerability
+            eframe.set(i, 2);
+            var tm = etimer.get(i) + dt; etimer.set(i, tm);
+            // Fire shards on emerge
+            if tm == dt { // First frame of emerge
+                spawnEnemyBullet(cx, ey.get(i) / 100, -5, -3);
+                spawnEnemyBullet(cx, ey.get(i) / 100, 5, -3);
+                spawnEnemyBullet(cx, ey.get(i) / 100, 0, -6);
+            }
+            if tm >= 800 { etimer2.set(i, 0); etimer.set(i, 0); }
+        }
+
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, CRYSTAL_WYRM_W, CRYSTAL_WYRM_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        var hitWall = result.hitLeft or result.hitRight;
+        if hitWall { edir.set(i, 0 - edir.get(i)); }
+    }
+
+    // =========================================================================
+    // Magma Core — Major boss: lava waves, stalactite drops, eye
+    // =========================================================================
+    hide func updateMagmaCoreBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        if estate.get(i) == 1 { return; } // Stationary boss, no gravity during hurt
+        var hp = ehp.get(i);
+        var phase = 0;
+        if hp > MAGMA_CORE_HP * 2 / 3 { phase = 0; }
+        else if hp > MAGMA_CORE_HP / 3 { phase = 1; }
+        else { phase = 2; }
+        bossPhase = phase;
+        eframe.set(i, phase);
+
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var tm = etimer.get(i) + dt; etimer.set(i, tm);
+
+        if phase == 0 {
+            // Lava waves — periodic floor hazard bullets
+            if tm >= 3000 { etimer.set(i, 0);
+                spawnEnemyBullet(cx - 60, cy + 80, -4, 0);
+                spawnEnemyBullet(cx + 60, cy + 80, 4, 0);
+            }
+        }
+        if phase == 1 {
+            // Stalactite drops + lava waves
+            if tm >= 2000 { etimer.set(i, 0);
+                spawnEnemyBullet(playerPx, cy - 200, 0, 8); // Drop from above
+                spawnEnemyBullet(cx - 40, cy + 80, -5, 0);
+                spawnEnemyBullet(cx + 40, cy + 80, 5, 0);
+            }
+        }
+        if phase == 2 {
+            // Eye open — rapid fire
+            if tm >= 1000 { etimer.set(i, 0);
+                var d = 1; if playerPx < cx { d = -1; }
+                spawnEnemyBullet(cx, cy + 30, d * 7, 0);
+                spawnEnemyBullet(cx, cy + 30, d * 6, -3);
+                spawnEnemyBullet(cx, cy + 30, d * 6, 3);
+            }
         }
     }
 
-    hide func updateMagmaCore(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        bossPhase = getBossPhase(ent.get_HP(), MAGMA_CORE_HP);
-        etimer.set(i, etimer.get(i) + dt);
+    // =========================================================================
+    // The Architect — Final boss: 4 phases
+    // =========================================================================
+    hide func updateArchitect(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
+        if estate.get(i) == 1 {
+            var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            evy.set(i, curVy);
+            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            return;
+        }
+        var hp = ehp.get(i);
+        var phase = 0;
+        if hp > ARCHITECT_HP * 3 / 4 { phase = 0; }
+        else if hp > ARCHITECT_HP / 2 { phase = 1; }
+        else if hp > ARCHITECT_HP / 4 { phase = 2; }
+        else { phase = 3; }
+        bossPhase = phase;
+        eframe.set(i, phase);
 
-        if bossPhase == 0 {
-            // Lava waves from sides
-            if etimer.get(i) >= 3000 {
-                etimer.set(i, 0);
-                var by = ent.get_Y() / 100 + 40;
-                fireEnemyBulletDir(ent.get_X()/100 - 60, by, -4, 0);
-                fireEnemyBulletDir(ent.get_X()/100 + 60, by, 4, 0);
+        var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
+        var dx = playerPx - cx;
+        if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
+        var tm = etimer.get(i) + dt; etimer.set(i, tm);
+
+        if phase == 0 {
+            // Teleport + single shots
+            evx.set(i, edir.get(i) * ARCHITECT_SPEED);
+            if tm >= 2400 { etimer.set(i, 0);
+                spawnEnemyBullet(cx + 48, cy + 50, edir.get(i) * 8, 0);
             }
-        } else if bossPhase == 1 {
-            // Lava waves + stalactite drops
-            if etimer.get(i) >= 2000 {
-                etimer.set(i, 0);
-                var by = ent.get_Y() / 100;
-                fireEnemyBulletDir(ent.get_X()/100 - 60, by, -4, 0);
-                fireEnemyBulletDir(ent.get_X()/100 + 60, by, 4, 0);
-                fireEnemyBulletDir(px, 0, 0, 5); // stalactite from ceiling
+        }
+        if phase == 1 {
+            // Faster + dual shots
+            evx.set(i, edir.get(i) * ARCHITECT_SPEED * 3 / 2);
+            if tm >= 1600 { etimer.set(i, 0);
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + 48, cy + 40, d * 9, -2);
+                spawnEnemyBullet(cx + 48, cy + 60, d * 9, 2);
             }
-        } else {
-            // Eye open, rapid fire at player
-            if etimer.get(i) >= 1000 {
-                etimer.set(i, 0);
-                fireEnemyBullet(ent.get_X()/100, ent.get_Y()/100, px, py);
-                fireEnemyBulletDir(ent.get_X()/100, ent.get_Y()/100 - 20, 0, -8);
+        }
+        if phase == 2 {
+            // Charge + triple shots
+            var adx = dx; if adx < 0 { adx = 0 - adx; }
+            if adx > 200 { evx.set(i, edir.get(i) * ARCHITECT_SPEED * 2); }
+            else { evx.set(i, 0); }
+            if tm >= 1200 { etimer.set(i, 0);
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + 48, cy + 30, d * 10, -4);
+                spawnEnemyBullet(cx + 48, cy + 50, d * 10, 0);
+                spawnEnemyBullet(cx + 48, cy + 70, d * 10, 4);
             }
+            var jt = etimer2.get(i) + dt;
+            if jt >= 2400 { jt = 0; evy.set(i, -1200); }
+            etimer2.set(i, jt);
+        }
+        if phase == 3 {
+            // Berserk — all attacks
+            evx.set(i, edir.get(i) * ARCHITECT_SPEED * 2);
+            if tm >= 800 { etimer.set(i, 0);
+                var d = edir.get(i);
+                spawnEnemyBullet(cx + 48, cy + 30, d * 11, -5);
+                spawnEnemyBullet(cx + 48, cy + 50, d * 11, 0);
+                spawnEnemyBullet(cx + 48, cy + 70, d * 11, 5);
+                spawnEnemyBullet(cx, cy, 0, -8); // Upward burst
+            }
+            var jt = etimer2.get(i) + dt;
+            if jt >= 1600 { jt = 0; evy.set(i, -1400); }
+            etimer2.set(i, jt);
+        }
+
+        var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+        if curVy > MAX_FALL { curVy = MAX_FALL; }
+        evy.set(i, curVy);
+        var dispX = evx.get(i) * dt / DT_BASE;
+        var dispY = curVy * dt / DT_BASE;
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, ARCHITECT_W, ARCHITECT_H, level);
+        ex.set(i, result.x); ey.set(i, result.y);
+        if result.hitFloor { evy.set(i, 0); }
+        var hitWall = result.hitLeft or result.hitRight;
+        if hitWall { edir.set(i, 0 - edir.get(i)); }
+    }
+
+    // =========================================================================
+    // Enemy bullets
+    // =========================================================================
+
+    hide func spawnEnemyBullet(bx2: Integer, by2: Integer, vx2: Integer, vy2: Integer) {
+        // Reuse inactive slot
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 0 {
+                ebx.set(i, bx2);
+                eby.set(i, by2);
+                ebvx.set(i, vx2);
+                ebvy.set(i, vy2);
+                ebactive.set(i, 1);
+                return;
+            }
+            i = i + 1;
+        }
+
+        // Add new
+        ebx.add(bx2);
+        eby.add(by2);
+        ebvx.add(vx2);
+        ebvy.add(vy2);
+        ebactive.add(1);
+        ebCount = ebCount + 1;
+    }
+
+    hide func updateEnemyBullets(level: Level, dt: Integer, particles: ParticleSystem) {
+        // Trail timer for enemy bullets
+        ebTrailTimer = ebTrailTimer + dt;
+        var emitTrail = false;
+        if ebTrailTimer >= 48 {
+            ebTrailTimer = ebTrailTimer - 48;
+            emitTrail = true;
+        }
+
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var bx2 = ebx.get(i) + ebvx.get(i) * dt / DT_BASE;
+                var by2 = eby.get(i) + ebvy.get(i) * dt / DT_BASE;
+                ebx.set(i, bx2);
+                eby.set(i, by2);
+
+                // Emit red trail for enemy bullets
+                if emitTrail {
+                    particles.burstTrail(bx2, by2, COL_ENEMY_BULLET);
+                }
+
+                // Deactivate if off screen or hitting solid
+                var tileX = bx2 / TILE_SIZE;
+                var tileY = by2 / TILE_SIZE;
+                if level.isSolid(tileX, tileY) {
+                    ebactive.set(i, 0);
+                }
+                if bx2 < -20 { ebactive.set(i, 0); }
+                if bx2 > level.levelWidth * TILE_SIZE + 20 {
+                    ebactive.set(i, 0);
+                }
+                if by2 < -20 { ebactive.set(i, 0); }
+                if by2 > level.levelHeight * TILE_SIZE + 20 {
+                    ebactive.set(i, 0);
+                }
+            }
+            i = i + 1;
         }
     }
 
-    hide func updateArchitect(i: Integer, px: Integer, py: Integer, dt: Integer) {
-        var ent: Entity = entities.get(i);
-        var hp = ent.get_HP();
-        if hp > 60 { bossPhase = 0; }
-        else if hp > 40 { bossPhase = 1; }
-        else if hp > 20 { bossPhase = 2; }
-        else { bossPhase = 3; }
+    // =========================================================================
+    // Damage / collision
+    // =========================================================================
 
-        etimer.set(i, etimer.get(i) + dt);
+    expose func damageEnemy(i: Integer, amount: Integer) {
+        if i < 0 { return; }
+        if pool.IsActive(i) == false { return; }
 
-        // Chase player with increasing speed
-        var speed = 200 + bossPhase * 50;
-        if px > ent.get_X()/100 { ent.set_VX(speed); }
-        else { ent.set_VX(0 - speed); }
+        var t = etype.get(i);
 
-        // Shoot with increasing frequency
-        var interval = 2400 - bossPhase * 400;
-        if etimer.get(i) >= interval {
-            etimer.set(i, 0);
-            var bx = ent.get_X() / 100;
-            var by = ent.get_Y() / 100;
-            fireEnemyBullet(bx, by, px, py);
-            if bossPhase >= 1 {
-                fireEnemyBulletDir(bx, by, 9, 2);
-                fireEnemyBulletDir(bx, by, 9, -2);
-            }
-            if bossPhase >= 3 {
-                fireEnemyBulletDir(bx, by, 0, -8);
-            }
+        // Crystal Golem frontal shield check
+        // (damage from front is halved unless from behind)
+        // For simplicity, projectiles always do full damage — stomp hits from above
+
+        // Resonance Orb invulnerability when closed
+        if t == ENEMY_RESONANCE_ORB and eframe.get(i) == 0 {
+            return; // Invulnerable when closed
         }
 
-        // Jump periodically
-        etimer2.set(i, etimer2.get(i) + dt);
-        var jumpInterval = 2400 - bossPhase * 200;
-        if etimer2.get(i) >= jumpInterval and ent.get_OnGround() {
-            etimer2.set(i, 0);
-            var jumpForce = -1200 - bossPhase * 50;
-            ent.set_VY(jumpForce);
-        }
-    }
+        // Mirror Slime reflects bullets (damage only from stomps)
+        // This is handled by the collision check in game.zia
 
-    // ─── Damage & collision ────────────────────────────────────
+        var hp = ehp.get(i) - amount;
+        ehp.set(i, hp);
+        estate.set(i, 1);
+        etimer.set(i, HURT_TIMER_MS);
 
-    expose func damageEnemy(handle: Integer, amount: Integer) {
-        if estate.get(handle) == 6 { return; } // invulnerable (resonance orb)
-        var ent: Entity = entities.get(handle);
-        var hp = ent.get_HP() - amount;
-        ent.set_HP(hp);
         if hp <= 0 {
-            estate.set(handle, 2); // dead
-            pool.Release(handle);
-            if handle == bossIndex { bossIndex = -1; }
-        } else {
-            estate.set(handle, 1); // hurt
-            etimer.set(handle, 200);
+            pool.Release(i);
+            estate.set(i, 2);
+            clearBulletsNear(ex.get(i) / 100, ey.get(i) / 100);
         }
     }
 
-    // Check player-enemy collision using Entity.Overlaps
-    expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
-        var playerEnt = Entity.New(px * 100, py * 100, PLAYER_W, PLAYER_H);
-        var i = pool.FirstActive();
-        while i >= 0 {
-            var next = pool.NextActive(i);
-            if estate.get(i) != 2 {
-                var ei: Entity = entities.get(i);
-                if ei.Overlaps(playerEnt) {
-                    return i;
-                }
-            }
-            i = next;
-        }
-        return -1;
+    // Get the death effect type for a killed enemy (for particle dispatching)
+    expose func getDeathEffectType(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        var t = etype.get(i);
+        if t == ENEMY_SPOREWALKER { return 1; } // Poison cloud
+        if t == ENEMY_CRYSTAL_GOLEM { return 2; } // Crystal shatter
+        if t == ENEMY_SHARD_BAT { return 2; } // Crystal shatter
+        if t == ENEMY_RESONANCE_ORB { return 2; } // Crystal shatter
+        if t == ENEMY_MIRROR_SLIME { return 2; } // Crystal shatter
+        if t == ENEMY_CRYSTAL_WYRM { return 2; } // Crystal shatter
+        if t == ENEMY_MAGMA_SLUG { return 3; } // Lava splash
+        if t == ENEMY_EMBER_WASP { return 3; } // Lava splash
+        if t == ENEMY_FORGE_SENTINEL { return 3; } // Lava splash
+        if t == ENEMY_MAGMA_CORE { return 3; } // Lava splash
+        if t == ENEMY_ICE_WRAITH { return 4; } // Frost shatter
+        if t == ENEMY_FROST_BEETLE { return 4; } // Frost shatter
+        if t == ENEMY_STALACTITE_BAT { return 4; } // Frost shatter
+        if t == ENEMY_SHADOW_CLONE { return 5; } // Corruption wisps
+        if t == ENEMY_CORRUPTION { return 5; } // Corruption wisps
+        if t == ENEMY_ARCHITECT { return 5; } // Corruption wisps
+        if t == ENEMY_BOMB_CARRIER { return 6; } // Explosion
+        return 0; // Default: normal death burst
     }
 
-    // Check bullet-enemy collision
-    expose func checkBulletHit(bx: Integer, by: Integer, bw: Integer, bh: Integer) -> Integer {
-        var bulletEnt = Entity.New(bx * 100, by * 100, bw, bh);
-        var i = pool.FirstActive();
-        while i >= 0 {
-            var next = pool.NextActive(i);
-            if estate.get(i) != 2 {
-                var ei: Entity = entities.get(i);
-                if ei.Overlaps(bulletEnt) {
-                    return i;
-                }
-            }
-            i = next;
-        }
-        return -1;
+    // Get the score value for killing an enemy
+    expose func getEnemyScore(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return ENEMY_SCORE; }
+        var t = etype.get(i);
+        // Regular enemies
+        if t == ENEMY_SLIME { return 100; }
+        if t == ENEMY_BAT { return 150; }
+        if t == ENEMY_TURRET { return 200; }
+        if t == ENEMY_SPOREWALKER { return 120; }
+        if t == ENEMY_GLOWMOTH { return 100; }
+        if t == ENEMY_FUNGAL_TURRET { return 200; }
+        if t == ENEMY_MYCELIUM { return 180; }
+        if t == ENEMY_CRYSTAL_GOLEM { return 300; }
+        if t == ENEMY_SHARD_BAT { return 180; }
+        if t == ENEMY_RESONANCE_ORB { return 250; }
+        if t == ENEMY_MIRROR_SLIME { return 200; }
+        if t == ENEMY_MAGMA_SLUG { return 150; }
+        if t == ENEMY_EMBER_WASP { return 80; }
+        if t == ENEMY_FORGE_SENTINEL { return 350; }
+        if t == ENEMY_ICE_WRAITH { return 250; }
+        if t == ENEMY_FROST_BEETLE { return 220; }
+        if t == ENEMY_STALACTITE_BAT { return 100; }
+        if t == ENEMY_VINE_WHIP { return 150; }
+        if t == ENEMY_MOSS_GOLEM { return 400; }
+        if t == ENEMY_RUIN_GUARDIAN { return 350; }
+        if t == ENEMY_SHADOW_CLONE { return 200; }
+        if t == ENEMY_CORRUPTION { return 250; }
+        if t == ENEMY_PATROL_DRONE { return 180; }
+        if t == ENEMY_BOMB_CARRIER { return 120; }
+        // Bosses
+        if t == ENEMY_SPORE_MOTHER { return 2000; }
+        if t == ENEMY_CRYSTAL_WYRM { return 3000; }
+        if t == ENEMY_MAGMA_CORE { return 4000; }
+        if t == ENEMY_ARCHITECT { return 10000; }
+        if t == ENEMY_BOSS { return 5000; }
+        return ENEMY_SCORE;
     }
 
-    // Check enemy bullet vs player (uses PLAYER_W/H from config)
-    expose func checkEnemyBulletHit(px: Integer, py: Integer) -> Boolean {
-        var pw = PLAYER_W;
-        var ph = PLAYER_H;
-        var j = 0;
-        while j < ebx.length() {
-            if ebactive.get(j) == 1 {
-                var dx = ebx.get(j) - px;
-                var dy = eby.get(j) - py;
+    // Check if this enemy type is a boss
+    expose func isEnemyBoss(i: Integer) -> Boolean {
+        if i < 0 or pool.IsActive(i) == false { return false; }
+        var t = etype.get(i);
+        if t == ENEMY_BOSS { return true; }
+        if t == ENEMY_SPORE_MOTHER { return true; }
+        if t == ENEMY_CRYSTAL_WYRM { return true; }
+        if t == ENEMY_MAGMA_CORE { return true; }
+        if t == ENEMY_ARCHITECT { return true; }
+        return false;
+    }
+
+    // Get enemy contact damage amount
+    expose func getContactDamage(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 1; }
+        var t = etype.get(i);
+        if t == ENEMY_SPORE_MOTHER { return 2; }
+        if t == ENEMY_CRYSTAL_WYRM { return 2; }
+        if t == ENEMY_MAGMA_CORE { return 3; }
+        if t == ENEMY_ARCHITECT { return 2; }
+        if t == ENEMY_FORGE_SENTINEL { return 2; }
+        if t == ENEMY_RUIN_GUARDIAN { return 2; }
+        if t == ENEMY_CRYSTAL_GOLEM { return 2; }
+        if t == ENEMY_BOMB_CARRIER { return 3; } // Explosion damage
+        return 1;
+    }
+
+    // Is this enemy immune to projectiles? (must stomp or use environment)
+    expose func isProjectileImmune(i: Integer) -> Boolean {
+        if i < 0 or pool.IsActive(i) == false { return false; }
+        var t = etype.get(i);
+        if t == ENEMY_MIRROR_SLIME { return true; }
+        if t == ENEMY_PISTON_TRAP { return true; }
+        return false;
+    }
+
+    // Get position of enemy (for particle effects, death handling)
+    expose func getEnemyPixelX(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        return ex.get(i) / 100;
+    }
+    expose func getEnemyPixelY(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        return ey.get(i) / 100;
+    }
+
+    hide func clearBulletsNear(cx: Integer, cy: Integer) {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var dx = ebx.get(i) - cx;
+                var dy = eby.get(i) - cy;
                 if dx < 0 { dx = 0 - dx; }
                 if dy < 0 { dy = 0 - dy; }
-                if dx < pw and dy < ph {
-                    ebactive.set(j, 0);
+                if dx < TILE_SIZE * 4 {
+                    if dy < TILE_SIZE * 4 {
+                        ebactive.set(i, 0);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Check if player overlaps any active enemy. Returns enemy handle or -1.
+    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
+    expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
+        var found = qtree.QueryRect(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
+        var qi = 0;
+        while qi < found {
+            var handle = qtree.GetResult(qi);
+            if pool.IsActive(handle) {
+                return handle;
+            }
+            qi = qi + 1;
+        }
+        return -1;
+    }
+
+    // Check if enemy bullet overlaps player. Returns true if hit.
+    expose func checkEnemyBulletHit(px: Integer, py: Integer) -> Boolean {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                if phys.rectOverlapPx(px, py, PLAYER_W, PLAYER_H,
+                                      ebx.get(i), eby.get(i), 9, 9) {
+                    ebactive.set(i, 0);
                     return true;
                 }
             }
-            j = j + 1;
+            i = i + 1;
         }
         return false;
     }
 
-    // ─── Enemy bullets ─────────────────────────────────────────
-
-    hide func fireEnemyBullet(fromX: Integer, fromY: Integer, toX: Integer, toY: Integer) {
-        var dx = toX - fromX;
-        var dy = toY - fromY;
-        // Approximate normalization: scale by speed / max(|dx|,|dy|)
-        var adx = dx; if adx < 0 { adx = 0 - adx; }
-        var ady = dy; if ady < 0 { ady = 0 - ady; }
-        var maxd = adx; if ady > maxd { maxd = ady; }
-        if maxd < 1 { maxd = 1; }
-        var speed = 5;
-        var bvx = dx * speed / maxd;
-        var bvy = dy * speed / maxd;
-        fireEnemyBulletDir(fromX, fromY, bvx, bvy);
-    }
-
-    hide func fireEnemyBulletDir(fx: Integer, fy: Integer, vx: Integer, vy: Integer) {
-        ebx.add(fx); eby.add(fy);
-        ebvx.add(vx); ebvy.add(vy);
-        ebactive.add(1);
-    }
-
-    hide func updateEnemyBullets(tilemap: Tilemap, dt: Integer) {
-        var j = 0;
-        while j < ebx.length() {
-            if ebactive.get(j) == 1 {
-                ebx.set(j, ebx.get(j) + ebvx.get(j) * dt / DT_BASE);
-                eby.set(j, eby.get(j) + ebvy.get(j) * dt / DT_BASE);
-                // Deactivate if off-screen or hitting solid
-                var tx = ebx.get(j) / TILE_SIZE;
-                var ty = eby.get(j) / TILE_SIZE;
-                if tilemap.IsSolidAt(ebx.get(j), eby.get(j)) { ebactive.set(j, 0); }
-                if ebx.get(j) < -50 or ebx.get(j) > 10000 { ebactive.set(j, 0); }
-                if eby.get(j) < -50 or eby.get(j) > 2000 { ebactive.set(j, 0); }
+    // Check if player bullet overlaps any enemy. Returns enemy handle or -1.
+    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
+    expose func checkBulletHit(bx2: Integer, by2: Integer, bw: Integer, bh: Integer) -> Integer {
+        var found = qtree.QueryRect(bx2 + bw / 2, by2 + bh / 2, bw, bh);
+        var qi = 0;
+        while qi < found {
+            var handle = qtree.GetResult(qi);
+            if pool.IsActive(handle) {
+                return handle;
             }
-            j = j + 1;
+            qi = qi + 1;
         }
+        return -1;
     }
 
-    // ─── Drawing ───────────────────────────────────────────────
+    hide func getEnemyW(t: Integer) -> Integer {
+        if t == ENEMY_SLIME { return SLIME_W; }
+        if t == ENEMY_BAT { return BAT_W; }
+        if t == ENEMY_TURRET { return TURRET_W; }
+        if t == ENEMY_BOSS { return BOSS_W; }
+        if t == ENEMY_SPOREWALKER { return SPOREWALKER_W; }
+        if t == ENEMY_GLOWMOTH { return GLOWMOTH_W; }
+        if t == ENEMY_FUNGAL_TURRET { return FUNGAL_TURRET_W; }
+        if t == ENEMY_MYCELIUM { return MYCELIUM_W; }
+        if t == ENEMY_SPORE_MOTHER { return SPORE_MOTHER_W; }
+        if t == ENEMY_CRYSTAL_GOLEM { return CRYSTAL_GOLEM_W; }
+        if t == ENEMY_SHARD_BAT { return SHARD_BAT_W; }
+        if t == ENEMY_RESONANCE_ORB { return RESONANCE_ORB_W; }
+        if t == ENEMY_MIRROR_SLIME { return MIRROR_SLIME_W; }
+        if t == ENEMY_CRYSTAL_WYRM { return CRYSTAL_WYRM_W; }
+        if t == ENEMY_MAGMA_SLUG { return MAGMA_SLUG_W; }
+        if t == ENEMY_EMBER_WASP { return EMBER_WASP_W; }
+        if t == ENEMY_FORGE_SENTINEL { return FORGE_SENTINEL_W; }
+        if t == ENEMY_PISTON_TRAP { return PISTON_TRAP_W; }
+        if t == ENEMY_MAGMA_CORE { return MAGMA_CORE_W; }
+        if t == ENEMY_ICE_WRAITH { return ICE_WRAITH_W; }
+        if t == ENEMY_FROST_BEETLE { return FROST_BEETLE_W; }
+        if t == ENEMY_STALACTITE_BAT { return STALACTITE_BAT_W; }
+        if t == ENEMY_VINE_WHIP { return VINE_WHIP_W; }
+        if t == ENEMY_MOSS_GOLEM { return MOSS_GOLEM_W; }
+        if t == ENEMY_RUIN_GUARDIAN { return RUIN_GUARDIAN_W; }
+        if t == ENEMY_SHADOW_CLONE { return SHADOW_CLONE_W; }
+        if t == ENEMY_CORRUPTION { return CORRUPTION_W; }
+        if t == ENEMY_ARCHITECT { return ARCHITECT_W; }
+        if t == ENEMY_PATROL_DRONE { return PATROL_DRONE_W; }
+        if t == ENEMY_BOMB_CARRIER { return BOMB_CARRIER_W; }
+        return 36;
+    }
+
+    hide func getEnemyH(t: Integer) -> Integer {
+        if t == ENEMY_SLIME { return SLIME_H; }
+        if t == ENEMY_BAT { return BAT_H; }
+        if t == ENEMY_TURRET { return TURRET_H; }
+        if t == ENEMY_BOSS { return BOSS_H; }
+        if t == ENEMY_SPOREWALKER { return SPOREWALKER_H; }
+        if t == ENEMY_GLOWMOTH { return GLOWMOTH_H; }
+        if t == ENEMY_FUNGAL_TURRET { return FUNGAL_TURRET_H; }
+        if t == ENEMY_MYCELIUM { return MYCELIUM_H; }
+        if t == ENEMY_SPORE_MOTHER { return SPORE_MOTHER_H; }
+        if t == ENEMY_CRYSTAL_GOLEM { return CRYSTAL_GOLEM_H; }
+        if t == ENEMY_SHARD_BAT { return SHARD_BAT_H; }
+        if t == ENEMY_RESONANCE_ORB { return RESONANCE_ORB_H; }
+        if t == ENEMY_MIRROR_SLIME { return MIRROR_SLIME_H; }
+        if t == ENEMY_CRYSTAL_WYRM { return CRYSTAL_WYRM_H; }
+        if t == ENEMY_MAGMA_SLUG { return MAGMA_SLUG_H; }
+        if t == ENEMY_EMBER_WASP { return EMBER_WASP_H; }
+        if t == ENEMY_FORGE_SENTINEL { return FORGE_SENTINEL_H; }
+        if t == ENEMY_PISTON_TRAP { return PISTON_TRAP_H; }
+        if t == ENEMY_MAGMA_CORE { return MAGMA_CORE_H; }
+        if t == ENEMY_ICE_WRAITH { return ICE_WRAITH_H; }
+        if t == ENEMY_FROST_BEETLE { return FROST_BEETLE_H; }
+        if t == ENEMY_STALACTITE_BAT { return STALACTITE_BAT_H; }
+        if t == ENEMY_VINE_WHIP { return VINE_WHIP_H; }
+        if t == ENEMY_MOSS_GOLEM { return MOSS_GOLEM_H; }
+        if t == ENEMY_RUIN_GUARDIAN { return RUIN_GUARDIAN_H; }
+        if t == ENEMY_SHADOW_CLONE { return SHADOW_CLONE_H; }
+        if t == ENEMY_CORRUPTION { return CORRUPTION_H; }
+        if t == ENEMY_ARCHITECT { return ARCHITECT_H; }
+        if t == ENEMY_PATROL_DRONE { return PATROL_DRONE_H; }
+        if t == ENEMY_BOMB_CARRIER { return BOMB_CARRIER_H; }
+        return 36;
+    }
+
+    // =========================================================================
+    // Drawing
+    // =========================================================================
 
     expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
         var i = pool.FirstActive();
         while i >= 0 {
             var next = pool.NextActive(i);
-            var ent: Entity = entities.get(i);
-            var sx = ent.get_X() / 100 - camX;
-            var sy = ent.get_Y() / 100 - camY;
-            var w = widthForType(etype.get(i));
+            var sx = ex.get(i) / 100 - camX;
+            var sy = ey.get(i) / 100 - camY;
 
-            // Frustum cull
-            if sx > -w and sx < SCREEN_W + w and sy > -100 and sy < SCREEN_H + 100 {
-                var t = etype.get(i);
-                var bhvDraw: Behavior = behaviors.get(i);
-                var frame = bhvDraw.get_AnimFrame();
-                var dir = ent.get_Dir();
+            // Skip if off screen
+            if sx > -96 {
+                if sx < SCREEN_W + 96 {
+                    if sy > -96 {
+                        if sy < SCREEN_H + 96 {
+                            var t = etype.get(i);
+                            var f = eframe.get(i);
 
-                // Hurt flash: skip every other frame
-                // Hurt flash: skip every other frame
-                var skip = false;
-                if estate.get(i) == 1 { if etimer.get(i) % 4 < 2 { skip = true; } }
-
-                if not skip {
-                    var spr = getEnemySprite(t, frame, sprites);
-                    if dir < 0 {
-                        var flipped = spr.Clone();
-                        flipped.FlipH();
-                        canvas.BlitAlpha(sx, sy, flipped);
-                    } else {
-                        canvas.BlitAlpha(sx, sy, spr);
+                            // Flash when hurt (skip draw every other 2-frame pair)
+                            var skipDraw = false;
+                            if estate.get(i) == 1 {
+                                if etimer.get(i) % 4 < 2 {
+                                    skipDraw = true;
+                                }
+                            }
+                            if skipDraw == false {
+                                drawEnemy(canvas, t, f, sx, sy, sprites);
+                            }
+                        }
                     }
                 }
-                i = next;
-            } else {
-                i = next;
             }
+            i = next;
         }
 
         // Draw enemy bullets
-        drawEnemyBullets(canvas, camX, camY);
+        drawEnemyBullets(canvas, camX, camY, sprites);
     }
 
-    hide func drawEnemyBullets(canvas: Canvas, camX: Integer, camY: Integer) {
-        var j = 0;
-        while j < ebx.length() {
-            if ebactive.get(j) == 1 {
-                var sx = ebx.get(j) - camX;
-                var sy = eby.get(j) - camY;
-                if sx > -10 and sx < SCREEN_W + 10 {
-                    canvas.Disc(sx, sy, 4, Color.RGB(255, 85, 68));
-                    canvas.DiscAlpha(sx, sy, 6, Color.RGB(255, 150, 100), 100);
+    hide func drawEnemy(canvas: Canvas, t: Integer, f: Integer,
+                        sx: Integer, sy: Integer, sprites: SpriteFactory) {
+        if t == ENEMY_SLIME { canvas.BlitAlpha(sx, sy, sprites.getSlimeFrame(f)); return; }
+        if t == ENEMY_BAT { canvas.BlitAlpha(sx, sy, sprites.getBatFrame(f)); return; }
+        if t == ENEMY_DRONE { canvas.BlitAlpha(sx, sy, sprites.getDroneFrame(f)); return; }
+        if t == ENEMY_TURRET { canvas.BlitAlpha(sx, sy, sprites.getTurretBase()); return; }
+        if t == ENEMY_BOSS { canvas.BlitAlpha(sx, sy, sprites.getBossFrame(f)); return; }
+        if t == ENEMY_SPOREWALKER { canvas.BlitAlpha(sx, sy, sprites.getSporewalkerFrame(f)); return; }
+        if t == ENEMY_GLOWMOTH { canvas.BlitAlpha(sx, sy, sprites.getGlowmothFrame(f)); return; }
+        if t == ENEMY_FUNGAL_TURRET { canvas.BlitAlpha(sx, sy, sprites.getFungalTurretFrame(f)); return; }
+        if t == ENEMY_MYCELIUM { canvas.BlitAlpha(sx, sy, sprites.getMyceliumFrame(f)); return; }
+        if t == ENEMY_SPORE_MOTHER { canvas.BlitAlpha(sx, sy, sprites.getSporeMothFrame(f)); return; }
+        if t == ENEMY_CRYSTAL_GOLEM { canvas.BlitAlpha(sx, sy, sprites.getCrystalGolemFrame(f)); return; }
+        if t == ENEMY_SHARD_BAT { canvas.BlitAlpha(sx, sy, sprites.getShardBatFrame(f)); return; }
+        if t == ENEMY_RESONANCE_ORB { canvas.BlitAlpha(sx, sy, sprites.getResonanceOrbFrame(f)); return; }
+        if t == ENEMY_MIRROR_SLIME { canvas.BlitAlpha(sx, sy, sprites.getMirrorSlimeFrame(f)); return; }
+        if t == ENEMY_CRYSTAL_WYRM { canvas.BlitAlpha(sx, sy, sprites.getCrystalWyrmFrame(f)); return; }
+        if t == ENEMY_MAGMA_SLUG { canvas.BlitAlpha(sx, sy, sprites.getMagmaSlugFrame(f)); return; }
+        if t == ENEMY_EMBER_WASP { canvas.BlitAlpha(sx, sy, sprites.getEmberWaspFrame(f)); return; }
+        if t == ENEMY_FORGE_SENTINEL { canvas.BlitAlpha(sx, sy, sprites.getForgeSentinelFrame(f)); return; }
+        if t == ENEMY_MAGMA_CORE { canvas.BlitAlpha(sx, sy, sprites.getMagmaCoreFrame(f)); return; }
+        if t == ENEMY_ICE_WRAITH { canvas.BlitAlpha(sx, sy, sprites.getIceWraithFrame(f)); return; }
+        if t == ENEMY_FROST_BEETLE { canvas.BlitAlpha(sx, sy, sprites.getFrostBeetleFrame(f)); return; }
+        if t == ENEMY_STALACTITE_BAT { canvas.BlitAlpha(sx, sy, sprites.getStalactiteBatFrame(f)); return; }
+        if t == ENEMY_VINE_WHIP { canvas.BlitAlpha(sx, sy, sprites.getVineWhipSprite()); return; }
+        if t == ENEMY_MOSS_GOLEM { canvas.BlitAlpha(sx, sy, sprites.getMossGolemFrame(f)); return; }
+        if t == ENEMY_RUIN_GUARDIAN { canvas.BlitAlpha(sx, sy, sprites.getRuinGuardianFrame(f)); return; }
+        if t == ENEMY_SHADOW_CLONE { canvas.BlitAlpha(sx, sy, sprites.getShadowCloneFrame(f)); return; }
+        if t == ENEMY_CORRUPTION { canvas.BlitAlpha(sx, sy, sprites.getCorruptionSprite()); return; }
+        if t == ENEMY_ARCHITECT { canvas.BlitAlpha(sx, sy, sprites.getArchitectFrame(f)); return; }
+        if t == ENEMY_BOMB_CARRIER { canvas.BlitAlpha(sx, sy, sprites.getBombCarrierFrame(f)); return; }
+
+        // Remaining enemies still fall back to procedural rendering where the
+        // sprite factory has no dedicated cached sprite yet.
+        var w = getEnemyW(t); var h = getEnemyH(t);
+        if t == ENEMY_PISTON_TRAP { canvas.Box(sx, sy, w, h, Color.RGB(150, 150, 160)); canvas.Box(sx + 4, sy, w - 8, h / 3, Color.RGB(200, 50, 50)); }
+        else if t == ENEMY_PATROL_DRONE { canvas.BlitAlpha(sx, sy, sprites.getDroneFrame(f)); }
+        else { canvas.Box(sx, sy, w, h, Color.RGB(255, 0, 255)); } // Fallback: magenta
+    }
+
+    hide func drawEnemyBullets(canvas: Canvas, camX: Integer, camY: Integer,
+                                sprites: SpriteFactory) {
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 {
+                var sx = ebx.get(i) - camX;
+                var sy = eby.get(i) - camY;
+                if sx > -15 {
+                    if sx < SCREEN_W + 15 {
+                        canvas.BlitAlpha(sx, sy, sprites.getEnemyBullet());
+                    }
                 }
             }
-            j = j + 1;
+            i = i + 1;
         }
     }
 
-    // ─── Helpers ───────────────────────────────────────────────
-
-    // Map enemy type to its sprite frame from SpriteFactory
-    hide func getEnemySprite(t: Integer, frame: Integer, sprites: SpriteFactory) -> Pixels {
-        if t == EnemyType.Slime or t == EnemyType.MirrorSlime { return sprites.getSlimeFrame(frame); }
-        if t == EnemyType.Bat { return sprites.getBatFrame(frame); }
-        if t == EnemyType.Boss { return sprites.getBossFrame(frame); }
-        if t == EnemyType.Sporewalker { return sprites.getSporewalkerFrame(frame); }
-        if t == EnemyType.Glowmoth { return sprites.getGlowmothFrame(frame); }
-        if t == EnemyType.CrystalGolem { return sprites.getCrystalGolemFrame(frame); }
-        if t == EnemyType.ShardBat { return sprites.getShardBatFrame(frame); }
-        if t == EnemyType.MagmaSlug { return sprites.getMagmaSlugFrame(frame); }
-        if t == EnemyType.EmberWasp { return sprites.getEmberWaspFrame(frame); }
-        if t == EnemyType.ForgeSentinel { return sprites.getForgeSentinelFrame(frame); }
-        if t == EnemyType.FrostBeetle { return sprites.getFrostBeetleFrame(frame); }
-        if t == EnemyType.IceWraith { return sprites.getIceWraithFrame(frame); }
-        if t == EnemyType.MossGolem { return sprites.getMossGolemFrame(frame); }
-        if t == EnemyType.RuinGuardian { return sprites.getRuinGuardianFrame(frame); }
-        if t == EnemyType.ShadowClone { return sprites.getShadowCloneFrame(frame); }
-        if t == EnemyType.SporeMother { return sprites.getSporeMothFrame(frame); }
-        if t == EnemyType.CrystalWyrm { return sprites.getCrystalWyrmFrame(frame); }
-        if t == EnemyType.MagmaCore { return sprites.getMagmaCoreFrame(frame); }
-        if t == EnemyType.Architect { return sprites.getArchitectFrame(frame); }
-        // Fallback for types without unique sprites (turret, fungal turret, etc.)
-        return sprites.getSlimeFrame(frame);
-    }
-
-    hide func isBossType(t: Integer) -> Boolean {
-        return t == EnemyType.Boss or t == EnemyType.SporeMother
-            or t == EnemyType.CrystalWyrm or t == EnemyType.MagmaCore
-            or t == EnemyType.Architect;
-    }
-
+    // Accessors
+    expose func getEnemyType(i: Integer) -> Integer { return etype.get(i); }
+    expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
+    expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
     expose func isBossAlive() -> Boolean {
-        return bossIndex >= 0 and pool.IsActive(bossIndex);
+        if bossIndex < 0 { return false; }
+        return pool.IsActive(bossIndex);
     }
-
     expose func getBossHp() -> Integer {
         if bossIndex < 0 { return 0; }
-        var be: Entity = entities.get(bossIndex);
-        return be.get_HP();
-    }
-
-    expose func getBossMaxHp() -> Integer { return bossMaxHp; }
-
-    expose func getEnemyType(handle: Integer) -> Integer { return etype.get(handle); }
-    expose func isActive(handle: Integer) -> Integer {
-        if pool.IsActive(handle) { return 1; }
-        return 0;
-    }
-    expose func getEntityAt(handle: Integer) -> Entity { return entities.get(handle); }
-    expose func getEnemyPixelX(handle: Integer) -> Integer {
-        var e: Entity = entities.get(handle);
-        return e.get_X() / 100;
-    }
-    expose func getEnemyPixelY(handle: Integer) -> Integer {
-        var e: Entity = entities.get(handle);
-        return e.get_Y() / 100;
+        return ehp.get(bossIndex);
     }
 }

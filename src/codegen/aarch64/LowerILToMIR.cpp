@@ -159,7 +159,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     LivenessInfo liveness = analyzeCrossBlockLiveness(fn, allocaTemps, fb);
 
     // Try fast-paths for simple function patterns
-    if (auto result = tryFastPaths(fn, *ti_, fb, mf))
+    if (auto result = tryFastPaths(fn, *ti_, fb, mf, stringLiteralByteLengths_))
         return *result;
 
     // Generic fallback: lower stack/local loads/stores and a simple return
@@ -400,6 +400,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                             liveness.crossBlockSpillOffset,
                             liveness.tempDefBlock,
                             liveness.crossBlockTemps,
+                            stringLiteralByteLengths_,
                             trapLabelCounter};
 
         for (const auto &ins : bbIn.instructions) {

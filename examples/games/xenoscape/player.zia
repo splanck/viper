@@ -1,6 +1,5 @@
 // player.zia — Player entity: physics, states, input, shooting
-// Engine APIs: Entity (#3) for collision, AnimStateMachine (#2) for animation,
-// PlatformerController for input-driven movement with coyote/buffer/apex.
+// Uses Viper.Input.Action for named input bindings instead of raw key codes.
 // All positions/velocities use x100 scale for sub-pixel precision.
 module player;
 
@@ -10,16 +9,10 @@ bind Viper.Math;
 bind Viper.Game;
 bind "./config";
 bind "./level";
+bind "./physics";
 
 class Player {
-    // Engine API #3: Entity for position, velocity, and collision resolution
-    hide Entity ent;
-    // Engine API #2: AnimStateMachine for named animation states
-    hide AnimStateMachine anim;
-    // PlatformerController for input → velocity with jump buffer, coyote, apex
-    hide PlatformerController ctrl;
-
-    // Position/velocity (x100 scale) — synced from Entity each frame
+    // Position/velocity (x100 scale)
     expose Integer x;
     expose Integer y;
     expose Integer vx;
@@ -41,6 +34,13 @@ class Player {
     // Jump mechanics
     expose Boolean canDoubleJump;
 
+    // Platformer controller (handles acceleration, gravity, jump buffer, coyote time)
+    hide PlatformerController ctrl;
+
+    // Animation
+    expose Integer animFrame;
+    hide Integer animTimer;
+
     // Power-ups
     expose Integer speedTimer;
     expose Integer shieldHits;
@@ -61,25 +61,13 @@ class Player {
     expose Integer dashCooldown;
     expose Integer freezeTimer;     // Frozen by ice wraith
 
+    // Physics helper (shared)
+    hide PhysicsHelper phys;
+
     expose func init() {
-        // Entity: position in centipixels, dimensions in pixels
-        ent = Entity.New(0, 0, PLAYER_W, PLAYER_H);
+        phys = new PhysicsHelper();
 
-        // AnimStateMachine: named states mapped to sprite frame ranges
-        // Frame layout: 0-1 idle, 2-5 run(4), 6 jump, 7 fall, 8 djump,
-        //               9 wallslide, 10 hurt, 11 dead
-        anim = AnimStateMachine.New();
-        anim.AddNamed("idle",      0,  1, ANIM_IDLE_MS, true);
-        anim.AddNamed("run",       2,  5, ANIM_RUN_MS,  true);
-        anim.AddNamed("jump",      6,  6, 100, false);
-        anim.AddNamed("fall",      7,  7, 100, false);
-        anim.AddNamed("djump",     8,  8, 100, false);
-        anim.AddNamed("wallslide", 9,  9, 100, false);
-        anim.AddNamed("hurt",     10, 10, 100, false);
-        anim.AddNamed("dead",     11, 11, 100, false);
-        anim.Play("idle");
-
-        // PlatformerController: handles accel, gravity, jump buffer, coyote, apex
+        // Configure platformer controller with game physics constants
         ctrl = PlatformerController.New();
         ctrl.SetAcceleration(PLAYER_ACCEL, PLAYER_AIR_ACCEL, PLAYER_DECEL);
         ctrl.SetJumpForce(PLAYER_JUMP, PLAYER_JUMP / 2);
@@ -93,41 +81,60 @@ class Player {
     }
 
     expose func reset() {
-        x = 0; y = 0; vx = 0; vy = 0;
-        ent.set_X(0); ent.set_Y(0); ent.set_VX(0); ent.set_VY(0);
+        x = 0;
+        y = 0;
+        vx = 0;
+        vy = 0;
         state = PS_IDLE;
         facing = 1;
-        onGround = false; onWall = false; wallDir = 0;
-        hp = PLAYER_MAX_HP; maxHp = PLAYER_MAX_HP;
+        onGround = false;
+        onWall = false;
+        wallDir = 0;
+        hp = PLAYER_MAX_HP;
+        maxHp = PLAYER_MAX_HP;
         lives = PLAYER_START_LIVES;
         iframes = 0;
         canDoubleJump = true;
-        speedTimer = 0; shieldHits = 0; rapidFireTimer = 0;
+        animFrame = 0;
+        animTimer = 0;
+        speedTimer = 0;
+        shieldHits = 0;
+        rapidFireTimer = 0;
         shootCooldown = 0;
-        isDashing = false; dashTimer = 0; dashVx = 0;
-        isPounding = false; poundVy = 0;
-        chargeLevel = 0; chargeTimer = 0; isCharging = false;
-        dashCooldown = 0; freezeTimer = 0;
-        ctrl.VX = 0; ctrl.VY = 0;
-        anim.Play("idle");
+        isDashing = false;
+        dashTimer = 0;
+        dashVx = 0;
+        isPounding = false;
+        poundVy = 0;
+        chargeLevel = 0;
+        chargeTimer = 0;
+        isCharging = false;
+        dashCooldown = 0;
+        freezeTimer = 0;
+        // Reset controller velocity
+        ctrl.VX = 0;
+        ctrl.VY = 0;
     }
 
     expose func spawn(sx: Integer, sy: Integer) {
-        x = sx * 100; y = sy * 100;
-        ent.set_X(x); ent.set_Y(y);
-        vx = 0; vy = 0;
-        ent.set_VX(0); ent.set_VY(0);
+        x = sx * 100;
+        y = sy * 100;
+        vx = 0;
+        vy = 0;
         state = PS_IDLE;
         iframes = IFRAMES_MS;
         canDoubleJump = true;
-        ctrl.VX = 0; ctrl.VY = 0;
-        anim.Play("idle");
+        ctrl.VX = 0;
+        ctrl.VY = 0;
     }
 
+    // dt = delta time in milliseconds (clamped by caller)
     expose func update(level: Level, dt: Integer) {
-        if state == PS_DEAD { return; }
+        if state == PS_DEAD {
+            return;
+        }
 
-        // Decrement ms-based timers
+        // Decrement ms-based timers (coyote/jump buffer now handled by controller)
         if iframes > 0 { iframes = iframes - dt; if iframes < 0 { iframes = 0; } }
         if speedTimer > 0 { speedTimer = speedTimer - dt; if speedTimer < 0 { speedTimer = 0; } }
         if rapidFireTimer > 0 { rapidFireTimer = rapidFireTimer - dt; if rapidFireTimer < 0 { rapidFireTimer = 0; } }
@@ -135,36 +142,42 @@ class Player {
 
         handleInput(dt);
         applyPhysics(level, dt);
-        updateAnimState();
-        anim.Update();
+        updateAnimation(dt);
     }
 
     hide func handleInput(dt: Integer) {
-        var inputLeft = Action.Held("move_left");
-        var inputRight = Action.Held("move_right");
-        var jumpPressed = Action.Pressed("jump");
-        var jumpHeld = Action.Held("jump");
+        // Read input state
+        var inputLeft = Action.Held(ACT_LEFT);
+        var inputRight = Action.Held(ACT_RIGHT);
+        var jumpPressed = Action.Pressed(ACT_JUMP);
+        var jumpHeld = Action.Held(ACT_JUMP);
         var sprint = (speedTimer > 0);
 
-        // PlatformerController processes input → velocity
+        // Feed input to the PlatformerController — handles horizontal acceleration,
+        // gravity, apex bonus, jump buffer, coyote time, and variable jump height.
         ctrl.Update(dt, inputLeft, inputRight, jumpPressed, jumpHeld, onGround, sprint);
+
+        // Read processed velocity from controller
         vx = ctrl.VX;
         vy = ctrl.VY;
         if ctrl.IsMoving { facing = ctrl.Facing; }
 
-        // Jump logic
+        // Check if controller signals a ground/coyote jump should happen
         if ctrl.ShouldJump {
+            // Apply jump force (controller signals when, we decide velocity)
             vy = PLAYER_JUMP;
             ctrl.VY = vy;
             onGround = false;
             canDoubleJump = true;
             state = PS_JUMP;
         } else if jumpPressed {
+            // Controller didn't trigger a jump — try wall jump or double jump
             if onWall {
                 vy = WALL_JUMP_VY;
                 vx = 0 - wallDir * WALL_JUMP_VX;
                 facing = 0 - wallDir;
-                ctrl.VX = vx; ctrl.VY = vy;
+                ctrl.VX = vx;
+                ctrl.VY = vy;
                 onWall = false;
                 canDoubleJump = true;
                 state = PS_JUMP;
@@ -182,79 +195,116 @@ class Player {
             ctrl.VY = vy;
         }
 
-        // Shoot input
-        if Action.Pressed("shoot") {
+        // Shoot input via Action
+        if Action.Pressed(ACT_SHOOT) {
             if shootCooldown <= 0 {
                 shootCooldown = SHOOT_COOLDOWN_MS;
-                if rapidFireTimer > 0 { shootCooldown = SHOOT_COOLDOWN_MS / 2; }
+                if rapidFireTimer > 0 {
+                    shootCooldown = SHOOT_COOLDOWN_MS / 2;
+                }
             }
         }
     }
 
     hide func applyPhysics(level: Level, dt: Integer) {
-        // Sync velocity to Entity, let Entity handle collision resolution
-        ent.set_X(x);
-        ent.set_Y(y);
-        ent.set_VX(vx);
-        ent.set_VY(vy);
+        // Gravity, acceleration, and wall-slide capping are handled by the
+        // PlatformerController in handleInput(). We just resolve collisions here.
 
-        // Entity.MoveAndCollide: moves by velocity*dt, resolves tilemap collisions,
-        // sets OnGround/HitLeft/HitRight/HitCeiling flags automatically
-        ent.MoveAndCollide(level.tilemap, dt);
+        // Compute displacement scaled by dt
+        var dispX = vx * dt / DT_BASE;
+        var dispY = vy * dt / DT_BASE;
 
-        // Read back resolved position and collision flags from Entity
-        x = ent.get_X();
-        y = ent.get_Y();
-        onGround = ent.get_OnGround();
+        // Move and collide — returns struct with resolved position + collision flags
+        var result = phys.moveAndCollide(x, y, dispX, dispY, PLAYER_W, PLAYER_H, level);
 
-        // Zero velocity on collision, sync to controller
-        if ent.get_HitLeft() or ent.get_HitRight() { vx = 0; ctrl.VX = 0; }
-        if onGround { vy = 0; ctrl.VY = 0; }
-        if ent.get_HitCeiling() { vy = 0; ctrl.VY = 0; }
+        x = result.x;
+        y = result.y;
+        // Zero persistent velocity on collision and sync back to controller
+        if result.hitLeft { vx = 0; ctrl.VX = 0; }
+        if result.hitRight { vx = 0; ctrl.VX = 0; }
+        if result.hitFloor { vy = 0; ctrl.VY = 0; }
+        if result.hitCeiling { vy = 0; ctrl.VY = 0; }
 
-        if onGround { canDoubleJump = true; }
+        // Detect floor contact
+        onGround = result.hitFloor;
 
-        // Wall detection (only while airborne)
+        if onGround {
+            canDoubleJump = true;
+        }
+
+        // Detect wall contact
         onWall = false;
         wallDir = 0;
-        if not onGround {
-            if ent.get_HitLeft() { onWall = true; wallDir = -1; }
-            if ent.get_HitRight() { onWall = true; wallDir = 1; }
+        if onGround == false {
+            if result.hitLeft {
+                onWall = true;
+                wallDir = -1;
+            }
+            if result.hitRight {
+                onWall = true;
+                wallDir = 1;
+            }
+        }
+
+        // Update state based on movement
+        if state != PS_HURT and iframes <= 0 {
+            if onGround {
+                if vx == 0 {
+                    state = PS_IDLE;
+                } else {
+                    state = PS_RUN;
+                }
+            } else {
+                if onWall {
+                    state = PS_WALLSLIDE;
+                } else {
+                    if vy < 0 {
+                        if state != PS_DJUMP {
+                            state = PS_JUMP;
+                        }
+                    } else {
+                        state = PS_FALL;
+                    }
+                }
+            }
         }
 
         // Fall off bottom of level = death
-        if y > LEVEL_HEIGHT * TILE_SIZE * 100 { die(); }
-    }
-
-    // AnimStateMachine: transition to named state based on player state
-    hide func updateAnimState() {
-        if state == PS_HURT or state == PS_DEAD { return; }
-
-        if onGround {
-            if vx == 0 { state = PS_IDLE; anim.Play("idle"); }
-            else { state = PS_RUN; anim.Play("run"); }
-        } else if onWall {
-            state = PS_WALLSLIDE;
-            anim.Play("wallslide");
-        } else if vy < 0 {
-            if state == PS_DJUMP { anim.Play("djump"); }
-            else { state = PS_JUMP; anim.Play("jump"); }
-        } else {
-            state = PS_FALL;
-            anim.Play("fall");
+        if y > levelHeight() * TILE_SIZE * 100 {
+            die();
         }
     }
 
-    // AnimStateMachine provides the current animation frame directly
-    expose func getSpriteFrame() -> Integer {
-        return anim.get_CurrentFrame();
+    hide func levelHeight() -> Integer {
+        return LEVEL_HEIGHT;
+    }
+
+    hide func updateAnimation(dt: Integer) {
+        animTimer = animTimer + dt;
+        if state == PS_IDLE {
+            if animTimer >= ANIM_IDLE_MS {
+                animTimer = 0;
+                animFrame = 1 - animFrame;
+            }
+        }
+        if state == PS_RUN {
+            if animTimer >= ANIM_RUN_MS {
+                animTimer = 0;
+                animFrame = animFrame + 1;
+                if animFrame > 3 { animFrame = 0; }
+            }
+        }
     }
 
     // Return true if player just fired (caller should spawn bullet)
     expose func wantsToShoot() -> Boolean {
-        if shootCooldown == SHOOT_COOLDOWN_MS { return true; }
+        if shootCooldown == SHOOT_COOLDOWN_MS {
+            return true;
+        }
         if rapidFireTimer > 0 {
-            if shootCooldown == SHOOT_COOLDOWN_MS / 2 { return true; }
+            if shootCooldown == SHOOT_COOLDOWN_MS / 2 {
+                return true;
+            }
         }
         return false;
     }
@@ -265,102 +315,167 @@ class Player {
 
         if shieldHits > 0 {
             shieldHits = shieldHits - 1;
-            iframes = 480;
+            iframes = 480;  // 30 frames * 16ms
             return;
         }
 
         hp = hp - amount;
         iframes = IFRAMES_MS;
         state = PS_HURT;
-        anim.Play("hurt");
         vy = -450;
         ctrl.VY = vy;
-        if hp <= 0 { die(); }
+
+        if hp <= 0 {
+            die();
+        }
     }
 
     hide func die() {
         state = PS_DEAD;
-        anim.Play("dead");
         hp = 0;
-        vx = 0; vy = -600;
-        ctrl.VX = 0; ctrl.VY = vy;
+        vx = 0;
+        vy = -600;
+        ctrl.VX = 0;
+        ctrl.VY = vy;
     }
 
     expose func collectPowerUp(ptype: Integer) {
-        if ptype == PICKUP_HEALTH { hp = hp + 1; if hp > maxHp { hp = maxHp; } }
-        if ptype == PICKUP_SPEED { speedTimer = SPEED_DURATION_MS; }
-        if ptype == PICKUP_SHIELD { shieldHits = 1; }
-        if ptype == PICKUP_RAPIDFIRE { rapidFireTimer = RAPIDFIRE_DURATION_MS; }
+        if ptype == PICKUP_HEALTH {
+            hp = hp + 1;
+            if hp > maxHp { hp = maxHp; }
+        }
+        if ptype == PICKUP_SPEED {
+            speedTimer = SPEED_DURATION_MS;
+        }
+        if ptype == PICKUP_SHIELD {
+            shieldHits = 1;
+        }
+        if ptype == PICKUP_RAPIDFIRE {
+            rapidFireTimer = RAPIDFIRE_DURATION_MS;
+        }
     }
 
-    expose func syncVelocity() { ctrl.VX = vx; ctrl.VY = vy; }
+    expose func getSpriteFrame() -> Integer {
+        // 12-frame layout: 0-1 idle, 2-5 run(4), 6 jump, 7 fall, 8 djump, 9 wallslide, 10 hurt, 11 dead
+        if state == PS_IDLE { return animFrame; }
+        if state == PS_RUN { return 2 + animFrame; }
+        if state == PS_JUMP { return 6; }
+        if state == PS_FALL { return 7; }
+        if state == PS_DJUMP { return 8; }
+        if state == PS_WALLSLIDE { return 9; }
+        if state == PS_HURT { return 10; }
+        if state == PS_DEAD { return 11; }
+        return 0;
+    }
+
+    // Sync player velocity to the PlatformerController (call after external vy/vx changes)
+    expose func syncVelocity() {
+        ctrl.VX = vx;
+        ctrl.VY = vy;
+    }
+
+    // Pixel position (from x100)
     expose func pixelX() -> Integer { return x / 100; }
     expose func pixelY() -> Integer { return y / 100; }
+
+    // Center position for camera/collision
     expose func centerX() -> Integer { return x / 100 + PLAYER_W / 2; }
     expose func centerY() -> Integer { return y / 100 + PLAYER_H / 2; }
 
-    // ─── Ability: Dash ─────────────────────────────────────────────
+    // =========================================================================
+    // Ability: Dash — quick horizontal burst with invincibility
+    // =========================================================================
     expose func startDash() {
         if isDashing { return; }
         if dashCooldown > 0 { return; }
         isDashing = true;
-        dashTimer = DASH_MS;
-        dashCooldown = DASH_COOLDOWN_MS;
-        dashVx = facing * DASH_SPEED;
-        iframes = DASH_MS;
+        dashTimer = 160; // ~10 frames at 60fps
+        dashCooldown = 480; // ~30 frames cooldown
+        dashVx = facing * 2000; // Very fast (x100)
+        iframes = 160; // Invincible during dash
     }
 
     expose func updateDash(dt: Integer) {
         if dashCooldown > 0 { dashCooldown = dashCooldown - dt; }
         if not isDashing { return; }
         dashTimer = dashTimer - dt;
-        if dashTimer <= 0 { isDashing = false; dashVx = 0; }
-        else { vx = dashVx; vy = 0; ctrl.VX = vx; ctrl.VY = vy; }
+        if dashTimer <= 0 {
+            isDashing = false;
+            dashVx = 0;
+        } else {
+            // Override velocity during dash
+            vx = dashVx;
+            vy = 0; // No vertical movement during dash
+            ctrl.VX = vx;
+            ctrl.VY = vy;
+        }
     }
 
-    // ─── Ability: Charge Shot ──────────────────────────────────────
-    expose func startCharge() { isCharging = true; chargeTimer = 0; chargeLevel = 0; }
+    // =========================================================================
+    // Ability: Charge Shot — hold to charge, release for power
+    // =========================================================================
+    expose func startCharge() {
+        isCharging = true;
+        chargeTimer = 0;
+        chargeLevel = 0;
+    }
 
     expose func updateCharge(dt: Integer) {
         if not isCharging { return; }
         chargeTimer = chargeTimer + dt;
-        if chargeTimer >= CHARGE_FULL_MS { chargeLevel = 2; }
-        else if chargeTimer >= CHARGE_PARTIAL_MS { chargeLevel = 1; }
+        if chargeTimer >= 640 { chargeLevel = 2; }      // Full charge
+        else if chargeTimer >= 320 { chargeLevel = 1; }  // Partial charge
     }
 
     expose func releaseCharge() -> Integer {
         if not isCharging { return 0; }
         isCharging = false;
         var level = chargeLevel;
-        chargeTimer = 0; chargeLevel = 0;
-        return level;
+        chargeTimer = 0;
+        chargeLevel = 0;
+        return level; // 0=normal, 1=double damage, 2=triple + wall break
     }
 
-    // ─── Ability: Ground Pound ─────────────────────────────────────
+    // =========================================================================
+    // Ability: Ground Pound — slam down from air
+    // =========================================================================
     expose func startPound() {
         if onGround { return; }
-        if state == PS_DEAD or state == PS_HURT { return; }
+        if state == PS_DEAD { return; }
+        if state == PS_HURT { return; }
         isPounding = true;
-        poundVy = POUND_SPEED;
-        vx = 0; ctrl.VX = 0;
+        poundVy = 2500; // Very fast downward (x100)
+        vx = 0; // Stop horizontal movement
+        ctrl.VX = 0;
     }
 
     expose func updatePound(dt: Integer) {
         if not isPounding { return; }
-        vy = poundVy; ctrl.VY = vy;
-        if onGround { isPounding = false; poundVy = 0; }
+        vy = poundVy;
+        ctrl.VY = vy;
+        if onGround {
+            // Landed — create shockwave effect
+            isPounding = false;
+            poundVy = 0;
+        }
     }
 
-    // ─── Frozen state (from ice wraith) ────────────────────────────
+    // =========================================================================
+    // Frozen state (from ice wraith)
+    // =========================================================================
     expose func freeze(durationMs: Integer) {
         freezeTimer = durationMs;
-        vx = 0; vy = 0; ctrl.VX = 0; ctrl.VY = 0;
+        vx = 0;
+        vy = 0;
+        ctrl.VX = 0;
+        ctrl.VY = 0;
     }
 
     expose func updateFreeze(dt: Integer) -> Boolean {
         if freezeTimer <= 0 { return false; }
         freezeTimer = freezeTimer - dt;
-        vx = 0; ctrl.VX = 0;
+        vx = 0; // Can't move while frozen
+        ctrl.VX = 0;
         return true;
     }
 
