@@ -805,7 +805,8 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
         }
 
         if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Struct) {
-            returnValue = emitBoxValue(returnValue, mapType(currentReturnType_), currentReturnType_);
+            returnValue =
+                emitBoxValue(returnValue, mapType(currentReturnType_), currentReturnType_);
         }
 
         // The return value is transferred to the caller — don't release it.

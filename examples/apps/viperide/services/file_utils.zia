@@ -1,64 +1,21 @@
 module file_utils;
 
-bind Viper.IO.File as File;
-bind Viper.IO.Path as Path;// ============================================================================
-// File I/O utility functions for ViperIDE
+bind Path = Viper.IO.Path;
+
 // ============================================================================
-
-// Read the entire contents of a file. Returns "" if file does not exist.
-func ReadFileContent(path: String) -> String {
-    if File.Exists(path) {
-        return File.ReadAllText(path);
-    }
-    return "";
-}
-
-// Write content to a file.
-func WriteFileContent(path: String, content: String) {
-    File.WriteAllText(path, content);
-}
+// File utility — language detection from file extension
+// ============================================================================
 
 // Detect language from file extension.
 // Returns "zia", "basic", or "text".
 func DetectLanguage(path: String) -> String {
     var ext = Path.Ext(path);
-    if ext == ".zia" {
-        return "zia";
-    }
-    if ext == ".bas" {
-        return "basic";
-    }
-    if ext == ".vb" {
-        return "basic";
-    }
-    if ext == ".txt" {
-        return "text";
-    }
-    if ext == ".md" {
-        return "text";
-    }
-    if ext == ".json" {
-        return "text";
-    }
+    if ext == ".zia"  { return "zia"; }
+    if ext == ".bas"  { return "basic"; }
+    if ext == ".vb"   { return "basic"; }
+    if ext == ".il"   { return "text"; }
+    if ext == ".txt"  { return "text"; }
+    if ext == ".md"   { return "text"; }
+    if ext == ".json" { return "text"; }
     return "text";
-}
-
-// Extract the file name from a full path.
-func GetFileName(path: String) -> String {
-    return Path.Name(path);
-}
-
-// Extract the file name without extension.
-func GetFileStem(path: String) -> String {
-    return Path.Stem(path);
-}
-
-// Check if a file exists.
-func FileExists(path: String) -> Boolean {
-    return File.Exists(path);
-}
-
-// Get the last modification timestamp of a file.
-func GetFileModified(path: String) -> Integer {
-    return File.Modified(path);
 }

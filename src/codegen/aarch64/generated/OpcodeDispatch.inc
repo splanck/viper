@@ -22,21 +22,18 @@
 //===----------------------------------------------------------------------===//
 
 using K = MOpcode;
-auto reg = [](const MOperand &op)
-{
+auto reg = [](const MOperand &op) {
     assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
     assert(op.reg.isPhys && "unallocated vreg reached emitter");
     return static_cast<PhysReg>(op.reg.idOrPhys);
 };
 auto imm = [](const MOperand &op) { return op.imm; };
 
-switch (mi.opc)
-{
+switch (mi.opc) {
     case K::MovRR:
         emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
         break;
-    case K::MovRI:
-    {
+    case K::MovRI: {
         const long long v = imm(mi.ops[1]);
         if (v >= 0 && v <= 65535)
             emitMovRI(os, reg(mi.ops[0]), v);
@@ -47,8 +44,7 @@ switch (mi.opc)
     case K::FMovRR:
         emitFMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
         break;
-    case K::FMovRI:
-    {
+    case K::FMovRI: {
         const long long bits = imm(mi.ops[1]);
         double dv;
         static_assert(sizeof(long long) == sizeof(double), "size");

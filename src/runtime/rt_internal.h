@@ -166,10 +166,8 @@ static inline int rt_hex_digit_value(char c) {
         size_t payload_bytes = payload_bytes_fn(new_cap);                                          \
         if (new_cap > 0 && payload_bytes == 0)                                                     \
             return -1;                                                                             \
-        elem_type *payload = (elem_type *)rt_heap_realloc(*payload_inout,                          \
-                                                          sizeof(elem_type),                       \
-                                                          new_len,                                 \
-                                                          new_cap);                                \
+        elem_type *payload =                                                                       \
+            (elem_type *)rt_heap_realloc(*payload_inout, sizeof(elem_type), new_len, new_cap);     \
         if (!payload)                                                                              \
             return -1;                                                                             \
         rt_heap_hdr_t *resized = rt_heap_hdr((void *)payload);                                     \

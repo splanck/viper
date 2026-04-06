@@ -39,8 +39,8 @@
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_pool.h"
-#include "rt_string_internal.h"
 #include "rt_string_intern.h"
+#include "rt_string_internal.h"
 
 #include <assert.h>
 #include <stddef.h>

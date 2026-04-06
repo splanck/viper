@@ -1,0 +1,105 @@
+module view_commands;
+
+bind "../ui/app_shell";
+bind "../core/settings";
+bind "../editor/editor_engine";
+
+bind Viper.GUI;
+
+// ============================================================================
+// View commands — Sidebar, StatusBar, Zoom, Theme, Fullscreen, Minimap, Settings
+// ============================================================================
+
+func handleToggleSidebar(shell: app_shell.AppShell) {
+    shell.ToggleSidebar();
+}
+
+func handleToggleStatusBar(shell: app_shell.AppShell) {
+    if shell.statusBar.IsVisible() != 0 {
+        shell.statusBar.SetVisible(0);
+    } else {
+        shell.statusBar.SetVisible(1);
+    }
+}
+
+func handleZoomIn(shell: app_shell.AppShell,
+                  engine: editor_engine.EditorEngine,
+                  appSettings: settings.SettingsManager) {
+    appSettings.fontSize = appSettings.fontSize + 1;
+    shell.app.SetFontSize(appSettings.fontSize);
+    engine.editor.SetFontSize(appSettings.fontSize);
+    appSettings.Save();
+    shell.SetStatusLeft("Font size: " + appSettings.fontSize);
+}
+
+func handleZoomOut(shell: app_shell.AppShell,
+                   engine: editor_engine.EditorEngine,
+                   appSettings: settings.SettingsManager) {
+    appSettings.fontSize = appSettings.fontSize - 1;
+    shell.app.SetFontSize(appSettings.fontSize);
+    engine.editor.SetFontSize(appSettings.fontSize);
+    appSettings.Save();
+    shell.SetStatusLeft("Font size: " + appSettings.fontSize);
+}
+
+func handleZoomReset(shell: app_shell.AppShell,
+                     engine: editor_engine.EditorEngine,
+                     appSettings: settings.SettingsManager) {
+    appSettings.fontSize = settings.DEFAULT_FONT_SIZE;
+    shell.app.SetFontSize(settings.DEFAULT_FONT_SIZE);
+    engine.editor.SetFontSize(settings.DEFAULT_FONT_SIZE);
+    appSettings.Save();
+    shell.SetStatusLeft("Font size reset to " + settings.DEFAULT_FONT_SIZE);
+}
+
+func handleToggleTheme(appSettings: settings.SettingsManager) {
+    if appSettings.theme == "dark" {
+        GUI.Theme.SetLight();
+        appSettings.theme = "light";
+        GUI.Toast.Info("Switched to light theme");
+    } else {
+        GUI.Theme.SetDark();
+        appSettings.theme = "dark";
+        GUI.Toast.Info("Switched to dark theme");
+    }
+    appSettings.Save();
+}
+
+func handleFullscreen(shell: app_shell.AppShell) {
+    if shell.app.IsFullscreen() {
+        shell.app.SetFullscreen(false);
+    } else {
+        shell.app.SetFullscreen(true);
+    }
+}
+
+func handleToggleMinimap(shell: app_shell.AppShell,
+                         appSettings: settings.SettingsManager) -> Boolean {
+    var nowVisible = appSettings.minimapVisible == false;
+    appSettings.minimapVisible = nowVisible;
+    if nowVisible {
+        shell.minimap.SetVisible(1);
+    } else {
+        shell.minimap.SetVisible(0);
+    }
+    appSettings.Save();
+    return nowVisible;
+}
+
+func handleSettings(appSettings: settings.SettingsManager) {
+    var settingsInfo = "Current Settings\n\n";
+    settingsInfo = settingsInfo + "Font Size:  " + appSettings.fontSize + "pt\n";
+    settingsInfo = settingsInfo + "Theme:      " + appSettings.theme + "\n";
+    settingsInfo = settingsInfo + "\nKeyboard shortcuts:\n";
+    settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-   Zoom In / Out\n";
+    settingsInfo = settingsInfo + "  Ctrl+0              Reset Font Size\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+T        Toggle Theme\n";
+    settingsInfo = settingsInfo + "  F11                 Toggle Fullscreen\n";
+    settingsInfo = settingsInfo + "  Ctrl+Shift+M        Toggle Minimap";
+    GUI.MessageBox.Info("Settings", settingsInfo);
+}
+
+func handleAbout() {
+    GUI.MessageBox.Info("About ViperIDE",
+        "ViperIDE — IDE for Zia and Viper Basic\nPowered by the Viper Runtime.");
+}

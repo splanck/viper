@@ -90,11 +90,8 @@ static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
     ctx->modvar_index_capacity = new_cap;
 }
 
-static RtModvarEntry *mv_lookup(RtContext *ctx,
-                                const char *key,
-                                uint64_t hash,
-                                mv_kind_t kind,
-                                size_t size) {
+static RtModvarEntry *mv_lookup(
+    RtContext *ctx, const char *key, uint64_t hash, mv_kind_t kind, size_t size) {
     if (!ctx->modvar_index_slots || ctx->modvar_index_capacity == 0)
         return NULL;
 

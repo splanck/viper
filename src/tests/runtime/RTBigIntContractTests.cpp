@@ -79,10 +79,7 @@ static void test_invalid_parse_rejected(void) {
 int main() {
     test_saturating_narrowing();
     test_invalid_parse_rejected();
-    expect_trap(trap_invalid_base,
-                RT_TRAP_KIND_DOMAIN_ERROR,
-                0,
-                "base must be between 2 and 36");
+    expect_trap(trap_invalid_base, RT_TRAP_KIND_DOMAIN_ERROR, 0, "base must be between 2 and 36");
     printf("RTBigIntContractTests passed.\n");
     return 0;
 }

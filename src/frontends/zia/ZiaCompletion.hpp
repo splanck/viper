@@ -218,11 +218,8 @@ class CompletionEngine {
     /// innermost visible scope or globals, then looks up field `app` on the
     /// resulting type.
     /// @return TypeRef (may be unknown if resolution fails).
-    TypeRef resolveExprType(const Sema &sema,
-                            const std::string &expr,
-                            uint32_t fileId,
-                            int line,
-                            int col) const;
+    TypeRef resolveExprType(
+        const Sema &sema, const std::string &expr, uint32_t fileId, int line, int col) const;
 
     /// @}
     //=========================================================================

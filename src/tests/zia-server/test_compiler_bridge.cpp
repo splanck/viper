@@ -299,12 +299,12 @@ TEST(CompilerBridge, HoverOnModuleAlias) {
 TEST(CompilerBridge, HoverOnRuntimeMethod) {
     CompilerBridge bridge;
     // Line 5: "    IO.Say("hi");" — dotPrefix="IO", identifier="Say"
-    std::string source = "module Test;\n"              // 1
+    std::string source = "module Test;\n"               // 1
                          "bind Viper.Terminal as IO;\n" // 2
-                         "\n"                          // 3
-                         "func start() {\n"            // 4
-                         "    IO.Say(\"hi\");\n"       // 5
-                         "}\n";                        // 6
+                         "\n"                           // 3
+                         "func start() {\n"             // 4
+                         "    IO.Say(\"hi\");\n"        // 5
+                         "}\n";                         // 6
     // 'Say' starts at col 8 in "    IO.Say("hi");"
     auto result = bridge.hover(source, 5, 8, "test.zia");
     EXPECT_FALSE(result.empty());

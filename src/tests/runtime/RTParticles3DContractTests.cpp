@@ -43,10 +43,8 @@ extern "C" void rt_material3d_set_alpha(void *, double) {}
 extern "C" void rt_material3d_set_texture(void *, void *) {}
 
 extern "C" void *rt_mat4_identity(void) {
-    static double identity[16] = {1.0, 0.0, 0.0, 0.0,
-                                  0.0, 1.0, 0.0, 0.0,
-                                  0.0, 0.0, 1.0, 0.0,
-                                  0.0, 0.0, 0.0, 1.0};
+    static double identity[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
     return identity;
 }
 

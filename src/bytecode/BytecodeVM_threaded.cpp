@@ -1280,8 +1280,8 @@ L_CALL_NATIVE: {
     BCSlot result{};
 
     if (runtimeBridgeEnabled_) {
-        auto preservedArgs =
-            cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+        auto preservedArgs = cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+
         struct RuntimeArgGuard {
             const BytecodeVM *vm;
             std::string_view name;

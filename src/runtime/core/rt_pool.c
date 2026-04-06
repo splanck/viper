@@ -207,9 +207,9 @@ typedef struct rt_pool_state {
 #else
     uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer, via atomic CAS)
 #endif
-    rt_pool_slab_t *slabs;    ///< List of slabs (via atomic CAS for thread-safe insertion)
-    size_t allocated;         ///< Count of blocks currently allocated (via __atomic_*)
-    size_t free_count;        ///< Count of blocks on freelist (via __atomic_*)
+    rt_pool_slab_t *slabs; ///< List of slabs (via atomic CAS for thread-safe insertion)
+    size_t allocated;      ///< Count of blocks currently allocated (via __atomic_*)
+    size_t free_count;     ///< Count of blocks on freelist (via __atomic_*)
 } rt_pool_state_t;
 
 /// @brief Global pool state for each size class.

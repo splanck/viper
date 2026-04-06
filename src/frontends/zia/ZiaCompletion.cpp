@@ -256,11 +256,8 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
 // Type resolution for dotted expressions
 // ---------------------------------------------------------------------------
 
-TypeRef CompletionEngine::resolveExprType(const Sema &sema,
-                                          const std::string &expr,
-                                          uint32_t fileId,
-                                          int line,
-                                          int col) const {
+TypeRef CompletionEngine::resolveExprType(
+    const Sema &sema, const std::string &expr, uint32_t fileId, int line, int col) const {
     if (expr.empty())
         return nullptr;
 
@@ -285,8 +282,8 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema,
     // Look up the first part in the most relevant visible scope at the cursor,
     // then fall back to global symbols.
     TypeRef current;
-    if (const ScopedSymbol *scoped =
-            sema.findSymbolAtPosition(parts[0], fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col))) {
+    if (const ScopedSymbol *scoped = sema.findSymbolAtPosition(
+            parts[0], fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col))) {
         current = scoped->symbol.type;
     } else {
         auto globals = sema.getGlobalSymbols();
@@ -471,11 +468,8 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     }
 
     // ── Step 4: resolve via expression type (for user-defined class fields) ─
-    TypeRef type = resolveExprType(sema,
-                                   ctx.triggerExpr,
-                                   cache_.result ? cache_.result->fileId : 0,
-                                   ctx.line,
-                                   ctx.col);
+    TypeRef type = resolveExprType(
+        sema, ctx.triggerExpr, cache_.result ? cache_.result->fileId : 0, ctx.line, ctx.col);
     if (!type)
         return items;
 

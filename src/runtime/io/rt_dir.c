@@ -1192,7 +1192,8 @@ void *rt_dir_dirs(rt_string path) {
     }
 
     do {
-        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !rt_dir_win_is_dot_name(fd.cFileName)) {
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+            !rt_dir_win_is_dot_name(fd.cFileName)) {
             rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
         }

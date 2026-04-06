@@ -93,7 +93,8 @@ static void test_canvas_new_contract() {
 
     const char *message = rt_trap_get_error();
     assert(message != nullptr);
-    assert(std::strstr(message, "Canvas") != nullptr || std::strstr(message, "graphics") != nullptr ||
+    assert(std::strstr(message, "Canvas") != nullptr ||
+           std::strstr(message, "graphics") != nullptr ||
            std::strstr(message, "display") != nullptr);
     rt_trap_clear_recovery();
 }

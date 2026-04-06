@@ -173,9 +173,7 @@ void BytecodeVM::releaseRuntimeStringArgs(std::string_view name, std::vector<BCS
     }
 }
 
-void BytecodeVM::dismissConsumedStringArgs(std::string_view name,
-                                           BCSlot *args,
-                                           uint8_t argCount) {
+void BytecodeVM::dismissConsumedStringArgs(std::string_view name, BCSlot *args, uint8_t argCount) {
     if (!args || argCount == 0)
         return;
     if (!runtimeCallConsumesOwnedStringArgs(name))
@@ -249,8 +247,8 @@ bool BytecodeVM::validateStringHandle(const void *ptr, const char *site) {
     const char *functionName = (fp_ && fp_->func) ? fp_->func->name.c_str() : "<none>";
     const uint32_t pc = fp_ ? fp_->pc : 0;
     trap(TrapKind::RuntimeError,
-         (std::string(site) + ": invalid runtime string handle in " + functionName + " @pc=" +
-          std::to_string(pc))
+         (std::string(site) + ": invalid runtime string handle in " + functionName +
+          " @pc=" + std::to_string(pc))
              .c_str());
     return false;
 }
@@ -1171,6 +1169,7 @@ void BytecodeVM::run() {
                 if (runtimeBridgeEnabled_) {
                     auto preservedArgs =
                         cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+
                     struct RuntimeArgGuard {
                         const BytecodeVM *vm;
                         std::string_view name;

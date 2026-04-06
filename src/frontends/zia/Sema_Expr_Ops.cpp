@@ -197,9 +197,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                     auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
                     Symbol *sym = currentScope_->lookup(lhsIdent->name);
                     if (sym && sym->isFinal) {
-                        error(expr->loc,
-                              "Cannot reassign final variable '" +
-                                  lhsIdent->name + "'");
+                        error(expr->loc, "Cannot reassign final variable '" + lhsIdent->name + "'");
                     }
                     if (sym && sym->type)
                         assignTarget = sym->type;

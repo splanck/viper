@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_videowidget.h"
 #include "rt_string.h"
+#include "rt_videowidget.h"
 
 #include <cassert>
 #include <cstdint>
@@ -206,8 +206,8 @@ extern "C" void *rt_videoplayer_open(void *) {
     auto *frame = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
     frame->width = g_open_width;
     frame->height = g_open_height;
-    frame->data = static_cast<uint32_t *>(std::calloc(static_cast<size_t>(g_open_width * g_open_height),
-                                                      sizeof(uint32_t)));
+    frame->data = static_cast<uint32_t *>(
+        std::calloc(static_cast<size_t>(g_open_width * g_open_height), sizeof(uint32_t)));
     frame->data[0] = 0x11223344u;
     player->frame = frame;
     return player;
@@ -293,7 +293,8 @@ static void test_successful_construction_sets_up_widgets() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
     assert(widget != nullptr);
     assert(parent.child_count == 1);
     assert(widget->root_widget != nullptr);
@@ -313,7 +314,8 @@ static void test_controls_drive_player_state() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
     auto *player = static_cast<StubPlayer *>(widget->player);
 
     static_cast<StubWidget *>(widget->play_button)->clicked = 1;
@@ -333,7 +335,8 @@ static void test_slider_seek_and_looping() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
     auto *player = static_cast<StubPlayer *>(widget->player);
     auto *slider = static_cast<StubWidget *>(widget->position_slider);
 
@@ -354,7 +357,8 @@ static void test_visibility_and_volume_are_clamped() {
     StubWidget parent{};
     reset_open_state();
 
-    auto *widget = static_cast<rt_videowidget_view *>(rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
     auto *controls = static_cast<StubWidget *>(widget->controls_widget);
     auto *player = static_cast<StubPlayer *>(widget->player);
 

@@ -572,7 +572,8 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         TypeRef initType = sema_.getMethodType(initOwner, initDecl);
-        std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+        std::vector<TypeRef> initParamTypes =
+            initType ? initType->paramTypes() : std::vector<TypeRef>{};
         std::vector<Value> argValues =
             lowerResolvedCallArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
         for (const auto &argVal : argValues) {
@@ -595,8 +596,8 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
             if (sourceIndex >= 0) {
                 size_t idx = static_cast<size_t>(sourceIndex);
                 TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
-                auto coerced =
-                    coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                auto coerced = coerceValueToType(
+                    loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
                 fieldValue = coerced.value;
             } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
                 auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
@@ -687,7 +688,8 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
         TypeRef initType = sema_.getMethodType(initOwner, initDecl);
-        std::vector<TypeRef> initParamTypes = initType ? initType->paramTypes() : std::vector<TypeRef>{};
+        std::vector<TypeRef> initParamTypes =
+            initType ? initType->paramTypes() : std::vector<TypeRef>{};
         std::vector<Value> argValues =
             lowerResolvedCallArgs(expr, initParamTypes, initDecl ? &initDecl->params : nullptr);
         for (const auto &argVal : argValues) {
@@ -712,8 +714,8 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
             if (sourceIndex >= 0) {
                 size_t idx = static_cast<size_t>(sourceIndex);
                 TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
-                auto coerced =
-                    coerceValueToType(loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
+                auto coerced = coerceValueToType(
+                    loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
                 fieldValue = coerced.value;
             } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
                 auto initValue = lowerExpr(fieldDecls[i]->initializer.get());

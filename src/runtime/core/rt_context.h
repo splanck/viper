@@ -34,10 +34,10 @@ extern "C" {
 
 /// @brief Module-level variable entry for per-VM storage.
 typedef struct RtModvarEntry {
-    char *name;  ///< Owned copy of variable name.
-    int kind;    ///< Storage kind (I64, F64, I1, PTR, STR).
-    void *addr;  ///< Allocated storage block.
-    size_t size; ///< Size in bytes.
+    char *name;    ///< Owned copy of variable name.
+    int kind;      ///< Storage kind (I64, F64, I1, PTR, STR).
+    void *addr;    ///< Allocated storage block.
+    size_t size;   ///< Size in bytes.
     uint64_t hash; ///< Cached hash of (name, kind) for indexed lookup.
 } RtModvarEntry;
 

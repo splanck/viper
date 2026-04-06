@@ -441,8 +441,8 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
     return best;
 }
 
-std::vector<Sema::CallParamSpec> Sema::makeParamSpecs(const std::vector<Param> &params,
-                                                      const std::vector<TypeRef> &paramTypes) const {
+std::vector<Sema::CallParamSpec> Sema::makeParamSpecs(
+    const std::vector<Param> &params, const std::vector<TypeRef> &paramTypes) const {
     std::vector<CallParamSpec> specs;
     specs.reserve(params.size());
     for (size_t i = 0; i < params.size(); ++i) {
@@ -456,7 +456,8 @@ std::vector<Sema::CallParamSpec> Sema::makeParamSpecs(const std::vector<Param> &
     return specs;
 }
 
-void Sema::appendClassFieldSpecs(const std::string &typeName, std::vector<CallParamSpec> &out) const {
+void Sema::appendClassFieldSpecs(const std::string &typeName,
+                                 std::vector<CallParamSpec> &out) const {
     auto classIt = classDecls_.find(typeName);
     if (classIt == classDecls_.end())
         return;
@@ -554,8 +555,7 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                                     "' is not supported in call to '" + calleeName + "'",
                                 arg.value ? arg.value->loc : loc);
                 }
-                return fail("Unknown argument '" + *arg.name + "' in call to '" + calleeName +
-                                "'",
+                return fail("Unknown argument '" + *arg.name + "' in call to '" + calleeName + "'",
                             arg.value ? arg.value->loc : loc);
             }
 
@@ -565,7 +565,8 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                             arg.value ? arg.value->loc : loc);
             }
 
-            binding.fixedParamSources[static_cast<size_t>(targetIndex)] = static_cast<int>(argIndex);
+            binding.fixedParamSources[static_cast<size_t>(targetIndex)] =
+                static_cast<int>(argIndex);
         } else {
             if (sawNamed) {
                 return fail("Positional arguments cannot follow named arguments in call to '" +
@@ -573,8 +574,7 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                             arg.value ? arg.value->loc : loc);
             }
 
-            while (nextPositional < fixedCount &&
-                   binding.fixedParamSources[nextPositional] >= 0) {
+            while (nextPositional < fixedCount && binding.fixedParamSources[nextPositional] >= 0) {
                 ++nextPositional;
             }
 
@@ -584,8 +584,8 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
             } else if (hasVariadic) {
                 binding.variadicSources.push_back(static_cast<int>(argIndex));
             } else {
-                return fail("Too many arguments to '" + calleeName + "'", arg.value ? arg.value->loc
-                                                                                     : loc);
+                return fail("Too many arguments to '" + calleeName + "'",
+                            arg.value ? arg.value->loc : loc);
             }
         }
     }
@@ -625,9 +625,10 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         TypeRef listType = params.back().type;
         TypeRef elemType = listType ? listType->elementType() : nullptr;
         for (int sourceIndex : binding.variadicSources) {
-            TypeRef argType = exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
-                                  ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
-                                  : nullptr;
+            TypeRef argType =
+                exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
+                    ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
+                    : nullptr;
             int cost = conversionCost(elemType, argType);
             if (cost >= 1000) {
                 if (reportErrors) {
@@ -730,7 +731,8 @@ MethodDecl *Sema::resolveMethodArgOverload(const std::string &ownerType,
             CallArgBinding binding;
             int score = 0;
             auto specs = makeParamSpecs(decl->params, methodType->paramTypes());
-            if (!bindCallArgs(args, specs, loc, candidateOwner + "." + methodName, binding, &score, false))
+            if (!bindCallArgs(
+                    args, specs, loc, candidateOwner + "." + methodName, binding, &score, false))
                 continue;
 
             std::string lowered = loweredMethodName(candidateOwner, decl);

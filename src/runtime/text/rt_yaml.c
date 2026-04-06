@@ -558,9 +558,8 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     char c = (content_pos < p->len) ? p->input[content_pos] : '\0';
 
     // Sequence
-    if (c == '-' &&
-        (content_pos + 1 >= p->len || p->input[content_pos + 1] == ' ' ||
-         p->input[content_pos + 1] == '\n')) {
+    if (c == '-' && (content_pos + 1 >= p->len || p->input[content_pos + 1] == ' ' ||
+                     p->input[content_pos + 1] == '\n')) {
         return parse_block_sequence(p, indent);
     }
 

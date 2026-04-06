@@ -1,0 +1,68 @@
+module edit_commands;
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+
+bind Viper.GUI;
+bind Convert = Viper.Core.Convert;
+
+// ============================================================================
+// Edit commands — Undo, Redo, Cut, Copy, Paste, SelectAll, Find, GoTo
+// ============================================================================
+
+func handleUndo(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Undo();
+    }
+}
+
+func handleRedo(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Redo();
+    }
+}
+
+func handleCut(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Cut();
+    }
+}
+
+func handleCopy(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Copy();
+    }
+}
+
+func handlePaste(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Paste();
+    }
+}
+
+func handleSelectAll(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.SelectAll();
+    }
+}
+
+func handleFind(shell: app_shell.AppShell) {
+    if shell.findBar.IsVisible() != 0 {
+        shell.findBar.SetVisible(0);
+    } else {
+        shell.findBar.SetVisible(1);
+        shell.findBar.Focus();
+    }
+}
+
+func handleGoToLine(shell: app_shell.AppShell,
+                    engine: editor_engine.EditorEngine) {
+    var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
+    if lineStr != "" {
+        var lineNum = Convert.ToInt(lineStr);
+        if lineNum > 0 {
+            engine.GoToLine(lineNum);
+            shell.SetStatusLeft("Jumped to line " + lineNum);
+        }
+    }
+}

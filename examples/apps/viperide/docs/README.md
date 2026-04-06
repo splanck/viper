@@ -19,11 +19,17 @@ A full-featured IDE for Zia and Viper BASIC, built entirely in Zia using the `Vi
 
 ```
 viperide/
-    main.zia                  Entry point and event loop
+    main.zia                  Entry point, event loop, trigger helpers
     viper.project             Project manifest
 
     ui/
         app_shell.zia         Window layout, menus, toolbar, panels
+
+    commands/
+        file_commands.zia     New, Open, Save, SaveAs, SaveAll, Close, Reload, Exit
+        edit_commands.zia     Undo, Redo, Cut, Copy, Paste, SelectAll, Find, GoTo
+        view_commands.zia     Sidebar, Zoom, Theme, Fullscreen, Minimap, Settings
+        build_commands.zia    Build, BuildAndRun, Run, diagnostics panel
 
     core/
         document.zia          Document entity (path, content, cursor state)

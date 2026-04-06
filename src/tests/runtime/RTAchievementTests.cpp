@@ -47,7 +47,8 @@ extern "C" void rt_canvas_box_alpha(void *, int64_t, int64_t, int64_t, int64_t, 
     g_box_calls++;
 }
 
-extern "C" void rt_canvas_text_scaled(void *, int64_t, int64_t, const char *text, int64_t, int64_t) {
+extern "C" void rt_canvas_text_scaled(
+    void *, int64_t, int64_t, const char *text, int64_t, int64_t) {
     g_text_calls++;
     g_last_text = text;
 }

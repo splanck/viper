@@ -27,8 +27,7 @@
 
 namespace {
 
-template <typename Fn>
-std::uintptr_t fn_bits(Fn fn) {
+template <typename Fn> std::uintptr_t fn_bits(Fn fn) {
     static_assert(sizeof(fn) <= sizeof(std::uintptr_t));
     std::uintptr_t bits = 0;
     std::memcpy(&bits, &fn, sizeof(fn));

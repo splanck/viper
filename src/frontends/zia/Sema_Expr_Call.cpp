@@ -354,7 +354,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 FunctionDecl *genericDecl = getGenericFunction(identExpr->name);
                 if (genericDecl && funcType && funcType->kind == TypeKindSem::Function) {
                     auto specs = makeParamSpecs(genericDecl->params, funcType->paramTypes());
-                    if (!bindCallArgs(expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
+                    if (!bindCallArgs(
+                            expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
                         return types::unknown();
                     resolvedFunctionDecls_[expr] = genericDecl;
                     callArgBindings_[expr] = binding;
@@ -448,7 +449,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 CallArgBinding binding;
                 if (funcType && funcType->kind == TypeKindSem::Function) {
                     auto specs = makeParamSpecs(genericDecl->params, funcType->paramTypes());
-                    if (!bindCallArgs(expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
+                    if (!bindCallArgs(
+                            expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
                         return types::unknown();
                     resolvedFunctionDecls_[expr] = genericDecl;
                     callArgBindings_[expr] = binding;
@@ -533,8 +535,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         std::string loweredName;
         CallArgBinding binding;
-        if (FunctionDecl *func =
-                resolveFunctionCallOverload(identExpr->name, expr, expr->loc, &loweredName, &binding)) {
+        if (FunctionDecl *func = resolveFunctionCallOverload(
+                identExpr->name, expr, expr->loc, &loweredName, &binding)) {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
             resolvedFunctionDecls_[expr] = func;
@@ -677,13 +679,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
              baseType->kind == TypeKindSem::Interface)) {
             std::string resolvedOwner;
             CallArgBinding binding;
-            if (MethodDecl *method = resolveMethodCallOverload(baseType->name,
-                                                               fieldExpr->field,
-                                                               expr,
-                                                               expr->loc,
-                                                               &resolvedOwner,
-                                                               baseType->kind != TypeKindSem::Interface,
-                                                               &binding)) {
+            if (MethodDecl *method =
+                    resolveMethodCallOverload(baseType->name,
+                                              fieldExpr->field,
+                                              expr,
+                                              expr->loc,
+                                              &resolvedOwner,
+                                              baseType->kind != TypeKindSem::Interface,
+                                              &binding)) {
                 bool isInsideType = currentSelfType_ && currentSelfType_->name == resolvedOwner;
                 if (method->visibility == Visibility::Private && !isInsideType) {
                     error(expr->loc,

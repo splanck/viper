@@ -104,7 +104,7 @@ struct BytecodeFunction {
     uint32_t allocaSize; ///< Maximum alloca bytes needed by the function.
     bool hasReturn;      ///< True if the function returns a value; false for void.
 
-    std::vector<uint32_t> code; ///< Bytecode instruction stream (32-bit words).
+    std::vector<uint32_t> code;         ///< Bytecode instruction stream (32-bit words).
     std::vector<uint8_t> localIsString; ///< 1 when the corresponding local slot stores Str.
 
     /// @brief Exception handler ranges active in this function.

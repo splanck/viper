@@ -296,8 +296,8 @@ func start() {
 }
 )");
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(
-        hasDiagContaining(result.diagnostics, "lambda parameters require explicit type annotations"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics,
+                                  "lambda parameters require explicit type annotations"));
 }
 
 TEST(ZiaParserErrors, RejectsUntypedMultiParameterLambda) {
@@ -308,8 +308,8 @@ func start() {
 }
 )");
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(
-        hasDiagContaining(result.diagnostics, "lambda parameters require explicit type annotations"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics,
+                                  "lambda parameters require explicit type annotations"));
 }
 
 TEST(ZiaParserErrors, RejectsFuncStyleLambdaSyntax) {

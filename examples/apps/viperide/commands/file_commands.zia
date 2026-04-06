@@ -1,0 +1,231 @@
+module file_commands;
+
+bind "../ui/app_shell";
+bind "../core/document";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../services/file_utils";
+
+bind Viper.GUI;
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Exec = Viper.Exec;
+bind Str = Viper.String;
+
+// ============================================================================
+// File commands — New, Open, Save, SaveAs, SaveAll, Close, Reload, Exit
+// ============================================================================
+
+func handleNew(shell: app_shell.AppShell,
+               docMgr: document_manager.DocumentManager,
+               engine: editor_engine.EditorEngine,
+               tabs: editor_tabs.EditorTabs) {
+    SaveEditorState(docMgr, engine);
+
+    var newDoc = docMgr.NewDocument();
+    tabs.AddTab(newDoc.fileName, 1);
+    tabs.SetActive(docMgr.activeIndex);
+    engine.LoadDocument(newDoc);
+
+    shell.breadcrumb.SetPath("", "/");
+    shell.SetStatusLeft("New file created");
+    shell.SetStatusRight(DocStatusLabel(newDoc));
+}
+
+func handleOpen(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                engine: editor_engine.EditorEngine,
+                tabs: editor_tabs.EditorTabs) {
+    var path = FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
+    if path != "" {
+        OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    }
+}
+
+func handleOpenFolder(shell: app_shell.AppShell,
+                      projMgr: project_manager.ProjectManager) {
+    var folderPath = FileDialog.SelectFolder("Open Folder", "");
+    if folderPath != "" {
+        projMgr.OpenFolder(folderPath);
+        shell.SetStatusLeft("Opened project: " + projMgr.project.name);
+    }
+}
+
+func handleSave(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                engine: editor_engine.EditorEngine,
+                tabs: editor_tabs.EditorTabs) {
+    SaveEditorState(docMgr, engine);
+    var saveDoc = docMgr.GetActive();
+    if saveDoc != null {
+        if saveDoc.isNew {
+            var savePath = FileDialog.Save(
+                "Save File", "*.zia", saveDoc.fileName, "");
+            if savePath != "" {
+                docMgr.SaveAs(savePath);
+                tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
+                tabs.SetModified(docMgr.activeIndex, false);
+                engine.ClearModified();
+                shell.breadcrumb.SetPath(saveDoc.filePath, "/");
+                shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+                shell.SetStatusRight(DocStatusLabel(saveDoc));
+                GUI.Toast.Success("Saved: " + saveDoc.fileName);
+            }
+        } else {
+            docMgr.SaveActive();
+            tabs.SetModified(docMgr.activeIndex, false);
+            engine.ClearModified();
+            shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+            GUI.Toast.Success("Saved: " + saveDoc.fileName);
+        }
+    }
+}
+
+func handleSaveAs(shell: app_shell.AppShell,
+                  docMgr: document_manager.DocumentManager,
+                  engine: editor_engine.EditorEngine,
+                  tabs: editor_tabs.EditorTabs) {
+    SaveEditorState(docMgr, engine);
+    var saveAsDoc = docMgr.GetActive();
+    if saveAsDoc != null {
+        var saveAsPath = FileDialog.Save(
+            "Save As", "*.zia", saveAsDoc.fileName, "");
+        if saveAsPath != "" {
+            docMgr.SaveAs(saveAsPath);
+            tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
+            tabs.SetModified(docMgr.activeIndex, false);
+            engine.ClearModified();
+            shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
+            shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
+            shell.SetStatusRight(DocStatusLabel(saveAsDoc));
+        }
+    }
+}
+
+func handleSaveAll(shell: app_shell.AppShell,
+                   docMgr: document_manager.DocumentManager,
+                   engine: editor_engine.EditorEngine,
+                   tabs: editor_tabs.EditorTabs) {
+    SaveEditorState(docMgr, engine);
+    var savedCount = docMgr.SaveAll();
+
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var doc = docMgr.documents.get(i);
+        if doc != null and doc.isModified == false {
+            tabs.SetModified(i, false);
+        }
+        i = i + 1;
+    }
+    shell.SetStatusLeft("Saved " + savedCount + " files");
+}
+
+func handleReload(shell: app_shell.AppShell,
+                  docMgr: document_manager.DocumentManager,
+                  engine: editor_engine.EditorEngine,
+                  tabs: editor_tabs.EditorTabs) {
+    var reloadDoc = docMgr.GetActive();
+    if reloadDoc != null and reloadDoc.isNew == false {
+        reloadDoc.content = IO.File.ReadAllText(reloadDoc.filePath);
+        engine.LoadDocument(reloadDoc!);
+        engine.ClearModified();
+        tabs.SetModified(docMgr.activeIndex, false);
+        shell.SetStatusLeft("Reloaded: " + reloadDoc.fileName);
+        GUI.Toast.Success("File reloaded from disk");
+    }
+}
+
+// Returns true if the close was performed (caller should clear pendingReload).
+func handleClose(shell: app_shell.AppShell,
+                 docMgr: document_manager.DocumentManager,
+                 engine: editor_engine.EditorEngine,
+                 tabs: editor_tabs.EditorTabs,
+                 closeIdx: Integer) -> Boolean {
+    if closeIdx < 0 or closeIdx >= docMgr.GetCount() {
+        return false;
+    }
+
+    SaveEditorState(docMgr, engine);
+
+    var closingDoc = docMgr.documents.get(closeIdx);
+    if closingDoc != null and closingDoc.isModified {
+        var confirmed = GUI.MessageBox.Confirm(
+            "Unsaved Changes",
+            closingDoc.fileName + " has unsaved changes.\nClose without saving?");
+        if confirmed == 0 {
+            return false;
+        }
+    }
+
+    docMgr.CloseDocument(closeIdx);
+    tabs.RemoveTab(closeIdx);
+
+    var nextDoc = docMgr.GetActive();
+    if nextDoc != null {
+        tabs.SetActive(docMgr.activeIndex);
+        engine.LoadDocument(nextDoc);
+        shell.breadcrumb.SetPath(nextDoc.filePath, "/");
+        shell.SetStatusRight(DocStatusLabel(nextDoc));
+    } else {
+        engine.SetText("");
+        engine.ClearModified();
+        shell.breadcrumb.SetPath("", "/");
+        shell.SetStatusRight("No file");
+    }
+    shell.SetStatusLeft("File closed");
+    return true;
+}
+
+func handleExit(shell: app_shell.AppShell) {
+    shell.Destroy();
+}
+
+// ============================================================================
+// Shared helpers
+// ============================================================================
+
+func OpenFileAtPath(shell: app_shell.AppShell,
+                    docMgr: document_manager.DocumentManager,
+                    engine: editor_engine.EditorEngine,
+                    tabs: editor_tabs.EditorTabs,
+                    path: String) {
+    SaveEditorState(docMgr, engine);
+
+    var prevCount = docMgr.GetCount();
+    var openDoc = docMgr.OpenFile(path);
+
+    if docMgr.GetCount() > prevCount {
+        tabs.AddTab(openDoc.fileName, 1);
+    }
+    tabs.SetActive(docMgr.activeIndex);
+    engine.LoadDocument(openDoc);
+
+    shell.breadcrumb.SetPath(openDoc.filePath, "/");
+    shell.SetStatusLeft("Opened: " + openDoc.fileName);
+    shell.SetStatusRight(DocStatusLabel(openDoc));
+}
+
+func SaveEditorState(docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine) {
+    if docMgr == null or engine == null {
+        return;
+    }
+    var doc = docMgr.GetActive();
+    if doc != null {
+        engine.SaveToDocument(doc);
+    }
+}
+
+func DocStatusLabel(doc: document.Document) -> String {
+    var lang = "Text";
+    if doc.language == "zia"   { lang = "Zia"; }
+    if doc.language == "basic" { lang = "Basic"; }
+
+    var eol = "LF";
+    if Str.IndexOf(doc.content, "\r\n") != 0 { eol = "CRLF"; }
+
+    return lang + "  |  " + eol;
+}

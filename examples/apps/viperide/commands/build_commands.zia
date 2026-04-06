@@ -1,0 +1,115 @@
+module build_commands;
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../build/build_system";
+bind "../build/diagnostic";
+bind "../commands/file_commands";
+
+bind Viper.GUI;
+bind Convert = Viper.Core.Convert;
+
+// ============================================================================
+// Build commands — Build, BuildAndRun, Run
+// ============================================================================
+
+final ERROR_MARKER_COLOR = 16711680;     // red (0xFF0000)
+final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
+
+func handleBuild(shell: app_shell.AppShell,
+                 docMgr: document_manager.DocumentManager,
+                 engine: editor_engine.EditorEngine,
+                 buildSys: build_system.BuildSystem) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var buildDoc = docMgr.GetActive();
+    if buildDoc != null {
+        if buildDoc.isNew == false {
+            docMgr.SaveActive();
+            shell.SetStatusLeft("Building...");
+            var success = buildSys.Build(buildDoc.filePath);
+            if success {
+                shell.SetStatusLeft("Build succeeded in " + buildSys.GetBuildTime());
+                GUI.Toast.Success("Build succeeded in " + buildSys.GetBuildTime());
+            } else {
+                var errCount = buildSys.GetErrorCount();
+                shell.SetStatusLeft("Build failed: " + errCount + " errors");
+                GUI.Toast.Error("Build failed: " + errCount + " errors");
+            }
+            UpdateDiagnostics(shell, buildSys, engine);
+        } else {
+            shell.SetStatusLeft("Save file before building");
+        }
+    }
+}
+
+func handleBuildAndRun(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       buildSys: build_system.BuildSystem) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var runDoc = docMgr.GetActive();
+    if runDoc != null {
+        if runDoc.isNew == false {
+            docMgr.SaveActive();
+            shell.SetStatusLeft("Building and running...");
+            var success = buildSys.BuildAndRun(runDoc.filePath);
+            if success {
+                shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
+                GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
+            } else {
+                var errCount = buildSys.GetErrorCount();
+                shell.SetStatusLeft("Build failed: " + errCount + " errors");
+                GUI.Toast.Error("Build failed: " + errCount + " errors");
+            }
+            UpdateDiagnostics(shell, buildSys, engine);
+        } else {
+            shell.SetStatusLeft("Save file before running");
+        }
+    }
+}
+
+// Note: Zia compiles and runs in one step, so this is equivalent to
+// BuildAndRun. The distinction exists for future native-binary workflows.
+func handleRun(shell: app_shell.AppShell,
+               docMgr: document_manager.DocumentManager,
+               engine: editor_engine.EditorEngine,
+               buildSys: build_system.BuildSystem) {
+    handleBuildAndRun(shell, docMgr, engine, buildSys);
+}
+
+// Refresh the diagnostics panel, minimap markers, and build output after a build.
+func UpdateDiagnostics(shell: app_shell.AppShell,
+                       buildSys: build_system.BuildSystem,
+                       engine: editor_engine.EditorEngine) {
+    shell.diagListBox.Clear();
+    shell.minimap.ClearMarkers();
+
+    var diagCount = buildSys.diagnostics.count();
+    if diagCount > 0 {
+        shell.diagListBox.SetVisible(1);
+        var i = 0;
+        while i < diagCount {
+            var diag = buildSys.diagnostics.get(i);
+            if diag == null {
+                i = i + 1;
+                continue;
+            }
+            var sevLabel = "error";
+            var markerColor = ERROR_MARKER_COLOR;
+            if diag.severity == 1 {
+                sevLabel = "warning";
+                markerColor = WARNING_MARKER_COLOR;
+            }
+            var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
+            var item = shell.diagListBox.AddItem(diagText);
+            GUI.ListBox.ItemSetData(item, "" + diag.line);
+            shell.minimap.AddMarker(diag.line, 1, markerColor);
+            i = i + 1;
+        }
+    } else {
+        shell.diagListBox.SetVisible(0);
+    }
+
+    shell.SetBuildOutput(buildSys.GetOutput());
+}

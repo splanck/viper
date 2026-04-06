@@ -25,7 +25,7 @@ struct StubMaterial {
 
 int g_draw_mesh_calls = 0;
 int g_backface_cull_off = 0;
-    int g_backface_cull_on = 0;
+int g_backface_cull_on = 0;
 
 struct WaterWaveView {
     double dir[2];
@@ -63,16 +63,27 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
 }
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
+
 extern "C" void rt_obj_retain_maybe(void *) {}
-extern "C" int32_t rt_obj_release_check0(void *) { return 1; }
-extern "C" void rt_obj_free(void *p) { std::free(p); }
-extern "C" void rt_trap(const char *) { std::abort(); }
+
+extern "C" int32_t rt_obj_release_check0(void *) {
+    return 1;
+}
+
+extern "C" void rt_obj_free(void *p) {
+    std::free(p);
+}
+
+extern "C" void rt_trap(const char *) {
+    std::abort();
+}
 
 extern "C" void *rt_mesh3d_new(void) {
     return std::calloc(1, sizeof(rt_mesh3d));
 }
 
-extern "C" void rt_mesh3d_add_vertex(void *m, double, double, double, double, double, double, double, double) {
+extern "C" void rt_mesh3d_add_vertex(
+    void *m, double, double, double, double, double, double, double, double) {
     static_cast<rt_mesh3d *>(m)->vertex_count++;
 }
 
@@ -81,10 +92,8 @@ extern "C" void rt_mesh3d_add_triangle(void *m, int64_t, int64_t, int64_t) {
 }
 
 extern "C" void *rt_mat4_identity(void) {
-    static double identity[16] = {1.0, 0.0, 0.0, 0.0,
-                                  0.0, 1.0, 0.0, 0.0,
-                                  0.0, 0.0, 1.0, 0.0,
-                                  0.0, 0.0, 0.0, 1.0};
+    static double identity[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
     return identity;
 }
 

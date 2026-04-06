@@ -12,29 +12,30 @@ bind "editor/completion";
 bind "services/file_utils";
 bind "build/build_system";
 bind "build/diagnostic";
+bind "commands/file_commands";
+bind "commands/edit_commands";
+bind "commands/view_commands";
+bind "commands/build_commands";
 
 bind Viper.GUI;
-bind Viper.IO as IO;
-bind Viper.IO.Path as Path;
-bind Viper.IO.Dir as Dir;
-bind Viper.Input as Input;
-bind Viper.Exec as Exec;
-bind Viper.Core.Convert as Convert;
-bind Viper.String as Str;
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Input = Viper.Input;
+bind Exec = Viper.Exec;
+bind Convert = Viper.Core.Convert;
+bind Str = Viper.String;
 
 // ============================================================================
 // ViperIDE — main entry point
 // ============================================================================
 // Creates the UI shell, sets up components, and runs the event loop.
-// Professional IDE layout with MenuBar, Toolbar, SplitPane, StatusBar.
+// Action handlers live in commands/*.zia for readability and reuse.
 // ============================================================================
 
-// Window dimensions
 final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 80;
-final ERROR_MARKER_COLOR = 16711680;     // red (0xFF0000)
-final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
 
 func main() {
     // ========================================================================
@@ -47,28 +48,19 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     var buildSys = new build_system.BuildSystem();
 
-    // Build the UI shell
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
-
-    // Resize window to 80% of the monitor and center it
     shell.CenterAndSize(WINDOW_SIZE_PERCENT);
 
-    // Setup editor inside editorRow (the HBox for editor + minimap side by side)
     engine.Setup(shell.editorRow);
 
-    // Setup IntelliSense completion controller
     var completer = new completion.CompletionController();
     completer.Setup(engine.editor, shell.app);
 
-    // Create minimap in the right side of editorRow and bind it to the editor
     shell.minimap = GUI.Minimap.New(shell.editorRow);
     shell.minimap.SetWidth(100);
     shell.minimap.BindEditor(engine.editor);
 
-    // Setup tab bar
     tabs.Setup(shell.tabBar);
-
-    // Setup project manager with the sidebar tree
     projMgr.Setup(shell.sidebarTree);
 
     // ========================================================================
@@ -123,6 +115,9 @@ func main() {
     shell.commandPalette.AddCommandWithShortcut("fullscreen",  "Toggle Fullscreen", "Enter or exit fullscreen mode",       "F11");
     shell.commandPalette.AddCommandWithShortcut("minimap",     "Toggle Minimap",    "Show or hide the minimap panel",      "Ctrl+Shift+M");
     shell.commandPalette.AddCommandWithShortcut("settings",    "Settings",          "View and adjust IDE settings",        "Ctrl+,");
+    // Edit operations in command palette
+    shell.commandPalette.AddCommandWithShortcut("undo",      "Undo",              "Undo last action",                "Ctrl+Z");
+    shell.commandPalette.AddCommandWithShortcut("redo",      "Redo",              "Redo last undone action",         "Ctrl+Y");
 
     // ========================================================================
     // Create welcome document
@@ -142,13 +137,12 @@ func main() {
 
     shell.SetStatusLeft("Ready");
     shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
-    shell.SetStatusRight(DocStatusLabel(welcomeDoc));
+    shell.SetStatusRight(file_commands.DocStatusLabel(welcomeDoc));
 
-    // Wire the find bar to the editor (enables Find/Replace to search in editor)
     shell.findBar.BindEditor(engine.editor);
 
     // ========================================================================
-    // Load persistent settings and apply them
+    // Load persistent settings
     // ========================================================================
     var appSettings = new settings.SettingsManager();
     appSettings.Load();
@@ -159,35 +153,27 @@ func main() {
         shell.minimap.SetVisible(0);
     }
 
-    // File watcher — tracks whether the active file was modified externally.
-    // hasWatcher is false until the first non-new document is active.
+    // File watcher state
     var watchedPath = "";
     var hasWatcher = false;
     var fileWatcher = IO.Watcher.New(".");
-
-    // True when an external modification to the active file is pending reload.
     var pendingReload = false;
+
+    // Cursor tracking for dot-trigger and status bar caching
+    var prevCursorLine = 1;
+    var prevCursorCol  = 1;
+    var minimapVisible = appSettings.minimapVisible;
 
     // ========================================================================
     // Main event loop
     // ========================================================================
-    var cpSelected = "";   // command palette selection for this frame
-    var ctxDir = "";       // directory targeted by the last tree right-click
-    var minimapVisible = appSettings.minimapVisible;   // tracks minimap panel visibility
-
-    // Cursor tracking for dot-trigger and completion auto-dismiss
-    var prevCursorLine = 1;
-    var prevCursorCol  = 1;
-
     while shell != null and shell.ShouldClose() == false {
         shell.Poll();
 
         // ====================================================================
-        // Code Completion — IntelliSense popup
+        // Code Completion
         // ====================================================================
         completer.Update();
-
-        // Keyboard shortcuts for completion navigation
         if completer.isVisible {
             if Shortcuts.WasTriggered("completion_accept") != 0 {
                 completer.AcceptSelected();
@@ -199,31 +185,26 @@ func main() {
                 completer.NavigateUp();
             }
         }
-
-        // Ctrl+Space always triggers (even when popup is open, to refresh)
         if Shortcuts.WasTriggered("completion_trigger") != 0 {
             completer.TriggerCompletion();
         }
 
-        // Dot trigger: detect when '.' is typed (cursor advances 1 col, same line)
+        // Dot trigger: detect when '.' is typed
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
         if curCursorLine == prevCursorLine and curCursorCol == prevCursorCol + 1 {
             if curCursorCol >= 2 {
                 var dotLineText = engine.editor.GetLine(curCursorLine - 1);
-                // Str.MidLen uses 1-based start; char just typed is at col curCursorCol-1
                 if Str.MidLen(dotLineText, curCursorCol - 1, 1) == "." {
                     completer.TriggerCompletion();
                 }
             }
         }
-        prevCursorLine = curCursorLine;
-        prevCursorCol  = curCursorCol;
 
         // ====================================================================
-        // Command Palette — check selection and show on Ctrl+Shift+P
+        // Command Palette + trigger source detection
         // ====================================================================
-        cpSelected = "";
+        var cpSelected = "";
         if shell.commandPalette.WasSelected() != 0 {
             cpSelected = shell.commandPalette.GetSelected();
         }
@@ -236,17 +217,15 @@ func main() {
         // ====================================================================
         if Input.Mouse.WasClicked(1) {
             if shell.sidebarTree.IsHovered() != 0 {
-                // Determine which directory to use for New File / New Folder.
-                // Default to root; override from the currently selected tree node.
-                ctxDir = projMgr.project.rootPath;
+                var ctxDir = projMgr.project.rootPath;
                 var ctxNode = shell.sidebarTree.GetSelected();
                 if ctxNode != null {
                     var nodePath = GUI.TreeView.Node.GetData(ctxNode);
                     var nodeLabel = GUI.TreeView.Node.GetText(ctxNode);
                     if Str.IndexOf(nodeLabel, "[D] ") == 1 {
-                        ctxDir = nodePath;   // directory node — use it directly
+                        ctxDir = nodePath;
                     } else {
-                        ctxDir = Path.Dir(nodePath);  // file node — use its parent
+                        ctxDir = Path.Dir(nodePath);
                     }
                 }
                 shell.treeContextMenu.Show(Input.Mouse.X, Input.Mouse.Y);
@@ -258,17 +237,7 @@ func main() {
                 var ctxPath = GUI.TreeView.Node.GetData(ctxNode);
                 var ctxLabel = GUI.TreeView.Node.GetText(ctxNode);
                 if Str.Left(ctxLabel, 4) == "    " {
-                    SaveEditorState(docMgr, engine);
-                    var prevCount = docMgr.GetCount();
-                    var ctxOpenDoc = docMgr.OpenFile(ctxPath);
-                    if docMgr.GetCount() > prevCount {
-                        tabs.AddTab(ctxOpenDoc.fileName, 1);
-                    }
-                    tabs.SetActive(docMgr.activeIndex);
-                    engine.LoadDocument(ctxOpenDoc);
-                    shell.breadcrumb.SetPath(ctxOpenDoc.filePath, "/");
-                    shell.SetStatusLeft("Opened: " + ctxOpenDoc.fileName);
-                    shell.SetStatusRight(DocStatusLabel(ctxOpenDoc));
+                    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxPath);
                     pendingReload = false;
                 }
             }
@@ -280,6 +249,7 @@ func main() {
             }
         }
         if shell.ctxNewFile.WasClicked() != 0 {
+            var ctxDir = projMgr.project.rootPath;
             if ctxDir != "" {
                 var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
                 if newName != "" {
@@ -291,6 +261,7 @@ func main() {
             }
         }
         if shell.ctxNewFolder.WasClicked() != 0 {
+            var ctxDir = projMgr.project.rootPath;
             if ctxDir != "" {
                 var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
                 if folderName != "" {
@@ -303,372 +274,51 @@ func main() {
         }
 
         // ====================================================================
-        // Handle New File (menu, toolbar, Ctrl+N, or CommandPalette)
+        // Dispatch commands via trigger helper
         // ====================================================================
-        var doNew = shell.miNew.WasClicked() != 0;
-        if doNew == false {
-            doNew = shell.tbNew.WasClicked() != 0;
-        }
-        if doNew == false {
-            doNew = Shortcuts.WasTriggered("new") != 0;
-        }
-        if doNew == false {
-            doNew = cpSelected == "new";
-        }
-        if doNew {
-            SaveEditorState(docMgr, engine);
 
-            var newDoc = docMgr.NewDocument();
-            tabs.AddTab(newDoc.fileName, 1);
-            tabs.SetActive(docMgr.activeIndex);
-            engine.LoadDocument(newDoc);
+        // File commands
+        if triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
+        if triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); pendingReload = false; }
+        if shell.miOpenFolder.WasClicked() != 0                        { file_commands.handleOpenFolder(shell, projMgr); }
+        if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
+        if shell.miSaveAs.WasClicked() != 0                            { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
+        if triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
+        if triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); pendingReload = false; }
 
-            shell.breadcrumb.SetPath("", "/");
-            shell.SetStatusLeft("New file created");
-            shell.SetStatusRight(DocStatusLabel(newDoc));
-            pendingReload = false;
+        // Close — also check tab close button
+        var closeIdx = -1;
+        if triggered("close", shell.miClose, null, cpSelected) {
+            closeIdx = docMgr.activeIndex;
+        } else if shell.tabBar.WasCloseClicked() != 0 {
+            closeIdx = shell.tabBar.GetCloseClickedIndex();
         }
-
-        // ====================================================================
-        // Handle Open File (menu, toolbar, Ctrl+O, or CommandPalette)
-        // ====================================================================
-        var doOpen = shell.miOpen.WasClicked() != 0;
-        if doOpen == false {
-            doOpen = shell.tbOpen.WasClicked() != 0;
-        }
-        if doOpen == false {
-            doOpen = Shortcuts.WasTriggered("open") != 0;
-        }
-        if doOpen == false {
-            doOpen = cpSelected == "open";
-        }
-        if doOpen {
-            var path = FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
-            if path != "" {
-                SaveEditorState(docMgr, engine);
-
-                var prevCount = docMgr.GetCount();
-                var openDoc = docMgr.OpenFile(path);
-
-                if docMgr.GetCount() > prevCount {
-                    tabs.AddTab(openDoc.fileName, 1);
-                }
-                tabs.SetActive(docMgr.activeIndex);
-                engine.LoadDocument(openDoc);
-
-                shell.breadcrumb.SetPath(openDoc.filePath, "/");
-                shell.SetStatusLeft("Opened: " + openDoc.fileName);
-                shell.SetStatusRight(DocStatusLabel(openDoc));
+        if closeIdx >= 0 {
+            if file_commands.handleClose(shell, docMgr, engine, tabs, closeIdx) {
                 pendingReload = false;
             }
         }
 
-        // ====================================================================
-        // Handle Open Folder (menu item)
-        // ====================================================================
-        if shell.miOpenFolder.WasClicked() != 0 {
-            var folderPath = FileDialog.SelectFolder("Open Folder", "");
-            if folderPath != "" {
-                projMgr.OpenFolder(folderPath);
-                shell.SetStatusLeft("Opened project: " + projMgr.project.name);
-            }
-        }
+        if shell.miExit.WasClicked() != 0 { file_commands.handleExit(shell); return; }
 
-        // ====================================================================
-        // Handle file tree clicks — open selected file
-        // ====================================================================
+        // File tree clicks — open selected file
         var treeSelectedPath = projMgr.HandleTreeClicks();
         if treeSelectedPath != "" {
-            SaveEditorState(docMgr, engine);
-
-            var prevCount = docMgr.GetCount();
-            var treeOpenDoc = docMgr.OpenFile(treeSelectedPath);
-
-            if docMgr.GetCount() > prevCount {
-                tabs.AddTab(treeOpenDoc.fileName, 1);
-            }
-            tabs.SetActive(docMgr.activeIndex);
-            engine.LoadDocument(treeOpenDoc);
-
-            shell.breadcrumb.SetPath(treeOpenDoc.filePath, "/");
-            shell.SetStatusLeft("Opened: " + treeOpenDoc.fileName);
-            shell.SetStatusRight(DocStatusLabel(treeOpenDoc));
+            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, treeSelectedPath);
             pendingReload = false;
         }
 
-        // ====================================================================
-        // Handle Save (menu, toolbar, Ctrl+S, or CommandPalette)
-        // ====================================================================
-        var doSave = shell.miSave.WasClicked() != 0;
-        if doSave == false {
-            doSave = shell.tbSave.WasClicked() != 0;
-        }
-        if doSave == false {
-            doSave = Shortcuts.WasTriggered("save") != 0;
-        }
-        if doSave == false {
-            doSave = cpSelected == "save";
-        }
-        if doSave {
-            SaveEditorState(docMgr, engine);
-            var saveDoc = docMgr.GetActive();
-            if saveDoc != null {
-                if saveDoc.isNew {
-                    var savePath = FileDialog.Save(
-                        "Save File", "*.zia", saveDoc.fileName, "");
-                    if savePath != "" {
-                        docMgr.SaveAs(savePath);
-                        tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
-                        tabs.SetModified(docMgr.activeIndex, false);
-                        engine.ClearModified();
-                        shell.breadcrumb.SetPath(saveDoc.filePath, "/");
-                        shell.SetStatusLeft("Saved: " + saveDoc.fileName);
-                        shell.SetStatusRight(DocStatusLabel(saveDoc));
-                        GUI.Toast.Success("Saved: " + saveDoc.fileName);
-                    }
-                } else {
-                    docMgr.SaveActive();
-                    tabs.SetModified(docMgr.activeIndex, false);
-                    engine.ClearModified();
-                    pendingReload = false;
-                    shell.SetStatusLeft("Saved: " + saveDoc.fileName);
-                    GUI.Toast.Success("Saved: " + saveDoc.fileName);
-                }
-            }
-        }
+        // Edit commands
+        if shell.miUndo.WasClicked() != 0 or cpSelected == "undo"      { edit_commands.handleUndo(engine); }
+        if shell.miRedo.WasClicked() != 0 or cpSelected == "redo"      { edit_commands.handleRedo(engine); }
+        if shell.miCut.WasClicked() != 0                                { edit_commands.handleCut(engine); }
+        if shell.miCopy.WasClicked() != 0                               { edit_commands.handleCopy(engine); }
+        if shell.miPaste.WasClicked() != 0                              { edit_commands.handlePaste(engine); }
+        if shell.miSelectAll.WasClicked() != 0                          { edit_commands.handleSelectAll(engine); }
+        if triggered("find", shell.miFind, null, cpSelected)            { edit_commands.handleFind(shell); }
+        if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
 
-        // ====================================================================
-        // Handle Save As (menu item)
-        // ====================================================================
-        if shell.miSaveAs.WasClicked() != 0 {
-            SaveEditorState(docMgr, engine);
-            var saveAsDoc = docMgr.GetActive();
-            if saveAsDoc != null {
-                var saveAsPath = FileDialog.Save(
-                    "Save As", "*.zia", saveAsDoc.fileName, "");
-                if saveAsPath != "" {
-                    docMgr.SaveAs(saveAsPath);
-                    tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
-                    tabs.SetModified(docMgr.activeIndex, false);
-                    engine.ClearModified();
-                    shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
-                    shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
-                    shell.SetStatusRight(DocStatusLabel(saveAsDoc));
-                }
-            }
-        }
-
-        // ====================================================================
-        // Handle Save All (menu, toolbar, Ctrl+Shift+S, or CommandPalette)
-        // ====================================================================
-        var doSaveAll = shell.miSaveAll.WasClicked() != 0;
-        if doSaveAll == false {
-            doSaveAll = shell.tbSaveAll.WasClicked() != 0;
-        }
-        if doSaveAll == false {
-            doSaveAll = Shortcuts.WasTriggered("saveall") != 0;
-        }
-        if doSaveAll == false {
-            doSaveAll = cpSelected == "saveall";
-        }
-        if doSaveAll {
-            SaveEditorState(docMgr, engine);
-            var savedCount = docMgr.SaveAll();
-
-            var i = 0;
-            while i < docMgr.GetCount() {
-                var doc = docMgr.documents.get(i);
-                if doc != null and doc.isModified == false {
-                    tabs.SetModified(i, false);
-                }
-                i = i + 1;
-            }
-            shell.SetStatusLeft("Saved " + savedCount + " files");
-        }
-
-        // ====================================================================
-        // Handle Reload File (menu, Ctrl+Shift+R, or CommandPalette)
-        // ====================================================================
-        var doReload = shell.miReload.WasClicked() != 0;
-        if doReload == false {
-            doReload = Shortcuts.WasTriggered("reload") != 0;
-        }
-        if doReload == false {
-            doReload = cpSelected == "reload";
-        }
-        if doReload {
-            var reloadDoc = docMgr.GetActive();
-            if reloadDoc != null and reloadDoc.isNew == false {
-                reloadDoc.content = IO.File.ReadAllText(reloadDoc.filePath);
-                engine.LoadDocument(reloadDoc!);
-                engine.ClearModified();
-                tabs.SetModified(docMgr.activeIndex, false);
-                pendingReload = false;
-                shell.SetStatusLeft("Reloaded: " + reloadDoc.fileName);
-                GUI.Toast.Success("File reloaded from disk");
-            }
-        }
-
-        // ====================================================================
-        // Handle Close File (menu, Ctrl+W, or tab close button)
-        // ====================================================================
-        var doClose = shell.miClose.WasClicked() != 0;
-        if doClose == false {
-            doClose = Shortcuts.WasTriggered("close") != 0;
-        }
-        if doClose == false {
-            doClose = cpSelected == "close";
-        }
-        var closeIdx = -1;
-        if doClose {
-            closeIdx = docMgr.activeIndex;
-        }
-        if doClose == false {
-            if shell.tabBar.WasCloseClicked() != 0 {
-                closeIdx = shell.tabBar.GetCloseClickedIndex();
-                doClose = closeIdx >= 0;
-            }
-        }
-        if doClose and closeIdx >= 0 and closeIdx < docMgr.GetCount() {
-            // Save editor state before closing
-            SaveEditorState(docMgr, engine);
-
-            // Ask for confirmation if the document has unsaved changes
-            var closingDoc = docMgr.documents.get(closeIdx);
-            if closingDoc != null and closingDoc.isModified {
-                var confirmed = GUI.MessageBox.Confirm(
-                    "Unsaved Changes",
-                    closingDoc.fileName + " has unsaved changes.\nClose without saving?");
-                if confirmed == 0 {
-                    doClose = false;
-                }
-            }
-
-            if doClose {
-                // Close document and remove tab
-                docMgr.CloseDocument(closeIdx);
-                tabs.RemoveTab(closeIdx);
-
-                // Update editor with next document or clear
-                var nextDoc = docMgr.GetActive();
-                if nextDoc != null {
-                    tabs.SetActive(docMgr.activeIndex);
-                    engine.LoadDocument(nextDoc);
-                    shell.breadcrumb.SetPath(nextDoc.filePath, "/");
-                    shell.SetStatusRight(DocStatusLabel(nextDoc));
-                } else {
-                    engine.SetText("");
-                    engine.ClearModified();
-                    shell.breadcrumb.SetPath("", "/");
-                    shell.SetStatusRight("No file");
-                }
-                pendingReload = false;
-                shell.SetStatusLeft("File closed");
-            }
-        }
-
-        // ====================================================================
-        // Handle Exit (menu item)
-        // ====================================================================
-        if shell.miExit.WasClicked() != 0 {
-            // Break out of the event loop
-            shell.Destroy();
-            return;
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Undo
-        // ====================================================================
-        if shell.miUndo.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.Undo();
-            }
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Redo
-        // ====================================================================
-        if shell.miRedo.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.Redo();
-            }
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Cut
-        // ====================================================================
-        if shell.miCut.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.Cut();
-            }
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Copy
-        // ====================================================================
-        if shell.miCopy.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.Copy();
-            }
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Paste
-        // ====================================================================
-        if shell.miPaste.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.Paste();
-            }
-        }
-
-        // ====================================================================
-        // Handle Edit menu: Select All
-        // ====================================================================
-        if shell.miSelectAll.WasClicked() != 0 {
-            if engine != null and engine.editor != null {
-                engine.editor.SelectAll();
-            }
-        }
-
-        // ====================================================================
-        // Handle Find / Replace (menu item or Ctrl+F)
-        // ====================================================================
-        var doFind = shell.miFind.WasClicked() != 0;
-        if doFind == false {
-            doFind = Shortcuts.WasTriggered("find") != 0;
-        }
-        if doFind == false {
-            doFind = cpSelected == "find";
-        }
-        if doFind {
-            if shell.findBar.IsVisible() != 0 {
-                // Already visible — hide it
-                shell.findBar.SetVisible(0);
-            } else {
-                shell.findBar.SetVisible(1);
-                shell.findBar.Focus();
-            }
-        }
-
-        // ====================================================================
-        // Handle Go To Line (Ctrl+G or CommandPalette)
-        // ====================================================================
-        var doGoto = Shortcuts.WasTriggered("goto") != 0;
-        if doGoto == false {
-            doGoto = cpSelected == "goto";
-        }
-        if doGoto {
-            var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
-            if lineStr != "" {
-                var lineNum = Convert.ToInt(lineStr);
-                if lineNum > 0 {
-                    engine.GoToLine(lineNum);
-                    shell.SetStatusLeft("Jumped to line " + lineNum);
-                }
-            }
-        }
-
-        // FindBar per-frame: trigger navigation actions and show match count.
+        // FindBar per-frame updates
         if shell.findBar.IsVisible() != 0 {
             shell.findBar.FindNext();
             shell.findBar.FindPrev();
@@ -681,289 +331,24 @@ func main() {
             }
         }
 
-        // ====================================================================
-        // Handle Toggle Sidebar (menu, Ctrl+B, or CommandPalette)
-        // ====================================================================
-        var doToggleSidebar = shell.miToggleSidebar.WasClicked() != 0;
-        if doToggleSidebar == false {
-            doToggleSidebar = Shortcuts.WasTriggered("togglesidebar") != 0;
-        }
-        if doToggleSidebar == false {
-            doToggleSidebar = cpSelected == "sidebar";
-        }
-        if doToggleSidebar {
-            shell.ToggleSidebar();
-        }
+        // View commands
+        if triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
+        if triggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell); }
+        if triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
+        if triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
+        if triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
+        if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(appSettings); }
+        if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell); }
+        if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
+        if triggered("settings", shell.miPreferences, null, cpSelected)        { view_commands.handleSettings(appSettings); }
+        if shell.miAbout.WasClicked() != 0                                     { view_commands.handleAbout(); }
 
-        // ====================================================================
-        // Handle Toggle Status Bar (View menu or CommandPalette)
-        // ====================================================================
-        var doToggleStatusBar = shell.miToggleStatusBar.WasClicked() != 0;
-        if doToggleStatusBar == false {
-            doToggleStatusBar = cpSelected == "statusbar";
-        }
-        if doToggleStatusBar {
-            if shell.statusBar.IsVisible() != 0 {
-                shell.statusBar.SetVisible(0);
-            } else {
-                shell.statusBar.SetVisible(1);
-            }
-        }
+        // Build commands
+        if triggered("build", shell.miBuild, null, cpSelected)    { build_commands.handleBuild(shell, docMgr, engine, buildSys); }
+        if triggered("buildrun", shell.miBuildAndRun, null, cpSelected) { build_commands.handleBuildAndRun(shell, docMgr, engine, buildSys); }
+        if triggered("run", shell.miRun, null, cpSelected)        { build_commands.handleRun(shell, docMgr, engine, buildSys); }
 
-        // ====================================================================
-        // Handle Zoom In (View menu, Ctrl+=, or CommandPalette)
-        // ====================================================================
-        var doZoomIn = shell.miZoomIn.WasClicked() != 0;
-        if doZoomIn == false {
-            doZoomIn = Shortcuts.WasTriggered("zoomin") != 0;
-        }
-        if doZoomIn == false {
-            doZoomIn = cpSelected == "zoomin";
-        }
-        if doZoomIn {
-            appSettings.fontSize = appSettings.fontSize + 1;
-            shell.app.SetFontSize(appSettings.fontSize);
-            engine.editor.SetFontSize(appSettings.fontSize);
-            appSettings.Save();
-            shell.SetStatusLeft("Font size: " + appSettings.fontSize);
-        }
-
-        // ====================================================================
-        // Handle Zoom Out (View menu, Ctrl+-, or CommandPalette)
-        // ====================================================================
-        var doZoomOut = shell.miZoomOut.WasClicked() != 0;
-        if doZoomOut == false {
-            doZoomOut = Shortcuts.WasTriggered("zoomout") != 0;
-        }
-        if doZoomOut == false {
-            doZoomOut = cpSelected == "zoomout";
-        }
-        if doZoomOut {
-            appSettings.fontSize = appSettings.fontSize - 1;
-            shell.app.SetFontSize(appSettings.fontSize);
-            engine.editor.SetFontSize(appSettings.fontSize);
-            appSettings.Save();
-            shell.SetStatusLeft("Font size: " + appSettings.fontSize);
-        }
-
-        // ====================================================================
-        // Handle Reset Zoom (View menu, Ctrl+0, or CommandPalette)
-        // ====================================================================
-        var doZoomReset = shell.miZoomReset.WasClicked() != 0;
-        if doZoomReset == false {
-            doZoomReset = Shortcuts.WasTriggered("zoomreset") != 0;
-        }
-        if doZoomReset == false {
-            doZoomReset = cpSelected == "zoomreset";
-        }
-        if doZoomReset {
-            appSettings.fontSize = DEFAULT_FONT_SIZE;
-            shell.app.SetFontSize(DEFAULT_FONT_SIZE);
-            engine.editor.SetFontSize(DEFAULT_FONT_SIZE);
-            appSettings.Save();
-            shell.SetStatusLeft("Font size reset to " + DEFAULT_FONT_SIZE);
-        }
-
-        // ====================================================================
-        // Handle Toggle Theme (View menu, Ctrl+Shift+T, or CommandPalette)
-        // ====================================================================
-        var doToggleTheme = shell.miToggleTheme.WasClicked() != 0;
-        if doToggleTheme == false {
-            doToggleTheme = Shortcuts.WasTriggered("toggletheme") != 0;
-        }
-        if doToggleTheme == false {
-            doToggleTheme = cpSelected == "toggletheme";
-        }
-        if doToggleTheme {
-            if appSettings.theme == "dark" {
-                GUI.Theme.SetLight();
-                appSettings.theme = "light";
-                GUI.Toast.Info("Switched to light theme");
-            } else {
-                GUI.Theme.SetDark();
-                appSettings.theme = "dark";
-                GUI.Toast.Info("Switched to dark theme");
-            }
-            appSettings.Save();
-        }
-
-        // ====================================================================
-        // Handle Toggle Fullscreen (View menu, F11, or CommandPalette)
-        // ====================================================================
-        var doFullscreen = shell.miFullscreen.WasClicked() != 0;
-        if doFullscreen == false {
-            doFullscreen = Shortcuts.WasTriggered("fullscreen") != 0;
-        }
-        if doFullscreen == false {
-            doFullscreen = cpSelected == "fullscreen";
-        }
-        if doFullscreen {
-            if shell.app.IsFullscreen() {
-                shell.app.SetFullscreen(false);
-            } else {
-                shell.app.SetFullscreen(true);
-            }
-        }
-
-        // ====================================================================
-        // Handle Toggle Minimap (View menu, Ctrl+Shift+M, or CommandPalette)
-        // ====================================================================
-        var doMinimap = shell.miToggleMinimap.WasClicked() != 0;
-        if doMinimap == false {
-            doMinimap = Shortcuts.WasTriggered("minimap") != 0;
-        }
-        if doMinimap == false {
-            doMinimap = cpSelected == "minimap";
-        }
-        if doMinimap {
-            if minimapVisible {
-                minimapVisible = false;
-                shell.minimap.SetVisible(0);
-                appSettings.minimapVisible = false;
-            } else {
-                minimapVisible = true;
-                shell.minimap.SetVisible(1);
-                appSettings.minimapVisible = true;
-            }
-            appSettings.Save();
-        }
-
-        // ====================================================================
-        // Handle Settings / Preferences (Edit menu, Ctrl+,, or CommandPalette)
-        // ====================================================================
-        var doSettings = shell.miPreferences.WasClicked() != 0;
-        if doSettings == false {
-            doSettings = Shortcuts.WasTriggered("settings") != 0;
-        }
-        if doSettings == false {
-            doSettings = cpSelected == "settings";
-        }
-        if doSettings {
-            var settingsInfo = "Current Settings\n\n";
-            settingsInfo = settingsInfo + "Font Size:  " + appSettings.fontSize + "pt\n";
-            settingsInfo = settingsInfo + "Theme:      " + appSettings.theme + "\n";
-            settingsInfo = settingsInfo + "\nKeyboard shortcuts:\n";
-            settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-   Zoom In / Out\n";
-            settingsInfo = settingsInfo + "  Ctrl+0              Reset Font Size\n";
-            settingsInfo = settingsInfo + "  Ctrl+Shift+T        Toggle Theme\n";
-            settingsInfo = settingsInfo + "  F11                 Toggle Fullscreen\n";
-            settingsInfo = settingsInfo + "  Ctrl+Shift+M        Toggle Minimap";
-            GUI.MessageBox.Info("Settings", settingsInfo);
-        }
-
-        // ====================================================================
-        // Handle About (Help menu)
-        // ====================================================================
-        if shell.miAbout.WasClicked() != 0 {
-            GUI.MessageBox.Info("About ViperIDE",
-                "ViperIDE — IDE for Zia and Viper Basic\nPowered by the Viper Runtime.");
-        }
-
-        // ====================================================================
-        // Handle Build (menu, Ctrl+Shift+B, or CommandPalette)
-        // ====================================================================
-        var doBuild = shell.miBuild.WasClicked() != 0;
-        if doBuild == false {
-            doBuild = Shortcuts.WasTriggered("build") != 0;
-        }
-        if doBuild == false {
-            doBuild = cpSelected == "build";
-        }
-        if doBuild {
-            SaveEditorState(docMgr, engine);
-            var buildDoc = docMgr.GetActive();
-            if buildDoc != null {
-                if buildDoc.isNew == false {
-                    docMgr.SaveActive();
-                    shell.SetStatusLeft("Building...");
-                    var success = buildSys.Build(buildDoc.filePath);
-                    if success {
-                        shell.SetStatusLeft("Build succeeded in " + buildSys.GetBuildTime());
-                        GUI.Toast.Success("Build succeeded in " + buildSys.GetBuildTime());
-                    } else {
-                        var errCount = buildSys.GetErrorCount();
-                        shell.SetStatusLeft("Build failed: " + errCount + " errors");
-                        GUI.Toast.Error("Build failed: " + errCount + " errors");
-                    }
-                    // Refresh diagnostics panel and minimap markers
-                    UpdateDiagnostics(shell, buildSys, engine);
-                } else {
-                    shell.SetStatusLeft("Save file before building");
-                }
-            }
-        }
-
-        // ====================================================================
-        // Handle Build and Run (menu, F5, or CommandPalette)
-        // ====================================================================
-        var doBuildRun = shell.miBuildAndRun.WasClicked() != 0;
-        if doBuildRun == false {
-            doBuildRun = Shortcuts.WasTriggered("buildrun") != 0;
-        }
-        if doBuildRun == false {
-            doBuildRun = cpSelected == "buildrun";
-        }
-        if doBuildRun {
-            SaveEditorState(docMgr, engine);
-            var runDoc = docMgr.GetActive();
-            if runDoc != null {
-                if runDoc.isNew == false {
-                    docMgr.SaveActive();
-                    shell.SetStatusLeft("Building and running...");
-                    var success = buildSys.BuildAndRun(runDoc.filePath);
-                    if success {
-                        shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
-                        GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
-                    } else {
-                        var errCount = buildSys.GetErrorCount();
-                        shell.SetStatusLeft("Build failed: " + errCount + " errors");
-                        GUI.Toast.Error("Build failed: " + errCount + " errors");
-                    }
-                    UpdateDiagnostics(shell, buildSys, engine);
-                } else {
-                    shell.SetStatusLeft("Save file before running");
-                }
-            }
-        }
-
-        // ====================================================================
-        // Handle Run without Build (menu, Ctrl+F5, or CommandPalette)
-        // Note: Zia compiles and runs in one step, so this is equivalent
-        // to Build and Run. The distinction exists for future native-binary
-        // workflows where compilation produces a separate executable.
-        // ====================================================================
-        var doRunOnly = shell.miRun.WasClicked() != 0;
-        if doRunOnly == false {
-            doRunOnly = Shortcuts.WasTriggered("run") != 0;
-        }
-        if doRunOnly == false {
-            doRunOnly = cpSelected == "run";
-        }
-        if doRunOnly {
-            SaveEditorState(docMgr, engine);
-            var runOnlyDoc = docMgr.GetActive();
-            if runOnlyDoc != null {
-                if runOnlyDoc.isNew == false {
-                    shell.SetStatusLeft("Running...");
-                    var runSuccess = buildSys.BuildAndRun(runOnlyDoc.filePath);
-                    if runSuccess {
-                        shell.SetStatusLeft("Run completed in " + buildSys.GetBuildTime());
-                        GUI.Toast.Info("Run completed in " + buildSys.GetBuildTime());
-                    } else {
-                        var runErrCount = buildSys.GetErrorCount();
-                        shell.SetStatusLeft("Run failed: " + runErrCount + " errors");
-                        GUI.Toast.Error("Run failed: " + runErrCount + " errors");
-                    }
-                    UpdateDiagnostics(shell, buildSys, engine);
-                } else {
-                    shell.SetStatusLeft("Save file before running");
-                }
-            }
-        }
-
-        // ====================================================================
-        // Handle Diagnostics panel: click to navigate to error line
-        // ====================================================================
+        // Diagnostics panel: click to navigate to error line
         if shell.diagListBox.WasSelectionChanged() != 0 {
             var selItem = shell.diagListBox.Selected;
             if selItem != null {
@@ -976,13 +361,12 @@ func main() {
         }
 
         // ====================================================================
-        // Handle tab switching (user clicked a different tab)
+        // Tab switching
         // ====================================================================
         if shell.tabBar.WasChanged() != 0 {
             var newIdx = shell.tabBar.GetActiveIndex();
-            // Guard against invalid indices and skip if already on this tab
             if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
-                SaveEditorState(docMgr, engine);
+                file_commands.SaveEditorState(docMgr, engine);
                 docMgr.SetActive(newIdx);
                 var switchDoc = docMgr.GetActive();
                 if switchDoc != null {
@@ -992,7 +376,7 @@ func main() {
                     } else {
                         shell.breadcrumb.SetPath(switchDoc.filePath, "/");
                     }
-                    shell.SetStatusRight(DocStatusLabel(switchDoc));
+                    shell.SetStatusRight(file_commands.DocStatusLabel(switchDoc));
                     shell.SetStatusLeft("Switched to: " + switchDoc.fileName);
                     pendingReload = false;
                 }
@@ -1005,25 +389,20 @@ func main() {
         if engine != null and docMgr != null and docMgr.GetCount() > 0 {
             if engine.IsModified() {
                 var curDoc = docMgr.GetActive();
-                if curDoc != null {
-                    if curDoc.isModified == false {
-                        curDoc.isModified = true;
-                        tabs.SetModified(docMgr.activeIndex, true);
-                    }
+                if curDoc != null and curDoc.isModified == false {
+                    curDoc.isModified = true;
+                    tabs.SetModified(docMgr.activeIndex, true);
                 }
             }
         }
 
         // ====================================================================
-        // File change detection (IO.Watcher for active document)
+        // File change detection
         // ====================================================================
         var activeDoc = docMgr.GetActive();
         if activeDoc != null and activeDoc.isNew == false {
             if activeDoc.filePath != watchedPath {
-                // Active document changed — stop old watcher and start a new one
-                if hasWatcher {
-                    fileWatcher.Stop();
-                }
+                if hasWatcher { fileWatcher.Stop(); }
                 watchedPath = activeDoc.filePath;
                 fileWatcher = IO.Watcher.New(watchedPath);
                 fileWatcher.Start();
@@ -1050,11 +429,13 @@ func main() {
         }
 
         // ====================================================================
-        // Update status bar cursor position
+        // Update status bar (only when cursor moves)
         // ====================================================================
-        if engine != null {
-            shell.SetStatusCenter("Ln " + engine.GetCursorLine() + ", Col " + engine.GetCursorCol() + "  |  Lines: " + engine.GetLineCount());
+        if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol {
+            shell.SetStatusCenter("Ln " + curCursorLine + ", Col " + curCursorCol + "  |  Lines: " + engine.GetLineCount());
         }
+        prevCursorLine = curCursorLine;
+        prevCursorCol  = curCursorCol;
 
         shell.Render();
     }
@@ -1067,66 +448,26 @@ func main() {
     }
 }
 
-// Save the editor's current content back to the active document.
-func SaveEditorState(docMgr: document_manager.DocumentManager,
-                     engine: editor_engine.EditorEngine) {
-    if docMgr == null or engine == null {
-        return;
-    }
-    var doc = docMgr.GetActive();
-    if doc != null {
-        engine.SaveToDocument(doc);
-    }
+// ============================================================================
+// Trigger helpers — check menu + toolbar + shortcut + command palette
+// ============================================================================
+
+func triggered(name: String, menuItem: GUI.MenuItem, toolbarItem: GUI.ToolbarItem, cpSelected: String) -> Boolean {
+    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if toolbarItem != null and toolbarItem.WasClicked() != 0 { return true; }
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
 }
 
-// Refresh the diagnostics panel, minimap markers, and build output after a build.
-// Error lines are marked red (16711680) and warnings yellow (16776960).
-func UpdateDiagnostics(shell: app_shell.AppShell,
-                       buildSys: build_system.BuildSystem,
-                       engine: editor_engine.EditorEngine) {
-    shell.diagListBox.Clear();
-    shell.minimap.ClearMarkers();
-
-    var diagCount = buildSys.diagnostics.count();
-    if diagCount > 0 {
-        shell.diagListBox.SetVisible(1);
-        var i = 0;
-        while i < diagCount {
-            var diag = buildSys.diagnostics.get(i);
-            if diag == null {
-                i = i + 1;
-                continue;
-            }
-            var sevLabel = "error";
-            var markerColor = ERROR_MARKER_COLOR;
-            if diag.severity == 1 {
-                sevLabel = "warning";
-                markerColor = WARNING_MARKER_COLOR;
-            }
-            var diagText = diag.filePath + ":" + diag.line + "  " + sevLabel + "[" + diag.code + "]: " + diag.message;
-            var item = shell.diagListBox.AddItem(diagText);
-            GUI.ListBox.ItemSetData(item, "" + diag.line);
-            shell.minimap.AddMarker(diag.line, 1, markerColor);
-            i = i + 1;
-        }
-    } else {
-        shell.diagListBox.SetVisible(0);
-    }
-
-    // Show raw build output so the user can always see compiler stdout/stderr.
-    shell.SetBuildOutput(buildSys.GetOutput());
+func triggeredNoMenu(name: String, cpSelected: String) -> Boolean {
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
 }
 
-// Build the status bar right-zone label for a document.
-// Returns e.g. "Zia  |  LF" or "Basic  |  CRLF".
-// Shown in the status bar right zone; the breadcrumb already shows the file path.
-func DocStatusLabel(doc: document.Document) -> String {
-    var lang = "Text";
-    if doc.language == "zia"   { lang = "Zia"; }
-    if doc.language == "basic" { lang = "Basic"; }
-
-    var eol = "LF";
-    if Str.IndexOf(doc.content, "\r\n") != 0 { eol = "CRLF"; }
-
-    return lang + "  |  " + eol;
+func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> Boolean {
+    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
 }

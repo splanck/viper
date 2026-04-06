@@ -56,15 +56,15 @@ static void rt_graphics_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
-#define RT_GRAPHICS_TRAP_VOID(msg)                                                                  \
-    do {                                                                                            \
-        rt_graphics_unavailable_(msg);                                                              \
+#define RT_GRAPHICS_TRAP_VOID(msg)                                                                 \
+    do {                                                                                           \
+        rt_graphics_unavailable_(msg);                                                             \
     } while (0)
 
-#define RT_GRAPHICS_TRAP_RET(msg, fallback)                                                         \
-    do {                                                                                            \
-        rt_graphics_unavailable_(msg);                                                              \
-        return (fallback);                                                                          \
+#define RT_GRAPHICS_TRAP_RET(msg, fallback)                                                        \
+    do {                                                                                           \
+        rt_graphics_unavailable_(msg);                                                             \
+        return (fallback);                                                                         \
     } while (0)
 
 int8_t rt_canvas_is_available(void) {
@@ -1654,14 +1654,8 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     return NULL;
 }
 
-void *rt_light3d_new_spot(void *p,
-                          void *d,
-                          double r,
-                          double g,
-                          double b,
-                          double a,
-                          double i,
-                          double o) {
+void *rt_light3d_new_spot(
+    void *p, void *d, double r, double g, double b, double a, double i, double o) {
     (void)p;
     (void)d;
     (void)r;

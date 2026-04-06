@@ -21,8 +21,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_string.h"
 #include "rt_videowidget.h"
+#include "rt_string.h"
 #include "rt_videoplayer.h"
 
 #include <stdint.h>

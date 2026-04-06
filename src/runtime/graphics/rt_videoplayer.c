@@ -28,8 +28,8 @@
 #include "../audio/rt_ogg.h"
 #include "rt_avi.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_theora.h"
 #include "rt_string.h"
+#include "rt_theora.h"
 #include "rt_ycbcr.h"
 #ifdef VIPER_ENABLE_AUDIO
 #include "../audio/rt_audio.h"

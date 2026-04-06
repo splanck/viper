@@ -889,18 +889,12 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
     if (hasInit) {
         std::string resolvedOwner;
         CallArgBinding binding;
-        MethodDecl *initDecl = resolveMethodArgOverload(type->name,
-                                                        "init",
-                                                        expr->args,
-                                                        expr->loc,
-                                                        &resolvedOwner,
-                                                        false,
-                                                        &binding);
+        MethodDecl *initDecl = resolveMethodArgOverload(
+            type->name, "init", expr->args, expr->loc, &resolvedOwner, false, &binding);
 
         if (!initDecl) {
             error(expr->loc,
-                  "Type '" + type->name +
-                      "' has no init overload matching the provided arguments");
+                  "Type '" + type->name + "' has no init overload matching the provided arguments");
             return types::unknown();
         }
 
