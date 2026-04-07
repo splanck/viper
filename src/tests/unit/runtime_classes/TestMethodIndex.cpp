@@ -126,6 +126,59 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     EXPECT_FALSE(re.has_value());
 }
 
+TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
+    runtimeMethodIndex().seed();
+
+    auto patternFindAll = runtimeMethodIndex().find("Viper.Text.Pattern", "FindAll", 2);
+    ASSERT_TRUE(patternFindAll.has_value());
+    EXPECT_EQ(patternFindAll->ret, BasicType::Object);
+    EXPECT_EQ(patternFindAll->returnClassQName, std::string("Viper.Collections.Seq"));
+
+    auto findAll = runtimeMethodIndex().find("Viper.Text.CompiledPattern", "FindAll", 1);
+    ASSERT_TRUE(findAll.has_value());
+    EXPECT_EQ(findAll->ret, BasicType::Object);
+    EXPECT_EQ(findAll->returnClassQName, std::string("Viper.Collections.Seq"));
+
+    auto keys = runtimeMethodIndex().find("Viper.Collections.DefaultMap", "Keys", 0);
+    ASSERT_TRUE(keys.has_value());
+    EXPECT_EQ(keys->ret, BasicType::Object);
+    EXPECT_EQ(keys->returnClassQName, std::string("Viper.Collections.Seq"));
+
+    auto toList = runtimeMethodIndex().find("Viper.Collections.Seq", "ToList", 0);
+    ASSERT_TRUE(toList.has_value());
+    EXPECT_EQ(toList->ret, BasicType::Object);
+    EXPECT_EQ(toList->returnClassQName, std::string("Viper.Collections.List"));
+
+    auto lazyToSeqN = runtimeMethodIndex().find("Viper.LazySeq", "ToSeqN", 1);
+    ASSERT_TRUE(lazyToSeqN.has_value());
+    EXPECT_EQ(lazyToSeqN->ret, BasicType::Object);
+    EXPECT_EQ(lazyToSeqN->returnClassQName, std::string("Viper.Collections.Seq"));
+}
+
+TEST(RuntimeMethodIndexBasic, IoConstructorAliasesResolveToCtorTargets) {
+    runtimeMethodIndex().seed();
+
+    auto binNew = runtimeMethodIndex().find("Viper.IO.BinFile", "New", 2);
+    ASSERT_TRUE(binNew.has_value());
+    EXPECT_EQ(binNew->target, std::string("Viper.IO.BinFile.Open"));
+    EXPECT_EQ(binNew->ret, BasicType::Object);
+
+    auto readerNew = runtimeMethodIndex().find("Viper.IO.LineReader", "New", 1);
+    ASSERT_TRUE(readerNew.has_value());
+    EXPECT_EQ(readerNew->target, std::string("Viper.IO.LineReader.Open"));
+    EXPECT_EQ(readerNew->ret, BasicType::Object);
+
+    auto writerNew = runtimeMethodIndex().find("Viper.IO.LineWriter", "New", 1);
+    ASSERT_TRUE(writerNew.has_value());
+    EXPECT_EQ(writerNew->target, std::string("Viper.IO.LineWriter.Open"));
+    EXPECT_EQ(writerNew->ret, BasicType::Object);
+
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    EXPECT_TRUE(registry.findFunction("Viper.IO.BinFile.New").has_value());
+    EXPECT_TRUE(registry.findFunction("Viper.IO.LineReader.New").has_value());
+    EXPECT_TRUE(registry.findFunction("Viper.IO.LineWriter.New").has_value());
+}
+
 /// @brief Test entry point.
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);

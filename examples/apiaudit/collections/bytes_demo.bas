@@ -8,7 +8,7 @@ PRINT "=== Bytes API Audit ==="
 PRINT "--- New ---"
 DIM b AS Viper.Collections.Bytes
 b = Viper.Collections.Bytes.New(4)
-PRINT b.Len           ' 4
+PRINT b.Length           ' 4
 
 ' --- Set / Get ---
 PRINT "--- Set / Get ---"
@@ -25,7 +25,7 @@ PRINT b.Get(3)        ' 108
 PRINT "--- FromStr / ToStr ---"
 DIM hello AS Viper.Collections.Bytes
 hello = Viper.Collections.Bytes.FromStr("Hello")
-PRINT hello.Len       ' 5
+PRINT hello.Length       ' 5
 PRINT hello.ToStr()   ' Hello
 PRINT hello.Get(0)    ' 72
 
@@ -37,7 +37,7 @@ PRINT hello.ToHex()   ' 48656c6c6f
 PRINT "--- FromHex ---"
 DIM hex AS Viper.Collections.Bytes
 hex = Viper.Collections.Bytes.FromHex("deadbeef")
-PRINT hex.Len         ' 4
+PRINT hex.Length         ' 4
 PRINT hex.Get(0)      ' 222
 PRINT hex.Get(3)      ' 239
 
@@ -50,7 +50,7 @@ PRINT "--- FromBase64 ---"
 DIM decoded AS Viper.Collections.Bytes
 decoded = Viper.Collections.Bytes.FromBase64("SGVsbG8=")
 PRINT decoded.ToStr()    ' Hello
-PRINT decoded.Len        ' 5
+PRINT decoded.Length        ' 5
 
 ' --- Fill ---
 PRINT "--- Fill ---"
@@ -71,7 +71,7 @@ PRINT hello.Find(99)     ' -1
 PRINT "--- Clone ---"
 DIM clone AS Viper.Collections.Bytes
 clone = hello.Clone()
-PRINT clone.Len          ' 5
+PRINT clone.Length          ' 5
 PRINT clone.ToStr()      ' Hello
 clone.Set(0, 74)
 PRINT clone.ToStr()      ' Jello
@@ -81,7 +81,7 @@ PRINT hello.ToStr()      ' Hello (unchanged)
 PRINT "--- Slice ---"
 DIM sl AS Viper.Collections.Bytes
 sl = hello.Slice(1, 4)
-PRINT sl.Len             ' 3
+PRINT sl.Length             ' 3
 PRINT sl.ToStr()         ' ell
 
 ' --- Copy ---

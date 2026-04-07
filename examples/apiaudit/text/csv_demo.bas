@@ -9,7 +9,7 @@ PRINT "=== Viper.Text.Csv API Audit ==="
 PRINT "--- ParseLine ---"
 DIM row AS Viper.Collections.Seq
 row = Viper.Text.Csv.ParseLine("Alice,30,Boston")
-PRINT "Field count: "; row.Len
+PRINT "Field count: "; row.Length
 DIM rf0 AS OBJECT
 rf0 = row.Get(0)
 PRINT "Field 0: "; rf0
@@ -23,7 +23,7 @@ PRINT "Field 2: "; rf2
 ' Quoted fields
 DIM row2 AS Viper.Collections.Seq
 row2 = Viper.Text.Csv.ParseLine(CHR(34) + "hello, world" + CHR(34) + ",42," + CHR(34) + "quoted" + CHR(34))
-PRINT "Quoted field count: "; row2.Len
+PRINT "Quoted field count: "; row2.Length
 DIM qf0 AS OBJECT
 qf0 = row2.Get(0)
 PRINT "Quoted field 0: "; qf0
@@ -35,7 +35,7 @@ PRINT "Quoted field 1: "; qf1
 PRINT "--- ParseLineWith ---"
 DIM row3 AS Viper.Collections.Seq
 row3 = Viper.Text.Csv.ParseLineWith("one;two;three", ";")
-PRINT "Field count: "; row3.Len
+PRINT "Field count: "; row3.Length
 DIM df0 AS OBJECT
 df0 = row3.Get(0)
 PRINT "Field 0: "; df0
@@ -52,7 +52,7 @@ DIM csv AS STRING
 csv = "name,age,city" + CHR(10) + "Alice,30,Boston" + CHR(10) + "Bob,25,NYC"
 DIM rows AS Viper.Collections.Seq
 rows = Viper.Text.Csv.Parse(csv)
-PRINT "Row count: "; rows.Len
+PRINT "Row count: "; rows.Length
 
 ' --- ParseWith (multi-line, custom delimiter) ---
 PRINT "--- ParseWith ---"
@@ -60,7 +60,7 @@ DIM csv2 AS STRING
 csv2 = "a|b|c" + CHR(10) + "1|2|3" + CHR(10) + "4|5|6"
 DIM rows2 AS Viper.Collections.Seq
 rows2 = Viper.Text.Csv.ParseWith(csv2, "|")
-PRINT "Row count: "; rows2.Len
+PRINT "Row count: "; rows2.Length
 
 ' --- FormatLine ---
 PRINT "--- FormatLine ---"

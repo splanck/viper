@@ -8,7 +8,7 @@ PRINT "=== TreeMap API Audit ==="
 PRINT "--- New ---"
 DIM tm AS Viper.Collections.TreeMap
 tm = Viper.Collections.TreeMap.New()
-PRINT tm.Len       ' 0
+PRINT tm.Length       ' 0
 PRINT tm.IsEmpty   ' 1
 
 ' --- Set / Len ---
@@ -17,7 +17,7 @@ tm.Set("cherry", "red")
 tm.Set("apple", "green")
 tm.Set("banana", "yellow")
 tm.Set("date", "brown")
-PRINT tm.Len       ' 4
+PRINT tm.Length       ' 4
 PRINT tm.IsEmpty   ' 0
 
 ' --- Get ---
@@ -35,7 +35,7 @@ PRINT tm.Has("fig")      ' 0
 PRINT "--- Set (update) ---"
 tm.Set("apple", "red")
 PRINT tm.Get("apple")    ' red
-PRINT tm.Len              ' 4
+PRINT tm.Length              ' 4
 
 ' --- First / Last ---
 PRINT "--- First / Last ---"
@@ -53,7 +53,7 @@ PRINT tm.Ceil("date")    ' date
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = tm.Keys()
-PRINT keys.Len            ' 4
+PRINT keys.Length            ' 4
 PRINT keys.Get(0)         ' apple
 PRINT keys.Get(1)         ' banana
 PRINT keys.Get(2)         ' cherry
@@ -63,19 +63,19 @@ PRINT keys.Get(3)         ' date
 PRINT "--- Values ---"
 DIM vals AS OBJECT
 vals = tm.Values()
-PRINT vals.Len            ' 4
+PRINT vals.Length            ' 4
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT tm.Remove("banana")  ' 1
 PRINT tm.Has("banana")     ' 0
-PRINT tm.Len                ' 3
+PRINT tm.Length                ' 3
 PRINT tm.Remove("banana")  ' 0
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 tm.Clear()
-PRINT tm.Len              ' 0
+PRINT tm.Length              ' 0
 PRINT tm.IsEmpty          ' 1
 
 PRINT "=== TreeMap audit complete ==="

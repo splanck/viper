@@ -1,10 +1,17 @@
 // test_lazy.zia — Lazy, LazySeq
-// NOTE: Viper.Lazy and Viper.LazySeq are not available via bind (BUG-010)
 module TestLazy;
 
 bind Viper.Terminal;
+bind Viper.Lazy;
+bind Viper.LazySeq;
 
 func start() {
-    Say("skipped: lazy/lazyseq not available in Zia (BUG-010)");
+    var lazy = Viper.Lazy.OfI64(42);
+    SayInt(Viper.Lazy.GetI64(lazy));
+
+    var seq = Viper.LazySeq.Range(1, 5, 1);
+    var out = Viper.LazySeq.ToSeqN(seq, 3);
+    SayInt(out.Length);
+
     Say("done");
 }

@@ -8,7 +8,7 @@ PRINT "=== BitSet API Audit ==="
 PRINT "--- New ---"
 DIM bs AS OBJECT
 bs = Viper.Collections.BitSet.New(8)
-PRINT bs.Len        ' 8
+PRINT bs.Length        ' 8
 PRINT bs.Count      ' 0
 PRINT bs.IsEmpty    ' 1
 

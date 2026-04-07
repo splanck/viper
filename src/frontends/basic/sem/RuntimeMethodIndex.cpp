@@ -162,6 +162,7 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view class
 
     // Convert return type from IL to BASIC
     info.ret = toBasicType(parsed->signature.returnType);
+    info.returnClassQName = il::runtime::concreteRuntimeReturnClassQName(parsed->signature);
 
     // Convert parameter types from IL to BASIC
     info.args.reserve(parsed->signature.params.size());

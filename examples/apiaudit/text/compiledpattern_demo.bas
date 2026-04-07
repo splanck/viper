@@ -37,7 +37,7 @@ PRINT "FindPos 'abcdef': "; pat.FindPos("abcdef")
 ' --- FindAll ---
 PRINT "--- FindAll ---"
 DIM matches AS OBJECT = pat.FindAll("a1b22c333")
-PRINT "Match count: "; matches.Len
+PRINT "Match count: "; matches.Length
 DIM m0 AS OBJECT = matches.Get(0)
 PRINT "Match 0: "; m0
 DIM m1 AS OBJECT = matches.Get(1)
@@ -49,7 +49,7 @@ PRINT "Match 2: "; m2
 PRINT "--- Captures ---"
 DIM capPat AS OBJECT = Viper.Text.CompiledPattern.New("(\w+)@(\w+)")
 DIM caps AS OBJECT = capPat.Captures("user@host")
-PRINT "Capture count: "; caps.Len
+PRINT "Capture count: "; caps.Length
 DIM c0 AS OBJECT = caps.Get(0)
 PRINT "Capture 0: "; c0
 DIM c1 AS OBJECT = caps.Get(1)
@@ -60,7 +60,7 @@ PRINT "Capture 2: "; c2
 ' --- CapturesFrom ---
 PRINT "--- CapturesFrom ---"
 DIM caps2 AS OBJECT = pat.CapturesFrom("abc123def456", 6)
-PRINT "Capture count: "; caps2.Len
+PRINT "Capture count: "; caps2.Length
 DIM cf0 AS OBJECT = caps2.Get(0)
 PRINT "Capture 0: "; cf0
 
@@ -76,7 +76,7 @@ PRINT pat.ReplaceFirst("abc123def456", "NUM")
 PRINT "--- Split ---"
 DIM commaPat AS OBJECT = Viper.Text.CompiledPattern.New("[,;]+")
 DIM parts AS OBJECT = commaPat.Split("one,two;;three,four")
-PRINT "Part count: "; parts.Len
+PRINT "Part count: "; parts.Length
 DIM p0 AS OBJECT = parts.Get(0)
 PRINT "Part 0: "; p0
 DIM p1 AS OBJECT = parts.Get(1)
@@ -89,7 +89,7 @@ PRINT "Part 3: "; p3
 ' --- SplitN ---
 PRINT "--- SplitN ---"
 DIM parts2 AS OBJECT = commaPat.SplitN("one,two;;three,four", 2)
-PRINT "Part count: "; parts2.Len
+PRINT "Part count: "; parts2.Length
 DIM sn0 AS OBJECT = parts2.Get(0)
 PRINT "Part 0: "; sn0
 DIM sn1 AS OBJECT = parts2.Get(1)

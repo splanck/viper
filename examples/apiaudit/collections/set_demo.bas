@@ -8,7 +8,7 @@ PRINT "=== Set API Audit ==="
 PRINT "--- New ---"
 DIM s AS OBJECT
 s = Viper.Collections.Set.New()
-PRINT s.Len       ' 0
+PRINT s.Length       ' 0
 PRINT s.IsEmpty   ' 1
 
 ' --- Add ---
@@ -20,7 +20,7 @@ PRINT s.Add(a)    ' 1 (new)
 PRINT s.Add(b)    ' 1 (new)
 PRINT s.Add(c)    ' 1 (new)
 PRINT s.Add(a)    ' 0 (duplicate)
-PRINT s.Len       ' 3
+PRINT s.Length       ' 3
 PRINT s.IsEmpty   ' 0
 
 ' --- Has ---
@@ -34,14 +34,14 @@ PRINT s.Has(d)    ' 0
 PRINT "--- Remove ---"
 PRINT s.Remove(b)  ' 1
 PRINT s.Has(b)     ' 0
-PRINT s.Len        ' 2
+PRINT s.Length        ' 2
 PRINT s.Remove(b)  ' 0 (already removed)
 
 ' --- Items ---
 PRINT "--- Items ---"
 DIM items AS Viper.Collections.Seq
 items = s.Items()
-PRINT items.Len    ' 2
+PRINT items.Length    ' 2
 
 ' --- Merge (union) ---
 PRINT "--- Merge ---"
@@ -60,17 +60,17 @@ s2.Add(z)
 s2.Add(w)
 
 DIM merged AS OBJECT = s1.Union(s2)
-PRINT merged.Len   ' 4
+PRINT merged.Length   ' 4
 
 ' --- Intersect ---
 PRINT "--- Intersect ---"
 DIM common AS OBJECT = s1.Intersect(s2)
-PRINT common.Len   ' 2
+PRINT common.Length   ' 2
 
 ' --- Diff ---
 PRINT "--- Diff ---"
 DIM diff AS OBJECT = s1.Diff(s2)
-PRINT diff.Len     ' 1
+PRINT diff.Length     ' 1
 
 ' --- IsSubset ---
 PRINT "--- IsSubset ---"
@@ -93,7 +93,7 @@ PRINT s1.IsDisjoint(s2)   ' 0
 ' --- Clear ---
 PRINT "--- Clear ---"
 s1.Clear()
-PRINT s1.Len       ' 0
+PRINT s1.Length       ' 0
 PRINT s1.IsEmpty   ' 1
 
 PRINT "=== Set audit complete ==="

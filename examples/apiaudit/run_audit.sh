@@ -2,12 +2,47 @@
 # Run all API audit demos and capture results
 # Usage: ./run_audit.sh [vm|native|both]
 
-VIPER="build/src/tools/viper/viper"
 AUDIT_DIR="examples/apiaudit"
 MODE="${1:-vm}"
 TIMEOUT=10
 RESULTS_DIR="/tmp/apiaudit_results"
 mkdir -p "$RESULTS_DIR"
+
+if [ -x "build/src/tools/viper/viper" ]; then
+    VIPER="build/src/tools/viper/viper"
+elif command -v viper >/dev/null 2>&1; then
+    VIPER="$(command -v viper)"
+else
+    echo "ERROR: Cannot find viper runner"
+    exit 1
+fi
+
+run_with_timeout() {
+    local seconds="$1"
+    shift
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" "$@"
+        return $?
+    fi
+    if command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$seconds" "$@"
+        return $?
+    fi
+
+    python3 - "$seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+cmd = sys.argv[2:]
+try:
+    proc = subprocess.run(cmd, timeout=timeout)
+    raise SystemExit(proc.returncode)
+except subprocess.TimeoutExpired:
+    raise SystemExit(124)
+PY
+}
 
 pass=0
 fail=0
@@ -25,10 +60,10 @@ run_demo() {
 
     if [ "$mode" = "native" ]; then
         local result
-        result=$(timeout $TIMEOUT "$VIPER" run --native "$file" 2>"$errfile")
+        result=$(run_with_timeout "$TIMEOUT" "$VIPER" run --native "$file" 2>"$errfile")
     else
         local result
-        result=$(timeout $TIMEOUT "$VIPER" run "$file" 2>"$errfile")
+        result=$(run_with_timeout "$TIMEOUT" "$VIPER" run "$file" 2>"$errfile")
     fi
     local exit_code=$?
 

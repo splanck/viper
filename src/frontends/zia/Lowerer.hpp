@@ -679,6 +679,11 @@ class Lowerer {
     /// @return LowerResult with the variable's value.
     LowerResult lowerIdent(IdentExpr *expr);
 
+    /// @brief Lower an assignment expression (BinaryOp::Assign).
+    /// @details Handles identifier, field, index, and global assignment targets
+    ///          with type coercion and optional conversions.
+    LowerResult lowerAssignment(BinaryExpr *expr);
+
     /// @brief Lower a binary expression.
     /// @return LowerResult with the operation result.
     LowerResult lowerBinary(BinaryExpr *expr);

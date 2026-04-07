@@ -1,11 +1,25 @@
 ' test_game_logic.bas — Grid2D, StateMachine, ButtonGroup, ObjectPool, Quadtree
-' NOTE: ALL Viper.Game.* classes trigger heap assertion crash in BASIC VM (BUG-008)
-' Grid2D.New(10,10,0) — Assertion failed: hdr->magic == RT_MAGIC, rt_heap.c:66
-' StateMachine.New() — same crash
-' ButtonGroup.New() — same crash
-' ObjectPool.New(100) — same crash
-' Quadtree.New(0,0,1000,1000) — same crash
+DIM grid AS OBJECT
+DIM sm AS OBJECT
+DIM bg AS OBJECT
+DIM pool AS OBJECT
+DIM qt AS OBJECT
 
-PRINT "skipped: all Game.* classes crash in BASIC (BUG-008)"
+grid = Viper.Game.Grid2D.New(4, 4, 0)
+PRINT grid.Width
+PRINT grid.Height
+
+sm = Viper.Game.StateMachine.New()
+PRINT sm.StateCount
+
+bg = Viper.Game.ButtonGroup.New()
+PRINT bg.Count
+
+pool = Viper.Game.ObjectPool.New(8)
+PRINT pool.Capacity
+
+qt = Viper.Game.Quadtree.New(0.0, 0.0, 100.0, 100.0)
+PRINT qt.ItemCount
+
 PRINT "done"
 END

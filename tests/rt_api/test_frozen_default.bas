@@ -1,9 +1,22 @@
 ' test_frozen_default.bas — FrozenSet, FrozenMap, DefaultMap
-' NOTE: FrozenSet.New, FrozenMap.New not recognized by BASIC (BUG-009)
-' NOTE: DefaultMap.New(obj) — cannot assign string to OBJECT in BASIC (BUG-023)
+DIM dm AS OBJECT
+DIM fs AS OBJECT
+DIM fm AS OBJECT
+DIM keys AS OBJECT
+DIM count AS INTEGER
 
-PRINT "all skipped: FrozenSet/FrozenMap/DefaultMap not usable in BASIC"
-PRINT "FrozenSet/FrozenMap: unknown procedure (BUG-009)"
-PRINT "DefaultMap: str-to-obj coercion fails (BUG-023)"
+dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
+dm.Set("name", "viper")
+dm.Set("lang", "zia")
+keys = dm.Keys()
+count = keys.Length
+PRINT count
+
+fs = Viper.Collections.FrozenSet.Empty()
+PRINT fs.Length
+
+fm = Viper.Collections.FrozenMap.Empty()
+PRINT fm.Length
+
 PRINT "done"
 END

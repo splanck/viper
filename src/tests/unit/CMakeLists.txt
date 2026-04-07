@@ -277,6 +277,13 @@ if (NOT TARGET test_method_index_basic)
     viper_add_ctest(test_method_index_basic test_method_index_basic)
 endif ()
 
+if (NOT TARGET test_runtime_class_typed_returns)
+    viper_add_test(test_runtime_class_typed_returns
+            ${VIPER_TESTS_DIR}/unit/runtime_classes/TestTypedReturnMetadata.cpp)
+    target_link_libraries(test_runtime_class_typed_returns PRIVATE fe_basic)
+    viper_add_ctest(test_runtime_class_typed_returns test_runtime_class_typed_returns)
+endif ()
+
 if (NOT TARGET test_lowering_runtime_class_len)
     viper_add_test(test_lowering_runtime_class_len ${VIPER_TESTS_DIR}/unit/runtime_classes/TestLowering.cpp)
     target_link_libraries(test_lowering_runtime_class_len PRIVATE fe_basic)

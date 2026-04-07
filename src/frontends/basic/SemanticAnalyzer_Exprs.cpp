@@ -21,6 +21,7 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -118,6 +119,126 @@ static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::st
     return std::nullopt;
 }
 
+static std::optional<std::string> resolveRuntimeFunctionReturnClassQName(
+    SemanticAnalyzer &analyzer, std::string_view calleeName) {
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+
+    auto resolveConcrete = [&](std::string_view canonicalName) -> std::optional<std::string> {
+        auto sig = registry.findFunction(canonicalName);
+        if (!sig)
+            return std::nullopt;
+
+        if (std::string concrete = il::runtime::concreteRuntimeReturnClassQName(*sig);
+            !concrete.empty()) {
+            return concrete;
+        }
+
+        if (sig->returnType != il::runtime::ILScalarType::Object)
+            return std::nullopt;
+
+        auto lastDot = canonicalName.rfind('.');
+        if (lastDot == std::string_view::npos)
+            return std::nullopt;
+
+        std::string prefix(canonicalName.substr(0, lastDot));
+        std::string_view method = canonicalName.substr(lastDot + 1);
+        if (string_utils::iequals(method, "New") && il::runtime::findRuntimeClassByQName(prefix))
+            return prefix;
+
+        return std::nullopt;
+    };
+
+    if (auto exact = resolveConcrete(calleeName))
+        return exact;
+
+    if (calleeName.find('.') != std::string_view::npos)
+        return std::nullopt;
+
+    for (const auto &ns : analyzer.getUsingImports()) {
+        std::string qualified = ns;
+        if (!qualified.empty())
+            qualified.push_back('.');
+        qualified.append(calleeName);
+        if (auto imported = resolveConcrete(qualified))
+            return imported;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, const Expr &expr) {
+    if (const auto *var = as<const VarExpr>(expr))
+        return analyzer.lookupObjectClassQName(var->name);
+
+    if (const auto *alloc = as<const NewExpr>(expr)) {
+        if (!alloc->className.empty())
+            return alloc->className;
+        if (!alloc->qualifiedType.empty())
+            return JoinDots(alloc->qualifiedType);
+        return std::nullopt;
+    }
+
+    if (const auto *call = as<const CallExpr>(expr)) {
+        std::string calleeName =
+            !call->calleeQualified.empty() ? JoinDots(call->calleeQualified) : call->callee;
+        if (calleeName.empty())
+            return std::nullopt;
+        return resolveRuntimeFunctionReturnClassQName(analyzer, calleeName);
+    }
+
+    if (const auto *call = as<const MethodCallExpr>(expr)) {
+        if (!call->base)
+            return std::nullopt;
+
+        std::string baseClass;
+        if (auto runtimeBase = runtimeClassQNameFromExpr(*call->base))
+            baseClass = *runtimeBase;
+        else if (auto inferredBase = inferObjectClassQName(analyzer, *call->base))
+            baseClass = *inferredBase;
+
+        if (baseClass.empty())
+            return std::nullopt;
+
+        if (auto entry = runtimeMethodIndex().find(baseClass, call->method, call->args.size());
+            entry && !entry->returnClassQName.empty()) {
+            return entry->returnClassQName;
+        }
+
+        if (const auto *klass = analyzer.oopIndex().findClass(baseClass)) {
+            auto it = klass->methods.find(std::string(call->method));
+            if (it != klass->methods.end() && !it->second.sig.returnClassName.empty())
+                return it->second.sig.returnClassName;
+        }
+
+        return std::nullopt;
+    }
+
+    if (const auto *access = as<const MemberAccessExpr>(expr)) {
+        if (!access->base)
+            return std::nullopt;
+
+        if (auto runtimeBase = runtimeClassQNameFromExpr(*access->base)) {
+            if (const auto *klass = analyzer.oopIndex().findClass(*runtimeBase)) {
+                if (const auto *field = analyzer.oopIndex().findField(klass->qualifiedName,
+                                                                      access->member);
+                    field && !field->objectClassName.empty()) {
+                    return field->objectClassName;
+                }
+            }
+        }
+
+        if (auto baseClass = inferObjectClassQName(analyzer, *access->base)) {
+            if (const auto *field =
+                    analyzer.oopIndex().findField(*baseClass, access->member);
+                field && !field->objectClassName.empty()) {
+                return field->objectClassName;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
 /// @brief Resolve the type of a runtime class property access.
 /// @param analyzer The semantic analyzer instance.
 /// @param expr The member access expression (e.g., obj.property).
@@ -130,10 +251,8 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
     if (expr.base) {
         if (auto qname = runtimeClassQNameFromExpr(*expr.base)) {
             klass = il::runtime::findRuntimeClassByQName(*qname);
-        } else if (auto *var = as<const VarExpr>(*expr.base)) {
-            if (auto qname2 = analyzer.lookupObjectClassQName(var->name)) {
-                klass = il::runtime::findRuntimeClassByQName(*qname2);
-            }
+        } else if (auto qname2 = inferObjectClassQName(analyzer, *expr.base)) {
+            klass = il::runtime::findRuntimeClassByQName(*qname2);
         }
     }
 

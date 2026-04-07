@@ -8,7 +8,7 @@ PRINT "=== MultiMap API Audit ==="
 PRINT "--- New ---"
 DIM mm AS OBJECT
 mm = Viper.Collections.MultiMap.New()
-PRINT mm.Len        ' 0
+PRINT mm.Length        ' 0
 PRINT mm.IsEmpty    ' 1
 
 ' --- Put / Len ---
@@ -18,7 +18,7 @@ mm.Put("color", "green")
 mm.Put("color", "blue")
 mm.Put("size", "small")
 mm.Put("size", "large")
-PRINT mm.Len        ' 5
+PRINT mm.Length        ' 5
 PRINT mm.IsEmpty    ' 0
 
 ' --- KeyCount ---
@@ -41,20 +41,20 @@ PRINT mm.Has("shape")   ' 0
 PRINT "--- Get ---"
 DIM colors AS Viper.Collections.Seq
 colors = mm.Get("color")
-PRINT colors.Len         ' 3
+PRINT colors.Length         ' 3
 PRINT colors.Get(0)      ' red
 PRINT colors.Get(1)      ' green
 PRINT colors.Get(2)      ' blue
 
 DIM sizes AS Viper.Collections.Seq
 sizes = mm.Get("size")
-PRINT sizes.Len          ' 2
+PRINT sizes.Length          ' 2
 PRINT sizes.Get(0)       ' small
 PRINT sizes.Get(1)       ' large
 
 DIM empty AS Viper.Collections.Seq
 empty = mm.Get("shape")
-PRINT empty.Len          ' 0
+PRINT empty.Length          ' 0
 
 ' --- GetFirst ---
 PRINT "--- GetFirst ---"
@@ -65,20 +65,20 @@ PRINT mm.GetFirst("size")    ' small
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = mm.Keys()
-PRINT keys.Len            ' 2
+PRINT keys.Length            ' 2
 
 ' --- RemoveAll ---
 PRINT "--- RemoveAll ---"
 PRINT mm.RemoveAll("color")   ' 1
 PRINT mm.Has("color")         ' 0
-PRINT mm.Len                   ' 2
+PRINT mm.Length                   ' 2
 PRINT mm.KeyCount              ' 1
 PRINT mm.RemoveAll("color")   ' 0
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 mm.Clear()
-PRINT mm.Len        ' 0
+PRINT mm.Length        ' 0
 PRINT mm.IsEmpty    ' 1
 PRINT mm.KeyCount   ' 0
 

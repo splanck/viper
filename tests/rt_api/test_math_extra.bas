@@ -1,4 +1,4 @@
-' test_math_extra.bas — Quat
+' test_math_extra.bas — Quat, Scanner, CompiledPattern
 DIM q AS Viper.Math.Quat
 q = Viper.Math.Quat.New(0.0, 0.0, 0.0, 1.0)
 PRINT "quat x: "; q.X
@@ -15,7 +15,7 @@ DIM qe AS Viper.Math.Quat
 qe = Viper.Math.Quat.FromEuler(0.0, 0.0, 0.0)
 PRINT "euler w: "; qe.W
 
-PRINT "quat len: "; qi.Length()
+PRINT "quat len: "; qi.Len()
 PRINT "quat lensq: "; qi.LenSq()
 
 DIM qc AS Viper.Math.Quat
@@ -28,7 +28,17 @@ PRINT "inverse w: "; qinv.W
 
 PRINT "quat dot: "; qi.Dot(q)
 
-' NOTE: Scanner and CompiledPattern are not recognized by BASIC frontend (BUG-009)
+DIM sc AS OBJECT
+sc = Viper.Text.Scanner.New("hello world")
+PRINT "scanner ident: "; sc.ReadIdent()
+
+DIM pat AS OBJECT
+DIM matches AS OBJECT
+DIM count AS INTEGER
+pat = Viper.Text.CompiledPattern.New("[0-9]+")
+matches = pat.FindAll("a1b22c333")
+count = matches.Length
+PRINT "match count: "; count
 
 PRINT "done"
 END

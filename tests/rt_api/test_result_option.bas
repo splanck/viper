@@ -1,8 +1,18 @@
 ' test_result_option.bas — Result, Option functional types
-' NOTE: Result and Option are not recognized by BASIC frontend (BUG-009)
-' Viper.Result.OkStr, OkI64, ErrStr — unknown procedure
-' Viper.Option.SomeStr, SomeI64, None — unknown procedure
+DIM ok AS OBJECT
+DIM err AS OBJECT
+DIM some AS OBJECT
+DIM none AS OBJECT
 
-PRINT "skipped: Result/Option not available in BASIC (BUG-009)"
+ok = Viper.Result.OkI64(42)
+err = Viper.Result.ErrStr("boom")
+some = Viper.Option.SomeStr("hi")
+none = Viper.Option.None()
+
+PRINT Viper.Result.UnwrapI64(ok)
+PRINT Viper.Result.UnwrapErrStr(err)
+PRINT Viper.Option.UnwrapStr(some)
+PRINT ok.IsOk
+PRINT none.IsNone
 PRINT "done"
 END

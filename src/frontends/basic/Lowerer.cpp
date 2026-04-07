@@ -27,6 +27,7 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
@@ -128,7 +129,8 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
 }
 
 std::string Lowerer::findMethodReturnClassName(std::string_view className,
-                                               std::string_view methodName) const {
+                                               std::string_view methodName,
+                                               std::optional<std::size_t> arity) const {
     if (className.empty())
         return {};
 
@@ -143,10 +145,37 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
     // Check runtime classes: if a method returns 'obj' and belongs to a known
     // runtime class, infer the class name from the method's target function.
     if (const auto *rtClass = il::runtime::findRuntimeClassByQName(std::string(className))) {
+        if (arity) {
+            if (auto entry = runtimeMethodIndex().find(className, methodName, *arity)) {
+                if (!entry->returnClassQName.empty())
+                    return entry->returnClassQName;
+
+                if (entry->ret == BasicType::Object && !entry->target.empty()) {
+                    std::string_view target(entry->target);
+                    auto lastDot = target.rfind('.');
+                    if (lastDot != std::string_view::npos) {
+                        std::string prefix(target.substr(0, lastDot));
+                        if (!string_utils::iequals(prefix, className) &&
+                            il::runtime::findRuntimeClassByQName(prefix)) {
+                            return prefix;
+                        }
+                    }
+                }
+            }
+        }
+
         for (const auto &m : rtClass->methods) {
             if (m.name && string_utils::iequals(m.name, methodName) && m.signature) {
                 auto sig = il::runtime::parseRuntimeSignature(m.signature);
+                if (arity && sig.arity() != *arity)
+                    continue;
                 if (sig.returnType == il::runtime::ILScalarType::Object) {
+                    if (std::string concrete =
+                            il::runtime::concreteRuntimeReturnClassQName(sig);
+                        !concrete.empty()) {
+                        return concrete;
+                    }
+
                     // Method returns obj — check if target function belongs to
                     // a DIFFERENT runtime class (cross-class factory method).
                     if (m.target) {

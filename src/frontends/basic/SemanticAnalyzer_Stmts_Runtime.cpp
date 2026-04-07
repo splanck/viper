@@ -132,8 +132,11 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
     // BUG-001 FIX: Evaluate RHS expression BEFORE resolving variable
     // This allows us to infer the variable's type from the RHS
     Type exprTy = Type::Unknown;
+    std::optional<std::string> assignedObjectClass;
     if (l.expr)
         exprTy = visitExpr(*l.expr);
+    if (l.expr)
+        assignedObjectClass = semantic_analyzer_detail::inferObjectClassQName(*this, *l.expr);
 
     // Check if variable has no type suffix (ends with alphanumeric, not $#!%&)
     bool hasNoSuffix = !v.name.empty() && std::isalnum(static_cast<unsigned char>(v.name.back()));
@@ -141,15 +144,40 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
     // Check if variable already exists
     bool isNewVariable = (varTypes_.find(v.name) == varTypes_.end());
 
-    // If new variable with no suffix and RHS is String, Bool, or Float, pre-set the type
+    // If a new variable has no suffix, adopt the RHS type when it is informative.
     if (isNewVariable && hasNoSuffix &&
-        (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float)) {
-        varTypes_[v.name] = exprTy;
+        (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float ||
+         exprTy == Type::Object || assignedObjectClass.has_value())) {
+        varTypes_[v.name] = (exprTy == Type::Object || assignedObjectClass.has_value())
+                                ? Type::Object
+                                : exprTy;
     }
 
     resolveAndTrackSymbol(v.name, SymbolKind::Definition);
     if (ctx.isLoopVariable(v.name))
         ctx.reportLoopVariableMutation(v.name, l.loc, static_cast<uint32_t>(v.name.size()));
+
+    auto updateTrackedObjectClass = [&](std::optional<std::string> nextClass) {
+        auto itClass = objectClassTypes_.find(v.name);
+        if (activeProcScope_) {
+            std::optional<std::string> previous;
+            if (itClass != objectClassTypes_.end())
+                previous = itClass->second;
+            activeProcScope_->noteObjectClassMutation(v.name, previous);
+        }
+        if (nextClass)
+            objectClassTypes_[v.name] = *nextClass;
+        else if (itClass != objectClassTypes_.end())
+            objectClassTypes_.erase(itClass);
+    };
+
+    if (assignedObjectClass) {
+        updateTrackedObjectClass(assignedObjectClass);
+    } else if (exprTy == Type::Object) {
+        updateTrackedObjectClass(std::nullopt);
+    } else if (exprTy != Type::Unknown && objectClassTypes_.contains(v.name)) {
+        updateTrackedObjectClass(std::nullopt);
+    }
 
     Type varTy = Type::Int;
     if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())

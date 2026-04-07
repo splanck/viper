@@ -65,9 +65,7 @@ Value Lowerer::extendOperandForComparison(Value val, Type type) {
 // Binary Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
-    // Handle assignment specially
-    if (expr->op == BinaryOp::Assign) {
+LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         auto right = lowerExpr(expr->right.get());
         TypeRef rightType = sema_.typeOf(expr->right.get());
 
@@ -416,6 +414,11 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
         }
 
         return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
+    if (expr->op == BinaryOp::Assign) {
+        return lowerAssignment(expr);
     }
 
     // Non-assignment binary operations

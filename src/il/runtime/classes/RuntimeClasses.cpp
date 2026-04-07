@@ -275,6 +275,60 @@ ILScalarType mapILToken(std::string_view tok) {
     return ILScalarType::Unknown;
 }
 
+namespace {
+
+struct ParsedTypeToken {
+    ILScalarType scalar{ILScalarType::Unknown};
+    std::string containerTypeName;
+    std::string elementTypeName;
+    std::string objectTypeName;
+};
+
+ParsedTypeToken parseTypeToken(std::string_view tok) {
+    ParsedTypeToken result;
+
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.front())))
+        tok.remove_prefix(1);
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.back())))
+        tok.remove_suffix(1);
+
+    auto langle = tok.find('<');
+    if (langle != std::string_view::npos) {
+        auto rangle = tok.rfind('>');
+        if (rangle != std::string_view::npos && rangle > langle) {
+            std::string typeArg(tok.substr(langle + 1, rangle - langle - 1));
+            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.front())))
+                typeArg.erase(typeArg.begin());
+            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.back())))
+                typeArg.pop_back();
+
+            std::string_view outerTok = tok.substr(0, langle);
+            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.front())))
+                outerTok.remove_prefix(1);
+            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.back())))
+                outerTok.remove_suffix(1);
+
+            if (outerTok == "seq" || outerTok == "list") {
+                result.containerTypeName = std::string(outerTok);
+                result.elementTypeName = std::move(typeArg);
+            } else if (outerTok == "obj" || outerTok == "ptr") {
+                result.objectTypeName = std::move(typeArg);
+            }
+
+            tok = outerTok;
+        }
+    }
+
+    if (tok == "seq" || tok == "list")
+        result.scalar = ILScalarType::Object;
+    else
+        result.scalar = mapILToken(tok);
+
+    return result;
+}
+
+} // namespace
+
 /// @brief Parses a signature string into a structured ParsedSignature.
 ///
 /// @details Signature strings follow the format `ret(args)` where:
@@ -344,37 +398,11 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
     //   - "seq<str>" / "list<str>" carry element type information.
     //   - "obj<Viper.Sound.Sound>" / "ptr<Viper.Sound.Sound>" carry the
     //     concrete runtime class behind an otherwise opaque pointer return.
-    auto langle = retTok.find('<');
-    if (langle != std::string_view::npos) {
-        auto rangle = retTok.rfind('>');
-        if (rangle != std::string_view::npos && rangle > langle) {
-            std::string typeArg(retTok.substr(langle + 1, rangle - langle - 1));
-            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.front())))
-                typeArg.erase(typeArg.begin());
-            while (!typeArg.empty() && std::isspace(static_cast<unsigned char>(typeArg.back())))
-                typeArg.pop_back();
-
-            std::string_view outerTok = retTok.substr(0, langle);
-            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.front())))
-                outerTok.remove_prefix(1);
-            while (!outerTok.empty() && std::isspace(static_cast<unsigned char>(outerTok.back())))
-                outerTok.remove_suffix(1);
-
-            if (outerTok == "seq" || outerTok == "list") {
-                result.elementTypeName = std::move(typeArg);
-            } else if (outerTok == "obj" || outerTok == "ptr") {
-                result.objectTypeName = std::move(typeArg);
-            }
-
-            retTok = outerTok;
-        }
-    }
-
-    // "seq" and "list" prefixes map to Object (opaque pointer at IL level)
-    if (retTok == "seq" || retTok == "list")
-        result.returnType = ILScalarType::Object;
-    else
-        result.returnType = mapILToken(retTok);
+    ParsedTypeToken returnToken = parseTypeToken(retTok);
+    result.returnType = returnToken.scalar;
+    result.containerTypeName = std::move(returnToken.containerTypeName);
+    result.elementTypeName = std::move(returnToken.elementTypeName);
+    result.objectTypeName = std::move(returnToken.objectTypeName);
 
     // Extract the parameter list (everything between parentheses)
     std::string_view args = sig.substr(lparen + 1, rparen - lparen - 1);
@@ -396,10 +424,20 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
 
         std::string_view tok = args.substr(start, pos - start);
         if (!tok.empty())
-            result.params.push_back(mapILToken(tok));
+            result.params.push_back(parseTypeToken(tok).scalar);
     }
 
     return result;
+}
+
+std::string concreteRuntimeReturnClassQName(const ParsedSignature &sig) {
+    if (!sig.objectTypeName.empty())
+        return sig.objectTypeName;
+    if (sig.containerTypeName == "seq")
+        return "Viper.Collections.Seq";
+    if (sig.containerTypeName == "list")
+        return "Viper.Collections.List";
+    return {};
 }
 
 /// @}
@@ -542,6 +580,22 @@ void RuntimeRegistry::buildIndexes() {
             // Index by canonical function name for findFunction() lookups
             if (m.target)
                 functionIndex_[functionKey(m.target)] = pm.signature;
+
+            // Also index catalog-level alias names when the exposed method name differs
+            // from the underlying canonical runtime target (for example, New -> Open).
+            if (qname && m.name && m.target) {
+                std::string_view target = m.target;
+                auto lastDot = target.rfind('.');
+                if (lastDot != std::string_view::npos) {
+                    std::string_view targetMethod = target.substr(lastDot + 1);
+                    if (!targetMethod.empty() && toLower(targetMethod) != toLower(m.name)) {
+                        std::string aliasName(qname);
+                        aliasName.push_back('.');
+                        aliasName.append(m.name);
+                        functionIndex_[functionKey(aliasName)] = pm.signature;
+                    }
+                }
+            }
         }
 
         // Index all properties for this class

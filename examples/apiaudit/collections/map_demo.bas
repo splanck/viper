@@ -8,7 +8,7 @@ PRINT "=== Map API Audit ==="
 PRINT "--- New ---"
 DIM m AS Viper.Collections.Map
 m = Viper.Collections.Map.New()
-PRINT m.Len       ' 0
+PRINT m.Length       ' 0
 PRINT m.IsEmpty   ' 1
 
 ' --- Set / Len ---
@@ -16,7 +16,7 @@ PRINT "--- Set / Len ---"
 m.Set("name", "Alice")
 m.Set("age", Viper.Core.Box.I64(30))
 m.Set("city", "Boston")
-PRINT m.Len       ' 3
+PRINT m.Length       ' 3
 PRINT m.IsEmpty   ' 0
 
 ' --- Get ---
@@ -41,36 +41,36 @@ PRINT m.SetIfMissing("name", "Bob")     ' 0 (already exists)
 PRINT m.Get("name")                      ' Alice (unchanged)
 PRINT m.SetIfMissing("email", "a@b.c")  ' 1 (inserted)
 PRINT m.Get("email")                     ' a@b.c
-PRINT m.Len                              ' 4
+PRINT m.Length                              ' 4
 
 ' --- Set (update existing) ---
 PRINT "--- Set (update) ---"
 m.Set("age", Viper.Core.Box.I64(31))
-PRINT m.Len                              ' 4 (no new entry)
+PRINT m.Length                              ' 4 (no new entry)
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT m.Remove("city")    ' 1
 PRINT m.Has("city")       ' 0
-PRINT m.Len               ' 3
+PRINT m.Length               ' 3
 PRINT m.Remove("city")    ' 0 (already gone)
 
 ' --- Keys ---
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = m.Keys()
-PRINT keys.Len             ' 3
+PRINT keys.Length             ' 3
 
 ' --- Values ---
 PRINT "--- Values ---"
 DIM vals AS OBJECT
 vals = m.Values()
-PRINT vals.Len             ' 3
+PRINT vals.Length             ' 3
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 m.Clear()
-PRINT m.Len               ' 0
+PRINT m.Length               ' 0
 PRINT m.IsEmpty           ' 1
 
 PRINT "=== Map audit complete ==="

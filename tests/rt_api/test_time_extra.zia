@@ -1,5 +1,4 @@
 // test_time_extra.zia — Stopwatch, Countdown
-// NOTE: Clock, DateOnly, RelativeTime not available via bind (BUG-010)
 module TestTimeExtra;
 
 bind Viper.Terminal;

@@ -8,7 +8,7 @@ PRINT "=== FrozenMap API Audit ==="
 PRINT "--- Empty ---"
 DIM empty AS OBJECT
 empty = Viper.Collections.FrozenMap.Empty()
-PRINT empty.Len       ' 0
+PRINT empty.Length       ' 0
 PRINT empty.IsEmpty   ' 1
 
 ' --- FromSeqs ---
@@ -27,7 +27,7 @@ vals.Push("Boston")
 
 DIM fm AS OBJECT
 fm = Viper.Collections.FrozenMap.FromSeqs(keys, vals)
-PRINT fm.Len          ' 3
+PRINT fm.Length          ' 3
 PRINT fm.IsEmpty      ' 0
 
 ' --- Get ---
@@ -44,13 +44,13 @@ PRINT fm.Has("email")   ' 0
 PRINT "--- Keys ---"
 DIM fmKeys AS OBJECT
 fmKeys = fm.Keys()
-PRINT fmKeys.Len        ' 3
+PRINT fmKeys.Length        ' 3
 
 ' --- Values ---
 PRINT "--- Values ---"
 DIM fmVals AS OBJECT
 fmVals = fm.Values()
-PRINT fmVals.Len        ' 3
+PRINT fmVals.Length        ' 3
 
 ' --- GetOr ---
 PRINT "--- GetOr ---"
@@ -73,7 +73,7 @@ DIM fm2 AS OBJECT
 fm2 = Viper.Collections.FrozenMap.FromSeqs(keys2, vals2)
 DIM merged AS OBJECT
 merged = fm.Merge(fm2)
-PRINT merged.Len            ' 4
+PRINT merged.Length            ' 4
 PRINT merged.Get("city")    ' NYC
 PRINT merged.Get("email")   ' a@b.com
 PRINT merged.Get("name")    ' Alice

@@ -30,6 +30,61 @@
 
 namespace il::frontends::basic {
 
+namespace {
+
+std::optional<std::string> resolveRuntimeFunctionReturnClassQName(const Lowerer &lowerer,
+                                                                  std::string_view calleeName) {
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+
+    auto resolveConcrete = [&](std::string_view canonicalName) -> std::optional<std::string> {
+        auto sig = registry.findFunction(canonicalName);
+        if (!sig)
+            return std::nullopt;
+
+        if (std::string concrete = il::runtime::concreteRuntimeReturnClassQName(*sig);
+            !concrete.empty()) {
+            return concrete;
+        }
+
+        if (sig->returnType != il::runtime::ILScalarType::Object)
+            return std::nullopt;
+
+        auto lastDot = canonicalName.rfind('.');
+        if (lastDot == std::string_view::npos)
+            return std::nullopt;
+
+        std::string prefix(canonicalName.substr(0, lastDot));
+        std::string_view method = canonicalName.substr(lastDot + 1);
+        if (string_utils::iequals(method, "New") && il::runtime::findRuntimeClassByQName(prefix))
+            return prefix;
+
+        return std::nullopt;
+    };
+
+    if (auto exact = resolveConcrete(calleeName))
+        return exact;
+
+    if (calleeName.find('.') != std::string_view::npos)
+        return std::nullopt;
+
+    const auto *sema = lowerer.semanticAnalyzer();
+    if (!sema)
+        return std::nullopt;
+
+    for (const auto &ns : sema->getUsingImports()) {
+        std::string qualified = ns;
+        if (!qualified.empty())
+            qualified.push_back('.');
+        qualified.append(calleeName);
+        if (auto imported = resolveConcrete(qualified))
+            return imported;
+    }
+
+    return std::nullopt;
+}
+
+} // namespace
+
 /// @brief Determine the class name associated with an OOP expression.
 ///
 /// @details Walks the expression tree to find the originating class, handling
@@ -85,6 +140,9 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const {
         else
             calleeName = call->callee;
         if (!calleeName.empty()) {
+            if (auto runtimeReturn = resolveRuntimeFunctionReturnClassQName(*this, calleeName))
+                return *runtimeReturn;
+
             const auto &classes = il::runtime::runtimeClassCatalog();
             for (const auto &klass : classes) {
                 if (!klass.ctor)
@@ -100,21 +158,11 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const {
                 std::string prefix = calleeName.substr(0, lastDot);
                 std::string method = calleeName.substr(lastDot + 1);
                 if (const auto *rtClass = il::runtime::findRuntimeClassByQName(prefix)) {
-                    // Check class methods for obj return type
-                    for (const auto &m : rtClass->methods) {
-                        if (m.name && string_utils::iequals(m.name, method) && m.signature) {
-                            auto sig = il::runtime::parseRuntimeSignature(m.signature);
-                            if (sig.returnType == il::runtime::ILScalarType::Object)
-                                return std::string(rtClass->qname);
-                            break;
-                        }
-                    }
-                    // Also check standalone RT_FUNCs with this prefix that return obj.
-                    // Try various arities to find the method in RuntimeMethodIndex.
-                    for (std::size_t ar = 0; ar <= 4; ++ar) {
-                        auto entry = runtimeMethodIndex().find(prefix, method, ar);
-                        if (entry && entry->ret == BasicType::Object)
-                            return prefix;
+                    auto entry = runtimeMethodIndex().find(prefix, method, call->args.size());
+                    if (entry && entry->ret == BasicType::Object) {
+                        if (!entry->returnClassQName.empty())
+                            return entry->returnClassQName;
+                        return std::string(rtClass->qname);
                     }
                 }
             }
@@ -181,7 +229,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const {
 
                 // Not a field array; check the method's return type.
                 // Use findMethodReturnClassName to get the actual return class. (BUG-099)
-                std::string returnClassName = findMethodReturnClassName(baseClass, call->method);
+                std::string returnClassName =
+                    findMethodReturnClassName(baseClass, call->method, call->args.size());
                 if (!returnClassName.empty()) {
                     return returnClassName;
                 }

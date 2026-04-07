@@ -1,12 +1,10 @@
 // test_frozen_default.zia — FrozenSet, FrozenMap, DefaultMap
-// NOTE: FrozenSet, FrozenMap cannot use 'new' in Zia (BUG-012)
 module TestFrozenDefault;
 
 bind Viper.Terminal;
 
 func start() {
-    // --- DefaultMap ---
-    var dm = new Viper.Collections.DefaultMap("N/A");
+    var dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"));
     SayInt(dm.Length);
     dm.Set("name", "viper");
     dm.Set("lang", "zia");
@@ -18,8 +16,11 @@ func start() {
     dm.Clear();
     SayInt(dm.Length);
 
-    // FrozenSet and FrozenMap skipped — can't use 'new' (BUG-012)
-    Say("FrozenSet/FrozenMap: skipped (BUG-012)");
+    var emptySet = Viper.Collections.FrozenSet.Empty();
+    SayInt(emptySet.Length);
+
+    var emptyMap = Viper.Collections.FrozenMap.Empty();
+    SayInt(emptyMap.Length);
 
     Say("done");
 }

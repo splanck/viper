@@ -19,9 +19,12 @@ PRINT "cd interval: "; cd.Interval
 PRINT "cd expired: "; cd.Expired
 PRINT "cd running: "; cd.IsRunning
 
-' NOTE: DateOnly, DateRange, RelativeTime are not recognized by BASIC frontend (BUG-009)
-' Viper.Time.DateOnly.Create — unknown procedure
-' Viper.Time.RelativeTime.FormatDuration — unknown procedure
+DIM d AS OBJECT
+PRINT "relative: "; Viper.Time.RelativeTime.FormatDuration(65000)
+d = Viper.Time.DateOnly.Create(2026, 4, 6)
+PRINT "date year: "; d.Year
+PRINT "date month: "; d.Month
+PRINT "date day: "; d.Day
 
 PRINT "done"
 END

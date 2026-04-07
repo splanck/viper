@@ -7,7 +7,7 @@ PRINT "=== WeakMap API Audit ==="
 PRINT "--- New ---"
 DIM wm AS OBJECT
 wm = Viper.Collections.WeakMap.New()
-PRINT wm.Len       ' 0
+PRINT wm.Length       ' 0
 PRINT wm.IsEmpty   ' 1
 
 ' --- Set / Len ---
@@ -18,7 +18,7 @@ DIM obj3 AS OBJECT = Viper.Core.Box.Str("value3")
 wm.Set("key1", obj1)
 wm.Set("key2", obj2)
 wm.Set("key3", obj3)
-PRINT wm.Len       ' 3
+PRINT wm.Length       ' 3
 PRINT wm.IsEmpty   ' 0
 
 ' --- Get ---
@@ -37,31 +37,31 @@ PRINT "--- Set (update) ---"
 DIM obj1b AS OBJECT = Viper.Core.Box.Str("VALUE1")
 wm.Set("key1", obj1b)
 PRINT Viper.Core.Box.ToStr(wm.Get("key1"))  ' VALUE1
-PRINT wm.Len                                 ' 3
+PRINT wm.Length                                 ' 3
 
 ' --- Keys ---
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = wm.Keys()
-PRINT keys.Len           ' 3
+PRINT keys.Length           ' 3
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT wm.Remove("key2")   ' 1
 PRINT wm.Has("key2")      ' 0
-PRINT wm.Len              ' 2
+PRINT wm.Length              ' 2
 PRINT wm.Remove("key2")   ' 0
 
 ' --- Compact ---
 PRINT "--- Compact ---"
 DIM removed AS INTEGER
 removed = wm.Compact()
-PRINT wm.Len              ' 2
+PRINT wm.Length              ' 2
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 wm.Clear()
-PRINT wm.Len              ' 0
+PRINT wm.Length              ' 0
 PRINT wm.IsEmpty          ' 1
 
 PRINT "=== WeakMap audit complete ==="

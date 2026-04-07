@@ -1605,6 +1605,57 @@ func start() {    for part in Viper.String.Split("hello world foo", " ") {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Pattern.FindAll should surface a typed Seq[String] in Zia.
+TEST(ZiaBugFixes, SeqReturnType_PatternFindAll_UsesSeqLength) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.Text;
+
+func start() {
+    var matches = Pattern.FindAll("a1b22c333", "[0-9]+");
+    var count = matches.Length;
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "pattern_findall_seq.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
+}
+
+/// @brief LazySeq.ToSeqN should surface a typed Seq[Object] in Zia.
+TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqLength) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+bind Viper.LazySeq;
+
+func start() {
+    var seq = Range(1, 5, 1);
+    var out = ToSeqN(seq, 3);
+    var count = out.Length;
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "lazyseq_toseqn_seq.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
+}
+
 /// @brief Test that calling an unknown method on an untyped obj emits a diagnostic.
 TEST(ZiaBugFixes, SeqUntypedObj_MethodCallError) {
     SourceManager sm;

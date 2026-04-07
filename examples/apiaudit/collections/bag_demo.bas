@@ -7,7 +7,7 @@ PRINT "=== Bag API Audit ==="
 PRINT "--- New ---"
 DIM bag AS OBJECT
 bag = Viper.Collections.Bag.New()
-PRINT bag.Len       ' 0
+PRINT bag.Length       ' 0
 PRINT bag.IsEmpty   ' 1
 
 ' --- Put / Len ---
@@ -16,7 +16,7 @@ PRINT bag.Put("apple")    ' 1 (new)
 PRINT bag.Put("banana")   ' 1 (new)
 PRINT bag.Put("cherry")   ' 1 (new)
 PRINT bag.Put("apple")    ' 0 (duplicate)
-PRINT bag.Len              ' 3
+PRINT bag.Length              ' 3
 PRINT bag.IsEmpty          ' 0
 
 ' --- Has ---
@@ -29,14 +29,14 @@ PRINT bag.Has("grape")    ' 0
 PRINT "--- Drop ---"
 PRINT bag.Drop("banana")  ' 1
 PRINT bag.Has("banana")   ' 0
-PRINT bag.Len              ' 2
+PRINT bag.Length              ' 2
 PRINT bag.Drop("banana")  ' 0
 
 ' --- Items ---
 PRINT "--- Items ---"
 DIM items AS OBJECT
 items = bag.Items()
-PRINT items.Len            ' 2
+PRINT items.Length            ' 2
 
 ' --- Merge (union) ---
 PRINT "--- Merge ---"
@@ -51,14 +51,14 @@ b2.Put("c")
 b2.Put("d")
 
 DIM merged AS OBJECT = b1.Union(b2)
-PRINT merged.Len           ' 4
+PRINT merged.Length           ' 4
 PRINT merged.Has("a")      ' 1
 PRINT merged.Has("d")      ' 1
 
 ' --- Intersect ---
 PRINT "--- Intersect ---"
 DIM common AS OBJECT = b1.Intersect(b2)
-PRINT common.Len           ' 2
+PRINT common.Length           ' 2
 PRINT common.Has("b")      ' 1
 PRINT common.Has("c")      ' 1
 PRINT common.Has("a")      ' 0
@@ -66,14 +66,14 @@ PRINT common.Has("a")      ' 0
 ' --- Diff ---
 PRINT "--- Diff ---"
 DIM diff AS OBJECT = b1.Diff(b2)
-PRINT diff.Len             ' 1
+PRINT diff.Length             ' 1
 PRINT diff.Has("a")        ' 1
 PRINT diff.Has("b")        ' 0
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 b1.Clear()
-PRINT b1.Len               ' 0
+PRINT b1.Length               ' 0
 PRINT b1.IsEmpty           ' 1
 
 PRINT "=== Bag audit complete ==="

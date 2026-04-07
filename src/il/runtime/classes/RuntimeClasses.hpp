@@ -477,6 +477,11 @@ struct ParsedSignature {
     bool isOptionalReturn{false};
     std::vector<ILScalarType> params;
 
+    /// @brief Parameterized outer return type name (e.g. "seq" from "seq<str>").
+    /// @details Empty for non-parameterized returns. Frontends can use this to
+    /// recover the concrete runtime collection class behind an IL Object return.
+    std::string containerTypeName;
+
     /// @brief Element type name for parameterized seq/list returns (e.g. "str" from "seq<str>").
     /// @details Empty for plain obj/ptr returns. When non-empty, frontends should produce
     /// a typed sequence/collection type instead of an opaque pointer.
@@ -519,6 +524,15 @@ struct ParsedProperty {
 /// @param sig The signature string from RuntimeMethod.
 /// @return Parsed signature with return type and parameter types.
 ParsedSignature parseRuntimeSignature(std::string_view sig);
+
+/// @brief Recover a concrete runtime class name from a parsed object-return signature.
+/// @details Returns the fully-qualified runtime class for signatures that carry
+///          object or container annotations such as `obj<Viper.Result>(...)`
+///          and `seq<str>(...)`. Returns an empty string when the signature
+///          does not identify a concrete runtime class.
+/// @param sig Parsed runtime signature to inspect.
+/// @return Concrete runtime class name or empty when the return remains opaque.
+std::string concreteRuntimeReturnClassQName(const ParsedSignature &sig);
 
 /// @brief Map IL token (i64, f64, str, etc.) to ILScalarType.
 /// @param tok Token from signature parsing.

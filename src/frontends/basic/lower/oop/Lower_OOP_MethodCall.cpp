@@ -123,7 +123,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
 
                 std::string callee = mangleMethod(ci->qualifiedName, selected);
                 // BUG-CARDS-010 fix: Check for object-returning methods first
-                std::string retClassName = findMethodReturnClassName(qname, selected);
+                std::string retClassName =
+                    findMethodReturnClassName(qname, selected, expr.args.size());
                 if (!retClassName.empty()) {
                     // Method returns a custom class type - use ptr
                     Type ilRetTy(Type::Kind::Ptr);
@@ -590,7 +591,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
 
         // BUG-OOP-003 fix: Use declaring class for return type lookup in virtual dispatch
         // BUG-CARDS-010 fix: Check for object-returning methods first
-        std::string retClassName = findMethodReturnClassName(declaringClass, selectedName);
+        std::string retClassName =
+            findMethodReturnClassName(declaringClass, selectedName, expr.args.size());
         if (!retClassName.empty()) {
             Type ilRetTy(Type::Kind::Ptr);
             Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);
@@ -615,7 +617,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
     // BUG-OOP-002/003 fix: Use declaring class for return type lookup
     const std::string retClassLookup = baseQualified ? directQClass : declaringClass;
     // BUG-CARDS-010 fix: Check for object-returning methods first
-    std::string retClassName = findMethodReturnClassName(retClassLookup, selectedName);
+    std::string retClassName =
+        findMethodReturnClassName(retClassLookup, selectedName, expr.args.size());
     if (!retClassName.empty()) {
         Type ilRetTy(Type::Kind::Ptr);
         Value result = emitCallRet(ilRetTy, directCallee, args);

@@ -46,10 +46,38 @@ ms.Seek(0)
 ms.Skip(1)
 PRINT "after skip pos: "; ms.Pos
 
-' NOTE: LineWriter, LineReader, BinFile not recognized by BASIC frontend (BUG-009)
-' Viper.IO.LineWriter.New — unknown procedure
-' Viper.IO.LineReader.New — unknown procedure
-' Viper.IO.BinFile.New — unknown procedure
+' --- Text streams via runtime constructor aliases ---
+DIM textPath AS STRING
+DIM writer AS OBJECT
+DIM reader AS OBJECT
+textPath = "/tmp/viper_rt_api_memstream_lines.txt"
+writer = Viper.IO.LineWriter.New(textPath)
+writer.Write("alpha")
+writer.WriteLn("beta")
+writer.Close()
+
+reader = Viper.IO.LineReader.New(textPath)
+PRINT "peek char: "; reader.PeekChar()
+PRINT "line 1: "; reader.Read()
+PRINT "line 2: "; reader.Read()
+PRINT "reader eof: "; reader.Eof
+reader.Close()
+
+' --- Binary file via runtime constructor alias ---
+DIM binPath AS STRING
+DIM wf AS OBJECT
+DIM rf AS OBJECT
+binPath = "/tmp/viper_rt_api_memstream.bin"
+wf = Viper.IO.BinFile.New(binPath, "w")
+wf.WriteByte(65)
+wf.WriteByte(66)
+wf.Close()
+
+rf = Viper.IO.BinFile.New(binPath, "r")
+PRINT "byte 1: "; rf.ReadByte()
+PRINT "byte 2: "; rf.ReadByte()
+PRINT "bin eof: "; rf.Eof
+rf.Close()
 
 ' --- Compress: string deflate/inflate ---
 DIM compressed AS OBJECT

@@ -8,7 +8,7 @@ PRINT "=== Trie API Audit ==="
 PRINT "--- New ---"
 DIM t AS OBJECT
 t = Viper.Collections.Trie.New()
-PRINT t.Len       ' 0
+PRINT t.Length       ' 0
 PRINT t.IsEmpty   ' 1
 
 ' --- Put / Len ---
@@ -18,7 +18,7 @@ t.Put("car", Viper.Core.Box.I64(2))
 t.Put("card", Viper.Core.Box.I64(3))
 t.Put("care", Viper.Core.Box.I64(4))
 t.Put("dog", Viper.Core.Box.I64(5))
-PRINT t.Len       ' 5
+PRINT t.Length       ' 5
 PRINT t.IsEmpty   ' 0
 
 ' --- Get ---
@@ -52,31 +52,31 @@ PRINT t.LongestPrefix("dogs")       ' dog
 PRINT "--- WithPrefix ---"
 DIM carKeys AS OBJECT
 carKeys = t.WithPrefix("car")
-PRINT carKeys.Len                    ' 3 (car, card, care)
+PRINT carKeys.Length                    ' 3 (car, card, care)
 DIM caKeys AS OBJECT
 caKeys = t.WithPrefix("ca")
-PRINT caKeys.Len                     ' 4 (cat, car, card, care)
+PRINT caKeys.Length                     ' 4 (cat, car, card, care)
 DIM dKeys AS OBJECT
 dKeys = t.WithPrefix("dog")
-PRINT dKeys.Len                      ' 1 (dog)
+PRINT dKeys.Length                      ' 1 (dog)
 
 ' --- Keys ---
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = t.Keys()
-PRINT keys.Len                       ' 5
+PRINT keys.Length                       ' 5
 
 ' --- Put (update existing) ---
 PRINT "--- Put (update) ---"
 t.Put("cat", Viper.Core.Box.I64(100))
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))  ' 100
-PRINT t.Len                                ' 5
+PRINT t.Length                                ' 5
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT t.Remove("card")   ' 1
 PRINT t.Has("card")      ' 0
-PRINT t.Len              ' 4
+PRINT t.Length              ' 4
 PRINT t.Remove("card")   ' 0
 PRINT t.Has("car")       ' 1
 PRINT t.Has("care")      ' 1
@@ -84,7 +84,7 @@ PRINT t.Has("care")      ' 1
 ' --- Clear ---
 PRINT "--- Clear ---"
 t.Clear()
-PRINT t.Len              ' 0
+PRINT t.Length              ' 0
 PRINT t.IsEmpty          ' 1
 
 PRINT "=== Trie audit complete ==="

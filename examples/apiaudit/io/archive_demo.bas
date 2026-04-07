@@ -49,7 +49,7 @@ PRINT arc2.Count
 ' --- Names ---
 PRINT "--- Names ---"
 DIM names AS OBJECT = arc2.Names
-PRINT "Names count: "; names.Len
+PRINT "Names count: "; names.Length
 
 ' --- Has ---
 PRINT "--- Has ---"

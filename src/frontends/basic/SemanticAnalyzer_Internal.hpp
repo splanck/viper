@@ -124,6 +124,14 @@ SemanticAnalyzer::Type analyzeUBoundExpr(SemanticAnalyzer &analyzer, UBoundExpr 
 /// SemanticAnalyzer class directly.
 namespace il::frontends::basic::semantic_analyzer_detail {
 
+/// @brief Recover a concrete object class name for an expression when possible.
+/// @details Handles variables with tracked runtime classes, constructor calls,
+///          runtime functions, and method calls that surface typed runtime
+///          returns. Returns std::nullopt when the expression is not known to
+///          produce a concrete object class.
+std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer,
+                                                 const Expr &expr);
+
 /// @brief Defines validation and type computation rules for binary operators.
 ///
 /// Each binary operator in BASIC has specific rules for what operand types

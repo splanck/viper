@@ -157,6 +157,11 @@ struct RuntimeMethodInfo {
     /// @brief Return type of the method.
     BasicType ret{BasicType::Unknown};
 
+    /// @brief Concrete runtime class for object-returning methods when known.
+    /// @details Empty for plain scalar returns or opaque object returns whose
+    /// concrete class is intentionally unknown.
+    std::string returnClassQName;
+
     /// @brief Parameter types excluding the implicit receiver (arg0).
     std::vector<BasicType> args;
 

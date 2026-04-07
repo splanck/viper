@@ -14,7 +14,7 @@ PRINT Viper.Text.TextWrapper.Wrap(longText, 40)
 PRINT "--- WrapLines ---"
 DIM lines AS Viper.Collections.Seq
 lines = Viper.Text.TextWrapper.WrapLines(longText, 40)
-PRINT "Line count: "; lines.Len
+PRINT "Line count: "; lines.Length
 ' Note: Accessing lines.Get(N) crashes due to known heap corruption bug
 ' with interim objects after many function calls.
 

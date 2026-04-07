@@ -8,7 +8,7 @@ PRINT "=== Deque API Audit ==="
 PRINT "--- New ---"
 DIM dq AS OBJECT
 dq = Viper.Collections.Deque.New()
-PRINT dq.Len       ' 0
+PRINT dq.Length       ' 0
 PRINT dq.IsEmpty   ' 1
 
 ' --- PushBack / Len ---
@@ -16,13 +16,13 @@ PRINT "--- PushBack / Len ---"
 dq.PushBack("a")
 dq.PushBack("b")
 dq.PushBack("c")
-PRINT dq.Len       ' 3
+PRINT dq.Length       ' 3
 PRINT dq.IsEmpty   ' 0
 
 ' --- PushFront ---
 PRINT "--- PushFront ---"
 dq.PushFront("z")
-PRINT dq.Len       ' 4
+PRINT dq.Length       ' 4
 ' Order: z, a, b, c
 
 ' --- PeekFront / PeekBack ---
@@ -45,13 +45,13 @@ PRINT dq.Get(1)  ' A
 ' --- PopFront ---
 PRINT "--- PopFront ---"
 PRINT dq.PopFront()   ' z
-PRINT dq.Len          ' 3
+PRINT dq.Length          ' 3
 PRINT dq.PeekFront()  ' A
 
 ' --- PopBack ---
 PRINT "--- PopBack ---"
 PRINT dq.PopBack()    ' c
-PRINT dq.Len          ' 2
+PRINT dq.Length          ' 2
 PRINT dq.PeekBack()   ' b
 
 ' --- Has ---
@@ -76,15 +76,15 @@ PRINT dq.PeekBack()   ' A
 PRINT "--- Clone ---"
 DIM dq2 AS OBJECT
 dq2 = dq.Clone()
-PRINT dq2.Len          ' same as dq
+PRINT dq2.Length          ' same as dq
 PRINT dq2.PeekFront()  ' y
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 dq.Clear()
-PRINT dq.Len       ' 0
+PRINT dq.Length       ' 0
 PRINT dq.IsEmpty   ' 1
-PRINT dq2.Len      ' still 4
+PRINT dq2.Length      ' still 4
 
 PRINT "=== Deque audit complete ==="
 END

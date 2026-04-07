@@ -1,9 +1,16 @@
 ' test_lazy.bas — Lazy, LazySeq
-' NOTE: Viper.Lazy and Viper.LazySeq are not recognized by BASIC frontend (BUG-009)
-' Viper.Lazy.OfStr — unknown procedure
-' Viper.Lazy.OfI64 — unknown procedure
-' Viper.LazySeq.Range — unknown procedure
+DIM lazy AS OBJECT
+DIM seq AS OBJECT
+DIM out AS OBJECT
+DIM count AS INTEGER
 
-PRINT "skipped: lazy/lazyseq not available in BASIC (BUG-009)"
+lazy = Viper.Lazy.OfI64(42)
+PRINT Viper.Lazy.GetI64(lazy)
+
+seq = Viper.LazySeq.Range(1, 5, 1)
+out = Viper.LazySeq.ToSeqN(seq, 3)
+count = out.Length
+PRINT count
+
 PRINT "done"
 END

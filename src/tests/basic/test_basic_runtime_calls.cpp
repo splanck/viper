@@ -20,8 +20,7 @@ using namespace il::support;
 
 namespace {
 
-/// Helper: compile a BASIC source string and return whether it succeeded.
-bool compileOk(const std::string &source) {
+std::optional<il::core::Module> compileModule(const std::string &source) {
     SourceManager sm;
     BasicCompilerOptions opts{};
     BasicCompilerInput input{source, "<test>"};
@@ -31,8 +30,33 @@ bool compileOk(const std::string &source) {
         for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  " << d.message << "\n";
         }
+        return std::nullopt;
     }
-    return result.succeeded();
+    return result.module;
+}
+
+/// Helper: compile a BASIC source string and return whether it succeeded.
+bool compileOk(const std::string &source) {
+    return compileModule(source).has_value();
+}
+
+const il::core::Function *findFunction(const il::core::Module &module, const std::string &name) {
+    for (const auto &fn : module.functions) {
+        if (fn.name == name)
+            return &fn;
+    }
+    return nullptr;
+}
+
+size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
+    size_t count = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call && instr.callee == callee)
+                ++count;
+        }
+    }
+    return count;
 }
 
 } // namespace
@@ -167,6 +191,108 @@ Viper.Graphics.SpriteAnimator.Stop(anim)
 Viper.Graphics.SpriteAnimator.Destroy(anim)
 PRINT current
 )"));
+}
+
+TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM pat AS OBJECT
+DIM matches AS OBJECT
+DIM count AS INTEGER
+pat = Viper.Text.CompiledPattern.New("[0-9]+")
+matches = pat.FindAll("a1b22c333")
+count = matches.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, DefaultMapKeysObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM dm AS OBJECT
+DIM keys AS OBJECT
+DIM count AS INTEGER
+dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
+dm.Set("name", "Alice")
+dm.Set("city", "Boston")
+keys = dm.Keys()
+count = keys.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, PatternFindAllObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM matches AS OBJECT
+DIM count AS INTEGER
+matches = Viper.Text.Pattern.FindAll("a1b22c333", "[0-9]+")
+count = matches.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM seq AS OBJECT
+DIM out AS OBJECT
+DIM count AS INTEGER
+seq = Viper.LazySeq.Range(1, 5, 1)
+out = Viper.LazySeq.ToSeqN(seq, 3)
+count = out.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, ResultAndOptionFactoriesKeepConcreteObjectSurface) {
+    auto module = compileModule(R"(
+DIM ok AS OBJECT
+DIM none AS OBJECT
+DIM okFlag AS BOOLEAN
+DIM noneFlag AS BOOLEAN
+ok = Viper.Result.OkI64(42)
+none = Viper.Option.None()
+okFlag = ok.IsOk
+noneFlag = none.IsNone
+PRINT okFlag
+PRINT noneFlag
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Result.get_IsOk"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Option.get_IsNone"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, IoConstructorAliasesLowerToOpenTargets) {
+    auto module = compileModule(R"(
+DIM writer AS OBJECT
+DIM reader AS OBJECT
+DIM file AS OBJECT
+writer = Viper.IO.LineWriter.New("out.txt")
+reader = Viper.IO.LineReader.New("out.txt")
+file = Viper.IO.BinFile.New("out.bin", "rw")
+PRINT "ok"
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineWriter.New"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineReader.New"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.BinFile.New"), static_cast<size_t>(1));
 }
 
 /// @brief Main.

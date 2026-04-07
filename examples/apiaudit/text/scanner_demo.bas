@@ -12,7 +12,7 @@ DIM sc AS Viper.Text.Scanner
 sc = Viper.Text.Scanner.New("Hello, World! 42 3.14 ""quoted""")
 PRINT sc.Pos         ' 0
 PRINT sc.IsEnd       ' 0
-PRINT sc.Len         ' string length
+PRINT sc.Length         ' string length
 PRINT sc.Remaining   ' same as Len at start
 
 ' --- Peek (returns char code at current position) ---

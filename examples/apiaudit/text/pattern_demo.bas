@@ -29,18 +29,18 @@ PRINT "FindPos no match: "; Viper.Text.Pattern.FindPos("abcdef", "[0-9]+")
 PRINT "--- FindAll ---"
 DIM matches AS Viper.Collections.Seq
 matches = Viper.Text.Pattern.FindAll("a1b22c333", "[0-9]+")
-PRINT "Match count: "; matches.Len
-IF matches.Len > 0 THEN
+PRINT "Match count: "; matches.Length
+IF matches.Length > 0 THEN
     DIM m0 AS OBJECT
     m0 = matches.Get(0)
     PRINT "Match 0: "; m0
 END IF
-IF matches.Len > 1 THEN
+IF matches.Length > 1 THEN
     DIM m1 AS OBJECT
     m1 = matches.Get(1)
     PRINT "Match 1: "; m1
 END IF
-IF matches.Len > 2 THEN
+IF matches.Length > 2 THEN
     DIM m2 AS OBJECT
     m2 = matches.Get(2)
     PRINT "Match 2: "; m2
@@ -59,23 +59,23 @@ PRINT Viper.Text.Pattern.ReplaceFirst("abc123def456", "[0-9]+", "NUM")
 PRINT "--- Split ---"
 DIM parts AS Viper.Collections.Seq
 parts = Viper.Text.Pattern.Split("one,two;;three,four", "[,;]+")
-PRINT "Part count: "; parts.Len
-IF parts.Len > 0 THEN
+PRINT "Part count: "; parts.Length
+IF parts.Length > 0 THEN
     DIM p0 AS OBJECT
     p0 = parts.Get(0)
     PRINT "Part 0: "; p0
 END IF
-IF parts.Len > 1 THEN
+IF parts.Length > 1 THEN
     DIM p1 AS OBJECT
     p1 = parts.Get(1)
     PRINT "Part 1: "; p1
 END IF
-IF parts.Len > 2 THEN
+IF parts.Length > 2 THEN
     DIM p2 AS OBJECT
     p2 = parts.Get(2)
     PRINT "Part 2: "; p2
 END IF
-IF parts.Len > 3 THEN
+IF parts.Length > 3 THEN
     DIM p3 AS OBJECT
     p3 = parts.Get(3)
     PRINT "Part 3: "; p3

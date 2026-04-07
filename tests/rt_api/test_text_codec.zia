@@ -1,5 +1,4 @@
 // test_text_codec.zia — Codec, Pattern, StringBuilder
-// NOTE: TextWrapper, Pluralize, Diff not available via bind (BUG-010)
 module TestTextCodec;
 
 bind Viper.Terminal;

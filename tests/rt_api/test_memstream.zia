@@ -48,8 +48,32 @@ func start() {
     ms.Skip(1);
     SayInt(ms.Pos);
 
-    // NOTE: LineWriter, LineReader, BinFile cannot use 'new' in Zia (BUG-012)
-    Say("LineWriter/LineReader/BinFile: skipped (BUG-012)");
+    // --- Text streams via runtime constructors ---
+    var textPath = "/tmp/viper_rt_api_memstream_lines.txt";
+    var writer = new Viper.IO.LineWriter(textPath);
+    writer.Write("alpha");
+    writer.WriteLn("beta");
+    writer.Close();
+
+    var reader = new Viper.IO.LineReader(textPath);
+    SayInt(reader.PeekChar());
+    Say(reader.Read());
+    Say(reader.Read());
+    SayBool(reader.Eof);
+    reader.Close();
+
+    // --- Binary file via runtime constructor ---
+    var binPath = "/tmp/viper_rt_api_memstream.bin";
+    var wf = new Viper.IO.BinFile(binPath, "w");
+    wf.WriteByte(65);
+    wf.WriteByte(66);
+    wf.Close();
+
+    var rf = new Viper.IO.BinFile(binPath, "r");
+    SayInt(rf.ReadByte());
+    SayInt(rf.ReadByte());
+    SayBool(rf.Eof);
+    rf.Close();
 
     // --- Compress ---
     var compressed = Viper.IO.Compress.DeflateStr("hello world hello world hello world");

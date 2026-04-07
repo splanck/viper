@@ -7,14 +7,14 @@ PRINT "=== DefaultMap API Audit ==="
 PRINT "--- New ---"
 DIM dm AS OBJECT
 dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
-PRINT dm.Len       ' 0
+PRINT dm.Length       ' 0
 
 ' --- Set / Len ---
 PRINT "--- Set / Len ---"
 dm.Set("name", "Alice")
 dm.Set("city", "Boston")
 dm.Set("role", "Engineer")
-PRINT dm.Len       ' 3
+PRINT dm.Length       ' 3
 
 ' --- Get (existing key) ---
 PRINT "--- Get (existing) ---"
@@ -39,26 +39,26 @@ PRINT dm.GetDefault()   ' N/A
 PRINT "--- Set (update) ---"
 dm.Set("name", "Bob")
 PRINT dm.Get("name")   ' Bob
-PRINT dm.Len            ' 3
+PRINT dm.Length            ' 3
 
 ' --- Keys ---
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = dm.Keys()
-PRINT keys.Len          ' 3
+PRINT keys.Length          ' 3
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT dm.Remove("city")   ' 1
 PRINT dm.Has("city")      ' 0
-PRINT dm.Len               ' 2
+PRINT dm.Length               ' 2
 PRINT dm.Remove("city")   ' 0
 PRINT dm.Get("city")      ' N/A
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 dm.Clear()
-PRINT dm.Len               ' 0
+PRINT dm.Length               ' 0
 PRINT dm.Get("name")      ' N/A
 
 ' --- New with integer default ---

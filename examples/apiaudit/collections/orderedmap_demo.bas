@@ -7,7 +7,7 @@ PRINT "=== OrderedMap API Audit ==="
 PRINT "--- New ---"
 DIM om AS OBJECT
 om = Viper.Collections.OrderedMap.New()
-PRINT om.Len       ' 0
+PRINT om.Length       ' 0
 PRINT om.IsEmpty   ' 1
 
 ' --- Set / Len ---
@@ -15,7 +15,7 @@ PRINT "--- Set / Len ---"
 om.Set("first", "alpha")
 om.Set("second", "beta")
 om.Set("third", "gamma")
-PRINT om.Len       ' 3
+PRINT om.Length       ' 3
 PRINT om.IsEmpty   ' 0
 
 ' --- Get ---
@@ -33,7 +33,7 @@ PRINT om.Has("fourth")   ' 0
 PRINT "--- Set (update) ---"
 om.Set("second", "BETA")
 PRINT om.Get("second")   ' BETA
-PRINT om.Len              ' 3
+PRINT om.Length              ' 3
 
 ' --- KeyAt (insertion order) ---
 PRINT "--- KeyAt ---"
@@ -45,7 +45,7 @@ PRINT om.KeyAt(2)         ' third
 PRINT "--- Keys ---"
 DIM keys AS OBJECT
 keys = om.Keys()
-PRINT keys.Len            ' 3
+PRINT keys.Length            ' 3
 PRINT keys.Get(0)         ' first
 PRINT keys.Get(1)         ' second
 PRINT keys.Get(2)         ' third
@@ -54,7 +54,7 @@ PRINT keys.Get(2)         ' third
 PRINT "--- Values ---"
 DIM vals AS OBJECT
 vals = om.Values()
-PRINT vals.Len            ' 3
+PRINT vals.Length            ' 3
 PRINT vals.Get(0)         ' alpha
 PRINT vals.Get(1)         ' BETA
 PRINT vals.Get(2)         ' gamma
@@ -63,21 +63,21 @@ PRINT vals.Get(2)         ' gamma
 PRINT "--- Remove ---"
 PRINT om.Remove("second")   ' 1
 PRINT om.Has("second")      ' 0
-PRINT om.Len                 ' 2
+PRINT om.Length                 ' 2
 PRINT om.Remove("second")   ' 0
 
 ' --- Keys after remove ---
 PRINT "--- Keys after remove ---"
 DIM keys2 AS OBJECT
 keys2 = om.Keys()
-PRINT keys2.Len              ' 2
+PRINT keys2.Length              ' 2
 PRINT keys2.Get(0)           ' first
 PRINT keys2.Get(1)           ' third
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 om.Clear()
-PRINT om.Len                 ' 0
+PRINT om.Length                 ' 0
 PRINT om.IsEmpty             ' 1
 
 PRINT "=== OrderedMap audit complete ==="

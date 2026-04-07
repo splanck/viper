@@ -11,7 +11,7 @@
 #   ./run_all_runtime_tests.sh --verbose # Show full test output
 #
 # Prerequisites:
-#   - Built zia compiler in ../../build/zia or in PATH
+#   - Built Viper/Zia frontend in ../../build/src/tools/... or in PATH
 #
 
 set -e
@@ -20,13 +20,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Find zia compiler
-if [ -f "$PROJECT_ROOT/build/zia" ]; then
-    ZIA="$PROJECT_ROOT/build/zia"
+# Find a runnable frontend
+if [ -x "$PROJECT_ROOT/build/src/tools/viper/viper" ]; then
+    RUNNER=("$PROJECT_ROOT/build/src/tools/viper/viper" run)
+elif [ -x "$PROJECT_ROOT/build/src/tools/zia/zia" ]; then
+    RUNNER=("$PROJECT_ROOT/build/src/tools/zia/zia")
+elif command -v viper &> /dev/null; then
+    RUNNER=("$(command -v viper)" run)
 elif command -v zia &> /dev/null; then
-    ZIA="$(command -v zia)"
+    RUNNER=("$(command -v zia)")
 else
-    echo "ERROR: Cannot find zia compiler"
+    echo "ERROR: Cannot find a runnable Zia/Viper frontend"
     echo "Build it with: cmake -S . -B build && cmake --build build -j"
     exit 1
 fi
@@ -90,7 +94,7 @@ run_test() {
     # Run test and capture output
     local output
     local exit_code=0
-    output=$("$ZIA" "$test_file" 2>&1) || exit_code=$?
+    output=$("${RUNNER[@]}" "$test_file" 2>&1) || exit_code=$?
 
     if [ $VERBOSE -eq 1 ]; then
         echo ""
@@ -120,7 +124,7 @@ echo -e "${BLUE}╔════════════════════�
 echo -e "${BLUE}║              Viper Runtime Test Suite                     ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "Using zia: $ZIA"
+echo "Using frontend: ${RUNNER[*]}"
 echo ""
 
 # Math & Numeric Tests

@@ -18,7 +18,7 @@ PRINT "IsEmpty: "; m.IsEmpty
 
 ' --- Len (initial) ---
 PRINT "--- Len (initial) ---"
-PRINT "Len: "; m.Len
+PRINT "Len: "; m.Length
 
 ' --- Set ---
 PRINT "--- Set ---"
@@ -29,7 +29,7 @@ PRINT "Set 3 entries"
 
 ' --- Len (after set) ---
 PRINT "--- Len (after set) ---"
-PRINT "Len: "; m.Len
+PRINT "Len: "; m.Length
 
 ' --- IsEmpty (after set) ---
 PRINT "--- IsEmpty (after set) ---"
@@ -72,12 +72,12 @@ PRINT "Get(email): "; Viper.Core.Box.ToStr(m.Get("email"))
 ' --- Keys ---
 PRINT "--- Keys ---"
 DIM keys AS Viper.Collections.Seq = m.Keys()
-PRINT "Keys count: "; keys.Len
+PRINT "Keys count: "; keys.Length
 
 ' --- Values ---
 PRINT "--- Values ---"
 DIM vals AS Viper.Collections.Seq = m.Values()
-PRINT "Values count: "; vals.Len
+PRINT "Values count: "; vals.Length
 
 ' --- Remove ---
 PRINT "--- Remove ---"
@@ -86,12 +86,12 @@ PRINT "Remove(email): "; removed
 PRINT "Has(email) after remove: "; m.Has("email")
 DIM removeMissing AS INTEGER = m.Remove("nonexistent")
 PRINT "Remove(nonexistent): "; removeMissing
-PRINT "Len after remove: "; m.Len
+PRINT "Len after remove: "; m.Length
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 m.Clear()
-PRINT "Len after Clear: "; m.Len
+PRINT "Len after Clear: "; m.Length
 PRINT "IsEmpty after Clear: "; m.IsEmpty
 
 PRINT "=== ConcurrentMap Audit Complete ==="

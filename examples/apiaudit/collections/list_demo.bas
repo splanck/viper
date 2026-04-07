@@ -8,7 +8,7 @@ PRINT "=== List API Audit ==="
 PRINT "--- New ---"
 DIM list AS Viper.Collections.List
 list = Viper.Collections.List.New()
-PRINT list.Len       ' 0
+PRINT list.Length       ' 0
 PRINT list.IsEmpty   ' 1
 
 ' --- Push / Len ---
@@ -19,7 +19,7 @@ DIM c AS OBJECT = Viper.Core.Box.Str("cherry")
 list.Push(a)
 list.Push(b)
 list.Push(c)
-PRINT list.Len       ' 3
+PRINT list.Length       ' 3
 PRINT list.IsEmpty   ' 0
 
 ' --- Get ---
@@ -50,20 +50,20 @@ PRINT list.Has(b)     ' 0
 PRINT "--- Insert ---"
 DIM e AS OBJECT = Viper.Core.Box.Str("elderberry")
 list.Insert(1, e)
-PRINT list.Len                            ' 4
+PRINT list.Length                            ' 4
 PRINT Viper.Core.Box.ToStr(list.Get(1))  ' elderberry
 PRINT Viper.Core.Box.ToStr(list.Get(2))  ' date
 
 ' --- Remove (by reference) ---
 PRINT "--- Remove ---"
 PRINT list.Remove(e)   ' 1
-PRINT list.Len          ' 3
+PRINT list.Length          ' 3
 PRINT list.Remove(e)   ' 0 (already removed)
 
 ' --- RemoveAt ---
 PRINT "--- RemoveAt ---"
 list.RemoveAt(1)
-PRINT list.Len                            ' 2
+PRINT list.Length                            ' 2
 PRINT Viper.Core.Box.ToStr(list.Get(0))  ' apple
 PRINT Viper.Core.Box.ToStr(list.Get(1))  ' cherry
 
@@ -73,7 +73,7 @@ list.Push(Viper.Core.Box.Str("fig"))
 list.Push(Viper.Core.Box.Str("grape"))
 DIM sl AS Viper.Collections.List
 sl = list.Slice(1, 3)
-PRINT sl.Len                              ' 2
+PRINT sl.Length                              ' 2
 PRINT Viper.Core.Box.ToStr(sl.Get(0))    ' cherry
 PRINT Viper.Core.Box.ToStr(sl.Get(1))    ' fig
 
@@ -88,12 +88,12 @@ PRINT "--- Pop ---"
 DIM popped AS OBJECT
 popped = list.Pop()
 PRINT Viper.Core.Box.ToStr(popped)       ' apple
-PRINT list.Len                            ' 3
+PRINT list.Length                            ' 3
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 list.Clear()
-PRINT list.Len       ' 0
+PRINT list.Length       ' 0
 PRINT list.IsEmpty   ' 1
 
 PRINT "=== List audit complete ==="

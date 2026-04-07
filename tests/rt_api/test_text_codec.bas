@@ -25,10 +25,10 @@ PRINT "sb after appendline: "; sb.ToString()
 sb.Clear()
 PRINT "sb length after clear: "; sb.Length
 
-' NOTE: TextWrapper, Pluralize, Diff are not recognized by BASIC frontend (BUG-009)
-' Viper.Text.TextWrapper.Wrap/Truncate/etc — unknown procedure
-' Viper.Text.Pluralize.Plural/Singular/Count — unknown procedure
-' Viper.Text.Diff.CountChanges — unknown procedure
+PRINT "plural: "; Viper.Text.Pluralize.Plural("city")
+PRINT "count: "; Viper.Text.Pluralize.Count(2, "apple")
+PRINT "diff changes: "; Viper.Text.Diff.CountChanges("kitten", "sitting")
+PRINT "wrap: "; Viper.Text.TextWrapper.Wrap("one two three four", 7)
 
 PRINT "done"
 END

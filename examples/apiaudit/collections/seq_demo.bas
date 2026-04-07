@@ -11,14 +11,14 @@ PRINT "=== Seq API Audit ==="
 PRINT "--- New ---"
 DIM s AS Viper.Collections.Seq
 s = Viper.Collections.Seq.New()
-PRINT s.Len       ' 0
+PRINT s.Length       ' 0
 PRINT s.IsEmpty   ' 1
 
 ' --- WithCapacity ---
 PRINT "--- WithCapacity ---"
 DIM sc AS Viper.Collections.Seq
 sc = Viper.Collections.Seq.WithCapacity(10)
-PRINT sc.Len      ' 0
+PRINT sc.Length      ' 0
 PRINT sc.Cap      ' 10
 
 ' --- Push / Len / Cap ---
@@ -26,7 +26,7 @@ PRINT "--- Push / Len / Cap ---"
 s.Push(Viper.Core.Box.I64(10))
 s.Push(Viper.Core.Box.I64(20))
 s.Push(Viper.Core.Box.I64(30))
-PRINT s.Len       ' 3
+PRINT s.Length       ' 3
 PRINT s.IsEmpty   ' 0
 
 ' --- Get ---
@@ -70,7 +70,7 @@ PRINT s.Has(Viper.Core.Box.I64(99))    ' 0
 ' --- Insert ---
 PRINT "--- Insert ---"
 s.Insert(1, Viper.Core.Box.I64(15))
-PRINT s.Len                             ' 4
+PRINT s.Length                             ' 4
 DIM iv1 AS OBJECT
 iv1 = s.Get(1)
 PRINT Viper.Core.Box.ToI64(iv1)        ' 15
@@ -83,20 +83,20 @@ PRINT "--- Remove ---"
 DIM removed AS OBJECT
 removed = s.Remove(1)
 PRINT Viper.Core.Box.ToI64(removed)    ' 15
-PRINT s.Len                             ' 3
+PRINT s.Length                             ' 3
 
 ' --- Pop ---
 PRINT "--- Pop ---"
 DIM popped AS OBJECT
 popped = s.Pop()
 PRINT Viper.Core.Box.ToI64(popped)     ' 30
-PRINT s.Len                             ' 2
+PRINT s.Length                             ' 2
 
 ' --- Clone ---
 PRINT "--- Clone ---"
 DIM c AS Viper.Collections.Seq
 c = s.Clone()
-PRINT c.Len                             ' 2
+PRINT c.Length                             ' 2
 DIM cv0 AS OBJECT
 cv0 = c.Get(0)
 PRINT Viper.Core.Box.ToI64(cv0)        ' 10
@@ -110,7 +110,7 @@ s.Push(Viper.Core.Box.I64(30))
 s.Push(Viper.Core.Box.I64(40))
 DIM sl AS Viper.Collections.Seq
 sl = s.Slice(1, 3)
-PRINT sl.Len                            ' 2
+PRINT sl.Length                            ' 2
 DIM slv0 AS OBJECT
 slv0 = sl.Get(0)
 PRINT Viper.Core.Box.ToI64(slv0)       ' 25
@@ -151,14 +151,14 @@ PRINT Viper.Core.Box.ToI64(sd3)        ' 10
 ' --- Shuffle ---
 PRINT "--- Shuffle ---"
 s.Shuffle()
-PRINT s.Len                             ' 4
+PRINT s.Length                             ' 4
 
 ' --- Take ---
 PRINT "--- Take ---"
 s.Sort()
 DIM t AS Viper.Collections.Seq
 t = s.Take(2)
-PRINT t.Len                             ' 2
+PRINT t.Length                             ' 2
 DIM tv0 AS OBJECT
 tv0 = t.Get(0)
 PRINT Viper.Core.Box.ToI64(tv0)        ' 10
@@ -167,7 +167,7 @@ PRINT Viper.Core.Box.ToI64(tv0)        ' 10
 PRINT "--- Drop ---"
 DIM d AS Viper.Collections.Seq
 d = s.Drop(2)
-PRINT d.Len                             ' 2
+PRINT d.Length                             ' 2
 DIM dv0 AS OBJECT
 dv0 = d.Get(0)
 PRINT Viper.Core.Box.ToI64(dv0)        ' 30
@@ -183,7 +183,7 @@ b = Viper.Collections.Seq.New()
 b.Push(Viper.Core.Box.I64(3))
 b.Push(Viper.Core.Box.I64(4))
 a.PushAll(b)
-PRINT a.Len                             ' 4
+PRINT a.Length                             ' 4
 DIM av2 AS OBJECT
 av2 = a.Get(2)
 PRINT Viper.Core.Box.ToI64(av2)        ' 3
@@ -194,7 +194,7 @@ PRINT Viper.Core.Box.ToI64(av3)        ' 4
 ' --- Clear ---
 PRINT "--- Clear ---"
 a.Clear()
-PRINT a.Len                             ' 0
+PRINT a.Length                             ' 0
 PRINT a.IsEmpty                         ' 1
 
 PRINT "=== Seq audit complete ==="

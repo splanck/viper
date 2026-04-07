@@ -9,7 +9,7 @@ PRINT "=== SortedSet API Audit ==="
 PRINT "--- New ---"
 DIM ss AS OBJECT
 ss = Viper.Collections.SortedSet.New()
-PRINT ss.Len       ' 0
+PRINT ss.Length       ' 0
 PRINT ss.IsEmpty   ' 1
 
 ' --- Put ---
@@ -20,7 +20,7 @@ PRINT ss.Put("banana")     ' 1 (new)
 PRINT ss.Put("date")       ' 1 (new)
 PRINT ss.Put("elderberry") ' 1 (new)
 PRINT ss.Put("apple")      ' 0 (duplicate)
-PRINT ss.Len               ' 5
+PRINT ss.Length               ' 5
 PRINT ss.IsEmpty           ' 0
 
 ' --- Has ---
@@ -70,31 +70,31 @@ PRINT ss.Higher("cherry") ' date
 PRINT "--- Items ---"
 DIM items AS OBJECT
 items = ss.Items()
-PRINT items.Len  ' 5
+PRINT items.Length  ' 5
 
 ' --- Range ---
 PRINT "--- Range ---"
 DIM ranged AS OBJECT
 ranged = ss.Range("banana", "date")
-PRINT ranged.Len  ' 3
+PRINT ranged.Length  ' 3
 
 ' --- Take ---
 PRINT "--- Take ---"
 DIM taken AS OBJECT
 taken = ss.Take(3)
-PRINT taken.Len  ' 3
+PRINT taken.Length  ' 3
 
 ' --- Skip ---
 PRINT "--- Skip ---"
 DIM skipped AS OBJECT
 skipped = ss.Skip(2)
-PRINT skipped.Len  ' 3
+PRINT skipped.Length  ' 3
 
 ' --- Drop ---
 PRINT "--- Drop ---"
 PRINT ss.Drop("banana")   ' 1
 PRINT ss.Has("banana")    ' 0
-PRINT ss.Len              ' 4
+PRINT ss.Length              ' 4
 PRINT ss.Drop("banana")   ' 0
 
 ' --- Merge ---
@@ -106,19 +106,19 @@ ss2.Put("fig")
 ss2.Put("grape")
 DIM merged AS OBJECT
 merged = ss.Union(ss2)
-PRINT merged.Len  ' 6
+PRINT merged.Length  ' 6
 
 ' --- Intersect ---
 PRINT "--- Intersect ---"
 DIM common AS OBJECT
 common = ss.Intersect(ss2)
-PRINT common.Len  ' 1
+PRINT common.Length  ' 1
 
 ' --- Diff ---
 PRINT "--- Diff ---"
 DIM diff AS OBJECT
 diff = ss.Diff(ss2)
-PRINT diff.Len  ' 3
+PRINT diff.Length  ' 3
 
 ' --- IsSubset ---
 PRINT "--- IsSubset ---"
@@ -131,7 +131,7 @@ PRINT sub1.IsSubset(ss)  ' 1
 ' --- Clear ---
 PRINT "--- Clear ---"
 ss.Clear()
-PRINT ss.Len       ' 0
+PRINT ss.Length       ' 0
 PRINT ss.IsEmpty   ' 1
 
 PRINT "=== SortedSet audit complete ==="

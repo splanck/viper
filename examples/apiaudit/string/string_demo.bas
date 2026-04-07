@@ -61,7 +61,7 @@ PRINT Viper.String.Replace("aaa", "a", "bb")
 PRINT "--- Split / Join ---"
 DIM parts AS Viper.Collections.Seq
 parts = Viper.String.Split("one,two,three", ",")
-PRINT "Split count: "; parts.Len
+PRINT "Split count: "; parts.Length
 DIM sp0 AS OBJECT
 sp0 = parts.Get(0)
 PRINT "Part 0: "; sp0

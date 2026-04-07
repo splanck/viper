@@ -67,7 +67,7 @@ it.Next()   ' consume a
 it.Next()   ' consume b
 DIM rest AS OBJECT
 rest = it.ToSeq()
-PRINT rest.Len       ' 3
+PRINT rest.Length       ' 3
 PRINT rest.Get(0)    ' c
 PRINT rest.Get(1)    ' d
 PRINT rest.Get(2)    ' e
