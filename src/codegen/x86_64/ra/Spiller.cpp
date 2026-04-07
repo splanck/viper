@@ -235,13 +235,9 @@ void Spiller::spillValueWithReuse(RegClass cls,
                                   std::deque<PhysReg> &pool,
                                   std::vector<MInstr> &prefix,
                                   AllocationResult &result,
-                                  std::size_t /*intervalStart*/,
-                                  std::size_t /*intervalEnd*/) {
-    // Spill slot reuse is disabled: the current interval analysis does not
-    // account for cross-block liveness, causing values still live in successor
-    // blocks to be silently overwritten when a slot is recycled.  Use the safe
-    // path that allocates a dedicated slot with infinite lifetime.
-    ensureSpillSlot(cls, alloc.spill);
+                                  std::size_t intervalStart,
+                                  std::size_t intervalEnd) {
+    ensureSpillSlotWithReuse(cls, alloc.spill, intervalStart, intervalEnd);
     prefix.push_back(makeStore(cls, alloc.spill, alloc.phys));
     pool.push_back(alloc.phys);
     alloc.hasPhys = false;

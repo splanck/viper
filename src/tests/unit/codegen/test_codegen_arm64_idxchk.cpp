@@ -17,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
@@ -40,6 +41,13 @@ static std::string readFile(const std::string &path) {
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
+}
+
+static int runArm64(std::initializer_list<const char *> args) {
+    std::vector<char *> argv;
+    for (const char *arg : args)
+        argv.push_back(const_cast<char *>(arg));
+    return cmd_codegen_arm64(static_cast<int>(argv.size()), argv.data());
 }
 
 /// @brief Returns the expected mangled symbol name for a call target.
@@ -112,6 +120,40 @@ TEST(Arm64IdxChk, MultipleChecks) {
         pos += 5;
     }
     EXPECT_TRUE(cmpCount >= 2U);
+}
+
+TEST(Arm64IdxChk, NonZeroLowerBoundNormalizesResult) {
+    const std::string in = outPath("arm64_idxchk_normalized.il");
+    const std::string il = "il 0.1\n"
+                           "func @f(%idx:i64) -> i64 {\n"
+                           "entry(%idx:i64):\n"
+                           "  %checked = idx.chk %idx, 10, 20\n"
+                           "  ret %checked\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %r = call @f(12)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "-run-native", "-O0"}), 2);
+}
+
+TEST(Arm64IdxChk, NegativeLowerBoundNormalizesResult) {
+    const std::string in = outPath("arm64_idxchk_negative_lo.il");
+    const std::string il = "il 0.1\n"
+                           "func @f(%idx:i64) -> i64 {\n"
+                           "entry(%idx:i64):\n"
+                           "  %checked = idx.chk %idx, -5, 5\n"
+                           "  ret %checked\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %r = call @f(0)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "-run-native", "-O0"}), 5);
 }
 
 int main(int argc, char **argv) {

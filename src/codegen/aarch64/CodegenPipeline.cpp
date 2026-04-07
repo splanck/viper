@@ -64,9 +64,18 @@ static std::vector<std::string> systemAssemblerArgs() {
 #endif
 }
 
+static int linkObjToExe(const std::string &objPath,
+                        const std::string &exePath,
+                        const LinkContext &ctx,
+                        std::size_t stackSize,
+                        const std::vector<std::string> &extraObjects,
+                        std::ostream &out,
+                        std::ostream &err);
+
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
                      std::size_t stackSize,
+                     const std::vector<std::string> &extraObjects,
                      std::ostream &out,
                      std::ostream &err) {
     using namespace viper::codegen::common;
@@ -75,70 +84,67 @@ static int linkToExe(const std::string &asmPath,
     if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
         return rc;
 
-#if defined(__APPLE__)
-    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", asmPath};
-#elif defined(_WIN32)
-    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", asmPath};
-#else
-    std::vector<std::string> linkCmd = {"cc", asmPath};
-#endif
-    appendSystemLinkInputs(ctx, linkCmd);
-    appendSystemLinkFlags(ctx, linkCmd, stackSize, true, true);
+    std::filesystem::path objPath = std::filesystem::path(asmPath);
+    objPath.replace_extension(".o");
+    const int arc = invokeAssembler(systemAssemblerArgs(), asmPath, objPath.string(), out, err);
+    if (arc != 0)
+        return arc;
 
-    linkCmd.push_back("-o");
-    linkCmd.push_back(exePath);
-
-    const RunResult rr = run_process(linkCmd);
-    if (rr.exit_code == -1) {
-        err << "error: failed to launch system linker command\n";
-        return -1;
-    }
-    if (!rr.out.empty())
-        out << rr.out;
-#if defined(_WIN32)
-    if (!rr.err.empty())
-        err << rr.err;
-#endif
-    if (rr.exit_code != 0)
-        err << "error: cc exited with status " << rr.exit_code << "\n";
-    return rr.exit_code;
+    const int lrc = linkObjToExe(objPath.string(), exePath, ctx, stackSize, extraObjects, out, err);
+    std::error_code ec;
+    std::filesystem::remove(objPath, ec);
+    return lrc;
 }
 
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
                         std::size_t stackSize,
+                        const std::vector<std::string> &extraObjects,
                         std::ostream &out,
                         std::ostream &err) {
     using namespace viper::codegen::common;
+    using viper::codegen::archiveNameForComponent;
+    using viper::codegen::RtComponent;
 
-#if defined(__APPLE__)
-    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", objPath};
-#elif defined(_WIN32)
-    std::vector<std::string> linkCmd = {"clang", "--target=aarch64-pc-windows-msvc", objPath};
-#else
-    std::vector<std::string> linkCmd = {"cc", objPath};
-#endif
-    appendSystemLinkInputs(ctx, linkCmd);
-    appendSystemLinkFlags(ctx, linkCmd, stackSize, true, true);
+    linker::NativeLinkerOptions linkOpts;
+    linkOpts.objPath = objPath;
+    linkOpts.exePath = exePath;
+    linkOpts.platform = linker::detectLinkPlatform();
+    linkOpts.arch = linker::LinkArch::AArch64;
+    linkOpts.entrySymbol = "main";
+    linkOpts.stackSize = stackSize;
+    linkOpts.extraObjPaths = extraObjects;
 
-    linkCmd.push_back("-o");
-    linkCmd.push_back(exePath);
-
-    const RunResult rr = run_process(linkCmd);
-    if (rr.exit_code == -1) {
-        err << "error: failed to launch system linker command\n";
-        return -1;
+    static constexpr RtComponent allComponents[] = {
+        RtComponent::Network,
+        RtComponent::Threads,
+        RtComponent::Audio,
+        RtComponent::Graphics,
+        RtComponent::Game,
+        RtComponent::Exec,
+        RtComponent::IoFs,
+        RtComponent::Text,
+        RtComponent::Collections,
+        RtComponent::Arrays,
+        RtComponent::Oop,
+        RtComponent::Base,
+    };
+    for (auto comp : allComponents) {
+        auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
+        if (fileExists(arPath))
+            linkOpts.archivePaths.push_back(arPath.string());
     }
-    if (!rr.out.empty())
-        out << rr.out;
-#if defined(_WIN32)
-    if (!rr.err.empty())
-        err << rr.err;
-#endif
-    if (rr.exit_code != 0)
-        err << "error: cc exited with status " << rr.exit_code << "\n";
-    return rr.exit_code;
+
+    auto addIfExists = [&](const std::filesystem::path &p) {
+        if (fileExists(p))
+            linkOpts.archivePaths.push_back(p.string());
+    };
+    addIfExists(ctx.buildDir / "src" / "lib" / "gui" / "libvipergui.a");
+    addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
+    addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
+
+    return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }
 
 static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod) {
@@ -567,49 +573,11 @@ PipelineResult CodegenPipeline::run() {
                 ? std::filesystem::path(opts_.input_il_path).replace_extension("")
                 : std::filesystem::path(opts_.output_obj_path);
 
-        int lrc = 0;
-        if (opts_.link_mode == LinkMode::Native) {
-            viper::codegen::linker::NativeLinkerOptions linkOpts;
-            linkOpts.objPath = objPath.string();
-            linkOpts.exePath = exe.string();
-            using viper::codegen::archiveNameForComponent;
-            using viper::codegen::RtComponent;
-            using viper::codegen::common::fileExists;
-            using viper::codegen::common::runtimeArchivePath;
-            static constexpr RtComponent allComponents[] = {
-                RtComponent::Network,
-                RtComponent::Threads,
-                RtComponent::Audio,
-                RtComponent::Graphics,
-                RtComponent::Game,
-                RtComponent::Exec,
-                RtComponent::IoFs,
-                RtComponent::Text,
-                RtComponent::Collections,
-                RtComponent::Arrays,
-                RtComponent::Oop,
-                RtComponent::Base,
-            };
-            for (auto comp : allComponents) {
-                auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
-                if (fileExists(arPath))
-                    linkOpts.archivePaths.push_back(arPath.string());
-            }
+        if (opts_.link_mode == LinkMode::System)
+            err << "warning: --system-link is deprecated; using the native linker\n";
 
-            auto addIfExists = [&](const std::filesystem::path &p) {
-                if (fileExists(p))
-                    linkOpts.archivePaths.push_back(p.string());
-            };
-            addIfExists(ctx.buildDir / "src" / "lib" / "gui" / "libvipergui.a");
-            addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
-            addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
-
-            linkOpts.extraObjPaths = opts_.extra_objects;
-            linkOpts.stackSize = opts_.stack_size;
-            lrc = viper::codegen::linker::nativeLink(linkOpts, out, err);
-        } else {
-            lrc = linkObjToExe(objPath.string(), exe.string(), ctx, opts_.stack_size, out, err);
-        }
+        const int lrc =
+            linkObjToExe(objPath.string(), exe.string(), ctx, opts_.stack_size, opts_.extra_objects, out, err);
 
         if (!outputIsObj) {
             std::error_code ec;
@@ -651,7 +619,10 @@ PipelineResult CodegenPipeline::run() {
             return result;
         }
 
-        const int lrc = linkToExe(asmPath, outPath, opts_.stack_size, out, err);
+        if (opts_.link_mode == LinkMode::System)
+            err << "warning: --system-link is deprecated; using the native linker\n";
+        const int lrc =
+            linkToExe(asmPath, outPath, opts_.stack_size, opts_.extra_objects, out, err);
         if (lrc == 0 && !opts_.emit_asm) {
             std::error_code ec;
             std::filesystem::remove(asmPath, ec);
@@ -667,7 +638,9 @@ PipelineResult CodegenPipeline::run() {
             ? std::filesystem::path(opts_.input_il_path).replace_extension("")
             : std::filesystem::path(opts_.output_obj_path);
 
-    if (linkToExe(asmPath, exe.string(), opts_.stack_size, out, err) != 0) {
+    if (opts_.link_mode == LinkMode::System)
+        err << "warning: --system-link is deprecated; using the native linker\n";
+    if (linkToExe(asmPath, exe.string(), opts_.stack_size, opts_.extra_objects, out, err) != 0) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();

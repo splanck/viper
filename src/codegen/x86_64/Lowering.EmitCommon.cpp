@@ -544,10 +544,10 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
         phaseAUnsupported("load: missing operands");
     }
 
-    Operand baseOp = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
+    Operand baseOp = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
     if (!baseReg) {
-        return;
+        phaseAUnsupported("load: address base did not materialize to a register");
     }
 
     const int32_t disp = instr.ops.size() > 1 ? static_cast<int32_t>(instr.ops[1].i64) : 0;
@@ -582,12 +582,12 @@ void EmitCommon::emitStore(const ILInstr &instr) {
     // IL store format: store type, addr, value
     // ops[0] = address (Ptr type)
     // ops[1] = value to store (InstrType)
-    Operand baseOp = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
+    Operand baseOp = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
     const Operand value =
         builder().makeOperandForValue(instr.ops[1], builder().regClassFor(instr.ops[1].kind));
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
     if (!baseReg) {
-        return;
+        phaseAUnsupported("store: address base did not materialize to a register");
     }
     const int32_t disp = instr.ops.size() > 2 ? static_cast<int32_t>(instr.ops[2].i64) : 0;
     Operand mem = makeMemOperand(*baseReg, disp);

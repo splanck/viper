@@ -237,7 +237,7 @@ Register convention (all platforms): 8 integer args (X0–X7), 8 FP args (V0–V
 
 ### 2.4 Linker Integration
 
-The native codegen pipeline uses the built-in native linker to produce the final executable. The system linker (`cc`) is available as a fallback.
+The native codegen pipeline uses the built-in native linker to produce the final executable on every supported host path. The host assembler may still be used for `.s -> .o` when explicitly requested, but final executable linking does not fall back to `cc` or `ld`.
 
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
@@ -245,8 +245,8 @@ The native codegen pipeline uses the built-in native linker to produce the final
 | Graphics library | `vipergfx.lib` + `user32` + `gdi32` | `libvipergfx.a` + `-framework Cocoa` (macOS) or `-lX11` (Linux) |
 | Audio library | `viperaud.lib` + `ole32` | `libviperaud.a` + `-framework AudioToolbox` (macOS) or `-lasound` (Linux) |
 | Network library | `ws2_32.lib` | (system sockets, no extra lib) |
-| Compiler invocation | `clang` with `.exe` extension | `cc` with `.out` extension |
-| Exit code extraction | Direct return code | `WIFEXITED()` / `WEXITSTATUS()` via `<sys/wait.h>` |
+| Final link driver | Native PE writer + import metadata | Native Mach-O / ELF writers + import metadata |
+| Executable naming | `.exe` extension | `.out`-style host convention |
 
 ---
 

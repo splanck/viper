@@ -62,6 +62,10 @@ struct MacImportPlan {
     std::unordered_map<std::string, uint32_t> symOrdinals;
 };
 
+struct LinuxImportPlan {
+    std::vector<std::string> neededLibs;
+};
+
 void registerSyntheticSymbols(const ObjFile &obj,
                               size_t objIdx,
                               std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
@@ -465,6 +469,85 @@ bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
         return false;
     }
 
+    return true;
+}
+
+enum class LinuxNeededLib : uint8_t {
+    LibC,
+    LibM,
+    LibDL,
+    LibPthread,
+    LibX11,
+    LibASound,
+};
+
+const char *linuxNeededLibName(LinuxNeededLib lib) {
+    switch (lib) {
+        case LinuxNeededLib::LibC:
+            return "libc.so.6";
+        case LinuxNeededLib::LibM:
+            return "libm.so.6";
+        case LinuxNeededLib::LibDL:
+            return "libdl.so.2";
+        case LinuxNeededLib::LibPthread:
+            return "libpthread.so.0";
+        case LinuxNeededLib::LibX11:
+            return "libX11.so.6";
+        case LinuxNeededLib::LibASound:
+            return "libasound.so.2";
+    }
+    return "libc.so.6";
+}
+
+bool isLinuxMathSymbol(const std::string &name) {
+    static const std::unordered_set<std::string> kMath = {
+        "acos",  "acosf",  "asin",  "asinf",  "atan",   "atan2", "atan2f", "atanf",
+        "ceil",  "ceilf",  "copysign", "copysignf", "cos",    "cosf",  "cosh",  "exp",
+        "expf",  "fabs",   "fabsf", "floor", "floorf", "fmax", "fmaxf", "fmin",
+        "fminf", "fmod",   "fmodf", "hypot", "ldexp",  "log",  "log10", "log2",
+        "logf",  "nan",    "pow",   "powf",  "round",  "roundf", "sin",  "sinf",
+        "sinh",  "sqrt",   "sqrtf", "tan",   "tanf",   "tanh", "trunc", "truncf",
+    };
+    return kMath.count(name) != 0;
+}
+
+bool isLinuxDlSymbol(const std::string &name) {
+    return name == "dlopen" || name == "dlsym" || name == "dlclose" || name == "dlerror";
+}
+
+LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
+    if (name.rfind("snd_", 0) == 0)
+        return LinuxNeededLib::LibASound;
+    if (name.rfind("X", 0) == 0)
+        return LinuxNeededLib::LibX11;
+    if (isLinuxDlSymbol(name))
+        return LinuxNeededLib::LibDL;
+    if (name.rfind("pthread_", 0) == 0)
+        return LinuxNeededLib::LibPthread;
+    if (isLinuxMathSymbol(name))
+        return LinuxNeededLib::LibM;
+    return LinuxNeededLib::LibC;
+}
+
+bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
+                      LinuxImportPlan &plan,
+                      std::ostream & /*err*/) {
+    std::unordered_set<LinuxNeededLib> libs = {LinuxNeededLib::LibC};
+    for (const auto &sym : dynamicSyms)
+        libs.insert(classifyLinuxImportLibrary(sym));
+
+    static constexpr LinuxNeededLib kOrder[] = {
+        LinuxNeededLib::LibC,
+        LinuxNeededLib::LibM,
+        LinuxNeededLib::LibDL,
+        LinuxNeededLib::LibPthread,
+        LinuxNeededLib::LibX11,
+        LinuxNeededLib::LibASound,
+    };
+    for (LinuxNeededLib lib : kOrder) {
+        if (libs.count(lib) != 0)
+            plan.neededLibs.push_back(linuxNeededLibName(lib));
+    }
     return true;
 }
 
@@ -1632,9 +1715,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     }
 
     const bool supportsDynamicStubs =
-        opts.platform == LinkPlatform::macOS && opts.arch == LinkArch::AArch64;
+        (opts.platform == LinkPlatform::macOS && opts.arch == LinkArch::AArch64) ||
+        (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64);
     if (!dynamicSyms.empty() && supportsDynamicStubs) {
-        ObjFile stubObj = generateDynStubsAArch64(dynamicSyms);
+        ObjFile stubObj =
+            (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64)
+                ? generateDynStubsX8664(dynamicSyms)
+                : generateDynStubsAArch64(dynamicSyms);
         const size_t stubObjIdx = allObjects.size();
         allObjects.push_back(std::move(stubObj));
 
@@ -1668,12 +1755,11 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "error: native linker does not support dynamic imports on "
             << platformName(opts.platform) << ' ' << archName(opts.arch) << "\n";
         err << "error: supported dynamic-import targets are Windows x86_64, Windows AArch64, "
-               "and macOS AArch64\n";
+               "macOS AArch64, and Linux x86_64\n";
         err << "error: unresolved dynamic symbols:";
         for (const auto &sym : unsupported)
             err << ' ' << sym;
-        err << "\nerror: use the system linker for programs that depend on CRT or OS import "
-               "libraries\n";
+        err << "\n";
         return 1;
     }
 
@@ -1748,9 +1834,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 7: Write executable.
     bool writeOk = false;
     switch (opts.platform) {
-        case LinkPlatform::Linux:
-            writeOk = writeElfExe(opts.exePath, layout, opts.arch, opts.stackSize, err);
+        case LinkPlatform::Linux: {
+            LinuxImportPlan importPlan;
+            if (!planLinuxImports(dynamicSyms, importPlan, err))
+                return 1;
+            writeOk = writeElfExe(
+                opts.exePath, layout, opts.arch, importPlan.neededLibs, dynamicSyms, opts.stackSize, err);
             break;
+        }
         case LinkPlatform::macOS: {
             MacImportPlan importPlan;
             if (!planMacImports(dynamicSyms, importPlan, err))

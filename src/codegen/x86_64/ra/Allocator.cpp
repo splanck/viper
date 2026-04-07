@@ -105,13 +105,18 @@ AllocationResult LinearScanAllocator::run() {
     // vregs.
     liveness_.run(func_);
 
-    // Pre-pass: mark vregs that appear in liveOut of ANY block as needing spills.
-    // Unlike the old hack which identified cross-block vregs via linear scan and
-    // force-spilled all of them, this uses actual dataflow liveness. A vreg in
-    // liveOut[B] means it's truly live across B's boundary and needs a spill slot
-    // for correct reload in successor blocks.
+    crossBlockSpillVRegs_.clear();
+
+    // Pre-pass: mark vregs that cross non-carryable CFG boundaries as needing
+    // spill homes. Straight-line single-predecessor successors can carry values
+    // in registers directly, but joins, backedges, and out-of-order successors
+    // still need a memory home for correctness.
     for (std::size_t bi = 0; bi < func_.blocks.size(); ++bi) {
+        if (canCarryIntoNextBlock(bi)) {
+            continue;
+        }
         for (uint16_t vreg : liveness_.liveOut(bi)) {
+            crossBlockSpillVRegs_.insert(vreg);
             const auto *interval = intervals_.lookup(vreg);
             RegClass cls = interval ? interval->cls : RegClass::GPR;
 
@@ -132,6 +137,20 @@ AllocationResult LinearScanAllocator::run() {
     result_.spillSlotsGPR = spiller_.gprSlots();
     result_.spillSlotsXMM = spiller_.xmmSlots();
     return result_;
+}
+
+bool LinearScanAllocator::canCarryIntoNextBlock(std::size_t blockIdx) const {
+    if (blockIdx + 1 >= func_.blocks.size()) {
+        return false;
+    }
+
+    const auto &succs = liveness_.successors(blockIdx);
+    if (succs.size() != 1 || succs.front() != blockIdx + 1) {
+        return false;
+    }
+
+    const auto &preds = liveness_.predecessors(blockIdx + 1);
+    return preds.size() == 1 && preds.front() == blockIdx;
 }
 
 /// @brief Populate the per-class register pools from target metadata.
@@ -309,14 +328,20 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
     if (!victim.hasPhys) {
         return;
     }
-    // Use lifetime-based slot reuse when interval info is available
-    const auto *interval = intervals_.lookup(victimId);
-    if (interval) {
+    spillActiveValue(victimId, victim, prefix);
+}
+
+void LinearScanAllocator::spillActiveValue(uint16_t vreg,
+                                           VirtualAllocation &state,
+                                           std::vector<MInstr> &out) {
+    const auto *interval = intervals_.lookup(vreg);
+    if (interval && !crossBlockSpillVRegs_.contains(vreg)) {
         spiller_.spillValueWithReuse(
-            cls, victimId, victim, poolFor(cls), prefix, result_, interval->start, interval->end);
-    } else {
-        spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
+            state.cls, vreg, state, poolFor(state.cls), out, result_, interval->start, interval->end);
+        return;
     }
+
+    spiller_.spillValue(state.cls, vreg, state, poolFor(state.cls), out, result_);
 }
 
 void LinearScanAllocator::pinInstructionVRegs(const MInstr &instr) {
@@ -462,14 +487,12 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                             const auto *interval = intervals_.lookup(vreg);
                             const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
                             if (valueNeeded) {
-                                spiller_.ensureSpillSlot(destCls, state.spill);
-                                state.spill.needsSpill = true;
-                                prefix.push_back(
-                                    spiller_.makeStore(destCls, state.spill, state.phys));
+                                spillActiveValue(vreg, state, prefix);
+                            } else {
+                                releaseRegister(state.phys, destCls);
+                                state.hasPhys = false;
+                                state.cachedInBlock = false;
                             }
-                            releaseRegister(state.phys, destCls);
-                            state.hasPhys = false;
-                            state.cachedInBlock = false;
                             removeActive(destCls, vreg);
                             break; // Only one vreg can be in a physical register
                         }
@@ -579,15 +602,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             // Phase 2: Spill remaining GPR values to memory.
             for (auto vreg : gprStillNeedSpill) {
                 auto &state = states_[vreg];
-                // Spill slot reuse is disabled: the interval analysis does not
-                // account for cross-block liveness, causing values still live in
-                // successor blocks to be overwritten when a slot is recycled.
-                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
-                state.spill.needsSpill = true;
-                prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
-                releaseRegister(state.phys, RegClass::GPR);
-                state.hasPhys = false;
-                state.cachedInBlock = false;
+                spillActiveValue(vreg, state, prefix);
                 removeActive(RegClass::GPR, vreg);
             }
 
@@ -610,12 +625,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             // Phase 2: Spill remaining XMM values to memory.
             for (auto vreg : xmmStillNeedSpill) {
                 auto &state = states_[vreg];
-                spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
-                state.spill.needsSpill = true;
-                prefix.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
-                releaseRegister(state.phys, RegClass::XMM);
-                state.hasPhys = false;
-                state.cachedInBlock = false;
+                spillActiveValue(vreg, state, prefix);
                 removeActive(RegClass::XMM, vreg);
             }
 
@@ -646,12 +656,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                     removeActive(RegClass::GPR, vreg);
                 } else {
                     // Value is needed later - spill it
-                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
-                    state.spill.needsSpill = true;
-                    prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
-                    releaseRegister(state.phys, RegClass::GPR);
-                    state.hasPhys = false;
-                    state.cachedInBlock = false;
+                    spillActiveValue(vreg, state, prefix);
                     removeActive(RegClass::GPR, vreg);
                 }
                 break; // Only one vreg can be in RDX
@@ -686,6 +691,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
 /// @param blockIdx Index of the block for liveOut lookup.
 void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t blockIdx) {
     const auto &liveOutSet = liveness_.liveOut(blockIdx);
+    const bool carryToNext = canCarryIntoNextBlock(blockIdx);
 
     // Helper to check if an instruction is a terminator
     auto isTerminator = [](MOpcode opc) {
@@ -701,6 +707,8 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
     }
 
     std::vector<MInstr> spills{};
+    std::unordered_set<uint16_t> nextActiveGPR{};
+    std::unordered_set<uint16_t> nextActiveXMM{};
 
     // Process GPR values at block boundaries.
     for (auto vreg : activeGPR_) {
@@ -709,6 +717,14 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
             continue;
 
         auto &state = it->second;
+
+        if (liveOutSet.count(vreg) && carryToNext) {
+            if (state.spill.needsSpill) {
+                state.cachedInBlock = true;
+            }
+            nextActiveGPR.insert(vreg);
+            continue;
+        }
 
         // If this vreg is live across the block boundary, ensure its current
         // value is stored to the spill slot.
@@ -722,7 +738,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
         state.hasPhys = false;
         state.cachedInBlock = false;
     }
-    activeGPR_.clear();
+    activeGPR_.swap(nextActiveGPR);
 
     // Process XMM values — same approach as GPR.
     for (auto vreg : activeXMM_) {
@@ -731,6 +747,14 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
             continue;
 
         auto &state = it->second;
+
+        if (liveOutSet.count(vreg) && carryToNext) {
+            if (state.spill.needsSpill) {
+                state.cachedInBlock = true;
+            }
+            nextActiveXMM.insert(vreg);
+            continue;
+        }
 
         if (liveOutSet.count(vreg)) {
             spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
@@ -742,7 +766,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
         state.hasPhys = false;
         state.cachedInBlock = false;
     }
-    activeXMM_.clear();
+    activeXMM_.swap(nextActiveXMM);
 
     // Insert spills before the terminator(s).
     if (!spills.empty()) {

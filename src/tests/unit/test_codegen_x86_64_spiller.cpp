@@ -81,6 +81,39 @@ TEST(Spiller, SpillsActiveValue) {
     EXPECT_TRUE(result.vregToPhys.empty());
 }
 
+TEST(Spiller, ReusesSlotForDisjointIntervals) {
+    Spiller spiller{};
+
+    VirtualAllocation first{};
+    first.cls = RegClass::GPR;
+    first.hasPhys = true;
+    first.phys = PhysReg::RAX;
+    AllocationResult firstResult{};
+    firstResult.vregToPhys.emplace(static_cast<uint16_t>(1), PhysReg::RAX);
+
+    VirtualAllocation second{};
+    second.cls = RegClass::GPR;
+    second.hasPhys = true;
+    second.phys = PhysReg::RBX;
+    AllocationResult secondResult{};
+    secondResult.vregToPhys.emplace(static_cast<uint16_t>(2), PhysReg::RBX);
+
+    std::deque<PhysReg> pool{};
+    std::vector<MInstr> firstPrefix{};
+    spiller.spillValueWithReuse(
+        RegClass::GPR, 1, first, pool, firstPrefix, firstResult, 0U, 2U);
+
+    std::vector<MInstr> secondPrefix{};
+    spiller.spillValueWithReuse(
+        RegClass::GPR, 2, second, pool, secondPrefix, secondResult, 5U, 7U);
+
+    EXPECT_EQ(first.spill.slot, 0);
+    EXPECT_EQ(second.spill.slot, 0);
+    EXPECT_EQ(spiller.gprSlots(), 1);
+    EXPECT_EQ(firstPrefix.size(), 1U);
+    EXPECT_EQ(secondPrefix.size(), 1U);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

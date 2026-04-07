@@ -328,6 +328,10 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "opendir",
         "readdir",
         "environ",
+        "stdin",
+        "stdout",
+        "stderr",
+        "__errno_location",
         "getpwuid",
         "nan",
         "sel_registerName",
@@ -401,6 +405,10 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "AudioObject",
         "AudioDevice",
     };
+    static const char *const kLinuxDynPrefixes[] = {
+        "X",
+        "snd_",
+    };
     static const char *const kWindowsDynPrefixes[] = {
         "__imp_",
     };
@@ -418,6 +426,10 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     const char *const *platformPrefixes = nullptr;
     size_t prefixCount = 0;
     switch (platform) {
+        case LinkPlatform::Linux:
+            platformPrefixes = kLinuxDynPrefixes;
+            prefixCount = sizeof(kLinuxDynPrefixes) / sizeof(kLinuxDynPrefixes[0]);
+            break;
         case LinkPlatform::macOS:
             platformPrefixes = kMacDynPrefixes;
             prefixCount = sizeof(kMacDynPrefixes) / sizeof(kMacDynPrefixes[0]);
@@ -426,7 +438,6 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
             platformPrefixes = kWindowsDynPrefixes;
             prefixCount = sizeof(kWindowsDynPrefixes) / sizeof(kWindowsDynPrefixes[0]);
             break;
-        case LinkPlatform::Linux:
         default:
             break;
     }

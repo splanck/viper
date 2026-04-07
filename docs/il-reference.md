@@ -591,7 +591,7 @@ global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
 ```
 
-**`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi).
+**`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi) and returns the normalized zero-based index `idx - lo`.
 
 ```llvm
 %t0 = idx.chk %idx16, %lo16, %hi16

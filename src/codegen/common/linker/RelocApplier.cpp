@@ -331,12 +331,21 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         }
                         uint64_t val = static_cast<uint64_t>(static_cast<int64_t>(S) + A);
 
-                        // Dynamic symbol data references: if the symbol was stubbed
-                        // (has a __got_ entry), it's a dynamic symbol. For data pointers
-                        // (Abs64), write 0 and record a bind entry — dyld fills the
-                        // actual value at load time. Stubs are only for code branches.
-                        if (!symName.empty() && outSec.writable &&
-                            layout.globalSyms.count("__got_" + symName)) {
+                        const bool hasDynamicGot =
+                            !symName.empty() && layout.globalSyms.count("__got_" + symName);
+
+                        // Linux x86_64: imported data/function pointers are emitted as
+                        // runtime-loader relocations instead of being resolved to the
+                        // local jump stub address.
+                        if (platform == LinkPlatform::Linux && hasDynamicGot) {
+                            writeLE64(patch, 0);
+                            layout.bindEntries.push_back({symName, outSecIdx, patchOff});
+                            break;
+                        }
+
+                        // Mach-O: writable data pointers to imported symbols are left
+                        // for dyld bind opcodes. Code branches use the synthetic stubs.
+                        if (outSec.writable && hasDynamicGot) {
                             writeLE64(patch, 0);
                             layout.bindEntries.push_back({symName, outSecIdx, patchOff});
                             break;

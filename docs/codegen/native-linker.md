@@ -8,12 +8,11 @@ last-verified: 2026-04-07
 
 The native linker provides a built-in object/archive link pipeline that reads object files, resolves symbols, merges
 sections, applies relocations, and writes platform-native executables. Combined with the
-[native assembler](native-assembler.md), this removes the system linker dependency for supported targets and static
-archive-only links, while still falling back to `cc` / `ld` when a target needs unsupported shared-library imports.
+[native assembler](native-assembler.md), this removes the system linker dependency from the executable link step.
 
 > **Pipeline comparison:**
 >
-> - **System path:** `.o` + runtime `.a` archives → `cc` → executable
+> - **Deprecated alias:** `.o` + runtime `.a` archives → NativeLinker (`--system-link` now maps here)
 > - **Native path:** `.o` + runtime `.a` archives → NativeLinker → executable
 
 ---
@@ -54,14 +53,15 @@ runnable executable. It performs the classic linker pipeline:
 
 | Format | Platform | Architecture | Page Size | Dynamic Imports |
 |--------|----------|-------------|-----------|-----------------|
-| ELF | Linux | x86_64, AArch64 | 4KB | Not yet supported by the native linker |
+| ELF | Linux | x86_64 | 4KB | Supported |
+| ELF | Linux | AArch64 | 4KB | Static/archive-only links supported; shared-library imports not yet supported |
 | Mach-O | macOS | x86_64 | 4KB | Not yet supported by the native linker |
 | Mach-O | macOS | AArch64 (Apple Silicon) | **16KB** | Supported |
 | PE | Windows | x86_64, AArch64 | 4KB | Supported |
 
-Archive-only / fully self-contained links can still use the native linker on every output-writer target above.
-Programs that depend on libc, the Windows CRT, or OS frameworks require either one of the native dynamic-import
-targets above or the `--system-link` fallback.
+Archive-only / fully self-contained links can use the native linker on every output-writer target above.
+Programs that depend on libc, the Windows CRT, or OS frameworks require one of the native dynamic-import
+targets above; unsupported shared-library targets now fail explicitly instead of delegating to the host linker.
 
 > **Critical:** macOS arm64 requires 16KB page alignment. The dynamic linker (`dyld`) rejects executables with
 > incorrect page alignment. This is the single most important platform-specific detail in the linker.
@@ -371,14 +371,14 @@ insufficient.
 
 ### Linux: CRT Startup
 
-Viper programs emit a `main` function. On Linux, the CRT startup code (`_start` in `crt1.o`) calls
-`__libc_start_main(main, ...)`. When using the system linker path, `crt1.o` is automatically linked.
-The native linker path produces static executables with the entry point set directly to `main`.
+Viper programs emit a `main` function. On Linux x86_64, the native linker emits its own loader metadata
+(`PT_INTERP`, `PT_DYNAMIC`, `DT_NEEDED`, `.dynsym`, `.rela.dyn`) and still enters at `main`; there is no
+external `crt1.o` or host linker dependency in the executable link step.
 
 ### Windows: CRT
 
-Windows executables need `mainCRTStartup` or link against the CRT DLLs. The native linker currently generates
-minimal PE executables with the entry point at `main`. For full CRT support, the system linker fallback is used.
+Windows executables need `mainCRTStartup` or link against the CRT DLLs. The native linker generates
+minimal PE executables with the entry point at `main` and emits the required DLL import tables itself.
 
 ### Thread-Local Storage
 
@@ -393,12 +393,12 @@ applier using the appropriate format-specific types.
 | Flag | Effect |
 |------|--------|
 | `--native-link` | Use native linker (this is the default on AArch64) |
-| `--system-link` | Override: use system linker (`cc`) instead |
+| `--system-link` | Deprecated alias for native linking |
 | `--native-asm` | Use native assembler (this is the default) |
 | `--system-asm` | Override: use system assembler (`cc -c`) instead |
 
-Default behavior: the native assembler and native linker are used by default. Pass `--system-asm` and/or
-`--system-link` to fall back to the system toolchain if needed.
+Default behavior: the native assembler and native linker are used by default. `--system-asm` still requests
+the host assembler for `.s -> .o`, but `--system-link` no longer routes the final executable through `cc`.
 
 ---
 
@@ -504,10 +504,9 @@ dispatch cleanly separates format-specific constants from the patching logic.
 
 ### Why Static Linking First?
 
-Dynamic linking (PLT/GOT, dyld stubs, IAT) is significantly more complex than static linking. The current
-implementation focuses on static linking with the system linker as a fallback for programs needing dynamic libraries
-(libc, graphics frameworks, etc.). This gives us a working pipeline today while the dynamic linking infrastructure
-can be added incrementally.
+Dynamic linking (PLT/GOT, dyld stubs, IAT) is significantly more complex than static linking. The implementation
+started from static linking and then grew native dynamic-import support per platform: Windows import tables,
+Mach-O dyld bind metadata on macOS arm64, and ELF loader metadata on Linux x86_64.
 
 ### Why Iterative Archive Resolution?
 

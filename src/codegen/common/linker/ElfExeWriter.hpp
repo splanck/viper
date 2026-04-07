@@ -24,6 +24,8 @@
 #include <cstddef>
 #include <ostream>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -36,14 +38,33 @@ namespace viper::codegen::linker {
 bool writeElfExe(const std::string &path,
                  const LinkLayout &layout,
                  LinkArch arch,
+                 const std::vector<std::string> &neededLibs,
+                 const std::unordered_set<std::string> &dynSyms,
                  std::size_t stackSize,
                  std::ostream &err);
 
 inline bool writeElfExe(const std::string &path,
                         const LinkLayout &layout,
                         LinkArch arch,
+                        const std::vector<std::string> &neededLibs,
+                        const std::unordered_set<std::string> &dynSyms,
                         std::ostream &err) {
-    return writeElfExe(path, layout, arch, 0, err);
+    return writeElfExe(path, layout, arch, neededLibs, dynSyms, 0, err);
+}
+
+inline bool writeElfExe(const std::string &path,
+                        const LinkLayout &layout,
+                        LinkArch arch,
+                        std::size_t stackSize,
+                        std::ostream &err) {
+    return writeElfExe(path, layout, arch, {}, {}, stackSize, err);
+}
+
+inline bool writeElfExe(const std::string &path,
+                        const LinkLayout &layout,
+                        LinkArch arch,
+                        std::ostream &err) {
+    return writeElfExe(path, layout, arch, {}, {}, 0, err);
 }
 
 } // namespace viper::codegen::linker

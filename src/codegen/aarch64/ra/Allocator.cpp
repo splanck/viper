@@ -516,8 +516,9 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     std::vector<MInstr> preCall;
     for (auto &kv : gprStates_) {
         if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR)) {
-            unsigned dist = getNextUseDistance(kv.first, RegClass::GPR);
-            if (dist == UINT_MAX) {
+            const bool liveOut = isLiveOut(kv.first, RegClass::GPR);
+            const unsigned dist = getNextUseDistance(kv.first, RegClass::GPR);
+            if (dist == UINT_MAX && !liveOut) {
                 pools_.releaseGPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
             } else {
@@ -527,8 +528,9 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     }
     for (auto &kv : fprStates_) {
         if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR)) {
-            unsigned dist = getNextUseDistance(kv.first, RegClass::FPR);
-            if (dist == UINT_MAX) {
+            const bool liveOut = isLiveOut(kv.first, RegClass::FPR);
+            const unsigned dist = getNextUseDistance(kv.first, RegClass::FPR);
+            if (dist == UINT_MAX && !liveOut) {
                 pools_.releaseFPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
             } else {

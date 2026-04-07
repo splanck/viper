@@ -49,4 +49,15 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
 /// @return Synthetic ObjFile with stub text, GOT data, and relocations.
 ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSyms);
 
+/// @brief Generate dynamic symbol jump stubs and GOT entries for Linux x86_64.
+///
+/// @details Creates a synthetic ELF ObjFile containing 6-byte x86_64 jump
+///          stubs (`jmpq *__got_sym(%rip)`) and 8-byte GOT slots for each
+///          dynamic symbol. The executable writer emits dynamic relocations for
+///          the GOT slots so the runtime loader resolves them before entry.
+///
+/// @param dynamicSyms Set of dynamic symbols requiring loader-backed GOT slots.
+/// @return Synthetic ObjFile with stub text, GOT data, and relocations.
+ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms);
+
 } // namespace viper::codegen::linker

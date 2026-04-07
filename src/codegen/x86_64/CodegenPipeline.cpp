@@ -34,7 +34,6 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
-#include "common/RunProcess.hpp"
 #include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
 
@@ -42,7 +41,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
@@ -76,16 +74,6 @@ std::size_t totalInstructionCount(const il::core::Module &module) {
         for (const auto &bb : fn.blocks)
             totalInstrs += bb.instructions.size();
     return totalInstrs;
-}
-
-/// @brief Preserve the already-normalised exit code returned by @ref run_process.
-/// @details The shared process launcher converts platform-specific wait status
-///          values into conventional process exit codes before returning, so the
-///          pipeline must not decode them a second time.
-/// @param status Exit code returned by @ref run_process.
-/// @return The same exit code, unchanged.
-int normaliseStatus(int status) {
-    return status;
 }
 
 /// @brief Compute the output assembly path from pipeline options.
@@ -184,254 +172,6 @@ int invokeAssembler(const std::filesystem::path &asmPath,
         err << "error: " << kCcCommand << " (assemble) exited with status " << exitCode << "\n";
     }
     return exitCode;
-}
-
-/// @brief Run the system linker with a pre-resolved link context (non-Windows).
-/// @details Builds the cc command using the input file path and resolved archive
-///          paths from the LinkContext, then executes it. Works with both .s and .o inputs.
-/// @param inputPath Path to the input file (.s or .o) to pass to the linker.
-/// @param exePath Desired output executable path.
-/// @param stackSize Stack size in bytes (0 = default 8MB).
-/// @param ctx Pre-resolved link context containing archive paths.
-/// @param out Stream receiving the linker's standard output.
-/// @param err Stream receiving the linker's standard error.
-/// @return Normalised linker exit code (-1 when the command could not start).
-int linkWithContext(const std::filesystem::path &inputPath,
-                    const std::filesystem::path &exePath,
-                    std::size_t stackSize,
-                    const common::LinkContext &ctx,
-                    std::ostream &out,
-                    std::ostream &err) {
-    std::vector<std::string> cmd = {kCcCommand};
-#if defined(__APPLE__)
-    // Explicitly target x86_64 on macOS — required when the host is arm64
-    // (Apple Silicon) so cc doesn't default to the wrong architecture.
-    cmd.push_back("-arch");
-    cmd.push_back("x86_64");
-#endif
-    cmd.push_back(inputPath.string());
-    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    common::appendSystemLinkInputs(ctx, cmd);
-    common::appendSystemLinkFlags(ctx, cmd, effStack, true, true);
-
-    cmd.push_back("-o");
-    cmd.push_back(exePath.string());
-
-    const RunResult link = run_process(cmd);
-    if (link.exit_code == -1) {
-        err << "error: failed to launch system linker command\n";
-        return -1;
-    }
-
-    if (!link.out.empty()) {
-        out << link.out;
-    }
-#if defined(_WIN32)
-    if (!link.err.empty()) {
-        err << link.err;
-    }
-#endif
-
-    const int exitCode = normaliseStatus(link.exit_code);
-    if (exitCode != 0) {
-        err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
-    }
-    return exitCode;
-}
-
-/// @brief Link the emitted assembly into an executable.
-/// @details Invokes the system C compiler, forwarding stdout/stderr to the
-///          provided streams and normalising the resulting exit code.
-/// @param asmPath Path to the assembly file to assemble and link.
-/// @param exePath Desired output executable path.
-/// @param out     Stream receiving the linker's standard output.
-/// @param err     Stream receiving the linker's standard error.
-/// @return Normalised linker exit code (-1 when the command could not start).
-int invokeLinker(const std::filesystem::path &asmPath,
-                 const std::filesystem::path &exePath,
-                 std::size_t stackSize,
-                 std::ostream &out,
-                 std::ostream &err) {
-#if defined(_WIN32)
-    // Windows: Simple approach - find build dir and link all runtime libraries.
-    // Windows does not use LinkContext/symbol scanning — it links ALL archives.
-    auto fileExists = [](const std::filesystem::path &path) -> bool {
-        std::error_code ec;
-        return std::filesystem::exists(path, ec);
-    };
-
-    auto findBuildDir = [&]() -> std::optional<std::filesystem::path> {
-        std::error_code ec;
-        std::filesystem::path cur = std::filesystem::current_path(ec);
-        if (ec)
-            return std::nullopt;
-        const std::size_t maxDepth = 10;
-        for (std::size_t i = 0; i < maxDepth && !cur.empty(); ++i) {
-            const std::filesystem::path cmake_cache = cur / "build" / "CMakeCache.txt";
-            if (std::filesystem::exists(cmake_cache, ec))
-                return cur / "build";
-            const std::filesystem::path parent = cur.parent_path();
-            if (parent == cur)
-                break;
-            cur = parent;
-        }
-        return std::nullopt;
-    };
-
-    const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
-    const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
-
-    // Try multiple paths for runtime libraries: Release, Debug, and direct path
-    // MSVC multi-config builds put outputs in Release/ or Debug/ subdirectories
-    bool foundDebugRtLib = false; // BUG-018: track whether libs are Debug-built
-    auto findRuntimeArchive =
-        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path> {
-        const std::string libFile = std::string(libBaseName) + ".lib";
-        if (!buildDir.empty()) {
-            // Try Release first, then Debug, then direct path
-            const std::filesystem::path releasePath = buildDir / "src/runtime/Release" / libFile;
-            if (fileExists(releasePath))
-                return releasePath;
-            const std::filesystem::path debugPath = buildDir / "src/runtime/Debug" / libFile;
-            if (fileExists(debugPath)) {
-                foundDebugRtLib = true;
-                return debugPath;
-            }
-            const std::filesystem::path directPath = buildDir / "src/runtime" / libFile;
-            if (fileExists(directPath))
-                return directPath;
-        }
-        // Fallback: try relative paths
-        const std::filesystem::path relPath = std::filesystem::path("src/runtime") / libFile;
-        if (fileExists(relPath))
-            return relPath;
-        return std::nullopt;
-    };
-
-    std::vector<std::string> cmd = {kCcCommand, toNativePath(asmPath)};
-
-    // Link all runtime libraries that exist (simpler than symbol detection).
-    // Note: viper_rt_audio must appear before viper_rt_base because
-    // rt_global_shutdown() in base calls rt_audio_shutdown() in audio.
-    const std::vector<std::string_view> rtLibs = {"viper_rt_game",
-                                                  "viper_rt_graphics",
-                                                  "viper_rt_network",
-                                                  "viper_rt_exec",
-                                                  "viper_rt_io_fs",
-                                                  "viper_rt_text",
-                                                  "viper_rt_collections",
-                                                  "viper_rt_arrays",
-                                                  "viper_rt_threads",
-                                                  "viper_rt_oop",
-                                                  "viper_rt_audio",
-                                                  "viper_rt_base"};
-    for (const auto &lib : rtLibs) {
-        const auto pathOpt = findRuntimeArchive(lib);
-        if (pathOpt.has_value())
-            cmd.push_back(toNativePath(*pathOpt));
-    }
-
-    // Find and link vipergfx, vipergui, and viperaud libraries
-    auto findLibArchive =
-        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path> {
-        const std::string libFile = std::string(libBaseName) + ".lib";
-        if (!buildDir.empty()) {
-            // Try Release first, then Debug, then direct path under lib/
-            const std::filesystem::path releasePath = buildDir / "lib/Release" / libFile;
-            if (fileExists(releasePath))
-                return releasePath;
-            const std::filesystem::path debugPath = buildDir / "lib/Debug" / libFile;
-            if (fileExists(debugPath))
-                return debugPath;
-            const std::filesystem::path directPath = buildDir / "lib" / libFile;
-            if (fileExists(directPath))
-                return directPath;
-            // Also check src/lib/ subdirectories (vipergui lives under src/lib/gui/)
-            for (const auto &subdir : {"gui", "graphics", "audio"}) {
-                const std::filesystem::path srcRelease =
-                    buildDir / "src/lib" / subdir / "Release" / libFile;
-                if (fileExists(srcRelease))
-                    return srcRelease;
-                const std::filesystem::path srcDebug =
-                    buildDir / "src/lib" / subdir / "Debug" / libFile;
-                if (fileExists(srcDebug))
-                    return srcDebug;
-                const std::filesystem::path srcDirect = buildDir / "src/lib" / subdir / libFile;
-                if (fileExists(srcDirect))
-                    return srcDirect;
-            }
-        }
-        return std::nullopt;
-    };
-
-    // Link graphics, GUI widget, and audio backend libraries.
-    // vipergui must come before vipergfx: runtime calls vg_* from vipergui,
-    // which in turn calls the lower-level drawing APIs in vipergfx.
-    const std::vector<std::string_view> backendLibs = {"vipergui", "vipergfx", "viperaud"};
-    for (const auto &lib : backendLibs) {
-        const auto pathOpt = findLibArchive(lib);
-        if (pathOpt.has_value())
-            cmd.push_back(toNativePath(*pathOpt));
-    }
-
-    // Add Windows CRT and system libraries
-    // BUG-018: Match CRT variant (Debug vs Release) to how runtime libs were built
-    if (foundDebugRtLib) {
-        cmd.push_back("-lmsvcrtd");
-        cmd.push_back("-lucrtd");
-        cmd.push_back("-lvcruntimed");
-        // Suppress LNK4098: the debug CRT conflicts with the static release CRT
-        // that clang links by default.
-        cmd.push_back("-Wl,/NODEFAULTLIB:libcmt");
-    } else {
-        cmd.push_back("-lmsvcrt");
-        cmd.push_back("-lucrt");
-        cmd.push_back("-lvcruntime");
-    }
-
-    // Add Windows system libraries needed for graphics, input, and audio
-    cmd.push_back("-lgdi32");
-    cmd.push_back("-luser32");
-    cmd.push_back("-lshell32"); // Required by vipergfx (DragQueryFile, DragAcceptFiles)
-    cmd.push_back("-lxinput");
-    cmd.push_back("-lole32");    // Required by viperaud (WASAPI/COM)
-    cmd.push_back("-liphlpapi"); // Required by rt_network (GetAdaptersAddresses)
-
-    // Set stack size (default 8MB for better recursion support)
-    const std::size_t effectiveStackSize = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
-    cmd.push_back("-Wl,/STACK:" + std::to_string(effectiveStackSize));
-
-    cmd.push_back("-o");
-    cmd.push_back(toNativePath(exePath));
-
-    const RunResult link = run_process(cmd);
-    if (link.exit_code == -1) {
-        err << "error: failed to launch system linker command\n";
-        return -1;
-    }
-
-    if (!link.out.empty()) {
-        out << link.out;
-    }
-    if (!link.err.empty()) {
-        err << link.err;
-    }
-
-    const int exitCode = normaliseStatus(link.exit_code);
-    if (exitCode != 0) {
-        err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
-    }
-    return exitCode;
-#else
-    // Non-Windows: scan assembly text for runtime symbols, then link.
-    using namespace viper::codegen::common;
-
-    LinkContext ctx;
-    if (const int rc = prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0)
-        return rc;
-
-    return linkWithContext(asmPath, exePath, stackSize, ctx, out, err);
-#endif
 }
 
 /// @brief Execute a freshly linked binary and capture its output.
@@ -602,13 +342,11 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath.string();
     linkOpts.exePath = exePath.string();
+    linkOpts.entrySymbol = "main";
+    linkOpts.platform = linker::detectLinkPlatform();
+    linkOpts.arch = linker::LinkArch::X86_64;
     linkOpts.stackSize = stackSize;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
-#if defined(_WIN32)
-    linkOpts.entrySymbol = "main";
-    linkOpts.platform = linker::LinkPlatform::Windows;
-    linkOpts.arch = linker::LinkArch::X86_64;
-#endif
     return linker::nativeLink(linkOpts, out, err);
 }
 
@@ -841,9 +579,9 @@ PipelineResult CodegenPipeline::run() {
             return result;
         }
 
-        // Link: use system linker with .o file and symbol-based context resolution.
-        // Extract external symbols from the CodeSection to determine which runtime
-        // archives are needed — avoids reading assembly text (which doesn't exist).
+        // Link the emitted object with the native linker, deriving the runtime
+        // archive set from the binary symbol table because there is no assembly
+        // text on the native-assembler path.
         const std::filesystem::path exePath = opts_.output_obj_path.empty()
                                                   ? deriveExecutablePath(opts_)
                                                   : std::filesystem::path(opts_.output_obj_path);
@@ -863,14 +601,11 @@ PipelineResult CodegenPipeline::run() {
             return result;
         }
 
-        int linkExit = 0;
-        if (opts_.link_mode == LinkMode::Native)
-            linkExit =
-                linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
-        else if (linker::detectLinkPlatform() == linker::LinkPlatform::Windows)
-            linkExit = invokeLinker(objPath, exePath, opts_.stack_size, out, err);
-        else
-            linkExit = linkWithContext(objPath, exePath, opts_.stack_size, ctx, out, err);
+        if (opts_.link_mode == LinkMode::System)
+            err << "warning: --system-link is deprecated; using the native linker\n";
+
+        const int linkExit =
+            linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
@@ -971,33 +706,34 @@ PipelineResult CodegenPipeline::run() {
     const std::filesystem::path exePath = opts_.output_obj_path.empty()
                                               ? deriveExecutablePath(opts_)
                                               : std::filesystem::path(opts_.output_obj_path);
-    int linkExit = 0;
-    if (opts_.link_mode == LinkMode::Native) {
-        std::filesystem::path objPath = std::filesystem::path(opts_.input_il_path);
-        objPath.replace_extension(".o");
+    std::filesystem::path objPath = std::filesystem::path(opts_.input_il_path);
+    objPath.replace_extension(".o");
 
-        const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
-        if (assembleExit != 0) {
-            result.exit_code = assembleExit == -1 ? 1 : assembleExit;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
-        }
+    const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
+    if (assembleExit != 0) {
+        result.exit_code = assembleExit == -1 ? 1 : assembleExit;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
 
-        common::LinkContext ctx;
-        if (const int rc = common::prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0) {
-            result.exit_code = 1;
-            result.stdout_text = out.str();
-            result.stderr_text = err.str();
-            return result;
-        }
+    common::LinkContext ctx;
+    if (const int rc = common::prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0) {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
 
-        linkExit = linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
+    if (opts_.link_mode == LinkMode::System)
+        err << "warning: --system-link is deprecated; using the native linker\n";
 
+    const int linkExit =
+        linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
+
+    {
         std::error_code ec;
         std::filesystem::remove(objPath, ec);
-    } else {
-        linkExit = invokeLinker(asmPath, exePath, opts_.stack_size, out, err);
     }
     if (linkExit != 0) {
         result.exit_code = linkExit == -1 ? 1 : linkExit;

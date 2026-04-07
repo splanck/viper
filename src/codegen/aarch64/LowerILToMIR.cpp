@@ -69,6 +69,55 @@ static const char *condForOpcode(Opcode op) {
     return lookupCondition(op);
 }
 
+static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
+    using il::core::Value;
+
+    unsigned maxId = 0;
+    for (const auto &param : fn.params)
+        maxId = std::max(maxId, param.id);
+    for (const auto &block : fn.blocks) {
+        for (const auto &param : block.params)
+            maxId = std::max(maxId, param.id);
+        for (const auto &instr : block.instructions)
+            if (instr.result)
+                maxId = std::max(maxId, static_cast<unsigned>(*instr.result));
+    }
+
+    std::vector<std::size_t> uses(static_cast<std::size_t>(maxId) + 1, 0);
+    auto touch = [&](unsigned id) {
+        if (id < uses.size())
+            uses[id]++;
+    };
+
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
+                if (operand.kind == Value::Kind::Temp)
+                    touch(operand.id);
+            }
+            for (const auto &argList : instr.brArgs) {
+                for (const auto &arg : argList) {
+                    if (arg.kind == Value::Kind::Temp)
+                        touch(arg.id);
+                }
+            }
+        }
+    }
+
+    return uses;
+}
+
+static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
+    using il::core::Opcode;
+    using il::core::Value;
+
+    if (bb.instructions.empty())
+        return false;
+    const auto &term = bb.instructions.back();
+    return term.op == Opcode::CBr && !term.operands.empty() && term.operands[0].kind == Value::Kind::Temp &&
+           term.operands[0].id == tempId;
+}
+
 /// @brief Counter for generating unique trap labels within a function.
 /// @details Reset at the start of each lowerFunction() call to ensure unique
 ///          labels per function (combined with the function name prefix).
@@ -169,6 +218,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     // Use a single function-wide tempVReg map so values materialized in one block
     // are visible to other blocks. This handles cross-block value references that
     // the BASIC frontend generates (e.g., array operations using values from predecessor blocks).
+    const auto tempUseCounts = countTempUses(fn);
     std::unordered_map<unsigned, uint16_t> tempVReg;
     // Track register class (GPR vs FPR) for each temp within this function
     std::unordered_map<unsigned, RegClass> tempRegClass;
@@ -406,6 +456,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         for (const auto &ins : bbIn.instructions) {
             // Record instruction count so we can stamp source loc on new MInstrs.
             const size_t mirCountBefore = bbOutFn().instrs.size();
+
+            // When a compare result is consumed only by this block's cbr, defer the
+            // lowering to TerminatorLowering so it can emit cmp+b.cond directly.
+            if (ins.result && isCompareOp(ins.op) && *ins.result < tempUseCounts.size() &&
+                tempUseCounts[*ins.result] == 1 && cbrConsumesTemp(bbIn, *ins.result)) {
+                continue;
+            }
 
             // Try extracted handlers first; they return true if they handled the opcode
             if (lowerInstruction(ins, bbIn, ctx, bi)) {

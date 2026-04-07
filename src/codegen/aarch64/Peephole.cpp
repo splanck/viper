@@ -308,41 +308,12 @@ static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uin
         clobbered.insert(regKey(*def));
 }
 
-static bool collectPredLiveStores(const MBasicBlock &pred,
-                                  std::unordered_map<int64_t, JoinStore> &stores) {
-    stores.clear();
-    std::unordered_set<std::uint32_t> clobbered;
-    for (std::size_t i = pred.instrs.size(); i-- > 0;) {
-        const auto &instr = pred.instrs[i];
-        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz ||
-            instr.opc == MOpcode::Cbnz || instr.opc == MOpcode::Ret)
-            continue;
-
-        if ((instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm) &&
-            instr.ops.size() >= 2 && ph::isPhysReg(instr.ops[0]) &&
-            instr.ops[1].kind == MOperand::Kind::Imm) {
-            const auto key = regKey(instr.ops[0]);
-            const int64_t off = instr.ops[1].imm;
-            if (!clobbered.count(key) && stores.find(off) == stores.end()) {
-                stores.emplace(off,
-                               JoinStore{i,
-                                         off,
-                                         instr.ops[0],
-                                         instr.opc == MOpcode::StrFprFpImm ? RegClass::FPR
-                                                                            : RegClass::GPR});
-            }
-        }
-
-        markInstructionDefs(instr, clobbered);
-    }
-    return !stores.empty();
-}
-
 static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);
 
-    for (auto &block : fn.blocks) {
+    for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
+        auto &block = fn.blocks[blockIndex];
         std::vector<JoinLoad> loads;
         if (!collectJoinPrefixLoads(block, loads))
             continue;
@@ -352,11 +323,14 @@ static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
             continue;
 
         const std::size_t predIndex = predIt->second.front();
+        if (predIndex >= blockIndex)
+            continue;
         if (!isDirectPredEdgeTo(fn, predIndex, block.name))
             continue;
 
         std::unordered_map<int64_t, JoinStore> stores;
-        if (!collectPredLiveStores(fn.blocks[predIndex], stores))
+        std::unordered_set<std::size_t> ignoredStoreInstrs;
+        if (!collectJoinSuffixStores(fn, predIndex, block.name, stores, ignoredStoreInstrs))
             continue;
 
         std::vector<JoinCopy> copies;
@@ -875,13 +849,11 @@ PeepholeStats runPeephole(MFunction &fn) {
     }
 
     // Pass 4.86: Forward single-predecessor phi-entry loads from predecessor
-    // live registers when the source store's physical register survives to the
-    // outgoing edge. This collapses dedicated edge blocks that only reload
-    // spill slots before branching onward.
-    // Disabled until the single-predecessor join-forwarding pass handles
-    // loop-carried state without miscompiling nested control flow.
-    // if (forwardSinglePredPhiLoads(fn, stats))
-    //     ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+    // edge stores when the edge is acyclic and the source register survives to
+    // the successor. This collapses direct join reloads without touching
+    // loop-carried back-edges.
+    if (forwardSinglePredPhiLoads(fn, stats))
+        ph::eliminateDeadFpStoresCrossBlock(fn, stats);
 
     // Pass 4.88: Coalesce multi-predecessor join-entry phi loads into
     // predecessor register moves when every incoming edge already materializes

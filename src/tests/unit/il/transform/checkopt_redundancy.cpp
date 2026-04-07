@@ -239,6 +239,45 @@ TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds) {
     EXPECT_EQ(chkCount, 0U);
 }
 
+TEST(CheckOpt, ReplacesIdxChkWithNormalizedConstant) {
+    Module M;
+    Function F;
+    F.name = "normalized_idxchk";
+    F.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr chk;
+    chk.result = 0;
+    chk.op = Opcode::IdxChk;
+    chk.type = Type(Type::Kind::I64);
+    chk.operands = {Value::constInt(12), Value::constInt(10), Value::constInt(20)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(0)};
+    entry.instructions = {std::move(chk), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_EQ(Fn.blocks[0].instructions.size(), 1U);
+    const auto &retInstr = Fn.blocks[0].instructions.front();
+    ASSERT_EQ(retInstr.op, Opcode::Ret);
+    ASSERT_EQ(retInstr.operands.size(), 1U);
+    ASSERT_EQ(retInstr.operands[0].kind, Value::Kind::ConstInt);
+    EXPECT_EQ(retInstr.operands[0].i64, 2);
+}
+
 TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor) {
     // Even with a non-zero constant divisor, sdiv.chk0 still produces the
     // division result. CheckOpt must not erase or rewrite it to the divisor.

@@ -79,6 +79,40 @@ TEST(Arm64Bugfix, BoolReturnMasked) {
     ASSERT_EQ(rc, 0);
 }
 
+/// Bug #7: Values live only along phi-edge copies still need to survive calls.
+TEST(Arm64Bugfix, CallerSavedLiveOutSurvivesEdgeBlockCall) {
+    const std::string in = outPath("arm64_bugfix_call_liveout_edge.il");
+    const std::string il = "il 0.1\n"
+                           "func @clobber(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  %a = iadd.ovf %x, 1\n"
+                           "  %b = iadd.ovf %a, 2\n"
+                           "  %c = iadd.ovf %b, 3\n"
+                           "  %d = iadd.ovf %c, 4\n"
+                           "  ret %d\n"
+                           "}\n"
+                           "func @f(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  %a = iadd.ovf %x, 5\n"
+                           "  %d = call @clobber(%x)\n"
+                           "  %cond = icmp_eq %d, 51\n"
+                           "  cbr %cond, exit(%a), miss(0)\n"
+                           "exit(%r:i64):\n"
+                           "  ret %r\n"
+                           "miss(%z:i64):\n"
+                           "  ret %z\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %r = call @f(41)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native", "-O0"};
+    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 46);
+}
+
 /// Bug #4: AddFpImm operand must be classified as DEF-only (not USE-only) in
 /// RegAllocLinear::operandRoles so that the dirty flag is set after alloca
 /// address materialisation.

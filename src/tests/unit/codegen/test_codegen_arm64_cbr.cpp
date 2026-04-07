@@ -70,7 +70,8 @@ TEST(Arm64CLI, CBrOnCompareRR) {
     EXPECT_NE(asmText.find("Lentry:"), std::string::npos);
     EXPECT_NE(asmText.find("Lt:"), std::string::npos);
     EXPECT_NE(asmText.find("Lf:"), std::string::npos);
-    EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
+    EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+    EXPECT_EQ(asmText.find("cset"), std::string::npos);
     // Accept either original b.eq Lt or branch-inverted b.ne Lf (peephole optimization)
     const bool hasOrigBranch = asmText.find("b.eq Lt") != std::string::npos;
     const bool hasInvertedBranch = asmText.find("b.ne Lf") != std::string::npos;
@@ -94,13 +95,41 @@ TEST(Arm64CLI, CBrOnCompareImm) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect param1 moved to x0, cmp x0, #-7 and b.lt T
-    EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
-    EXPECT_NE(asmText.find("cmp x0, #-7"), std::string::npos);
+    EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+    EXPECT_EQ(asmText.find("cset"), std::string::npos);
     // Accept either original b.lt LT or branch-inverted b.ge LF (peephole optimization)
     const bool hasOrigBranch = asmText.find("b.lt LT") != std::string::npos;
     const bool hasInvertedBranch = asmText.find("b.ge LF") != std::string::npos;
     EXPECT_TRUE(hasOrigBranch || hasInvertedBranch);
+}
+
+TEST(Arm64CLI, CBrOnNonEntryCompareAvoidsBoolMaterialization) {
+    const std::string in = outPath("arm64_cbr_nonentry_compare.il");
+    const std::string out = outPath("arm64_cbr_nonentry_compare.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @id(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  ret %x\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = call @id(7)\n"
+                           "  %b = call @id(7)\n"
+                           "  br body(%a, %b)\n"
+                           "body(%a:i64, %b:i64):\n"
+                           "  %c = icmp_eq %a, %b\n"
+                           "  cbr %c, yes(1), no(0)\n"
+                           "yes(%r:i64):\n"
+                           "  ret %r\n"
+                           "no(%r:i64):\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-O0", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+    EXPECT_EQ(asmText.find("cset"), std::string::npos);
 }
 
 TEST(Arm64CLI, CBrSameTargetSingleArg_SystemAsm) {

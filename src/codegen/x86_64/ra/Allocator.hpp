@@ -93,6 +93,8 @@ class LinearScanAllocator {
     std::unordered_set<uint16_t>
         pinnedForInstr_{}; ///< Vregs materialized or referenced by the current instruction.
     std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
+    std::unordered_set<uint16_t>
+        crossBlockSpillVRegs_{}; ///< Vregs that cross a non-carryable CFG boundary.
 
     /// @brief Argument registers reserved during call setup, with their class.
     struct ReservedReg {
@@ -161,6 +163,12 @@ class LinearScanAllocator {
     ///          for reuse.
     void spillOne(RegClass cls, std::vector<MInstr> &prefix);
 
+    /// @brief Spill an active virtual register, reusing stack slots when safe.
+    /// @details Cross-block values receive dedicated spill homes, while
+    ///          block-local values can reuse disjoint spill slots based on their
+    ///          live intervals.
+    void spillActiveValue(uint16_t vreg, VirtualAllocation &state, std::vector<MInstr> &out);
+
     /// @brief Allocate registers for every instruction in the provided block.
     /// @details Walks the block's instructions in order, handles live range transitions, and
     ///          cooperates with the coalescer to apply PX_COPY eliminations.
@@ -176,6 +184,14 @@ class LinearScanAllocator {
     /// @param block The block that was just processed.
     /// @param blockIdx Index of the block (for liveOut lookup).
     void releaseActiveForBlock(MBasicBlock &block, std::size_t blockIdx);
+
+    /// @brief Check whether the next block can reuse live registers directly.
+    /// @details Carrying values in registers across block boundaries is only safe
+    ///          when control flow is linear in both the CFG and the emitted block
+    ///          layout: the current block must have exactly one successor, that
+    ///          successor must be the immediately following block, and the
+    ///          successor must have no other predecessors.
+    [[nodiscard]] bool canCarryIntoNextBlock(std::size_t blockIdx) const;
 
     /// @brief Classify each operand of an instruction as a use, def, or both.
     /// @details Produces a parallel vector describing operand roles so subsequent handling can

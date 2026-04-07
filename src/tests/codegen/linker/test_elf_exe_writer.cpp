@@ -23,6 +23,7 @@
 #include "codegen/common/linker/ElfExeWriter.hpp"
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -93,13 +94,19 @@ static constexpr uint16_t ET_EXEC = 2;
 static constexpr uint16_t EM_X86_64 = 62;
 static constexpr uint16_t EM_AARCH64 = 183;
 static constexpr uint32_t PT_LOAD = 1;
+static constexpr uint32_t PT_DYNAMIC = 2;
+static constexpr uint32_t PT_INTERP = 3;
 static constexpr uint32_t PT_GNU_STACK = 0x6474E551;
 static constexpr uint32_t PF_X = 1;
 static constexpr uint32_t PF_W = 2;
 static constexpr uint32_t PF_R = 4;
 static constexpr uint32_t SHT_STRTAB = 3;
 static constexpr uint32_t SHT_PROGBITS = 1;
+static constexpr uint32_t SHT_RELA = 4;
+static constexpr uint32_t SHT_HASH = 5;
+static constexpr uint32_t SHT_DYNAMIC = 6;
 static constexpr uint32_t SHT_NOBITS = 8;
+static constexpr uint32_t SHT_DYNSYM = 11;
 static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
@@ -116,6 +123,13 @@ static std::vector<uint8_t> readFile(const std::string &path) {
     std::vector<uint8_t> data(static_cast<size_t>(sz));
     f.read(reinterpret_cast<char *>(data.data()), sz);
     return data;
+}
+
+static uint64_t readLE64(const uint8_t *p) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i)
+        v |= static_cast<uint64_t>(p[i]) << (i * 8);
+    return v;
 }
 
 /// Create a temporary file path for test output.
@@ -159,6 +173,31 @@ static OutputSection makeSec(const std::string &name,
     sec.zeroFill = zeroFill;
     sec.alignment = 1;
     return sec;
+}
+
+static bool findSectionByName(const std::vector<uint8_t> &data,
+                              const Elf64_Ehdr &ehdr,
+                              const char *name,
+                              Elf64_Shdr &out) {
+    if (data.size() < ehdr.e_shoff + static_cast<size_t>(ehdr.e_shnum) * sizeof(Elf64_Shdr))
+        return false;
+
+    std::vector<Elf64_Shdr> shdrs(ehdr.e_shnum);
+    std::memcpy(shdrs.data(), data.data() + ehdr.e_shoff, ehdr.e_shnum * sizeof(Elf64_Shdr));
+    const Elf64_Shdr &strtabShdr = shdrs[ehdr.e_shstrndx];
+    if (data.size() < strtabShdr.sh_offset + strtabShdr.sh_size)
+        return false;
+    const char *strtab = reinterpret_cast<const char *>(data.data() + strtabShdr.sh_offset);
+
+    for (const auto &shdr : shdrs) {
+        if (shdr.sh_name >= strtabShdr.sh_size)
+            continue;
+        if (std::strcmp(strtab + shdr.sh_name, name) == 0) {
+            out = shdr;
+            return true;
+        }
+    }
+    return false;
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -554,6 +593,79 @@ static void testGnuStackSectionHeader() {
     CHECK(found);
 }
 
+/// Test 12: Dynamic import metadata — PT_INTERP/PT_DYNAMIC and ELF dynamic sections.
+static void testDynamicImports() {
+    auto path = tmpPath("dynamic_imports.elf");
+    auto text = makeSec(".text", 32, 0x401000, true, false, 0xC3);
+    auto dataSec = makeSec(".data", 16, 0x402000, false, true, 0x00);
+
+    auto layout = makeLayout({text, dataSec});
+    layout.gotEntries.push_back({"printf", 0x402000});
+    layout.bindEntries.push_back({"printf", 1, 8});
+
+    std::ostringstream err;
+    const std::unordered_set<std::string> dynSyms = {"printf"};
+    const std::vector<std::string> neededLibs = {"libc.so.6"};
+    bool ok = writeElfExe(path, layout, LinkArch::X86_64, neededLibs, dynSyms, err);
+    CHECK(ok);
+    CHECK(err.str().empty());
+
+    auto data = readFile(path);
+    CHECK(data.size() >= sizeof(Elf64_Ehdr));
+
+    Elf64_Ehdr ehdr;
+    std::memcpy(&ehdr, data.data(), sizeof(ehdr));
+    CHECK(ehdr.e_phnum >= 5);
+
+    std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
+    std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
+
+    bool foundInterp = false;
+    bool foundDynamic = false;
+    for (const auto &phdr : phdrs) {
+        if (phdr.p_type == PT_INTERP)
+            foundInterp = true;
+        if (phdr.p_type == PT_DYNAMIC)
+            foundDynamic = true;
+    }
+    CHECK(foundInterp);
+    CHECK(foundDynamic);
+
+    Elf64_Shdr interpShdr{};
+    Elf64_Shdr dynstrShdr{};
+    Elf64_Shdr dynsymShdr{};
+    Elf64_Shdr hashShdr{};
+    Elf64_Shdr relaShdr{};
+    Elf64_Shdr dynamicShdr{};
+    CHECK(findSectionByName(data, ehdr, ".interp", interpShdr));
+    CHECK(findSectionByName(data, ehdr, ".dynstr", dynstrShdr));
+    CHECK(findSectionByName(data, ehdr, ".dynsym", dynsymShdr));
+    CHECK(findSectionByName(data, ehdr, ".hash", hashShdr));
+    CHECK(findSectionByName(data, ehdr, ".rela.dyn", relaShdr));
+    CHECK(findSectionByName(data, ehdr, ".dynamic", dynamicShdr));
+
+    CHECK(interpShdr.sh_type == SHT_PROGBITS);
+    CHECK(dynstrShdr.sh_type == SHT_STRTAB);
+    CHECK(dynsymShdr.sh_type == SHT_DYNSYM);
+    CHECK(hashShdr.sh_type == SHT_HASH);
+    CHECK(relaShdr.sh_type == SHT_RELA);
+    CHECK(dynamicShdr.sh_type == SHT_DYNAMIC);
+    CHECK((dynamicShdr.sh_flags & SHF_WRITE) != 0);
+
+    constexpr std::string_view kLibcName = "libc.so.6";
+    constexpr std::string_view kInterpPath = "/lib64/ld-linux-x86-64.so.2";
+    CHECK(std::search(data.begin(), data.end(), kLibcName.begin(), kLibcName.end()) != data.end());
+    CHECK(std::search(data.begin(), data.end(), kInterpPath.begin(), kInterpPath.end()) !=
+          data.end());
+
+    CHECK(relaShdr.sh_size >= 2 * sizeof(uint64_t) * 3);
+    const uint8_t *rela = data.data() + relaShdr.sh_offset;
+    const uint32_t type0 = static_cast<uint32_t>(readLE64(rela + 8));
+    const uint32_t type1 = static_cast<uint32_t>(readLE64(rela + 8 + 24));
+    CHECK(type0 == 6); // R_X86_64_GLOB_DAT
+    CHECK(type1 == 1); // R_X86_64_64
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────
 
 int main() {
@@ -568,6 +680,7 @@ int main() {
     testZeroFillSection();
     testLargePageSize();
     testGnuStackSectionHeader();
+    testDynamicImports();
 
     cleanupTmp();
 

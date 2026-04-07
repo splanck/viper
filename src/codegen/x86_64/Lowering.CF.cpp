@@ -27,6 +27,7 @@
 #include "MachineIR.hpp"
 #include "Unsupported.hpp"
 
+#include <limits>
 #include <string>
 
 namespace viper::codegen::x64::lowering {
@@ -87,15 +88,15 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
     // Materialise the index into a GPR
     Operand index = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
 
-    // Copy index to result first (pass-through value)
-    builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, index}));
-
     // Generate unique labels for the skip points
     const uint32_t labelId = builder.lower().nextLocalLabelId();
     const std::string passUpperLabel = ".Lidxchk_u_" + std::to_string(labelId);
     const std::string passLowerLabel = ".Lidxchk_l_" + std::to_string(labelId);
 
-    // Check upper bound: if index < upper (unsigned below), skip trap
+    const bool loIsZero =
+        instr.ops[1].id < 0 && instr.ops[1].kind == ILValue::Kind::I64 && instr.ops[1].i64 == 0;
+
+    // Check upper bound.
     Operand upper = builder.makeOperandForValue(instr.ops[2], RegClass::GPR);
     if (const auto *imm = std::get_if<OpImm>(&upper); imm && fitsImm32(imm->val)) {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, upper}));
@@ -103,27 +104,54 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
         upper = emit.materialiseGpr(std::move(upper));
         builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, upper}));
     }
-    // JCC "b" (below / unsigned less than) = condition code 8
+
+    // With lo == 0, unsigned compare also rejects negative indices. Otherwise,
+    // use signed compares so negative lower bounds behave like the VM.
+    const int passUpperCond = loIsZero ? 8 : 2; // JB / JL
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(passUpperLabel)}));
+        MOpcode::JCC,
+        std::vector<Operand>{makeImmOperand(passUpperCond), makeLabelOperand(passUpperLabel)}));
     builder.append(MInstr::make(MOpcode::UD2));
     builder.append(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passUpperLabel)}));
 
-    // Check lower bound: if index >= lower (unsigned above or equal), skip trap
-    Operand lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
-    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val)) {
-        builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, lower}));
-    } else {
-        lower = emit.materialiseGpr(std::move(lower));
-        builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, lower}));
+    Operand lower{};
+    if (!loIsZero) {
+        lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
+        if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val)) {
+            builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, lower}));
+        } else {
+            lower = emit.materialiseGpr(std::move(lower));
+            builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, lower}));
+        }
     }
-    // JCC "ae" (above or equal / unsigned >= ) = condition code 7
-    builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(passLowerLabel)}));
-    builder.append(MInstr::make(MOpcode::UD2));
-    builder.append(
-        MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passLowerLabel)}));
+
+    if (!loIsZero) {
+        builder.append(MInstr::make(
+            MOpcode::JCC,
+            std::vector<Operand>{makeImmOperand(5), makeLabelOperand(passLowerLabel)})); // JGE
+        builder.append(MInstr::make(MOpcode::UD2));
+        builder.append(
+            MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passLowerLabel)}));
+    }
+
+    // Result is the normalized zero-based index (idx - lo).
+    builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, index}));
+    if (loIsZero) {
+        return;
+    }
+
+    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val) &&
+                                                 imm->val != std::numeric_limits<int64_t>::min()) {
+        builder.append(
+            MInstr::make(MOpcode::ADDri, std::vector<Operand>{dest, makeImmOperand(-imm->val)}));
+        return;
+    }
+
+    if (std::holds_alternative<OpImm>(lower)) {
+        lower = emit.materialiseGpr(std::move(lower));
+    }
+    builder.append(MInstr::make(MOpcode::SUBrr, std::vector<Operand>{dest, lower}));
 }
 
 /// @brief Lower a switch_i32 instruction (multi-way branch).

@@ -132,6 +132,34 @@ TEST(Allocator, DoesNotSpillCurrentInstructionAddressOperands) {
     EXPECT_NE(mem->base.idOrPhys, src->idOrPhys);
 }
 
+TEST(Allocator, CarriesLiveValueIntoImmediateSinglePredecessorSuccessor) {
+    MFunction func{};
+
+    MBasicBlock entry{};
+    entry.label = "entry";
+    entry.instructions.push_back(makeMovImm(1, 42));
+    entry.instructions.push_back(MInstr::make(MOpcode::JMP, {makeLabelOperand("next")}));
+
+    MBasicBlock next{};
+    next.label = "next";
+    next.instructions.push_back(makeMovImm(2, 7));
+    next.instructions.push_back(makeAdd(2, 1));
+    next.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+
+    func.blocks.push_back(std::move(entry));
+    func.blocks.push_back(std::move(next));
+
+    auto result = allocate(func, sysvTarget());
+    (void)result;
+
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            EXPECT_NE(instr.opcode, MOpcode::MOVmr);
+            EXPECT_NE(instr.opcode, MOpcode::MOVrm);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

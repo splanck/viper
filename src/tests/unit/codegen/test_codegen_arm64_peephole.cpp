@@ -187,6 +187,34 @@ TEST(AArch64Peephole, MixedOperations) {
     EXPECT_EQ(bb.instrs[2].opc, MOpcode::Ret);
 }
 
+TEST(AArch64Peephole, ForwardSinglePredJoinLoadsFromAcyclicEdgeStores) {
+    MFunction fn{};
+    fn.name = "test_single_pred_join";
+    fn.blocks.push_back(MBasicBlock{"pred", {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}});
+
+    auto &pred = fn.blocks[0];
+    pred.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-8)}});
+    pred.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    auto &join = fn.blocks[1];
+    join.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X11), MOperand::immOp(-8)}});
+    join.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+    EXPECT_TRUE(stats.deadInstructionsRemoved >= 1);
+
+    EXPECT_TRUE(pred.instrs.empty());
+
+    ASSERT_EQ(join.instrs.size(), 2U);
+    EXPECT_EQ(join.instrs[0].opc, MOpcode::MovRR);
+    EXPECT_EQ(static_cast<PhysReg>(join.instrs[0].ops[0].reg.idOrPhys), PhysReg::X11);
+    EXPECT_EQ(static_cast<PhysReg>(join.instrs[0].ops[1].reg.idOrPhys), PhysReg::X10);
+    EXPECT_EQ(join.instrs[1].opc, MOpcode::Ret);
+}
+
 /// @brief Test that peephole produces correct assembly output.
 TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves) {
     auto &ti = darwinTarget();

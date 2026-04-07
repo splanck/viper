@@ -103,6 +103,28 @@ TEST(Arm64CLI, AcceptsStackSizeFlagWhenEmittingAssembly) {
     EXPECT_NE(asmText.find("test_stack_size"), std::string::npos);
 }
 
+TEST(Arm64CLI, DerivedStackPointerAccessesFoldToFpOffsets) {
+    const std::string in = outPath("arm64_cli_stack_gep_fold.il");
+    const std::string out = outPath("arm64_cli_stack_gep_fold.s");
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %base = alloca 64\n"
+                           "  %p = gep %base, 24\n"
+                           "  store i64, %p, 42\n"
+                           "  %r = load i64, %p\n"
+                           "  ret %r\n"
+                           "}\n";
+
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("[x29, #-40]"), std::string::npos);
+    EXPECT_EQ(asmText.find("[x10, #0]"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

@@ -328,17 +328,10 @@ void lowerTerminators(const il::core::Function &fn,
                         }
                     };
 
-                    // Try to lower compares to cmp + b.<cond>
-                    // CORRECTNESS: This optimization only fires in the entry block (i == 0)
-                    // because it emits CmpRR using physical arg registers (argOrder[idx]).
-                    // In non-entry blocks, block parameters are SSA phi nodes whose values
-                    // may be in spill slots or different registers — direct arg register
-                    // access would produce wrong comparisons. Relaxing this requires
-                    // materializing operands via materializeValueToVReg() first.
+                    // Try to lower compare producers directly to cmp/fcmp + b.<cond>.
                     const auto &cond = term.operands[0];
                     bool loweredViaCompare = false;
-                    const bool isEntryBlock = (i == 0);
-                    if (isEntryBlock && cond.kind == il::core::Value::Kind::Temp) {
+                    if (cond.kind == il::core::Value::Kind::Temp) {
                         const auto it = std::find_if(inBB.instructions.begin(),
                                                      inBB.instructions.end(),
                                                      [&](const il::core::Instr &I) {
@@ -348,43 +341,52 @@ void lowerTerminators(const il::core::Function &fn,
                             const il::core::Instr &cmpI = *it;
                             const char *cc = condForOpcode(cmpI.op);
                             if (cc && cmpI.operands.size() == 2) {
-                                const auto &o0 = cmpI.operands[0];
-                                const auto &o1 = cmpI.operands[1];
-                                if (o0.kind == il::core::Value::Kind::Temp &&
-                                    o1.kind == il::core::Value::Kind::Temp) {
-                                    int idx0 = indexOfParam(inBB, o0.id);
-                                    int idx1 = indexOfParam(inBB, o1.id);
-                                    if (idx0 >= 0 && idx1 >= 0 &&
-                                        static_cast<std::size_t>(idx0) < kMaxGPRArgs &&
-                                        static_cast<std::size_t>(idx1) < kMaxGPRArgs) {
-                                        const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
-                                        const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
-                                        // cmp x0, x1
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::CmpRR,
-                                                   {MOperand::regOp(src0), MOperand::regOp(src1)}});
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::BCond,
-                                                   {MOperand::condOp(cc),
-                                                    MOperand::labelOp(trueEdgeLbl)}});
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
-                                        loweredViaCompare = true;
-                                    }
-                                } else if (o0.kind == il::core::Value::Kind::Temp &&
-                                           o1.kind == il::core::Value::Kind::ConstInt) {
-                                    int idx0 = indexOfParam(inBB, o0.id);
-                                    if (idx0 >= 0 && static_cast<std::size_t>(idx0) < kMaxGPRArgs) {
-                                        const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
-                                        if (src0 != PhysReg::X0) {
+                                uint16_t lhs = 0;
+                                RegClass lhsCls = RegClass::GPR;
+                                if (materializeValueToVReg(cmpI.operands[0],
+                                                           inBB,
+                                                           ti,
+                                                           fb,
+                                                           outBB,
+                                                           blockTempVReg,
+                                                           tempRegClass,
+                                                           nextVRegId,
+                                                           lhs,
+                                                           lhsCls)) {
+                                    const bool isFpCompare = isFloatingPointOp(cmpI.op);
+                                    if (isFpCompare) {
+                                        uint16_t rhs = 0;
+                                        RegClass rhsCls = RegClass::FPR;
+                                        if (materializeValueToVReg(cmpI.operands[1],
+                                                                   inBB,
+                                                                   ti,
+                                                                   fb,
+                                                                   outBB,
+                                                                   blockTempVReg,
+                                                                   tempRegClass,
+                                                                   nextVRegId,
+                                                                   rhs,
+                                                                   rhsCls) &&
+                                            lhsCls == RegClass::FPR && rhsCls == RegClass::FPR) {
+                                            outBB.instrs.push_back(MInstr{
+                                                MOpcode::FCmpRR,
+                                                {MOperand::vregOp(RegClass::FPR, lhs),
+                                                 MOperand::vregOp(RegClass::FPR, rhs)}});
                                             outBB.instrs.push_back(
-                                                MInstr{MOpcode::MovRR,
-                                                       {MOperand::regOp(PhysReg::X0),
-                                                        MOperand::regOp(src0)}});
+                                                MInstr{MOpcode::BCond,
+                                                       {MOperand::condOp(cc),
+                                                        MOperand::labelOp(trueEdgeLbl)}});
+                                            outBB.instrs.push_back(
+                                                MInstr{MOpcode::Br,
+                                                       {MOperand::labelOp(falseEdgeLbl)}});
+                                            loweredViaCompare = true;
                                         }
-                                        outBB.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                                                      {MOperand::regOp(PhysReg::X0),
-                                                                       MOperand::immOp(o1.i64)}});
+                                    } else if (cmpI.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                                               isUImm12(cmpI.operands[1].i64)) {
+                                        outBB.instrs.push_back(
+                                            MInstr{MOpcode::CmpRI,
+                                                   {MOperand::vregOp(RegClass::GPR, lhs),
+                                                    MOperand::immOp(cmpI.operands[1].i64)}});
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::BCond,
                                                    {MOperand::condOp(cc),
@@ -392,6 +394,33 @@ void lowerTerminators(const il::core::Function &fn,
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
                                         loweredViaCompare = true;
+                                    } else {
+                                        uint16_t rhs = 0;
+                                        RegClass rhsCls = RegClass::GPR;
+                                        if (materializeValueToVReg(cmpI.operands[1],
+                                                                   inBB,
+                                                                   ti,
+                                                                   fb,
+                                                                   outBB,
+                                                                   blockTempVReg,
+                                                                   tempRegClass,
+                                                                   nextVRegId,
+                                                                   rhs,
+                                                                   rhsCls) &&
+                                            lhsCls == RegClass::GPR && rhsCls == RegClass::GPR) {
+                                            outBB.instrs.push_back(MInstr{
+                                                MOpcode::CmpRR,
+                                                {MOperand::vregOp(RegClass::GPR, lhs),
+                                                 MOperand::vregOp(RegClass::GPR, rhs)}});
+                                            outBB.instrs.push_back(
+                                                MInstr{MOpcode::BCond,
+                                                       {MOperand::condOp(cc),
+                                                        MOperand::labelOp(trueEdgeLbl)}});
+                                            outBB.instrs.push_back(
+                                                MInstr{MOpcode::Br,
+                                                       {MOperand::labelOp(falseEdgeLbl)}});
+                                            loweredViaCompare = true;
+                                        }
                                     }
                                 }
                             }

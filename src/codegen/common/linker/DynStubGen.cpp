@@ -284,4 +284,75 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
     return stubObj;
 }
 
+ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms) {
+    ObjFile stubObj;
+    stubObj.name = "<elf64-dyn-stubs>";
+    stubObj.format = ObjFileFormat::ELF;
+    stubObj.is64bit = true;
+    stubObj.isLittleEndian = true;
+    stubObj.machine = 62; // EM_X86_64
+
+    stubObj.sections.push_back(ObjSection{});
+
+    ObjSection textSec;
+    textSec.name = ".text";
+    textSec.executable = true;
+    textSec.writable = false;
+    textSec.alloc = true;
+    textSec.alignment = 16;
+
+    ObjSection gotSec;
+    gotSec.name = ".data";
+    gotSec.executable = false;
+    gotSec.writable = true;
+    gotSec.alloc = true;
+    gotSec.alignment = 8;
+
+    stubObj.symbols.push_back(ObjSymbol{});
+
+    std::vector<std::string> sorted(dynamicSyms.begin(), dynamicSyms.end());
+    std::sort(sorted.begin(), sorted.end());
+
+    for (size_t i = 0; i < sorted.size(); ++i) {
+        const size_t stubOff = textSec.data.size();
+        const size_t gotOff = gotSec.data.size();
+
+        ObjSymbol gotSym;
+        gotSym.name = "__got_" + sorted[i];
+        gotSym.binding = ObjSymbol::Global;
+        gotSym.sectionIndex = 2;
+        gotSym.offset = gotOff;
+        const uint32_t gotSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+        stubObj.symbols.push_back(std::move(gotSym));
+
+        ObjSymbol stubSym;
+        stubSym.name = sorted[i];
+        stubSym.binding = ObjSymbol::Global;
+        stubSym.sectionIndex = 1;
+        stubSym.offset = stubOff;
+        stubObj.symbols.push_back(std::move(stubSym));
+
+        textSec.data.insert(textSec.data.end(), {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
+
+        ObjReloc reloc;
+        reloc.offset = stubOff + 2;
+        reloc.type = 2; // R_X86_64_PC32
+        reloc.symIndex = gotSymIdx;
+        reloc.addend = -4;
+        textSec.relocs.push_back(reloc);
+
+        gotSec.data.resize(gotOff + 8, 0);
+    }
+
+    if (!textSec.data.empty())
+        stubObj.sections.push_back(std::move(textSec));
+    if (!gotSec.data.empty()) {
+        if (stubObj.sections.size() == 1)
+            stubObj.sections.push_back(ObjSection{});
+        stubObj.sections.push_back(std::move(gotSec));
+    }
+
+    return stubObj;
+}
+
 } // namespace viper::codegen::linker

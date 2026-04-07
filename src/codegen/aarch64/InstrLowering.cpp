@@ -106,6 +106,55 @@ static const char *condForOpcode(il::core::Opcode op) {
     return lookupCondition(op);
 }
 
+static const il::core::Instr *findProducer(const il::core::BasicBlock &bb, unsigned tempId) {
+    for (const auto &instr : bb.instructions) {
+        if (instr.result && *instr.result == tempId)
+            return &instr;
+    }
+    return nullptr;
+}
+
+static bool resolveFrameAddress(const il::core::Value &value,
+                                const il::core::BasicBlock &bb,
+                                FrameBuilder &fb,
+                                long long &offsetOut) {
+    using il::core::Opcode;
+    using il::core::Value;
+
+    if (value.kind != Value::Kind::Temp)
+        return false;
+
+    const int localOffset = fb.localOffset(value.id);
+    if (localOffset != 0) {
+        offsetOut = localOffset;
+        return true;
+    }
+
+    const auto *producer = findProducer(bb, value.id);
+    if (!producer)
+        return false;
+
+    switch (producer->op) {
+        case Opcode::AddrOf:
+            if (producer->operands.empty())
+                return false;
+            return resolveFrameAddress(producer->operands[0], bb, fb, offsetOut);
+
+        case Opcode::GEP:
+            if (producer->operands.size() < 2 ||
+                producer->operands[1].kind != Value::Kind::ConstInt) {
+                return false;
+            }
+            if (!resolveFrameAddress(producer->operands[0], bb, fb, offsetOut))
+                return false;
+            offsetOut += producer->operands[1].i64;
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static const char *fpCondCode(il::core::Opcode op) {
     switch (op) {
         case il::core::Opcode::FCmpEQ:
@@ -1051,12 +1100,21 @@ bool lowerIdxChk(const il::core::Instr &ins,
             MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
     }
 
-    // Result is the index value (pass-through)
+    // Result is the normalized index (idx - lo), matching VM semantics.
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
-    out.instrs.push_back(
-        MInstr{MOpcode::MovRR,
-               {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::GPR, idxV)}});
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
+    if (loIsZero) {
+        out.instrs.push_back(
+            MInstr{MOpcode::MovRR,
+                   {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::GPR, idxV)}});
+    } else {
+        out.instrs.push_back(MInstr{
+            MOpcode::SubRRR,
+            {MOperand::vregOp(RegClass::GPR, dst),
+             MOperand::vregOp(RegClass::GPR, idxV),
+             MOperand::vregOp(RegClass::GPR, loV)}});
+    }
 
     // Create trap block AFTER all uses of `out` — emplace_back may reallocate
     // the blocks vector, invalidating the `out` reference.
@@ -1508,11 +1566,9 @@ bool lowerStore(const il::core::Instr &ins,
                 MBasicBlock &out) {
     if (ins.operands.size() != 2)
         return true;
-    if (ins.operands[0].kind != il::core::Value::Kind::Temp)
-        return true;
-    const unsigned ptrId = ins.operands[0].id;
-    const int off = ctx.fb.localOffset(ptrId);
-    if (off != 0) {
+    long long off = 0;
+    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], bb, ctx.fb, off);
+    if (hasFrameAddr) {
         // Store to alloca local via FP offset
         uint16_t v = 0;
         RegClass cls = RegClass::GPR;
@@ -1575,13 +1631,11 @@ bool lowerLoad(const il::core::Instr &ins,
                MBasicBlock &out) {
     if (!ins.result || ins.operands.empty())
         return true;
-    if (ins.operands[0].kind != il::core::Value::Kind::Temp)
-        return true;
-    const unsigned ptrId = ins.operands[0].id;
-    const int off = ctx.fb.localOffset(ptrId);
+    long long off = 0;
+    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], bb, ctx.fb, off);
     const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
     const bool isBool = (ins.type.kind == il::core::Type::Kind::I1);
-    if (off != 0) {
+    if (hasFrameAddr) {
         const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
         if (isFP) {
             ctx.tempRegClass[*ins.result] = RegClass::FPR;

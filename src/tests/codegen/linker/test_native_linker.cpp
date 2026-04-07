@@ -14,6 +14,7 @@
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/linker/PeExeWriter.hpp"
 #include "codegen/common/objfile/CoffWriter.hpp"
+#include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 
 #include <algorithm>
@@ -254,6 +255,24 @@ static bool countMachOSymbols(const std::vector<uint8_t> &data,
             ++undefinedCount;
     }
     return true;
+}
+
+static bool findElfProgramHeader(const std::vector<uint8_t> &data, uint32_t type) {
+    if (data.size() < 64 || data[0] != 0x7F || data[1] != 'E' || data[2] != 'L' || data[3] != 'F')
+        return false;
+
+    const uint64_t phoff = readLE64(data.data() + 32);
+    const uint16_t phentsize = readLE16(data.data() + 54);
+    const uint16_t phnum = readLE16(data.data() + 56);
+    if (phentsize < 56 || phoff + static_cast<uint64_t>(phentsize) * phnum > data.size())
+        return false;
+
+    for (uint16_t i = 0; i < phnum; ++i) {
+        const uint8_t *ph = data.data() + phoff + static_cast<uint64_t>(i) * phentsize;
+        if (readLE32(ph) == type)
+            return true;
+    }
+    return false;
 }
 
 int main() {
@@ -722,6 +741,59 @@ int main() {
         CodeSection rodata;
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("printf");
+        text.findOrDeclareSymbol("cos");
+        text.findOrDeclareSymbol("pthread_create");
+        text.findOrDeclareSymbol("dlopen");
+        text.findOrDeclareSymbol("XOpenDisplay");
+        text.findOrDeclareSymbol("snd_pcm_open");
+        text.emit8(0x31); // xor eax, eax
+        text.emit8(0xC0);
+        text.emit8(0xC3); // ret
+
+        const std::string objPath = tmpPath("linux_x64_dynamic_imports.o");
+        const std::string exePath = tmpPath("linux_x64_dynamic_imports");
+
+        std::ostringstream writerErr;
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Linux;
+        opts.arch = LinkArch::X86_64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(exe.size() > 4);
+        CHECK(exe[0] == 0x7F);
+        CHECK(exe[1] == 'E');
+        CHECK(exe[2] == 'L');
+        CHECK(exe[3] == 'F');
+        CHECK(findElfProgramHeader(exe, 3)); // PT_INTERP
+        CHECK(findElfProgramHeader(exe, 2)); // PT_DYNAMIC
+        CHECK(containsAscii(exe, "libc.so.6"));
+        CHECK(containsAscii(exe, "libm.so.6"));
+        CHECK(containsAscii(exe, "libpthread.so.0"));
+        CHECK(containsAscii(exe, "libdl.so.2"));
+        CHECK(containsAscii(exe, "libX11.so.6"));
+        CHECK(containsAscii(exe, "libasound.so.2"));
+        CHECK(containsAscii(exe, "ld-linux-x86-64.so.2"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("printf");
         text.emit8(0x31); // xor eax, eax
         text.emit8(0xC0);
         text.emit8(0xC3); // ret
@@ -747,7 +819,7 @@ int main() {
         CHECK(rc != 0);
         CHECK(err.str().find("macOS x86_64") != std::string::npos);
         CHECK(err.str().find("supported dynamic-import targets") != std::string::npos);
-        CHECK(err.str().find("use the system linker") != std::string::npos);
+        CHECK(err.str().find("Linux x86_64") != std::string::npos);
     }
 
     {

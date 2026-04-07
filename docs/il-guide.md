@@ -703,7 +703,7 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 | `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
 | `store`      | `store type, ptr, value` | — (null or misaligned trap)                     |
 
-`idx.chk` performs bounds checking for array accesses, trapping if the index is outside `[lo, hi)`. It returns the checked index value.
+`idx.chk` performs bounds checking for array accesses, trapping if the index is outside `[lo, hi)`. It returns the normalized zero-based index `idx - lo`.
 
 `i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap. Stack
 allocations created by `alloca` are zero-initialized and live until the function returns.

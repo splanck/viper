@@ -6,13 +6,10 @@
 //===----------------------------------------------------------------------===//
 #include "common/RunProcess.hpp"
 #include "tests/TestHarness.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <string>
-
-using namespace viper::tools::ilc;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -25,6 +22,22 @@ static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
+}
+
+static std::filesystem::path findViperTool() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path cur = fs::current_path(ec);
+    for (int depth = 0; !ec && depth < 8 && !cur.empty(); ++depth) {
+        fs::path candidate = cur / "src" / "tools" / "viper" / "viper";
+        if (fs::exists(candidate, ec))
+            return candidate;
+        fs::path parent = cur.parent_path();
+        if (parent == cur)
+            break;
+        cur = parent;
+    }
+    return {};
 }
 
 TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols) {
@@ -40,16 +53,20 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols) {
                            "}\n";
     writeFile(in, il);
 
-    // Use system toolchain for this test — it validates system-linker dead stripping
-    // behavior via nm, which depends on the system linker's symbol table format.
-    const char *argv[] = {in.c_str(), "-o", exeOut.c_str(), "--system-asm", "--system-link"};
-    ASSERT_EQ(cmd_codegen_arm64(5, const_cast<char **>(argv)), 0);
-    ASSERT_TRUE(fs::exists(exeOut));
+    const fs::path viper = findViperTool();
+    ASSERT_FALSE(viper.empty());
 
-    const RunResult nm = run_process({"nm", "-g", exeOut});
-    ASSERT_EQ(nm.exit_code, 0);
-    EXPECT_NE(nm.out.find("rt_print_i64"), std::string::npos);
-    EXPECT_EQ(nm.out.find("rt_input_line"), std::string::npos);
+    const RunResult link = run_process(
+        {viper.string(), "codegen", "arm64", in, "-o", exeOut, "--system-asm", "--system-link"});
+    ASSERT_EQ(link.exit_code, 0);
+    ASSERT_TRUE(fs::exists(exeOut));
+    EXPECT_NE(link.err.find("warning: --system-link is deprecated; using the native linker"),
+              std::string::npos);
+    EXPECT_NE(link.err.find("dead-strip: removed"), std::string::npos);
+
+    const RunResult exec = run_process({exeOut});
+    ASSERT_EQ(exec.exit_code, 0);
+    EXPECT_NE(exec.out.find("123"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

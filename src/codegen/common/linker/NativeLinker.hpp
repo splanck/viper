@@ -12,8 +12,8 @@
 // Key invariants:
 //   - Zero external tool dependencies
 //   - Writes ELF (Linux), Mach-O (macOS), and PE (Windows) directly
-//   - Dynamic imports are currently supported on Windows x86_64/AArch64 and
-//     macOS AArch64; other shared-library cases fall back to the system linker
+//   - Dynamic imports are implemented for Windows x86_64/AArch64, macOS
+//     AArch64, and Linux x86_64
 // Ownership/Lifetime:
 //   - Stateless entry point; each call is independent
 // Links: codegen/common/linker/LinkTypes.hpp

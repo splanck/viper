@@ -197,7 +197,7 @@ CheckKey makeCheckKey(const Instr &instr) {
 /// @param instr Check instruction to inspect.
 /// @param replacementOut When the function returns true and the check has a result,
 ///        this is set to the value that should replace all uses of the result
-///        (the pass-through value of the check).
+///        (the normalized value produced by the check).
 /// @return True when the check condition is statically guaranteed to succeed.
 bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut) {
     auto isConstInt = [](const Value &v) { return v.kind == Value::Kind::ConstInt; };
@@ -213,7 +213,7 @@ bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut) {
             if (!isConstInt(index) || !isConstInt(lo) || !isConstInt(hi))
                 return false;
             if (lo.i64 <= index.i64 && index.i64 < hi.i64) {
-                replacementOut = index; // result is the index value
+                replacementOut = Value::constInt(index.i64 - lo.i64);
                 return true;
             }
             return false;

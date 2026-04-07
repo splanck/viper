@@ -367,6 +367,81 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     return true;
 }
 
+/// @brief Fold compare/setcc/test branch chains back into a direct flags branch.
+/// @details Matches the common sequence:
+///            cmp/ucomis
+///            setcc %v
+///            movzx %v, %v   ; optional
+///            test  %v, %v
+///            jne   target
+///          and rewrites it so the branch uses the original compare flags
+///          directly. This removes redundant boolean materialisation when the
+///          compare result is consumed only by the terminating branch.
+bool foldCompareBranch(MBasicBlock &block, std::size_t index) {
+    if (index + 3 >= block.instructions.size()) {
+        return false;
+    }
+
+    const auto isCompare = [](MOpcode opcode) {
+        return opcode == MOpcode::CMPrr || opcode == MOpcode::CMPri || opcode == MOpcode::UCOMIS;
+    };
+
+    auto &cmpInstr = block.instructions[index];
+    if (!isCompare(cmpInstr.opcode)) {
+        return false;
+    }
+
+    auto &setccInstr = block.instructions[index + 1];
+    if (setccInstr.opcode != MOpcode::SETcc || setccInstr.operands.size() < 2) {
+        return false;
+    }
+
+    const auto *setCond = asImm(setccInstr.operands[0]);
+    const auto *setDst = asReg(setccInstr.operands[1]);
+    if (!setCond || !setDst || setDst->cls != RegClass::GPR) {
+        return false;
+    }
+
+    std::size_t testIndex = index + 2;
+    if (block.instructions[testIndex].opcode == MOpcode::MOVZXrr32) {
+        const auto &movzxInstr = block.instructions[testIndex];
+        if (movzxInstr.operands.size() < 2 ||
+            !sameRegister(movzxInstr.operands[0], setccInstr.operands[1]) ||
+            !sameRegister(movzxInstr.operands[1], setccInstr.operands[1])) {
+            return false;
+        }
+        ++testIndex;
+    }
+
+    if (testIndex + 1 >= block.instructions.size()) {
+        return false;
+    }
+
+    auto &testInstr = block.instructions[testIndex];
+    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2) {
+        return false;
+    }
+    if (!sameRegister(testInstr.operands[0], setccInstr.operands[1]) ||
+        !sameRegister(testInstr.operands[1], setccInstr.operands[1])) {
+        return false;
+    }
+
+    auto &jccInstr = block.instructions[testIndex + 1];
+    if (jccInstr.opcode != MOpcode::JCC || jccInstr.operands.size() < 2) {
+        return false;
+    }
+    const auto *branchCond = asImm(jccInstr.operands[0]);
+    if (!branchCond || branchCond->val != 1) {
+        return false;
+    }
+
+    jccInstr.operands[0] = makeImmOperand(setCond->val);
+    auto eraseBegin = block.instructions.begin() + static_cast<std::ptrdiff_t>(index + 1);
+    auto eraseEnd = block.instructions.begin() + static_cast<std::ptrdiff_t>(testIndex + 1);
+    block.instructions.erase(eraseBegin, eraseEnd);
+    return true;
+}
+
 } // namespace
 
 /// @brief Construct an instruction selector bound to a target description.
@@ -438,10 +513,14 @@ void ISel::lowerCompareAndBranch(MFunction &func) const {
     (void)target_;
     for (auto &block : func.blocks) {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            if (foldCompareBranch(block, idx)) {
+                continue;
+            }
             auto &instr = block.instructions[idx];
             switch (instr.opcode) {
                 case MOpcode::CMPrr:
                 case MOpcode::CMPri:
+                case MOpcode::UCOMIS:
                     canonicaliseCmp(instr);
                     break;
                 case MOpcode::SETcc:

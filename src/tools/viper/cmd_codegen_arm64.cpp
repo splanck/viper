@@ -33,7 +33,7 @@ constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
-    "       [--native-asm|--system-asm] [--native-link|--system-link]\n"
+    "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
     "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n";
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
