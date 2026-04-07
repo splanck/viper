@@ -1,0 +1,71 @@
+module TestCollider3DAdvanced;
+
+bind Viper.Graphics;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func heightColor(hi: Integer, lo: Integer) -> Integer {
+    return hi * 16777216 + lo * 65536 + 255;
+}
+
+func start() {
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+
+    var mesh = Mesh3D.NewBox(2.0, 2.0, 2.0);
+    var hull = Collider3D.NewConvexHull(mesh);
+    var compound = Collider3D.NewCompound();
+    var xf = Transform3D.New();
+    Transform3D.SetPosition(xf, 2.0, 0.0, 0.0);
+    Collider3D.AddChild(compound, hull, xf);
+
+    var staticBody = Physics3DBody.New(0.0);
+    Physics3DBody.SetCollider(staticBody, compound);
+    Physics3DWorld.Add(world, staticBody);
+
+    var sphere = Physics3DBody.NewSphere(0.45, 1.0);
+    Physics3DBody.SetPosition(sphere, 1.2, 0.0, 0.0);
+    Physics3DWorld.Add(world, sphere);
+    Physics3DWorld.Step(world, 0.016);
+
+    if (Physics3DWorld.get_CollisionCount(world) <= 0) {
+        Say("FAIL: compound convex collider should collide with sphere");
+        return;
+    }
+
+    var boundsMax = Collider3D.GetLocalBoundsMax(compound);
+    if (Vec3.get_X(boundsMax) <= 2.5) {
+        Say("FAIL: compound bounds should include child offset");
+        return;
+    }
+
+    var pixels = Pixels.New(4, 4);
+    var row = 0;
+    while (row < 4) {
+        var col = 0;
+        while (col < 4) {
+            var h = 128 + col * 16;
+            Pixels.Set(pixels, col, row, heightColor(h, h / 2));
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+
+    var heightfield = Collider3D.NewHeightfield(pixels, 1.0, 2.0, 1.0);
+    var terrainBody = Physics3DBody.New(0.0);
+    Physics3DBody.SetCollider(terrainBody, heightfield);
+    Physics3DBody.SetPosition(terrainBody, 0.0, 0.0, 0.0);
+    Physics3DWorld.Remove(world, sphere);
+    sphere = Physics3DBody.NewSphere(0.35, 1.0);
+    Physics3DBody.SetPosition(sphere, 0.8, 0.9, 0.0);
+    Physics3DWorld.Add(world, terrainBody);
+    Physics3DWorld.Add(world, sphere);
+    Physics3DWorld.Step(world, 0.016);
+
+    if (Physics3DWorld.get_CollisionCount(world) <= 0) {
+        Say("FAIL: heightfield collider should collide with sphere");
+        return;
+    }
+
+    Say("PASS");
+}

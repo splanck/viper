@@ -13,6 +13,7 @@
 
 #include "rt_audio.h"
 #include "rt_canvas3d.h"
+#include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
@@ -69,6 +70,39 @@ int main() {
         fn_bits(&rt_world3d_get_collision_body_b),
         fn_bits(&rt_world3d_get_collision_normal),
         fn_bits(&rt_world3d_get_collision_depth),
+        fn_bits(&rt_collider3d_new_box),
+        fn_bits(&rt_collider3d_new_sphere),
+        fn_bits(&rt_collider3d_new_capsule),
+        fn_bits(&rt_collider3d_new_convex_hull),
+        fn_bits(&rt_collider3d_new_mesh),
+        fn_bits(&rt_collider3d_new_heightfield),
+        fn_bits(&rt_collider3d_new_compound),
+        fn_bits(&rt_collider3d_add_child),
+        fn_bits(&rt_collider3d_get_type),
+        fn_bits(&rt_collider3d_get_local_bounds_min),
+        fn_bits(&rt_collider3d_get_local_bounds_max),
+        fn_bits(&rt_body3d_new),
+        fn_bits(&rt_body3d_set_collider),
+        fn_bits(&rt_body3d_get_collider),
+        fn_bits(&rt_body3d_set_orientation),
+        fn_bits(&rt_body3d_get_orientation),
+        fn_bits(&rt_body3d_set_angular_velocity),
+        fn_bits(&rt_body3d_get_angular_velocity),
+        fn_bits(&rt_body3d_apply_torque),
+        fn_bits(&rt_body3d_apply_angular_impulse),
+        fn_bits(&rt_body3d_set_linear_damping),
+        fn_bits(&rt_body3d_get_linear_damping),
+        fn_bits(&rt_body3d_set_angular_damping),
+        fn_bits(&rt_body3d_get_angular_damping),
+        fn_bits(&rt_body3d_set_kinematic),
+        fn_bits(&rt_body3d_is_kinematic),
+        fn_bits(&rt_body3d_set_can_sleep),
+        fn_bits(&rt_body3d_can_sleep),
+        fn_bits(&rt_body3d_is_sleeping),
+        fn_bits(&rt_body3d_wake),
+        fn_bits(&rt_body3d_sleep),
+        fn_bits(&rt_body3d_set_use_ccd),
+        fn_bits(&rt_body3d_get_use_ccd),
         fn_bits(&rt_terrain3d_set_splat_map),
         fn_bits(&rt_terrain3d_set_layer_texture),
         fn_bits(&rt_terrain3d_set_layer_scale),

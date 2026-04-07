@@ -7,11 +7,14 @@
 //
 // File: src/runtime/graphics/rt_physics3d.h
 // Purpose: 3D physics world with AABB/sphere/capsule collision, impulse
-//   resolution, collision layers, and character controller with slide/step movement.
+//   resolution, rotational body state, collision layers, and character
+//   controller with slide/step movement.
 //
 // Key invariants:
 //   - Max 256 bodies per world (PH3D_MAX_BODIES).
 //   - Symplectic Euler integration (force→velocity, velocity→position).
+//   - Dynamic bodies integrate angular velocity into quaternion orientation.
+//   - Kinematic bodies move from explicit linear/angular velocity only.
 //   - Collision filtering: bidirectional layer/mask bitmask check.
 //   - Character controller binds to a World3D and uses swept slide iterations.
 //   - Trigger bodies overlap but don't apply physics impulse.
@@ -50,27 +53,49 @@ void *rt_world3d_get_collision_normal(void *world, int64_t index);
 double rt_world3d_get_collision_depth(void *world, int64_t index);
 
 /* Physics3D Body */
+void *rt_body3d_new(double mass);
 void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass);
 void *rt_body3d_new_sphere(double radius, double mass);
 void *rt_body3d_new_capsule(double radius, double height, double mass);
+void rt_body3d_set_collider(void *body, void *collider);
+void *rt_body3d_get_collider(void *body);
 void rt_body3d_set_position(void *body, double x, double y, double z);
 void *rt_body3d_get_position(void *body);
+void rt_body3d_set_orientation(void *body, void *quat);
+void *rt_body3d_get_orientation(void *body);
 void rt_body3d_set_velocity(void *body, double vx, double vy, double vz);
 void *rt_body3d_get_velocity(void *body);
+void rt_body3d_set_angular_velocity(void *body, double wx, double wy, double wz);
+void *rt_body3d_get_angular_velocity(void *body);
 void rt_body3d_apply_force(void *body, double fx, double fy, double fz);
 void rt_body3d_apply_impulse(void *body, double ix, double iy, double iz);
+void rt_body3d_apply_torque(void *body, double tx, double ty, double tz);
+void rt_body3d_apply_angular_impulse(void *body, double ix, double iy, double iz);
 void rt_body3d_set_restitution(void *body, double r);
 double rt_body3d_get_restitution(void *body);
 void rt_body3d_set_friction(void *body, double f);
 double rt_body3d_get_friction(void *body);
+void rt_body3d_set_linear_damping(void *body, double d);
+double rt_body3d_get_linear_damping(void *body);
+void rt_body3d_set_angular_damping(void *body, double d);
+double rt_body3d_get_angular_damping(void *body);
 void rt_body3d_set_collision_layer(void *body, int64_t layer);
 int64_t rt_body3d_get_collision_layer(void *body);
 void rt_body3d_set_collision_mask(void *body, int64_t mask);
 int64_t rt_body3d_get_collision_mask(void *body);
 void rt_body3d_set_static(void *body, int8_t s);
 int8_t rt_body3d_is_static(void *body);
+void rt_body3d_set_kinematic(void *body, int8_t k);
+int8_t rt_body3d_is_kinematic(void *body);
 void rt_body3d_set_trigger(void *body, int8_t t);
 int8_t rt_body3d_is_trigger(void *body);
+void rt_body3d_set_can_sleep(void *body, int8_t can_sleep);
+int8_t rt_body3d_can_sleep(void *body);
+int8_t rt_body3d_is_sleeping(void *body);
+void rt_body3d_wake(void *body);
+void rt_body3d_sleep(void *body);
+void rt_body3d_set_use_ccd(void *body, int8_t use_ccd);
+int8_t rt_body3d_get_use_ccd(void *body);
 int8_t rt_body3d_is_grounded(void *body);
 void *rt_body3d_get_ground_normal(void *body);
 double rt_body3d_get_mass(void *body);

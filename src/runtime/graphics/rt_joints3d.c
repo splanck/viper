@@ -34,12 +34,15 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 #include "rt_trap.h"
 
-/* Access body internals — these match the rt_body3d struct layout in rt_physics3d.c */
+/* Access body internals — this prefix must stay aligned with rt_body3d in rt_physics3d.c. */
 typedef struct {
     void *vptr;
     double position[3];
+    double orientation[4];
     double velocity[3];
+    double angular_velocity[3];
     double force[3];
+    double torque[3];
     double mass;
     double inv_mass;
 } rt_body3d_view;

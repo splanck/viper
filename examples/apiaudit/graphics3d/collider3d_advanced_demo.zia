@@ -1,0 +1,57 @@
+module Collider3DAdvancedDemo;
+
+bind Viper.Graphics;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func heightColor(hi: Integer, lo: Integer) -> Integer {
+    return hi * 16777216 + lo * 65536 + 255;
+}
+
+func start() {
+    Say("Collider3D advanced demo");
+
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var mesh = Mesh3D.NewBox(2.0, 1.0, 4.0);
+    var hull = Collider3D.NewConvexHull(mesh);
+    var wall = Physics3DBody.New(0.0);
+    Physics3DBody.SetCollider(wall, hull);
+    Physics3DWorld.Add(world, wall);
+
+    var sphere = Physics3DBody.NewSphere(0.5, 1.0);
+    Physics3DBody.SetPosition(sphere, 1.3, 0.0, 0.0);
+    Physics3DWorld.Add(world, sphere);
+    Physics3DWorld.Step(world, 0.016);
+    Say("Convex hull collisions = " + toString(Physics3DWorld.get_CollisionCount(world)));
+
+    var compound = Collider3D.NewCompound();
+    var child = Collider3D.NewBox(0.5, 0.5, 0.5);
+    var childXf = Transform3D.New();
+    Transform3D.SetPosition(childXf, 2.0, 0.0, 0.0);
+    Collider3D.AddChild(compound, child, childXf);
+    var compoundBounds = Collider3D.GetLocalBoundsMax(compound);
+    Say("Compound max X = " + toString(Vec3.get_X(compoundBounds)));
+
+    var pixels = Pixels.New(4, 4);
+    var z = 0;
+    while (z < 4) {
+        var x = 0;
+        while (x < 4) {
+            var h = 128 + x * 16;
+            Pixels.Set(pixels, x, z, heightColor(h, h / 2));
+            x = x + 1;
+        }
+        z = z + 1;
+    }
+    var heightfield = Collider3D.NewHeightfield(pixels, 1.0, 2.0, 1.0);
+    var terrain = Physics3DBody.New(0.0);
+    Physics3DBody.SetCollider(terrain, heightfield);
+    Physics3DWorld.Add(world, terrain);
+
+    sphere = Physics3DBody.NewSphere(0.35, 1.0);
+    Physics3DBody.SetPosition(sphere, 0.8, 0.9, 0.0);
+    Physics3DWorld.Add(world, sphere);
+    Physics3DWorld.Step(world, 0.016);
+    Say("Heightfield collisions = " + toString(Physics3DWorld.get_CollisionCount(world)));
+}

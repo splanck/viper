@@ -75,6 +75,7 @@
 #include "rt_camera.h"
 #include "rt_cancellation.h"
 #include "rt_canvas3d.h"
+#include "rt_collider3d.h"
 #include "rt_channel.h"
 #include "rt_cipher.h"
 #include "rt_codec.h"

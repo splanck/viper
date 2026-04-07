@@ -1,14 +1,14 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-07
 ---
 
 # Viper Runtime Library Reference
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-02-19
+> **Last updated:** 2026-04-07
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -28,6 +28,7 @@ implemented in C and exposed through the IL runtime system.
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter` |
 | [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `TextureAtlas`, `Tilemap` |
+| [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `Clipboard`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
@@ -183,6 +184,17 @@ implemented in C and exposed through the IL runtime system.
 | [`SpriteBatch`](graphics/README.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
 | [`SpriteSheet`](graphics/README.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
 | [`Tilemap`](graphics/README.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
+
+### Viper.Graphics3D
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`Character3D`](graphics/physics3d.md#vipergraphics3dcharacter3d) | Instance | Slide-and-step character controller |
+| [`Collider3D`](graphics/physics3d.md#vipergraphics3dcollider3d) | Instance | Reusable 3D collision shape including compound, mesh, and heightfield variants |
+| [`DistanceJoint3D`](graphics/physics3d.md#vipergraphics3ddistancejoint3d) | Instance | Fixed-distance constraint between bodies |
+| [`Physics3DBody`](graphics/physics3d.md#vipergraphics3dphysics3dbody) | Instance | 3D rigid body with linear/angular motion, sleep, and CCD |
+| [`Physics3DWorld`](graphics/physics3d.md#vipergraphics3dphysics3dworld) | Instance | 3D simulation world with contact and joint access |
+| [`SpringJoint3D`](graphics/physics3d.md#vipergraphics3dspringjoint3d) | Instance | Spring constraint with stiffness and damping |
 
 ### Viper.GUI
 

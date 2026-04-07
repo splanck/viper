@@ -402,6 +402,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_RayHit3D,
     RTCLS_Audio3D,
     RTCLS_Physics3DWorld,
+    RTCLS_Collider3D,
     RTCLS_Physics3DBody,
     RTCLS_Character3D,
     RTCLS_Trigger3D,

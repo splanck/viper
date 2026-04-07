@@ -1,0 +1,51 @@
+// =============================================================================
+// Physics3D Rotation Demo — torque, damping, kinematic spin, and sleep/wake
+// =============================================================================
+
+module Physics3DRotationDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Physics3D Rotation Demo ===");
+
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var body = Physics3DBody.NewSphere(0.5, 1.0);
+    Physics3DWorld.Add(world, body);
+
+    Say("Applying torque around Y...");
+    Physics3DBody.ApplyTorque(body, 0.0, 6.0, 0.0);
+    Physics3DWorld.Step(world, 0.5);
+
+    var ang = Physics3DBody.get_AngularVelocity(body);
+    var q = Physics3DBody.get_Orientation(body);
+    Say("AngularVelocity.y = " + toString(Vec3.get_Y(ang)));
+    Say("Orientation.w = " + toString(Quat.get_W(q)));
+
+    Say("Applying angular damping...");
+    Physics3DBody.set_AngularDamping(body, 1.5);
+    Physics3DWorld.Step(world, 1.0);
+    ang = Physics3DBody.get_AngularVelocity(body);
+    Say("AngularVelocity.y after damping = " + toString(Vec3.get_Y(ang)));
+
+    Say("Testing sleep/wake on a dynamic body...");
+    Physics3DBody.Sleep(body);
+    Say("Sleeping = " + toString(Physics3DBody.get_Sleeping(body)));
+    Physics3DBody.Wake(body);
+    Say("Sleeping after wake = " + toString(Physics3DBody.get_Sleeping(body)));
+
+    Say("Switching to kinematic mode...");
+    Physics3DBody.set_Kinematic(body, true);
+    Physics3DBody.SetVelocity(body, 1.0, 0.0, 0.0);
+    Physics3DBody.SetAngularVelocity(body, 0.0, 1.0, 0.0);
+    Physics3DWorld.Step(world, 1.0);
+
+    var pos = Physics3DBody.get_Position(body);
+    q = Physics3DBody.get_Orientation(body);
+    Say("Position.x in kinematic mode = " + toString(Vec3.get_X(pos)));
+    Say("Orientation.w in kinematic mode = " + toString(Quat.get_W(q)));
+
+    Say("Done.");
+}

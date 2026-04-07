@@ -14,9 +14,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_canvas3d.h"
+#include "rt_collider3d.h"
 #include "rt_internal.h"
 #include "rt_joints3d.h"
 #include "rt_physics3d.h"
+#include "rt_pixels.h"
+#include "rt_quat.h"
+#include "rt_transform3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -30,6 +35,7 @@ extern double rt_vec3_z(void *v);
 
 static int tests_passed = 0;
 static int tests_run = 0;
+static const double TEST_PI = 3.14159265358979323846;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -50,6 +56,10 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+static int64_t encode_height16(uint16_t value) {
+    return ((int64_t)((value >> 8) & 0xFF) << 24) | ((int64_t)(value & 0xFF) << 16) | 0xFF;
+}
 
 /*==========================================================================
  * Body creation tests
@@ -79,6 +89,39 @@ static void test_body_new_capsule() {
 static void test_body_static_zero_mass() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
     EXPECT_TRUE(rt_body3d_is_static(b) != 0, "Zero-mass body is static");
+}
+
+static void test_body_new_and_set_collider() {
+    void *body = rt_body3d_new(2.0);
+    void *collider = rt_collider3d_new_box(1.0, 0.5, 1.0);
+    EXPECT_TRUE(body != nullptr, "Generic body created");
+    EXPECT_TRUE(collider != nullptr, "Collider created");
+    rt_body3d_set_collider(body, collider);
+    EXPECT_TRUE(rt_body3d_get_collider(body) == collider, "SetCollider stores collider");
+}
+
+static void test_wrapper_constructors_assign_colliders() {
+    void *box = rt_body3d_new_aabb(1.0, 2.0, 3.0, 1.0);
+    void *sphere = rt_body3d_new_sphere(1.5, 1.0);
+    void *capsule = rt_body3d_new_capsule(0.5, 2.0, 1.0);
+    EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(box)) == RT_COLLIDER3D_TYPE_BOX,
+                "AABB wrapper assigns box collider");
+    EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(sphere)) ==
+                    RT_COLLIDER3D_TYPE_SPHERE,
+                "Sphere wrapper assigns sphere collider");
+    EXPECT_TRUE(rt_collider3d_get_type(rt_body3d_get_collider(capsule)) ==
+                    RT_COLLIDER3D_TYPE_CAPSULE,
+                "Capsule wrapper assigns capsule collider");
+}
+
+static void test_mesh_collider_attaches_to_static_body() {
+    void *mesh = rt_mesh3d_new_box(4.0, 1.0, 4.0);
+    void *mesh_collider = rt_collider3d_new_mesh(mesh);
+    void *body = rt_body3d_new(0.0);
+    EXPECT_TRUE(body != nullptr, "Static body for mesh collider created");
+    rt_body3d_set_collider(body, mesh_collider);
+    EXPECT_TRUE(rt_body3d_get_collider(body) == mesh_collider,
+                "Static body accepts mesh collider");
 }
 
 /*==========================================================================
@@ -116,6 +159,98 @@ static void test_body_trigger() {
     EXPECT_TRUE(rt_body3d_is_trigger(b) == 0, "Default: not trigger");
     rt_body3d_set_trigger(b, 1);
     EXPECT_TRUE(rt_body3d_is_trigger(b) != 0, "Set trigger = true");
+}
+
+static void test_body_orientation_roundtrip() {
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    void *q = rt_quat_from_axis_angle(rt_vec3_new(0.0, 1.0, 0.0), TEST_PI * 0.5);
+    rt_body3d_set_orientation(b, q);
+    void *out = rt_body3d_get_orientation(b);
+    EXPECT_NEAR(rt_quat_y(out), rt_quat_y(q), 0.001, "Orientation Y round-trips");
+    EXPECT_NEAR(rt_quat_w(out), rt_quat_w(q), 0.001, "Orientation W round-trips");
+}
+
+static void test_body_torque_updates_angular_velocity_and_orientation() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *b = rt_body3d_new_sphere(1.0, 2.0);
+    rt_world3d_add(w, b);
+    rt_body3d_apply_torque(b, 0.0, 4.0, 0.0);
+    rt_world3d_step(w, 1.0);
+
+    void *ang = rt_body3d_get_angular_velocity(b);
+    void *q = rt_body3d_get_orientation(b);
+    EXPECT_TRUE(rt_vec3_y(ang) > 1.5, "Torque increases angular velocity");
+    EXPECT_TRUE(fabs(rt_quat_w(q)) < 0.95, "Torque integration changes orientation");
+}
+
+static void test_body_angular_damping() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_angular_velocity(b, 0.0, 4.0, 0.0);
+    rt_body3d_set_angular_damping(b, 1.0);
+    rt_world3d_add(w, b);
+
+    rt_world3d_step(w, 1.0);
+    {
+        void *ang = rt_body3d_get_angular_velocity(b);
+        EXPECT_TRUE(rt_vec3_y(ang) < 4.0, "Angular damping reduces angular velocity");
+    }
+}
+
+static void test_body_sleep_and_wake() {
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) == 0, "Dynamic body starts awake");
+    rt_body3d_sleep(b);
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) != 0, "Sleep() marks body sleeping");
+    rt_body3d_wake(b);
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) == 0, "Wake() clears sleeping state");
+}
+
+static void test_body_auto_sleep() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    rt_world3d_add(w, b);
+    for (int i = 0; i < 40; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) != 0, "Idle dynamic body auto-sleeps");
+}
+
+static void test_kinematic_body_ignores_gravity_but_integrates_velocity() {
+    void *w = rt_world3d_new(0, -9.81, 0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_kinematic(b, 1);
+    rt_body3d_set_velocity(b, 2.0, 0.0, 0.0);
+    rt_body3d_set_angular_velocity(b, 0.0, 2.0, 0.0);
+    rt_world3d_add(w, b);
+    rt_world3d_step(w, 1.0);
+
+    {
+        void *pos = rt_body3d_get_position(b);
+        void *q = rt_body3d_get_orientation(b);
+        EXPECT_NEAR(
+            rt_vec3_x(pos), 2.0, 0.05, "Kinematic body advances from explicit velocity");
+        EXPECT_NEAR(rt_vec3_y(pos), 0.0, 0.05, "Kinematic body ignores gravity");
+        EXPECT_TRUE(
+            fabs(rt_quat_w(q)) < 0.95, "Kinematic angular velocity updates orientation");
+    }
+}
+
+static void test_ccd_prevents_fast_sphere_tunneling() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *wall = rt_body3d_new_aabb(0.1, 2.0, 2.0, 0.0);
+    void *sphere = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(wall, 5.0, 0.0, 0.0);
+    rt_body3d_set_position(sphere, 0.0, 0.0, 0.0);
+    rt_body3d_set_velocity(sphere, 100.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(sphere, 1);
+    rt_world3d_add(w, wall);
+    rt_world3d_add(w, sphere);
+
+    rt_world3d_step(w, 0.1);
+    {
+        void *pos = rt_body3d_get_position(sphere);
+        EXPECT_TRUE(rt_vec3_x(pos) < 5.6, "CCD body does not tunnel through thin wall");
+    }
 }
 
 /*==========================================================================
@@ -414,6 +549,83 @@ static void test_capsule_aabb_collision() {
     }
 }
 
+static void test_convex_hull_collider_blocks_sphere() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *collider = rt_collider3d_new_convex_hull(mesh);
+    void *hull_body = rt_body3d_new(0.0);
+    void *sphere = rt_body3d_new_sphere(0.6, 1.0);
+    rt_body3d_set_collider(hull_body, collider);
+    rt_body3d_set_position(hull_body, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(sphere, 1.3, 0.0, 0.0);
+    rt_world3d_add(world, hull_body);
+    rt_world3d_add(world, sphere);
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "convex hull: collision detected against sphere");
+}
+
+static void test_mesh_collider_blocks_falling_sphere() {
+    void *world = rt_world3d_new(0, -9.81, 0);
+    void *mesh = rt_mesh3d_new_box(8.0, 1.0, 8.0);
+    void *collider = rt_collider3d_new_mesh(mesh);
+    void *floor_body = rt_body3d_new(0.0);
+    void *sphere = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_collider(floor_body, collider);
+    rt_body3d_set_position(floor_body, 0.0, -0.5, 0.0);
+    rt_body3d_set_position(sphere, 0.0, 2.0, 0.0);
+    rt_world3d_add(world, floor_body);
+    rt_world3d_add(world, sphere);
+    for (int i = 0; i < 90; ++i)
+        rt_world3d_step(world, 1.0 / 60.0);
+    {
+        void *pos = rt_body3d_get_position(sphere);
+        EXPECT_TRUE(rt_vec3_y(pos) > -0.2, "mesh collider: sphere stays above floor");
+    }
+}
+
+static void test_compound_collider_child_transform_affects_contact() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *compound = rt_collider3d_new_compound();
+    void *child = rt_collider3d_new_box(0.5, 0.5, 0.5);
+    void *xf = rt_transform3d_new();
+    void *compound_body = rt_body3d_new(0.0);
+    void *sphere = rt_body3d_new_sphere(0.45, 1.0);
+    rt_transform3d_set_position(xf, 2.0, 0.0, 0.0);
+    rt_collider3d_add_child(compound, child, xf);
+    rt_body3d_set_collider(compound_body, compound);
+    rt_body3d_set_position(sphere, 2.2, 0.0, 0.0);
+    rt_world3d_add(world, compound_body);
+    rt_world3d_add(world, sphere);
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "compound collider: child offset affects contacts");
+}
+
+static void test_heightfield_collider_supports_ground_contact() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *pixels = rt_pixels_new(4, 4);
+    void *heightfield;
+    void *terrain_body;
+    void *sphere;
+    for (int64_t z = 0; z < 4; ++z) {
+        for (int64_t x = 0; x < 4; ++x) {
+            uint16_t h = (uint16_t)(32768 + x * 4096);
+            rt_pixels_set(pixels, x, z, encode_height16(h));
+        }
+    }
+    heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 2.0, 1.0);
+    terrain_body = rt_body3d_new(0.0);
+    sphere = rt_body3d_new_sphere(0.35, 1.0);
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_position(sphere, 0.8, 1.1, 0.0);
+    rt_world3d_add(world, terrain_body);
+    rt_world3d_add(world, sphere);
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "heightfield collider: contact detected");
+}
+
 /*==========================================================================
  * Collision event queue tests
  *=========================================================================*/
@@ -632,12 +844,22 @@ int main() {
     test_body_new_sphere();
     test_body_new_capsule();
     test_body_static_zero_mass();
+    test_body_new_and_set_collider();
+    test_wrapper_constructors_assign_colliders();
+    test_mesh_collider_attaches_to_static_body();
 
     /* Property accessors */
     test_body_position();
+    test_body_orientation_roundtrip();
     test_body_velocity();
     test_body_collision_layer_mask();
     test_body_trigger();
+    test_body_torque_updates_angular_velocity_and_orientation();
+    test_body_angular_damping();
+    test_body_sleep_and_wake();
+    test_body_auto_sleep();
+    test_kinematic_body_ignores_gravity_but_integrates_velocity();
+    test_ccd_prevents_fast_sphere_tunneling();
 
     /* World */
     test_world_create();
@@ -676,6 +898,10 @@ int main() {
     test_sphere_sphere_no_overlap();
     test_aabb_sphere_collision();
     test_capsule_aabb_collision();
+    test_convex_hull_collider_blocks_sphere();
+    test_mesh_collider_blocks_falling_sphere();
+    test_compound_collider_child_transform_affects_contact();
+    test_heightfield_collider_supports_ground_contact();
 
     /* Collision event queue */
     test_collision_event_count();

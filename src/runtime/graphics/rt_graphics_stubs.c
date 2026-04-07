@@ -27,6 +27,7 @@
 
 #include "rt_audio3d.h"
 #include "rt_canvas3d.h"
+#include "rt_collider3d.h"
 #include "rt_decal3d.h"
 #include "rt_error.h"
 #include "rt_fbx_loader.h"
@@ -2926,7 +2927,177 @@ double rt_spring_joint3d_get_rest_length(void *j) {
     return 0.0;
 }
 
+/* Collider3D stubs */
+void *rt_collider3d_new_box(double hx, double hy, double hz) {
+    (void)hx;
+    (void)hy;
+    (void)hz;
+    return NULL;
+}
+
+void *rt_collider3d_new_sphere(double radius) {
+    (void)radius;
+    return NULL;
+}
+
+void *rt_collider3d_new_capsule(double radius, double height) {
+    (void)radius;
+    (void)height;
+    return NULL;
+}
+
+void *rt_collider3d_new_convex_hull(void *mesh) {
+    (void)mesh;
+    return NULL;
+}
+
+void *rt_collider3d_new_mesh(void *mesh) {
+    (void)mesh;
+    return NULL;
+}
+
+void *rt_collider3d_new_heightfield(void *heightmap, double sx, double sy, double sz) {
+    (void)heightmap;
+    (void)sx;
+    (void)sy;
+    (void)sz;
+    return NULL;
+}
+
+void *rt_collider3d_new_compound(void) {
+    return NULL;
+}
+
+void rt_collider3d_add_child(void *compound, void *child, void *local_transform) {
+    (void)compound;
+    (void)child;
+    (void)local_transform;
+}
+
+int64_t rt_collider3d_get_type(void *collider) {
+    (void)collider;
+    return -1;
+}
+
+void *rt_collider3d_get_local_bounds_min(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+void *rt_collider3d_get_local_bounds_max(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out) {
+    (void)collider;
+    if (min_out) {
+        min_out[0] = min_out[1] = min_out[2] = 0.0;
+    }
+    if (max_out) {
+        max_out[0] = max_out[1] = max_out[2] = 0.0;
+    }
+}
+
+void rt_collider3d_compute_world_aabb_raw(void *collider,
+                                          const double *position,
+                                          const double *rotation,
+                                          const double *scale,
+                                          double *min_out,
+                                          double *max_out) {
+    (void)collider;
+    (void)position;
+    (void)rotation;
+    (void)scale;
+    if (min_out) {
+        min_out[0] = min_out[1] = min_out[2] = 0.0;
+    }
+    if (max_out) {
+        max_out[0] = max_out[1] = max_out[2] = 0.0;
+    }
+}
+
+int8_t rt_collider3d_is_static_only_raw(void *collider) {
+    (void)collider;
+    return 0;
+}
+
+void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out) {
+    (void)collider;
+    if (half_extents_out) {
+        half_extents_out[0] = half_extents_out[1] = half_extents_out[2] = 0.0;
+    }
+}
+
+double rt_collider3d_get_radius_raw(void *collider) {
+    (void)collider;
+    return 0.0;
+}
+
+double rt_collider3d_get_height_raw(void *collider) {
+    (void)collider;
+    return 0.0;
+}
+
+void *rt_collider3d_get_mesh_raw(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+int64_t rt_collider3d_get_child_count_raw(void *collider) {
+    (void)collider;
+    return 0;
+}
+
+void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
+    (void)collider;
+    (void)index;
+    return NULL;
+}
+
+void rt_collider3d_get_child_transform_raw(void *compound,
+                                           int64_t index,
+                                           double *position_out,
+                                           double *rotation_out,
+                                           double *scale_out) {
+    (void)compound;
+    (void)index;
+    if (position_out) {
+        position_out[0] = position_out[1] = position_out[2] = 0.0;
+    }
+    if (rotation_out) {
+        rotation_out[0] = rotation_out[1] = rotation_out[2] = 0.0;
+        rotation_out[3] = 1.0;
+    }
+    if (scale_out) {
+        scale_out[0] = scale_out[1] = scale_out[2] = 1.0;
+    }
+}
+
+int8_t rt_collider3d_sample_heightfield_raw(void *collider,
+                                            double local_x,
+                                            double local_z,
+                                            double *height_out,
+                                            double *normal_out) {
+    (void)collider;
+    (void)local_x;
+    (void)local_z;
+    if (height_out)
+        *height_out = 0.0;
+    if (normal_out) {
+        normal_out[0] = 0.0;
+        normal_out[1] = 1.0;
+        normal_out[2] = 0.0;
+    }
+    return 0;
+}
+
 /* Physics3D Body stubs */
+void *rt_body3d_new(double mass) {
+    (void)mass;
+    return NULL;
+}
+
 void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
     (void)hx;
     (void)hy;
@@ -2948,6 +3119,16 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
     return NULL;
 }
 
+void rt_body3d_set_collider(void *o, void *collider) {
+    (void)o;
+    (void)collider;
+}
+
+void *rt_body3d_get_collider(void *o) {
+    (void)o;
+    return NULL;
+}
+
 /// @brief Set the position of the body3d.
 void rt_body3d_set_position(void *o, double x, double y, double z) {
     (void)o;
@@ -2957,6 +3138,16 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
 }
 
 void *rt_body3d_get_position(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void rt_body3d_set_orientation(void *o, void *q) {
+    (void)o;
+    (void)q;
+}
+
+void *rt_body3d_get_orientation(void *o) {
     (void)o;
     return NULL;
 }
@@ -2974,6 +3165,18 @@ void *rt_body3d_get_velocity(void *o) {
     return NULL;
 }
 
+void rt_body3d_set_angular_velocity(void *o, double wx, double wy, double wz) {
+    (void)o;
+    (void)wx;
+    (void)wy;
+    (void)wz;
+}
+
+void *rt_body3d_get_angular_velocity(void *o) {
+    (void)o;
+    return NULL;
+}
+
 /// @brief Apply the force of the body3d.
 void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)o;
@@ -2984,6 +3187,20 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
 
 /// @brief Apply the impulse of the body3d.
 void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
+    (void)o;
+    (void)ix;
+    (void)iy;
+    (void)iz;
+}
+
+void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
+    (void)o;
+    (void)tx;
+    (void)ty;
+    (void)tz;
+}
+
+void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
     (void)o;
     (void)ix;
     (void)iy;
@@ -3010,6 +3227,26 @@ void rt_body3d_set_friction(void *o, double f) {
 
 /// @brief Get the friction of the body3d.
 double rt_body3d_get_friction(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_body3d_set_linear_damping(void *o, double d) {
+    (void)o;
+    (void)d;
+}
+
+double rt_body3d_get_linear_damping(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_body3d_set_angular_damping(void *o, double d) {
+    (void)o;
+    (void)d;
+}
+
+double rt_body3d_get_angular_damping(void *o) {
     (void)o;
     return 0.0;
 }
@@ -3050,6 +3287,16 @@ int8_t rt_body3d_is_static(void *o) {
     return 0;
 }
 
+void rt_body3d_set_kinematic(void *o, int8_t k) {
+    (void)o;
+    (void)k;
+}
+
+int8_t rt_body3d_is_kinematic(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Set the trigger of the body3d.
 void rt_body3d_set_trigger(void *o, int8_t t) {
     (void)o;
@@ -3058,6 +3305,39 @@ void rt_body3d_set_trigger(void *o, int8_t t) {
 
 /// @brief Is the trigger of the body3d.
 int8_t rt_body3d_is_trigger(void *o) {
+    (void)o;
+    return 0;
+}
+
+void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
+    (void)o;
+    (void)can_sleep;
+}
+
+int8_t rt_body3d_can_sleep(void *o) {
+    (void)o;
+    return 0;
+}
+
+int8_t rt_body3d_is_sleeping(void *o) {
+    (void)o;
+    return 0;
+}
+
+void rt_body3d_wake(void *o) {
+    (void)o;
+}
+
+void rt_body3d_sleep(void *o) {
+    (void)o;
+}
+
+void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
+    (void)o;
+    (void)use_ccd;
+}
+
+int8_t rt_body3d_get_use_ccd(void *o) {
     (void)o;
     return 0;
 }

@@ -1,0 +1,74 @@
+// Test: Physics3DBody rotation, damping, sleep, kinematic motion, and CCD surface.
+module TestPhysics3DRotation;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var body = Physics3DBody.NewSphere(1.0, 1.0);
+    Physics3DWorld.Add(world, body);
+
+    var identity = Quat.Identity();
+    Physics3DBody.SetOrientation(body, identity);
+    var q0 = Physics3DBody.get_Orientation(body);
+    if (Quat.get_W(q0) != 1.0) {
+        Say("FAIL: orientation should start at identity");
+        return;
+    }
+
+    Physics3DBody.ApplyTorque(body, 0.0, 4.0, 0.0);
+    Physics3DWorld.Step(world, 1.0);
+
+    var ang = Physics3DBody.get_AngularVelocity(body);
+    if (Vec3.get_Y(ang) <= 2.0) {
+        Say("FAIL: torque should change angular velocity");
+        return;
+    }
+
+    var q1 = Physics3DBody.get_Orientation(body);
+    if (Quat.get_W(q1) >= 0.95) {
+        Say("FAIL: angular integration should change orientation");
+        return;
+    }
+
+    Physics3DBody.set_AngularDamping(body, 1.0);
+    var before = Vec3.get_Y(Physics3DBody.get_AngularVelocity(body));
+    Physics3DWorld.Step(world, 1.0);
+    var after = Vec3.get_Y(Physics3DBody.get_AngularVelocity(body));
+    if (after >= before) {
+        Say("FAIL: angular damping should reduce angular velocity");
+        return;
+    }
+
+    Physics3DBody.Sleep(body);
+    if (Physics3DBody.get_Sleeping(body) == 0) {
+        Say("FAIL: Sleep should mark the body sleeping");
+        return;
+    }
+    Physics3DBody.Wake(body);
+    if (Physics3DBody.get_Sleeping(body) != 0) {
+        Say("FAIL: Wake should clear the sleeping flag");
+        return;
+    }
+
+    Physics3DBody.set_Kinematic(body, true);
+    Physics3DBody.SetVelocity(body, 2.0, 0.0, 0.0);
+    Physics3DBody.SetAngularVelocity(body, 0.0, 1.0, 0.0);
+    var pos0 = Physics3DBody.get_Position(body);
+    Physics3DWorld.Step(world, 0.5);
+    var pos1 = Physics3DBody.get_Position(body);
+    if (Vec3.get_X(pos1) <= Vec3.get_X(pos0)) {
+        Say("FAIL: kinematic body should move from explicit velocity");
+        return;
+    }
+
+    Physics3DBody.set_UseCCD(body, true);
+    if (Physics3DBody.get_UseCCD(body) == 0) {
+        Say("FAIL: CCD flag should round-trip");
+        return;
+    }
+
+    Say("PASS");
+}

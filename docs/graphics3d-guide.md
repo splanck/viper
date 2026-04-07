@@ -45,7 +45,7 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 - [Decal3D](#decal3d) — Projected decals
 
 **Physics**
-- [Physics3DWorld, Physics3DBody](#physics3dworld) — Rigid body physics
+- [Physics3DWorld, Collider3D, Physics3DBody](#physics3dworld) — Rigid body physics
 - [Character3D](#character3d) — Character controller
 - [Trigger3D](#trigger3d) — Trigger volumes
 - [DistanceJoint3D, SpringJoint3D](#distancejoint3d) — Constraints
@@ -1481,8 +1481,13 @@ When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. Th
 ## Physics3D
 
 Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision shapes.
+Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
 AABB-sphere uses closest-point projection. Coulomb friction and Baumgarte positional correction.
+
+**Current limitation:** rotational state is fully integrated for all bodies, but the simple
+box/capsule collision backend still treats AABB and capsule primitives as axis-aligned /
+upright collision shapes. Sphere bodies are the best fit today for fully-physical rotation.
 
 ### Physics3DWorld
 
@@ -1511,34 +1516,93 @@ AABB-sphere uses closest-point projection. Coulomb friction and Baumgarte positi
 
 ---
 
+### Collider3D
+
+`Collider3D` is the reusable shape object for 3D physics. Prefer authoring colliders first and
+then attaching them to `Physics3DBody`; the old body shape constructors remain as convenience
+wrappers for simple cases.
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `NewBox(hx, hy, hz)` | `obj(f64, f64, f64)` | Box collider with half-extents |
+| `NewSphere(radius)` | `obj(f64)` | Sphere collider |
+| `NewCapsule(radius, height)` | `obj(f64, f64)` | Upright capsule collider |
+| `NewConvexHull(mesh)` | `obj(obj)` | Convex-hull collider sourced from a `Mesh3D` |
+| `NewMesh(mesh)` | `obj(obj)` | Static triangle-mesh collider |
+| `NewHeightfield(heightmap, sx, sy, sz)` | `obj(obj, f64, f64, f64)` | Static heightfield collider from `Pixels` |
+| `NewCompound()` | `obj()` | Empty compound collider for child composition |
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Type` | Integer | read | Collider kind: `0=box`, `1=sphere`, `2=capsule`, `3=convexHull`, `4=mesh`, `5=compound`, `6=heightfield` |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddChild(child, localTransform)` | `void(obj, obj)` | Add a child collider to a compound collider |
+| `GetLocalBoundsMin()` | `obj()` | Local-space AABB minimum as `Vec3` |
+| `GetLocalBoundsMax()` | `obj()` | Local-space AABB maximum as `Vec3` |
+
+Notes:
+- `NewMesh` and `NewHeightfield` are static-only in v1. Attach them only to static bodies.
+- `NewConvexHull` currently expects convex source geometry and uses the mesh surface as the hull.
+- Compound colliders are the preferred way to build complex dynamic bodies from simple children.
+
+---
+
 ### Physics3DBody
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
+| `New(mass)` | `obj(f64)` | Create an empty body and assign a collider later |
 | `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | AABB box body (mass=0 for static) |
 | `NewSphere(radius, mass)` | `obj(f64, f64)` | Sphere body |
 | `NewCapsule(radius, height, mass)` | `obj(f64, f64, f64)` | Capsule body |
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
+| `Collider` | Object | read/write | Active `Collider3D` shape for the body |
 | `Position` | Vec3 | read | World position (set via `SetPosition`) |
+| `Orientation` | Quat | read | World orientation (set via `SetOrientation`) |
 | `Velocity` | Vec3 | read | Linear velocity (set via `SetVelocity`) |
+| `AngularVelocity` | Vec3 | read | Angular velocity in radians/sec (set via `SetAngularVelocity`) |
 | `Restitution` | Float | read/write | Bounciness 0-1 |
 | `Friction` | Float | read/write | Surface friction |
+| `LinearDamping` | Float | read/write | Velocity damping per second |
+| `AngularDamping` | Float | read/write | Spin damping per second |
 | `CollisionLayer` | Integer | read/write | Bitmask layer |
 | `CollisionMask` | Integer | read/write | Bitmask for which layers to collide with |
 | `Static` | Boolean | read/write | Immovable body (mass-independent) |
+| `Kinematic` | Boolean | read/write | Infinite-mass body driven by explicit linear/angular velocity |
 | `Trigger` | Boolean | read/write | Overlap detection only, no physics response |
+| `CanSleep` | Boolean | read/write | Allow automatic sleep when idle |
+| `Sleeping` | Boolean | read | Body is asleep and skipped by dynamic integration |
+| `UseCCD` | Boolean | read/write | Enable substep-based CCD for fast motion |
 | `Grounded` | Boolean | read | Touching ground surface |
 | `GroundNormal` | Vec3 | read | Surface normal of ground contact |
 | `Mass` | Float | read | Body mass |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `SetCollider(collider)` | `void(obj)` | Attach or replace the active `Collider3D` |
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Teleport body |
+| `SetOrientation(quat)` | `void(obj)` | Set body orientation from a Quat |
 | `SetVelocity(vx, vy, vz)` | `void(f64, f64, f64)` | Set linear velocity |
+| `SetAngularVelocity(wx, wy, wz)` | `void(f64, f64, f64)` | Set angular velocity |
 | `ApplyForce(fx, fy, fz)` | `void(f64, f64, f64)` | Accumulate force (applied per step) |
 | `ApplyImpulse(ix, iy, iz)` | `void(f64, f64, f64)` | Instant velocity change |
+| `ApplyTorque(tx, ty, tz)` | `void(f64, f64, f64)` | Accumulate torque (applied per step) |
+| `ApplyAngularImpulse(ix, iy, iz)` | `void(f64, f64, f64)` | Instant angular velocity change |
+| `Wake()` | `void()` | Wake a sleeping dynamic body |
+| `Sleep()` | `void()` | Force a dynamic body into the sleeping state |
+
+`NewAABB`, `NewSphere`, and `NewCapsule` now allocate a body, create the matching collider, and
+attach it internally. Use `New(mass)` plus `SetCollider()` when you want reusable or advanced
+shapes.
+
+For a small headless example of the new rotation surface, see
+`examples/apiaudit/graphics3d/physics3d_rotation_demo.zia`.
+For the collider split and advanced-shape surface, see
+`examples/apiaudit/graphics3d/collider3d_advanced_demo.zia`.
 
 ---
 

@@ -193,6 +193,62 @@ PRINT current
 )"));
 }
 
+TEST(BasicRuntimeCalls, Physics3DBodyRotationalSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM body AS OBJECT
+DIM q AS OBJECT
+DIM ang AS OBJECT
+DIM sleeping AS BOOLEAN
+body = Viper.Graphics3D.Physics3DBody.NewSphere(1.0, 1.0)
+q = Viper.Math.Quat.Identity()
+Viper.Graphics3D.Physics3DBody.SetOrientation(body, q)
+Viper.Graphics3D.Physics3DBody.SetAngularVelocity(body, 0.0, 1.0, 0.0)
+Viper.Graphics3D.Physics3DBody.ApplyTorque(body, 0.0, 2.0, 0.0)
+Viper.Graphics3D.Physics3DBody.ApplyAngularImpulse(body, 0.0, 1.0, 0.0)
+body.LinearDamping = 0.2
+body.AngularDamping = 0.3
+body.Kinematic = 1
+body.CanSleep = 1
+body.UseCCD = 1
+ang = body.AngularVelocity
+q = body.Orientation
+sleeping = body.Sleeping
+body.Sleep()
+body.Wake()
+PRINT sleeping
+)"));
+}
+
+TEST(BasicRuntimeCalls, Collider3DSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM body AS OBJECT
+DIM boxCol AS OBJECT
+DIM hullCol AS OBJECT
+DIM compound AS OBJECT
+DIM mesh AS OBJECT
+DIM xf AS OBJECT
+DIM minv AS OBJECT
+DIM maxv AS OBJECT
+DIM ty AS INTEGER
+mesh = Viper.Graphics3D.Mesh3D.NewBox(2.0, 1.0, 2.0)
+boxCol = Viper.Graphics3D.Collider3D.NewBox(1.0, 0.5, 1.0)
+hullCol = Viper.Graphics3D.Collider3D.NewConvexHull(mesh)
+compound = Viper.Graphics3D.Collider3D.NewCompound()
+xf = Viper.Graphics3D.Transform3D.New()
+Viper.Graphics3D.Transform3D.SetPosition(xf, 1.5, 0.0, 0.0)
+Viper.Graphics3D.Collider3D.AddChild(compound, boxCol, xf)
+Viper.Graphics3D.Collider3D.AddChild(compound, hullCol, xf)
+minv = Viper.Graphics3D.Collider3D.GetLocalBoundsMin(compound)
+maxv = Viper.Graphics3D.Collider3D.GetLocalBoundsMax(compound)
+ty = compound.Type
+body = Viper.Graphics3D.Physics3DBody.New(1.0)
+body.Collider = compound
+body.SetCollider(boxCol)
+boxCol = body.Collider
+PRINT ty
+)"));
+}
+
 TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM pat AS OBJECT

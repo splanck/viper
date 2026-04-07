@@ -226,6 +226,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_spline.c
         graphics/rt_physics2d.c
         graphics/rt_physics2d_joint.c
+        graphics/rt_collider3d.c
         graphics/rt_pixels.c
         graphics/rt_pixels_io.c
         graphics/rt_pixels_transform.c
