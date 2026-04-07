@@ -188,12 +188,9 @@ See `/demos/basic/vtris/` for extensive OOP examples.
 Key limitations to be aware of:
 
 - **Case-insensitive** identifiers (parameter names can collide with field names)
-- **No local array copying** from object fields (use class-level temp arrays as workaround)
 - **Object assignment creates references**, not copies (use `New` for independent objects)
 - **No SET/CALL keywords** (direct assignment only)
 - **Type suffixes required** for string functions (use `Str$`, `Chr$`, not `Str`, `Chr`)
-
-See `/docs/bugs/language_audit_2026_03_25.md` for documented issues and workarounds.
 
 ### 15. How do I use the AddFile keyword for modular programs?
 

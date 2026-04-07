@@ -705,16 +705,14 @@ class WALManager {
 
     // Helper to remove transaction from list (returns new list)
     expose func removeTxnFromList(list: List[Integer], txnId: Integer) -> List[Integer] {
-        // Workaround for BUG-002: List.remove() doesn't work
-        var newList: List[Integer] = [];
-        var i = 0;
-        while i < list.count() {
-            if list.get(i) != txnId {
-                newList.add(list.get(i));
+        var i = list.count() - 1;
+        while i >= 0 {
+            if list.get(i) == txnId {
+                list.removeAt(i);
             }
-            i = i + 1;
+            i = i - 1;
         }
-        return newList;
+        return list;
     }
 
     //=========================================================================

@@ -337,5 +337,19 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        const float *prev_instance_matrices,
                                        int8_t has_prev_instance_matrices);
 int64_t rt_canvas3d_get_frame_serial(void *obj);
+int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color);
+const float *canvas3d_active_scene_vp(const rt_canvas3d *c);
+int canvas3d_queue_screen_rect(
+    rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a);
+int canvas3d_queue_screen_line(rt_canvas3d *c,
+                               float x0,
+                               float y0,
+                               float x1,
+                               float y1,
+                               float thickness,
+                               float r,
+                               float g,
+                               float b,
+                               float a);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

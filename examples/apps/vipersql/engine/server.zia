@@ -264,35 +264,17 @@ class DatabaseServer {
             se.closeDatabase();
         }
 
-        // Workaround for BUG-002: List.remove() doesn't work
-        // Rebuild lists without the dropped database
-        var newDbNames: List[String] = [];
-        var newDbList: List[Database] = [];
-        var newIndexManagers: List[IndexManager] = [];
-        var newStorageEngines: List[StorageEngine?] = [];
-        var newDbFilePaths: List[String] = [];
+        dbNames.removeAt(dropIdx);
+        dbList.removeAt(dropIdx);
+        indexManagers.removeAt(dropIdx);
+        storageEngines.removeAt(dropIdx);
+        dbFilePaths.removeAt(dropIdx);
 
-        i = 0;
-        while i < dbNames.count() {
-            if i != dropIdx {
-                newDbNames.add(dbNames.get(i));
-                newDbList.add(dbList.get(i));
-                newIndexManagers.add(indexManagers.get(i));
-                newStorageEngines.add(storageEngines.get(i));
-                newDbFilePaths.add(dbFilePaths.get(i));
-            }
-            i = i + 1;
-        }
-
-        dbNames = newDbNames;
-        dbList = newDbList;
-        indexManagers = newIndexManagers;
-        storageEngines = newStorageEngines;
-        dbFilePaths = newDbFilePaths;
-
-        // Update currentDbIndex if needed (if current was after dropped)
         if currentDbIndex > dropIdx {
             currentDbIndex = currentDbIndex - 1;
+        } else if currentDbIndex == dropIdx {
+            currentDbIndex = 0;
+            currentDbName = dbNames.get(0);
         }
 
         return true;

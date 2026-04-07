@@ -122,13 +122,15 @@ func stress2() {
     var r1 = exec2.executeSql("SELECT * FROM items WHERE id = 5");
     check("update: row 5 exists", r1.rowCount() == 1);
 
-    // Verify row 5 val = 'modified' via WHERE clause (avoids BUG-FE-006 chain issue)
-    var r1val = exec2.executeSql("SELECT * FROM items WHERE id = 5 AND val = 'modified'");
-    check("update: row 5 val = modified", r1val.rowCount() == 1);
-
-    // Verify row 5 score = 999 via WHERE clause
-    var r1score = exec2.executeSql("SELECT * FROM items WHERE id = 5 AND score = 999");
-    check("update: row 5 score = 999", r1score.rowCount() == 1);
+    var row5 = r1.getRow(0);
+    if row5 != null {
+        var r = row5;
+        check("update: row 5 val = modified", r.getValue(1).textValue == "modified");
+        check("update: row 5 score = 999", r.getValue(2).intValue == 999);
+    } else {
+        check("update: row 5 val = modified", false);
+        check("update: row 5 score = 999", false);
+    }
 
     // Note: 6 rows have score=0: id=0 (initial 0*10=0) + ids 15-19 (SET score=0)
     var r2 = exec2.executeSql("SELECT * FROM items WHERE score = 0");
@@ -316,12 +318,15 @@ func stress6() {
         cycle = cycle + 1;
     }
 
-    // Final check - verify val = 10 via WHERE clause (avoids BUG-FE-006 chain issue)
     var exec2 = new Executor();
     exec2.init();
     exec2.executeSql("OPEN '/tmp/stress3_cycles.vdb'");
-    var r = exec2.executeSql("SELECT * FROM counter WHERE id = 1 AND val = 10");
-    check("cycles: val = 10 after 10 cycles", r.rowCount() == 1);
+    var r = exec2.executeSql("SELECT val FROM counter WHERE id = 1");
+    if r.rowCount() == 1 && r.getRow(0) != null {
+        check("cycles: val = 10 after 10 cycles", r.getRow(0)!.getValue(0).intValue == 10);
+    } else {
+        check("cycles: val = 10 after 10 cycles", false);
+    }
     exec2.executeSql("CLOSE");
     cleanup("/tmp/stress3_cycles.vdb");
 }
@@ -463,16 +468,21 @@ func stress9() {
     exec2.init();
     exec2.executeSql("OPEN '/tmp/stress3_text.vdb'");
 
-    // Verify text values via WHERE clause (avoids BUG-FE-006 chain issue)
-    var r1 = exec2.executeSql("SELECT * FROM texts WHERE id = 1 AND content = 'hello world'");
-    check("text: hello world", r1.rowCount() == 1);
+    var r1 = exec2.executeSql("SELECT content FROM texts WHERE id = 1");
+    check("text: hello world",
+          r1.rowCount() == 1 && r1.getRow(0) != null &&
+              r1.getRow(0)!.getValue(0).textValue == "hello world");
 
-    var r3 = exec2.executeSql("SELECT * FROM texts WHERE id = 3 AND content = ''");
-    check("text: empty string", r3.rowCount() == 1);
+    var r3 = exec2.executeSql("SELECT content FROM texts WHERE id = 3");
+    check("text: empty string",
+          r3.rowCount() == 1 && r3.getRow(0) != null &&
+              r3.getRow(0)!.getValue(0).textValue == "");
 
-    // For long string, just verify the row exists (cannot easily check length via WHERE)
-    var r4 = exec2.executeSql("SELECT * FROM texts WHERE id = 4 AND content = 'a longer string with many words in it to test buffer handling'");
-    check("text: long string", r4.rowCount() == 1);
+    var r4 = exec2.executeSql("SELECT content FROM texts WHERE id = 4");
+    check("text: long string",
+          r4.rowCount() == 1 && r4.getRow(0) != null &&
+              r4.getRow(0)!.getValue(0).textValue ==
+                  "a longer string with many words in it to test buffer handling");
 
     var r5 = exec2.executeSql("SELECT * FROM texts");
     check("text: 5 rows", r5.rowCount() == 5);
@@ -511,9 +521,9 @@ func stress10() {
     var r1 = exec2.executeSql("SELECT * FROM kv");
     check("createdb: 3 rows", r1.rowCount() == 3);
 
-    // Verify beta has v=99 via WHERE clause (avoids BUG-FE-006 chain issue)
-    var r2 = exec2.executeSql("SELECT * FROM kv WHERE k = 'beta' AND v = 99");
-    check("createdb: beta v=99", r2.rowCount() == 1);
+    var r2 = exec2.executeSql("SELECT v FROM kv WHERE k = 'beta'");
+    check("createdb: beta v=99",
+          r2.rowCount() == 1 && r2.getRow(0) != null && r2.getRow(0)!.getValue(0).intValue == 99);
 
     exec2.executeSql("CLOSE");
     cleanup("/tmp/stress3_createdb.vdb");

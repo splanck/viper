@@ -443,6 +443,11 @@ LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticTy
 
 Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
+    // Structs map to ptr at the IL level but still have value semantics.
+    // Optionals of structs therefore need a boxed heap copy, not a raw
+    // stack pointer that would dangle after the current expression returns.
+    if (innerType && innerType->kind == TypeKindSem::Struct)
+        return emitBoxValue(val, ilType, innerType);
     // Reference-like IL values already use null as the optional sentinel.
     // That includes both object pointers and raw string pointers.
     if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
@@ -453,6 +458,10 @@ Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType) {
 
 LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
+    // Struct optionals carry boxed heap payloads so force-unwrap / narrowing
+    // produces a fresh stack value with normal copy semantics.
+    if (innerType && innerType->kind == TypeKindSem::Struct)
+        return emitUnboxValue(val, ilType, innerType);
     // Reference-like optional payloads use null to represent None, so the
     // stored IL value is already the underlying value.
     if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)

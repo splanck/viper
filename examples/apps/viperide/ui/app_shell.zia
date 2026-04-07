@@ -1,7 +1,11 @@
 module app_shell;
 
 bind Viper.GUI as GUI;
-bind Viper.Collections.Seq as Seq;// ============================================================================
+bind Viper.Collections.Seq as Seq;
+bind Obj = Viper.Core.Object;
+bind Str = Viper.String;
+
+// ============================================================================
 // AppShell — top-level UI layout for ViperIDE
 // ============================================================================
 // Professional IDE layout: MenuBar → Toolbar → SplitPane(sidebar|editor) → StatusBar
@@ -338,7 +342,7 @@ class AppShell {
         var n = Seq.get_Length(lines);
         var i = 0;
         while i < n {
-            var line = Seq.Get(lines, i);
+            var line = Obj.ToString(Seq.Get(lines, i));
             if line != "" {
                 outputListBox.AddItem(line);
             }

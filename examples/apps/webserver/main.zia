@@ -434,9 +434,7 @@ func normalizePath(path: String) -> String {
 // STATIC FILE SERVING
 // ============================================================================
 
-// Workaround for BUG-004: VM string store/load corruption
-// These helper functions take the fullPath as a parameter to avoid storing
-// the runtime-created string to a local variable.
+// Centralize filesystem operations around fully resolved paths.
 
 func fileExists(fullPath: String) -> Boolean {
     return IO.File.Exists(fullPath);
@@ -477,7 +475,6 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
         }
     }
 
-    // Workaround for BUG-004: pass path through functions to avoid local storage
     if fileExists(buildFullPath(relativePath)) == false {
         return response404();
     }

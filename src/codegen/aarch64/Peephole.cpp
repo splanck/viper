@@ -49,6 +49,474 @@ namespace viper::codegen::aarch64 {
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
 
+namespace {
+
+struct JoinLoad {
+    std::size_t instrIndex;
+    int64_t offset;
+    MOperand dstReg;
+    RegClass cls;
+};
+
+struct JoinStore {
+    std::size_t instrIndex;
+    int64_t offset;
+    MOperand srcReg;
+    RegClass cls;
+};
+
+struct JoinCopy {
+    MOperand srcReg;
+    MOperand dstReg;
+    RegClass cls;
+};
+
+static std::uint32_t regKey(const MOperand &op) {
+    return (static_cast<std::uint32_t>(op.reg.cls) << 16) |
+           static_cast<std::uint32_t>(op.reg.idOrPhys);
+}
+
+static bool blockFallsThroughTo(const MFunction &fn, std::size_t blockIndex, const std::string &succName) {
+    if (blockIndex + 1 >= fn.blocks.size())
+        return false;
+    if (fn.blocks[blockIndex + 1].name != succName)
+        return false;
+    const auto &instrs = fn.blocks[blockIndex].instrs;
+    if (instrs.empty())
+        return true;
+    const auto &last = instrs.back();
+    return last.opc != MOpcode::Br && last.opc != MOpcode::BCond && last.opc != MOpcode::Cbz &&
+           last.opc != MOpcode::Cbnz && last.opc != MOpcode::Ret;
+}
+
+static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecessorMap(const MFunction &fn) {
+    std::unordered_map<std::string, std::vector<std::size_t>> preds;
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+        const auto &block = fn.blocks[bi];
+        if (block.instrs.empty()) {
+            if (bi + 1 < fn.blocks.size())
+                preds[fn.blocks[bi + 1].name].push_back(bi);
+            continue;
+        }
+
+        const auto &last = block.instrs.back();
+        if (last.opc == MOpcode::Br && !last.ops.empty() &&
+            last.ops[0].kind == MOperand::Kind::Label) {
+            preds[last.ops[0].label].push_back(bi);
+            continue;
+        }
+
+        if ((last.opc == MOpcode::BCond || last.opc == MOpcode::Cbz || last.opc == MOpcode::Cbnz) &&
+            last.ops.size() >= 2 && last.ops[1].kind == MOperand::Kind::Label) {
+            preds[last.ops[1].label].push_back(bi);
+            if (bi + 1 < fn.blocks.size())
+                preds[fn.blocks[bi + 1].name].push_back(bi);
+            continue;
+        }
+
+        if (last.opc != MOpcode::Ret && bi + 1 < fn.blocks.size())
+            preds[fn.blocks[bi + 1].name].push_back(bi);
+    }
+    return preds;
+}
+
+static bool isDirectPredEdgeTo(const MFunction &fn, std::size_t predIndex, const std::string &succName) {
+    const auto &instrs = fn.blocks[predIndex].instrs;
+    if (instrs.empty())
+        return blockFallsThroughTo(fn, predIndex, succName);
+    const auto &last = instrs.back();
+    if (last.opc == MOpcode::Br && !last.ops.empty() && last.ops[0].kind == MOperand::Kind::Label)
+        return last.ops[0].label == succName;
+    return blockFallsThroughTo(fn, predIndex, succName);
+}
+
+static bool canInsertJoinCopiesOnPredEdge(const MFunction &fn,
+                                          std::size_t predIndex,
+                                          const std::string &succName) {
+    const auto &instrs = fn.blocks[predIndex].instrs;
+    if (instrs.empty())
+        return blockFallsThroughTo(fn, predIndex, succName);
+    const auto &last = instrs.back();
+    if (last.opc == MOpcode::Br && !last.ops.empty() && last.ops[0].kind == MOperand::Kind::Label)
+        return last.ops[0].label == succName;
+    if (last.opc == MOpcode::BCond || last.opc == MOpcode::Cbz || last.opc == MOpcode::Cbnz ||
+        last.opc == MOpcode::Ret)
+        return false;
+    return blockFallsThroughTo(fn, predIndex, succName);
+}
+
+static bool collectJoinPrefixLoads(const MBasicBlock &block, std::vector<JoinLoad> &loads) {
+    loads.clear();
+    for (std::size_t i = 0; i < block.instrs.size(); ++i) {
+        const auto &instr = block.instrs[i];
+        switch (instr.opc) {
+            case MOpcode::LdrRegFpImm:
+            case MOpcode::LdrFprFpImm:
+                if (instr.ops.size() < 2 || !ph::isPhysReg(instr.ops[0]) ||
+                    instr.ops[1].kind != MOperand::Kind::Imm)
+                    return !loads.empty();
+                loads.push_back({i,
+                                 instr.ops[1].imm,
+                                 instr.ops[0],
+                                 instr.opc == MOpcode::LdrFprFpImm ? RegClass::FPR
+                                                                   : RegClass::GPR});
+                continue;
+            case MOpcode::LdpRegFpImm:
+            case MOpcode::LdpFprFpImm:
+                if (instr.ops.size() < 3 || !ph::isPhysReg(instr.ops[0]) ||
+                    !ph::isPhysReg(instr.ops[1]) || instr.ops[2].kind != MOperand::Kind::Imm)
+                    return !loads.empty();
+                loads.push_back({i,
+                                 instr.ops[2].imm,
+                                 instr.ops[0],
+                                 instr.opc == MOpcode::LdpFprFpImm ? RegClass::FPR
+                                                                   : RegClass::GPR});
+                loads.push_back({i,
+                                 instr.ops[2].imm + 8,
+                                 instr.ops[1],
+                                 instr.opc == MOpcode::LdpFprFpImm ? RegClass::FPR
+                                                                   : RegClass::GPR});
+                continue;
+            default:
+                return !loads.empty();
+        }
+    }
+    return !loads.empty();
+}
+
+static bool collectJoinSuffixStores(const MFunction &fn,
+                                    std::size_t predIndex,
+                                    const std::string &succName,
+                                    std::unordered_map<int64_t, JoinStore> &stores,
+                                    std::unordered_set<std::size_t> &storeInstrs) {
+    stores.clear();
+    storeInstrs.clear();
+    if (!isDirectPredEdgeTo(fn, predIndex, succName))
+        return false;
+
+    const auto &instrs = fn.blocks[predIndex].instrs;
+    std::size_t scanEnd = instrs.size();
+    if (!instrs.empty()) {
+        const auto &last = instrs.back();
+        if (last.opc == MOpcode::Br && !last.ops.empty() && last.ops[0].kind == MOperand::Kind::Label &&
+            last.ops[0].label == succName)
+            scanEnd = instrs.size() - 1;
+    }
+
+    std::unordered_set<std::uint32_t> clobbered;
+    for (std::size_t i = scanEnd; i-- > 0;) {
+        const auto &instr = instrs[i];
+        if ((instr.opc == MOpcode::LdrRegFpImm || instr.opc == MOpcode::LdrFprFpImm ||
+             instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm ||
+             instr.opc == MOpcode::MovRR || instr.opc == MOpcode::FMovRR) &&
+            i + 1 <= scanEnd) {
+            if (instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) {
+                if (instr.ops.size() >= 1 && ph::isPhysReg(instr.ops[0]))
+                    clobbered.insert(regKey(instr.ops[0]));
+                if (instr.ops.size() >= 2 && ph::isPhysReg(instr.ops[1]))
+                    clobbered.insert(regKey(instr.ops[1]));
+            } else if (auto def = ph::getDefinedReg(instr); def && ph::isPhysReg(*def)) {
+                clobbered.insert(regKey(*def));
+            }
+            continue;
+        }
+
+        if ((instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm) &&
+            instr.ops.size() >= 2 && ph::isPhysReg(instr.ops[0]) &&
+            instr.ops[1].kind == MOperand::Kind::Imm) {
+            const auto key = regKey(instr.ops[0]);
+            const int64_t off = instr.ops[1].imm;
+            if (!clobbered.count(key) && stores.find(off) == stores.end()) {
+                stores.emplace(off,
+                               JoinStore{i,
+                                         off,
+                                         instr.ops[0],
+                                         instr.opc == MOpcode::StrFprFpImm ? RegClass::FPR
+                                                                            : RegClass::GPR});
+                storeInstrs.insert(i);
+            }
+            continue;
+        }
+
+        break;
+    }
+
+    return !stores.empty();
+}
+
+static bool orderJoinCopies(const std::vector<JoinCopy> &copies, std::vector<JoinCopy> &ordered) {
+    ordered.clear();
+    ordered.reserve(copies.size());
+
+    std::vector<JoinCopy> pending;
+    pending.reserve(copies.size());
+    for (const auto &copy : copies) {
+        if (copy.srcReg.reg.idOrPhys == copy.dstReg.reg.idOrPhys)
+            continue;
+        pending.push_back(copy);
+    }
+
+    while (!pending.empty()) {
+        auto readyIt = pending.end();
+        for (auto it = pending.begin(); it != pending.end(); ++it) {
+            const auto dstPhys = it->dstReg.reg.idOrPhys;
+            bool dstUsedAsSource = false;
+            for (auto jt = pending.begin(); jt != pending.end(); ++jt) {
+                if (it == jt)
+                    continue;
+                if (jt->cls == it->cls && jt->srcReg.reg.idOrPhys == dstPhys) {
+                    dstUsedAsSource = true;
+                    break;
+                }
+            }
+            if (!dstUsedAsSource) {
+                readyIt = it;
+                break;
+            }
+        }
+        if (readyIt == pending.end())
+            return false;
+        ordered.push_back(*readyIt);
+        pending.erase(readyIt);
+    }
+
+    return true;
+}
+
+static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uint32_t> &clobbered) {
+    if (instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) {
+        if (instr.ops.size() >= 1 && ph::isPhysReg(instr.ops[0]))
+            clobbered.insert(regKey(instr.ops[0]));
+        if (instr.ops.size() >= 2 && ph::isPhysReg(instr.ops[1]))
+            clobbered.insert(regKey(instr.ops[1]));
+        return;
+    }
+
+    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
+        for (uint16_t reg = static_cast<uint16_t>(PhysReg::X0);
+             reg <= static_cast<uint16_t>(PhysReg::X18);
+             ++reg)
+            clobbered.insert((static_cast<std::uint32_t>(RegClass::GPR) << 16) | reg);
+        for (uint16_t reg = static_cast<uint16_t>(PhysReg::V0);
+             reg <= static_cast<uint16_t>(PhysReg::V31);
+             ++reg)
+            clobbered.insert((static_cast<std::uint32_t>(RegClass::FPR) << 16) | reg);
+        return;
+    }
+
+    if (auto def = ph::getDefinedReg(instr); def && ph::isPhysReg(*def))
+        clobbered.insert(regKey(*def));
+}
+
+static bool collectPredLiveStores(const MBasicBlock &pred,
+                                  std::unordered_map<int64_t, JoinStore> &stores) {
+    stores.clear();
+    std::unordered_set<std::uint32_t> clobbered;
+    for (std::size_t i = pred.instrs.size(); i-- > 0;) {
+        const auto &instr = pred.instrs[i];
+        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz ||
+            instr.opc == MOpcode::Cbnz || instr.opc == MOpcode::Ret)
+            continue;
+
+        if ((instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm) &&
+            instr.ops.size() >= 2 && ph::isPhysReg(instr.ops[0]) &&
+            instr.ops[1].kind == MOperand::Kind::Imm) {
+            const auto key = regKey(instr.ops[0]);
+            const int64_t off = instr.ops[1].imm;
+            if (!clobbered.count(key) && stores.find(off) == stores.end()) {
+                stores.emplace(off,
+                               JoinStore{i,
+                                         off,
+                                         instr.ops[0],
+                                         instr.opc == MOpcode::StrFprFpImm ? RegClass::FPR
+                                                                            : RegClass::GPR});
+            }
+        }
+
+        markInstructionDefs(instr, clobbered);
+    }
+    return !stores.empty();
+}
+
+static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
+    bool changed = false;
+    const auto preds = buildPredecessorMap(fn);
+
+    for (auto &block : fn.blocks) {
+        std::vector<JoinLoad> loads;
+        if (!collectJoinPrefixLoads(block, loads))
+            continue;
+
+        auto predIt = preds.find(block.name);
+        if (predIt == preds.end() || predIt->second.size() != 1)
+            continue;
+
+        const std::size_t predIndex = predIt->second.front();
+        if (!isDirectPredEdgeTo(fn, predIndex, block.name))
+            continue;
+
+        std::unordered_map<int64_t, JoinStore> stores;
+        if (!collectPredLiveStores(fn.blocks[predIndex], stores))
+            continue;
+
+        std::vector<JoinCopy> copies;
+        copies.reserve(loads.size());
+        for (const auto &load : loads) {
+            auto storeIt = stores.find(load.offset);
+            if (storeIt == stores.end() || storeIt->second.cls != load.cls) {
+                copies.clear();
+                break;
+            }
+            copies.push_back({storeIt->second.srcReg, load.dstReg, load.cls});
+        }
+        if (copies.empty())
+            continue;
+
+        std::vector<JoinCopy> ordered;
+        if (!orderJoinCopies(copies, ordered))
+            continue;
+
+        std::vector<bool> removeLoadInstr(block.instrs.size(), false);
+        for (const auto &load : loads)
+            removeLoadInstr[load.instrIndex] = true;
+
+        std::vector<MInstr> rewritten;
+        rewritten.reserve(block.instrs.size() - std::count(removeLoadInstr.begin(),
+                                                           removeLoadInstr.end(),
+                                                           true) +
+                          ordered.size());
+        bool insertedMoves = false;
+        for (std::size_t ii = 0; ii < block.instrs.size(); ++ii) {
+            if (removeLoadInstr[ii]) {
+                if (!insertedMoves) {
+                    for (const auto &copy : ordered) {
+                        rewritten.push_back(MInstr{copy.cls == RegClass::FPR ? MOpcode::FMovRR
+                                                                             : MOpcode::MovRR,
+                                                   {copy.dstReg, copy.srcReg}});
+                    }
+                    insertedMoves = true;
+                }
+                continue;
+            }
+            rewritten.push_back(block.instrs[ii]);
+        }
+        block.instrs.swap(rewritten);
+        stats.deadInstructionsRemoved +=
+            static_cast<int>(std::count(removeLoadInstr.begin(), removeLoadInstr.end(), true));
+        changed = true;
+    }
+
+    return changed;
+}
+
+static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
+    bool changed = false;
+    const auto preds = buildPredecessorMap(fn);
+
+    for (auto &block : fn.blocks) {
+        std::vector<JoinLoad> loads;
+        if (!collectJoinPrefixLoads(block, loads))
+            continue;
+
+        auto predIt = preds.find(block.name);
+        if (predIt == preds.end() || predIt->second.size() < 2)
+            continue;
+
+        std::vector<std::vector<JoinCopy>> predCopies;
+        predCopies.reserve(predIt->second.size());
+        bool allPredsConvertible = true;
+        for (std::size_t predIndex : predIt->second) {
+            if (!canInsertJoinCopiesOnPredEdge(fn, predIndex, block.name)) {
+                allPredsConvertible = false;
+                break;
+            }
+
+            std::unordered_map<int64_t, JoinStore> stores;
+            std::unordered_set<std::size_t> ignoredStoreInstrs;
+            if (!collectJoinSuffixStores(fn, predIndex, block.name, stores, ignoredStoreInstrs)) {
+                allPredsConvertible = false;
+                break;
+            }
+
+            std::vector<JoinCopy> copies;
+            copies.reserve(loads.size());
+            for (const auto &load : loads) {
+                auto storeIt = stores.find(load.offset);
+                if (storeIt == stores.end() || storeIt->second.cls != load.cls) {
+                    allPredsConvertible = false;
+                    break;
+                }
+                copies.push_back({storeIt->second.srcReg, load.dstReg, load.cls});
+            }
+            if (!allPredsConvertible)
+                break;
+
+            std::vector<JoinCopy> ordered;
+            if (!orderJoinCopies(copies, ordered)) {
+                allPredsConvertible = false;
+                break;
+            }
+            predCopies.push_back(std::move(ordered));
+        }
+
+        if (!allPredsConvertible || predCopies.empty())
+            continue;
+
+        for (std::size_t pi = 0; pi < predIt->second.size(); ++pi) {
+            auto &predBlock = fn.blocks[predIt->second[pi]];
+            const bool branchesDirectly = !predBlock.instrs.empty() &&
+                                          predBlock.instrs.back().opc == MOpcode::Br &&
+                                          predBlock.instrs.back().ops.size() == 1 &&
+                                          predBlock.instrs.back().ops[0].kind ==
+                                              MOperand::Kind::Label &&
+                                          predBlock.instrs.back().ops[0].label == block.name;
+            const std::size_t insertAt =
+                branchesDirectly ? predBlock.instrs.size() - 1 : predBlock.instrs.size();
+
+            std::vector<MInstr> rewritten;
+            rewritten.reserve(predBlock.instrs.size() + predCopies[pi].size());
+            for (std::size_t ii = 0; ii < predBlock.instrs.size(); ++ii) {
+                if (ii == insertAt) {
+                    for (const auto &copy : predCopies[pi]) {
+                        rewritten.push_back(MInstr{copy.cls == RegClass::FPR ? MOpcode::FMovRR
+                                                                             : MOpcode::MovRR,
+                                                   {copy.dstReg, copy.srcReg}});
+                    }
+                }
+                rewritten.push_back(predBlock.instrs[ii]);
+            }
+            if (insertAt == predBlock.instrs.size()) {
+                for (const auto &copy : predCopies[pi]) {
+                    rewritten.push_back(MInstr{copy.cls == RegClass::FPR ? MOpcode::FMovRR
+                                                                         : MOpcode::MovRR,
+                                               {copy.dstReg, copy.srcReg}});
+                }
+            }
+            predBlock.instrs.swap(rewritten);
+        }
+
+        std::vector<bool> removeLoadInstr(block.instrs.size(), false);
+        for (const auto &load : loads)
+            removeLoadInstr[load.instrIndex] = true;
+
+        std::vector<MInstr> rewritten;
+        rewritten.reserve(block.instrs.size());
+        for (std::size_t ii = 0; ii < block.instrs.size(); ++ii) {
+            if (removeLoadInstr[ii])
+                continue;
+            rewritten.push_back(block.instrs[ii]);
+        }
+        block.instrs.swap(rewritten);
+        stats.deadInstructionsRemoved +=
+            static_cast<int>(std::count(removeLoadInstr.begin(), removeLoadInstr.end(), true));
+        changed = true;
+    }
+
+    return changed;
+}
+
+} // namespace
+
 PeepholeStats runPeephole(MFunction &fn) {
     PeepholeStats stats;
 
@@ -319,27 +787,108 @@ PeepholeStats runPeephole(MFunction &fn) {
             if (endStores.empty())
                 continue;
 
-            // Forward to loads at the start of the successor block.
+            struct PrefixLoad {
+                std::size_t idx;
+                MInstr instr;
+            };
+            struct ForwardPair {
+                std::size_t idx;
+                MOperand dstReg;
+                MOperand srcReg;
+            };
+
+            std::vector<PrefixLoad> prefixLoads;
             for (std::size_t j = 0; j < succInstrs.size(); ++j) {
                 const auto &instr = succInstrs[j];
-
                 if (instr.opc != MOpcode::LdrRegFpImm)
                     break;
                 if (instr.ops.size() < 2 || !ph::isPhysReg(instr.ops[0]) ||
                     instr.ops[1].kind != MOperand::Kind::Imm)
                     break;
+                prefixLoads.push_back({j, instr});
+            }
+            if (prefixLoads.empty())
+                continue;
 
-                const int64_t off = instr.ops[1].imm;
+            std::vector<ForwardPair> pending;
+            std::unordered_set<std::size_t> forwardedIdx;
+            pending.reserve(prefixLoads.size());
+            for (const auto &load : prefixLoads) {
+                const int64_t off = load.instr.ops[1].imm;
                 auto it = endStores.find(off);
                 if (it == endStores.end())
                     continue;
+                pending.push_back({load.idx, load.instr.ops[0], it->second.srcReg});
+            }
+            if (pending.empty())
+                continue;
 
-                // Replace load with mov
-                succInstrs[j] = MInstr{MOpcode::MovRR, {instr.ops[0], it->second.srcReg}};
+            std::vector<ForwardPair> ordered;
+            ordered.reserve(pending.size());
+            while (!pending.empty()) {
+                auto readyIt = pending.end();
+                for (auto it = pending.begin(); it != pending.end(); ++it) {
+                    const auto dstPhys = it->dstReg.reg.idOrPhys;
+                    bool dstUsedAsSource = false;
+                    for (auto jt = pending.begin(); jt != pending.end(); ++jt) {
+                        if (it == jt)
+                            continue;
+                        if (jt->srcReg.reg.idOrPhys == dstPhys) {
+                            dstUsedAsSource = true;
+                            break;
+                        }
+                    }
+                    if (!dstUsedAsSource) {
+                        readyIt = it;
+                        break;
+                    }
+                }
+                if (readyIt == pending.end())
+                    break; // Remaining copies form a cycle; keep their loads.
+                forwardedIdx.insert(readyIt->idx);
+                ordered.push_back(*readyIt);
+                pending.erase(readyIt);
+            }
+
+            if (ordered.empty())
+                continue;
+
+            std::vector<MInstr> newPrefix;
+            newPrefix.reserve(prefixLoads.size());
+            for (const auto &pair : ordered) {
+                if (pair.dstReg.reg.idOrPhys == pair.srcReg.reg.idOrPhys)
+                    continue;
+                newPrefix.push_back(MInstr{MOpcode::MovRR, {pair.dstReg, pair.srcReg}});
                 ++stats.deadInstructionsRemoved;
             }
+            for (const auto &load : prefixLoads) {
+                if (forwardedIdx.count(load.idx))
+                    continue;
+                newPrefix.push_back(load.instr);
+            }
+
+            succInstrs.erase(succInstrs.begin(),
+                             succInstrs.begin() +
+                                 static_cast<std::ptrdiff_t>(prefixLoads.back().idx + 1));
+            succInstrs.insert(succInstrs.begin(), newPrefix.begin(), newPrefix.end());
         }
     }
+
+    // Pass 4.86: Forward single-predecessor phi-entry loads from predecessor
+    // live registers when the source store's physical register survives to the
+    // outgoing edge. This collapses dedicated edge blocks that only reload
+    // spill slots before branching onward.
+    // Disabled until the single-predecessor join-forwarding pass handles
+    // loop-carried state without miscompiling nested control flow.
+    // if (forwardSinglePredPhiLoads(fn, stats))
+    //     ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+
+    // Pass 4.88: Coalesce multi-predecessor join-entry phi loads into
+    // predecessor register moves when every incoming edge already materializes
+    // the values in physical registers before branching to the join. This cuts
+    // stack round-trips that remain after the single-predecessor forwarding pass.
+    if (coalesceJoinPhiLoads(fn, stats))
+        ph::eliminateDeadFpStoresCrossBlock(fn, stats);
 
     // (Pass 4.85 moved to Pass 0.7 — runs before per-block loop above)
 

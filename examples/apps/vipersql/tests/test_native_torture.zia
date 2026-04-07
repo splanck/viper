@@ -385,14 +385,15 @@ func torture9_schema_churn() {
     var exec = new Executor();
     exec.init();
 
-    // Note: Uses inline concatenation instead of var tbl = "churn_" + Fmt.Int(i)
-    // to work around native codegen string lifetime bug (BUG-NAT-005)
     var i = 0;
     while i < 30 {
-        exec.executeSql("CREATE TABLE churn_" + Fmt.Int(i) + " (id INTEGER, val TEXT)");
-        exec.executeSql("INSERT INTO churn_" + Fmt.Int(i) + " VALUES (1, 'test_" + Fmt.Int(i) + "')");
-        exec.executeSql("ALTER TABLE churn_" + Fmt.Int(i) + " ADD COLUMN extra INTEGER DEFAULT 0");
-        exec.executeSql("INSERT INTO churn_" + Fmt.Int(i) + " VALUES (2, 'more_" + Fmt.Int(i) + "', 42)");
+        var tbl = "churn_" + Fmt.Int(i);
+        var firstVal = "test_" + Fmt.Int(i);
+        var secondVal = "more_" + Fmt.Int(i);
+        exec.executeSql("CREATE TABLE " + tbl + " (id INTEGER, val TEXT)");
+        exec.executeSql("INSERT INTO " + tbl + " VALUES (1, '" + firstVal + "')");
+        exec.executeSql("ALTER TABLE " + tbl + " ADD COLUMN extra INTEGER DEFAULT 0");
+        exec.executeSql("INSERT INTO " + tbl + " VALUES (2, '" + secondVal + "', 42)");
 
         if i > 0 {
             exec.executeSql("DROP TABLE churn_" + Fmt.Int(i - 1));

@@ -128,6 +128,62 @@ func start() {}
     EXPECT_GE(countCallsTo(*mainFn, "rt_modvar_addr_i64"), static_cast<size_t>(3));
 }
 
+/// @brief Mutable globals must also initialize when the entrypoint is `main()`.
+TEST(ZiaBugFixes, Bug38_ModuleLevelInitializerExpressionsAreEmittedForMainEntry) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+var seed: Integer = 7;
+var counter: Integer = seed + 5;
+
+func main() {}
+)";
+    CompilerInput input{.source = source, .path = "bug38_expr_init_main.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "rt_modvar_addr_i64"), static_cast<size_t>(3));
+}
+
+/// @brief Optional struct returns must box the payload instead of returning a dangling stack ptr.
+TEST(ZiaBugFixes, OptionalStructReturnBoxesPayload) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Pair {
+    expose Integer a;
+    expose Integer b;
+
+    expose func init(x: Integer, y: Integer) {
+        a = x;
+        b = y;
+    }
+}
+
+func maybePair() -> Pair? {
+    var p = new Pair(3, 4);
+    return p;
+}
+
+func main() {}
+)";
+    CompilerInput input{.source = source, .path = "optional_struct_return.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *maybeFn = findFunction(result.module, "maybePair");
+    ASSERT_TRUE(maybeFn != nullptr);
+    EXPECT_GE(countCallsTo(*maybeFn, kBoxValueType), static_cast<size_t>(1));
+}
+
 //===----------------------------------------------------------------------===//
 // Bug #39: Module-Level Entity Variables
 //===----------------------------------------------------------------------===//

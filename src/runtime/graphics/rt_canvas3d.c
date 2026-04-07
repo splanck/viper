@@ -423,7 +423,7 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->fog_enabled = 0;
 }
 
-static int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color) {
+int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color) {
     vgfx3d_camera_params_t params;
 
     if (!c || !c->backend || !c->gfx_win || c->in_frame)
@@ -444,7 +444,7 @@ static int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing
     return 1;
 }
 
-static const float *canvas3d_active_scene_vp(const rt_canvas3d *c) {
+const float *canvas3d_active_scene_vp(const rt_canvas3d *c) {
     if (!c)
         return NULL;
     if (c->in_frame && !c->frame_is_2d)
@@ -1095,7 +1095,7 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
                                  NULL);
 }
 
-static int canvas3d_queue_screen_rect(
+int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a) {
     vgfx3d_vertex_t verts[4];
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
@@ -1119,7 +1119,7 @@ static int canvas3d_queue_screen_rect(
     return canvas3d_queue_screen_geometry(c, verts, 4, indices, 6, r, g, b, a);
 }
 
-static int canvas3d_queue_screen_line(rt_canvas3d *c,
+int canvas3d_queue_screen_line(rt_canvas3d *c,
                                       float x0,
                                       float y0,
                                       float x1,
@@ -2166,334 +2166,6 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
 /*==========================================================================
  * Debug drawing — transform 3D points to screen via backend VP
  *=========================================================================*/
-
-/* Helper: project 3D point to screen using the active or most recent scene VP. */
-static int world_to_screen(
-    const rt_canvas3d *c, const float *wp, float *sx, float *sy, int32_t fb_w, int32_t fb_h) {
-    const float *vp = canvas3d_active_scene_vp(c);
-    float pos4[4] = {wp[0], wp[1], wp[2], 1.0f};
-    float clip[4];
-    if (!vp)
-        return 0;
-    clip[0] = vp[0] * pos4[0] + vp[1] * pos4[1] + vp[2] * pos4[2] + vp[3] * pos4[3];
-    clip[1] = vp[4] * pos4[0] + vp[5] * pos4[1] + vp[6] * pos4[2] + vp[7] * pos4[3];
-    clip[2] = vp[8] * pos4[0] + vp[9] * pos4[1] + vp[10] * pos4[2] + vp[11] * pos4[3];
-    clip[3] = vp[12] * pos4[0] + vp[13] * pos4[1] + vp[14] * pos4[2] + vp[15] * pos4[3];
-    if (clip[3] <= 0.0f)
-        return 0;
-    float iw = 1.0f / clip[3];
-    *sx = (clip[0] * iw + 1.0f) * 0.5f * (float)fb_w;
-    *sy = (1.0f - clip[1] * iw) * 0.5f * (float)fb_h;
-    return 1;
-}
-
-/// @brief Draw a debug line between two 3D points (rendered as a thin quad).
-void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
-    int8_t started_temp_frame = 0;
-
-    if (!obj || !from || !to)
-        return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-        return;
-
-    float p0[3] = {(float)rt_vec3_x(from), (float)rt_vec3_y(from), (float)rt_vec3_z(from)};
-    float p1[3] = {(float)rt_vec3_x(to), (float)rt_vec3_y(to), (float)rt_vec3_z(to)};
-    float sx0, sy0, sx1, sy1;
-    if (!world_to_screen(c, p0, &sx0, &sy0, fb.width, fb.height))
-        return;
-    if (!world_to_screen(c, p1, &sx1, &sy1, fb.width, fb.height))
-        return;
-    if (!c->in_frame) {
-        if (!canvas3d_begin_overlay_frame(c, 1))
-            return;
-        started_temp_frame = 1;
-    }
-    (void)canvas3d_queue_screen_line(c,
-                                     sx0,
-                                     sy0,
-                                     sx1,
-                                     sy1,
-                                     1.0f,
-                                     (float)((color >> 16) & 0xFF) / 255.0f,
-                                     (float)((color >> 8) & 0xFF) / 255.0f,
-                                     (float)(color & 0xFF) / 255.0f,
-                                     1.0f);
-    if (started_temp_frame)
-        rt_canvas3d_end(c);
-}
-
-/// @brief Draw a debug point at a 3D position (rendered as a small quad billboard).
-void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size) {
-    int8_t started_temp_frame = 0;
-
-    if (!obj || !pos)
-        return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-        return;
-
-    float p[3] = {(float)rt_vec3_x(pos), (float)rt_vec3_y(pos), (float)rt_vec3_z(pos)};
-    float sx, sy;
-    if (!world_to_screen(c, p, &sx, &sy, fb.width, fb.height))
-        return;
-    if (!c->in_frame) {
-        if (!canvas3d_begin_overlay_frame(c, 1))
-            return;
-        started_temp_frame = 1;
-    }
-    {
-        float side = size > 0 ? (float)size : 1.0f;
-        float half = side * 0.5f;
-        (void)canvas3d_queue_screen_rect(c,
-                                         sx - half,
-                                         sy - half,
-                                         side,
-                                         side,
-                                         (float)((color >> 16) & 0xFF) / 255.0f,
-                                         (float)((color >> 8) & 0xFF) / 255.0f,
-                                         (float)(color & 0xFF) / 255.0f,
-                                         1.0f);
-    }
-    if (started_temp_frame)
-        rt_canvas3d_end(c);
-}
-
-/*==========================================================================
- * Screen-space HUD overlay (drawn directly to framebuffer, no 3D transform)
- *=========================================================================*/
-
-/// @brief Draw a filled 2D rectangle on the screen (HUD overlay, screen-space).
-void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
-    int8_t started_temp_frame = 0;
-
-    if (!obj)
-        return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (w <= 0 || h <= 0)
-        return;
-    if (!c->in_frame) {
-        if (!canvas3d_begin_overlay_frame(c, 1))
-            return;
-        started_temp_frame = 1;
-    }
-    rt_canvas3d_draw_rect_3d(c, x, y, w, h, color);
-    if (started_temp_frame)
-        rt_canvas3d_end(c);
-}
-
-/// @brief Draw a centered crosshair on the screen (two crossing lines).
-void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
-    int8_t started_temp_frame = 0;
-
-    if (!obj)
-        return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-        return;
-
-    int32_t cx = fb.width / 2, cy = fb.height / 2;
-    int32_t half = (int32_t)(size / 2);
-    float r = (float)((color >> 16) & 0xFF) / 255.0f;
-    float g = (float)((color >> 8) & 0xFF) / 255.0f;
-    float b = (float)(color & 0xFF) / 255.0f;
-
-    if (!c->in_frame) {
-        if (!canvas3d_begin_overlay_frame(c, 1))
-            return;
-        started_temp_frame = 1;
-    }
-    (void)canvas3d_queue_screen_line(
-        c, (float)(cx - half), (float)cy, (float)(cx + half), (float)cy, 1.0f, r, g, b, 1.0f);
-    (void)canvas3d_queue_screen_line(
-        c, (float)cx, (float)(cy - half), (float)cx, (float)(cy + half), 1.0f, r, g, b, 1.0f);
-    if (started_temp_frame)
-        rt_canvas3d_end(c);
-}
-
-/// @brief Draw 2D text on the screen using the built-in 5x7 bitmap font.
-void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
-    int8_t started_temp_frame = 0;
-
-    if (!obj || !text)
-        return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->in_frame) {
-        if (!canvas3d_begin_overlay_frame(c, 1))
-            return;
-        started_temp_frame = 1;
-    }
-    rt_canvas3d_draw_text_3d(c, x, y, text, color);
-    if (started_temp_frame)
-        rt_canvas3d_end(c);
-}
-
-/// @brief Get the name of the active rendering backend ("metal", "opengl", "d3d11", or "software").
-rt_string rt_canvas3d_get_backend(void *obj) {
-    if (!obj)
-        return rt_const_cstr("unknown");
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    return rt_const_cstr(c->backend ? c->backend->name : "unknown");
-}
-
-void *rt_canvas3d_screenshot(void *obj) {
-    typedef struct {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view;
-
-    if (!obj)
-        return NULL;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return NULL;
-
-    int32_t shot_w = c->render_target ? c->render_target->width : c->width;
-    int32_t shot_h = c->render_target ? c->render_target->height : c->height;
-    if (shot_w <= 0 || shot_h <= 0)
-        return NULL;
-
-    void *pixels = rt_pixels_new((int64_t)shot_w, (int64_t)shot_h);
-    if (!pixels)
-        return NULL;
-    px_view *pv = (px_view *)pixels;
-
-    if (c->render_target && c->render_target->color_buf) {
-        for (int32_t y = 0; y < shot_h; y++)
-            for (int32_t x = 0; x < shot_w; x++) {
-                const uint8_t *src =
-                    &c->render_target->color_buf[y * c->render_target->stride + x * 4];
-                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-            }
-        return pixels;
-    }
-
-    if (c->backend && c->backend != &vgfx3d_software_backend && c->backend->readback_rgba) {
-        size_t row_bytes = (size_t)shot_w * 4u;
-        uint8_t *rgba = (uint8_t *)malloc((size_t)shot_h * row_bytes);
-        if (rgba &&
-            c->backend->readback_rgba(c->backend_ctx, rgba, shot_w, shot_h, (int32_t)row_bytes)) {
-            for (int32_t y = 0; y < shot_h; y++)
-                for (int32_t x = 0; x < shot_w; x++) {
-                    const uint8_t *src = &rgba[(size_t)y * row_bytes + (size_t)x * 4u];
-                    pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                              ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-                }
-            free(rgba);
-            return pixels;
-        }
-        free(rgba);
-    }
-
-    {
-        vgfx_framebuffer_t fb;
-        if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-            return pixels;
-        for (int32_t y = 0; y < fb.height && y < shot_h; y++)
-            for (int32_t x = 0; x < fb.width && x < shot_w; x++) {
-                const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
-                pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
-            }
-    }
-    return pixels;
-}
-
-/*==========================================================================
- * Debug Gizmos — wireframe AABB, sphere, ray, axis
- *=========================================================================*/
-
-/// @brief Draw a wireframe axis-aligned bounding box (12 edges) for debugging.
-void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
-    if (!obj || !min_v || !max_v)
-        return;
-    double mn[3] = {rt_vec3_x(min_v), rt_vec3_y(min_v), rt_vec3_z(min_v)};
-    double mx[3] = {rt_vec3_x(max_v), rt_vec3_y(max_v), rt_vec3_z(max_v)};
-
-    /* 8 corners from min/max combinations */
-    void *c[8];
-    for (int i = 0; i < 8; i++)
-        c[i] =
-            rt_vec3_new((i & 1) ? mx[0] : mn[0], (i & 2) ? mx[1] : mn[1], (i & 4) ? mx[2] : mn[2]);
-
-    /* 12 edges: bottom face (0-1,1-3,3-2,2-0), top face (4-5,5-7,7-6,6-4), verticals */
-    static const int edges[12][2] = {{0, 1},
-                                     {1, 3},
-                                     {3, 2},
-                                     {2, 0},
-                                     {4, 5},
-                                     {5, 7},
-                                     {7, 6},
-                                     {6, 4},
-                                     {0, 4},
-                                     {1, 5},
-                                     {2, 6},
-                                     {3, 7}};
-    for (int e = 0; e < 12; e++)
-        rt_canvas3d_draw_line3d(obj, c[edges[e][0]], c[edges[e][1]], color);
-}
-
-/// @brief Draw a wireframe sphere approximation (3 circles on XY, XZ, YZ planes).
-void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color) {
-    if (!obj || !center)
-        return;
-    double cx = rt_vec3_x(center), cy = rt_vec3_y(center), cz = rt_vec3_z(center);
-    double r = radius;
-    int segs = 24;
-    double step = 2.0 * 3.14159265358979323846 / segs;
-
-    for (int i = 0; i < segs; i++) {
-        double a0 = i * step, a1 = (i + 1) * step;
-        double c0 = cos(a0), s0 = sin(a0), c1 = cos(a1), s1 = sin(a1);
-
-        /* XY circle */
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx + c0 * r, cy + s0 * r, cz),
-                                rt_vec3_new(cx + c1 * r, cy + s1 * r, cz),
-                                color);
-        /* XZ circle */
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx + c0 * r, cy, cz + s0 * r),
-                                rt_vec3_new(cx + c1 * r, cy, cz + s1 * r),
-                                color);
-        /* YZ circle */
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx, cy + c0 * r, cz + s0 * r),
-                                rt_vec3_new(cx, cy + c1 * r, cz + s1 * r),
-                                color);
-    }
-}
-
-/// @brief Draw a debug ray from an origin along a direction for the given length.
-void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color) {
-    if (!obj || !origin || !dir)
-        return;
-    double ex = rt_vec3_x(origin) + rt_vec3_x(dir) * length;
-    double ey = rt_vec3_y(origin) + rt_vec3_y(dir) * length;
-    double ez = rt_vec3_z(origin) + rt_vec3_z(dir) * length;
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ex, ey, ez), color);
-}
-
-/// @brief Draw an XYZ axis gizmo (red=X, green=Y, blue=Z) at the given origin.
-void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
-    if (!obj || !origin)
-        return;
-    double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox + scale, oy, oz), 0xFF0000);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy + scale, oz), 0x00FF00);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy, oz + scale), 0x0000FF);
-}
 
 /*==========================================================================
  * Fog — linear distance fog

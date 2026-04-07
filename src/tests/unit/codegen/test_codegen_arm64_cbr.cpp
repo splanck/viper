@@ -134,6 +134,143 @@ TEST(Arm64CLI, CBrSameTargetMultiArg_SystemAsm) {
     ASSERT_EQ(runArm64({in.c_str(), "--system-asm", "-o", exe.c_str(), "-run-native"}), 77);
 }
 
+TEST(Arm64CLI, CBrDifferentTargetsUseTakenEdgeBlocks) {
+    const std::string in = outPath("arm64_cbr_diff_targets_edges.il");
+    const std::string out = outPath("arm64_cbr_diff_targets_edges.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %cond = scmp_gt 5, 3\n"
+                           "  cbr %cond, t(7, 70), f(13, 130)\n"
+                           "t(%a:i64, %b:i64):\n"
+                           "  %sumt = iadd.ovf %a, %b\n"
+                           "  ret %sumt\n"
+                           "f(%a:i64, %b:i64):\n"
+                           "  %sumf = iadd.ovf %a, %b\n"
+                           "  ret %sumf\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-O0", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("Lentry.Ledge_true_0:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lentry.Ledge_false_0:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lt:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lf:"), std::string::npos);
+}
+
+TEST(Arm64CLI, CBrBranchLadderRunNative) {
+    const std::string in = outPath("arm64_cbr_branch_ladder.il");
+    const std::string exe = outPath("arm64_cbr_branch_ladder");
+    // Keep the checksum below 256 so the native process exit status preserves it.
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %acc:i64):\n"
+                           "  %done = scmp_ge %i, 300\n"
+                           "  cbr %done, exit(%acc), check1(%i, %acc)\n"
+                           "check1(%i:i64, %acc:i64):\n"
+                           "  %c1 = and %i, 1\n"
+                           "  %b1 = icmp_eq %c1, 0\n"
+                           "  cbr %b1, check2(%i, %acc), next(%i, %acc)\n"
+                           "check2(%i:i64, %acc:i64):\n"
+                           "  %c2 = srem.chk0 %i, 3\n"
+                           "  %b2 = icmp_eq %c2, 0\n"
+                           "  cbr %b2, check3(%i, %acc), next(%i, %acc)\n"
+                           "check3(%i:i64, %acc:i64):\n"
+                           "  %c3 = srem.chk0 %i, 5\n"
+                           "  %b3 = icmp_eq %c3, 0\n"
+                           "  cbr %b3, check4(%i, %acc), next(%i, %acc)\n"
+                           "check4(%i:i64, %acc:i64):\n"
+                           "  %c4 = srem.chk0 %i, 7\n"
+                           "  %b4 = icmp_eq %c4, 0\n"
+                           "  cbr %b4, add(%i, %acc), next(%i, %acc)\n"
+                           "add(%i:i64, %acc:i64):\n"
+                           "  %acc1 = iadd.ovf %acc, %i\n"
+                           "  br next(%i, %acc1)\n"
+                           "next(%i:i64, %acc:i64):\n"
+                           "  %i1 = iadd.ovf %i, 1\n"
+                           "  br loop(%i1, %acc)\n"
+                           "exit(%result:i64):\n"
+                           "  ret %result\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "--system-asm", "-o", exe.c_str(), "-run-native"}), 210);
+}
+
+TEST(Arm64CLI, CBrBranchLadderReducesLoopJoinReloads) {
+    const std::string in = outPath("arm64_cbr_branch_ladder_asm.il");
+    const std::string out = outPath("arm64_cbr_branch_ladder_asm.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %acc:i64):\n"
+                           "  %done = scmp_ge %i, 300\n"
+                           "  cbr %done, exit(%acc), check1(%i, %acc)\n"
+                           "check1(%i:i64, %acc:i64):\n"
+                           "  %c1 = and %i, 1\n"
+                           "  %b1 = icmp_eq %c1, 0\n"
+                           "  cbr %b1, check2(%i, %acc), next(%i, %acc)\n"
+                           "check2(%i:i64, %acc:i64):\n"
+                           "  %c2 = srem.chk0 %i, 3\n"
+                           "  %b2 = icmp_eq %c2, 0\n"
+                           "  cbr %b2, check3(%i, %acc), next(%i, %acc)\n"
+                           "check3(%i:i64, %acc:i64):\n"
+                           "  %c3 = srem.chk0 %i, 5\n"
+                           "  %b3 = icmp_eq %c3, 0\n"
+                           "  cbr %b3, check4(%i, %acc), next(%i, %acc)\n"
+                           "check4(%i:i64, %acc:i64):\n"
+                           "  %c4 = srem.chk0 %i, 7\n"
+                           "  %b4 = icmp_eq %c4, 0\n"
+                           "  cbr %b4, add(%i, %acc), next(%i, %acc)\n"
+                           "add(%i:i64, %acc:i64):\n"
+                           "  %acc1 = iadd.ovf %acc, %i\n"
+                           "  br next(%i, %acc1)\n"
+                           "next(%i:i64, %acc:i64):\n"
+                           "  %i1 = iadd.ovf %i, 1\n"
+                           "  br loop(%i1, %acc)\n"
+                           "exit(%result:i64):\n"
+                           "  ret %result\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-O2", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(asmText.find("Lnext:\n  ldp"), std::string::npos);
+    EXPECT_NE(asmText.find("Lcheck1.Ledge_false_1:"), std::string::npos);
+    EXPECT_NE(asmText.find("Lnext.Ledge_false_6:"), std::string::npos);
+}
+
+TEST(Arm64CLI, CBrMixedFallthroughJoinRunNative) {
+    const std::string in = outPath("arm64_cbr_mixed_fallthrough_join.il");
+    const std::string exe = outPath("arm64_cbr_mixed_fallthrough_join");
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %acc:i64):\n"
+                           "  %done = scmp_ge %i, 40\n"
+                           "  cbr %done, exit(%acc), body(%i, %acc)\n"
+                           "body(%i:i64, %acc:i64):\n"
+                           "  %odd = and %i, 1\n"
+                           "  %is_even = icmp_eq %odd, 0\n"
+                           "  cbr %is_even, add(%i, %acc), join(%i, %acc)\n"
+                           "add(%i:i64, %acc:i64):\n"
+                           "  %acc1 = iadd.ovf %acc, %i\n"
+                           "  br join(%i, %acc1)\n"
+                           "join(%i:i64, %acc:i64):\n"
+                           "  %i1 = iadd.ovf %i, 1\n"
+                           "  br loop(%i1, %acc)\n"
+                           "exit(%result:i64):\n"
+                           "  %reduced = srem.chk0 %result, 251\n"
+                           "  ret %reduced\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "--system-asm", "-o", exe.c_str(), "-run-native"}), 129);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

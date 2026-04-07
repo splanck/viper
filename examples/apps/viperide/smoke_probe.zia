@@ -1,0 +1,41 @@
+module smoke_probe;
+
+bind "ui/app_shell";
+bind "core/document_manager";
+bind "editor/editor_engine";
+bind "editor/editor_tabs";
+
+bind Viper.GUI as GUI;
+bind Viper.Terminal as Terminal;
+
+func main() {
+    var shell = new app_shell.AppShell();
+    var docMgr = new document_manager.DocumentManager();
+    var engine = new editor_engine.EditorEngine();
+    var tabs = new editor_tabs.EditorTabs();
+
+    shell.Build("ViperIDE Smoke", 960, 640);
+    engine.Setup(shell.editorRow);
+
+    shell.minimap = GUI.Minimap.New(shell.editorRow);
+    shell.minimap.SetWidth(80);
+    shell.minimap.BindEditor(engine.editor);
+
+    tabs.Setup(shell.tabBar);
+
+    var doc = docMgr.NewDocument();
+    doc.content = "func main() {\n    return;\n}\n";
+    tabs.AddTab(doc.fileName, 1);
+    tabs.SetActive(0);
+    engine.LoadDocument(doc);
+
+    shell.SetStatusLeft("Smoke");
+    shell.SetStatusCenter("Ln 1, Col 1");
+    shell.SetStatusRight(doc.fileName);
+
+    shell.Poll();
+    shell.Render();
+    shell.Destroy();
+
+    Terminal.Say("RESULT: ok");
+}

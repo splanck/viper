@@ -3,7 +3,7 @@
 
 Class Piece
     Dim Shape(4, 4) As Integer
-    Dim TempShape(4, 4) As Integer  ' For rotation (workaround for local array bug)
+    Dim TempShape(4, 4) As Integer  ' Scratch buffer reused during rotation
     Dim PieceColor As Integer
     Dim PieceType As Integer  ' 0=I, 1=O, 2=T, 3=S, 4=Z, 5=J, 6=L
     Dim Rotation As Integer   ' 0-3
@@ -96,7 +96,7 @@ Class Piece
     End Sub
 
     Sub RotateClockwise()
-        ' Use class-level temp array (workaround for local array bug)
+        ' Use the reusable scratch array for rotation
         Dim i As Integer, j As Integer
 
         ' Copy current shape to TempShape

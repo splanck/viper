@@ -699,21 +699,26 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         header.instrs.resize(firstNonPhiIdx);
         header.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(bodyName)}});
 
-        // Step 6: The back-edge and phi stores are now in the BODY block
-        // (they were moved from the header during the split). Scan the entire
-        // body block for stores to phi slot offsets.
-        std::vector<PhiStore> bodyPhiStores;
-        for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i) {
-            (void)appendPhiStores(bodyBlock.instrs[i], i, bodyPhiStores, phiLoadOffsets);
-        }
+        auto removeStores = [](MBasicBlock &bb, const std::unordered_set<std::size_t> &indices) {
+            if (indices.empty())
+                return;
+            std::vector<MInstr> newInstrs;
+            newInstrs.reserve(bb.instrs.size());
+            for (std::size_t i = 0; i < bb.instrs.size(); ++i) {
+                if (indices.count(i))
+                    continue;
+                newInstrs.push_back(std::move(bb.instrs[i]));
+            }
+            bb.instrs = std::move(newInstrs);
+        };
 
-        // Re-match pairs using body stores.
-        std::unordered_set<std::size_t> storeIndicesToRemove;
-        std::vector<MInstr> movs;
-
-        for (const auto &load : phiLoads) {
-            for (const auto &store : bodyPhiStores) {
-                if (load.fpOffset == store.fpOffset) {
+        auto insertEdgeMoves = [&](MBasicBlock &bb, const std::vector<PhiStore> &stores) {
+            std::unordered_set<std::size_t> storeIndicesToRemove;
+            std::vector<MInstr> movs;
+            for (const auto &load : phiLoads) {
+                for (const auto &store : stores) {
+                    if (load.fpOffset != store.fpOffset)
+                        continue;
                     storeIndicesToRemove.insert(store.instrIdx);
                     if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
                         const MOpcode movOpc = (load.dstReg.reg.cls == RegClass::FPR)
@@ -725,18 +730,28 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                     break;
                 }
             }
-        }
+            removeStores(bb, storeIndicesToRemove);
+            if (movs.empty())
+                return;
+            std::size_t insertPos = bb.instrs.size();
+            while (insertPos > 0 && isTerminator(bb.instrs[insertPos - 1].opc))
+                --insertPos;
+            bb.instrs.insert(bb.instrs.begin() + static_cast<std::ptrdiff_t>(insertPos),
+                             movs.begin(),
+                             movs.end());
+        };
 
-        // Remove phi stores from body block.
-        {
-            std::vector<MInstr> newInstrs;
-            newInstrs.reserve(bodyBlock.instrs.size());
-            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i) {
-                if (storeIndicesToRemove.count(i))
-                    continue;
-                newInstrs.push_back(std::move(bodyBlock.instrs[i]));
-            }
-            bodyBlock.instrs = std::move(newInstrs);
+        if (edge.latchIdx == edge.headerIdx) {
+            // Self-loops carry the phi stores in the split body block itself.
+            std::vector<PhiStore> bodyPhiStores;
+            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
+                (void)appendPhiStores(bodyBlock.instrs[i], i, bodyPhiStores, phiLoadOffsets);
+            insertEdgeMoves(bodyBlock, bodyPhiStores);
+        } else {
+            // Multi-block loops carry phi values in the latch block. If we redirect the
+            // latch to the hot body, we must translate the phi-slot stores into register
+            // edge moves there instead of relying on the cold reload header.
+            insertEdgeMoves(latch, phiStores);
         }
 
         auto redirectBackedgeTarget = [&](MBasicBlock &bb) {
@@ -754,17 +769,6 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         redirectBackedgeTarget(bodyBlock);
         if (edge.latchIdx != edge.headerIdx)
             redirectBackedgeTarget(latch);
-
-        // Insert movs before the last terminator in the body block.
-        if (!movs.empty()) {
-            std::size_t insertPos = bodyBlock.instrs.size();
-            while (insertPos > 0 && isTerminator(bodyBlock.instrs[insertPos - 1].opc))
-                --insertPos;
-            bodyBlock.instrs.insert(bodyBlock.instrs.begin() +
-                                        static_cast<std::ptrdiff_t>(insertPos),
-                                    movs.begin(),
-                                    movs.end());
-        }
 
         // Step 7: Insert body block immediately after header.
         fn.blocks.insert(fn.blocks.begin() + static_cast<std::ptrdiff_t>(edge.headerIdx) + 1,

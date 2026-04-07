@@ -8,7 +8,7 @@ A feature-rich, colorful Tetris implementation showcasing Viper BASIC's OOP capa
 - **7 Classic Tetromino Pieces** (I, O, T, S, Z, J, L)
 - **Piece Rotation** with collision detection
 - **Line Clearing** with proper animation
-- **Floor Collision** (BUG-112 fixed!)
+- **Floor Collision**
 - **Game Over Detection**
 
 ### 🎨 Enhanced Visuals
@@ -82,9 +82,9 @@ cd /Users/stephen/git/viper
 - **Encapsulation** - Clean separation of concerns
 - **Object Composition** - Pieces contain shapes, Board manages grid
 
-### Bug Fixes Demonstrated
-- **BUG-111 Workaround** - Uses class-level TempShape array for rotation
-- **BUG-112 Fixed** - CheckLines now correctly checks rows 0-19 (not 1-20)
+### Implementation Notes
+- **Reusable Rotation Scratch Buffer** - Piece rotation reuses `TempShape`
+- **Correct Line-Scan Bounds** - `CheckLines` scans rows 0-19
 
 ### ANSI Graphics
 - **8 Colors Used** - Full color palette

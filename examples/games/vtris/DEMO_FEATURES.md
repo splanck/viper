@@ -31,7 +31,7 @@
 2. **Modular Architecture** - 4 separate .bas files
 3. **800+ Lines** of production code
 4. **15+ Methods** demonstrating OOP
-5. **Bug-Free** - BUG-112 fixed, BUG-111 workaround applied
+5. **Polished Core Logic** - stable rotation, collision, and line clearing
 
 ## 🎮 How to Demo
 
@@ -117,19 +117,10 @@
 - ✅ **State Management** - Game/Menu/GameOver states
 - ✅ **Event System** - Spawn/Lock/Clear events
 
-## 🐛 Bugs Fixed
+## Core Implementation Notes
 
-### BUG-112: Floor Destruction (CRITICAL)
-- **Problem**: After clearing first line, floor was destroyed
-- **Cause**: CheckLines checked rows 1-20 instead of 0-19
-- **Fix**: Changed loop to `For row = 0 To 19`
-- **Impact**: Game now playable indefinitely
-
-### BUG-111: Local Array Copying (WORKAROUND)
-- **Problem**: Can't copy from object field to local array
-- **Workaround**: Use class-level TempShape array
-- **Location**: pieces.bas rotation method
-- **Impact**: Rotation works perfectly
+- **Stable line clearing**: `CheckLines` scans the full board range (`0..19`)
+- **Reusable rotation scratch buffer**: `Piece.RotateClockwise()` uses `TempShape`
 
 ## 🎯 Demo Talking Points
 
@@ -152,9 +143,9 @@
 - Complex algorithms
 - Modular design (4 files)
 
-**"It's fully playable and bug-free..."**
-- Fixed critical floor bug
-- Worked around array bug
+**"It's fully playable and polished..."**
+- Stable collision and line-clearing logic
+- Reliable piece rotation
 - Smooth gameplay
 - Professional game flow
 

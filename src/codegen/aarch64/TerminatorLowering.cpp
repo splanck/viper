@@ -251,10 +251,15 @@ void lowerTerminators(const il::core::Function &fn,
                     const std::string &trueLbl = term.labels[0];
                     const std::string &falseLbl = term.labels[1];
                     const bool sameTarget = (trueLbl == falseLbl);
+                    const bool needTrueEdge =
+                        sameTarget || (term.brArgs.size() > 0 && !term.brArgs[0].empty());
+                    const bool needFalseEdge =
+                        sameTarget || (term.brArgs.size() > 1 && !term.brArgs[1].empty());
                     const std::string trueEdgeLbl =
-                        sameTarget ? outBB.name + ".Lsame_true_" + std::to_string(i) : trueLbl;
+                        needTrueEdge ? outBB.name + ".Ledge_true_" + std::to_string(i) : trueLbl;
                     const std::string falseEdgeLbl =
-                        sameTarget ? outBB.name + ".Lsame_false_" + std::to_string(i) : falseLbl;
+                        needFalseEdge ? outBB.name + ".Ledge_false_" + std::to_string(i)
+                                      : falseLbl;
 
                     auto emitEdgeCopies = [&](MBasicBlock &edgeBB,
                                               const std::string &dst,
@@ -322,13 +327,6 @@ void lowerTerminators(const il::core::Function &fn,
                             }
                         }
                     };
-
-                    if (!sameTarget) {
-                        if (term.brArgs.size() > 0)
-                            emitEdgeCopies(outBB, trueLbl, term.brArgs[0]);
-                        if (term.brArgs.size() > 1)
-                            emitEdgeCopies(outBB, falseLbl, term.brArgs[1]);
-                    }
 
                     // Try to lower compares to cmp + b.<cond>
                     // CORRECTNESS: This optimization only fires in the entry block (i == 0)
@@ -424,7 +422,7 @@ void lowerTerminators(const il::core::Function &fn,
                             MInstr{MOpcode::Br, {MOperand::labelOp(falseEdgeLbl)}});
                     }
 
-                    if (sameTarget) {
+                    if (needTrueEdge) {
                         MBasicBlock trueEdgeBB;
                         trueEdgeBB.name = trueEdgeLbl;
                         if (term.brArgs.size() > 0)
@@ -432,7 +430,9 @@ void lowerTerminators(const il::core::Function &fn,
                         trueEdgeBB.instrs.push_back(
                             MInstr{MOpcode::Br, {MOperand::labelOp(trueLbl)}});
                         mf.blocks.push_back(std::move(trueEdgeBB));
+                    }
 
+                    if (needFalseEdge) {
                         MBasicBlock falseEdgeBB;
                         falseEdgeBB.name = falseEdgeLbl;
                         if (term.brArgs.size() > 1)

@@ -5191,24 +5191,17 @@ class Executor {
             return result;
         }
 
-        // Remove cursor and rebuild index map (BUG-002: removeAt unreliable)
+        // Remove cursor and repair the parallel-list index map.
+        var idx = Map.GetIntOr(cursorIndexMap, cursorName, -1);
         Map.Remove(cursorIndexMap, cursorName);
-        var newNames: List[String] = [];
-        var newResults: List[QueryResult] = [];
-        var newPositions: List[Integer] = [];
-        var ri = 0;
+        cursorNames.removeAt(idx);
+        cursorResults.removeAt(idx);
+        cursorPositions.removeAt(idx);
+        var ri = idx;
         while ri < cursorNames.count() {
-            if cursorNames.get(ri) != cursorName {
-                Map.SetInt(cursorIndexMap, cursorNames.get(ri), newNames.count());
-                newNames.add(cursorNames.get(ri));
-                newResults.add(cursorResults.get(ri));
-                newPositions.add(cursorPositions.get(ri));
-            }
+            Map.SetInt(cursorIndexMap, cursorNames.get(ri), ri);
             ri = ri + 1;
         }
-        cursorNames = newNames;
-        cursorResults = newResults;
-        cursorPositions = newPositions;
 
         result.message = "CLOSE CURSOR";
         return result;

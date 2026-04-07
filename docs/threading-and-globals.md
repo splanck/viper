@@ -253,7 +253,7 @@ FrontendOptions::setEnableRuntimeNamespaces(false);
 
 If you need isolated external function sets:
 
-1. **Current workaround**: Use naming conventions (e.g., `tenant1_myfunc`, `tenant2_myfunc`).
+1. **Current approach**: Use naming conventions (e.g., `tenant1_myfunc`, `tenant2_myfunc`).
 2. **Future**: Per-VM registries may be added (see source code comments).
 
 ### Trap Handling

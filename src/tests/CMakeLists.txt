@@ -757,6 +757,58 @@ foreach (test_name IN LISTS ZIA_BIND_NAMESPACE_TESTS)
 endforeach ()
 
 # =============================================================================
+# Zia App/Game Smoke Probes
+# These exercise real example app/game module stacks with deterministic probes.
+# =============================================================================
+add_test(NAME zia_smoke_paint
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/paint/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/paint")
+set_tests_properties(zia_smoke_paint PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_viperide
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/viperide/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/viperide")
+set_tests_properties(zia_smoke_viperide PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_vipersql
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/vipersql")
+set_tests_properties(zia_smoke_vipersql PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_3dbowling
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_chess
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/chess/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/chess")
+set_tests_properties(zia_smoke_chess PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_xenoscape
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_smoke_xenoscape PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;requires_display"
+        TIMEOUT 30)
+
+# =============================================================================
 # Graphics3D Zia Integration Tests (headless — no display required)
 # =============================================================================
 set(G3D_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/runtime")

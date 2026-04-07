@@ -145,6 +145,12 @@ bool LinearAllocator::isProtectedUse(uint16_t vreg, RegClass cls) const {
     return protectedUseFPR_.find(vreg) != protectedUseFPR_.end();
 }
 
+bool LinearAllocator::isLiveOut(uint16_t vreg, RegClass cls) const {
+    if (cls == RegClass::GPR)
+        return liveness_.liveOutGPR(currentBlockIdx_).contains(vreg);
+    return liveness_.liveOutFPR(currentBlockIdx_).contains(vreg);
+}
+
 bool LinearAllocator::nextUseAfterCall(uint16_t vreg, RegClass cls) const {
     const auto &map = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
     auto it = map.find(vreg);
@@ -191,7 +197,8 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
         return;
 
     const unsigned nextUseDist = getNextUseDistance(id, cls);
-    if (nextUseDist == UINT_MAX) {
+    const bool liveOut = isLiveOut(id, cls);
+    if (nextUseDist == UINT_MAX && !liveOut) {
         if (cls == RegClass::GPR)
             pools_.releaseGPR(st.phys, ti_);
         else
@@ -208,6 +215,8 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
         auto posIt = posMap.find(id);
         if (posIt != posMap.end() && !posIt->second.empty())
             trueLastUse = posIt->second.back();
+        else if (liveOut)
+            trueLastUse = std::max(trueLastUse, currentBlockInstrCount_);
         const int off = (st.fpOffset != 0)
                             ? st.fpOffset
                             : fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
@@ -407,6 +416,7 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
 
     computeNextUses(bb);
     currentInstrIdx_ = 0;
+    currentBlockInstrCount_ = static_cast<unsigned>(bb.instrs.size());
 
     std::vector<MInstr> rewritten;
     rewritten.reserve(bb.instrs.size());
@@ -482,7 +492,7 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
         }
         if (!endSpills.empty()) {
             std::size_t insertPos = rewritten.size();
-            for (std::size_t i = rewritten.size(); i-- > 0;) {
+            for (std::size_t i = 0; i < rewritten.size(); ++i) {
                 if (isTerminator(rewritten[i].opc)) {
                     insertPos = i;
                     break;

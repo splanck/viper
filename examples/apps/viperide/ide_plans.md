@@ -871,7 +871,7 @@ These exist in C++ (`vg_ide_widgets.h`) but need runtime bindings:
 **Features:**
 - [ ] Main window with basic layout
 - [ ] Single CodeEditor widget
-- [ ] File open/save using native dialogs (or workaround)
+- [ ] File open/save using native dialogs or the built-in file dialog widget
 - [ ] Basic toolbar (New, Open, Save)
 - [ ] Tab bar for multiple files
 - [ ] Simple status bar
@@ -879,7 +879,7 @@ These exist in C++ (`vg_ide_widgets.h`) but need runtime bindings:
 
 **Dependencies:**
 - Existing GUI widgets sufficient
-- May need FileDialog workaround
+- FileDialog integration and polish
 
 ---
 

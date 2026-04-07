@@ -420,15 +420,18 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
         localTypes_[decl.params[i].name] = paramType;
     }
 
-    // Emit interface itable init call at start of start() (before any user code)
+    const bool isEntryPoint = decl.name == "start" || decl.name == "main";
+
+    // Emit interface itable init call at start of the entry point (before any user code)
     // The __zia_iface_init function is emitted later by emitItableInit(); if no
     // interfaces have implementors, it emits a trivial ret-void stub.
-    if (decl.name == "start" && !interfaceTypes_.empty()) {
+    if (isEntryPoint && !interfaceTypes_.empty()) {
         emitCall("__zia_iface_init", {});
     }
 
-    // Emit global variable initializations at start of start() (Zia entry point)
-    if (decl.name == "start" && !globalInitializers_.empty())
+    // Emit global variable initializations at the entry point so both
+    // `start()` and `main()` programs observe the same module startup state.
+    if (isEntryPoint && !globalInitializers_.empty())
         emitGlobalInitializers();
 
     // Lower function body

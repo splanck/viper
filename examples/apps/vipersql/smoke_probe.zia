@@ -1,0 +1,58 @@
+module smoke_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./engine/executor";
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func requireSuccess(result: QueryResult, label: String) -> Boolean {
+    if result.success == false {
+        fail(label + ": " + result.message);
+        return false;
+    }
+    return true;
+}
+
+func main() {
+    var exec = new Executor();
+
+    var createRes = exec.executeSql("CREATE TABLE items (id INTEGER, name TEXT, qty INTEGER)");
+    if !requireSuccess(createRes, "create table") { return; }
+
+    var insertA =
+        exec.executeSql("INSERT INTO items VALUES (1, 'alpha', 3)");
+    if !requireSuccess(insertA, "insert alpha") { return; }
+
+    var insertB =
+        exec.executeSql("INSERT INTO items VALUES (2, 'beta', 7)");
+    if !requireSuccess(insertB, "insert beta") { return; }
+
+    var updateRes =
+        exec.executeSql("UPDATE items SET qty = 9 WHERE name = 'beta'");
+    if !requireSuccess(updateRes, "update beta") { return; }
+
+    var selectRes =
+        exec.executeSql("SELECT name, qty FROM items ORDER BY id");
+    if !requireSuccess(selectRes, "select rows") { return; }
+
+    if selectRes.rowCount() != 2 {
+        fail("unexpected row count");
+        return;
+    }
+
+    var row0 = selectRes.rows.get(0);
+    var row1 = selectRes.rows.get(1);
+
+    if row0.getValue(0).textValue != "alpha" || row0.getValue(1).intValue != 3 {
+        fail("unexpected first row");
+        return;
+    }
+    if row1.getValue(0).textValue != "beta" || row1.getValue(1).intValue != 9 {
+        fail("unexpected second row");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

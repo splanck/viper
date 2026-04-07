@@ -61,8 +61,8 @@ TEST(Arm64CLI, CF_Loop_Phi) {
     EXPECT_EQ(asmText.find(".edge.t."), std::string::npos);
     EXPECT_EQ(asmText.find(".edge.f."), std::string::npos);
     EXPECT_NE(asmText.find("Lbody_body:"), std::string::npos);
-    EXPECT_NE(asmText.find("b.lt Lbody_body"), std::string::npos);
-    EXPECT_EQ(asmText.find("b.lt Lbody\n"), std::string::npos);
+    EXPECT_NE(asmText.find("b Lbody_body"), std::string::npos);
+    EXPECT_EQ(asmText.find("b Lbody\n"), std::string::npos);
 }
 
 TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
@@ -97,8 +97,8 @@ TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("Lbody:\n  ldp x"), std::string::npos);
     EXPECT_NE(asmText.find("Lbody_body:"), std::string::npos);
-    EXPECT_NE(asmText.find("b.lt Lbody_body"), std::string::npos);
-    EXPECT_EQ(asmText.find("b.lt Lbody\n"), std::string::npos);
+    EXPECT_NE(asmText.find("b Lbody_body"), std::string::npos);
+    EXPECT_EQ(asmText.find("b Lbody\n"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

@@ -603,18 +603,17 @@ class LockManager {
 
     // Release a specific lock
     expose func releaseLock(lock: Lock) {
-        // Workaround for BUG-002: List.remove() doesn't work
-        var newLocks: List[Lock] = [];
         var i = 0;
         while i < activeLocks.count() {
             var existing = activeLocks.get(i);
-            // Keep if different lock
-            if existing.txnId != lock.txnId || existing.resourceType != lock.resourceType || existing.resourceId != lock.resourceId {
-                newLocks.add(existing);
+            if existing.txnId == lock.txnId &&
+               existing.resourceType == lock.resourceType &&
+               existing.resourceId == lock.resourceId {
+                activeLocks.removeAt(i);
+                return;
             }
             i = i + 1;
         }
-        activeLocks = newLocks;
     }
 
     // Release all locks held by a transaction

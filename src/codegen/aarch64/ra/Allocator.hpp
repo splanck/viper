@@ -55,6 +55,7 @@ class LinearAllocator {
     std::unordered_map<uint16_t, VState> fprStates_;
     unsigned currentInstrIdx_{0};    ///< Current instruction index for LRU tracking.
     std::size_t currentBlockIdx_{0}; ///< Current block index for liveness lookups.
+    unsigned currentBlockInstrCount_{0}; ///< Instruction count of the current block.
     std::unordered_map<uint16_t, std::vector<unsigned>>
         usePositionsGPR_; ///< All use positions for GPR vregs.
     std::unordered_map<uint16_t, std::vector<unsigned>>
@@ -88,6 +89,7 @@ class LinearAllocator {
     bool nextUseAfterCall(uint16_t vreg, RegClass cls) const;
     unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const;
     [[nodiscard]] bool isProtectedUse(uint16_t vreg, RegClass cls) const;
+    [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;
 
     // ---- Spilling ----
     void spillVictim(RegClass cls, uint16_t id, std::vector<MInstr> &prefix);

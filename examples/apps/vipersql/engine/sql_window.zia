@@ -949,7 +949,7 @@ func applyWindowFunctions(stmt: SelectStmt, result: QueryResult, table: Table) {
         colIdx = colIdx + 1;
     }
 
-    // Strip auxiliary columns from result (rebuild without them — BUG-002 workaround)
+    // Strip auxiliary columns from the projected result payload.
     if auxCount > 0 {
         var origNameCount = result.columnNames.count() - auxCount;
         // Rebuild column names without aux

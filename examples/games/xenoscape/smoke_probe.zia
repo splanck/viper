@@ -1,0 +1,65 @@
+module smoke_probe;
+
+bind Viper.Graphics;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./palette";
+bind "./sprites";
+bind "./player";
+bind "./enemy";
+bind "./projectile";
+bind "./level";
+bind "./camera";
+bind "./particles";
+bind "./pickups";
+bind "./hud";
+bind "./renderer";
+
+func main() {
+    var pal = new Palette();
+    var sprites = new SpriteFactory(pal);
+    var level = new Level();
+    level.loadLevel(1);
+    level.updateTileAnims(16);
+
+    var player = new Player();
+    player.spawn(level.playerStartX, level.playerStartY);
+
+    var enemies = new EnemyManager();
+    enemies.spawnFromLevel(level);
+
+    var bullets = new ProjectilePool();
+
+    var pickups = new PickupManager();
+    pickups.spawnFromLevel(level);
+
+    var particles = new ParticleSystem(pal);
+    var hudObj = new HUD(pal);
+    hudObj.update(0, 0, 16);
+
+    var camera = new GameCamera(pal);
+    camera.setLevelSize(level.levelWidth * TILE_SIZE, level.levelHeight * TILE_SIZE);
+    camera.snapTo(player.centerX(), player.centerY());
+
+    var renderObj = new Renderer(pal);
+    renderObj.update(16);
+
+    var canvas = Canvas.New("XENOSCAPE Smoke", SCREEN_W, SCREEN_H);
+    renderObj.renderPlaying(canvas,
+                            camera,
+                            level,
+                            player,
+                            enemies,
+                            bullets,
+                            pickups,
+                            particles,
+                            hudObj,
+                            sprites,
+                            0,
+                            0,
+                            1);
+    canvas.Flip();
+    canvas.Close();
+
+    Terminal.Say("RESULT: ok");
+}
