@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include "codegen/common/objfile/SymbolTable.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -98,6 +100,7 @@ struct Relocation {
     RelocKind kind;       ///< Architecture-agnostic relocation type.
     uint32_t symbolIndex; ///< Index into SymbolTable.
     int64_t addend;       ///< Addend (ELF RELA style; Mach-O embeds in instruction).
+    SymbolSection targetSection = SymbolSection::Undefined; ///< Optional cross-section target hint.
 };
 
 } // namespace viper::codegen::objfile

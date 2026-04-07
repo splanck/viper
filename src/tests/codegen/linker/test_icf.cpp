@@ -259,7 +259,48 @@ int main() {
         CHECK(!objs[1].sections[1].data.empty());
     }
 
-    // --- Test 6: Generic .text section (not per-function) is skipped ---
+    // --- Test 6: Cross-object address-taken function is NOT folded ---
+    {
+        auto obj1 = makeTextObj("a.o", "funcA", {0xC3, 0x90, 0x90, 0x90});
+        auto obj2 = makeTextObj("b.o", "funcB", {0xC3, 0x90, 0x90, 0x90});
+
+        ObjFile obj3;
+        obj3.name = "ptrs.o";
+        obj3.format = ObjFileFormat::ELF;
+        obj3.sections.push_back({}); // null
+
+        ObjSection dataSec;
+        dataSec.name = ".data";
+        dataSec.data = {0, 0, 0, 0, 0, 0, 0, 0};
+        dataSec.writable = true;
+        dataSec.alloc = true;
+        dataSec.alignment = 8;
+        ObjReloc dataRel;
+        dataRel.offset = 0;
+        dataRel.type = 1; // R_X86_64_64 (Abs64)
+        dataRel.symIndex = 1;
+        dataRel.addend = 0;
+        dataSec.relocs.push_back(dataRel);
+        obj3.sections.push_back(dataSec);
+
+        obj3.symbols.push_back({});
+        ObjSymbol funcBRef;
+        funcBRef.name = "funcB";
+        funcBRef.binding = ObjSymbol::Undefined;
+        obj3.symbols.push_back(funcBRef);
+
+        std::vector<ObjFile> objs = {obj1, obj2, obj3};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        registerGlobal(globalSyms, "funcA", 0, 1);
+        registerGlobal(globalSyms, "funcB", 1, 1);
+
+        size_t folded = foldIdenticalCode(objs, globalSyms);
+        CHECK(folded == 0);
+        CHECK(!objs[0].sections[1].data.empty());
+        CHECK(!objs[1].sections[1].data.empty());
+    }
+
+    // --- Test 7: Generic .text section (not per-function) is skipped ---
     {
         ObjFile obj;
         obj.name = "mono.o";
@@ -295,7 +336,7 @@ int main() {
         CHECK(folded == 0); // Generic .text excluded.
     }
 
-    // --- Test 7: Three identical functions → 2 folded ---
+    // --- Test 8: Three identical functions → 2 folded ---
     {
         auto obj1 = makeTextObj("a.o", "funcA", {0xD6, 0x5F, 0x03, 0xC0}); // ret
         auto obj2 = makeTextObj("b.o", "funcB", {0xD6, 0x5F, 0x03, 0xC0});

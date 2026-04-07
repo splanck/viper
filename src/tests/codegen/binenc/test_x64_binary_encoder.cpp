@@ -449,6 +449,8 @@ int main() {
 
         X64BinaryEncoder enc;
         CodeSection text, rodata;
+        rodata.defineSymbol(".LC_str_0", SymbolBinding::Local, SymbolSection::Rodata);
+        rodata.emit8(0);
         enc.encodeFunction(fn, text, rodata, false);
 
         // Should emit: 48 8D 3D 00 00 00 00 (7 bytes)
@@ -462,6 +464,7 @@ int main() {
         CHECK(text.relocations()[0].kind == RelocKind::PCRel32);
         CHECK(text.relocations()[0].addend == -4);
         CHECK(text.relocations()[0].offset == 3); // disp32 starts at byte 3
+        CHECK(text.relocations()[0].targetSection == SymbolSection::Rodata);
     }
 
     // ================================================================
@@ -621,6 +624,38 @@ int main() {
         CHECK(text.bytes()[2] == 0xC3); // RET
         CHECK(text.bytes()[3] == 0xEB); // backward short JMP
         CHECK(static_cast<int8_t>(text.bytes()[4]) == -3);
+    }
+
+    // Short-branch relaxation must account for the branch's real offset, not
+    // treat every candidate as if it started at byte 0.
+    {
+        MFunction fn;
+        fn.name = "offset_sensitive_short_jmp";
+
+        MBasicBlock entry;
+        entry.label = ".Lentry";
+        for (int i = 0; i < 70; ++i) {
+            entry.append(MInstr::make(MOpcode::PUSH, {gpr(PhysReg::RAX)}));
+            entry.append(MInstr::make(MOpcode::POP, {gpr(PhysReg::RAX)}));
+        }
+        entry.append(MInstr::make(MOpcode::JMP, {label(".Ltarget")}));
+        entry.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(entry));
+
+        MBasicBlock target;
+        target.label = ".Ltarget";
+        target.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(target));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false);
+
+        CHECK(text.bytes().size() == 144);
+        CHECK(text.bytes()[140] == 0xEB);
+        CHECK(static_cast<int8_t>(text.bytes()[141]) == 1);
+        CHECK(text.bytes()[142] == 0xC3);
+        CHECK(text.bytes()[143] == 0xC3);
     }
 
     // ================================================================

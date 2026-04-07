@@ -31,15 +31,22 @@ namespace viper::codegen::linker {
 
 size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
-    // Location of a string occurrence: (object index, symbol index).
     struct SymLoc {
         size_t objIdx;
         size_t symIdx;
+        uint32_t secIdx;
+        size_t strLen;
+        std::string content;
+        bool keepBytes = true;
     };
 
-    // Step 1: Scan all LOCAL symbols in rodata sections and extract NUL-terminated content.
-    // Key = string content (including NUL terminator), Value = list of occurrences.
-    std::unordered_map<std::string, std::vector<SymLoc>> contentMap;
+    auto makeSectionKey = [](size_t objIdx, uint32_t secIdx) -> uint64_t {
+        return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
+    };
+
+    std::unordered_map<std::string, std::vector<size_t>> contentMap;
+    std::unordered_map<uint64_t, std::vector<size_t>> sectionMap;
+    std::vector<SymLoc> locations;
 
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         auto &obj = allObjects[oi];
@@ -87,8 +94,10 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
             // Use the raw bytes (including NUL) as the content key.
             std::string content(reinterpret_cast<const char *>(start), strLen);
-
-            contentMap[content].push_back({oi, si});
+            const size_t locIdx = locations.size();
+            locations.push_back({oi, si, sym.sectionIndex, strLen, content, true});
+            contentMap[content].push_back(locIdx);
+            sectionMap[makeSectionKey(oi, sym.sectionIndex)].push_back(locIdx);
         }
     }
 
@@ -104,7 +113,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         std::string synthName = "__dedup_str_" + std::to_string(dedupCounter++);
 
         // First occurrence is canonical.
-        const auto &canonical = locs[0];
+        const auto &canonical = locations[locs[0]];
         auto &canonObj = allObjects[canonical.objIdx];
         auto &canonSym = canonObj.symbols[canonical.symIdx];
 
@@ -118,13 +127,74 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         globalSyms[synthName] = entry;
 
         // Rename all occurrences (including canonical) to the synthetic name.
-        for (const auto &loc : locs) {
+        for (size_t i = 0; i < locs.size(); ++i) {
+            auto &loc = locations[locs[i]];
             auto &sym = allObjects[loc.objIdx].symbols[loc.symIdx];
             sym.name = synthName;
             sym.binding = ObjSymbol::Global;
+            if (i != 0) {
+                loc.keepBytes = false;
+                sym.sectionIndex = 0;
+                sym.offset = 0;
+            }
         }
 
         eliminated += locs.size() - 1;
+    }
+
+    // Step 3: Compact cstring sections when every byte belongs to a symbolized
+    // string. This turns dedup from symbol aliasing into actual size reduction.
+    for (auto &[sectionKey, locIndices] : sectionMap) {
+        if (locIndices.empty())
+            continue;
+
+        const SymLoc &firstLoc = locations[locIndices.front()];
+        auto &obj = allObjects[firstLoc.objIdx];
+        auto &sec = obj.sections[firstLoc.secIdx];
+        if (!sec.relocs.empty())
+            continue;
+
+        std::vector<size_t> sortedByOffset = locIndices;
+        std::sort(sortedByOffset.begin(), sortedByOffset.end(), [&](size_t aIdx, size_t bIdx) {
+            const auto &symA = obj.symbols[locations[aIdx].symIdx];
+            const auto &symB = obj.symbols[locations[bIdx].symIdx];
+            return symA.offset < symB.offset;
+        });
+
+        size_t cursor = 0;
+        bool fullyCovered = true;
+        for (size_t locIdx : sortedByOffset) {
+            const auto &loc = locations[locIdx];
+            const auto &sym = obj.symbols[loc.symIdx];
+            if (sym.offset != cursor) {
+                fullyCovered = false;
+                break;
+            }
+            cursor += loc.strLen;
+        }
+        if (!fullyCovered || cursor != sec.data.size())
+            continue;
+
+        std::vector<uint8_t> newData;
+        newData.reserve(sec.data.size());
+        for (size_t locIdx : sortedByOffset) {
+            auto &loc = locations[locIdx];
+            auto &sym = obj.symbols[loc.symIdx];
+            if (!loc.keepBytes)
+                continue;
+
+            const size_t newOffset = newData.size();
+            newData.insert(newData.end(), loc.content.begin(), loc.content.end());
+            sym.sectionIndex = firstLoc.secIdx;
+            sym.offset = newOffset;
+
+            auto git = globalSyms.find(sym.name);
+            if (git != globalSyms.end() && git->second.objIndex == loc.objIdx &&
+                git->second.secIndex == firstLoc.secIdx) {
+                git->second.offset = newOffset;
+            }
+        }
+        sec.data = std::move(newData);
     }
 
     return eliminated;

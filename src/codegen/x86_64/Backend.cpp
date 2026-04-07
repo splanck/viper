@@ -362,27 +362,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         return result;
     }
 
-    for (std::size_t i = 0; i < mir.size(); ++i) {
-        objfile::CodeSection funcText;
-        DebugLineTable funcDebugLines;
-        seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
-
-        binenc::X64BinaryEncoder funcEncoder;
-        funcEncoder.setDebugLineTable(&funcDebugLines);
-        try {
-            funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
-        } catch (const std::exception &ex) {
-            BinaryEmitResult failure{};
-            failure.errors =
-                "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
-            return failure;
-        }
-
-        const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
-        debugLines.append(funcDebugLines, debugBias);
-        result.text.appendSection(funcText);
-        result.textSections.push_back(std::move(funcText));
-    }
+    result.textSections.reserve(mir.size());
 
     for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i) {
         std::string label = roData.stringLabel(i);
@@ -406,6 +386,28 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         uint64_t bits;
         std::memcpy(&bits, &val, sizeof(bits));
         result.rodata.emit64LE(bits);
+    }
+
+    for (std::size_t i = 0; i < mir.size(); ++i) {
+        objfile::CodeSection funcText;
+        DebugLineTable funcDebugLines;
+        seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
+
+        binenc::X64BinaryEncoder funcEncoder;
+        funcEncoder.setDebugLineTable(&funcDebugLines);
+        try {
+            funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
+        } catch (const std::exception &ex) {
+            BinaryEmitResult failure{};
+            failure.errors =
+                "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
+            return failure;
+        }
+
+        const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
+        debugLines.append(funcDebugLines, debugBias);
+        result.text.appendSection(funcText);
+        result.textSections.push_back(std::move(funcText));
     }
 
     if (!debugLines.empty())

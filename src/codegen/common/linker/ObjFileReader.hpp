@@ -60,6 +60,7 @@ struct ObjSection {
     bool writable = false;
     bool alloc = true;             ///< Section contributes to memory image.
     bool tls = false;              ///< Thread-local storage section.
+    bool zeroFill = false;         ///< Section occupies memory but has no file bytes.
     bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
 };
 

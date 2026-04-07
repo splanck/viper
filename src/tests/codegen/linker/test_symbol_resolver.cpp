@@ -8,12 +8,13 @@
 // File: tests/codegen/linker/test_symbol_resolver.cpp
 // Purpose: Unit tests for the native linker's symbol resolution — verifies
 //          strong/weak/undefined precedence, multiply-defined detection,
-//          and dynamic symbol classification.
+//          archive extraction, and dynamic symbol classification.
 // Key invariants:
 //   - Strong > Weak > Undefined precedence
 //   - Multiple strong definitions of the same symbol = linker error
-//   - Undefined symbols become dynamic after resolution
-//   - Known dynamic patterns accepted silently; unknowns warned
+//   - Archives still satisfy symbols that also exist in shared libraries
+//   - Only allowlisted shared-library symbols remain dynamic after resolution
+//   - Unknown unresolved symbols are hard errors
 // Ownership/Lifetime: Standalone test binary.
 // Links: codegen/common/linker/SymbolResolver.hpp
 //
@@ -267,6 +268,32 @@ int main() {
         CHECK(err.str().empty());
     }
 
+    // --- Allowlisted dynamic symbol still resolves from a real provider ---
+    {
+        auto caller = makeObj("caller.o", {".text"});
+        addSymbol(caller, "printf", 0, ObjSymbol::Undefined);
+
+        auto provider = makeObj("provider.o", {".text"});
+        addSymbol(provider, "printf", 1, ObjSymbol::Global, 12);
+
+        std::vector<ObjFile> initObjs = {caller, provider};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Linux);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(dynamicSyms.empty());
+        CHECK(globalSyms.count("printf") == 1);
+        CHECK(globalSyms["printf"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["printf"].objIndex == 1);
+        CHECK(globalSyms["printf"].offset == 12);
+    }
+
     // --- Double-underscore names are not treated as universally dynamic ---
     {
         auto obj = makeObj("main.o", {".text"});
@@ -282,13 +309,12 @@ int main() {
 
         bool ok = resolveSymbols(
             initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Linux);
-        CHECK(ok);
-        CHECK(dynamicSyms.count("__user_defined_helper") == 1);
-        CHECK(err.str().find("treating undefined symbol '__user_defined_helper'") !=
-              std::string::npos);
+        CHECK(!ok);
+        CHECK(dynamicSyms.empty());
+        CHECK(err.str().find("undefined symbol '__user_defined_helper'") != std::string::npos);
     }
 
-    // --- Unknown undefined symbol produces warning ---
+    // --- Unknown undefined symbol is a hard error ---
     {
         auto obj = makeObj("main.o", {".text"});
         addSymbol(obj, "main", 1, ObjSymbol::Global);
@@ -302,11 +328,30 @@ int main() {
         std::ostringstream err;
 
         bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
-        CHECK(ok);
-        // Still treated as dynamic, but with a warning.
-        CHECK(dynamicSyms.count("totally_unknown_func") == 1);
-        CHECK(err.str().find("treating undefined symbol") != std::string::npos);
-        CHECK(err.str().find("totally_unknown_func") != std::string::npos);
+        CHECK(!ok);
+        CHECK(dynamicSyms.empty());
+        CHECK(err.str().find("undefined symbol 'totally_unknown_func'") != std::string::npos);
+    }
+
+    // --- Runtime shim symbols that must come from archives are not downgraded ---
+    {
+        auto obj = makeObj("main.obj", {".text"});
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, "fprintf", 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(!ok);
+        CHECK(dynamicSyms.empty());
+        CHECK(err.str().find("undefined symbol 'fprintf'") != std::string::npos);
+        CHECK(err.str().find("expected a static/archive definition") != std::string::npos);
     }
 
     // --- Local symbols don't participate in resolution ---

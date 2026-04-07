@@ -388,9 +388,14 @@ bool ElfWriter::write(const std::string &path,
         uint32_t elfSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
         if (it != textSymMap.end()) {
-            // Check if this undefined symbol is actually defined in rodata.
             const Symbol &sym = text.symbols().at(rel.symbolIndex);
-            if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+            if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+                auto nameIt = definedRodataByName.find(sym.name);
+                if (nameIt != definedRodataByName.end())
+                    elfSymIdx = nameIt->second;
+                else
+                    elfSymIdx = it->second;
+            } else if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
                 auto nameIt = definedRodataByName.find(sym.name);
                 if (nameIt != definedRodataByName.end())
                     elfSymIdx = nameIt->second;
@@ -783,9 +788,14 @@ bool ElfWriter::write(const std::string &path,
             uint32_t elfSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
             if (it != textSymMaps[ti].end()) {
-                // Check if this undefined symbol is actually defined in rodata.
                 const Symbol &sym = textSections[ti].symbols().at(rel.symbolIndex);
-                if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+                if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+                    auto nameIt = definedRodataByName.find(sym.name);
+                    if (nameIt != definedRodataByName.end())
+                        elfSymIdx = nameIt->second;
+                    else
+                        elfSymIdx = it->second;
+                } else if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
                     auto nameIt = definedRodataByName.find(sym.name);
                     if (nameIt != definedRodataByName.end())
                         elfSymIdx = nameIt->second;

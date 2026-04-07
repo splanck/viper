@@ -163,9 +163,9 @@ bool writeElfExe(const std::string &path,
         if (sec.writable)
             flags |= PF_W;
 
-        segments.push_back(
-            {idx, filePos, sec.virtualAddr, sec.data.size(), sec.data.size(), flags});
-        filePos += sec.data.size();
+        const size_t fileSize = sec.zeroFill ? 0 : sec.data.size();
+        segments.push_back({idx, filePos, sec.virtualAddr, fileSize, sec.data.size(), flags});
+        filePos += fileSize;
     }
 
     // Build .shstrtab.
@@ -265,9 +265,11 @@ bool writeElfExe(const std::string &path,
             std::vector<char> pad(seg.fileOffset - cur, 0);
             f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
         }
+        if (seg.fileSize == 0)
+            continue;
         const auto &secData = layout.sections[seg.layoutIdx].data;
         f.write(reinterpret_cast<const char *>(secData.data()),
-                static_cast<std::streamsize>(secData.size()));
+                static_cast<std::streamsize>(seg.fileSize));
     }
 
     // Write non-alloc section data (debug sections).
@@ -313,7 +315,7 @@ bool writeElfExe(const std::string &path,
         const auto &sec = layout.sections[i];
         Elf64_Shdr shdr{};
         shdr.sh_name = loadableNameOffsets[li];
-        shdr.sh_type = sec.data.empty() ? SHT_NOBITS : SHT_PROGBITS;
+        shdr.sh_type = sec.zeroFill ? SHT_NOBITS : SHT_PROGBITS;
         shdr.sh_flags = SHF_ALLOC;
         if (sec.executable)
             shdr.sh_flags |= SHF_EXECINSTR;

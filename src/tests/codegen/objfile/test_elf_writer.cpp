@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
@@ -33,6 +34,7 @@
 #include <vector>
 
 using namespace viper::codegen::objfile;
+using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
@@ -74,6 +76,14 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     for (int i = 0; i < 8; ++i)
         val |= (static_cast<uint64_t>(d[off + i]) << (i * 8));
     return val;
+}
+
+static const ObjSection *findSection(const ObjFile &obj, const std::string &name) {
+    for (size_t i = 1; i < obj.sections.size(); ++i) {
+        if (obj.sections[i].name == name)
+            return &obj.sections[i];
+    }
+    return nullptr;
 }
 
 // =============================================================================
@@ -462,6 +472,46 @@ static void testRodataSymbolType() {
     std::remove(path.c_str());
 }
 
+static void testExplicitRodataRelocationHint() {
+    CodeSection text, rodata;
+
+    const uint32_t textSym = text.defineSymbol("shared", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0x48);
+    text.emit8(0x8D);
+    text.emit8(0x05);
+    text.addRelocation(RelocKind::PCRel32, textSym, -4, SymbolSection::Rodata);
+    text.emit32LE(0);
+    text.emit8(0xC3);
+
+    rodata.defineSymbol("shared", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit64LE(0x1122334455667788ULL);
+
+    std::string path = "/tmp/viper_test_elf_rodata_hint.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+
+    const ObjSection *textSec = findSection(obj, ".text");
+    const ObjSection *rodataSec = findSection(obj, ".rodata");
+    CHECK(textSec != nullptr);
+    CHECK(rodataSec != nullptr);
+    if (textSec != nullptr) {
+        CHECK(textSec->relocs.size() == 1);
+        if (!textSec->relocs.empty()) {
+            const ObjReloc &rel = textSec->relocs[0];
+            CHECK(rel.offset == 3);
+            CHECK(obj.symbols[rel.symIndex].name == "shared");
+            CHECK(obj.symbols[rel.symIndex].sectionIndex == 2);
+        }
+    }
+
+    std::remove(path.c_str());
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -472,6 +522,7 @@ int main() {
     testSectionNames();
     testRodataSection();
     testRodataSymbolType();
+    testExplicitRodataRelocationHint();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";

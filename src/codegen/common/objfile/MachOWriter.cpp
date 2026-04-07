@@ -429,6 +429,16 @@ bool MachOWriter::write(const std::string &path,
     emitSyms(pendingExtDef, false);
     emitSyms(pendingUndef, true);
 
+    std::unordered_map<std::string, uint32_t> definedRodataByName;
+    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+        const Symbol &sym = rodata.symbols().at(i);
+        if (sym.binding == SymbolBinding::External)
+            continue;
+        auto it = rodataSymMap.find(i);
+        if (it != rodataSymMap.end())
+            definedRodataByName[sym.name] = it->second;
+    }
+
     // --- 4. Build relocation entries for __text ---
     struct MachoReloc {
         uint32_t address;
@@ -439,15 +449,25 @@ bool MachOWriter::write(const std::string &path,
 
     for (const auto &rel : text.relocations()) {
         auto attrs = machoRelocAttrs(rel.kind);
-        if (attrs.skip)
-            continue;
+        if (attrs.skip) {
+            err << "MachOWriter: relocation kind " << static_cast<int>(rel.kind)
+                << " has no Mach-O encoding for __text at offset " << rel.offset << "\n";
+            return false;
+        }
 
         // Map encoder symbol index to Mach-O index.
         uint32_t symIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        if (it != textSymMap.end())
+        if (rel.targetSection == SymbolSection::Rodata) {
+            const Symbol &sym = text.symbols().at(rel.symbolIndex);
+            auto rodIt = definedRodataByName.find(sym.name);
+            if (rodIt != definedRodataByName.end())
+                symIdx = rodIt->second;
+            else if (it != textSymMap.end())
+                symIdx = it->second;
+        } else if (it != textSymMap.end()) {
             symIdx = it->second;
-        else {
+        } else {
             auto rit = rodataSymMap.find(rel.symbolIndex);
             if (rit != rodataSymMap.end())
                 symIdx = rit->second;

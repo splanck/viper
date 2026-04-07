@@ -48,13 +48,17 @@ uint64_t imageBaseForPlatform(LinkPlatform platform) {
 
 int permClass(const OutputSection &s) {
     if (!s.alloc)
-        return 4; // Non-alloc sections (debug) sort last.
+        return 6; // Non-alloc sections (debug) sort last.
     if (s.executable)
         return 0;
-    if (s.tls)
-        return 3;
-    if (s.writable)
+    if (s.writable && !s.zeroFill && !s.tls)
         return 2;
+    if (s.tls && !s.zeroFill)
+        return 3;
+    if (s.writable && s.zeroFill && !s.tls)
+        return 4;
+    if (s.tls && s.zeroFill)
+        return 5;
     return 1; // readonly
 }
 
@@ -111,7 +115,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             if (sec.data.empty() && sec.relocs.empty())
                 continue;
 
-            SectionClass cls = classifySection(sec.name, sec.executable, sec.writable, sec.tls);
+            SectionClass cls =
+                classifySection(sec.name, sec.executable, sec.writable, sec.tls, sec.zeroFill);
             pending.push_back({oi, si, cls, sec.name, sec.alignment});
         }
     }
@@ -150,7 +155,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         });
 
     // Create output sections in order.
-    auto addOutputSection = [&](SectionClass cls, const char *name, bool exec, bool write, bool tls)
+    auto addOutputSection =
+        [&](SectionClass cls, const char *name, bool exec, bool write, bool tls, bool zeroFill)
         -> OutputSection & {
         layout.sections.push_back({});
         auto &out = layout.sections.back();
@@ -158,6 +164,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         out.executable = exec;
         out.writable = write;
         out.tls = tls;
+        out.zeroFill = zeroFill;
         return out;
     };
 
@@ -196,7 +203,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             break;
         }
     if (hasText) {
-        auto &text = addOutputSection(SectionClass::Text, ".text", true, false, false);
+        auto &text = addOutputSection(SectionClass::Text, ".text", true, false, false, false);
         mergeClass(SectionClass::Text, text);
     }
 
@@ -208,7 +215,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             break;
         }
     if (hasRodata) {
-        auto &rodata = addOutputSection(SectionClass::Rodata, ".rodata", false, false, false);
+        auto &rodata =
+            addOutputSection(SectionClass::Rodata, ".rodata", false, false, false, false);
         mergeClass(SectionClass::Rodata, rodata);
     }
 
@@ -220,7 +228,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             break;
         }
     if (hasData) {
-        auto &data = addOutputSection(SectionClass::Data, ".data", false, true, false);
+        auto &data = addOutputSection(SectionClass::Data, ".data", false, true, false, false);
         mergeClass(SectionClass::Data, data);
     }
 
@@ -234,7 +242,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             break;
         }
     if (hasBss) {
-        auto &bss = addOutputSection(SectionClass::Bss, ".bss", false, true, false);
+        auto &bss = addOutputSection(SectionClass::Bss, ".bss", false, true, false, true);
         mergeClass(SectionClass::Bss, bss);
     }
 
@@ -258,7 +266,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
         // TLV descriptors → .tdata (mapped to __thread_vars in MachOExeWriter).
         if (hasTlvDescriptors) {
-            auto &tdata = addOutputSection(SectionClass::TlsData, ".tdata", false, true, true);
+            auto &tdata =
+                addOutputSection(SectionClass::TlsData, ".tdata", false, true, true, false);
             for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
@@ -287,8 +296,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         // MachOExeWriter). On ELF/PE, all TLS data is template data (no TLV
         // descriptors), so this path handles those platforms correctly.
         if (hasTlvTemplateData) {
-            auto &tmpl =
-                addOutputSection(SectionClass::TlsData, ".tdata_template", false, true, true);
+            auto &tmpl = addOutputSection(
+                SectionClass::TlsData, ".tdata_template", false, true, true, false);
             for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
@@ -322,7 +331,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             break;
         }
     if (hasTlsBss) {
-        auto &tbss = addOutputSection(SectionClass::TlsBss, ".tbss", false, true, true);
+        auto &tbss = addOutputSection(SectionClass::TlsBss, ".tbss", false, true, true, true);
         mergeClass(SectionClass::TlsBss, tbss);
     }
 

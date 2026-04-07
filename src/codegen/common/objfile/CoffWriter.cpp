@@ -95,6 +95,58 @@ static uint16_t coffRelocType(RelocKind kind) {
     return 0;
 }
 
+static bool validateCoffRelocationAddend(const CodeSection &section,
+                                         const Relocation &rel,
+                                         std::ostream &err) {
+    switch (rel.kind) {
+        case RelocKind::PCRel32:
+        case RelocKind::Branch32:
+            if (rel.addend != 0 && rel.addend != -4) {
+                err << "CoffWriter: unsupported addend " << rel.addend
+                    << " for x86_64 rel32 relocation at offset " << rel.offset << "\n";
+                return false;
+            }
+            return true;
+
+        case RelocKind::Abs64: {
+            if (rel.addend == 0)
+                return true;
+            if (rel.offset + 8 > section.bytes().size()) {
+                err << "CoffWriter: 64-bit addend relocation at offset " << rel.offset
+                    << " is out of bounds\n";
+                return false;
+            }
+
+            uint64_t encoded = 0;
+            const auto &bytes = section.bytes();
+            for (size_t i = 0; i < 8; ++i)
+                encoded |= (static_cast<uint64_t>(bytes[rel.offset + i]) << (i * 8));
+            if (encoded != static_cast<uint64_t>(rel.addend)) {
+                err << "CoffWriter: Abs64 addend " << rel.addend
+                    << " must already be embedded in section bytes at offset " << rel.offset
+                    << "\n";
+                return false;
+            }
+            return true;
+        }
+
+        case RelocKind::A64Call26:
+        case RelocKind::A64Jump26:
+        case RelocKind::A64AdrpPage21:
+        case RelocKind::A64AddPageOff12:
+        case RelocKind::A64LdSt64Off12:
+        case RelocKind::A64CondBr19:
+            if (rel.addend != 0) {
+                err << "CoffWriter: unsupported non-zero AArch64 addend " << rel.addend
+                    << " at offset " << rel.offset << "\n";
+                return false;
+            }
+            return true;
+    }
+
+    return true;
+}
+
 static void writeSectionHeader(std::vector<uint8_t> &out,
                                const char *name,
                                uint32_t virtualSize,
@@ -284,7 +336,7 @@ static void buildWin64UnwindSections(const CodeSection &text,
 
         const uint32_t pdataOffset = static_cast<uint32_t>(pdataBytes.size());
         appendLE32(pdataBytes, 0);
-        appendLE32(pdataBytes, 0);
+        appendLE32(pdataBytes, entry.functionLength);
         appendLE32(pdataBytes, 0);
 
         const auto &funcSym = text.symbols().at(entry.symbolIndex);
@@ -361,6 +413,18 @@ bool CoffWriter::write(const std::string &path,
         }
     }
 
+    std::unordered_map<std::string, uint32_t> definedRodataByName;
+    if (hasRodata) {
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            if (s.binding == SymbolBinding::External)
+                continue;
+            auto it = rodataSymMap.find(i);
+            if (it != rodataSymMap.end())
+                definedRodataByName[s.name] = it->second;
+        }
+    }
+
     if (hasXdata) {
         for (const auto &sym : xdataSymbols) {
             uint32_t strOff = 0;
@@ -425,8 +489,20 @@ bool CoffWriter::write(const std::string &path,
 
     std::vector<uint8_t> textRelocBytes;
     for (const auto &rel : text.relocations()) {
+        if (!validateCoffRelocationAddend(text, rel, err))
+            return false;
+        uint32_t coffSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        const uint32_t coffSymIdx = (it != textSymMap.end()) ? it->second : 0;
+        if (rel.targetSection == SymbolSection::Rodata) {
+            const Symbol &sym = text.symbols().at(rel.symbolIndex);
+            auto rodIt = definedRodataByName.find(sym.name);
+            if (rodIt != definedRodataByName.end())
+                coffSymIdx = rodIt->second;
+            else if (it != textSymMap.end())
+                coffSymIdx = it->second;
+        } else {
+            coffSymIdx = (it != textSymMap.end()) ? it->second : 0;
+        }
         writeReloc(
             textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
     }
@@ -701,6 +777,18 @@ bool CoffWriter::write(const std::string &path,
         }
     }
 
+    std::unordered_map<std::string, uint32_t> definedRodataByName;
+    if (hasRodata) {
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            if (s.binding == SymbolBinding::External)
+                continue;
+            auto it = rodataSymMap.find(i);
+            if (it != rodataSymMap.end())
+                definedRodataByName[s.name] = it->second;
+        }
+    }
+
     if (hasXdata) {
         for (const auto &sym : xdataSymbols) {
             const uint32_t strOff = (sym.name.size() > 8) ? addToStrTab(sym.name) : 0;
@@ -778,8 +866,20 @@ bool CoffWriter::write(const std::string &path,
         const auto &text = textSections[ti];
         auto &relocBytes = textRelocBytes[ti];
         for (const auto &rel : text.relocations()) {
+            if (!validateCoffRelocationAddend(text, rel, err))
+                return false;
+            uint32_t coffSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
-            const uint32_t coffSymIdx = (it != textSymMaps[ti].end()) ? it->second : 0;
+            if (rel.targetSection == SymbolSection::Rodata) {
+                const Symbol &sym = text.symbols().at(rel.symbolIndex);
+                auto rodIt = definedRodataByName.find(sym.name);
+                if (rodIt != definedRodataByName.end())
+                    coffSymIdx = rodIt->second;
+                else if (it != textSymMaps[ti].end())
+                    coffSymIdx = it->second;
+            } else {
+                coffSymIdx = (it != textSymMaps[ti].end()) ? it->second : 0;
+            }
             writeReloc(
                 relocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
         }

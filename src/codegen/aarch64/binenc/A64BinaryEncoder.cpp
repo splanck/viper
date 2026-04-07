@@ -31,6 +31,7 @@
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -101,6 +102,106 @@ static int32_t checkedBranchDispWords(int64_t deltaBytes,
     return static_cast<int32_t>(deltaWords);
 }
 
+static bool fitsBranchDispWords(int64_t deltaBytes, int immBits) {
+    if ((deltaBytes & 0x3) != 0)
+        return false;
+
+    const int64_t deltaWords = deltaBytes / 4;
+    const int64_t min = -(int64_t{1} << (immBits - 1));
+    const int64_t max = (int64_t{1} << (immBits - 1)) - 1;
+    return deltaWords >= min && deltaWords <= max;
+}
+
+size_t A64BinaryEncoder::measurePreludeSize(const MFunction &fn) {
+    objfile::CodeSection text;
+    text.reserveBytes(32);
+    emit32(kBtiC, text);
+    if (!skipFrame_)
+        encodePrologue(fn, text);
+    return text.currentOffset();
+}
+
+size_t A64BinaryEncoder::measureInstructionSize(const MInstr &mi,
+                                                size_t currentOffset,
+                                                const LabelOffsetMap &knownLabelOffsets) {
+    A64BinaryEncoder measureEncoder;
+    measureEncoder.labelOffsets_ = knownLabelOffsets;
+    measureEncoder.currentFn_ = currentFn_;
+    measureEncoder.currentRodata_ = currentRodata_;
+    measureEncoder.usePlan_ = usePlan_;
+    measureEncoder.skipFrame_ = skipFrame_;
+
+    objfile::CodeSection text;
+    text.reserveBytes(currentOffset + 32);
+    text.emitZeros(currentOffset);
+    measureEncoder.encodeInstruction(mi, text);
+    return text.currentOffset() - currentOffset;
+}
+
+A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn) {
+    LabelOffsetMap estimated;
+
+    size_t relaxCandidates = 0;
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
+            if (mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz)
+                ++relaxCandidates;
+        }
+    }
+
+    const size_t maxIterations = std::max<size_t>(2, relaxCandidates + 1);
+    for (size_t iter = 0; iter < maxIterations; ++iter) {
+        bool changed = false;
+        LabelOffsetMap known = estimated;
+        LabelOffsetMap next;
+        next.reserve(estimated.size() + fn.blocks.size());
+
+        auto assignLabel = [&](const std::string &name, size_t offset) {
+            const std::string sanitized = sanitizeLabel(name);
+            auto prevIt = estimated.find(sanitized);
+            if (prevIt == estimated.end() || prevIt->second != offset)
+                changed = true;
+            known[sanitized] = offset;
+            next[sanitized] = offset;
+        };
+
+        size_t offset = measurePreludeSize(fn);
+        for (const auto &bb : fn.blocks) {
+            if (!bb.name.empty())
+                assignLabel(bb.name, offset);
+            for (const auto &mi : bb.instrs)
+                offset += measureInstructionSize(mi, offset, known);
+        }
+
+        if (!changed && next.size() == estimated.size())
+            return next;
+        estimated = std::move(next);
+    }
+
+    return estimated;
+}
+
+size_t A64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
+                                              const LabelOffsetMap &knownLabelOffsets) {
+    size_t size = measurePreludeSize(fn);
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs)
+            size += measureInstructionSize(mi, size, knownLabelOffsets);
+    }
+    return size;
+}
+
+void A64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const {
+    auto it = labelOffsets_.find(label);
+    if (it == labelOffsets_.end())
+        return;
+    if (it->second != actualOffset) {
+        throw std::runtime_error("AArch64 binary encoder: label offset drift for '" + label +
+                                 "' (predicted=" + std::to_string(it->second) +
+                                 ", actual=" + std::to_string(actualOffset) + ")");
+    }
+}
+
 // =============================================================================
 // encodeFunction
 // =============================================================================
@@ -109,24 +210,40 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
                                       ABIFormat abi) {
-    (void)rodata; // Reserved for FMovRI literal pool (future)
     (void)abi;    // Symbol mangling deferred to ObjectFileWriter
 
     labelOffsets_.clear();
     pendingBranches_.clear();
     currentFn_ = &fn;
+    currentRodata_ = &rodata;
 
     try {
+        // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
+        skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
+                     fn.localFrameSize == 0;
+        usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
+
         // Define function symbol at current offset.
         const size_t funcStartOffset = text.currentOffset();
+        const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn);
+        text.reserveAdditionalBytes(estimateFunctionSize(fn, relativeLabelOffsets));
+        labelOffsets_.clear();
+        labelOffsets_.reserve(relativeLabelOffsets.size());
+        for (const auto &[label, offset] : relativeLabelOffsets)
+            labelOffsets_[label] = funcStartOffset + offset;
+
+        size_t branchCount = 0;
+        for (const auto &bb : fn.blocks) {
+            for (const auto &mi : bb.instrs) {
+                if (mi.opc == MOpcode::Br || mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
+                    mi.opc == MOpcode::Cbnz || mi.opc == MOpcode::Bl)
+                    ++branchCount;
+            }
+        }
+        pendingBranches_.reserve(branchCount);
+
         const uint32_t funcSymIdx = text.defineSymbol(
             fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
-
-        // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
-        // Exclude main because we inject bl calls to runtime init.
-        skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
-                     fn.localFrameSize == 0 && fn.name != "main";
-        usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
 
         // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
         emit32(kBtiC, text);
@@ -135,14 +252,13 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         if (!skipFrame_)
             encodePrologue(fn, text);
 
-        // For main, inject runtime context initialization.
-        if (fn.name == "main")
-            encodeMainInit(text);
-
         // Encode all blocks.
         for (const auto &bb : fn.blocks) {
-            if (!bb.name.empty())
-                labelOffsets_[sanitizeLabel(bb.name)] = text.currentOffset();
+            if (!bb.name.empty()) {
+                const std::string label = sanitizeLabel(bb.name);
+                verifyPredictedLabelOffset(label, text.currentOffset());
+                labelOffsets_[label] = text.currentOffset();
+            }
 
             for (const auto &mi : bb.instrs) {
                 if (debugLines_ && mi.loc.hasLine())
@@ -224,8 +340,10 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         }
 
         currentFn_ = nullptr;
+        currentRodata_ = nullptr;
     } catch (...) {
         currentFn_ = nullptr;
+        currentRodata_ = nullptr;
         throw;
     }
 }
@@ -320,23 +438,6 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
 
     // ret
     emit32(kRet, cs);
-}
-
-void A64BinaryEncoder::encodeMainInit(objfile::CodeSection &cs) {
-    // bl rt_legacy_context
-    {
-        std::string sym = mapRuntimeSymbol("rt_legacy_context");
-        uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-        cs.addRelocation(objfile::RelocKind::A64Call26, symIdx, 0);
-        emit32(kBl, cs); // imm26 = 0, filled by linker
-    }
-    // bl rt_set_current_context
-    {
-        std::string sym = mapRuntimeSymbol("rt_set_current_context");
-        uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-        cs.addRelocation(objfile::RelocKind::A64Call26, symIdx, 0);
-        emit32(kBl, cs);
-    }
 }
 
 // =============================================================================
@@ -1049,16 +1150,30 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             std::string target = sanitizeLabel(mi.ops[1].label);
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
-                int64_t delta =
+                const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                const int32_t imm19 =
-                    checkedBranchDispWords(delta,
-                                           19,
-                                           "conditional branch",
-                                           "the +/-1MB conditional-branch range",
-                                           target,
-                                           currentFn_ ? currentFn_->name : "<unknown>");
-                emit32(kBCond | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | cc, cs);
+                if (fitsBranchDispWords(delta, 19)) {
+                    const int32_t imm19 =
+                        checkedBranchDispWords(delta,
+                                               19,
+                                               "conditional branch",
+                                               "the +/-1MB conditional-branch range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kBCond | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | cc, cs);
+                } else {
+                    emit32(kBCond | (2u << 5) | invertCond(cc), cs);
+                    const int64_t farDelta = static_cast<int64_t>(it->second) -
+                                             static_cast<int64_t>(cs.currentOffset());
+                    const int32_t imm26 =
+                        checkedBranchDispWords(farDelta,
+                                               26,
+                                               "branch",
+                                               "the +/-128MB B/BL range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
+                }
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::BCond});
                 emit32(kBCond | cc, cs); // placeholder with cond code set
@@ -1070,16 +1185,30 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             std::string target = sanitizeLabel(mi.ops[1].label);
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
-                int64_t delta =
+                const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                const int32_t imm19 =
-                    checkedBranchDispWords(delta,
-                                           19,
-                                           "conditional branch",
-                                           "the +/-1MB conditional-branch range",
-                                           target,
-                                           currentFn_ ? currentFn_->name : "<unknown>");
-                emit32(kCbz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
+                if (fitsBranchDispWords(delta, 19)) {
+                    const int32_t imm19 =
+                        checkedBranchDispWords(delta,
+                                               19,
+                                               "conditional branch",
+                                               "the +/-1MB conditional-branch range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kCbz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
+                } else {
+                    emit32(kCbnz | (2u << 5) | rt, cs);
+                    const int64_t farDelta = static_cast<int64_t>(it->second) -
+                                             static_cast<int64_t>(cs.currentOffset());
+                    const int32_t imm26 =
+                        checkedBranchDispWords(farDelta,
+                                               26,
+                                               "branch",
+                                               "the +/-128MB B/BL range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
+                }
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbz});
                 emit32(kCbz | rt, cs); // placeholder with Rt set
@@ -1091,16 +1220,30 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             std::string target = sanitizeLabel(mi.ops[1].label);
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
-                int64_t delta =
+                const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                const int32_t imm19 =
-                    checkedBranchDispWords(delta,
-                                           19,
-                                           "conditional branch",
-                                           "the +/-1MB conditional-branch range",
-                                           target,
-                                           currentFn_ ? currentFn_->name : "<unknown>");
-                emit32(kCbnz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
+                if (fitsBranchDispWords(delta, 19)) {
+                    const int32_t imm19 =
+                        checkedBranchDispWords(delta,
+                                               19,
+                                               "conditional branch",
+                                               "the +/-1MB conditional-branch range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kCbnz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
+                } else {
+                    emit32(kCbz | (2u << 5) | rt, cs);
+                    const int64_t farDelta = static_cast<int64_t>(it->second) -
+                                             static_cast<int64_t>(cs.currentOffset());
+                    const int32_t imm26 =
+                        checkedBranchDispWords(farDelta,
+                                               26,
+                                               "branch",
+                                               "the +/-128MB B/BL range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
+                }
             } else {
                 pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbnz});
                 emit32(kCbnz | rt, cs);
@@ -1139,7 +1282,11 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             std::string sym = mi.ops[1].label;
             uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-            cs.addRelocation(objfile::RelocKind::A64AdrpPage21, symIdx, 0);
+            const auto targetSection = (currentRodata_ != nullptr &&
+                                        currentRodata_->symbols().find(sym) != 0)
+                                           ? objfile::SymbolSection::Rodata
+                                           : objfile::SymbolSection::Undefined;
+            cs.addRelocation(objfile::RelocKind::A64AdrpPage21, symIdx, 0, targetSection);
             emit32(kAdrp | rd, cs); // immediate filled by linker
             return;
         }
@@ -1148,7 +1295,11 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
             std::string sym = mi.ops[2].label;
             uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-            cs.addRelocation(objfile::RelocKind::A64AddPageOff12, symIdx, 0);
+            const auto targetSection = (currentRodata_ != nullptr &&
+                                        currentRodata_->symbols().find(sym) != 0)
+                                           ? objfile::SymbolSection::Rodata
+                                           : objfile::SymbolSection::Undefined;
+            cs.addRelocation(objfile::RelocKind::A64AddPageOff12, symIdx, 0, targetSection);
             emit32(encodeAddSubImm(kAddRI, rd, rn, 0), cs); // imm12 filled by linker
             return;
         }

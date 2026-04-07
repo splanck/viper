@@ -65,6 +65,7 @@ static constexpr uint32_t MH_HAS_TLV_DESCRIPTORS = 0x800000;
 
 // Mach-O section type constants (low 8 bits of flags).
 static constexpr uint32_t S_REGULAR = 0x00;
+static constexpr uint32_t S_ZEROFILL = 0x01;
 static constexpr uint32_t S_CSTRING_LITERALS = 0x02;
 static constexpr uint32_t S_LITERAL_POINTERS = 0x05;
 static constexpr uint32_t S_THREAD_LOCAL_REGULAR = 0x11;
@@ -149,6 +150,11 @@ bool writeMachOExe(const std::string &path,
     // =======================================================================
     std::vector<size_t> textSections, dataSections;
     classifySections(layout, textSections, dataSections);
+    std::vector<size_t> fileBackedDataSections;
+    for (size_t idx : dataSections) {
+        if (!layout.sections[idx].zeroFill)
+            fileBackedDataSections.push_back(idx);
+    }
 
     // Collect non-alloc debug sections.
     std::vector<size_t> debugSections;
@@ -160,7 +166,7 @@ bool writeMachOExe(const std::string &path,
     // Compute text/data sizes accounting for VA gaps between sections.
     // Sections within a segment have page-aligned VAs; file layout must mirror this.
     const size_t textDataSize = computeSegmentSpan(layout, textSections);
-    const size_t dataDataSize = computeSegmentSpan(layout, dataSections);
+    const size_t dataDataSize = computeSegmentSpan(layout, fileBackedDataSections);
 
     // =======================================================================
     // Phase 2: Build __LINKEDIT content.
@@ -289,7 +295,7 @@ bool writeMachOExe(const std::string &path,
 
     // __DATA segment.
     const size_t dataFileOff = textSegFileSize;
-    const size_t dataFileSize = dataSections.empty() ? 0 : alignUp(dataDataSize, pageSize);
+    const size_t dataFileSize = fileBackedDataSections.empty() ? 0 : alignUp(dataDataSize, pageSize);
     uint64_t dataSegVmAddr = 0;
     uint64_t dataSegVmSize = 0;
     if (!dataSections.empty()) {
@@ -489,25 +495,19 @@ bool writeMachOExe(const std::string &path,
                 if (sec.name == ".tdata") {
                     machoSecName = "__thread_vars";
                     secFlags = S_THREAD_LOCAL_VARIABLES;
-                } else if (sec.name == ".tbss") {
-                    // Zero-initialized TLS: use __thread_bss to avoid duplicate
-                    // __thread_data names (Mach-O requires unique section names
-                    // within a segment).  Keep S_THREAD_LOCAL_REGULAR so we don't
-                    // need zerofill layout (offset=0 requirement).
+                } else if (sec.zeroFill) {
                     machoSecName = "__thread_bss";
-                    secFlags = S_THREAD_LOCAL_REGULAR;
+                    secFlags = S_THREAD_LOCAL_ZEROFILL;
+                    isZerofill = true;
                 } else {
                     // TLS template data (S_THREAD_LOCAL_REGULAR).
                     machoSecName = "__thread_data";
                     secFlags = S_THREAD_LOCAL_REGULAR;
                 }
-            } else if (sec.name == ".bss") {
-                // Emit BSS as regular data (S_REGULAR) with file backing.
-                // Using S_ZEROFILL is more correct but complicates file layout
-                // (zerofill sections must be last, offset=0, separate filesize calc).
-                // Since BSS is already zero-filled in the merged section, this works.
+            } else if (sec.zeroFill) {
                 machoSecName = "__bss";
-                secFlags = 0; // S_REGULAR — not S_ZEROFILL, to simplify layout
+                secFlags = S_ZEROFILL;
+                isZerofill = true;
             }
 
             writeStr(file, machoSecName.c_str(), 16);
@@ -681,6 +681,8 @@ bool writeMachOExe(const std::string &path,
     if (!dataSections.empty()) {
         for (size_t idx : dataSections) {
             const auto &sec = layout.sections[idx];
+            if (sec.zeroFill)
+                continue;
             size_t targetOff = dataFileOff + static_cast<size_t>(sec.virtualAddr - dataSegVmAddr);
             if (file.size() < targetOff)
                 writePad(file, targetOff - file.size());

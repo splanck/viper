@@ -78,6 +78,7 @@ struct PeSection {
     bool alloc = true;
     bool executable = false;
     bool writable = false;
+    bool zeroFill = false;
 };
 
 void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
@@ -97,11 +98,13 @@ void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
     putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
 }
 
-uint32_t sectionChars(bool executable, bool writable, bool alloc) {
+uint32_t sectionChars(bool executable, bool writable, bool alloc, bool zeroFill = false) {
     if (!alloc)
         return 0x42000040; // CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ
     if (executable)
         return 0x60000020; // CNT_CODE | MEM_EXECUTE | MEM_READ
+    if (zeroFill)
+        return 0xC0000080; // CNT_UNINITIALIZED_DATA | MEM_READ | MEM_WRITE
     if (writable)
         return 0xC0000040; // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
     return 0x40000040;     // CNT_INITIALIZED_DATA | MEM_READ
@@ -370,6 +373,8 @@ std::string sectionNameFor(const OutputSection &sec) {
         return ".debug";
     if (sec.tls)
         return ".tls";
+    if (sec.zeroFill)
+        return ".bss";
     if (hasPrefix(sec.name, ".pdata"))
         return ".pdata";
     if (hasPrefix(sec.name, ".xdata"))
@@ -475,9 +480,10 @@ bool writePeExe(const std::string &path,
         ps.alloc = sec.alloc;
         ps.executable = sec.executable;
         ps.writable = sec.writable;
+        ps.zeroFill = sec.zeroFill;
         ps.virtualAddress = sec.alloc ? static_cast<uint32_t>(sec.virtualAddr - imageBase) : 0;
         ps.virtualSize = static_cast<uint32_t>(ownedSectionData.back().size());
-        ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc);
+        ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc, sec.zeroFill);
         sections.push_back(ps);
 
         if (sec.alloc) {
@@ -602,12 +608,14 @@ bool writePeExe(const std::string &path,
     uint32_t currentFileOff = sizeOfHeaders;
     uint32_t sizeOfCode = 0;
     uint32_t sizeOfInitData = 0;
+    uint32_t sizeOfUninitData = 0;
     uint32_t baseOfCode = 0;
     uint32_t sizeOfImage = sectionAlignment;
 
     for (auto &sec : sections) {
-        sec.sizeOfRawData = static_cast<uint32_t>(alignUp(sec.virtualSize, fileAlignment));
-        sec.pointerToRawData = currentFileOff;
+        sec.sizeOfRawData =
+            sec.zeroFill ? 0 : static_cast<uint32_t>(alignUp(sec.virtualSize, fileAlignment));
+        sec.pointerToRawData = sec.sizeOfRawData == 0 ? 0 : currentFileOff;
         currentFileOff += sec.sizeOfRawData;
 
         if (sec.alloc) {
@@ -619,6 +627,9 @@ bool writePeExe(const std::string &path,
                 sizeOfCode += sec.sizeOfRawData;
                 if (baseOfCode == 0)
                     baseOfCode = sec.virtualAddress;
+            } else if (sec.zeroFill) {
+                sizeOfUninitData +=
+                    static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
             } else {
                 sizeOfInitData += sec.sizeOfRawData;
             }
@@ -646,7 +657,7 @@ bool writePeExe(const std::string &path,
     writeLE16(file, 0);
     writeLE32(file, sizeOfCode);
     writeLE32(file, sizeOfInitData);
-    writeLE32(file, 0);
+    writeLE32(file, sizeOfUninitData);
     writeLE32(file, entryRva);
     writeLE32(file, baseOfCode);
     writeLE64(file, imageBase);
@@ -710,6 +721,8 @@ bool writePeExe(const std::string &path,
     padTo(file, sizeOfHeaders);
 
     for (const auto &sec : sections) {
+        if (sec.sizeOfRawData == 0)
+            continue;
         padTo(file, sec.pointerToRawData);
         file.insert(file.end(), sec.data->begin(), sec.data->end());
         padTo(file, alignUp(file.size(), fileAlignment));

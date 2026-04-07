@@ -175,6 +175,7 @@ bool readElfObj(
             sec.name.find(".str") != std::string::npos;
 
         if (sh->sh_type == elf::SHT_NOBITS) {
+            sec.zeroFill = true;
             sec.data.resize(static_cast<size_t>(sh->sh_size), 0);
         } else if (sh->sh_size > 0 && sh->sh_offset + sh->sh_size <= size) {
             auto off = static_cast<size_t>(sh->sh_offset);

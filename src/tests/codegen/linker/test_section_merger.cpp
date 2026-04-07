@@ -58,13 +58,15 @@ static ObjSection makeSection(const std::string &name,
                               bool exec,
                               bool write,
                               bool tls = false,
-                              uint32_t align = 1) {
+                              uint32_t align = 1,
+                              bool zeroFill = false) {
     ObjSection sec;
     sec.name = name;
     sec.data.resize(size, 0xCC);
     sec.executable = exec;
     sec.writable = write;
     sec.tls = tls;
+    sec.zeroFill = zeroFill;
     sec.alloc = true;
     sec.alignment = align;
     return sec;
@@ -313,6 +315,32 @@ int main() {
         CHECK(layout.sections[0].chunks.size() == 2);
         CHECK(layout.sections[0].chunks[0].inputSecIndex == 2); // .tls$
         CHECK(layout.sections[0].chunks[1].inputSecIndex == 1); // .tls$ZZZ
+    }
+
+    // --- Zero-fill sections preserve BSS/TBSS classification ---
+    {
+        auto obj = makeObj("bss.o",
+                           ObjFileFormat::ELF,
+                           {makeSection(".data", 8, false, true),
+                            makeSection(".bss", 16, false, true, false, 8, true),
+                            makeSection(".tbss", 12, false, true, true, 8, true)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(layout.sections.size() == 3);
+        CHECK(layout.sections[0].name == ".data");
+        CHECK(layout.sections[1].name == ".bss");
+        CHECK(layout.sections[1].zeroFill);
+        CHECK(layout.sections[1].writable);
+        CHECK(!layout.sections[1].tls);
+        CHECK(layout.sections[2].name == ".tbss");
+        CHECK(layout.sections[2].zeroFill);
+        CHECK(layout.sections[2].tls);
     }
 
     // --- Result ---

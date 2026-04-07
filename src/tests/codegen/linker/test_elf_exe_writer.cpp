@@ -99,6 +99,7 @@ static constexpr uint32_t PF_W = 2;
 static constexpr uint32_t PF_R = 4;
 static constexpr uint32_t SHT_STRTAB = 3;
 static constexpr uint32_t SHT_PROGBITS = 1;
+static constexpr uint32_t SHT_NOBITS = 8;
 static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
@@ -147,13 +148,15 @@ static OutputSection makeSec(const std::string &name,
                              uint64_t va,
                              bool exec,
                              bool writable,
-                             uint8_t fillByte = 0xCC) {
+                             uint8_t fillByte = 0xCC,
+                             bool zeroFill = false) {
     OutputSection sec;
     sec.name = name;
     sec.data.resize(size, fillByte);
     sec.virtualAddr = va;
     sec.executable = exec;
     sec.writable = writable;
+    sec.zeroFill = zeroFill;
     sec.alignment = 1;
     return sec;
 }
@@ -440,7 +443,55 @@ static void testEmptySectionSkipped() {
     CHECK(phdrs[1].p_type == PT_GNU_STACK);
 }
 
-/// Test 9: Large page size (16KB for macOS arm64-style layout).
+/// Test 9: Zero-fill sections use SHT_NOBITS and occupy memory, not file bytes.
+static void testZeroFillSection() {
+    auto path = tmpPath("zerofill.elf");
+    auto text = makeSec(".text", 32, 0x401000, true, false, 0x90);
+    auto bss = makeSec(".bss", 48, 0x402000, false, true, 0x00, true);
+
+    auto layout = makeLayout({text, bss});
+    std::ostringstream err;
+    bool ok = writeElfExe(path, layout, LinkArch::X86_64, err);
+    CHECK(ok);
+    CHECK(err.str().empty());
+
+    auto data = readFile(path);
+    Elf64_Ehdr ehdr;
+    std::memcpy(&ehdr, data.data(), sizeof(ehdr));
+
+    std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
+    std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
+    CHECK(ehdr.e_phnum == 3); // .text + .bss + GNU-stack
+    CHECK(phdrs[1].p_type == PT_LOAD);
+    CHECK(phdrs[1].p_vaddr == 0x402000);
+    CHECK(phdrs[1].p_filesz == 0);
+    CHECK(phdrs[1].p_memsz == 48);
+    CHECK((phdrs[1].p_flags & PF_W) != 0);
+
+    std::vector<Elf64_Shdr> shdrs(ehdr.e_shnum);
+    std::memcpy(shdrs.data(), data.data() + ehdr.e_shoff, ehdr.e_shnum * sizeof(Elf64_Shdr));
+
+    auto &strtabShdr = shdrs[ehdr.e_shstrndx];
+    const char *strtab = reinterpret_cast<const char *>(data.data() + strtabShdr.sh_offset);
+
+    bool foundBss = false;
+    for (const auto &shdr : shdrs) {
+        if (shdr.sh_name >= strtabShdr.sh_size)
+            continue;
+        if (std::strcmp(strtab + shdr.sh_name, ".bss") != 0)
+            continue;
+        foundBss = true;
+        CHECK(shdr.sh_type == SHT_NOBITS);
+        CHECK((shdr.sh_flags & SHF_ALLOC) != 0);
+        CHECK((shdr.sh_flags & SHF_WRITE) != 0);
+        CHECK(shdr.sh_size == 48);
+        CHECK(shdr.sh_offset == 0x2000);
+        break;
+    }
+    CHECK(foundBss);
+}
+
+/// Test 10: Large page size (16KB for macOS arm64-style layout).
 static void testLargePageSize() {
     auto path = tmpPath("large_page.elf");
     auto text = makeSec(".text", 200, 0x401000, true, false);
@@ -468,7 +519,7 @@ static void testLargePageSize() {
     }
 }
 
-/// Test 10: GNU-stack section header exists in section headers.
+/// Test 11: GNU-stack section header exists in section headers.
 static void testGnuStackSectionHeader() {
     auto path = tmpPath("gnu_stack.elf");
     auto text = makeSec(".text", 32, 0x401000, true, false);
@@ -514,6 +565,7 @@ int main() {
     testSectionHeaders();
     testPageAlignment();
     testEmptySectionSkipped();
+    testZeroFillSection();
     testLargePageSize();
     testGnuStackSectionHeader();
 

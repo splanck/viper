@@ -76,6 +76,28 @@ class CodeSection {
   public:
     // === Byte emission ===
 
+    /// Reserve total byte capacity ahead of time.
+    void reserveBytes(size_t totalBytes) {
+        if (bytes_.capacity() < totalBytes)
+            bytes_.reserve(totalBytes);
+    }
+
+    /// Reserve additional byte capacity relative to the current size.
+    void reserveAdditionalBytes(size_t additionalBytes) {
+        reserveBytes(bytes_.size() + additionalBytes);
+    }
+
+    /// Reserve total relocation capacity ahead of time.
+    void reserveRelocations(size_t totalRelocs) {
+        if (relocations_.capacity() < totalRelocs)
+            relocations_.reserve(totalRelocs);
+    }
+
+    /// Reserve total symbol capacity ahead of time.
+    void reserveSymbols(size_t totalSymbols) {
+        symbols_.reserve(totalSymbols);
+    }
+
     /// Current write position (byte offset from start of section).
     size_t currentOffset() const {
         return bytes_.size();
@@ -135,13 +157,20 @@ class CodeSection {
     // === Relocation tracking ===
 
     /// Record a relocation at the current offset.
-    void addRelocation(RelocKind kind, uint32_t symbolIndex, int64_t addend = 0) {
-        relocations_.push_back(Relocation{currentOffset(), kind, symbolIndex, addend});
+    void addRelocation(RelocKind kind,
+                       uint32_t symbolIndex,
+                       int64_t addend = 0,
+                       SymbolSection targetSection = SymbolSection::Undefined) {
+        relocations_.push_back(Relocation{currentOffset(), kind, symbolIndex, addend, targetSection});
     }
 
     /// Record a relocation at a specific offset.
-    void addRelocationAt(size_t offset, RelocKind kind, uint32_t symbolIndex, int64_t addend = 0) {
-        relocations_.push_back(Relocation{offset, kind, symbolIndex, addend});
+    void addRelocationAt(size_t offset,
+                         RelocKind kind,
+                         uint32_t symbolIndex,
+                         int64_t addend = 0,
+                         SymbolSection targetSection = SymbolSection::Undefined) {
+        relocations_.push_back(Relocation{offset, kind, symbolIndex, addend, targetSection});
     }
 
     // === Symbol management ===
@@ -206,6 +235,8 @@ class CodeSection {
     /// Append another CodeSection, rebasing symbol offsets and relocation sites.
     void appendSection(const CodeSection &other) {
         const size_t offsetBias = currentOffset();
+        reserveAdditionalBytes(other.bytes().size());
+        reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
 
         for (uint32_t i = 1; i < other.symbols().count(); ++i) {
@@ -233,7 +264,8 @@ class CodeSection {
             addRelocationAt(offsetBias + reloc.offset,
                             reloc.kind,
                             symbolRemap[reloc.symbolIndex],
-                            reloc.addend);
+                            reloc.addend,
+                            reloc.targetSection);
         }
 
         for (const auto &entry : other.unwindEntries()) {

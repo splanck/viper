@@ -163,12 +163,25 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 if (rel.symIndex >= obj.symbols.size())
                     continue;
                 const auto &targetSym = obj.symbols[rel.symIndex];
-                if (targetSym.sectionIndex == 0)
+                if (targetSym.sectionIndex > 0 && targetSym.sectionIndex < obj.sections.size()) {
+                    // If the target is in an executable section, this is an address-taken ref.
+                    if (obj.sections[targetSym.sectionIndex].executable)
+                        addressTaken.insert(targetSym.name);
                     continue;
-                if (targetSym.sectionIndex >= obj.sections.size())
+                }
+
+                if (targetSym.name.empty())
                     continue;
-                // If the target is in an executable section, this is an address-taken ref.
-                if (obj.sections[targetSym.sectionIndex].executable)
+
+                auto git = globalSyms.find(targetSym.name);
+                if (git == globalSyms.end())
+                    continue;
+                if (git->second.objIndex >= allObjects.size())
+                    continue;
+                const auto &targetObj = allObjects[git->second.objIndex];
+                if (git->second.secIndex == 0 || git->second.secIndex >= targetObj.sections.size())
+                    continue;
+                if (targetObj.sections[git->second.secIndex].executable)
                     addressTaken.insert(targetSym.name);
             }
         }

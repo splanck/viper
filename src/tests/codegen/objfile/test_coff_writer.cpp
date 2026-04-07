@@ -55,6 +55,12 @@ static uint32_t findSymbolIndex(const ObjFile &obj, const std::string &name) {
     return 0;
 }
 
+static uint32_t readLE32(const std::vector<uint8_t> &bytes, size_t off) {
+    return static_cast<uint32_t>(bytes[off]) | (static_cast<uint32_t>(bytes[off + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[off + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[off + 3]) << 24);
+}
+
 int main() {
     std::filesystem::create_directories("build/test-out");
 
@@ -102,6 +108,9 @@ int main() {
     CHECK(xdataSec->data[2] == 2);    // two unwind slots
 
     CHECK(pdataSec->data.size() == 12);
+    CHECK(readLE32(pdataSec->data, 0) == 0);
+    CHECK(readLE32(pdataSec->data, 4) == 9);
+    CHECK(readLE32(pdataSec->data, 8) == 0);
     CHECK(pdataSec->relocs.size() == 3);
     CHECK(pdataSec->relocs[0].type == 3);
     CHECK(pdataSec->relocs[1].type == 3);
@@ -140,6 +149,23 @@ int main() {
         CHECK(armObj.symbols[armTextSec->relocs[0].symIndex].name == "callee");
         CHECK(findSection(armObj, ".xdata") == nullptr);
         CHECK(findSection(armObj, ".pdata") == nullptr);
+    }
+
+    {
+        CodeSection badArmText;
+        CodeSection badArmRodata;
+        badArmText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t calleeIdx = badArmText.findOrDeclareSymbol("callee");
+        badArmText.addRelocation(RelocKind::A64Call26, calleeIdx, 4);
+        badArmText.emit32LE(0x94000000);
+
+        std::ostringstream badErr;
+        CoffWriter badWriter(ObjArch::AArch64);
+        CHECK(!badWriter.write("build/test-out/coff_arm64_bad_addend.obj",
+                               badArmText,
+                               badArmRodata,
+                               badErr));
+        CHECK(badErr.str().find("unsupported non-zero AArch64 addend") != std::string::npos);
     }
 
     {

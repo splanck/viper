@@ -57,6 +57,8 @@ using viper::codegen::DebugLineTable;
 /// symbols generate Relocation entries.
 class A64BinaryEncoder {
   public:
+    friend struct A64BinaryEncoderTestAccess;
+
     /// Set the debug line table for recording address→line mappings.
     /// @param table Pointer to the DebugLineTable (null disables recording).
     void setDebugLineTable(DebugLineTable *table) {
@@ -75,8 +77,27 @@ class A64BinaryEncoder {
                         ABIFormat abi);
 
   private:
+    using LabelOffsetMap = std::unordered_map<std::string, size_t>;
+
     /// Encode a single MIR instruction.
     void encodeInstruction(const MInstr &mi, objfile::CodeSection &cs);
+
+    /// Measure the fixed BTI/prologue prefix emitted before the first block label.
+    size_t measurePreludeSize(const MFunction &fn);
+
+    /// Measure the encoded byte size of one MIR instruction at a specific byte offset.
+    size_t measureInstructionSize(const MInstr &mi,
+                                  size_t currentOffset,
+                                  const LabelOffsetMap &knownLabelOffsets);
+
+    /// Compute stable intra-function label offsets before final emission.
+    LabelOffsetMap computeFunctionLabelOffsets(const MFunction &fn);
+
+    /// Compute the predicted byte size of the fully encoded function.
+    size_t estimateFunctionSize(const MFunction &fn, const LabelOffsetMap &knownLabelOffsets);
+
+    /// Ensure precomputed label offsets still match final emission.
+    void verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const;
 
     // === Prologue/epilogue synthesis ===
 
@@ -85,9 +106,6 @@ class A64BinaryEncoder {
 
     /// Emit function epilogue: restore callee-saved, deallocate frame, restore FP/LR, ret.
     void encodeEpilogue(const MFunction &fn, objfile::CodeSection &cs);
-
-    /// Emit runtime init calls for main function (bl rt_legacy_context + rt_set_current_context).
-    void encodeMainInit(objfile::CodeSection &cs);
 
     // === Multi-instruction sequences ===
 
@@ -126,7 +144,7 @@ class A64BinaryEncoder {
     };
 
     /// Label name → byte offset in CodeSection.
-    std::unordered_map<std::string, size_t> labelOffsets_;
+    LabelOffsetMap labelOffsets_;
 
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
@@ -139,6 +157,9 @@ class A64BinaryEncoder {
 
     /// Pointer to current function being encoded (for epilogue synthesis on Ret).
     const MFunction *currentFn_{nullptr};
+
+    /// Pointer to the current rodata section for same-object cross-section fixups.
+    const objfile::CodeSection *currentRodata_{nullptr};
 
     /// Optional debug line table for recording address→line mappings.
     DebugLineTable *debugLines_{nullptr};

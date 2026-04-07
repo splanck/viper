@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
@@ -34,6 +35,7 @@
 #include <vector>
 
 using namespace viper::codegen::objfile;
+using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
@@ -82,6 +84,14 @@ static std::string readCStr(const std::vector<uint8_t> &d, size_t off) {
         ++off;
     }
     return s;
+}
+
+static const ObjSymbol *findSymbol(const ObjFile &obj, const std::string &name) {
+    for (size_t i = 1; i < obj.symbols.size(); ++i) {
+        if (obj.symbols[i].name == name)
+            return &obj.symbols[i];
+    }
+    return nullptr;
 }
 
 // Known offsets for the fixed load command layout:
@@ -564,6 +574,58 @@ static void testDysymtabRanges() {
 }
 
 // =============================================================================
+// Test: Multi-section merge rebases non-zero symbol offsets
+// =============================================================================
+
+static void testMultiSectionMergeRebasesSymbolOffsets() {
+    CodeSection textA, textB, rodata;
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.emit8(0x90);
+    textA.emit8(0xC3);
+
+    textB.emit8(0x90);
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.emit8(0xC3);
+
+    std::string path = "/tmp/viper_test_macho_multitext_merge.o";
+    std::ostringstream errStream;
+
+    auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
+    CHECK(writer != nullptr);
+    bool ok = writer != nullptr &&
+              writer->write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream);
+    CHECK(ok);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSymbol *funcB = findSymbol(obj, "func_b");
+    CHECK(funcB != nullptr);
+    if (funcB != nullptr)
+        CHECK(funcB->offset == 3);
+
+    std::remove(path.c_str());
+}
+
+// =============================================================================
+// Test: Unsupported relocations fail instead of being dropped
+// =============================================================================
+
+static void testUnsupportedRelocationFails() {
+    CodeSection text, rodata;
+    uint32_t symIdx = text.findOrDeclareSymbol("target");
+    text.addRelocation(RelocKind::A64CondBr19, symIdx, 0);
+    text.emit32LE(0x54000000); // b.eq placeholder
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    const bool ok = writer.write("/tmp/viper_test_macho_bad_reloc.o", text, rodata, errStream);
+    CHECK(!ok);
+    CHECK(errStream.str().find("no Mach-O encoding") != std::string::npos);
+
+    std::remove("/tmp/viper_test_macho_bad_reloc.o");
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -579,6 +641,8 @@ int main() {
     testFactory();
     testRodataSection();
     testDysymtabRanges();
+    testMultiSectionMergeRebasesSymbolOffsets();
+    testUnsupportedRelocationFails();
 
     if (gFail == 0)
         std::cout << "All Mach-O writer tests passed.\n";

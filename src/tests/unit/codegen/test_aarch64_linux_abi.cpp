@@ -111,6 +111,13 @@ static bool hasSymbol(const std::vector<std::string> &symbols, const std::string
     return false;
 }
 
+static uint32_t readWord(const viper::codegen::objfile::CodeSection &section, size_t offset) {
+    const auto &bytes = section.bytes();
+    return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[offset + 3]) << 24);
+}
+
 // A minimal function to compile for output inspection.
 const char *kSimpleIL = "il 0.1\n"
                         "func @hello_linux() -> i64 {\n"
@@ -239,6 +246,38 @@ TEST(AArch64LinuxABI, DarwinBinaryEncoderLeavesNamesUnprefixedForWriter) {
     const auto symbols = compileToBinarySymbols(kSimpleIL, darwinTarget());
     EXPECT_TRUE(hasSymbol(symbols, "hello_linux"));
     EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
+}
+
+TEST(AArch64LinuxABI, BinaryEmitPassInjectsMainStartupWithNonLeafFrame) {
+    AArch64Module module;
+    module.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "main";
+    fn.isLeaf = true;
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    BinaryEmitPass pass;
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_EQ(module.binaryTextSections.size(), 1u);
+
+    const auto &text = module.binaryTextSections.front();
+    ASSERT_EQ(text.bytes().size(), 36u);
+    EXPECT_EQ(readWord(text, 0), 0xD503245Fu);
+    EXPECT_EQ(readWord(text, 4), 0xD503233Fu);
+
+    size_t callRelocs = 0;
+    for (const auto &rel : text.relocations()) {
+        if (rel.kind == viper::codegen::objfile::RelocKind::A64Call26)
+            ++callRelocs;
+    }
+    EXPECT_EQ(callRelocs, 2u);
 }
 
 int main(int argc, char **argv) {

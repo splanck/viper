@@ -161,12 +161,21 @@ class X64BinaryEncoder {
     /// Measure the encoded byte size of an instruction using the provided
     /// label offsets for branch relaxation decisions.
     size_t measureInstructionSize(const MInstr &instr,
+                                  size_t currentOffset,
                                   const LabelOffsetMap &knownLabelOffsets,
                                   bool isDarwin);
 
     /// Compute a stable set of intra-function label offsets before emission so
     /// short forward branches can be selected without rewriting section bytes.
     LabelOffsetMap computeFunctionLabelOffsets(const MFunction &fn, bool isDarwin);
+
+    /// Compute the predicted byte size of a fully encoded function body.
+    size_t estimateFunctionSize(const MFunction &fn,
+                                const LabelOffsetMap &knownLabelOffsets,
+                                bool isDarwin);
+
+    /// Ensure precomputed label offsets match actual emission.
+    void verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const;
 
     // === Low-level emission helpers ===
 

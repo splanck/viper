@@ -233,6 +233,17 @@ int main() {
         CHECK(cs.relocations()[0].addend == 0);
     }
 
+    // --- Relocation target-section hint ---
+    {
+        CodeSection cs;
+        uint32_t sym = cs.defineSymbol("shared", SymbolBinding::Local, SymbolSection::Text);
+        cs.emit32LE(0);
+        cs.addRelocationAt(0, RelocKind::PCRel32, sym, -4, SymbolSection::Rodata);
+
+        CHECK(cs.relocations().size() == 1);
+        CHECK(cs.relocations()[0].targetSection == SymbolSection::Rodata);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All CodeSection tests passed.\n";

@@ -239,6 +239,7 @@ bool readMachOObj(
                 // offset 0 would incorrectly copy the Mach-O header bytes.
                 const bool isZerofill =
                     (secType == macho::S_ZEROFILL) || (secType == macho::S_THREAD_LOCAL_ZEROFILL);
+                os.zeroFill = isZerofill;
 
                 if (isZerofill && sec->size > 0) {
                     os.data.resize(static_cast<size_t>(sec->size), 0);

@@ -253,14 +253,17 @@ static void recordWin64Unwind(const MFunction &fn,
 /// @details Used by the label offset pre-computation pass to determine branch
 ///          displacement sizes before final encoding. Must match encodeInstruction.
 size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
+                                                size_t currentOffset,
                                                 const LabelOffsetMap &knownLabelOffsets,
                                                 bool isDarwin) {
     X64BinaryEncoder measureEncoder;
     measureEncoder.labelOffsets_ = knownLabelOffsets;
 
     objfile::CodeSection text, rodata;
+    text.reserveBytes(currentOffset + 16);
+    text.emitZeros(currentOffset);
     measureEncoder.encodeInstructionImpl(instr, text, rodata, isDarwin);
-    return text.currentOffset();
+    return text.currentOffset() - currentOffset;
 }
 
 X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn,
@@ -299,7 +302,7 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
                     assignLabel(labelFromOperand(instr.operands[0]).name, offset);
                     continue;
                 }
-                offset += measureInstructionSize(instr, known, isDarwin);
+                offset += measureInstructionSize(instr, offset, known, isDarwin);
             }
         }
 
@@ -309,6 +312,31 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
     }
 
     return estimated;
+}
+
+size_t X64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
+                                              const LabelOffsetMap &knownLabelOffsets,
+                                              bool isDarwin) {
+    size_t size = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::LABEL)
+                continue;
+            size += measureInstructionSize(instr, size, knownLabelOffsets, isDarwin);
+        }
+    }
+    return size;
+}
+
+void X64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const {
+    auto it = labelOffsets_.find(label);
+    if (it == labelOffsets_.end())
+        return;
+    if (it->second != actualOffset) {
+        throw std::runtime_error("x86-64 binary encoder: label offset drift for '" + label +
+                                 "' (predicted=" + std::to_string(it->second) +
+                                 ", actual=" + std::to_string(actualOffset) + ")");
+    }
 }
 
 /// @brief Encode an entire MIR function into machine code bytes.
@@ -326,6 +354,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     // Define the function symbol at the current text offset.
     const size_t funcStartOffset = text.currentOffset();
     const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn, isDarwin);
+    text.reserveAdditionalBytes(estimateFunctionSize(fn, relativeLabelOffsets, isDarwin));
     labelOffsets_.clear();
     labelOffsets_.reserve(relativeLabelOffsets.size());
     for (const auto &[label, offset] : relativeLabelOffsets)
@@ -341,6 +370,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
         const auto &block = fn.blocks[blockIndex];
         // Record label offset for internal branch resolution.
+        verifyPredictedLabelOffset(block.label, text.currentOffset());
         labelOffsets_[block.label] = text.currentOffset();
 
         for (const auto &instr : block.instructions) {
@@ -434,6 +464,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::LABEL: {
             assert(!ops.empty());
             const auto &label = labelFromOperand(ops[0]);
+            verifyPredictedLabelOffset(label.name, text.currentOffset());
             labelOffsets_[label.name] = text.currentOffset();
             return;
         }
@@ -972,9 +1003,11 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
     // Emit placeholder disp32 and record relocation.
     std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
     uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    const auto targetSection = (rodata.symbols().find(symName) != 0) ? objfile::SymbolSection::Rodata
+                                                                      : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
-    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);
 }
 
 void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
@@ -998,9 +1031,11 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
     // Emit placeholder disp32 and record relocation.
     std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
     uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    const auto targetSection = (rodata.symbols().find(symName) != 0) ? objfile::SymbolSection::Rodata
+                                                                      : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
-    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);
 }
 
 // === SSE reg-reg ===

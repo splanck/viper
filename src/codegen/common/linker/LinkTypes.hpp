@@ -79,6 +79,7 @@ struct OutputSection {
     bool executable = false;
     bool writable = false;
     bool tls = false;
+    bool zeroFill = false; ///< Occupies memory but has no file backing.
     bool alloc = true; ///< Section is loadable (false for debug sections).
 };
 
@@ -107,13 +108,35 @@ inline bool isWindowsMetadataSection(const std::string &name) {
     return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
 }
 
+/// Symbols synthesized by the Windows native linker rather than imported from
+/// a DLL or provided by a runtime archive.
+inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
+    return name == "_fltused" || name == "__security_cookie" || name == "__security_check_cookie" ||
+           name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
+           name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
+           name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
+           name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
+           name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
+           name == "__vcrt_thread_attach" || name == "__vcrt_thread_detach" ||
+           name == "__vcrt_uninitialize" || name == "__vcrt_uninitialize_critical" ||
+           name == "__acrt_initialize" || name == "__acrt_thread_attach" ||
+           name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
+           name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
+           name == "__scrt_exe_initialize_mta" ||
+           name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
+           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" || name == "vm_trap" ||
+           name == "rt_audio_shutdown";
+}
+
 /// Classify a section by name and attributes.
 inline SectionClass classifySection(const std::string &name,
                                     bool executable,
                                     bool writable,
-                                    bool tls) {
+                                    bool tls,
+                                    bool zeroFill) {
     if (tls) {
-        if (name.find("bss") != std::string::npos || name.find("zerofill") != std::string::npos)
+        if (zeroFill || name.find("bss") != std::string::npos ||
+            name.find("zerofill") != std::string::npos)
             return SectionClass::TlsBss;
         return SectionClass::TlsData;
     }
@@ -125,7 +148,7 @@ inline SectionClass classifySection(const std::string &name,
     if (executable)
         return SectionClass::Text;
     if (writable) {
-        if (name.find("bss") != std::string::npos ||
+        if (zeroFill || name.find("bss") != std::string::npos ||
             name.find("UNINITIALIZED") != std::string::npos)
             return SectionClass::Bss;
         return SectionClass::Data;

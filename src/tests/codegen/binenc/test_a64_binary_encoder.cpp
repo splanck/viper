@@ -35,6 +35,42 @@ using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::binenc;
 using namespace viper::codegen::objfile;
 
+namespace viper::codegen::aarch64::binenc {
+
+struct A64BinaryEncoderTestAccess {
+    static size_t measureWithKnownTarget(const MInstr &mi, size_t currentOffset, size_t targetOffset) {
+        A64BinaryEncoder enc;
+        MFunction fn;
+        fn.name = "test_func";
+        fn.isLeaf = true;
+        enc.currentFn_ = &fn;
+        enc.skipFrame_ = true;
+        enc.usePlan_ = false;
+        enc.labelOffsets_["target"] = targetOffset;
+        return enc.measureInstructionSize(mi, currentOffset, enc.labelOffsets_);
+    }
+
+    static std::vector<uint8_t> encodeWithKnownTarget(const MInstr &mi,
+                                                      size_t currentOffset,
+                                                      size_t targetOffset) {
+        A64BinaryEncoder enc;
+        MFunction fn;
+        fn.name = "test_func";
+        fn.isLeaf = true;
+        enc.currentFn_ = &fn;
+        enc.skipFrame_ = true;
+        enc.usePlan_ = false;
+        enc.labelOffsets_["target"] = targetOffset;
+
+        CodeSection text;
+        text.emitZeros(currentOffset);
+        enc.encodeInstruction(mi, text);
+        return text.bytes();
+    }
+};
+
+} // namespace viper::codegen::aarch64::binenc
+
 static int gFail = 0;
 
 static void check(bool cond, const char *msg, int line) {
@@ -92,6 +128,8 @@ static uint32_t encodeSingleInstr(const std::vector<MInstr> &instrs, size_t idx 
     fn.blocks.push_back(std::move(bb));
 
     CodeSection text, rodata;
+    rodata.defineSymbol("my_global", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit8(0);
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
@@ -114,6 +152,8 @@ static std::vector<uint8_t> encodeInstrBytes(const std::vector<MInstr> &instrs) 
     fn.blocks.push_back(std::move(bb));
 
     CodeSection text, rodata;
+    rodata.defineSymbol("my_global", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit8(0);
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
     return text.bytes();
@@ -423,6 +463,35 @@ static void testCbzForward() {
     CHECK(cbz == 0xB4000040);
 }
 
+static void testFarConditionalBranchFallbacks() {
+    constexpr size_t kBranchOffset = 4;
+    constexpr size_t kFarTargetOffset = 1048584;
+
+    const MInstr bcond{MOpcode::BCond, {cond("eq"), label("target")}};
+    CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(
+              bcond, kBranchOffset, kFarTargetOffset) == 8);
+    const auto bcondBytes =
+        A64BinaryEncoderTestAccess::encodeWithKnownTarget(bcond, kBranchOffset, kFarTargetOffset);
+    CHECK(readWord(bcondBytes, 4) == 0x54000041);
+    CHECK(readWord(bcondBytes, 8) == 0x14040000);
+
+    const MInstr cbz{MOpcode::Cbz, {gpr(PhysReg::X0), label("target")}};
+    CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(
+              cbz, kBranchOffset, kFarTargetOffset) == 8);
+    const auto cbzBytes =
+        A64BinaryEncoderTestAccess::encodeWithKnownTarget(cbz, kBranchOffset, kFarTargetOffset);
+    CHECK(readWord(cbzBytes, 4) == 0xB5000040);
+    CHECK(readWord(cbzBytes, 8) == 0x14040000);
+
+    const MInstr cbnz{MOpcode::Cbnz, {gpr(PhysReg::X0), label("target")}};
+    CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(
+              cbnz, kBranchOffset, kFarTargetOffset) == 8);
+    const auto cbnzBytes =
+        A64BinaryEncoderTestAccess::encodeWithKnownTarget(cbnz, kBranchOffset, kFarTargetOffset);
+    CHECK(readWord(cbnzBytes, 4) == 0xB4000040);
+    CHECK(readWord(cbnzBytes, 8) == 0x14040000);
+}
+
 static void testExternalCall() {
     // bl to an external function should produce a relocation.
     MFunction fn;
@@ -496,10 +565,10 @@ static void testPrologueEpilogue() {
 }
 
 static void testMainInit() {
-    // main function should get two bl calls to runtime init after prologue.
+    // The raw encoder must not inject runtime startup policy based on function name.
     MFunction fn;
     fn.name = "main";
-    fn.isLeaf = false;
+    fn.isLeaf = true;
     MBasicBlock bb;
     bb.name = "entry";
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -509,19 +578,15 @@ static void testMainInit() {
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    // BTI + PACIASP + stp + mov + 2*bl init + ldp + AUTIASP + ret = 9 instrs = 36 bytes
-    CHECK(text.bytes().size() == 36);
+    CHECK(text.bytes().size() == 8);
+    CHECK(readWord(text.bytes(), 0) == 0xD503245F);
+    CHECK(readWord(text.bytes(), 4) == 0xD65F03C0);
 
-    // BL runtime init calls at offset 16 and 20 (after BTI+PACIASP+stp+mov)
-    CHECK(readWord(text.bytes(), 16) == 0x94000000);
-    CHECK(readWord(text.bytes(), 20) == 0x94000000);
-
-    // Should have at least 2 A64Call26 relocations for the runtime init calls.
     size_t callRelocs = 0;
     for (const auto &r : text.relocations())
         if (r.kind == RelocKind::A64Call26)
             ++callRelocs;
-    CHECK(callRelocs >= 2);
+    CHECK(callRelocs == 0);
 }
 
 static void testSubSpChunking() {
@@ -680,6 +745,8 @@ static void testAdrpAddPageOff() {
     fn.blocks.push_back(std::move(bb));
 
     CodeSection text, rodata;
+    rodata.defineSymbol("my_global", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit8(0);
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
@@ -690,10 +757,14 @@ static void testAdrpAddPageOff() {
     // Should have A64AdrpPage21 and A64AddPageOff12 relocations.
     bool hasAdrp = false, hasAdd = false;
     for (const auto &r : text.relocations()) {
-        if (r.kind == RelocKind::A64AdrpPage21)
+        if (r.kind == RelocKind::A64AdrpPage21) {
             hasAdrp = true;
-        if (r.kind == RelocKind::A64AddPageOff12)
+            CHECK(r.targetSection == SymbolSection::Rodata);
+        }
+        if (r.kind == RelocKind::A64AddPageOff12) {
             hasAdd = true;
+            CHECK(r.targetSection == SymbolSection::Rodata);
+        }
     }
     CHECK(hasAdrp);
     CHECK(hasAdd);
@@ -917,6 +988,7 @@ int main() {
     testBranchForwardBackward();
     testBCondForward();
     testCbzForward();
+    testFarConditionalBranchFallbacks();
     testExternalCall();
     testPrologueEpilogue();
     testMainInit();

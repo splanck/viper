@@ -99,6 +99,12 @@ int main() {
 
         // One globalSyms entry should exist with the synthetic name.
         CHECK(globalSyms.count(objs[0].symbols[1].name) == 1);
+
+        // Dedup should also reclaim duplicate bytes for fully symbol-covered
+        // cstring sections rather than just aliasing symbol names.
+        CHECK(objs[0].sections[1].data.size() == 6);
+        CHECK(objs[1].sections[1].data.empty());
+        CHECK(objs[2].sections[1].data.empty());
     }
 
     // --- Strings with same prefix but different length are NOT merged ---

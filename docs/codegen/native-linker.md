@@ -1,14 +1,15 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-07
 ---
 
 # Native Linker — Object File Linking & Executable Generation
 
-The native linker replaces the system linker (`cc` / `ld`) with a built-in pipeline that reads object files and
-archives, resolves symbols, merges sections, applies relocations, and writes platform-native executables. Combined
-with the [native assembler](native-assembler.md), this achieves ZERO external tool dependencies for compilation.
+The native linker provides a built-in object/archive link pipeline that reads object files, resolves symbols, merges
+sections, applies relocations, and writes platform-native executables. Combined with the
+[native assembler](native-assembler.md), this removes the system linker dependency for supported targets and static
+archive-only links, while still falling back to `cc` / `ld` when a target needs unsupported shared-library imports.
 
 > **Pipeline comparison:**
 >
@@ -51,12 +52,16 @@ runnable executable. It performs the classic linker pipeline:
 
 ### Supported Output Formats
 
-| Format | Platform | Architecture | Page Size |
-|--------|----------|-------------|-----------|
-| ELF | Linux | x86_64, AArch64 | 4KB |
-| Mach-O | macOS | x86_64 | 4KB |
-| Mach-O | macOS | AArch64 (Apple Silicon) | **16KB** |
-| PE | Windows | x86_64, AArch64 | 4KB |
+| Format | Platform | Architecture | Page Size | Dynamic Imports |
+|--------|----------|-------------|-----------|-----------------|
+| ELF | Linux | x86_64, AArch64 | 4KB | Not yet supported by the native linker |
+| Mach-O | macOS | x86_64 | 4KB | Not yet supported by the native linker |
+| Mach-O | macOS | AArch64 (Apple Silicon) | **16KB** | Supported |
+| PE | Windows | x86_64, AArch64 | 4KB | Supported |
+
+Archive-only / fully self-contained links can still use the native linker on every output-writer target above.
+Programs that depend on libc, the Windows CRT, or OS frameworks require either one of the native dynamic-import
+targets above or the `--system-link` fallback.
 
 > **Critical:** macOS arm64 requires 16KB page alignment. The dynamic linker (`dyld`) rejects executables with
 > incorrect page alignment. This is the single most important platform-specific detail in the linker.

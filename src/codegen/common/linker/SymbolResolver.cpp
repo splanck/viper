@@ -17,14 +17,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/SymbolResolver.hpp"
+#include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 
 #include <sstream>
 
 namespace viper::codegen::linker {
 
-static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform);
-static bool preferArchiveDefinition(const std::string &name);
+static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform);
 
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
@@ -61,13 +61,6 @@ static bool addObjSymbols(const ObjFile &obj,
         if (sym.binding == ObjSymbol::Local)
             continue; // Locals don't participate in global resolution.
 
-        // COFF/MSVC archives often contain helper stubs or repeated CRT import
-        // shims for symbols that still need to be resolved dynamically. Let
-        // those remain external imports instead of treating archive-local
-        // definitions as link-time providers.
-        if (isKnownDynamicSymbol(sym.name, platform) && !preferArchiveDefinition(sym.name))
-            continue;
-
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
         auto it = findWithMachoFallback(globalSyms, sym.name);
         if (it == globalSyms.end()) {
@@ -96,7 +89,7 @@ static bool addObjSymbols(const ObjFile &obj,
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
-                if (preferArchiveDefinition(sym.name))
+                if (preferArchiveDefinition(sym.name, platform))
                     continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
@@ -108,363 +101,13 @@ static bool addObjSymbols(const ObjFile &obj,
     return true;
 }
 
-/// Known system/dynamic library symbols that won't be in archives.
-static bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform) {
-    // Common C library and platform functions (exact matches).
-    static const char *const kDynSymExact[] = {
-        // C library
-        "printf",
-        "fprintf",
-        "sprintf",
-        "snprintf",
-        "puts",
-        "fputs",
-        "fopen",
-        "fclose",
-        "fread",
-        "fwrite",
-        "fseek",
-        "ftell",
-        "fflush",
-        "fgets",
-        "malloc",
-        "calloc",
-        "realloc",
-        "free",
-        "memcpy",
-        "memmove",
-        "memset",
-        "memcmp",
-        "memchr",
-        "strlen",
-        "strcmp",
-        "strcpy",
-        "strncpy",
-        "strdup",
-        "strndup",
-        "strcat",
-        "strncat",
-        "strstr",
-        "strchr",
-        "strrchr",
-        "atoi",
-        "atol",
-        "atof",
-        "strtol",
-        "strtod",
-        "strtoul",
-        "exit",
-        "_exit",
-        "abort",
-        "atexit",
-        "getenv",
-        "setenv",
-        "system",
-        "time",
-        "clock",
-        "gettimeofday",
-        "nanosleep",
-        "usleep",
-        "sleep",
-        "open",
-        "close",
-        "read",
-        "write",
-        "lseek",
-        "stat",
-        "fstat",
-        "lstat",
-        "mkdir",
-        "rmdir",
-        "unlink",
-        "rename",
-        "getcwd",
-        "chdir",
-        "socket",
-        "bind",
-        "listen",
-        "accept",
-        "connect",
-        "send",
-        "recv",
-        "select",
-        "poll",
-        "setsockopt",
-        "getsockopt",
-        "pthread_create",
-        "pthread_join",
-        "pthread_mutex_init",
-        "pthread_mutex_lock",
-        "pthread_mutex_unlock",
-        "pthread_mutex_destroy",
-        "pthread_cond_init",
-        "pthread_cond_wait",
-        "pthread_cond_signal",
-        "pthread_cond_broadcast",
-        "pthread_cond_destroy",
-        "pthread_key_create",
-        "pthread_getspecific",
-        "pthread_setspecific",
-        "pthread_once",
-        "pthread_rwlock_init",
-        "pthread_rwlock_rdlock",
-        "pthread_rwlock_wrlock",
-        "pthread_rwlock_unlock",
-        "pthread_rwlock_destroy",
-        "pthread_self",
-        "pthread_equal",
-        "pthread_attr_init",
-        "pthread_attr_destroy",
-        "pthread_attr_setdetachstate",
-        "dlopen",
-        "dlsym",
-        "dlclose",
-        "dlerror",
-        "mmap",
-        "munmap",
-        "mprotect",
-        "sysconf",
-        "getpid",
-        "getuid",
-        "signal",
-        "sigaction",
-        "raise",
-        "setjmp",
-        "longjmp",
-        "_setjmp",
-        "_longjmp",
-        "qsort",
-        "bsearch",
-        "isalpha",
-        "isalnum",
-        "isdigit",
-        "islower",
-        "isspace",
-        "isupper",
-        "toupper",
-        "tolower",
-        "localeconv",
-        "strerror",
-        "perror",
-        "sscanf",
-        "vfprintf",
-        "setvbuf",
-        "setbuf",
-        "freopen",
-        "tmpfile",
-        "tmpnam",
-        "getc",
-        "putc",
-        "fgetc",
-        "fputc",
-        "ungetc",
-        "ferror",
-        "feof",
-        "clearerr",
-        "rewind",
-        "_Exit",
-        "posix_memalign",
-        "aligned_alloc",
-        "reallocf",
-        "access",
-        "dup",
-        "dup2",
-        "pipe",
-        "fork",
-        "execv",
-        "execve",
-        "waitpid",
-        "wait",
-        "fcntl",
-        "ioctl",
-        "fileno",
-        "isatty",
-        "ttyname",
-        // POSIX scheduling / threads
-        "sched_yield",
-        // Math
-        "sin",
-        "cos",
-        "tan",
-        "asin",
-        "acos",
-        "atan",
-        "atan2",
-        "sinf",
-        "cosf",
-        "tanf",
-        "asinf",
-        "acosf",
-        "atanf",
-        "atan2f",
-        "sqrt",
-        "sqrtf",
-        "pow",
-        "powf",
-        "exp",
-        "expf",
-        "log",
-        "logf",
-        "log2",
-        "log10",
-        "ceil",
-        "ceilf",
-        "floor",
-        "floorf",
-        "round",
-        "roundf",
-        "fmod",
-        "fmodf",
-        "fabs",
-        "fabsf",
-        "fmin",
-        "fminf",
-        "fmax",
-        "fmaxf",
-        "copysign",
-        "copysignf",
-        "trunc",
-        "truncf",
-        // macOS specific
-        "_NSGetExecutablePath",
-        "_NSConcreteStackBlock",
-        "_NSConcreteGlobalBlock",
-        "_NSConcreteMallocBlock",
-        "_Block_copy",
-        "_Block_release",
-        "_Block_object_assign",
-        "_Block_object_dispose",
-        "dyld_stub_binder",
-        "_tlv_atexit",
-        "_tlv_bootstrap",
-        "mach_timebase_info",
-        "mach_absolute_time",
-        "mach_task_self_",
-        "mach_host_self",
-        "task_info",
-        "host_page_size",
-        "_os_unfair_lock_lock",
-        "_os_unfair_lock_unlock",
-        "os_unfair_lock_lock",
-        "os_unfair_lock_unlock",
-        // ObjC runtime
-        "sel_registerName",
-        "sel_getName",
-        "_objc_empty_cache",
-        "_objc_empty_vtable",
-        // Windows CRT
-        "ExitProcess",
-        "GetModuleHandleA",
-        "GetProcAddress",
-        "VirtualAlloc",
-        "VirtualFree",
-        "GetLastError",
-        "BCryptGenRandom",
-        "__acrt_iob_func",
-        "__local_stdio_printf_options",
-        "__local_stdio_scanf_options",
-        "__stdio_common_vfprintf",
-        "__stdio_common_vsprintf",
-        "_vfprintf_l",
-        "_vsscanf_l",
-        "__security_check_cookie",
-        "__security_init_cookie",
-        "__GSHandlerCheck",
-        "__chkstk",
-        "_CrtDbgReport",
-        "_CrtDbgReportW",
-        "strcpy_s",
-        "strcat_s",
-        "_wsplitpath_s",
-        "_wmakepath_s",
-        "wcscpy_s",
-        "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
-        "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",
-    };
-
-    for (const char *sym : kDynSymExact) {
-        if (name == sym)
-            return true;
-    }
-
-    // Prefix-based matching for platform framework symbols.
-    static const char *const kCommonDynPrefixes[] = {
-        "__libc_",
-        "__stack_chk_",
-    };
-    static const char *const kMacDynPrefixes[] = {
-        "CF",
-        "kCF",
-        "CG",
-        "kCG",
-        "NS",
-        "IOKit",
-        "IOHID",
-        "IOService",
-        "IORegistryEntry",
-        "objc_",
-        "OBJC_",
-        "_objc_",
-        "UTType",
-        "UTCopy",
-        "AudioQueue",
-        "AudioServices",
-        "AudioComponent",
-        "Sec",
-        "mach_",
-        "task_",
-        "host_",
-        "vm_",
-        "kern_",
-        "dispatch_",
-        "MTL",
-        "AudioObject",
-        "AudioDevice",
-    };
-    static const char *const kWindowsDynPrefixes[] = {
-        "__imp_",
-    };
-
-    for (const char *prefix : kCommonDynPrefixes) {
-        size_t plen = 0;
-        while (prefix[plen] != '\0')
-            ++plen;
-        if (name.size() >= plen && name.compare(0, plen, prefix) == 0)
-            return true;
-    }
-
-    const char *const *platformPrefixes = nullptr;
-    size_t prefixCount = 0;
-    switch (platform) {
-        case LinkPlatform::macOS:
-            platformPrefixes = kMacDynPrefixes;
-            prefixCount = sizeof(kMacDynPrefixes) / sizeof(kMacDynPrefixes[0]);
-            break;
-        case LinkPlatform::Windows:
-            platformPrefixes = kWindowsDynPrefixes;
-            prefixCount = sizeof(kWindowsDynPrefixes) / sizeof(kWindowsDynPrefixes[0]);
-            break;
-        case LinkPlatform::Linux:
-        default:
-            break;
-    }
-
-    for (size_t i = 0; i < prefixCount; ++i) {
-        const char *prefix = platformPrefixes[i];
-        size_t plen = 0;
-        while (prefix[plen] != '\0')
-            ++plen;
-        if (name.size() >= plen && name.compare(0, plen, prefix) == 0)
-            return true;
-    }
-
-    return false;
-}
-
 /// Runtime archives provide Windows compatibility shims for a small set of
 /// formatting functions. Those definitions must participate in archive
 /// resolution instead of being forced down the dynamic-import path.
-static bool preferArchiveDefinition(const std::string &name) {
+static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform) {
+    if (platform != LinkPlatform::Windows)
+        return false;
+
     if (name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
         name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9")
         return false;
@@ -515,9 +158,6 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
             for (const auto &undef : undefSnapshot) {
-                if (isKnownDynamicSymbol(undef, platform) && !preferArchiveDefinition(undef))
-                    continue;
-
                 // Mach-O archives use underscore-prefixed symbol names.
                 auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
                 if (symIt == ar.symbolIndex.end())
@@ -555,21 +195,42 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
     }
 
-    // Mark remaining undefined as dynamic.
-    // Symbols matching known dynamic patterns are silently accepted.
-    // Others are warned — they'll likely be resolved by dyld, but if not,
-    // the program will crash at launch with a clear dyld error.
+    // Mark remaining undefined as dynamic only when the symbol is explicitly
+    // allowlisted as a shared-library import on this platform.
+    // Unknown unresolveds remain hard link errors so we do not silently emit
+    // binaries that fail at load time due to missing symbols.
+    std::vector<std::string> unresolvedErrors;
     for (const auto &undef : undefined) {
         auto it = globalSyms.find(undef);
         if (it != globalSyms.end() && it->second.binding != GlobalSymEntry::Undefined)
             continue; // Was resolved during iteration.
 
+        const bool allowSynthetic =
+            platform == LinkPlatform::Windows && isWindowsLinkerHelperSymbol(undef);
+        const bool allowDynamic =
+            allowSynthetic ||
+            (isKnownDynamicSymbol(undef, platform) && !preferArchiveDefinition(undef, platform));
+        if (!allowDynamic) {
+            unresolvedErrors.push_back(undef);
+            continue;
+        }
+
         dynamicSyms.insert(undef);
         if (it != globalSyms.end())
             it->second.binding = GlobalSymEntry::Dynamic;
+    }
 
-        if (!isKnownDynamicSymbol(undef, platform) || preferArchiveDefinition(undef))
-            err << "warning: treating undefined symbol '" << undef << "' as dynamic\n";
+    if (!unresolvedErrors.empty()) {
+        std::sort(unresolvedErrors.begin(), unresolvedErrors.end());
+        unresolvedErrors.erase(
+            std::unique(unresolvedErrors.begin(), unresolvedErrors.end()), unresolvedErrors.end());
+        for (const auto &name : unresolvedErrors) {
+            err << "error: undefined symbol '" << name << "'";
+            if (preferArchiveDefinition(name, platform))
+                err << " (expected a static/archive definition)";
+            err << "\n";
+        }
+        return false;
     }
 
     return true;

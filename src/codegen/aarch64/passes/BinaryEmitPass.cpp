@@ -79,6 +79,14 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     objfile::CodeSection text;
     objfile::CodeSection rodata;
 
+    // Seed rodata before encoding so cross-section fixups can identify
+    // same-object rodata targets without relying on writer-side heuristics.
+    for (const auto &[label, content] : module.rodataPool.entries()) {
+        rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
+        rodata.emitBytes(content.data(), content.size());
+        rodata.emit8(0); // NUL terminator
+    }
+
     // Set up debug line table for address→line mapping.
     viper::codegen::DebugLineTable debugLines;
     seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
@@ -90,8 +98,16 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         seedDebugFiles(funcDebugLines, std::vector<MFunction>{fn}, module.debugSourcePath);
         binenc::A64BinaryEncoder funcEncoder;
         funcEncoder.setDebugLineTable(&funcDebugLines);
+        MFunction emitFn = fn;
+        if (emitFn.name == "main" && !emitFn.blocks.empty()) {
+            emitFn.isLeaf = false;
+            auto &entryInstrs = emitFn.blocks.front().instrs;
+            entryInstrs.insert(entryInstrs.begin(),
+                               {MInstr{MOpcode::Bl, {MOperand::labelOp("rt_legacy_context")}},
+                                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_set_current_context")}}});
+        }
         try {
-            funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
+            funcEncoder.encodeFunction(emitFn, module.binaryTextSections.back(), rodata, abi);
         } catch (const std::exception &ex) {
             module.binaryTextSections.pop_back();
             diags.error("BinaryEmitPass: failed to encode AArch64 function '" + fn.name +
@@ -101,14 +117,6 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         const uint64_t debugBias = static_cast<uint64_t>(text.currentOffset());
         debugLines.append(funcDebugLines, debugBias);
         text.appendSection(module.binaryTextSections.back());
-    }
-
-    // Emit rodata pool entries as raw bytes into the rodata CodeSection.
-    // Each entry is a NUL-terminated string (matching .asciz assembly semantics).
-    for (const auto &[label, content] : module.rodataPool.entries()) {
-        rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
-        rodata.emitBytes(content.data(), content.size());
-        rodata.emit8(0); // NUL terminator
     }
 
     // Encode DWARF .debug_line if any entries were recorded.

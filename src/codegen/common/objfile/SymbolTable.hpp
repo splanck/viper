@@ -66,6 +66,12 @@ class SymbolTable {
     /// Find an existing symbol by name, or add it as External.
     uint32_t findOrAdd(const std::string &name);
 
+    /// Find an existing symbol by name, returning 0 when absent.
+    uint32_t find(const std::string &name) const;
+
+    /// Reserve symbol storage capacity ahead of time.
+    void reserve(size_t totalSymbols);
+
     /// Look up a symbol by index.
     const Symbol &at(uint32_t index) const {
         return symbols_[index];

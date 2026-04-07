@@ -9,8 +9,7 @@
 // Purpose: Unit tests for the native linker's dead strip pass — verifies
 //          root identification, transitive liveness, and section clearing.
 // Key invariants:
-//   - User .o sections are always live
-//   - Archive-extracted sections are live only if reachable from roots
+//   - Sections are kept only if rooted or transitively reachable
 //   - ObjC metadata and init/fini sections are always live
 //   - Liveness propagates through relocations
 // Ownership/Lifetime: Standalone test binary.
@@ -91,22 +90,24 @@ static void addReloc(ObjFile &obj, size_t secIdx, uint32_t symIdx) {
 }
 
 int main() {
-    // --- User sections are always live ---
+    // --- User objects are rooted by entry, not by blanket reachability ---
     {
         auto user = makeObj("user.o", {".text", ".data"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
         auto archive = makeObj("archive.o", {".text"});
 
         std::vector<ObjFile> objs = {user, archive};
         size_t userCount = 1;
 
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
         std::ostringstream err;
 
         deadStrip(objs, userCount, globalSyms, "main", err);
 
-        // User sections should be untouched.
+        // Entry section stays live, but unrelated user sections are eligible for GC.
         CHECK(!objs[0].sections[1].data.empty()); // .text
-        CHECK(!objs[0].sections[2].data.empty()); // .data
+        CHECK(objs[0].sections[2].data.empty());  // .data
 
         // Archive section not referenced → stripped.
         CHECK(objs[1].sections[1].data.empty());
@@ -118,9 +119,10 @@ int main() {
         auto lib1 = makeObj("lib1.o", {".text"});
         auto lib2 = makeObj("lib2.o", {".text"});
 
+        addSymbol(user, "main", 1, ObjSymbol::Global);
         // user.text references "func1" (in lib1).
         addSymbol(user, "func1", 0, ObjSymbol::Undefined);
-        addReloc(user, 1, 1); // sec 1 references sym 1 ("func1")
+        addReloc(user, 1, 2); // sec 1 references sym 2 ("func1")
 
         // lib1 defines "func1" in section 1 and references "func2" (in lib2).
         addSymbol(lib1, "func1", 1, ObjSymbol::Global);
@@ -134,6 +136,7 @@ int main() {
         size_t userCount = 1;
 
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
         // Register "func1" at obj 1, sec 1.
         globalSyms["func1"] = {"func1", GlobalSymEntry::Global, 1, 1, 0, 0};
         // Register "func2" at obj 2, sec 1.
@@ -150,12 +153,14 @@ int main() {
     // --- Unreferenced archive sections are stripped ---
     {
         auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
         auto unused = makeObj("unused.o", {".text", ".data"});
 
         std::vector<ObjFile> objs = {user, unused};
         size_t userCount = 1;
 
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
         std::ostringstream err;
 
         deadStrip(objs, userCount, globalSyms, "main", err);
@@ -265,8 +270,9 @@ int main() {
     // --- Windows unwind sections follow live code reachability ---
     {
         auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
         addSymbol(user, "func", 0, ObjSymbol::Undefined);
-        addReloc(user, 1, 1);
+        addReloc(user, 1, 2);
 
         ObjFile unwind;
         unwind.name = "unwind.obj";
@@ -303,6 +309,7 @@ int main() {
         size_t userCount = 1;
 
         std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
         globalSyms["func"] = {"func", GlobalSymEntry::Global, 1, 1, 0, 0};
         std::ostringstream err;
 

@@ -22,6 +22,7 @@
 #include "codegen/common/linker/ArchiveReader.hpp"
 #include "codegen/common/linker/BranchTrampoline.hpp"
 #include "codegen/common/linker/DeadStripPass.hpp"
+#include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/DynStubGen.hpp"
 #include "codegen/common/linker/ElfExeWriter.hpp"
 #include "codegen/common/linker/ICF.hpp"
@@ -48,6 +49,17 @@ namespace {
 struct WindowsImportPlan {
     ObjFile obj;
     std::vector<DllImport> imports;
+};
+
+struct MacImportRule {
+    const char *dylibPath;
+    const char *const *prefixes;
+    const char *const *exactSyms;
+};
+
+struct MacImportPlan {
+    std::vector<DylibImport> dylibs;
+    std::unordered_map<std::string, uint32_t> symOrdinals;
 };
 
 void registerSyntheticSymbols(const ObjFile &obj,
@@ -124,6 +136,12 @@ bool isObjcClassLookupSymbol(const std::string &name) {
     return stripped.rfind("OBJC_CLASS_$_", 0) == 0 || stripped.rfind("OBJC_METACLASS_$_", 0) == 0;
 }
 
+bool isObjcFrameworkTypeSymbol(const std::string &name) {
+    const std::string stripped = stripLeadingUnderscores(name);
+    return stripped.rfind("OBJC_CLASS_$_", 0) == 0 || stripped.rfind("OBJC_METACLASS_$_", 0) == 0 ||
+           stripped.rfind("OBJC_EHTYPE_$_", 0) == 0;
+}
+
 std::string normalizeMacFrameworkSymbol(const std::string &name) {
     std::string normalized = stripLeadingUnderscores(name);
     static constexpr const char *kObjcPrefixes[] = {
@@ -138,25 +156,319 @@ std::string normalizeMacFrameworkSymbol(const std::string &name) {
     return normalized;
 }
 
-bool isWindowsHelperSymbol(const std::string &name) {
-    return name == "_fltused" || name == "__security_cookie" || name == "__security_check_cookie" ||
-           name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-           name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
-           name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
-           name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
-           name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
-           name == "__vcrt_thread_attach" || name == "__vcrt_thread_detach" ||
-           name == "__vcrt_uninitialize" || name == "__vcrt_uninitialize_critical" ||
-           name == "__acrt_initialize" || name == "__acrt_thread_attach" ||
-           name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
-           name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
-           name == "__scrt_exe_initialize_mta" ||
-           name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
-           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" || name == "vm_trap" ||
-           name == "rt_audio_shutdown";
+const char *platformName(LinkPlatform platform) {
+    switch (platform) {
+        case LinkPlatform::Linux:
+            return "Linux";
+        case LinkPlatform::macOS:
+            return "macOS";
+        case LinkPlatform::Windows:
+            return "Windows";
+    }
+    return "unknown";
 }
 
-std::string dllForImport(const std::string &name, bool debugRuntime) {
+const char *archName(LinkArch arch) {
+    switch (arch) {
+        case LinkArch::X86_64:
+            return "x86_64";
+        case LinkArch::AArch64:
+            return "AArch64";
+    }
+    return "unknown";
+}
+
+static constexpr const char *kMacNoMatches[] = {nullptr};
+static constexpr const char *kMacLibSystemPrefixes[] = {
+    "Block_",
+    "NSConcrete",
+    "dispatch_",
+    "mach_",
+    "task_",
+    "host_",
+    "vm_",
+    "kern_",
+    "os_",
+    nullptr,
+};
+static constexpr const char *kMacLibSystemExact[] = {
+    "_NSGetExecutablePath",
+    "_Block_copy",
+    "_Block_release",
+    "_Block_object_assign",
+    "_Block_object_dispose",
+    "dyld_stub_binder",
+    "_tlv_atexit",
+    "_tlv_bootstrap",
+    "mach_timebase_info",
+    "mach_absolute_time",
+    "mach_task_self_",
+    "mach_host_self",
+    "task_info",
+    "host_page_size",
+    "_os_unfair_lock_lock",
+    "_os_unfair_lock_unlock",
+    "os_unfair_lock_lock",
+    "os_unfair_lock_unlock",
+    nullptr,
+};
+static constexpr const char *kMacCoreFoundationPrefixes[] = {"CF", "kCF", nullptr};
+static constexpr const char *kMacFoundationPrefixes[] = {
+    "NSString",
+    "NSAttributedString",
+    "NSArray",
+    "NSDictionary",
+    "NSSet",
+    "NSMutable",
+    "NSData",
+    "NSError",
+    "NSURL",
+    "NSBundle",
+    "NSFileManager",
+    "NSDate",
+    "NSLocale",
+    "NSProcessInfo",
+    "NSRunLoop",
+    "NSTimer",
+    "NSThread",
+    "NSNotification",
+    "NSIndexSet",
+    "NSCharacterSet",
+    "NSPredicate",
+    "NSCoder",
+    "NSJSON",
+    "NSUserDefaults",
+    "NSAutoreleasePool",
+    "NSObject",
+    "NSDefaultRunLoop",
+    nullptr,
+};
+static constexpr const char *kMacFoundationExact[] = {
+    "NSLog",
+    "NSSearchPathForDirectoriesInDomains",
+    nullptr,
+};
+static constexpr const char *kMacAppKitPrefixes[] = {
+    "NSApp",
+    "NSApplication",
+    "NSWindow",
+    "NSView",
+    "NSColor",
+    "NSEvent",
+    "NSCursor",
+    "NSGraphicsContext",
+    "NSOpenGL",
+    "NSMenu",
+    "NSMenuItem",
+    "NSScreen",
+    "NSImage",
+    "NSFont",
+    "NSResponder",
+    "NSPanel",
+    "NSPasteboard",
+    "NSText",
+    "NSControl",
+    "NSButton",
+    "NSScroll",
+    "NSTable",
+    "NSOutline",
+    "NSBezierPath",
+    "NSMake",
+    "NSRect",
+    "NSPoint",
+    "NSSize",
+    "NSDrag",
+    "NSBackingStore",
+    "NSWindowStyle",
+    "NSApplicationActivationPolicy",
+    nullptr,
+};
+static constexpr const char *kMacCoreGraphicsPrefixes[] = {"CG", "kCG", nullptr};
+static constexpr const char *kMacIOKitPrefixes[] = {
+    "IOKit",
+    "IOHID",
+    "IOService",
+    "IORegistryEntry",
+    nullptr,
+};
+static constexpr const char *kMacObjCPrefixes[] = {"objc_", "OBJC_", "_objc_", nullptr};
+static constexpr const char *kMacObjCExact[] = {"sel_registerName", "sel_getName", nullptr};
+static constexpr const char *kMacUTIPrefixes[] = {"UTType", "UTCopy", nullptr};
+static constexpr const char *kMacAudioToolboxPrefixes[] = {
+    "AudioQueue",
+    "AudioServices",
+    "AudioComponent",
+    nullptr,
+};
+static constexpr const char *kMacCoreAudioPrefixes[] = {"AudioObject", "AudioDevice", nullptr};
+static constexpr const char *kMacMetalPrefixes[] = {"MTLCreate", "MTL", nullptr};
+static constexpr const char *kMacQuartzCorePrefixes[] = {
+    "CAMetalLayer",
+    "CATransaction",
+    "CALayer",
+    "CAAnimation",
+    "CAMediaTiming",
+    nullptr,
+};
+static constexpr const char *kMacSecurityPrefixes[] = {"Sec", nullptr};
+
+static constexpr MacImportRule kMacImportRules[] = {
+    {"/usr/lib/libSystem.B.dylib", kMacLibSystemPrefixes, kMacLibSystemExact},
+    {"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+     kMacCoreFoundationPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+     kMacFoundationPrefixes,
+     kMacFoundationExact},
+    {"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+     kMacAppKitPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+     kMacCoreGraphicsPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit",
+     kMacIOKitPrefixes,
+     kMacNoMatches},
+    {"/usr/lib/libobjc.A.dylib", kMacObjCPrefixes, kMacObjCExact},
+    {"/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/"
+     "UniformTypeIdentifiers",
+     kMacUTIPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+     kMacAudioToolboxPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+     kMacCoreAudioPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+     kMacMetalPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+     kMacQuartzCorePrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Security.framework/Versions/A/Security",
+     kMacSecurityPrefixes,
+     kMacNoMatches},
+};
+
+bool macSymbolMatchesRule(const std::string &sym, const MacImportRule &rule) {
+    const std::string stripped = stripLeadingUnderscores(sym);
+    const std::string normalized = normalizeMacFrameworkSymbol(sym);
+
+    for (const char *const *e = rule.exactSyms; e != nullptr && *e != nullptr; ++e) {
+        if (sym == *e || stripped == *e || normalized == *e)
+            return true;
+    }
+    for (const char *const *p = rule.prefixes; p != nullptr && *p != nullptr; ++p) {
+        if (sym.find(*p) == 0 || stripped.find(*p) == 0 || normalized.find(*p) == 0)
+            return true;
+    }
+    return false;
+}
+
+const MacImportRule *findMacImportRule(const std::string &sym) {
+    for (const auto &rule : kMacImportRules) {
+        if (isObjcFrameworkTypeSymbol(sym) &&
+            std::string(rule.dylibPath) == "/usr/lib/libobjc.A.dylib") {
+            continue;
+        }
+        if (macSymbolMatchesRule(sym, rule))
+            return &rule;
+    }
+    return nullptr;
+}
+
+bool isMacFrameworkLikeSymbol(const std::string &sym) {
+    static constexpr const char *kFrameworkPrefixes[] = {
+        "CF",
+        "kCF",
+        "CG",
+        "kCG",
+        "NS",
+        "IOKit",
+        "IOHID",
+        "IOService",
+        "IORegistryEntry",
+        "objc_",
+        "OBJC_",
+        "_objc_",
+        "UTType",
+        "UTCopy",
+        "AudioQueue",
+        "AudioServices",
+        "AudioComponent",
+        "AudioObject",
+        "AudioDevice",
+        "MTL",
+        "Sec",
+        "CAMetalLayer",
+        "CATransaction",
+        "CALayer",
+        nullptr,
+    };
+
+    const std::string stripped = stripLeadingUnderscores(sym);
+    const std::string normalized = normalizeMacFrameworkSymbol(sym);
+    for (const char *const *p = kFrameworkPrefixes; *p != nullptr; ++p) {
+        if (sym.find(*p) == 0 || stripped.find(*p) == 0 || normalized.find(*p) == 0)
+            return true;
+    }
+    return false;
+}
+
+uint32_t ensureMacDylibOrdinal(const char *path,
+                               MacImportPlan &plan,
+                               std::unordered_map<std::string, uint32_t> &pathToOrdinal) {
+    auto it = pathToOrdinal.find(path);
+    if (it != pathToOrdinal.end())
+        return it->second;
+
+    plan.dylibs.push_back({path});
+    const uint32_t ordinal = static_cast<uint32_t>(plan.dylibs.size());
+    pathToOrdinal.emplace(path, ordinal);
+    return ordinal;
+}
+
+bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
+                    MacImportPlan &plan,
+                    std::ostream &err) {
+    static constexpr const char *kCocoaPath =
+        "/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa";
+
+    std::unordered_map<std::string, uint32_t> pathToOrdinal;
+    ensureMacDylibOrdinal("/usr/lib/libSystem.B.dylib", plan, pathToOrdinal);
+
+    std::vector<std::string> sortedSyms(dynamicSyms.begin(), dynamicSyms.end());
+    std::sort(sortedSyms.begin(), sortedSyms.end());
+
+    for (const auto &sym : sortedSyms) {
+        if (const MacImportRule *rule = findMacImportRule(sym)) {
+            const uint32_t ordinal = ensureMacDylibOrdinal(rule->dylibPath, plan, pathToOrdinal);
+            plan.symOrdinals[sym] = isObjcClassLookupSymbol(sym) ? 0 : ordinal;
+            continue;
+        }
+
+        const std::string normalized = normalizeMacFrameworkSymbol(sym);
+        if (isObjcClassLookupSymbol(sym) && normalized.rfind("NS", 0) == 0) {
+            ensureMacDylibOrdinal(kCocoaPath, plan, pathToOrdinal);
+            plan.symOrdinals[sym] = 0;
+            continue;
+        }
+
+        if (!isMacFrameworkLikeSymbol(sym) && isKnownDynamicSymbol(sym, LinkPlatform::macOS)) {
+            plan.symOrdinals[sym] = 1; // libSystem.B.dylib
+            continue;
+        }
+
+        err << "error: macOS import symbol '" << sym
+            << "' is unresolved but has no dylib mapping\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllName) {
     static const std::unordered_set<std::string> kernel32 = {
         "ExitProcess",
         "FreeLibrary",
@@ -299,31 +611,213 @@ std::string dllForImport(const std::string &name, bool debugRuntime) {
         "CryptReleaseContext",
     };
     static const std::unordered_set<std::string> bcrypt = {"BCryptGenRandom"};
+    static const std::unordered_set<std::string> ws2_32 = {
+        "accept",
+        "bind",
+        "connect",
+        "getsockopt",
+        "listen",
+        "recv",
+        "select",
+        "send",
+        "setsockopt",
+        "socket",
+    };
+    static const std::unordered_set<std::string> ucrt = {
+        "_Exit",
+        "_exit",
+        "__acrt_iob_func",
+        "__local_stdio_printf_options",
+        "__local_stdio_scanf_options",
+        "__stdio_common_vfprintf",
+        "__stdio_common_vsprintf",
+        "_vfprintf_l",
+        "_vsscanf_l",
+        "abort",
+        "access",
+        "aligned_alloc",
+        "atexit",
+        "atof",
+        "atoi",
+        "atol",
+        "bsearch",
+        "calloc",
+        "ceil",
+        "ceilf",
+        "clearerr",
+        "clock",
+        "close",
+        "cos",
+        "cosf",
+        "dup",
+        "dup2",
+        "exit",
+        "fabs",
+        "fabsf",
+        "fclose",
+        "fcntl",
+        "ferror",
+        "feof",
+        "fflush",
+        "fgetc",
+        "fgets",
+        "fileno",
+        "floor",
+        "floorf",
+        "fmod",
+        "fmodf",
+        "fopen",
+        "fprintf",
+        "fputc",
+        "fputs",
+        "fread",
+        "free",
+        "freopen",
+        "fseek",
+        "ftell",
+        "fwrite",
+        "getc",
+        "getcwd",
+        "getenv",
+        "isalnum",
+        "isalpha",
+        "isdigit",
+        "islower",
+        "isspace",
+        "isupper",
+        "isatty",
+        "localeconv",
+        "log",
+        "log10",
+        "log2",
+        "logf",
+        "longjmp",
+        "lseek",
+        "malloc",
+        "memchr",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "open",
+        "perror",
+        "posix_memalign",
+        "pow",
+        "powf",
+        "printf",
+        "putc",
+        "puts",
+        "qsort",
+        "raise",
+        "read",
+        "realloc",
+        "rewind",
+        "round",
+        "roundf",
+        "setbuf",
+        "setenv",
+        "setjmp",
+        "setvbuf",
+        "sin",
+        "sinf",
+        "snprintf",
+        "sprintf",
+        "sqrt",
+        "sqrtf",
+        "sscanf",
+        "strcat",
+        "strcat_s",
+        "strchr",
+        "strcmp",
+        "strcpy",
+        "strcpy_s",
+        "strdup",
+        "strerror",
+        "strlen",
+        "strncat",
+        "strncmp",
+        "strncpy",
+        "strstr",
+        "strtod",
+        "strtol",
+        "strtoul",
+        "strrchr",
+        "system",
+        "tan",
+        "tanf",
+        "time",
+        "tmpfile",
+        "tmpnam",
+        "tolower",
+        "toupper",
+        "trunc",
+        "truncf",
+        "ungetc",
+        "unlink",
+        "vfprintf",
+        "wcscpy_s",
+        "write",
+        "_wmakepath_s",
+        "_wsplitpath_s",
+    };
+    static const std::unordered_set<std::string> debugOnlyUcrt = {
+        "_CrtDbgReport",
+        "_CrtDbgReportW",
+    };
 
-    if (kernel32.count(name))
-        return "kernel32.dll";
-    if (user32.count(name))
-        return "user32.dll";
-    if (gdi32.count(name))
-        return "gdi32.dll";
-    if (shell32.count(name))
-        return "shell32.dll";
-    if (ole32.count(name))
-        return "ole32.dll";
-    if (xinput.count(name))
-        return "xinput1_4.dll";
-    if (advapi32.count(name))
-        return "advapi32.dll";
-    if (bcrypt.count(name))
-        return "bcrypt.dll";
+    if (kernel32.count(name)) {
+        dllName = "kernel32.dll";
+        return true;
+    }
+    if (user32.count(name)) {
+        dllName = "user32.dll";
+        return true;
+    }
+    if (gdi32.count(name)) {
+        dllName = "gdi32.dll";
+        return true;
+    }
+    if (shell32.count(name)) {
+        dllName = "shell32.dll";
+        return true;
+    }
+    if (ole32.count(name)) {
+        dllName = "ole32.dll";
+        return true;
+    }
+    if (xinput.count(name)) {
+        dllName = "xinput1_4.dll";
+        return true;
+    }
+    if (advapi32.count(name)) {
+        dllName = "advapi32.dll";
+        return true;
+    }
+    if (bcrypt.count(name)) {
+        dllName = "bcrypt.dll";
+        return true;
+    }
+    if (ws2_32.count(name)) {
+        dllName = "ws2_32.dll";
+        return true;
+    }
 
     if (name == "__C_specific_handler" || name == "__C_specific_handler_noexcept" ||
         name == "__current_exception" || name == "__current_exception_context" ||
         name.rfind("__vcrt_", 0) == 0) {
-        return debugRuntime ? "VCRUNTIME140D.dll" : "VCRUNTIME140.dll";
+        dllName = debugRuntime ? "VCRUNTIME140D.dll" : "VCRUNTIME140.dll";
+        return true;
     }
 
-    return debugRuntime ? "ucrtbased.dll" : "ucrtbase.dll";
+    if (ucrt.count(name)) {
+        dllName = debugRuntime ? "ucrtbased.dll" : "ucrtbase.dll";
+        return true;
+    }
+    if (debugRuntime && debugOnlyUcrt.count(name)) {
+        dllName = "ucrtbased.dll";
+        return true;
+    }
+    return false;
 }
 
 std::string importNameForSymbol(const std::string &name) {
@@ -344,10 +838,11 @@ std::string importNameForSymbol(const std::string &name) {
     return name;
 }
 
-WindowsImportPlan generateWindowsImports(LinkArch arch,
-                                         const std::unordered_set<std::string> &dynamicSyms,
-                                         bool debugRuntime) {
-    WindowsImportPlan plan;
+bool generateWindowsImports(LinkArch arch,
+                            const std::unordered_set<std::string> &dynamicSyms,
+                            bool debugRuntime,
+                            WindowsImportPlan &plan,
+                            std::ostream &err) {
     plan.obj.name = (arch == LinkArch::AArch64) ? "<winarm64-imports>" : "<win64-imports>";
     plan.obj.format = ObjFileFormat::COFF;
     plan.obj.is64bit = true;
@@ -374,13 +869,19 @@ WindowsImportPlan generateWindowsImports(LinkArch arch,
         if (sym == "__ImageBase")
             continue;
         const std::string base = stripImpPrefix(sym);
-        if (isWindowsHelperSymbol(sym) || isWindowsHelperSymbol(base))
+        if (isWindowsLinkerHelperSymbol(sym) || isWindowsLinkerHelperSymbol(base))
             continue;
         if (base.rfind("rt_", 0) == 0)
             continue;
         if (!seenFuncs.insert(base).second)
             continue;
-        dllToFuncs[dllForImport(base, debugRuntime)].push_back(base);
+        std::string dllName;
+        if (!dllForImport(base, debugRuntime, dllName)) {
+            err << "error: Windows import symbol '" << base
+                << "' is unresolved but has no DLL mapping\n";
+            return false;
+        }
+        dllToFuncs[dllName].push_back(base);
     }
 
     std::vector<std::string> dllNames;
@@ -477,7 +978,7 @@ WindowsImportPlan generateWindowsImports(LinkArch arch,
         plan.obj.sections.push_back(std::move(dataSec));
     }
 
-    return plan;
+    return true;
 }
 
 void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
@@ -1046,13 +1547,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     std::vector<ObjFile> allObjects;
     std::unordered_set<std::string> dynamicSyms;
     const bool debugWindowsRuntime =
-        opts.platform == LinkPlatform::Windows && (usesDebugWindowsRuntime(opts.archivePaths)
-#if defined(NDEBUG)
-                                                   || false
-#else
-                                                   || true
-#endif
-                                                  );
+        opts.platform == LinkPlatform::Windows &&
+        opts.windowsDebugRuntime.value_or(usesDebugWindowsRuntime(opts.archivePaths));
 
     if (!resolveSymbols(
             initialObjects, archives, globalSyms, allObjects, dynamicSyms, err, opts.platform)) {
@@ -1116,8 +1612,11 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             }
         }
 
-        WindowsImportPlan importPlan =
-            generateWindowsImports(opts.arch, dynamicSyms, debugWindowsRuntime);
+        WindowsImportPlan importPlan;
+        if (!generateWindowsImports(
+                opts.arch, dynamicSyms, debugWindowsRuntime, importPlan, err)) {
+            return 1;
+        }
         peImports = importPlan.imports;
         if (!importPlan.obj.sections.empty()) {
             const size_t importIdx = allObjects.size();
@@ -1166,7 +1665,10 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         std::vector<std::string> unsupported(dynamicSyms.begin(), dynamicSyms.end());
         std::sort(unsupported.begin(), unsupported.end());
 
-        err << "error: native linker does not support dynamic imports on this target\n";
+        err << "error: native linker does not support dynamic imports on "
+            << platformName(opts.platform) << ' ' << archName(opts.arch) << "\n";
+        err << "error: supported dynamic-import targets are Windows x86_64, Windows AArch64, "
+               "and macOS AArch64\n";
         err << "error: unresolved dynamic symbols:";
         for (const auto &sym : unsupported)
             err << ' ' << sym;
@@ -1175,8 +1677,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         return 1;
     }
 
-    // Step 3.5c: Dead-strip unused sections from archive-extracted objects.
-    // User objects (index 0) are always live; archive extracts are GC'd.
+    // Step 3.5c: Dead-strip unused sections from all non-synthetic input
+    // objects, rooting only entry points and always-live metadata.
     deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, err);
 
     // Step 3.5d: Deduplicate identical rodata strings across object files.
@@ -1250,158 +1752,16 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             writeOk = writeElfExe(opts.exePath, layout, opts.arch, opts.stackSize, err);
             break;
         case LinkPlatform::macOS: {
-            std::vector<DylibImport> dylibs;
-            // Always link libSystem.B.dylib on macOS.
-            dylibs.push_back({"/usr/lib/libSystem.B.dylib"});
-
-            // Detect required frameworks from dynamic symbol prefixes.
-            // Each entry: {list of symbol prefixes, dylib path}.
-            // A framework is linked if ANY dynamic symbol starts with one of its prefixes.
-            struct FrameworkRule {
-                const char *prefixes[10]; // NUL-terminated list of symbol prefixes.
-                const char *exactSyms[8]; // NUL-terminated list of exact-match symbol names.
-                const char *dylibPath;
-            };
-
-            static constexpr FrameworkRule kFrameworkRules[] = {
-                {{"Block_", "NSConcrete"},
-                 {"_Block_copy", "_Block_release", "_Block_object_assign"},
-                 "/usr/lib/libSystem.B.dylib"},
-                {{"CF", "kCF"},
-                 {},
-                 "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"},
-                {{"NS"}, {}, "/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa"},
-                {{"NSApp",
-                  "NSWindow",
-                  "NSView",
-                  "NSColor",
-                  "NSEvent",
-                  "NSCursor",
-                  "NSGraphicsContext",
-                  "NSOpenGL",
-                  "NSApplication"},
-                 {},
-                 "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"},
-                {{"CG"},
-                 {},
-                 "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics"},
-                {{"NSLog", "NSSearchPathForDirectories"},
-                 {},
-                 "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation"},
-                {{"IOKit", "IOHID", "IOService", "IORegistryEntry"},
-                 {},
-                 "/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"},
-                {{"objc_", "OBJC_"},
-                 {"sel_registerName", "sel_getName"},
-                 "/usr/lib/libobjc.A.dylib"},
-                {{"UTType", "UTCopy"},
-                 {},
-                 "/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/"
-                 "UniformTypeIdentifiers"},
-                {{"AudioQueue", "AudioServices"},
-                 {},
-                 "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox"},
-                {{"MTL", "MTLCreate"},
-                 {},
-                 "/System/Library/Frameworks/Metal.framework/Versions/A/Metal"},
-                {{"CAMetalLayer", "CATransaction", "CALayer"},
-                 {},
-                 "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore"},
-            };
-
-            for (const auto &rule : kFrameworkRules) {
-                bool needed = false;
-                for (const auto &sym : dynamicSyms) {
-                    const std::string stripped = stripLeadingUnderscores(sym);
-                    const std::string normalized = normalizeMacFrameworkSymbol(sym);
-                    for (const char *const *p = rule.prefixes; *p; ++p) {
-                        if (sym.find(*p) == 0 || stripped.find(*p) == 0 ||
-                            normalized.find(*p) == 0) {
-                            needed = true;
-                            break;
-                        }
-                    }
-                    if (!needed) {
-                        for (const char *const *e = rule.exactSyms; *e; ++e) {
-                            if (sym == *e || stripped == *e || normalized == *e) {
-                                needed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (needed)
-                        break;
-                }
-                if (needed)
-                    if (std::none_of(dylibs.begin(), dylibs.end(), [&](const DylibImport &imp) {
-                            return imp.path == rule.dylibPath;
-                        }))
-                        dylibs.push_back({rule.dylibPath});
-            }
-
-            // Build symbol-to-dylib ordinal map for MH_TWOLEVEL.
-            // Ordinal = 1-based index into the dylibs vector.
-            // Ordinal 0 = flat lookup (for ObjC class/metaclass symbols).
-            std::unordered_map<std::string, uint32_t> symOrdinals;
-            {
-                // Map dylib path → ordinal (1-based).
-                std::unordered_map<std::string, uint32_t> pathToOrdinal;
-                for (size_t di = 0; di < dylibs.size(); ++di)
-                    pathToOrdinal[dylibs[di].path] = static_cast<uint32_t>(di + 1);
-
-                for (const auto &sym : dynamicSyms) {
-                    // ObjC class/metaclass symbols use flat lookup — they live in
-                    // the framework that defines the class, which can't be determined
-                    // from the symbol prefix alone (e.g., OBJC_CLASS_$_NSWindow is
-                    // in AppKit, not libobjc).
-                    if (isObjcClassLookupSymbol(sym)) {
-                        symOrdinals[sym] = 0; // flat lookup
-                        continue;
-                    }
-
-                    // Try prefix/exact matching against framework rules.
-                    bool matched = false;
-                    const std::string stripped = stripLeadingUnderscores(sym);
-                    const std::string normalized = normalizeMacFrameworkSymbol(sym);
-                    for (const auto &rule : kFrameworkRules) {
-                        // Try prefix match against both raw and underscore-stripped name.
-                        for (const char *const *p = rule.prefixes; *p; ++p) {
-                            if (sym.find(*p) == 0 || stripped.find(*p) == 0 ||
-                                normalized.find(*p) == 0) {
-                                auto pit = pathToOrdinal.find(rule.dylibPath);
-                                if (pit != pathToOrdinal.end())
-                                    symOrdinals[sym] = pit->second;
-                                matched = true;
-                                break;
-                            }
-                        }
-                        if (!matched) {
-                            for (const char *const *e = rule.exactSyms; *e; ++e) {
-                                if (sym == *e || stripped == *e || normalized == *e) {
-                                    auto pit = pathToOrdinal.find(rule.dylibPath);
-                                    if (pit != pathToOrdinal.end())
-                                        symOrdinals[sym] = pit->second;
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (matched)
-                            break;
-                    }
-
-                    // Default: ordinal 1 (libSystem.B.dylib).
-                    if (!matched)
-                        symOrdinals[sym] = 1;
-                }
-            }
+            MacImportPlan importPlan;
+            if (!planMacImports(dynamicSyms, importPlan, err))
+                return 1;
 
             writeOk = writeMachOExe(opts.exePath,
                                     layout,
                                     opts.arch,
-                                    dylibs,
+                                    importPlan.dylibs,
                                     dynamicSyms,
-                                    symOrdinals,
+                                    importPlan.symOrdinals,
                                     opts.stackSize,
                                     err);
             break;

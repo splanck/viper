@@ -11,8 +11,9 @@
 //          application, and executable output.
 // Key invariants:
 //   - Zero external tool dependencies
-//   - Replaces the `cc` system linker invocation
-//   - Supports ELF (Linux), Mach-O (macOS), PE (Windows)
+//   - Writes ELF (Linux), Mach-O (macOS), and PE (Windows) directly
+//   - Dynamic imports are currently supported on Windows x86_64/AArch64 and
+//     macOS AArch64; other shared-library cases fall back to the system linker
 // Ownership/Lifetime:
 //   - Stateless entry point; each call is independent
 // Links: codegen/common/linker/LinkTypes.hpp
@@ -25,6 +26,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -41,6 +43,7 @@ struct NativeLinkerOptions {
     std::string entrySymbol = "main";       ///< Entry point symbol name.
     std::vector<std::string> extraObjPaths; ///< Additional .o files to link (e.g. asset blob).
     std::size_t stackSize = 0; ///< Requested stack size in bytes; 0 uses format defaults.
+    std::optional<bool> windowsDebugRuntime; ///< Override CRT flavor on Windows when set.
 };
 
 /// Run the native linker.

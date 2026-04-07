@@ -42,4 +42,16 @@ uint32_t SymbolTable::findOrAdd(const std::string &name) {
     return add(Symbol{name, SymbolBinding::External, SymbolSection::Undefined, 0, 0});
 }
 
+uint32_t SymbolTable::find(const std::string &name) const {
+    auto it = nameIndex_.find(name);
+    if (it == nameIndex_.end())
+        return 0;
+    return it->second;
+}
+
+void SymbolTable::reserve(size_t totalSymbols) {
+    if (symbols_.capacity() < totalSymbols)
+        symbols_.reserve(totalSymbols);
+}
+
 } // namespace viper::codegen::objfile
