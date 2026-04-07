@@ -888,21 +888,6 @@ and level intro splash screens.
 
 ---
 
-### Dungeon of Viper — 3D FPS Demo
-
-A first-person dungeon crawler built on the Graphics3D engine, demonstrating 3D game development
-in Zia:
-
-- First-person camera with mouselook and WASD movement
-- Procedural dungeon generation with rooms and corridors
-- 3D rendering using the software rasterizer backend
-- Enemy spawning and basic combat mechanics
-- HUD with health, ammo, and minimap
-
-Located at `examples/games/dungeon/`. Built with `viper build` and the native ARM64 codegen.
-
----
-
 ### Codebase Reorganization
 
 #### Directory Consolidation
@@ -1280,7 +1265,7 @@ table of contents to cover all 80+ sections.
 | **O1 Native Codegen** | Broken (paint, pacman crashes) | 9/11 demos correct at O1 |
 | **Network Classes** | 5 | 15 (+10 new classes) |
 | **Crypto** | ChaCha20-Poly1305, ECDSA | + AES-128-GCM, HMAC-SHA256, HKDF |
-| **3D Demo** | No | Dungeon of Viper — 3D FPS |
+| **3D Demo** | No | 3D Bowling — Physics3D showcase |
 | **Codebase Organization** | demos/ + devdocs/ | Unified examples/ + docs/ |
 | **Language Audit** | No | 13 findings validated, 6 fixed, 7 filed |
 

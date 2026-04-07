@@ -71,18 +71,6 @@ Pac-Man with smart ghost AI (scatter/chase/frightened modes), dot collection, po
 
 ---
 
-#### Dungeon
-
-**Genre:** 3D first-person crawler | **Language:** Zia | **LOC:** 2,160 across 15 files
-
-A 3D first-person dungeon with FBX model loading, lighting, enemy spawning, and WASD + mouse controls. The only 3D game example.
-
-**Engine features:** Canvas3D, Camera3D, Physics3DWorld, Material3D, FBX loader, Input.Action
-
-**Source:** [`examples/games/dungeon/`](../../../examples/games/dungeon/)
-
----
-
 #### Frogger
 
 **Genre:** Arcade | **Language:** Zia | **LOC:** ~1,500
@@ -140,31 +128,30 @@ These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). 
 
 Which example games demonstrate which engine systems:
 
-| Feature | XENOSCAPE | Centipede | Pac-Man | Chess | Dungeon | Graphics Show |
-|---------|:---------:|:---------:|:-------:|:-----:|:-------:|:------------:|
-| Canvas | x | x | x | x | | x |
-| Canvas3D | | | | | x | |
-| Entity/Behavior | x | | | | | |
-| AnimStateMachine | x | | | | | |
-| PlatformerController | x | | | | | |
-| Tilemap | x | | | | | |
-| Camera | x | | | | x | |
-| Physics2D | x | | | | | x |
-| StateMachine | x | x | x | x | | |
-| ScreenFX | x | x | x | | | |
-| ParticleEmitter | x | x | x | | | x |
-| Audio/SoundBank | x | | | | | |
-| Synth | x | | | | | |
-| Input.Action | x | x | x | x | x | |
-| Grid2D | | x | x | | | |
-| Timer | x | x | x | | | x |
-| Tween | | | x | | | |
-| SmoothValue | x | x | x | | | |
-| ButtonGroup | | | x | | | |
-| GameUI | x | | | | x | |
-| SceneManager | x | | | | | |
-| LevelData | x | | | | x | |
-| Config | x | x | x | x | | |
+| Feature | XENOSCAPE | Centipede | Pac-Man | Chess | Graphics Show |
+|---------|:---------:|:---------:|:-------:|:-----:|:------------:|
+| Canvas | x | x | x | x | x |
+| Entity/Behavior | x | | | | |
+| AnimStateMachine | x | | | | |
+| PlatformerController | x | | | | |
+| Tilemap | x | | | | |
+| Camera | x | | | | |
+| Physics2D | x | | | | x |
+| StateMachine | x | x | x | x | |
+| ScreenFX | x | x | x | | |
+| ParticleEmitter | x | x | x | | x |
+| Audio/SoundBank | x | | | | |
+| Synth | x | | | | |
+| Input.Action | x | x | x | x | |
+| Grid2D | | x | x | | |
+| Timer | x | x | x | | x |
+| Tween | | | x | | |
+| SmoothValue | x | x | x | | |
+| ButtonGroup | | | x | | |
+| GameUI | x | | | | |
+| SceneManager | x | | | | |
+| LevelData | x | | | | |
+| Config | x | x | x | x | |
 | Lighting2D | x | | | | | |
 | Save System | x | | | | | |
 | Achievements | x | | | | | |
@@ -177,8 +164,6 @@ For guided walkthroughs that build games step-by-step:
 
 - [Your First Platformer](your-first-platformer.md) — Build a platformer with Entity + Tilemap + Camera
 - [Arcade Shooter](arcade-shooter.md) — Build a Centipede-style game with ObjectPool + Particles
-- [3D Dungeon Crawler](3d-dungeon-crawler.md) — Build a 3D game with Canvas3D + Mesh loading
-
 ---
 
 ## See Also

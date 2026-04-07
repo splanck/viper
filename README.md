@@ -129,9 +129,8 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
 | [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller: 10 levels, 25+ enemies, bosses, abilities, saves, JSON level loading (17K LOC) |
 | [3D Bowling](examples/games/3dbowling/) | 3D bowling with Physics3D pin collision, ball spin/hook, 4-mode camera, 10-frame scoring (3K LOC) |
-| [Dungeon of Viper](examples/games/dungeon/) | 3D first-person dungeon crawler using the Graphics3D engine |
 
-> **[See all demos →](examples/README.md)** — 7 applications, 17 games, API coverage audits, IL examples, and C++ embedding demos.
+> **[See all demos →](examples/README.md)** — 7 applications, 16 games, API coverage audits, IL examples, and C++ embedding demos.
 
 ---
 

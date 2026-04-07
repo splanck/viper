@@ -1378,4 +1378,14 @@ void *vgfx_get_native_display(vgfx_window_t window) {
     return (void *)x11->display;
 }
 
+void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
+    if (!window || !window->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    XWarpPointer(x11->display, None, x11->window, 0, 0, 0, 0, x, y);
+    XFlush(x11->display);
+}
+
 #endif /* __linux__ || __unix__ */

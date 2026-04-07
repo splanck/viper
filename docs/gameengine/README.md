@@ -138,13 +138,12 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 
 - Your First Platformer *(planned)* — Entity + Tilemap + Camera + Animation
 - Arcade Shooter *(planned)* — ObjectPool + Particles + ScreenFX + Score tracking
-- 3D Dungeon Crawler *(planned)* — Canvas3D + Mesh loading + Lighting + FPS controls
 
 ---
 
 ## Example Games
 
-Viper ships with 15 example games demonstrating the engine at every scale:
+Viper ships with 14 example games demonstrating the engine at every scale:
 
 | Game | LOC | Genre | Key Engine Features |
 |------|-----|-------|---------------------|
@@ -153,7 +152,6 @@ Viper ships with 15 example games demonstrating the engine at every scale:
 | [Chess](../../examples/games/chess/) | 2,937 | Board game | Canvas rendering, AI evaluation, StateMachine |
 | [Centipede](../../examples/games/centipede/) | 2,553 | Arcade shooter | Grid2D, Timer, ScreenFX, ParticleEmitter, ObjectPool |
 | [Pac-Man](../../examples/games/pacman/) | 2,230 | Arcade | Ghost AI, StateMachine, ButtonGroup, Tween, SmoothValue |
-| [Dungeon](../../examples/games/dungeon/) | 2,160 | 3D crawler | Canvas3D, Physics3D, FBX models, Material3D, Camera3D |
 | [Frogger](../../examples/games/frogger/) | ~1,500 | Arcade | Entity, grid movement, collision, AI traffic |
 | [VTris](../../examples/games/vtris/) | 1,132 | Puzzle (BASIC) | Terminal rendering, OOP classes, matrix rotation |
 | [Frogger BASIC](../../examples/games/frogger-basic/) | 1,320 | Arcade (BASIC) | OOP stress test, nested objects, collision |

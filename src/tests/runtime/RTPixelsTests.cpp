@@ -797,6 +797,79 @@ static void test_scale_down() {
     printf("test_scale_down: PASSED\n");
 }
 
+static int64_t pack_rgba(int r, int g, int b, int a) {
+    return ((int64_t)(r & 0xFF) << 24) | ((int64_t)(g & 0xFF) << 16) |
+           ((int64_t)(b & 0xFF) << 8) | (int64_t)(a & 0xFF);
+}
+
+static int channel_r(int64_t rgba) {
+    return (int)((rgba >> 24) & 0xFF);
+}
+
+static int channel_g(int64_t rgba) {
+    return (int)((rgba >> 16) & 0xFF);
+}
+
+static int channel_b(int64_t rgba) {
+    return (int)((rgba >> 8) & 0xFF);
+}
+
+static int channel_a(int64_t rgba) {
+    return (int)(rgba & 0xFF);
+}
+
+static int64_t bilerp_rgba(
+    int64_t p00, int64_t p10, int64_t p01, int64_t p11, int frac_x, int frac_y) {
+    int inv_frac_x = 256 - frac_x;
+    int inv_frac_y = 256 - frac_y;
+
+    int r = (channel_r(p00) * inv_frac_x * inv_frac_y + channel_r(p10) * frac_x * inv_frac_y +
+             channel_r(p01) * inv_frac_x * frac_y + channel_r(p11) * frac_x * frac_y) >>
+            16;
+    int g = (channel_g(p00) * inv_frac_x * inv_frac_y + channel_g(p10) * frac_x * inv_frac_y +
+             channel_g(p01) * inv_frac_x * frac_y + channel_g(p11) * frac_x * frac_y) >>
+            16;
+    int b = (channel_b(p00) * inv_frac_x * inv_frac_y + channel_b(p10) * frac_x * inv_frac_y +
+             channel_b(p01) * inv_frac_x * frac_y + channel_b(p11) * frac_x * frac_y) >>
+            16;
+    int a = (channel_a(p00) * inv_frac_x * inv_frac_y + channel_a(p10) * frac_x * inv_frac_y +
+             channel_a(p01) * inv_frac_x * frac_y + channel_a(p11) * frac_x * frac_y) >>
+            16;
+    return pack_rgba(r, g, b, a);
+}
+
+static void test_blur_rgba_channel_order() {
+    void *p = rt_pixels_new(3, 1);
+    rt_pixels_set(p, 0, 0, 0x10002040);
+    rt_pixels_set(p, 1, 0, 0x80FF8040);
+    rt_pixels_set(p, 2, 0, 0xF01020C0);
+
+    void *blurred = rt_pixels_blur(p, 1);
+    assert(blurred != nullptr);
+    assert(rt_pixels_get(blurred, 1, 0) == 0x805A406A);
+
+    printf("test_blur_rgba_channel_order: PASSED\n");
+}
+
+static void test_resize_rgba_channel_order() {
+    void *p = rt_pixels_new(2, 2);
+    int64_t p00 = 0x10305070;
+    int64_t p10 = 0x90B0D0F0;
+    int64_t p01 = 0x20406080;
+    int64_t p11 = 0xA0C0E000;
+
+    rt_pixels_set(p, 0, 0, p00);
+    rt_pixels_set(p, 1, 0, p10);
+    rt_pixels_set(p, 0, 1, p01);
+    rt_pixels_set(p, 1, 1, p11);
+
+    void *resized = rt_pixels_resize(p, 3, 3);
+    assert(resized != nullptr);
+    assert(rt_pixels_get(resized, 1, 1) == bilerp_rgba(p00, p10, p01, p11, 170, 170));
+
+    printf("test_resize_rgba_channel_order: PASSED\n");
+}
+
 // ============================================================================
 // BlendPixel Tests
 // ============================================================================
@@ -901,6 +974,8 @@ int main() {
     test_rotate_180();
     test_scale_up();
     test_scale_down();
+    test_blur_rgba_channel_order();
+    test_resize_rgba_channel_order();
 
     // BlendPixel
     test_blend_fully_opaque();

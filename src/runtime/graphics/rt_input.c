@@ -43,6 +43,15 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#if RT_PLATFORM_WINDOWS
+#include <windows.h>
+#elif RT_PLATFORM_MACOS
+#include <ApplicationServices/ApplicationServices.h>
+#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS)
+#include <X11/Xlib.h>
+#include <X11/XKBlib.h>
+#endif
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -122,6 +131,84 @@ static void *g_active_canvas;
 // Track if initialized
 static bool g_initialized;
 
+// Test hooks let runtime unit tests verify the platform bridge deterministically
+// without requiring a real focused window or cursor warp.
+typedef int32_t (*rt_caps_lock_query_hook_fn)(void *canvas);
+typedef void (*rt_mouse_warp_hook_fn)(void *canvas, int64_t x, int64_t y);
+
+static rt_caps_lock_query_hook_fn g_caps_lock_query_hook = NULL;
+static rt_mouse_warp_hook_fn g_mouse_warp_hook = NULL;
+static void *g_mouse_canvas;
+
+static int32_t rt_input_query_caps_lock_platform(void);
+static void rt_input_warp_mouse_platform(int64_t x, int64_t y);
+
+void rt_input_set_caps_lock_query_hook(rt_caps_lock_query_hook_fn hook) {
+    g_caps_lock_query_hook = hook;
+}
+
+void rt_input_set_mouse_warp_hook(rt_mouse_warp_hook_fn hook) {
+    g_mouse_warp_hook = hook;
+}
+
+void rt_input_reset_test_hooks(void) {
+    g_caps_lock_query_hook = NULL;
+    g_mouse_warp_hook = NULL;
+}
+
+static int32_t rt_input_query_caps_lock_platform(void) {
+    if (g_caps_lock_query_hook)
+        return g_caps_lock_query_hook(g_active_canvas) ? 1 : 0;
+
+#if RT_PLATFORM_WINDOWS
+    return (GetKeyState(VK_CAPITAL) & 0x0001) ? 1 : 0;
+#elif RT_PLATFORM_MACOS
+    CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
+    return (flags & kCGEventFlagMaskAlphaShift) ? 1 : 0;
+#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS)
+    extern void *vgfx_get_native_display(void *window);
+
+    Display *display = NULL;
+    int opened_display = 0;
+    if (g_active_canvas)
+        display = (Display *)vgfx_get_native_display(g_active_canvas);
+    if (!display) {
+        display = XOpenDisplay(NULL);
+        opened_display = (display != NULL);
+    }
+    if (!display)
+        return g_caps_lock ? 1 : 0;
+
+    unsigned int indicator_state = 0;
+    int status = XkbGetIndicatorState(display, XkbUseCoreKbd, &indicator_state);
+    if (opened_display)
+        XCloseDisplay(display);
+    if (status != Success)
+        return g_caps_lock ? 1 : 0;
+    return (indicator_state & 0x01U) ? 1 : 0;
+#else
+    return g_caps_lock ? 1 : 0;
+#endif
+}
+
+static void rt_input_warp_mouse_platform(int64_t x, int64_t y) {
+    if (!g_mouse_canvas)
+        return;
+
+    if (g_mouse_warp_hook) {
+        g_mouse_warp_hook(g_mouse_canvas, x, y);
+        return;
+    }
+
+#if defined(VIPER_ENABLE_GRAPHICS)
+    extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
+    vgfx_warp_cursor(g_mouse_canvas, (int32_t)x, (int32_t)y);
+#else
+    (void)x;
+    (void)y;
+#endif
+}
+
 //=============================================================================
 // Initialization
 //=============================================================================
@@ -168,8 +255,7 @@ void rt_keyboard_on_key_down(int64_t key) {
             g_pressed_keys[g_pressed_count++] = glfw_key;
     }
 
-    // Track caps lock toggle
-    // Note: caps lock state would need OS query for accurate tracking
+    // Caps Lock state is queried from the platform on demand.
 }
 
 /// @brief Record a key-up event from the platform layer.
@@ -205,9 +291,11 @@ void rt_keyboard_text_input(int32_t ch) {
 /// @brief Bind the keyboard to a canvas window (auto-initializes on first bind).
 void rt_keyboard_set_canvas(void *canvas) {
     RT_ASSERT_MAIN_THREAD();
-    g_active_canvas = canvas;
     if (canvas)
         rt_keyboard_init();
+    g_active_canvas = canvas;
+    if (canvas)
+        g_caps_lock = rt_input_query_caps_lock_platform() != 0;
 }
 
 //=============================================================================
@@ -346,6 +434,7 @@ int8_t rt_keyboard_alt(void) {
 /// @brief Check whether Caps Lock is active.
 int8_t rt_keyboard_caps_lock(void) {
     RT_ASSERT_MAIN_THREAD();
+    g_caps_lock = rt_input_query_caps_lock_platform() != 0;
     return g_caps_lock ? 1 : 0;
 }
 
@@ -1121,9 +1210,9 @@ void rt_mouse_update_wheel(int64_t dx, int64_t dy) {
 
 void rt_mouse_set_canvas(void *canvas) {
     RT_ASSERT_MAIN_THREAD();
-    g_mouse_canvas = canvas;
     if (canvas)
         rt_mouse_init();
+    g_mouse_canvas = canvas;
 }
 
 //=============================================================================
@@ -1277,7 +1366,7 @@ void rt_mouse_set_pos(int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_x = x;
     g_mouse_y = y;
-    // Platform-specific cursor warp would go here
+    rt_input_warp_mouse_platform(x, y);
 }
 
 //=============================================================================

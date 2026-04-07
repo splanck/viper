@@ -20,6 +20,21 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+extern "C" void rt_input_set_mouse_warp_hook(void (*hook)(void *canvas, int64_t x, int64_t y));
+extern "C" void rt_input_reset_test_hooks(void);
+
+static int g_mouse_warp_calls = 0;
+static void *g_mouse_warp_canvas = nullptr;
+static int64_t g_mouse_warp_x = 0;
+static int64_t g_mouse_warp_y = 0;
+
+extern "C" void test_mouse_warp_hook(void *canvas, int64_t x, int64_t y) {
+    g_mouse_warp_calls++;
+    g_mouse_warp_canvas = canvas;
+    g_mouse_warp_x = x;
+    g_mouse_warp_y = y;
+}
+
 // ============================================================================
 // Button Constants
 // ============================================================================
@@ -188,6 +203,7 @@ static void test_scroll_wheel() {
 
 static void test_cursor_control() {
     rt_mouse_init();
+    rt_input_reset_test_hooks();
 
     // Hide cursor
     rt_mouse_hide();
@@ -205,10 +221,25 @@ static void test_cursor_control() {
     rt_mouse_release();
     assert(rt_mouse_is_captured() == 0);
 
+    g_mouse_warp_calls = 0;
+    g_mouse_warp_canvas = nullptr;
+    g_mouse_warp_x = 0;
+    g_mouse_warp_y = 0;
+    void *canvas = reinterpret_cast<void *>(0x5678);
+    rt_input_set_mouse_warp_hook(test_mouse_warp_hook);
+    rt_mouse_set_canvas(canvas);
+
     // Set position
     rt_mouse_set_pos(500, 300);
     assert(rt_mouse_x() == 500);
     assert(rt_mouse_y() == 300);
+    assert(g_mouse_warp_calls == 1);
+    assert(g_mouse_warp_canvas == canvas);
+    assert(g_mouse_warp_x == 500);
+    assert(g_mouse_warp_y == 300);
+
+    rt_mouse_set_canvas(nullptr);
+    rt_input_reset_test_hooks();
 
     printf("test_cursor_control: PASSED\n");
 }

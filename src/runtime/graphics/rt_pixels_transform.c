@@ -499,17 +499,17 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
                 int64_t sx = x + kdx;
                 if (sx >= 0 && sx < w) {
                     uint32_t pixel = p->data[y * w + sx];
-                    sum_a += (pixel >> 24) & 0xFF;
-                    sum_r += (pixel >> 16) & 0xFF;
-                    sum_g += (pixel >> 8) & 0xFF;
-                    sum_b += pixel & 0xFF;
+                    sum_r += (pixel >> 24) & 0xFF;
+                    sum_g += (pixel >> 16) & 0xFF;
+                    sum_b += (pixel >> 8) & 0xFF;
+                    sum_a += pixel & 0xFF;
                     count++;
                 }
             }
             if (count > 0)
-                tmp[y * w + x] = ((uint32_t)(sum_a / count) << 24) |
-                                 ((uint32_t)(sum_r / count) << 16) |
-                                 ((uint32_t)(sum_g / count) << 8) | (uint32_t)(sum_b / count);
+                tmp[y * w + x] = ((uint32_t)(sum_r / count) << 24) |
+                                 ((uint32_t)(sum_g / count) << 16) |
+                                 ((uint32_t)(sum_b / count) << 8) | (uint32_t)(sum_a / count);
         }
     }
 
@@ -522,17 +522,17 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
                 int64_t sy = y + kdy;
                 if (sy >= 0 && sy < h) {
                     uint32_t pixel = tmp[sy * w + x];
-                    sum_a += (pixel >> 24) & 0xFF;
-                    sum_r += (pixel >> 16) & 0xFF;
-                    sum_g += (pixel >> 8) & 0xFF;
-                    sum_b += pixel & 0xFF;
+                    sum_r += (pixel >> 24) & 0xFF;
+                    sum_g += (pixel >> 16) & 0xFF;
+                    sum_b += (pixel >> 8) & 0xFF;
+                    sum_a += pixel & 0xFF;
                     count++;
                 }
             }
             if (count > 0)
                 result->data[y * w + x] =
-                    ((uint32_t)(sum_a / count) << 24) | ((uint32_t)(sum_r / count) << 16) |
-                    ((uint32_t)(sum_g / count) << 8) | (uint32_t)(sum_b / count);
+                    ((uint32_t)(sum_r / count) << 24) | ((uint32_t)(sum_g / count) << 16) |
+                    ((uint32_t)(sum_b / count) << 8) | (uint32_t)(sum_a / count);
         }
     }
 
@@ -597,15 +597,15 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
             uint32_t p01 = p->data[sy1 * p->width + src_x];
             uint32_t p11 = p->data[sy1 * p->width + sx1];
 
-            // Extract components - format is 0xAARRGGBB
-            int64_t a00 = (p00 >> 24) & 0xFF, r00 = (p00 >> 16) & 0xFF, g00 = (p00 >> 8) & 0xFF,
-                    b00 = p00 & 0xFF;
-            int64_t a10 = (p10 >> 24) & 0xFF, r10 = (p10 >> 16) & 0xFF, g10 = (p10 >> 8) & 0xFF,
-                    b10 = p10 & 0xFF;
-            int64_t a01 = (p01 >> 24) & 0xFF, r01 = (p01 >> 16) & 0xFF, g01 = (p01 >> 8) & 0xFF,
-                    b01 = p01 & 0xFF;
-            int64_t a11 = (p11 >> 24) & 0xFF, r11 = (p11 >> 16) & 0xFF, g11 = (p11 >> 8) & 0xFF,
-                    b11 = p11 & 0xFF;
+            // Extract components - format is 0xRRGGBBAA
+            int64_t r00 = (p00 >> 24) & 0xFF, g00 = (p00 >> 16) & 0xFF, b00 = (p00 >> 8) & 0xFF,
+                    a00 = p00 & 0xFF;
+            int64_t r10 = (p10 >> 24) & 0xFF, g10 = (p10 >> 16) & 0xFF, b10 = (p10 >> 8) & 0xFF,
+                    a10 = p10 & 0xFF;
+            int64_t r01 = (p01 >> 24) & 0xFF, g01 = (p01 >> 16) & 0xFF, b01 = (p01 >> 8) & 0xFF,
+                    a01 = p01 & 0xFF;
+            int64_t r11 = (p11 >> 24) & 0xFF, g11 = (p11 >> 16) & 0xFF, b11 = (p11 >> 8) & 0xFF,
+                    a11 = p11 & 0xFF;
 
             // Bilinear interpolation
             int64_t inv_frac_x = 256 - frac_x;
@@ -624,9 +624,9 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
                          b01 * inv_frac_x * frac_y + b11 * frac_x * frac_y) >>
                         16;
 
-            result->data[y * new_width + x] = ((uint32_t)(a & 0xFF) << 24) |
-                                              ((uint32_t)(r & 0xFF) << 16) |
-                                              ((uint32_t)(g & 0xFF) << 8) | (b & 0xFF);
+            result->data[y * new_width + x] = ((uint32_t)(r & 0xFF) << 24) |
+                                              ((uint32_t)(g & 0xFF) << 16) |
+                                              ((uint32_t)(b & 0xFF) << 8) | (a & 0xFF);
         }
     }
 

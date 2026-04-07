@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, language features, media codecs, IL optimizer, IDE intelligence, documentation, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, codegen optimization, linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -46,17 +46,19 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen, linker, langua
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
 - **Zia Completion Runtime APIs** — Three new runtime bindings expose the Zia compiler's analysis pipeline directly to Zia programs: `Viper.Zia.Completion.Check(source)` returns serialized diagnostics, `.Hover(source, line, col)` returns type/signature info at a cursor position, `.Symbols(source)` returns all top-level symbols. Implemented via `parseAndAnalyze()` for error-tolerant partial compilation.
 - **Zia `final` Enforcement** — The Zia semantic analyzer now rejects reassignment of `final` variables, for-in loop variables, and match pattern bindings at compile time. Lowerer safety net prevents SSA value corruption if enforcement is bypassed.
-- **Demos** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL database (10 new SQL features, runtime API migration), ViperIDE upgraded to professional IDE (live diagnostics, hover tooltips, go-to-definition, project search, symbol outline, 21 files across 7 directories), Chess restructured with pre-rendered piece sprites (Pixels.Draw* + Canvas.BlitAlpha, core/engine/ui directories), 8 Graphics3D API demos.
-- **Documentation** — Comprehensive review of all 185 markdown files with every Bible code example tested against the compiler; 700+ runtime Doxygen comments, 70+ factual errors fixed, codemap sections consolidated, game engine guide reorganized.
+- **AArch64 Join-Phi Coalescing** — New peephole pass replaces stack round-trips at CFG join blocks with ordered register-to-register moves. Analyzes predecessor stores and successor loads to prove all edges materialize the same values in physical registers, then eliminates the loads and substitutes topologically-ordered copies (cycles bail out). CBR terminator lowering generalized to emit edge blocks whenever branch arguments are present, not only for same-target branches.
+- **Typed Return Metadata** — `runtime.def` signatures annotated with concrete return types (`obj<ClassName>`, `seq<str>`) for 100+ factory/conversion/collection methods. Both frontends now infer the exact runtime class returned, enabling chained method calls without losing type information. New `concreteRuntimeReturnClassQName` API and BASIC `inferObjectClassQName` recursive expression type tracer.
+- **3D Runtime File Decomposition** — `rt_canvas3d.c` split into core + `rt_canvas3d_overlay.c` (screen-space overlay, screenshot, debug-draw). `rt_scene3d.c` split into core + `rt_scene3d_vscn.c` (.vscn save/load serialization) with shared `rt_scene3d_internal.h`.
+- **Demos & Documentation** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL (10 SQL features, runtime API migration), ViperIDE professional IDE (live diagnostics, hover, go-to-def, search, symbol outline, 21 files / 7 dirs), Chess (pre-rendered sprites, core/engine/ui), 8 Graphics3D API demos, 6 app/game smoke probes; 185 markdown files reviewed, 700+ Doxygen comments, 70+ factual errors fixed.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
 | Commits | — | 87 | +87 |
-| Source files | 2,671 | 2,833 | +162 |
-| Production SLOC | ~348K | ~430K | +82K |
-| Test count | 1,351 | 1,410 | +59 |
+| Source files | 2,671 | 2,825 | +154 |
+| Production SLOC | ~348K | ~431K | +83K |
+| Test count | 1,351 | 1,419 | +68 |
 
 ---
 
@@ -284,6 +286,8 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **`String.Contains()` method** — Added `Contains` method alias to the String class mapping to the existing `StrHas` implementation.
 - **`final` variable enforcement** — Semantic analyzer now emits `error[V3000]: Cannot reassign final variable 'x'` when code attempts to reassign a `final` local variable, for-in loop variable, or match pattern binding. Covers all 10 compound assignment operators (`+=`, `-=`, etc.) via parser desugaring. Lowerer safety net prevents SSA value corruption as a defense-in-depth measure.
 - **Completion runtime APIs** — Three new `RT_FUNC` bindings expose the compiler's analysis pipeline to Zia programs: `Viper.Zia.Completion.Check(source)` runs error-tolerant semantic analysis and returns serialized diagnostics (severity, line, col, code, message); `.Hover(source, line, col)` resolves the identifier at the cursor via `findSymbolAtPosition()` and returns kind + type; `.Symbols(source)` enumerates all top-level symbols with kind, type, and line number. All three use `parseAndAnalyze()` for error-tolerant partial compilation.
+- **`main()` entry point parity** — `main()` is now treated as an entry point alongside `start()` for interface itable initialization (`__zia_iface_init`) and global variable initializer emission. Previously only `start()` received these, causing uninitialized globals and missing vtables in `main()`-based programs.
+- **Optional struct boxing** — `emitOptionalWrap` now boxes struct payloads to the heap (via `emitBoxValue`) instead of returning a raw stack pointer. `emitOptionalUnwrap` correspondingly unboxes. Fixes dangling stack pointer when returning `Struct?` from a function.
 
 **BASIC frontend:**
 - **Constant folding for builtins** — `FoldBuiltins.cpp` evaluates `ABS`, `INT`, `SGN`, `SQR`, `LOG`, `EXP`, `SIN`, `COS`, `TAN`, `ATN`, `ASC`, `CHR$`, `LEN`, `LEFT$`, `RIGHT$`, `MID$`, `STR$`, `VAL`, `STRING$`, `SPACE$`, `LCASE$`, `UCASE$`, and `LTRIM$`/`RTRIM$`/`TRIM$` at compile time when arguments are constant. Eliminates runtime calls for constant expressions.
@@ -315,6 +319,10 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Apple M-series scheduler tuning** — Instruction latency model updated for Firestorm cores: FP divide 3→10 cycles, integer divide 3→7, FP multiply 3→4. Improves instruction scheduling for FP-heavy code.
 - **Secondary scratch register (kScratchGPR2)** — X16 (IP0) formalized as `kScratchGPR2` for post-RA helper sequences that need a second temporary while `kScratchGPR` (X9) holds the base value. X16 excluded from register allocator pool. AsmEmitter and A64BinaryEncoder updated to use the named constant instead of hardcoded `PhysReg::X16`.
 - **Pipeline decomposition** — `PassManager`-based pass composition replacing direct function calls in `runCodegenPipeline`. Scheduler and BlockLayout passes added to the O1+ pipeline (previously only peephole ran post-RA). EH-sensitive modules (`EhPush`/`EhPop`/`ResumeSame`/`ResumeNext` opcodes) bypass IL optimizations to avoid structural invariant violations. Virtual register space partitioned into three ranges: general vregs (`kFirstVirtualRegId`=1), phi-inserted vregs (`kPhiVRegStart`=40000), and cross-block spill keys (`kCrossBlockSpillKeyStart`=50000) with overflow guards.
+- **Join-phi coalescing peephole** — New `coalesceJoinPhiLoads` pass (Pass 4.88) eliminates stack round-trips at CFG join blocks by proving all predecessor edges store the same physical registers to the same frame offsets, then replacing the successor's load prefix with topologically-ordered register moves. Handles both single-predecessor forwarding and multi-predecessor consensus. Copy ordering avoids clobbering via dependency analysis; cycles cause conservative bailout. `forwardSinglePredPhiLoads` (Pass 4.86) prepared but disabled pending nested control-flow validation. Existing Pass 4.8 store→load forwarding reworked for correct copy ordering and cycle handling.
+- **CBR edge block generalization** — Terminator lowering now emits edge blocks (`Ledge_true_N`/`Ledge_false_N`) whenever branch arguments are present on either the true or false arm, not only when both arms target the same block. Previously, different-target CBRs with branch arguments silently dropped the argument copies, causing miscompilation in branch-heavy control flow (e.g., multi-level if/else ladders with phi values).
+- **Loop phi-spill multi-block fix** — `eliminateLoopPhiSpills` (LoopOpt.cpp) now correctly handles multi-block loops where the latch block (not the split body) carries phi values on the back-edge. Refactored into `insertEdgeMoves` and `removeStores` lambdas applied to whichever block actually contains the phi-slot stores.
+- **Register allocator live-out spill fix** — New `isLiveOut()` query prevents premature register release for vregs that have no remaining uses in the current block but are live-out to successors. End-of-block spill insertion scan corrected from reverse to forward to find the first terminator insertion point.
 
 **Native Exception Handling Lowering:**
 - **`NativeEHLowering` pass** (`src/codegen/common/NativeEHLowering.cpp`, 683 LOC) — Rewrites structured IL exception handling markers into ordinary IL calls and branches before backend lowering. Transforms `EhPush`/`EhPop` scope markers into `rt_eh_push`/`rt_eh_pop` runtime calls, converts `TrapErr` into `rt_trap()` invocations with message operand materialisation, and lowers `ResumeSame`/`ResumeNext` into control flow jumps. Both x86_64 and AArch64 `CodegenPipeline` invoke the pass before MIR lowering. 171-line unit test validates all EH opcode transformations.
@@ -347,6 +355,13 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 **Windows test infrastructure:**
 - ProcessIsolation framework reworked: function pointers don't survive `CreateProcess`, so `registerChildFunction()` with indexed dispatch (`--viper-child-run=N`) replaces direct pointer passing. `dispatchChild()` added to `TEST_WITH_IL` macro and all 16 VM/conformance tests. Windows test failures reduced from 48 to 4.
 - Codegen test assertions accept `.rdata` (Windows COFF) alongside `.rodata` (ELF), `cmovneq`→`cmovne` suffix fix, platform-adaptive paths for RTDiskFullTests, RTNetworkHardenTests, and test_vm_rt_trap_loc.
+
+**Smoke probes:**
+- 6 new Zia smoke probe tests (`zia_smoke_paint`, `zia_smoke_viperide`, `zia_smoke_vipersql`, `zia_smoke_3dbowling`, `zia_smoke_chess`, `zia_smoke_xenoscape`) exercise real example app/game module stacks with deterministic probes that verify core subsystem wiring without requiring a display.
+
+**AArch64 codegen tests:**
+- 4 new CBR edge block tests: different-target edge blocks, branch ladder correctness (run-native), branch ladder asm quality (join reload elimination), mixed fallthrough/join (run-native).
+- Loop phi test expectations updated for unconditional backedge after loop optimization.
 
 ---
 
@@ -574,6 +589,7 @@ Bytecode format version bumped from 1 to 2. Both `BytecodeVM.cpp` (switch dispat
 
 - **Runtime extern parameter types** — `rtgen` now generates full ABI-shaped parameter signatures (not just return types) for all `RT_FUNC` entries in `ZiaRuntimeExterns.inc`. New `ilParamTypeToZiaType()` mapper handles `str`, `i64`, `f64`, `i1`, `obj`, `ptr`, and optional types. This enables Zia sema to correctly identify string-returning runtime methods and emit `Viper.String.Equals` for `==` comparisons instead of `ICmpEq` (which would compare pointer values).
 - **`List[Object]` Push ABI fix** — `List.Push` on user-defined class instances now emits the correct 2-argument `(obj, obj)` extern signature. Verified by new `ListEntityPushUsesAbiArity` lowerer test.
+- **Typed return metadata** — `runtime.def` signatures annotated with concrete return class names (`obj<ClassName>`, `seq<str>`) for 100+ factory, conversion, and collection methods. New `concreteRuntimeReturnClassQName()` API in `RuntimeClasses` enables both frontends to infer the exact runtime class returned by chained method calls. BASIC frontend gains `inferObjectClassQName()` for recursive expression type tracing through method chains and factory patterns. `lowerAssignment` extracted from `lowerBinary` in Zia lowerer for cleaner assignment handling.
 
 ---
 
@@ -807,6 +823,12 @@ Correctness and robustness improvements across the filesystem IO subsystem.
 - AArch64 regalloc: `operandRoles` for immediate-ALU opcodes (AddRI, SubRI, etc.) classified operand 0 as USE+DEF instead of DEF-only, inflating use-position counts and biasing spill decisions
 - AArch64 regalloc: FPR loads/stores (`LdrFprFpImm`, `LdrFprBaseImm`, `StrFprFpImm`, etc.) not recognized by `isMemLd`/`isMemSt`, causing incorrect register liveness tracking for floating-point operands
 - AArch64 regalloc: clean FPR values loaded from rodata/memory dropped across calls without spilling — caller-saved FP registers were not preserved because the dirty flag was never set for load destinations
+- AArch64 regalloc: live-out vregs with no remaining uses in the current block were prematurely released without spilling — successor blocks saw uninitialized registers. `isLiveOut()` check now prevents release when the vreg is live across block boundaries
+- AArch64 regalloc: end-of-block spill insertion scanned backward from the last instruction, potentially placing spills after the first terminator. Corrected to scan forward to find the first terminator
+- AArch64 CBR terminator: branch arguments on different-target conditional branches were silently dropped — edge blocks only emitted for same-target CBRs, causing miscompilation in branch ladders and multi-level if/else with phi values
+- AArch64 loop phi-spill: multi-block loops where the latch (not the split body) carries phi-slot stores were not handled — phi values remained as stack round-trips instead of being converted to register moves
+- Zia `main()` entry point: `main()` programs did not receive interface itable initialization or global variable initializer emission — only `start()` was treated as the entry point
+- Zia optional struct return: `emitOptionalWrap` returned a raw stack pointer for struct payloads, which dangled after the function returned — now boxes to heap via `emitBoxValue`
 - EarlyCSE: dominator-ordered replacement could substitute a temp defined in a textually-later block, creating an illegal use-before-def in the IL
 - GVN: same textual-ordering bug as EarlyCSE — redundant load elimination and expression value-numbering could replace with values from textually-later dominating blocks
 - Mach-O linker: ObjC metadata sections emitted with generic flags instead of proper Mach-O section types (`S_CSTRING_LITERALS`, `S_LITERAL_POINTERS`, `S_ATTR_NO_DEAD_STRIP`), causing `ld` warnings and potential dead-strip of ObjC metadata

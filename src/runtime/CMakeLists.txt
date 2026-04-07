@@ -664,6 +664,8 @@ endif ()
 if (APPLE)
     target_link_libraries(viper_rt_graphics PUBLIC "-framework IOKit" "-framework CoreFoundation")
     target_link_libraries(viper_runtime PUBLIC "-framework IOKit" "-framework CoreFoundation")
+    target_link_libraries(viper_rt_graphics PUBLIC "-framework ApplicationServices")
+    target_link_libraries(viper_runtime PUBLIC "-framework ApplicationServices")
     # Metal frameworks for 3D GPU backend
     target_link_libraries(viper_rt_graphics PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
     target_link_libraries(viper_runtime PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")

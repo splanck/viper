@@ -4,7 +4,7 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_lighting2d.h
-// Purpose: 2D darkness overlay with dynamic point lights for cave/dungeon games.
+// Purpose: 2D darkness overlay with dynamic point lights for cave and exploration games.
 //
 // Key invariants:
 //   - Darkness alpha 0=fully lit, 255=pitch black.
