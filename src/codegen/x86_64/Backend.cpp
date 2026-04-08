@@ -188,7 +188,7 @@ static void seedDebugFiles(DebugLineTable &table,
         filePath = std::filesystem::path(filePath).lexically_normal().string();
 
     for (uint32_t fileId = 1; fileId <= maxFileId; ++fileId)
-        table.addFile(filePath);
+        table.addFileSlot(filePath);
 }
 
 } // namespace

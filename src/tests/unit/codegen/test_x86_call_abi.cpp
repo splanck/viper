@@ -249,6 +249,92 @@ TEST(X64CallABI, StringCallResultsScheduleRetainHelper) {
     EXPECT_EQ(lowering.callPlans()[calls[1]->callPlanId].callee, "rt_str_retain_maybe");
 }
 
+TEST(X64CallABI, Win64LabelCallArgsMaterialiseIntoRegisters) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.resultId = 0;
+    call.resultKind = ILValue::Kind::PTR;
+    call.ops = {makeLabel("rt_thread_start_safe"), makeLabel("worker_entry"), makeConstI64(7)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {call, makeRet(makeValue(ILValue::Kind::PTR, 0))};
+
+    ILFunction fn{};
+    fn.name = "call_label_arg";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 1u);
+    const CallLoweringPlan &plan = lowering.callPlans().front();
+    ASSERT_EQ(plan.args.size(), 2u);
+    EXPECT_FALSE(plan.args[0].isImm);
+    EXPECT_NE(plan.args[0].vreg, 0u);
+    EXPECT_TRUE(plan.args[1].isImm);
+    EXPECT_EQ(plan.args[1].imm, 7);
+
+    ASSERT_FALSE(mir.blocks.empty());
+    bool foundLabelLea = false;
+    for (const auto &instr : mir.blocks.front().instructions) {
+        if (instr.opcode != MOpcode::LEA || instr.operands.size() < 2)
+            continue;
+        const auto *dst = asReg(instr.operands[0]);
+        const auto *src = std::get_if<OpRipLabel>(&instr.operands[1]);
+        if (!dst || !src)
+            continue;
+        if (src->name == "worker_entry" && !dst->isPhys && dst->idOrPhys == plan.args[0].vreg) {
+            foundLabelLea = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundLabelLea);
+}
+
+TEST(X64CallABI, StringLoadsRetainBeforeConsumingCalls) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 1;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr concat{};
+    concat.opcode = "call";
+    concat.resultId = 2;
+    concat.resultKind = ILValue::Kind::STR;
+    concat.ops = {makeLabel("rt_str_concat"),
+                  makeValue(ILValue::Kind::STR, 1),
+                  makeValue(ILValue::Kind::STR, 1)};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeValue(ILValue::Kind::STR, 2)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {load, concat, release, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "load_str_concat";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 4u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_concat");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[3].callee, "rt_str_release_maybe");
+    ASSERT_EQ(lowering.callPlans()[0].args.size(), 1u);
+    EXPECT_FALSE(lowering.callPlans()[0].args[0].isImm);
+}
+
 TEST(X64CallABI, Win64VarArgFpRegisterIsDuplicatedIntoIntegerLane) {
     MBasicBlock block{};
     block.label = "entry";

@@ -122,6 +122,8 @@ static int runNative(const std::string &ilPath,
 
     Pipeline pipeline(opts);
     auto result = pipeline.run();
+    if (result.exit_code != 0 && !result.stderr_text.empty())
+        std::cerr << result.stderr_text;
     return result.exit_code;
 }
 
@@ -310,7 +312,7 @@ writeFile(in,
           "  %a = const.f64 3.14\n"
           "  %b = const.f64 2.86\n"
           "  %c = fadd %a, %b\n"
-          "  %r = fptosi %c\n"
+          "  %r = cast.fp_to_si.rte.chk %c\n"
           "  ret %r\n"
           "}\n");
 CHECK(runNative(in, "", true) == 6);

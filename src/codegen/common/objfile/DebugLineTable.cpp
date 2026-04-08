@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 
 namespace viper::codegen {
 
@@ -40,19 +41,33 @@ uint32_t DebugLineTable::addFile(const std::string &path) {
     return static_cast<uint32_t>(files_.size()); // 1-based
 }
 
+uint32_t DebugLineTable::addFileSlot(const std::string &path) {
+    files_.push_back(path);
+    return static_cast<uint32_t>(files_.size()); // 1-based
+}
+
 void DebugLineTable::addEntry(uint64_t address,
                               uint32_t fileIndex,
                               uint32_t line,
                               uint32_t column) {
+    if (fileIndex == 0 || fileIndex > files_.size()) {
+        throw std::runtime_error("debug_line: invalid file index " + std::to_string(fileIndex) +
+                                 " (table has " + std::to_string(files_.size()) + " file slot(s))");
+    }
     entries_.push_back({address, fileIndex, line, column});
 }
 
 void DebugLineTable::append(const DebugLineTable &other, uint64_t addressBias) {
     std::vector<uint32_t> fileRemap(other.files_.size() + 1, 0);
     for (size_t i = 0; i < other.files_.size(); ++i)
-        fileRemap[i + 1] = addFile(other.files_[i]);
+        fileRemap[i + 1] = addFileSlot(other.files_[i]);
 
     for (const auto &entry : other.entries_) {
+        if (entry.fileIndex == 0 || entry.fileIndex >= fileRemap.size()) {
+            throw std::runtime_error("debug_line: append saw invalid file index " +
+                                     std::to_string(entry.fileIndex) + " (source table has " +
+                                     std::to_string(other.files_.size()) + " file slot(s))");
+        }
         addEntry(entry.address + addressBias, fileRemap[entry.fileIndex], entry.line, entry.column);
     }
 }

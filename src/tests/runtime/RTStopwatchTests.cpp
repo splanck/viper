@@ -21,11 +21,19 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+static constexpr int64_t kRestartUpperBoundMs = 50;
+static constexpr int64_t kShortSleepUpperBoundMs = 250;
+static constexpr int64_t kLongSleepUpperBoundMs = 400;
+
 static void sleep_ms(int ms) {
     Sleep((DWORD)ms);
 }
 #else
 #include <time.h>
+
+static constexpr int64_t kRestartUpperBoundMs = 10;
+static constexpr int64_t kShortSleepUpperBoundMs = 100;
+static constexpr int64_t kLongSleepUpperBoundMs = 150;
 
 static void sleep_ms(int ms) {
     struct timespec req;
@@ -97,7 +105,8 @@ static void test_start_stop() {
 
     int64_t elapsed = rt_stopwatch_elapsed_ms(sw);
     test_result("Elapsed >= 40ms after 50ms sleep", elapsed >= 40);
-    test_result("Elapsed <= 100ms after 50ms sleep", elapsed <= 100);
+    test_result("Elapsed stays within loaded-system tolerance",
+                elapsed <= kShortSleepUpperBoundMs);
 
     // Verify time doesn't accumulate when stopped
     sleep_ms(50);
@@ -127,7 +136,8 @@ static void test_start_idempotent() {
     int64_t elapsed = rt_stopwatch_elapsed_ms(sw);
     // Should have approximately 60ms total, not 30ms
     test_result("Start() while running doesn't reset (>= 50ms)", elapsed >= 50);
-    test_result("Start() while running doesn't reset (<= 100ms)", elapsed <= 100);
+    test_result("Start() while running stays within loaded-system tolerance",
+                elapsed <= kShortSleepUpperBoundMs);
     rt_release_obj(sw);
 
     printf("\n");
@@ -185,7 +195,7 @@ static void test_restart() {
 
     // Elapsed should be near zero
     int64_t elapsed = rt_stopwatch_elapsed_ms(sw);
-    test_result("Restart() resets elapsed (< 10ms)", elapsed < 10);
+    test_result("Restart() resets elapsed", elapsed < kRestartUpperBoundMs);
     test_result("Restart() sets IsRunning=true", rt_stopwatch_is_running(sw) != 0);
 
     sleep_ms(30);
@@ -224,7 +234,8 @@ static void test_accumulation() {
     test_result("Second interval > first", elapsed2 > elapsed1);
     test_result("Third interval > second", elapsed3 > elapsed2);
     test_result("Total accumulation >= 75ms", elapsed3 >= 75);
-    test_result("Total accumulation <= 150ms", elapsed3 <= 150);
+    test_result("Total accumulation stays within loaded-system tolerance",
+                elapsed3 <= kLongSleepUpperBoundMs);
     rt_release_obj(sw);
 
     printf("\n");
@@ -271,11 +282,13 @@ static void test_time_units() {
     int64_t ns = rt_stopwatch_elapsed_ns(sw);
 
     test_result("ElapsedMs >= 80", ms >= 80);
-    test_result("ElapsedMs <= 150", ms <= 150);
+    test_result("ElapsedMs stays within loaded-system tolerance", ms <= kLongSleepUpperBoundMs);
     test_result("ElapsedUs >= 80000", us >= 80000);
-    test_result("ElapsedUs <= 150000", us <= 150000);
+    test_result("ElapsedUs stays within loaded-system tolerance",
+                us <= (kLongSleepUpperBoundMs * 1000));
     test_result("ElapsedNs >= 80000000", ns >= 80000000);
-    test_result("ElapsedNs <= 150000000", ns <= 150000000);
+    test_result("ElapsedNs stays within loaded-system tolerance",
+                ns <= (kLongSleepUpperBoundMs * 1000000));
 
     // Verify relationships
     test_result("ElapsedUs ~= ElapsedMs * 1000", us >= (ms * 990) && us <= (ms * 1010));

@@ -40,6 +40,8 @@ exit /b 1
 echo Building Viper demos as native x86_64 binaries
 echo ==============================================
 echo.
+echo Note: larger demos can stay quiet for several minutes while codegen runs.
+echo.
 
 REM Check prerequisites
 if not exist "%VIPER%" (
@@ -78,7 +80,7 @@ call :build_demo xenoscape "%GAMES_DIR%\xenoscape"
 
 echo ==============================================
 if %FAILED%==0 (
-    echo All %SUCCEEDED% demos built successfully!
+    echo All %SUCCEEDED% demos built successfully.
     echo.
     echo Binaries are in: %BIN_DIR%
     dir "%BIN_DIR%"
@@ -96,10 +98,16 @@ set "NAME=%~1"
 set "PROJECT_DIR=%~2"
 
 echo Building %NAME%...
+echo   Started: %DATE% %TIME%
+
+if /i "%NAME%"=="vipersql" (
+    echo   Note: vipersql is the slowest demo on Windows and can take around 10 minutes.
+)
 
 if not exist "%PROJECT_DIR%\viper.project" (
     echo   ERROR: No viper.project found in %PROJECT_DIR%
     set /a FAILED+=1
+    echo   Finished: %DATE% %TIME%
     echo.
     goto :eof
 )
@@ -111,6 +119,7 @@ echo   Compiling...
 if errorlevel 1 goto :build_demo_failed
 echo   OK
 echo   Built: %EXE_FILE%
+echo   Finished: %DATE% %TIME%
 set /a SUCCEEDED+=1
 echo.
 goto :eof
@@ -118,6 +127,7 @@ goto :eof
 :build_demo_failed
 echo   FAILED
 "%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>&1
+echo   Finished: %DATE% %TIME%
 set /a FAILED+=1
 echo.
 goto :eof

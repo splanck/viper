@@ -552,6 +552,8 @@ bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
 }
 
 bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllName) {
+    const std::string stripped = stripLeadingUnderscores(name);
+
     static const std::unordered_set<std::string> kernel32 = {
         "ExitProcess",
         "FreeLibrary",
@@ -559,12 +561,18 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetCurrentThreadId",
         "GetEnvironmentVariableA",
         "GetLastError",
+        "GetComputerNameA",
+        "GetComputerNameW",
+        "GetCurrentDirectoryW",
         "GetModuleHandleW",
+        "GetModuleFileNameA",
         "GetProcAddress",
         "GetProcessHeap",
         "GetStartupInfoW",
         "GetStdHandle",
+        "GetSystemInfo",
         "GetSystemTimeAsFileTime",
+        "GetTempPathA",
         "HeapAlloc",
         "HeapFree",
         "IsDebuggerPresent",
@@ -575,12 +583,15 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "DeleteCriticalSection",
         "EnterCriticalSection",
         "MultiByteToWideChar",
+        "OutputDebugStringA",
         "RaiseException",
         "SetEnvironmentVariableA",
         "SetUnhandledExceptionFilter",
         "SetErrorMode",
+        "SetCurrentDirectoryW",
         "SwitchToThread",
         "WriteFile",
+        "GetTickCount",
         "GetTickCount64",
         "AddVectoredExceptionHandler",
         "GlobalAlloc",
@@ -597,30 +608,47 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "WideCharToMultiByte",
         "Beep",
         "CloseHandle",
+        "CancelIo",
         "CreateEventA",
         "CreateFileA",
+        "CreateDirectoryW",
         "CreatePipe",
         "CreateProcessA",
         "CreateThread",
+        "DeleteFileW",
         "FindClose",
         "FindFirstFileA",
+        "FindFirstFileW",
         "FindNextFileA",
+        "FindNextFileW",
+        "GetFileAttributesA",
+        "GetFileAttributesW",
+        "GetFileSizeEx",
         "GetConsoleMode",
         "GetExitCodeProcess",
+        "GetFullPathNameW",
         "GetOverlappedResult",
+        "GetVersionExA",
+        "GetVersionExW",
+        "GlobalMemoryStatusEx",
         "InitializeConditionVariable",
         "QueryPerformanceFrequency",
         "ReadDirectoryChangesW",
         "ReadFile",
+        "MoveFileExA",
+        "MoveFileExW",
+        "RemoveDirectoryW",
         "SetConsoleCP",
         "SetConsoleMode",
         "SetConsoleOutputCP",
+        "ResetEvent",
         "SetEvent",
         "SetHandleInformation",
         "Sleep",
         "SleepConditionVariableCS",
         "WaitForMultipleObjects",
         "WaitForSingleObject",
+        "WakeAllConditionVariable",
         "WakeConditionVariable",
     };
     static const std::unordered_set<std::string> user32 = {
@@ -636,6 +664,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "EndPaint",
         "GetClipboardData",
         "GetDC",
+        "GetKeyState",
         "GetMonitorInfoA",
         "GetSystemMetrics",
         "GetWindowLongA",
@@ -690,40 +719,101 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     };
     static const std::unordered_set<std::string> advapi32 = {
         "CryptAcquireContextA",
+        "CryptAcquireContextW",
+        "CryptAcquireContext",
         "CryptGenRandom",
+        "CryptCreateHash",
+        "CryptDestroyHash",
+        "CryptDestroyKey",
+        "CryptImportPublicKeyInfo",
         "CryptReleaseContext",
+        "CryptSetHashParam",
+        "CryptVerifySignature",
+        "GetUserNameA",
+        "GetUserNameW",
     };
     static const std::unordered_set<std::string> bcrypt = {"BCryptGenRandom"};
     static const std::unordered_set<std::string> ws2_32 = {
+        "WSACleanup",
+        "WSAStartup",
+        "WSAGetLastError",
         "accept",
         "bind",
+        "closesocket",
         "connect",
+        "freeaddrinfo",
+        "getaddrinfo",
+        "getnameinfo",
+        "getsockname",
+        "htonl",
+        "htons",
+        "inet_ntop",
+        "inet_pton",
+        "ioctlsocket",
         "getsockopt",
         "listen",
+        "ntohl",
+        "ntohs",
         "recv",
+        "recvfrom",
         "select",
         "send",
+        "sendto",
         "setsockopt",
+        "shutdown",
         "socket",
+    };
+    static const std::unordered_set<std::string> iphlpapi = {
+        "GetAdaptersAddresses",
+    };
+    static const std::unordered_set<std::string> crypt32 = {
+        "CertAddEncodedCertificateToStore",
+        "CertCloseStore",
+        "CertCreateCertificateContext",
+        "CertFreeCertificateChain",
+        "CertFreeCertificateContext",
+        "CertGetCertificateChain",
+        "CertOpenStore",
+        "CertVerifyCertificateChainPolicy",
+        "CryptAcquireCertificatePrivateKey",
+    };
+    static const std::unordered_set<std::string> d3d11 = {
+        "D3D11CreateDevice",
+        "D3D11CreateDeviceAndSwapChain",
+    };
+    static const std::unordered_set<std::string> d3dcompiler = {
+        "D3DCompile",
+        "D3DCompile2",
+        "D3DCompileFromFile",
+        "D3DReflect",
     };
     static const std::unordered_set<std::string> ucrt = {
         "_Exit",
         "_exit",
         "__acrt_iob_func",
+        "acrt_iob_func",
         "__local_stdio_printf_options",
         "__local_stdio_scanf_options",
         "__stdio_common_vfprintf",
+        "stdio_common_vfprintf",
         "__stdio_common_vsprintf",
+        "stdio_common_vsprintf",
+        "__stdio_common_vsscanf",
+        "stdio_common_vsscanf",
         "_vfprintf_l",
         "_vsscanf_l",
         "abort",
         "access",
+        "abs",
+        "aligned_free",
+        "aligned_malloc",
         "aligned_alloc",
         "atexit",
         "atof",
         "atoi",
         "atol",
         "bsearch",
+        "calloc_dbg",
         "calloc",
         "ceil",
         "ceilf",
@@ -732,11 +822,16 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "close",
         "cos",
         "cosf",
+        "create_locale",
+        "dclass",
+        "dsign",
         "dup",
         "dup2",
+        "errno",
         "exit",
         "fabs",
         "fabsf",
+        "fdclass",
         "fclose",
         "fcntl",
         "ferror",
@@ -745,6 +840,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "fgetc",
         "fgets",
         "fileno",
+        "fmax",
+        "fmaxf",
+        "fmin",
+        "fminf",
         "floor",
         "floorf",
         "fmod",
@@ -755,20 +854,28 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "fputs",
         "fread",
         "free",
+        "free_locale",
         "freopen",
         "fseek",
+        "fstat64i32",
         "ftell",
         "fwrite",
         "getc",
         "getcwd",
         "getenv",
+        "getch",
+        "getpid",
+        "hypot",
         "isalnum",
         "isalpha",
         "isdigit",
         "islower",
         "isspace",
         "isupper",
+        "isxdigit",
         "isatty",
+        "kbhit",
+        "llround",
         "localeconv",
         "log",
         "log10",
@@ -782,9 +889,13 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "memcpy",
         "memmove",
         "memset",
+        "nan",
+        "nearbyint",
         "open",
         "perror",
+        "pclose",
         "posix_memalign",
+        "popen",
         "pow",
         "powf",
         "printf",
@@ -794,6 +905,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "raise",
         "read",
         "realloc",
+        "remove",
+        "rename",
         "rewind",
         "round",
         "roundf",
@@ -816,19 +929,26 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "strcpy_s",
         "strdup",
         "strerror",
+        "stricmp",
         "strlen",
         "strncat",
+        "strnicmp",
         "strncmp",
         "strncpy",
         "strstr",
         "strtod",
+        "strtod_l",
         "strtol",
+        "strtoll",
+        "strtok_s",
         "strtoul",
         "strrchr",
+        "strftime",
         "system",
         "tan",
         "tanf",
         "time",
+        "time64",
         "tmpfile",
         "tmpnam",
         "tolower",
@@ -837,66 +957,114 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "truncf",
         "ungetc",
         "unlink",
+        "utime64",
         "vfprintf",
+        "wcscmp",
+        "wcscpy",
+        "wcslen",
+        "wcsncmp",
         "wcscpy_s",
         "write",
         "_wmakepath_s",
         "_wsplitpath_s",
+        "fseeki64",
+        "ftelli64",
+        "gmtime64_s",
+        "localtime64_s",
+        "lseeki64",
+        "mktime64",
+        "set_abort_behavior",
+        "stat64i32",
+        "wassert",
     };
     static const std::unordered_set<std::string> debugOnlyUcrt = {
         "_CrtDbgReport",
         "_CrtDbgReportW",
+        "CrtDbgReport",
     };
 
-    if (kernel32.count(name)) {
+    if (kernel32.count(name) || kernel32.count(stripped)) {
         dllName = "kernel32.dll";
         return true;
     }
-    if (user32.count(name)) {
+    if (user32.count(name) || user32.count(stripped)) {
         dllName = "user32.dll";
         return true;
     }
-    if (gdi32.count(name)) {
+    if (gdi32.count(name) || gdi32.count(stripped)) {
         dllName = "gdi32.dll";
         return true;
     }
-    if (shell32.count(name)) {
+    if (shell32.count(name) || shell32.count(stripped)) {
         dllName = "shell32.dll";
         return true;
     }
-    if (ole32.count(name)) {
+    if (ole32.count(name) || ole32.count(stripped)) {
         dllName = "ole32.dll";
         return true;
     }
-    if (xinput.count(name)) {
+    if (xinput.count(name) || xinput.count(stripped)) {
         dllName = "xinput1_4.dll";
         return true;
     }
-    if (advapi32.count(name)) {
+    if (advapi32.count(name) || advapi32.count(stripped)) {
         dllName = "advapi32.dll";
         return true;
     }
-    if (bcrypt.count(name)) {
+    if (bcrypt.count(name) || bcrypt.count(stripped)) {
         dllName = "bcrypt.dll";
         return true;
     }
-    if (ws2_32.count(name)) {
+    if (ws2_32.count(name) || ws2_32.count(stripped)) {
         dllName = "ws2_32.dll";
+        return true;
+    }
+    if (iphlpapi.count(name) || iphlpapi.count(stripped)) {
+        dllName = "iphlpapi.dll";
+        return true;
+    }
+    if (crypt32.count(name) || crypt32.count(stripped)) {
+        dllName = "crypt32.dll";
+        return true;
+    }
+    if (d3d11.count(name) || d3d11.count(stripped)) {
+        dllName = "d3d11.dll";
+        return true;
+    }
+    if (d3dcompiler.count(name) || d3dcompiler.count(stripped)) {
+        dllName = "d3dcompiler_47.dll";
         return true;
     }
 
     if (name == "__C_specific_handler" || name == "__C_specific_handler_noexcept" ||
         name == "__current_exception" || name == "__current_exception_context" ||
-        name.rfind("__vcrt_", 0) == 0) {
+        name == "_CxxThrowException" || name == "__CxxFrameHandler4" ||
+        name == "__std_exception_copy" || name == "__std_exception_destroy" ||
+        stripped == "__C_specific_handler" || stripped == "__C_specific_handler_noexcept" ||
+        stripped == "__current_exception" || stripped == "__current_exception_context" ||
+        stripped == "CxxThrowException" || stripped == "CxxFrameHandler4" ||
+        stripped == "std_exception_copy" || stripped == "std_exception_destroy" ||
+        name.rfind("__vcrt_", 0) == 0 || stripped.rfind("__vcrt_", 0) == 0) {
         dllName = debugRuntime ? "VCRUNTIME140D.dll" : "VCRUNTIME140.dll";
         return true;
     }
 
-    if (ucrt.count(name)) {
+    if (name.find("@std@@") != std::string::npos || stripped.find("@std@@") != std::string::npos ||
+        name.rfind("??", 0) == 0 || stripped.rfind("??", 0) == 0 ||
+        name.rfind("?_", 0) == 0 || stripped.rfind("?_", 0) == 0) {
+        dllName = debugRuntime ? "MSVCP140D.dll" : "MSVCP140.dll";
+        return true;
+    }
+
+    // UCRT owns the standard libm-style entry points on Windows too. Keep the
+    // classification aligned with the Linux math-symbol table so large demos
+    // like vipersql do not fail on missing trig/log imports.
+    if (isLinuxMathSymbol(name) || isLinuxMathSymbol(stripped) || ucrt.count(name) ||
+        ucrt.count(stripped)) {
         dllName = debugRuntime ? "ucrtbased.dll" : "ucrtbase.dll";
         return true;
     }
-    if (debugRuntime && debugOnlyUcrt.count(name)) {
+    if (debugRuntime && (debugOnlyUcrt.count(name) || debugOnlyUcrt.count(stripped))) {
         dllName = "ucrtbased.dll";
         return true;
     }
@@ -908,8 +1076,10 @@ std::string importNameForSymbol(const std::string &name) {
         {"atexit", "_crt_atexit"},
         {"close", "_close"},
         {"lseek", "_lseek"},
+        {"_longjmp", "longjmp"},
         {"open", "_open"},
         {"read", "_read"},
+        {"_setjmp", "setjmp"},
         {"strdup", "_strdup"},
         {"unlink", "_unlink"},
         {"write", "_write"},
@@ -1208,6 +1378,17 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         const uint32_t idx = addRetFn("_RTC_Shutdown", {0xC3});
         addImportAlias("_RTC_Shutdown", idx);
     }
+    if (needsHelper("_RTC_UninitUse")) {
+        const uint32_t idx = addRetFn("_RTC_UninitUse", {0xC3});
+        addImportAlias("_RTC_UninitUse", idx);
+    }
+    if (needsHelper("IID_ID3D11Texture2D")) {
+        const uint32_t idx = addData("IID_ID3D11Texture2D",
+                                     {0xF2, 0xAA, 0x15, 0x6F, 0x08, 0xD2, 0x89, 0x4E,
+                                      0x9A, 0xB4, 0x48, 0x95, 0x35, 0xD3, 0x4F, 0x9C},
+                                     4);
+        addImportAlias("IID_ID3D11Texture2D", idx);
+    }
     if (needsHelper("__report_rangecheckfailure")) {
         const uint32_t idx = addRetFn("__report_rangecheckfailure", {0xCC, 0xC3});
         addImportAlias("__report_rangecheckfailure", idx);
@@ -1478,6 +1659,17 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     if (needsHelper("_RTC_Shutdown")) {
         const uint32_t idx = addRetFn("_RTC_Shutdown");
         addImportAlias("_RTC_Shutdown", idx);
+    }
+    if (needsHelper("_RTC_UninitUse")) {
+        const uint32_t idx = addRetFn("_RTC_UninitUse");
+        addImportAlias("_RTC_UninitUse", idx);
+    }
+    if (needsHelper("IID_ID3D11Texture2D")) {
+        const uint32_t idx = addData("IID_ID3D11Texture2D",
+                                     {0xF2, 0xAA, 0x15, 0x6F, 0x08, 0xD2, 0x89, 0x4E,
+                                      0x9A, 0xB4, 0x48, 0x95, 0x35, 0xD3, 0x4F, 0x9C},
+                                     4);
+        addImportAlias("IID_ID3D11Texture2D", idx);
     }
     if (needsHelper("__report_rangecheckfailure")) {
         const uint32_t idx = addTextFn("__report_rangecheckfailure", {0xD4200000U, 0xD65F03C0U});

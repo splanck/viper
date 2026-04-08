@@ -246,15 +246,29 @@ int main() {
     };
 
     Archive collections = loadArchive(RtComponent::Collections);
+    Archive game = loadArchive(RtComponent::Game);
     Archive oop = loadArchive(RtComponent::Oop);
     Archive text = loadArchive(RtComponent::Text);
     Archive iofs = loadArchive(RtComponent::IoFs);
     Archive threads = loadArchive(RtComponent::Threads);
 
     CHECK(collections.symbolIndex.count("rt_seq_with_capacity") == 1);
+    CHECK(game.symbolIndex.count("rt_uimenulist_new") == 1);
     CHECK(oop.symbolIndex.count("rt_obj_new_i64") == 1);
     CHECK(text.symbolIndex.count("rt_hash_ensure_seeded_") == 1);
     CHECK(iofs.symbolIndex.count("rt_file_channel_fd") == 1);
+
+    {
+        const auto components = resolveRequiredComponents(std::vector<std::string>{"rt_uimenulist_new"});
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Game) != components.end());
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Collections) !=
+              components.end());
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Arrays) !=
+              components.end());
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Oop) != components.end());
+        CHECK(std::find(components.begin(), components.end(), RtComponent::Threads) !=
+              components.end());
+    }
 
     // --- Basic resolve: all runtime components needed for full resolution ---
     std::vector<Archive> archives = {ar, collections, oop, text, iofs, threads};

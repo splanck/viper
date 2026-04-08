@@ -36,9 +36,13 @@ static constexpr int16_t IMAGE_SYM_DEBUG = -2;
 static constexpr uint32_t IMAGE_SCN_CNT_CODE = 0x00000020;
 static constexpr uint32_t IMAGE_SCN_CNT_INITIALIZED_DATA = 0x00000040;
 static constexpr uint32_t IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x00000080;
+static constexpr uint32_t IMAGE_SCN_LNK_COMDAT = 0x00001000;
 static constexpr uint32_t IMAGE_SCN_MEM_EXECUTE = 0x20000000;
 static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
 static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
+
+static constexpr uint8_t IMAGE_COMDAT_SELECT_NODUPLICATES = 1;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_ANY = 2;
 
 #pragma pack(push, 1)
 
@@ -86,6 +90,17 @@ struct CoffSymbol {
     uint16_t Type;
     uint8_t StorageClass;
     uint8_t NumberOfAuxSymbols;
+};
+
+struct CoffAuxSectionDefinition {
+    uint32_t Length;
+    uint16_t NumberOfRelocations;
+    uint16_t NumberOfLinenumbers;
+    uint32_t CheckSum;
+    int16_t Number;
+    uint8_t Selection;
+    uint8_t Reserved;
+    int16_t HighNumber;
 };
 
 #pragma pack(pop)
@@ -148,6 +163,7 @@ bool readCoffObj(
     // Parse sections.
     obj.sections.resize(1); // Null section at index 0.
     obj.sections[0].name = "";
+    std::vector<uint32_t> sectionCharacteristics(hdr->NumberOfSections + 1, 0);
 
     const size_t secOff = sizeof(coff::CoffHeader) + hdr->SizeOfOptionalHeader;
     for (uint16_t i = 0; i < hdr->NumberOfSections; ++i) {
@@ -172,6 +188,8 @@ bool readCoffObj(
                 ++len;
             sec.name.assign(sh->Name, len);
         }
+
+        sectionCharacteristics[i + 1] = sh->Characteristics;
 
         sec.executable = (sh->Characteristics & coff::IMAGE_SCN_MEM_EXECUTE) != 0;
         sec.writable = (sh->Characteristics & coff::IMAGE_SCN_MEM_WRITE) != 0;
@@ -229,6 +247,36 @@ bool readCoffObj(
         err << "error: " << name << ": symbol count " << hdr->NumberOfSymbols << " exceeds limit\n";
         return false;
     }
+
+    std::vector<uint8_t> comdatSelectionBySection(hdr->NumberOfSections + 1, 0);
+    for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
+        const auto *sym = coffAt<coff::CoffSymbol>(
+            data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
+        if (!sym)
+            break;
+
+        const bool hasSectionAux = sym->SectionNumber > 0 &&
+                                   static_cast<uint16_t>(sym->SectionNumber) <=
+                                       hdr->NumberOfSections &&
+                                   sym->StorageClass == coff::IMAGE_SYM_CLASS_STATIC &&
+                                   sym->NumberOfAuxSymbols > 0;
+        if (hasSectionAux) {
+            const uint16_t sectionNumber = static_cast<uint16_t>(sym->SectionNumber);
+            const bool isComdat =
+                (sectionCharacteristics[sectionNumber] & coff::IMAGE_SCN_LNK_COMDAT) != 0;
+            if (isComdat) {
+                const auto *aux = coffAt<coff::CoffAuxSectionDefinition>(
+                    data,
+                    size,
+                    hdr->PointerToSymbolTable + (i + 1) * sizeof(coff::CoffSymbol));
+                if (aux)
+                    comdatSelectionBySection[sectionNumber] = aux->Selection;
+            }
+        }
+
+        i += 1 + sym->NumberOfAuxSymbols;
+    }
+
     obj.symbols.resize(1); // Null symbol at index 0.
     obj.symbols[0] = ObjSymbol{};
 
@@ -254,6 +302,13 @@ bool readCoffObj(
             os.binding = ObjSymbol::Weak;
         } else {
             os.binding = ObjSymbol::Local;
+        }
+
+        if (os.binding == ObjSymbol::Global && sym->SectionNumber > 0 &&
+            static_cast<uint16_t>(sym->SectionNumber) <= hdr->NumberOfSections &&
+            comdatSelectionBySection[static_cast<uint16_t>(sym->SectionNumber)] ==
+                coff::IMAGE_COMDAT_SELECT_ANY) {
+            os.binding = ObjSymbol::Weak;
         }
 
         // Map 1-based COFF section number to our section index.

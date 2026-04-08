@@ -36,6 +36,23 @@
 
 namespace viper::codegen::x64 {
 
+namespace {
+
+void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
+    CallLoweringPlan retainPlan{};
+    retainPlan.callee = "rt_str_retain_maybe";
+    retainPlan.args.push_back(
+        CallArg{.cls = CallArgClass::GPR, .vreg = valueVReg.id, .isImm = false, .imm = 0});
+    retainPlan.numNamedArgs = retainPlan.args.size();
+
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(retainPlan));
+    MInstr call = MInstr::make(MOpcode::CALL, {makeLabelOperand(std::string{"rt_str_retain_maybe"})});
+    call.callPlanId = callPlanId;
+    builder.append(std::move(call));
+}
+
+} // namespace
+
 // fitsImm32() is now declared inline in Lowering.EmitCommon.hpp.
 
 /// @brief Construct an @ref EmitCommon helper that appends to @p builder.
@@ -93,8 +110,11 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
             builder().append(
                 MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(tmpOp), clone(operand)}));
         }
-    } else if (std::holds_alternative<OpLabel>(operand) ||
-               std::holds_alternative<OpRipLabel>(operand)) {
+    } else if (const auto *label = std::get_if<OpLabel>(&operand)) {
+        builder().append(MInstr::make(
+            MOpcode::LEA,
+            std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(label->name)}));
+    } else if (std::holds_alternative<OpRipLabel>(operand)) {
         builder().append(
             MInstr::make(MOpcode::LEA, std::vector<Operand>{clone(tmpOp), clone(operand)}));
     } else {
@@ -571,6 +591,9 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
     } else {
         builder().append(MInstr::make(MOpcode::MOVSDmr, std::vector<Operand>{clone(dest), mem}));
     }
+
+    if (instr.resultKind == ILValue::Kind::STR)
+        emitRetainStringVReg(builder(), destReg);
 }
 
 /// @brief Emit a store from a value operand into memory.

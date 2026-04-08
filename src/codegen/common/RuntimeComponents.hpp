@@ -80,9 +80,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_smoothvalue_") || starts("rt_particle_") || starts("rt_spriteanim_") ||
         starts("rt_collision_") || starts("rt_objpool_") || starts("rt_screenfx_") ||
         starts("rt_pathfollow_") || starts("rt_quadtree_") || starts("rt_debugoverlay_") ||
-        starts("rt_gameui_") || starts("rt_pathfinder_") || starts("rt_dialogue_") ||
-        starts("rt_lighting2d_") || starts("rt_platformer_ctrl_") || starts("rt_achievement_") ||
-        starts("rt_typewriter_"))
+        starts("rt_gameui_") || starts("rt_uilabel_") || starts("rt_uibar_") ||
+        starts("rt_uipanel_") || starts("rt_uinineslice_") || starts("rt_uimenulist_") ||
+        starts("rt_pathfinder_") || starts("rt_dialogue_") || starts("rt_lighting2d_") ||
+        starts("rt_platformer_ctrl_") || starts("rt_achievement_") || starts("rt_typewriter_"))
         return RtComponent::Game;
 
     // Text component
@@ -258,6 +259,8 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         has(RtComponent::Threads) || has(RtComponent::Audio) || has(RtComponent::Network) ||
         has(RtComponent::Game))
         add(RtComponent::Oop);
+    if (has(RtComponent::Oop))
+        add(RtComponent::Threads);
 
     // Build ordered list (Base always first).
     std::vector<RtComponent> result;

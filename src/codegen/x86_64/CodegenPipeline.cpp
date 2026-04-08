@@ -271,66 +271,6 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
         appendIfExists(audLib);
     }
 
-#if defined(_WIN32)
-    const bool debugRuntime =
-#if defined(NDEBUG)
-        false;
-#else
-        true;
-#endif
-
-    auto findMsvcLib = [](const std::string &libName) -> std::filesystem::path {
-        if (const char *vcTools = std::getenv("VCToolsInstallDir")) {
-            const std::filesystem::path candidate =
-                std::filesystem::path(vcTools) / "lib" / "x64" / libName;
-            if (common::fileExists(candidate))
-                return candidate;
-        }
-
-        const std::filesystem::path vsRoot("C:/Program Files/Microsoft Visual Studio");
-        if (!std::filesystem::exists(vsRoot))
-            return {};
-
-        std::vector<std::filesystem::path> versions;
-        for (const auto &ver : std::filesystem::directory_iterator(vsRoot)) {
-            if (ver.is_directory())
-                versions.push_back(ver.path());
-        }
-        std::sort(versions.begin(), versions.end(), std::greater<>());
-
-        for (const auto &version : versions) {
-            std::vector<std::filesystem::path> editions;
-            for (const auto &edition : std::filesystem::directory_iterator(version)) {
-                if (edition.is_directory())
-                    editions.push_back(edition.path());
-            }
-            std::sort(editions.begin(), editions.end(), std::greater<>());
-
-            for (const auto &edition : editions) {
-                const std::filesystem::path msvcRoot = edition / "VC" / "Tools" / "MSVC";
-                if (!std::filesystem::exists(msvcRoot))
-                    continue;
-
-                std::vector<std::filesystem::path> toolsets;
-                for (const auto &toolset : std::filesystem::directory_iterator(msvcRoot)) {
-                    if (toolset.is_directory())
-                        toolsets.push_back(toolset.path());
-                }
-                std::sort(toolsets.begin(), toolsets.end(), std::greater<>());
-
-                for (const auto &toolset : toolsets) {
-                    const std::filesystem::path candidate = toolset / "lib" / "x64" / libName;
-                    if (common::fileExists(candidate))
-                        return candidate;
-                }
-            }
-        }
-
-        return {};
-    };
-
-    appendIfExists(findMsvcLib(debugRuntime ? "msvcrtd.lib" : "msvcrt.lib"));
-#endif
 }
 
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,

@@ -41,13 +41,16 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     arg.cls =
         builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArgClass::GPR : CallArgClass::FPR;
 
-    if (builder.isImmediate(argVal)) {
+    if (argVal.kind != ILValue::Kind::LABEL && builder.isImmediate(argVal)) {
         arg.isImm = true;
         arg.imm = argVal.i64;
         return arg;
     }
 
-    const Operand operand = builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
+    Operand operand = builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
+    if (!std::holds_alternative<OpReg>(operand) && !std::holds_alternative<OpImm>(operand)) {
+        operand = EmitCommon(builder).materialise(std::move(operand), builder.regClassFor(argVal.kind));
+    }
     if (const auto *reg = std::get_if<OpReg>(&operand)) {
         arg.vreg = reg->idOrPhys;
     } else if (const auto *imm = std::get_if<OpImm>(&operand)) {

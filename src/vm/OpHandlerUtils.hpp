@@ -132,9 +132,23 @@ template <typename T>
             *result = std::numeric_limits<T>::min();
             return true;
         }
-        T abs_lhs = lhs < 0 ? -lhs : lhs;
-        T abs_rhs = rhs < 0 ? -rhs : rhs;
-        if (abs_lhs > std::numeric_limits<T>::max() / abs_rhs) {
+        const T max = std::numeric_limits<T>::max();
+        const T min = std::numeric_limits<T>::min();
+        bool overflow = false;
+        if (lhs > 0) {
+            if (rhs > 0) {
+                overflow = lhs > max / rhs;
+            } else {
+                overflow = rhs < min / lhs;
+            }
+        } else {
+            if (rhs > 0) {
+                overflow = lhs < min / rhs;
+            } else {
+                overflow = lhs < max / rhs;
+            }
+        }
+        if (overflow) {
             *result = static_cast<T>(static_cast<U>(lhs) * static_cast<U>(rhs));
             return true;
         }

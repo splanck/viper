@@ -105,7 +105,10 @@
 #undef VIPER_VM_DISPATCH_BEFORE
 #define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
     do {                                                                                           \
-        if ((ST).config.enableOpcodeCounts)                                                        \
-            ++((ST).vm()->opCounts_[static_cast<size_t>(OPCODE)]);                                 \
+        if ((ST).config.enableOpcodeCounts) {                                                      \
+            const size_t _viperOpcodeIndex = static_cast<size_t>(OPCODE);                          \
+            if (_viperOpcodeIndex < (ST).vm()->opCounts_.size())                                   \
+                ++((ST).vm()->opCounts_[_viperOpcodeIndex]);                                       \
+        }                                                                                          \
     } while (0)
 #endif

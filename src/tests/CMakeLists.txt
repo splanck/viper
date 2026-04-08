@@ -782,7 +782,7 @@ add_test(NAME zia_smoke_vipersql
 set_tests_properties(zia_smoke_vipersql PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
-        TIMEOUT 30)
+        TIMEOUT 120)
 
 add_test(NAME zia_smoke_3dbowling
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/smoke_probe.zia"

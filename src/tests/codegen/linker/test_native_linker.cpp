@@ -506,6 +506,232 @@ int main() {
         CodeSection text;
         CodeSection rodata;
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("asin");
+        text.findOrDeclareSymbol("atan2");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_release_math.obj");
+        const std::string exePath = tmpPath("win_release_math.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "ucrtbase.dll"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("_setjmp");
+        text.findOrDeclareSymbol("_longjmp");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_release_setjmp_aliases.obj");
+        const std::string exePath = tmpPath("win_release_setjmp_aliases.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "ucrtbase.dll"));
+        CHECK(containsAscii(exe, "setjmp"));
+        CHECK(containsAscii(exe, "longjmp"));
+        CHECK(!containsAscii(exe, "_setjmp"));
+        CHECK(!containsAscii(exe, "_longjmp"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("freeaddrinfo");
+        text.findOrDeclareSymbol("WSAStartup");
+        text.findOrDeclareSymbol("WSAGetLastError");
+        text.findOrDeclareSymbol("GetAdaptersAddresses");
+        text.findOrDeclareSymbol("CertOpenStore");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_release_net_tls_imports.obj");
+        const std::string exePath = tmpPath("win_release_net_tls_imports.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "ws2_32.dll"));
+        CHECK(containsAscii(exe, "iphlpapi.dll"));
+        CHECK(containsAscii(exe, "crypt32.dll"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("XInputGetState");
+        text.findOrDeclareSymbol("XInputSetState");
+        text.findOrDeclareSymbol("abs");
+        text.findOrDeclareSymbol("_pclose");
+        text.findOrDeclareSymbol("GetUserNameA");
+        text.findOrDeclareSymbol("ResetEvent");
+        text.findOrDeclareSymbol("GetComputerNameA");
+        text.findOrDeclareSymbol("GetFileSizeEx");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_release_xinput_and_abs.obj");
+        const std::string exePath = tmpPath("win_release_xinput_and_abs.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "xinput1_4.dll"));
+        CHECK(containsAscii(exe, "ucrtbase.dll"));
+        CHECK(containsAscii(exe, "advapi32.dll"));
+        CHECK(containsAscii(exe, "kernel32.dll"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("_RTC_UninitUse");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_rtc_uninit_helper.obj");
+        const std::string exePath = tmpPath("win_rtc_uninit_helper.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("D3D11CreateDeviceAndSwapChain");
+        text.findOrDeclareSymbol("D3DCompile");
+        text.findOrDeclareSymbol("IID_ID3D11Texture2D");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("win_d3d_imports.obj");
+        const std::string exePath = tmpPath("win_d3d_imports.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "d3d11.dll"));
+        CHECK(containsAscii(exe, "d3dcompiler_47.dll"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("mach_timebase_info");
         text.emit32LE(0xD2800000U); // mov x0, #0
         text.emit32LE(0xD65F03C0U); // ret

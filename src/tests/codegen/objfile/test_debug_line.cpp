@@ -287,6 +287,30 @@ int main() {
         CHECK(foundAdvanceLine);
     }
 
+    // --- Test 12: Duplicate logical file slots survive append() ---
+    {
+        DebugLineTable perFunc;
+        perFunc.addFileSlot("<source>");
+        perFunc.addFileSlot("<source>");
+        perFunc.addEntry(0x0, 2, 7, 0);
+
+        DebugLineTable module;
+        module.append(perFunc, 0x40);
+        auto bytes = module.encodeDwarf5(8);
+
+        uint32_t unitLen = readLE32(bytes.data());
+        CHECK(unitLen == bytes.size() - 4);
+
+        bool foundSetFile = false;
+        for (size_t i = 0; i + 1 < bytes.size(); ++i) {
+            if (bytes[i] == 4 && bytes[i + 1] == 2) {
+                foundSetFile = true;
+                break;
+            }
+        }
+        CHECK(foundSetFile);
+    }
+
     if (gFail == 0)
         std::cout << "All debug_line tests passed.\n";
     else

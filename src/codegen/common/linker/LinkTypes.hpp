@@ -114,7 +114,8 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
     return name == "_fltused" || name == "__ImageBase" ||
            name == "__security_cookie" || name == "__security_check_cookie" ||
            name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-           name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
+           name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
+           name == "_RTC_CheckStackVars" || name == "_RTC_UninitUse" ||
            name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
            name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
            name == "_is_c_termination_complete" || name == "__vcrt_initialize" ||
@@ -124,6 +125,7 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
            name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
            name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
            name == "__scrt_exe_initialize_mta" ||
+           name == "IID_ID3D11Texture2D" ||
            name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
            name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" || name == "vm_trap" ||
            name == "rt_audio_shutdown";

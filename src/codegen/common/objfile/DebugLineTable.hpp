@@ -39,6 +39,10 @@ class DebugLineTable {
     /// If the path was already registered, returns the existing index.
     uint32_t addFile(const std::string &path);
 
+    /// Append a new logical file slot even when the path duplicates an existing entry.
+    /// Used when callers need stable 1-based indices that mirror SourceLoc::file_id.
+    uint32_t addFileSlot(const std::string &path);
+
     /// Add an address-to-line mapping (entries must be in address order).
     void addEntry(uint64_t address, uint32_t fileIndex, uint32_t line, uint32_t column = 0);
 
