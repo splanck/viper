@@ -333,7 +333,7 @@ Last updated: 2026-04-05
 | `rt_canvas3d_internal.h` | Internal struct definitions (rt_mesh3d, rt_camera3d, rt_material3d, etc.) |
 | `rt_mesh3d.c` | Mesh3D construction, generators (box, sphere, plane, cylinder), OBJ loader |
 | `rt_camera3d.c` | Camera3D (perspective, orthographic, orbit, FPS, ray cast) |
-| `rt_material3d.c` | Material3D (color, texture, shininess, normal/specular/emissive maps) |
+| `rt_material3d.c` | Material3D (legacy + PBR workflow, texture maps, clone/instance semantics) |
 | `rt_light3d.c` | Light3D (directional, point, ambient, spot) |
 
 ### Rendering Backends
@@ -380,8 +380,10 @@ Last updated: 2026-04-05
 | `rt_cubemap3d.c` | CubeMap3D environment/skybox |
 | `rt_rendertarget3d.c` | RenderTarget3D offscreen rendering |
 | `rt_texatlas3d.c` / `.h` | TextureAtlas3D texture arrays |
-| `rt_audio3d.c` / `.h` | Audio3D spatial audio |
+| `rt_audio3d.c` / `.h` | Audio3D spatial helpers and low-level compatibility layer |
+| `rt_audio3d_objects.c`, `rt_audiolistener3d.h`, `rt_audiosource3d.h` | AudioListener3D / AudioSource3D object-backed spatial audio |
 | `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
+| `rt_navagent3d.c` / `.h` | NavAgent3D steering, path following, and Character3D / SceneNode3D bindings |
 | `rt_path3d.c` / `.h` | Path3D spline following |
 | `rt_fbx_loader.c` / `.h` | FBX binary format loader |
 | `rt_gltf.c` / `.h` | glTF 2.0 format loader |

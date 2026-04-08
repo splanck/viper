@@ -12,14 +12,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_audio3d.h"
 #include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
+#include "rt_audiolistener3d.h"
+#include "rt_audiosource3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
 #include "rt_joints3d.h"
 #include "rt_model3d.h"
+#include "rt_navagent3d.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
 #include "rt_terrain3d.h"
@@ -105,6 +109,26 @@ int main() {
         fn_bits(&rt_model3d_find_node),
         fn_bits(&rt_model3d_instantiate),
         fn_bits(&rt_model3d_instantiate_scene),
+        fn_bits(&rt_material3d_new_pbr),
+        fn_bits(&rt_material3d_clone),
+        fn_bits(&rt_material3d_make_instance),
+        fn_bits(&rt_material3d_set_albedo_map),
+        fn_bits(&rt_material3d_set_metallic),
+        fn_bits(&rt_material3d_get_metallic),
+        fn_bits(&rt_material3d_set_roughness),
+        fn_bits(&rt_material3d_get_roughness),
+        fn_bits(&rt_material3d_set_ao),
+        fn_bits(&rt_material3d_get_ao),
+        fn_bits(&rt_material3d_set_emissive_intensity),
+        fn_bits(&rt_material3d_get_emissive_intensity),
+        fn_bits(&rt_material3d_set_metallic_roughness_map),
+        fn_bits(&rt_material3d_set_ao_map),
+        fn_bits(&rt_material3d_set_normal_scale),
+        fn_bits(&rt_material3d_get_normal_scale),
+        fn_bits(&rt_material3d_set_alpha_mode),
+        fn_bits(&rt_material3d_get_alpha_mode),
+        fn_bits(&rt_material3d_set_double_sided),
+        fn_bits(&rt_material3d_get_double_sided),
         fn_bits(&rt_distance_joint3d_new),
         fn_bits(&rt_distance_joint3d_get_distance),
         fn_bits(&rt_distance_joint3d_set_distance),
@@ -197,6 +221,55 @@ int main() {
         fn_bits(&rt_terrain3d_set_splat_map),
         fn_bits(&rt_terrain3d_set_layer_texture),
         fn_bits(&rt_terrain3d_set_layer_scale),
+        fn_bits(&rt_navagent3d_new),
+        fn_bits(&rt_navagent3d_set_target),
+        fn_bits(&rt_navagent3d_clear_target),
+        fn_bits(&rt_navagent3d_update),
+        fn_bits(&rt_navagent3d_warp),
+        fn_bits(&rt_navagent3d_get_position),
+        fn_bits(&rt_navagent3d_get_velocity),
+        fn_bits(&rt_navagent3d_get_desired_velocity),
+        fn_bits(&rt_navagent3d_get_has_path),
+        fn_bits(&rt_navagent3d_get_remaining_distance),
+        fn_bits(&rt_navagent3d_get_stopping_distance),
+        fn_bits(&rt_navagent3d_set_stopping_distance),
+        fn_bits(&rt_navagent3d_get_desired_speed),
+        fn_bits(&rt_navagent3d_set_desired_speed),
+        fn_bits(&rt_navagent3d_get_auto_repath),
+        fn_bits(&rt_navagent3d_set_auto_repath),
+        fn_bits(&rt_navagent3d_bind_character),
+        fn_bits(&rt_navagent3d_bind_node),
+        fn_bits(&rt_audio3d_sync_bindings),
+        fn_bits(&rt_audiolistener3d_new),
+        fn_bits(&rt_audiolistener3d_get_position),
+        fn_bits(&rt_audiolistener3d_set_position),
+        fn_bits(&rt_audiolistener3d_get_forward),
+        fn_bits(&rt_audiolistener3d_set_forward),
+        fn_bits(&rt_audiolistener3d_get_velocity),
+        fn_bits(&rt_audiolistener3d_set_velocity),
+        fn_bits(&rt_audiolistener3d_get_is_active),
+        fn_bits(&rt_audiolistener3d_set_is_active),
+        fn_bits(&rt_audiolistener3d_bind_node),
+        fn_bits(&rt_audiolistener3d_clear_node_binding),
+        fn_bits(&rt_audiolistener3d_bind_camera),
+        fn_bits(&rt_audiolistener3d_clear_camera_binding),
+        fn_bits(&rt_audiosource3d_new),
+        fn_bits(&rt_audiosource3d_get_position),
+        fn_bits(&rt_audiosource3d_set_position),
+        fn_bits(&rt_audiosource3d_get_velocity),
+        fn_bits(&rt_audiosource3d_set_velocity),
+        fn_bits(&rt_audiosource3d_get_max_distance),
+        fn_bits(&rt_audiosource3d_set_max_distance),
+        fn_bits(&rt_audiosource3d_get_volume),
+        fn_bits(&rt_audiosource3d_set_volume),
+        fn_bits(&rt_audiosource3d_get_looping),
+        fn_bits(&rt_audiosource3d_set_looping),
+        fn_bits(&rt_audiosource3d_get_is_playing),
+        fn_bits(&rt_audiosource3d_get_voice_id),
+        fn_bits(&rt_audiosource3d_play),
+        fn_bits(&rt_audiosource3d_stop),
+        fn_bits(&rt_audiosource3d_bind_node),
+        fn_bits(&rt_audiosource3d_clear_node_binding),
     };
 
     for (std::uintptr_t bits : surface) {

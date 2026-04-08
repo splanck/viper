@@ -59,10 +59,11 @@ Keep one material class instead of adding `PBRMaterial3D`.
 Recommended internal model:
 
 - core material struct with workflow enum
-- shared immutable texture/resource pointers
-- instance override bitset and override values
+- eager-copy material objects for `Clone()` / `MakeInstance()`
+- shared retained texture/resource pointers for the currently assigned maps
+- independent scalar and map replacement after cloning/instancing
 
-This keeps importers, scene nodes, and render backends simpler than maintaining multiple public material classes.
+This keeps importers, scene nodes, scene serialization, and render backends simpler than maintaining either multiple public material classes or a live parent-linked override graph.
 
 ## Implementation Phases
 
@@ -91,7 +92,7 @@ Files:
 Work:
 
 - extend material parameter packing
-- implement PBR lighting for active backends
+- implement PBR lighting for all shipped backends
 - start with direct-light PBR first
 
 ### Phase 3: importer integration

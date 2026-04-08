@@ -54,6 +54,7 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Navigation**
 - [NavMesh3D](#navmesh3d) — Navigation mesh pathfinding
+- [NavAgent3D](#navagent3d) — Goal-driven agent path following and bindings
 - [Path3D](#path3d) — 3D path waypoints
 
 **Collision Queries**
@@ -446,7 +447,9 @@ func start() {
 
 ## Material3D
 
-Surface appearance properties.
+Surface appearance for meshes, models, decals, and other 3D drawables.
+
+`Material3D` is now PBR-first. The default legacy Blinn-Phong path still exists for compatibility and for custom shading-model hooks, but new content should usually start with `NewPBR`.
 
 ### Constructors
 
@@ -455,31 +458,60 @@ Surface appearance properties.
 | `New()` | `obj()` | Default white material |
 | `NewColor(r, g, b)` | `obj(f64, f64, f64)` | Colored material (0.0-1.0 per channel) |
 | `NewTextured(pixels)` | `obj(obj)` | Material with Pixels texture |
+| `NewPBR(r, g, b)` | `obj(f64, f64, f64)` | Metallic/roughness material with albedo color |
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Transparent objects sorted back-to-front |
+| `Metallic` | Float | read/write | PBR metallic factor [0.0=dielectric, 1.0=metal]. Default 0.0 |
+| `Roughness` | Float | read/write | PBR roughness [0.0=smooth, 1.0=rough]. Default 0.5 |
+| `AO` | Float | read/write | Ambient-occlusion multiplier. Default 1.0 |
+| `EmissiveIntensity` | Float | read/write | Scalar applied to emissive color/map. Default 1.0 |
+| `NormalScale` | Float | read/write | Tangent-space normal XY scale. Default 1.0 |
+| `AlphaMode` | Integer | read/write | `0=Opaque`, `1=Mask`, `2=Blend` |
+| `DoubleSided` | Bool | read/write | Disable backface culling when true |
 | `Reflectivity` | Float | read/write | Environment reflection strength [0.0-1.0] |
 
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `Clone()` | `obj()` | Duplicate the material state |
+| `MakeInstance()` | `obj()` | Duplicate the material for per-object overrides |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change diffuse color |
 | `SetTexture(pixels)` | `void(obj)` | Set/change texture (Pixels) |
+| `SetAlbedoMap(pixels)` | `void(obj)` | Set/change the PBR albedo map |
 | `SetShininess(s)` | `void(f64)` | Specular exponent (default 32.0, higher = sharper highlights) |
 | `SetUnlit(flag)` | `void(i1)` | Skip lighting (render flat color) |
+| `SetMetallic(value)` | `void(f64)` | Set the metallic factor |
+| `SetRoughness(value)` | `void(f64)` | Set the roughness factor |
+| `SetAO(value)` | `void(f64)` | Set the AO multiplier |
+| `SetEmissiveIntensity(value)` | `void(f64)` | Scale emissive output |
 | `SetNormalMap(pixels)` | `void(obj)` | Set tangent-space normal map (Pixels) |
+| `SetMetallicRoughnessMap(pixels)` | `void(obj)` | Set the glTF-style metallic/roughness map (`G=roughness`, `B=metallic`) |
+| `SetAOMap(pixels)` | `void(obj)` | Set the ambient-occlusion map (`R=occlusion`) |
 | `SetSpecularMap(pixels)` | `void(obj)` | Set specular intensity map (Pixels) |
 | `SetEmissiveMap(pixels)` | `void(obj)` | Set emissive color map (Pixels) |
 | `SetEmissiveColor(r, g, b)` | `void(f64, f64, f64)` | Set emissive color multiplier (additive glow) |
+| `SetNormalScale(value)` | `void(f64)` | Scale tangent-space normal-map strength |
 | `SetShadingModel(model)` | `void(i64)` | Set shading model (see table below) |
 | `SetCustomParam(index, value)` | `void(i64, f64)` | Set custom shader parameter (index 0-7) |
 | `SetEnvMap(cubemap)` | `void(obj)` | Set environment CubeMap3D for reflections |
 
-**Shading models:** `SetShadingModel` selects how the surface is shaded:
+### Workflow Notes
+
+- `NewPBR` selects the metallic/roughness workflow directly.
+- Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
+- `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
+- `AlphaMode` changes how texture alpha is interpreted for PBR materials:
+  - `0`: opaque, texture alpha does not drive blending
+  - `1`: masked, fragments below the cutoff are discarded
+  - `2`: blended, texture alpha participates in transparency
+- `SetShadingModel` and `SetCustomParam` remain available as advanced escape hatches. They are not the main PBR API.
+
+**Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
 - **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
 - **1 (Toon)**: Quantized diffuse bands. `custom[0]` = number of bands (default 4).
 - **2 (Reserved)**: Accepted for forward compatibility. Current backends fall back to the default Blinn-Phong path.
@@ -487,9 +519,9 @@ Surface appearance properties.
 - **4 (Fresnel)**: Angle-dependent alpha — edges glow brighter. `custom[0]` = power (default 3), `custom[1]` = bias.
 - **5 (Emissive)**: Boosted emissive glow. `custom[0]` = strength multiplier (default 2).
 
-See `examples/apiaudit/graphics3d/shading_demo.zia` for a complete example.
+See `examples/apiaudit/graphics3d/shading_demo.zia` for the legacy/custom-model path and `examples/apiaudit/graphics3d/material3d_pbr_demo.zia` / `examples/apiaudit/graphics3d/material3d_pbr_demo.bas` for the PBR workflow.
 
-**Ownership:** Material3D holds a reference to Pixels objects (textures, maps). The user must keep Pixels alive while the material references them. If a Pixels object is collected while still set on a material, rendering may crash.
+**Ownership:** `Material3D` retains `Pixels` and `CubeMap3D` references internally. The user does not need to hold a second manual reference just to keep assigned textures/maps/cubemaps alive.
 
 ### Zia Example
 
@@ -497,31 +529,22 @@ See `examples/apiaudit/graphics3d/shading_demo.zia` for a complete example.
 module MaterialDemo;
 
 bind Viper.Graphics3D.Material3D;
-bind Viper.Graphics3D.CubeMap3D;
 
 func start() {
-    // Simple colored material
-    var red = Material3D.NewColor(0.8, 0.2, 0.2);
-    Material3D.SetShininess(red, 64.0);
+    var base = Material3D.NewPBR(0.8, 0.6, 0.4);
+    Material3D.set_Metallic(base, 0.7);
+    Material3D.set_Roughness(base, 0.3);
+    Material3D.set_AO(base, 0.9);
+    Material3D.set_EmissiveIntensity(base, 1.4);
+    Material3D.set_AlphaMode(base, 2); // blend
+    Material3D.set_DoubleSided(base, 1);
 
-    // Textured material with normal map
-    var tex = Material3D.NewTextured(diffusePixels);
-    Material3D.SetNormalMap(tex, normalPixels);
-    Material3D.SetSpecularMap(tex, specPixels);
-    Material3D.SetEmissiveColor(tex, 0.5, 0.0, 0.0);
+    var inst = Material3D.MakeInstance(base);
+    Material3D.set_Roughness(inst, 0.75);
 
-    // Transparent material
-    Material3D.set_Alpha(tex, 0.5);
-
-    // Environment-mapped reflective material
-    var chrome = Material3D.NewColor(0.9, 0.9, 0.9);
-    Material3D.SetEnvMap(chrome, cubemap);
-    Material3D.set_Reflectivity(chrome, 0.8);
-
-    // Toon shading
-    var toon = Material3D.NewColor(0.4, 0.6, 1.0);
-    Material3D.SetShadingModel(toon, 1);   // 1 = Toon
-    Material3D.SetCustomParam(toon, 0, 3.0); // 3 bands
+    var legacy = Material3D.NewColor(0.4, 0.6, 1.0);
+    Material3D.SetShadingModel(legacy, 1);     // Toon
+    Material3D.SetCustomParam(legacy, 0, 3.0); // 3 bands
 }
 ```
 
@@ -844,7 +867,8 @@ Recommended frame order:
 Current scope:
 
 - `SceneNode3D` bindings currently cover `Physics3DBody` and `AnimController3D`.
-- `AudioSource3D` and `NavAgent3D` bindings are deferred until those object APIs land.
+- `NavAgent3D` now provides its own `BindNode` / `BindCharacter` workflow for navigation-driven motion.
+- `AudioListener3D` and `AudioSource3D` now use `Audio3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
 
 ## Model3D
 
@@ -1519,45 +1543,121 @@ func start() {
 
 ## Audio3D
 
-Spatial audio with distance attenuation and stereo panning. These are standalone functions (no class).
+Spatial audio now has two layers:
 
-### Functions
+- `AudioListener3D` and `AudioSource3D` are the preferred gameplay-facing APIs.
+- `Audio3D` remains as the low-level compatibility layer for direct listener/voice control.
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `Audio3D.SetListener(position, forward)` | `void(obj, obj)` | Set listener position and forward direction (Vec3s). Call each frame |
-| `Audio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play sound at world position. Returns voice handle |
-| `Audio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Update moving sound position. Pass 0.0 for maxDist to use per-voice default |
+### AudioListener3D
+
+An `AudioListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Position` | `Vec3` | read/write | Listener world position |
+| `Forward` | `Vec3` | read/write | Listener facing direction |
+| `Velocity` | `Vec3` | read/write | Listener velocity |
+| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Audio3D` |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New()` | `obj()` | Create a listener object |
+| `SetPosition(position)` | `void(obj)` | Set world position from a `Vec3` |
+| `SetForward(forward)` | `void(obj)` | Set facing direction from a `Vec3` |
+| `SetVelocity(velocity)` | `void(obj)` | Set velocity explicitly |
+| `BindNode(node)` | `void(obj)` | Follow a `SceneNode3D` world transform |
+| `ClearNodeBinding()` | `void()` | Stop following a node |
+| `BindCamera(camera)` | `void(obj)` | Follow a `Camera3D` position and forward vector |
+| `ClearCameraBinding()` | `void()` | Stop following a camera |
+
+### AudioSource3D
+
+An `AudioSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Position` | `Vec3` | read/write | Source world position |
+| `Velocity` | `Vec3` | read/write | Source velocity |
+| `MaxDistance` | `Float` | read/write | Distance at which the sound attenuates to silence |
+| `Volume` | `Integer` | read/write | Base volume before attenuation `[0,100]` |
+| `Looping` | `Boolean` | read/write | Whether `Play()` uses looped voice playback |
+| `IsPlaying` | `Boolean` | read | Whether the current voice is still alive |
+| `VoiceId` | `Integer` | read | Current low-level voice handle, or `0` when idle |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New(sound)` | `obj(obj)` | Create a source around a `Sound` object |
+| `SetPosition(position)` | `void(obj)` | Set world position from a `Vec3` |
+| `SetVelocity(velocity)` | `void(obj)` | Set velocity explicitly |
+| `Play()` | `i64()` | Start playback and return the active voice handle |
+| `Stop()` | `void()` | Stop the active voice and clear `VoiceId` |
+| `BindNode(node)` | `void(obj)` | Follow a `SceneNode3D` world transform |
+| `ClearNodeBinding()` | `void()` | Stop following a node |
+
+### Binding Sync
+
+Bound audio objects are explicit, just like physics/animation bindings:
+
+- `Audio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
+- `Scene3D.SyncBindings(dt)` calls `Audio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
+- Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
+
+Recommended frame order for scene-driven audio:
+
+1. Move cameras and scene nodes.
+2. Call `Scene3D.SyncBindings(dt)`.
+3. Trigger `AudioSource3D.Play()` or `Audio3D.PlayAt(...)` calls for the frame.
+
+### Audio3D Compatibility Layer
+
+`Audio3D` is still available when you want direct listener/voice control without allocating objects.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Audio3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
+| `Audio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
+| `Audio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
+| `Audio3D.SyncBindings(dt)` | `void(f64)` | Update all bound `AudioListener3D` / `AudioSource3D` objects |
 
 ### Zia Example
 
 ```zia
-module Audio3DDemo;
+module Audio3DObjectsDemo;
 
-bind Viper.Graphics3D.Audio3D;
-bind Viper.Graphics3D.Camera3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
 bind Viper.Sound;
-bind Viper.Math.Vec3;
 
 func start() {
-    var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
-    var sfx = Sound.Load("explosion.wav");
+    var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(
+        cam, Vec3.New(0.0, 2.0, 6.0), Vec3.New(0.0, 1.5, 0.0), Vec3.New(0.0, 1.0, 0.0));
 
-    // Set listener from camera each frame
-    Audio3D.SetListener(Camera3D.get_Position(cam), Camera3D.get_Forward(cam));
+    var node = SceneNode3D.New();
+    SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0);
 
-    // Play at world position with max audible distance 20 units
-    var voice = Audio3D.PlayAt(sfx, Vec3.New(10.0, 0.0, -5.0), 20.0, 100);
+    var listener = AudioListener3D.New();
+    listener.BindCamera(cam);
+    listener.IsActive = true;
 
-    // Update moving sound
-    Audio3D.UpdateVoice(voice, Vec3.New(12.0, 0.0, -5.0), 20.0);
+    var source = AudioSource3D.New(Synth.Tone(523, 220, 80));
+    source.BindNode(node);
+    source.MaxDistance = 20.0;
+    source.Volume = 75;
+
+    Audio3D.SyncBindings(0.016);
+
+    if (Audio.IsAvailable() && Audio.Init() != 0) {
+        var voice = source.Play();
+        source.Stop();
+    }
 }
 ```
 
 - Linear distance attenuation: `volume * max(0, 1 - dist/maxDist)`
-- Pan computed from dot product of source direction with listener's right vector
-- Per-voice max_distance: each `PlayAt` records its max_distance. `UpdateVoice` with `maxDist=0.0` uses the per-voice value
-- Listener must be updated manually each frame (not auto-tracked from Camera3D)
+- Pan is derived from the listener's right vector and the source direction in world space
+- `Audio3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
+- `AudioSource3D` currently exposes volume, max-distance, looping, and binding control; doppler, pitch, cones, and occlusion remain future work
 
 ## Mouse Capture
 
@@ -2317,7 +2417,7 @@ Navigation mesh with A* pathfinding for AI characters.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `Build(mesh, walkableHeight, maxSlope)` | `obj(obj, f64, f64)` | Build navmesh from Mesh3D geometry |
+| `Build(mesh, agentRadius, agentHeight)` | `obj(obj, f64, f64)` | Build navmesh from Mesh3D geometry |
 
 ### Properties
 
@@ -2346,7 +2446,8 @@ bind Viper.Math.Vec3;
 
 func start() {
     var level_mesh = Mesh3D.FromOBJ("level.obj");
-    var nav = NavMesh3D.Build(level_mesh, 1.8, 45.0);
+    var nav = NavMesh3D.Build(level_mesh, 0.4, 1.8);
+    NavMesh3D.SetMaxSlope(nav, 45.0);
 
     var start = Vec3.New(0.0, 0.0, 0.0);
     var goal = Vec3.New(20.0, 0.0, 15.0);
@@ -2357,6 +2458,85 @@ func start() {
 
     // Check walkability
     var ok = NavMesh3D.IsWalkable(nav, Vec3.New(10.0, 0.0, 10.0));
+}
+```
+
+---
+
+## NavAgent3D
+
+Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a target, keeps an internal waypoint path, exposes steering state, and can either move a bound `Character3D` or directly reposition a bound `SceneNode3D`.
+
+### Constructor
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `New(navmesh, radius, height)` | `obj(obj, f64, f64)` | Create a navigation agent for a specific `NavMesh3D` |
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Position` | `Vec3` | read | Current world-space agent position |
+| `Velocity` | `Vec3` | read | Actual motion from the last update |
+| `DesiredVelocity` | `Vec3` | read | Steering velocity requested by the path follower |
+| `HasPath` | `Boolean` | read | Whether the agent currently has an active route |
+| `RemainingDistance` | `Float` | read | Remaining linear distance along the current route |
+| `StoppingDistance` | `Float` | read/write | Arrival radius around the final target |
+| `DesiredSpeed` | `Float` | read/write | Preferred movement speed in world units per second |
+| `AutoRepath` | `Boolean` | read/write | Periodically rebuild the path while a target is active |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetTarget(position)` | `void(obj)` | Set a new goal position and rebuild the path immediately |
+| `ClearTarget()` | `void()` | Drop the current goal and clear steering state |
+| `Update(dt)` | `void(f64)` | Advance path following and push motion into the current bindings |
+| `Warp(position)` | `void(obj)` | Teleport the agent, clear stale motion, and rebuild if a target still exists |
+| `BindCharacter(controller)` | `void(obj)` | Drive a `Character3D` with the agent's desired motion |
+| `BindNode(node)` | `void(obj)` | Mirror the agent position into a `SceneNode3D` in world space |
+
+### Recommended Pattern
+
+1. Build or load a `NavMesh3D`.
+2. Create a `NavAgent3D`.
+3. Bind either a `Character3D` or a `SceneNode3D`.
+4. Call `SetTarget(...)`.
+5. Call `Update(dt)` every frame.
+
+When both a `Character3D` and a `SceneNode3D` are bound, the character controller is authoritative and the node is updated to match it.
+
+### Zia Example
+
+```zia
+module NavAgentDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
+    var agent = NavAgent3D.New(nav, 0.4, 1.8);
+    var node = SceneNode3D.New();
+
+    NavAgent3D.BindNode(agent, node);
+    NavAgent3D.set_DesiredSpeed(agent, 5.0);
+    NavAgent3D.Warp(agent, Vec3.New(0.0, 0.0, 0.0));
+    NavAgent3D.SetTarget(agent, Vec3.New(4.0, 0.0, 3.0));
+
+    var i = 0;
+    while (i < 20) {
+        NavAgent3D.Update(agent, 0.1);
+        i = i + 1;
+    }
+
+    var pos = NavAgent3D.get_Position(agent);
+    Say("Agent X = " + toString(Vec3.get_X(pos)));
+    Say("Agent Z = " + toString(Vec3.get_Z(pos)));
+    Say("RemainingDistance = " + toString(NavAgent3D.get_RemainingDistance(agent)));
 }
 ```
 
@@ -2758,11 +2938,11 @@ If the GPU backend fails to initialize (no GPU, driver issue), the software rast
 
 **Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
 
-**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, spot light cone attenuation, normal/specular/emissive maps, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, shadow mapping, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
+**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, shadow mapping, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
 
-**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, spot lights, fog, wireframe, render-to-texture, shadow mapping, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
+**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, shadow mapping, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
 
-**Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL. On non-Windows hosts, validation depends on the Windows CI lane.
+**Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
 ## Performance Tips
 

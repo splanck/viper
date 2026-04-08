@@ -160,7 +160,7 @@ src/runtime/graphics/
 │   ├── rt_canvas3d_internal.h     Internal struct definitions
 │   ├── rt_mesh3d.c                Mesh3D (construction, generators, OBJ loader, Clear)
 │   ├── rt_camera3d.c              Camera3D (projection, view, orbit, FPS, ray cast)
-│   ├── rt_material3d.c            Material3D (color, texture, shininess, maps)
+│   ├── rt_material3d.c            Material3D (legacy + PBR surface state, maps, clone/instance)
 │   └── rt_light3d.c               Light3D (directional, point, ambient)
 ├── Scene Graph
 │   ├── rt_scene3d.c/h             Scene3D + SceneNode3D hierarchy, frustum culling, LOD, binding sync
@@ -198,23 +198,27 @@ src/runtime/graphics/
 │   └── rt_joints3d.c/h            DistanceJoint3D + SpringJoint3D constraints
 ├── Navigation & Paths
 │   ├── rt_navmesh3d.c/h           NavMesh3D A* pathfinding
+│   ├── rt_navagent3d.c/h          NavAgent3D path following, steering, and character/node bindings
 │   └── rt_path3d.c/h              Path3D spline following
 ├── Asset Loading
 │   ├── rt_fbx_loader.c/h          FBX binary format loader
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
 │   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
 └── Audio
-    └── rt_audio3d.c/h             Audio3D spatial audio
+    ├── rt_audio3d.c/h             Audio3D spatial helpers and compatibility wrappers
+    ├── rt_audiolistener3d.h       AudioListener3D public surface
+    ├── rt_audiosource3d.h         AudioSource3D public surface
+    └── rt_audio3d_objects.c       Object-backed listener/source bindings and voice updates
 ```
 
 ## Shader Architecture
 
-All three GPU backends use the same lighting model (Blinn-Phong) with equivalent shaders:
+All three GPU backends now share the same material contract: the legacy Blinn-Phong path remains for compatibility, and `Material3D.NewPBR` uses the same direct-light metallic/roughness PBR path across Metal, D3D11, and OpenGL.
 
 | Stage | Software | Metal (MSL) | D3D11 (HLSL) | OpenGL (GLSL 330) |
 |-------|----------|-------------|---------------|-------------------|
 | Vertex | CPU transform | `vertex_main` | `VSMain` | `main()` vertex |
-| Lighting | Per-vertex (Gouraud) | Per-pixel (Phong) | Per-pixel (Phong) | Per-pixel (Phong) |
+| Lighting | Per-vertex or per-pixel PBR in software | Per-pixel legacy/PBR | Per-pixel legacy/PBR | Per-pixel legacy/PBR |
 | Fragment | CPU rasterizer | `fragment_main` | `PSMain` | `main()` fragment |
 
 Shaders are embedded as C string literals and compiled at runtime:

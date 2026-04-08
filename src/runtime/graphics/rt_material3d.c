@@ -6,12 +6,15 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_material3d.c
-// Purpose: Viper.Graphics3D.Material3D — surface appearance properties.
+// Purpose: Viper.Graphics3D.Material3D — legacy + PBR surface appearance.
 //
 // Key invariants:
 //   - Defaults: diffuse=(1,1,1,1), specular=(1,1,1), shininess=32,
 //     alpha=1.0, emissive=(0,0,0), reflectivity=0.0, unlit=false.
-//   - Texture/normal_map/specular_map/emissive_map/env_map are retained
+//   - PBR defaults: metallic=0.0, roughness=0.5, ao=1.0,
+//     emissive_intensity=1.0, normal_scale=1.0, alpha_mode=opaque.
+//   - Texture/normal_map/specular_map/emissive_map/metallic_roughness_map/
+//     ao_map/env_map are retained
 //     references to GC-managed Pixels/CubeMap3D objects.
 //   - Alpha [0.0=invisible, 1.0=opaque] controls transparency sorting
 //     in Canvas3D.End() — opaque draws first, transparent back-to-front.
@@ -54,6 +57,8 @@ static void rt_material3d_finalize(void *obj) {
     material_release_ref(&mat->normal_map);
     material_release_ref(&mat->specular_map);
     material_release_ref(&mat->emissive_map);
+    material_release_ref(&mat->metallic_roughness_map);
+    material_release_ref(&mat->ao_map);
     material_release_ref(&mat->env_map);
 }
 
@@ -63,6 +68,103 @@ static void material_assign_ref(void **slot, void *value) {
     rt_obj_retain_maybe(value);
     material_release_ref(slot);
     *slot = value;
+}
+
+static double clamp01(double value) {
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
+static double clamp_min(double value, double min_value) {
+    return value < min_value ? min_value : value;
+}
+
+static void material_init_defaults(rt_material3d *mat) {
+    if (!mat)
+        return;
+    mat->vptr = NULL;
+    mat->diffuse[0] = 1.0;
+    mat->diffuse[1] = 1.0;
+    mat->diffuse[2] = 1.0;
+    mat->diffuse[3] = 1.0;
+    mat->specular[0] = mat->specular[1] = mat->specular[2] = 1.0;
+    mat->shininess = 32.0;
+    mat->workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    mat->texture = NULL;
+    mat->normal_map = NULL;
+    mat->specular_map = NULL;
+    mat->emissive_map = NULL;
+    mat->metallic_roughness_map = NULL;
+    mat->ao_map = NULL;
+    mat->emissive[0] = mat->emissive[1] = mat->emissive[2] = 0.0;
+    mat->metallic = 0.0;
+    mat->roughness = 0.5;
+    mat->ao = 1.0;
+    mat->emissive_intensity = 1.0;
+    mat->normal_scale = 1.0;
+    mat->alpha = 1.0;
+    mat->alpha_cutoff = 0.5;
+    mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    mat->env_map = NULL;
+    mat->reflectivity = 0.0;
+    mat->unlit = 0;
+    mat->double_sided = 0;
+    mat->shading_model = 0;
+    memset(mat->custom_params, 0, sizeof(mat->custom_params));
+}
+
+static void material_promote_to_pbr(rt_material3d *mat) {
+    if (!mat)
+        return;
+    mat->workflow = RT_MATERIAL3D_WORKFLOW_PBR;
+}
+
+static void *material_clone_like(void *obj) {
+    rt_material3d *src = (rt_material3d *)obj;
+    rt_material3d *dst;
+    if (!src)
+        return NULL;
+    dst = (rt_material3d *)rt_material3d_new();
+    if (!dst)
+        return NULL;
+
+    dst->diffuse[0] = src->diffuse[0];
+    dst->diffuse[1] = src->diffuse[1];
+    dst->diffuse[2] = src->diffuse[2];
+    dst->diffuse[3] = src->diffuse[3];
+    dst->specular[0] = src->specular[0];
+    dst->specular[1] = src->specular[1];
+    dst->specular[2] = src->specular[2];
+    dst->shininess = src->shininess;
+    dst->workflow = src->workflow;
+    dst->emissive[0] = src->emissive[0];
+    dst->emissive[1] = src->emissive[1];
+    dst->emissive[2] = src->emissive[2];
+    dst->metallic = src->metallic;
+    dst->roughness = src->roughness;
+    dst->ao = src->ao;
+    dst->emissive_intensity = src->emissive_intensity;
+    dst->normal_scale = src->normal_scale;
+    dst->alpha = src->alpha;
+    dst->alpha_cutoff = src->alpha_cutoff;
+    dst->alpha_mode = src->alpha_mode;
+    dst->reflectivity = src->reflectivity;
+    dst->unlit = src->unlit;
+    dst->double_sided = src->double_sided;
+    dst->shading_model = src->shading_model;
+    memcpy(dst->custom_params, src->custom_params, sizeof(dst->custom_params));
+
+    material_assign_ref(&dst->texture, src->texture);
+    material_assign_ref(&dst->normal_map, src->normal_map);
+    material_assign_ref(&dst->specular_map, src->specular_map);
+    material_assign_ref(&dst->emissive_map, src->emissive_map);
+    material_assign_ref(&dst->metallic_roughness_map, src->metallic_roughness_map);
+    material_assign_ref(&dst->ao_map, src->ao_map);
+    material_assign_ref(&dst->env_map, src->env_map);
+    return dst;
 }
 
 /// @brief Create a new material with default white diffuse, shininess 32, fully opaque.
@@ -77,22 +179,7 @@ void *rt_material3d_new(void) {
         rt_trap("Material3D.New: memory allocation failed");
         return NULL;
     }
-    mat->vptr = NULL;
-    mat->diffuse[0] = 1.0;
-    mat->diffuse[1] = 1.0;
-    mat->diffuse[2] = 1.0;
-    mat->diffuse[3] = 1.0;
-    mat->specular[0] = mat->specular[1] = mat->specular[2] = 1.0;
-    mat->shininess = 32.0;
-    mat->texture = NULL;
-    mat->normal_map = NULL;
-    mat->specular_map = NULL;
-    mat->emissive_map = NULL;
-    mat->emissive[0] = mat->emissive[1] = mat->emissive[2] = 0.0;
-    mat->alpha = 1.0;
-    mat->env_map = NULL;
-    mat->reflectivity = 0.0;
-    mat->unlit = 0;
+    material_init_defaults(mat);
     rt_obj_set_finalizer(mat, rt_material3d_finalize);
     return mat;
 }
@@ -125,6 +212,29 @@ void *rt_material3d_new_textured(void *pixels) {
     return mat;
 }
 
+/// @brief Create a metallic-roughness PBR material with a solid base color.
+void *rt_material3d_new_pbr(double r, double g, double b) {
+    rt_material3d *mat = (rt_material3d *)rt_material3d_new_color(r, g, b);
+    if (!mat)
+        return NULL;
+    material_promote_to_pbr(mat);
+    mat->metallic = 0.0;
+    mat->roughness = 0.5;
+    mat->ao = 1.0;
+    mat->emissive_intensity = 1.0;
+    mat->normal_scale = 1.0;
+    mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    return mat;
+}
+
+void *rt_material3d_clone(void *obj) {
+    return material_clone_like(obj);
+}
+
+void *rt_material3d_make_instance(void *obj) {
+    return material_clone_like(obj);
+}
+
 /// @brief Set the diffuse color of a material (overrides existing color, keeps texture).
 void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
@@ -140,6 +250,10 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     material_assign_ref(&((rt_material3d *)obj)->texture, pixels);
+}
+
+void rt_material3d_set_albedo_map(void *obj, void *pixels) {
+    rt_material3d_set_texture(obj, pixels);
 }
 
 /// @brief Set the Phong specular shininess exponent (higher = tighter highlight).
@@ -189,11 +303,86 @@ double rt_material3d_get_alpha(void *obj) {
     return ((rt_material3d *)obj)->alpha;
 }
 
+void rt_material3d_set_metallic(void *obj, double value) {
+    rt_material3d *mat;
+    if (!obj)
+        return;
+    mat = (rt_material3d *)obj;
+    material_promote_to_pbr(mat);
+    mat->metallic = clamp01(value);
+}
+
+double rt_material3d_get_metallic(void *obj) {
+    if (!obj)
+        return 0.0;
+    return ((rt_material3d *)obj)->metallic;
+}
+
+void rt_material3d_set_roughness(void *obj, double value) {
+    rt_material3d *mat;
+    if (!obj)
+        return;
+    mat = (rt_material3d *)obj;
+    material_promote_to_pbr(mat);
+    mat->roughness = clamp01(value);
+}
+
+double rt_material3d_get_roughness(void *obj) {
+    if (!obj)
+        return 0.5;
+    return ((rt_material3d *)obj)->roughness;
+}
+
+void rt_material3d_set_ao(void *obj, double value) {
+    rt_material3d *mat;
+    if (!obj)
+        return;
+    mat = (rt_material3d *)obj;
+    material_promote_to_pbr(mat);
+    mat->ao = clamp01(value);
+}
+
+double rt_material3d_get_ao(void *obj) {
+    if (!obj)
+        return 1.0;
+    return ((rt_material3d *)obj)->ao;
+}
+
+void rt_material3d_set_emissive_intensity(void *obj, double value) {
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->emissive_intensity = clamp_min(value, 0.0);
+}
+
+double rt_material3d_get_emissive_intensity(void *obj) {
+    if (!obj)
+        return 1.0;
+    return ((rt_material3d *)obj)->emissive_intensity;
+}
+
 /// @brief Assign a normal map texture for per-pixel bump/detail lighting.
 void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!obj)
         return;
     material_assign_ref(&((rt_material3d *)obj)->normal_map, pixels);
+}
+
+void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
+    rt_material3d *mat;
+    if (!obj)
+        return;
+    mat = (rt_material3d *)obj;
+    material_promote_to_pbr(mat);
+    material_assign_ref(&mat->metallic_roughness_map, pixels);
+}
+
+void rt_material3d_set_ao_map(void *obj, void *pixels) {
+    rt_material3d *mat;
+    if (!obj)
+        return;
+    mat = (rt_material3d *)obj;
+    material_promote_to_pbr(mat);
+    material_assign_ref(&mat->ao_map, pixels);
 }
 
 /// @brief Assign a specular map texture to control per-pixel highlight intensity.
@@ -218,6 +407,44 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     m->emissive[0] = r;
     m->emissive[1] = g;
     m->emissive[2] = b;
+}
+
+void rt_material3d_set_normal_scale(void *obj, double value) {
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->normal_scale = clamp_min(value, 0.0);
+}
+
+double rt_material3d_get_normal_scale(void *obj) {
+    if (!obj)
+        return 1.0;
+    return ((rt_material3d *)obj)->normal_scale;
+}
+
+void rt_material3d_set_alpha_mode(void *obj, int64_t mode) {
+    if (!obj)
+        return;
+    if (mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE || mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    ((rt_material3d *)obj)->alpha_mode = (int32_t)mode;
+}
+
+int64_t rt_material3d_get_alpha_mode(void *obj) {
+    if (!obj)
+        return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    return ((rt_material3d *)obj)->alpha_mode;
+}
+
+void rt_material3d_set_double_sided(void *obj, int8_t enabled) {
+    if (!obj)
+        return;
+    ((rt_material3d *)obj)->double_sided = enabled ? 1 : 0;
+}
+
+int8_t rt_material3d_get_double_sided(void *obj) {
+    if (!obj)
+        return 0;
+    return ((rt_material3d *)obj)->double_sided ? 1 : 0;
 }
 
 #else

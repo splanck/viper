@@ -505,6 +505,8 @@ static void test_scene_roundtrip_loads_shared_assets() {
     void *normal = rt_pixels_new(1, 1);
     void *specular = rt_pixels_new(1, 1);
     void *emissive = rt_pixels_new(1, 1);
+    void *metallic_roughness = rt_pixels_new(1, 1);
+    void *ao = rt_pixels_new(1, 1);
     void *faces[6];
     const int64_t face_colors[6] = {
         0xFF0000FFll, 0x00FF00FFll, 0x0000FFFFll, 0xFFFF00FFll, 0xFF00FFFFll, 0x00FFFFFFll};
@@ -514,6 +516,8 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_pixels_set(normal, 0, 0, 0x7F7FFFFFll);
     rt_pixels_set(specular, 0, 0, 0x808080FFll);
     rt_pixels_set(emissive, 0, 0, 0xFF8040FFll);
+    rt_pixels_set(metallic_roughness, 0, 0, 0x2244CCFFll);
+    rt_pixels_set(ao, 0, 0, 0x7F0000FFll);
     for (int i = 0; i < 6; i++) {
         faces[i] = rt_pixels_new(1, 1);
         rt_pixels_set(faces[i], 0, 0, face_colors[i]);
@@ -527,10 +531,19 @@ static void test_scene_roundtrip_loads_shared_assets() {
     material->specular[1] = 0.4;
     material->specular[2] = 0.6;
     material->shininess = 48.0;
+    material->workflow = RT_MATERIAL3D_WORKFLOW_PBR;
     material->emissive[0] = 0.1;
     material->emissive[1] = 0.2;
     material->emissive[2] = 0.3;
+    material->metallic = 0.65;
+    material->roughness = 0.35;
+    material->ao = 0.55;
+    material->emissive_intensity = 1.8;
+    material->normal_scale = 0.7;
     material->alpha = 0.8;
+    material->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    material->alpha_cutoff = 0.42;
+    material->double_sided = 1;
     material->reflectivity = 0.6;
     material->unlit = 1;
     material->shading_model = 4;
@@ -540,6 +553,8 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_material3d_set_normal_map(material, normal);
     rt_material3d_set_specular_map(material, specular);
     rt_material3d_set_emissive_map(material, emissive);
+    rt_material3d_set_metallic_roughness_map(material, metallic_roughness);
+    rt_material3d_set_ao_map(material, ao);
     rt_material3d_set_env_map(
         material, rt_cubemap3d_new(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]));
 
@@ -623,6 +638,29 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     0.001,
                     "Scene3D.Load restores material diffuse color");
         EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001, "Scene3D.Load restores material alpha");
+        EXPECT_TRUE(loaded_material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
+                    "Scene3D.Load restores the PBR workflow");
+        EXPECT_NEAR(loaded_material->metallic,
+                    0.65,
+                    0.001,
+                    "Scene3D.Load restores material metallic");
+        EXPECT_NEAR(loaded_material->roughness,
+                    0.35,
+                    0.001,
+                    "Scene3D.Load restores material roughness");
+        EXPECT_NEAR(loaded_material->ao, 0.55, 0.001, "Scene3D.Load restores material AO");
+        EXPECT_NEAR(loaded_material->emissive_intensity,
+                    1.8,
+                    0.001,
+                    "Scene3D.Load restores emissive intensity");
+        EXPECT_NEAR(loaded_material->normal_scale,
+                    0.7,
+                    0.001,
+                    "Scene3D.Load restores normal scale");
+        EXPECT_TRUE(loaded_material->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND &&
+                        std::fabs(loaded_material->alpha_cutoff - 0.42) < 0.001 &&
+                        loaded_material->double_sided == 1,
+                    "Scene3D.Load restores alpha-mode and culling flags");
         EXPECT_NEAR(loaded_material->reflectivity,
                     0.6,
                     0.001,
@@ -646,6 +684,13 @@ static void test_scene_roundtrip_loads_shared_assets() {
         EXPECT_TRUE(loaded_material->emissive_map != nullptr &&
                         rt_pixels_get(loaded_material->emissive_map, 0, 0) == 0xFF8040FFll,
                     "Scene3D.Load restores emissive maps");
+        EXPECT_TRUE(loaded_material->metallic_roughness_map != nullptr &&
+                        rt_pixels_get(loaded_material->metallic_roughness_map, 0, 0) ==
+                            0x2244CCFFll,
+                    "Scene3D.Load restores metallic-roughness maps");
+        EXPECT_TRUE(loaded_material->ao_map != nullptr &&
+                        rt_pixels_get(loaded_material->ao_map, 0, 0) == 0x7F0000FFll,
+                    "Scene3D.Load restores AO maps");
         rt_cubemap3d *env = (rt_cubemap3d *)loaded_material->env_map;
         EXPECT_TRUE(env != nullptr && env->face_size == 1,
                     "Scene3D.Load restores environment cubemaps");

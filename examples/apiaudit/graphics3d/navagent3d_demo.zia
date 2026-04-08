@@ -1,0 +1,51 @@
+module NavAgent3DDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("NavAgent3D demo");
+
+    var mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
+    var agent = NavAgent3D.New(nav, 0.4, 1.8);
+    var node = SceneNode3D.New();
+
+    NavAgent3D.BindNode(agent, node);
+    NavAgent3D.set_DesiredSpeed(agent, 5.0);
+    NavAgent3D.Warp(agent, Vec3.New(0.0, 0.0, 0.0));
+    NavAgent3D.SetTarget(agent, Vec3.New(4.0, 0.0, 3.0));
+
+    var i = 0;
+    while (i < 20) {
+        NavAgent3D.Update(agent, 0.1);
+        i = i + 1;
+    }
+
+    var pos = NavAgent3D.get_Position(agent);
+    Say("Node path X = " + toString(Vec3.get_X(pos)));
+    Say("Node path Z = " + toString(Vec3.get_Z(pos)));
+    Say("RemainingDistance = " + toString(NavAgent3D.get_RemainingDistance(agent)));
+
+    var world = Physics3DWorld.New(0.0, -9.8, 0.0);
+    var character = Character3D.New(0.4, 1.8, 80.0);
+    Character3D.set_World(character, world);
+    NavAgent3D.BindCharacter(agent, character);
+    NavAgent3D.SetTarget(agent, Vec3.New(2.0, 0.0, -2.0));
+
+    i = 0;
+    while (i < 15) {
+        NavAgent3D.Update(agent, 0.1);
+        i = i + 1;
+    }
+
+    pos = Character3D.get_Position(character);
+    Say("Character X = " + toString(Vec3.get_X(pos)));
+    Say("Character Z = " + toString(Vec3.get_Z(pos)));
+
+    NavAgent3D.Warp(agent, Vec3.New(-3.0, 0.0, 0.0));
+    pos = NavAgent3D.get_Position(agent);
+    Say("Warped X = " + toString(Vec3.get_X(pos)));
+    Say("HasPath = " + toString(NavAgent3D.get_HasPath(agent)));
+}

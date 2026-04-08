@@ -1,5 +1,7 @@
 # Plan 10: AudioSource3D and AudioListener3D
 
+Status: implemented
+
 ## Goal
 
 Replace the current manual spatial-audio workflow with object-based APIs that fit the rest of the 3D runtime.
@@ -8,10 +10,10 @@ The low-level `Audio3D.SetListener`, `PlayAt`, and `UpdateVoice` functions are u
 
 ## Verified Current State
 
-- `rt_audio3d.h` exposes only three functions.
-- the runtime keeps one global listener state.
-- the earlier per-voice max-distance bug was fixed, but the public API is still static and manual.
-- `3dbowling` pushes listener state from the camera every frame itself.
+- `rt_audio3d.h` now exposes shared listener-state helpers plus the low-level compatibility calls.
+- `AudioListener3D` and `AudioSource3D` now exist as runtime classes.
+- `Scene3D.SyncBindings(dt)` forwards into `Audio3D.SyncBindings(dt)` so bound listeners/sources follow scene updates.
+- the earlier per-voice max-distance bug remains fixed in the shared helper path.
 
 ## Status of Older Plans
 
@@ -42,9 +44,8 @@ Properties:
 - `AudioSource3D.New(sound)`
 - `Play()`
 - `Stop()`
-- `Pause()`
-- `Resume()`
 - `BindNode(node)`
+- `ClearNodeBinding()`
 - `SetPosition(position)`
 - `SetVelocity(velocity)`
 
@@ -54,7 +55,6 @@ Properties:
 - `Velocity`
 - `MaxDistance`
 - `Volume`
-- `Pitch`
 - `Looping`
 - `IsPlaying`
 - `VoiceId`
@@ -62,6 +62,7 @@ Properties:
 ### `Audio3D` compatibility
 
 - keep `SetListener`, `PlayAt`, and `UpdateVoice`
+- add `SyncBindings(dt)` for bound object updates outside `Scene3D`
 - implement them internally in terms of the new object model where practical
 
 ## Internal Design
@@ -86,10 +87,9 @@ This is the right integration point for later features like:
 
 Files:
 
-- new `src/runtime/graphics/rt_audio3d_listener.h`
-- new `src/runtime/graphics/rt_audio3d_listener.c`
-- new `src/runtime/graphics/rt_audio3d_source.h`
-- new `src/runtime/graphics/rt_audio3d_source.c`
+- new `src/runtime/graphics/rt_audiolistener3d.h`
+- new `src/runtime/graphics/rt_audiosource3d.h`
+- new `src/runtime/graphics/rt_audio3d_objects.c`
 - `src/runtime/graphics/rt_audio3d.h`
 - `src/runtime/graphics/rt_audio3d.c`
 - `src/il/runtime/runtime.def`
@@ -113,7 +113,7 @@ Work:
 
 ### Phase 3: motion-aware audio
 
-Work:
+Still open:
 
 - add velocity-driven doppler support
 - add configurable rolloff curves
@@ -121,7 +121,7 @@ Work:
 
 ### Phase 4: environment polish
 
-Work:
+Still open:
 
 - add occlusion queries against the physics world
 - add optional reverb-send routing if the audio runtime supports it cleanly
@@ -163,3 +163,4 @@ Non-goals:
 
 - full DAW-style mixer graph redesign
 - HRTF or platform-specific binaural pipelines in v1
+- per-source `Pause` / `Resume` / `Pitch` controls until the lower audio backend grows real per-voice pause/pitch support

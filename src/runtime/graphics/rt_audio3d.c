@@ -23,6 +23,7 @@
 #include "rt_audio3d.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 
 extern double rt_vec3_x(void *v);
@@ -32,10 +33,21 @@ extern int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan);
 extern void rt_voice_set_volume(int64_t voice, int64_t volume);
 extern void rt_voice_set_pan(int64_t voice, int64_t pan);
 
-/* Listener state (single listener) */
-static double listener_pos[3] = {0, 0, 0};
-static double listener_fwd[3] = {0, 0, -1};
-static double listener_right[3] = {1, 0, 0};
+static rt_audio3d_listener_state s_fallback_listener = {
+    {0.0, 0.0, 0.0},
+    {0.0, 0.0, -1.0},
+    {1.0, 0.0, 0.0},
+    {0.0, 0.0, 0.0},
+    1,
+};
+static rt_audio3d_listener_state s_active_listener = {
+    {0.0, 0.0, 0.0},
+    {0.0, 0.0, -1.0},
+    {1.0, 0.0, 0.0},
+    {0.0, 0.0, 0.0},
+    0,
+};
+static int8_t s_has_active_listener = 0;
 
 /* Per-voice max_distance tracking — avoids global state pollution
  * when multiple sounds have different falloff ranges. */
@@ -55,6 +67,123 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value > hi)
         return hi;
     return value;
+}
+
+static void audio3d_copy3(double *dst, const double *src) {
+    if (!dst)
+        return;
+    if (!src) {
+        dst[0] = 0.0;
+        dst[1] = 0.0;
+        dst[2] = 0.0;
+        return;
+    }
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+}
+
+static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
+    if (!out_xyz)
+        return;
+    if (!vec) {
+        out_xyz[0] = 0.0;
+        out_xyz[1] = 0.0;
+        out_xyz[2] = 0.0;
+        return;
+    }
+    out_xyz[0] = rt_vec3_x(vec);
+    out_xyz[1] = rt_vec3_y(vec);
+    out_xyz[2] = rt_vec3_z(vec);
+}
+
+static void audio3d_set_forward_and_right(rt_audio3d_listener_state *state, const double *forward) {
+    double fx;
+    double fy;
+    double fz;
+    double flen;
+    double rx;
+    double rz;
+    double rlen;
+    if (!state)
+        return;
+
+    fx = forward ? forward[0] : 0.0;
+    fy = forward ? forward[1] : 0.0;
+    fz = forward ? forward[2] : -1.0;
+    flen = sqrt(fx * fx + fy * fy + fz * fz);
+    if (flen <= 1e-8) {
+        fx = 0.0;
+        fy = 0.0;
+        fz = -1.0;
+        flen = 1.0;
+    }
+
+    state->forward[0] = fx / flen;
+    state->forward[1] = fy / flen;
+    state->forward[2] = fz / flen;
+
+    rx = -state->forward[2];
+    rz = state->forward[0];
+    rlen = sqrt(rx * rx + rz * rz);
+    if (rlen <= 1e-8) {
+        rx = 1.0;
+        rz = 0.0;
+        rlen = 1.0;
+    }
+    state->right[0] = rx / rlen;
+    state->right[1] = 0.0;
+    state->right[2] = rz / rlen;
+}
+
+void rt_audio3d_listener_state_identity(rt_audio3d_listener_state *state) {
+    if (!state)
+        return;
+    state->position[0] = 0.0;
+    state->position[1] = 0.0;
+    state->position[2] = 0.0;
+    state->velocity[0] = 0.0;
+    state->velocity[1] = 0.0;
+    state->velocity[2] = 0.0;
+    audio3d_set_forward_and_right(state, NULL);
+    state->valid = 1;
+}
+
+void rt_audio3d_listener_state_set(rt_audio3d_listener_state *state,
+                                   const double *position,
+                                   const double *forward,
+                                   const double *velocity) {
+    if (!state)
+        return;
+    audio3d_copy3(state->position, position);
+    audio3d_copy3(state->velocity, velocity);
+    audio3d_set_forward_and_right(state, forward);
+    state->valid = 1;
+}
+
+void rt_audio3d_get_effective_listener_state(rt_audio3d_listener_state *out_state) {
+    if (!out_state)
+        return;
+    if (s_has_active_listener && s_active_listener.valid) {
+        *out_state = s_active_listener;
+        return;
+    }
+    *out_state = s_fallback_listener;
+}
+
+void rt_audio3d_set_active_listener_state(const rt_audio3d_listener_state *state) {
+    if (!state || !state->valid) {
+        rt_audio3d_clear_active_listener_state();
+        return;
+    }
+    s_active_listener = *state;
+    s_has_active_listener = 1;
+}
+
+void rt_audio3d_clear_active_listener_state(void) {
+    rt_audio3d_listener_state_identity(&s_active_listener);
+    s_active_listener.valid = 0;
+    s_has_active_listener = 0;
 }
 
 static void track_voice_params(int64_t voice, double max_dist, int64_t base_volume) {
@@ -96,57 +225,60 @@ static int64_t lookup_voice_base_volume(int64_t voice) {
     return 100;
 }
 
-/// @brief Set the 3D audio listener position and orientation.
-/// @details Updates the single global listener used for all spatial audio
-///          calculations. The right vector is derived from cross(forward, world_up)
-///          where world_up is (0,1,0). All subsequent play_at and update_voice
-///          calls use this listener state for attenuation and stereo panning.
-/// @param position Vec3 world-space position of the listener (typically the camera).
-/// @param forward  Vec3 forward direction the listener is facing.
-void rt_audio3d_set_listener(void *position, void *forward) {
-    if (!position || !forward)
+void rt_audio3d_compute_voice_params(const rt_audio3d_listener_state *listener,
+                                     const double *source_position,
+                                     double max_dist,
+                                     int64_t base_vol,
+                                     int64_t *out_vol,
+                                     int64_t *out_pan) {
+    double sx;
+    double sy;
+    double sz;
+    double dx;
+    double dy;
+    double dz;
+    double dist;
+    const rt_audio3d_listener_state *effective = listener ? listener : &s_fallback_listener;
+
+    if (!source_position || !out_vol || !out_pan)
         return;
-    listener_pos[0] = rt_vec3_x(position);
-    listener_pos[1] = rt_vec3_y(position);
-    listener_pos[2] = rt_vec3_z(position);
-    listener_fwd[0] = rt_vec3_x(forward);
-    listener_fwd[1] = rt_vec3_y(forward);
-    listener_fwd[2] = rt_vec3_z(forward);
 
-    /* Compute right = cross(forward, world_up), normalized.
-     * forward × (0,1,0) = (-fz, 0, fx) */
-    double rx = -listener_fwd[2];
-    double rz = listener_fwd[0];
-    double rlen = sqrt(rx * rx + rz * rz);
-    if (rlen > 1e-8) {
-        rx /= rlen;
-        rz /= rlen;
-    }
-    listener_right[0] = rx;
-    listener_right[1] = 0.0;
-    listener_right[2] = rz;
-}
+    sx = source_position[0];
+    sy = source_position[1];
+    sz = source_position[2];
+    dx = sx - effective->position[0];
+    dy = sy - effective->position[1];
+    dz = sz - effective->position[2];
+    dist = sqrt(dx * dx + dy * dy + dz * dz);
 
-static void compute_3d_params(
-    void *position, double max_dist, int64_t base_vol, int64_t *out_vol, int64_t *out_pan) {
-    double sx = rt_vec3_x(position), sy = rt_vec3_y(position), sz = rt_vec3_z(position);
-    double dx = sx - listener_pos[0], dy = sy - listener_pos[1], dz = sz - listener_pos[2];
-    double dist = sqrt(dx * dx + dy * dy + dz * dz);
-
-    /* Distance attenuation (linear) */
     double atten = (max_dist > 0.0) ? 1.0 - (dist / max_dist) : 1.0;
     if (atten < 0.0)
         atten = 0.0;
     *out_vol = clamp_i64((int64_t)(base_vol * atten), 0, 100);
 
-    /* Pan from dot(direction_to_source, listener_right) */
     if (dist > 1e-8) {
-        double ndx = dx / dist, ndz = dz / dist;
-        double dot_right = ndx * listener_right[0] + ndz * listener_right[2];
+        double ndx = dx / dist;
+        double ndz = dz / dist;
+        double dot_right = ndx * effective->right[0] + ndz * effective->right[2];
         *out_pan = clamp_i64((int64_t)(dot_right * 100.0), -100, 100);
     } else {
         *out_pan = 0;
     }
+}
+
+/// @brief Set the 3D audio listener position and orientation.
+/// @details Updates the low-level compatibility listener used when no active
+///          AudioListener3D object is driving the spatial-audio state.
+/// @param position Vec3 world-space position of the listener (typically the camera).
+/// @param forward  Vec3 forward direction the listener is facing.
+void rt_audio3d_set_listener(void *position, void *forward) {
+    double pos[3];
+    double fwd[3];
+    if (!position || !forward)
+        return;
+    audio3d_vec_from_obj(position, pos);
+    audio3d_vec_from_obj(forward, fwd);
+    rt_audio3d_listener_state_set(&s_fallback_listener, pos, fwd, NULL);
 }
 
 /// @brief Play a sound at a 3D position with distance-based attenuation and stereo pan.
@@ -160,12 +292,17 @@ static void compute_3d_params(
 /// @param volume       Base volume before attenuation [0–100].
 /// @return Voice ID for subsequent updates, or 0 on failure.
 int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
+    rt_audio3d_listener_state listener;
+    double source_pos[3];
     if (!sound || !position)
         return 0;
 
     volume = clamp_i64(volume, 0, 100);
-    int64_t vol, pan;
-    compute_3d_params(position, max_distance, volume, &vol, &pan);
+    audio3d_vec_from_obj(position, source_pos);
+    rt_audio3d_get_effective_listener_state(&listener);
+    int64_t vol = 0;
+    int64_t pan = 0;
+    rt_audio3d_compute_voice_params(&listener, source_pos, max_distance, volume, &vol, &pan);
     int64_t voice = rt_sound_play_ex(sound, vol, pan);
     if (voice > 0)
         track_voice_params(voice, max_distance, volume);
@@ -180,13 +317,18 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
 /// @param position     Vec3 current world-space position of the sound source.
 /// @param max_distance Falloff range override (0 = use value from play_at).
 void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance) {
+    rt_audio3d_listener_state listener;
+    double source_pos[3];
     if (!position || voice <= 0)
         return;
     if (max_distance <= 0.0)
         max_distance = lookup_voice_distance(voice); /* per-voice fallback */
     int64_t base_volume = lookup_voice_base_volume(voice);
-    int64_t vol, pan;
-    compute_3d_params(position, max_distance, base_volume, &vol, &pan);
+    audio3d_vec_from_obj(position, source_pos);
+    rt_audio3d_get_effective_listener_state(&listener);
+    int64_t vol = 0;
+    int64_t pan = 0;
+    rt_audio3d_compute_voice_params(&listener, source_pos, max_distance, base_volume, &vol, &pan);
     rt_voice_set_volume(voice, vol);
     rt_voice_set_pan(voice, pan);
 }

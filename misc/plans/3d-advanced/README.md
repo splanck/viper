@@ -10,10 +10,11 @@ The current runtime already ships:
 
 - `Canvas3D`, `Mesh3D`, `Camera3D`, `Material3D`, `Light3D`
 - `Scene3D` / `SceneNode3D`
+- `Audio3D`, `AudioListener3D`, `AudioSource3D`
 - `Physics3DWorld`, `Physics3DBody`, `Character3D`, `Trigger3D`
 - `DistanceJoint3D`, `SpringJoint3D`
 - `Skeleton3D`, `Animation3D`, `AnimPlayer3D`, `AnimBlend3D`
-- `FBX`, `GLTF`, `NavMesh3D`, `Audio3D`
+- `FBX`, `GLTF`, `NavMesh3D`, `NavAgent3D`
 
 The highest-value missing layer is orchestration:
 
@@ -21,8 +22,8 @@ The highest-value missing layer is orchestration:
 - colliders are baked into body constructors instead of being reusable assets
 - world queries and contact data are too thin for gameplay code
 - imported 3D content is not exposed as a unified instantiable asset
-- animation, scene graph, navigation, and spatial audio still require manual per-frame syncing
-- materials are still centered on Blinn-Phong plus custom knobs rather than first-class PBR
+- animation still requires manual orchestration in places
+- materials now expose a first-class PBR workflow, but higher-level rendering polish still remains
 
 ## Old Plan Verification
 
@@ -32,10 +33,10 @@ The older plans were checked against the current source tree before writing this
 |---|---|---|---|---|
 | `misc/plans/3d/14-angular-velocity-joints.md` | Partial | `DistanceJoint3D`, `SpringJoint3D`, world joint add/remove/count | no angular velocity, torque, orientation, hinge joint, ball joint, structured contact events | `01`, `02`, `04` |
 | `misc/plans/3d/10-animation-state-machine.md` | Not implemented as written | none of the proposed 3D FSM / IK types shipped | no 3D controller, no root motion, no events, no IK hooks | `06` |
-| `misc/plans/3d/11-pbr-materials.md` | Not implemented as written | none of the dedicated metallic/roughness APIs shipped | no native PBR workflow, no material instances | `08` |
-| `misc/plans/3d/16-material-shader-hooks.md` | Partial | `Material3D.SetShadingModel`, `Material3D.SetCustomParam` | no real PBR model, no material-instance workflow | `08` |
-| `misc/plans/3d/07-audio3d-fixes.md` | Complete for its scoped fix | per-voice `max_distance` tracking landed | object-based listener/source workflow still absent | `10` |
-| `misc/plans/3d/08-navmesh-fixes.md` | Complete for its scoped fix | edge-hash adjacency and supporting tests landed | agent/path-following layer still absent | `09` |
+| `misc/plans/3d/11-pbr-materials.md` | Implemented via the advanced plan | `Material3D.NewPBR`, metallic/roughness/AO/emissive controls, alpha modes, double-sided, importer and scene round-trip support | full image-based lighting still intentionally out of scope | `08` |
+| `misc/plans/3d/16-material-shader-hooks.md` | Implemented as a compatibility layer | `Material3D.SetShadingModel`, `Material3D.SetCustomParam`, plus the new PBR workflow and material-instance semantics | custom user-authored shaders still absent | `08` |
+| `misc/plans/3d/07-audio3d-fixes.md` | Complete and extended | per-voice `max_distance` tracking plus `AudioListener3D` / `AudioSource3D` landed | doppler, cones, occlusion, and reverb routing still absent | `10` |
+| `misc/plans/3d/08-navmesh-fixes.md` | Complete for its scoped fix | edge-hash adjacency, NavAgent3D path following, and binding coverage landed | local avoidance and off-mesh links still absent | `09` |
 | `misc/plans/3d/04-fbx-animation.md` | Complete | FBX keyframe extraction, bind-pose handling, and TRS-based crossfade all shipped | higher-level animation-control workflow still absent | `05`, `06` |
 | `misc/plans/3d/15-fbx-loader.md` | Largely implemented | FBX mesh, skeleton, animation, material, morph extraction shipped | still exposed as a raw importer, not a unified model/prefab asset | `05` |
 | `misc/plans/3d-formats/01-gltf-loading.md` | Partial | glTF mesh/material import shipped | no scene graph, skins, animation, camera/light extraction | `05`, `08` |

@@ -313,12 +313,16 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     return sqrtf(dx * dx + dy * dy + dz * dz);
 }
 
-void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
+int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, double **out_points_xyz) {
+    double *points = NULL;
+    int64_t point_count = 0;
     if (!obj || !from_v || !to_v)
-        return NULL;
+        return 0;
+    if (out_points_xyz)
+        *out_points_xyz = NULL;
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     if (nm->triangle_count == 0)
-        return NULL;
+        return 0;
 
     float fx = (float)rt_vec3_x(from_v), fy = (float)rt_vec3_y(from_v),
           fz = (float)rt_vec3_z(from_v);
@@ -327,13 +331,21 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
     int32_t start = find_tri(nm, fx, fy, fz);
     int32_t goal = find_tri(nm, tx, ty, tz);
     if (start < 0 || goal < 0)
-        return NULL;
+        return 0;
 
     if (start == goal) {
-        void *path = rt_path3d_new();
-        rt_path3d_add_point(path, from_v);
-        rt_path3d_add_point(path, to_v);
-        return path;
+        points = (double *)malloc(2u * 3u * sizeof(double));
+        if (!points)
+            return 0;
+        points[0] = rt_vec3_x(from_v);
+        points[1] = rt_vec3_y(from_v);
+        points[2] = rt_vec3_z(from_v);
+        points[3] = rt_vec3_x(to_v);
+        points[4] = rt_vec3_y(to_v);
+        points[5] = rt_vec3_z(to_v);
+        if (out_points_xyz)
+            *out_points_xyz = points;
+        return 2;
     }
 
     /* A* */
@@ -377,7 +389,6 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
         }
     }
 
-    void *path = NULL;
     if (found) {
         /* Reconstruct: collect centroids from goal back to start */
         int32_t count = 0;
@@ -389,8 +400,20 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
         for (int32_t c = goal; c != -1; c = parent[c])
             seq[idx--] = c;
 
-        path = rt_path3d_new();
-        rt_path3d_add_point(path, from_v);
+        int32_t max_points = count + 2;
+        points = (double *)malloc((size_t)max_points * 3u * sizeof(double));
+        if (!points) {
+            free(seq);
+            free(g_cost);
+            free(parent);
+            free(closed);
+            free(heap);
+            return 0;
+        }
+        points[point_count * 3 + 0] = rt_vec3_x(from_v);
+        points[point_count * 3 + 1] = rt_vec3_y(from_v);
+        points[point_count * 3 + 2] = rt_vec3_z(from_v);
+        point_count++;
 
         /* Simple string-pulling: find portals between adjacent triangles and
          * walk the funnel to produce smooth waypoints. If portal extraction
@@ -425,7 +448,10 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
                          * (avoids redundant collinear points) */
                         float dx = mx - apex[0], dy = my - apex[1], dz = mz - apex[2];
                         if (dx * dx + dy * dy + dz * dz > 0.01f) {
-                            rt_path3d_add_point(path, rt_vec3_new(mx, my, mz));
+                            points[point_count * 3 + 0] = mx;
+                            points[point_count * 3 + 1] = my;
+                            points[point_count * 3 + 2] = mz;
+                            point_count++;
                             apex[0] = mx;
                             apex[1] = my;
                             apex[2] = mz;
@@ -437,7 +463,10 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
                 if (!portal_found) {
                     /* Fallback to centroid if shared edge not found */
                     float *cen = nm->triangles[tn].centroid;
-                    rt_path3d_add_point(path, rt_vec3_new(cen[0], cen[1], cen[2]));
+                    points[point_count * 3 + 0] = cen[0];
+                    points[point_count * 3 + 1] = cen[1];
+                    points[point_count * 3 + 2] = cen[2];
+                    point_count++;
                     apex[0] = cen[0];
                     apex[1] = cen[1];
                     apex[2] = cen[2];
@@ -445,10 +474,16 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
             }
         } else if (count == 1) {
             float *cen = nm->triangles[seq[0]].centroid;
-            rt_path3d_add_point(path, rt_vec3_new(cen[0], cen[1], cen[2]));
+            points[point_count * 3 + 0] = cen[0];
+            points[point_count * 3 + 1] = cen[1];
+            points[point_count * 3 + 2] = cen[2];
+            point_count++;
         }
 
-        rt_path3d_add_point(path, to_v);
+        points[point_count * 3 + 0] = rt_vec3_x(to_v);
+        points[point_count * 3 + 1] = rt_vec3_y(to_v);
+        points[point_count * 3 + 2] = rt_vec3_z(to_v);
+        point_count++;
         free(seq);
     }
 
@@ -456,6 +491,29 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
     free(parent);
     free(closed);
     free(heap);
+    if (out_points_xyz)
+        *out_points_xyz = points;
+    else
+        free(points);
+    return point_count;
+}
+
+void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
+    double *points = NULL;
+    int64_t point_count = rt_navmesh3d_copy_path_points(obj, from_v, to_v, &points);
+    if (point_count <= 0 || !points)
+        return NULL;
+
+    void *path = rt_path3d_new();
+    if (!path) {
+        free(points);
+        return NULL;
+    }
+    for (int64_t i = 0; i < point_count; i++) {
+        rt_path3d_add_point(path,
+                            rt_vec3_new(points[i * 3 + 0], points[i * 3 + 1], points[i * 3 + 2]));
+    }
+    free(points);
     return path;
 }
 

@@ -130,21 +130,48 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
 // Material3D — surface appearance (color, texture, shininess)
 //=========================================================================
 
+#define RT_MATERIAL3D_WORKFLOW_LEGACY 0
+#define RT_MATERIAL3D_WORKFLOW_PBR 1
+
+#define RT_MATERIAL3D_ALPHA_MODE_OPAQUE 0
+#define RT_MATERIAL3D_ALPHA_MODE_MASK 1
+#define RT_MATERIAL3D_ALPHA_MODE_BLEND 2
+
 void *rt_material3d_new(void);
 void *rt_material3d_new_color(double r, double g, double b);
 void *rt_material3d_new_textured(void *pixels);
+void *rt_material3d_new_pbr(double r, double g, double b);
+void *rt_material3d_clone(void *obj);
+void *rt_material3d_make_instance(void *obj);
 void rt_material3d_set_color(void *obj, double r, double g, double b);
 void rt_material3d_set_texture(void *obj, void *pixels);
+void rt_material3d_set_albedo_map(void *obj, void *pixels);
 void rt_material3d_set_shininess(void *obj, double s);
 void rt_material3d_set_unlit(void *obj, int8_t unlit);
 void rt_material3d_set_shading_model(void *obj, int64_t model);
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value);
 void rt_material3d_set_alpha(void *obj, double alpha);
 double rt_material3d_get_alpha(void *obj);
+void rt_material3d_set_metallic(void *obj, double value);
+double rt_material3d_get_metallic(void *obj);
+void rt_material3d_set_roughness(void *obj, double value);
+double rt_material3d_get_roughness(void *obj);
+void rt_material3d_set_ao(void *obj, double value);
+double rt_material3d_get_ao(void *obj);
+void rt_material3d_set_emissive_intensity(void *obj, double value);
+double rt_material3d_get_emissive_intensity(void *obj);
 void rt_material3d_set_normal_map(void *obj, void *pixels);
+void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
+void rt_material3d_set_ao_map(void *obj, void *pixels);
 void rt_material3d_set_specular_map(void *obj, void *pixels);
 void rt_material3d_set_emissive_map(void *obj, void *pixels);
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
+void rt_material3d_set_normal_scale(void *obj, double value);
+double rt_material3d_get_normal_scale(void *obj);
+void rt_material3d_set_alpha_mode(void *obj, int64_t mode);
+int64_t rt_material3d_get_alpha_mode(void *obj);
+void rt_material3d_set_double_sided(void *obj, int8_t enabled);
+int8_t rt_material3d_get_double_sided(void *obj);
 
 //=========================================================================
 // Light3D — directional, point, or ambient light source

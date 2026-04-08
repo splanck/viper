@@ -816,6 +816,7 @@ set(G3D_ZIA_TESTS
         test_animcontroller3d
         test_canvas3d_hello
         test_canvas3d_obj
+        test_material3d_pbr
         test_model3d
         test_scene3d_bindings
         test_physics3d_rotation

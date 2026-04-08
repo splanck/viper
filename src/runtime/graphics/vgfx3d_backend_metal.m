@@ -218,8 +218,11 @@ static NSString *metal_shader_source =
      "    float4 specularColor;\n"
      "    float4 emissiveColor;\n"
      "    float4 scalars;\n"
+     "    float4 pbrScalars0;\n"
+     "    float4 pbrScalars1;\n"
      "    int4 flags0;\n"
      "    int4 flags1;\n"
+     "    int4 pbrFlags;\n"
      "    float4 splatScales;\n"
      "    int shadingModel;\n"
      "    float customParams[8];\n"
@@ -444,6 +447,27 @@ static NSString *metal_shader_source =
      "    return float4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), in.hasObjectHistory, 1.0);\n"
      "}\n"
      "\n"
+     "float distribution_ggx(float NdotH, float roughness) {\n"
+     "    float a = roughness * roughness;\n"
+     "    float a2 = a * a;\n"
+     "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
+     "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
+     "}\n"
+     "\n"
+     "float geometry_schlick_ggx(float NdotV, float roughness) {\n"
+     "    float r = roughness + 1.0;\n"
+     "    float k = (r * r) / 8.0;\n"
+     "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
+     "}\n"
+     "\n"
+     "float geometry_smith(float NdotV, float NdotL, float roughness) {\n"
+     "    return geometry_schlick_ggx(NdotV, roughness) * geometry_schlick_ggx(NdotL, roughness);\n"
+     "}\n"
+     "\n"
+     "float3 fresnel_schlick(float cosTheta, float3 F0) {\n"
+     "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+     "}\n"
+     "\n"
      "fragment MainOut fragment_main(\n"
      "    VertexOut in [[stage_in]],\n"
      "    constant PerScene &scene [[buffer(0)]],\n"
@@ -460,20 +484,21 @@ static NSString *metal_shader_source =
      "    texture2d<float> splatLayer2 [[texture(8)]],\n"
      "    texture2d<float> splatLayer3 [[texture(9)]],\n"
      "    texturecube<float> envTex [[texture(10)]],\n"
+     "    texture2d<float> metallicRoughnessTex [[texture(11)]],\n"
+     "    texture2d<float> aoTex [[texture(12)]],\n"
      "    sampler texSampler [[sampler(0)]],\n"
      "    sampler shadowSampler [[sampler(1)]],\n"
      "    sampler envSampler [[sampler(2)]]\n"
      ") {\n"
      "    MainOut out;\n"
-     /* --- MTL-01: Sample diffuse texture for both lit and unlit paths --- */
      "    float3 baseColor = material.diffuseColor.rgb;\n"
      "    float texAlpha = 1.0;\n"
+     "    float materialAlpha = material.diffuseColor.a * material.scalars.x;\n"
      "    if (material.flags0.x != 0) {\n"
      "        float4 texSample = diffuseTex.sample(texSampler, in.uv);\n"
      "        baseColor *= texSample.rgb;\n"
      "        texAlpha = texSample.a;\n"
      "    }\n"
-     /* --- MTL-14: Terrain splat — override baseColor if active --- */
      "    if (material.flags1.z != 0) {\n"
      "        float4 sp = splatTex.sample(texSampler, in.uv);\n"
      "        float wsum = sp.r + sp.g + sp.b + sp.a;\n"
@@ -491,7 +516,6 @@ static NSString *metal_shader_source =
      "    }\n"
      "    float3 N = normalize(in.normal);\n"
      "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
-     /* --- MTL-04: Normal map sampling with TBN --- */
      "    if (material.flags0.z != 0) {\n"
      "        float3 T = normalize(in.tangent);\n"
      "        T = normalize(T - N * dot(T, N));\n"
@@ -499,78 +523,154 @@ static NSString *metal_shader_source =
      "        if (lenT > 0.001) {\n"
      "            float3 B = cross(N, T);\n"
      "            float3 mapN = normalTex.sample(texSampler, in.uv).rgb * 2.0 - 1.0;\n"
+     "            mapN.xy *= material.pbrScalars1.x;\n"
      "            N = normalize(T * mapN.x + B * mapN.y + N * mapN.z);\n"
      "        }\n"
      "    }\n"
+     "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
+     "    if (material.flags1.x != 0) {\n"
+     "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
+     "    }\n"
+     "    float finalAlpha = materialAlpha * texAlpha;\n"
+     "    if (material.pbrFlags.x != 0) {\n"
+     "        if (material.pbrFlags.y == 1) {\n"
+     "            if (finalAlpha < material.pbrScalars1.y)\n"
+     "                discard_fragment();\n"
+     "            finalAlpha = materialAlpha;\n"
+     "        } else if (material.pbrFlags.y == 0) {\n"
+     "            finalAlpha = materialAlpha;\n"
+     "        }\n"
+     "    }\n"
      "    if (material.flags0.y != 0) {\n"
-     "        float3 unlitColor = baseColor + material.emissiveColor.rgb;\n"
+     "        float3 unlitColor = baseColor + emissive;\n"
      "        if (material.flags1.y != 0) {\n"
      "            float3 R = reflect(-V, N);\n"
      "            float3 envColor = envTex.sample(envSampler, R).rgb;\n"
      "            unlitColor = mix(unlitColor, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
      "        }\n"
-     "        out.color = float4(unlitColor, material.scalars.x * texAlpha);\n"
+     "        out.color = float4(unlitColor, finalAlpha);\n"
      "        out.motion = motion_output(in);\n"
      "        return out;\n"
      "    }\n"
-     "    float3 result = scene.ambientColor.rgb * baseColor;\n"
-     /* --- MTL-05: Specular map setup --- */
-     "    float3 specColor = material.specularColor.rgb;\n"
-     "    if (material.flags0.w != 0) {\n"
-     "        specColor *= specularTex.sample(texSampler, in.uv).rgb;\n"
-     "    }\n"
-     "    for (int i = 0; i < scene.counts.x; i++) {\n"
-     "        float3 L; float atten = 1.0;\n"
-     "        if (lights[i].type == 0) {\n"
-     "            L = normalize(-lights[i].direction.xyz);\n"
-     /* --- MTL-02: Point light --- */
-     "        } else if (lights[i].type == 1) {\n"
-     "            float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "            float d = length(tl); L = tl / max(d, 0.0001);\n"
-     "            atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-     /* --- MTL-02: Spot light with cone attenuation --- */
-     "        } else if (lights[i].type == 3) {\n"
-     "            float3 tl = lights[i].position.xyz - in.worldPos;\n"
-     "            float d = length(tl); L = tl / max(d, 0.0001);\n"
-     "            atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-     "            float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
-     "            if (spotDot < lights[i].outer_cos) {\n"
-     "                atten = 0.0;\n"
-     "            } else if (spotDot < lights[i].inner_cos) {\n"
-     "                float t = (spotDot - lights[i].outer_cos) / "
+     "    float3 result = float3(0.0);\n"
+     "    if (material.pbrFlags.x != 0) {\n"
+     "        float metallic = clamp(material.pbrScalars0.x, 0.0, 1.0);\n"
+     "        float roughness = clamp(material.pbrScalars0.y, 0.045, 1.0);\n"
+     "        float ao = clamp(material.pbrScalars0.z, 0.0, 1.0);\n"
+     "        if (material.pbrFlags.z != 0) {\n"
+     "            float4 mr = metallicRoughnessTex.sample(texSampler, in.uv);\n"
+     "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
+     "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
+     "        }\n"
+     "        if (material.pbrFlags.w != 0) {\n"
+     "            float4 aoSample = aoTex.sample(texSampler, in.uv);\n"
+     "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
+     "        }\n"
+     "        result = scene.ambientColor.rgb * baseColor * ao;\n"
+     "        for (int i = 0; i < scene.counts.x; i++) {\n"
+     "            float3 L; float atten = 1.0;\n"
+     "            if (lights[i].type == 0) {\n"
+     "                L = normalize(-lights[i].direction.xyz);\n"
+     "            } else if (lights[i].type == 1) {\n"
+     "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+     "            } else if (lights[i].type == 3) {\n"
+     "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+     "                float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+     "                if (spotDot < lights[i].outer_cos) {\n"
+     "                    atten = 0.0;\n"
+     "                } else if (spotDot < lights[i].inner_cos) {\n"
+     "                    float t = (spotDot - lights[i].outer_cos) / "
      "(lights[i].inner_cos - lights[i].outer_cos);\n"
-     "                atten *= t * t * (3.0 - 2.0 * t);\n"
+     "                    atten *= t * t * (3.0 - 2.0 * t);\n"
+     "                }\n"
+     "            } else {\n"
+     "                result += lights[i].color.rgb * lights[i].intensity * baseColor * ao;\n"
+     "                continue;\n"
      "            }\n"
-     "        } else {\n"
-     "            result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
-     "            continue;\n"
-     "        }\n"
-     "        float NdotL = max(dot(N, L), 0.0);\n"
-     /* --- MTL-12: Shadow mapping attenuation (directional light only) --- */
-     "        if (scene.counts.y != 0 && lights[i].type == 0) {\n"
-     "            float4 lc = scene.shadowVP * float4(in.worldPos, 1.0);\n"
-     "            float3 suv = lc.xyz / lc.w;\n"
-     "            suv.xy = suv.xy * 0.5 + 0.5;\n"
-     "            suv.y = 1.0 - suv.y;\n"
-     "            if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
-     "                float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
+     "            float NdotL = max(dot(N, L), 0.0);\n"
+     "            if (scene.counts.y != 0 && lights[i].type == 0) {\n"
+     "                float4 lc = scene.shadowVP * float4(in.worldPos, 1.0);\n"
+     "                float3 suv = lc.xyz / lc.w;\n"
+     "                suv.xy = suv.xy * 0.5 + 0.5;\n"
+     "                suv.y = 1.0 - suv.y;\n"
+     "                if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
+     "                    float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
      "scene.fogParams.z);\n"
-     "                atten *= mix(0.15, 1.0, shadow);\n"
+     "                    atten *= mix(0.15, 1.0, shadow);\n"
+     "                }\n"
+     "            }\n"
+     "            if (NdotL <= 0.0)\n"
+     "                continue;\n"
+     "            float3 H = normalize(L + V);\n"
+     "            float NdotV = max(dot(N, V), 0.001);\n"
+     "            float NdotH = max(dot(N, H), 0.0);\n"
+     "            float VdotH = max(dot(V, H), 0.0);\n"
+     "            float3 F0 = mix(float3(0.04), baseColor, metallic);\n"
+     "            float3 F = fresnel_schlick(VdotH, F0);\n"
+     "            float D = distribution_ggx(NdotH, roughness);\n"
+     "            float G = geometry_smith(NdotV, NdotL, roughness);\n"
+     "            float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
+     "            float3 kS = F;\n"
+     "            float3 kD = (1.0 - kS) * (1.0 - metallic);\n"
+     "            float3 diffuse = kD * baseColor / 3.14159265;\n"
+     "            float3 radiance = lights[i].color.rgb * lights[i].intensity * atten;\n"
+     "            result += (diffuse + specular) * radiance * NdotL;\n"
+     "        }\n"
+     "    } else {\n"
+     "        result = scene.ambientColor.rgb * baseColor;\n"
+     "        float3 specColor = material.specularColor.rgb;\n"
+     "        if (material.flags0.w != 0) {\n"
+     "            specColor *= specularTex.sample(texSampler, in.uv).rgb;\n"
+     "        }\n"
+     "        for (int i = 0; i < scene.counts.x; i++) {\n"
+     "            float3 L; float atten = 1.0;\n"
+     "            if (lights[i].type == 0) {\n"
+     "                L = normalize(-lights[i].direction.xyz);\n"
+     "            } else if (lights[i].type == 1) {\n"
+     "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+     "            } else if (lights[i].type == 3) {\n"
+     "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+     "                float d = length(tl); L = tl / max(d, 0.0001);\n"
+     "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+     "                float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+     "                if (spotDot < lights[i].outer_cos) {\n"
+     "                    atten = 0.0;\n"
+     "                } else if (spotDot < lights[i].inner_cos) {\n"
+     "                    float t = (spotDot - lights[i].outer_cos) / "
+     "(lights[i].inner_cos - lights[i].outer_cos);\n"
+     "                    atten *= t * t * (3.0 - 2.0 * t);\n"
+     "                }\n"
+     "            } else {\n"
+     "                result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
+     "                continue;\n"
+     "            }\n"
+     "            float NdotL = max(dot(N, L), 0.0);\n"
+     "            if (scene.counts.y != 0 && lights[i].type == 0) {\n"
+     "                float4 lc = scene.shadowVP * float4(in.worldPos, 1.0);\n"
+     "                float3 suv = lc.xyz / lc.w;\n"
+     "                suv.xy = suv.xy * 0.5 + 0.5;\n"
+     "                suv.y = 1.0 - suv.y;\n"
+     "                if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
+     "                    float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
+     "scene.fogParams.z);\n"
+     "                    atten *= mix(0.15, 1.0, shadow);\n"
+     "                }\n"
+     "            }\n"
+     "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
+     "baseColor * atten;\n"
+     "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
+     "                float3 H = normalize(L + V);\n"
+     "                float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
+     "                result += lights[i].color.rgb * lights[i].intensity * spec * "
+     "specColor * atten;\n"
      "            }\n"
      "        }\n"
-     "        result += lights[i].color.rgb * lights[i].intensity * NdotL * "
-     "baseColor * atten;\n"
-     "        if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
-     "            float3 H = normalize(L + V);\n"
-     "            float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
-     "            result += lights[i].color.rgb * lights[i].intensity * spec * "
-     "specColor * atten;\n"
-     "        }\n"
-     "    }\n"
-     /* --- MTL-06: Emissive map --- */
-     "    float3 emissive = material.emissiveColor.rgb;\n"
-     "    if (material.flags1.x != 0) {\n"
-     "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
      "    }\n"
      "    result += emissive;\n"
      "    if (material.flags1.y != 0) {\n"
@@ -578,7 +678,6 @@ static NSString *metal_shader_source =
      "        float3 envColor = envTex.sample(envSampler, R).rgb;\n"
      "        result = mix(result, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
      "    }\n"
-     /* --- MTL-07: Linear distance fog --- */
      "    if (scene.fogColor.a > 0.5) {\n"
      "        float dist = length(in.worldPos - scene.cameraPosition.xyz);\n"
      "        float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
@@ -586,22 +685,20 @@ static NSString *metal_shader_source =
      "0.0, 1.0);\n"
      "        result = mix(result, scene.fogColor.rgb, fogFactor);\n"
      "    }\n"
-     "    /* Shading model post-processing */\n"
      "    if (material.shadingModel == 1) {\n"
      "        float bands = material.customParams[0] > 0.5 ? material.customParams[0] : 4.0;\n"
      "        result = floor(result * bands) / bands;\n"
      "    } else if (material.shadingModel == 4) {\n"
-     "        float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
      "        float ndv = max(dot(N, V), 0.0);\n"
      "        float power = material.customParams[0] > 0.1 ? material.customParams[0] : 3.0;\n"
      "        float bias = material.customParams[1];\n"
      "        float fresnel = pow(1.0 - ndv, power) + bias;\n"
-     "        texAlpha *= clamp(fresnel, 0.0, 1.0);\n"
+     "        finalAlpha *= clamp(fresnel, 0.0, 1.0);\n"
      "    } else if (material.shadingModel == 5) {\n"
      "        float strength = material.customParams[0] > 0.0 ? material.customParams[0] : 2.0;\n"
      "        result += emissive * (strength - 1.0);\n"
      "    }\n"
-     "    out.color = float4(result, material.scalars.x * texAlpha);\n"
+     "    out.color = float4(result, finalAlpha);\n"
      "    out.motion = motion_output(in);\n"
      "    return out;\n"
      "}\n";
@@ -648,8 +745,11 @@ typedef struct {
     float sc[4];
     float ec[4];
     float scalars[4];
+    float pbrScalars0[4];
+    float pbrScalars1[4];
     int32_t flags0[4];
     int32_t flags1[4];
+    int32_t pbrFlags[4];
     float splatScales[4];
     int32_t shadingModel;
     float customParams[8];
@@ -1893,6 +1993,12 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.ec[3] = 0;
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
+        mat.pbrScalars0[0] = cmd->metallic;
+        mat.pbrScalars0[1] = cmd->roughness;
+        mat.pbrScalars0[2] = cmd->ao;
+        mat.pbrScalars0[3] = cmd->emissive_intensity;
+        mat.pbrScalars1[0] = cmd->normal_scale;
+        mat.pbrScalars1[1] = cmd->alpha_cutoff;
         mat.flags0[0] = cmd->texture ? 1 : 0;
         mat.flags0[1] = cmd->unlit;
         mat.flags0[2] = cmd->normal_map ? 1 : 0;
@@ -1900,6 +2006,10 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.flags1[0] = cmd->emissive_map ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
         mat.flags1[2] = cmd->has_splat;
+        mat.pbrFlags[0] = cmd->workflow;
+        mat.pbrFlags[1] = cmd->alpha_mode;
+        mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
+        mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
         if (cmd->has_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
@@ -1911,6 +2021,8 @@ static void metal_submit_draw(void *ctx_ptr,
         /* Bind default textures to all shader slots. */
         for (int slot = 0; slot < 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:11];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:12];
         [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
         /* MTL-12: Bind shadow depth texture to slot 4 */
         if (ctx.shadowActive && ctx.shadowDepthTexture)
@@ -1941,6 +2053,16 @@ static void metal_submit_draw(void *ctx_ptr,
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
+        }
+        if (cmd->metallic_roughness_map) {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:11];
+        }
+        if (cmd->ao_map) {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:12];
         }
         /* MTL-14: Terrain splat textures (slots 5-9) */
         if (cmd->has_splat && cmd->splat_map) {
@@ -2396,6 +2518,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.ec[2] = cmd->emissive_color[2];
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
+        mat.pbrScalars0[0] = cmd->metallic;
+        mat.pbrScalars0[1] = cmd->roughness;
+        mat.pbrScalars0[2] = cmd->ao;
+        mat.pbrScalars0[3] = cmd->emissive_intensity;
+        mat.pbrScalars1[0] = cmd->normal_scale;
+        mat.pbrScalars1[1] = cmd->alpha_cutoff;
         mat.flags0[0] = cmd->texture ? 1 : 0;
         mat.flags0[1] = cmd->unlit;
         mat.flags0[2] = cmd->normal_map ? 1 : 0;
@@ -2403,6 +2531,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.flags1[0] = cmd->emissive_map ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
         mat.flags1[2] = cmd->has_splat;
+        mat.pbrFlags[0] = cmd->workflow;
+        mat.pbrFlags[1] = cmd->alpha_mode;
+        mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
+        mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
         if (cmd->has_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
@@ -2459,6 +2591,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         /* Default textures + sampler */
         for (int slot = 0; slot < 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:11];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:12];
         [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
         if (ctx.shadowActive && ctx.shadowDepthTexture)
             [ctx.encoder setFragmentTexture:ctx.shadowDepthTexture atIndex:4];
@@ -2486,6 +2620,16 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
+        }
+        if (cmd->metallic_roughness_map) {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:11];
+        }
+        if (cmd->ao_map) {
+            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
+            if (tex)
+                [ctx.encoder setFragmentTexture:tex atIndex:12];
         }
         if (cmd->has_splat && cmd->splat_map) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);

@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Uses existing rt_json parser for JSON content
 //   - Supports .glb binary container (magic 0x46546C67)
-//   - PBR metallic-roughness → Blinn-Phong material conversion
+//   - Preserves glTF metallic-roughness materials on Material3D's native PBR surface
 //   - Mesh primitives with POSITION, NORMAL, TEXCOORD_0 attributes
 // Ownership/Lifetime:
 //   - All extracted objects are GC-managed
@@ -50,11 +50,21 @@ extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
 extern void *rt_pixels_load(void *path);
+extern void *rt_material3d_new_pbr(double r, double g, double b);
 extern void rt_material3d_set_texture(void *obj, void *pixels);
 extern void rt_material3d_set_normal_map(void *obj, void *pixels);
+extern void rt_material3d_set_metallic(void *obj, double value);
+extern void rt_material3d_set_roughness(void *obj, double value);
+extern void rt_material3d_set_ao(void *obj, double value);
+extern void rt_material3d_set_emissive_intensity(void *obj, double value);
+extern void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
+extern void rt_material3d_set_ao_map(void *obj, void *pixels);
 extern void rt_material3d_set_specular_map(void *obj, void *pixels);
 extern void rt_material3d_set_emissive_map(void *obj, void *pixels);
 extern void rt_material3d_set_alpha(void *obj, double alpha);
+extern void rt_material3d_set_normal_scale(void *obj, double value);
+extern void rt_material3d_set_alpha_mode(void *obj, int64_t mode);
+extern void rt_material3d_set_double_sided(void *obj, int8_t enabled);
 
 //===----------------------------------------------------------------------===//
 // Asset container
@@ -762,23 +772,34 @@ void *rt_gltf_load(rt_string path) {
         asset->materials = (void **)calloc((size_t)mat_count, sizeof(void *));
         for (int i = 0; i < mat_count && asset->materials; i++) {
             void *mat_json = rt_seq_get(mats_arr, (int64_t)i);
-            void *mat = rt_material3d_new();
-            if (!mat)
-                continue;
+            void *mat = NULL;
 
-            // PBR metallic-roughness → Blinn-Phong
+            // PBR metallic-roughness
             void *pbr = jget(mat_json, "pbrMetallicRoughness");
             if (pbr) {
+                double base_r = 1.0;
+                double base_g = 1.0;
+                double base_b = 1.0;
+                double base_a = 1.0;
+                double metallic = jnum(pbr, "metallicFactor", 1.0);
+                double roughness = jnum(pbr, "roughnessFactor", 1.0);
                 void *bcf = jarr(pbr, "baseColorFactor");
                 if (bcf && jarr_len(bcf) >= 3) {
-                    double r = jvalue_num(rt_seq_get(bcf, 0), 0.0);
-                    double g = jvalue_num(rt_seq_get(bcf, 1), 0.0);
-                    double b = jvalue_num(rt_seq_get(bcf, 2), 0.0);
-                    rt_material3d_set_color(mat, r, g, b);
+                    base_r = jvalue_num(rt_seq_get(bcf, 0), base_r);
+                    base_g = jvalue_num(rt_seq_get(bcf, 1), base_g);
+                    base_b = jvalue_num(rt_seq_get(bcf, 2), base_b);
                     if (jarr_len(bcf) >= 4) {
-                        double a = jvalue_num(rt_seq_get(bcf, 3), 1.0);
-                        if (a < 1.0)
-                            rt_material3d_set_alpha(mat, a);
+                        base_a = jvalue_num(rt_seq_get(bcf, 3), base_a);
+                    }
+                }
+                {
+                    void *pbr_mat = rt_material3d_new_pbr(base_r, base_g, base_b);
+                    if (pbr_mat) {
+                        mat = pbr_mat;
+                        rt_material3d_set_metallic(mat, metallic);
+                        rt_material3d_set_roughness(mat, roughness);
+                        if (base_a < 1.0)
+                            rt_material3d_set_alpha(mat, base_a);
                     }
                 }
                 {
@@ -793,14 +814,13 @@ void *rt_gltf_load(rt_string path) {
                     int64_t tex_idx = jint(mr_tex, "index", -1);
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                         texture_images[tex_idx])
-                        rt_material3d_set_specular_map(mat, texture_images[tex_idx]);
+                        rt_material3d_set_metallic_roughness_map(mat, texture_images[tex_idx]);
                 }
-                double roughness = jnum(pbr, "roughnessFactor", 1.0);
-                double shininess = pow(1.0 - roughness, 2.0) * 256.0;
-                if (shininess < 1.0)
-                    shininess = 1.0;
-                rt_material3d_set_shininess(mat, shininess);
             }
+            if (!mat)
+                mat = rt_material3d_new();
+            if (!mat)
+                continue;
 
             // Emissive
             void *ef = jarr(mat_json, "emissiveFactor");
@@ -810,6 +830,14 @@ void *rt_gltf_load(rt_string path) {
                 double eb = jvalue_num(rt_seq_get(ef, 2), 0.0);
                 rt_material3d_set_emissive_color(mat, er, eg, eb);
             }
+            {
+                void *extensions = jget(mat_json, "extensions");
+                void *emissive_strength =
+                    extensions ? jget(extensions, "KHR_materials_emissive_strength") : NULL;
+                if (emissive_strength)
+                    rt_material3d_set_emissive_intensity(
+                        mat, jnum(emissive_strength, "emissiveStrength", 1.0));
+            }
 
             {
                 void *normal_tex = jget(mat_json, "normalTexture");
@@ -817,6 +845,17 @@ void *rt_gltf_load(rt_string path) {
                 if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                     texture_images[tex_idx])
                     rt_material3d_set_normal_map(mat, texture_images[tex_idx]);
+                if (normal_tex)
+                    rt_material3d_set_normal_scale(mat, jnum(normal_tex, "scale", 1.0));
+            }
+            {
+                void *occlusion_tex = jget(mat_json, "occlusionTexture");
+                int64_t tex_idx = jint(occlusion_tex, "index", -1);
+                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
+                    texture_images[tex_idx])
+                    rt_material3d_set_ao_map(mat, texture_images[tex_idx]);
+                if (occlusion_tex)
+                    rt_material3d_set_ao(mat, jnum(occlusion_tex, "strength", 1.0));
             }
             {
                 void *emissive_tex = jget(mat_json, "emissiveTexture");
@@ -825,6 +864,18 @@ void *rt_gltf_load(rt_string path) {
                     texture_images[tex_idx])
                     rt_material3d_set_emissive_map(mat, texture_images[tex_idx]);
             }
+            {
+                const char *alpha_mode = jstr(mat_json, "alphaMode");
+                if (alpha_mode && strcmp(alpha_mode, "MASK") == 0) {
+                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_MASK);
+                    ((rt_material3d *)mat)->alpha_cutoff = jnum(mat_json, "alphaCutoff", 0.5);
+                } else if (alpha_mode && strcmp(alpha_mode, "BLEND") == 0) {
+                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+                } else {
+                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+                }
+            }
+            rt_material3d_set_double_sided(mat, (int8_t)jint(mat_json, "doubleSided", 0));
 
             asset->materials[i] = mat;
             asset->material_count = i + 1;

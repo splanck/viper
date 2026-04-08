@@ -1,5 +1,9 @@
 # Plan 09: NavAgent3D
 
+## Status in Tree
+
+Implemented.
+
 ## Goal
 
 Add the gameplay-facing agent layer on top of `NavMesh3D`.
@@ -14,8 +18,9 @@ The existing navmesh surface is a good geometry/pathfinding primitive. What it d
 
 ## Verified Current State
 
-- `NavMesh3D` currently supports build, pathfinding, point sampling, walkability, slope tuning, and debug draw.
-- there is no `NavAgent3D`, steering, avoidance, off-mesh links, or integration with `Character3D`.
+- `NavMesh3D` supports build, pathfinding, point sampling, walkability, slope tuning, and debug draw.
+- `NavAgent3D` now exists as the gameplay-facing layer above it, with target ownership, path-follow state, periodic repath, and bindings for `Character3D` and `SceneNode3D`.
+- lightweight local avoidance and off-mesh links are still intentionally absent.
 
 ## Status of Older Plans
 

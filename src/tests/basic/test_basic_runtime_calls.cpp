@@ -460,6 +460,131 @@ PRINT mode
 )"));
 }
 
+TEST(BasicRuntimeCalls, NavAgent3DSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM mesh AS OBJECT
+DIM nav AS OBJECT
+DIM world AS OBJECT
+DIM agent AS OBJECT
+DIM character AS OBJECT
+DIM node AS OBJECT
+DIM target AS OBJECT
+DIM pos AS OBJECT
+DIM vel AS OBJECT
+DIM hasPath AS BOOLEAN
+DIM dist AS DOUBLE
+mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0)
+nav = Viper.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
+world = Viper.Graphics3D.Physics3DWorld.New(0.0, -9.8, 0.0)
+character = Viper.Graphics3D.Character3D.New(0.4, 1.8, 80.0)
+character.World = world
+node = Viper.Graphics3D.SceneNode3D.New()
+agent = Viper.Graphics3D.NavAgent3D.New(nav, 0.4, 1.8)
+agent.BindCharacter(character)
+agent.BindNode(node)
+agent.DesiredSpeed = 3.5
+agent.StoppingDistance = 0.25
+agent.AutoRepath = 1
+target = Viper.Math.Vec3.New(4.0, 0.0, 4.0)
+agent.SetTarget(target)
+agent.Update(0.1)
+pos = agent.Position
+vel = agent.Velocity
+vel = agent.DesiredVelocity
+hasPath = agent.HasPath
+dist = agent.RemainingDistance
+agent.Warp(Viper.Math.Vec3.New(0.0, 0.0, 0.0))
+agent.ClearTarget()
+PRINT dist
+)"));
+}
+
+TEST(BasicRuntimeCalls, Audio3DObjectSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM ok AS BOOLEAN
+DIM sound AS OBJECT
+DIM cam AS OBJECT
+DIM scene AS OBJECT
+DIM parent AS OBJECT
+DIM node AS OBJECT
+DIM listener AS OBJECT
+DIM source AS OBJECT
+DIM pos AS OBJECT
+DIM vel AS OBJECT
+DIM voice AS INTEGER
+ok = Viper.Sound.Audio.IsAvailable()
+cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
+Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
+scene = Viper.Graphics3D.Scene3D.New()
+parent = Viper.Graphics3D.SceneNode3D.New()
+node = Viper.Graphics3D.SceneNode3D.New()
+Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0)
+Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
+Viper.Graphics3D.Scene3D.Add(scene, parent)
+listener = Viper.Graphics3D.AudioListener3D.New()
+listener.BindCamera(cam)
+listener.IsActive = 1
+source = Viper.Graphics3D.AudioSource3D.New(Viper.Sound.Synth.Tone(440, 120, 80))
+source.BindNode(node)
+source.MaxDistance = 18.0
+source.Volume = 70
+source.Looping = 0
+Viper.Graphics3D.Scene3D.SyncBindings(scene, 0.016)
+Viper.Graphics3D.Audio3D.SyncBindings(0.016)
+pos = listener.Position
+pos = source.Position
+vel = listener.Velocity
+vel = source.Velocity
+voice = source.Play()
+source.Stop()
+listener.ClearCameraBinding()
+listener.BindNode(node)
+listener.ClearNodeBinding()
+source.ClearNodeBinding()
+PRINT voice
+)"));
+}
+
+TEST(BasicRuntimeCalls, Material3DPBRSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM base AS OBJECT
+DIM inst AS OBJECT
+DIM tex AS OBJECT
+DIM metallic AS DOUBLE
+DIM roughness AS DOUBLE
+DIM ao AS DOUBLE
+DIM emissiveIntensity AS DOUBLE
+DIM normalScale AS DOUBLE
+DIM alphaMode AS INTEGER
+DIM doubleSided AS BOOLEAN
+base = Viper.Graphics3D.Material3D.NewPBR(0.8, 0.7, 0.6)
+tex = Viper.Graphics.Pixels.New(1, 1)
+base.SetAlbedoMap(tex)
+base.SetMetallic(0.9)
+base.SetRoughness(0.15)
+base.SetAO(0.85)
+base.SetEmissiveIntensity(2.5)
+base.SetNormalMap(tex)
+base.SetMetallicRoughnessMap(tex)
+base.SetAOMap(tex)
+base.SetEmissiveMap(tex)
+base.SetNormalScale(0.75)
+base.AlphaMode = 2
+base.DoubleSided = 1
+inst = base.MakeInstance()
+inst.Roughness = 0.55
+inst = inst.Clone()
+metallic = inst.Metallic
+roughness = inst.Roughness
+ao = inst.AO
+emissiveIntensity = inst.EmissiveIntensity
+normalScale = inst.NormalScale
+alphaMode = inst.AlphaMode
+doubleSided = inst.DoubleSided
+PRINT metallic
+)"));
+}
+
 TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM pat AS OBJECT

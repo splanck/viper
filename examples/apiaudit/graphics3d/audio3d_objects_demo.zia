@@ -1,0 +1,52 @@
+module Audio3DObjectsDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Sound;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Audio3D Objects Demo ===");
+
+    var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(
+        cam, Vec3.New(0.0, 2.0, 6.0), Vec3.New(0.0, 1.5, 0.0), Vec3.New(0.0, 1.0, 0.0));
+
+    var scene = Scene3D.New();
+    var parent = SceneNode3D.New();
+    var node = SceneNode3D.New();
+    SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0);
+    SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0);
+    SceneNode3D.AddChild(parent, node);
+    Scene3D.Add(scene, parent);
+
+    var listener = AudioListener3D.New();
+    listener.BindCamera(cam);
+    listener.IsActive = true;
+
+    var source = AudioSource3D.New(Synth.Tone(523, 220, 80));
+    source.BindNode(node);
+    source.MaxDistance = 20.0;
+    source.Volume = 75;
+
+    Scene3D.SyncBindings(scene, 0.25);
+
+    var listenerPos = listener.Position;
+    var sourcePos = source.Position;
+    Say("Listener Z = " + toString(Vec3.get_Z(listenerPos)));
+    Say("Source X = " + toString(Vec3.get_X(sourcePos)));
+    Say("Source Z = " + toString(Vec3.get_Z(sourcePos)));
+
+    if (Audio.IsAvailable()) {
+        if (Audio.Init() != 0) {
+            var voice = source.Play();
+            Say("VoiceId = " + toString(voice));
+            Say("IsPlaying = " + toString(source.IsPlaying));
+            source.Stop();
+        } else {
+            Say("Audio init failed on this machine");
+        }
+    } else {
+        Say("Audio backend unavailable on this machine");
+    }
+}

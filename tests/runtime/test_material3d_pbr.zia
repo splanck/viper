@@ -1,0 +1,98 @@
+module TestMaterial3DPBR;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+func start() {
+    var path = "tests/runtime/_tmp_material3d_pbr.vscn";
+    var scene = Scene3D.New();
+    var node = SceneNode3D.New();
+    var mesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var mat = Material3D.NewPBR(0.6, 0.4, 0.2);
+
+    Material3D.set_Metallic(mat, 0.7);
+    Material3D.set_Roughness(mat, 0.3);
+    Material3D.set_AO(mat, 0.85);
+    Material3D.set_EmissiveIntensity(mat, 1.5);
+    Material3D.set_NormalScale(mat, 0.55);
+    Material3D.set_Alpha(mat, 0.6);
+    Material3D.set_AlphaMode(mat, 2);
+    Material3D.set_DoubleSided(mat, true);
+
+    var inst = Material3D.MakeInstance(mat);
+    Material3D.set_Roughness(inst, 0.9);
+    Material3D.set_DoubleSided(inst, false);
+    if (Material3D.get_Roughness(mat) < 0.29 || Material3D.get_Roughness(mat) > 0.31) {
+        Say("FAIL: MakeInstance should keep scalar overrides independent");
+        return;
+    }
+    if (Material3D.get_DoubleSided(mat) != true) {
+        Say("FAIL: MakeInstance should not mutate the source material");
+        return;
+    }
+
+    var clone = Material3D.Clone(mat);
+    if (Material3D.get_Metallic(clone) < 0.69 || Material3D.get_Metallic(clone) > 0.71) {
+        Say("FAIL: Clone should preserve metallic");
+        return;
+    }
+    if (Material3D.get_AlphaMode(clone) != 2) {
+        Say("FAIL: Clone should preserve alpha mode");
+        return;
+    }
+
+    SceneNode3D.set_Mesh(node, mesh);
+    SceneNode3D.set_Material(node, mat);
+    Scene3D.Add(scene, node);
+    if (Scene3D.Save(scene, path) != 1) {
+        Say("FAIL: Scene3D.Save should create the PBR fixture asset");
+        return;
+    }
+
+    var model = Model3D.Load(path);
+    if (model == null) {
+        Say("FAIL: Model3D.Load should read the saved PBR fixture");
+        return;
+    }
+    if (Model3D.get_MaterialCount(model) != 1) {
+        Say("FAIL: Model3D should preserve one shared material");
+        return;
+    }
+
+    var loaded = Model3D.GetMaterial(model, 0);
+    if (loaded == null) {
+        Say("FAIL: Model3D.GetMaterial should return the saved PBR material");
+        return;
+    }
+    if (Material3D.get_Metallic(loaded) < 0.69 || Material3D.get_Metallic(loaded) > 0.71) {
+        Say("FAIL: Metallic should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_Roughness(loaded) < 0.29 || Material3D.get_Roughness(loaded) > 0.31) {
+        Say("FAIL: Roughness should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_AO(loaded) < 0.84 || Material3D.get_AO(loaded) > 0.86) {
+        Say("FAIL: AO should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_EmissiveIntensity(loaded) < 1.49 ||
+        Material3D.get_EmissiveIntensity(loaded) > 1.51) {
+        Say("FAIL: EmissiveIntensity should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_NormalScale(loaded) < 0.54 || Material3D.get_NormalScale(loaded) > 0.56) {
+        Say("FAIL: NormalScale should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_AlphaMode(loaded) != 2) {
+        Say("FAIL: AlphaMode should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+    if (Material3D.get_DoubleSided(loaded) != true) {
+        Say("FAIL: DoubleSided should round-trip through Scene3D.Save/Model3D.Load");
+        return;
+    }
+
+    Say("PASS");
+}

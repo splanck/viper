@@ -222,6 +222,60 @@ static void mat4_d2f(const double *src, float *dst) {
         dst[i] = (float)src[i];
 }
 
+static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd)
+        return 0;
+    if (cmd->alpha < 0.999f)
+        return 1;
+    return (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR &&
+            cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND);
+}
+
+static int8_t canvas3d_material_backface_cull(const rt_canvas3d *c, const rt_material3d *mat) {
+    if (!c)
+        return 0;
+    return (int8_t)(c->backface_cull && !(mat && mat->double_sided));
+}
+
+static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd_t *cmd) {
+    if (!mat || !cmd)
+        return;
+
+    cmd->diffuse_color[0] = (float)mat->diffuse[0];
+    cmd->diffuse_color[1] = (float)mat->diffuse[1];
+    cmd->diffuse_color[2] = (float)mat->diffuse[2];
+    cmd->diffuse_color[3] = (float)mat->diffuse[3];
+    cmd->specular[0] = (float)mat->specular[0];
+    cmd->specular[1] = (float)mat->specular[1];
+    cmd->specular[2] = (float)mat->specular[2];
+    cmd->shininess = (float)mat->shininess;
+    cmd->alpha = (float)mat->alpha;
+    cmd->unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
+    cmd->texture = mat->texture;
+    cmd->normal_map = mat->normal_map;
+    cmd->specular_map = mat->specular_map;
+    cmd->emissive_map = mat->emissive_map;
+    cmd->metallic_roughness_map = mat->metallic_roughness_map;
+    cmd->ao_map = mat->ao_map;
+    cmd->emissive_color[0] = (float)mat->emissive[0];
+    cmd->emissive_color[1] = (float)mat->emissive[1];
+    cmd->emissive_color[2] = (float)mat->emissive[2];
+    cmd->metallic = (float)mat->metallic;
+    cmd->roughness = (float)mat->roughness;
+    cmd->ao = (float)mat->ao;
+    cmd->emissive_intensity = (float)mat->emissive_intensity;
+    cmd->normal_scale = (float)mat->normal_scale;
+    cmd->workflow = mat->workflow;
+    cmd->alpha_mode = mat->alpha_mode;
+    cmd->alpha_cutoff = (float)mat->alpha_cutoff;
+    cmd->double_sided = mat->double_sided ? 1 : 0;
+    cmd->env_map = mat->env_map;
+    cmd->reflectivity = (float)mat->reflectivity;
+    cmd->shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;
+    for (int pi = 0; pi < 8; pi++)
+        cmd->custom_params[pi] = (float)mat->custom_params[pi];
+}
+
 static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
     if (!c || needed <= 0)
         return 0;
@@ -669,7 +723,7 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
         return 0;
 
     for (int32_t i = 0; i < count; i++) {
-        if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].cmd.alpha < 1.0f)
+        if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || canvas3d_cmd_requires_blend(&cmds[i].cmd))
             continue;
         canvas3d_accumulate_deferred_world_bounds(&cmds[i], world_min, world_max, &has_bounds);
     }
@@ -1488,28 +1542,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                     dd->cmd.model_matrix,
                                     dd->cmd.prev_model_matrix,
                                     &dd->cmd.has_prev_model_matrix);
-    dd->cmd.diffuse_color[0] = (float)mat->diffuse[0];
-    dd->cmd.diffuse_color[1] = (float)mat->diffuse[1];
-    dd->cmd.diffuse_color[2] = (float)mat->diffuse[2];
-    dd->cmd.diffuse_color[3] = (float)mat->diffuse[3];
-    dd->cmd.specular[0] = (float)mat->specular[0];
-    dd->cmd.specular[1] = (float)mat->specular[1];
-    dd->cmd.specular[2] = (float)mat->specular[2];
-    dd->cmd.shininess = (float)mat->shininess;
-    dd->cmd.alpha = (float)mat->alpha;
-    dd->cmd.unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
-    dd->cmd.texture = mat->texture;
-    dd->cmd.normal_map = mat->normal_map;
-    dd->cmd.specular_map = mat->specular_map;
-    dd->cmd.emissive_map = mat->emissive_map;
-    dd->cmd.emissive_color[0] = (float)mat->emissive[0];
-    dd->cmd.emissive_color[1] = (float)mat->emissive[1];
-    dd->cmd.emissive_color[2] = (float)mat->emissive[2];
-    dd->cmd.env_map = mat->env_map;
-    dd->cmd.reflectivity = (float)mat->reflectivity;
-    dd->cmd.shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;
-    for (int pi = 0; pi < 8; pi++)
-        dd->cmd.custom_params[pi] = (float)mat->custom_params[pi];
+    canvas3d_fill_material_cmd(mat, &dd->cmd);
 
     /* Consume pending terrain splat data (if set by terrain draw path) */
     dd->cmd.has_splat = c->pending_has_splat;
@@ -1545,7 +1578,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];
     dd->wireframe = c->wireframe;
-    dd->backface_cull = c->backface_cull;
+    dd->backface_cull = canvas3d_material_backface_cull(c, mat);
     dd->has_local_bounds = 1;
     memcpy(dd->local_bounds_min, mesh->aabb_min, sizeof(dd->local_bounds_min));
     memcpy(dd->local_bounds_max, mesh->aabb_max, sizeof(dd->local_bounds_max));
@@ -1606,28 +1639,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.geometry_revision = mesh->geometry_revision;
     base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
         base_cmd.model_matrix[15] = 1.0f;
-    base_cmd.diffuse_color[0] = (float)mat->diffuse[0];
-    base_cmd.diffuse_color[1] = (float)mat->diffuse[1];
-    base_cmd.diffuse_color[2] = (float)mat->diffuse[2];
-    base_cmd.diffuse_color[3] = (float)mat->diffuse[3];
-    base_cmd.specular[0] = (float)mat->specular[0];
-    base_cmd.specular[1] = (float)mat->specular[1];
-    base_cmd.specular[2] = (float)mat->specular[2];
-    base_cmd.shininess = (float)mat->shininess;
-    base_cmd.alpha = (float)mat->alpha;
-    base_cmd.unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
-    base_cmd.texture = mat->texture;
-    base_cmd.normal_map = mat->normal_map;
-    base_cmd.specular_map = mat->specular_map;
-    base_cmd.emissive_map = mat->emissive_map;
-    base_cmd.emissive_color[0] = (float)mat->emissive[0];
-    base_cmd.emissive_color[1] = (float)mat->emissive[1];
-    base_cmd.emissive_color[2] = (float)mat->emissive[2];
-    base_cmd.env_map = mat->env_map;
-    base_cmd.reflectivity = (float)mat->reflectivity;
-    base_cmd.shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;
-    for (int pi = 0; pi < 8; pi++)
-        base_cmd.custom_params[pi] = (float)mat->custom_params[pi];
+    canvas3d_fill_material_cmd(mat, &base_cmd);
     base_cmd.bone_palette = mesh->bone_palette;
     base_cmd.prev_bone_palette = mesh->prev_bone_palette;
     base_cmd.bone_count = mesh->bone_count;
@@ -1637,7 +1649,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.prev_morph_weights = mesh->prev_morph_weights;
     base_cmd.morph_shape_count = mesh->morph_shape_count;
 
-    if (base_cmd.alpha < 1.0f || !c->backend->submit_draw_instanced) {
+    if (canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced) {
         for (int32_t i = 0; i < instance_count; i++) {
             vgfx3d_draw_cmd_t per_instance = base_cmd;
             memcpy(per_instance.model_matrix,
@@ -1659,7 +1671,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                         0,
                                         1,
                                         c->wireframe,
-                                        c->backface_cull,
+                                        canvas3d_material_backface_cull(c, mat),
                                         canvas3d_compute_sort_key(c, per_instance.model_matrix),
                                         mesh->aabb_min,
                                         mesh->aabb_max);
@@ -1687,7 +1699,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                     instance_count,
                                     1,
                                     c->wireframe,
-                                    c->backface_cull,
+                                    canvas3d_material_backface_cull(c, mat),
                                     batch_sort_key,
                                     mesh->aabb_min,
                                     mesh->aabb_max);
@@ -1851,7 +1863,8 @@ void rt_canvas3d_end(void *obj) {
                                          c->shadow_rt->height,
                                          light_vp);
                 for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].cmd.alpha < 1.0f)
+                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN ||
+                        canvas3d_cmd_requires_blend(&cmds[i].cmd))
                         continue;
                     canvas3d_shadow_deferred(c, &cmds[i]);
                 }
@@ -1867,7 +1880,8 @@ void rt_canvas3d_end(void *obj) {
              * visibility rejection or GPU occlusion queries. */
             int32_t opaque_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].cmd.alpha >= 1.0f)
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
+                    !canvas3d_cmd_requires_blend(&cmds[i].cmd))
                     opaque_count++;
             }
             if (opaque_count > 0 &&
@@ -1875,7 +1889,8 @@ void rt_canvas3d_end(void *obj) {
                 deferred_draw_t *opaque = (deferred_draw_t *)c->trans_cmds;
                 int32_t oi = 0;
                 for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].cmd.alpha >= 1.0f)
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
+                        !canvas3d_cmd_requires_blend(&cmds[i].cmd))
                         opaque[oi++] = cmds[i];
                 }
                 qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
@@ -1884,7 +1899,8 @@ void rt_canvas3d_end(void *obj) {
             }
         } else {
             for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].cmd.alpha >= 1.0f)
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
+                    !canvas3d_cmd_requires_blend(&cmds[i].cmd))
                     canvas3d_submit_deferred(c, &cmds[i]);
             }
         }
@@ -1892,7 +1908,8 @@ void rt_canvas3d_end(void *obj) {
         {
             int32_t trans_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].cmd.alpha < 1.0f)
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
+                    canvas3d_cmd_requires_blend(&cmds[i].cmd))
                     trans_count++;
             }
             if (trans_count > 0 &&
@@ -1900,7 +1917,8 @@ void rt_canvas3d_end(void *obj) {
                 deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
                 int32_t ti = 0;
                 for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].cmd.alpha < 1.0f)
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
+                        canvas3d_cmd_requires_blend(&cmds[i].cmd))
                         trans[ti++] = cmds[i];
                 }
                 qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);

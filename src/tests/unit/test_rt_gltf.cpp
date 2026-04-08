@@ -9,6 +9,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gltf.h"
 #include "rt_pixels.h"
@@ -151,13 +152,19 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
         "  \"textures\": [{\"source\": 0}],\n"
         "  \"materials\": [{\n"
         "    \"pbrMetallicRoughness\": {\n"
-        "      \"baseColorFactor\": [1.0, 1.0, 1.0, 1.0],\n"
+        "      \"baseColorFactor\": [1.0, 1.0, 1.0, 0.7],\n"
         "      \"baseColorTexture\": {\"index\": 0},\n"
+        "      \"metallicFactor\": 0.75,\n"
+        "      \"roughnessFactor\": 0.25,\n"
         "      \"metallicRoughnessTexture\": {\"index\": 0}\n"
         "    },\n"
-        "    \"normalTexture\": {\"index\": 0},\n"
+        "    \"normalTexture\": {\"index\": 0, \"scale\": 0.6},\n"
+        "    \"occlusionTexture\": {\"index\": 0, \"strength\": 0.5},\n"
         "    \"emissiveTexture\": {\"index\": 0},\n"
-        "    \"emissiveFactor\": [1.0, 1.0, 1.0]\n"
+        "    \"emissiveFactor\": [1.0, 1.0, 1.0],\n"
+        "    \"doubleSided\": true,\n"
+        "    \"alphaMode\": \"BLEND\",\n"
+        "    \"extensions\": {\"KHR_materials_emissive_strength\": {\"emissiveStrength\": 1.8}}\n"
         "  }],\n"
         "  \"meshes\": [{\"primitives\": [{\n"
         "    \"attributes\": {\"POSITION\": 0, \"NORMAL\": 1, \"TEXCOORD_0\": 2},\n"
@@ -191,18 +198,35 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
 
     EXPECT_TRUE(mesh->vertices[1].pos[0] == 1.0f && mesh->vertices[2].uv[1] == 1.0f,
                 "GLTF.Load preserves vertex attributes");
+    EXPECT_TRUE(material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
+                "GLTF.Load preserves the PBR workflow");
     EXPECT_TRUE(material->texture != nullptr &&
                     rt_pixels_get(material->texture, 0, 0) == 0x336699FFll,
                 "GLTF.Load wires base color textures into Material3D");
     EXPECT_TRUE(material->normal_map != nullptr &&
                     rt_pixels_get(material->normal_map, 0, 0) == 0x336699FFll,
                 "GLTF.Load wires normal textures into Material3D");
-    EXPECT_TRUE(material->specular_map != nullptr &&
-                    rt_pixels_get(material->specular_map, 0, 0) == 0x336699FFll,
+    EXPECT_TRUE(material->metallic_roughness_map != nullptr &&
+                    rt_pixels_get(material->metallic_roughness_map, 0, 0) == 0x336699FFll,
                 "GLTF.Load wires metallic-roughness textures into Material3D");
+    EXPECT_TRUE(material->ao_map != nullptr &&
+                    rt_pixels_get(material->ao_map, 0, 0) == 0x336699FFll,
+                "GLTF.Load wires occlusion textures into Material3D");
     EXPECT_TRUE(material->emissive_map != nullptr &&
                     rt_pixels_get(material->emissive_map, 0, 0) == 0x336699FFll,
                 "GLTF.Load wires emissive textures into Material3D");
+    EXPECT_NEAR(material->metallic, 0.75, 0.001, "GLTF.Load preserves metallicFactor");
+    EXPECT_NEAR(material->roughness, 0.25, 0.001, "GLTF.Load preserves roughnessFactor");
+    EXPECT_NEAR(material->ao, 0.5, 0.001, "GLTF.Load preserves occlusion strength");
+    EXPECT_NEAR(material->normal_scale, 0.6, 0.001, "GLTF.Load preserves normal-map scale");
+    EXPECT_NEAR(material->alpha, 0.7, 0.001, "GLTF.Load preserves base-color alpha");
+    EXPECT_NEAR(material->emissive_intensity,
+                1.8,
+                0.001,
+                "GLTF.Load preserves emissive strength extension");
+    EXPECT_TRUE(material->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND,
+                "GLTF.Load preserves alphaMode");
+    EXPECT_TRUE(material->double_sided == 1, "GLTF.Load preserves doubleSided");
 }
 
 static void test_gltf_builds_scene_hierarchy_for_active_scene() {

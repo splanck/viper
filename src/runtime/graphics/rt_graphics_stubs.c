@@ -1549,6 +1549,26 @@ void *rt_material3d_new_textured(void *p) {
     return NULL;
 }
 
+void *rt_material3d_new_pbr(double r, double g, double b) {
+    (void)r;
+    (void)g;
+    (void)b;
+    rt_graphics_unavailable_("Material3D.NewPBR: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_material3d_clone(void *o) {
+    (void)o;
+    rt_graphics_unavailable_("Material3D.Clone: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_material3d_make_instance(void *o) {
+    (void)o;
+    rt_graphics_unavailable_("Material3D.MakeInstance: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Set the color of the material3d.
 void rt_material3d_set_color(void *o, double r, double g, double b) {
     (void)o;
@@ -1559,6 +1579,11 @@ void rt_material3d_set_color(void *o, double r, double g, double b) {
 
 /// @brief Set the texture of the material3d.
 void rt_material3d_set_texture(void *o, void *p) {
+    (void)o;
+    (void)p;
+}
+
+void rt_material3d_set_albedo_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
@@ -1577,6 +1602,46 @@ void rt_material3d_set_alpha(void *o, double a) {
 
 /// @brief Get the alpha of the material3d.
 double rt_material3d_get_alpha(void *o) {
+    (void)o;
+    return 1.0;
+}
+
+void rt_material3d_set_metallic(void *o, double v) {
+    (void)o;
+    (void)v;
+}
+
+double rt_material3d_get_metallic(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_material3d_set_roughness(void *o, double v) {
+    (void)o;
+    (void)v;
+}
+
+double rt_material3d_get_roughness(void *o) {
+    (void)o;
+    return 0.5;
+}
+
+void rt_material3d_set_ao(void *o, double v) {
+    (void)o;
+    (void)v;
+}
+
+double rt_material3d_get_ao(void *o) {
+    (void)o;
+    return 1.0;
+}
+
+void rt_material3d_set_emissive_intensity(void *o, double v) {
+    (void)o;
+    (void)v;
+}
+
+double rt_material3d_get_emissive_intensity(void *o) {
     (void)o;
     return 1.0;
 }
@@ -1604,6 +1669,16 @@ void rt_material3d_set_normal_map(void *o, void *p) {
     (void)p;
 }
 
+void rt_material3d_set_metallic_roughness_map(void *o, void *p) {
+    (void)o;
+    (void)p;
+}
+
+void rt_material3d_set_ao_map(void *o, void *p) {
+    (void)o;
+    (void)p;
+}
+
 /// @brief Set the specular map of the material3d.
 void rt_material3d_set_specular_map(void *o, void *p) {
     (void)o;
@@ -1622,6 +1697,36 @@ void rt_material3d_set_emissive_color(void *o, double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
+}
+
+void rt_material3d_set_normal_scale(void *o, double v) {
+    (void)o;
+    (void)v;
+}
+
+double rt_material3d_get_normal_scale(void *o) {
+    (void)o;
+    return 1.0;
+}
+
+void rt_material3d_set_alpha_mode(void *o, int64_t m) {
+    (void)o;
+    (void)m;
+}
+
+int64_t rt_material3d_get_alpha_mode(void *o) {
+    (void)o;
+    return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+}
+
+void rt_material3d_set_double_sided(void *o, int8_t e) {
+    (void)o;
+    (void)e;
+}
+
+int8_t rt_material3d_get_double_sided(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Calc the tangents of the mesh3d.
@@ -2913,6 +3018,170 @@ void rt_audio3d_update_voice(int64_t v, void *p, double md) {
     (void)md;
 }
 
+/// @brief Sync bound audio3d objects.
+void rt_audio3d_sync_bindings(double dt) {
+    (void)dt;
+}
+
+void *rt_audiolistener3d_new(void) {
+    return NULL;
+}
+
+void *rt_audiolistener3d_get_position(void *l) {
+    (void)l;
+    return NULL;
+}
+
+void rt_audiolistener3d_set_position(void *l, void *p) {
+    (void)l;
+    (void)p;
+}
+
+void rt_audiolistener3d_set_position_vec(void *l, double x, double y, double z) {
+    (void)l;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+void *rt_audiolistener3d_get_forward(void *l) {
+    (void)l;
+    return NULL;
+}
+
+void rt_audiolistener3d_set_forward(void *l, void *f) {
+    (void)l;
+    (void)f;
+}
+
+void *rt_audiolistener3d_get_velocity(void *l) {
+    (void)l;
+    return NULL;
+}
+
+void rt_audiolistener3d_set_velocity(void *l, void *v) {
+    (void)l;
+    (void)v;
+}
+
+int8_t rt_audiolistener3d_get_is_active(void *l) {
+    (void)l;
+    return 0;
+}
+
+void rt_audiolistener3d_set_is_active(void *l, int8_t a) {
+    (void)l;
+    (void)a;
+}
+
+void rt_audiolistener3d_bind_node(void *l, void *n) {
+    (void)l;
+    (void)n;
+}
+
+void rt_audiolistener3d_clear_node_binding(void *l) {
+    (void)l;
+}
+
+void rt_audiolistener3d_bind_camera(void *l, void *c) {
+    (void)l;
+    (void)c;
+}
+
+void rt_audiolistener3d_clear_camera_binding(void *l) {
+    (void)l;
+}
+
+void *rt_audiosource3d_new(void *s) {
+    (void)s;
+    return NULL;
+}
+
+void *rt_audiosource3d_get_position(void *s) {
+    (void)s;
+    return NULL;
+}
+
+void rt_audiosource3d_set_position(void *s, void *p) {
+    (void)s;
+    (void)p;
+}
+
+void rt_audiosource3d_set_position_vec(void *s, double x, double y, double z) {
+    (void)s;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+void *rt_audiosource3d_get_velocity(void *s) {
+    (void)s;
+    return NULL;
+}
+
+void rt_audiosource3d_set_velocity(void *s, void *v) {
+    (void)s;
+    (void)v;
+}
+
+double rt_audiosource3d_get_max_distance(void *s) {
+    (void)s;
+    return 0.0;
+}
+
+void rt_audiosource3d_set_max_distance(void *s, double d) {
+    (void)s;
+    (void)d;
+}
+
+int64_t rt_audiosource3d_get_volume(void *s) {
+    (void)s;
+    return 0;
+}
+
+void rt_audiosource3d_set_volume(void *s, int64_t v) {
+    (void)s;
+    (void)v;
+}
+
+int8_t rt_audiosource3d_get_looping(void *s) {
+    (void)s;
+    return 0;
+}
+
+void rt_audiosource3d_set_looping(void *s, int8_t l) {
+    (void)s;
+    (void)l;
+}
+
+int8_t rt_audiosource3d_get_is_playing(void *s) {
+    (void)s;
+    return 0;
+}
+
+int64_t rt_audiosource3d_get_voice_id(void *s) {
+    (void)s;
+    return 0;
+}
+
+int64_t rt_audiosource3d_play(void *s) {
+    (void)s;
+    return 0;
+}
+
+void rt_audiosource3d_stop(void *s) {
+    (void)s;
+}
+
+void rt_audiosource3d_bind_node(void *s, void *n) {
+    (void)s;
+    (void)n;
+}
+
+void rt_audiosource3d_clear_node_binding(void *s) {
+    (void)s;
+}
+
 /* Physics3D World stubs */
 void *rt_world3d_new(double gx, double gy, double gz) {
     (void)gx;
@@ -4151,6 +4420,107 @@ void rt_navmesh3d_set_max_slope(void *n, double d) {
 void rt_navmesh3d_debug_draw(void *n, void *c) {
     (void)n;
     (void)c;
+}
+
+int64_t rt_navmesh3d_copy_path_points(void *n, void *f, void *t, double **out_points_xyz) {
+    (void)n;
+    (void)f;
+    (void)t;
+    if (out_points_xyz)
+        *out_points_xyz = NULL;
+    return 0;
+}
+
+/* NavAgent3D stubs */
+void *rt_navagent3d_new(void *n, double r, double h) {
+    (void)n;
+    (void)r;
+    (void)h;
+    return NULL;
+}
+
+void rt_navagent3d_set_target(void *a, void *p) {
+    (void)a;
+    (void)p;
+}
+
+void rt_navagent3d_clear_target(void *a) {
+    (void)a;
+}
+
+void rt_navagent3d_update(void *a, double dt) {
+    (void)a;
+    (void)dt;
+}
+
+void rt_navagent3d_warp(void *a, void *p) {
+    (void)a;
+    (void)p;
+}
+
+void *rt_navagent3d_get_position(void *a) {
+    (void)a;
+    return NULL;
+}
+
+void *rt_navagent3d_get_velocity(void *a) {
+    (void)a;
+    return NULL;
+}
+
+void *rt_navagent3d_get_desired_velocity(void *a) {
+    (void)a;
+    return NULL;
+}
+
+int8_t rt_navagent3d_get_has_path(void *a) {
+    (void)a;
+    return 0;
+}
+
+double rt_navagent3d_get_remaining_distance(void *a) {
+    (void)a;
+    return 0.0;
+}
+
+double rt_navagent3d_get_stopping_distance(void *a) {
+    (void)a;
+    return 0.0;
+}
+
+void rt_navagent3d_set_stopping_distance(void *a, double d) {
+    (void)a;
+    (void)d;
+}
+
+double rt_navagent3d_get_desired_speed(void *a) {
+    (void)a;
+    return 0.0;
+}
+
+void rt_navagent3d_set_desired_speed(void *a, double s) {
+    (void)a;
+    (void)s;
+}
+
+int8_t rt_navagent3d_get_auto_repath(void *a) {
+    (void)a;
+    return 0;
+}
+
+void rt_navagent3d_set_auto_repath(void *a, int8_t e) {
+    (void)a;
+    (void)e;
+}
+
+void rt_navagent3d_bind_character(void *a, void *c) {
+    (void)a;
+    (void)c;
+}
+
+void rt_navagent3d_bind_node(void *a, void *n) {
+    (void)a;
+    (void)n;
 }
 
 /* AnimBlend3D stubs */

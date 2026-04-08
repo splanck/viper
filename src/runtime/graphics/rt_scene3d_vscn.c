@@ -39,6 +39,8 @@ extern rt_string rt_unbox_str(void *boxed);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *obj, void *pixels);
 extern void rt_material3d_set_normal_map(void *obj, void *pixels);
+extern void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
+extern void rt_material3d_set_ao_map(void *obj, void *pixels);
 extern void rt_material3d_set_specular_map(void *obj, void *pixels);
 extern void rt_material3d_set_emissive_map(void *obj, void *pixels);
 extern void rt_material3d_set_env_map(void *obj, void *cubemap);
@@ -418,6 +420,10 @@ static void vscn_collect_material_assets(rt_material3d *material, vscn_save_cont
         vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map);
     if (material->emissive_map)
         vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map);
+    if (material->metallic_roughness_map)
+        vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map);
+    if (material->ao_map)
+        vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map);
     if (material->env_map) {
         rt_cubemap3d *cubemap = (rt_cubemap3d *)material->env_map;
         vscn_ptr_table_index_or_add(&ctx->cubemaps, cubemap);
@@ -529,8 +535,17 @@ static int vscn_serialize_material(rt_material3d *material,
                      "%s{\"diffuse\": [%.17g, %.17g, %.17g, %.17g], "
                      "\"specular\": [%.17g, %.17g, %.17g], "
                      "\"shininess\": %.17g, "
+                     "\"workflow\": %d, "
                      "\"emissive\": [%.17g, %.17g, %.17g], "
+                     "\"metallic\": %.17g, "
+                     "\"roughness\": %.17g, "
+                     "\"ao\": %.17g, "
+                     "\"emissiveIntensity\": %.17g, "
+                     "\"normalScale\": %.17g, "
                      "\"alpha\": %.17g, "
+                     "\"alphaMode\": %d, "
+                     "\"alphaCutoff\": %.17g, "
+                     "\"doubleSided\": %s, "
                      "\"reflectivity\": %.17g, "
                      "\"unlit\": %s, "
                      "\"shadingModel\": %d, "
@@ -538,6 +553,8 @@ static int vscn_serialize_material(rt_material3d *material,
                      "\"normalMap\": %d, "
                      "\"specularMap\": %d, "
                      "\"emissiveMap\": %d, "
+                     "\"metallicRoughnessMap\": %d, "
+                     "\"aoMap\": %d, "
                      "\"envMap\": %d, "
                      "\"customParams\": [",
                      indent,
@@ -549,10 +566,19 @@ static int vscn_serialize_material(rt_material3d *material,
                      material->specular[1],
                      material->specular[2],
                      material->shininess,
+                     material->workflow,
                      material->emissive[0],
                      material->emissive[1],
                      material->emissive[2],
+                     material->metallic,
+                     material->roughness,
+                     material->ao,
+                     material->emissive_intensity,
+                     material->normal_scale,
                      material->alpha,
+                     material->alpha_mode,
+                     material->alpha_cutoff,
+                     material->double_sided ? "true" : "false",
                      material->reflectivity,
                      material->unlit ? "true" : "false",
                      material->shading_model,
@@ -560,6 +586,8 @@ static int vscn_serialize_material(rt_material3d *material,
                      vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map),
                      vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map),
                      vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map),
+                     vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map),
+                     vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map),
                      vscn_ptr_table_index_or_add(&ctx->cubemaps, material->env_map))) {
         return 0;
     }
@@ -817,7 +845,17 @@ static rt_material3d *vscn_parse_material(void *material_obj,
     }
 
     material->shininess = vjson_f64(material_obj, "shininess", material->shininess);
+    material->workflow = (int32_t)vjson_i64(material_obj, "workflow", material->workflow);
     material->alpha = vjson_f64(material_obj, "alpha", material->alpha);
+    material->metallic = vjson_f64(material_obj, "metallic", material->metallic);
+    material->roughness = vjson_f64(material_obj, "roughness", material->roughness);
+    material->ao = vjson_f64(material_obj, "ao", material->ao);
+    material->emissive_intensity =
+        vjson_f64(material_obj, "emissiveIntensity", material->emissive_intensity);
+    material->normal_scale = vjson_f64(material_obj, "normalScale", material->normal_scale);
+    material->alpha_mode = (int32_t)vjson_i64(material_obj, "alphaMode", material->alpha_mode);
+    material->alpha_cutoff = vjson_f64(material_obj, "alphaCutoff", material->alpha_cutoff);
+    material->double_sided = (int8_t)vjson_bool(material_obj, "doubleSided", material->double_sided);
     material->reflectivity = vjson_f64(material_obj, "reflectivity", material->reflectivity);
     material->unlit = vjson_bool(material_obj, "unlit", material->unlit);
     material->shading_model =
@@ -848,6 +886,16 @@ static rt_material3d *vscn_parse_material(void *material_obj,
         int64_t index = vjson_i64(material_obj, "emissiveMap", -1);
         if (index >= 0 && index < tex_count && textures[index])
             rt_material3d_set_emissive_map(material, textures[index]);
+    }
+    {
+        int64_t index = vjson_i64(material_obj, "metallicRoughnessMap", -1);
+        if (index >= 0 && index < tex_count && textures[index])
+            rt_material3d_set_metallic_roughness_map(material, textures[index]);
+    }
+    {
+        int64_t index = vjson_i64(material_obj, "aoMap", -1);
+        if (index >= 0 && index < tex_count && textures[index])
+            rt_material3d_set_ao_map(material, textures[index]);
     }
     {
         int64_t index = vjson_i64(material_obj, "envMap", -1);

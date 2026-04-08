@@ -23,6 +23,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_postfx3d.h"
 #include "vgfx.h"
@@ -53,6 +54,17 @@ typedef struct {
     const void *specular_map;    /* Pixels (specular map, slot 2) or NULL */
     const void *emissive_map;    /* Pixels (emissive map, slot 3) or NULL */
     float emissive_color[3];     /* emissive color multiplier */
+    float metallic;              /* [0,1] dielectric->metal */
+    float roughness;             /* [0,1] smooth->rough */
+    float ao;                    /* [0,1] ambient occlusion multiplier */
+    float emissive_intensity;    /* scalar multiplier applied after emissive color/map */
+    float normal_scale;          /* scales tangent-space XY perturbation */
+    int32_t workflow;            /* RT_MATERIAL3D_WORKFLOW_* */
+    int32_t alpha_mode;          /* RT_MATERIAL3D_ALPHA_MODE_* */
+    float alpha_cutoff;          /* alpha-mask cutoff */
+    int32_t double_sided;        /* culling disabled when true */
+    const void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
+    const void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
     const void *env_map;         /* CubeMap3D (environment reflections) or NULL */
     float reflectivity;          /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
@@ -76,6 +88,14 @@ typedef struct {
     int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
 } vgfx3d_draw_cmd_t;
+
+static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd)
+        return 0;
+    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
+        return cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    return cmd->alpha < 1.0f;
+}
 
 /*==========================================================================
  * Camera parameters — passed to begin_frame

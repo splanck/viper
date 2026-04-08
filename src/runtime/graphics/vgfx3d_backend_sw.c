@@ -23,6 +23,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
 
@@ -337,9 +338,10 @@ static void compute_lighting(pipe_vert_t *v,
     }
 
     /* Emissive contribution (additive, independent of lighting) */
-    r += cmd->emissive_color[0];
-    g += cmd->emissive_color[1];
-    b += cmd->emissive_color[2];
+    float emissive_scale = cmd->emissive_intensity;
+    r += cmd->emissive_color[0] * emissive_scale;
+    g += cmd->emissive_color[1] * emissive_scale;
+    b += cmd->emissive_color[2] * emissive_scale;
 
     /* Apply shading model post-processing */
     switch (cmd->shading_model) {
@@ -366,9 +368,9 @@ static void compute_lighting(pipe_vert_t *v,
         }
         case 5: { /* Emissive glow: boost emissive by strength */
             float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
-            r += cmd->emissive_color[0] * (strength - 1.0f);
-            g += cmd->emissive_color[1] * (strength - 1.0f);
-            b += cmd->emissive_color[2] * (strength - 1.0f);
+            r += cmd->emissive_color[0] * emissive_scale * (strength - 1.0f);
+            g += cmd->emissive_color[1] * emissive_scale * (strength - 1.0f);
+            b += cmd->emissive_color[2] * emissive_scale * (strength - 1.0f);
             break;
         }
         default: /* 0=BlinnPhong (already computed), 2=reserved, 3=Unlit (handled above) */
@@ -469,6 +471,38 @@ static inline float clamp01f(float x) {
     return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
 }
 
+static inline float dot3f(float ax, float ay, float az, float bx, float by, float bz) {
+    return ax * bx + ay * by + az * bz;
+}
+
+static inline void normalize3f(float *x, float *y, float *z) {
+    float len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (len > 1e-7f) {
+        *x /= len;
+        *y /= len;
+        *z /= len;
+    }
+}
+
+static inline float pbr_distribution_ggx(float ndh, float roughness) {
+    const float kPi = 3.14159265358979323846f;
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denom = ndh * ndh * (a2 - 1.0f) + 1.0f;
+    return a2 / (kPi * denom * denom + 1e-6f);
+}
+
+static inline float pbr_geometry_schlick_ggx(float ndv, float roughness) {
+    float r = roughness + 1.0f;
+    float k = (r * r) / 8.0f;
+    return ndv / (ndv * (1.0f - k) + k + 1e-6f);
+}
+
+static inline float pbr_geometry_smith(float ndv, float ndl, float roughness) {
+    return pbr_geometry_schlick_ggx(ndv, roughness) *
+           pbr_geometry_schlick_ggx(ndl, roughness);
+}
+
 static void raster_triangle(uint8_t *pixels,
                             float *zbuf,
                             int32_t fb_w,
@@ -482,6 +516,8 @@ static void raster_triangle(uint8_t *pixels,
                             const float *emissive_color,
                             const sw_pixels_view *normal_map,
                             const sw_pixels_view *specular_map,
+                            const sw_pixels_view *metallic_roughness_map,
+                            const sw_pixels_view *ao_map,
                             const vgfx3d_draw_cmd_t *cmd,
                             const vgfx3d_light_params_t *lights,
                             int32_t light_count,
@@ -597,8 +633,10 @@ static void raster_triangle(uint8_t *pixels,
                         }
                     }
 
-                    /* Emissive map sampling (per-pixel, additive) */
-                    if (emissive_tex) {
+                    /* Emissive map sampling (legacy path only; PBR handles it in the lighting
+                     * branch so emissiveIntensity can scale both the color and the map.) */
+                    if (emissive_tex &&
+                        !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
                         float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(iw) > 1e-7f) {
                             float u =
@@ -607,14 +645,18 @@ static void raster_triangle(uint8_t *pixels,
                                 (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             float er, eg, eb, ea;
                             sample_texture(emissive_tex, u, vc, &er, &eg, &eb, &ea);
-                            fr += er * emissive_color[0];
-                            fg += eg * emissive_color[1];
-                            fb_c += eb * emissive_color[2];
+                            float emissive_scale =
+                                (cmd ? cmd->emissive_intensity : 1.0f);
+                            fr += er * emissive_color[0] * emissive_scale;
+                            fg += eg * emissive_color[1] * emissive_scale;
+                            fb_c += eb * emissive_color[2] * emissive_scale;
                         }
                     }
 
-                    /* Per-pixel lighting with normal map (replaces Gouraud colors) */
-                    if (normal_map && cmd && !cmd->unlit && lights) {
+                    /* Per-pixel lighting for PBR or normal-mapped legacy materials. */
+                    float pixel_ndv = 1.0f;
+                    if (cmd && !cmd->unlit &&
+                        (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
                         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(pp_iw) > 1e-7f) {
                             float pp_u =
@@ -626,12 +668,7 @@ static void raster_triangle(uint8_t *pixels,
                             float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
                             float pny = b0 * v0->ny + b1 * v1->ny + b2 * v2->ny;
                             float pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
-                            float nlen = sqrtf(pnx * pnx + pny * pny + pnz * pnz);
-                            if (nlen > 1e-7f) {
-                                pnx /= nlen;
-                                pny /= nlen;
-                                pnz /= nlen;
-                            }
+                            normalize3f(&pnx, &pny, &pnz);
 
                             /* Interpolate tangent + build TBN */
                             float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
@@ -639,7 +676,7 @@ static void raster_triangle(uint8_t *pixels,
                             float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
                             float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
 
-                            if (tlen > 1e-7f) {
+                            if (normal_map && tlen > 1e-7f) {
                                 ptx /= tlen;
                                 pty /= tlen;
                                 ptz /= tlen;
@@ -658,8 +695,8 @@ static void raster_triangle(uint8_t *pixels,
                                 /* Sample normal map: [0,1] → [-1,1] */
                                 float tnr, tng, tnb, tna;
                                 sample_texture(normal_map, pp_u, pp_vc, &tnr, &tng, &tnb, &tna);
-                                float map_x = tnr * 2.0f - 1.0f;
-                                float map_y = tng * 2.0f - 1.0f;
+                                float map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
+                                float map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
                                 float map_z = tnb * 2.0f - 1.0f;
 
                                 /* Bitangent = N × T */
@@ -694,110 +731,277 @@ static void raster_triangle(uint8_t *pixels,
                                 vdy /= vdlen;
                                 vdz /= vdlen;
                             }
+                            pixel_ndv = clamp01f(dot3f(pnx, pny, pnz, vdx, vdy, vdz));
 
-                            /* Ambient */
-                            float lit_r = ambient[0] * fr;
-                            float lit_g = ambient[1] * fg;
-                            float lit_b = ambient[2] * fb_c;
+                            if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
+                                float base_r = fr;
+                                float base_g = fg;
+                                float base_b = fb_c;
+                                float metallic = clamp01f(cmd->metallic);
+                                float roughness = clamp01f(cmd->roughness);
+                                float ao = clamp01f(cmd->ao);
+                                if (metallic_roughness_map) {
+                                    float mrr, mrg, mrb, mra;
+                                    sample_texture(
+                                        metallic_roughness_map, pp_u, pp_vc, &mrr, &mrg, &mrb, &mra);
+                                    roughness *= mrg;
+                                    metallic *= mrb;
+                                }
+                                if (ao_map) {
+                                    float aor, aog, aob, aoa;
+                                    sample_texture(ao_map, pp_u, pp_vc, &aor, &aog, &aob, &aoa);
+                                    ao *= aor;
+                                }
+                                metallic = clamp01f(metallic);
+                                roughness = roughness < 0.045f ? 0.045f : clamp01f(roughness);
+                                ao = clamp01f(ao);
 
-                            /* Specular properties (possibly from specular map) */
-                            float sp_r = cmd->specular[0];
-                            float sp_g = cmd->specular[1];
-                            float sp_b = cmd->specular[2];
-                            if (specular_map) {
-                                float smr, smg, smb, sma;
-                                sample_texture(specular_map, pp_u, pp_vc, &smr, &smg, &smb, &sma);
-                                sp_r *= smr;
-                                sp_g *= smg;
-                                sp_b *= smb;
-                            }
+                                float ndv = pixel_ndv;
+                                if (ndv < 0.001f)
+                                    ndv = 0.001f;
 
-                            for (int32_t li = 0; li < light_count; li++) {
-                                const vgfx3d_light_params_t *lt = &lights[li];
-                                float llx, lly, llz, la = 1.0f;
+                                float lit_r =
+                                    (ambient ? ambient[0] : 0.0f) * base_r * ao;
+                                float lit_g =
+                                    (ambient ? ambient[1] : 0.0f) * base_g * ao;
+                                float lit_b =
+                                    (ambient ? ambient[2] : 0.0f) * base_b * ao;
 
-                                if (lt->type == 0) { /* directional */
-                                    llx = -lt->direction[0];
-                                    lly = -lt->direction[1];
-                                    llz = -lt->direction[2];
-                                    float ll = sqrtf(llx * llx + lly * lly + llz * llz);
-                                    if (ll > 1e-7f) {
-                                        llx /= ll;
-                                        lly /= ll;
-                                        llz /= ll;
+                                for (int32_t li = 0; li < light_count; li++) {
+                                    const vgfx3d_light_params_t *lt = &lights[li];
+                                    float llx, lly, llz, la = 1.0f;
+
+                                    if (lt->type == 0) { /* directional */
+                                        llx = -lt->direction[0];
+                                        lly = -lt->direction[1];
+                                        llz = -lt->direction[2];
+                                        normalize3f(&llx, &lly, &llz);
+                                    } else if (lt->type == 1) { /* point */
+                                        llx = lt->position[0] - wx;
+                                        lly = lt->position[1] - wy;
+                                        llz = lt->position[2] - wz;
+                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                        if (dist > 1e-7f) {
+                                            llx /= dist;
+                                            lly /= dist;
+                                            llz /= dist;
+                                        }
+                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                    } else if (lt->type == 3) { /* spot */
+                                        llx = lt->position[0] - wx;
+                                        lly = lt->position[1] - wy;
+                                        llz = lt->position[2] - wz;
+                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                        if (dist > 1e-7f) {
+                                            llx /= dist;
+                                            lly /= dist;
+                                            llz /= dist;
+                                        }
+                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                        float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
+                                                     llz * lt->direction[2]);
+                                        if (sd < lt->outer_cos)
+                                            la = 0.0f;
+                                        else if (sd < lt->inner_cos) {
+                                            float st =
+                                                (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
+                                            la *= st * st * (3.0f - 2.0f * st);
+                                        }
+                                    } else { /* ambient */
+                                        lit_r += lt->color[0] * lt->intensity * base_r * ao;
+                                        lit_g += lt->color[1] * lt->intensity * base_g * ao;
+                                        lit_b += lt->color[2] * lt->intensity * base_b * ao;
+                                        continue;
                                     }
-                                } else if (lt->type == 1) { /* point */
-                                    llx = lt->position[0] - wx;
-                                    lly = lt->position[1] - wy;
-                                    llz = lt->position[2] - wz;
-                                    float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                    if (dist > 1e-7f) {
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                    }
-                                    la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                } else if (lt->type == 3) { /* spot */
-                                    llx = lt->position[0] - wx;
-                                    lly = lt->position[1] - wy;
-                                    llz = lt->position[2] - wz;
-                                    float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                    if (dist > 1e-7f) {
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                    }
-                                    la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                    float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
-                                                 llz * lt->direction[2]);
-                                    if (sd < lt->outer_cos)
-                                        la = 0.0f;
-                                    else if (sd < lt->inner_cos) {
-                                        float st =
-                                            (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
-                                        la *= st * st * (3.0f - 2.0f * st);
-                                    }
-                                } else { /* ambient */
-                                    lit_r += lt->color[0] * lt->intensity * fr;
-                                    lit_g += lt->color[1] * lt->intensity * fg;
-                                    lit_b += lt->color[2] * lt->intensity * fb_c;
-                                    continue;
+
+                                    float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
+                                    if (ndl <= 0.0f)
+                                        continue;
+
+                                    float hx = llx + vdx;
+                                    float hy = lly + vdy;
+                                    float hz = llz + vdz;
+                                    normalize3f(&hx, &hy, &hz);
+                                    float ndh = clamp01f(dot3f(pnx, pny, pnz, hx, hy, hz));
+                                    float vdh = clamp01f(dot3f(vdx, vdy, vdz, hx, hy, hz));
+
+                                    float f0_r = 0.04f + (base_r - 0.04f) * metallic;
+                                    float f0_g = 0.04f + (base_g - 0.04f) * metallic;
+                                    float f0_b = 0.04f + (base_b - 0.04f) * metallic;
+                                    float fresnel_w = powf(1.0f - vdh, 5.0f);
+                                    float f_r = f0_r + (1.0f - f0_r) * fresnel_w;
+                                    float f_g = f0_g + (1.0f - f0_g) * fresnel_w;
+                                    float f_b = f0_b + (1.0f - f0_b) * fresnel_w;
+
+                                    float d = pbr_distribution_ggx(ndh, roughness);
+                                    float g = pbr_geometry_smith(ndv, ndl, roughness);
+                                    float spec_denom = 4.0f * ndv * ndl + 1e-4f;
+                                    float spec_r = (d * g * f_r) / spec_denom;
+                                    float spec_g = (d * g * f_g) / spec_denom;
+                                    float spec_b = (d * g * f_b) / spec_denom;
+
+                                    const float inv_pi = 0.31830988618f;
+                                    float kd_r = (1.0f - f_r) * (1.0f - metallic);
+                                    float kd_g = (1.0f - f_g) * (1.0f - metallic);
+                                    float kd_b = (1.0f - f_b) * (1.0f - metallic);
+                                    float diff_r = kd_r * base_r * inv_pi;
+                                    float diff_g = kd_g * base_g * inv_pi;
+                                    float diff_b = kd_b * base_b * inv_pi;
+
+                                    float radiance_r = lt->color[0] * lt->intensity * la;
+                                    float radiance_g = lt->color[1] * lt->intensity * la;
+                                    float radiance_b = lt->color[2] * lt->intensity * la;
+                                    lit_r += (diff_r + spec_r) * radiance_r * ndl;
+                                    lit_g += (diff_g + spec_g) * radiance_g * ndl;
+                                    lit_b += (diff_b + spec_b) * radiance_b * ndl;
                                 }
 
-                                float ndl = pnx * llx + pny * lly + pnz * llz;
-                                if (ndl < 0.0f)
-                                    ndl = 0.0f;
-                                float li_i = lt->intensity;
-                                lit_r += lt->color[0] * li_i * ndl * fr * la;
-                                lit_g += lt->color[1] * li_i * ndl * fg * la;
-                                lit_b += lt->color[2] * li_i * ndl * fb_c * la;
-
-                                if (ndl > 0.0f && cmd->shininess > 0.0f) {
-                                    float hx = llx + vdx, hy = lly + vdy, hz = llz + vdz;
-                                    float hlen = sqrtf(hx * hx + hy * hy + hz * hz);
-                                    if (hlen > 1e-7f) {
-                                        hx /= hlen;
-                                        hy /= hlen;
-                                        hz /= hlen;
-                                    }
-                                    float ndh = pnx * hx + pny * hy + pnz * hz;
-                                    if (ndh < 0.0f)
-                                        ndh = 0.0f;
-                                    float spec = powf(ndh, cmd->shininess);
-                                    lit_r += lt->color[0] * li_i * spec * sp_r * la;
-                                    lit_g += lt->color[1] * li_i * spec * sp_g * la;
-                                    lit_b += lt->color[2] * li_i * spec * sp_b * la;
+                                float emissive_r =
+                                    cmd->emissive_color[0] * cmd->emissive_intensity;
+                                float emissive_g =
+                                    cmd->emissive_color[1] * cmd->emissive_intensity;
+                                float emissive_b =
+                                    cmd->emissive_color[2] * cmd->emissive_intensity;
+                                if (emissive_tex) {
+                                    float er, eg, eb, ea;
+                                    sample_texture(emissive_tex, pp_u, pp_vc, &er, &eg, &eb, &ea);
+                                    emissive_r *= er;
+                                    emissive_g *= eg;
+                                    emissive_b *= eb;
                                 }
+                                lit_r += emissive_r;
+                                lit_g += emissive_g;
+                                lit_b += emissive_b;
+
+                                if (cmd->shading_model == 1) {
+                                    float bands =
+                                        cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+                                    lit_r = floorf(lit_r * bands) / bands;
+                                    lit_g = floorf(lit_g * bands) / bands;
+                                    lit_b = floorf(lit_b * bands) / bands;
+                                } else if (cmd->shading_model == 5) {
+                                    float strength =
+                                        cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+                                    lit_r += emissive_r * (strength - 1.0f);
+                                    lit_g += emissive_g * (strength - 1.0f);
+                                    lit_b += emissive_b * (strength - 1.0f);
+                                }
+
+                                fr = lit_r;
+                                fg = lit_g;
+                                fb_c = lit_b;
+                            } else {
+                                /* Ambient */
+                                float lit_r = (ambient ? ambient[0] : 0.0f) * fr;
+                                float lit_g = (ambient ? ambient[1] : 0.0f) * fg;
+                                float lit_b = (ambient ? ambient[2] : 0.0f) * fb_c;
+
+                                /* Specular properties (possibly from specular map) */
+                                float sp_r = cmd->specular[0];
+                                float sp_g = cmd->specular[1];
+                                float sp_b = cmd->specular[2];
+                                if (specular_map) {
+                                    float smr, smg, smb, sma;
+                                    sample_texture(specular_map, pp_u, pp_vc, &smr, &smg, &smb, &sma);
+                                    sp_r *= smr;
+                                    sp_g *= smg;
+                                    sp_b *= smb;
+                                }
+
+                                for (int32_t li = 0; li < light_count; li++) {
+                                    const vgfx3d_light_params_t *lt = &lights[li];
+                                    float llx, lly, llz, la = 1.0f;
+
+                                    if (lt->type == 0) { /* directional */
+                                        llx = -lt->direction[0];
+                                        lly = -lt->direction[1];
+                                        llz = -lt->direction[2];
+                                        normalize3f(&llx, &lly, &llz);
+                                    } else if (lt->type == 1) { /* point */
+                                        llx = lt->position[0] - wx;
+                                        lly = lt->position[1] - wy;
+                                        llz = lt->position[2] - wz;
+                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                        if (dist > 1e-7f) {
+                                            llx /= dist;
+                                            lly /= dist;
+                                            llz /= dist;
+                                        }
+                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                    } else if (lt->type == 3) { /* spot */
+                                        llx = lt->position[0] - wx;
+                                        lly = lt->position[1] - wy;
+                                        llz = lt->position[2] - wz;
+                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                                        if (dist > 1e-7f) {
+                                            llx /= dist;
+                                            lly /= dist;
+                                            llz /= dist;
+                                        }
+                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                                        float sd = -(llx * lt->direction[0] + lly * lt->direction[1] +
+                                                     llz * lt->direction[2]);
+                                        if (sd < lt->outer_cos)
+                                            la = 0.0f;
+                                        else if (sd < lt->inner_cos) {
+                                            float st =
+                                                (sd - lt->outer_cos) / (lt->inner_cos - lt->outer_cos);
+                                            la *= st * st * (3.0f - 2.0f * st);
+                                        }
+                                    } else { /* ambient */
+                                        lit_r += lt->color[0] * lt->intensity * fr;
+                                        lit_g += lt->color[1] * lt->intensity * fg;
+                                        lit_b += lt->color[2] * lt->intensity * fb_c;
+                                        continue;
+                                    }
+
+                                    float ndl = pnx * llx + pny * lly + pnz * llz;
+                                    if (ndl < 0.0f)
+                                        ndl = 0.0f;
+                                    float li_i = lt->intensity;
+                                    lit_r += lt->color[0] * li_i * ndl * fr * la;
+                                    lit_g += lt->color[1] * li_i * ndl * fg * la;
+                                    lit_b += lt->color[2] * li_i * ndl * fb_c * la;
+
+                                    if (ndl > 0.0f && cmd->shininess > 0.0f) {
+                                        float hx = llx + vdx, hy = lly + vdy, hz = llz + vdz;
+                                        normalize3f(&hx, &hy, &hz);
+                                        float ndh = pnx * hx + pny * hy + pnz * hz;
+                                        if (ndh < 0.0f)
+                                            ndh = 0.0f;
+                                        float spec = powf(ndh, cmd->shininess);
+                                        lit_r += lt->color[0] * li_i * spec * sp_r * la;
+                                        lit_g += lt->color[1] * li_i * spec * sp_g * la;
+                                        lit_b += lt->color[2] * li_i * spec * sp_b * la;
+                                    }
+                                }
+
+                                /* Emissive color base */
+                                lit_r += cmd->emissive_color[0] * cmd->emissive_intensity;
+                                lit_g += cmd->emissive_color[1] * cmd->emissive_intensity;
+                                lit_b += cmd->emissive_color[2] * cmd->emissive_intensity;
+
+                                if (cmd->shading_model == 1) {
+                                    float bands =
+                                        cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+                                    lit_r = floorf(lit_r * bands) / bands;
+                                    lit_g = floorf(lit_g * bands) / bands;
+                                    lit_b = floorf(lit_b * bands) / bands;
+                                } else if (cmd->shading_model == 5) {
+                                    float strength =
+                                        cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+                                    lit_r += cmd->emissive_color[0] * cmd->emissive_intensity *
+                                             (strength - 1.0f);
+                                    lit_g += cmd->emissive_color[1] * cmd->emissive_intensity *
+                                             (strength - 1.0f);
+                                    lit_b += cmd->emissive_color[2] * cmd->emissive_intensity *
+                                             (strength - 1.0f);
+                                }
+
+                                fr = lit_r;
+                                fg = lit_g;
+                                fb_c = lit_b;
                             }
-
-                            /* Emissive color base */
-                            lit_r += cmd->emissive_color[0];
-                            lit_g += cmd->emissive_color[1];
-                            lit_b += cmd->emissive_color[2];
-
-                            fr = lit_r;
-                            fg = lit_g;
-                            fb_c = lit_b;
                         }
                     }
 
@@ -869,18 +1073,37 @@ static void raster_triangle(uint8_t *pixels,
                         fb_c = fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
                     }
 
-                    /* Interpolate alpha, including per-texel alpha */
-                    float fa = (b0 * v0->a + b1 * v1->a + b2 * v2->a) * tex_alpha;
+                    /* Interpolate alpha, respecting PBR alpha modes. */
+                    float material_alpha = b0 * v0->a + b1 * v1->a + b2 * v2->a;
+                    float fa = material_alpha * tex_alpha;
+                    int discard_fragment = 0;
+                    if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
+                        if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
+                            if (fa < cmd->alpha_cutoff)
+                                discard_fragment = 1;
+                            fa = material_alpha;
+                        } else if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
+                            fa = material_alpha;
+                        }
+                    }
+                    if (cmd && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map) &&
+                        cmd->shading_model == 4) {
+                        float ndv = pixel_ndv;
+                        float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
+                        float bias = cmd->custom_params[1];
+                        float fresnel = powf(1.0f - ndv, power) + bias;
+                        fa *= clamp01f(fresnel);
+                    }
 
                     uint8_t *dst = &pixels[y * stride + x * 4];
-                    if (fa >= 1.0f) {
+                    if (!discard_fragment && fa >= 1.0f) {
                         /* Opaque: overwrite pixel + update Z-buffer */
                         zbuf[idx] = z;
                         dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
                         dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
                         dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
                         dst[3] = 0xFF;
-                    } else if (fa > 0.0f) {
+                    } else if (!discard_fragment && fa > 0.0f) {
                         /* Transparent: alpha blend (src*a + dst*(1-a)).
                          * No Z-buffer write — transparent fragments don't occlude. */
                         float inv_a = 1.0f - fa;
@@ -1224,8 +1447,9 @@ static void sw_submit_draw(void *ctx_ptr,
         if (emissive_view.width > 0 && emissive_view.height > 0 && emissive_view.data)
             emissive_ptr = &emissive_view;
     }
-    sw_pixels_view normal_view, specular_view;
-    sw_pixels_view *normal_ptr = NULL, *specular_ptr = NULL;
+    sw_pixels_view normal_view, specular_view, metallic_roughness_view, ao_view;
+    sw_pixels_view *normal_ptr = NULL, *specular_ptr = NULL, *metallic_roughness_ptr = NULL,
+                   *ao_ptr = NULL;
     if (cmd->normal_map) {
         const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
         normal_view = *pv;
@@ -1237,6 +1461,19 @@ static void sw_submit_draw(void *ctx_ptr,
         specular_view = *pv;
         if (specular_view.width > 0 && specular_view.height > 0 && specular_view.data)
             specular_ptr = &specular_view;
+    }
+    if (cmd->metallic_roughness_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->metallic_roughness_map;
+        metallic_roughness_view = *pv;
+        if (metallic_roughness_view.width > 0 && metallic_roughness_view.height > 0 &&
+            metallic_roughness_view.data)
+            metallic_roughness_ptr = &metallic_roughness_view;
+    }
+    if (cmd->ao_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->ao_map;
+        ao_view = *pv;
+        if (ao_view.width > 0 && ao_view.height > 0 && ao_view.data)
+            ao_ptr = &ao_view;
     }
 
     float half_w = (float)out_w * 0.5f;
@@ -1292,9 +1529,9 @@ static void sw_submit_draw(void *ctx_ptr,
         dst->color[2] = src->color[2];
         dst->color[3] = src->color[3];
 
-        /* Per-vertex lighting (Gouraud) — skipped when normal map is present
-         * because per-pixel lighting will be computed in raster_triangle instead */
-        if (!cmd->unlit && cmd->normal_map) {
+        /* Per-vertex lighting (Gouraud) — skipped when normal/PBR work is done per-pixel. */
+        if (!cmd->unlit &&
+            (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)) {
             /* Store raw albedo: vertex_color * diffuse (lighting computed per-pixel) */
             dst->color[0] = cmd->diffuse_color[0] * dst->color[0];
             dst->color[1] = cmd->diffuse_color[1] * dst->color[1];
@@ -1403,6 +1640,8 @@ static void sw_submit_draw(void *ctx_ptr,
                                 cmd->emissive_color,
                                 normal_ptr,
                                 specular_ptr,
+                                metallic_roughness_ptr,
+                                ao_ptr,
                                 cmd,
                                 lights,
                                 light_count,

@@ -741,6 +741,61 @@ static void test_instanced_material_payload_forwarded(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_pbr_material_payload_forwarded(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    canvas.backface_cull = 1;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new_pbr(0.6, 0.4, 0.2);
+    void *transform = rt_mat4_identity();
+    void *px = rt_pixels_new(1, 1);
+    rt_pixels_set(px, 0, 0, 0x80C040CC);
+
+    rt_material3d_set_albedo_map(material, px);
+    rt_material3d_set_normal_map(material, px);
+    rt_material3d_set_metallic_roughness_map(material, px);
+    rt_material3d_set_ao_map(material, px);
+    rt_material3d_set_emissive_map(material, px);
+    rt_material3d_set_metallic(material, 0.75);
+    rt_material3d_set_roughness(material, 0.35);
+    rt_material3d_set_ao(material, 0.85);
+    rt_material3d_set_emissive_intensity(material, 1.8);
+    rt_material3d_set_normal_scale(material, 0.55);
+    rt_material3d_set_alpha(material, 0.6);
+    rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_double_sided(material, 1);
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "PBR material draw enqueues one draw");
+    EXPECT_TRUE(draws[0].cmd.workflow == RT_MATERIAL3D_WORKFLOW_PBR,
+                "PBR material draw forwards workflow");
+    EXPECT_TRUE(draws[0].cmd.texture == px, "PBR material draw forwards albedo map");
+    EXPECT_TRUE(draws[0].cmd.normal_map == px, "PBR material draw forwards normal map");
+    EXPECT_TRUE(draws[0].cmd.metallic_roughness_map == px,
+                "PBR material draw forwards metallic-roughness map");
+    EXPECT_TRUE(draws[0].cmd.ao_map == px, "PBR material draw forwards AO map");
+    EXPECT_TRUE(draws[0].cmd.emissive_map == px, "PBR material draw forwards emissive map");
+    EXPECT_TRUE(draws[0].cmd.alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND,
+                "PBR material draw forwards alpha mode");
+    EXPECT_TRUE(draws[0].cmd.double_sided == 1, "PBR material draw forwards double-sided state");
+    EXPECT_TRUE(draws[0].backface_cull == 0,
+                "Double-sided PBR materials disable deferred backface culling");
+    EXPECT_TRUE(draws[0].cmd.metallic == 0.75f && draws[0].cmd.roughness == 0.35f &&
+                    draws[0].cmd.ao == 0.85f,
+                "PBR material draw forwards metallic, roughness, and AO scalars");
+    EXPECT_TRUE(draws[0].cmd.emissive_intensity == 1.8f,
+                "PBR material draw forwards emissive intensity");
+    EXPECT_TRUE(draws[0].cmd.normal_scale == 0.55f,
+                "PBR material draw forwards normal scale");
+    EXPECT_TRUE(draws[0].cmd.alpha == 0.6f,
+                "PBR material draw forwards material opacity separately from alpha mode");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_instanced_runtime_culls_outside_frustum(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -891,6 +946,7 @@ int main() {
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
     test_instanced_material_payload_forwarded();
+    test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
     test_screenshot_prefers_backend_readback();

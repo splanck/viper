@@ -263,6 +263,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_postfx3d.c
         graphics/rt_raycast3d.c
         graphics/rt_audio3d.c
+        graphics/rt_audio3d_objects.c
         graphics/rt_physics3d.c
         graphics/rt_joints3d.c
         graphics/rt_transform3d.c
@@ -270,6 +271,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_instbatch3d.c
         graphics/rt_terrain3d.c
         graphics/rt_navmesh3d.c
+        graphics/rt_navagent3d.c
         graphics/rt_decal3d.c
         graphics/rt_sprite3d.c
         graphics/rt_water3d.c

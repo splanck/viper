@@ -629,6 +629,10 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_canvas3d test_rt_canvas3d)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    viper_add_test(test_rt_material3d ${VIPER_TESTS_DIR}/unit/test_rt_material3d.cpp)
+    target_link_libraries(test_rt_material3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_material3d test_rt_material3d)
+
     viper_add_test(test_rt_scene3d ${VIPER_TESTS_DIR}/unit/test_rt_scene3d.cpp)
     target_link_libraries(test_rt_scene3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_scene3d test_rt_scene3d)
@@ -688,6 +692,14 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_navmesh_blend ${VIPER_TESTS_DIR}/unit/test_rt_navmesh_blend.cpp)
     target_link_libraries(test_rt_navmesh_blend PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_navmesh_blend test_rt_navmesh_blend)
+
+    viper_add_test(test_rt_navagent3d ${VIPER_TESTS_DIR}/unit/test_rt_navagent3d.cpp)
+    target_link_libraries(test_rt_navagent3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_navagent3d test_rt_navagent3d)
+
+    viper_add_test(test_rt_audio3d_objects ${VIPER_TESTS_DIR}/unit/test_rt_audio3d_objects.cpp)
+    target_link_libraries(test_rt_audio3d_objects PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_audio3d_objects test_rt_audio3d_objects)
 
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

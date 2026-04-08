@@ -150,15 +150,26 @@ typedef struct {
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
+    int32_t workflow; /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
     void *texture;       /* Pixels (diffuse, slot 0) or NULL */
     void *normal_map;    /* Pixels (normal map, slot 1) or NULL */
     void *specular_map;  /* Pixels (specular map, slot 2) or NULL */
     void *emissive_map;  /* Pixels (emissive map, slot 3) or NULL */
+    void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
+    void *ao_map;               /* Pixels (ambient occlusion map) or NULL */
     double emissive[3];  /* emissive color multiplier */
+    double metallic;     /* [0,1] dielectric->metal */
+    double roughness;    /* [0,1] smooth->rough */
+    double ao;           /* [0,1] ambient occlusion multiplier */
+    double emissive_intensity; /* scalar multiplier applied after emissive color/map */
+    double normal_scale; /* scales tangent-space XY perturbation */
     double alpha;        /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    double alpha_cutoff; /* alpha-mask cutoff, default 0.5 */
     void *env_map;       /* CubeMap3D for environment reflections (or NULL) */
     double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
+    int8_t double_sided;
+    int32_t alpha_mode; /* 0=opaque, 1=mask, 2=blend */
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;

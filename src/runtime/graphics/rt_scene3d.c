@@ -24,6 +24,7 @@
 
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_audio3d.h"
 #include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -1206,10 +1207,10 @@ void rt_scene3d_clear(void *obj) {
 
 void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_scene3d *scene = (rt_scene3d *)obj;
-    (void)dt;
     if (!scene || !scene->root)
         return;
     scene_node_sync_recursive(scene->root);
+    rt_audio3d_sync_bindings(dt);
 }
 
 int64_t rt_scene3d_get_node_count(void *obj) {

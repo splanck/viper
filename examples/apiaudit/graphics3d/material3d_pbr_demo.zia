@@ -1,0 +1,31 @@
+module Material3DPBRDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== Material3D PBR Demo ===");
+
+    var base = Material3D.NewPBR(0.7, 0.55, 0.35);
+    Material3D.set_Metallic(base, 0.8);
+    Material3D.set_Roughness(base, 0.25);
+    Material3D.set_AO(base, 0.9);
+    Material3D.set_EmissiveIntensity(base, 1.4);
+    Material3D.set_NormalScale(base, 0.65);
+    Material3D.set_Alpha(base, 0.7);
+    Material3D.set_AlphaMode(base, 2);
+    Material3D.set_DoubleSided(base, true);
+
+    var inst = Material3D.MakeInstance(base);
+    Material3D.set_Roughness(inst, 0.75);
+    Material3D.set_Metallic(inst, 0.15);
+    Material3D.set_DoubleSided(inst, false);
+
+    var clone = Material3D.Clone(base);
+
+    Say("Base Metallic = " + toString(Material3D.get_Metallic(base)));
+    Say("Base Roughness = " + toString(Material3D.get_Roughness(base)));
+    Say("Instance Roughness = " + toString(Material3D.get_Roughness(inst)));
+    Say("Instance DoubleSided = " + toString(Material3D.get_DoubleSided(inst)));
+    Say("Clone AlphaMode = " + toString(Material3D.get_AlphaMode(clone)));
+}

@@ -36,6 +36,9 @@ int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
 void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
 
+/* Runtime integration helper used by NavAgent3D. Returns malloc'd xyz triples. */
+int64_t rt_navmesh3d_copy_path_points(void *navmesh, void *from, void *to, double **out_points_xyz);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,3 +1,8 @@
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
+#include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
@@ -308,6 +313,37 @@ static void test_invert_matrix4_rejects_singular(void) {
                 "Matrix inversion rejects singular matrices");
 }
 
+static void test_draw_cmd_alpha_blend_policy(void) {
+    vgfx3d_draw_cmd_t cmd;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.alpha = 0.5f;
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    EXPECT_TRUE(vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "Legacy materials with partial alpha use blend semantics");
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.alpha = 1.0f;
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "PBR opaque materials keep depth writes enabled");
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.alpha = 1.0f;
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
+    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "PBR masked materials do not fall onto the blend path");
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.alpha = 1.0f;
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    EXPECT_TRUE(vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "PBR blend materials disable depth writes across GPU backends");
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -319,6 +355,7 @@ int main(void) {
     test_compute_normal_matrix_singular_fallback();
     test_invert_matrix4_success();
     test_invert_matrix4_rejects_singular();
+    test_draw_cmd_alpha_blend_policy();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

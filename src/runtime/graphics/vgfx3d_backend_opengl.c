@@ -417,9 +417,10 @@ typedef struct {
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
         uShadowVP;
     GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
+    GLint uPbrScalars0, uPbrScalars1;
     GLint uUnlit, uShadingModel, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap,
         uHasEmissiveMap;
-    GLint uHasEnvMap, uReflectivity;
+    GLint uHasEnvMap, uReflectivity, uWorkflow, uAlphaMode, uHasMetallicRoughnessMap, uHasAOMap;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
     GLint uShadowEnabled, uShadowBias;
@@ -427,6 +428,7 @@ typedef struct {
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
     GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex, uEnvMap;
+    GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[8], uLightDir[8], uLightPos[8], uLightColor[8], uLightIntensity[8];
     GLint uLightAtten[8], uLightInnerCos[8], uLightOuterCos[8];
@@ -773,6 +775,8 @@ static const char *glsl_fragment_src =
     "uniform vec4 uSpecularColor;\n"
     "uniform vec3 uEmissiveColor;\n"
     "uniform float uAlpha;\n"
+    "uniform vec4 uPbrScalars0;\n"
+    "uniform vec4 uPbrScalars1;\n"
     "uniform int uUnlit;\n"
     "uniform int uShadingModel;\n"
     "uniform int uLightCount;\n"
@@ -782,6 +786,10 @@ static const char *glsl_fragment_src =
     "uniform int uHasEmissiveMap;\n"
     "uniform int uHasEnvMap;\n"
     "uniform float uReflectivity;\n"
+    "uniform int uWorkflow;\n"
+    "uniform int uAlphaMode;\n"
+    "uniform int uHasMetallicRoughnessMap;\n"
+    "uniform int uHasAOMap;\n"
     "uniform int uHasSplat;\n"
     "uniform int uFogEnabled;\n"
     "uniform float uFogNear;\n"
@@ -804,6 +812,8 @@ static const char *glsl_fragment_src =
     "uniform sampler2D uEmissiveTex;\n"
     "uniform sampler2D uShadowTex;\n"
     "uniform samplerCube uEnvMap;\n"
+    "uniform sampler2D uMetallicRoughnessTex;\n"
+    "uniform sampler2D uAOTex;\n"
     "uniform sampler2D uSplatTex;\n"
     "uniform sampler2D uSplatLayer0;\n"
     "uniform sampler2D uSplatLayer1;\n"
@@ -811,6 +821,23 @@ static const char *glsl_fragment_src =
     "uniform sampler2D uSplatLayer3;\n"
     "uniform vec4 uSplatScales;\n"
     "uniform float uCustomParams[8];\n"
+    "float distributionGGX(float NdotH, float roughness) {\n"
+    "    float a = roughness * roughness;\n"
+    "    float a2 = a * a;\n"
+    "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
+    "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
+    "}\n"
+    "float geometrySchlickGGX(float NdotV, float roughness) {\n"
+    "    float r = roughness + 1.0;\n"
+    "    float k = (r * r) / 8.0;\n"
+    "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
+    "}\n"
+    "float geometrySmith(float NdotV, float NdotL, float roughness) {\n"
+    "    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);\n"
+    "}\n"
+    "vec3 fresnelSchlick(float cosTheta, vec3 F0) {\n"
+    "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+    "}\n"
     "float sampleShadow(vec3 worldPos) {\n"
     "    if (uShadowEnabled == 0) return 1.0;\n"
     "    vec4 lc = uShadowVP * vec4(worldPos, 1.0);\n"
@@ -832,7 +859,7 @@ static const char *glsl_fragment_src =
     "void main() {\n"
     "    vec3 baseColor = uDiffuseColor.rgb * vColor.rgb;\n"
     "    float texAlpha = 1.0;\n"
-    "    float finalAlpha = uAlpha * vColor.a;\n"
+    "    float materialAlpha = uDiffuseColor.a * uAlpha * vColor.a;\n"
     "    if (uHasTexture != 0) {\n"
     "        vec4 texSample = texture(uDiffuseTex, vUV);\n"
     "        baseColor *= texSample.rgb;\n"
@@ -850,20 +877,29 @@ static const char *glsl_fragment_src =
     "            baseColor = splatColor * uDiffuseColor.rgb * vColor.rgb;\n"
     "        }\n"
     "    }\n"
-    "    finalAlpha *= texAlpha;\n"
     "    vec3 N = normalize(vNormal);\n"
     "    if (uHasNormalMap != 0) {\n"
     "        vec3 mapN = texture(uNormalTex, vUV).xyz * 2.0 - 1.0;\n"
+    "        mapN.xy *= uPbrScalars1.x;\n"
     "        vec3 T = normalize(vTangent - N * dot(vTangent, N));\n"
     "        vec3 B = normalize(cross(N, T));\n"
     "        N = normalize(mat3(T, B, N) * mapN);\n"
     "    }\n"
-    "    vec3 emissive = uEmissiveColor;\n"
+    "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
     "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, vUV).rgb;\n"
+    "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
+    "    float finalAlpha = materialAlpha * texAlpha;\n"
+    "    if (uWorkflow != 0) {\n"
+    "        if (uAlphaMode == 1) {\n"
+    "            if (finalAlpha < uPbrScalars1.y) discard;\n"
+    "            finalAlpha = materialAlpha;\n"
+    "        } else if (uAlphaMode == 0) {\n"
+    "            finalAlpha = materialAlpha;\n"
+    "        }\n"
+    "    }\n"
     "    if (uUnlit != 0) {\n"
     "        vec3 unlitColor = baseColor + emissive;\n"
     "        if (uHasEnvMap != 0) {\n"
-    "            vec3 V = normalize(uCameraPos - vWorldPos);\n"
     "            vec3 R = reflect(-V, N);\n"
     "            vec3 envColor = texture(uEnvMap, R).rgb;\n"
     "            unlitColor = mix(unlitColor, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
@@ -881,45 +917,109 @@ static const char *glsl_fragment_src =
     "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
     "        return;\n"
     "    }\n"
-    "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
-    "    vec3 specColor = uSpecularColor.rgb;\n"
-    "    if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, vUV).rgb;\n"
-    "    vec3 result = uAmbientColor * baseColor;\n"
-    "    for (int i = 0; i < uLightCount; i++) {\n"
-    "        vec3 L = vec3(0.0);\n"
-    "        float atten = 1.0;\n"
-    "        if (uLightType[i] == 0) {\n"
-    "            L = normalize(-uLightDir[i]);\n"
-    "            atten *= mix(0.15, 1.0, sampleShadow(vWorldPos));\n"
-    "        } else if (uLightType[i] == 1) {\n"
-    "            vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "            float d = length(toLight);\n"
-    "            L = toLight / max(d, 0.0001);\n"
-    "            atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
-    "        } else if (uLightType[i] == 2) {\n"
-    "            result += uLightColor[i] * uLightIntensity[i] * baseColor;\n"
-    "            continue;\n"
-    "        } else if (uLightType[i] == 3) {\n"
-    "            vec3 toLight = uLightPos[i] - vWorldPos;\n"
-    "            float d = length(toLight);\n"
-    "            L = toLight / max(d, 0.0001);\n"
-    "            float cone = smoothstep(uLightOuterCos[i], uLightInnerCos[i], "
-    "dot(normalize(-uLightDir[i]), L));\n"
-    "            atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
-    "        } else {\n"
-    "            continue;\n"
+    "    vec3 result = vec3(0.0);\n"
+    "    if (uWorkflow != 0) {\n"
+    "        float metallic = clamp(uPbrScalars0.x, 0.0, 1.0);\n"
+    "        float roughness = clamp(uPbrScalars0.y, 0.045, 1.0);\n"
+    "        float ao = clamp(uPbrScalars0.z, 0.0, 1.0);\n"
+    "        if (uHasMetallicRoughnessMap != 0) {\n"
+    "            vec4 mr = texture(uMetallicRoughnessTex, vUV);\n"
+    "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
+    "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
     "        }\n"
-    "        float NdotL = max(dot(N, L), 0.0);\n"
-    "        if (uShadingModel == 1) {\n"
-    "            float bands = max(uCustomParams[0], 2.0);\n"
-    "            NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+    "        if (uHasAOMap != 0) {\n"
+    "            vec4 aoSample = texture(uAOTex, vUV);\n"
+    "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
     "        }\n"
-    "        result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * atten;\n"
-    "        if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
+    "        result = uAmbientColor * baseColor * ao;\n"
+    "        for (int i = 0; i < uLightCount; i++) {\n"
+    "            vec3 L = vec3(0.0);\n"
+    "            float atten = 1.0;\n"
+    "            if (uLightType[i] == 0) {\n"
+    "                L = normalize(-uLightDir[i]);\n"
+    "                atten *= mix(0.15, 1.0, sampleShadow(vWorldPos));\n"
+    "            } else if (uLightType[i] == 1) {\n"
+    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+    "                float d = length(toLight);\n"
+    "                L = toLight / max(d, 0.0001);\n"
+    "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+    "            } else if (uLightType[i] == 2) {\n"
+    "                result += uLightColor[i] * uLightIntensity[i] * baseColor * ao;\n"
+    "                continue;\n"
+    "            } else if (uLightType[i] == 3) {\n"
+    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+    "                float d = length(toLight);\n"
+    "                L = toLight / max(d, 0.0001);\n"
+    "                float spotDot = dot(normalize(-uLightDir[i]), L);\n"
+    "                if (spotDot < uLightOuterCos[i]) {\n"
+    "                    atten = 0.0;\n"
+    "                } else if (spotDot < uLightInnerCos[i]) {\n"
+    "                    float t = (spotDot - uLightOuterCos[i]) / "
+    "max(uLightInnerCos[i] - uLightOuterCos[i], 0.0001);\n"
+    "                    atten = (t * t * (3.0 - 2.0 * t)) / (1.0 + uLightAtten[i] * d * d);\n"
+    "                } else {\n"
+    "                    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+    "                }\n"
+    "            } else {\n"
+    "                continue;\n"
+    "            }\n"
+    "            float NdotL = max(dot(N, L), 0.0);\n"
+    "            if (NdotL <= 0.0) continue;\n"
     "            vec3 H = normalize(L + V);\n"
-    "            float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
-    "            if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? 1.0 : 0.0;\n"
-    "            result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
+    "            float NdotV = max(dot(N, V), 0.001);\n"
+    "            float NdotH = max(dot(N, H), 0.0);\n"
+    "            float VdotH = max(dot(V, H), 0.0);\n"
+    "            vec3 F0 = mix(vec3(0.04), baseColor, metallic);\n"
+    "            vec3 F = fresnelSchlick(VdotH, F0);\n"
+    "            float D = distributionGGX(NdotH, roughness);\n"
+    "            float G = geometrySmith(NdotV, NdotL, roughness);\n"
+    "            vec3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
+    "            vec3 kS = F;\n"
+    "            vec3 kD = (1.0 - kS) * (1.0 - metallic);\n"
+    "            vec3 diffuse = kD * baseColor / 3.14159265;\n"
+    "            vec3 radiance = uLightColor[i] * uLightIntensity[i] * atten;\n"
+    "            result += (diffuse + specular) * radiance * NdotL;\n"
+    "        }\n"
+    "    } else {\n"
+    "        vec3 specColor = uSpecularColor.rgb;\n"
+    "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, vUV).rgb;\n"
+    "        result = uAmbientColor * baseColor;\n"
+    "        for (int i = 0; i < uLightCount; i++) {\n"
+    "            vec3 L = vec3(0.0);\n"
+    "            float atten = 1.0;\n"
+    "            if (uLightType[i] == 0) {\n"
+    "                L = normalize(-uLightDir[i]);\n"
+    "                atten *= mix(0.15, 1.0, sampleShadow(vWorldPos));\n"
+    "            } else if (uLightType[i] == 1) {\n"
+    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+    "                float d = length(toLight);\n"
+    "                L = toLight / max(d, 0.0001);\n"
+    "                atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
+    "            } else if (uLightType[i] == 2) {\n"
+    "                result += uLightColor[i] * uLightIntensity[i] * baseColor;\n"
+    "                continue;\n"
+    "            } else if (uLightType[i] == 3) {\n"
+    "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
+    "                float d = length(toLight);\n"
+    "                L = toLight / max(d, 0.0001);\n"
+    "                float cone = smoothstep(uLightOuterCos[i], uLightInnerCos[i], "
+    "dot(normalize(-uLightDir[i]), L));\n"
+    "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
+    "            } else {\n"
+    "                continue;\n"
+    "            }\n"
+    "            float NdotL = max(dot(N, L), 0.0);\n"
+    "            if (uShadingModel == 1) {\n"
+    "                float bands = max(uCustomParams[0], 2.0);\n"
+    "                NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+    "            }\n"
+    "            result += uLightColor[i] * uLightIntensity[i] * NdotL * baseColor * atten;\n"
+    "            if (NdotL > 0.0 && uSpecularColor.w > 0.0) {\n"
+    "                vec3 H = normalize(L + V);\n"
+    "                float spec = pow(max(dot(N, H), 0.0), uSpecularColor.w);\n"
+    "                if (uShadingModel == 1) spec = spec >= max(uCustomParams[1], 0.5) ? 1.0 : 0.0;\n"
+    "                result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
+    "            }\n"
     "        }\n"
     "    }\n"
     "    result += emissive;\n"
@@ -928,7 +1028,10 @@ static const char *glsl_fragment_src =
     "        vec3 envColor = texture(uEnvMap, R).rgb;\n"
     "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
     "    }\n"
-    "    if (uShadingModel == 4) {\n"
+    "    if (uShadingModel == 1 && uWorkflow != 0) {\n"
+    "        float bands = max(uCustomParams[0], 2.0);\n"
+    "        result = floor(result * bands) / bands;\n"
+    "    } else if (uShadingModel == 4) {\n"
     "        float ndv = clamp(dot(N, V), 0.0, 1.0);\n"
     "        float power = max(uCustomParams[0], 1.0);\n"
     "        float bias = uCustomParams[1];\n"
@@ -2020,11 +2123,19 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  cmd->emissive_color[0],
                  cmd->emissive_color[1],
                  cmd->emissive_color[2]);
+    gl.Uniform4f(ctx->uPbrScalars0,
+                 cmd->metallic,
+                 cmd->roughness,
+                 cmd->ao,
+                 cmd->emissive_intensity);
+    gl.Uniform4f(ctx->uPbrScalars1, cmd->normal_scale, cmd->alpha_cutoff, 0.0f, 0.0f);
     gl.Uniform1i(ctx->uHasEnvMap, (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0);
     gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
+    gl.Uniform1i(ctx->uWorkflow, cmd->workflow);
+    gl.Uniform1i(ctx->uAlphaMode, cmd->alpha_mode);
     gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
@@ -2057,6 +2168,9 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     GLuint normal_tex = cmd->normal_map ? gl_get_cached_texture(ctx, cmd->normal_map) : 0;
     GLuint specular_tex = cmd->specular_map ? gl_get_cached_texture(ctx, cmd->specular_map) : 0;
     GLuint emissive_tex = cmd->emissive_map ? gl_get_cached_texture(ctx, cmd->emissive_map) : 0;
+    GLuint metallic_roughness_tex =
+        cmd->metallic_roughness_map ? gl_get_cached_texture(ctx, cmd->metallic_roughness_map) : 0;
+    GLuint ao_tex = cmd->ao_map ? gl_get_cached_texture(ctx, cmd->ao_map) : 0;
     GLuint env_tex =
         cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
@@ -2074,6 +2188,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     gl.Uniform1i(ctx->uHasNormalMap, normal_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasSpecularMap, specular_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasEmissiveMap, emissive_tex ? 1 : 0);
+    gl.Uniform1i(ctx->uHasMetallicRoughnessMap, metallic_roughness_tex ? 1 : 0);
+    gl.Uniform1i(ctx->uHasAOMap, ao_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasSplat, has_splat ? 1 : 0);
 
     bind_texture_unit(ctx->uDiffuseTex, 0, GL_TEXTURE_2D, diffuse_tex);
@@ -2088,6 +2204,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer2, 8, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, 9, GL_TEXTURE_2D, splat_layer3);
     bind_texture_unit(ctx->uEnvMap, 12, GL_TEXTURE_CUBE_MAP, env_tex);
+    bind_texture_unit(ctx->uMetallicRoughnessTex, 14, GL_TEXTURE_2D, metallic_roughness_tex);
+    bind_texture_unit(ctx->uAOTex, 15, GL_TEXTURE_2D, ao_tex);
     if (ctx->uSplatScales >= 0) {
         gl.Uniform4f(ctx->uSplatScales,
                      cmd->splat_layer_scales[0],
@@ -2246,6 +2364,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uSpecularColor);
     U(uEmissiveColor);
     U(uAlpha);
+    U(uPbrScalars0);
+    U(uPbrScalars1);
     U(uUnlit);
     U(uShadingModel);
     U(uLightCount);
@@ -2255,6 +2375,10 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasEmissiveMap);
     U(uHasEnvMap);
     U(uReflectivity);
+    U(uWorkflow);
+    U(uAlphaMode);
+    U(uHasMetallicRoughnessMap);
+    U(uHasAOMap);
     U(uCustomParams);
     U(uHasSplat);
     U(uFogEnabled);
@@ -2282,6 +2406,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uEmissiveTex);
     U(uShadowTex);
     U(uEnvMap);
+    U(uMetallicRoughnessTex);
+    U(uAOTex);
     U(uSplatTex);
     U(uSplatLayer0);
     U(uSplatLayer1);
@@ -2504,6 +2630,8 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.Uniform1i(ctx->uMorphDeltas, 10);
     gl.Uniform1i(ctx->uMorphNormalDeltas, 11);
     gl.Uniform1i(ctx->uEnvMap, 12);
+    gl.Uniform1i(ctx->uMetallicRoughnessTex, 14);
+    gl.Uniform1i(ctx->uAOTex, 15);
 
     gl.UseProgram(ctx->shadow_program);
     gl.Uniform1i(ctx->shadow_uMorphDeltas, 10);
@@ -2774,7 +2902,7 @@ static void gl_submit_draw(void *ctx_ptr,
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    gl.DepthMask(cmd->alpha >= 1.0f ? GL_TRUE : GL_FALSE);
+    gl.DepthMask(vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? GL_FALSE : GL_TRUE);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
@@ -2946,7 +3074,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    gl.DepthMask(cmd->alpha >= 1.0f ? GL_TRUE : GL_FALSE);
+    gl.DepthMask(vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? GL_FALSE : GL_TRUE);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);

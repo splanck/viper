@@ -110,18 +110,15 @@ static const char *d3d11_shader_source =
     "    float4 diffuseColor;\n"
     "    float4 specularColor;\n"
     "    float4 emissiveColor;\n"
-    "    float alpha;\n"
-    "    float reflectivity;\n"
-    "    int hasTexture;\n"
-    "    int hasNormalMap;\n"
-    "    int hasSpecularMap;\n"
-    "    int hasEmissiveMap;\n"
-    "    int unlit;\n"
-    "    int hasEnvMap;\n"
-    "    int hasSplat;\n"
+    "    float4 scalars;\n"
+    "    float4 pbrScalars0;\n"
+    "    float4 pbrScalars1;\n"
+    "    int4 flags0;\n"
+    "    int4 flags1;\n"
+    "    int4 pbrFlags;\n"
+    "    float4 splatScales;\n"
     "    int shadingModel;\n"
     "    float customParams[8];\n"
-    "    float4 splatScales;\n"
     "};\n"
     "\n"
     "cbuffer PerLights : register(b3) {\n"
@@ -150,6 +147,8 @@ static const char *d3d11_shader_source =
     "Texture2D splatLayer2 : register(t8);\n"
     "Texture2D splatLayer3 : register(t9);\n"
     "TextureCube envTex : register(t10);\n"
+    "Texture2D metallicRoughnessTex : register(t11);\n"
+    "Texture2D aoTex : register(t12);\n"
     "SamplerState texSampler : register(s0);\n"
     "SamplerComparisonState shadowSampler : register(s1);\n"
     "SamplerState envSampler : register(s2);\n"
@@ -384,17 +383,38 @@ static const char *d3d11_shader_source =
     "    return shadowTex.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
     "}\n"
     "\n"
+    "float distributionGGX(float NdotH, float roughness) {\n"
+    "    float a = roughness * roughness;\n"
+    "    float a2 = a * a;\n"
+    "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
+    "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
+    "}\n"
+    "\n"
+    "float geometrySchlickGGX(float NdotV, float roughness) {\n"
+    "    float r = roughness + 1.0;\n"
+    "    float k = (r * r) / 8.0;\n"
+    "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
+    "}\n"
+    "\n"
+    "float geometrySmith(float NdotV, float NdotL, float roughness) {\n"
+    "    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);\n"
+    "}\n"
+    "\n"
+    "float3 fresnelSchlick(float cosTheta, float3 F0) {\n"
+    "    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);\n"
+    "}\n"
+    "\n"
     "PS_OUTPUT PSMain(PS_INPUT input) {\n"
     "    PS_OUTPUT output;\n"
     "    float3 baseColor = diffuseColor.rgb * input.color.rgb;\n"
     "    float texAlpha = 1.0;\n"
-    "    float finalAlpha = alpha * input.color.a;\n"
-    "    if (hasTexture != 0) {\n"
+    "    float materialAlpha = diffuseColor.a * scalars.x * input.color.a;\n"
+    "    if (flags0.x != 0) {\n"
     "        float4 texSample = diffuseTex.Sample(texSampler, input.uv);\n"
     "        baseColor *= texSample.rgb;\n"
     "        texAlpha = texSample.a;\n"
     "    }\n"
-    "    if (hasSplat != 0) {\n"
+    "    if (flags1.z != 0) {\n"
     "        float4 sp = splatTex.Sample(texSampler, input.uv);\n"
     "        float sum = sp.r + sp.g + sp.b + sp.a;\n"
     "        if (sum > 0.0001) {\n"
@@ -410,77 +430,153 @@ static const char *d3d11_shader_source =
     "            baseColor = splatColor * diffuseColor.rgb * input.color.rgb;\n"
     "        }\n"
     "    }\n"
-    "    finalAlpha *= texAlpha;\n"
     "    float3 N = normalize(input.normal);\n"
-    "    if (hasNormalMap != 0) {\n"
+    "    if (flags0.z != 0) {\n"
     "        float3 mapN = normalTex.Sample(texSampler, input.uv).xyz * 2.0 - 1.0;\n"
+    "        mapN.xy *= pbrScalars1.x;\n"
     "        float3 T = normalize(input.tangent - N * dot(input.tangent, N));\n"
     "        if (dot(T, T) > 0.0001) {\n"
     "            float3 B = normalize(cross(N, T));\n"
     "            N = normalize(mapN.x * T + mapN.y * B + mapN.z * N);\n"
     "        }\n"
     "    }\n"
-    "    float3 emissive = emissiveColor.rgb;\n"
-    "    if (hasEmissiveMap != 0)\n"
+    "    float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
+    "    float3 emissive = emissiveColor.rgb * pbrScalars0.w;\n"
+    "    if (flags1.x != 0)\n"
     "        emissive *= emissiveTex.Sample(texSampler, input.uv).rgb;\n"
-    "    float3 result = ambientColor.rgb * baseColor;\n"
-    "    if (unlit != 0) {\n"
-    "        result = baseColor + emissive;\n"
-    "    } else {\n"
-    "        float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
-    "        float3 specColor = specularColor.rgb;\n"
-    "        if (hasSpecularMap != 0)\n"
-    "            specColor *= specularTex.Sample(texSampler, input.uv).rgb;\n"
-    "        for (int i = 0; i < lightCount; i++) {\n"
-    "            float3 L = float3(0.0, 0.0, 0.0);\n"
-    "            float atten = 1.0;\n"
-    "            if (lights[i].type == 0) {\n"
-    "                L = normalize(-lights[i].direction.xyz);\n"
-    "                atten *= lerp(0.15, 1.0, sampleShadow(input.worldPos));\n"
-    "            } else if (lights[i].type == 1) {\n"
-    "                float3 toLight = lights[i].position.xyz - input.worldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
-    "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-    "            } else if (lights[i].type == 2) {\n"
-    "                result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
-    "                continue;\n"
-    "            } else if (lights[i].type == 3) {\n"
-    "                float3 toLight = lights[i].position.xyz - input.worldPos;\n"
-    "                float d = length(toLight);\n"
-    "                L = toLight / max(d, 0.0001);\n"
-    "                float cone = smoothstep(lights[i].outer_cos,\n"
-    "                                        lights[i].inner_cos,\n"
-    "                                        dot(normalize(-lights[i].direction.xyz), L));\n"
-    "                atten = cone / (1.0 + lights[i].attenuation * d * d);\n"
-    "            } else {\n"
-    "                continue;\n"
-    "            }\n"
-    "            float NdotL = max(dot(N, L), 0.0);\n"
-    "            if (shadingModel == 1) {\n"
-    "                float bands = max(customParams[0], 2.0);\n"
-    "                NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
-    "            }\n"
-    "            result += lights[i].color.rgb * lights[i].intensity * NdotL * baseColor * atten;\n"
-    "            if (NdotL > 0.0 && specularColor.w > 0.0) {\n"
-    "                float3 H = normalize(L + V);\n"
-    "                float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
-    "                if (shadingModel == 1)\n"
-    "                    spec = spec >= max(customParams[1], 0.5) ? 1.0 : 0.0;\n"
-    "                result += lights[i].color.rgb * lights[i].intensity * spec * specColor * "
-    "atten;\n"
-    "            }\n"
-    "        }\n"
-    "        result += emissive;\n"
-    "        if (hasEnvMap != 0) {\n"
-    "            float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
-    "            float3 R = reflect(-V, normalize(N));\n"
-    "            float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
-    "            result = lerp(result, envColor, saturate(reflectivity));\n"
+    "    float finalAlpha = materialAlpha * texAlpha;\n"
+    "    if (pbrFlags.x != 0) {\n"
+    "        if (pbrFlags.y == 1) {\n"
+    "            if (finalAlpha < pbrScalars1.y)\n"
+    "                discard;\n"
+    "            finalAlpha = materialAlpha;\n"
+    "        } else if (pbrFlags.y == 0) {\n"
+    "            finalAlpha = materialAlpha;\n"
     "        }\n"
     "    }\n"
-    "    if (shadingModel == 4) {\n"
-    "        float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
+    "    float3 result = ambientColor.rgb * baseColor;\n"
+    "    if (flags0.y != 0) {\n"
+    "        result = baseColor + emissive;\n"
+    "    } else {\n"
+    "        if (pbrFlags.x != 0) {\n"
+    "            float metallic = saturate(pbrScalars0.x);\n"
+    "            float roughness = clamp(pbrScalars0.y, 0.045, 1.0);\n"
+    "            float ao = saturate(pbrScalars0.z);\n"
+    "            if (pbrFlags.z != 0) {\n"
+    "                float4 mr = metallicRoughnessTex.Sample(texSampler, input.uv);\n"
+    "                roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
+    "                metallic = saturate(metallic * mr.b);\n"
+    "            }\n"
+    "            if (pbrFlags.w != 0) {\n"
+    "                float4 aoSample = aoTex.Sample(texSampler, input.uv);\n"
+    "                ao = saturate(ao * aoSample.r);\n"
+    "            }\n"
+    "            result = ambientColor.rgb * baseColor * ao;\n"
+    "            for (int i = 0; i < lightCount; i++) {\n"
+    "                float3 L = float3(0.0, 0.0, 0.0);\n"
+    "                float atten = 1.0;\n"
+    "                if (lights[i].type == 0) {\n"
+    "                    L = normalize(-lights[i].direction.xyz);\n"
+    "                    atten *= lerp(0.15, 1.0, sampleShadow(input.worldPos));\n"
+    "                } else if (lights[i].type == 1) {\n"
+    "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
+    "                    float d = length(toLight);\n"
+    "                    L = toLight / max(d, 0.0001);\n"
+    "                    atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+    "                } else if (lights[i].type == 2) {\n"
+    "                    result += lights[i].color.rgb * lights[i].intensity * baseColor * ao;\n"
+    "                    continue;\n"
+    "                } else if (lights[i].type == 3) {\n"
+    "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
+    "                    float d = length(toLight);\n"
+    "                    L = toLight / max(d, 0.0001);\n"
+    "                    atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+    "                    float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+    "                    if (spotDot < lights[i].outer_cos) {\n"
+    "                        atten = 0.0;\n"
+    "                    } else if (spotDot < lights[i].inner_cos) {\n"
+    "                        float t = (spotDot - lights[i].outer_cos) /\n"
+    "                                  max(lights[i].inner_cos - lights[i].outer_cos, 0.0001);\n"
+    "                        atten *= t * t * (3.0 - 2.0 * t);\n"
+    "                    }\n"
+    "                } else {\n"
+    "                    continue;\n"
+    "                }\n"
+    "                float NdotL = max(dot(N, L), 0.0);\n"
+    "                if (NdotL <= 0.0)\n"
+    "                    continue;\n"
+    "                float3 H = normalize(L + V);\n"
+    "                float NdotV = max(dot(N, V), 0.001);\n"
+    "                float NdotH = max(dot(N, H), 0.0);\n"
+    "                float VdotH = max(dot(V, H), 0.0);\n"
+    "                float3 F0 = lerp(float3(0.04, 0.04, 0.04), baseColor, metallic);\n"
+    "                float3 F = fresnelSchlick(VdotH, F0);\n"
+    "                float D = distributionGGX(NdotH, roughness);\n"
+    "                float G = geometrySmith(NdotV, NdotL, roughness);\n"
+    "                float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
+    "                float3 kS = F;\n"
+    "                float3 kD = (1.0 - kS) * (1.0 - metallic);\n"
+    "                float3 diffuse = kD * baseColor / 3.14159265;\n"
+    "                float3 radiance = lights[i].color.rgb * lights[i].intensity * atten;\n"
+    "                result += (diffuse + specular) * radiance * NdotL;\n"
+    "            }\n"
+    "        } else {\n"
+    "            float3 specColor = specularColor.rgb;\n"
+    "            if (flags0.w != 0)\n"
+    "                specColor *= specularTex.Sample(texSampler, input.uv).rgb;\n"
+    "            for (int i = 0; i < lightCount; i++) {\n"
+    "                float3 L = float3(0.0, 0.0, 0.0);\n"
+    "                float atten = 1.0;\n"
+    "                if (lights[i].type == 0) {\n"
+    "                    L = normalize(-lights[i].direction.xyz);\n"
+    "                    atten *= lerp(0.15, 1.0, sampleShadow(input.worldPos));\n"
+    "                } else if (lights[i].type == 1) {\n"
+    "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
+    "                    float d = length(toLight);\n"
+    "                    L = toLight / max(d, 0.0001);\n"
+    "                    atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+    "                } else if (lights[i].type == 2) {\n"
+    "                    result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
+    "                    continue;\n"
+    "                } else if (lights[i].type == 3) {\n"
+    "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
+    "                    float d = length(toLight);\n"
+    "                    L = toLight / max(d, 0.0001);\n"
+    "                    float cone = smoothstep(lights[i].outer_cos,\n"
+    "                                            lights[i].inner_cos,\n"
+    "                                            dot(normalize(-lights[i].direction.xyz), L));\n"
+    "                    atten = cone / (1.0 + lights[i].attenuation * d * d);\n"
+    "                } else {\n"
+    "                    continue;\n"
+    "                }\n"
+    "                float NdotL = max(dot(N, L), 0.0);\n"
+    "                if (shadingModel == 1) {\n"
+    "                    float bands = max(customParams[0], 2.0);\n"
+    "                    NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
+    "                }\n"
+    "                result += lights[i].color.rgb * lights[i].intensity * NdotL * baseColor * "
+    "atten;\n"
+    "                if (NdotL > 0.0 && specularColor.w > 0.0) {\n"
+    "                    float3 H = normalize(L + V);\n"
+    "                    float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
+    "                    if (shadingModel == 1)\n"
+    "                        spec = spec >= max(customParams[1], 0.5) ? 1.0 : 0.0;\n"
+    "                    result += lights[i].color.rgb * lights[i].intensity * spec * specColor * "
+    "atten;\n"
+    "                }\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
+    "    result += emissive;\n"
+    "    if (flags1.y != 0) {\n"
+    "        float3 R = reflect(-V, normalize(N));\n"
+    "        float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
+    "        result = lerp(result, envColor, saturate(scalars.y));\n"
+    "    }\n"
+    "    if (shadingModel == 1 && pbrFlags.x != 0) {\n"
+    "        float bands = max(customParams[0], 2.0);\n"
+    "        result = floor(result * bands) / bands;\n"
+    "    } else if (shadingModel == 4) {\n"
     "        float ndv = saturate(dot(N, V));\n"
     "        float power = max(customParams[0], 1.0);\n"
     "        float bias = customParams[1];\n"
@@ -749,7 +845,7 @@ typedef struct {
 } d3d_temp_srv_t;
 
 typedef struct {
-    d3d_temp_srv_t textures[9];
+    d3d_temp_srv_t textures[11];
     d3d_temp_srv_t cubemap;
     int has_texture;
     int has_normal_map;
@@ -757,6 +853,8 @@ typedef struct {
     int has_emissive_map;
     int has_env_map;
     int has_splat;
+    int has_metallic_roughness_map;
+    int has_ao_map;
 } d3d_draw_resources_t;
 
 typedef struct {
@@ -796,18 +894,15 @@ typedef struct {
     float diffuse[4];
     float specular[4];
     float emissive[4];
-    float alpha;
-    float reflectivity;
-    int32_t has_texture;
-    int32_t has_normal_map;
-    int32_t has_specular_map;
-    int32_t has_emissive_map;
-    int32_t unlit;
-    int32_t has_env_map;
-    int32_t has_splat;
+    float scalars[4];
+    float pbr_scalars0[4];
+    float pbr_scalars1[4];
+    int32_t flags0[4];
+    int32_t flags1[4];
+    int32_t pbr_flags[4];
+    float splat_scales[4];
     int32_t shading_model;
     float custom_params[8];
-    float splat_scales[4];
 } d3d_per_material_t;
 
 typedef struct {
@@ -2043,6 +2138,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                         int has_emissive_map,
                                         int has_env_map,
                                         int has_splat,
+                                        int has_metallic_roughness_map,
+                                        int has_ao_map,
                                         d3d_per_material_t *material_data) {
     memset(material_data, 0, sizeof(*material_data));
     memcpy(material_data->diffuse, cmd->diffuse_color, sizeof(material_data->diffuse));
@@ -2053,15 +2150,25 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->emissive[0] = cmd->emissive_color[0];
     material_data->emissive[1] = cmd->emissive_color[1];
     material_data->emissive[2] = cmd->emissive_color[2];
-    material_data->alpha = cmd->alpha;
-    material_data->reflectivity = cmd->reflectivity;
-    material_data->has_texture = has_texture;
-    material_data->has_normal_map = has_normal_map;
-    material_data->has_specular_map = has_specular_map;
-    material_data->has_emissive_map = has_emissive_map;
-    material_data->unlit = cmd->unlit;
-    material_data->has_env_map = has_env_map;
-    material_data->has_splat = has_splat;
+    material_data->scalars[0] = cmd->alpha;
+    material_data->scalars[1] = cmd->reflectivity;
+    material_data->pbr_scalars0[0] = cmd->metallic;
+    material_data->pbr_scalars0[1] = cmd->roughness;
+    material_data->pbr_scalars0[2] = cmd->ao;
+    material_data->pbr_scalars0[3] = cmd->emissive_intensity;
+    material_data->pbr_scalars1[0] = cmd->normal_scale;
+    material_data->pbr_scalars1[1] = cmd->alpha_cutoff;
+    material_data->flags0[0] = has_texture;
+    material_data->flags0[1] = cmd->unlit;
+    material_data->flags0[2] = has_normal_map;
+    material_data->flags0[3] = has_specular_map;
+    material_data->flags1[0] = has_emissive_map;
+    material_data->flags1[1] = has_env_map;
+    material_data->flags1[2] = has_splat;
+    material_data->pbr_flags[0] = cmd->workflow;
+    material_data->pbr_flags[1] = cmd->alpha_mode;
+    material_data->pbr_flags[2] = has_metallic_roughness_map;
+    material_data->pbr_flags[3] = has_ao_map;
     material_data->shading_model = cmd->shading_model;
     memcpy(material_data->custom_params, cmd->custom_params, sizeof(material_data->custom_params));
     memcpy(
@@ -2163,12 +2270,13 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
                                      int instanced) {
     ID3D11RasterizerState *rasterizer;
     ID3D11ShaderResourceView *vs_srvs[2];
+    int alpha_blend = vgfx3d_draw_cmd_uses_alpha_blend(cmd);
 
     rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
     if (rasterizer)
         ID3D11DeviceContext_RSSetState(ctx->ctx, rasterizer);
     ID3D11DeviceContext_OMSetDepthStencilState(
-        ctx->ctx, (cmd->alpha < 1.0f) ? ctx->depth_state_no_write : ctx->depth_state, 0);
+        ctx->ctx, alpha_blend ? ctx->depth_state_no_write : ctx->depth_state, 0);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_IASetInputLayout(
         ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
@@ -2191,12 +2299,12 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
-    ID3D11ShaderResourceView *null_ps[11] = {
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    ID3D11ShaderResourceView *null_ps[13] = {
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
     if (!ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 11, null_ps);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, null_ps);
 }
 
 static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *skybox_data) {
@@ -2254,7 +2362,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      d3d_draw_resources_t *resources) {
-    ID3D11ShaderResourceView *srvs[11];
+    ID3D11ShaderResourceView *srvs[13];
 
     if (!ctx || !cmd || !resources)
         return 0;
@@ -2274,12 +2382,17 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;
+    srvs[11] =
+        d3d11_get_or_create_srv(ctx, cmd->metallic_roughness_map, &resources->textures[9]);
+    srvs[12] = d3d11_get_or_create_srv(ctx, cmd->ao_map, &resources->textures[10]);
 
     resources->has_texture = srvs[0] != NULL;
     resources->has_normal_map = srvs[1] != NULL;
     resources->has_specular_map = srvs[2] != NULL;
     resources->has_emissive_map = srvs[3] != NULL;
     resources->has_env_map = srvs[10] != NULL;
+    resources->has_metallic_roughness_map = srvs[11] != NULL;
+    resources->has_ao_map = srvs[12] != NULL;
     resources->has_splat = cmd->has_splat && srvs[5] != NULL;
     if (!resources->has_splat) {
         srvs[5] = NULL;
@@ -2289,14 +2402,14 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         srvs[9] = NULL;
     }
 
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 11, srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, srvs);
     return resources->has_splat;
 }
 
 static void d3d11_release_temporary_resources(d3d_draw_resources_t *resources) {
     if (!resources)
         return;
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 11; i++)
         d3d11_release_temp_srv(&resources->textures[i]);
     d3d11_release_temp_srv(&resources->cubemap);
 }
@@ -2356,6 +2469,8 @@ static void d3d11_submit_draw(void *ctx_ptr,
                                 draw_resources.has_emissive_map,
                                 draw_resources.has_env_map,
                                 has_splat,
+                                draw_resources.has_metallic_roughness_map,
+                                draw_resources.has_ao_map,
                                 &material_data);
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
@@ -2464,6 +2579,8 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                 draw_resources.has_emissive_map,
                                 draw_resources.has_env_map,
                                 has_splat,
+                                draw_resources.has_metallic_roughness_map,
+                                draw_resources.has_ao_map,
                                 &material_data);
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
