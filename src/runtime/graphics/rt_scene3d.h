@@ -29,6 +29,13 @@
 extern "C" {
 #endif
 
+enum {
+    RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY = 0,
+    RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE = 1,
+    RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION = 2,
+    RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC = 3,
+};
+
 /* Scene3D */
 void *rt_scene3d_new(void);
 void *rt_scene3d_get_root(void *scene);
@@ -40,6 +47,7 @@ void rt_scene3d_clear(void *scene);
 int64_t rt_scene3d_get_node_count(void *scene);
 int64_t rt_scene3d_save(void *scene, rt_string path);
 void *rt_scene3d_load(rt_string path);
+void rt_scene3d_sync_bindings(void *scene, double dt);
 
 /* SceneNode3D */
 void *rt_scene_node3d_new(void);
@@ -66,6 +74,14 @@ void rt_scene_node3d_set_name(void *node, rt_string name);
 rt_string rt_scene_node3d_get_name(void *node);
 void *rt_scene_node3d_get_aabb_min(void *node);
 void *rt_scene_node3d_get_aabb_max(void *node);
+void rt_scene_node3d_bind_body(void *node, void *body);
+void rt_scene_node3d_clear_body_binding(void *node);
+void *rt_scene_node3d_get_body(void *node);
+void rt_scene_node3d_set_sync_mode(void *node, int64_t sync_mode);
+int64_t rt_scene_node3d_get_sync_mode(void *node);
+void rt_scene_node3d_bind_animator(void *node, void *controller);
+void rt_scene_node3d_clear_animator_binding(void *node);
+void *rt_scene_node3d_get_animator(void *node);
 
 /* LOD — Level of Detail */
 void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);

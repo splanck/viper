@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-430K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-437K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -88,7 +88,7 @@ zia> Say(Fmt.Int(2 + 3))
 
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
-- **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) — zero external tool dependencies for native compilation
+- **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
 - **Full runtime** — 300 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
@@ -106,9 +106,9 @@ Viper is in **early development**. All components are functional but evolving:
 | [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling |
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
-| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables) |
-| [Runtime](docs/viperlib/README.md) | 300 classes across 22 modules; 1,410 tests |
-| [3D Graphics](docs/graphics3d-guide.md) | 34 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback; Metal/D3D11 feature-complete, OpenGL/software |
+| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables, ELF dynamic linking) |
+| [Runtime](docs/viperlib/README.md) | 300+ classes across 22 modules; 1,432 tests |
+| [3D Graphics](docs/graphics3d-guide.md) | 41 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback, unified `Model3D` asset import/instantiation, `AnimController3D` state control, `Scene3D.SyncBindings` body/animator composition, Collider3D (7 shape types), Physics3D (rotation, sleep, CCD, world queries); Metal/D3D11 feature-complete, OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE with live diagnostics, hover, go-to-definition, project search; LSP + MCP servers |
@@ -235,7 +235,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 300 cla
 | [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
 | [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels, buttons) |
 | [Graphics](docs/viperlib/graphics/README.md) | 12 | Canvas, sprites, tilemaps, cameras, bitmap fonts, video playback |
-| [Graphics3D](docs/graphics3d-guide.md) | 34 | Meshes, materials, lights, skeletal animation, physics, terrain, water, vegetation, particles, FBX/glTF, video playback |
+| [Graphics3D](docs/graphics3d-guide.md) | 41 | Meshes, materials, lights, skeletal animation, `AnimController3D`, `Scene3D.SyncBindings`, physics (Collider3D, raycast, sweep, overlap, collision events), terrain, water, vegetation, particles, FBX/glTF, video playback |
 | [GUI](docs/viperlib/gui/README.md) | 46 | Desktop widgets, layouts, menus, code editor, tree views |
 | [I/O](docs/viperlib/io) | 16 | Files, directories, archives, compression, streaming, asset embedding |
 | [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, action mapping |

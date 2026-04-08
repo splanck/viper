@@ -813,8 +813,11 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
 # =============================================================================
 set(G3D_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/runtime")
 set(G3D_ZIA_TESTS
+        test_animcontroller3d
         test_canvas3d_hello
         test_canvas3d_obj
+        test_model3d
+        test_scene3d_bindings
         test_physics3d_rotation
         test_collider3d_advanced
         test_physics3d_queries

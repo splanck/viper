@@ -33,6 +33,9 @@ typedef struct rt_scene_node3d {
 
     void *mesh;
     void *material;
+    void *bound_body;
+    void *bound_animator;
+    int32_t sync_mode;
 
     int8_t visible;
     rt_string name;

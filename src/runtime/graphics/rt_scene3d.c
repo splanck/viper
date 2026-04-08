@@ -24,9 +24,11 @@
 
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels_internal.h"
+#include "rt_physics3d.h"
 #include "vgfx3d_frustum.h"
 
 #include <math.h>
@@ -164,6 +166,206 @@ static void mat4d_mul(const double *a, const double *b, double *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+static int mat4d_invert(const double *m, double *out) {
+    double inv[16];
+    double det;
+    double inv_det;
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+    if (fabs(det) < 1e-12)
+        return -1;
+
+    inv_det = 1.0 / det;
+    for (int i = 0; i < 16; i++)
+        out[i] = inv[i] * inv_det;
+    return 0;
+}
+
+static void mat4d_transform_point(const double *m,
+                                  double x,
+                                  double y,
+                                  double z,
+                                  double *out_x,
+                                  double *out_y,
+                                  double *out_z) {
+    if (!m || !out_x || !out_y || !out_z)
+        return;
+    *out_x = m[0] * x + m[1] * y + m[2] * z + m[3];
+    *out_y = m[4] * x + m[5] * y + m[6] * z + m[7];
+    *out_z = m[8] * x + m[9] * y + m[10] * z + m[11];
+}
+
+static void quat_identity(double *out) {
+    if (!out)
+        return;
+    out[0] = 0.0;
+    out[1] = 0.0;
+    out[2] = 0.0;
+    out[3] = 1.0;
+}
+
+static void quat_normalize_local(double *q) {
+    double len_sq;
+    double inv_len;
+    if (!q)
+        return;
+    len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (len_sq < 1e-20) {
+        quat_identity(q);
+        return;
+    }
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] *= inv_len;
+    q[1] *= inv_len;
+    q[2] *= inv_len;
+    q[3] *= inv_len;
+}
+
+static void quat_conjugate_local(const double *q, double *out) {
+    if (!q || !out)
+        return;
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+static void quat_mul_local(const double *a, const double *b, double *out) {
+    double x;
+    double y;
+    double z;
+    double w;
+    if (!a || !b || !out)
+        return;
+    x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+    quat_normalize_local(out);
+}
+
+static void quat_from_matrix_rows(double m00,
+                                  double m01,
+                                  double m02,
+                                  double m10,
+                                  double m11,
+                                  double m12,
+                                  double m20,
+                                  double m21,
+                                  double m22,
+                                  double *out) {
+    double trace;
+    if (!out)
+        return;
+    trace = m00 + m11 + m22;
+    if (trace > 0.0) {
+        double s = sqrt(trace + 1.0) * 2.0;
+        out[3] = 0.25 * s;
+        out[0] = (m21 - m12) / s;
+        out[1] = (m02 - m20) / s;
+        out[2] = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+        double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
+        out[3] = (m21 - m12) / s;
+        out[0] = 0.25 * s;
+        out[1] = (m01 + m10) / s;
+        out[2] = (m02 + m20) / s;
+    } else if (m11 > m22) {
+        double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
+        out[3] = (m02 - m20) / s;
+        out[0] = (m01 + m10) / s;
+        out[1] = 0.25 * s;
+        out[2] = (m12 + m21) / s;
+    } else {
+        double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
+        out[3] = (m10 - m01) / s;
+        out[0] = (m02 + m20) / s;
+        out[1] = (m12 + m21) / s;
+        out[2] = 0.25 * s;
+    }
+    quat_normalize_local(out);
+}
+
+static void quat_from_world_matrix(const double *m, double *out) {
+    double rx;
+    double ry;
+    double rz;
+    double ux;
+    double uy;
+    double uz;
+    double fx;
+    double fy;
+    double fz;
+    double rlen;
+    double ulen;
+    double flen;
+    if (!m || !out) {
+        return;
+    }
+    rx = m[0];
+    ry = m[4];
+    rz = m[8];
+    ux = m[1];
+    uy = m[5];
+    uz = m[9];
+    fx = m[2];
+    fy = m[6];
+    fz = m[10];
+    rlen = sqrt(rx * rx + ry * ry + rz * rz);
+    ulen = sqrt(ux * ux + uy * uy + uz * uz);
+    flen = sqrt(fx * fx + fy * fy + fz * fz);
+    if (rlen < 1e-12 || ulen < 1e-12 || flen < 1e-12) {
+        quat_identity(out);
+        return;
+    }
+    rx /= rlen;
+    ry /= rlen;
+    rz /= rlen;
+    ux /= ulen;
+    uy /= ulen;
+    uz /= ulen;
+    fx /= flen;
+    fy /= flen;
+    fz /= flen;
+    quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, out);
+}
+
 /// @brief Recursively mark a node and all descendants as dirty.
 static void mark_dirty(rt_scene_node3d *node) {
     node->world_dirty = 1;
@@ -195,6 +397,150 @@ static int32_t count_subtree(const rt_scene_node3d *node) {
     for (int32_t i = 0; i < node->child_count; i++)
         n += count_subtree(node->children[i]);
     return n;
+}
+
+static void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, double *z) {
+    if (!x || !y || !z) {
+        return;
+    }
+    *x = 0.0;
+    *y = 0.0;
+    *z = 0.0;
+    if (!node)
+        return;
+    recompute_world_matrix(node);
+    *x = node->world_matrix[3];
+    *y = node->world_matrix[7];
+    *z = node->world_matrix[11];
+}
+
+static void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat) {
+    if (!out_quat) {
+        return;
+    }
+    quat_identity(out_quat);
+    if (!node)
+        return;
+    recompute_world_matrix(node);
+    quat_from_world_matrix(node->world_matrix, out_quat);
+}
+
+static void scene_node_set_world_transform(rt_scene_node3d *node,
+                                           const double *world_pos,
+                                           const double *world_quat) {
+    double local_pos[3];
+    double local_quat[4];
+    double inv_parent[16];
+    if (!node || !world_pos || !world_quat)
+        return;
+
+    if (!node->parent) {
+        node->position[0] = world_pos[0];
+        node->position[1] = world_pos[1];
+        node->position[2] = world_pos[2];
+        node->rotation[0] = world_quat[0];
+        node->rotation[1] = world_quat[1];
+        node->rotation[2] = world_quat[2];
+        node->rotation[3] = world_quat[3];
+        mark_dirty(node);
+        return;
+    }
+
+    recompute_world_matrix(node->parent);
+    if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
+        mat4d_transform_point(inv_parent,
+                              world_pos[0],
+                              world_pos[1],
+                              world_pos[2],
+                              &local_pos[0],
+                              &local_pos[1],
+                              &local_pos[2]);
+    } else {
+        local_pos[0] = world_pos[0];
+        local_pos[1] = world_pos[1];
+        local_pos[2] = world_pos[2];
+    }
+
+    node->position[0] = local_pos[0];
+    node->position[1] = local_pos[1];
+    node->position[2] = local_pos[2];
+
+    {
+        double parent_world_quat[4];
+        double parent_inv_quat[4];
+        scene_node_get_world_rotation(node->parent, parent_world_quat);
+        quat_conjugate_local(parent_world_quat, parent_inv_quat);
+        quat_mul_local(parent_inv_quat, world_quat, local_quat);
+        node->rotation[0] = local_quat[0];
+        node->rotation[1] = local_quat[1];
+        node->rotation[2] = local_quat[2];
+        node->rotation[3] = local_quat[3];
+    }
+
+    mark_dirty(node);
+}
+
+static void scene_node_apply_root_motion(rt_scene_node3d *node) {
+    void *delta;
+    if (!node || !node->bound_animator)
+        return;
+    delta = rt_anim_controller3d_consume_root_motion(node->bound_animator);
+    if (!delta)
+        return;
+    node->position[0] += rt_vec3_x(delta);
+    node->position[1] += rt_vec3_y(delta);
+    node->position[2] += rt_vec3_z(delta);
+    mark_dirty(node);
+}
+
+static void scene_node_sync_recursive(rt_scene_node3d *node) {
+    int64_t mode;
+    int pull_from_body;
+    int push_to_body;
+    int body_is_kinematic;
+    if (!node)
+        return;
+
+    mode = node->sync_mode;
+    body_is_kinematic = node->bound_body ? rt_body3d_is_kinematic(node->bound_body) : 0;
+    pull_from_body = node->bound_body &&
+                     (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
+                      (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
+    push_to_body = node->bound_body &&
+                   (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
+                    (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
+
+    if (pull_from_body) {
+        double world_pos[3];
+        double world_quat[4];
+        void *pos = rt_body3d_get_position(node->bound_body);
+        void *quat = rt_body3d_get_orientation(node->bound_body);
+        world_pos[0] = pos ? rt_vec3_x(pos) : 0.0;
+        world_pos[1] = pos ? rt_vec3_y(pos) : 0.0;
+        world_pos[2] = pos ? rt_vec3_z(pos) : 0.0;
+        world_quat[0] = quat ? rt_quat_x(quat) : 0.0;
+        world_quat[1] = quat ? rt_quat_y(quat) : 0.0;
+        world_quat[2] = quat ? rt_quat_z(quat) : 0.0;
+        world_quat[3] = quat ? rt_quat_w(quat) : 1.0;
+        scene_node_set_world_transform(node, world_pos, world_quat);
+    } else if (node->bound_animator &&
+               (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
+        scene_node_apply_root_motion(node);
+    }
+
+    if (push_to_body) {
+        double world_pos[3];
+        double world_quat[4];
+        scene_node_get_world_position(node, &world_pos[0], &world_pos[1], &world_pos[2]);
+        scene_node_get_world_rotation(node, world_quat);
+        rt_body3d_set_position(node->bound_body, world_pos[0], world_pos[1], world_pos[2]);
+        rt_body3d_set_orientation(
+            node->bound_body,
+            rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]));
+    }
+
+    for (int32_t i = 0; i < node->child_count; i++)
+        scene_node_sync_recursive(node->children[i]);
 }
 
 static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
@@ -321,8 +667,29 @@ static void draw_node(rt_scene_node3d *node,
     }
 
     if (draw_self && draw_mesh && node->material) {
+        const float *saved_palette = ((rt_mesh3d *)draw_mesh)->bone_palette;
+        const float *saved_prev_palette = ((rt_mesh3d *)draw_mesh)->prev_bone_palette;
+        int32_t saved_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
+        const float *anim_palette = NULL;
+        const float *anim_prev_palette = NULL;
+        int32_t anim_bone_count = 0;
+
+        if (node->bound_animator) {
+            anim_palette =
+                rt_anim_controller3d_get_final_palette_data(node->bound_animator, &anim_bone_count);
+            anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(node->bound_animator,
+                                                                                &anim_bone_count);
+        }
+        if (anim_palette && anim_bone_count > 0 && saved_bone_count > 0) {
+            ((rt_mesh3d *)draw_mesh)->bone_palette = anim_palette;
+            ((rt_mesh3d *)draw_mesh)->bone_count =
+                anim_bone_count < saved_bone_count ? anim_bone_count : saved_bone_count;
+        }
         rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas3d, draw_mesh, node->world_matrix, node->material, node, NULL, NULL);
+            canvas3d, draw_mesh, node->world_matrix, node->material, node, anim_prev_palette, NULL);
+        ((rt_mesh3d *)draw_mesh)->bone_palette = saved_palette;
+        ((rt_mesh3d *)draw_mesh)->prev_bone_palette = saved_prev_palette;
+        ((rt_mesh3d *)draw_mesh)->bone_count = saved_bone_count;
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
@@ -355,6 +722,8 @@ static void rt_scene_node3d_finalize(void *obj) {
     node->lod_capacity = 0;
     scene3d_release_ref(&node->mesh);
     scene3d_release_ref(&node->material);
+    scene3d_release_ref(&node->bound_body);
+    scene3d_release_ref(&node->bound_animator);
     scene3d_release_ref((void **)&node->name);
 }
 
@@ -383,6 +752,9 @@ void *rt_scene_node3d_new(void) {
 
     node->mesh = NULL;
     node->material = NULL;
+    node->bound_body = NULL;
+    node->bound_animator = NULL;
+    node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
     node->visible = 1;
     node->name = NULL;
 
@@ -650,6 +1022,72 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
     return rt_vec3_new(n->aabb_max[0], n->aabb_max[1], n->aabb_max[2]);
 }
 
+void rt_scene_node3d_bind_body(void *obj, void *body) {
+    rt_scene_node3d *node;
+    if (!obj)
+        return;
+    node = (rt_scene_node3d *)obj;
+    if (node->bound_body == body)
+        return;
+    rt_obj_retain_maybe(body);
+    scene3d_release_ref(&node->bound_body);
+    node->bound_body = body;
+}
+
+void rt_scene_node3d_clear_body_binding(void *obj) {
+    if (!obj)
+        return;
+    scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_body);
+}
+
+void *rt_scene_node3d_get_body(void *obj) {
+    return obj ? ((rt_scene_node3d *)obj)->bound_body : NULL;
+}
+
+void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
+    rt_scene_node3d *node;
+    if (!obj)
+        return;
+    node = (rt_scene_node3d *)obj;
+    switch (sync_mode) {
+    case RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY:
+    case RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE:
+    case RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION:
+    case RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC:
+        node->sync_mode = (int32_t)sync_mode;
+        break;
+    default:
+        node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+        break;
+    }
+}
+
+int64_t rt_scene_node3d_get_sync_mode(void *obj) {
+    return obj ? ((rt_scene_node3d *)obj)->sync_mode : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+}
+
+void rt_scene_node3d_bind_animator(void *obj, void *controller) {
+    rt_scene_node3d *node;
+    if (!obj)
+        return;
+    node = (rt_scene_node3d *)obj;
+    if (node->bound_animator == controller)
+        return;
+    rt_obj_retain_maybe(controller);
+    scene3d_release_ref(&node->bound_animator);
+    node->bound_animator = controller;
+}
+
+void rt_scene_node3d_clear_animator_binding(void *obj) {
+    if (!obj)
+        return;
+    scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_animator);
+}
+
+void *rt_scene_node3d_get_animator(void *obj) {
+    return obj ? ((rt_scene_node3d *)obj)->bound_animator : NULL;
+}
+
 /*==========================================================================
  * Scene3D
  *=========================================================================*/
@@ -764,6 +1202,14 @@ void rt_scene3d_clear(void *obj) {
     }
     s->root->child_count = 0;
     s->node_count = 1; /* just root */
+}
+
+void rt_scene3d_sync_bindings(void *obj, double dt) {
+    rt_scene3d *scene = (rt_scene3d *)obj;
+    (void)dt;
+    if (!scene || !scene->root)
+        return;
+    scene_node_sync_recursive(scene->root);
 }
 
 int64_t rt_scene3d_get_node_count(void *obj) {

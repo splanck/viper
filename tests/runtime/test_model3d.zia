@@ -1,0 +1,82 @@
+module TestModel3D;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var path = "tests/runtime/_tmp_model3d_surface.vscn";
+    var scene = Scene3D.New();
+    var parent = SceneNode3D.New();
+    var child = SceneNode3D.New();
+    var mesh = Mesh3D.NewBox(1.0, 2.0, 3.0);
+    var mat = Material3D.NewColor(0.2, 0.4, 0.8);
+
+    SceneNode3D.set_Name(parent, "parent");
+    SceneNode3D.set_Name(child, "child");
+    SceneNode3D.SetPosition(parent, 1.0, 2.0, 3.0);
+    SceneNode3D.SetPosition(child, 0.0, 5.0, 0.0);
+    SceneNode3D.set_Mesh(parent, mesh);
+    SceneNode3D.set_Material(parent, mat);
+    SceneNode3D.set_Mesh(child, mesh);
+    SceneNode3D.set_Material(child, mat);
+    SceneNode3D.AddChild(parent, child);
+    Scene3D.Add(scene, parent);
+
+    if (Scene3D.Save(scene, path) != 1) {
+        Say("FAIL: Scene3D.Save should create the fixture asset");
+        return;
+    }
+
+    var model = Model3D.Load(path);
+    if (model == null) {
+        Say("FAIL: Model3D.Load should load saved .vscn assets");
+        return;
+    }
+
+    if (Model3D.get_MeshCount(model) != 1 || Model3D.get_MaterialCount(model) != 1 ||
+        Model3D.get_NodeCount(model) != 2) {
+        Say("FAIL: Model3D should expose deduplicated scene assets and node counts");
+        return;
+    }
+
+    var templateChild = Model3D.FindNode(model, "child");
+    if (templateChild == null) {
+        Say("FAIL: Model3D.FindNode should find imported template nodes");
+        return;
+    }
+
+    var instRoot = Model3D.Instantiate(model);
+    if (instRoot == null || SceneNode3D.get_ChildCount(instRoot) != 1) {
+        Say("FAIL: Model3D.Instantiate should clone the template subtree");
+        return;
+    }
+
+    var instChild = SceneNode3D.Find(instRoot, "child");
+    if (instChild == null) {
+        Say("FAIL: instantiated subtree should preserve child names");
+        return;
+    }
+
+    SceneNode3D.SetPosition(instChild, 9.0, 9.0, 9.0);
+    if (Vec3.get_Y(SceneNode3D.get_Position(instChild)) != 9.0) {
+        Say("FAIL: instantiated nodes should be writable");
+        return;
+    }
+    if (Vec3.get_Y(SceneNode3D.get_Position(templateChild)) != 5.0) {
+        Say("FAIL: mutating an instance should not change the template node");
+        return;
+    }
+
+    var instScene = Model3D.InstantiateScene(model);
+    if (instScene == null || Scene3D.get_NodeCount(instScene) != 3) {
+        Say("FAIL: InstantiateScene should create a new Scene3D with imported nodes");
+        return;
+    }
+    if (Scene3D.Find(instScene, "child") == null) {
+        Say("FAIL: InstantiateScene should preserve searchable node names");
+        return;
+    }
+
+    Say("PASS");
+}

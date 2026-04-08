@@ -16,20 +16,18 @@ This plan is intentionally not a full ECS. Viper already has a scene graph. The 
 
 Extend `SceneNode3D` with explicit typed bindings and give `Scene3D` a single sync step.
 
+The original draft mixed animator root-motion policy into `BindBody(body, syncMode)`. That is the wrong ownership boundary. The corrected API keeps body / animator attachments separate and makes sync policy a node property.
+
 ### `SceneNode3D` additions
 
-- `BindBody(body, syncMode)`
+- `BindBody(body)`
 - `BindAnimator(controller)`
-- `BindAudioSource(source)`
-- `BindNavAgent(agent)`
 - `ClearBodyBinding()`
 - `ClearAnimatorBinding()`
-- `ClearAudioBinding()`
-- `ClearNavBinding()`
 - `get_Body`
 - `get_Animator`
-- `get_AudioSource`
-- `get_NavAgent`
+- `get_SyncMode`
+- `set_SyncMode`
 
 ### `Scene3D` addition
 
@@ -37,7 +35,7 @@ Extend `SceneNode3D` with explicit typed bindings and give `Scene3D` a single sy
 
 ### Sync modes
 
-Start with one simple enum:
+Start with one simple enum on `SceneNode3D.SyncMode`:
 
 - `0 = NodeFromBody`
 - `1 = BodyFromNode`
@@ -48,7 +46,7 @@ The sync order must be documented and deterministic.
 
 ## Internal Design
 
-Bindings should be weak references, not ownership transfers.
+Bindings should not transfer gameplay ownership. In the current runtime they retain the bound objects to prevent dangling references; that is safer than raw weak pointers in the existing object model.
 
 Recommended rules:
 
@@ -92,7 +90,7 @@ Work:
 
 Work:
 
-- allow a nav agent or audio source to follow node/world transforms
+- allow a nav agent or audio source to follow node/world transforms once `NavAgent3D` and `AudioSource3D` exist as object APIs
 - avoid duplicate transform pushes when body/nav/audio all exist
 
 ### Phase 4: prefab integration
@@ -109,7 +107,7 @@ Work:
 - `NodeFromBody` updates node transform after physics step
 - `BodyFromNode` updates a kinematic body correctly
 - parent-child transforms remain correct when the child is body-bound
-- audio/nav bindings do not create update cycles
+- animator root motion moves a bound node exactly once per controller update
 
 ### Example coverage
 

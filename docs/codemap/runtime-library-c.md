@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-08
 ---
 
 # CODEMAP: Runtime Library (C)
@@ -350,7 +350,7 @@ Last updated: 2026-04-05
 
 | File | Purpose |
 |------|---------|
-| `rt_scene3d.c` / `.h` | Scene3D + SceneNode3D hierarchy, frustum culling, LOD |
+| `rt_scene3d.c` / `.h` | Scene3D + SceneNode3D hierarchy, frustum culling, LOD, and explicit body / animator binding sync |
 | `rt_transform3d.c` / `.h` | Transform3D (standalone TRS) |
 | `rt_physics3d.c` / `.h` | Physics3DWorld + Body3D (AABB, sphere, capsule) |
 | `rt_raycast3d.c` / `.h` | Ray3D + RayHit3D intersection tests |
@@ -362,6 +362,7 @@ Last updated: 2026-04-05
 | File | Purpose |
 |------|---------|
 | `rt_skeleton3d.c` / `.h` | Skeleton3D, Animation3D, AnimPlayer3D, AnimBlend3D |
+| `rt_animcontroller3d.c` / `.h` | AnimController3D state flow, events, root motion, and masked layers |
 | `rt_morphtarget3d.c` / `.h` | MorphTarget3D blend shapes |
 | `vgfx3d_skinning.c` / `.h` | CPU vertex skinning math |
 
@@ -383,6 +384,8 @@ Last updated: 2026-04-05
 | `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
 | `rt_path3d.c` / `.h` | Path3D spline following |
 | `rt_fbx_loader.c` / `.h` | FBX binary format loader |
+| `rt_gltf.c` / `.h` | glTF 2.0 format loader |
+| `rt_model3d.c` / `.h` | Model3D unified imported asset container and instancing helper |
 
 ## Audio
 

@@ -1,18 +1,17 @@
-# Phase 4: Linux RPM Package
+# Phase 4: Linux RPM Package + .deb Enhancements
 
 ## Goal
 
-Generate .rpm packages for RHEL/CentOS/Fedora/openSUSE. Combined with the existing .deb support, this covers the two major Linux package families.
-
-The existing `LinuxPackageBuilder` already generates valid .deb packages. This phase adds RPM and creates a `ViperLinuxPackageBuilder` that produces both formats from the same `ViperInstallManifest`.
+Generate .rpm packages for RHEL/CentOS/Fedora/openSUSE. Enhance the existing .deb builder with missing features (mandb trigger, file associations, dependencies). Create a unified `ViperLinuxPackageBuilder` that produces both formats from the same `ViperInstallManifest`.
 
 ## Architecture
 
 RPM v4 binary format:
 ```
 [Lead - 96 bytes]          ← magic 0xEDABEEDB, package name, arch
-[Signature header]         ← RPM header containing size/digest tags
-[Main header]              ← RPM header containing all package metadata
+[Signature header]         ← RPM header with size/digest tags
+  [8-byte alignment pad]   ← critical: sig header padded to 8-byte boundary
+[Main header]              ← RPM header with all package metadata
 [Payload]                  ← gzip(cpio) — reuses CpioWriter from Phase 3
 ```
 
@@ -20,16 +19,16 @@ RPM v4 binary format:
 
 ### `src/tools/common/packaging/PkgSHA256.hpp/cpp` (~200 LOC)
 
-Self-contained SHA-256. Port from `src/runtime/text/rt_hash.c` (line 368+), same approach as PkgMD5 and PkgSHA1.
+Self-contained SHA-256. Port from `src/runtime/text/rt_hash.c` (the SHA-256 section around line 368), same approach as PkgMD5 and PkgSHA1.
 
 ```cpp
 void sha256(const uint8_t* data, size_t len, uint8_t digest[32]);
 std::string sha256Hex(const uint8_t* data, size_t len);
 ```
 
-RPM signatures use both MD5 (existing) and SHA256 (new).
+RPM signatures use both MD5 (existing `PkgMD5`) and SHA-256 (new).
 
-### `src/tools/common/packaging/RpmWriter.hpp/cpp` (~500 LOC)
+### `src/tools/common/packaging/RpmWriter.hpp/cpp` (~550 LOC)
 
 RPM v4 binary format writer.
 
@@ -39,6 +38,7 @@ struct RpmFileEntry {
     std::vector<uint8_t> data;      // file content bytes
     uint32_t mode;                  // Unix mode (0100755 for executables)
     uint32_t flags;                 // RPMFILE_DOC, RPMFILE_CONFIG, etc.
+    std::string linkTarget;         // for symlinks only
 };
 
 struct RpmBuildParams {
@@ -51,56 +51,59 @@ struct RpmBuildParams {
     std::string license;            // "GPL-3.0-only"
     std::string url;                // project URL
     std::string group;              // "Development/Tools"
+    std::string vendor;             // "Viper Project"
     std::vector<RpmFileEntry> files;
 };
 
 bool buildRpm(const RpmBuildParams& params, const std::string& outputPath, std::ostream& err);
 ```
 
-**RPM Lead** (96 bytes):
-```
-bytes 0-3:   0xED 0xAB 0xEE 0xDB    (magic)
-bytes 4:     3                        (major version)
-bytes 5:     0                        (minor version)
-bytes 6-7:   0x0000                   (type: binary)
-bytes 8-9:   archnum                  (1=x86_64, 12=aarch64)
-bytes 10-75: name (NUL-padded)
-bytes 76-77: osnum (1=Linux)
-bytes 78-79: signature_type (5=header)
-bytes 80-95: reserved (zeros)
-```
+**RPM Lead** (96 bytes, all big-endian except name):
+| Offset | Size | Content |
+|--------|------|---------|
+| 0 | 4 | Magic: `0xED 0xAB 0xEE 0xDB` |
+| 4 | 1 | Major version: 3 |
+| 5 | 1 | Minor version: 0 |
+| 6 | 2 | Type: 0x0000 (binary) |
+| 8 | 2 | Archnum: 1=x86_64, 12=aarch64 |
+| 10 | 66 | Name (NUL-padded ASCII) |
+| 76 | 2 | Osnum: 1 (Linux) |
+| 78 | 2 | Signature type: 5 (header-style) |
+| 80 | 16 | Reserved (zeros) |
 
-**RPM Header** structure (used for both signature and main headers):
-```
-bytes 0-2:   0x8E 0xAD 0xE8          (magic)
-byte 3:      0x01                     (version)
-bytes 4-7:   reserved (zeros)
-bytes 8-11:  nindex (big-endian)      (number of index entries)
-bytes 12-15: hsize (big-endian)       (data store size in bytes)
+**RPM Header structure** (used for both signature and main headers):
+| Offset | Size | Content |
+|--------|------|---------|
+| 0 | 3 | Magic: `0x8E 0xAD 0xE8` |
+| 3 | 1 | Version: `0x01` |
+| 4 | 4 | Reserved (zeros) |
+| 8 | 4 | nindex (big-endian) — number of index entries |
+| 12 | 4 | hsize (big-endian) — data store size in bytes |
 
-[Index entries — 16 bytes each]
-  bytes 0-3: tag (big-endian)
-  bytes 4-7: type (big-endian)        (6=STRING, 4=INT32, 7=BIN, 8=STRING_ARRAY)
-  bytes 8-11: offset (big-endian)     (offset into data store)
-  bytes 12-15: count (big-endian)
+Index entries (16 bytes each, big-endian):
+| Offset | Size | Content |
+|--------|------|---------|
+| 0 | 4 | Tag number |
+| 4 | 4 | Type (6=STRING, 4=INT32, 7=BIN, 8=STRING_ARRAY, 3=INT16) |
+| 8 | 4 | Offset into data store |
+| 12 | 4 | Count |
 
-[Data store — hsize bytes]
-  Concatenated tag values, aligned per type rules:
-    INT16: 2-byte aligned
-    INT32: 4-byte aligned
-    INT64: 8-byte aligned
-    STRING: NUL-terminated, no alignment
-    STRING_ARRAY: consecutive NUL-terminated strings
-    BIN: raw bytes, no alignment
-```
+Data store alignment rules (**critical for validity**):
+- INT16: must start on 2-byte boundary (pad with zeros)
+- INT32: must start on 4-byte boundary
+- INT64: must start on 8-byte boundary
+- STRING/STRING_ARRAY/BIN: no alignment requirement
+- Implement `alignStore(size_t alignment)` helper that inserts zero padding
 
 **Signature header tags**:
 | Tag | Value | Type | Content |
 |-----|-------|------|---------|
-| RPMSIGTAG_SIZE | 1000 | INT32 | header+payload size |
-| RPMSIGTAG_MD5 | 1004 | BIN(16) | MD5 of header+payload |
-| RPMSIGTAG_PAYLOADSIZE | 1007 | INT32 | uncompressed payload size |
-| RPMSIGTAG_SHA256 | 277 | STRING | hex SHA-256 of main header |
+| RPMSIGTAG_SIZE | 1000 | INT32 | main header + payload size |
+| RPMSIGTAG_MD5 | 1004 | BIN(16) | MD5 of main header + payload |
+| RPMSIGTAG_PAYLOADSIZE | 1007 | INT32 | uncompressed cpio payload size |
+| RPMSIGTAG_SHA256 | 277 | STRING | hex SHA-256 of main header bytes only |
+
+**After the signature header**: Pad to the next 8-byte boundary with zero bytes. This is a hard RPM v4 requirement — without this padding, `rpm -K` rejects the package.
 
 **Main header tags** (essential subset):
 | Tag | Value | Type |
@@ -111,11 +114,14 @@ bytes 12-15: hsize (big-endian)       (data store size in bytes)
 | RPMTAG_SUMMARY | 1004 | I18NSTRING |
 | RPMTAG_DESCRIPTION | 1005 | I18NSTRING |
 | RPMTAG_BUILDTIME | 1006 | INT32 |
-| RPMTAG_SIZE | 1009 | INT32 |
+| RPMTAG_BUILDHOST | 1007 | STRING |
+| RPMTAG_SIZE | 1009 | INT32 (total installed size in bytes) |
 | RPMTAG_LICENSE | 1014 | STRING |
+| RPMTAG_VENDOR | 1011 | STRING |
 | RPMTAG_GROUP | 1016 | STRING |
-| RPMTAG_OS | 1021 | STRING |
-| RPMTAG_ARCH | 1022 | STRING |
+| RPMTAG_URL | 1020 | STRING |
+| RPMTAG_OS | 1021 | STRING ("linux") |
+| RPMTAG_ARCH | 1022 | STRING ("x86_64" or "aarch64") |
 | RPMTAG_PAYLOADFORMAT | 1124 | STRING ("cpio") |
 | RPMTAG_PAYLOADCOMPRESSOR | 1125 | STRING ("gzip") |
 | RPMTAG_PAYLOADFLAGS | 1126 | STRING ("9") |
@@ -126,26 +132,37 @@ bytes 12-15: hsize (big-endian)       (data store size in bytes)
 | RPMTAG_FILEMODES | 1030 | INT16_ARRAY |
 | RPMTAG_FILEMTIMES | 1034 | INT32_ARRAY |
 | RPMTAG_FILEFLAGS | 1037 | INT32_ARRAY |
-| RPMTAG_FILEUSERNAME | 1039 | STRING_ARRAY |
-| RPMTAG_FILEGROUPNAME | 1040 | STRING_ARRAY |
-| RPMTAG_FILEMD5S | 1035 | STRING_ARRAY (hex digests) |
-| RPMTAG_FILELINKTOS | 1036 | STRING_ARRAY |
-| RPMTAG_FILERDEVS | 1033 | INT16_ARRAY |
-| RPMTAG_FILEINODES | 1096 | INT32_ARRAY |
+| RPMTAG_FILEUSERNAME | 1039 | STRING_ARRAY (all "root") |
+| RPMTAG_FILEGROUPNAME | 1040 | STRING_ARRAY (all "root") |
+| RPMTAG_FILEMD5S | 1035 | STRING_ARRAY (hex MD5 digests, empty for dirs) |
+| RPMTAG_FILELINKTOS | 1036 | STRING_ARRAY (symlink targets, empty for non-links) |
+| RPMTAG_FILERDEVS | 1033 | INT16_ARRAY (all 0) |
+| RPMTAG_FILEINODES | 1096 | INT32_ARRAY (unique per file) |
+| RPMTAG_FILEVERIFYFLAGS | 1045 | INT32_ARRAY |
+| RPMTAG_FILEDEVICES | 1095 | INT32_ARRAY (all 1) |
+| RPMTAG_FILELANGS | 1097 | STRING_ARRAY (all empty) |
 
-**Payload**: `PkgGzip::gzip(cpioWriter.finish())` — reuses CpioWriter from Phase 3.
+**File path representation**: RPM uses BASENAMES + DIRNAMES + DIRINDEXES instead of full paths.
+- DIRNAMES: unique directory prefixes with trailing `/` (e.g. `"/usr/bin/"`, `"/usr/lib/viper/"`)
+- BASENAMES: leaf filenames (e.g. `"viper"`, `"libviper_rt_base.a"`)
+- DIRINDEXES: index into DIRNAMES for each file
+- Algorithm: for each file path, split at last `/`, store prefix in DIRNAMES (deduped), store leaf in BASENAMES.
+
+**Payload**: `PkgGzip::gzip(cpioWriter.finish(), 9)` — reuses CpioWriter from Phase 3 with max compression.
 
 Build flow:
-1. Split file paths into DIRNAMES + BASENAMES + DIRINDEXES (RPM's compressed path representation)
-2. Compute per-file MD5 hex digests
-3. Build cpio payload from files using `CpioWriter`, gzip it
-4. Build main header with all metadata tags
-5. Compute SHA-256 of main header bytes
-6. Build signature header with size, MD5, SHA-256, payload size
-7. Write: lead + signature header + main header + gzipped payload
-8. Pad signature header to 8-byte alignment (RPM requirement)
+1. Sort files by install path
+2. Split paths into DIRNAMES + BASENAMES + DIRINDEXES
+3. Compute per-file MD5 hex digests
+4. Build cpio payload from files using `CpioWriter` (must include directory entries), gzip it
+5. Build main header with all metadata tags, respecting alignment rules
+6. Compute SHA-256 hex of main header bytes (just the header, not the payload)
+7. Compute MD5 of main header + payload (both together)
+8. Build signature header with SIZE, MD5, SHA256, PAYLOADSIZE
+9. Pad signature header to 8-byte alignment
+10. Write: lead + padded signature header + main header + gzipped payload
 
-### `src/tools/common/packaging/ViperLinuxPackageBuilder.hpp/cpp` (~250 LOC)
+### `src/tools/common/packaging/ViperLinuxPackageBuilder.hpp/cpp` (~300 LOC)
 
 Wrapper that builds both .deb and .rpm from a `ViperInstallManifest`.
 
@@ -155,18 +172,80 @@ struct ViperLinuxBuildParams {
     std::string outputDir;        // directory for output files
 };
 
-/// Builds viper-VERSION-ARCH.deb
+/// Builds viper_VERSION_ARCH.deb
 void buildViperDeb(const ViperLinuxBuildParams& params);
 
-/// Builds viper-VERSION-RELEASE.ARCH.rpm
+/// Builds viper-VERSION-1.ARCH.rpm
 void buildViperRpm(const ViperLinuxBuildParams& params);
 ```
 
-For .deb: Adapts existing `LinuxPackageBuilder::buildDebPackage()` pattern — maps manifest to FHS paths, generates control file, md5sums, postinst (runs `mandb`), data.tar.gz, control.tar.gz, wraps in ar archive.
+**For .deb** — adapts existing `LinuxPackageBuilder::buildDebPackage()` pattern with enhancements:
+- Control file fields:
+  ```
+  Package: viper
+  Version: 0.2.4
+  Architecture: amd64
+  Maintainer: Viper Project <noreply@viper-lang.dev>
+  Section: devel
+  Priority: optional
+  Installed-Size: NNNN
+  Depends: libc6 (>= 2.17), libx11-6
+  Suggests: libx11-dev, libasound2-dev
+  Homepage: https://viper-lang.dev
+  Description: Viper IL compiler toolchain and VM
+   A complete compiler platform with Zia and BASIC frontends,
+   bytecode VM, native code generation for x86-64 and AArch64,
+   2D/3D graphics engine, and networking stack.
+  ```
+- **postinst** script:
+  ```bash
+  #!/bin/sh
+  set -e
+  # Update man page database
+  if command -v mandb >/dev/null 2>&1; then
+      mandb -q 2>/dev/null || true
+  fi
+  # Update MIME database for file associations
+  if command -v update-mime-database >/dev/null 2>&1; then
+      update-mime-database /usr/share/mime 2>/dev/null || true
+  fi
+  # Update desktop database
+  if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database /usr/share/applications 2>/dev/null || true
+  fi
+  exit 0
+  ```
+- **postrm** script (cleanup on removal):
+  ```bash
+  #!/bin/sh
+  set -e
+  if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+      if command -v mandb >/dev/null 2>&1; then
+          mandb -q 2>/dev/null || true
+      fi
+  fi
+  exit 0
+  ```
+- **File associations**: Generate MIME XML for .zia/.bas/.il under `/usr/share/mime/packages/viper.xml`
+- **Desktop file**: Generate `viper.desktop` under `/usr/share/applications/`
+- **Icons**: Generate multi-size PNG icons under `/usr/share/icons/hicolor/NxN/apps/` (if icon provided)
 
-For .rpm: Maps manifest to FHS paths, calls `RpmWriter::buildRpm()`.
+**For .rpm** — maps manifest to FHS paths, calls `RpmWriter::buildRpm()`. Includes the same postinstall actions via the `RPMTAG_POSTIN` tag (tag 1024, type STRING):
+```bash
+/sbin/ldconfig 2>/dev/null || true
+mandb -q 2>/dev/null || true
+```
 
 Both share the same FHS path mapping from Phase 1's `linuxInstallPath()`.
+
+## GPG Signing
+
+RPM GPG signing is a **post-build step**, not part of the writer:
+1. Acquire/generate a GPG key for the Viper project
+2. After `buildRpm()`: `rpm --addsign --define "_gpg_name Viper Project" output.rpm`
+3. Distribute public key: `rpm --import https://viper-lang.dev/RPM-GPG-KEY-viper`
+
+The `RpmWriter` produces structurally valid RPMs with MD5+SHA256 integrity digests that pass `rpm -K` without GPG. Document this in the README.
 
 ## Modified Files
 
@@ -174,12 +253,33 @@ Both share the same FHS path mapping from Phase 1's `linuxInstallPath()`.
 
 ## Testing
 
-- `PkgSHA256`: NIST known-answer vectors
-- `RpmWriter`: Build minimal RPM, verify lead magic (0xEDABEEDB), verify header magic (0x8EADE801), verify tag presence
-- Linux CI: `rpm -qip output.rpm` to verify metadata; `rpm -qlp output.rpm` to verify file list; `rpm -K output.rpm` to verify signatures
-- Linux CI: `dpkg-deb -I output.deb` and `dpkg-deb -c output.deb` for .deb validation
+- `PkgSHA256`: NIST known-answer vectors:
+  - SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - SHA-256("abc") = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+- `RpmWriter`:
+  - Build minimal RPM with 2 files
+  - Verify lead magic (0xEDABEEDB) at offset 0
+  - Verify signature header magic (0x8EADE801) at offset 96
+  - Verify 8-byte alignment padding after signature header
+  - Verify main header magic at next position
+  - Verify RPMTAG_NAME, RPMTAG_VERSION, RPMTAG_ARCH tags present
+  - Decompress payload, verify cpio magic "070701"
+  - Verify BASENAMES+DIRNAMES+DIRINDEXES reconstruct original paths
+  - Verify per-file MD5 digests match FILEMD5S tag
+- `ViperLinuxPackageBuilder`:
+  - Build .deb from mock manifest, verify ar structure + control.tar.gz + data.tar.gz
+  - Verify control file contains all required fields
+  - Verify postinst script contains mandb call
+  - Verify postrm script present
+- Linux CI:
+  - `dpkg-deb -I output.deb` + `dpkg-deb -c output.deb | grep usr/bin/viper`
+  - `rpm -qip output.rpm` + `rpm -qlp output.rpm | grep usr/bin/viper`
+  - `rpm -K output.rpm` (verify MD5/SHA256 digests)
+  - Install/verify/uninstall cycle on both package managers
 
 ## Risks
 
-- **RPM header alignment**: INT16/INT32/INT64 values in the data store must be naturally aligned. Incorrect padding produces corrupt RPMs that `rpm -K` rejects. Mitigation: implement `alignStore(typeAlignment)` helper called before writing each typed value.
-- **Signature header padding**: The region after the signature header must be padded to an 8-byte boundary before the main header starts. This is an RPM v4 requirement that's easy to miss.
+- **RPM header alignment**: The #1 cause of corrupt RPMs. Every INT16/INT32/INT64 value in the data store must be naturally aligned. Implement and test `alignStore()` exhaustively.
+- **Signature header 8-byte padding**: Easy to forget. The gap between the signature header's end and the main header's start must be padded to the next 8-byte boundary.
+- **DIRNAMES trailing slash**: RPM requires directory names to end with `/`. Missing trailing slash → `rpm -qlp` shows garbled paths.
+- **I18NSTRING vs STRING**: SUMMARY and DESCRIPTION use I18NSTRING (type 9) with a "C" locale prefix. Using plain STRING (type 6) may cause rpm warnings.

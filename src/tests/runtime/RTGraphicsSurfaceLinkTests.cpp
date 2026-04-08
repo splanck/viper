@@ -12,12 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
 #include "rt_joints3d.h"
+#include "rt_model3d.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
 #include "rt_terrain3d.h"
@@ -47,12 +49,62 @@ int main() {
         fn_bits(&rt_camera3d_is_ortho),
         fn_bits(&rt_light3d_new_spot),
         fn_bits(&rt_scene3d_save),
+        fn_bits(&rt_scene3d_sync_bindings),
+        fn_bits(&rt_scene_node3d_bind_body),
+        fn_bits(&rt_scene_node3d_clear_body_binding),
+        fn_bits(&rt_scene_node3d_get_body),
+        fn_bits(&rt_scene_node3d_set_sync_mode),
+        fn_bits(&rt_scene_node3d_get_sync_mode),
+        fn_bits(&rt_scene_node3d_bind_animator),
+        fn_bits(&rt_scene_node3d_clear_animator_binding),
+        fn_bits(&rt_scene_node3d_get_animator),
         fn_bits(&rt_fbx_get_morph_target),
         fn_bits(&rt_gltf_load),
         fn_bits(&rt_gltf_mesh_count),
         fn_bits(&rt_gltf_get_mesh),
         fn_bits(&rt_gltf_material_count),
         fn_bits(&rt_gltf_get_material),
+        fn_bits(&rt_gltf_node_count),
+        fn_bits(&rt_gltf_get_scene_root),
+        fn_bits(&rt_anim_controller3d_new),
+        fn_bits(&rt_anim_controller3d_add_state),
+        fn_bits(&rt_anim_controller3d_add_transition),
+        fn_bits(&rt_anim_controller3d_play),
+        fn_bits(&rt_anim_controller3d_crossfade),
+        fn_bits(&rt_anim_controller3d_stop),
+        fn_bits(&rt_anim_controller3d_update),
+        fn_bits(&rt_anim_controller3d_get_current_state),
+        fn_bits(&rt_anim_controller3d_get_previous_state),
+        fn_bits(&rt_anim_controller3d_get_is_transitioning),
+        fn_bits(&rt_anim_controller3d_get_state_count),
+        fn_bits(&rt_anim_controller3d_set_state_speed),
+        fn_bits(&rt_anim_controller3d_set_state_looping),
+        fn_bits(&rt_anim_controller3d_add_event),
+        fn_bits(&rt_anim_controller3d_poll_event),
+        fn_bits(&rt_anim_controller3d_set_root_motion_bone),
+        fn_bits(&rt_anim_controller3d_get_root_motion_delta),
+        fn_bits(&rt_anim_controller3d_consume_root_motion),
+        fn_bits(&rt_anim_controller3d_set_layer_weight),
+        fn_bits(&rt_anim_controller3d_set_layer_mask),
+        fn_bits(&rt_anim_controller3d_play_layer),
+        fn_bits(&rt_anim_controller3d_crossfade_layer),
+        fn_bits(&rt_anim_controller3d_stop_layer),
+        fn_bits(&rt_anim_controller3d_get_bone_matrix),
+        fn_bits(&rt_anim_controller3d_get_final_palette_data),
+        fn_bits(&rt_anim_controller3d_get_previous_palette_data),
+        fn_bits(&rt_model3d_load),
+        fn_bits(&rt_model3d_get_mesh_count),
+        fn_bits(&rt_model3d_get_material_count),
+        fn_bits(&rt_model3d_get_skeleton_count),
+        fn_bits(&rt_model3d_get_animation_count),
+        fn_bits(&rt_model3d_get_node_count),
+        fn_bits(&rt_model3d_get_mesh),
+        fn_bits(&rt_model3d_get_material),
+        fn_bits(&rt_model3d_get_skeleton),
+        fn_bits(&rt_model3d_get_animation),
+        fn_bits(&rt_model3d_find_node),
+        fn_bits(&rt_model3d_instantiate),
+        fn_bits(&rt_model3d_instantiate_scene),
         fn_bits(&rt_distance_joint3d_new),
         fn_bits(&rt_distance_joint3d_get_distance),
         fn_bits(&rt_distance_joint3d_set_distance),

@@ -22,6 +22,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_skeleton3d.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
@@ -78,77 +79,6 @@ extern const char *rt_string_cstr(rt_string s);
 
 /* Canvas3D draw function (for skinned draw) */
 extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
-
-#define VGFX3D_MAX_BONES 128
-
-/*==========================================================================
- * Skeleton3D
- *=========================================================================*/
-
-typedef struct {
-    char name[64];
-    int32_t parent_index;
-    float bind_pose_local[16]; /* row-major local bind pose */
-    float inverse_bind[16];    /* row-major inverse of global bind pose */
-} vgfx3d_bone_t;
-
-typedef struct {
-    void *vptr;
-    vgfx3d_bone_t *bones;
-    int32_t bone_count;
-} rt_skeleton3d;
-
-/*==========================================================================
- * Animation3D
- *=========================================================================*/
-
-typedef struct {
-    float time;
-    float position[3];
-    float rotation[4]; /* quaternion (x, y, z, w) */
-    float scale_xyz[3];
-} vgfx3d_keyframe_t;
-
-typedef struct {
-    int32_t bone_index;
-    vgfx3d_keyframe_t *keyframes;
-    int32_t keyframe_count;
-    int32_t keyframe_capacity;
-} vgfx3d_anim_channel_t;
-
-typedef struct {
-    void *vptr;
-    char name[64];
-    vgfx3d_anim_channel_t *channels;
-    int32_t channel_count;
-    int32_t channel_capacity;
-    float duration;
-    int8_t looping;
-} rt_animation3d;
-
-/*==========================================================================
- * AnimPlayer3D
- *=========================================================================*/
-
-typedef struct {
-    void *vptr;
-    rt_skeleton3d *skeleton;
-    rt_animation3d *current;
-    rt_animation3d *crossfade_from;
-    float current_time;
-    float crossfade_time;
-    float crossfade_duration;
-    float crossfade_from_time;
-    float speed;
-    int8_t playing;
-    float *bone_palette;            /* bone_count * 16 floats */
-    float *prev_bone_palette;       /* previous-frame palette for motion blur */
-    float *motion_palette_snapshot; /* last submitted palette snapshot */
-    float *local_transforms;        /* bone_count * 16 floats (workspace) */
-    float *globals_buf;             /* bone_count * 16 floats (reused across frames) */
-    int64_t last_motion_frame;
-    int8_t has_prev_motion_palette;
-} rt_anim_player3d;
 
 /*==========================================================================
  * Matrix math helpers (float, row-major)
@@ -674,6 +604,8 @@ void *rt_anim_player3d_new(void *skeleton) {
     p->crossfade_from_time = 0.0f;
     p->speed = 1.0f;
     p->playing = 0;
+    p->loop_override_enabled = 0;
+    p->loop_override_value = 0;
     p->last_motion_frame = 0;
     p->has_prev_motion_palette = 0;
 
@@ -846,6 +778,14 @@ static void compute_bone_palette(rt_anim_player3d *p) {
         mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &p->bone_palette[i * 16]);
 }
 
+static int8_t anim_player_current_looping(const rt_anim_player3d *p) {
+    if (!p || !p->current)
+        return 0;
+    if (p->loop_override_enabled)
+        return p->loop_override_value ? 1 : 0;
+    return p->current->looping;
+}
+
 void rt_anim_player3d_update(void *obj, double delta_time) {
     if (!obj)
         return;
@@ -856,7 +796,7 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     p->current_time += (float)(delta_time * p->speed);
 
     /* Handle looping / end */
-    if (p->current->looping) {
+    if (anim_player_current_looping(p)) {
         if (p->current->duration > 0.0f)
             p->current_time = fmodf(p->current_time, p->current->duration);
     } else {
@@ -1047,31 +987,6 @@ void rt_canvas3d_draw_mesh_skinned(
  * AnimBlend3D — multi-state animation blending
  *=========================================================================*/
 
-#define MAX_BLEND_STATES 8
-
-typedef struct {
-    char name[64];
-    rt_animation3d *animation;
-    float weight;
-    float anim_time;
-    float speed;
-    int8_t looping;
-} anim_blend_state_t;
-
-typedef struct {
-    void *vptr;
-    rt_skeleton3d *skeleton;
-    anim_blend_state_t states[MAX_BLEND_STATES];
-    int32_t state_count;
-    float *bone_palette;
-    float *prev_bone_palette;
-    float *motion_palette_snapshot;
-    float *local_transforms;
-    float *temp_state_local;
-    int64_t last_motion_frame;
-    int8_t has_prev_motion_palette;
-} rt_anim_blend3d;
-
 static void anim_blend3d_finalizer(void *obj) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     free(b->bone_palette);
@@ -1127,7 +1042,7 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
     if (!obj || !anim_obj)
         return -1;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
-    if (b->state_count >= MAX_BLEND_STATES)
+    if (b->state_count >= RT_ANIM_BLEND3D_MAX_STATES)
         return -1;
 
     anim_blend_state_t *st = &b->states[b->state_count];

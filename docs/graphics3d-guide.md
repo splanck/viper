@@ -30,10 +30,12 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 - [Scene3D](#scene3d) — Scene graph with frustum culling
 - [SceneNode3D](#scenenode3d) — Hierarchical scene nodes
 - [Transform3D](#transform3d) — 3D transformation (position, rotation, scale)
+- [Model3D](#model3d) — Unified imported asset container with instantiation
 
 **Animation**
 - [Skeleton3D, Animation3D, AnimPlayer3D](#skeleton3d) — Skeletal animation
 - [AnimBlend3D](#animblend3d) — Animation blending
+- [AnimController3D](#animcontroller3d) — Stateful animation control, events, and root motion
 - [MorphTarget3D](#morphtarget3d) — Morph target (blend shape) animation
 
 **Environment**
@@ -61,8 +63,8 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 - [VideoPlayer](#videoplayer) — Video playback (MJPEG/AVI, OGV)
 
 **Format Loaders**
-- [FBX](#fbx) — FBX file loader
-- [GLTF](#gltf) — glTF 2.0 loader
+- [FBX](#fbx) — Low-level FBX extractor API
+- [GLTF](#gltf) — Low-level glTF extractor API
 
 **Operational Reference**
 - [Backend Selection](#backend-selection) — GPU vs. software rendering
@@ -187,7 +189,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `DrawMesh(mesh, transform, material)` | `void(obj, obj, obj)` | Draw a mesh with Mat4 transform and material |
 | `DrawMeshSkinned(mesh, transform, material, animPlayer)` | `void(obj, obj, obj, obj)` | Draw with skeletal animation (CPU skinning) |
 | `DrawMeshMorphed(mesh, transform, material, morphTarget)` | `void(obj, obj, obj, obj)` | Draw with morph target deformation |
-| `DrawMeshBlended(mesh, transform, material, skeleton, blender)` | `void(obj, obj, obj, obj)` | Draw with animation blend tree |
+| `DrawMeshBlended(mesh, transform, material, blender)` | `void(obj, obj, obj, obj)` | Draw with animation blend tree |
 | `DrawInstanced(batch)` | `void(obj)` | Draw InstanceBatch3D (hardware instancing) |
 | `DrawTerrain(terrain)` | `void(obj)` | Draw Terrain3D |
 | `DrawDecal(decal)` | `void(obj)` | Draw Decal3D |
@@ -717,6 +719,7 @@ Hierarchical scene graph with frustum culling and LOD support.
 | `Draw(canvas, cam)` | `void(obj, obj)` | Traverse + render (with frustum culling) |
 | `Clear()` | `void()` | Remove all children from root |
 | `Save(path)` | `i64(str)` | Write JSON scene snapshot (returns 0 on success) |
+| `SyncBindings(dt)` | `void(f64)` | Apply scene-node body / animator bindings before draw |
 
 ---
 
@@ -746,6 +749,9 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `Material` | Material3D | write | Material for rendering |
 | `AABBMin` | Vec3 | read | Axis-aligned bounding box minimum |
 | `AABBMax` | Vec3 | read | Axis-aligned bounding box maximum |
+| `Body` | Physics3DBody | read | Bound body used by `SyncBindings` |
+| `Animator` | AnimController3D | read | Bound controller used for root motion and skinned draw submission |
+| `SyncMode` | Integer | read/write | Transform sync policy used by `Scene3D.SyncBindings` |
 
 ### Methods
 
@@ -757,6 +763,10 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `RemoveChild(child)` | `void(obj)` | Detach child node |
 | `GetChild(index)` | `obj(i64)` | Get child by index |
 | `Find(name)` | `obj(str)` | Recursive name search in subtree |
+| `BindBody(body)` | `void(obj)` | Attach a `Physics3DBody` for transform sync |
+| `ClearBodyBinding()` | `void()` | Remove the current body binding |
+| `BindAnimator(controller)` | `void(obj)` | Attach an `AnimController3D` for root motion and animated draw submission |
+| `ClearAnimatorBinding()` | `void()` | Remove the current animator binding |
 | `AddLOD(distance, mesh)` | `void(f64, obj)` | Add LOD mesh at distance threshold |
 | `ClearLOD()` | `void()` | Remove all LOD levels |
 
@@ -812,7 +822,91 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. `Scene3D.Save` is a structural scene export; it does not embed mesh or material payloads.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy, and `Scene3D.Load` reconstructs those shared payloads on load.
+
+### Binding Sync
+
+`Scene3D.SyncBindings(dt)` is the explicit bridge between simulation / animation systems and the scene graph. `Scene3D.Draw` does not mutate bound bodies or controllers.
+
+`SceneNode3D.SyncMode` values:
+
+- `0` = `NodeFromBody`: pull the bound `Physics3DBody` world pose into the node.
+- `1` = `BodyFromNode`: push the node world pose into the bound body.
+- `2` = `NodeFromAnimatorRootMotion`: consume root motion from the bound `AnimController3D` into the node's local position.
+- `3` = `TwoWayKinematic`: push node-to-body while the body is kinematic, otherwise pull body-to-node.
+
+Recommended frame order:
+
+1. Step physics and update animation controllers.
+2. Call `Scene3D.SyncBindings(dt)`.
+3. Call `Scene3D.Draw(canvas, camera)`.
+
+Current scope:
+
+- `SceneNode3D` bindings currently cover `Physics3DBody` and `AnimController3D`.
+- `AudioSource3D` and `NavAgent3D` bindings are deferred until those object APIs land.
+
+## Model3D
+
+`Model3D` is the preferred high-level import surface for reusable 3D assets. It normalizes `.vscn`, `.fbx`, `.gltf`, and `.glb` files into one container that keeps shared meshes, materials, skeletons, animations, and a template node hierarchy together.
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `MeshCount` | Integer | read | Number of shared `Mesh3D` objects |
+| `MaterialCount` | Integer | read | Number of shared `Material3D` objects |
+| `SkeletonCount` | Integer | read | Number of imported `Skeleton3D` objects |
+| `AnimationCount` | Integer | read | Number of imported `Animation3D` clips |
+| `NodeCount` | Integer | read | Number of imported logical scene nodes (excluding the synthetic template root) |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, or `.glb` into a `Model3D` |
+| `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
+| `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
+| `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
+| `GetAnimation(index)` | `obj(i64)` | Get a shared `Animation3D` by index |
+| `FindNode(name)` | `obj(str)` | Find a template `SceneNode3D` by name inside the imported hierarchy |
+| `Instantiate()` | `obj()` | Clone the template hierarchy into a fresh `SceneNode3D` subtree |
+| `InstantiateScene()` | `obj()` | Create a fresh `Scene3D` and attach cloned top-level imported nodes below its root |
+
+### Ownership and Instancing
+
+- Imported meshes, materials, skeletons, and animations are shared across instances.
+- `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
+- Mutating an instantiated node does not mutate the template returned by `FindNode`.
+- `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
+
+### Zia Example
+
+```zia
+module Model3DDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+func start() {
+    var model = Model3D.Load("tree.gltf");
+    var templateNode = Model3D.FindNode(model, "Trunk");
+    var instanceRoot = Model3D.Instantiate(model);
+    var scene = Model3D.InstantiateScene(model);
+
+    Say("Nodes = " + toString(Model3D.get_NodeCount(model)));
+    Say("Meshes = " + toString(Model3D.get_MeshCount(model)));
+    Say("Template trunk found = " + toString(templateNode != null));
+    Say("Instance root children = " + toString(SceneNode3D.get_ChildCount(instanceRoot)));
+    Say("Scene nodes = " + toString(Scene3D.get_NodeCount(scene)));
+}
+```
+
+For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
+
+Format note:
+- `.vscn` and FBX imports can currently populate shared skeletons and animation clips.
+- glTF imports currently populate meshes, materials, and node hierarchy, but not skeletons or animation clips yet.
 
 ## Skeleton3D
 
@@ -1031,7 +1125,7 @@ func start() {
 
 ## FBX Loader
 
-Load meshes, skeletons, materials, and morph targets from binary FBX files (v7100-7700).
+Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700). For instantiation-ready imported assets, prefer `Model3D.Load("asset.fbx")`.
 
 ### Constructor
 
@@ -1095,13 +1189,13 @@ func start() {
 }
 ```
 
-Supports zlib-compressed array properties, negative polygon indices, Z-up to Y-up coordinate conversion. **Note:** Animation keyframe extraction is not yet implemented — loaded animations have correct names but no keyframe data. Construct keyframes manually via `Animation3D.AddKeyframe`.
+Supports zlib-compressed array properties, negative polygon indices, and Z-up to Y-up coordinate conversion. `Model3D.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset.
 
 ---
 
 ## GLTF Loader
 
-Load meshes and materials from glTF 2.0 files.
+Low-level extractor API for meshes and materials from glTF 2.0 files. `Model3D.Load` uses the same loader internally and preserves the active-scene node hierarchy for instantiation.
 
 ### Functions (standalone — no RT_CLASS)
 
@@ -1142,7 +1236,7 @@ func start() {
 }
 ```
 
-**Note:** GLTF functions are standalone (not a class with methods). Unlike FBX, the GLTF loader does not currently extract skeletons or animations.
+**Note:** GLTF functions are standalone extractor helpers. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`. Unlike FBX, the low-level GLTF API still does not expose skeletons or animations.
 
 ## Particles3D
 
@@ -2349,7 +2443,7 @@ Weight-based animation blending for smooth transitions between clips.
 | `SetSpeed(stateIdx, speed)` | `void(i64, f64)` | Playback speed multiplier per state |
 | `Update(dt)` | `void(f64)` | Advance all active animations |
 
-Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, skeleton, blender)`.
+Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, blender)`. The `AnimBlend3D` already owns its `Skeleton3D`, so no extra skeleton argument is required.
 
 ### Zia Example
 
@@ -2378,10 +2472,116 @@ func start() {
     // In render loop:
     AnimBlend3D.Update(blend, dt);
     Canvas3D.Begin(canvas, cam);
-    Canvas3D.DrawMeshBlended(canvas, mesh, Mat4.Identity(), mat, skel, blend);
+    Canvas3D.DrawMeshBlended(canvas, mesh, Mat4.Identity(), mat, blend);
     Canvas3D.End(canvas);
 }
 ```
+
+---
+
+## AnimController3D
+
+Stateful skeletal animation controller for gameplay code. `AnimController3D` builds on the same sampling path as `AnimPlayer3D` and `AnimBlend3D`, but adds named states, transition defaults, clip events, root-motion extraction, and simple masked overlay layers.
+
+### Constructor
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `New(skeleton)` | `obj(obj)` | Create a controller bound to a `Skeleton3D` |
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `CurrentState` | String | read | Active base-layer state name |
+| `PreviousState` | String | read | Prior base-layer state name |
+| `IsTransitioning` | Boolean | read | True while the base layer is inside a timed crossfade |
+| `StateCount` | Integer | read | Number of registered states |
+| `RootMotionDelta` | `Vec3` | read | Accumulated root-motion delta since the last consume/reset |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddState(name, animation)` | `i64(str,obj)` | Register a named `Animation3D` state |
+| `AddTransition(fromState, toState, blendSeconds)` | `i1(str,str,f64)` | Register a default timed transition between two states |
+| `Play(stateName)` | `i1(str)` | Play a state, using a registered transition if one exists from the current state |
+| `Crossfade(stateName, blendSeconds)` | `i1(str,f64)` | Force a timed transition to another state |
+| `Stop()` | `void()` | Stop the base layer and all overlay layers |
+| `Update(dt)` | `void(f64)` | Advance all active layers by `dt` seconds |
+| `SetStateSpeed(name, speed)` | `void(str,f64)` | Override playback speed for a named state |
+| `SetStateLooping(name, loop)` | `void(str,i1)` | Override looping behavior for a named state |
+| `AddEvent(stateName, timeSeconds, eventName)` | `void(str,f64,str)` | Queue an event when playback crosses the specified state-local time |
+| `PollEvent()` | `str()` | Dequeue the next event name, or `""` when none are pending |
+| `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion |
+| `ConsumeRootMotion()` | `obj()` | Return the accumulated `Vec3` delta and clear it |
+| `SetLayerWeight(layer, weight)` | `void(i64,f64)` | Set overlay weight for layers `1..3` |
+| `SetLayerMask(layer, rootBone)` | `void(i64,i64)` | Restrict an overlay layer to the subtree rooted at `rootBone` |
+| `PlayLayer(layer, stateName)` | `i1(i64,str)` | Start a named state on an overlay layer |
+| `CrossfadeLayer(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a new state |
+| `StopLayer(layer)` | `void(i64)` | Stop one overlay layer |
+| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final blended matrix for a bone |
+
+### When To Use Which API
+
+- Use `AnimPlayer3D` when you just need to play one clip or crossfade directly between clips.
+- Use `AnimBlend3D` when you want manual weight control over several simultaneously sampled clips.
+- Use `AnimController3D` when gameplay code needs named states, default transitions, root motion, queued events, or masked upper-body/lower-body style overlays.
+
+Current limitation:
+- `AnimController3D` can now drive `SceneNode3D` root motion and skinned scene-node draws through `Scene3D.SyncBindings` + `Scene3D.Draw`.
+- Direct standalone mesh submission still accepts `AnimPlayer3D` and `AnimBlend3D`; use scene-node binding when you want controller-driven scene composition.
+
+### Zia Example
+
+```zia
+module AnimController3DDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "root", -1, Mat4.Identity());
+    var armBone = Skeleton3D.AddBone(skel, "arm", rootBone, Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+
+    var rot = Quat.Identity();
+    var scl = Vec3.One();
+
+    var walk = Animation3D.New("walk", 1.0);
+    Animation3D.set_Looping(walk, true);
+    Animation3D.AddKeyframe(walk, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(walk, rootBone, 1.0, Vec3.New(10.0, 0.0, 0.0), rot, scl);
+
+    var wave = Animation3D.New("wave", 1.0);
+    Animation3D.set_Looping(wave, true);
+    Animation3D.AddKeyframe(wave, armBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(wave, armBone, 1.0, Vec3.New(0.0, 2.0, 0.0), rot, scl);
+
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "walk", walk);
+    AnimController3D.AddState(controller, "wave", wave);
+    AnimController3D.AddEvent(controller, "walk", 0.5, "step");
+    AnimController3D.SetRootMotionBone(controller, rootBone);
+    AnimController3D.SetLayerMask(controller, 1, armBone);
+    AnimController3D.SetLayerWeight(controller, 1, 1.0);
+
+    AnimController3D.Play(controller, "walk");
+    AnimController3D.PlayLayer(controller, 1, "wave");
+    AnimController3D.Update(controller, 0.5);
+
+    var delta = AnimController3D.ConsumeRootMotion(controller);
+    var armMat = AnimController3D.GetBoneMatrix(controller, armBone);
+
+    Say("RootMotion X = " + toString(Vec3.get_X(delta)));
+    Say("Event = " + AnimController3D.PollEvent(controller));
+    Say("Arm Y = " + toString(Mat4.Get(armMat, 1, 3)));
+}
+```
+
+See `examples/apiaudit/graphics3d/animcontroller3d_demo.zia` and `examples/apiaudit/graphics3d/animcontroller3d_demo.bas` for compact runnable samples.
 
 ---
 

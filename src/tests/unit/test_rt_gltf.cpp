@@ -12,7 +12,9 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_gltf.h"
 #include "rt_pixels.h"
+#include "rt_scene3d.h"
 #include "rt_string.h"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -20,6 +22,9 @@
 
 extern "C" {
 extern rt_string rt_const_cstr(const char *s);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
 }
 
 static int tests_passed = 0;
@@ -29,6 +34,15 @@ static int tests_run = 0;
     do {                                                                                           \
         tests_run++;                                                                               \
         if (!(cond))                                                                               \
+            std::fprintf(stderr, "FAIL: %s\n", msg);                                               \
+        else                                                                                       \
+            tests_passed++;                                                                        \
+    } while (0)
+
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (std::fabs((a) - (b)) > (eps))                                                          \
             std::fprintf(stderr, "FAIL: %s\n", msg);                                               \
         else                                                                                       \
             tests_passed++;                                                                        \
@@ -191,8 +205,126 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
                 "GLTF.Load wires emissive textures into Material3D");
 }
 
+static void test_gltf_builds_scene_hierarchy_for_active_scene() {
+    const char *gltf_path = "/tmp/viper_gltf_scene_graph.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    const float uvs[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : normals)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," +
+        buffer_b64 + "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) +
+        "}],\n"
+        "  \"bufferViews\": [\n"
+        "    {\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 36, \"byteLength\": 36},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 72, \"byteLength\": 24},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 96, \"byteLength\": 6}\n"
+        "  ],\n"
+        "  \"accessors\": [\n"
+        "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 1, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 2, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC2\"},\n"
+        "    {\"bufferView\": 3, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}\n"
+        "  ],\n"
+        "  \"materials\": [{\n"
+        "    \"pbrMetallicRoughness\": {\n"
+        "      \"baseColorFactor\": [0.2, 0.6, 0.8, 1.0]\n"
+        "    }\n"
+        "  }],\n"
+        "  \"meshes\": [{\"primitives\": [{\n"
+        "    \"attributes\": {\"POSITION\": 0, \"NORMAL\": 1, \"TEXCOORD_0\": 2},\n"
+        "    \"indices\": 3,\n"
+        "    \"material\": 0\n"
+        "  }]}],\n"
+        "  \"nodes\": [\n"
+        "    {\"name\": \"RootNode\", \"translation\": [1.0, 2.0, 3.0], \"mesh\": 0, "
+        "\"children\": [1]},\n"
+        "    {\"name\": \"ChildNode\", \"scale\": [2.0, 3.0, 4.0]}\n"
+        "  ],\n"
+        "  \"scenes\": [{\"nodes\": [0]}],\n"
+        "  \"scene\": 0\n"
+        "}\n";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Scene graph glTF file can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses scene graph assets");
+    if (!asset)
+        return;
+
+    EXPECT_TRUE(rt_gltf_node_count(asset) == 2, "GLTF.Load counts logical scene nodes");
+    void *scene_root = rt_gltf_get_scene_root(asset);
+    EXPECT_TRUE(scene_root != nullptr, "GLTF.Load exposes a reusable scene root");
+    if (!scene_root)
+        return;
+
+    EXPECT_TRUE(rt_scene_node3d_child_count(scene_root) == 1,
+                "GLTF scene root contains one active-scene child");
+
+    void *root_node = rt_scene_node3d_find(scene_root, rt_const_cstr("RootNode"));
+    void *child_node = rt_scene_node3d_find(scene_root, rt_const_cstr("ChildNode"));
+    EXPECT_TRUE(root_node != nullptr, "GLTF scene graph preserves named root nodes");
+    EXPECT_TRUE(child_node != nullptr, "GLTF scene graph preserves named child nodes");
+    if (!root_node || !child_node)
+        return;
+
+    EXPECT_TRUE(rt_scene_node3d_get_parent(root_node) == scene_root,
+                "Top-level glTF nodes attach below the synthetic scene root");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(child_node) == root_node,
+                "glTF child nodes preserve hierarchy");
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(root_node)),
+                1.0,
+                0.001,
+                "GLTF root node preserves translation.x");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(root_node)),
+                2.0,
+                0.001,
+                "GLTF root node preserves translation.y");
+    EXPECT_NEAR(rt_vec3_z(rt_scene_node3d_get_position(root_node)),
+                3.0,
+                0.001,
+                "GLTF root node preserves translation.z");
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_scale(child_node)),
+                2.0,
+                0.001,
+                "GLTF child node preserves scale.x");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(child_node)),
+                3.0,
+                0.001,
+                "GLTF child node preserves scale.y");
+    EXPECT_NEAR(rt_vec3_z(rt_scene_node3d_get_scale(child_node)),
+                4.0,
+                0.001,
+                "GLTF child node preserves scale.z");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(root_node) == rt_gltf_get_mesh(asset, 0),
+                "GLTF root node reuses extracted mesh objects");
+    EXPECT_TRUE(rt_scene_node3d_get_material(root_node) == rt_gltf_get_material(asset, 0),
+                "GLTF root node reuses extracted material objects");
+}
+
 int main() {
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
+    test_gltf_builds_scene_hierarchy_for_active_scene();
     std::printf("GLTF tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

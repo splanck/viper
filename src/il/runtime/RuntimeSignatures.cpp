@@ -160,6 +160,8 @@
 #include "rt_math.h"
 #include "rt_memstream.h"
 #include "rt_mixgroup.h"
+#include "rt_animcontroller3d.h"
+#include "rt_model3d.h"
 #include "rt_modvar.h"
 #include "rt_morphtarget3d.h"
 #include "rt_msgbus.h"

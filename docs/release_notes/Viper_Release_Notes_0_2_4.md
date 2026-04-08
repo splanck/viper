@@ -59,10 +59,10 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, codegen opt
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 91 | +91 |
-| Source files | 2,671 | 2,829 | +158 |
-| Production SLOC | ~348K | ~435K | +87K |
-| Test count | 1,351 | 1,430 | +79 |
+| Commits | — | 93 | +93 |
+| Source files | 2,671 | 2,831 | +160 |
+| Production SLOC | ~348K | ~437K | +89K |
+| Test count | 1,351 | 1,432 | +81 |
 
 ---
 
@@ -378,6 +378,11 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 **Windows test infrastructure:**
 - ProcessIsolation framework reworked: function pointers don't survive `CreateProcess`, so `registerChildFunction()` with indexed dispatch (`--viper-child-run=N`) replaces direct pointer passing. `dispatchChild()` added to `TEST_WITH_IL` macro and all 16 VM/conformance tests. Windows test failures reduced from 48 to 4.
 - Codegen test assertions accept `.rdata` (Windows COFF) alongside `.rodata` (ELF), `cmovneq`→`cmovne` suffix fix, platform-adaptive paths for RTDiskFullTests, RTNetworkHardenTests, and test_vm_rt_trap_loc.
+- `rtgen` wraps generated `ZiaRuntimeExterns.inc` calls in per-namespace lambdas to prevent MSVC Debug stack overflow (4338 inline `defineExternFunction` calls exceeded the default 1 MB Windows stack).
+- `WinDialogSuppress.c` linked into viper/vbasic/zia executables to suppress Windows crash dialog boxes in CI.
+- `test_cf_stress` assertions made ABI-agnostic — accepts any `jcc` (jl, jg, etc.) instead of requiring `testq+jne`, since Windows x64 fuses comparison+branch into `cmpq+jcc`.
+- `test_native_asm` `EquivBasicReturn` test skipped when system assembler (clang/cc) is not in PATH.
+- Assorted Windows build/compat fixes in runtime graphics, networking, and text hashing.
 
 **Smoke probes:**
 - 6 new Zia smoke probe tests (`zia_smoke_paint`, `zia_smoke_viperide`, `zia_smoke_vipersql`, `zia_smoke_3dbowling`, `zia_smoke_chess`, `zia_smoke_xenoscape`) exercise real example app/game module stacks with deterministic probes that verify core subsystem wiring without requiring a display.

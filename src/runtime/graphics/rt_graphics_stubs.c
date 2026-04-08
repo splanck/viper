@@ -36,6 +36,7 @@
 #include "rt_graphics_internal.h"
 #include "rt_instbatch3d.h"
 #include "rt_joints3d.h"
+#include "rt_model3d.h"
 #include "rt_morphtarget3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_particles3d.h"
@@ -1742,6 +1743,11 @@ void *rt_scene3d_load(rt_string path) {
     return NULL;
 }
 
+void rt_scene3d_sync_bindings(void *s, double dt) {
+    (void)s;
+    (void)dt;
+}
+
 void *rt_scene_node3d_new(void) {
     rt_graphics_unavailable_("SceneNode3D.New: graphics support not compiled in");
     return NULL;
@@ -1785,6 +1791,44 @@ void *rt_scene_node3d_get_scale(void *n) {
 }
 
 void *rt_scene_node3d_get_world_matrix(void *n) {
+    (void)n;
+    return NULL;
+}
+
+void rt_scene_node3d_bind_body(void *n, void *b) {
+    (void)n;
+    (void)b;
+}
+
+void rt_scene_node3d_clear_body_binding(void *n) {
+    (void)n;
+}
+
+void *rt_scene_node3d_get_body(void *n) {
+    (void)n;
+    return NULL;
+}
+
+void rt_scene_node3d_set_sync_mode(void *n, int64_t mode) {
+    (void)n;
+    (void)mode;
+}
+
+int64_t rt_scene_node3d_get_sync_mode(void *n) {
+    (void)n;
+    return 0;
+}
+
+void rt_scene_node3d_bind_animator(void *n, void *c) {
+    (void)n;
+    (void)c;
+}
+
+void rt_scene_node3d_clear_animator_binding(void *n) {
+    (void)n;
+}
+
+void *rt_scene_node3d_get_animator(void *n) {
     (void)n;
     return NULL;
 }
@@ -2193,6 +2237,88 @@ int64_t rt_gltf_material_count(void *g) {
 void *rt_gltf_get_material(void *g, int64_t i) {
     (void)g;
     (void)i;
+    return NULL;
+}
+
+int64_t rt_gltf_node_count(void *g) {
+    (void)g;
+    return 0;
+}
+
+void *rt_gltf_get_scene_root(void *g) {
+    (void)g;
+    return NULL;
+}
+
+/* Model3D stubs */
+void *rt_model3d_load(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("Model3D.Load: graphics support not compiled in");
+    return NULL;
+}
+
+int64_t rt_model3d_get_mesh_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+int64_t rt_model3d_get_material_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+int64_t rt_model3d_get_skeleton_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+int64_t rt_model3d_get_animation_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+int64_t rt_model3d_get_node_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+void *rt_model3d_get_mesh(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+void *rt_model3d_get_material(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+void *rt_model3d_get_skeleton(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+void *rt_model3d_get_animation(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+void *rt_model3d_find_node(void *m, rt_string name) {
+    (void)m;
+    (void)name;
+    return NULL;
+}
+
+void *rt_model3d_instantiate(void *m) {
+    (void)m;
+    return NULL;
+}
+
+void *rt_model3d_instantiate_scene(void *m) {
+    (void)m;
     return NULL;
 }
 
@@ -4088,6 +4214,161 @@ void rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl
     (void)t;
     (void)mt;
     (void)bl;
+}
+
+/* AnimController3D stubs */
+void *rt_anim_controller3d_new(void *s) {
+    (void)s;
+    rt_graphics_unavailable_("AnimController3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+int64_t rt_anim_controller3d_add_state(void *c, rt_string n, void *a) {
+    (void)c;
+    (void)n;
+    (void)a;
+    return -1;
+}
+
+int8_t rt_anim_controller3d_add_transition(void *c, rt_string f, rt_string t, double d) {
+    (void)c;
+    (void)f;
+    (void)t;
+    (void)d;
+    return 0;
+}
+
+int8_t rt_anim_controller3d_play(void *c, rt_string n) {
+    (void)c;
+    (void)n;
+    return 0;
+}
+
+int8_t rt_anim_controller3d_crossfade(void *c, rt_string n, double d) {
+    (void)c;
+    (void)n;
+    (void)d;
+    return 0;
+}
+
+void rt_anim_controller3d_stop(void *c) {
+    (void)c;
+}
+
+void rt_anim_controller3d_update(void *c, double dt) {
+    (void)c;
+    (void)dt;
+}
+
+rt_string rt_anim_controller3d_get_current_state(void *c) {
+    (void)c;
+    return NULL;
+}
+
+rt_string rt_anim_controller3d_get_previous_state(void *c) {
+    (void)c;
+    return NULL;
+}
+
+int8_t rt_anim_controller3d_get_is_transitioning(void *c) {
+    (void)c;
+    return 0;
+}
+
+int64_t rt_anim_controller3d_get_state_count(void *c) {
+    (void)c;
+    return 0;
+}
+
+void rt_anim_controller3d_set_state_speed(void *c, rt_string n, double s) {
+    (void)c;
+    (void)n;
+    (void)s;
+}
+
+void rt_anim_controller3d_set_state_looping(void *c, rt_string n, int8_t l) {
+    (void)c;
+    (void)n;
+    (void)l;
+}
+
+void rt_anim_controller3d_add_event(void *c, rt_string s, double t, rt_string e) {
+    (void)c;
+    (void)s;
+    (void)t;
+    (void)e;
+}
+
+rt_string rt_anim_controller3d_poll_event(void *c) {
+    (void)c;
+    return NULL;
+}
+
+void rt_anim_controller3d_set_root_motion_bone(void *c, int64_t b) {
+    (void)c;
+    (void)b;
+}
+
+void *rt_anim_controller3d_get_root_motion_delta(void *c) {
+    (void)c;
+    return NULL;
+}
+
+void *rt_anim_controller3d_consume_root_motion(void *c) {
+    (void)c;
+    return NULL;
+}
+
+void rt_anim_controller3d_set_layer_weight(void *c, int64_t l, double w) {
+    (void)c;
+    (void)l;
+    (void)w;
+}
+
+void rt_anim_controller3d_set_layer_mask(void *c, int64_t l, int64_t b) {
+    (void)c;
+    (void)l;
+    (void)b;
+}
+
+int8_t rt_anim_controller3d_play_layer(void *c, int64_t l, rt_string s) {
+    (void)c;
+    (void)l;
+    (void)s;
+    return 0;
+}
+
+int8_t rt_anim_controller3d_crossfade_layer(void *c, int64_t l, rt_string s, double d) {
+    (void)c;
+    (void)l;
+    (void)s;
+    (void)d;
+    return 0;
+}
+
+void rt_anim_controller3d_stop_layer(void *c, int64_t l) {
+    (void)c;
+    (void)l;
+}
+
+void *rt_anim_controller3d_get_bone_matrix(void *c, int64_t i) {
+    (void)c;
+    (void)i;
+    return NULL;
+}
+
+const float *rt_anim_controller3d_get_final_palette_data(void *c, int32_t *bone_count) {
+    (void)c;
+    if (bone_count)
+        *bone_count = 0;
+    return NULL;
+}
+
+const float *rt_anim_controller3d_get_previous_palette_data(void *c, int32_t *bone_count) {
+    (void)c;
+    if (bone_count)
+        *bone_count = 0;
+    return NULL;
 }
 
 /* Decal3D stubs */

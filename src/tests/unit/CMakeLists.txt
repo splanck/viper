@@ -633,9 +633,21 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_scene3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_scene3d test_rt_scene3d)
 
+    viper_add_test(test_rt_scene3d_bindings ${VIPER_TESTS_DIR}/unit/test_rt_scene3d_bindings.cpp)
+    target_link_libraries(test_rt_scene3d_bindings PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_scene3d_bindings test_rt_scene3d_bindings)
+
     viper_add_test(test_rt_gltf ${VIPER_TESTS_DIR}/unit/test_rt_gltf.cpp)
     target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_gltf test_rt_gltf)
+
+    viper_add_test(test_rt_model3d ${VIPER_TESTS_DIR}/unit/test_rt_model3d.cpp)
+    target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_model3d test_rt_model3d)
+
+    viper_add_test(test_rt_animcontroller3d ${VIPER_TESTS_DIR}/unit/test_rt_animcontroller3d.cpp)
+    target_link_libraries(test_rt_animcontroller3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_animcontroller3d test_rt_animcontroller3d)
 
     viper_add_test(test_rt_skeleton3d ${VIPER_TESTS_DIR}/unit/test_rt_skeleton3d.cpp)
     target_link_libraries(test_rt_skeleton3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
