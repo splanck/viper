@@ -249,6 +249,68 @@ PRINT ty
 )"));
 }
 
+TEST(BasicRuntimeCalls, Physics3DQuerySurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM world AS OBJECT
+DIM body AS OBJECT
+DIM origin AS OBJECT
+DIM dir AS OBJECT
+DIM delta AS OBJECT
+DIM minv AS OBJECT
+DIM maxv AS OBJECT
+DIM hit AS OBJECT
+DIM hits AS OBJECT
+DIM count AS INTEGER
+DIM frac AS DOUBLE
+world = Viper.Graphics3D.Physics3DWorld.New(0.0, 0.0, 0.0)
+body = Viper.Graphics3D.Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0)
+origin = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
+dir = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+delta = Viper.Math.Vec3.New(5.0, 0.0, 0.0)
+minv = Viper.Math.Vec3.New(-1.0, -1.0, -1.0)
+maxv = Viper.Math.Vec3.New(1.0, 1.0, 1.0)
+world.Add(body)
+hit = world.Raycast(origin, dir, 10.0, 1)
+hit = world.SweepSphere(origin, 0.5, delta, 1)
+hit = world.SweepCapsule(origin, delta, 0.5, delta, 1)
+hits = world.RaycastAll(origin, dir, 10.0, 1)
+hits = world.OverlapSphere(origin, 1.0, 1)
+hits = world.OverlapAABB(minv, maxv, 1)
+count = Viper.Graphics3D.PhysicsHitList3D.get_Count(hits)
+hit = Viper.Graphics3D.PhysicsHitList3D.Get(hits, 0)
+frac = Viper.Graphics3D.PhysicsHit3D.get_Fraction(hit)
+PRINT count
+)"));
+}
+
+TEST(BasicRuntimeCalls, CollisionEvent3DSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM world AS OBJECT
+DIM evt AS OBJECT
+DIM cp AS OBJECT
+DIM count AS INTEGER
+DIM sep AS DOUBLE
+world = Viper.Graphics3D.Physics3DWorld.New(0.0, 0.0, 0.0)
+count = world.CollisionEventCount
+count = world.EnterEventCount
+count = world.StayEventCount
+count = world.ExitEventCount
+evt = world.GetCollisionEvent(0)
+evt = world.GetEnterEvent(0)
+evt = world.GetStayEvent(0)
+evt = world.GetExitEvent(0)
+count = Viper.Graphics3D.CollisionEvent3D.get_ContactCount(evt)
+sep = Viper.Graphics3D.CollisionEvent3D.get_NormalImpulse(evt)
+sep = Viper.Graphics3D.CollisionEvent3D.get_RelativeSpeed(evt)
+cp = Viper.Graphics3D.CollisionEvent3D.GetContact(evt, 0)
+cp = Viper.Graphics3D.CollisionEvent3D.GetContactPoint(evt, 0)
+cp = Viper.Graphics3D.CollisionEvent3D.GetContactNormal(evt, 0)
+sep = Viper.Graphics3D.CollisionEvent3D.GetContactSeparation(evt, 0)
+sep = Viper.Graphics3D.ContactPoint3D.get_Separation(cp)
+PRINT count
+)"));
+}
+
 TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM pat AS OBJECT

@@ -1,0 +1,44 @@
+module Physics3DQueriesDemo;
+
+bind Viper.Fmt as Fmt;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("Physics3D queries demo");
+
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var nearBox = Physics3DBody.NewAABB(0.5, 0.5, 0.5, 0.0);
+    var farBox = Physics3DBody.NewAABB(0.5, 0.5, 0.5, 0.0);
+    Physics3DBody.SetPosition(nearBox, 4.0, 0.0, 0.0);
+    Physics3DBody.SetPosition(farBox, 7.0, 0.0, 0.0);
+    Physics3DBody.set_CollisionLayer(nearBox, 1);
+    Physics3DBody.set_CollisionLayer(farBox, 2);
+    Physics3DWorld.Add(world, nearBox);
+    Physics3DWorld.Add(world, farBox);
+
+    var origin = Vec3.New(0.0, 0.0, 0.0);
+    var dir = Vec3.New(1.0, 0.0, 0.0);
+    var rayHit = Physics3DWorld.Raycast(world, origin, dir, 20.0, 3);
+    Say("Nearest ray distance = " + Fmt.Num(PhysicsHit3D.get_Distance(rayHit)));
+
+    var rayHits = Physics3DWorld.RaycastAll(world, origin, dir, 20.0, 3);
+    Say("RaycastAll count = " + Fmt.Int(PhysicsHitList3D.get_Count(rayHits)));
+
+    var overlap = Physics3DWorld.OverlapSphere(world, Vec3.New(4.0, 0.0, 0.0), 1.0, 1);
+    Say("OverlapSphere count = " + Fmt.Int(PhysicsHitList3D.get_Count(overlap)));
+
+    var sweepWorld = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var wall = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
+    Physics3DWorld.Add(sweepWorld, wall);
+    var sweepHit = Physics3DWorld.SweepCapsule(
+        sweepWorld,
+        Vec3.New(-3.0, -0.5, 0.0),
+        Vec3.New(-3.0, 0.5, 0.0),
+        0.5,
+        Vec3.New(4.5, 0.0, 0.0),
+        1
+    );
+    Say("SweepCapsule distance = " + Fmt.Num(PhysicsHit3D.get_Distance(sweepHit)));
+}

@@ -28,7 +28,7 @@ implemented in C and exposed through the IL runtime system.
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter` |
 | [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `TextureAtlas`, `Tilemap` |
-| [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
+| [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `Clipboard`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
@@ -190,9 +190,13 @@ implemented in C and exposed through the IL runtime system.
 | Class | Type | Description |
 |-------|------|-------------|
 | [`Character3D`](graphics/physics3d.md#vipergraphics3dcharacter3d) | Instance | Slide-and-step character controller |
+| [`CollisionEvent3D`](graphics/physics3d.md#vipergraphics3dcollisionevent3d) | Instance | Structured collision pair event with contact, speed, and impulse data |
 | [`Collider3D`](graphics/physics3d.md#vipergraphics3dcollider3d) | Instance | Reusable 3D collision shape including compound, mesh, and heightfield variants |
+| [`ContactPoint3D`](graphics/physics3d.md#vipergraphics3dcontactpoint3d) | Instance | Contact manifold point with position, normal, and signed separation |
 | [`DistanceJoint3D`](graphics/physics3d.md#vipergraphics3ddistancejoint3d) | Instance | Fixed-distance constraint between bodies |
 | [`Physics3DBody`](graphics/physics3d.md#vipergraphics3dphysics3dbody) | Instance | 3D rigid body with linear/angular motion, sleep, and CCD |
+| [`PhysicsHit3D`](graphics/physics3d.md#vipergraphics3dphysicshit3d) | Instance | World-query hit result with body, collider, point, normal, and fraction |
+| [`PhysicsHitList3D`](graphics/physics3d.md#vipergraphics3dphysicshitlist3d) | Instance | List of `PhysicsHit3D` results returned by overlap and multi-hit queries |
 | [`Physics3DWorld`](graphics/physics3d.md#vipergraphics3dphysics3dworld) | Instance | 3D simulation world with contact and joint access |
 | [`SpringJoint3D`](graphics/physics3d.md#vipergraphics3dspringjoint3d) | Instance | Spring constraint with stiffness and damping |
 

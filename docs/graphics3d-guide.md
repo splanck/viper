@@ -45,7 +45,7 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 - [Decal3D](#decal3d) — Projected decals
 
 **Physics**
-- [Physics3DWorld, Collider3D, Physics3DBody](#physics3dworld) — Rigid body physics
+- [Physics3DWorld, PhysicsHit3D, CollisionEvent3D, Collider3D, Physics3DBody](#physics3dworld) — Rigid body physics, queries, and contacts
 - [Character3D](#character3d) — Character controller
 - [Trigger3D](#trigger3d) — Trigger volumes
 - [DistanceJoint3D, SpringJoint3D](#distancejoint3d) — Constraints
@@ -1499,6 +1499,10 @@ upright collision shapes. Sphere bodies are the best fit today for fully-physica
 |----------|------|--------|-------------|
 | `BodyCount` | Integer | read | Number of active bodies |
 | `CollisionCount` | Integer | read | Number of contacts from last Step |
+| `CollisionEventCount` | Integer | read | Number of current collision events from last Step |
+| `EnterEventCount` | Integer | read | Number of collision pairs that began touching this step |
+| `StayEventCount` | Integer | read | Number of collision pairs still touching this step |
+| `ExitEventCount` | Integer | read | Number of collision pairs that stopped touching this step |
 | `JointCount` | Integer | read | Number of active joints |
 
 | Method | Signature | Description |
@@ -1509,10 +1513,82 @@ upright collision shapes. Sphere bodies are the best fit today for fully-physica
 | `SetGravity(x, y, z)` | `void(f64, f64, f64)` | Update gravity |
 | `AddJoint(joint, type)` | `void(obj, i64)` | Add joint (type: 0=distance, 1=spring) |
 | `RemoveJoint(joint)` | `void(obj)` | Remove joint |
+| `Raycast(origin, direction, maxDistance, mask)` | `obj(obj, obj, f64, i64)` | Return the nearest `PhysicsHit3D` or `none` |
+| `RaycastAll(origin, direction, maxDistance, mask)` | `obj(obj, obj, f64, i64)` | Return a sorted `PhysicsHitList3D` or `none` |
+| `SweepSphere(center, radius, delta, mask)` | `obj(obj, f64, obj, i64)` | Sweep a sphere and return the first `PhysicsHit3D` or `none` |
+| `SweepCapsule(a, b, radius, delta, mask)` | `obj(obj, obj, f64, obj, i64)` | Sweep a capsule segment and return the first `PhysicsHit3D` or `none` |
+| `OverlapSphere(center, radius, mask)` | `obj(obj, f64, i64)` | Return a `PhysicsHitList3D` of overlaps or `none` |
+| `OverlapAABB(min, max, mask)` | `obj(obj, obj, i64)` | Return a `PhysicsHitList3D` of overlaps or `none` |
 | `GetCollisionBodyA(index)` | `obj(i64)` | Get first body in contact pair |
 | `GetCollisionBodyB(index)` | `obj(i64)` | Get second body in contact pair |
 | `GetCollisionNormal(index)` | `obj(i64)` | Get contact normal Vec3 (A->B) |
 | `GetCollisionDepth(index)` | `f64(i64)` | Get penetration depth |
+| `GetCollisionEvent(index)` | `obj(i64)` | Get current `CollisionEvent3D` |
+| `GetEnterEvent(index)` | `obj(i64)` | Get `CollisionEvent3D` from the enter bucket |
+| `GetStayEvent(index)` | `obj(i64)` | Get `CollisionEvent3D` from the stay bucket |
+| `GetExitEvent(index)` | `obj(i64)` | Get `CollisionEvent3D` from the exit bucket |
+
+Notes:
+- Query `mask` uses the same layer bit semantics as body collision layers. `0` means "match any layer".
+- Queries include trigger bodies and mark them through `PhysicsHit3D.IsTrigger`.
+- `GetContactSeparation()` returns negative values while penetrating and positive values when separated.
+
+### PhysicsHit3D
+
+`PhysicsHit3D` is the result object returned by `Raycast`, `SweepSphere`, and `SweepCapsule`.
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Body` | Object | read | Hit `Physics3DBody` |
+| `Collider` | Object | read | Hit `Collider3D` leaf collider |
+| `Point` | Vec3 | read | Contact point approximation |
+| `Normal` | Vec3 | read | Surface normal at the hit |
+| `Distance` | Float | read | World-space distance travelled before the hit |
+| `Fraction` | Float | read | `Distance / maxDistance` for sweeps and raycasts |
+| `StartedPenetrating` | Boolean | read | Query began already overlapping the target |
+| `IsTrigger` | Boolean | read | Hit body is trigger-only |
+
+### PhysicsHitList3D
+
+`PhysicsHitList3D` is returned by `RaycastAll`, `OverlapSphere`, and `OverlapAABB`.
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Count` | Integer | read | Number of hits in the list |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(index)` | `obj(i64)` | Return hit `index` as a `PhysicsHit3D` |
+
+### CollisionEvent3D
+
+`CollisionEvent3D` is the structured per-pair contact event produced by `Physics3DWorld.Step()`.
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `BodyA` | Object | read | First body in the pair |
+| `BodyB` | Object | read | Second body in the pair |
+| `ColliderA` | Object | read | Leaf collider for body A |
+| `ColliderB` | Object | read | Leaf collider for body B |
+| `IsTrigger` | Boolean | read | Pair includes at least one trigger body |
+| `ContactCount` | Integer | read | Number of contact points in the event (`1` in the current backend) |
+| `RelativeSpeed` | Float | read | Relative speed along the contact normal before resolution |
+| `NormalImpulse` | Float | read | Solver normal impulse from the last step (`0` for trigger pairs) |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `GetContact(index)` | `obj(i64)` | Return `ContactPoint3D` for the manifold point |
+| `GetContactPoint(index)` | `obj(i64)` | Return manifold point position as `Vec3` |
+| `GetContactNormal(index)` | `obj(i64)` | Return manifold point normal as `Vec3` |
+| `GetContactSeparation(index)` | `f64(i64)` | Return signed separation (`< 0` means penetration) |
+
+### ContactPoint3D
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Point` | Vec3 | read | Contact point position |
+| `Normal` | Vec3 | read | Contact normal |
+| `Separation` | Float | read | Signed separation (`< 0` while penetrating) |
 
 ---
 
@@ -1603,6 +1679,10 @@ For a small headless example of the new rotation surface, see
 `examples/apiaudit/graphics3d/physics3d_rotation_demo.zia`.
 For the collider split and advanced-shape surface, see
 `examples/apiaudit/graphics3d/collider3d_advanced_demo.zia`.
+For world-space queries, see
+`examples/apiaudit/graphics3d/physics3d_queries_demo.zia`.
+For structured collision events, see
+`examples/apiaudit/graphics3d/collisionevent3d_demo.zia`.
 
 ---
 

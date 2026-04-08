@@ -51,6 +51,58 @@ void *rt_world3d_get_collision_body_a(void *world, int64_t index);
 void *rt_world3d_get_collision_body_b(void *world, int64_t index);
 void *rt_world3d_get_collision_normal(void *world, int64_t index);
 double rt_world3d_get_collision_depth(void *world, int64_t index);
+int64_t rt_world3d_get_collision_event_count(void *world);
+void *rt_world3d_get_collision_event(void *world, int64_t index);
+int64_t rt_world3d_get_enter_event_count(void *world);
+void *rt_world3d_get_enter_event(void *world, int64_t index);
+int64_t rt_world3d_get_stay_event_count(void *world);
+void *rt_world3d_get_stay_event(void *world, int64_t index);
+int64_t rt_world3d_get_exit_event_count(void *world);
+void *rt_world3d_get_exit_event(void *world, int64_t index);
+
+/* World queries */
+void *rt_world3d_raycast(void *world, void *origin, void *direction, double max_distance, int64_t mask);
+void *rt_world3d_raycast_all(
+    void *world, void *origin, void *direction, double max_distance, int64_t mask);
+void *rt_world3d_sweep_sphere(
+    void *world, void *center, double radius, void *delta, int64_t mask);
+void *rt_world3d_sweep_capsule(
+    void *world, void *a, void *b, double radius, void *delta, int64_t mask);
+void *rt_world3d_overlap_sphere(void *world, void *center, double radius, int64_t mask);
+void *rt_world3d_overlap_aabb(void *world, void *min_corner, void *max_corner, int64_t mask);
+
+/* PhysicsHit3D */
+void *rt_physics_hit3d_get_body(void *hit);
+void *rt_physics_hit3d_get_collider(void *hit);
+void *rt_physics_hit3d_get_point(void *hit);
+void *rt_physics_hit3d_get_normal(void *hit);
+double rt_physics_hit3d_get_distance(void *hit);
+double rt_physics_hit3d_get_fraction(void *hit);
+int8_t rt_physics_hit3d_get_started_penetrating(void *hit);
+int8_t rt_physics_hit3d_get_is_trigger(void *hit);
+
+/* PhysicsHitList3D */
+int64_t rt_physics_hit_list3d_get_count(void *list);
+void *rt_physics_hit_list3d_get(void *list, int64_t index);
+
+/* CollisionEvent3D */
+void *rt_collision_event3d_get_body_a(void *event);
+void *rt_collision_event3d_get_body_b(void *event);
+void *rt_collision_event3d_get_collider_a(void *event);
+void *rt_collision_event3d_get_collider_b(void *event);
+int8_t rt_collision_event3d_get_is_trigger(void *event);
+int64_t rt_collision_event3d_get_contact_count(void *event);
+double rt_collision_event3d_get_relative_speed(void *event);
+double rt_collision_event3d_get_normal_impulse(void *event);
+void *rt_collision_event3d_get_contact(void *event, int64_t index);
+void *rt_collision_event3d_get_contact_point(void *event, int64_t index);
+void *rt_collision_event3d_get_contact_normal(void *event, int64_t index);
+double rt_collision_event3d_get_contact_separation(void *event, int64_t index);
+
+/* ContactPoint3D */
+void *rt_contact_point3d_get_point(void *contact);
+void *rt_contact_point3d_get_normal(void *contact);
+double rt_contact_point3d_get_separation(void *contact);
 
 /* Physics3D Body */
 void *rt_body3d_new(double mass);

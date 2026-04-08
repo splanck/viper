@@ -1,0 +1,41 @@
+module CollisionEvent3DDemo;
+
+bind Viper.Fmt as Fmt;
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+func start() {
+    Say("CollisionEvent3D demo");
+
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var floor = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
+    var box = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 1.0);
+    Physics3DBody.SetPosition(box, 0.5, 0.0, 0.0);
+    Physics3DWorld.Add(world, floor);
+    Physics3DWorld.Add(world, box);
+
+    Physics3DWorld.Step(world, 0.016);
+    Say("Enter events = " + Fmt.Int(Physics3DWorld.get_EnterEventCount(world)));
+    var enterEvt = Physics3DWorld.GetEnterEvent(world, 0);
+    Say("Enter impulse = " + Fmt.Num(CollisionEvent3D.get_NormalImpulse(enterEvt)));
+
+    Physics3DWorld.Step(world, 0.016);
+    Say("Stay events = " + Fmt.Int(Physics3DWorld.get_StayEventCount(world)));
+
+    Physics3DBody.SetPosition(box, 5.0, 0.0, 0.0);
+    Physics3DWorld.Step(world, 0.016);
+    Say("Exit events = " + Fmt.Int(Physics3DWorld.get_ExitEventCount(world)));
+
+    var triggerWorld = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var trigger = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
+    var body = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 1.0);
+    Physics3DBody.set_Trigger(trigger, true);
+    Physics3DBody.SetPosition(body, 0.5, 0.0, 0.0);
+    Physics3DWorld.Add(triggerWorld, trigger);
+    Physics3DWorld.Add(triggerWorld, body);
+    Physics3DWorld.Step(triggerWorld, 0.016);
+
+    var evt = Physics3DWorld.GetCollisionEvent(triggerWorld, 0);
+    Say("Trigger event = " + Fmt.Bool(CollisionEvent3D.get_IsTrigger(evt)));
+    Say("Trigger impulse = " + Fmt.Num(CollisionEvent3D.get_NormalImpulse(evt)));
+}

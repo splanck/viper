@@ -1,0 +1,71 @@
+module TestCollisionEvent3D;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var floor = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
+    var box = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 1.0);
+    Physics3DBody.SetPosition(floor, 0.0, 0.0, 0.0);
+    Physics3DBody.SetPosition(box, 0.5, 0.0, 0.0);
+    Physics3DWorld.Add(world, floor);
+    Physics3DWorld.Add(world, box);
+
+    Physics3DWorld.Step(world, 0.016);
+    if (Physics3DWorld.get_EnterEventCount(world) != 1) {
+        Say("FAIL: first overlap should create one enter event");
+        return;
+    }
+    var enterEvt = Physics3DWorld.GetEnterEvent(world, 0);
+    if (CollisionEvent3D.get_ContactCount(enterEvt) != 1) {
+        Say("FAIL: enter event should expose one contact");
+        return;
+    }
+    if (CollisionEvent3D.get_RelativeSpeed(enterEvt) < 0.0) {
+        Say("FAIL: enter event should expose relative speed");
+        return;
+    }
+    var cp = CollisionEvent3D.GetContact(enterEvt, 0);
+    if (ContactPoint3D.get_Separation(cp) >= 0.0) {
+        Say("FAIL: penetrating contact separation should be negative");
+        return;
+    }
+
+    Physics3DWorld.Step(world, 0.016);
+    if (Physics3DWorld.get_StayEventCount(world) != 1) {
+        Say("FAIL: persistent overlap should create one stay event");
+        return;
+    }
+
+    Physics3DBody.SetPosition(box, 5.0, 0.0, 0.0);
+    Physics3DBody.SetVelocity(box, 0.0, 0.0, 0.0);
+    Physics3DWorld.Step(world, 0.016);
+    if (Physics3DWorld.get_ExitEventCount(world) != 1) {
+        Say("FAIL: separation should create one exit event");
+        return;
+    }
+
+    var triggerWorld = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var trigger = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
+    var body = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 1.0);
+    Physics3DBody.set_Trigger(trigger, true);
+    Physics3DBody.SetPosition(trigger, 0.0, 0.0, 0.0);
+    Physics3DBody.SetPosition(body, 0.5, 0.0, 0.0);
+    Physics3DWorld.Add(triggerWorld, trigger);
+    Physics3DWorld.Add(triggerWorld, body);
+    Physics3DWorld.Step(triggerWorld, 0.016);
+
+    var evt = Physics3DWorld.GetCollisionEvent(triggerWorld, 0);
+    if (CollisionEvent3D.get_IsTrigger(evt) == 0) {
+        Say("FAIL: trigger overlap should set IsTrigger");
+        return;
+    }
+    if (CollisionEvent3D.get_NormalImpulse(evt) != 0.0) {
+        Say("FAIL: trigger overlap should not produce solver impulse");
+        return;
+    }
+
+    Say("PASS");
+}

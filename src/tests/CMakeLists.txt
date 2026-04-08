@@ -817,6 +817,8 @@ set(G3D_ZIA_TESTS
         test_canvas3d_obj
         test_physics3d_rotation
         test_collider3d_advanced
+        test_physics3d_queries
+        test_collisionevent3d
 )
 foreach (test_name IN LISTS G3D_ZIA_TESTS)
     set(test_file "${G3D_TESTS_DIR}/${test_name}.zia")

@@ -665,6 +665,157 @@ static void test_collision_event_bodies() {
     EXPECT_TRUE(depth > 0, "collision event: depth > 0");
 }
 
+static void test_world_raycast_returns_nearest_hit() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *near_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *far_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    rt_body3d_set_position(near_box, 5.0, 0.0, 0.0);
+    rt_body3d_set_position(far_box, 8.0, 0.0, 0.0);
+    rt_world3d_add(world, near_box);
+    rt_world3d_add(world, far_box);
+
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr, "raycast: hit returned");
+        EXPECT_TRUE(rt_physics_hit3d_get_body(hit) == near_box, "raycast: nearest body returned");
+        EXPECT_TRUE(rt_physics_hit3d_get_distance(hit) > 4.0 &&
+                        rt_physics_hit3d_get_distance(hit) < 5.5,
+                    "raycast: distance near expected surface");
+        EXPECT_TRUE(rt_physics_hit3d_get_started_penetrating(hit) == 0,
+                    "raycast: not starting in penetration");
+    }
+}
+
+static void test_world_raycast_all_sorted() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *near_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *far_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    rt_body3d_set_position(near_box, 4.0, 0.0, 0.0);
+    rt_body3d_set_position(far_box, 7.0, 0.0, 0.0);
+    rt_world3d_add(world, near_box);
+    rt_world3d_add(world, far_box);
+
+    {
+        void *hits = rt_world3d_raycast_all(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hits != nullptr, "raycast all: list returned");
+        EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits) == 2, "raycast all: two hits");
+        {
+            void *hit0 = rt_physics_hit_list3d_get(hits, 0);
+            void *hit1 = rt_physics_hit_list3d_get(hits, 1);
+            EXPECT_TRUE(rt_physics_hit3d_get_body(hit0) == near_box, "raycast all: hit0 is near");
+            EXPECT_TRUE(rt_physics_hit3d_get_body(hit1) == far_box, "raycast all: hit1 is far");
+            EXPECT_TRUE(rt_physics_hit3d_get_distance(hit0) < rt_physics_hit3d_get_distance(hit1),
+                        "raycast all: hits sorted by distance");
+        }
+    }
+}
+
+static void test_world_sweep_sphere_reports_started_penetrating() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *wall = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *center = rt_vec3_new(0.25, 0.0, 0.0);
+    void *delta = rt_vec3_new(2.0, 0.0, 0.0);
+    rt_body3d_set_position(wall, 0.0, 0.0, 0.0);
+    rt_world3d_add(world, wall);
+
+    {
+        void *hit = rt_world3d_sweep_sphere(world, center, 0.5, delta, 1);
+        EXPECT_TRUE(hit != nullptr, "sweep sphere: hit returned");
+        EXPECT_TRUE(rt_physics_hit3d_get_started_penetrating(hit) != 0,
+                    "sweep sphere: started penetrating reported");
+        EXPECT_NEAR(rt_physics_hit3d_get_fraction(hit), 0.0, 1e-6, "sweep sphere: fraction zero");
+    }
+}
+
+static void test_world_overlap_queries_honor_mask() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body_a = rt_body3d_new_sphere(0.5, 0.0);
+    void *body_b = rt_body3d_new_sphere(0.5, 0.0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *minv = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *maxv = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_body3d_set_position(body_a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body_b, 0.0, 0.0, 0.0);
+    rt_body3d_set_collision_layer(body_a, 1);
+    rt_body3d_set_collision_layer(body_b, 2);
+    rt_world3d_add(world, body_a);
+    rt_world3d_add(world, body_b);
+
+    {
+        void *hits1 = rt_world3d_overlap_sphere(world, center, 1.0, 1);
+        void *hits2 = rt_world3d_overlap_aabb(world, minv, maxv, 2);
+        EXPECT_TRUE(hits1 != nullptr, "overlap sphere: list returned");
+        EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits1) == 1, "overlap sphere: one masked hit");
+        EXPECT_TRUE(rt_physics_hit3d_get_body(rt_physics_hit_list3d_get(hits1, 0)) == body_a,
+                    "overlap sphere: layer-1 body returned");
+        EXPECT_TRUE(hits2 != nullptr, "overlap aabb: list returned");
+        EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits2) == 1, "overlap aabb: one masked hit");
+        EXPECT_TRUE(rt_physics_hit3d_get_body(rt_physics_hit_list3d_get(hits2, 0)) == body_b,
+                    "overlap aabb: layer-2 body returned");
+    }
+}
+
+static void test_collision_events_enter_stay_exit() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *floor = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *box = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_position(floor, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(box, 0.5, 0.0, 0.0);
+    rt_world3d_add(world, floor);
+    rt_world3d_add(world, box);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 1, "collision events: first step enters");
+    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 0, "collision events: no stay on first step");
+    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 0, "collision events: no exit on first step");
+
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 0, "collision events: no re-enter");
+    EXPECT_TRUE(rt_world3d_get_stay_event_count(world) == 1, "collision events: stay on second step");
+
+    rt_body3d_set_position(box, 5.0, 0.0, 0.0);
+    rt_body3d_set_velocity(box, 0.0, 0.0, 0.0);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_exit_event_count(world) == 1, "collision events: exit when separated");
+}
+
+static void test_collision_event_surface_and_trigger_flag() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *trigger = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_trigger(trigger, 1);
+    rt_body3d_set_position(trigger, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body, 0.5, 0.0, 0.0);
+    rt_world3d_add(world, trigger);
+    rt_world3d_add(world, body);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        EXPECT_TRUE(event != nullptr, "collision event: event object returned");
+        EXPECT_TRUE(rt_collision_event3d_get_is_trigger(event) != 0,
+                    "collision event: trigger flag propagated");
+        EXPECT_TRUE(rt_collision_event3d_get_contact_count(event) == 1,
+                    "collision event: one contact point");
+        EXPECT_NEAR(rt_collision_event3d_get_normal_impulse(event),
+                    0.0,
+                    1e-9,
+                    "collision event: trigger has zero impulse");
+        {
+            void *contact = rt_collision_event3d_get_contact(event, 0);
+            EXPECT_TRUE(contact != nullptr, "collision event: contact object returned");
+            EXPECT_TRUE(rt_contact_point3d_get_point(contact) != nullptr,
+                        "collision event: contact point object returned");
+            EXPECT_TRUE(rt_collision_event3d_get_contact_separation(event, 0) < 0.0,
+                        "collision event: separation negative while penetrating");
+        }
+    }
+}
+
 /*==========================================================================
  * Trigger3D tests
  *=========================================================================*/
@@ -906,6 +1057,12 @@ int main() {
     /* Collision event queue */
     test_collision_event_count();
     test_collision_event_bodies();
+    test_world_raycast_returns_nearest_hit();
+    test_world_raycast_all_sorted();
+    test_world_sweep_sphere_reports_started_penetrating();
+    test_world_overlap_queries_honor_mask();
+    test_collision_events_enter_stay_exit();
+    test_collision_event_surface_and_trigger_flag();
 
     /* Joint tests */
     test_distance_joint_create();

@@ -2873,6 +2873,235 @@ double rt_world3d_get_collision_depth(void *w, int64_t i) {
     return 0.0;
 }
 
+int64_t rt_world3d_get_collision_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+void *rt_world3d_get_collision_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_world3d_get_enter_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+void *rt_world3d_get_enter_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_world3d_get_stay_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+void *rt_world3d_get_stay_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_world3d_get_exit_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+void *rt_world3d_get_exit_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+void *rt_world3d_raycast(void *w, void *origin, void *direction, double max_distance, int64_t mask) {
+    (void)w;
+    (void)origin;
+    (void)direction;
+    (void)max_distance;
+    (void)mask;
+    return NULL;
+}
+
+void *rt_world3d_raycast_all(
+    void *w, void *origin, void *direction, double max_distance, int64_t mask) {
+    (void)w;
+    (void)origin;
+    (void)direction;
+    (void)max_distance;
+    (void)mask;
+    return NULL;
+}
+
+void *rt_world3d_sweep_sphere(void *w, void *center, double radius, void *delta, int64_t mask) {
+    (void)w;
+    (void)center;
+    (void)radius;
+    (void)delta;
+    (void)mask;
+    return NULL;
+}
+
+void *rt_world3d_sweep_capsule(
+    void *w, void *a, void *b, double radius, void *delta, int64_t mask) {
+    (void)w;
+    (void)a;
+    (void)b;
+    (void)radius;
+    (void)delta;
+    (void)mask;
+    return NULL;
+}
+
+void *rt_world3d_overlap_sphere(void *w, void *center, double radius, int64_t mask) {
+    (void)w;
+    (void)center;
+    (void)radius;
+    (void)mask;
+    return NULL;
+}
+
+void *rt_world3d_overlap_aabb(void *w, void *min_corner, void *max_corner, int64_t mask) {
+    (void)w;
+    (void)min_corner;
+    (void)max_corner;
+    (void)mask;
+    return NULL;
+}
+
+double rt_physics_hit3d_get_distance(void *h) {
+    (void)h;
+    return 0.0;
+}
+
+void *rt_physics_hit3d_get_body(void *h) {
+    (void)h;
+    return NULL;
+}
+
+void *rt_physics_hit3d_get_collider(void *h) {
+    (void)h;
+    return NULL;
+}
+
+void *rt_physics_hit3d_get_point(void *h) {
+    (void)h;
+    return NULL;
+}
+
+void *rt_physics_hit3d_get_normal(void *h) {
+    (void)h;
+    return NULL;
+}
+
+double rt_physics_hit3d_get_fraction(void *h) {
+    (void)h;
+    return 0.0;
+}
+
+int8_t rt_physics_hit3d_get_started_penetrating(void *h) {
+    (void)h;
+    return 0;
+}
+
+int8_t rt_physics_hit3d_get_is_trigger(void *h) {
+    (void)h;
+    return 0;
+}
+
+int64_t rt_physics_hit_list3d_get_count(void *list) {
+    (void)list;
+    return 0;
+}
+
+void *rt_physics_hit_list3d_get(void *list, int64_t index) {
+    (void)list;
+    (void)index;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_body_a(void *event) {
+    (void)event;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_body_b(void *event) {
+    (void)event;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_collider_a(void *event) {
+    (void)event;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_collider_b(void *event) {
+    (void)event;
+    return NULL;
+}
+
+int8_t rt_collision_event3d_get_is_trigger(void *event) {
+    (void)event;
+    return 0;
+}
+
+int64_t rt_collision_event3d_get_contact_count(void *event) {
+    (void)event;
+    return 0;
+}
+
+double rt_collision_event3d_get_relative_speed(void *event) {
+    (void)event;
+    return 0.0;
+}
+
+double rt_collision_event3d_get_normal_impulse(void *event) {
+    (void)event;
+    return 0.0;
+}
+
+void *rt_collision_event3d_get_contact(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_contact_point(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+void *rt_collision_event3d_get_contact_normal(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+double rt_collision_event3d_get_contact_separation(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return 0.0;
+}
+
+void *rt_contact_point3d_get_point(void *contact) {
+    (void)contact;
+    return NULL;
+}
+
+void *rt_contact_point3d_get_normal(void *contact) {
+    (void)contact;
+    return NULL;
+}
+
+double rt_contact_point3d_get_separation(void *contact) {
+    (void)contact;
+    return 0.0;
+}
+
 /* Physics3D Joint stubs */
 void *rt_distance_joint3d_new(void *a, void *b, double d) {
     (void)a;

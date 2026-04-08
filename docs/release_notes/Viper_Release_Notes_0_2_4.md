@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, codegen optimization, linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, 3D physics, codegen optimization, native linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -49,16 +49,20 @@ Version 0.2.4 is a game engine, asset system, rendering, codegen optimization, l
 - **AArch64 Join-Phi Coalescing** — New peephole pass replaces stack round-trips at CFG join blocks with ordered register-to-register moves. Analyzes predecessor stores and successor loads to prove all edges materialize the same values in physical registers, then eliminates the loads and substitutes topologically-ordered copies (cycles bail out). CBR terminator lowering generalized to emit edge blocks whenever branch arguments are present, not only for same-target branches.
 - **Typed Return Metadata** — `runtime.def` signatures annotated with concrete return types (`obj<ClassName>`, `seq<str>`) for 100+ factory/conversion/collection methods. Both frontends now infer the exact runtime class returned, enabling chained method calls without losing type information. New `concreteRuntimeReturnClassQName` API and BASIC `inferObjectClassQName` recursive expression type tracer.
 - **3D Runtime File Decomposition** — `rt_canvas3d.c` split into core + `rt_canvas3d_overlay.c` (screen-space overlay, screenshot, debug-draw). `rt_scene3d.c` split into core + `rt_scene3d_vscn.c` (.vscn save/load serialization) with shared `rt_scene3d_internal.h`.
+- **Collider3D Runtime Class** — New reusable 3D collision shape system with 7 shape types: box, sphere, capsule, convex hull, triangle mesh, heightfield, and compound (parent with child transforms). Shapes decouple collision geometry from physics bodies — `Body3D.SetCollider` attaches a shape, AABB and narrow-phase dispatch use the attached collider.
+- **Physics3D Expansion** — Quaternion-based orientation with angular velocity/torque/impulse, dynamic/static/kinematic body modes, linear and angular damping, sleep system (configurable thresholds, manual Wake/Sleep), continuous collision detection (CCD) via substep sweeps, and a mass-only `Body3D.New` constructor.
+- **ELF Dynamic Linking** — Native linker now produces dynamically-linked Linux executables: PT_INTERP, PT_DYNAMIC, .dynsym, .dynstr, .hash (SYSV), .rela.dyn with R_X86_64_GLOB_DAT. Linux x86_64 programs can natively link against libc/libm/libpthread/libX11/libasound without system linker fallback.
+- **Native Linker Overhaul** — Table-driven macOS/Windows import plans replacing ad-hoc if/else chains, DynamicSymbolPolicy extraction, proper S_ZEROFILL (Mach-O) and SHT_NOBITS (ELF) for BSS sections, string dedup section compaction, dead-strip applied to all objects (not just archives), ICF cross-object address-taken resolution.
 - **Demos & Documentation** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL (10 SQL features, runtime API migration), ViperIDE professional IDE (live diagnostics, hover, go-to-def, search, symbol outline, 21 files / 7 dirs), Chess (pre-rendered sprites, core/engine/ui), 8 Graphics3D API demos, 6 app/game smoke probes; 185 markdown files reviewed, 700+ Doxygen comments, 70+ factual errors fixed.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 87 | +87 |
-| Source files | 2,671 | 2,825 | +154 |
-| Production SLOC | ~348K | ~431K | +83K |
-| Test count | 1,351 | 1,419 | +68 |
+| Commits | — | 91 | +91 |
+| Source files | 2,671 | 2,829 | +158 |
+| Production SLOC | ~348K | ~435K | +87K |
+| Test count | 1,351 | 1,430 | +79 |
 
 ---
 
@@ -323,6 +327,15 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **CBR edge block generalization** — Terminator lowering now emits edge blocks (`Ledge_true_N`/`Ledge_false_N`) whenever branch arguments are present on either the true or false arm, not only when both arms target the same block. Previously, different-target CBRs with branch arguments silently dropped the argument copies, causing miscompilation in branch-heavy control flow (e.g., multi-level if/else ladders with phi values).
 - **Loop phi-spill multi-block fix** — `eliminateLoopPhiSpills` (LoopOpt.cpp) now correctly handles multi-block loops where the latch block (not the split body) carries phi values on the back-edge. Refactored into `insertEdgeMoves` and `removeStores` lambdas applied to whichever block actually contains the phi-slot stores.
 - **Register allocator live-out spill fix** — New `isLiveOut()` query prevents premature register release for vregs that have no remaining uses in the current block but are live-out to successors. End-of-block spill insertion scan corrected from reverse to forward to find the first terminator insertion point.
+- **CBR compare lowering generalized** — Compare-and-branch optimization now fires in all blocks (not just entry), using `materializeValueToVReg()` for operands. Includes floating-point compares (`FCmpEQ`/`FCmpLT`/etc.) via `FCmpRR` + `BCond`.
+- **Frame address resolution** — New `resolveFrameAddress()` walks AddrOf/GEP chains to compute stack offsets, enabling direct frame-relative loads/stores without materializing pointer temporaries.
+- **AArch64 branch relaxation infrastructure** — Iterative label offset computation (`computeFunctionLabelOffsets`) with `measureInstructionSize` and `estimateFunctionSize`. New `A64CondBr19` relocation kind for conditional branches (BCond/Cbz/Cbnz) that exceed ±1 MB displacement.
+
+**x86_64 backend (new):**
+- **Regalloc carry-through** — `canCarryIntoNextBlock()` skips forced spills at straight-line single-predecessor fallthrough edges, keeping values in registers across simple block boundaries. `spillActiveValue()` consolidates spill logic; `crossBlockSpillVRegs_` tracks vregs requiring safe (non-reuse) spill slots.
+- **Branch relaxation hardening** — `measureInstructionSize` now takes `currentOffset` for accurate RIP-relative displacement sizing. `estimateFunctionSize()` and `verifyPredictedLabelOffset()` detect drift between predicted and actual label positions.
+- **Rodata-before-functions** — Rodata emission moved before function encoding so rodata symbol references are available during `encodeFunction`.
+- **System linker shell-out removed** — ~330 lines of `cc`/`ld` invocation code removed from x86_64 `CodegenPipeline`; native linker is the default path. `--system-link` deprecated.
 
 **Native Exception Handling Lowering:**
 - **`NativeEHLowering` pass** (`src/codegen/common/NativeEHLowering.cpp`, 683 LOC) — Rewrites structured IL exception handling markers into ordinary IL calls and branches before backend lowering. Transforms `EhPush`/`EhPop` scope markers into `rt_eh_push`/`rt_eh_pop` runtime calls, converts `TrapErr` into `rt_trap()` invocations with message operand materialisation, and lowers `ResumeSame`/`ResumeNext` into control flow jumps. Both x86_64 and AArch64 `CodegenPipeline` invoke the pass before MIR lowering. 171-line unit test validates all EH opcode transformations.
@@ -346,6 +359,14 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Mach-O symbol name fallback** — `findWithMachoFallback` now searches bidirectionally: plain name, underscore-stripped name, and underscore-prefixed name. `SymbolResolver` uses this for both undefined symbol lookup and defined symbol resolution, fixing cross-object symbol matching between Mach-O and ELF naming conventions.
 - **ObjC framework symbol normalization** — `normalizeMacFrameworkSymbol()` strips `OBJC_CLASS_$_`, `OBJC_METACLASS_$_`, and `OBJC_EHTYPE_$_` prefixes for framework rule matching. `isObjcClassLookupSymbol()` recognizes ObjC class references regardless of leading underscore count, enabling flat-namespace lookup for classes whose defining framework can't be determined from the symbol prefix alone.
 - **Windows ARM64 import stubs** — `generateWindowsImports()` now emits AArch64 `ADRP`/`LDR`/`BR` sequences for import thunks alongside x86_64 `JMP [rip+disp32]` stubs, with correct COFF ARM64 relocation types (`kPageRel21`, `kPageOff12L`). Machine type set to `0xAA64` for ARM64 COFF objects.
+- **ELF dynamic linking** — `ElfExeWriter` rewritten from static-only to full dynamic-link support: PT_INTERP (`/lib64/ld-linux-x86-64.so.2`), PT_DYNAMIC, `.dynamic` section with DT_NEEDED/DT_HASH/DT_STRTAB/DT_SYMTAB/DT_RELA, `.dynsym`, `.dynstr`, `.hash` (SYSV ELF hash), `.rela.dyn` with `R_X86_64_GLOB_DAT` relocations for GOT slots. Linux x86_64 programs can now natively link against shared libraries without falling back to the system linker.
+- **Linux import plan** — `planLinuxImports()` classifies dynamic symbols into libc, libm, libdl, libpthread, libX11, and libasound shared libraries via prefix/exact-match tables. `generateDynStubsX8664()` emits 6-byte `jmpq *__got_sym(%rip)` stubs with 8-byte GOT slots for each dynamic symbol.
+- **Table-driven import plans** — macOS import plan rewritten with `MacImportRule` structs mapping dylib paths to symbol prefix/exact-match tables (libSystem, CoreFoundation, Foundation, AppKit, Metal, CoreGraphics, AudioToolbox, Security, IOKit, CoreText, CoreServices, SystemConfiguration). Windows `dllForImport` similarly restructured. `DynamicSymbolPolicy.hpp` extracted from `SymbolResolver` — archive symbol filtering moved downstream to import plan builders.
+- **Proper zerofill sections** — `OutputSection::zeroFill` flag propagated through section merging, dead-strip, and ICF. Mach-O emits `S_ZEROFILL` for BSS and `S_THREAD_LOCAL_ZEROFILL` for TLS BSS. ELF emits `SHT_NOBITS` with zero file size. Eliminates unnecessary file backing for zero-initialized data, reducing executable size.
+- **Dead-strip all objects** — `deadStrip()` now applies liveness analysis to all input objects (not just archive extracts). Only entry points, TLS, ObjC metadata, and runtime roots are unconditional. User `.o` sections that are unreachable from roots are stripped.
+- **String dedup compaction** — After dedup aliasing, cstring sections where every byte is covered by a symbolized string are physically compacted by removing duplicate bytes (previously only symbol aliasing, no size reduction).
+- **ICF cross-object resolution** — Address-taken detection in `foldIdenticalCode()` now resolves through the global symbol table for cross-object relocation targets, instead of only checking local section indices.
+- **COFF writer hardening** — `validateCoffRelocationAddend()` diagnostic for unsupported addends. `.pdata` function length field now emitted (was 0). Defined rodata symbols pre-indexed for correct cross-section resolution.
 
 **Runtime:**
 - `SetErrorMode` + `_set_abort_behavior` added to `rt_init_stack_safety` on Windows to suppress crash/assert dialog boxes in natively compiled programs.
@@ -415,6 +436,11 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Physics3D shape-specific collision** — Sphere-sphere radial + AABB-sphere closest-point narrow-phase (replaces AABB-only)
 - **Physics3D character controller** — Slide-and-step movement replaces trivial velocity-set
 - **Physics3D collision events** — `CollisionCount`, `GetCollisionBodyA/B`, `GetCollisionNormal/Depth` queue
+- **Collider3D** — New runtime class (`rt_collider3d.c/h`, 822 LOC) with 7 reusable collision shape types: box (`NewBox`), sphere (`NewSphere`), capsule (`NewCapsule`), convex hull (`NewConvexHull` from Mesh3D), triangle mesh (`NewMesh`), heightfield (`NewHeightfield` from Terrain3D), and compound (`NewCompound` + `AddChild` with local transforms). Shapes decouple collision geometry from body instances — `Body3D.SetCollider` attaches a shape, AABB and narrow-phase dispatch use the attached collider. `GetLocalBoundsMin`/`GetLocalBoundsMax` query shape extents. World AABB computation transforms collider bounds through the body's pose (position + orientation).
+- **Physics3D rotation dynamics** — Bodies gain quaternion-based `Orientation` (get/set), `AngularVelocity` (get/set), `ApplyTorque`, `ApplyAngularImpulse`, `LinearDamping`/`AngularDamping` properties. Simulation integrates angular velocity, applies damping per-step, and updates orientation via quaternion integration.
+- **Physics3D body modes** — Bodies are now classified as dynamic (`PH3D_MODE_DYNAMIC`), static (`PH3D_MODE_STATIC`), or kinematic (`PH3D_MODE_KINEMATIC`). Kinematic bodies participate in collision but are not affected by forces. `Body3D.New(mass)` constructor creates a collider-ready body without legacy shape parameters.
+- **Physics3D sleep system** — Bodies track linear and angular velocity magnitude against configurable thresholds (`PH3D_SLEEP_LINEAR_THRESHOLD`, `PH3D_SLEEP_ANGULAR_THRESHOLD`). After `PH3D_SLEEP_DELAY` seconds of sub-threshold motion, bodies enter sleep state and are skipped during simulation. `CanSleep`, `Sleeping`, `Wake()`, `Sleep()` API.
+- **Physics3D CCD** — `UseCCD` property enables continuous collision detection via substep sweeps (`PH3D_MAX_CCD_SUBSTEPS = 16`). Fast-moving bodies are advanced in sub-increments to detect tunneling through thin geometry.
 - **DistanceJoint3D / SpringJoint3D** — Physics joint constraints with 6-iteration sequential impulse solver
 - **Audio3D** — Per-voice `max_distance` tracking table (replaces shared global that caused cross-voice attenuation bugs)
 - **SLERP domain clamp** — Prevent NaN from `acosf` with dot products > 1.0 due to rounding

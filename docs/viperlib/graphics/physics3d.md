@@ -5,7 +5,7 @@ last-verified: 2026-04-07
 ---
 
 # 3D Physics
-> Physics3DWorld, Collider3D, Physics3DBody, Character3D, DistanceJoint3D, SpringJoint3D
+> Physics3DWorld, PhysicsHit3D, PhysicsHitList3D, CollisionEvent3D, ContactPoint3D, Collider3D, Physics3DBody, Character3D, DistanceJoint3D, SpringJoint3D
 
 **Part of [Viper Runtime Library](../README.md) › [Graphics](README.md)**
 
@@ -31,6 +31,10 @@ and joint integration.
 |------------------|---------|--------|-------------|
 | `BodyCount`      | Integer | Read   | Number of active bodies in the world |
 | `CollisionCount` | Integer | Read   | Number of contacts from the most recent `Step()` |
+| `CollisionEventCount` | Integer | Read | Number of current collision events from the most recent `Step()` |
+| `EnterEventCount` | Integer | Read | Number of collision pairs that began touching this step |
+| `StayEventCount` | Integer | Read | Number of collision pairs that remained touching this step |
+| `ExitEventCount` | Integer | Read | Number of collision pairs that stopped touching this step |
 | `JointCount`     | Integer | Read   | Number of active joints |
 
 ### Methods
@@ -43,18 +47,116 @@ and joint integration.
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
 | `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`) |
 | `RemoveJoint(joint)`      | `Void(Object)`        | Remove a joint from the world |
+| `Raycast(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return the nearest `PhysicsHit3D` or `Nothing` |
+| `RaycastAll(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return a sorted `PhysicsHitList3D` or `Nothing` |
+| `SweepSphere(center, radius, delta, mask)` | `Object(Object, Double, Object, Integer)` | Sweep a sphere and return the first `PhysicsHit3D` or `Nothing` |
+| `SweepCapsule(a, b, radius, delta, mask)` | `Object(Object, Object, Double, Object, Integer)` | Sweep a capsule segment and return the first `PhysicsHit3D` or `Nothing` |
+| `OverlapSphere(center, radius, mask)` | `Object(Object, Double, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
+| `OverlapAABB(min, max, mask)` | `Object(Object, Object, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
 | `GetCollisionBodyA(i)`    | `Object(Integer)`     | Get the first body in contact pair `i` |
 | `GetCollisionBodyB(i)`    | `Object(Integer)`     | Get the second body in contact pair `i` |
 | `GetCollisionNormal(i)`   | `Object(Integer)`     | Get the contact normal as a `Vec3` |
 | `GetCollisionDepth(i)`    | `Double(Integer)`     | Get the penetration depth for contact `i` |
+| `GetCollisionEvent(i)`    | `Object(Integer)`     | Get the current `CollisionEvent3D` at index `i` |
+| `GetEnterEvent(i)`        | `Object(Integer)`     | Get an enter `CollisionEvent3D` |
+| `GetStayEvent(i)`         | `Object(Integer)`     | Get a stay `CollisionEvent3D` |
+| `GetExitEvent(i)`         | `Object(Integer)`     | Get an exit `CollisionEvent3D` |
 
 ### Notes
 
 - `Step()` is explicit; the world does not simulate itself automatically.
 - Contact queries reflect the latest completed step.
+- Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches any layer.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
 - The runtime currently supports up to 256 bodies per world.
+
+---
+
+## Viper.Graphics3D.PhysicsHit3D
+
+Query result object returned by `Raycast`, `SweepSphere`, and `SweepCapsule`.
+
+**Type:** Instance (obj)
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Body` | Object | Read | Hit `Physics3DBody` |
+| `Collider` | Object | Read | Hit `Collider3D` leaf collider |
+| `Point` | Object (`Vec3`) | Read | Contact point approximation |
+| `Normal` | Object (`Vec3`) | Read | Surface normal |
+| `Distance` | Double | Read | Distance travelled before the hit |
+| `Fraction` | Double | Read | `Distance / maxDistance` |
+| `StartedPenetrating` | Boolean | Read | Query began already overlapping the target |
+| `IsTrigger` | Boolean | Read | Hit body is trigger-only |
+
+---
+
+## Viper.Graphics3D.PhysicsHitList3D
+
+List of `PhysicsHit3D` results returned by `RaycastAll`, `OverlapSphere`, and `OverlapAABB`.
+
+**Type:** Instance (obj)
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Count` | Integer | Read | Number of hits in the list |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(i)` | `Object(Integer)` | Return hit `i` as a `PhysicsHit3D` |
+
+---
+
+## Viper.Graphics3D.CollisionEvent3D
+
+Structured per-pair contact snapshot from the most recent world step.
+
+**Type:** Instance (obj)
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `BodyA` | Object | Read | First body in the pair |
+| `BodyB` | Object | Read | Second body in the pair |
+| `ColliderA` | Object | Read | Leaf collider for body A |
+| `ColliderB` | Object | Read | Leaf collider for body B |
+| `IsTrigger` | Boolean | Read | Pair includes a trigger body |
+| `ContactCount` | Integer | Read | Manifold point count (`1` in the current backend) |
+| `RelativeSpeed` | Double | Read | Relative speed along the contact normal before resolution |
+| `NormalImpulse` | Double | Read | Solver normal impulse (`0` for trigger pairs) |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `GetContact(i)` | `Object(Integer)` | Return `ContactPoint3D` for manifold point `i` |
+| `GetContactPoint(i)` | `Object(Integer)` | Return point `i` as a `Vec3` |
+| `GetContactNormal(i)` | `Object(Integer)` | Return point normal `i` as a `Vec3` |
+| `GetContactSeparation(i)` | `Double(Integer)` | Signed separation (`< 0` means penetration) |
+
+---
+
+## Viper.Graphics3D.ContactPoint3D
+
+Contact manifold point returned by `CollisionEvent3D.GetContact`.
+
+**Type:** Instance (obj)
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Point` | Object (`Vec3`) | Read | Contact position |
+| `Normal` | Object (`Vec3`) | Read | Contact normal |
+| `Separation` | Double | Read | Signed separation (`< 0` while penetrating) |
 
 ---
 
@@ -233,6 +335,10 @@ For a runnable headless example, see
 [`examples/apiaudit/graphics3d/physics3d_rotation_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/physics3d_rotation_demo.zia).
 For the advanced collider surface, see
 [`examples/apiaudit/graphics3d/collider3d_advanced_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/collider3d_advanced_demo.zia).
+For world-space query coverage, see
+[`examples/apiaudit/graphics3d/physics3d_queries_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/physics3d_queries_demo.zia).
+For structured collision events, see
+[`examples/apiaudit/graphics3d/collisionevent3d_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/collisionevent3d_demo.zia).
 
 ---
 

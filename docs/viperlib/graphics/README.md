@@ -19,7 +19,7 @@ last-verified: 2026-04-07
 | [Fonts](fonts.md) | BitmapFont for custom BDF/PSF font rendering |
 | [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
 | [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, TextureAtlas, Camera, SpriteAnimation |
-| [3D Physics](physics3d.md) | `Physics3DWorld`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
+| [3D Physics](physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 
 ## See Also
 
