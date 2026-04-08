@@ -111,7 +111,8 @@ inline bool isWindowsMetadataSection(const std::string &name) {
 /// Symbols synthesized by the Windows native linker rather than imported from
 /// a DLL or provided by a runtime archive.
 inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
-    return name == "_fltused" || name == "__security_cookie" || name == "__security_check_cookie" ||
+    return name == "_fltused" || name == "__ImageBase" ||
+           name == "__security_cookie" || name == "__security_check_cookie" ||
            name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
            name == "_RTC_InitBase" || name == "_RTC_Shutdown" || name == "_RTC_CheckStackVars" ||
            name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||

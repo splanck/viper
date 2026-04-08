@@ -114,6 +114,9 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         return false;
 
     if (name == "fprintf" || name == "snprintf" || name == "vsnprintf" ||
+        name == "_vfprintf_l" || name == "_vfscanf_l" || name == "_vsprintf_l" ||
+        name == "_vsnprintf_l" || name == "_vswprintf_l" || name == "_vfwprintf_l" ||
+        name == "fstat" || name == "_fstat64i32" || name == "stat" || name == "_stat64i32" ||
         name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
         name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||
         name == "__security_init_cookie" || name == "__GSHandlerCheck" || name == "__chkstk")

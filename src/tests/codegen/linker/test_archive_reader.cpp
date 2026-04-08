@@ -228,25 +228,6 @@ int main() {
     }
     CHECK(sawTrapDef);
 
-    std::vector<ObjFile> initialObjects = {makeUndefinedCaller()};
-    std::vector<Archive> archives = {ar};
-    std::unordered_map<std::string, GlobalSymEntry> globalSyms;
-    std::vector<ObjFile> allObjects;
-    std::unordered_set<std::string> dynamicSyms;
-    std::ostringstream resolveErr;
-
-    const bool resolved =
-        resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, resolveErr);
-    if (!resolved)
-        std::cerr << resolveErr.str();
-    ASSERT(resolved);
-    CHECK(dynamicSyms.count("rt_trap") == 0);
-    CHECK(dynamicSyms.count("rt_init_stack_safety") == 0);
-    CHECK(globalSyms.count("rt_trap") == 1);
-    CHECK(globalSyms["rt_trap"].binding == GlobalSymEntry::Global);
-    CHECK(globalSyms.count("rt_init_stack_safety") == 1);
-    CHECK(globalSyms["rt_init_stack_safety"].binding == GlobalSymEntry::Global);
-
     auto loadArchive = [&](RtComponent comp) -> Archive {
         const auto path = runtimeArchivePath(*buildDir, archiveNameForComponent(comp));
         Archive lib;
@@ -268,13 +249,35 @@ int main() {
     Archive oop = loadArchive(RtComponent::Oop);
     Archive text = loadArchive(RtComponent::Text);
     Archive iofs = loadArchive(RtComponent::IoFs);
+    Archive threads = loadArchive(RtComponent::Threads);
 
     CHECK(collections.symbolIndex.count("rt_seq_with_capacity") == 1);
     CHECK(oop.symbolIndex.count("rt_obj_new_i64") == 1);
     CHECK(text.symbolIndex.count("rt_hash_ensure_seeded_") == 1);
     CHECK(iofs.symbolIndex.count("rt_file_channel_fd") == 1);
 
-    archives = {ar, collections, oop, text, iofs};
+    // --- Basic resolve: all runtime components needed for full resolution ---
+    std::vector<Archive> archives = {ar, collections, oop, text, iofs, threads};
+    std::vector<ObjFile> initialObjects = {makeUndefinedCaller()};
+    std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+    std::vector<ObjFile> allObjects;
+    std::unordered_set<std::string> dynamicSyms;
+    std::ostringstream resolveErr;
+
+    const bool resolved =
+        resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, resolveErr);
+    if (!resolved)
+        std::cerr << resolveErr.str();
+    ASSERT(resolved);
+    CHECK(dynamicSyms.count("rt_trap") == 0);
+    CHECK(dynamicSyms.count("rt_init_stack_safety") == 0);
+    CHECK(globalSyms.count("rt_trap") == 1);
+    CHECK(globalSyms["rt_trap"].binding == GlobalSymEntry::Global);
+    CHECK(globalSyms.count("rt_init_stack_safety") == 1);
+    CHECK(globalSyms["rt_init_stack_safety"].binding == GlobalSymEntry::Global);
+
+    // --- Transitive resolve: all component archives ---
+    archives = {ar, collections, oop, text, iofs, threads};
     initialObjects = {makeUndefinedCaller()};
     globalSyms.clear();
     allObjects.clear();

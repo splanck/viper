@@ -19,6 +19,7 @@
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
+#include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -30,7 +31,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
-#include <regex>
 
 namespace {
 [[nodiscard]] il::core::Instr makeRetConst(long long value) {
@@ -110,9 +110,11 @@ namespace {
     viper::codegen::x64::passes::PassManager manager{};
     viper::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = optimizeLevel;
+    module.options = opts;
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::PeepholePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(false, opts));
 
     if (!manager.run(module, diags) || !module.binaryText) {
@@ -138,8 +140,6 @@ int main() {
 
     if (baseline.asmText != managed.asmText) {
         std::cerr << "Assembly mismatch\n";
-        std::cerr << "--- baseline ---\n" << baseline.asmText << "\n";
-        std::cerr << "--- managed ---\n" << managed.asmText << "\n";
         return EXIT_FAILURE;
     }
 

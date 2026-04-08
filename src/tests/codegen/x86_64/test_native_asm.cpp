@@ -81,20 +81,32 @@ using Pipeline = viper::codegen::x64::CodegenPipeline;
 /// Check whether the system assembler (cc/clang) is reachable.
 static bool hasSystemAssembler() {
 #if defined(_WIN32)
-    // On Windows the system-asm path calls "clang".  Check it exists.
-    FILE *p = _popen("clang --version 2>NUL", "r");
+    // Check if clang is accessible via PATH (fast stat, no popen which can
+    // hang on some CI configurations).  Only PATH matters because the
+    // CodegenPipeline invokes "clang" without a full path.
+    const char *pathEnv = std::getenv("PATH");
+    if (!pathEnv) return false;
+    std::string pathStr(pathEnv);
+    std::size_t pos = 0;
+    while (pos < pathStr.size()) {
+        std::size_t end = pathStr.find(';', pos);
+        if (end == std::string::npos) end = pathStr.size();
+        std::string dir = pathStr.substr(pos, end - pos);
+        if (!dir.empty()) {
+            auto candidate = std::filesystem::path(dir) / "clang.exe";
+            if (std::filesystem::exists(candidate)) return true;
+        }
+        pos = end + 1;
+    }
+    return false;
 #else
     FILE *p = popen("cc --version 2>/dev/null", "r");
-#endif
     if (!p) return false;
     char buf[128];
-    while (fgets(buf, sizeof(buf), p)) {} // drain
-#if defined(_WIN32)
-    int rc = _pclose(p);
-#else
+    while (fgets(buf, sizeof(buf), p)) {}
     int rc = pclose(p);
-#endif
     return rc == 0;
+#endif
 }
 
 /// Run the CodegenPipeline with native-asm mode and return the exit code.
@@ -213,6 +225,7 @@ writeFile(in,
 CHECK(runNative(in, obj) == 0);
 CHECK(fs::exists(obj));
 // Verify it's a valid object file by checking magic bytes.
+{
 std::ifstream f(obj, std::ios::binary);
 ASSERT(static_cast<bool>(f));
 uint8_t magic[4]{};
@@ -235,6 +248,7 @@ CHECK(magic[1] == 'E');
 CHECK(magic[2] == 'L');
 CHECK(magic[3] == 'F');
 #endif
+}
 fs::remove(obj);
 fs::remove(in);
 TEST_END()

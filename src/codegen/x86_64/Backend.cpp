@@ -33,6 +33,7 @@
 #include "ISel.hpp"
 #include "Peephole.hpp"
 #include "RegAllocLinear.hpp"
+#include "peephole/PeepholeCommon.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
@@ -250,6 +251,24 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         allocateFunctionPipeline(mir[i], target, options, frames[i]);
     }
     fprintf(stderr, "[alloc] done\n"); fflush(stderr);
+
+    // Strip identity moves (mov r, r) that the register allocator may insert
+    // when a virtual register happens to be assigned the same physical register
+    // as its source.  These are always no-ops and safe to remove at any
+    // optimization level.
+    for (auto &fn : mir) {
+        for (auto &block : fn.blocks) {
+            auto &instrs = block.instructions;
+            instrs.erase(
+                std::remove_if(instrs.begin(), instrs.end(),
+                               [](const MInstr &instr) {
+                                   return peephole::isIdentityMovRR(instr) ||
+                                          peephole::isIdentityMovSDRR(instr);
+                               }),
+                instrs.end());
+        }
+    }
+
     return true;
 }
 
