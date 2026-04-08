@@ -669,8 +669,7 @@ typedef struct {
     char map_ks[512];
 } obj_mtl_entry_t;
 
-static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count)
-    __attribute__((unused));
+static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count);
 
 static void obj_parse_mtl(const char *mtl_path, obj_mtl_entry_t *mats, int *count) {
     *count = 0;

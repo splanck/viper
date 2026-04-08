@@ -498,6 +498,14 @@ void rt_particles3d_update(void *o, double delta_time) {
  * Billboard rendering (batched single draw call)
  *=========================================================================*/
 
+extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
+extern void *rt_material3d_new(void);
+extern void rt_material3d_set_color(void *m, double r, double g, double b);
+extern void rt_material3d_set_unlit(void *m, int8_t u);
+extern void rt_material3d_set_alpha(void *m, double a);
+extern void rt_material3d_set_texture(void *m, void *tex);
+extern void *rt_mat4_identity(void);
+
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (!o || !canvas3d || !camera)
         return;
@@ -604,13 +612,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     /* Build a lightweight material-like draw command.
      * Particles use the deferred draw queue with alpha < 1.0
      * for proper transparency sorting with scene geometry. */
-    extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
-    extern void *rt_material3d_new(void);
-    extern void rt_material3d_set_color(void *m, double r, double g, double b);
-    extern void rt_material3d_set_unlit(void *m, int8_t u);
-    extern void rt_material3d_set_alpha(void *m, double a);
-    extern void rt_material3d_set_texture(void *m, void *tex);
-    extern void *rt_mat4_identity(void);
 
     if (!ps->cached_material) {
         ps->cached_material = rt_material3d_new();

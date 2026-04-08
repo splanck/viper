@@ -1675,10 +1675,16 @@ static void generateZiaExterns(const ParseState &state,
         byNamespace[ns].push_back(&func);
     }
 
+    // Each namespace group is wrapped in a lambda to limit stack depth.
+    // MSVC Debug mode allocates separate stack slots for every temporary in a
+    // function, so 4000+ inline defineExternFunction calls (each creating
+    // temporary vectors) would blow the default 1 MB Windows stack.  The lambda
+    // boundary forces each batch into its own stack frame.
     for (const auto &[ns, funcs] : byNamespace) {
         out << "// " << std::string(75, '=') << "\n";
         out << "// " << ns << "\n";
         out << "// " << std::string(75, '=') << "\n";
+        out << "[&]() {\n";
 
         for (const auto *func : funcs) {
             ParsedSignature sig = parseSignature(func->signature);
@@ -1700,7 +1706,7 @@ static void generateZiaExterns(const ParseState &state,
             }
             out << ");\n";
         }
-        out << "\n";
+        out << "}();\n\n";
     }
 
     // Also emit aliases
@@ -1708,6 +1714,7 @@ static void generateZiaExterns(const ParseState &state,
         out << "// " << std::string(75, '=') << "\n";
         out << "// ALIASES\n";
         out << "// " << std::string(75, '=') << "\n";
+        out << "[&]() {\n";
 
         for (const auto &alias : state.aliases) {
             auto it = state.func_by_id.find(alias.target_id);
@@ -1733,6 +1740,7 @@ static void generateZiaExterns(const ParseState &state,
                 out << ");\n";
             }
         }
+        out << "}();\n";
         out << "\n";
     }
 

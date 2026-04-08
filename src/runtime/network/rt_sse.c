@@ -34,7 +34,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#define strncasecmp _strnicmp
+#else
 #include <strings.h>
 #endif
 

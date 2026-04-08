@@ -331,7 +331,10 @@ static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src
 }
 
 /// @brief Append a formatted string to a dynamic buffer.
-__attribute__((format(printf, 4, 5))) static int vscn_append(
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 4, 5)))
+#endif
+static int vscn_append(
     char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
     va_list ap;
     char *nb;

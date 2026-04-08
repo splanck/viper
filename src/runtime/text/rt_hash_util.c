@@ -28,8 +28,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <bcrypt.h>
 #include <windows.h>
+#include <bcrypt.h>
 #pragma comment(lib, "bcrypt.lib")
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)

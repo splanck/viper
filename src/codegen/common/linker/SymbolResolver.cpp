@@ -20,6 +20,7 @@
 #include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 namespace viper::codegen::linker {

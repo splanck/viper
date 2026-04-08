@@ -1432,6 +1432,13 @@ int64_t rt_canvas3d_get_frame_serial(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->frame_serial : 0;
 }
 
+extern void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
+                                                  void *mesh,
+                                                  const double *model_matrix,
+                                                  void *material,
+                                                  const void *motion_key,
+                                                  void *morph_targets);
+
 void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         void *mesh_obj,
                                         const double *model_matrix,
@@ -1450,12 +1457,6 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
 
     if (mesh->morph_targets_ref && mesh->morph_deltas == NULL && mesh->morph_weights == NULL &&
         mesh->morph_shape_count == 0) {
-        extern void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
-                                                         void *mesh,
-                                                         const double *model_matrix,
-                                                         void *material,
-                                                         const void *motion_key,
-                                                         void *morph_targets);
         rt_canvas3d_draw_mesh_matrix_morphed(
             obj, mesh_obj, model_matrix, material_obj, motion_key, mesh->morph_targets_ref);
         return;
@@ -1701,6 +1702,15 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 ///          4. Dispatches each draw through the backend's submit_draw vtable.
 ///          5. Applies shadow mapping and post-processing if enabled.
 ///          Must be called after all DrawMesh calls and before Flip.
+extern void rt_cubemap_sample(const rt_cubemap3d *cm,
+                              float dx,
+                              float dy,
+                              float dz,
+                              float *out_r,
+                              float *out_g,
+                              float *out_b);
+extern void rt_postfx3d_apply_to_canvas(void *canvas);
+
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
     int32_t main_count = 0;
@@ -1723,14 +1733,6 @@ void rt_canvas3d_end(void *obj) {
     cmds = (deferred_draw_t *)c->draw_cmds;
 
     if (!c->frame_is_2d && c->skybox) {
-        extern void rt_cubemap_sample(const rt_cubemap3d *cm,
-                                      float dx,
-                                      float dy,
-                                      float dz,
-                                      float *out_r,
-                                      float *out_g,
-                                      float *out_b);
-
         uint8_t *out_pixels = NULL;
         int32_t out_w = 0;
         int32_t out_h = 0;
@@ -1954,7 +1956,6 @@ void rt_canvas3d_flip(void *obj) {
 
     if (!gpu_postfx_presented) {
         /* Apply post-processing effects to the software framebuffer */
-        extern void rt_postfx3d_apply_to_canvas(void *canvas);
         rt_postfx3d_apply_to_canvas(obj);
     }
 
@@ -1986,19 +1987,20 @@ void rt_canvas3d_flip(void *obj) {
 /// @details Polls the platform event queue and updates input state for
 ///          Keyboard/Mouse/Pad subsystems. Must be called once per frame.
 /// @return 1 if a close event was received, 0 otherwise.
+extern void rt_keyboard_on_key_down(int64_t key);
+extern void rt_keyboard_on_key_up(int64_t key);
+extern void rt_mouse_update_pos(int64_t x, int64_t y);
+extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
+extern void rt_mouse_button_down(int64_t button);
+extern void rt_mouse_button_up(int64_t button);
+extern int8_t rt_mouse_is_captured(void);
+
 int64_t rt_canvas3d_poll(void *obj) {
     if (!obj)
         return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win)
         return 0;
-    extern void rt_keyboard_on_key_down(int64_t key);
-    extern void rt_keyboard_on_key_up(int64_t key);
-    extern void rt_mouse_update_pos(int64_t x, int64_t y);
-    extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
-    extern void rt_mouse_button_down(int64_t button);
-    extern void rt_mouse_button_up(int64_t button);
-    extern int8_t rt_mouse_is_captured(void);
 
     int8_t captured = rt_mouse_is_captured();
 

@@ -78,6 +78,25 @@ static void writeFile(const std::string &path, const std::string &text) {
 
 using Pipeline = viper::codegen::x64::CodegenPipeline;
 
+/// Check whether the system assembler (cc/clang) is reachable.
+static bool hasSystemAssembler() {
+#if defined(_WIN32)
+    // On Windows the system-asm path calls "clang".  Check it exists.
+    FILE *p = _popen("clang --version 2>NUL", "r");
+#else
+    FILE *p = popen("cc --version 2>/dev/null", "r");
+#endif
+    if (!p) return false;
+    char buf[128];
+    while (fgets(buf, sizeof(buf), p)) {} // drain
+#if defined(_WIN32)
+    int rc = _pclose(p);
+#else
+    int rc = pclose(p);
+#endif
+    return rc == 0;
+}
+
 /// Run the CodegenPipeline with native-asm mode and return the exit code.
 static int runNative(const std::string &ilPath,
                      const std::string &exePath = "",
@@ -222,8 +241,13 @@ TEST_END()
 
 // ---------------------------------------------------------------------------
 // 5. Dual-path equivalence — native-asm exit code matches system-asm
+//    Skipped when the system assembler (clang/cc) is not available.
 // ---------------------------------------------------------------------------
 TEST_BEGIN(EquivBasicReturn)
+if (!hasSystemAssembler()) {
+    std::cerr << "[ SKIPPED  ] NativeAsmX64.EquivBasicReturn (no system assembler)\n";
+    ++gPass;
+} else {
 const std::string in = outPath("nasm_equiv.il");
 writeFile(in,
           "il 0.1\n"
@@ -241,6 +265,7 @@ const int natRc = runNative(in, "", true);
 CHECK(sysRc == natRc);
 CHECK(natRc == 17);
 fs::remove(in);
+}
 TEST_END()
 
 // ---------------------------------------------------------------------------

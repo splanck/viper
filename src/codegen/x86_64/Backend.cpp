@@ -112,11 +112,14 @@ void lowerPendingCalls(MFunction &func,
                 break;
             }
 
+            // Save callPlanId before lowerCall — insertion may reallocate
+            // block.instructions and invalidate the instr reference.
+            const std::size_t planId = instr.callPlanId;
             const std::size_t beforeSize = block.instructions.size();
-            lowerCall(block, instrIndex, plans[instr.callPlanId], target, frame);
+            lowerCall(block, instrIndex, plans[planId], target, frame);
             const std::size_t afterSize = block.instructions.size();
             const std::size_t inserted = afterSize - beforeSize;
-            consumed[instr.callPlanId] = true;
+            consumed[planId] = true;
 
             // The CALL instruction we just processed is now at position (instrIndex + inserted).
             // Skip past it to continue searching for the next CALL.
@@ -217,7 +220,10 @@ bool legalizeModuleToMIR(const ILModule &mod,
     mir.reserve(mod.funcs.size());
     frames.reserve(mod.funcs.size());
 
-    for (const auto &func : mod.funcs) {
+    for (std::size_t fi = 0; fi < mod.funcs.size(); ++fi) {
+        const auto &func = mod.funcs[fi];
+        fprintf(stderr, "[leg] %zu/%zu: %s\n", fi, mod.funcs.size(), func.name.c_str());
+        fflush(stderr);
         FrameInfo frame{};
         MFunction machineFunc{};
         legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
@@ -238,8 +244,12 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         return false;
     }
 
-    for (std::size_t i = 0; i < mir.size(); ++i)
+    fprintf(stderr, "[alloc] start\n"); fflush(stderr);
+    for (std::size_t i = 0; i < mir.size(); ++i) {
+        fprintf(stderr, "[alloc] %zu: %s\n", i, mir[i].name.c_str()); fflush(stderr);
         allocateFunctionPipeline(mir[i], target, options, frames[i]);
+    }
+    fprintf(stderr, "[alloc] done\n"); fflush(stderr);
     return true;
 }
 
@@ -250,8 +260,12 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
     if (options.optimizeLevel < 1)
         return true;
 
-    for (auto &fn : mir)
+    fprintf(stderr, "[peep] start\n"); fflush(stderr);
+    for (auto &fn : mir) {
+        fprintf(stderr, "[peep] %s\n", fn.name.c_str()); fflush(stderr);
         runPeepholes(fn);
+    }
+    fprintf(stderr, "[peep] done\n"); fflush(stderr);
     return true;
 }
 
@@ -389,6 +403,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     }
 
     for (std::size_t i = 0; i < mir.size(); ++i) {
+        fprintf(stderr, "[emit] %zu: %s\n", i, mir[i].name.c_str()); fflush(stderr);
         objfile::CodeSection funcText;
         DebugLineTable funcDebugLines;
         seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);

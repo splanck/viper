@@ -22,6 +22,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <unordered_map>

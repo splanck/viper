@@ -77,13 +77,13 @@ endif ()
 
 # Custom target to run all tests
 if (WIN32)
-    add_custom_target(run_tests
+    add_custom_target(run_vipergfx_tests
             COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
             DEPENDS test_window test_pixels test_drawing
             COMMENT "Running all ViperGFX tests..."
     )
 else ()
-    add_custom_target(run_tests
+    add_custom_target(run_vipergfx_tests
             COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
             DEPENDS test_window test_pixels test_drawing test_input
             COMMENT "Running all ViperGFX tests..."

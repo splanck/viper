@@ -375,7 +375,14 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond) {
         }
     }
 
-    const MOpcode cmpOpc = cls == RegClass::XMM ? MOpcode::UCOMIS : MOpcode::CMPrr;
+    MOpcode cmpOpc;
+    if (cls == RegClass::XMM) {
+        cmpOpc = MOpcode::UCOMIS;
+    } else if (std::holds_alternative<OpImm>(rhs)) {
+        cmpOpc = MOpcode::CMPri;
+    } else {
+        cmpOpc = MOpcode::CMPrr;
+    }
     builder().append(MInstr::make(cmpOpc, std::vector<Operand>{clone(lhs), rhs}));
 
     if (instr.resultId < 0) {

@@ -173,6 +173,40 @@ namespace {
     return count;
 }
 
+/// Check whether the text contains any conditional jump (jcc) instruction.
+/// The backend may fuse comparison+branch into cmpq+jcc (e.g., jl, jg)
+/// instead of materialising a boolean and using testq+jne.  Both patterns
+/// are correct; this helper accepts either.
+[[nodiscard]] bool hasAnyConditionalJump(const std::string &text) {
+    static const char *jcc[] = {
+        "je ", "jne ", "jl ", "jle ", "jg ", "jge ",
+        "jb ", "jbe ", "ja ", "jae ", "js ", "jns ",
+        "jo ", "jno ", "jp ", "jnp ",
+    };
+    for (auto p : jcc)
+        if (text.find(p) != std::string::npos) return true;
+    return false;
+}
+
+/// Count total conditional jump instructions in the text.
+[[nodiscard]] std::size_t countConditionalJumps(const std::string &text) {
+    static const char *jcc[] = {
+        "je ", "jne ", "jl ", "jle ", "jg ", "jge ",
+        "jb ", "jbe ", "ja ", "jae ", "js ", "jns ",
+        "jo ", "jno ", "jp ", "jnp ",
+    };
+    std::size_t total = 0;
+    for (auto p : jcc)
+        total += countOccurrences(text, p);
+    return total;
+}
+
+/// Check whether the text contains any flag-setting comparison (testq or cmpq).
+[[nodiscard]] bool hasAnyComparison(const std::string &text) {
+    return text.find("testq") != std::string::npos ||
+           text.find("cmpq") != std::string::npos;
+}
+
 // ===----------------------------------------------------------------------===
 // Test bookkeeping
 // ===----------------------------------------------------------------------===
@@ -192,6 +226,18 @@ struct TestContext {
     void beginCategory(const char *name) {
         categories.push_back({name, 0, 0, 0});
         currentCat = static_cast<int>(categories.size()) - 1;
+    }
+
+    void checkCustom(const char *caseName, bool passed) {
+        auto &cat = categories[static_cast<std::size_t>(currentCat)];
+        ++cat.total;
+        if (passed) {
+            ++cat.pass;
+        } else {
+            ++cat.fail;
+            ++globalFail;
+            std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n";
+        }
     }
 
     void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected) {
@@ -418,8 +464,10 @@ void testCmpFeedsCbr(TestContext &ctx) {
     const auto text = compileToAsm(m);
 
     ctx.checkAsm("has_cmpq", text, "cmpq");
-    ctx.checkAsm("has_testq", text, "testq");
-    ctx.checkAsm("has_jne", text, "jne ");
+    // The backend may fuse cmp+cbr into cmpq+jcc (e.g. jl) rather than
+    // materialising a boolean with testq+jne.  Accept either pattern.
+    ctx.checkCustom("has_flag_test", hasAnyComparison(text));
+    ctx.checkCustom("has_jcc", hasAnyConditionalJump(text));
     ctx.checkAsm("has_jmp", text, "jmp ");
     ctx.checkAsm("has_ret", text, "ret");
 }
@@ -531,8 +579,8 @@ void testWhileLoop(TestContext &ctx) {
 
     // Should have multiple jumps — at least 2 jmp (entry→loop, body→loop)
     ctx.checkCount("jmp_count", text, "jmp ", 2);
-    // Should have at least 1 conditional jump
-    ctx.checkAsm("has_jne", text, "jne ");
+    // Should have at least 1 conditional jump (may be jne, jl, etc.)
+    ctx.checkCustom("has_jcc", hasAnyConditionalJump(text));
     // Should have at least 3 labels
     ctx.checkCount("labels", text, ":", 4);
     ctx.checkAsm("has_ret", text, "ret");
@@ -661,8 +709,9 @@ void testNestedIfElse(TestContext &ctx) {
 
     // Should have 3 cmpq instructions (one per level)
     ctx.checkCount("cmpq_count", text, "cmpq", 3);
-    // Should have 3 conditional branches (jne from each cbr)
-    ctx.checkCount("jne_count", text, "jne ", 3);
+    // Should have 3 conditional branches (jcc from each cbr).
+    // The backend may emit jne, jl, jg, etc. depending on comparison fusion.
+    ctx.checkCustom("jcc_count", countConditionalJumps(text) >= 3);
     // Should have multiple labels (at least 6 blocks)
     ctx.checkCount("labels", text, ":", 7);
     // Should have 4 ret instructions (one per leaf)
@@ -817,8 +866,8 @@ void testBothBranchesSameTarget(TestContext &ctx) {
 
     ctx.checkAsm("compiles", text, "same_target");
     ctx.checkAsm("has_ret", text, "ret");
-    // Should still emit the conditional branch machinery
-    ctx.checkAsm("has_testq", text, "testq");
+    // Should still emit the conditional branch machinery (testq or cmpq)
+    ctx.checkCustom("has_flag_test", hasAnyComparison(text));
 }
 
 /// Test 12: Comparison after arithmetic (explicit CMP, not flag reuse).
@@ -863,8 +912,10 @@ void testCmpAfterArith(TestContext &ctx) {
 
     ctx.checkAsm("has_addq", text, "addq");
     ctx.checkAsm("has_cmpq", text, "cmpq");
-    ctx.checkAsm("has_testq", text, "testq");
-    ctx.checkAsm("has_jne", text, "jne ");
+    // The backend may fuse cmp+cbr, so testq may be absent when cmpq+jcc
+    // is used directly.  Check for any flag-setting comparison and any jcc.
+    ctx.checkCustom("has_flag_test", hasAnyComparison(text));
+    ctx.checkCustom("has_jcc", hasAnyConditionalJump(text));
     ctx.checkAsm("has_ret", text, "ret");
 }
 

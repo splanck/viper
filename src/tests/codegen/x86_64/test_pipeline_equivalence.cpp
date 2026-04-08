@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <regex>
 
 namespace {
 [[nodiscard]] il::core::Instr makeRetConst(long long value) {
@@ -137,6 +138,8 @@ int main() {
 
     if (baseline.asmText != managed.asmText) {
         std::cerr << "Assembly mismatch\n";
+        std::cerr << "--- baseline ---\n" << baseline.asmText << "\n";
+        std::cerr << "--- managed ---\n" << managed.asmText << "\n";
         return EXIT_FAILURE;
     }
 

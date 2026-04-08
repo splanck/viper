@@ -455,6 +455,9 @@ set(VIPER_CLI_LINK_LIBS
         viper_repl)
 
 add_executable(viper ${VIPER_CLI_SOURCES})
+if (WIN32)
+    target_sources(viper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/common/WinDialogSuppress.c)
+endif ()
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
 target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
 add_dependencies(viper viper_runtime_components)
@@ -468,6 +471,9 @@ add_executable(vbasic
         tools/vbasic/cli_compat.cpp
         tools/viper/cmd_front_basic.cpp
         tools/viper/cli.cpp)
+if (WIN32)
+    target_sources(vbasic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/common/WinDialogSuppress.c)
+endif ()
 set_target_properties(vbasic PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic)
 target_link_libraries(vbasic
         PRIVATE
@@ -493,6 +499,9 @@ add_executable(zia
         tools/zia/cli_compat.cpp
         tools/viper/cmd_front_zia.cpp
         tools/viper/cli.cpp)
+if (WIN32)
+    target_sources(zia PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/common/WinDialogSuppress.c)
+endif ()
 set_target_properties(zia PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/zia)
 target_link_libraries(zia
         PRIVATE

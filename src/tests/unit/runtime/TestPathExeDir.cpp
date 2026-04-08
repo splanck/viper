@@ -16,6 +16,12 @@
 #include <cstring>
 #include <sys/stat.h>
 
+#ifdef _WIN32
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+#endif
+
 extern "C" {
 #include "rt_string.h"
 char *rt_path_exe_dir_cstr(void);

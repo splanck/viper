@@ -262,7 +262,16 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
     objfile::CodeSection text, rodata;
     text.reserveBytes(currentOffset + 16);
     text.emitZeros(currentOffset);
-    measureEncoder.encodeInstructionImpl(instr, text, rodata, isDarwin);
+    try {
+        measureEncoder.encodeInstructionImpl(instr, text, rodata, isDarwin);
+    } catch (const std::bad_variant_access &) {
+        std::string msg = "measureInstructionSize: bad variant access for opcode " +
+                          std::to_string(static_cast<int>(instr.opcode)) + " with " +
+                          std::to_string(instr.operands.size()) + " operand(s):";
+        for (std::size_t i = 0; i < instr.operands.size(); ++i)
+            msg += " [" + std::to_string(i) + "]=idx" + std::to_string(instr.operands[i].index());
+        throw std::runtime_error(msg);
+    }
     return text.currentOffset() - currentOffset;
 }
 
@@ -431,6 +440,16 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
                                              bool isDarwin) {
     const auto &ops = instr.operands;
     const auto op = instr.opcode;
+    const auto nOps = ops.size();
+
+    // Guard helper: abort early with a clear message on operand count mismatch.
+    auto requireOps = [&](std::size_t n) {
+        if (nOps < n) {
+            throw std::runtime_error(
+                "x86-64 binary encoder: opcode " + std::to_string(static_cast<int>(op)) +
+                " requires " + std::to_string(n) + " operand(s) but has " + std::to_string(nOps));
+        }
+    };
 
     switch (op) {
         // --- Nullary ---
@@ -441,6 +460,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             return;
 
         case MOpcode::PUSH: {
+            requireOps(1);
             const auto hw = hwEncode(regFromOperand(ops[0]));
             if (hw.rexBit)
                 text.emit8(computeRex(false, false, false, true));
@@ -449,6 +469,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         }
 
         case MOpcode::POP: {
+            requireOps(1);
             const auto hw = hwEncode(regFromOperand(ops[0]));
             if (hw.rexBit)
                 text.emit8(computeRex(false, false, false, true));
@@ -500,6 +521,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::IMULrr:
         case MOpcode::CMOVNErr:
         case MOpcode::XORrr32: {
+            requireOps(2);
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeRegReg(op, dst, src, text);
@@ -512,6 +534,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::ORri:
         case MOpcode::XORri:
         case MOpcode::CMPri: {
+            requireOps(2);
             PhysReg dst = regFromOperand(ops[0]);
             int64_t imm = immFromOperand(ops[1]);
             encodeRegImm(op, dst, imm, text);

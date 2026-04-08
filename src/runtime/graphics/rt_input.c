@@ -191,6 +191,10 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #endif
 }
 
+#if defined(VIPER_ENABLE_GRAPHICS)
+extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
+#endif
+
 static void rt_input_warp_mouse_platform(int64_t x, int64_t y) {
     if (!g_mouse_canvas)
         return;
@@ -201,7 +205,6 @@ static void rt_input_warp_mouse_platform(int64_t x, int64_t y) {
     }
 
 #if defined(VIPER_ENABLE_GRAPHICS)
-    extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
     vgfx_warp_cursor(g_mouse_canvas, (int32_t)x, (int32_t)y);
 #else
     (void)x;
@@ -1322,12 +1325,14 @@ int64_t rt_mouse_wheel_y(void) {
 // Cursor Control
 //=============================================================================
 
+extern void vgfx_show_cursor(void);
+extern void vgfx_hide_cursor(void);
+
 void rt_mouse_show(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_mouse_hidden)
         return;
     g_mouse_hidden = false;
-    extern void vgfx_show_cursor(void);
     vgfx_show_cursor();
 }
 
@@ -1336,7 +1341,6 @@ void rt_mouse_hide(void) {
     if (g_mouse_hidden)
         return;
     g_mouse_hidden = true;
-    extern void vgfx_hide_cursor(void);
     vgfx_hide_cursor();
 }
 
